@@ -14678,12 +14678,12 @@ def run_authenticated_app() -> None:
             )
 
             st.markdown(
-                f'<div class="bom8-secondary-card"><strong>Saved analyses</strong><span>{saved_analysis_count} saved BOM{'s' if saved_analysis_count != 1 else ''} in this workspace.</span><a href="#saved-bom-manager">Manage saved analyses</a></div>',
+                f"<div class=\"bom8-secondary-card\"><strong>Saved analyses</strong><span>{saved_analysis_count} saved BOM{'s' if saved_analysis_count != 1 else ''} in this workspace.</span><a href=\"#saved-bom-manager\">Manage saved analyses</a></div>",
                 unsafe_allow_html=True,
             )
             if total_high_risk:
                 st.markdown(
-                    f'<div class="bom8-secondary-card bom8-secondary-card--attention"><strong>Review queue</strong><span>{total_high_risk} high-risk component{'s' if total_high_risk != 1 else ''} need engineering review.</span></div>',
+                    f"<div class=\"bom8-secondary-card bom8-secondary-card--attention\"><strong>Review queue</strong><span>{total_high_risk} high-risk component{'s' if total_high_risk != 1 else ''} need engineering review.</span></div>",
                     unsafe_allow_html=True,
                 )
                 if st.button(
