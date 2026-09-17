@@ -336,7 +336,7 @@ def render_unified_shell(
         st.markdown(
             f"""
             <div class="cv-foundation-workspace" aria-label="Current workspace">
-              <span class="cv-foundation-workspace-mark">{_escape((workspace_name or 'C')[:1].upper())}</span>
+              <span class="cv-foundation-workspace-mark" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 20V7l8-4 8 4v13M9 20v-5h6v5M8 10h.01M16 10h.01"/></svg></span>
               <span class="cv-foundation-workspace-copy">
                 <small>Workspace</small>
                 <strong>{_escape(workspace_name or 'Cadivor Workspace')}</strong>
