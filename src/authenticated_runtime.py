@@ -13976,6 +13976,11 @@ def run_authenticated_app() -> None:
                             )
                     st.divider()
 
+        # Reserve the primary workflow at the top of the BOM page. The saved
+        # manager is rendered next, then the new-analysis workflow fills this
+        # slot below; Streamlit keeps the slot in its original top position.
+        bom_new_analysis_slot = st.empty()
+
         # Milestone 8.1 — Saved BOM Manager. One control, only with loaded rows.
         # An empty expander is a labeled placeholder and must not be created.
         from src.pages.saved_analysis_control import (
@@ -14476,6 +14481,10 @@ def run_authenticated_app() -> None:
         else:
             release_saved_analysis_placeholder()
 
+        # Keep the primary task together: workflow, form, and File readiness
+        # occupy the reserved top slot; saved analyses remain below it.
+        _bom_new_analysis_context = bom_new_analysis_slot.container()
+        _bom_new_analysis_context.__enter__()
         workflow_steps(["Prepare", "Upload", "Analyze", "Review"], active=1)
 
         st.markdown(
@@ -15451,7 +15460,7 @@ def run_authenticated_app() -> None:
                     navigate_to("Pricing")
 
 
-
+        _bom_new_analysis_context.__exit__(None, None, None)
 
     # Authentication persistence is intentionally session scoped in this repair.
     # Re-introduce durable persistence only through a server-side/HttpOnly mechanism,
