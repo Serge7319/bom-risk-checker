@@ -102,6 +102,7 @@ from src.ui.navigation import (
     navigate_to,
     navigate_to_alternative_finder,
     open_high_risk_component_review,
+    open_component_in_saved_bom,
     open_saved_bom,
     render_command_nav_triggers,
     reset_alternative_finder_prefill,
@@ -14069,9 +14070,10 @@ def run_authenticated_app() -> None:
                         part_number = str(
                             part.get("mpn") or part.get("part_number") or part.get("manufacturer_part_number") or "Component"
                         )
-                        analysis_id_value = str(part.get("analysis_id") or "")
+                        analysis_id_value = str(part.get("analysis_id") or "").strip()
                         manufacturer = str(part.get("manufacturer") or "Unknown manufacturer")
                         risk_score = part.get("risk_score") or part.get("Risk Score") or "—"
+                        component_available = bool(analysis_id_value and analysis_id_value in analysis_labels)
                         project_label = analysis_labels.get(analysis_id_value, "Saved BOM analysis")
                         with column:
                             with st.container(border=True):
@@ -14082,23 +14084,21 @@ def run_authenticated_app() -> None:
                                     unsafe_allow_html=True,
                                 )
                                 if st.button(
-                                    "Open component",
+                                    "Open component details",
                                     key=f"bom81_open_high_risk_{analysis_id_value}_{part_number}_{index}",
                                     type="primary",
                                     use_container_width=True,
+                                    disabled=not component_available,
                                 ):
-                                    st.session_state["cadivor_active_analysis_id"] = analysis_id_value
-                                    st.session_state["analysis_id"] = analysis_id_value
-                                    st.session_state["cadivor_pending_analysis_section"] = "Components"
-                                    st.session_state["cadivor_pending_analysis_section_id"] = analysis_id_value
                                     st.session_state.pop("bom81_high_risk_review", None)
-                                    # Reuse the saved-BOM handoff so the selected analysis
-                                    # is restored before the component section renders.
-                                    open_saved_bom(
+                                    open_component_in_saved_bom(
                                         analysis_id_value,
+                                        part_number,
                                         _rerun=True,
                                         arm_opening=False,
                                     )
+                                if not component_available:
+                                    st.caption("This component's saved BOM is not available in the current workspace.")
             stop_authenticated_page()
 
         # Reserve the primary workflow at the top of the BOM page. The saved
