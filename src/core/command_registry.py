@@ -42,12 +42,9 @@ DEFAULT_COMMANDS: tuple[Command, ...] = (
     Command("design-impact", "Open Design Impact Analyzer", "Estimate redesign scope and engineering impact", "Design Impact Analyzer", "Intelligence", "◇", ("redesign", "footprint", "compatibility", "effort")),
     Command("cost-optimization", "Open Cost Optimization", "Identify cost reduction opportunities", "Cost Optimization", "Intelligence", "$", ("savings", "price", "cost")),
     Command("supply-scenario", "Run Supply Risk Scenario", "Simulate supplier and inventory disruptions", "Supply Risk Scenario", "Intelligence", "△", ("simulate", "what if", "disruption", "supplier disappears")),
-    Command("workspace", "Open Workspace", "Manage teams, members, and organization activity", "Workspace", "Workspace", "●", ("team", "organization", "members", "collaboration")),
-    Command("notifications", "Open Notifications", "Review workspace and monitoring updates", "Notifications", "Workspace", "●", ("alerts", "updates", "changes")),
     Command("pricing", "Open Pricing", "Compare Cadivor plans and entitlements", "Pricing", "Account", "$", ("upgrade", "billing", "subscription", "plan")),
     Command("settings", "Open Settings", "Profile, account, and application settings", "Settings", "Account", "⚙", ("profile", "preferences", "account")),
     Command("help", "Open Help", "Cadivor guidance and support", "Help", "Support", "?", ("documentation", "support", "how to")),
-    Command("about", "About Cadivor", "Product information and mission", "About", "Support", "C", ("company", "version")),
 )
 
 
