@@ -433,7 +433,7 @@ def open_high_risk_component_review(
     ).strip()
     st.session_state.pop("bom81_high_risk_review", None)
     st.session_state.pop(SHOW_SAVED_BOMS_KEY, None)
-    nav_kwargs: dict[str, str] = {"review": "high-risk"}
+    nav_kwargs: dict[str, str] = {"high_risk_review": "1"}
     if analysis_id:
         st.session_state["cadivor_active_analysis_id"] = analysis_id
         st.session_state["analysis_id"] = analysis_id
@@ -443,7 +443,7 @@ def open_high_risk_component_review(
             st.session_state["bom81_selected_analysis_ids"] = [analysis_id]
         nav_kwargs["analysis_id"] = analysis_id
     navigate_to(
-        "High Risk Review",
+        "BOM Analyzer",
         _rerun=_rerun,
         arm_opening=arm_opening,
         **nav_kwargs,
