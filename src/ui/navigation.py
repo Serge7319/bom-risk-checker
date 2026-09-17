@@ -431,7 +431,7 @@ def open_high_risk_component_review(
         or st.session_state.get("analysis_id")
         or ""
     ).strip()
-    st.session_state["bom81_high_risk_review"] = True
+    st.session_state.pop("bom81_high_risk_review", None)
     st.session_state.pop(SHOW_SAVED_BOMS_KEY, None)
     nav_kwargs: dict[str, str] = {"review": "high-risk"}
     if analysis_id:
