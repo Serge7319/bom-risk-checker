@@ -13968,505 +13968,507 @@ def run_authenticated_app() -> None:
         # slot below; Streamlit keeps the slot in its original top position.
         bom_new_analysis_slot = st.empty()
 
-        # Milestone 8.1 — Saved BOM Manager. One control, only with loaded rows.
-        # An empty expander is a labeled placeholder and must not be created.
-        from src.pages.saved_analysis_control import (
-            MANAGE_SAVED_ANALYSES,
-            release_saved_analysis_placeholder,
-            should_render_saved_analysis_control,
-        )
-
-        st.markdown('<div id="saved-bom-manager"></div>', unsafe_allow_html=True)
-        if should_render_saved_analysis_control(history_data, route=app_mode, status="ok"):
-            cadivor_panel(
-                title=f"Saved BOM Manager ({saved_analysis_count})",
-                subtitle=(
-                    "Showing saved analyses with high-risk components."
-                    if st.session_state.get("bom81_high_risk_review")
-                    else "Search, sort, open, or select multiple analyses for bulk deletion."
-                ),
-                tone="soft",
+        def _render_saved_bom_manager() -> None:
+            """Render saved analyses beside the new-BOM workflow on desktop."""
+            # Milestone 8.1 — Saved BOM Manager. One control, only with loaded rows.
+            # An empty expander is a labeled placeholder and must not be created.
+            from src.pages.saved_analysis_control import (
+                MANAGE_SAVED_ANALYSES,
+                release_saved_analysis_placeholder,
+                should_render_saved_analysis_control,
             )
-            if st.session_state.get("bom81_high_risk_review"):
-                if st.button(
-                    "Show all saved analyses",
-                    key="bom81_clear_high_risk_review",
-                    type="secondary",
-                ):
-                    st.session_state.pop("bom81_high_risk_review", None)
-                    st.rerun()
-            _manager_slot = st.empty()
-            _manager_slot.empty()
-            with _manager_slot.container():
-                with st.container(key="bom81_saved_manager"):
-                    st.markdown(
-                        '<div data-saved-analyses="ready" hidden></div>',
-                        unsafe_allow_html=True,
-                    )
-                    with st.expander(
-                        MANAGE_SAVED_ANALYSES,
-                        expanded=True,
+    
+            st.markdown('<div id="saved-bom-manager"></div>', unsafe_allow_html=True)
+            if should_render_saved_analysis_control(history_data, route=app_mode, status="ok"):
+                cadivor_panel(
+                    title=f"Saved BOM Manager ({saved_analysis_count})",
+                    subtitle=(
+                        "Showing saved analyses with high-risk components."
+                        if st.session_state.get("bom81_high_risk_review")
+                        else "Search, sort, open, or select multiple analyses for bulk deletion."
+                    ),
+                    tone="soft",
+                )
+                if st.session_state.get("bom81_high_risk_review"):
+                    if st.button(
+                        "Show all saved analyses",
+                        key="bom81_clear_high_risk_review",
+                        type="secondary",
                     ):
-
-                        if history_data:
-                            manager_df = pd.DataFrame(history_data).copy()
-
-                            required_defaults = {
-                                "id": "",
-                                "project_name": "Saved BOM analysis",
-                                "filename": "—",
-                                "health_score": 0,
-                                "high_risk_count": 0,
-                                "medium_risk_count": 0,
-                                "created_at": pd.NaT,
-                            }
-                            for column_name, default_value in required_defaults.items():
-                                if column_name not in manager_df.columns:
-                                    manager_df[column_name] = default_value
-
-                            manager_df["project_name"] = manager_df["project_name"].fillna(
-                                manager_df["filename"]
-                            )
-                            manager_df["project_name"] = manager_df["project_name"].fillna(
-                                "Saved BOM analysis"
-                            )
-                            manager_df["filename"] = manager_df["filename"].fillna("—")
-
-                            for numeric_column in (
-                                "health_score",
-                                "high_risk_count",
-                                "medium_risk_count",
-                            ):
-                                manager_df[numeric_column] = pd.to_numeric(
-                                    manager_df[numeric_column],
-                                    errors="coerce",
-                                ).fillna(0).astype(int)
-
-                            if st.session_state.get("bom81_high_risk_review"):
-                                manager_df = manager_df[manager_df["high_risk_count"] > 0]
-
-                            manager_df["created_at_sort"] = pd.to_datetime(
-                                manager_df["created_at"],
-                                errors="coerce",
-                                utc=True,
-                            )
-                            manager_df["Date"] = manager_df["created_at_sort"].dt.strftime(
-                                "%Y-%m-%d"
-                            ).fillna("—")
-
-                            filter_col, sort_col = st.columns([0.68, 0.32], gap="medium")
-
-                            with filter_col:
-                                manager_search = st.text_input(
-                                    "Search saved analyses",
-                                    placeholder="Search by project or source filename",
-                                    key="bom81_manager_search",
+                        st.session_state.pop("bom81_high_risk_review", None)
+                        st.rerun()
+                _manager_slot = st.empty()
+                _manager_slot.empty()
+                with _manager_slot.container():
+                    with st.container(key="bom81_saved_manager"):
+                        st.markdown(
+                            '<div data-saved-analyses="ready" hidden></div>',
+                            unsafe_allow_html=True,
+                        )
+                        with st.expander(
+                            MANAGE_SAVED_ANALYSES,
+                            expanded=True,
+                        ):
+    
+                            if history_data:
+                                manager_df = pd.DataFrame(history_data).copy()
+    
+                                required_defaults = {
+                                    "id": "",
+                                    "project_name": "Saved BOM analysis",
+                                    "filename": "—",
+                                    "health_score": 0,
+                                    "high_risk_count": 0,
+                                    "medium_risk_count": 0,
+                                    "created_at": pd.NaT,
+                                }
+                                for column_name, default_value in required_defaults.items():
+                                    if column_name not in manager_df.columns:
+                                        manager_df[column_name] = default_value
+    
+                                manager_df["project_name"] = manager_df["project_name"].fillna(
+                                    manager_df["filename"]
                                 )
-
-                            with sort_col:
-                                manager_sort = st.selectbox(
-                                    "Sort analyses",
-                                    options=[
-                                        "Newest first",
-                                        "Oldest first",
-                                        "Health: high to low",
-                                        "Health: low to high",
-                                        "High risk: high to low",
-                                        "Project name",
-                                    ],
-                                    key="bom81_manager_sort",
+                                manager_df["project_name"] = manager_df["project_name"].fillna(
+                                    "Saved BOM analysis"
                                 )
-
-                            if manager_search.strip():
-                                search_value = manager_search.strip().lower()
-                                manager_df = manager_df[
-                                    manager_df["project_name"]
-                                    .astype(str)
-                                    .str.lower()
-                                    .str.contains(search_value, na=False)
-                                    | manager_df["filename"]
-                                    .astype(str)
-                                    .str.lower()
-                                    .str.contains(search_value, na=False)
-                                ]
-
-                            if manager_sort == "Newest first":
-                                manager_df = manager_df.sort_values(
-                                    "created_at_sort",
-                                    ascending=False,
-                                    na_position="last",
-                                )
-                            elif manager_sort == "Oldest first":
-                                manager_df = manager_df.sort_values(
-                                    "created_at_sort",
-                                    ascending=True,
-                                    na_position="last",
-                                )
-                            elif manager_sort == "Health: high to low":
-                                manager_df = manager_df.sort_values(
+                                manager_df["filename"] = manager_df["filename"].fillna("—")
+    
+                                for numeric_column in (
                                     "health_score",
-                                    ascending=False,
-                                )
-                            elif manager_sort == "Health: low to high":
-                                manager_df = manager_df.sort_values(
-                                    "health_score",
-                                    ascending=True,
-                                )
-                            elif manager_sort == "High risk: high to low":
-                                manager_df = manager_df.sort_values(
                                     "high_risk_count",
-                                    ascending=False,
-                                )
-                            else:
-                                manager_df = manager_df.sort_values(
-                                    "project_name",
-                                    ascending=True,
-                                )
-
-                            if manager_df.empty:
-                                st.info("No saved analyses match the current search.")
-                            else:
-                                # Keep this id until the user clears it or opens the BOM.
-                                # Popping it after one paint lets the next click rerun
-                                # rebuild the editor with every checkbox false.
-                                preselect_id = str(
-                                    st.session_state.get("cadivor_preselect_saved_bom_id", "") or ""
-                                ).strip()
-                                editor_df = pd.DataFrame(
-                                    {
-                                        # Keep the editor input stable: feeding its selected
-                                        # rows back into the input remounts the widget and
-                                        # loses the selection on the following interaction.
-                                        # A one-shot preselect uses a new editor key below.
-                                        "Select": False,
-                                        "Project": manager_df["project_name"].astype(str),
-                                        "Source File": manager_df["filename"].astype(str),
-                                        "Health": manager_df["health_score"],
-                                        "High Risk": manager_df["high_risk_count"],
-                                        "Medium Risk": manager_df["medium_risk_count"],
-                                        "Date": manager_df["Date"],
-                                        "_analysis_id": manager_df["id"].astype(str),
-                                    }
-                                ).reset_index(drop=True)
-                                editor_revision = int(
-                                    st.session_state.get("bom81_saved_analysis_editor_revision", 0)
-                                )
-                                editor_key = "bom81_saved_analysis_editor"
-                                if editor_revision:
-                                    editor_key = f"{editor_key}_{editor_revision}"
-                                if preselect_id and preselect_id in set(editor_df["_analysis_id"].astype(str)):
-                                    match = editor_df["_analysis_id"].astype(str) == preselect_id
-                                    row_index = int(editor_df.index[match][0])
-                                    widget_state = st.session_state.get(editor_key)
-                                    edited_rows = {}
-                                    if isinstance(widget_state, dict):
-                                        edited_rows = widget_state.get("edited_rows") or {}
-                                    row_edit = edited_rows.get(row_index) or edited_rows.get(str(row_index)) or {}
-                                    user_cleared = isinstance(row_edit, dict) and row_edit.get("Select") is False
-                                    if user_cleared:
-                                        st.session_state.pop("cadivor_preselect_saved_bom_id", None)
-                                        st.session_state["bom81_selected_analysis_ids"] = []
-                                    else:
-                                        editor_df.loc[match, "Select"] = True
-                                        st.session_state["bom81_selected_analysis_ids"] = [preselect_id]
-                                        applied_key = str(
-                                            st.session_state.get("cadivor_preselect_applied_editor_key") or ""
-                                        )
-                                        if applied_key != editor_key:
-                                            editor_revision += 1
-                                            st.session_state["bom81_saved_analysis_editor_revision"] = editor_revision
-                                            editor_key = f"bom81_saved_analysis_editor_{editor_revision}"
-                                            st.session_state["cadivor_preselect_applied_editor_key"] = editor_key
-                                elif preselect_id:
-                                    st.session_state["cadivor_preselect_saved_bom_id"] = preselect_id
-
-                                edited_manager = st.data_editor(
-                                    editor_df,
-                                    use_container_width=True,
-                                    hide_index=True,
-                                    height=min(520, 70 + len(editor_df) * 35),
-                                    disabled=[
-                                        "Project",
-                                        "Source File",
-                                        "Health",
-                                        "High Risk",
-                                        "Medium Risk",
-                                        "Date",
-                                        "_analysis_id",
-                                    ],
-                                    column_config={
-                                        "Select": st.column_config.CheckboxColumn(
-                                            "Select",
-                                            help="Select one analysis to open or several analyses to delete.",
-                                            width="small",
-                                        ),
-                                        "Project": st.column_config.TextColumn(
-                                            "Project",
-                                            width="large",
-                                        ),
-                                        "Source File": st.column_config.TextColumn(
-                                            "Source File",
-                                            width="medium",
-                                        ),
-                                        "Health": st.column_config.NumberColumn(
-                                            "Health",
-                                            min_value=0,
-                                            max_value=100,
-                                            format="%d",
-                                            width="small",
-                                        ),
-                                        "High Risk": st.column_config.NumberColumn(
-                                            "High Risk",
-                                            format="%d",
-                                            width="small",
-                                        ),
-                                        "Medium Risk": st.column_config.NumberColumn(
-                                            "Medium Risk",
-                                            format="%d",
-                                            width="small",
-                                        ),
-                                        "Date": st.column_config.TextColumn(
-                                            "Date",
-                                            width="small",
-                                        ),
-                                        "_analysis_id": None,
-                                    },
-                                    key=editor_key,
-                                )
-
-                                selected_rows = edited_manager[
-                                    edited_manager["Select"] == True
-                                ]
-                                selected_ids = selected_rows["_analysis_id"].astype(str).tolist()
-                                if (
-                                    not selected_ids
-                                    and preselect_id
-                                    and preselect_id in set(editor_df["_analysis_id"].astype(str))
+                                    "medium_risk_count",
                                 ):
-                                    # The click rerun can drop the canvas checkbox before
-                                    # this handler reads it. The list request still names
-                                    # the BOM the user came from.
-                                    selected_ids = [preselect_id]
-                                    selected_rows = editor_df[
-                                        editor_df["_analysis_id"].astype(str) == preselect_id
+                                    manager_df[numeric_column] = pd.to_numeric(
+                                        manager_df[numeric_column],
+                                        errors="coerce",
+                                    ).fillna(0).astype(int)
+    
+                                if st.session_state.get("bom81_high_risk_review"):
+                                    manager_df = manager_df[manager_df["high_risk_count"] > 0]
+    
+                                manager_df["created_at_sort"] = pd.to_datetime(
+                                    manager_df["created_at"],
+                                    errors="coerce",
+                                    utc=True,
+                                )
+                                manager_df["Date"] = manager_df["created_at_sort"].dt.strftime(
+                                    "%Y-%m-%d"
+                                ).fillna("—")
+    
+                                filter_col, sort_col = st.columns([0.68, 0.32], gap="medium")
+    
+                                with filter_col:
+                                    manager_search = st.text_input(
+                                        "Search saved analyses",
+                                        placeholder="Search by project or source filename",
+                                        key="bom81_manager_search",
+                                    )
+    
+                                with sort_col:
+                                    manager_sort = st.selectbox(
+                                        "Sort analyses",
+                                        options=[
+                                            "Newest first",
+                                            "Oldest first",
+                                            "Health: high to low",
+                                            "Health: low to high",
+                                            "High risk: high to low",
+                                            "Project name",
+                                        ],
+                                        key="bom81_manager_sort",
+                                    )
+    
+                                if manager_search.strip():
+                                    search_value = manager_search.strip().lower()
+                                    manager_df = manager_df[
+                                        manager_df["project_name"]
+                                        .astype(str)
+                                        .str.lower()
+                                        .str.contains(search_value, na=False)
+                                        | manager_df["filename"]
+                                        .astype(str)
+                                        .str.lower()
+                                        .str.contains(search_value, na=False)
                                     ]
-                                st.session_state["bom81_selected_analysis_ids"] = selected_ids
-
-                                selected_count = len(selected_ids)
-                                selection_label = "analysis" if selected_count == 1 else "analyses"
-                                selected_project = ""
-                                if selected_count == 1 and "Project" in selected_rows.columns:
-                                    selected_project = str(selected_rows.iloc[0]["Project"] or "").strip()
-
-                                selection_copy = (
-                                    "Select one checkbox to enable Open Analysis."
-                                    if selected_count == 0
-                                    else (
-                                        f"Selected: {selected_project}. Open Analysis is ready."
-                                        if selected_project
-                                        else "One analysis selected. Open Analysis is ready."
+    
+                                if manager_sort == "Newest first":
+                                    manager_df = manager_df.sort_values(
+                                        "created_at_sort",
+                                        ascending=False,
+                                        na_position="last",
                                     )
-                                    if selected_count == 1
-                                    else "Multiple analyses selected. Use bulk delete or clear the selection; analyses open one at a time."
-                                )
-                                st.markdown(
-                                    f"""
-                                    <div class="bom81-selection-status">
-                                      <strong>{selected_count}</strong>
-                                      {selection_label} selected
-                                      <span>{html.escape(selection_copy)}</span>
-                                    </div>
-                                    """,
-                                    unsafe_allow_html=True,
-                                )
-
-                                open_col, delete_col, clear_col = st.columns(
-                                    [0.34, 0.34, 0.32],
-                                    gap="medium",
-                                )
-
-                                with open_col:
-                                    if st.button(
-                                        "Open Selected Analysis" if selected_count == 1 else "Open Analysis (select 1)",
-                                        type="primary",
-                                        use_container_width=True,
-                                        disabled=selected_count != 1,
-                                        key="bom81_open_selected",
-                                    ):
-                                        if not selected_ids:
-                                            selected_ids = []
-                                        selected_saved_id = selected_ids[0] if selected_ids else ""
-                                        if not selected_saved_id:
-                                            st.stop()
-                                        st.session_state.pop("cadivor_show_saved_boms", None)
-                                        st.session_state.pop("cadivor_preselect_saved_bom_id", None)
-                                        st.session_state.pop("cadivor_preselect_applied_editor_key", None)
-                                        st.session_state["cadivor_active_analysis_id"] = str(selected_saved_id)
-                                        st.session_state["analysis_id"] = str(selected_saved_id)
-                                        navigate_to(
-                                            "Analysis Details",
-                                            analysis_id=selected_saved_id,
-                                            arm_opening=False,
-                                        )
-
-                                with delete_col:
-                                    if st.button(
-                                        f"Delete Selected ({selected_count})",
-                                        type="secondary",
-                                        use_container_width=True,
-                                        disabled=selected_count == 0,
-                                        key="bom81_request_bulk_delete",
-                                    ):
-                                        st.session_state["bom81_pending_delete_ids"] = selected_ids
-                                        st.rerun()
-
-                                with clear_col:
-                                    if st.button(
-                                        "Clear Selection",
-                                        use_container_width=True,
-                                        disabled=selected_count == 0,
-                                        key="bom81_clear_selection",
-                                    ):
-                                        st.session_state["bom81_selected_analysis_ids"] = []
-                                        st.session_state.pop("bom81_pending_delete_ids", None)
-                                        st.session_state.pop("cadivor_preselect_saved_bom_id", None)
-                                        st.session_state.pop("cadivor_preselect_applied_editor_key", None)
-                                        st.session_state["bom81_saved_analysis_editor_revision"] = (
-                                            editor_revision + 1
-                                        )
-                                        st.rerun()
-
-                                pending_delete_ids = [
-                                    str(value)
-                                    for value in st.session_state.get(
-                                        "bom81_pending_delete_ids",
-                                        [],
+                                elif manager_sort == "Oldest first":
+                                    manager_df = manager_df.sort_values(
+                                        "created_at_sort",
+                                        ascending=True,
+                                        na_position="last",
                                     )
-                                    if str(value).strip()
-                                ]
-
-                                if pending_delete_ids:
-                                    delete_records = manager_df[
-                                        manager_df["id"].astype(str).isin(pending_delete_ids)
+                                elif manager_sort == "Health: high to low":
+                                    manager_df = manager_df.sort_values(
+                                        "health_score",
+                                        ascending=False,
+                                    )
+                                elif manager_sort == "Health: low to high":
+                                    manager_df = manager_df.sort_values(
+                                        "health_score",
+                                        ascending=True,
+                                    )
+                                elif manager_sort == "High risk: high to low":
+                                    manager_df = manager_df.sort_values(
+                                        "high_risk_count",
+                                        ascending=False,
+                                    )
+                                else:
+                                    manager_df = manager_df.sort_values(
+                                        "project_name",
+                                        ascending=True,
+                                    )
+    
+                                if manager_df.empty:
+                                    st.info("No saved analyses match the current search.")
+                                else:
+                                    # Keep this id until the user clears it or opens the BOM.
+                                    # Popping it after one paint lets the next click rerun
+                                    # rebuild the editor with every checkbox false.
+                                    preselect_id = str(
+                                        st.session_state.get("cadivor_preselect_saved_bom_id", "") or ""
+                                    ).strip()
+                                    editor_df = pd.DataFrame(
+                                        {
+                                            # Keep the editor input stable: feeding its selected
+                                            # rows back into the input remounts the widget and
+                                            # loses the selection on the following interaction.
+                                            # A one-shot preselect uses a new editor key below.
+                                            "Select": False,
+                                            "Project": manager_df["project_name"].astype(str),
+                                            "Source File": manager_df["filename"].astype(str),
+                                            "Health": manager_df["health_score"],
+                                            "High Risk": manager_df["high_risk_count"],
+                                            "Medium Risk": manager_df["medium_risk_count"],
+                                            "Date": manager_df["Date"],
+                                            "_analysis_id": manager_df["id"].astype(str),
+                                        }
+                                    ).reset_index(drop=True)
+                                    editor_revision = int(
+                                        st.session_state.get("bom81_saved_analysis_editor_revision", 0)
+                                    )
+                                    editor_key = "bom81_saved_analysis_editor"
+                                    if editor_revision:
+                                        editor_key = f"{editor_key}_{editor_revision}"
+                                    if preselect_id and preselect_id in set(editor_df["_analysis_id"].astype(str)):
+                                        match = editor_df["_analysis_id"].astype(str) == preselect_id
+                                        row_index = int(editor_df.index[match][0])
+                                        widget_state = st.session_state.get(editor_key)
+                                        edited_rows = {}
+                                        if isinstance(widget_state, dict):
+                                            edited_rows = widget_state.get("edited_rows") or {}
+                                        row_edit = edited_rows.get(row_index) or edited_rows.get(str(row_index)) or {}
+                                        user_cleared = isinstance(row_edit, dict) and row_edit.get("Select") is False
+                                        if user_cleared:
+                                            st.session_state.pop("cadivor_preselect_saved_bom_id", None)
+                                            st.session_state["bom81_selected_analysis_ids"] = []
+                                        else:
+                                            editor_df.loc[match, "Select"] = True
+                                            st.session_state["bom81_selected_analysis_ids"] = [preselect_id]
+                                            applied_key = str(
+                                                st.session_state.get("cadivor_preselect_applied_editor_key") or ""
+                                            )
+                                            if applied_key != editor_key:
+                                                editor_revision += 1
+                                                st.session_state["bom81_saved_analysis_editor_revision"] = editor_revision
+                                                editor_key = f"bom81_saved_analysis_editor_{editor_revision}"
+                                                st.session_state["cadivor_preselect_applied_editor_key"] = editor_key
+                                    elif preselect_id:
+                                        st.session_state["cadivor_preselect_saved_bom_id"] = preselect_id
+    
+                                    edited_manager = st.data_editor(
+                                        editor_df,
+                                        use_container_width=True,
+                                        hide_index=True,
+                                        height=min(520, 70 + len(editor_df) * 35),
+                                        disabled=[
+                                            "Project",
+                                            "Source File",
+                                            "Health",
+                                            "High Risk",
+                                            "Medium Risk",
+                                            "Date",
+                                            "_analysis_id",
+                                        ],
+                                        column_config={
+                                            "Select": st.column_config.CheckboxColumn(
+                                                "Select",
+                                                help="Select one analysis to open or several analyses to delete.",
+                                                width="small",
+                                            ),
+                                            "Project": st.column_config.TextColumn(
+                                                "Project",
+                                                width="large",
+                                            ),
+                                            "Source File": st.column_config.TextColumn(
+                                                "Source File",
+                                                width="medium",
+                                            ),
+                                            "Health": st.column_config.NumberColumn(
+                                                "Health",
+                                                min_value=0,
+                                                max_value=100,
+                                                format="%d",
+                                                width="small",
+                                            ),
+                                            "High Risk": st.column_config.NumberColumn(
+                                                "High Risk",
+                                                format="%d",
+                                                width="small",
+                                            ),
+                                            "Medium Risk": st.column_config.NumberColumn(
+                                                "Medium Risk",
+                                                format="%d",
+                                                width="small",
+                                            ),
+                                            "Date": st.column_config.TextColumn(
+                                                "Date",
+                                                width="small",
+                                            ),
+                                            "_analysis_id": None,
+                                        },
+                                        key=editor_key,
+                                    )
+    
+                                    selected_rows = edited_manager[
+                                        edited_manager["Select"] == True
                                     ]
-                                    delete_names = delete_records["project_name"].astype(str).tolist()
-                                    preview_names = delete_names[:5]
-                                    remaining_names = max(0, len(delete_names) - len(preview_names))
-
-                                    name_lines = "".join(
-                                        f"<li>{html.escape(name)}</li>"
-                                        for name in preview_names
-                                    )
-                                    if remaining_names:
-                                        name_lines += (
-                                            f"<li>and {remaining_names} more "
-                                            f"{'analyses' if remaining_names != 1 else 'analysis'}</li>"
+                                    selected_ids = selected_rows["_analysis_id"].astype(str).tolist()
+                                    if (
+                                        not selected_ids
+                                        and preselect_id
+                                        and preselect_id in set(editor_df["_analysis_id"].astype(str))
+                                    ):
+                                        # The click rerun can drop the canvas checkbox before
+                                        # this handler reads it. The list request still names
+                                        # the BOM the user came from.
+                                        selected_ids = [preselect_id]
+                                        selected_rows = editor_df[
+                                            editor_df["_analysis_id"].astype(str) == preselect_id
+                                        ]
+                                    st.session_state["bom81_selected_analysis_ids"] = selected_ids
+    
+                                    selected_count = len(selected_ids)
+                                    selection_label = "analysis" if selected_count == 1 else "analyses"
+                                    selected_project = ""
+                                    if selected_count == 1 and "Project" in selected_rows.columns:
+                                        selected_project = str(selected_rows.iloc[0]["Project"] or "").strip()
+    
+                                    selection_copy = (
+                                        "Select one checkbox to enable Open Analysis."
+                                        if selected_count == 0
+                                        else (
+                                            f"Selected: {selected_project}. Open Analysis is ready."
+                                            if selected_project
+                                            else "One analysis selected. Open Analysis is ready."
                                         )
-
+                                        if selected_count == 1
+                                        else "Multiple analyses selected. Use bulk delete or clear the selection; analyses open one at a time."
+                                    )
                                     st.markdown(
                                         f"""
-                                        <div class="bom81-delete-confirmation">
-                                          <div class="bom81-delete-icon">!</div>
-                                          <div>
-                                            <strong>Permanently delete {len(pending_delete_ids)}
-                                            saved BOM {"analyses" if len(pending_delete_ids) != 1 else "analysis"}?</strong>
-                                            <p>
-                                              All saved component records associated with these
-                                              analyses will also be removed. This action cannot be undone.
-                                            </p>
-                                            <ul>{name_lines}</ul>
-                                          </div>
+                                        <div class="bom81-selection-status">
+                                          <strong>{selected_count}</strong>
+                                          {selection_label} selected
+                                          <span>{html.escape(selection_copy)}</span>
                                         </div>
                                         """,
                                         unsafe_allow_html=True,
                                     )
-
-                                    confirm_col, cancel_col = st.columns(
-                                        [0.5, 0.5],
+    
+                                    open_col, delete_col, clear_col = st.columns(
+                                        [0.34, 0.34, 0.32],
                                         gap="medium",
                                     )
-
-                                    with confirm_col:
+    
+                                    with open_col:
                                         if st.button(
-                                            f"Yes, Delete {len(pending_delete_ids)} Permanently",
+                                            "Open Selected Analysis" if selected_count == 1 else "Open Analysis (select 1)",
                                             type="primary",
                                             use_container_width=True,
-                                            key="bom81_confirm_bulk_delete",
+                                            disabled=selected_count != 1,
+                                            key="bom81_open_selected",
                                         ):
-                                            deletion_errors = []
-
-                                            for analysis_id_value in pending_delete_ids:
-                                                try:
-                                                    supabase.table("analysis_parts").delete().eq(
-                                                        "analysis_id",
-                                                        analysis_id_value,
-                                                    ).execute()
-
-                                                    try:
-                                                        supabase.table(
-                                                            "part_monitor_history"
-                                                        ).delete().eq(
-                                                            "analysis_id",
-                                                            analysis_id_value,
-                                                        ).execute()
-                                                    except Exception:
-                                                        pass
-
-                                                    supabase.table("analyses").delete().eq(
-                                                        "id",
-                                                        analysis_id_value,
-                                                    ).eq(
-                                                        "user_id",
-                                                        current_user["id"],
-                                                    ).execute()
-                                                except Exception as deletion_error:
-                                                    deletion_errors.append(
-                                                        f"{analysis_id_value}: {deletion_error}"
-                                                    )
-
+                                            if not selected_ids:
+                                                selected_ids = []
+                                            selected_saved_id = selected_ids[0] if selected_ids else ""
+                                            if not selected_saved_id:
+                                                st.stop()
+                                            st.session_state.pop("cadivor_show_saved_boms", None)
+                                            st.session_state.pop("cadivor_preselect_saved_bom_id", None)
+                                            st.session_state.pop("cadivor_preselect_applied_editor_key", None)
+                                            st.session_state["cadivor_active_analysis_id"] = str(selected_saved_id)
+                                            st.session_state["analysis_id"] = str(selected_saved_id)
+                                            navigate_to(
+                                                "Analysis Details",
+                                                analysis_id=selected_saved_id,
+                                                arm_opening=False,
+                                            )
+    
+                                    with delete_col:
+                                        if st.button(
+                                            f"Delete Selected ({selected_count})",
+                                            type="secondary",
+                                            use_container_width=True,
+                                            disabled=selected_count == 0,
+                                            key="bom81_request_bulk_delete",
+                                        ):
+                                            st.session_state["bom81_pending_delete_ids"] = selected_ids
+                                            st.rerun()
+    
+                                    with clear_col:
+                                        if st.button(
+                                            "Clear Selection",
+                                            use_container_width=True,
+                                            disabled=selected_count == 0,
+                                            key="bom81_clear_selection",
+                                        ):
                                             st.session_state["bom81_selected_analysis_ids"] = []
+                                            st.session_state.pop("bom81_pending_delete_ids", None)
+                                            st.session_state.pop("cadivor_preselect_saved_bom_id", None)
+                                            st.session_state.pop("cadivor_preselect_applied_editor_key", None)
                                             st.session_state["bom81_saved_analysis_editor_revision"] = (
                                                 editor_revision + 1
                                             )
-                                            st.session_state.pop(
-                                                "bom81_pending_delete_ids",
-                                                None,
+                                            st.rerun()
+    
+                                    pending_delete_ids = [
+                                        str(value)
+                                        for value in st.session_state.get(
+                                            "bom81_pending_delete_ids",
+                                            [],
+                                        )
+                                        if str(value).strip()
+                                    ]
+    
+                                    if pending_delete_ids:
+                                        delete_records = manager_df[
+                                            manager_df["id"].astype(str).isin(pending_delete_ids)
+                                        ]
+                                        delete_names = delete_records["project_name"].astype(str).tolist()
+                                        preview_names = delete_names[:5]
+                                        remaining_names = max(0, len(delete_names) - len(preview_names))
+    
+                                        name_lines = "".join(
+                                            f"<li>{html.escape(name)}</li>"
+                                            for name in preview_names
+                                        )
+                                        if remaining_names:
+                                            name_lines += (
+                                                f"<li>and {remaining_names} more "
+                                                f"{'analyses' if remaining_names != 1 else 'analysis'}</li>"
                                             )
-
-                                            if deletion_errors:
-                                                st.error(
-                                                    "Some analyses could not be deleted. "
-                                                    + " | ".join(deletion_errors[:3])
+    
+                                        st.markdown(
+                                            f"""
+                                            <div class="bom81-delete-confirmation">
+                                              <div class="bom81-delete-icon">!</div>
+                                              <div>
+                                                <strong>Permanently delete {len(pending_delete_ids)}
+                                                saved BOM {"analyses" if len(pending_delete_ids) != 1 else "analysis"}?</strong>
+                                                <p>
+                                                  All saved component records associated with these
+                                                  analyses will also be removed. This action cannot be undone.
+                                                </p>
+                                                <ul>{name_lines}</ul>
+                                              </div>
+                                            </div>
+                                            """,
+                                            unsafe_allow_html=True,
+                                        )
+    
+                                        confirm_col, cancel_col = st.columns(
+                                            [0.5, 0.5],
+                                            gap="medium",
+                                        )
+    
+                                        with confirm_col:
+                                            if st.button(
+                                                f"Yes, Delete {len(pending_delete_ids)} Permanently",
+                                                type="primary",
+                                                use_container_width=True,
+                                                key="bom81_confirm_bulk_delete",
+                                            ):
+                                                deletion_errors = []
+    
+                                                for analysis_id_value in pending_delete_ids:
+                                                    try:
+                                                        supabase.table("analysis_parts").delete().eq(
+                                                            "analysis_id",
+                                                            analysis_id_value,
+                                                        ).execute()
+    
+                                                        try:
+                                                            supabase.table(
+                                                                "part_monitor_history"
+                                                            ).delete().eq(
+                                                                "analysis_id",
+                                                                analysis_id_value,
+                                                            ).execute()
+                                                        except Exception:
+                                                            pass
+    
+                                                        supabase.table("analyses").delete().eq(
+                                                            "id",
+                                                            analysis_id_value,
+                                                        ).eq(
+                                                            "user_id",
+                                                            current_user["id"],
+                                                        ).execute()
+                                                    except Exception as deletion_error:
+                                                        deletion_errors.append(
+                                                            f"{analysis_id_value}: {deletion_error}"
+                                                        )
+    
+                                                st.session_state["bom81_selected_analysis_ids"] = []
+                                                st.session_state["bom81_saved_analysis_editor_revision"] = (
+                                                    editor_revision + 1
                                                 )
-                                            else:
-                                                st.success(
-                                                    f"{len(pending_delete_ids)} saved BOM "
-                                                    f"{'analyses' if len(pending_delete_ids) != 1 else 'analysis'} "
-                                                    "permanently deleted."
+                                                st.session_state.pop(
+                                                    "bom81_pending_delete_ids",
+                                                    None,
+                                                )
+    
+                                                if deletion_errors:
+                                                    st.error(
+                                                        "Some analyses could not be deleted. "
+                                                        + " | ".join(deletion_errors[:3])
+                                                    )
+                                                else:
+                                                    st.success(
+                                                        f"{len(pending_delete_ids)} saved BOM "
+                                                        f"{'analyses' if len(pending_delete_ids) != 1 else 'analysis'} "
+                                                        "permanently deleted."
+                                                    )
+                                                    st.rerun()
+    
+                                        with cancel_col:
+                                            if st.button(
+                                                "Cancel",
+                                                use_container_width=True,
+                                                key="bom81_cancel_bulk_delete",
+                                            ):
+                                                st.session_state.pop(
+                                                    "bom81_pending_delete_ids",
+                                                    None,
                                                 )
                                                 st.rerun()
-
-                                    with cancel_col:
-                                        if st.button(
-                                            "Cancel",
-                                            use_container_width=True,
-                                            key="bom81_cancel_bulk_delete",
-                                        ):
-                                            st.session_state.pop(
-                                                "bom81_pending_delete_ids",
-                                                None,
-                                            )
-                                            st.rerun()
-
-                                st.caption(
-                                    "Opening is a single-analysis action. Select exactly one row to open it. "
-                                    "Selecting two or more rows does not open them together; it enables bulk deletion. "
-                                    "The table is read-only except for the selection checkboxes."
-                                )
-
-            cadivor_panel_end()
-        else:
-            release_saved_analysis_placeholder()
+    
+                                    st.caption(
+                                        "Opening is a single-analysis action. Select exactly one row to open it. "
+                                        "Selecting two or more rows does not open them together; it enables bulk deletion. "
+                                        "The table is read-only except for the selection checkboxes."
+                                    )
+    
+                cadivor_panel_end()
+            else:
+                release_saved_analysis_placeholder()
 
         # Keep the primary task together: workflow, form, and File readiness
         # occupy the reserved top slot; saved analyses remain below it.
@@ -14507,7 +14509,7 @@ def run_authenticated_app() -> None:
         )
         if st.session_state.pop("bom8_analysis_cancelled_notice", False):
             st.success("Analysis canceled. No BOM analysis was saved.")
-        input_col, guidance_col = st.columns([0.64, 0.36], gap="large")
+        input_col, guidance_col, saved_manager_col = st.columns([0.42, 0.25, 0.33], gap="large")
 
         with input_col:
             st.markdown(
@@ -14695,6 +14697,8 @@ def run_authenticated_app() -> None:
                 ):
                     open_high_risk_component_review(arm_opening=False)
 
+        with saved_manager_col:
+            _render_saved_bom_manager()
 
         sample_mode = bool(st.session_state.get("bom8_sample_mode"))
         source_filename = "cadivor_10_part_sample_bom.csv" if sample_mode else (
