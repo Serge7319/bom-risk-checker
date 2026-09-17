@@ -25,6 +25,7 @@ class AuthenticatedRuntimeSyntaxTests(unittest.TestCase):
         self.assertIn('if st.session_state.get("bom81_high_risk_review"):', source)
         self.assertIn('and not _incoming_high_risk_review:', source)
         self.assertIn('card_columns = st.columns(2, gap="large")', source)
+        self.assertIn('open_saved_bom(\n                                        analysis_id_value,', source)
         self.assertNotIn('guidance_col, saved_manager_col = st.columns', source)
 
 
