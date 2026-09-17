@@ -13387,7 +13387,7 @@ def run_authenticated_app() -> None:
             )
 
         stop_authenticated_page()
-    if app_mode == "BOM Analyzer":
+    if app_mode == "BOM Analyzer" and not _incoming_high_risk_review:
         # A normal BOMs visit must never inherit the focused review state.
         st.session_state.pop("bom81_high_risk_review", None)
 
@@ -14001,7 +14001,7 @@ def run_authenticated_app() -> None:
         # Cross-BOM review belongs with the File readiness guidance below,
         # not as a disconnected page-level action.
 
-        if app_mode == "High Risk Review":
+        if st.session_state.get("bom81_high_risk_review"):
             st.markdown(
                 f"""
                 <section class="bom81-review-hero">
