@@ -13386,7 +13386,7 @@ def run_authenticated_app() -> None:
             )
 
         stop_authenticated_page()
-    if app_mode == "BOM Analyzer":
+    if app_mode in {"BOM Analyzer", "High Risk Review"}:
 
         from integrations.supplier_aggregator import get_best_part_data
         from src.health_score import calculate_bom_health_score, generate_executive_summary
@@ -13982,12 +13982,21 @@ def run_authenticated_app() -> None:
         # Cross-BOM review belongs with the File readiness guidance below,
         # not as a disconnected page-level action.
 
-        if st.session_state.get("bom81_high_risk_review"):
-            st.markdown('<div id="high-risk-components"></div>', unsafe_allow_html=True)
-            st.markdown("### High-risk components")
-            st.caption(
-                f"{total_high_risk} component{'s' if total_high_risk != 1 else ''} requiring engineering review across your saved BOMs."
+        if st.session_state.get("bom81_high_risk_review") or app_mode == "High Risk Review":
+            st.session_state["bom81_high_risk_review"] = True
+            st.markdown(
+                f"""
+                <section class="bom81-review-hero">
+                  <div class="bom81-review-eyebrow">Engineering review queue</div>
+                  <h1>High-risk components</h1>
+                  <p>{total_high_risk} component{'s' if total_high_risk != 1 else ''} need engineering review across your saved BOMs.</p>
+                </section>
+                """,
+                unsafe_allow_html=True,
             )
+            if st.button("Back to BOMs", key="bom81_return_from_high_risk", type="secondary"):
+                st.session_state.pop("bom81_high_risk_review", None)
+                navigate_to("BOM Analyzer", show_saved_analyses="1", arm_opening=False)
             try:
                 high_risk_parts_response = (
                     _workspace_query(supabase.table("analysis_parts").select("*"))
@@ -14013,49 +14022,62 @@ def run_authenticated_app() -> None:
                 st.markdown(
                     """
                     <style>
-                    .bom81-risk-kicker{color:#dc2626;font-size:11px;font-weight:850;letter-spacing:.08em;text-transform:uppercase}
-                    .bom81-risk-title{margin:5px 0 3px;color:#0f172a;font-size:18px;font-weight:850}
-                    .bom81-risk-meta{color:#64748b;font-size:13px;line-height:1.5}
+                    .bom81-review-hero{
+                        margin:0 0 18px;padding:22px 24px;border:1px solid #dbe3ef;border-radius:18px;
+                        background:linear-gradient(135deg,#ffffff 0%,#fffaf7 100%);box-shadow:0 8px 24px rgba(15,23,42,.04)
+                    }
+                    .bom81-review-eyebrow{color:#b45309;font-size:10px;font-weight:850;letter-spacing:.1em;text-transform:uppercase;margin-bottom:7px}
+                    .bom81-review-hero h1{margin:0 0 6px;color:#0f172a;font-size:28px;letter-spacing:-.03em}
+                    .bom81-review-hero p{margin:0;color:#64748b;font-size:14px}
+                    .bom81-risk-kicker{color:#c2410c;font-size:10px;font-weight:850;letter-spacing:.08em;text-transform:uppercase}
+                    .bom81-risk-title{margin:7px 0 5px;color:#0f172a;font-size:18px;font-weight:850}
+                    .bom81-risk-meta{color:#64748b;font-size:12px;line-height:1.5}
                     .bom81-risk-meta strong{color:#334155}
+                    [data-testid="stVerticalBlockBorderWrapper"]:has(.bom81-risk-kicker){border-color:#dbe3ef!important;border-radius:14px!important;background:#fff;box-shadow:0 5px 16px rgba(15,23,42,.035)}
                     </style>
                     """,
                     unsafe_allow_html=True,
                 )
-                for index, part in enumerate(high_risk_rows):
-                    part_number = str(
-                        part.get("mpn") or part.get("part_number") or part.get("manufacturer_part_number") or "Component"
-                    )
-                    analysis_id_value = str(part.get("analysis_id") or "")
-                    manufacturer = str(part.get("manufacturer") or "Unknown manufacturer")
-                    risk_score = part.get("risk_score") or part.get("Risk Score") or "—"
-                    project_label = analysis_labels.get(analysis_id_value, "Saved BOM analysis")
-                    details_col, action_col = st.columns([0.78, 0.22], gap="medium")
-                    with details_col:
-                        st.markdown(
-                            f'<div class="bom81-risk-kicker">High-risk component · score {html.escape(str(risk_score))}</div>'
-                            f'<div class="bom81-risk-title">{html.escape(part_number)}</div>'
-                            f'<div class="bom81-risk-meta">{html.escape(manufacturer)} · <strong>Saved BOM:</strong> {html.escape(project_label)}</div>',
-                            unsafe_allow_html=True,
+                for row_start in range(0, len(high_risk_rows), 2):
+                    card_columns = st.columns(2, gap="large")
+                    for column, (index, part) in zip(
+                        card_columns,
+                        enumerate(high_risk_rows[row_start:row_start + 2], start=row_start),
+                    ):
+                        part_number = str(
+                            part.get("mpn") or part.get("part_number") or part.get("manufacturer_part_number") or "Component"
                         )
-                    with action_col:
-                        if st.button(
-                            "Open component",
-                            key=f"bom81_open_high_risk_{analysis_id_value}_{part_number}_{index}",
-                            type="primary",
-                            use_container_width=True,
-                        ):
-                            st.session_state["cadivor_active_analysis_id"] = analysis_id_value
-                            st.session_state["analysis_id"] = analysis_id_value
-                            st.session_state["cadivor_pending_analysis_section"] = "Components"
-                            st.session_state["cadivor_pending_analysis_section_id"] = analysis_id_value
-                            navigate_to(
-                                "Analysis Details",
-                                analysis_id=analysis_id_value,
-                                tab="components",
-                                component=part_number,
-                                focus="component-risk",
-                            )
-                    st.divider()
+                        analysis_id_value = str(part.get("analysis_id") or "")
+                        manufacturer = str(part.get("manufacturer") or "Unknown manufacturer")
+                        risk_score = part.get("risk_score") or part.get("Risk Score") or "—"
+                        project_label = analysis_labels.get(analysis_id_value, "Saved BOM analysis")
+                        with column:
+                            with st.container(border=True):
+                                st.markdown(
+                                    f'<div class="bom81-risk-kicker">High risk · score {html.escape(str(risk_score))}</div>'
+                                    f'<div class="bom81-risk-title">{html.escape(part_number)}</div>'
+                                    f'<div class="bom81-risk-meta">{html.escape(manufacturer)} · <strong>Saved BOM:</strong> {html.escape(project_label)}</div>',
+                                    unsafe_allow_html=True,
+                                )
+                                if st.button(
+                                    "Open component",
+                                    key=f"bom81_open_high_risk_{analysis_id_value}_{part_number}_{index}",
+                                    type="primary",
+                                    use_container_width=True,
+                                ):
+                                    st.session_state["cadivor_active_analysis_id"] = analysis_id_value
+                                    st.session_state["analysis_id"] = analysis_id_value
+                                    st.session_state["cadivor_pending_analysis_section"] = "Components"
+                                    st.session_state["cadivor_pending_analysis_section_id"] = analysis_id_value
+                                    st.session_state.pop("bom81_high_risk_review", None)
+                                    navigate_to(
+                                        "Analysis Details",
+                                        analysis_id=analysis_id_value,
+                                        tab="components",
+                                        component=part_number,
+                                        focus="component-risk",
+                                    )
+            stop_authenticated_page()
 
         # Reserve the primary workflow at the top of the BOM page. The saved
         # manager is rendered next, then the new-analysis workflow fills this
