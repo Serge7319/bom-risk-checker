@@ -395,6 +395,42 @@ def open_saved_bom(
     )
 
 
+
+def open_component_in_saved_bom(
+    analysis_id: str,
+    component_mpn: str,
+    *,
+    _rerun: bool = True,
+    arm_opening: bool = False,
+) -> None:
+    """Open one known component inside its saved BOM's Components section."""
+    clean_analysis_id = str(analysis_id or "").strip()
+    clean_component_mpn = str(component_mpn or "").strip()
+    st.session_state.pop(SHOW_SAVED_BOMS_KEY, None)
+    if not clean_analysis_id or not clean_component_mpn:
+        navigate_to(
+            "BOM Analyzer",
+            show_saved_analyses="1",
+            _rerun=_rerun,
+            arm_opening=arm_opening,
+        )
+        return
+
+    st.session_state["cadivor_active_analysis_id"] = clean_analysis_id
+    st.session_state["analysis_id"] = clean_analysis_id
+    st.session_state["cadivor_active_analysis_tab"] = "Components"
+    st.session_state["cadivor_pending_analysis_section"] = "Components"
+    st.session_state["cadivor_pending_analysis_section_id"] = clean_analysis_id
+    navigate_to(
+        "Analysis Details",
+        analysis_id=clean_analysis_id,
+        tab="components",
+        component=clean_component_mpn,
+        focus="component-risk",
+        _rerun=_rerun,
+        arm_opening=arm_opening,
+    )
+
 def return_to_saved_bom_list(
     *,
     _rerun: bool = True,
