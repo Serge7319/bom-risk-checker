@@ -1795,6 +1795,7 @@ def _canonical_route_allowlist() -> frozenset[str]:
         {
             "Dashboard",
             "BOM Analyzer",
+            "High Risk Review",
             "Alternative Finder",
             "Compare Parts",
             "Datasheet Q&A",
@@ -13386,6 +13387,10 @@ def run_authenticated_app() -> None:
             )
 
         stop_authenticated_page()
+    if app_mode == "BOM Analyzer":
+        # A normal BOMs visit must never inherit the focused review state.
+        st.session_state.pop("bom81_high_risk_review", None)
+
     if app_mode in {"BOM Analyzer", "High Risk Review"}:
 
         from integrations.supplier_aggregator import get_best_part_data
@@ -13982,8 +13987,7 @@ def run_authenticated_app() -> None:
         # Cross-BOM review belongs with the File readiness guidance below,
         # not as a disconnected page-level action.
 
-        if st.session_state.get("bom81_high_risk_review") or app_mode == "High Risk Review":
-            st.session_state["bom81_high_risk_review"] = True
+        if app_mode == "High Risk Review":
             st.markdown(
                 f"""
                 <section class="bom81-review-hero">

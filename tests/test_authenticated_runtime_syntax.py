@@ -21,6 +21,8 @@ class AuthenticatedRuntimeSyntaxTests(unittest.TestCase):
         self.assertIn('bom8-primary-card bom8-saved-card', source)
         self.assertNotIn('workflow_steps(["Prepare", "Upload", "Analyze", "Review"], active=1)', source)
         self.assertIn('if app_mode in {"BOM Analyzer", "High Risk Review"}:', source)
+        self.assertIn('"High Risk Review",', source)
+        self.assertIn('if app_mode == "High Risk Review":', source)
         self.assertIn('card_columns = st.columns(2, gap="large")', source)
         self.assertNotIn('guidance_col, saved_manager_col = st.columns', source)
 
