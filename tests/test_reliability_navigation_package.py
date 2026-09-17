@@ -338,6 +338,7 @@ def test_high_risk_component_review_stays_in_session(monkeypatch):
     assert "href=" not in card
     assert "?page=" not in card
     assert "open_high_risk_component_review(arm_opening=False)" in runtime
+    assert 'if app_mode == "BOM Analyzer" and not _incoming_high_risk_review:' not in runtime
     helper = _source("src/ui/navigation.py").split("def open_high_risk_component_review", 1)[1].split("\ndef ", 1)[0]
     assert "bom81_high_risk_review" in helper
     assert "new_analysis" not in helper

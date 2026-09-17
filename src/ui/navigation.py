@@ -127,6 +127,12 @@ def navigate_to(page: str, *, _rerun: bool = True, arm_opening: bool = True, **p
         st.session_state[NAV_SCROLL_RESET_TOKEN_KEY] = token
         st.session_state[NAV_SCROLL_RESET_PENDING_KEY] = True
 
+    # Focused high-risk review is session state. Clear it only when the user
+    # explicitly navigates to the ordinary BOMs workspace, never during its
+    # own Streamlit reruns.
+    if page == "BOM Analyzer" and not str(params.get("high_risk_review") or "").strip():
+        st.session_state.pop("bom81_high_risk_review", None)
+
     st.session_state["cadivor_route"] = page
     st.session_state["app_mode"] = page
     nav_params = {"page": page}
@@ -467,7 +473,7 @@ def open_high_risk_component_review(
         or st.session_state.get("analysis_id")
         or ""
     ).strip()
-    st.session_state.pop("bom81_high_risk_review", None)
+    st.session_state["bom81_high_risk_review"] = True
     st.session_state.pop(SHOW_SAVED_BOMS_KEY, None)
     nav_kwargs: dict[str, str] = {"high_risk_review": "1"}
     if analysis_id:

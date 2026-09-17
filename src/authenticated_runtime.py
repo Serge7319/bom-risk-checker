@@ -13389,10 +13389,6 @@ def run_authenticated_app() -> None:
             )
 
         stop_authenticated_page()
-    if app_mode == "BOM Analyzer" and not _incoming_high_risk_review:
-        # A normal BOMs visit must never inherit the focused review state.
-        st.session_state.pop("bom81_high_risk_review", None)
-
     if app_mode in {"BOM Analyzer", "High Risk Review"}:
 
         from integrations.supplier_aggregator import get_best_part_data
