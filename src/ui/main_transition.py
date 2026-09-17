@@ -95,9 +95,11 @@ def should_paint_opening_overlay(
     if not state.get("cadivor_foundation_shell_mounted"):
         return True
     if warm_session_nav_ready(state):
-        # Budget documented for metrics; warm path is treated as < FAST_CACHED_NAV_OPENING_MS.
+        # The shared route body clears on a navigation hop. Keep a deliberate
+        # transition surface until the target has painted instead of exposing
+        # a blank canvas on slower browsers.
         state["cadivor_last_nav_opening_skipped_ms"] = FAST_CACHED_NAV_OPENING_MS
-        return False
+        return True
     return True
 
 
