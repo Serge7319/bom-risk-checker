@@ -425,16 +425,15 @@ def open_high_risk_component_review(
     _rerun: bool = True,
     arm_opening: bool = False,
 ) -> None:
-    """Open the BOM Analyzer high-risk review without a query-string reload."""
+    """Open the dedicated high-risk review queue without a full page reload."""
     analysis_id = str(
         st.session_state.get("cadivor_active_analysis_id")
         or st.session_state.get("analysis_id")
         or ""
     ).strip()
     st.session_state["bom81_high_risk_review"] = True
-    # Stay on the analyzer list so the selected BOM is not auto-resumed.
-    st.session_state[SHOW_SAVED_BOMS_KEY] = True
-    nav_kwargs: dict[str, str] = {"show_saved_analyses": "1"}
+    st.session_state.pop(SHOW_SAVED_BOMS_KEY, None)
+    nav_kwargs: dict[str, str] = {"review": "high-risk"}
     if analysis_id:
         st.session_state["cadivor_active_analysis_id"] = analysis_id
         st.session_state["analysis_id"] = analysis_id
@@ -444,7 +443,7 @@ def open_high_risk_component_review(
             st.session_state["bom81_selected_analysis_ids"] = [analysis_id]
         nav_kwargs["analysis_id"] = analysis_id
     navigate_to(
-        "BOM Analyzer",
+        "High Risk Review",
         _rerun=_rerun,
         arm_opening=arm_opening,
         **nav_kwargs,
