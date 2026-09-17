@@ -13532,7 +13532,6 @@ def run_authenticated_app() -> None:
                 flex-direction:column;
                 justify-content:center;
                 border:1px solid #d8e1ed;
-                border-top:3px solid #2563eb;
                 border-radius:16px;
                 background:#fff;
                 padding:20px 22px;
@@ -13731,8 +13730,24 @@ def run_authenticated_app() -> None:
                 margin-top:0;
                 margin-bottom:12px;
             }
+            /* The anchor is for navigation only; it must not create a visual row. */
+            [data-testid="stElementContainer"]:has(#saved-bom-manager){
+                display:none!important;
+            }
             .st-key-bom81_saved_manager details{
                 overflow:hidden;
+                border-color:#d7e1ee!important;
+                box-shadow:0 6px 18px rgba(15,23,42,.035)!important;
+            }
+            .st-key-bom81_saved_manager details > div{
+                padding:4px 12px 14px!important;
+            }
+            .st-key-bom81_saved_manager [data-testid="stDataFrame"]{
+                background:#fff!important;
+                box-shadow:inset 0 0 0 1px #e2e8f0!important;
+            }
+            .st-key-bom81_saved_manager [data-testid="stDataFrame"] canvas{
+                border-radius:10px!important;
             }
             .st-key-bom81_saved_manager summary{
                 min-height:48px;
@@ -13757,8 +13772,14 @@ def run_authenticated_app() -> None:
                 box-shadow:none;
             }
             .bom8-secondary-card--attention{
-                border-color:#fed7aa;
-                background:#fffaf2;
+                border-color:#fde1bb;
+                background:#fffdf9;
+            }
+            .st-key-bom81_open_selected button,
+            .st-key-bom81_request_bulk_delete button,
+            .st-key-bom81_clear_selection button{
+                min-height:38px!important;
+                border-radius:10px!important;
             }
             .st-key-bom81_saved_manager details{
                 border:1px solid #dbe3ef!important;
@@ -14025,7 +14046,7 @@ def run_authenticated_app() -> None:
                 should_render_saved_analysis_control,
             )
     
-            st.markdown('<div id="saved-bom-manager"></div>', unsafe_allow_html=True)
+            st.markdown('<div id="saved-bom-manager" hidden></div>', unsafe_allow_html=True)
             if should_render_saved_analysis_control(history_data, route=app_mode, status="ok"):
                 st.markdown(
                     f"""
