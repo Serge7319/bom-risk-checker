@@ -102,6 +102,7 @@ from src.ui.navigation import (
     navigate_to,
     navigate_to_alternative_finder,
     open_high_risk_component_review,
+    open_saved_bom,
     render_command_nav_triggers,
     reset_alternative_finder_prefill,
     reveal_authenticated_page_body,
@@ -13812,6 +13813,9 @@ def run_authenticated_app() -> None:
                 min-height:38px!important;
                 border-radius:10px!important;
             }
+            .st-key-bom81_review_high_risk_components{
+                margin-top:12px!important;
+            }
             .st-key-bom81_review_high_risk_components button{
                 min-height:40px!important;
                 border:1px solid #f59e0b!important;
@@ -14088,12 +14092,12 @@ def run_authenticated_app() -> None:
                                     st.session_state["cadivor_pending_analysis_section"] = "Components"
                                     st.session_state["cadivor_pending_analysis_section_id"] = analysis_id_value
                                     st.session_state.pop("bom81_high_risk_review", None)
-                                    navigate_to(
-                                        "Analysis Details",
-                                        analysis_id=analysis_id_value,
-                                        tab="components",
-                                        component=part_number,
-                                        focus="component-risk",
+                                    # Reuse the saved-BOM handoff so the selected analysis
+                                    # is restored before the component section renders.
+                                    open_saved_bom(
+                                        analysis_id_value,
+                                        _rerun=True,
+                                        arm_opening=False,
                                     )
             stop_authenticated_page()
 
