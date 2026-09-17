@@ -13517,6 +13517,7 @@ def run_authenticated_app() -> None:
                 margin:0;
                 font-weight:650;
             }
+            .bom8-secondary-card{margin-top:10px;padding:13px 14px;border:1px solid #dbe5f1;border-radius:12px;background:#fff}.bom8-secondary-card strong{display:block;color:#0f172a;font-size:12px;font-weight:800}.bom8-secondary-card span{display:block;margin-top:4px;color:#64748b;font-size:11px;line-height:1.45}.bom8-secondary-card a{display:inline-block;margin-top:8px;color:#2563eb;font-size:11px;font-weight:750;text-decoration:none}.bom8-secondary-card a:hover{text-decoration:underline}.bom8-secondary-card--attention{border-color:#fed7aa;background:#fffdf7}
             .bom8-upload-card{
                 border:1px solid #d8e1ed;
                 border-radius:22px;
@@ -13880,26 +13881,12 @@ def run_authenticated_app() -> None:
             """,
             unsafe_allow_html=True,
         )
-        cadivor_section_header(
-            "Upload a BOM",
-            eyebrow="BOMs",
-            description="Upload a CSV or Excel file. Review starts after the file is valid.",
-            icon="cpu",
-        )
         # Collapse in-shell loading only after distinctive BOM content has painted.
         # Revealing after imports (before this header) left BOM chrome with neither
         # "Opening BOM Analyzer…" nor page copy during the CSS/setup gap.
         reveal_authenticated_page_body("BOM Analyzer")
-        # The BOM landing page is an entry point, not a portfolio dashboard.
-        # Keep the only useful cross-BOM action visible without a row of
-        # non-actionable KPIs that duplicate the saved-analysis table below.
-        if total_high_risk:
-            if st.button(
-                f"Review {total_high_risk} high-risk component{'s' if total_high_risk != 1 else ''}",
-                key="bom81_review_high_risk_components",
-                type="primary",
-            ):
-                open_high_risk_component_review(arm_opening=False)
+        # Cross-BOM review belongs with the File readiness guidance below,
+        # not as a disconnected page-level action.
 
         if st.session_state.get("bom81_high_risk_review"):
             st.markdown('<div id="high-risk-components"></div>', unsafe_allow_html=True)
@@ -14689,6 +14676,24 @@ def run_authenticated_app() -> None:
                 """,
                 unsafe_allow_html=True,
             )
+
+            st.markdown(
+                f'<div class="bom8-secondary-card"><strong>Saved analyses</strong><span>{saved_analysis_count} saved BOM{'s' if saved_analysis_count != 1 else ''} in this workspace.</span><a href="#saved-bom-manager">Manage saved analyses</a></div>',
+                unsafe_allow_html=True,
+            )
+            if total_high_risk:
+                st.markdown(
+                    f'<div class="bom8-secondary-card bom8-secondary-card--attention"><strong>Review queue</strong><span>{total_high_risk} high-risk component{'s' if total_high_risk != 1 else ''} need engineering review.</span></div>',
+                    unsafe_allow_html=True,
+                )
+                if st.button(
+                    f"Review {total_high_risk} high-risk component{'s' if total_high_risk != 1 else ''}",
+                    key="bom81_review_high_risk_components",
+                    type="secondary",
+                    use_container_width=True,
+                    help="Shows the affected saved BOMs and opens the selected component review.",
+                ):
+                    open_high_risk_component_review(arm_opening=False)
 
 
         sample_mode = bool(st.session_state.get("bom8_sample_mode"))
