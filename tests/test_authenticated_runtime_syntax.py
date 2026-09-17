@@ -17,6 +17,9 @@ class AuthenticatedRuntimeSyntaxTests(unittest.TestCase):
         self.assertIn('input_col, saved_manager_col = st.columns([0.46, 0.54], gap="large")', source)
         self.assertIn('def _render_saved_bom_manager()', source)
         self.assertIn('with saved_manager_col:\n            _render_saved_bom_manager()', source)
+        self.assertIn('bom8-primary-card bom8-upload-card', source)
+        self.assertIn('bom8-primary-card bom8-saved-card', source)
+        self.assertNotIn('workflow_steps(["Prepare", "Upload", "Analyze", "Review"], active=1)', source)
         self.assertNotIn('guidance_col, saved_manager_col = st.columns', source)
 
 

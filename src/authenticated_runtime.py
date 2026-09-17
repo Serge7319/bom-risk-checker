@@ -13518,27 +13518,45 @@ def run_authenticated_app() -> None:
                 font-weight:650;
             }
             .bom8-secondary-card{margin-top:10px;padding:13px 14px;border:1px solid #dbe5f1;border-radius:12px;background:#fff}.bom8-secondary-card strong{display:block;color:#0f172a;font-size:12px;font-weight:800}.bom8-secondary-card span{display:block;margin-top:4px;color:#64748b;font-size:11px;line-height:1.45}.bom8-secondary-card a{display:inline-block;margin-top:8px;color:#2563eb;font-size:11px;font-weight:750;text-decoration:none}.bom8-secondary-card a:hover{text-decoration:underline}.bom8-secondary-card--attention{border-color:#fed7aa;background:#fffdf7}
-            .bom8-upload-card{
-                border:1px solid #d8e1ed;
-                border-radius:22px;
-                background:#fff;
-                padding:22px 24px;
-                box-shadow:0 16px 38px rgba(15,23,42,.055);
-                min-height:100%;
+            /* BOM workspace: two equal visual anchors, with the work below each. */
+            .bom8-section-head{
+                align-items:flex-start;
+                margin:0 0 16px;
             }
+            .bom8-section-head h2{font-size:20px;margin:0 0 5px;}
+            .bom8-section-head p{font-size:13px;line-height:1.45;}
+            .bom8-primary-card{
+                box-sizing:border-box;
+                min-height:118px;
+                display:flex;
+                flex-direction:column;
+                justify-content:center;
+                border:1px solid #d8e1ed;
+                border-top:3px solid #2563eb;
+                border-radius:16px;
+                background:#fff;
+                padding:20px 22px;
+                box-shadow:0 8px 24px rgba(15,23,42,.045);
+            }
+            .bom8-primary-card-title,
             .bom8-upload-title{
                 color:#0f172a;
-                font-size:20px;
-                font-weight:900;
-                margin-bottom:5px;
+                font-size:18px;
+                line-height:1.2;
+                font-weight:850;
+                margin:0 0 7px;
+                letter-spacing:-.018em;
             }
+            .bom8-primary-card-copy,
             .bom8-upload-copy{
-                color:#64748b;
+                color:#5b6b82;
                 font-size:12px;
                 line-height:1.5;
-                margin-bottom:14px;
+                margin:0;
                 font-weight:600;
             }
+            .bom8-saved-card{margin-bottom:14px;}
+            .bom8-upload-card{margin-bottom:12px;}
             .bom8-checklist{
                 display:grid;
                 gap:10px;
@@ -13710,8 +13728,37 @@ def run_authenticated_app() -> None:
                 font-weight:800!important;
             }
             .st-key-bom81_saved_manager{
-                margin-top:18px;
-                margin-bottom:10px;
+                margin-top:0;
+                margin-bottom:12px;
+            }
+            .st-key-bom81_saved_manager details{
+                overflow:hidden;
+            }
+            .st-key-bom81_saved_manager summary{
+                min-height:48px;
+                display:flex!important;
+                align-items:center;
+                padding:0 16px!important;
+                background:#f8fafc;
+            }
+            .st-key-bom81_saved_manager [data-testid="stDataFrame"]{
+                border:1px solid #e2e8f0!important;
+                border-radius:12px!important;
+                overflow:hidden;
+            }
+            .st-key-bom81_saved_manager [data-testid="stTextInput"] input,
+            .st-key-bom81_saved_manager [data-testid="stSelectbox"] > div > div{
+                border-radius:10px!important;
+            }
+            .bom8-secondary-card{
+                margin-top:12px;
+                padding:14px 16px;
+                border-radius:14px;
+                box-shadow:none;
+            }
+            .bom8-secondary-card--attention{
+                border-color:#fed7aa;
+                background:#fffaf2;
             }
             .st-key-bom81_saved_manager details{
                 border:1px solid #dbe3ef!important;
@@ -13980,14 +14027,18 @@ def run_authenticated_app() -> None:
     
             st.markdown('<div id="saved-bom-manager"></div>', unsafe_allow_html=True)
             if should_render_saved_analysis_control(history_data, route=app_mode, status="ok"):
-                cadivor_panel(
-                    title=f"Saved BOMs ({saved_analysis_count})",
-                    subtitle=(
+                st.markdown(
+                    f"""
+                    <section class="bom8-primary-card bom8-saved-card">
+                      <div class="bom8-primary-card-title">Saved BOMs ({saved_analysis_count})</div>
+                      <p class="bom8-primary-card-copy">{
                         "Showing saved analyses with high-risk components."
                         if st.session_state.get("bom81_high_risk_review")
                         else "Open, search, or manage saved analyses."
-                    ),
-                    tone="soft",
+                      }</p>
+                    </section>
+                    """,
+                    unsafe_allow_html=True,
                 )
                 if st.session_state.get("bom81_high_risk_review"):
                     if st.button(
@@ -14466,7 +14517,6 @@ def run_authenticated_app() -> None:
                                         "The table is read-only except for the selection checkboxes."
                                     )
     
-                cadivor_panel_end()
             else:
                 release_saved_analysis_placeholder()
 
@@ -14488,8 +14538,6 @@ def run_authenticated_app() -> None:
         # occupy the reserved top slot; saved analyses remain below it.
         _bom_new_analysis_context = bom_new_analysis_slot.container()
         _bom_new_analysis_context.__enter__()
-        workflow_steps(["Prepare", "Upload", "Analyze", "Review"], active=1)
-
         st.markdown(
             """
             <div class="bom8-section-head">
@@ -14528,7 +14576,7 @@ def run_authenticated_app() -> None:
         with input_col:
             st.markdown(
                 """
-                <div class="bom8-upload-card">
+                <div class="bom8-primary-card bom8-upload-card">
                   <div class="bom8-upload-title">Upload engineering BOM</div>
                   <div class="bom8-upload-copy">
                     Give the analysis a recognizable project or revision name, then select
