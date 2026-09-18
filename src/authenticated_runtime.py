@@ -14239,14 +14239,13 @@ def run_authenticated_app() -> None:
                                 ).fillna("Saved BOM analysis").replace("", "Saved BOM analysis")
                                 manager_df["Health"] = manager_df.apply(
                                     lambda row: (
-                                        f"{int(row['health_score'])} · "
-                                        + (
-                                            "Excellent" if int(row["health_score"]) >= 90
-                                            else "Healthy" if int(row["health_score"]) >= 75
-                                            else "Monitor" if int(row["health_score"]) >= 60
-                                            else "Attention" if int(row["health_score"]) >= 40
-                                            else "Critical"
+                                        (
+                                            "🟢" if int(row["health_score"]) >= 75
+                                            else "🟡" if int(row["health_score"]) >= 60
+                                            else "🟠" if int(row["health_score"]) >= 40
+                                            else "🔴"
                                         )
+                                        + f" {int(row['health_score'])}"
                                     ),
                                     axis=1,
                                 )
@@ -14256,10 +14255,10 @@ def run_authenticated_app() -> None:
                                     medium = int(row["medium_risk_count"])
                                     low = int(row["low_risk_count"])
                                     if high:
-                                        return f"High attention · {high} high / {medium} medium"
+                                        return f"🔴 {high} high · {medium} medium"
                                     if medium:
-                                        return f"Medium attention · {medium} medium / {low} low"
-                                    return "Low risk · no high or medium findings"
+                                        return f"🟠 {medium} medium · {low} low"
+                                    return "🟢 Low risk"
 
                                 manager_df["Review Status"] = manager_df.apply(
                                     _saved_bom_review_status,
@@ -14345,8 +14344,8 @@ def run_authenticated_app() -> None:
                                     st.markdown(
                                         """
                                         <div class="bom81-table-guide">
-                                          <span><strong>Health</strong> is Cadivor's 0–100 readiness score.</span>
-                                          <span><strong>Review status</strong> shows the highest risk that needs attention.</span>
+                                          <span><strong>Health</strong> 🟢 healthy · 🟡 monitor · 🔴 attention</span>
+                                          <span><strong>Risk</strong> shows the highest open issue.</span>
                                         </div>
                                         """,
                                         unsafe_allow_html=True,
@@ -14367,7 +14366,7 @@ def run_authenticated_app() -> None:
                                             "Project Name": manager_df["Project Name"].astype(str),
                                             "BOM Name": manager_df["BOM Name"].astype(str),
                                             "Health": manager_df["Health"].astype(str),
-                                            "Review Status": manager_df["Review Status"].astype(str),
+                                            "Risk": manager_df["Review Status"].astype(str),
                                             "Updated": manager_df["Updated"].astype(str),
                                             "_analysis_id": manager_df["id"].astype(str),
                                         }
@@ -14413,7 +14412,7 @@ def run_authenticated_app() -> None:
                                             "Project Name",
                                             "BOM Name",
                                             "Health",
-                                            "Review Status",
+                                            "Risk",
                                             "Updated",
                                             "_analysis_id",
                                         ],
@@ -14433,12 +14432,12 @@ def run_authenticated_app() -> None:
                                             ),
                                             "Health": st.column_config.TextColumn(
                                                 "Health",
-                                                help="Cadivor health score from 0 to 100.",
-                                                width="medium",
+                                                help="Cadivor health score from 0 to 100. Green is healthier; amber and red need attention.",
+                                                width="small",
                                             ),
-                                            "Review Status": st.column_config.TextColumn(
-                                                "Review Status",
-                                                help="The highest active risk level in this BOM.",
+                                            "Risk": st.column_config.TextColumn(
+                                                "Risk",
+                                                help="The highest open risk in this BOM. Red means high-risk parts; amber means medium-risk parts.",
                                                 width="large",
                                             ),
                                             "Updated": st.column_config.TextColumn(
