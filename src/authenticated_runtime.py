@@ -14572,6 +14572,8 @@ def run_authenticated_app() -> None:
                                                         {"project_name": saved_title}
                                                     ).eq(
                                                         "analysis_id", analysis_id_value
+                                                    ).eq(
+                                                        "user_id", current_user["id"]
                                                     ).execute()
                                                     updated_count += 1
                                                 except Exception as update_error:
