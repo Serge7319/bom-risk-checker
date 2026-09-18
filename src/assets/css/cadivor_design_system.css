@@ -703,6 +703,45 @@ section[data-testid="stMain"] .cv64-decision-toolbar .cv64-btn-wrap {
   width: 100% !important;
 }
 
+/* Engineering Decisions — keep decision paths inside their record. */
+section[data-testid="stMain"] [class*="st-key-decision_queue_"] {
+  overflow: hidden;
+  background: #ffffff;
+  border-color: #cbdcf4 !important;
+  box-shadow: 0 10px 24px rgba(37, 99, 235, .06);
+}
+
+section[data-testid="stMain"] [class*="st-key-decision_queue_"] .cv130-decision-card {
+  margin: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+section[data-testid="stMain"] [class*="st-key-decision_queue_"] [data-testid="stHorizontalBlock"]:has([class*="st-key-queue_"]) {
+  margin: 0 !important;
+  padding: 12px 14px !important;
+  border-top: 1px solid #dbeafe;
+  background: linear-gradient(90deg, #edf5ff 0%, #f8fbff 100%);
+}
+
+section[data-testid="stMain"] [class*="st-key-decision_queue_"] [class*="st-key-queue_"] button:not(:disabled) {
+  min-height: 38px !important;
+  background: #dbeafe !important;
+  border: 1px solid #93c5fd !important;
+  border-radius: 9px !important;
+  color: #1d4ed8 !important;
+  font-size: 12px !important;
+  font-weight: 750 !important;
+  box-shadow: none !important;
+}
+
+section[data-testid="stMain"] [class*="st-key-decision_queue_"] [class*="st-key-queue_"] button:not(:disabled):hover {
+  background: #bfdbfe !important;
+  border-color: #60a5fa !important;
+  color: #1e40af !important;
+}
+
 section[data-testid="stMain"] .cv64-toolbar .stButton > button:not(:disabled) {
   min-height: 42px !important;
   min-width: 120px !important;
