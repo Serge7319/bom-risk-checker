@@ -13831,9 +13831,16 @@ def run_authenticated_app() -> None:
             }
             .st-key-bom81_open_selected button,
             .st-key-bom81_request_bulk_delete button,
-            .st-key-bom81_clear_selection button{
+            .st-key-bom81_clear_selection button,
+            .st-key-bom81_save_project_names button{
                 min-height:38px!important;
                 border-radius:10px!important;
+            }
+            .st-key-bom81_save_project_names button{
+                border-color:#bfdbfe!important;
+                color:#1d4ed8!important;
+                background:#f8fbff!important;
+                font-weight:800!important;
             }
             .st-key-bom81_review_high_risk_components{
                 margin-top:12px!important;
@@ -14255,10 +14262,10 @@ def run_authenticated_app() -> None:
                                     medium = int(row["medium_risk_count"])
                                     low = int(row["low_risk_count"])
                                     if high:
-                                        return f"🔴 {high} high · {medium} medium"
+                                        return f"🔴 {high}H · {medium}M"
                                     if medium:
-                                        return f"🟠 {medium} medium · {low} low"
-                                    return "🟢 Low risk"
+                                        return f"🟠 {medium}M · {low}L"
+                                    return "🟢 Low"
 
                                 manager_df["Review Status"] = manager_df.apply(
                                     _saved_bom_review_status,
@@ -14409,7 +14416,6 @@ def run_authenticated_app() -> None:
                                         hide_index=True,
                                         height=min(520, 70 + len(editor_df) * 35),
                                         disabled=[
-                                            "Project Name",
                                             "BOM Name",
                                             "Health",
                                             "Risk",
@@ -14424,11 +14430,12 @@ def run_authenticated_app() -> None:
                                             ),
                                             "Project Name": st.column_config.TextColumn(
                                                 "Project Name",
-                                                width="medium",
+                                                help="Optional. Edit this value, then use Save project names.",
+                                                width="small",
                                             ),
                                             "BOM Name": st.column_config.TextColumn(
                                                 "BOM Name",
-                                                width="large",
+                                                width="medium",
                                             ),
                                             "Health": st.column_config.TextColumn(
                                                 "Health",
@@ -14438,11 +14445,11 @@ def run_authenticated_app() -> None:
                                             "Risk": st.column_config.TextColumn(
                                                 "Risk",
                                                 help="The highest open risk in this BOM. Red means high-risk parts; amber means medium-risk parts.",
-                                                width="large",
+                                                width="medium",
                                             ),
                                             "Updated": st.column_config.TextColumn(
                                                 "Updated",
-                                                width="medium",
+                                                width="small",
                                             ),
                                             "_analysis_id": None,
                                         },
@@ -14495,11 +14502,98 @@ def run_authenticated_app() -> None:
                                         unsafe_allow_html=True,
                                     )
     
-                                    open_col, delete_col, clear_col = st.columns(
-                                        [0.34, 0.34, 0.32],
+                                    original_project_names = (
+                                        editor_df.set_index("_analysis_id")["Project Name"]
+                                        .fillna("")
+                                        .astype(str)
+                                        .to_dict()
+                                    )
+                                    project_name_changes = edited_manager[
+                                        edited_manager.apply(
+                                            lambda row: (
+                                                str(row["Project Name"] or "").strip()
+                                                != str(
+                                                    original_project_names.get(
+                                                        str(row["_analysis_id"]), ""
+                                                    )
+                                                    or ""
+                                                ).strip()
+                                            ),
+                                            axis=1,
+                                        )
+                                    ]
+
+                                    st.caption(
+                                        "Edit a Project Name directly in the table, then save your changes."
+                                    )
+                                    save_col, open_col, delete_col, clear_col = st.columns(
+                                        [0.24, 0.26, 0.25, 0.25],
                                         gap="medium",
                                     )
-    
+
+                                    with save_col:
+                                        if st.button(
+                                            "Save project names",
+                                            type="secondary",
+                                            use_container_width=True,
+                                            disabled=project_name_changes.empty,
+                                            key="bom81_save_project_names",
+                                        ):
+                                            update_errors = []
+                                            updated_count = 0
+                                            for _, changed_row in project_name_changes.iterrows():
+                                                analysis_id_value = str(
+                                                    changed_row["_analysis_id"] or ""
+                                                ).strip()
+                                                bom_title = str(
+                                                    changed_row["BOM Name"] or ""
+                                                ).strip()
+                                                project_title = str(
+                                                    changed_row["Project Name"] or ""
+                                                ).strip()
+                                                if project_title == "—":
+                                                    project_title = ""
+                                                saved_title = (
+                                                    f"{project_title} — {bom_title}"
+                                                    if project_title
+                                                    else bom_title
+                                                )
+                                                if not analysis_id_value or not saved_title:
+                                                    continue
+                                                try:
+                                                    supabase.table("analyses").update(
+                                                        {"project_name": saved_title}
+                                                    ).eq(
+                                                        "id", analysis_id_value
+                                                    ).eq(
+                                                        "user_id", current_user["id"]
+                                                    ).execute()
+                                                    supabase.table("analysis_parts").update(
+                                                        {"project_name": saved_title}
+                                                    ).eq(
+                                                        "analysis_id", analysis_id_value
+                                                    ).execute()
+                                                    updated_count += 1
+                                                except Exception as update_error:
+                                                    update_errors.append(
+                                                        f"{bom_title or analysis_id_value}: {update_error}"
+                                                    )
+
+                                            if update_errors:
+                                                st.error(
+                                                    "Some project names could not be saved. "
+                                                    + " | ".join(update_errors[:2])
+                                                )
+                                            elif updated_count:
+                                                st.session_state[
+                                                    "bom81_saved_analysis_editor_revision"
+                                                ] = editor_revision + 1
+                                                st.success(
+                                                    f"Saved project name{'s' if updated_count != 1 else ''} for "
+                                                    f"{updated_count} BOM{'s' if updated_count != 1 else ''}."
+                                                )
+                                                st.rerun()
+
                                     with open_col:
                                         if st.button(
                                             "Open Selected Analysis" if selected_count == 1 else "Open Analysis (select 1)",
