@@ -5235,17 +5235,24 @@ def run_authenticated_app() -> None:
                             st.info("No engineering decisions match the selected filters.")
                         else:
                             for decision in visible[:40]:
-                                st.markdown(
-                                    decision_card_html(decision),
-                                    unsafe_allow_html=True,
-                                )
-                                render_decision_card_actions(
-                                    decision,
-                                    navigate_to=navigate_to,
-                                    internal_nav_button=internal_nav_button,
-                                    key_prefix=f"queue_{decision['decision_id']}",
-                                )
-    
+                                # Keep each decision's contextual paths with its record.
+                                # A reviewer can begin with evidence, monitoring, or the
+                                # saved BOM instead of being pushed into a single sequence.
+                                with st.container(
+                                    border=True,
+                                    key=f"decision_queue_{decision['decision_id']}",
+                                ):
+                                    st.markdown(
+                                        decision_card_html(decision),
+                                        unsafe_allow_html=True,
+                                    )
+                                    render_decision_card_actions(
+                                        decision,
+                                        navigate_to=navigate_to,
+                                        internal_nav_button=internal_nav_button,
+                                        key_prefix=f"queue_{decision['decision_id']}",
+                                    )
+
                     with workload_tab:
                         st.markdown("### Team Workload")
                         active = [
