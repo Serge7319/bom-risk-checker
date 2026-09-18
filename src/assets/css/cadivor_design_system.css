@@ -203,6 +203,47 @@
   .cv64-metric-grid { grid-template-columns: 1fr; }
 }
 
+/* Engineering Decisions — integrated Decision Snapshot */
+section[data-testid="stMain"] [data-testid="stVerticalBlockBorder"]:has(.cv64-metric-grid--decision-snapshot) {
+  background:
+    radial-gradient(circle at 100% 0, rgba(37, 99, 235, .12), transparent 42%),
+    linear-gradient(145deg, #f4f8ff 0%, #eef6ff 100%) !important;
+  border: 1px solid #bfdbfe !important;
+  box-shadow: 0 16px 32px rgba(37, 99, 235, .08) !important;
+}
+
+.cv64-metric-grid--decision-snapshot {
+  gap: 12px;
+  margin: 14px 0 0;
+}
+
+.cv64-metric-grid--decision-snapshot .cv64-metric {
+  min-height: 116px;
+  box-shadow: 0 8px 18px rgba(15, 35, 66, .07);
+}
+
+.cv64-metric-grid--decision-snapshot .cv64-metric--info {
+  background: linear-gradient(145deg, #ffffff 0%, #eff6ff 100%);
+}
+.cv64-metric-grid--decision-snapshot .cv64-metric--danger {
+  background: linear-gradient(145deg, #ffffff 0%, #fff4f4 100%);
+}
+.cv64-metric-grid--decision-snapshot .cv64-metric--success {
+  background: linear-gradient(145deg, #ffffff 0%, #effdf6 100%);
+}
+.cv64-metric-grid--decision-snapshot .cv64-metric--monitoring {
+  background: linear-gradient(145deg, #ffffff 0%, #eefcfb 100%);
+}
+.cv64-metric-grid--decision-snapshot .cv64-metric--confidence {
+  background: linear-gradient(145deg, #ffffff 0%, #f3f2ff 100%);
+}
+
+.cv64-metric-grid--decision-snapshot .cv64-metric__detail {
+  min-height: 30px;
+  color: #52657f;
+  font-weight: 560;
+}
+
 /* Compact metric strip for nested project summaries */
 .cv64-metric-strip {
   display: grid;
