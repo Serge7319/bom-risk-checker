@@ -628,7 +628,7 @@ def render_decision_card_actions(
         if st.button(
             "Review Decision",
             key=f"{key_prefix}_review",
-            type="primary",
+            type="secondary",
             use_container_width=True,
         ):
             navigate_to("Engineering Decisions", decision_id=decision["decision_id"])
