@@ -14262,10 +14262,10 @@ def run_authenticated_app() -> None:
                                     medium = int(row["medium_risk_count"])
                                     low = int(row["low_risk_count"])
                                     if high:
-                                        return f"🔴 {high}H · {medium}M"
+                                        return f"🔴 {high} high · {medium} medium"
                                     if medium:
-                                        return f"🟠 {medium}M · {low}L"
-                                    return "🟢 Low"
+                                        return f"🟠 {medium} medium · {low} low"
+                                    return "🟢 Low risk"
 
                                 manager_df["Review Status"] = manager_df.apply(
                                     _saved_bom_review_status,
@@ -14416,7 +14416,6 @@ def run_authenticated_app() -> None:
                                         hide_index=True,
                                         height=min(520, 70 + len(editor_df) * 35),
                                         disabled=[
-                                            "BOM Name",
                                             "Health",
                                             "Risk",
                                             "Updated",
@@ -14430,11 +14429,12 @@ def run_authenticated_app() -> None:
                                             ),
                                             "Project Name": st.column_config.TextColumn(
                                                 "Project Name",
-                                                help="Optional. Edit this value, then use Save project names.",
+                                                help="Optional. Edit this value, then use Save names.",
                                                 width="small",
                                             ),
                                             "BOM Name": st.column_config.TextColumn(
                                                 "BOM Name",
+                                                help="Edit this value, then use Save names.",
                                                 width="medium",
                                             ),
                                             "Health": st.column_config.TextColumn(
@@ -14502,20 +14502,24 @@ def run_authenticated_app() -> None:
                                         unsafe_allow_html=True,
                                     )
     
-                                    original_project_names = (
-                                        editor_df.set_index("_analysis_id")["Project Name"]
-                                        .fillna("")
-                                        .astype(str)
-                                        .to_dict()
-                                    )
-                                    project_name_changes = edited_manager[
+                                    original_names = editor_df.set_index("_analysis_id")[
+                                        ["Project Name", "BOM Name"]
+                                    ].fillna("").astype(str).to_dict("index")
+                                    name_changes = edited_manager[
                                         edited_manager.apply(
                                             lambda row: (
                                                 str(row["Project Name"] or "").strip()
                                                 != str(
-                                                    original_project_names.get(
-                                                        str(row["_analysis_id"]), ""
-                                                    )
+                                                    original_names.get(
+                                                        str(row["_analysis_id"]), {}
+                                                    ).get("Project Name", "")
+                                                    or ""
+                                                ).strip()
+                                                or str(row["BOM Name"] or "").strip()
+                                                != str(
+                                                    original_names.get(
+                                                        str(row["_analysis_id"]), {}
+                                                    ).get("BOM Name", "")
                                                     or ""
                                                 ).strip()
                                             ),
@@ -14524,7 +14528,7 @@ def run_authenticated_app() -> None:
                                     ]
 
                                     st.caption(
-                                        "Edit a Project Name directly in the table, then save your changes."
+                                        "Edit a Project Name or BOM Name directly in the table, then save your changes."
                                     )
                                     save_col, open_col, delete_col, clear_col = st.columns(
                                         [0.24, 0.26, 0.25, 0.25],
@@ -14533,15 +14537,15 @@ def run_authenticated_app() -> None:
 
                                     with save_col:
                                         if st.button(
-                                            "Save project names",
+                                            "Save names",
                                             type="secondary",
                                             use_container_width=True,
-                                            disabled=project_name_changes.empty,
+                                            disabled=name_changes.empty,
                                             key="bom81_save_project_names",
                                         ):
                                             update_errors = []
                                             updated_count = 0
-                                            for _, changed_row in project_name_changes.iterrows():
+                                            for _, changed_row in name_changes.iterrows():
                                                 analysis_id_value = str(
                                                     changed_row["_analysis_id"] or ""
                                                 ).strip()
@@ -14591,8 +14595,8 @@ def run_authenticated_app() -> None:
                                                     "bom81_saved_analysis_editor_revision"
                                                 ] = editor_revision + 1
                                                 st.success(
-                                                    f"Saved project name{'s' if updated_count != 1 else ''} for "
-                                                    f"{updated_count} BOM{'s' if updated_count != 1 else ''}."
+                                                    f"Saved names for {updated_count} BOM"
+                                                    f"{'s' if updated_count != 1 else ''}."
                                                 )
                                                 st.rerun()
 
