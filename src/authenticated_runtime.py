@@ -5436,22 +5436,24 @@ def run_authenticated_app() -> None:
     
 
                 with decision_metrics_col:
-                    cadivor_section_header(
-                        "Decision snapshot",
-                        description="Current queue health at a glance.",
-                        icon="clipboard-check",
-                    )
-                    cadivor_metric_row(
-                        [
-                            MetricCard(label="Pending", value=str(decision_center["open_count"]), tone="info", icon="clipboard-check"),
-                            MetricCard(label="Critical", value=str(decision_center["critical_count"]), tone="danger", icon="triangle-alert"),
-                            MetricCard(label="Rejected", value=str(rejected_count), tone="danger", icon="circle-x"),
-                            MetricCard(label="Approved", value=str(decision_center["production_ready_count"]), tone="success", icon="badge-check"),
-                            MetricCard(label="Engineering Hours", value=f"{decision_center['estimated_hours']} hrs", tone="monitoring", icon="clock-3"),
-                            MetricCard(label="Average Age", value=f"{decision_center['average_age_days']} days", tone="confidence", icon="history"),
-                        ],
-                        columns=2,
-                    )
+                    # Keep the title and metrics in one visual unit. The snapshot
+                    # should read as a concise status card, not a heading plus a
+                    # separate collection of floating KPI cards.
+                    with st.container(border=True):
+                        st.markdown("#### Decision snapshot")
+                        st.caption("Current queue health at a glance.")
+                        cadivor_metric_row(
+                            [
+                                MetricCard(label="Pending", value=str(decision_center["open_count"]), tone="info", icon="clipboard-check"),
+                                MetricCard(label="Critical", value=str(decision_center["critical_count"]), tone="danger", icon="triangle-alert"),
+                                MetricCard(label="Rejected", value=str(rejected_count), tone="danger", icon="circle-x"),
+                                MetricCard(label="Approved", value=str(decision_center["production_ready_count"]), tone="success", icon="badge-check"),
+                                MetricCard(label="Engineering Hours", value=f"{decision_center['estimated_hours']} hrs", tone="monitoring", icon="clock-3"),
+                                MetricCard(label="Average Age", value=f"{decision_center['average_age_days']} days", tone="confidence", icon="history"),
+                            ],
+                            columns=2,
+                            compact=True,
+                        )
             st.markdown("</div>", unsafe_allow_html=True)
             stop_authenticated_page()
 
