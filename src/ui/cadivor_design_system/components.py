@@ -139,7 +139,7 @@ def _metric_icon_html(name: str, *, compact: bool) -> str:
 
 
 def _render_premium_metric_html(
-    metrics: Sequence[MetricCard], *, columns: int, compact: bool = False
+    metrics: Sequence[MetricCard], *, columns: int, compact: bool = False, context_class: str = ""
 ) -> None:
     density = "compact" if compact else "primary"
     cards = []
@@ -192,7 +192,11 @@ def _render_premium_metric_html(
         )
         card += "</article>"
         cards.append(card)
-    grid_class = f"cv64-metric-grid cv64-metric-grid--{density}"
+    safe_context_class = "".join(
+        char for char in str(context_class or "") if char.isalnum() or char in "-_"
+    )
+    context_suffix = f" cv64-metric-grid--{safe_context_class}" if safe_context_class else ""
+    grid_class = f"cv64-metric-grid cv64-metric-grid--{density}{context_suffix}"
     _render_html(
         f'<div class="{grid_class}" style="--cv64-cols:{max(1, columns)}">{"".join(cards)}</div>'
     )
@@ -219,22 +223,28 @@ def render_metric_strip(metrics: Sequence[MetricCard], *, columns: int = 3) -> N
 
 
 def render_kpi_row_safe(
-    metrics: Sequence[MetricCard], *, columns: int = 4, compact: bool = False
+    metrics: Sequence[MetricCard], *, columns: int = 4, compact: bool = False,
+    context_class: str = "",
 ) -> None:
     """Premium KPI row with native Streamlit fallback if HTML rendering fails."""
     cleaned = [_sanitize_metric(metric) for metric in (metrics or [])]
     if not cleaned:
         return
     try:
-        _render_premium_metric_html(cleaned, columns=columns, compact=compact)
+        _render_premium_metric_html(
+            cleaned, columns=columns, compact=compact, context_class=context_class
+        )
     except Exception:
         _render_native_metric_row(cleaned, columns=columns)
 
 
 def cadivor_metric_row(
-    metrics: Sequence[MetricCard], *, columns: int = 4, compact: bool = False
+    metrics: Sequence[MetricCard], *, columns: int = 4, compact: bool = False,
+    context_class: str = "",
 ) -> None:
-    render_kpi_row_safe(metrics, columns=columns, compact=compact)
+    render_kpi_row_safe(
+        metrics, columns=columns, compact=compact, context_class=context_class
+    )
 
 
 def render_section_header(
@@ -630,6 +640,7 @@ def render_decision_card_actions(
             "Alternative Finder",
             key=f"{key_prefix}_alt",
             use_container_width=True,
+            type="secondary",
             original_part=decision["part_number"],
             analysis_id=str(decision.get("analysis_id") or ""),
             source_page="engineering_decisions",
@@ -642,6 +653,7 @@ def render_decision_card_actions(
             "Monitoring",
             key=f"{key_prefix}_monitor",
             use_container_width=True,
+            type="secondary",
         )
         cadivor_button_wrap_end()
     with action_cols[3]:
@@ -652,6 +664,7 @@ def render_decision_card_actions(
                 "Analysis Details",
                 key=f"{key_prefix}_analysis",
                 use_container_width=True,
+                type="secondary",
                 analysis_id=decision["analysis_id"],
             )
         else:
