@@ -3784,3 +3784,61 @@ section[data-testid="stMain"] [data-testid="column"] {
     font-size: clamp(25px, 7vw, 30px);
   }
 }
+
+
+/* ------------------------------------------------------------------ */
+/* Engineering Decisions — intentional laptop composition             */
+/* ------------------------------------------------------------------ */
+/* A narrow right rail makes the decision snapshot and card actions feel
+   accidental at common laptop widths. At this breakpoint the workspace becomes
+   a clear reading sequence: review queue first, then a wide queue summary. */
+@media (max-width: 1680px) {
+  section[data-testid="stMain"] [data-testid="stHorizontalBlock"]:has(.cv64-metric-grid--decision-snapshot) {
+    flex-wrap: wrap !important;
+    gap: 18px !important;
+  }
+
+  section[data-testid="stMain"] [data-testid="stHorizontalBlock"]:has(.cv64-metric-grid--decision-snapshot) > [data-testid="column"] {
+    flex: 1 1 100% !important;
+    width: 100% !important;
+  }
+
+  section[data-testid="stMain"] [data-testid="stHorizontalBlock"]:has(.cv64-metric-grid--decision-snapshot) .cv64-metric-grid--decision-snapshot {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+
+  /* Decision paths remain a single deliberate row once the card has its full
+     workspace width, rather than wrapping as 3 + 1. */
+  section[data-testid="stMain"] [class*="st-key-decision_queue_"] [data-testid="stHorizontalBlock"]:has([class*="st-key-queue_"]) {
+    display: grid !important;
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    gap: 10px !important;
+  }
+
+  section[data-testid="stMain"] [class*="st-key-decision_queue_"] [data-testid="stHorizontalBlock"]:has([class*="st-key-queue_"]) > [data-testid="column"] {
+    flex: none !important;
+    width: auto !important;
+    min-width: 0 !important;
+  }
+
+  section[data-testid="stMain"] [class*="st-key-decision_queue_"] [class*="st-key-queue_"] button {
+    width: 100% !important;
+  }
+}
+
+@media (max-width: 1050px) {
+  section[data-testid="stMain"] [data-testid="stHorizontalBlock"]:has(.cv64-metric-grid--decision-snapshot) .cv64-metric-grid--decision-snapshot {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  section[data-testid="stMain"] [class*="st-key-decision_queue_"] [data-testid="stHorizontalBlock"]:has([class*="st-key-queue_"]) {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 640px) {
+  section[data-testid="stMain"] [data-testid="stHorizontalBlock"]:has(.cv64-metric-grid--decision-snapshot) .cv64-metric-grid--decision-snapshot,
+  section[data-testid="stMain"] [class*="st-key-decision_queue_"] [data-testid="stHorizontalBlock"]:has([class*="st-key-queue_"]) {
+    grid-template-columns: 1fr !important;
+  }
+}
