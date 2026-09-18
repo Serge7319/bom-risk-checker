@@ -3700,3 +3700,87 @@ div[data-testid="stVerticalBlock"]:has(.cv672-dashboard-workspace-root) [data-te
     flex-direction: column;
   }
 }
+
+
+/* ------------------------------------------------------------------ */
+/* Shared responsive layout foundation                                */
+/* ------------------------------------------------------------------ */
+/* Streamlit columns are the layout primitive across Cadivor. Making each
+   column a query container lets components respond to the space they actually
+   receive after the navigation rail and neighboring panels take their share. */
+section[data-testid="stMain"] [data-testid="column"] {
+  min-width: 0 !important;
+  container-type: inline-size;
+}
+
+/* Shared components keep useful density in narrow side rails instead of simply
+   shrinking text until labels and explanations become unreadable. */
+@container (max-width: 560px) {
+  .cv64-metric-grid--compact {
+    gap: 9px;
+  }
+
+  .cv64-metric-grid--compact .cv64-metric {
+    min-height: 112px;
+    padding: 12px;
+  }
+
+  .cv64-metric-grid--compact .cv64-metric__label {
+    font-size: 11px;
+  }
+
+  .cv64-metric-grid--compact .cv64-metric__value {
+    font-size: 24px;
+  }
+
+  .cv64-metric-grid--compact .cv64-metric__detail {
+    font-size: 10px;
+    line-height: 1.35;
+  }
+}
+
+@container (max-width: 390px) {
+  .cv64-metric-grid--compact {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* Keep decision filters and their action paths usable at reduced workspace
+   widths. These rules affect the reusable Decision workspace controls, not
+   unrelated application rows. */
+@container (max-width: 720px) {
+  [data-testid="stHorizontalBlock"]:has([class*="st-key-decision_priority_filter"]) {
+    flex-wrap: wrap !important;
+  }
+
+  [data-testid="stHorizontalBlock"]:has([class*="st-key-decision_priority_filter"]) > [data-testid="column"] {
+    flex: 1 1 100% !important;
+    width: 100% !important;
+  }
+
+  [class*="st-key-decision_queue_"] [data-testid="stHorizontalBlock"]:has([class*="st-key-queue_"]) {
+    flex-wrap: wrap !important;
+  }
+
+  [class*="st-key-decision_queue_"] [data-testid="stHorizontalBlock"]:has([class*="st-key-queue_"]) > [data-testid="column"] {
+    flex: 1 1 calc(50% - 8px) !important;
+    width: calc(50% - 8px) !important;
+  }
+}
+
+@container (max-width: 390px) {
+  [class*="st-key-decision_queue_"] [data-testid="stHorizontalBlock"]:has([class*="st-key-queue_"]) > [data-testid="column"] {
+    flex-basis: 100% !important;
+    width: 100% !important;
+  }
+}
+
+@media (max-width: 900px) {
+  section[data-testid="stMain"] [data-testid="stMainBlockContainer"] {
+    padding-inline: 16px !important;
+  }
+
+  .cv64-section__title {
+    font-size: clamp(25px, 7vw, 30px);
+  }
+}
