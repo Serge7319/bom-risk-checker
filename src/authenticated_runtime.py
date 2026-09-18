@@ -14528,20 +14528,73 @@ def run_authenticated_app() -> None:
                                     ]
 
                                     st.caption(
-                                        "Edit a Project Name or BOM Name directly in the table, then save your changes."
+                                        "Edit a Project Name or BOM Name directly in the table."
                                     )
+                                    pending_name_action = st.session_state.get(
+                                        "bom81_pending_name_action"
+                                    )
+                                    if not name_changes.empty and not pending_name_action:
+                                        @st.dialog("Save name changes?")
+                                        def _confirm_saved_bom_name_changes():
+                                            st.write(
+                                                f"You changed the name{'s' if len(name_changes) != 1 else ''} "
+                                                f"for {len(name_changes)} saved BOM"
+                                                f"{'s' if len(name_changes) != 1 else ''}."
+                                            )
+                                            st.caption(
+                                                "Save these changes before continuing, or cancel to keep the original names."
+                                            )
+                                            dialog_save, dialog_cancel = st.columns(2)
+                                            with dialog_save:
+                                                if st.button(
+                                                    "Save changes",
+                                                    type="primary",
+                                                    use_container_width=True,
+                                                    key="bom81_dialog_save_names",
+                                                ):
+                                                    st.session_state[
+                                                        "bom81_pending_name_action"
+                                                    ] = "save"
+                                                    st.rerun()
+                                            with dialog_cancel:
+                                                if st.button(
+                                                    "Cancel changes",
+                                                    use_container_width=True,
+                                                    key="bom81_dialog_cancel_names",
+                                                ):
+                                                    st.session_state[
+                                                        "bom81_pending_name_action"
+                                                    ] = "discard"
+                                                    st.rerun()
+
+                                        _confirm_saved_bom_name_changes()
+
+                                    if pending_name_action == "discard":
+                                        st.session_state[
+                                            "bom81_saved_analysis_editor_revision"
+                                        ] = editor_revision + 1
+                                        st.session_state.pop(
+                                            "bom81_pending_name_action", None
+                                        )
+                                        st.rerun()
+
                                     save_col, open_col, delete_col, clear_col = st.columns(
                                         [0.24, 0.26, 0.25, 0.25],
                                         gap="medium",
                                     )
 
                                     with save_col:
-                                        if st.button(
-                                            "Save names",
-                                            type="secondary",
-                                            use_container_width=True,
-                                            disabled=name_changes.empty,
-                                            key="bom81_save_project_names",
+                                        if (
+                                            st.button(
+                                                "Save names",
+                                                type="secondary",
+                                                use_container_width=True,
+                                                disabled=name_changes.empty,
+                                                key="bom81_save_project_names",
+                                            )
+                                            or st.session_state.pop(
+                                                "bom81_pending_name_action", ""
+                                            ) == "save"
                                         ):
                                             update_errors = []
                                             updated_count = 0
@@ -14587,7 +14640,7 @@ def run_authenticated_app() -> None:
 
                                             if update_errors:
                                                 st.error(
-                                                    "Some project names could not be saved. "
+                                                    "Some names could not be saved. "
                                                     + " | ".join(update_errors[:2])
                                                 )
                                             elif updated_count:
