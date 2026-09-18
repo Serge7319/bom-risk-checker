@@ -35,6 +35,11 @@ class AuthGateStartupContracts(unittest.TestCase):
         self.assertNotIn("should_render_authenticated_startup_shell()", source)
         self.assertNotIn("render_startup_loading_shell(", source)
 
+    def test_account_menu_is_available_while_a_route_is_opening(self):
+        source = (ROOT / "src" / "ui" / "unified_shell.py").read_text(encoding="utf-8")
+        self.assertNotIn("if not loading_route:\n        with st.container(key=\"cv_foundation_profile_trigger\")", source)
+        self.assertIn('with st.container(key="cv_foundation_profile_trigger"):', source)
+
     def test_runtime_keeps_auth_gate_until_route_surface_is_ready(self):
         source = (ROOT / "src" / "authenticated_runtime.py").read_text(encoding="utf-8")
         shell_mount = source.index("render_unified_shell(")

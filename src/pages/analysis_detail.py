@@ -2240,20 +2240,6 @@ def render_analysis_detail(
             "Parts & Risk",
             "Filter the saved parts. Select a part, then find a replacement.",
         )
-        if component_focus_requested and requested_component:
-            st.markdown(
-                '<div class="cv-command-origin">'
-                '<div class="cv-command-origin-main">'
-                '<span class="cv-command-origin-icon">K</span>'
-                '<div class="cv-command-origin-copy">'
-                '<strong>Opened from Command Center</strong>'
-                '<span>Cadivor focused this analysis on the component you selected.</span>'
-                '</div></div>'
-                f'<span class="cv-command-origin-part">{html.escape(requested_component)}</span>'
-                '</div>',
-                unsafe_allow_html=True,
-            )
-
         # Sprint 34.2.4 — component results from Command Center should land on
         # the Components tab instead of restoring an unrelated browser position.
         focus_token = f"{analysis_id}:{requested_component.lower()}:{requested_focus}"

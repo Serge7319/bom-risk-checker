@@ -14091,7 +14091,7 @@ def run_authenticated_app() -> None:
                                         analysis_id_value,
                                         part_number,
                                         _rerun=True,
-                                        arm_opening=False,
+                                        arm_opening=True,
                                     )
                                 if not component_available:
                                     st.caption("This component's saved BOM is not available in the current workspace.")
