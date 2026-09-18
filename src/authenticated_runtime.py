@@ -14225,7 +14225,9 @@ def run_authenticated_app() -> None:
                                 # Keep those records readable while presenting the same two names
                                 # that users enter in the upload form.
                                 legacy_title = manager_df["project_name"].astype(str).str.strip()
-                                title_parts = legacy_title.str.split(" — ", n=1, expand=True)
+                                title_parts = legacy_title.str.split(
+                                    " — ", n=1, expand=True
+                                ).reindex(columns=[0, 1])
                                 has_project_group = legacy_title.str.contains(
                                     " — ", regex=False, na=False
                                 )
@@ -14234,7 +14236,7 @@ def run_authenticated_app() -> None:
                                 ).replace("", "—")
                                 manager_df["BOM Name"] = title_parts[1].where(
                                     has_project_group, legacy_title
-                                ).fillna("Saved BOM analysis")
+                                ).fillna("Saved BOM analysis").replace("", "Saved BOM analysis")
                                 manager_df["Health"] = manager_df.apply(
                                     lambda row: (
                                         f"{int(row['health_score'])} · "
