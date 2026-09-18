@@ -5152,298 +5152,306 @@ def run_authenticated_app() -> None:
                 rejected_count = sum(
                     1 for decision in all_decisions if str(decision.get("status")) == "Rejected"
                 )
-                cadivor_metric_row(
-                    [
-                        MetricCard(label="Pending", value=str(decision_center["open_count"]), tone="info", icon="clipboard-check"),
-                        MetricCard(label="Critical", value=str(decision_center["critical_count"]), tone="danger", icon="triangle-alert"),
-                        MetricCard(label="Rejected", value=str(rejected_count), tone="danger", icon="circle-x"),
-                        MetricCard(label="Approved", value=str(decision_center["production_ready_count"]), tone="success", icon="badge-check"),
-                        MetricCard(label="Engineering Hours", value=f"{decision_center['estimated_hours']} hrs", tone="monitoring", icon="clock-3"),
-                        MetricCard(label="Average Age", value=f"{decision_center['average_age_days']} days", tone="confidence", icon="history"),
-                    ],
-                    columns=3,
-                )
-
-                refresh_decision_col, persistence_scope_col = st.columns([1, 3])
-                with refresh_decision_col:
-                    cadivor_button_wrap("secondary")
-                    if st.button(
-                        "Refresh Decisions",
-                        key="refresh_persistent_decisions",
-                        use_container_width=True,
-                    ):
-                        _clear_engineering_decision_caches()
-                        st.rerun()
-                    cadivor_button_wrap_end()
-                with persistence_scope_col:
-                    st.caption(
-                        f"Persistent scope: {active_workspace_name or 'Personal workspace'}"
+                decision_workspace_col, decision_metrics_col = st.columns([0.68, 0.32], gap="large")
+                with decision_workspace_col:
+                    refresh_decision_col, persistence_scope_col = st.columns([1, 3])
+                    with refresh_decision_col:
+                        cadivor_button_wrap("secondary")
+                        if st.button(
+                            "Refresh Decisions",
+                            key="refresh_persistent_decisions",
+                            use_container_width=True,
+                        ):
+                            _clear_engineering_decision_caches()
+                            st.rerun()
+                        cadivor_button_wrap_end()
+                    with persistence_scope_col:
+                        st.caption(
+                            f"Persistent scope: {active_workspace_name or 'Personal workspace'}"
+                        )
+    
+                    queue_tab, workload_tab, analytics_tab, archive_tab = st.tabs(
+                        [
+                            "Needs Review",
+                            "Team Workload",
+                            "Decision Analytics",
+                            "Completed",
+                        ]
                     )
-
-                queue_tab, workload_tab, analytics_tab, archive_tab = st.tabs(
-                    [
-                        "Needs Review",
-                        "Team Workload",
-                        "Decision Analytics",
-                        "Completed",
-                    ]
-                )
-
-                with queue_tab:
-                    filter_cols = st.columns(3)
-                    with filter_cols[0]:
-                        priority_filter = st.selectbox(
-                            "Priority",
-                            ["All", "Critical", "High", "Medium", "Routine"],
-                            key="decision_priority_filter",
-                        )
-                    with filter_cols[1]:
-                        status_filter = st.selectbox(
-                            "Status",
-                            ["All"] + STATUSES,
-                            key="decision_status_filter",
-                        )
-                    with filter_cols[2]:
-                        search_decisions = st.text_input(
-                            "Search decisions",
-                            placeholder="Component, project, owner, or action",
-                            key="decision_search",
-                        )
-
-                    visible = all_decisions
-                    if priority_filter != "All":
-                        visible = [
-                            decision
-                            for decision in visible
-                            if decision["priority"] == priority_filter
-                        ]
-                    if status_filter != "All":
-                        visible = [
-                            decision
-                            for decision in visible
-                            if decision["status"] == status_filter
-                        ]
-                    if search_decisions.strip():
-                        query = search_decisions.strip().lower()
-                        visible = [
-                            decision
-                            for decision in visible
-                            if query
-                            in " ".join(
-                                [
-                                    str(decision["part_number"]),
-                                    str(decision["title"]),
-                                    str(decision["assigned_owner"]),
-                                    str(decision["reason"]),
-                                ]
-                            ).lower()
-                        ]
-
-                    st.caption(f"Showing {len(visible)} of {len(all_decisions)} engineering decision(s).")
-
-                    if not visible:
-                        st.info("No engineering decisions match the selected filters.")
-                    else:
-                        for decision in visible[:40]:
-                            st.markdown(
-                                decision_card_html(decision),
-                                unsafe_allow_html=True,
+    
+                    with queue_tab:
+                        filter_cols = st.columns(3)
+                        with filter_cols[0]:
+                            priority_filter = st.selectbox(
+                                "Priority",
+                                ["All", "Critical", "High", "Medium", "Routine"],
+                                key="decision_priority_filter",
                             )
-                            render_decision_card_actions(
-                                decision,
-                                navigate_to=navigate_to,
-                                internal_nav_button=internal_nav_button,
-                                key_prefix=f"queue_{decision['decision_id']}",
+                        with filter_cols[1]:
+                            status_filter = st.selectbox(
+                                "Status",
+                                ["All"] + STATUSES,
+                                key="decision_status_filter",
                             )
-
-                with workload_tab:
-                    st.markdown("### Team Workload")
-                    active = [
-                        decision
-                        for decision in all_decisions
-                        if decision["status"] not in ("Closed", "Rejected")
-                    ]
-                    if not active:
-                        st.success("No open engineering workload remains.")
-                    else:
-                        workload_rows = []
-                        owners = sorted(set(decision["assigned_owner"] for decision in active))
-                        for owner in owners:
-                            owner_decisions = [
-                                decision for decision in active if decision["assigned_owner"] == owner
+                        with filter_cols[2]:
+                            search_decisions = st.text_input(
+                                "Search decisions",
+                                placeholder="Component, project, owner, or action",
+                                key="decision_search",
+                            )
+    
+                        visible = all_decisions
+                        if priority_filter != "All":
+                            visible = [
+                                decision
+                                for decision in visible
+                                if decision["priority"] == priority_filter
                             ]
-                            workload_rows.append(
-                                {
-                                    "Owner": owner,
-                                    "Open Decisions": len(owner_decisions),
-                                    "Critical": sum(
-                                        1 for decision in owner_decisions
-                                        if decision["priority_score"] >= 85
-                                    ),
-                                    "Estimated Hours": sum(
-                                        decision["estimated_effort_hours"]
-                                        for decision in owner_decisions
-                                    ),
-                                    "Average Confidence": round(
-                                        sum(decision["confidence"] for decision in owner_decisions)
-                                        / len(owner_decisions)
-                                    ),
-                                }
+                        if status_filter != "All":
+                            visible = [
+                                decision
+                                for decision in visible
+                                if decision["status"] == status_filter
+                            ]
+                        if search_decisions.strip():
+                            query = search_decisions.strip().lower()
+                            visible = [
+                                decision
+                                for decision in visible
+                                if query
+                                in " ".join(
+                                    [
+                                        str(decision["part_number"]),
+                                        str(decision["title"]),
+                                        str(decision["assigned_owner"]),
+                                        str(decision["reason"]),
+                                    ]
+                                ).lower()
+                            ]
+    
+                        st.caption(f"Showing {len(visible)} of {len(all_decisions)} engineering decision(s).")
+    
+                        if not visible:
+                            st.info("No engineering decisions match the selected filters.")
+                        else:
+                            for decision in visible[:40]:
+                                st.markdown(
+                                    decision_card_html(decision),
+                                    unsafe_allow_html=True,
+                                )
+                                render_decision_card_actions(
+                                    decision,
+                                    navigate_to=navigate_to,
+                                    internal_nav_button=internal_nav_button,
+                                    key_prefix=f"queue_{decision['decision_id']}",
+                                )
+    
+                    with workload_tab:
+                        st.markdown("### Team Workload")
+                        active = [
+                            decision
+                            for decision in all_decisions
+                            if decision["status"] not in ("Closed", "Rejected")
+                        ]
+                        if not active:
+                            st.success("No open engineering workload remains.")
+                        else:
+                            workload_rows = []
+                            owners = sorted(set(decision["assigned_owner"] for decision in active))
+                            for owner in owners:
+                                owner_decisions = [
+                                    decision for decision in active if decision["assigned_owner"] == owner
+                                ]
+                                workload_rows.append(
+                                    {
+                                        "Owner": owner,
+                                        "Open Decisions": len(owner_decisions),
+                                        "Critical": sum(
+                                            1 for decision in owner_decisions
+                                            if decision["priority_score"] >= 85
+                                        ),
+                                        "Estimated Hours": sum(
+                                            decision["estimated_effort_hours"]
+                                            for decision in owner_decisions
+                                        ),
+                                        "Average Confidence": round(
+                                            sum(decision["confidence"] for decision in owner_decisions)
+                                            / len(owner_decisions)
+                                        ),
+                                    }
+                                )
+                            cadivor_table(
+                                pd.DataFrame(workload_rows),
+                                caption="Team workload by owner",
+                                numeric_columns=["Open Decisions", "Critical", "Estimated Hours", "Average Confidence"],
+                                align={
+                                    "Open Decisions": "right",
+                                    "Critical": "right",
+                                    "Estimated Hours": "right",
+                                    "Average Confidence": "right",
+                                },
                             )
-                        cadivor_table(
-                            pd.DataFrame(workload_rows),
-                            caption="Team workload by owner",
-                            numeric_columns=["Open Decisions", "Critical", "Estimated Hours", "Average Confidence"],
-                            align={
-                                "Open Decisions": "right",
-                                "Critical": "right",
-                                "Estimated Hours": "right",
-                                "Average Confidence": "right",
-                            },
+    
+                    with analytics_tab:
+                        cadivor_section_header(
+                            "Decision Analytics",
+                            description="Portfolio impact from open and closed engineering decisions.",
+                            icon="chart-no-axes-combined",
                         )
+                        cadivor_metric_row(
+                            [
+                                MetricCard(
+                                    label="Projected Health Gain",
+                                    value=f"+{decision_center['projected_health_gain']}",
+                                    tone="success",
+                                    icon="gauge",
+                                ),
+                                MetricCard(
+                                    label="Supply Risk Reduction",
+                                    value=f"-{decision_center['projected_risk_reduction']}",
+                                    tone="monitoring",
+                                    icon="radar",
+                                ),
+                                MetricCard(
+                                    label="Closed / Rejected",
+                                    value=str(decision_center["closed_count"]),
+                                    tone="neutral",
+                                    icon="circle-x",
+                                ),
+                                MetricCard(
+                                    label="Average Open Age",
+                                    value=f"{decision_center['average_age_days']} days",
+                                    tone="warning",
+                                    icon="clock",
+                                ),
+                            ],
+                        )
+    
+                        if all_decisions:
+                            status_counts = (
+                                pd.DataFrame(all_decisions)["status"]
+                                .value_counts()
+                                .rename_axis("Workflow Stage")
+                                .reset_index(name="Decisions")
+                            )
+                            owner_hours = (
+                                pd.DataFrame(
+                                    [
+                                        {
+                                            "Owner": decision["assigned_owner"],
+                                            "Estimated Hours": decision["estimated_effort_hours"],
+                                            "Priority Score": decision["priority_score"],
+                                        }
+                                        for decision in all_decisions
+                                        if decision["status"] not in ("Closed", "Rejected")
+                                    ]
+                                )
+                                .groupby("Owner", as_index=False)
+                                .agg(
+                                    {
+                                        "Estimated Hours": "sum",
+                                        "Priority Score": "mean",
+                                    }
+                                )
+                                .rename(columns={"Priority Score": "Average Priority"})
+                            )
+                            analytics_left, analytics_right = st.columns(2)
+                            with analytics_left:
+                                st.markdown("#### Decisions by Workflow Stage")
+                                cadivor_table(
+                                    status_counts,
+                                    badge_columns=["Workflow Stage"],
+                                    numeric_columns=["Decisions"],
+                                    align={"Decisions": "right"},
+                                )
+                            with analytics_right:
+                                st.markdown("#### Open Workload Impact")
+                                cadivor_table(
+                                    owner_hours,
+                                    numeric_columns=["Estimated Hours", "Average Priority"],
+                                    align={"Estimated Hours": "right", "Average Priority": "right"},
+                                )
+    
+                    with archive_tab:
+                        st.markdown("### Searchable Decision Archive")
+                        archive_search = st.text_input(
+                            "Search archived decisions",
+                            placeholder="Project, component, owner, type, or outcome",
+                            key="decision_archive_search",
+                        )
+                        archived = [
+                            decision
+                            for decision in all_decisions
+                            if decision["status"] in ("Closed", "Rejected", "Production Approved")
+                        ]
+                        if archive_search.strip():
+                            archive_query = archive_search.strip().lower()
+                            archived = [
+                                decision
+                                for decision in archived
+                                if archive_query
+                                in " ".join(
+                                    [
+                                        str(decision["title"]),
+                                        str(decision["part_number"]),
+                                        str(decision["assigned_owner"]),
+                                        str(decision["decision_type"]),
+                                        str(decision["status"]),
+                                    ]
+                                ).lower()
+                            ]
+    
+                        if not archived:
+                            st.info("No archived or production-approved decisions match the search.")
+                        else:
+                            archive_df = pd.DataFrame(
+                                [
+                                    {
+                                        "Updated": decision["updated_at"],
+                                        "Project / Component": decision["part_number"],
+                                        "Decision": decision["title"],
+                                        "Owner": decision["assigned_owner"],
+                                        "Decision Type": decision["decision_type"],
+                                        "Outcome": decision["status"],
+                                        "Confidence": f"{decision['confidence']}%",
+                                    }
+                                    for decision in archived
+                                ]
+                            )
+                            cadivor_table(
+                                archive_df,
+                                caption="Archived and production-approved decisions",
+                                monospace_columns=["Project / Component"],
+                                badge_columns=["Outcome"],
+                                align={"Confidence": "right"},
+                            )
+                            st.download_button(
+                                "Export Decision Archive CSV",
+                                data=archive_df.to_csv(index=False).encode("utf-8"),
+                                file_name="cadivor_decision_archive.csv",
+                                mime="text/csv",
+                                key="decision_archive_csv",
+                                type="primary",
+                            )
+    
 
-                with analytics_tab:
+                with decision_metrics_col:
                     cadivor_section_header(
-                        "Decision Analytics",
-                        description="Portfolio impact from open and closed engineering decisions.",
-                        icon="chart-no-axes-combined",
+                        "Decision snapshot",
+                        description="Current queue health at a glance.",
+                        icon="clipboard-check",
                     )
                     cadivor_metric_row(
                         [
-                            MetricCard(
-                                label="Projected Health Gain",
-                                value=f"+{decision_center['projected_health_gain']}",
-                                tone="success",
-                                icon="gauge",
-                            ),
-                            MetricCard(
-                                label="Supply Risk Reduction",
-                                value=f"-{decision_center['projected_risk_reduction']}",
-                                tone="monitoring",
-                                icon="radar",
-                            ),
-                            MetricCard(
-                                label="Closed / Rejected",
-                                value=str(decision_center["closed_count"]),
-                                tone="neutral",
-                                icon="circle-x",
-                            ),
-                            MetricCard(
-                                label="Average Open Age",
-                                value=f"{decision_center['average_age_days']} days",
-                                tone="warning",
-                                icon="clock",
-                            ),
+                            MetricCard(label="Pending", value=str(decision_center["open_count"]), tone="info", icon="clipboard-check"),
+                            MetricCard(label="Critical", value=str(decision_center["critical_count"]), tone="danger", icon="triangle-alert"),
+                            MetricCard(label="Rejected", value=str(rejected_count), tone="danger", icon="circle-x"),
+                            MetricCard(label="Approved", value=str(decision_center["production_ready_count"]), tone="success", icon="badge-check"),
+                            MetricCard(label="Engineering Hours", value=f"{decision_center['estimated_hours']} hrs", tone="monitoring", icon="clock-3"),
+                            MetricCard(label="Average Age", value=f"{decision_center['average_age_days']} days", tone="confidence", icon="history"),
                         ],
+                        columns=2,
                     )
-
-                    if all_decisions:
-                        status_counts = (
-                            pd.DataFrame(all_decisions)["status"]
-                            .value_counts()
-                            .rename_axis("Workflow Stage")
-                            .reset_index(name="Decisions")
-                        )
-                        owner_hours = (
-                            pd.DataFrame(
-                                [
-                                    {
-                                        "Owner": decision["assigned_owner"],
-                                        "Estimated Hours": decision["estimated_effort_hours"],
-                                        "Priority Score": decision["priority_score"],
-                                    }
-                                    for decision in all_decisions
-                                    if decision["status"] not in ("Closed", "Rejected")
-                                ]
-                            )
-                            .groupby("Owner", as_index=False)
-                            .agg(
-                                {
-                                    "Estimated Hours": "sum",
-                                    "Priority Score": "mean",
-                                }
-                            )
-                            .rename(columns={"Priority Score": "Average Priority"})
-                        )
-                        analytics_left, analytics_right = st.columns(2)
-                        with analytics_left:
-                            st.markdown("#### Decisions by Workflow Stage")
-                            cadivor_table(
-                                status_counts,
-                                badge_columns=["Workflow Stage"],
-                                numeric_columns=["Decisions"],
-                                align={"Decisions": "right"},
-                            )
-                        with analytics_right:
-                            st.markdown("#### Open Workload Impact")
-                            cadivor_table(
-                                owner_hours,
-                                numeric_columns=["Estimated Hours", "Average Priority"],
-                                align={"Estimated Hours": "right", "Average Priority": "right"},
-                            )
-
-                with archive_tab:
-                    st.markdown("### Searchable Decision Archive")
-                    archive_search = st.text_input(
-                        "Search archived decisions",
-                        placeholder="Project, component, owner, type, or outcome",
-                        key="decision_archive_search",
-                    )
-                    archived = [
-                        decision
-                        for decision in all_decisions
-                        if decision["status"] in ("Closed", "Rejected", "Production Approved")
-                    ]
-                    if archive_search.strip():
-                        archive_query = archive_search.strip().lower()
-                        archived = [
-                            decision
-                            for decision in archived
-                            if archive_query
-                            in " ".join(
-                                [
-                                    str(decision["title"]),
-                                    str(decision["part_number"]),
-                                    str(decision["assigned_owner"]),
-                                    str(decision["decision_type"]),
-                                    str(decision["status"]),
-                                ]
-                            ).lower()
-                        ]
-
-                    if not archived:
-                        st.info("No archived or production-approved decisions match the search.")
-                    else:
-                        archive_df = pd.DataFrame(
-                            [
-                                {
-                                    "Updated": decision["updated_at"],
-                                    "Project / Component": decision["part_number"],
-                                    "Decision": decision["title"],
-                                    "Owner": decision["assigned_owner"],
-                                    "Decision Type": decision["decision_type"],
-                                    "Outcome": decision["status"],
-                                    "Confidence": f"{decision['confidence']}%",
-                                }
-                                for decision in archived
-                            ]
-                        )
-                        cadivor_table(
-                            archive_df,
-                            caption="Archived and production-approved decisions",
-                            monospace_columns=["Project / Component"],
-                            badge_columns=["Outcome"],
-                            align={"Confidence": "right"},
-                        )
-                        st.download_button(
-                            "Export Decision Archive CSV",
-                            data=archive_df.to_csv(index=False).encode("utf-8"),
-                            file_name="cadivor_decision_archive.csv",
-                            mime="text/csv",
-                            key="decision_archive_csv",
-                            type="primary",
-                        )
-
             st.markdown("</div>", unsafe_allow_html=True)
             stop_authenticated_page()
 
