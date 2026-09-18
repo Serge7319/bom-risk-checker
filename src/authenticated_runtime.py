@@ -5444,15 +5444,52 @@ def run_authenticated_app() -> None:
                         st.caption("Current queue health at a glance.")
                         cadivor_metric_row(
                             [
-                                MetricCard(label="Pending", value=str(decision_center["open_count"]), tone="info", icon="clipboard-check"),
-                                MetricCard(label="Critical", value=str(decision_center["critical_count"]), tone="danger", icon="triangle-alert"),
-                                MetricCard(label="Rejected", value=str(rejected_count), tone="danger", icon="circle-x"),
-                                MetricCard(label="Approved", value=str(decision_center["production_ready_count"]), tone="success", icon="badge-check"),
-                                MetricCard(label="Engineering Hours", value=f"{decision_center['estimated_hours']} hrs", tone="monitoring", icon="clock-3"),
-                                MetricCard(label="Average Age", value=f"{decision_center['average_age_days']} days", tone="confidence", icon="history"),
+                                MetricCard(
+                                    label="Pending",
+                                    value=str(decision_center["open_count"]),
+                                    detail="Open decisions awaiting a disposition.",
+                                    tone="info",
+                                    icon="clipboard-check",
+                                ),
+                                MetricCard(
+                                    label="Critical",
+                                    value=str(decision_center["critical_count"]),
+                                    detail="Items that need immediate engineering attention.",
+                                    tone="danger",
+                                    icon="triangle-alert",
+                                ),
+                                MetricCard(
+                                    label="Rejected",
+                                    value=str(rejected_count),
+                                    detail="Alternatives or actions not approved for release.",
+                                    tone="danger",
+                                    icon="circle-x",
+                                ),
+                                MetricCard(
+                                    label="Approved",
+                                    value=str(decision_center["production_ready_count"]),
+                                    detail="Decisions cleared for the next workflow stage.",
+                                    tone="success",
+                                    icon="badge-check",
+                                ),
+                                MetricCard(
+                                    label="Engineering Hours",
+                                    value=f"{decision_center['estimated_hours']} hrs",
+                                    detail="Estimated effort remaining across open work.",
+                                    tone="monitoring",
+                                    icon="clock-3",
+                                ),
+                                MetricCard(
+                                    label="Average Age",
+                                    value=f"{decision_center['average_age_days']} days",
+                                    detail="Typical time an open decision has waited.",
+                                    tone="confidence",
+                                    icon="history",
+                                ),
                             ],
                             columns=2,
                             compact=True,
+                            context_class="decision-snapshot",
                         )
             st.markdown("</div>", unsafe_allow_html=True)
             stop_authenticated_page()
