@@ -14640,7 +14640,7 @@ def run_authenticated_app() -> None:
 
                                             if update_errors:
                                                 st.error(
-                                                    "Some project names could not be saved. "
+                                                    "Some names could not be saved. "
                                                     + " | ".join(update_errors[:2])
                                                 )
                                             elif updated_count:
