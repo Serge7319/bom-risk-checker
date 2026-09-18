@@ -829,3 +829,130 @@ section[data-testid="stMain"] .st-key-cv_foundation_navigation .stButton > butto
 section[data-testid="stMain"] .st-key-cv_foundation_navigation .stButton > button[kind="primary"] span{
   color:#1d4ed8!important;
 }
+
+
+/* ========================================================================
+   Responsive app-shell contract
+   Screen width changes the available workspace before individual pages make
+   layout choices. The rail progressively condenses rather than disappearing,
+   so navigation remains available at every supported width.
+   ======================================================================== */
+:root {
+  --cv-responsive-rail-wide: 228px;
+  --cv-responsive-rail-laptop: 200px;
+  --cv-responsive-rail-compact: 72px;
+  --cv-responsive-rail-mobile: 60px;
+}
+
+/* Wide desktop — generous workspace with a full navigation rail. */
+@media (min-width: 1441px) {
+  :root {
+    --cv-foundation-rail: var(--cv-responsive-rail-wide);
+    --cv-foundation-gutter: 28px;
+  }
+}
+
+/* Standard laptop — preserve labels but reclaim content width. */
+@media (max-width: 1440px) {
+  :root {
+    --cv-foundation-rail: var(--cv-responsive-rail-laptop);
+    --cv-foundation-gutter: 20px;
+  }
+
+  .cv-foundation-search {
+    min-width: 190px !important;
+    max-width: 260px !important;
+  }
+}
+
+/* Compact desktop / tablet landscape — switch the rail to recognisable icons.
+   Content receives the saved horizontal space; page grids can respond to it. */
+@media (max-width: 1080px) {
+  :root {
+    --cv-foundation-rail: var(--cv-responsive-rail-compact);
+    --cv-foundation-gutter: 16px;
+  }
+
+  .cv-foundation-topbar {
+    grid-template-columns: var(--cv-foundation-rail) minmax(0, 1fr) !important;
+    padding-right: 56px !important;
+  }
+
+  .cv-foundation-brand-copy,
+  .cv-foundation-workspace-copy,
+  .cv-foundation-workspace-chevron,
+  .cv-foundation-nav-group,
+  .cv-foundation-plan-card,
+  .st-key-cv_foundation_compare_plans {
+    display: none !important;
+  }
+
+  .cv-foundation-workspace {
+    display: grid !important;
+    place-items: center !important;
+    grid-template-columns: 1fr !important;
+    min-height: 46px !important;
+    margin: 0 0 12px !important;
+    padding: 8px !important;
+  }
+
+  .st-key-cv_foundation_navigation {
+    padding-inline: 10px !important;
+  }
+
+  .st-key-cv_foundation_navigation .stButton > button {
+    justify-content: center !important;
+    min-height: 42px !important;
+    padding: 0 !important;
+  }
+
+  .st-key-cv_foundation_navigation .stButton > button p {
+    display: none !important;
+  }
+
+  .st-key-cv_foundation_navigation .stButton > button::before {
+    flex-basis: 20px !important;
+    width: 20px !important;
+    height: 20px !important;
+    margin: 0 !important;
+  }
+}
+
+/* Phone portrait — retain a reachable icon rail and protect page canvas. */
+@media (max-width: 700px) {
+  :root {
+    --cv-foundation-rail: var(--cv-responsive-rail-mobile);
+    --cv-foundation-gutter: 12px;
+  }
+
+  .cv-foundation-topbar {
+    height: 56px !important;
+    min-height: 56px !important;
+    padding-right: 48px !important;
+  }
+
+  .st-key-cv_foundation_navigation {
+    top: 56px !important;
+    height: calc(100vh - 56px) !important;
+    padding-inline: 6px !important;
+  }
+
+  [data-testid="stMainBlockContainer"],
+  .main .block-container {
+    padding-top: 72px !important;
+    padding-bottom: 36px !important;
+  }
+
+  .cv-foundation-page-context {
+    padding-left: 4px !important;
+  }
+
+  .cv-foundation-page-context > strong {
+    max-width: 180px !important;
+    font-size: 12px !important;
+  }
+
+  .st-key-cv_foundation_navigation .stButton > button {
+    min-height: 40px !important;
+  }
+}
