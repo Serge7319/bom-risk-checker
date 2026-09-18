@@ -13786,9 +13786,34 @@ def run_authenticated_app() -> None:
                 background:#f8fafc;
             }
             .st-key-bom81_saved_manager [data-testid="stDataFrame"]{
-                border:1px solid #e2e8f0!important;
-                border-radius:12px!important;
+                border:1px solid #dbe3ef!important;
+                border-radius:14px!important;
                 overflow:hidden;
+                background:#fff!important;
+                box-shadow:0 8px 20px rgba(15,23,42,.035)!important;
+            }
+            .bom81-table-guide{
+                display:flex;
+                flex-wrap:wrap;
+                align-items:center;
+                gap:8px 18px;
+                margin:8px 0 10px;
+                color:#64748b;
+                font-size:11px;
+                line-height:1.45;
+            }
+            .bom81-table-guide span{
+                display:inline-flex;
+                align-items:center;
+                min-height:26px;
+                padding:4px 9px;
+                border:1px solid #e2e8f0;
+                border-radius:999px;
+                background:#f8fafc;
+            }
+            .bom81-table-guide strong{
+                color:#334155;
+                margin-right:4px;
             }
             .st-key-bom81_saved_manager [data-testid="stTextInput"] input,
             .st-key-bom81_saved_manager [data-testid="stSelectbox"] > div > div{
@@ -14158,6 +14183,7 @@ def run_authenticated_app() -> None:
                                     "health_score": 0,
                                     "high_risk_count": 0,
                                     "medium_risk_count": 0,
+                                    "low_risk_count": 0,
                                     "created_at": pd.NaT,
                                 }
                                 for column_name, default_value in required_defaults.items():
@@ -14176,6 +14202,7 @@ def run_authenticated_app() -> None:
                                     "health_score",
                                     "high_risk_count",
                                     "medium_risk_count",
+                                    "low_risk_count",
                                 ):
                                     manager_df[numeric_column] = pd.to_numeric(
                                         manager_df[numeric_column],
@@ -14190,16 +14217,61 @@ def run_authenticated_app() -> None:
                                     errors="coerce",
                                     utc=True,
                                 )
-                                manager_df["Date"] = manager_df["created_at_sort"].dt.strftime(
-                                    "%Y-%m-%d"
+                                manager_df["Updated"] = manager_df["created_at_sort"].dt.strftime(
+                                    "%b %d, %Y"
                                 ).fillna("—")
-    
+
+                                # Earlier saved analyses stored the project and BOM name together.
+                                # Keep those records readable while presenting the same two names
+                                # that users enter in the upload form.
+                                legacy_title = manager_df["project_name"].astype(str).str.strip()
+                                title_parts = legacy_title.str.split(
+                                    " — ", n=1, expand=True
+                                ).reindex(columns=[0, 1])
+                                has_project_group = legacy_title.str.contains(
+                                    " — ", regex=False, na=False
+                                )
+                                manager_df["Project Name"] = title_parts[0].where(
+                                    has_project_group, "—"
+                                ).replace("", "—")
+                                manager_df["BOM Name"] = title_parts[1].where(
+                                    has_project_group, legacy_title
+                                ).fillna("Saved BOM analysis").replace("", "Saved BOM analysis")
+                                manager_df["Health"] = manager_df.apply(
+                                    lambda row: (
+                                        f"{int(row['health_score'])} · "
+                                        + (
+                                            "Excellent" if int(row["health_score"]) >= 90
+                                            else "Healthy" if int(row["health_score"]) >= 75
+                                            else "Monitor" if int(row["health_score"]) >= 60
+                                            else "Attention" if int(row["health_score"]) >= 40
+                                            else "Critical"
+                                        )
+                                    ),
+                                    axis=1,
+                                )
+
+                                def _saved_bom_review_status(row):
+                                    high = int(row["high_risk_count"])
+                                    medium = int(row["medium_risk_count"])
+                                    low = int(row["low_risk_count"])
+                                    if high:
+                                        return f"High attention · {high} high / {medium} medium"
+                                    if medium:
+                                        return f"Medium attention · {medium} medium / {low} low"
+                                    return "Low risk · no high or medium findings"
+
+                                manager_df["Review Status"] = manager_df.apply(
+                                    _saved_bom_review_status,
+                                    axis=1,
+                                )
+
                                 filter_col, sort_col = st.columns([0.68, 0.32], gap="medium")
     
                                 with filter_col:
                                     manager_search = st.text_input(
                                         "Search saved analyses",
-                                        placeholder="Search by project or source filename",
+                                        placeholder="Search project name, BOM name, or source file",
                                         key="bom81_manager_search",
                                     )
     
@@ -14220,7 +14292,11 @@ def run_authenticated_app() -> None:
                                 if manager_search.strip():
                                     search_value = manager_search.strip().lower()
                                     manager_df = manager_df[
-                                        manager_df["project_name"]
+                                        manager_df["Project Name"]
+                                        .astype(str)
+                                        .str.lower()
+                                        .str.contains(search_value, na=False)
+                                        | manager_df["BOM Name"]
                                         .astype(str)
                                         .str.lower()
                                         .str.contains(search_value, na=False)
@@ -14266,6 +14342,15 @@ def run_authenticated_app() -> None:
                                 if manager_df.empty:
                                     st.info("No saved analyses match the current search.")
                                 else:
+                                    st.markdown(
+                                        """
+                                        <div class="bom81-table-guide">
+                                          <span><strong>Health</strong> is Cadivor's 0–100 readiness score.</span>
+                                          <span><strong>Review status</strong> shows the highest risk that needs attention.</span>
+                                        </div>
+                                        """,
+                                        unsafe_allow_html=True,
+                                    )
                                     # Keep this id until the user clears it or opens the BOM.
                                     # Popping it after one paint lets the next click rerun
                                     # rebuild the editor with every checkbox false.
@@ -14279,12 +14364,11 @@ def run_authenticated_app() -> None:
                                             # loses the selection on the following interaction.
                                             # A one-shot preselect uses a new editor key below.
                                             "Select": False,
-                                            "Project": manager_df["project_name"].astype(str),
-                                            "Source File": manager_df["filename"].astype(str),
-                                            "Health": manager_df["health_score"],
-                                            "High Risk": manager_df["high_risk_count"],
-                                            "Medium Risk": manager_df["medium_risk_count"],
-                                            "Date": manager_df["Date"],
+                                            "Project Name": manager_df["Project Name"].astype(str),
+                                            "BOM Name": manager_df["BOM Name"].astype(str),
+                                            "Health": manager_df["Health"].astype(str),
+                                            "Review Status": manager_df["Review Status"].astype(str),
+                                            "Updated": manager_df["Updated"].astype(str),
                                             "_analysis_id": manager_df["id"].astype(str),
                                         }
                                     ).reset_index(drop=True)
@@ -14326,12 +14410,11 @@ def run_authenticated_app() -> None:
                                         hide_index=True,
                                         height=min(520, 70 + len(editor_df) * 35),
                                         disabled=[
-                                            "Project",
-                                            "Source File",
+                                            "Project Name",
+                                            "BOM Name",
                                             "Health",
-                                            "High Risk",
-                                            "Medium Risk",
-                                            "Date",
+                                            "Review Status",
+                                            "Updated",
                                             "_analysis_id",
                                         ],
                                         column_config={
@@ -14340,34 +14423,27 @@ def run_authenticated_app() -> None:
                                                 help="Select one analysis to open or several analyses to delete.",
                                                 width="small",
                                             ),
-                                            "Project": st.column_config.TextColumn(
-                                                "Project",
-                                                width="large",
-                                            ),
-                                            "Source File": st.column_config.TextColumn(
-                                                "Source File",
+                                            "Project Name": st.column_config.TextColumn(
+                                                "Project Name",
                                                 width="medium",
                                             ),
-                                            "Health": st.column_config.NumberColumn(
+                                            "BOM Name": st.column_config.TextColumn(
+                                                "BOM Name",
+                                                width="large",
+                                            ),
+                                            "Health": st.column_config.TextColumn(
                                                 "Health",
-                                                min_value=0,
-                                                max_value=100,
-                                                format="%d",
-                                                width="small",
+                                                help="Cadivor health score from 0 to 100.",
+                                                width="medium",
                                             ),
-                                            "High Risk": st.column_config.NumberColumn(
-                                                "High Risk",
-                                                format="%d",
-                                                width="small",
+                                            "Review Status": st.column_config.TextColumn(
+                                                "Review Status",
+                                                help="The highest active risk level in this BOM.",
+                                                width="large",
                                             ),
-                                            "Medium Risk": st.column_config.NumberColumn(
-                                                "Medium Risk",
-                                                format="%d",
-                                                width="small",
-                                            ),
-                                            "Date": st.column_config.TextColumn(
-                                                "Date",
-                                                width="small",
+                                            "Updated": st.column_config.TextColumn(
+                                                "Updated",
+                                                width="medium",
                                             ),
                                             "_analysis_id": None,
                                         },
@@ -14395,8 +14471,8 @@ def run_authenticated_app() -> None:
                                     selected_count = len(selected_ids)
                                     selection_label = "analysis" if selected_count == 1 else "analyses"
                                     selected_project = ""
-                                    if selected_count == 1 and "Project" in selected_rows.columns:
-                                        selected_project = str(selected_rows.iloc[0]["Project"] or "").strip()
+                                    if selected_count == 1 and "BOM Name" in selected_rows.columns:
+                                        selected_project = str(selected_rows.iloc[0]["BOM Name"] or "").strip()
     
                                     selection_copy = (
                                         "Select one checkbox to enable Open Analysis."
