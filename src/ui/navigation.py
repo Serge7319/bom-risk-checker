@@ -24,6 +24,7 @@ _LOGOUT_QUERY_KEYS = ("cadivor_signed_out", "auth", "source")
 # intentional in-app push so restore/rerun paths can avoid a duplicate entry.
 LAST_HISTORY_PUSH_PAGE_KEY = "cadivor_last_history_push_page"
 HISTORY_RESTORE_EVENT_KEY = "cadivor_history_restore_event"
+HISTORY_RESTORE_SNAPSHOT_KEY = "cadivor_history_restore_snapshot"
 
 _ALT_NAV_KEYS = (
     "original_part",
@@ -107,6 +108,9 @@ def navigate_to(page: str, *, _rerun: bool = True, arm_opening: bool = True, **p
     instead of leaving the previous page name in the address bar.
     """
     current_page = str(st.session_state.get("cadivor_route", "") or "").strip()
+    # Any explicit in-app navigation supersedes a prior browser-history restore.
+    # Without this reset, a stale Streamlit query snapshot could mask the new route.
+    st.session_state.pop(HISTORY_RESTORE_SNAPSHOT_KEY, None)
     if current_page == "BOM Analyzer" and page != "BOM Analyzer":
         # The table widget is removed on other pages. Its row selections must
         # leave with it; otherwise a return shows unchecked rows beside stale

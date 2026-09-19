@@ -287,6 +287,60 @@ def test_repeated_clicks_create_one_history_write_each_and_restore_pushes_zero(m
     assert session["access_token"] == "live-a"
 
 
+
+def test_popstate_restore_survives_when_streamlit_query_snapshot_stays_stale(monkeypatch):
+    """A browser restore must not bounce forward on the following rerun."""
+    session = _Session(
+        {
+            "cadivor_route": "Reports",
+            "app_mode": "Reports",
+            "cadivor_nav_params": {"page": "Reports"},
+            "user": types.SimpleNamespace(id="user-1"),
+            "access_token": "live-a",
+            "refresh_token": "live-r",
+            "cadivor_auth_status": "authenticated",
+        }
+    )
+    # Streamlit can keep its backend query snapshot on the route being left,
+    # even though Chrome's address bar has already moved back to Dashboard.
+    query = _Query({"page": "Reports"})
+    events = [
+        {
+            "href": "http://127.0.0.1:8581/?page=Dashboard",
+            "reason": "popstate",
+            "event_id": "stale-query-back-1",
+        }
+    ]
+    _patch_runtime(
+        monkeypatch,
+        session,
+        query,
+        consume=lambda: events.pop(0) if events else None,
+    )
+
+    assert runtime.resolve_canonical_app_route() == "Dashboard"
+    assert session["cadivor_route"] == "Dashboard"
+    assert query.get("page") == "Reports"
+    assert query.writes == 0
+
+    # A normal rerun still sees the stale server query. The browser-restored
+    # Dashboard route must remain authoritative instead of bouncing to Reports.
+    _patch_runtime(monkeypatch, session, query, consume=lambda: None)
+    assert runtime.resolve_canonical_app_route() == "Dashboard"
+    assert session["cadivor_route"] == "Dashboard"
+    assert session["cadivor_nav_params"] == {"page": "Dashboard"}
+    assert query.get("page") == "Reports"
+    assert query.writes == 0
+    assert session["access_token"] == "live-a"
+    assert "user" in session
+
+    # The next explicit in-app navigation supersedes the restore snapshot.
+    navigation.navigate_to("Monitoring", _rerun=False)
+    assert session["cadivor_route"] == "Monitoring"
+    assert "cadivor_history_restore_snapshot" not in session
+    assert query.get("page") == "Monitoring"
+
+
 def test_url_change_echo_of_in_app_push_is_not_treated_as_restore(monkeypatch):
     session = _Session(
         {

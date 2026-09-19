@@ -1826,19 +1826,14 @@ def _canonical_route_allowlist() -> frozenset[str]:
 def resolve_canonical_app_route(*, allow_admin: bool = True) -> str:
     """Resolve one route for URL, session, shell chrome, and page dispatch.
 
-    Priority:
-    1. Browser Back/Forward event page (when present)
-    2. ``?page=`` query value when it diverges from the session route
-       (address-bar history is the restore source of truth)
-    3. Existing session route / app_mode
-    4. Dashboard
-
-    Session mirrors are always updated. Query writes are avoided on restore and
-    on reruns when the address bar already matches — Streamlit has no
-    replaceState, so a redundant write would create a phantom Back entry.
+    Browser Back/Forward events are authoritative. Streamlit can leave its
+    server-side query snapshot on the page that was just left, so a restored
+    browser route is retained until that stale snapshot catches up or the user
+    starts a new in-app navigation.
     """
     from src.ui.navigation import (
         HISTORY_RESTORE_EVENT_KEY,
+        HISTORY_RESTORE_SNAPSHOT_KEY,
         LAST_HISTORY_PUSH_PAGE_KEY,
         commit_navigation_query_params,
     )
@@ -1846,6 +1841,7 @@ def resolve_canonical_app_route(*, allow_admin: bool = True) -> str:
     browser_page = ""
     browser_params: dict[str, str] = {}
     browser_reason = ""
+    browser_event_id = ""
     browser_event = consume_browser_navigation_event()
     previous_route = _safe_text(
         st.session_state.get("cadivor_route") or st.session_state.get("app_mode"),
@@ -1860,6 +1856,7 @@ def resolve_canonical_app_route(*, allow_admin: bool = True) -> str:
             and event_id != st.session_state.get("cadivor_last_browser_navigation_event_id")
             and href
         ):
+            browser_event_id = event_id
             try:
                 browser_params = {
                     key: values[-1]
@@ -1873,9 +1870,9 @@ def resolve_canonical_app_route(*, allow_admin: bool = True) -> str:
                 browser_params = {}
             browser_page = _safe_text(browser_params.get("page"), "")
             st.session_state["cadivor_last_browser_navigation_event_id"] = event_id
-            # The 350ms poll also sees in-app pushState echoes. Those are not
-            # Back/Forward restores — ignore when the URL still matches session
-            # or the page we just pushed.
+            # The polling fallback also sees intentional in-app URL writes.
+            # Ignore those echoes when the URL still names the route in session
+            # or the page that navigate_to just committed.
             last_push = _safe_text(st.session_state.get(LAST_HISTORY_PUSH_PAGE_KEY), "")
             if browser_reason == "url-change" and (
                 (browser_page and browser_page == previous_route)
@@ -1884,6 +1881,7 @@ def resolve_canonical_app_route(*, allow_admin: bool = True) -> str:
                 browser_page = ""
                 browser_params = {}
                 browser_reason = ""
+                browser_event_id = ""
 
     try:
         raw_qp = st.query_params.get("page", "")
@@ -1894,15 +1892,42 @@ def resolve_canonical_app_route(*, allow_admin: bool = True) -> str:
     query_page = _safe_text(raw_qp, "")
     session_page = previous_route
 
+    restore_snapshot_raw = st.session_state.get(HISTORY_RESTORE_SNAPSHOT_KEY)
+    restore_snapshot = (
+        dict(restore_snapshot_raw)
+        if isinstance(restore_snapshot_raw, dict)
+        else {}
+    )
+    snapshot_route = _safe_text(restore_snapshot.get("route"), "")
+    snapshot_stale_query_page = _safe_text(
+        restore_snapshot.get("stale_query_page"),
+        "",
+    )
+    if snapshot_route and session_page and snapshot_route != session_page:
+        st.session_state.pop(HISTORY_RESTORE_SNAPSHOT_KEY, None)
+        restore_snapshot = {}
+        snapshot_route = ""
+        snapshot_stale_query_page = ""
+
+    snapshot_active = bool(snapshot_route and snapshot_route == session_page)
+    query_diverged = bool(
+        query_page and session_page and query_page != session_page
+    )
+    stale_query_after_restore = bool(
+        snapshot_active
+        and query_diverged
+        and query_page == snapshot_stale_query_page
+    )
     history_restore = bool(browser_page) or (
-        bool(query_page) and bool(session_page) and query_page != session_page
+        query_diverged and not stale_query_after_restore
     )
 
     if browser_page:
         route = browser_page
-    elif query_page and session_page and query_page != session_page:
-        # Browser history changed the address bar; prefer URL over a stale
-        # in-memory route when the Back/Forward bridge event was missed.
+    elif query_diverged and not stale_query_after_restore:
+        # When the bridge event is missed, a genuinely new query route can
+        # still restore browser history. The exact stale query recorded by a
+        # prior bridge restore is never allowed to bounce the user forward.
         route = query_page
     elif session_page:
         route = session_page
@@ -1943,13 +1968,39 @@ def resolve_canonical_app_route(*, allow_admin: bool = True) -> str:
         }
         nav_params["page"] = route
         st.session_state["cadivor_nav_params"] = nav_params
+        # Keep the browser-restored route authoritative across later Streamlit
+        # reruns. Its query snapshot can remain on the route that was left.
+        st.session_state[HISTORY_RESTORE_SNAPSHOT_KEY] = {
+            "route": route,
+            "params": dict(nav_params),
+            "stale_query_page": query_page,
+            "event_id": browser_event_id,
+        }
+    elif stale_query_after_restore and restore_snapshot:
+        nav_params = dict(restore_snapshot.get("params") or {})
+        nav_params["page"] = route
+        st.session_state["cadivor_nav_params"] = nav_params
     else:
         st.session_state["cadivor_nav_params"] = {"page": route}
+        if query_page == route or (snapshot_route and snapshot_route != route):
+            st.session_state.pop(HISTORY_RESTORE_SNAPSHOT_KEY, None)
 
+    active_snapshot = st.session_state.get(HISTORY_RESTORE_SNAPSHOT_KEY)
+    restored_route_is_active = bool(
+        isinstance(active_snapshot, dict)
+        and _safe_text(active_snapshot.get("route"), "") == route
+    )
     if history_restore:
         # Address bar already holds the restored route. Do not write query
         # params — that would push a duplicate history entry.
         st.session_state.pop(LAST_HISTORY_PUSH_PAGE_KEY, None)
+    elif restored_route_is_active:
+        # The browser bridge restored this route, but Streamlit's backend query
+        # state has not caught up. Preserve the route without creating history.
+        commit_navigation_query_params(
+            st.session_state.get("cadivor_nav_params") or {"page": route},
+            push=False,
+        )
     elif not query_page:
         # First admit with no ?page=: establish one history entry only.
         commit_navigation_query_params({"page": route}, push=True)
