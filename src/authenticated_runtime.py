@@ -5152,7 +5152,7 @@ def run_authenticated_app() -> None:
                 rejected_count = sum(
                     1 for decision in all_decisions if str(decision.get("status")) == "Rejected"
                 )
-                decision_workspace_col, decision_metrics_col = st.columns([0.68, 0.32], gap="large")
+                decision_workspace_col, decision_metrics_col = st.columns([0.64, 0.36], gap="large")
                 with decision_workspace_col:
                     refresh_decision_col, persistence_scope_col = st.columns([1, 3])
                     with refresh_decision_col:

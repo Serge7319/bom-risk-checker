@@ -3788,26 +3788,31 @@ section[data-testid="stMain"] [data-testid="column"] {
 
 
 /* ------------------------------------------------------------------ */
-/* Engineering Decisions — stable laptop action layout                */
+/* Engineering Decisions — adaptive action and KPI workspace          */
 /* ------------------------------------------------------------------ */
-/* Keep the snapshot’s proven two-column card layout in the right rail.
-   Only the decision action band changes at laptop widths, where a balanced
-   2 × 2 grid is more legible than an accidental 3 + 1 wrap. */
-@media (max-width: 1680px) {
+/* Desktop and laptop workspaces have enough width for all four decision
+   paths. Tablets intentionally step down to 2 × 2; phones use one column. */
+section[data-testid="stMain"] [class*="st-key-decision_queue_"] [data-testid="stHorizontalBlock"]:has([class*="st-key-queue_"]) {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 10px !important;
+}
+
+section[data-testid="stMain"] [class*="st-key-decision_queue_"] [data-testid="stHorizontalBlock"]:has([class*="st-key-queue_"]) > [data-testid="column"] {
+  flex: none !important;
+  width: auto !important;
+  min-width: 0 !important;
+}
+
+section[data-testid="stMain"] [class*="st-key-decision_queue_"] [class*="st-key-queue_"] button {
+  width: 100% !important;
+  min-width: 0 !important;
+  white-space: nowrap !important;
+}
+
+@media (max-width: 1050px) {
   section[data-testid="stMain"] [class*="st-key-decision_queue_"] [data-testid="stHorizontalBlock"]:has([class*="st-key-queue_"]) {
-    display: grid !important;
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-    gap: 10px !important;
-  }
-
-  section[data-testid="stMain"] [class*="st-key-decision_queue_"] [data-testid="stHorizontalBlock"]:has([class*="st-key-queue_"]) > [data-testid="column"] {
-    flex: none !important;
-    width: auto !important;
-    min-width: 0 !important;
-  }
-
-  section[data-testid="stMain"] [class*="st-key-decision_queue_"] [class*="st-key-queue_"] button {
-    width: 100% !important;
   }
 }
 
