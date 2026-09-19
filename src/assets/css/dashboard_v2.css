@@ -1028,3 +1028,85 @@ section[data-testid="stMain"]:has(.cv-dashboard-page) {
     flex-wrap: wrap;
   }
 }
+
+
+/* ------------------------------------------------------------------
+   Home — responsive workbench
+   ------------------------------------------------------------------ */
+.st-key-cv_home_workspace {
+  margin-top: 2px;
+}
+
+.st-key-cv_home_workspace [data-testid="stHorizontalBlock"]:has(.cv-home-priority-copy):has(.cv-home-recent-title) {
+  align-items: flex-start !important;
+  gap: 20px !important;
+}
+
+.st-key-cv_home_next {
+  min-height: 100%;
+  margin-bottom: 0;
+  padding: 18px;
+}
+
+.st-key-cv_home_next [data-testid="stVerticalBlock"] {
+  gap: 12px;
+}
+
+.st-key-cv_home_next [data-testid="stHorizontalBlock"]:has(.st-key-home_primary_action) {
+  gap: 10px !important;
+}
+
+.cv-home-recent-title {
+  margin: 2px 0 12px;
+  font-size: 18px;
+}
+
+[class*="st-key-cv_home_bom_"] {
+  margin-bottom: 10px;
+  padding: 12px 14px;
+}
+
+[class*="st-key-cv_home_bom_"] button {
+  width: 100% !important;
+  white-space: nowrap;
+}
+
+@media (max-width: 1050px) {
+  .st-key-cv_home_workspace [data-testid="stHorizontalBlock"]:has(.cv-home-priority-copy):has(.cv-home-recent-title) {
+    flex-wrap: wrap !important;
+  }
+
+  .st-key-cv_home_workspace [data-testid="stHorizontalBlock"]:has(.cv-home-priority-copy):has(.cv-home-recent-title) > [data-testid="column"] {
+    flex: 1 1 100% !important;
+    width: 100% !important;
+  }
+
+  .st-key-cv_home_next {
+    min-height: auto;
+  }
+
+  .cv-home-recent-title {
+    margin-top: 4px;
+  }
+}
+
+@media (max-width: 640px) {
+  .cv672-dashboard-heading {
+    margin-bottom: 18px;
+  }
+
+  .st-key-cv_home_next {
+    padding: 15px;
+  }
+
+  .st-key-cv_home_next [data-testid="stHorizontalBlock"]:has(.st-key-home_primary_action),
+  [class*="st-key-cv_home_bom_"] [data-testid="stHorizontalBlock"]:has(.cv-home-bom) {
+    flex-wrap: wrap !important;
+  }
+
+  .st-key-cv_home_next [data-testid="stHorizontalBlock"]:has(.st-key-home_primary_action) > [data-testid="column"],
+  [class*="st-key-cv_home_bom_"] [data-testid="stHorizontalBlock"]:has(.cv-home-bom) > [data-testid="column"] {
+    flex: 1 1 100% !important;
+    width: 100% !important;
+  }
+}
