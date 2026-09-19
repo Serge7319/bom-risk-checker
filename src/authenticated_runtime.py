@@ -5227,24 +5227,59 @@ def run_authenticated_app() -> None:
                     )
     
                     with queue_tab:
+                        # Snapshot actions arrive back on this route with a
+                        # compact focus token.  Give each focus its own widget
+                        # keys so Streamlit can apply the intended filter
+                        # without mutating an already-mounted widget.
+                        decision_focus = str(_qp_value("decision_focus", "") or "").strip().lower()
+                        decision_focus_defaults = {
+                            "pending": ("All", "All"),
+                            "critical": ("Critical", "All"),
+                            "rejected": ("All", "Rejected"),
+                            "approved": ("All", "Production Approved"),
+                        }
+                        focus_priority, focus_status = decision_focus_defaults.get(
+                            decision_focus,
+                            ("All", "All"),
+                        )
+                        filter_key_suffix = decision_focus if decision_focus in decision_focus_defaults else ""
+                        priority_filter_key = (
+                            "decision_priority_filter"
+                            if not filter_key_suffix
+                            else f"decision_priority_filter_{filter_key_suffix}"
+                        )
+                        status_filter_key = (
+                            "decision_status_filter"
+                            if not filter_key_suffix
+                            else f"decision_status_filter_{filter_key_suffix}"
+                        )
+                        search_filter_key = (
+                            "decision_search"
+                            if not filter_key_suffix
+                            else f"decision_search_{filter_key_suffix}"
+                        )
                         filter_cols = st.columns(3)
                         with filter_cols[0]:
                             priority_filter = st.selectbox(
                                 "Priority",
                                 ["All", "Critical", "High", "Medium", "Routine"],
-                                key="decision_priority_filter",
+                                index=["All", "Critical", "High", "Medium", "Routine"].index(
+                                    focus_priority
+                                ),
+                                key=priority_filter_key,
                             )
                         with filter_cols[1]:
                             status_filter = st.selectbox(
                                 "Status",
                                 ["All"] + STATUSES,
-                                key="decision_status_filter",
+                                index=(["All"] + STATUSES).index(focus_status),
+                                key=status_filter_key,
                             )
                         with filter_cols[2]:
                             search_decisions = st.text_input(
                                 "Search decisions",
                                 placeholder="Component, project, owner, or action",
-                                key="decision_search",
+                                key=search_filter_key,
                             )
     
                         visible = all_decisions
@@ -5255,10 +5290,27 @@ def run_authenticated_app() -> None:
                                 if decision["priority"] == priority_filter
                             ]
                         if status_filter != "All":
+                            approved_focus = (
+                                decision_focus == "approved"
+                                and status_filter == "Production Approved"
+                            )
                             visible = [
                                 decision
                                 for decision in visible
-                                if decision["status"] == status_filter
+                                if (
+                                    decision["status"] in ("Production Approved", "Production Ready")
+                                    if approved_focus
+                                    else decision["status"] == status_filter
+                                )
+                            ]
+                        # Pending and critical snapshot actions represent the
+                        # active queue, so terminal outcomes should not leak
+                        # into their focused result set.
+                        if decision_focus in {"pending", "critical"}:
+                            visible = [
+                                decision
+                                for decision in visible
+                                if decision["status"] not in ("Closed", "Rejected")
                             ]
                         if search_decisions.strip():
                             query = search_decisions.strip().lower()
@@ -5490,60 +5542,300 @@ def run_authenticated_app() -> None:
     
 
                 with decision_metrics_col:
-                    # Keep the title and metrics in one visual unit. The snapshot
-                    # should read as a concise status card, not a heading plus a
-                    # separate collection of floating KPI cards.
-                    with st.container(border=True):
-                        st.markdown("#### Decision snapshot")
-                        st.caption("Current queue health at a glance.")
-                        cadivor_metric_row(
-                            [
-                                MetricCard(
-                                    label="Pending",
-                                    value=str(decision_center["open_count"]),
-                                    detail="Open decisions awaiting a disposition.",
-                                    tone="info",
-                                    icon="clipboard-check",
-                                ),
-                                MetricCard(
-                                    label="Critical",
-                                    value=str(decision_center["critical_count"]),
-                                    detail="Items that need immediate engineering attention.",
-                                    tone="danger",
-                                    icon="triangle-alert",
-                                ),
-                                MetricCard(
-                                    label="Rejected",
-                                    value=str(rejected_count),
-                                    detail="Alternatives or actions not approved for release.",
-                                    tone="danger",
-                                    icon="circle-x",
-                                ),
-                                MetricCard(
-                                    label="Approved",
-                                    value=str(decision_center["production_ready_count"]),
-                                    detail="Decisions cleared for the next workflow stage.",
-                                    tone="success",
-                                    icon="badge-check",
-                                ),
-                                MetricCard(
-                                    label="Engineering Hours",
-                                    value=f"{decision_center['estimated_hours']} hrs",
-                                    detail="Estimated effort remaining across open work.",
-                                    tone="monitoring",
-                                    icon="clock-3",
-                                ),
-                                MetricCard(
-                                    label="Average Age",
-                                    value=f"{decision_center['average_age_days']} days",
-                                    detail="Typical time an open decision has waited.",
-                                    tone="confidence",
-                                    icon="history",
-                                ),
-                            ],
-                            columns=2,
-                            compact=True,
-                            context_class="decision-snapshot",
+                    # Keep the snapshot useful: every card has a matching
+                    # destination, while passive roll-up metrics stay in the
+                    # Decision Analytics tab where they can be interpreted in
+                    # context.
+                    st.markdown(
+                        """
+                        <style id="cadivor-ed-snapshot-card-css">
+                          .st-key-ed_decision_snapshot {
+                            padding: 14px;
+                            border: 1px solid #d4deeb;
+                            border-radius: 16px;
+                            background: #f5f8fc;
+                            box-shadow: 0 10px 26px rgba(15, 23, 42, .045);
+                          }
+
+                          .st-key-ed_decision_snapshot > [data-testid="stVerticalBlock"] {
+                            gap: 12px;
+                          }
+
+                          .cv-ed-snapshot-head {
+                            margin: 0 2px 2px;
+                            padding: 2px 2px 6px;
+                          }
+
+                          .cv-ed-snapshot-eyebrow {
+                            display: block;
+                            margin-bottom: 5px;
+                            color: #2563eb;
+                            font-size: 9.5px;
+                            font-weight: 800;
+                            letter-spacing: .12em;
+                            text-transform: uppercase;
+                          }
+
+                          .cv-ed-snapshot-title {
+                            display: block;
+                            color: #0f2d57;
+                            font-size: 19px;
+                            font-weight: 780;
+                            letter-spacing: -0.025em;
+                            line-height: 1.2;
+                          }
+
+                          .cv-ed-snapshot-head p {
+                            margin: 4px 0 0;
+                            color: #64748b;
+                            font-size: 12.5px;
+                            line-height: 1.45;
+                          }
+
+                          .st-key-ed_snapshot_pending,
+                          .st-key-ed_snapshot_critical,
+                          .st-key-ed_snapshot_rejected,
+                          .st-key-ed_snapshot_approved {
+                            padding: 15px 15px 11px;
+                            border: 1px solid #d6e0ec;
+                            border-radius: 12px;
+                            background: #ffffff;
+                            box-shadow: none;
+                            transition: border-color .16s ease, box-shadow .16s ease;
+                          }
+
+                          .st-key-ed_snapshot_pending:hover,
+                          .st-key-ed_snapshot_critical:hover,
+                          .st-key-ed_snapshot_rejected:hover,
+                          .st-key-ed_snapshot_approved:hover {
+                            border-color: #b9cbe2;
+                            box-shadow: 0 6px 16px rgba(15, 23, 42, .055);
+                          }
+
+                          .st-key-ed_snapshot_pending > [data-testid="stVerticalBlock"],
+                          .st-key-ed_snapshot_critical > [data-testid="stVerticalBlock"],
+                          .st-key-ed_snapshot_rejected > [data-testid="stVerticalBlock"],
+                          .st-key-ed_snapshot_approved > [data-testid="stVerticalBlock"] {
+                            gap: 7px;
+                          }
+
+                          .cv-ed-kpi-eyebrow {
+                            display: block;
+                            margin-bottom: 5px;
+                            color: #2563eb;
+                            font-size: 9px;
+                            font-weight: 800;
+                            letter-spacing: .12em;
+                            text-transform: uppercase;
+                          }
+
+                          .cv-ed-kpi-heading {
+                            display: flex;
+                            align-items: baseline;
+                            justify-content: space-between;
+                            gap: 14px;
+                          }
+
+                          .cv-ed-kpi-heading h3 {
+                            margin: 0;
+                            color: #0f2d57;
+                            font-size: 16px;
+                            font-weight: 760;
+                            letter-spacing: -0.025em;
+                            line-height: 1.2;
+                          }
+
+                          .cv-ed-kpi-heading strong {
+                            flex: 0 0 auto;
+                            color: #0f2d57;
+                            font-size: 25px;
+                            font-weight: 820;
+                            letter-spacing: -0.045em;
+                            line-height: 1;
+                          }
+
+                          .cv-ed-kpi-copy > p {
+                            margin: 7px 0 0;
+                            color: #52647d;
+                            font-size: 11.5px;
+                            line-height: 1.42;
+                          }
+
+                          .cv-ed-kpi-preview {
+                            margin-top: 12px;
+                            min-height: 78px;
+                            padding: 11px 12px;
+                            border: 1px solid #d7e2ef;
+                            border-radius: 9px;
+                            background: #f7faff;
+                          }
+
+                          .cv-ed-kpi-line {
+                            display: block;
+                            width: 62%;
+                            height: 6px;
+                            margin-bottom: 6px;
+                            border-radius: 999px;
+                            background: #dce6f2;
+                          }
+
+                          .cv-ed-kpi-line--long {
+                            width: 78%;
+                          }
+
+                          .cv-ed-kpi-line--primary {
+                            width: 42%;
+                            background: #8fb7f4;
+                          }
+
+                          .st-key-ed_snapshot_critical .cv-ed-kpi-line--primary,
+                          .st-key-ed_snapshot_rejected .cv-ed-kpi-line--primary {
+                            background: #f29595;
+                          }
+
+                          .st-key-ed_snapshot_approved .cv-ed-kpi-line--primary {
+                            background: #75cfac;
+                          }
+
+                          .cv-ed-kpi-preview b {
+                            display: block;
+                            margin-top: 8px;
+                            color: #0f2d57;
+                            font-size: 11.5px;
+                            font-weight: 750;
+                            line-height: 1.35;
+                          }
+
+                          .st-key-ed_snapshot_pending button,
+                          .st-key-ed_snapshot_critical button,
+                          .st-key-ed_snapshot_rejected button,
+                          .st-key-ed_snapshot_approved button {
+                            width: auto !important;
+                            min-height: 26px;
+                            margin-top: 9px !important;
+                            padding: 1px 0 !important;
+                            border: 0 !important;
+                            border-radius: 0;
+                            background: transparent !important;
+                            color: #2563eb !important;
+                            font-size: 11.5px;
+                            font-weight: 720;
+                            box-shadow: none !important;
+                          }
+
+                          .st-key-ed_snapshot_pending button::after,
+                          .st-key-ed_snapshot_critical button::after,
+                          .st-key-ed_snapshot_rejected button::after,
+                          .st-key-ed_snapshot_approved button::after {
+                            content: " →";
+                            margin-left: 4px;
+                          }
+
+                          .st-key-ed_snapshot_pending button:hover,
+                          .st-key-ed_snapshot_critical button:hover,
+                          .st-key-ed_snapshot_rejected button:hover,
+                          .st-key-ed_snapshot_approved button:hover {
+                            color: #1d4ed8 !important;
+                            text-decoration: underline;
+                            text-underline-offset: 3px;
+                          }
+                        </style>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+
+                    def _render_decision_snapshot_card(
+                        *,
+                        card_key: str,
+                        eyebrow: str,
+                        title: str,
+                        value: str,
+                        description: str,
+                        preview: str,
+                        action_label: str,
+                        focus: str,
+                    ) -> None:
+                        with st.container(key=card_key):
+                            st.markdown(
+                                f"""
+                                <div class="cv-ed-kpi-copy">
+                                  <span class="cv-ed-kpi-eyebrow">{html.escape(eyebrow)}</span>
+                                  <div class="cv-ed-kpi-heading">
+                                    <h3>{html.escape(title)}</h3>
+                                    <strong>{html.escape(value)}</strong>
+                                  </div>
+                                  <p>{html.escape(description)}</p>
+                                  <div class="cv-ed-kpi-preview">
+                                    <span class="cv-ed-kpi-line cv-ed-kpi-line--primary"></span>
+                                    <span class="cv-ed-kpi-line cv-ed-kpi-line--long"></span>
+                                    <span class="cv-ed-kpi-line"></span>
+                                    <b>{html.escape(preview)}</b>
+                                  </div>
+                                </div>
+                                """,
+                                unsafe_allow_html=True,
+                            )
+                            if st.button(
+                                action_label,
+                                key=f"{card_key}_action",
+                                use_container_width=True,
+                            ):
+                                navigate_to(
+                                    "Engineering Decisions",
+                                    decision_focus=focus,
+                                    arm_opening=False,
+                                )
+
+                    with st.container(key="ed_decision_snapshot"):
+                        st.markdown(
+                            """
+                            <div class="cv-ed-snapshot-head">
+                              <span class="cv-ed-snapshot-eyebrow">Decision overview</span>
+                              <span class="cv-ed-snapshot-title">Decision snapshot</span>
+                              <p>Use these shortcuts to move from status to action.</p>
+                            </div>
+                            """,
+                            unsafe_allow_html=True,
+                        )
+                        _render_decision_snapshot_card(
+                            card_key="ed_snapshot_pending",
+                            eyebrow="Queue",
+                            title="Pending decisions",
+                            value=str(decision_center["open_count"]),
+                            description="Open decisions awaiting a disposition.",
+                            preview=f"{decision_center['open_count']} open decisions in the active queue",
+                            action_label="Review pending decisions",
+                            focus="pending",
+                        )
+                        _render_decision_snapshot_card(
+                            card_key="ed_snapshot_critical",
+                            eyebrow="Risk",
+                            title="Critical attention",
+                            value=str(decision_center["critical_count"]),
+                            description="Items that need immediate engineering attention.",
+                            preview=f"{decision_center['critical_count']} critical decisions need review",
+                            action_label="Review critical decisions",
+                            focus="critical",
+                        )
+                        _render_decision_snapshot_card(
+                            card_key="ed_snapshot_rejected",
+                            eyebrow="Outcomes",
+                            title="Rejected decisions",
+                            value=str(rejected_count),
+                            description="Alternatives or actions not approved for release.",
+                            preview=f"{rejected_count} rejected decisions in the archive",
+                            action_label="View rejected decisions",
+                            focus="rejected",
+                        )
+                        _render_decision_snapshot_card(
+                            card_key="ed_snapshot_approved",
+                            eyebrow="Outcomes",
+                            title="Approved decisions",
+                            value=str(decision_center["production_ready_count"]),
+                            description="Decisions cleared for the next workflow stage.",
+                            preview=f"{decision_center['production_ready_count']} decisions ready for the next stage",
+                            action_label="View approved decisions",
+                            focus="approved",
                         )
             st.markdown("</div>", unsafe_allow_html=True)
             stop_authenticated_page()
