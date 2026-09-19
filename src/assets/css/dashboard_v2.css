@@ -1061,8 +1061,13 @@ section[data-testid="stMain"]:has(.cv-dashboard-page) {
 }
 
 [class*="st-key-cv_home_bom_"] {
-  margin-bottom: 9px;
-  padding: 11px 13px;
+  min-height: 74px;
+  margin-bottom: 10px;
+  padding: 13px 14px 15px;
+}
+
+[class*="st-key-cv_home_bom_"] .cv-home-bom {
+  padding-bottom: 5px;
 }
 
 [class*="st-key-cv_home_bom_"] button {
@@ -1235,6 +1240,7 @@ section[data-testid="stMain"]:has(.cv-dashboard-page) {
 .st-key-cv_home_kpi_health button {
   width: auto !important;
   min-height: 26px;
+  margin-top: 9px !important;
   padding: 1px 0 !important;
   border: 0 !important;
   border-radius: 0;
