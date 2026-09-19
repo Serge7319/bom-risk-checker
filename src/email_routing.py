@@ -17,13 +17,20 @@ from typing import Any, Mapping
 from urllib.parse import quote
 
 INFO_EMAIL = "info@cadivor.com"
+GENERAL_EMAIL = INFO_EMAIL
 BETA_EMAIL = "beta@cadivor.com"
 SUPPORT_EMAIL = "support@cadivor.com"
 SECURITY_EMAIL = "security@cadivor.com"
 LEGAL_EMAIL = "legal@cadivor.com"
 BILLING_EMAIL = "billing@cadivor.com"
+SALES_EMAIL = "sales@cadivor.com"
+CAREERS_EMAIL = "careers@cadivor.com"
+HELLO_EMAIL = "hello@cadivor.com"
 
-DEFAULT_FROM_EMAIL = "Cadivor <noreply@cadivor.com>"
+DEFAULT_TRANSACTIONAL_FROM = "Cadivor <no-reply@cadivor.com>"
+DEFAULT_ALERT_FROM = "Cadivor Alerts <no-reply@cadivor.com>"
+DEFAULT_REPLY_TO = SUPPORT_EMAIL
+DEFAULT_FROM_EMAIL = DEFAULT_TRANSACTIONAL_FROM
 
 # Public intent / topic keys → destination inbox.
 INBOX_BY_INTENT: dict[str, str] = {
@@ -88,16 +95,31 @@ def mailto_href(
     return f"mailto:{to}?{query}"
 
 
+def mailto(address: str, *, subject: str = "") -> str:
+    """Build a mailto URL for an already-resolved address."""
+    clean_address = str(address or "").strip()
+    clean_subject = str(subject or "").strip()
+    if not clean_subject:
+        return f"mailto:{clean_address}"
+    return f"mailto:{clean_address}?subject={quote(clean_subject)}"
+
+
 def transactional_from_email() -> str:
     """Verified Resend From identity for Cadivor-originated mail."""
     from src.secrets import get_secret
 
     return str(
         get_secret(
-            "CADIVOR_FROM_EMAIL",
-            default=get_secret("ALERT_FROM_EMAIL", default=DEFAULT_FROM_EMAIL),
+            "TRANSACTIONAL_FROM_EMAIL",
+            default=get_secret(
+                "CADIVOR_FROM_EMAIL",
+                default=get_secret(
+                    "ALERT_FROM_EMAIL",
+                    default=DEFAULT_TRANSACTIONAL_FROM,
+                ),
+            ),
         )
-        or DEFAULT_FROM_EMAIL
+        or DEFAULT_TRANSACTIONAL_FROM
     ).strip()
 
 

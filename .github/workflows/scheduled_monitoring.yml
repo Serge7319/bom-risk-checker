@@ -26,8 +26,11 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           ALERT_FROM_EMAIL: ${{ secrets.ALERT_FROM_EMAIL }}
+          TRANSACTIONAL_FROM_EMAIL: ${{ secrets.TRANSACTIONAL_FROM_EMAIL }}
+          EMAIL_REPLY_TO: ${{ secrets.EMAIL_REPLY_TO }}
           MOUSER_API_KEY: ${{ secrets.MOUSER_API_KEY }}
           DIGIKEY_CLIENT_ID: ${{ secrets.DIGIKEY_CLIENT_ID }}
           DIGIKEY_CLIENT_SECRET: ${{ secrets.DIGIKEY_CLIENT_SECRET }}
@@ -40,8 +43,11 @@ jobs:
           keys = [
               "SUPABASE_URL",
               "SUPABASE_KEY",
+              "SUPABASE_SERVICE_ROLE_KEY",
               "RESEND_API_KEY",
               "ALERT_FROM_EMAIL",
+              "TRANSACTIONAL_FROM_EMAIL",
+              "EMAIL_REPLY_TO",
               "MOUSER_API_KEY",
               "DIGIKEY_CLIENT_ID",
               "DIGIKEY_CLIENT_SECRET",
@@ -59,8 +65,10 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           ALERT_FROM_EMAIL: ${{ secrets.ALERT_FROM_EMAIL }}
+          TRANSACTIONAL_FROM_EMAIL: ${{ secrets.TRANSACTIONAL_FROM_EMAIL }}
+          EMAIL_REPLY_TO: ${{ secrets.EMAIL_REPLY_TO }}
         run: |
           python src/run_scheduled_monitoring.py
-        

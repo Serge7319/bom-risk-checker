@@ -1,34 +1,39 @@
 from supabase import create_client
+import html
 import os
 import sys
 from pathlib import Path
-import resend
 from datetime import datetime, timezone, timedelta
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 sys.path.append(str(ROOT_DIR))
 
 from integrations.supplier_aggregator import get_best_part_data
+from src.email_delivery import EmailDeliveryError, send_transactional_email
+from src.email_routing import DEFAULT_ALERT_FROM
 from src.monitoring_engine import detect_monitor_alerts
+from src.monitoring_email_preferences import monitoring_email_enabled
 
 print("Starting scheduled BOM monitoring...")
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+SUPABASE_MONITORING_KEY = (
+    os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+    or os.getenv("SUPABASE_KEY")
+)
 
-if not SUPABASE_URL or not SUPABASE_KEY:
+if not SUPABASE_URL or not SUPABASE_MONITORING_KEY:
     raise ValueError("Missing Supabase environment variables")
 
 supabase = create_client(
     SUPABASE_URL,
-    SUPABASE_KEY,
+    SUPABASE_MONITORING_KEY,
 )
 
-resend.api_key = os.getenv("RESEND_API_KEY")
 ALERT_FROM_EMAIL = (
-    os.getenv("CADIVOR_FROM_EMAIL")
-    or os.getenv("ALERT_FROM_EMAIL")
-    or "Cadivor <noreply@cadivor.com>"
+    os.getenv("ALERT_FROM_EMAIL")
+    or os.getenv("CADIVOR_FROM_EMAIL")
+    or DEFAULT_ALERT_FROM
 )
 
 
@@ -39,35 +44,6 @@ users_response = (
 )
 
 users = users_response.data or []
-
-
-def _user_allows_monitoring_email(user_id: str) -> bool:
-    """Honor Settings → Notification preferences for monitoring alerts.
-
-    Missing preference rows default to enabled so existing users keep alerts.
-    """
-    if not user_id:
-        return True
-    try:
-        response = (
-            supabase.table("user_preferences")
-            .select("email_notifications,monitoring_notifications")
-            .eq("user_id", user_id)
-            .limit(1)
-            .execute()
-        )
-        rows = response.data or []
-        if not rows:
-            return True
-        prefs = rows[0] or {}
-        if prefs.get("email_notifications") is False:
-            return False
-        if prefs.get("monitoring_notifications") is False:
-            return False
-        return True
-    except Exception as exc:
-        print(f"Could not read notification preferences for {user_id}: {exc}")
-        return True
 
 
 def recently_alerted(user_id, part_number, alert_type, hours=24):
@@ -95,7 +71,16 @@ for user in users:
     user_id = user.get("id")
     user_email = user.get("email")
 
-    print(f"Checking monitored parts for user: {user_email}")
+    print(f"Checking monitored parts for user id: {user_id}")
+    email_allowed, preference_error = monitoring_email_enabled(
+        supabase,
+        str(user_id or ""),
+    )
+    if preference_error:
+        print(
+            "Monitoring email disabled because notification preferences "
+            "could not be verified."
+        )
 
     monitor_response = (
         supabase.table("part_monitor_history")
@@ -167,31 +152,27 @@ for user in users:
             print(f"Saved {len(new_alert_records)} alerts for {part_number}")
 
             for alert in new_alert_records:
-                if alert.get("severity") == "High":
-                    if not _user_allows_monitoring_email(user_id):
-                        print(
-                            f"Skipping alert email for {part_number}: "
-                            f"user {user_email} disabled monitoring notifications"
-                        )
-                        continue
+                if (
+                    alert.get("severity") == "High"
+                    and email_allowed
+                    and user_email
+                ):
                     try:
-                        resend.Emails.send(
-                            {
-                                "from": ALERT_FROM_EMAIL,
-                                "to": [user_email],
-                                "subject": "High Severity BOM Monitoring Alert",
-                                "html": (
-                                    f"<p><strong>Part:</strong> {part_number}</p>"
-                                    f"<p><strong>Alert:</strong> {alert.get('alert_message')}</p>"
-                                    f"<p><strong>Severity:</strong> {alert.get('severity')}</p>"
-                                ),
-                            }
+                        send_transactional_email(
+                            from_email=ALERT_FROM_EMAIL,
+                            to_email=user_email,
+                            subject="High Severity BOM Monitoring Alert",
+                            html_body=(
+                                f"<p><strong>Part:</strong> {html.escape(str(part_number))}</p>"
+                                f"<p><strong>Alert:</strong> {html.escape(str(alert.get('alert_message') or ''))}</p>"
+                                f"<p><strong>Severity:</strong> {html.escape(str(alert.get('severity') or ''))}</p>"
+                            ),
                         )
 
-                        print(f"Sent alert email for {part_number} to {user_email}")
+                        print(f"Sent alert email for monitored part {part_number}")
 
-                    except Exception as e:
-                        print(f"Could not send alert email for {part_number}: {e}")
+                    except EmailDeliveryError:
+                        print(f"Could not send alert email for {part_number}")
 
         for message in alert_messages:
             print(f"{part_number}: {message}")

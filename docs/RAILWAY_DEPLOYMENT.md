@@ -80,9 +80,12 @@ Checkout does not activate a Cadivor plan. Versioned source is `supabase/functio
 
 | Variable | Purpose |
 |----------|---------|
-| `RESEND_API_KEY` | Resend API key |
-| `CADIVOR_FROM_EMAIL` | Preferred verified sender for invites and alerts (example: `Cadivor <noreply@cadivor.com>`) |
-| `ALERT_FROM_EMAIL` | Fallback sender for monitor alerts when `CADIVOR_FROM_EMAIL` is unset |
+| `RESEND_API_KEY` | Resend API key for Cadivor transactional delivery |
+| `TRANSACTIONAL_FROM_EMAIL` | Preferred verified-domain sender for workspace invitations, for example `Cadivor <no-reply@cadivor.com>` |
+| `CADIVOR_FROM_EMAIL` | Backward-compatible transactional sender fallback |
+| `ALERT_FROM_EMAIL` | Verified-domain sender for monitor alerts, for example `Cadivor Alerts <no-reply@cadivor.com>` |
+| `EMAIL_REPLY_TO` | Monitored reply address; default is `support@cadivor.com` |
+| `SUPABASE_SERVICE_ROLE_KEY` | Server-only key used by the scheduled monitor to read each user's saved notification preferences. Never expose this key to a browser. |
 
 Inbound routing (mailto / contact form topics):
 
@@ -98,8 +101,13 @@ Inbound routing (mailto / contact form topics):
 Production verification still required outside this repo:
 
 1. Supabase Auth → email templates + sender domain for signup / reset mail.
-2. Resend → domain verified and `CADIVOR_FROM_EMAIL` set on Railway.
+2. Resend → domain verified and `TRANSACTIONAL_FROM_EMAIL` set on Railway.
 3. Stripe Dashboard → customer email receipts / invoices use the Stripe customer email; Cadivor billing support mailto uses `billing@cadivor.com`.
+
+Apply `supabase/migrations/20260919_workspace_invitation_acceptance.sql`
+before enabling workspace-invitation email controls. See
+`docs/EMAIL_DELIVERY_AUDIT.md` for the provider and end-to-end verification
+checklist.
 
 ### Supplier APIs
 
