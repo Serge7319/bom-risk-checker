@@ -334,6 +334,27 @@
   }
   bindApplicationLinks();
 
+  const CONTACT_INBOX = {
+    general: 'info@cadivor.com',
+    inquiry: 'info@cadivor.com',
+    demo: 'info@cadivor.com',
+    student: 'info@cadivor.com',
+    enterprise: 'info@cadivor.com',
+    sales: 'info@cadivor.com',
+    beta: 'beta@cadivor.com',
+    blocker: 'beta@cadivor.com',
+    support: 'support@cadivor.com',
+    help: 'support@cadivor.com',
+    product: 'support@cadivor.com',
+    security: 'security@cadivor.com',
+    disclosure: 'security@cadivor.com',
+    legal: 'legal@cadivor.com',
+    terms: 'legal@cadivor.com',
+    privacy: 'legal@cadivor.com',
+    billing: 'billing@cadivor.com',
+    stripe: 'billing@cadivor.com'
+  };
+
   const CONTACT_COPY = {
     general: {
       eyebrow: 'CONTACT',
@@ -359,16 +380,32 @@
     }
   };
 
+  function resolveContactInbox(intent) {
+    const key = String(intent || 'general').trim().toLowerCase();
+    return CONTACT_INBOX[key] || CONTACT_INBOX.general;
+  }
+
+  function contactIntentFromQuery() {
+    const qs = hashQueryParams();
+    const intent = String(qs.get('intent') || '').trim().toLowerCase();
+    if (CONTACT_INBOX[intent]) return intent;
+    return 'general';
+  }
+
   function applyContactMode() {
     const page = $('.page[data-page="contact"]');
     if (!page) return;
     const qs = hashQueryParams();
-    const mode = qs.get('intent') === 'demo' ? 'demo' : 'general';
+    const intent = contactIntentFromQuery();
+    const mode = intent === 'demo' ? 'demo' : 'general';
     const copy = CONTACT_COPY[mode];
     const plan = String(qs.get('plan') || '').trim();
     page.dataset.contactMode = mode;
+    page.dataset.contactIntent = intent;
     if (plan) page.dataset.contactPlan = plan;
     else delete page.dataset.contactPlan;
+    const topic = $('#contactTopic');
+    if (topic && CONTACT_INBOX[intent]) topic.value = intent;
     const aside = $('.contact-panel--copy', page);
     $('.eyebrow', aside)?.replaceChildren(document.createTextNode(copy.eyebrow));
     const headline = $('h1', aside);
@@ -2227,17 +2264,24 @@
         return;
       }
       const qs = hashQueryParams();
-      const isDemo = qs.get('intent') === 'demo';
+      const topic = String(f.get('topic') || qs.get('intent') || 'general').trim().toLowerCase();
+      const intent = CONTACT_INBOX[topic] ? topic : (qs.get('intent') === 'demo' ? 'demo' : 'general');
       const plan = String(qs.get('plan') || '').trim();
-      const copy = CONTACT_COPY[isDemo ? 'demo' : 'general'];
+      const copy = CONTACT_COPY[intent === 'demo' ? 'demo' : 'general'];
+      const inbox = resolveContactInbox(intent);
       const subject = encodeURIComponent(`${copy.mailSubject} ${name}`);
-      const bodyParts = [`Name: ${name}`, `Email: ${email}`, `Company: ${f.get('company') || ''}`];
+      const bodyParts = [
+        `Name: ${name}`,
+        `Email: ${email}`,
+        `Company: ${f.get('company') || ''}`,
+        `Topic: ${topic || intent}`
+      ];
       if (plan) bodyParts.push(`Plan interest: ${plan}`);
       bodyParts.push('', message);
       const body = encodeURIComponent(bodyParts.join('\n'));
       submitBtn?.classList.add('is-submitting');
       if (status) status.textContent = 'Preparing your request…';
-      const mailto = `mailto:info@cadivor.com?subject=${subject}&body=${body}`;
+      const mailto = `mailto:${inbox}?subject=${subject}&body=${body}`;
       setTimeout(() => {
         submitBtn?.classList.remove('is-submitting');
         card?.classList.add('is-success');
