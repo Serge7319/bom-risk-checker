@@ -89,6 +89,14 @@ from src.ui.framework import (
 )
 from src.urls import app_checkout_url, app_url
 from src.secrets import get_secret
+from src.email_delivery import (
+    EmailDeliveryError,
+    email_delivery_configured,
+    send_transactional_email,
+    send_workspace_invitation_email,
+)
+from src.email_routing import BILLING_EMAIL
+from src.monitoring_email_preferences import monitoring_email_enabled
 from src.ui.navigation import (
     ALTERNATIVE_FINDER_PAGE,
     apply_alternative_finder_prefill,
@@ -205,6 +213,7 @@ from src.collaboration_service import (
 )
 from src.workspace_service import (
     ensure_personal_workspace,
+    accept_my_pending_workspace_invites,
     list_members,
     list_invites,
     create_invite,
@@ -416,7 +425,7 @@ def render_maintenance_mode_surface(message):
             <h1 id="cadivor-maintenance-heading">We’re improving Cadivor.</h1>
             <p class="maintenance-message">{safe_message}</p>
             <div class="maintenance-assurance"><span class="maintenance-shield">&#9670;</span><span><strong>Your engineering data is safe.</strong><br/>Your workspace and saved analyses will be available again when service is restored.</span></div>
-            <p class="maintenance-footer">Please check back shortly. For time-sensitive access support, contact <a href="mailto:beta@cadivor.com">beta@cadivor.com</a>.</p>
+            <p class="maintenance-footer">Please check back shortly. For beta access or a launch blocker, contact <a href="mailto:beta@cadivor.com?subject=Cadivor%20Beta%20Blocker">beta@cadivor.com</a>.</p>
           </section>
         </main>
         """,
@@ -2377,13 +2386,10 @@ def run_authenticated_app() -> None:
         return part_data
 
     def send_monitor_alert_email(to_email: str, subject: str, message: str):
-        from src.email_routing import send_resend_email, transactional_from_email
-
-        return send_resend_email(
+        return send_transactional_email(
             to_email=to_email,
             subject=subject,
-            html=f"<p>{message}</p>",
-            from_email=transactional_from_email(),
+            html_body=f"<p>{html.escape(message)}</p>",
         )
     def _json_safe_number(value, default=0):
         """Return a JSON-compliant finite number."""
@@ -7558,7 +7564,7 @@ def run_authenticated_app() -> None:
                 if not created_url:
                     st.error(
                         f"Secure {plan_name} checkout could not be started. "
-                        "Please try again or contact support."
+                        f"Please try again or contact {BILLING_EMAIL}."
                     )
                     return
                 st.session_state[state_key] = created_url
@@ -7568,7 +7574,7 @@ def run_authenticated_app() -> None:
             except Exception:
                 st.error(
                     f"Secure {plan_name} checkout could not be started. "
-                    "Please try again or contact support."
+                    f"Please try again or contact {BILLING_EMAIL}."
                 )
                 return
             # Do not paint the handoff in this run. A fragment rerun replaces the
@@ -7807,7 +7813,7 @@ def run_authenticated_app() -> None:
                             )
                         elif plan_key == "starter" and normalized_current_plan != "starter":
                             st.markdown(
-                                '<div class="cv311-info-note">Contact support to move an existing paid subscription to Starter.</div>',
+                                f'<div class="cv311-info-note">Contact {BILLING_EMAIL} to move an existing paid subscription to Starter.</div>',
                                 unsafe_allow_html=True,
                             )
 
@@ -9093,7 +9099,7 @@ def run_authenticated_app() -> None:
                         ):
                             st.error(
                                 "Billing management could not be opened. "
-                                "Please try again or contact support."
+                                f"Please try again or contact {BILLING_EMAIL}."
                             )
                         cadivor_button_wrap("primary")
                         st.button(
@@ -9140,6 +9146,26 @@ def run_authenticated_app() -> None:
         owner_email = profile.get("email") or _safe_text(current_user.get("email"), "")
         owner_name = profile.get("full_name") or "Cadivor user"
         proposed_workspace_name = profile.get("workspace_name") or profile.get("company") or "Cadivor Workspace"
+
+        accepted_invites, invitation_acceptance_error = (
+            accept_my_pending_workspace_invites(supabase)
+        )
+        invitation_email_configured = email_delivery_configured()
+        invitation_delivery_ready = (
+            invitation_acceptance_error is None
+            and invitation_email_configured
+        )
+        if accepted_invites:
+            accepted_workspace_id = str(
+                accepted_invites[0].get("workspace_id") or ""
+            )
+            if accepted_workspace_id:
+                st.session_state["active_workspace_id"] = accepted_workspace_id
+            accepted_name = _safe_text(
+                accepted_invites[0].get("workspace_name"),
+                "the invited workspace",
+            )
+            st.success(f"Invitation accepted. You now have access to {accepted_name}.")
 
         default_workspace, workspace_error = ensure_personal_workspace(
             supabase,
@@ -9360,13 +9386,18 @@ def run_authenticated_app() -> None:
                         <div class="cv-snapshot-item"><span>Member directory</span><strong>Active</strong></div>
                         <div class="cv-snapshot-item"><span>Invitation records</span><strong>Active</strong></div>
                         <div class="cv-snapshot-item"><span>Role controls</span><strong>{'Owner enabled' if is_owner else 'Permission controlled'}</strong></div>
-                        <div class="cv-snapshot-item"><span>Email delivery</span><strong>Not connected yet</strong></div>
+                        <div class="cv-snapshot-item"><span>Email delivery</span><strong>{'Ready' if invitation_email_configured else 'Configuration required'}</strong></div>
                       </div>
                     </div>
                     """,
                     unsafe_allow_html=True,
                 )
-                st.caption("Organization membership is persistent. Saved BOM scoping and invitation acceptance links arrive in Milestone 11B.2.")
+                if invitation_acceptance_error == "migration_required":
+                    st.caption("Apply the invitation-acceptance migration before sending production workspace invitations.")
+                elif invitation_acceptance_error:
+                    st.caption("Invitation acceptance could not be checked during this request.")
+                else:
+                    st.caption("Invitations are matched to the authenticated email address and accepted securely when the recipient opens Workspace.")
 
         with collaboration_tab:
             st.subheader("Team collaboration")
@@ -9648,28 +9679,62 @@ def run_authenticated_app() -> None:
 
         with invitations_tab:
             st.subheader("Invite team members")
-            st.caption(
-                "Create persistent invitations for admins, engineers, or viewers. "
-                "Cadivor emails the invitee when Resend is configured."
-            )
+            st.caption("Create persistent invitations for admins, engineers, or viewers. Cadivor emails the recipient a secure app link.")
+            invitation_flash = st.session_state.pop("workspace_invite_flash", None)
+            if invitation_flash:
+                flash_kind, flash_message = invitation_flash
+                if flash_kind == "success":
+                    st.success(flash_message)
+                else:
+                    st.warning(flash_message)
+
+            if invitation_acceptance_error == "migration_required":
+                st.warning(
+                    "Apply the workspace invitation-acceptance migration before "
+                    "sending invitations. This prevents recipients from receiving "
+                    "a link that cannot grant access."
+                )
+            elif invitation_acceptance_error:
+                st.warning(
+                    "Invitation acceptance could not be verified, so email actions "
+                    "are temporarily unavailable."
+                )
+            elif not invitation_email_configured:
+                st.warning(
+                    "Configure RESEND_API_KEY and TRANSACTIONAL_FROM_EMAIL before "
+                    "sending workspace invitations."
+                )
             if can_administer:
                 invite_email = st.text_input("Email address", placeholder="engineer@company.com", key="workspace_invite_email")
                 invite_role = st.selectbox("Workspace role", ["Engineer", "Viewer", "Admin"], key="workspace_invite_role")
-                if st.button("Create Invitation", type="primary", key="create_workspace_invite"):
+                if st.button(
+                    "Create Invitation",
+                    type="primary",
+                    key="create_workspace_invite",
+                    disabled=not invitation_delivery_ready,
+                ):
                     created, error = create_invite(supabase, workspace_id, invite_email, invite_role.lower(), user_id, owner_name)
                     if error:
                         st.error(error)
                     else:
-                        delivery_error = ""
-                        if isinstance(created, dict):
-                            delivery_error = str(created.get("email_delivery_error") or "").strip()
-                        if delivery_error:
-                            st.warning(
-                                "Invitation saved, but the email could not be sent. "
-                                f"Share Cadivor access manually if needed. ({delivery_error})"
+                        try:
+                            send_workspace_invitation_email(
+                                to_email=invite_email,
+                                workspace_name=workspace_name,
+                                invited_by_name=owner_name,
+                                role=invite_role,
+                            )
+                        except EmailDeliveryError:
+                            st.session_state["workspace_invite_flash"] = (
+                                "warning",
+                                "The invitation was saved, but its email could not be sent. "
+                                "Confirm the Resend sender and domain, then use Resend Invitation Email below.",
                             )
                         else:
-                            st.success("Workspace invitation created and emailed to the invitee.")
+                            st.session_state["workspace_invite_flash"] = (
+                                "success",
+                                f"Invitation emailed to {invite_email.strip().lower()}.",
+                            )
                         st.rerun()
             else:
                 st.info("Only workspace owners and admins can create invitations.")
@@ -9704,19 +9769,41 @@ def run_authenticated_app() -> None:
                 if can_administer:
                     invite_lookup = {f"{row.get('email')} — {str(row.get('created_at',''))[:10]}": row for row in pending_invites}
                     selected_invite_label = st.selectbox("Select an invitation to cancel", list(invite_lookup.keys()))
-                    if st.button(
-                        "Cancel Selected Invitation",
-                        type="primary",
-                        use_container_width=False,
-                        key="cancel_selected_workspace_invitation",
-                    ):
-                        selected_invite = invite_lookup[selected_invite_label]
-                        error = cancel_invite(supabase, workspace_id, str(selected_invite.get("id")), user_id, owner_name, _safe_text(selected_invite.get("email"), ""))
-                        if error:
-                            st.error(error)
-                        else:
-                            st.success("Invitation cancelled.")
-                            st.rerun()
+                    resend_col, cancel_col = st.columns(2)
+                    with resend_col:
+                        if st.button(
+                            "Resend Invitation Email",
+                            use_container_width=True,
+                            key="resend_workspace_invitation_email",
+                            disabled=not invitation_delivery_ready,
+                        ):
+                            selected_invite = invite_lookup[selected_invite_label]
+                            selected_email = _safe_text(selected_invite.get("email"), "")
+                            try:
+                                send_workspace_invitation_email(
+                                    to_email=selected_email,
+                                    workspace_name=workspace_name,
+                                    invited_by_name=owner_name,
+                                    role=_safe_text(selected_invite.get("role"), "engineer"),
+                                )
+                            except EmailDeliveryError:
+                                st.error("Invitation email could not be sent. Check the Resend configuration and try again.")
+                            else:
+                                st.success(f"Invitation email resent to {selected_email}.")
+                    with cancel_col:
+                        if st.button(
+                            "Cancel Selected Invitation",
+                            type="primary",
+                            use_container_width=True,
+                            key="cancel_selected_workspace_invitation",
+                        ):
+                            selected_invite = invite_lookup[selected_invite_label]
+                            error = cancel_invite(supabase, workspace_id, str(selected_invite.get("id")), user_id, owner_name, _safe_text(selected_invite.get("email"), ""))
+                            if error:
+                                st.error(error)
+                            else:
+                                st.success("Invitation cancelled.")
+                                st.rerun()
 
         with activity_tab:
             st.subheader("Workspace history")
@@ -15852,7 +15939,10 @@ def run_authenticated_app() -> None:
                         st.session_state["checkout_url"] = checkout_url
 
                     except Exception:
-                        st.error("Secure checkout could not be started. Please try again or contact support.")
+                        st.error(
+                            "Secure checkout could not be started. "
+                            f"Please try again or contact {BILLING_EMAIL}."
+                        )
 
                 if "checkout_url" in st.session_state:
                     st.link_button(
@@ -15965,6 +16055,15 @@ def run_authenticated_app() -> None:
 
                 monitor_records = []
                 alert_records = []
+                monitor_email_allowed, monitor_preference_error = (
+                    monitoring_email_enabled(
+                        supabase,
+                        str(current_user.get("id") or ""),
+                    )
+                )
+                monitor_email_recipient = _safe_text(current_user.get("email"), "")
+                if monitor_preference_error:
+                    monitor_email_allowed = False
 
                 for _, row in results_df.iterrows():
                     latest_monitor = (
@@ -16010,8 +16109,24 @@ def run_authenticated_app() -> None:
                             if (
                                 alert.get("severity") == "High"
                                 and alert.get("alert_type") == "Stock Drop"
+                                and monitor_email_allowed
+                                and monitor_email_recipient
                             ):
-                                pass  # Email disabled until Resend domain is verified
+                                try:
+                                    send_monitor_alert_email(
+                                        monitor_email_recipient,
+                                        "High Severity BOM Monitoring Alert",
+                                        (
+                                            f"Part: {row.get('MPN', '')}\n"
+                                            f"Alert: {alert.get('alert_message', '')}\n"
+                                            f"Severity: {alert.get('severity', '')}"
+                                        ),
+                                    )
+                                except EmailDeliveryError:
+                                    st.warning(
+                                        "A high-severity monitoring alert was saved, "
+                                        "but its email could not be delivered."
+                                    )
 
                     if monitor_alerts:
                         st.warning(

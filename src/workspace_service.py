@@ -212,6 +212,33 @@ def list_invites(supabase: Any, workspace_id: str) -> Tuple[List[Dict[str, Any]]
         return [], _message(exc)
 
 
+def accept_my_pending_workspace_invites(
+    supabase: Any,
+) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+    """Accept pending invitations matching the authenticated user's email.
+
+    The security-definer RPC performs the email match and membership write in
+    the database, so the browser never receives authority to accept an invite
+    for another address.
+    """
+    try:
+        response = supabase.rpc(
+            "cadivor_accept_my_workspace_invitations",
+            {},
+        ).execute()
+        value = getattr(response, "data", None)
+        if isinstance(value, list):
+            return [row for row in value if isinstance(row, dict)], None
+        if isinstance(value, dict):
+            return [value], None
+        return [], None
+    except Exception as exc:
+        message = _message(exc)
+        if "cadivor_accept_my_workspace_invitations" in message.lower():
+            return [], "migration_required"
+        return [], message
+
+
 def create_invite(
     supabase: Any,
     workspace_id: str,
@@ -271,49 +298,9 @@ def create_invite(
             f"{normalized_email} was invited as {normalized_role}.",
             "workspace_invite",
         )
-        email_error = _send_workspace_invite_email(
-            invitee_email=normalized_email,
-            role=normalized_role,
-            invited_by_name=invited_by_name,
-            workspace_id=workspace_id,
-        )
-        if invite is not None and email_error:
-            invite = {**invite, "email_delivery_error": email_error}
         return invite, None
     except Exception as exc:
         return None, _message(exc)
-
-
-def _send_workspace_invite_email(
-    *,
-    invitee_email: str,
-    role: str,
-    invited_by_name: str,
-    workspace_id: str,
-) -> Optional[str]:
-    """Deliver the invitation email. Persistence already succeeded."""
-    try:
-        from src.email_routing import (
-            send_resend_email,
-            workspace_invite_email_html,
-        )
-        from src.urls import app_url
-
-        accept_url = app_url("", auth="login", source="workspace_invite")
-        send_resend_email(
-            to_email=invitee_email,
-            subject="You are invited to a Cadivor workspace",
-            html=workspace_invite_email_html(
-                invitee_email=invitee_email,
-                role=role,
-                invited_by_name=invited_by_name,
-                workspace_label=f"workspace {workspace_id}",
-                accept_url=accept_url,
-            ),
-        )
-        return None
-    except Exception as exc:
-        return _message(exc)
 
 
 def cancel_invite(

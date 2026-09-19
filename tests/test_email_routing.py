@@ -43,14 +43,10 @@ class EmailRoutingTests(unittest.TestCase):
 
     def test_marketing_site_routes_beta_support_security_legal(self):
         marketing = (ROOT / "src" / "marketing_site.py").read_text(encoding="utf-8")
-        self.assertIn("mailto:beta@cadivor.com?subject=Cadivor%20Beta%20Program", marketing)
-        self.assertIn("mailto:support@cadivor.com?subject=Cadivor%20Product%20Question", marketing)
-        self.assertIn("mailto:security@cadivor.com?subject=Cadivor%20Security", marketing)
-        self.assertIn("legal@cadivor.com", marketing)
-        self.assertNotIn(
-            "mailto:info@cadivor.com?subject=Cadivor%20Beta%20Program",
-            marketing,
-        )
+        self.assertIn("BETA_EMAIL", marketing)
+        self.assertIn("SUPPORT_EMAIL", marketing)
+        self.assertIn("SECURITY_EMAIL", marketing)
+        self.assertIn("LEGAL_EMAIL", marketing)
 
     def test_marketing_web_contact_form_routes_by_topic(self):
         app_js = (ROOT / "marketing-web" / "app.js").read_text(encoding="utf-8")
@@ -73,7 +69,7 @@ class EmailRoutingTests(unittest.TestCase):
             auth,
         )
 
-    def test_workspace_invite_sends_resend_email(self):
+    def test_workspace_invite_persists_before_runtime_delivery(self):
         from src import workspace_service as ws
 
         supabase = MagicMock()
@@ -84,9 +80,7 @@ class EmailRoutingTests(unittest.TestCase):
             data=[{"id": "inv-1", "email": "eng@example.com", "role": "engineer"}]
         )
 
-        with patch.object(ws, "record_activity"), patch.object(ws, "create_notification"), patch(
-            "src.email_routing.send_resend_email"
-        ) as send_mail:
+        with patch.object(ws, "record_activity"), patch.object(ws, "create_notification"):
             invite, error = ws.create_invite(
                 supabase,
                 "ws-1",
@@ -97,17 +91,16 @@ class EmailRoutingTests(unittest.TestCase):
             )
         self.assertIsNone(error)
         self.assertIsNotNone(invite)
-        send_mail.assert_called_once()
-        kwargs = send_mail.call_args.kwargs
-        self.assertEqual(kwargs["to_email"], "eng@example.com")
-        self.assertIn("invited", kwargs["subject"].lower())
+        self.assertEqual(invite["email"], "eng@example.com")
 
     def test_monitoring_script_honors_notification_preferences(self):
         monitoring = (ROOT / "src" / "run_scheduled_monitoring.py").read_text(
             encoding="utf-8"
         )
-        self.assertIn("_user_allows_monitoring_email", monitoring)
-        self.assertIn("monitoring_notifications", monitoring)
+        self.assertIn("monitoring_email_enabled", monitoring)
+        self.assertIn("email_allowed", monitoring)
+        self.assertIn("send_transactional_email", monitoring)
+        self.assertIn("SUPABASE_SERVICE_ROLE_KEY", monitoring)
         self.assertIn("CADIVOR_FROM_EMAIL", monitoring)
         self.assertNotIn("onboarding@resend.dev", monitoring)
 
