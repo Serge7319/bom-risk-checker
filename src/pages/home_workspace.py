@@ -245,10 +245,6 @@ def render_returning_home(
         work_col, snapshot_col = st.columns([1.72, 1], gap="large")
 
         with work_col:
-            st.markdown(
-                '<div class="cv-home-work-column" aria-hidden="true"></div>',
-                unsafe_allow_html=True,
-            )
             with st.container(key="cv_home_next"):
                 primary_label = html.escape(str(primary.get("label") or "Continue"))
                 primary_bom = html.escape(str(primary.get("bom_name") or ""))
