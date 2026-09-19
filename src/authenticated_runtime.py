@@ -14057,6 +14057,313 @@ def run_authenticated_app() -> None:
                 color:#334155!important;
                 font-weight:800!important;
             }
+            /* BOM workspace refresh: compact context, clear task panels, resilient laptop layout. */
+            .bom9-workspace-hero{
+                display:grid;
+                grid-template-columns:minmax(0,1fr) auto;
+                align-items:end;
+                gap:24px;
+                margin:0 0 20px;
+                padding:22px 24px;
+                border:1px solid #c7dcfb;
+                border-radius:20px;
+                background:
+                    radial-gradient(circle at 96% 0%,rgba(37,99,235,.12),transparent 38%),
+                    linear-gradient(135deg,#ffffff 0%,#f5f9ff 100%);
+                box-shadow:0 12px 32px rgba(15,23,42,.055);
+            }
+            .bom9-workspace-eyebrow,
+            .bom9-panel-kicker{
+                color:#2563eb;
+                font-size:9px;
+                line-height:1.2;
+                font-weight:900;
+                letter-spacing:.12em;
+                text-transform:uppercase;
+            }
+            .bom9-workspace-eyebrow{margin-bottom:8px;}
+            .bom9-workspace-hero h1{
+                margin:0 0 7px;
+                color:#0f172a;
+                font-size:29px;
+                line-height:1.08;
+                letter-spacing:-.035em;
+                font-weight:900;
+            }
+            .bom9-workspace-hero p{
+                max-width:700px;
+                margin:0;
+                color:#53657d;
+                font-size:13px;
+                line-height:1.5;
+                font-weight:600;
+            }
+            .bom9-workspace-stats{
+                display:grid;
+                grid-template-columns:repeat(3,minmax(104px,1fr));
+                gap:9px;
+                min-width:360px;
+            }
+            .bom9-workspace-stat{
+                min-height:76px;
+                padding:12px 13px;
+                border:1px solid #d8e4f3;
+                border-radius:13px;
+                background:rgba(255,255,255,.9);
+            }
+            .bom9-workspace-stat span{
+                display:block;
+                color:#64748b;
+                font-size:8px;
+                font-weight:900;
+                letter-spacing:.08em;
+                text-transform:uppercase;
+                margin-bottom:7px;
+            }
+            .bom9-workspace-stat strong{
+                display:block;
+                color:#0f2a55;
+                font-size:22px;
+                line-height:1;
+                font-weight:900;
+            }
+            .bom9-workspace-stat--attention strong{color:#b45309;}
+            .st-key-bom9_workspace_grid{margin-top:2px;}
+            div[data-testid="stHorizontalBlock"]:has(.st-key-bom9_upload_panel):has(.st-key-bom9_saved_panel){
+                align-items:flex-start!important;
+                gap:18px!important;
+            }
+            div[data-testid="stVerticalBlockBorderWrapper"]:has(.bom9-upload-marker),
+            div[data-testid="stVerticalBlockBorderWrapper"]:has(.bom9-saved-marker){
+                border:1px solid #d6e1ee!important;
+                border-radius:18px!important;
+                background:#ffffff!important;
+                padding:18px!important;
+                box-shadow:0 10px 28px rgba(15,23,42,.045)!important;
+            }
+            div[data-testid="stVerticalBlockBorderWrapper"]:has(.bom9-saved-marker){
+                border-color:#c9ddfb!important;
+                background:linear-gradient(180deg,#ffffff 0%,#fbfdff 100%)!important;
+            }
+            .bom9-upload-marker,.bom9-saved-marker{display:none;}
+            .bom9-panel-intro{
+                display:flex;
+                align-items:flex-start;
+                justify-content:space-between;
+                gap:16px;
+                padding:1px 1px 14px;
+                margin:0 0 12px;
+                border-bottom:1px solid #e7edf5;
+            }
+            .bom9-panel-intro h2{
+                margin:5px 0 5px;
+                color:#0f172a;
+                font-size:20px;
+                line-height:1.2;
+                letter-spacing:-.025em;
+                font-weight:900;
+            }
+            .bom9-panel-intro p{
+                max-width:620px;
+                margin:0;
+                color:#607089;
+                font-size:11.5px;
+                line-height:1.48;
+                font-weight:600;
+            }
+            .bom9-count-pill{
+                flex:0 0 auto;
+                display:inline-flex;
+                align-items:center;
+                justify-content:center;
+                min-width:42px;
+                min-height:34px;
+                padding:6px 10px;
+                border:1px solid #bfdbfe;
+                border-radius:999px;
+                background:#eff6ff;
+                color:#1d4ed8;
+                font-size:12px;
+                font-weight:900;
+                white-space:nowrap;
+            }
+            .bom9-form-note{
+                display:flex;
+                align-items:flex-start;
+                gap:9px;
+                margin:3px 0 12px;
+                padding:9px 11px;
+                border:1px solid #bfdbfe;
+                border-radius:11px;
+                background:#f5f9ff;
+                color:#52647c;
+                font-size:10.5px;
+                line-height:1.4;
+                font-weight:650;
+            }
+            .bom9-form-note strong{
+                flex:0 0 auto;
+                color:#1d4ed8;
+                font-size:9px;
+                letter-spacing:.07em;
+                text-transform:uppercase;
+            }
+            .st-key-bom9_upload_panel .cv-beta-trust-note{
+                margin:12px 0 2px!important;
+                padding:11px 12px!important;
+                border-radius:11px!important;
+                background:#f8fafc!important;
+                font-size:10.5px!important;
+                line-height:1.45!important;
+            }
+            .st-key-bom9_upload_panel .bom8-path-label{
+                margin-top:14px;
+                padding-top:13px;
+                border-top:1px solid #edf1f6;
+            }
+            .st-key-bom9_upload_panel .st-key-bom8_try_sample button{
+                width:100%!important;
+                min-height:40px!important;
+                border-radius:10px!important;
+            }
+            .st-key-bom9_saved_panel .st-key-bom81_saved_manager{margin:0 0 10px;}
+            .st-key-bom9_saved_panel .st-key-bom81_saved_manager details{
+                border:1px solid #dce6f2!important;
+                border-radius:14px!important;
+                box-shadow:none!important;
+            }
+            .st-key-bom9_saved_panel .st-key-bom81_saved_manager summary{
+                min-height:44px!important;
+                background:#f7faff!important;
+            }
+            .bom9-empty-state{
+                display:flex;
+                min-height:180px;
+                flex-direction:column;
+                align-items:center;
+                justify-content:center;
+                padding:22px;
+                border:1px dashed #bfdbfe;
+                border-radius:14px;
+                background:#f8fbff;
+                text-align:center;
+            }
+            .bom9-empty-state strong{
+                color:#0f2a55;
+                font-size:14px;
+                font-weight:900;
+                margin-bottom:5px;
+            }
+            .bom9-empty-state span{
+                max-width:360px;
+                color:#64748b;
+                font-size:11px;
+                line-height:1.5;
+                font-weight:600;
+            }
+            .bom81-result-count{
+                margin:2px 0 7px;
+                color:#64748b;
+                font-size:10.5px;
+                line-height:1.4;
+                font-weight:700;
+            }
+            .bom81-result-count strong{color:#334155;}
+            .st-key-bom9_saved_panel .bom81-selection-status{
+                display:flex;
+                width:100%;
+                max-width:100%;
+                box-sizing:border-box;
+                border-radius:11px;
+                margin:10px 0 8px;
+            }
+            .st-key-bom9_saved_panel div[data-testid="stHorizontalBlock"]:has(.st-key-bom81_save_project_names):has(.st-key-bom81_open_selected){
+                flex-wrap:nowrap!important;
+                gap:8px!important;
+            }
+            .st-key-bom9_saved_panel div[data-testid="stHorizontalBlock"]:has(.st-key-bom81_save_project_names):has(.st-key-bom81_open_selected) > div{
+                min-width:0!important;
+                width:auto!important;
+                flex:1 1 0!important;
+            }
+            .st-key-bom9_saved_panel div[data-testid="stHorizontalBlock"]:has(.st-key-bom81_save_project_names):has(.st-key-bom81_open_selected) button{
+                min-width:0!important;
+                padding-left:8px!important;
+                padding-right:8px!important;
+                font-size:10.5px!important;
+                white-space:nowrap!important;
+            }
+            .st-key-bom9_review_queue{
+                margin-top:12px;
+                padding:12px 13px;
+                border:1px solid #fed7aa;
+                border-radius:13px;
+                background:linear-gradient(135deg,#fffdf7 0%,#fff8ed 100%);
+            }
+            .bom9-review-copy strong{
+                display:block;
+                color:#92400e;
+                font-size:11.5px;
+                font-weight:900;
+                margin-bottom:3px;
+            }
+            .bom9-review-copy span{
+                display:block;
+                color:#786047;
+                font-size:10.5px;
+                line-height:1.4;
+                font-weight:650;
+            }
+            .st-key-bom9_review_queue .st-key-bom81_review_high_risk_components{margin-top:0!important;}
+            .st-key-bom9_review_queue .st-key-bom81_review_high_risk_components button{
+                width:100%!important;
+                min-height:38px!important;
+                font-size:10.5px!important;
+            }
+            @media(max-width:1360px){
+                .bom9-workspace-hero{grid-template-columns:minmax(0,1fr) minmax(330px,.62fr);}
+                .bom9-workspace-stats{min-width:0;}
+                div[data-testid="stHorizontalBlock"]:has(.st-key-bom9_upload_panel):has(.st-key-bom9_saved_panel){
+                    gap:14px!important;
+                }
+                div[data-testid="stVerticalBlockBorderWrapper"]:has(.bom9-upload-marker),
+                div[data-testid="stVerticalBlockBorderWrapper"]:has(.bom9-saved-marker){
+                    padding:15px!important;
+                }
+            }
+            @media(max-width:1100px){
+                .bom9-workspace-hero{grid-template-columns:1fr;}
+                .bom9-workspace-stats{width:100%;}
+                div[data-testid="stHorizontalBlock"]:has(.st-key-bom9_upload_panel):has(.st-key-bom9_saved_panel){
+                    flex-wrap:wrap!important;
+                }
+                div[data-testid="stHorizontalBlock"]:has(.st-key-bom9_upload_panel):has(.st-key-bom9_saved_panel) > div{
+                    flex:1 1 100%!important;
+                    width:100%!important;
+                    min-width:100%!important;
+                }
+            }
+            @media(max-width:820px){
+                .st-key-bom9_saved_panel div[data-testid="stHorizontalBlock"]:has(.st-key-bom81_save_project_names):has(.st-key-bom81_open_selected){
+                    flex-wrap:wrap!important;
+                }
+                .st-key-bom9_saved_panel div[data-testid="stHorizontalBlock"]:has(.st-key-bom81_save_project_names):has(.st-key-bom81_open_selected) > div{
+                    flex:1 1 calc(50% - 8px)!important;
+                    width:calc(50% - 8px)!important;
+                }
+            }
+            @media(max-width:620px){
+                .bom9-workspace-hero{padding:18px;}
+                .bom9-workspace-hero h1{font-size:25px;}
+                .bom9-workspace-stats{grid-template-columns:1fr;}
+                .bom9-workspace-stat{min-height:0;}
+                .bom9-panel-intro{display:block;}
+                .bom9-count-pill{margin-top:10px;}
+                .st-key-bom9_saved_panel div[data-testid="stHorizontalBlock"]:has(.st-key-bom81_save_project_names):has(.st-key-bom81_open_selected) > div{
+                    flex:1 1 100%!important;
+                    width:100%!important;
+                }
+            }
             @media(max-width:900px){
                 .bom8-saved-summary{grid-template-columns:1fr 1fr;}
             }
@@ -14108,11 +14415,13 @@ def run_authenticated_app() -> None:
             saved_analysis_count = int(len(history_df))
             average_health = int(round(history_df["health_score"].mean()))
             total_high_risk = int(history_df["high_risk_count"].sum())
+            review_bom_count = int((history_df["high_risk_count"] > 0).sum())
             best_health = int(history_df["health_score"].max())
         else:
             saved_analysis_count = 0
             average_health = 0
             total_high_risk = 0
+            review_bom_count = 0
             best_health = 0
 
         st.markdown(
@@ -14250,20 +14559,25 @@ def run_authenticated_app() -> None:
             )
     
             st.markdown('<div id="saved-bom-manager" hidden></div>', unsafe_allow_html=True)
+            st.markdown(
+                f"""
+                <div class="bom9-saved-marker"></div>
+                <section class="bom9-panel-intro">
+                  <div>
+                    <div class="bom9-panel-kicker">Saved work</div>
+                    <h2>Saved BOMs</h2>
+                    <p>{
+                      "Showing saved analyses with high-risk components."
+                      if st.session_state.get("bom81_high_risk_review")
+                      else "Search, compare, rename, open, or safely remove analyses from this workspace."
+                    }</p>
+                  </div>
+                  <span class="bom9-count-pill">{saved_analysis_count} saved</span>
+                </section>
+                """,
+                unsafe_allow_html=True,
+            )
             if should_render_saved_analysis_control(history_data, route=app_mode, status="ok"):
-                st.markdown(
-                    f"""
-                    <section class="bom8-primary-card bom8-saved-card">
-                      <div class="bom8-primary-card-title">Saved BOMs ({saved_analysis_count})</div>
-                      <p class="bom8-primary-card-copy">{
-                        "Showing saved analyses with high-risk components."
-                        if st.session_state.get("bom81_high_risk_review")
-                        else "Open, search, or manage saved analyses."
-                      }</p>
-                    </section>
-                    """,
-                    unsafe_allow_html=True,
-                )
                 if st.session_state.get("bom81_high_risk_review"):
                     if st.button(
                         "Show all saved analyses",
@@ -14454,7 +14768,10 @@ def run_authenticated_app() -> None:
                                     st.info("No saved analyses match the current search.")
                                 else:
                                     st.markdown(
-                                        """
+                                        f"""
+                                        <div class="bom81-result-count">
+                                          Showing <strong>{len(manager_df)}</strong> of <strong>{saved_analysis_count}</strong> saved BOMs
+                                        </div>
                                         <div class="bom81-table-guide">
                                           <span><strong>Health</strong> 🟢 healthy · 🟡 monitor · 🔴 attention</span>
                                           <span><strong>Risk</strong> shows the highest open issue.</span>
@@ -14519,7 +14836,7 @@ def run_authenticated_app() -> None:
                                         editor_df,
                                         use_container_width=True,
                                         hide_index=True,
-                                        height=min(520, 70 + len(editor_df) * 35),
+                                        height=min(540, 88 + len(editor_df) * 40),
                                         disabled=[
                                             "Health",
                                             "Risk",
@@ -14939,33 +15256,66 @@ def run_authenticated_app() -> None:
     
             else:
                 release_saved_analysis_placeholder()
-
-            if total_high_risk:
                 st.markdown(
-                    f"<div class=\"bom8-secondary-card bom8-secondary-card--attention\"><strong>Review queue</strong><span>{total_high_risk} high-risk component{'s' if total_high_risk != 1 else ''} need engineering review.</span></div>",
+                    """
+                    <div class="bom9-empty-state">
+                      <strong>No saved BOMs yet</strong>
+                      <span>Your completed analyses will appear here with health, risk, and update details.</span>
+                    </div>
+                    """,
                     unsafe_allow_html=True,
                 )
-                if st.button(
-                    f"Review {total_high_risk} high-risk component{'s' if total_high_risk != 1 else ''}",
-                    key="bom81_review_high_risk_components",
-                    type="secondary",
-                    use_container_width=False,
-                    help="Open the saved components that need engineering review.",
-                ):
-                    open_high_risk_component_review(arm_opening=False)
+
+            if total_high_risk:
+                with st.container(key="bom9_review_queue"):
+                    review_copy_col, review_action_col = st.columns([0.6, 0.4], gap="small")
+                    with review_copy_col:
+                        st.markdown(
+                            f"""
+                            <div class="bom9-review-copy">
+                              <strong>Review queue</strong>
+                              <span>{total_high_risk} high-risk component{'s' if total_high_risk != 1 else ''} need engineering review.</span>
+                            </div>
+                            """,
+                            unsafe_allow_html=True,
+                        )
+                    with review_action_col:
+                        if st.button(
+                            f"Review {total_high_risk} high-risk part{'s' if total_high_risk != 1 else ''}",
+                            key="bom81_review_high_risk_components",
+                            type="secondary",
+                            use_container_width=True,
+                            help="Open the saved components that need engineering review.",
+                        ):
+                            open_high_risk_component_review(arm_opening=False)
 
         # Keep the primary task together: workflow and form occupy the reserved top slot
         # occupy the reserved top slot; saved analyses remain below it.
         _bom_new_analysis_context = bom_new_analysis_slot.container()
         _bom_new_analysis_context.__enter__()
         st.markdown(
-            """
-            <div class="bom8-section-head">
+            f"""
+            <section class="bom9-workspace-hero">
               <div>
-                <h2>Start a new BOM analysis</h2>
-                <p>Prepare the project, confirm the expected columns, and upload the source file.</p>
+                <div class="bom9-workspace-eyebrow">BOM workspace</div>
+                <h1>Build or reopen an engineering BOM</h1>
+                <p>Start a new analysis, or continue saved work with health and risk context already in view.</p>
               </div>
-            </div>
+              <div class="bom9-workspace-stats" aria-label="Workspace BOM summary">
+                <div class="bom9-workspace-stat">
+                  <span>Saved BOMs</span>
+                  <strong>{saved_analysis_count}</strong>
+                </div>
+                <div class="bom9-workspace-stat bom9-workspace-stat--attention">
+                  <span>Need review</span>
+                  <strong>{review_bom_count}</strong>
+                </div>
+                <div class="bom9-workspace-stat">
+                  <span>Average health</span>
+                  <strong>{average_health}</strong>
+                </div>
+              </div>
+            </section>
             """,
             unsafe_allow_html=True,
         )
@@ -14991,38 +15341,57 @@ def run_authenticated_app() -> None:
         )
         if st.session_state.pop("bom8_analysis_cancelled_notice", False):
             st.success("Analysis canceled. No BOM analysis was saved.")
-        input_col, saved_manager_col = st.columns([0.46, 0.54], gap="large")
+        _bom_workspace_grid_context = st.container(key="bom9_workspace_grid")
+        _bom_workspace_grid_context.__enter__()
+        input_col, saved_manager_col = st.columns([0.42, 0.58], gap="large")
 
         with input_col:
+            _bom_upload_panel_context = st.container(
+                border=True,
+                key="bom9_upload_panel",
+            )
+            _bom_upload_panel_context.__enter__()
             st.markdown(
                 """
-                <div class="bom8-primary-card bom8-upload-card">
-                  <div class="bom8-upload-title">Upload engineering BOM</div>
-                  <div class="bom8-upload-copy">
-                    Give the analysis a recognizable project or revision name, then select
-                    the CSV or Excel file used by your engineering or sourcing team.
+                <div class="bom9-upload-marker"></div>
+                <section class="bom9-panel-intro">
+                  <div>
+                    <div class="bom9-panel-kicker">New analysis</div>
+                    <h2>Upload engineering BOM</h2>
+                    <p>Name the work, then choose Cadivor's sample or upload your own CSV or Excel file.</p>
                   </div>
-                </div>
+                </section>
                 """,
                 unsafe_allow_html=True,
             )
 
-            project_name = st.text_input(
-                "Project Name (optional)",
-                placeholder="Example: Motor Controller",
-                key="bom8_project_name",
-                disabled=analysis_in_progress,
-                help="Use a project to group multiple BOM revisions or assemblies.",
-            )
-            bom_name = st.text_input(
-                "BOM Name",
-                placeholder="Example: Motor Controller Rev A",
-                key="bom8_bom_name",
-                disabled=analysis_in_progress,
-                help="Required. Name this specific BOM, revision, or assembly.",
-            )
+            project_name_col, bom_name_col = st.columns(2, gap="small")
+            with project_name_col:
+                project_name = st.text_input(
+                    "Project Name (optional)",
+                    placeholder="Example: Motor Controller",
+                    key="bom8_project_name",
+                    disabled=analysis_in_progress,
+                    help="Use a project to group multiple BOM revisions or assemblies.",
+                )
+            with bom_name_col:
+                bom_name = st.text_input(
+                    "BOM Name",
+                    placeholder="Example: Motor Controller Rev A",
+                    key="bom8_bom_name",
+                    disabled=analysis_in_progress,
+                    help="Required. Name this specific BOM, revision, or assembly.",
+                )
             if not bom_name.strip() and not st.session_state.get("bom8_sample_auto_analyze"):
-                st.info("BOM Name is required before Cadivor can analyze an uploaded BOM. Project Name is optional; use it to group related BOMs.")
+                st.markdown(
+                    """
+                    <div class="bom9-form-note" role="status">
+                      <strong>Required</strong>
+                      <span>Add a BOM Name before uploading. Project Name is optional and helps group revisions.</span>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
 
             sample_bom = pd.DataFrame(
                 {
@@ -15103,11 +15472,18 @@ def run_authenticated_app() -> None:
                 on_change=_use_uploaded_bom,
                 disabled=analysis_in_progress,
             )
-
+            _bom_upload_panel_context.__exit__(None, None, None)
 
         with saved_manager_col:
+            _bom_saved_panel_context = st.container(
+                border=True,
+                key="bom9_saved_panel",
+            )
+            _bom_saved_panel_context.__enter__()
             _render_saved_bom_manager()
+            _bom_saved_panel_context.__exit__(None, None, None)
 
+        _bom_workspace_grid_context.__exit__(None, None, None)
         sample_mode = bool(st.session_state.get("bom8_sample_mode"))
         source_filename = "cadivor_10_part_sample_bom.csv" if sample_mode else (
             uploaded_file.name if uploaded_file is not None else ""
