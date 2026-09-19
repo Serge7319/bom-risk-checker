@@ -1034,12 +1034,8 @@ section[data-testid="stMain"]:has(.cv-dashboard-page) {
 /* ------------------------------------------------------------------
    Home — two-column action workspace
    ------------------------------------------------------------------ */
-.cv-home-work-column {
-  display: none;
-}
-
 .st-key-cv_home_workspace
-  [data-testid="stHorizontalBlock"]:has(.cv-home-work-column):has(.st-key-cv_home_snapshot) {
+  [data-testid="stHorizontalBlock"]:has(.st-key-cv_home_next):has(.st-key-cv_home_snapshot) {
   align-items: flex-start;
   gap: clamp(20px, 2.2vw, 34px) !important;
 }
@@ -1268,12 +1264,12 @@ section[data-testid="stMain"]:has(.cv-dashboard-page) {
 
 @media (max-width: 1000px) {
   .st-key-cv_home_workspace
-    [data-testid="stHorizontalBlock"]:has(.cv-home-work-column):has(.st-key-cv_home_snapshot) {
+    [data-testid="stHorizontalBlock"]:has(.st-key-cv_home_next):has(.st-key-cv_home_snapshot) {
     display: block !important;
   }
 
   .st-key-cv_home_workspace
-    [data-testid="stHorizontalBlock"]:has(.cv-home-work-column):has(.st-key-cv_home_snapshot)
+    [data-testid="stHorizontalBlock"]:has(.st-key-cv_home_next):has(.st-key-cv_home_snapshot)
     > [data-testid="column"] {
     width: 100% !important;
     min-width: 0 !important;
