@@ -318,6 +318,7 @@ def render_returning_home(
                 st.markdown(
                     """
                     <div class="cv-home-snapshot-head">
+                      <span class="cv-home-snapshot-eyebrow">Workspace overview</span>
                       <div>
                         <span>Workspace snapshot</span>
                         <p>Use these shortcuts to move from insight to action.</p>
@@ -331,11 +332,18 @@ def render_returning_home(
                     st.markdown(
                         f"""
                         <div class="cv-home-kpi-copy">
-                          <div class="cv-home-kpi-topline">
-                            <span>Saved BOMs</span>
+                          <span class="cv-home-kpi-eyebrow">Portfolio</span>
+                          <div class="cv-home-kpi-heading">
+                            <h3>Saved BOMs</h3>
                             <strong>{len(analyses)}</strong>
                           </div>
                           <p>Open and manage every analysis saved in this workspace.</p>
+                          <div class="cv-home-kpi-preview">
+                            <span class="cv-home-kpi-line cv-home-kpi-line--primary"></span>
+                            <span class="cv-home-kpi-line cv-home-kpi-line--long"></span>
+                            <span class="cv-home-kpi-line"></span>
+                            <b>{len(analyses)} analyses available</b>
+                          </div>
                         </div>
                         """,
                         unsafe_allow_html=True,
@@ -351,11 +359,18 @@ def render_returning_home(
                     st.markdown(
                         f"""
                         <div class="cv-home-kpi-copy">
-                          <div class="cv-home-kpi-topline">
-                            <span>Needs review</span>
+                          <span class="cv-home-kpi-eyebrow">Decisions</span>
+                          <div class="cv-home-kpi-heading">
+                            <h3>Needs review</h3>
                             <strong>{review_boms}</strong>
                           </div>
                           <p>BOMs with unresolved risk waiting for an engineering decision.</p>
+                          <div class="cv-home-kpi-preview">
+                            <span class="cv-home-kpi-line cv-home-kpi-line--primary"></span>
+                            <span class="cv-home-kpi-line cv-home-kpi-line--long"></span>
+                            <span class="cv-home-kpi-line"></span>
+                            <b>{review_boms} BOMs waiting for review</b>
+                          </div>
                         </div>
                         """,
                         unsafe_allow_html=True,
@@ -371,11 +386,18 @@ def render_returning_home(
                     st.markdown(
                         f"""
                         <div class="cv-home-kpi-copy">
-                          <div class="cv-home-kpi-topline">
-                            <span>High-risk parts</span>
+                          <span class="cv-home-kpi-eyebrow">Risk</span>
+                          <div class="cv-home-kpi-heading">
+                            <h3>High-risk parts</h3>
                             <strong>{high_risk_total}</strong>
                           </div>
                           <p>Components requiring attention across your saved BOMs.</p>
+                          <div class="cv-home-kpi-preview">
+                            <span class="cv-home-kpi-line cv-home-kpi-line--primary"></span>
+                            <span class="cv-home-kpi-line cv-home-kpi-line--long"></span>
+                            <span class="cv-home-kpi-line"></span>
+                            <b>{high_risk_total} high-risk components</b>
+                          </div>
                         </div>
                         """,
                         unsafe_allow_html=True,
@@ -395,11 +417,18 @@ def render_returning_home(
                     st.markdown(
                         f"""
                         <div class="cv-home-kpi-copy">
-                          <div class="cv-home-kpi-topline">
-                            <span>Average health</span>
+                          <span class="cv-home-kpi-eyebrow">Health</span>
+                          <div class="cv-home-kpi-heading">
+                            <h3>Average health</h3>
                             <strong>{average_health}</strong>
                           </div>
                           <p>Average score across BOMs with a recorded health score.</p>
+                          <div class="cv-home-kpi-preview">
+                            <span class="cv-home-kpi-line cv-home-kpi-line--primary"></span>
+                            <span class="cv-home-kpi-line cv-home-kpi-line--long"></span>
+                            <span class="cv-home-kpi-line"></span>
+                            <b>Average health score {average_health}</b>
+                          </div>
                         </div>
                         """,
                         unsafe_allow_html=True,
