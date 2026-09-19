@@ -956,3 +956,127 @@ section[data-testid="stMain"] .st-key-cv_foundation_navigation .stButton > butto
     min-height: 40px !important;
   }
 }
+
+
+/* ========================================================================
+   Cadivor responsive composition system
+   A shared density and canvas contract for every authenticated page.
+   ======================================================================== */
+:root {
+  --cv-layout-canvas-max: 1560px;
+  --cv-layout-space: 24px;
+  --cv-layout-section-gap: 20px;
+}
+
+/* Large monitors: retain an expansive workspace without stretching cards,
+   tables, and reading lines across the entire display. */
+@media (min-width: 1700px) {
+  section[data-testid="stMain"] [data-testid="stMainBlockContainer"] {
+    max-width: var(--cv-layout-canvas-max) !important;
+    margin-inline: auto !important;
+  }
+}
+
+/* Standard desktops and laptops: compact the page rhythm, while preserving
+   the labelled rail and the useful two-column workspaces. */
+@media (min-width: 1081px) and (max-width: 1440px) {
+  :root {
+    --cv-layout-space: 20px;
+    --cv-layout-section-gap: 16px;
+  }
+
+  [data-testid="stMainBlockContainer"],
+  .main .block-container {
+    padding-top: calc(var(--cv-foundation-top) + 18px) !important;
+    padding-bottom: 40px !important;
+  }
+
+  .cv-command-hero,
+  .cv56-page-context,
+  .cv57-command-center,
+  .cadivor-page-header,
+  .dashboard-hero,
+  .premium-hero {
+    padding-block: 18px !important;
+  }
+}
+
+/* Tablet landscape: the shell becomes compact and page-level paired work
+   areas stack before either side becomes too narrow to read or operate. */
+@media (max-width: 1080px) {
+  :root {
+    --cv-layout-space: 16px;
+    --cv-layout-section-gap: 14px;
+  }
+
+  [data-testid="stMainBlockContainer"],
+  .main .block-container {
+    padding-top: calc(var(--cv-foundation-top) + 16px) !important;
+    padding-bottom: 32px !important;
+  }
+
+  /* BOM creation and saved-analysis management become one clear sequence. */
+  section[data-testid="stMain"] [data-testid="stHorizontalBlock"]:has(.bom8-primary-card) {
+    flex-wrap: wrap !important;
+    gap: 16px !important;
+  }
+
+  section[data-testid="stMain"] [data-testid="stHorizontalBlock"]:has(.bom8-primary-card) > [data-testid="column"] {
+    flex: 1 1 100% !important;
+    width: 100% !important;
+  }
+
+  /* Profile, workspace, and other paired information panels follow the same
+     rule when their available width is reduced. */
+  section[data-testid="stMain"] [data-testid="stHorizontalBlock"]:has(.cv-ws-card) {
+    flex-wrap: wrap !important;
+    gap: 16px !important;
+  }
+
+  section[data-testid="stMain"] [data-testid="stHorizontalBlock"]:has(.cv-ws-card) > [data-testid="column"] {
+    flex: 1 1 100% !important;
+    width: 100% !important;
+  }
+
+  .cv64-section__title {
+    font-size: clamp(25px, 4vw, 32px) !important;
+  }
+
+  .cv64-metric-grid:not(.cv64-metric-grid--decision-snapshot) {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+/* Phone portrait: a focused single-column flow with touch-friendly controls.
+   Data remains available through horizontal table scrolling instead of being
+   crushed into unreadable columns. */
+@media (max-width: 640px) {
+  :root {
+    --cv-layout-space: 12px;
+    --cv-layout-section-gap: 12px;
+  }
+
+  [data-testid="stMainBlockContainer"],
+  .main .block-container {
+    padding-top: calc(var(--cv-foundation-top) + 12px) !important;
+    padding-bottom: 28px !important;
+  }
+
+  .cv-command-hero,
+  .cv56-page-context,
+  .cv57-command-center,
+  .cadivor-page-header,
+  .dashboard-hero,
+  .premium-hero {
+    padding: 14px !important;
+  }
+
+  .cv64-metric-grid,
+  .cv64-metric-grid--decision-snapshot {
+    grid-template-columns: 1fr !important;
+  }
+
+  section[data-testid="stMain"] .stButton > button {
+    min-height: 42px;
+  }
+}
