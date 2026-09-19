@@ -90,7 +90,7 @@ To the extent permitted by law, Cadivor is provided “as is” and “as availa
 To the maximum extent permitted by law, Cadivor and its owners, officers, employees, contractors, suppliers, service providers, and affiliates will not be liable for indirect, incidental, consequential, special, punitive, procurement, production, recall, lost-profit, lost-data, business-interruption, design-failure, regulatory, or manufacturing damages arising from use of the service.
 
 #### 10. Contact
-Questions about these Terms may be sent to **info@cadivor.com** with “Terms” in the subject line.
+Questions about these Terms may be sent to **legal@cadivor.com** with “Terms” in the subject line.
 
 *This pre-launch version requires review by qualified counsel and completion with Cadivor’s legal entity name, business address, governing law, payment and refund terms, dispute process, and enterprise-specific provisions before commercial launch.*
 """

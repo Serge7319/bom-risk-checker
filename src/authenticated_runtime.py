@@ -2337,23 +2337,13 @@ def run_authenticated_app() -> None:
         return part_data
 
     def send_monitor_alert_email(to_email: str, subject: str, message: str):
-        import resend
-        resend.api_key = get_secret("RESEND_API_KEY", required=True)
-        from_email = get_secret(
-            "ALERT_FROM_EMAIL",
-            default="Cadivor <onboarding@resend.dev>",
-        )
+        from src.email_routing import send_resend_email, transactional_from_email
 
-        if not resend.api_key:
-            raise ValueError("Missing RESEND_API_KEY in configuration")
-
-        return resend.Emails.send(
-            {
-                "from": from_email,
-                "to": [to_email],
-                "subject": subject,
-                "html": f"<p>{message}</p>",
-            }
+        return send_resend_email(
+            to_email=to_email,
+            subject=subject,
+            html=f"<p>{message}</p>",
+            from_email=transactional_from_email(),
         )
     def _json_safe_number(value, default=0):
         """Return a JSON-compliant finite number."""
@@ -7555,9 +7545,14 @@ def run_authenticated_app() -> None:
                     if is_current:
                         st.markdown('<div class="cv311-current-note">Your active plan</div>', unsafe_allow_html=True)
                     elif plan_key == "student":
+                        from src.email_routing import mailto_href
+
                         st.link_button(
                             "Request Student Access",
-                            "mailto:info@cadivor.com?subject=Cadivor%20Student%20Plan%20Request",
+                            mailto_href(
+                                "student",
+                                subject="Cadivor Student Plan Request",
+                            ),
                             use_container_width=True,
                         )
                     else:
@@ -7701,13 +7696,18 @@ def run_authenticated_app() -> None:
                                 CHECKOUT_PLAN_TOKENS[plan["name"]],
                             )
                         elif plan_key == "enterprise":
+                            from src.email_routing import mailto_href
+
                             st.markdown(
                                 '<span class="cv311-contact-sales" data-testid="cv311-contact-sales"></span>',
                                 unsafe_allow_html=True,
                             )
                             st.link_button(
                                 "Contact Sales",
-                                "mailto:info@cadivor.com?subject=Cadivor%20Enterprise%20Inquiry",
+                                mailto_href(
+                                    "enterprise",
+                                    subject="Cadivor Enterprise Inquiry",
+                                ),
                                 type="secondary",
                                 use_container_width=True,
                             )
@@ -9025,6 +9025,15 @@ def run_authenticated_app() -> None:
                     use_container_width=True,
                 )
                 cadivor_button_wrap_end()
+                from src.email_routing import BILLING_EMAIL, mailto_href
+
+                st.markdown(
+                    f'<p style="margin:12px 0 0;font-size:13px;color:#64748B">'
+                    f'Billing support: '
+                    f'<a href="{mailto_href("billing", subject="Cadivor billing support")}">'
+                    f'{BILLING_EMAIL}</a></p>',
+                    unsafe_allow_html=True,
+                )
 
         stop_authenticated_page()
 
@@ -9545,7 +9554,10 @@ def run_authenticated_app() -> None:
 
         with invitations_tab:
             st.subheader("Invite team members")
-            st.caption("Create persistent invitations for admins, engineers, or viewers. Email delivery is not connected in this release.")
+            st.caption(
+                "Create persistent invitations for admins, engineers, or viewers. "
+                "Cadivor emails the invitee when Resend is configured."
+            )
             if can_administer:
                 invite_email = st.text_input("Email address", placeholder="engineer@company.com", key="workspace_invite_email")
                 invite_role = st.selectbox("Workspace role", ["Engineer", "Viewer", "Admin"], key="workspace_invite_role")
@@ -9554,7 +9566,16 @@ def run_authenticated_app() -> None:
                     if error:
                         st.error(error)
                     else:
-                        st.success("Workspace invitation created. Email delivery will be connected in a later capability.")
+                        delivery_error = ""
+                        if isinstance(created, dict):
+                            delivery_error = str(created.get("email_delivery_error") or "").strip()
+                        if delivery_error:
+                            st.warning(
+                                "Invitation saved, but the email could not be sent. "
+                                f"Share Cadivor access manually if needed. ({delivery_error})"
+                            )
+                        else:
+                            st.success("Workspace invitation created and emailed to the invitee.")
                         st.rerun()
             else:
                 st.info("Only workspace owners and admins can create invitations.")
@@ -10019,7 +10040,13 @@ def run_authenticated_app() -> None:
                 if tutorial_index < len(tutorials) - 1 and st.button("Next tutorial →", key="resources_next", use_container_width=True):
                     st.session_state["cadivor_resources_tutorial"] = tutorials[tutorial_index + 1][0]
                     st.rerun()
-        st.markdown("<div class='cv-resource-note'><strong>Need help with a real BOM?</strong> Email support@cadivor.com with the workflow step where you are blocked. Do not include confidential BOM details in email.</div>", unsafe_allow_html=True)
+        st.markdown(
+            "<div class='cv-resource-note'><strong>Need help with a real BOM?</strong> "
+            "Email <a href='mailto:support@cadivor.com?subject=Cadivor%20product%20support'>"
+            "support@cadivor.com</a> with the workflow step where you are blocked. "
+            "Do not include confidential BOM details in email.</div>",
+            unsafe_allow_html=True,
+        )
         st.markdown("</div>", unsafe_allow_html=True)
         stop_authenticated_page()
 

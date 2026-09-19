@@ -81,7 +81,25 @@ Checkout does not activate a Cadivor plan. Versioned source is `supabase/functio
 | Variable | Purpose |
 |----------|---------|
 | `RESEND_API_KEY` | Resend API key |
-| `ALERT_FROM_EMAIL` | Sender address for monitor alerts |
+| `CADIVOR_FROM_EMAIL` | Preferred verified sender for invites and alerts (example: `Cadivor <noreply@cadivor.com>`) |
+| `ALERT_FROM_EMAIL` | Fallback sender for monitor alerts when `CADIVOR_FROM_EMAIL` is unset |
+
+Inbound routing (mailto / contact form topics):
+
+| Inbox | Use |
+|-------|-----|
+| `info@cadivor.com` | General, demos, student requests |
+| `beta@cadivor.com` | Beta invitations and blocker reports |
+| `support@cadivor.com` | Customer help |
+| `security@cadivor.com` | Responsible disclosure |
+| `legal@cadivor.com` | Legal / terms / privacy |
+| `billing@cadivor.com` | Stripe billing support |
+
+Production verification still required outside this repo:
+
+1. Supabase Auth → email templates + sender domain for signup / reset mail.
+2. Resend → domain verified and `CADIVOR_FROM_EMAIL` set on Railway.
+3. Stripe Dashboard → customer email receipts / invoices use the Stripe customer email; Cadivor billing support mailto uses `billing@cadivor.com`.
 
 ### Supplier APIs
 

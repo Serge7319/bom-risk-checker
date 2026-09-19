@@ -25,9 +25,10 @@ supabase = create_client(
 )
 
 resend.api_key = os.getenv("RESEND_API_KEY")
-ALERT_FROM_EMAIL = os.getenv(
-    "ALERT_FROM_EMAIL",
-    "Cadivor <onboarding@resend.dev>",
+ALERT_FROM_EMAIL = (
+    os.getenv("CADIVOR_FROM_EMAIL")
+    or os.getenv("ALERT_FROM_EMAIL")
+    or "Cadivor <noreply@cadivor.com>"
 )
 
 
@@ -38,6 +39,36 @@ users_response = (
 )
 
 users = users_response.data or []
+
+
+def _user_allows_monitoring_email(user_id: str) -> bool:
+    """Honor Settings → Notification preferences for monitoring alerts.
+
+    Missing preference rows default to enabled so existing users keep alerts.
+    """
+    if not user_id:
+        return True
+    try:
+        response = (
+            supabase.table("user_preferences")
+            .select("email_notifications,monitoring_notifications")
+            .eq("user_id", user_id)
+            .limit(1)
+            .execute()
+        )
+        rows = response.data or []
+        if not rows:
+            return True
+        prefs = rows[0] or {}
+        if prefs.get("email_notifications") is False:
+            return False
+        if prefs.get("monitoring_notifications") is False:
+            return False
+        return True
+    except Exception as exc:
+        print(f"Could not read notification preferences for {user_id}: {exc}")
+        return True
+
 
 def recently_alerted(user_id, part_number, alert_type, hours=24):
     cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours)
@@ -137,6 +168,12 @@ for user in users:
 
             for alert in new_alert_records:
                 if alert.get("severity") == "High":
+                    if not _user_allows_monitoring_email(user_id):
+                        print(
+                            f"Skipping alert email for {part_number}: "
+                            f"user {user_email} disabled monitoring notifications"
+                        )
+                        continue
                     try:
                         resend.Emails.send(
                             {
