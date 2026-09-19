@@ -225,60 +225,76 @@ def render_returning_home(
             refresh_failed=bool(model.get("secondary_refresh_failed")),
         )
     primary = model.get("primary") or {}
-    with st.container(key="cv_home_next"):
-        primary_label = html.escape(str(primary.get("label") or "Continue"))
-        primary_bom = html.escape(str(primary.get("bom_name") or ""))
-        primary_context = html.escape(
-            str(primary.get("context") or "Open the saved BOM and continue the review.")
-        )
-        st.markdown(
-            f'''<div class="cv-home-priority-copy">
-              <p class="cv-home-kicker">Next engineering action</p>
-              <h2>{primary_label}</h2>
-              <p>{primary_context}{f" · {primary_bom}" if primary_bom else ""}</p>
-            </div>''',
-            unsafe_allow_html=True,
-        )
-        action_col, new_col = st.columns([1.6, 1])
-        with action_col:
-            if st.button(
-                str(primary.get("action_label") or primary.get("label") or "Continue"),
-                key="home_primary_action",
-                type="primary",
-            ):
-                _run_primary(primary)
-        with new_col:
-            if pause_new_analyses:
-                if st.button("Open reports", key="home_open_reports"):
-                    navigate_to("Reports", arm_opening=False)
-            elif st.button("New BOM", key="home_new_bom"):
-                navigate_to("BOM Analyzer", new_analysis="1", arm_opening=False)
-
     recent = list(model.get("recent") or [])
-    if recent:
-        st.markdown(
-            '<h2 class="cv-home-recent-title">Recent BOMs</h2>',
-            unsafe_allow_html=True,
-        )
-        for card in recent:
-            with st.container(key=f"cv_home_bom_{card['id']}"):
-                left, right = st.columns([4, 1])
-                with left:
-                    st.markdown(
-                        f"""
-                        <div class="cv-home-bom">
-                          <div class="cv-home-bom-name">{html.escape(card['name'])}</div>
-                          <div class="cv-home-chips">{_recent_chips(card)}</div>
-                        </div>
-                        """,
-                        unsafe_allow_html=True,
-                    )
-                with right:
+
+    with st.container(key="cv_home_workspace"):
+        priority_col, recent_col = st.columns([1.12, 0.88], gap="large")
+
+        with priority_col:
+            with st.container(key="cv_home_next"):
+                primary_label = html.escape(str(primary.get("label") or "Continue"))
+                primary_bom = html.escape(str(primary.get("bom_name") or ""))
+                primary_context = html.escape(
+                    str(primary.get("context") or "Open the saved BOM and continue the review.")
+                )
+                st.markdown(
+                    f'''<div class="cv-home-priority-copy">
+                      <p class="cv-home-kicker">Next engineering action</p>
+                      <h2>{primary_label}</h2>
+                      <p>{primary_context}{f" · {primary_bom}" if primary_bom else ""}</p>
+                    </div>''',
+                    unsafe_allow_html=True,
+                )
+                action_col, new_col = st.columns([1, 1], gap="small")
+                with action_col:
                     if st.button(
-                        "Open BOM",
-                        key=f"home_continue_{card['id']}",
+                        str(primary.get("action_label") or primary.get("label") or "Continue"),
+                        key="home_primary_action",
+                        type="primary",
+                        use_container_width=True,
                     ):
-                        open_saved_bom(card["id"], arm_opening=True, _rerun=True)
+                        _run_primary(primary)
+                with new_col:
+                    if pause_new_analyses:
+                        if st.button(
+                            "Open reports",
+                            key="home_open_reports",
+                            use_container_width=True,
+                        ):
+                            navigate_to("Reports", arm_opening=False)
+                    elif st.button(
+                        "New BOM",
+                        key="home_new_bom",
+                        use_container_width=True,
+                    ):
+                        navigate_to("BOM Analyzer", new_analysis="1", arm_opening=False)
+
+        with recent_col:
+            if recent:
+                st.markdown(
+                    '<h2 class="cv-home-recent-title">Recent BOMs</h2>',
+                    unsafe_allow_html=True,
+                )
+                for card in recent:
+                    with st.container(key=f"cv_home_bom_{card['id']}"):
+                        left, right = st.columns([4, 1])
+                        with left:
+                            st.markdown(
+                                f"""
+                                <div class="cv-home-bom">
+                                  <div class="cv-home-bom-name">{html.escape(card['name'])}</div>
+                                  <div class="cv-home-chips">{_recent_chips(card)}</div>
+                                </div>
+                                """,
+                                unsafe_allow_html=True,
+                            )
+                        with right:
+                            if st.button(
+                                "Open BOM",
+                                key=f"home_continue_{card['id']}",
+                                use_container_width=True,
+                            ):
+                                open_saved_bom(card["id"], arm_opening=True, _rerun=True)
 
 
 def _run_primary(primary: Mapping[str, Any]) -> None:
