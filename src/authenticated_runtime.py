@@ -14011,29 +14011,6 @@ def run_authenticated_app() -> None:
                 background:#fff!important;
                 box-shadow:0 8px 20px rgba(15,23,42,.035)!important;
             }
-            .bom81-table-guide{
-                display:flex;
-                flex-wrap:wrap;
-                align-items:center;
-                gap:8px 18px;
-                margin:8px 0 10px;
-                color:#64748b;
-                font-size:11px;
-                line-height:1.45;
-            }
-            .bom81-table-guide span{
-                display:inline-flex;
-                align-items:center;
-                min-height:26px;
-                padding:4px 9px;
-                border:1px solid #e2e8f0;
-                border-radius:999px;
-                background:#f8fafc;
-            }
-            .bom81-table-guide strong{
-                color:#334155;
-                margin-right:4px;
-            }
             .st-key-bom81_saved_manager [data-testid="stTextInput"] input,
             .st-key-bom81_saved_manager [data-testid="stSelectbox"] > div > div{
                 border-radius:10px!important;
@@ -14173,10 +14150,7 @@ def run_authenticated_app() -> None:
             }
             /* BOM workspace refresh: compact context, clear task panels, resilient laptop layout. */
             .bom9-workspace-hero{
-                display:grid;
-                grid-template-columns:minmax(0,1fr) auto;
-                align-items:end;
-                gap:24px;
+                display:block;
                 margin:0 0 20px;
                 padding:22px 24px;
                 border:1px solid #c7dcfb;
@@ -14212,36 +14186,6 @@ def run_authenticated_app() -> None:
                 line-height:1.5;
                 font-weight:600;
             }
-            .bom9-workspace-stats{
-                display:grid;
-                grid-template-columns:repeat(3,minmax(104px,1fr));
-                gap:9px;
-                min-width:360px;
-            }
-            .bom9-workspace-stat{
-                min-height:76px;
-                padding:12px 13px;
-                border:1px solid #d8e4f3;
-                border-radius:13px;
-                background:rgba(255,255,255,.9);
-            }
-            .bom9-workspace-stat span{
-                display:block;
-                color:#64748b;
-                font-size:8px;
-                font-weight:900;
-                letter-spacing:.08em;
-                text-transform:uppercase;
-                margin-bottom:7px;
-            }
-            .bom9-workspace-stat strong{
-                display:block;
-                color:#0f2a55;
-                font-size:22px;
-                line-height:1;
-                font-weight:900;
-            }
-            .bom9-workspace-stat--attention strong{color:#b45309;}
             .st-key-bom9_workspace_grid{margin-top:2px;}
             div[data-testid="stHorizontalBlock"]:has(.st-key-bom9_upload_panel):has(.st-key-bom9_saved_panel){
                 align-items:flex-start!important;
@@ -14383,6 +14327,27 @@ def run_authenticated_app() -> None:
                 font-weight:700;
             }
             .bom81-result-count strong{color:#334155;}
+            .bom81-table-intelligence{
+                display:flex;
+                align-items:flex-start;
+                gap:9px;
+                margin:8px 0 10px;
+                padding:9px 11px;
+                border:1px solid #dbeafe;
+                border-radius:11px;
+                background:#f8fbff;
+                color:#52647c;
+                font-size:10.5px;
+                line-height:1.45;
+                font-weight:650;
+            }
+            .bom81-table-intelligence strong{
+                flex:0 0 auto;
+                color:#1d4ed8;
+                font-size:9px;
+                letter-spacing:.07em;
+                text-transform:uppercase;
+            }
             .st-key-bom9_saved_panel .bom81-selection-status{
                 display:flex;
                 width:100%;
@@ -14414,6 +14379,9 @@ def run_authenticated_app() -> None:
                 border-radius:13px;
                 background:linear-gradient(135deg,#fffdf7 0%,#fff8ed 100%);
             }
+            .st-key-bom9_review_queue > div[data-testid="stVerticalBlock"] > div[data-testid="stHorizontalBlock"]{
+                align-items:center!important;
+            }
             .bom9-review-copy strong{
                 display:block;
                 color:#92400e;
@@ -14429,14 +14397,19 @@ def run_authenticated_app() -> None:
                 font-weight:650;
             }
             .st-key-bom9_review_queue .st-key-bom81_review_high_risk_components{margin-top:0!important;}
+            .st-key-bom9_review_queue .st-key-bom81_review_high_risk_components{
+                display:flex!important;
+                justify-content:flex-end!important;
+            }
             .st-key-bom9_review_queue .st-key-bom81_review_high_risk_components button{
-                width:100%!important;
+                width:auto!important;
+                min-width:172px!important;
                 min-height:38px!important;
+                padding-left:14px!important;
+                padding-right:14px!important;
                 font-size:10.5px!important;
             }
             @media(max-width:1360px){
-                .bom9-workspace-hero{grid-template-columns:minmax(0,1fr) minmax(330px,.62fr);}
-                .bom9-workspace-stats{min-width:0;}
                 div[data-testid="stHorizontalBlock"]:has(.st-key-bom9_upload_panel):has(.st-key-bom9_saved_panel){
                     gap:14px!important;
                 }
@@ -14446,8 +14419,6 @@ def run_authenticated_app() -> None:
                 }
             }
             @media(max-width:1100px){
-                .bom9-workspace-hero{grid-template-columns:1fr;}
-                .bom9-workspace-stats{width:100%;}
                 div[data-testid="stHorizontalBlock"]:has(.st-key-bom9_upload_panel):has(.st-key-bom9_saved_panel){
                     flex-wrap:wrap!important;
                 }
@@ -14465,12 +14436,22 @@ def run_authenticated_app() -> None:
                     flex:1 1 calc(50% - 8px)!important;
                     width:calc(50% - 8px)!important;
                 }
+                .st-key-bom9_review_queue > div[data-testid="stVerticalBlock"] > div[data-testid="stHorizontalBlock"]{
+                    flex-wrap:wrap!important;
+                    gap:8px!important;
+                }
+                .st-key-bom9_review_queue > div[data-testid="stVerticalBlock"] > div[data-testid="stHorizontalBlock"] > div{
+                    flex:1 1 100%!important;
+                    width:100%!important;
+                    min-width:100%!important;
+                }
+                .st-key-bom9_review_queue .st-key-bom81_review_high_risk_components{
+                    justify-content:flex-start!important;
+                }
             }
             @media(max-width:620px){
                 .bom9-workspace-hero{padding:18px;}
                 .bom9-workspace-hero h1{font-size:25px;}
-                .bom9-workspace-stats{grid-template-columns:1fr;}
-                .bom9-workspace-stat{min-height:0;}
                 .bom9-panel-intro{display:block;}
                 .bom9-count-pill{margin-top:10px;}
                 .st-key-bom9_saved_panel div[data-testid="stHorizontalBlock"]:has(.st-key-bom81_save_project_names):has(.st-key-bom81_open_selected) > div{
@@ -14527,16 +14508,10 @@ def run_authenticated_app() -> None:
                 ).fillna(default_value)
 
             saved_analysis_count = int(len(history_df))
-            average_health = int(round(history_df["health_score"].mean()))
             total_high_risk = int(history_df["high_risk_count"].sum())
-            review_bom_count = int((history_df["high_risk_count"] > 0).sum())
-            best_health = int(history_df["health_score"].max())
         else:
             saved_analysis_count = 0
-            average_health = 0
             total_high_risk = 0
-            review_bom_count = 0
-            best_health = 0
 
         st.markdown(
             """
@@ -14720,6 +14695,7 @@ def run_authenticated_app() -> None:
                                     "id": "",
                                     "project_name": "Saved BOM analysis",
                                     "filename": "—",
+                                    "total_parts": 0,
                                     "health_score": 0,
                                     "high_risk_count": 0,
                                     "medium_risk_count": 0,
@@ -14739,6 +14715,7 @@ def run_authenticated_app() -> None:
                                 manager_df["filename"] = manager_df["filename"].fillna("—")
     
                                 for numeric_column in (
+                                    "total_parts",
                                     "health_score",
                                     "high_risk_count",
                                     "medium_risk_count",
@@ -14777,35 +14754,32 @@ def run_authenticated_app() -> None:
                                 manager_df["BOM Name"] = title_parts[1].where(
                                     has_project_group, legacy_title
                                 ).fillna("Saved BOM analysis").replace("", "Saved BOM analysis")
-                                manager_df["Health"] = manager_df.apply(
-                                    lambda row: (
-                                        (
-                                            "🟢" if int(row["health_score"]) >= 75
-                                            else "🟡" if int(row["health_score"]) >= 60
-                                            else "🟠" if int(row["health_score"]) >= 40
-                                            else "🔴"
-                                        )
-                                        + f" {int(row['health_score'])}"
-                                    ),
-                                    axis=1,
+                                manager_df["Components"] = manager_df["total_parts"].clip(lower=0)
+                                manager_df["Health"] = manager_df["health_score"].clip(
+                                    lower=0,
+                                    upper=100,
                                 )
 
-                                def _saved_bom_review_status(row):
+                                def _saved_bom_next_step(row):
                                     high = int(row["high_risk_count"])
                                     medium = int(row["medium_risk_count"])
-                                    low = int(row["low_risk_count"])
                                     if high:
-                                        return f"🔴 {high} high · {medium} medium"
+                                        return f"🔴 Review {high} high-risk"
                                     if medium:
-                                        return f"🟠 {medium} medium · {low} low"
-                                    return "🟢 Low risk"
+                                        return f"🟠 Monitor {medium} medium-risk"
+                                    if int(row["health_score"]) < 75:
+                                        return "🟡 Inspect health score"
+                                    return "🟢 Ready · no open risk"
 
-                                manager_df["Review Status"] = manager_df.apply(
-                                    _saved_bom_review_status,
+                                manager_df["Next step"] = manager_df.apply(
+                                    _saved_bom_next_step,
                                     axis=1,
                                 )
 
-                                filter_col, sort_col = st.columns([0.68, 0.32], gap="medium")
+                                filter_col, focus_col, sort_col = st.columns(
+                                    [0.52, 0.20, 0.28],
+                                    gap="medium",
+                                )
     
                                 with filter_col:
                                     manager_search = st.text_input(
@@ -14813,11 +14787,19 @@ def run_authenticated_app() -> None:
                                         placeholder="Search project name, BOM name, or source file",
                                         key="bom81_manager_search",
                                     )
-    
+
+                                with focus_col:
+                                    manager_focus = st.selectbox(
+                                        "Show",
+                                        options=["All BOMs", "Needs review", "Ready"],
+                                        key="bom81_manager_focus",
+                                    )
+
                                 with sort_col:
                                     manager_sort = st.selectbox(
-                                        "Sort analyses",
+                                        "Sort",
                                         options=[
+                                            "Needs attention first",
                                             "Newest first",
                                             "Oldest first",
                                             "Health: high to low",
@@ -14827,7 +14809,20 @@ def run_authenticated_app() -> None:
                                         ],
                                         key="bom81_manager_sort",
                                     )
-    
+
+                                if manager_focus == "Needs review":
+                                    manager_df = manager_df[
+                                        (manager_df["high_risk_count"] > 0)
+                                        | (manager_df["medium_risk_count"] > 0)
+                                        | (manager_df["health_score"] < 75)
+                                    ]
+                                elif manager_focus == "Ready":
+                                    manager_df = manager_df[
+                                        (manager_df["high_risk_count"] == 0)
+                                        & (manager_df["medium_risk_count"] == 0)
+                                        & (manager_df["health_score"] >= 75)
+                                    ]
+
                                 if manager_search.strip():
                                     search_value = manager_search.strip().lower()
                                     manager_df = manager_df[
@@ -14845,7 +14840,18 @@ def run_authenticated_app() -> None:
                                         .str.contains(search_value, na=False)
                                     ]
     
-                                if manager_sort == "Newest first":
+                                if manager_sort == "Needs attention first":
+                                    manager_df = manager_df.sort_values(
+                                        [
+                                            "high_risk_count",
+                                            "medium_risk_count",
+                                            "health_score",
+                                            "created_at_sort",
+                                        ],
+                                        ascending=[False, False, True, False],
+                                        na_position="last",
+                                    )
+                                elif manager_sort == "Newest first":
                                     manager_df = manager_df.sort_values(
                                         "created_at_sort",
                                         ascending=False,
@@ -14886,9 +14892,9 @@ def run_authenticated_app() -> None:
                                         <div class="bom81-result-count">
                                           Showing <strong>{len(manager_df)}</strong> of <strong>{saved_analysis_count}</strong> saved BOMs
                                         </div>
-                                        <div class="bom81-table-guide">
-                                          <span><strong>Health</strong> 🟢 healthy · 🟡 monitor · 🔴 attention</span>
-                                          <span><strong>Risk</strong> shows the highest open issue.</span>
+                                        <div class="bom81-table-intelligence">
+                                          <strong>Decision view</strong>
+                                          <span>Health shows release readiness from 0–100. Next step identifies the highest-priority engineering action. Select a BOM to act on it.</span>
                                         </div>
                                         """,
                                         unsafe_allow_html=True,
@@ -14908,8 +14914,9 @@ def run_authenticated_app() -> None:
                                             "Select": False,
                                             "Project Name": manager_df["Project Name"].astype(str),
                                             "BOM Name": manager_df["BOM Name"].astype(str),
-                                            "Health": manager_df["Health"].astype(str),
-                                            "Risk": manager_df["Review Status"].astype(str),
+                                            "Components": manager_df["Components"].astype(int),
+                                            "Health": manager_df["Health"].astype(int),
+                                            "Next step": manager_df["Next step"].astype(str),
                                             "Updated": manager_df["Updated"].astype(str),
                                             "_analysis_id": manager_df["id"].astype(str),
                                         }
@@ -14950,10 +14957,11 @@ def run_authenticated_app() -> None:
                                         editor_df,
                                         use_container_width=True,
                                         hide_index=True,
-                                        height=min(540, 88 + len(editor_df) * 40),
+                                        height=min(520, 76 + len(editor_df) * 44),
                                         disabled=[
+                                            "Components",
                                             "Health",
-                                            "Risk",
+                                            "Next step",
                                             "Updated",
                                             "_analysis_id",
                                         ],
@@ -14973,14 +14981,23 @@ def run_authenticated_app() -> None:
                                                 help="Edit this value, then use Save names.",
                                                 width="medium",
                                             ),
-                                            "Health": st.column_config.TextColumn(
-                                                "Health",
-                                                help="Cadivor health score from 0 to 100. Green is healthier; amber and red need attention.",
+                                            "Components": st.column_config.NumberColumn(
+                                                "Parts",
+                                                help="Total component rows analyzed in this BOM.",
                                                 width="small",
+                                                format="%d",
                                             ),
-                                            "Risk": st.column_config.TextColumn(
-                                                "Risk",
-                                                help="The highest open risk in this BOM. Red means high-risk parts; amber means medium-risk parts.",
+                                            "Health": st.column_config.ProgressColumn(
+                                                "Health",
+                                                help="Cadivor release-readiness score from 0 to 100.",
+                                                width="small",
+                                                min_value=0,
+                                                max_value=100,
+                                                format="%d",
+                                            ),
+                                            "Next step": st.column_config.TextColumn(
+                                                "Next step",
+                                                help="The highest-priority action based on open component risk and BOM health.",
                                                 width="medium",
                                             ),
                                             "Updated": st.column_config.TextColumn(
@@ -15013,19 +15030,23 @@ def run_authenticated_app() -> None:
                                     selected_count = len(selected_ids)
                                     selection_label = "analysis" if selected_count == 1 else "analyses"
                                     selected_project = ""
+                                    selected_next_step = ""
                                     if selected_count == 1 and "BOM Name" in selected_rows.columns:
                                         selected_project = str(selected_rows.iloc[0]["BOM Name"] or "").strip()
+                                        selected_next_step = str(
+                                            selected_rows.iloc[0].get("Next step") or ""
+                                        ).strip()
     
                                     selection_copy = (
-                                        "Select one checkbox to enable Open Analysis."
+                                        "Select one BOM to enable Open BOM."
                                         if selected_count == 0
                                         else (
-                                            f"Selected: {selected_project}. Open Analysis is ready."
+                                            f"Selected: {selected_project}. {selected_next_step or 'Open BOM is ready.'}"
                                             if selected_project
-                                            else "One analysis selected. Open Analysis is ready."
+                                            else "One BOM selected. Open BOM is ready."
                                         )
                                         if selected_count == 1
-                                        else "Multiple analyses selected. Use bulk delete or clear the selection; analyses open one at a time."
+                                        else "Multiple BOMs selected. Use Delete or Clear; BOMs open one at a time."
                                     )
                                     st.markdown(
                                         f"""
@@ -15191,7 +15212,7 @@ def run_authenticated_app() -> None:
 
                                     with open_col:
                                         if st.button(
-                                            "Open Selected Analysis" if selected_count == 1 else "Open Analysis (select 1)",
+                                            "Open BOM" if selected_count == 1 else "Open BOM (select 1)",
                                             type="primary",
                                             use_container_width=True,
                                             disabled=selected_count != 1,
@@ -15215,7 +15236,7 @@ def run_authenticated_app() -> None:
     
                                     with delete_col:
                                         if st.button(
-                                            f"Delete Selected ({selected_count})",
+                                            f"Delete ({selected_count})",
                                             type="secondary",
                                             use_container_width=True,
                                             disabled=selected_count == 0,
@@ -15226,7 +15247,7 @@ def run_authenticated_app() -> None:
     
                                     with clear_col:
                                         if st.button(
-                                            "Clear Selection",
+                                            "Clear",
                                             use_container_width=True,
                                             disabled=selected_count == 0,
                                             key="bom81_clear_selection",
@@ -15363,9 +15384,7 @@ def run_authenticated_app() -> None:
                                                 st.rerun()
     
                                     st.caption(
-                                        "Opening is a single-analysis action. Select exactly one row to open it. "
-                                        "Selecting two or more rows does not open them together; it enables bulk deletion. "
-                                        "The table is read-only except for the selection checkboxes."
+                                        "Select one BOM to open it. Select multiple BOMs only when you want to delete them together."
                                     )
     
             else:
@@ -15382,7 +15401,7 @@ def run_authenticated_app() -> None:
 
             if total_high_risk:
                 with st.container(key="bom9_review_queue"):
-                    review_copy_col, review_action_col = st.columns([0.6, 0.4], gap="small")
+                    review_copy_col, review_action_col = st.columns([0.76, 0.24], gap="small")
                     with review_copy_col:
                         st.markdown(
                             f"""
@@ -15395,10 +15414,10 @@ def run_authenticated_app() -> None:
                         )
                     with review_action_col:
                         if st.button(
-                            f"Review {total_high_risk} high-risk part{'s' if total_high_risk != 1 else ''}",
+                            "Review high-risk parts",
                             key="bom81_review_high_risk_components",
                             type="secondary",
-                            use_container_width=True,
+                            use_container_width=False,
                             help="Open the saved components that need engineering review.",
                         ):
                             open_high_risk_component_review(arm_opening=False)
@@ -15410,25 +15429,9 @@ def run_authenticated_app() -> None:
         st.markdown(
             f"""
             <section class="bom9-workspace-hero">
-              <div>
-                <div class="bom9-workspace-eyebrow">BOM workspace</div>
-                <h1>Build or reopen an engineering BOM</h1>
-                <p>Start a new analysis, or continue saved work with health and risk context already in view.</p>
-              </div>
-              <div class="bom9-workspace-stats" aria-label="Workspace BOM summary">
-                <div class="bom9-workspace-stat">
-                  <span>Saved BOMs</span>
-                  <strong>{saved_analysis_count}</strong>
-                </div>
-                <div class="bom9-workspace-stat bom9-workspace-stat--attention">
-                  <span>Need review</span>
-                  <strong>{review_bom_count}</strong>
-                </div>
-                <div class="bom9-workspace-stat">
-                  <span>Average health</span>
-                  <strong>{average_health}</strong>
-                </div>
-              </div>
+              <div class="bom9-workspace-eyebrow">BOM workspace</div>
+              <h1>Build or reopen an engineering BOM</h1>
+              <p>Start a new analysis, or continue saved work with health, component scope, and the next engineering action already in view.</p>
             </section>
             """,
             unsafe_allow_html=True,
@@ -15457,7 +15460,7 @@ def run_authenticated_app() -> None:
             st.success("Analysis canceled. No BOM analysis was saved.")
         _bom_workspace_grid_context = st.container(key="bom9_workspace_grid")
         _bom_workspace_grid_context.__enter__()
-        input_col, saved_manager_col = st.columns([0.42, 0.58], gap="large")
+        input_col, saved_manager_col = st.columns([0.38, 0.62], gap="large")
 
         with input_col:
             _bom_upload_panel_context = st.container(
