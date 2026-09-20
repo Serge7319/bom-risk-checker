@@ -13,12 +13,17 @@ TREE = ast.parse(RUNTIME)
 
 
 class ReportsPricingLaunchIntegrityTests(unittest.TestCase):
-    def test_report_library_advertises_only_available_pdf_and_csv(self):
-        start = RUNTIME.index("first_template_data = [")
-        end = RUNTIME.index("second_template_cards = []", start)
-        report_library = RUNTIME[start:end]
-        self.assertNotIn('"Excel"', report_library)
-        self.assertEqual(report_library.count('["PDF", "CSV"]'), 5)
+    def test_actionable_report_center_offers_only_available_pdf_and_csv(self):
+        start = RUNTIME.index("preview_options = [")
+        end = RUNTIME.index(
+            "selected_preview = reports_workspace.selectbox(",
+            start,
+        )
+        report_center = RUNTIME[start:end]
+        self.assertNotIn("Excel", report_center)
+        self.assertEqual(report_center.count('"mime": "application/pdf"'), 7)
+        self.assertEqual(report_center.count('"mime": "text/csv"'), 5)
+        self.assertEqual(report_center.count('key="report_package_'), 5)
 
     def test_decision_cache_changes_when_current_bom_evidence_changes(self):
         start = RUNTIME.index("report_evidence_df = (")
@@ -54,7 +59,9 @@ class ReportsPricingLaunchIntegrityTests(unittest.TestCase):
     def test_executive_pdf_uses_explicit_customer_typography(self):
         pdf_source = RUNTIME[
             RUNTIME.index("def _build_executive_pdf("):
-            RUNTIME.index("        total_reports = len(report_records)")
+            RUNTIME.index(
+                '<style id="cadivor-reports-decision-workspace-v10">'
+            )
         ]
         for style_name in (
             "CadivorReportTitle",
@@ -81,21 +88,30 @@ class ReportsPricingLaunchIntegrityTests(unittest.TestCase):
         self.assertNotIn("_record_session_report", helper_source)
 
     def test_every_reports_download_uses_the_safe_download_helper(self):
-        start = RUNTIME.index("preview_tabs = st.tabs(")
-        end = RUNTIME.index("action_cols = st.columns(3)", start)
+        start = RUNTIME.index("def _report_download_button(")
+        end = RUNTIME.index("action_cols = reports_workspace.columns(3", start)
         report_downloads = RUNTIME[start:end]
-        self.assertNotIn("st.download_button(", report_downloads)
+        helper_end = report_downloads.index("preview_options = [")
+        helper_source = report_downloads[:helper_end]
+        card_source = report_downloads[helper_end:]
+        self.assertEqual(helper_source.count("st.download_button("), 1)
+        self.assertNotIn("st.download_button(", card_source)
         self.assertIn('"on_click": "ignore"', RUNTIME)
-        self.assertEqual(report_downloads.count("_report_download_button("), 16)
+        self.assertEqual(card_source.count('"key": f"report_center_'), 12)
+        self.assertIn("_report_download_button(**download)", card_source)
 
     def test_reports_do_not_display_unreliable_session_download_counts(self):
         report_source = RUNTIME[RUNTIME.index("# ---------- Reports ----------"):]
         self.assertNotIn("reports_session_history", report_source)
-        self.assertIn('label="Formats"', report_source)
-        self.assertIn('value="PDF + CSV"', report_source)
+        self.assertNotIn('label="Formats"', report_source)
+        self.assertNotIn('value="PDF + CSV"', report_source)
+        self.assertIn('key="reports_package_center"', report_source)
+        self.assertNotIn("Professional report library", report_source)
 
     def test_reports_have_mobile_layout_guards(self):
-        css_start = RUNTIME.index('<style id="cadivor-reports-professional-v9a">')
+        css_start = RUNTIME.index(
+            '<style id="cadivor-reports-decision-workspace-v10">'
+        )
         css_end = RUNTIME.index("</style>", css_start)
         css = RUNTIME[css_start:css_end]
         self.assertIn("@media(max-width:760px)", css)

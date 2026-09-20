@@ -23,19 +23,23 @@ class ReportDownloadStabilityTests(unittest.TestCase):
         source = RUNTIME_PATH.read_text(encoding="utf-8")
         start = source.index("# ---------- Reports ----------")
         report_source = source[start:]
-        for label in (
-            "AI Executive Brief · PDF",
-            "Executive Summary · PDF",
-            "Executive Data · CSV",
-            "Risk Review · CSV",
-            "Lifecycle Review · CSV",
-            "Alternatives Review · CSV",
-            "AI Procurement Brief · PDF",
-            "Sourcing Review · CSV",
+        for key_fragment in (
+            "report_center_executive_brief_",
+            "report_center_executive_summary_",
+            "report_center_executive_csv_",
+            "report_center_risk_pdf_",
+            "report_center_risk_csv_",
+            "report_center_procurement_brief_",
+            "report_center_sourcing_pdf_",
+            "report_center_sourcing_csv_",
+            "report_center_lifecycle_pdf_",
+            "report_center_lifecycle_csv_",
+            "report_center_alternatives_pdf_",
+            "report_center_alternatives_csv_",
         ):
-            position = report_source.index(f'"{label}"')
-            window = report_source[max(0, position - 120): position + 420]
-            self.assertIn("_report_download_button(", window)
+            self.assertIn(key_fragment, report_source)
+        self.assertEqual(report_source.count('"key": f"report_center_'), 12)
+        self.assertIn("_report_download_button(**download)", report_source)
 
 
 if __name__ == "__main__":
