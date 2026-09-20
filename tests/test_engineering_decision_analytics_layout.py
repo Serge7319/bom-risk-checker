@@ -39,11 +39,30 @@ class EngineeringDecisionAnalyticsLayoutTests(unittest.TestCase):
         self.assertIn('"Volume"', self.analytics)
         self.assertIn('"What this means"', self.analytics)
         self.assertIn("What is driving the active queue", self.analytics)
-        self.assertIn('"Queue"', self.analytics)
-        self.assertIn('"Effort"', self.analytics)
+        self.assertIn('"Open"', self.analytics)
+        self.assertIn('"Critical"', self.analytics)
+        self.assertIn('"Effort (hrs)"', self.analytics)
         self.assertIn('"What it addresses"', self.analytics)
         self.assertIn("driver_meaning", self.analytics)
         self.assertNotIn("Average Priority", self.analytics)
+
+    def test_queue_driver_table_drills_into_open_and_critical_decisions(self):
+        self.assertIn('key="ed_analytics_driver_table"', self.analytics)
+        self.assertIn('on_select="rerun"', self.analytics)
+        self.assertIn('selection_mode="single-row"', self.analytics)
+        self.assertIn("selected_driver_rows", self.analytics)
+        self.assertIn("selected_driver_critical", self.analytics)
+        self.assertIn('key="ed_queue_driver_drilldown"', self.analytics)
+        self.assertIn("All open (", self.analytics)
+        self.assertIn("Critical (", self.analytics)
+        self.assertIn("st.pills(", self.analytics)
+
+    def test_drilldown_records_have_direct_review_actions(self):
+        self.assertIn("visible_driver_decisions", self.analytics)
+        self.assertIn('"Review decision"', self.analytics)
+        self.assertIn('key=f"ed_driver_review_{decision_id}"', self.analytics)
+        self.assertIn('"Engineering Decisions",', self.analytics)
+        self.assertIn("decision_id=decision_id", self.analytics)
 
 
 if __name__ == "__main__":
