@@ -4002,29 +4002,6 @@ def run_authenticated_app() -> None:
             icon="radar",
         )
 
-        st.markdown(
-            """
-            <style>
-            .cv320-kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px;margin:14px 0 22px}.cv320-kpi{border:1px solid #e2e8f0;background:#fff;border-radius:16px;padding:15px 16px;box-shadow:0 10px 28px rgba(15,23,42,.045);transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease}.cv320-kpi:hover{transform:translateY(-2px);border-color:#bfdbfe;box-shadow:0 16px 34px rgba(37,99,235,.09)}.cv320-kpi span{display:block;font-size:10px;font-weight:900;letter-spacing:.06em;text-transform:uppercase;color:#64748b!important;margin-bottom:7px}.cv320-kpi strong{font-size:25px;font-weight:950;color:#0f172a!important}.cv320-kpi small{display:block;font-size:10px;font-weight:700;color:#64748b!important;margin-top:5px}
-            .cv320-card{--accent:#2563eb;border:1px solid #dbe3ef;border-left:5px solid var(--accent);background:#fff;border-radius:18px;padding:17px 18px;margin:11px 0;box-shadow:0 10px 28px rgba(15,23,42,.05);transition:transform .18s ease,box-shadow .18s ease}.cv320-card:hover{transform:translateY(-1px);box-shadow:0 16px 36px rgba(15,23,42,.075)}.cv320-card.critical{--accent:#dc2626}.cv320-card.high{--accent:#f97316}.cv320-card.medium{--accent:#eab308}.cv320-card.low{--accent:#16a34a}.cv320-cardhead{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.cv320-part{font-size:18px;font-weight:950;color:#0f172a!important}.cv320-type{font-size:10px;font-weight:950;letter-spacing:.07em;text-transform:uppercase;color:var(--accent)!important;margin-bottom:5px}.cv320-change{font-size:13px;font-weight:700;color:#475569!important;line-height:1.55;margin:10px 0}.cv320-pills{display:flex;flex-wrap:wrap;gap:7px}.cv320-pill{border:1px solid #dbeafe;background:#eff6ff;border-radius:999px;padding:6px 9px;font-size:10px;font-weight:850;color:#1d4ed8!important}.cv320-recommendation{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:start;border:1px solid #bfdbfe;background:linear-gradient(135deg,#eff6ff,#f8fbff);border-radius:14px;margin-top:13px;padding:13px 14px}.cv320-recicon{width:31px;height:31px;border-radius:10px;background:#dbeafe;color:#1d4ed8!important;display:flex;align-items:center;justify-content:center;font-weight:950}.cv320-rectitle{font-size:10px;font-weight:950;letter-spacing:.06em;text-transform:uppercase;color:#1d4ed8!important}.cv320-reccopy{font-size:12px;font-weight:850;color:#0f172a!important;line-height:1.45;margin-top:3px}.cv320-impact{font-size:10px;font-weight:760;color:#52647a!important;line-height:1.4;margin-top:5px}.cv320-confidence{border-left:1px solid #bfdbfe;padding-left:12px;text-align:right;white-space:nowrap}.cv320-confidence span{display:block;font-size:8px;font-weight:900;text-transform:uppercase;color:#64748b!important}.cv320-confidence strong{font-size:15px;font-weight:950;color:#1d4ed8!important}.cv320-score{border-radius:999px;padding:8px 11px;font-size:10px;font-weight:950;white-space:nowrap}.cv320-score.bad{background:#fef2f2;border:1px solid #fecaca;color:#b91c1c!important}.cv320-score.warn{background:#fffbeb;border:1px solid #fde68a;color:#a16207!important}.cv320-score.good{background:#ecfdf5;border:1px solid #a7f3d0;color:#047857!important}
-            .cv320-evidence{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin:5px 0 13px}.cv320-evidence div{border:1px solid #e2e8f0;background:#f8fafc;border-radius:12px;padding:10px}.cv320-evidence span{display:block;font-size:8px;font-weight:950;text-transform:uppercase;letter-spacing:.06em;color:#64748b!important}.cv320-evidence strong{display:block;font-size:11px;font-weight:900;color:#0f172a!important;margin-top:4px}.cv320-section-title{font-size:12px;font-weight:950;color:#0f172a!important;margin:4px 0 10px}.cv320-limit{border:1px solid #dbeafe;background:#f8fbff;border-radius:15px;padding:13px 15px;margin:10px 0 18px}.cv320-limitrow{display:flex;justify-content:space-between;font-size:11px;font-weight:850;color:#475569!important;margin-bottom:8px}.cv320-bar{height:8px;border-radius:999px;background:#e2e8f0;overflow:hidden}.cv320-bar i{display:block;height:100%;background:linear-gradient(90deg,#2563eb,#60a5fa);border-radius:999px}.cv321-timeline{position:relative;margin:8px 0 10px;padding-left:22px}.cv321-timeline:before{content:"";position:absolute;left:7px;top:5px;bottom:5px;width:2px;background:#dbeafe}.cv321-event{position:relative;border:1px solid #e2e8f0;background:#fff;border-radius:14px;padding:12px 14px;margin:0 0 10px;box-shadow:0 8px 22px rgba(15,23,42,.04)}.cv321-event:before{content:"";position:absolute;left:-20px;top:17px;width:10px;height:10px;border-radius:50%;background:#2563eb;border:3px solid #eff6ff}.cv321-eventtime{font-size:9px;font-weight:850;color:#64748b!important}.cv321-eventtitle{font-size:13px;font-weight:950;color:#0f172a!important;margin-top:3px}.cv321-eventcopy{font-size:11px;font-weight:700;color:#52647a!important;margin-top:4px;line-height:1.45}
-            [data-testid="stExpander"]{border-radius:14px!important;border-color:#dbe3ef!important;background:#fbfdff!important}[data-testid="stExpander"] summary{font-weight:850!important}.stButton>button,.stDownloadButton>button{min-height:42px!important;border-radius:10px!important;font-weight:850!important}
-            @media(max-width:1200px){.cv320-kpis{grid-template-columns:repeat(3,1fr)}}@media(max-width:800px){.cv320-kpis{grid-template-columns:repeat(2,1fr)}.cv320-cardhead{display:block}.cv320-score{display:inline-block;margin-top:9px}.cv320-evidence{grid-template-columns:1fr 1fr}.cv320-recommendation{grid-template-columns:auto 1fr}.cv320-confidence{grid-column:2;text-align:left;border-left:0;padding-left:0}}
-            </style>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        st.markdown(
-            f"""
-            <div class="cv123-monitor-hero cv123-monitor-hero--compact">
-              <span class="cv123-monitor-badge {html.escape(monitoring_center['posture_tone'])}">{monitoring_center['active_alerts']} active {'alert' if monitoring_center['active_alerts'] == 1 else 'alerts'}</span>
-            </div>
-            <div class="cv320-limit"><div class="cv320-limitrow"><span>{html.escape(str(selected_plan_name))} monitoring usage</span><span>{monitored_count:,} / {monitor_limit_label}</span></div><div class="cv320-bar"><i style="width:{monitor_usage}%"></i></div></div>
-            """,
-            unsafe_allow_html=True,
-        )
-
         active_queue = monitoring_center.get("active_queue")
         price_alerts = 0
         if isinstance(active_queue, pd.DataFrame) and not active_queue.empty:
@@ -4035,17 +4012,21 @@ def run_authenticated_app() -> None:
                 .sum()
             )
 
-        render_kpi_row_safe(
-            [
-                MetricCard(label="Monitored", value=f"{monitored_count:,}", detail="components", tone="info", icon="radar"),
-                MetricCard(label="Critical action", value=str(monitoring_center["immediate_actions"]), detail="priority ≥ 75", tone="danger", icon="octagon-alert"),
-                MetricCard(label="Lifecycle", value=str(monitoring_center["lifecycle_alerts"]), detail="active changes", tone="warning", icon="clock-3"),
-                MetricCard(label="Inventory", value=str(monitoring_center["inventory_alerts"]), detail="stock alerts", tone="monitoring", icon="boxes"),
-                MetricCard(label="Stock", value=f"{monitored_count:,}", detail="tracked components", tone="info", icon="package-search"),
-                MetricCard(label="Pricing", value=str(price_alerts), detail="price change alerts", tone="confidence", icon="dollar-sign"),
-            ],
-            columns=6,
-            compact=True,
+        st.markdown(
+            """
+            <style id="cadivor-monitoring-layout-css">
+            .cv320-card{--accent:#2563eb;border:1px solid #dbe3ef;border-left:5px solid var(--accent);background:#fff;border-radius:18px;padding:17px 18px;margin:11px 0;box-shadow:0 10px 28px rgba(15,23,42,.05);transition:transform .18s ease,box-shadow .18s ease}.cv320-card:hover{transform:translateY(-1px);box-shadow:0 16px 36px rgba(15,23,42,.075)}.cv320-card.critical{--accent:#dc2626}.cv320-card.high{--accent:#f97316}.cv320-card.medium{--accent:#eab308}.cv320-card.low{--accent:#16a34a}.cv320-cardhead{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.cv320-part{font-size:18px;font-weight:950;color:#0f172a!important}.cv320-type{font-size:10px;font-weight:950;letter-spacing:.07em;text-transform:uppercase;color:var(--accent)!important;margin-bottom:5px}.cv320-change{font-size:13px;font-weight:700;color:#475569!important;line-height:1.55;margin:10px 0}.cv320-pills{display:flex;flex-wrap:wrap;gap:7px}.cv320-pill{border:1px solid #dbeafe;background:#eff6ff;border-radius:999px;padding:6px 9px;font-size:10px;font-weight:850;color:#1d4ed8!important}.cv320-recommendation{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:start;border:1px solid #bfdbfe;background:linear-gradient(135deg,#eff6ff,#f8fbff);border-radius:14px;margin-top:13px;padding:13px 14px}.cv320-recicon{width:31px;height:31px;border-radius:10px;background:#dbeafe;color:#1d4ed8!important;display:flex;align-items:center;justify-content:center;font-weight:950}.cv320-rectitle{font-size:10px;font-weight:950;letter-spacing:.06em;text-transform:uppercase;color:#1d4ed8!important}.cv320-reccopy{font-size:12px;font-weight:850;color:#0f172a!important;line-height:1.45;margin-top:3px}.cv320-impact{font-size:10px;font-weight:760;color:#52647a!important;line-height:1.4;margin-top:5px}.cv320-confidence{border-left:1px solid #bfdbfe;padding-left:12px;text-align:right;white-space:nowrap}.cv320-confidence span{display:block;font-size:8px;font-weight:900;text-transform:uppercase;color:#64748b!important}.cv320-confidence strong{font-size:15px;font-weight:950;color:#1d4ed8!important}.cv320-score{border-radius:999px;padding:8px 11px;font-size:10px;font-weight:950;white-space:nowrap}.cv320-score.bad{background:#fef2f2;border:1px solid #fecaca;color:#b91c1c!important}.cv320-score.warn{background:#fffbeb;border:1px solid #fde68a;color:#a16207!important}.cv320-score.good{background:#ecfdf5;border:1px solid #a7f3d0;color:#047857!important}
+            .cv320-evidence{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin:5px 0 13px}.cv320-evidence div{border:1px solid #e2e8f0;background:#f8fafc;border-radius:12px;padding:10px}.cv320-evidence span{display:block;font-size:8px;font-weight:950;text-transform:uppercase;letter-spacing:.06em;color:#64748b!important}.cv320-evidence strong{display:block;font-size:11px;font-weight:900;color:#0f172a!important;margin-top:4px}.cv320-section-title{font-size:12px;font-weight:950;color:#0f172a!important;margin:4px 0 10px}.cv320-limit{border:1px solid #dbeafe;background:#f8fbff;border-radius:15px;padding:13px 15px;margin:10px 0 18px}.cv320-limitrow{display:flex;justify-content:space-between;font-size:11px;font-weight:850;color:#475569!important;margin-bottom:8px}.cv320-bar{height:8px;border-radius:999px;background:#e2e8f0;overflow:hidden}.cv320-bar i{display:block;height:100%;background:linear-gradient(90deg,#2563eb,#60a5fa);border-radius:999px}.cv321-timeline{position:relative;margin:8px 0 10px;padding-left:22px}.cv321-timeline:before{content:"";position:absolute;left:7px;top:5px;bottom:5px;width:2px;background:#dbeafe}.cv321-event{position:relative;border:1px solid #e2e8f0;background:#fff;border-radius:14px;padding:12px 14px;margin:0 0 10px;box-shadow:0 8px 22px rgba(15,23,42,.04)}.cv321-event:before{content:"";position:absolute;left:-20px;top:17px;width:10px;height:10px;border-radius:50%;background:#2563eb;border:3px solid #eff6ff}.cv321-eventtime{font-size:9px;font-weight:850;color:#64748b!important}.cv321-eventtitle{font-size:13px;font-weight:950;color:#0f172a!important;margin-top:3px}.cv321-eventcopy{font-size:11px;font-weight:700;color:#52647a!important;margin-top:4px;line-height:1.45}
+            .cv-monitor-workspace-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin:2px 0 14px}.cv-monitor-workspace-eyebrow{display:block;margin-bottom:5px;color:#2563eb;font-size:9.5px;font-weight:800;letter-spacing:.12em;text-transform:uppercase}.cv-monitor-workspace-title{display:block;color:#0f2d57;font-size:20px;font-weight:780;letter-spacing:-.025em;line-height:1.2}.cv-monitor-workspace-head p{margin:5px 0 0;color:#64748b;font-size:12.5px;line-height:1.45}.cv-monitor-active-badge{flex:0 0 auto;border:1px solid #fecaca;border-radius:999px;background:#fef2f2;color:#b91c1c!important;padding:6px 9px;font-size:10px;font-weight:800;white-space:nowrap}
+            .st-key-monitoring_view_navigation{margin-bottom:12px;border-bottom:1px solid #dbe3ef}.st-key-monitoring_view_navigation>[data-testid="stVerticalBlock"]{gap:0}.st-key-monitoring_view_navigation [data-testid="stHorizontalBlock"]{gap:16px}.st-key-monitoring_view_navigation .stButton>button{min-height:38px!important;padding:6px 2px 8px!important;border:0!important;border-bottom:3px solid transparent!important;border-radius:0!important;background:transparent!important;color:#52647d!important;font-size:12px;font-weight:720!important;box-shadow:none!important;white-space:nowrap}.st-key-monitoring_view_navigation .stButton>button[kind="primary"]{border-bottom-color:#2563eb!important;color:#1d4ed8!important}.st-key-monitoring_view_navigation .stButton>button:hover{color:#1d4ed8!important;background:#f8fbff!important}
+            .st-key-monitoring_snapshot{padding:14px;border:1px solid #d4deeb;border-radius:16px;background:#f5f8fc;box-shadow:0 10px 26px rgba(15,23,42,.045)}.st-key-monitoring_snapshot>[data-testid="stVerticalBlock"]{gap:12px}.cv-monitor-snapshot-head{margin:0 2px 2px;padding:2px 2px 6px}.cv-monitor-snapshot-eyebrow{display:block;margin-bottom:5px;color:#2563eb;font-size:9.5px;font-weight:800;letter-spacing:.12em;text-transform:uppercase}.cv-monitor-snapshot-title{display:block;color:#0f2d57;font-size:19px;font-weight:780;letter-spacing:-.025em;line-height:1.2}.cv-monitor-snapshot-head p{margin:4px 0 0;color:#64748b;font-size:12.5px;line-height:1.45}
+            .st-key-monitor_snapshot_immediate,.st-key-monitor_snapshot_lifecycle,.st-key-monitor_snapshot_inventory,.st-key-monitor_snapshot_pricing,.st-key-monitor_snapshot_components{padding:15px 15px 11px;border:1px solid #d6e0ec;border-radius:12px;background:#fff;box-shadow:none;transition:border-color .16s ease,box-shadow .16s ease}.st-key-monitor_snapshot_immediate:hover,.st-key-monitor_snapshot_lifecycle:hover,.st-key-monitor_snapshot_inventory:hover,.st-key-monitor_snapshot_pricing:hover,.st-key-monitor_snapshot_components:hover{border-color:#b9cbe2;box-shadow:0 6px 16px rgba(15,23,42,.055)}.st-key-monitor_snapshot_immediate>[data-testid="stVerticalBlock"],.st-key-monitor_snapshot_lifecycle>[data-testid="stVerticalBlock"],.st-key-monitor_snapshot_inventory>[data-testid="stVerticalBlock"],.st-key-monitor_snapshot_pricing>[data-testid="stVerticalBlock"],.st-key-monitor_snapshot_components>[data-testid="stVerticalBlock"]{gap:7px}.cv-monitor-kpi-eyebrow{display:block;margin-bottom:5px;color:#2563eb;font-size:9px;font-weight:800;letter-spacing:.12em;text-transform:uppercase}.cv-monitor-kpi-heading{display:flex;align-items:baseline;justify-content:space-between;gap:14px}.cv-monitor-kpi-heading h3{margin:0;color:#0f2d57;font-size:16px;font-weight:760;letter-spacing:-.025em;line-height:1.2}.cv-monitor-kpi-heading strong{flex:0 0 auto;color:#0f2d57;font-size:25px;font-weight:820;letter-spacing:-.045em;line-height:1}.cv-monitor-kpi-copy>p{margin:7px 0 0;color:#52647d;font-size:11.5px;line-height:1.42}.cv-monitor-kpi-preview{margin-top:12px;min-height:78px;padding:11px 12px;border:1px solid #d7e2ef;border-radius:9px;background:#f7faff}.cv-monitor-kpi-line{display:block;width:62%;height:6px;margin-bottom:6px;border-radius:999px;background:#dce6f2}.cv-monitor-kpi-line--long{width:78%}.cv-monitor-kpi-line--primary{width:42%;background:#8fb7f4}.st-key-monitor_snapshot_immediate .cv-monitor-kpi-line--primary{background:#f29595}.st-key-monitor_snapshot_lifecycle .cv-monitor-kpi-line--primary{background:#efb95e}.st-key-monitor_snapshot_inventory .cv-monitor-kpi-line--primary{background:#63cbb7}.st-key-monitor_snapshot_pricing .cv-monitor-kpi-line--primary{background:#9a9df5}.cv-monitor-kpi-preview b{display:block;margin-top:8px;color:#0f2d57;font-size:11.5px;font-weight:750;line-height:1.35}
+            .st-key-monitor_snapshot_immediate button,.st-key-monitor_snapshot_lifecycle button,.st-key-monitor_snapshot_inventory button,.st-key-monitor_snapshot_pricing button,.st-key-monitor_snapshot_components button,.st-key-monitoring_plan_usage button{width:auto!important;min-height:26px;margin-top:9px!important;padding:1px 0!important;border:0!important;border-radius:0;background:transparent!important;color:#2563eb!important;font-size:11.5px;font-weight:720;box-shadow:none!important}.st-key-monitor_snapshot_immediate button::after,.st-key-monitor_snapshot_lifecycle button::after,.st-key-monitor_snapshot_inventory button::after,.st-key-monitor_snapshot_pricing button::after,.st-key-monitor_snapshot_components button::after,.st-key-monitoring_plan_usage button::after{content:" →";margin-left:4px}.st-key-monitor_snapshot_immediate button:hover,.st-key-monitor_snapshot_lifecycle button:hover,.st-key-monitor_snapshot_inventory button:hover,.st-key-monitor_snapshot_pricing button:hover,.st-key-monitor_snapshot_components button:hover,.st-key-monitoring_plan_usage button:hover{color:#1d4ed8!important;text-decoration:underline;text-underline-offset:3px}.st-key-monitoring_plan_usage{padding:12px 13px;border:1px solid #d7e2ef;border-radius:11px;background:#fff}
+            [data-testid="stExpander"]{border-radius:14px!important;border-color:#dbe3ef!important;background:#fbfdff!important}[data-testid="stExpander"] summary{font-weight:850!important}.stButton>button,.stDownloadButton>button{min-height:42px!important;border-radius:10px!important;font-weight:850!important}
+            @media(max-width:800px){.cv-monitor-workspace-head{display:block}.cv-monitor-active-badge{display:inline-block;margin-top:9px}.cv320-cardhead{display:block}.cv320-score{display:inline-block;margin-top:9px}.cv320-evidence{grid-template-columns:1fr 1fr}.cv320-recommendation{grid-template-columns:auto 1fr}.cv320-confidence{grid-column:2;text-align:left;border-left:0;padding-left:0}}
+            </style>
+            """,
+            unsafe_allow_html=True,
         )
 
         def _monitor_display(value, fallback="—"):
@@ -4071,27 +4052,89 @@ def run_authenticated_app() -> None:
         def _monitor_confidence(score):
             return max(65, min(98, int(round(float(score or 0) * 0.92 + 8))))
 
-        queue_tab, components_tab, timeline_tab, export_tab = st.tabs(["Action Queue", "Monitored Components", "Timeline", "Export"])
+        monitor_focus = _safe_text(_qp_value("monitor_focus", ""), "").strip().lower()
+        monitor_focus_defaults = {
+            "active": ("All", "Active", "All"),
+            "immediate": ("Immediate action", "Active", "All"),
+            "lifecycle": ("All", "Active", "Lifecycle"),
+            "inventory": ("All", "Active", "Inventory"),
+            "pricing": ("All", "Active", "Price"),
+        }
+        if monitor_focus not in monitor_focus_defaults:
+            monitor_focus = ""
+        monitor_attention_default, monitor_status_default, monitor_type_default = (
+            monitor_focus_defaults.get(monitor_focus, ("All", "Active", "All"))
+        )
+        monitor_filter_key = monitor_focus or (
+            "part_" + re.sub(r"[^a-zA-Z0-9_-]", "_", focused_monitor_part)[:36]
+            if focused_monitor_part
+            else "default"
+        )
 
-        with queue_tab:
+        def _render_monitor_action_queue():
             queue = monitoring_center["prioritized_alerts"]
             if queue.empty:
                 st.success("No monitoring exception requires action. Continue scheduled supplier and lifecycle checks.")
             else:
                 f1, f2, f3, f4 = st.columns([1.1, 1.1, 1.1, 1.8])
-                severity_filter = f1.selectbox("Severity", ["All", "Critical", "High", "Medium", "Low"], key="m32_severity")
-                status_filter = f2.selectbox("Status", ["Active", "All", "Open", "In Review", "Resolved", "Dismissed", "Reopened"], key="m32_status")
-                type_filter = f3.selectbox("Change type", ["All", "Lifecycle", "Inventory", "Price", "Supplier"], key="m32_type")
+                attention_options = [
+                    "All",
+                    "Immediate action",
+                    "Critical",
+                    "High",
+                    "Medium",
+                    "Low",
+                ]
+                status_options_filter = [
+                    "Active",
+                    "All",
+                    "Open",
+                    "In Review",
+                    "Resolved",
+                    "Dismissed",
+                    "Reopened",
+                ]
+                type_options = ["All", "Lifecycle", "Inventory", "Price", "Supplier"]
+                attention_filter = f1.selectbox(
+                    "Attention",
+                    attention_options,
+                    index=attention_options.index(monitor_attention_default),
+                    key=f"m32_attention_{monitor_filter_key}",
+                )
+                status_filter = f2.selectbox(
+                    "Status",
+                    status_options_filter,
+                    index=status_options_filter.index(monitor_status_default),
+                    key=f"m32_status_filter_{monitor_filter_key}",
+                )
+                type_filter = f3.selectbox(
+                    "Change type",
+                    type_options,
+                    index=type_options.index(monitor_type_default),
+                    key=f"m32_type_{monitor_filter_key}",
+                )
                 search_filter = f4.text_input(
                     "Search",
                     value=focused_monitor_part,
                     placeholder="Part number, owner, or alert text",
-                    key="m32_search",
+                    key=f"m32_search_{monitor_filter_key}",
                 )
                 filtered = queue.copy()
-                if severity_filter != "All": filtered = filtered[filtered["Severity"].str.lower() == severity_filter.lower()]
-                if status_filter == "Active": filtered = filtered[~filtered["Status"].isin(["Resolved", "Dismissed"])]
-                elif status_filter != "All": filtered = filtered[filtered["Status"] == status_filter]
+                if attention_filter == "Immediate action":
+                    priority_scores = pd.to_numeric(
+                        filtered["Priority Score"], errors="coerce"
+                    ).fillna(0)
+                    filtered = filtered[priority_scores >= 75]
+                elif attention_filter != "All":
+                    filtered = filtered[
+                        filtered["Severity"].str.lower() == attention_filter.lower()
+                    ]
+                if status_filter == "Active":
+                    filtered = filtered[
+                        ~filtered["Status"].isin(["Resolved", "Dismissed"])
+                    ]
+                elif status_filter != "All":
+                    filtered = filtered[filtered["Status"] == status_filter]
                 if type_filter != "All":
                     pattern = "stock|inventory" if type_filter == "Inventory" else type_filter.lower()
                     filtered = filtered[filtered["Alert Type"].str.contains(pattern, case=False, regex=True)]
@@ -4163,7 +4206,7 @@ def run_authenticated_app() -> None:
                             navigate_to("Engineering Decisions", focus_part=str(row["Part Number"]))
                         a4.download_button("Export evidence", data=pd.DataFrame([row]).to_csv(index=False).encode("utf-8"), file_name=f"{str(row['Part Number']).replace('/', '_')}_monitoring_evidence.csv", mime="text/csv", use_container_width=True, key=f"m32_export_{alert_id}_{idx}")
 
-        with components_tab:
+        def _render_monitored_components():
             components = monitoring_center["latest_components"]
             if components.empty:
                 st.info("No monitored component snapshots are available yet.")
@@ -4177,7 +4220,7 @@ def run_authenticated_app() -> None:
                 if monitoring_limit is not None and not is_admin and monitored_count >= int(monitoring_limit):
                     st.warning(f"Your {selected_plan_name} workspace has reached its {int(monitoring_limit):,}-part monitoring limit. Existing monitoring remains active; upgrade to Business for unlimited monitoring.")
 
-        with timeline_tab:
+        def _render_monitoring_timeline():
             try:
                 events = _monitor_query("monitoring_events").order("created_at", desc=True).limit(250).execute()
                 event_df = pd.DataFrame(events.data or [])
@@ -4209,12 +4252,211 @@ def run_authenticated_app() -> None:
                     st.markdown(event_html, unsafe_allow_html=True)
                 st.markdown('</div>', unsafe_allow_html=True)
 
-        with export_tab:
+        def _render_monitoring_exports():
             queue = monitoring_center["prioritized_alerts"]
             components = monitoring_center["latest_components"]
             e1, e2 = st.columns(2)
             e1.download_button("Download monitoring action queue", data=queue.to_csv(index=False).encode("utf-8"), file_name="cadivor_monitoring_action_queue.csv", mime="text/csv", type="primary", use_container_width=True, key="m32_queue_export")
             e2.download_button("Download monitored component snapshot", data=components.to_csv(index=False).encode("utf-8"), file_name="cadivor_monitored_components.csv", mime="text/csv", use_container_width=True, key="m32_components_export")
+
+        def _render_monitoring_snapshot_card(
+            *,
+            card_key: str,
+            eyebrow: str,
+            title: str,
+            value: str,
+            description: str,
+            preview: str,
+            action_label: str,
+            target_view: str,
+            focus: str = "",
+        ) -> None:
+            with st.container(key=card_key):
+                st.markdown(
+                    f"""
+                    <div class="cv-monitor-kpi-copy">
+                      <span class="cv-monitor-kpi-eyebrow">{html.escape(eyebrow)}</span>
+                      <div class="cv-monitor-kpi-heading">
+                        <h3>{html.escape(title)}</h3>
+                        <strong>{html.escape(value)}</strong>
+                      </div>
+                      <p>{html.escape(description)}</p>
+                      <div class="cv-monitor-kpi-preview">
+                        <span class="cv-monitor-kpi-line cv-monitor-kpi-line--primary"></span>
+                        <span class="cv-monitor-kpi-line cv-monitor-kpi-line--long"></span>
+                        <span class="cv-monitor-kpi-line"></span>
+                        <b>{html.escape(preview)}</b>
+                      </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+                if st.button(
+                    action_label,
+                    key=f"{card_key}_action",
+                    use_container_width=True,
+                ):
+                    navigation_params = {"monitor_view": target_view}
+                    if focus:
+                        navigation_params["monitor_focus"] = focus
+                    if return_analysis_id:
+                        navigation_params["return_analysis_id"] = return_analysis_id
+                    navigate_to(
+                        "Monitoring",
+                        arm_opening=False,
+                        **navigation_params,
+                    )
+
+        monitor_view_labels = {
+            "queue": "Action Queue",
+            "components": "Monitored Components",
+            "timeline": "Timeline",
+            "export": "Export",
+        }
+        monitor_view = _safe_text(
+            _qp_value("monitor_view", "queue"),
+            "queue",
+        ).strip().lower()
+        if monitor_view not in monitor_view_labels:
+            monitor_view = "queue"
+
+        monitoring_workspace_col, monitoring_snapshot_col = st.columns(
+            [0.66, 0.34],
+            gap="large",
+        )
+
+        with monitoring_workspace_col:
+            st.markdown(
+                f"""
+                <div class="cv-monitor-workspace-head">
+                  <div>
+                    <span class="cv-monitor-workspace-eyebrow">Monitoring workspace</span>
+                    <span class="cv-monitor-workspace-title">Act on supplier and lifecycle changes</span>
+                    <p>Filter the active queue, inspect evidence, and document the engineering response.</p>
+                  </div>
+                  <span class="cv-monitor-active-badge">
+                    {int(monitoring_center['active_alerts']):,} active
+                  </span>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            with st.container(key="monitoring_view_navigation"):
+                navigation_columns = st.columns([1, 1.35, 0.75, 0.65])
+                for navigation_column, (view_token, view_label) in zip(
+                    navigation_columns,
+                    monitor_view_labels.items(),
+                ):
+                    if navigation_column.button(
+                        view_label,
+                        key=f"monitoring_view_{view_token}",
+                        type="primary" if monitor_view == view_token else "secondary",
+                        use_container_width=True,
+                    ):
+                        navigation_params = {"monitor_view": view_token}
+                        if return_analysis_id:
+                            navigation_params["return_analysis_id"] = return_analysis_id
+                        navigate_to(
+                            "Monitoring",
+                            arm_opening=False,
+                            **navigation_params,
+                        )
+
+            if monitor_view == "components":
+                _render_monitored_components()
+            elif monitor_view == "timeline":
+                _render_monitoring_timeline()
+            elif monitor_view == "export":
+                _render_monitoring_exports()
+            else:
+                _render_monitor_action_queue()
+
+        with monitoring_snapshot_col:
+            with st.container(key="monitoring_snapshot"):
+                st.markdown(
+                    f"""
+                    <div class="cv-monitor-snapshot-head">
+                      <span class="cv-monitor-snapshot-eyebrow">Monitoring overview</span>
+                      <span class="cv-monitor-snapshot-title">Monitoring snapshot</span>
+                      <p>{int(monitoring_center['active_alerts']):,} active alerts. Use these shortcuts to move from signal to action.</p>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+                _render_monitoring_snapshot_card(
+                    card_key="monitor_snapshot_immediate",
+                    eyebrow="Priority",
+                    title="Immediate action",
+                    value=str(monitoring_center["immediate_actions"]),
+                    description="Alerts at or above Cadivor's immediate-action threshold.",
+                    preview=f"{monitoring_center['immediate_actions']} alerts have priority scores of 75 or higher",
+                    action_label="Review immediate actions",
+                    target_view="queue",
+                    focus="immediate",
+                )
+                _render_monitoring_snapshot_card(
+                    card_key="monitor_snapshot_lifecycle",
+                    eyebrow="Lifecycle",
+                    title="Lifecycle changes",
+                    value=str(monitoring_center["lifecycle_alerts"]),
+                    description="Lifecycle transitions that may require qualification or redesign.",
+                    preview=f"{monitoring_center['lifecycle_alerts']} lifecycle alerts are active",
+                    action_label="Review lifecycle changes",
+                    target_view="queue",
+                    focus="lifecycle",
+                )
+                _render_monitoring_snapshot_card(
+                    card_key="monitor_snapshot_inventory",
+                    eyebrow="Supply",
+                    title="Inventory alerts",
+                    value=str(monitoring_center["inventory_alerts"]),
+                    description="Stock and availability changes that need sourcing review.",
+                    preview=f"{monitoring_center['inventory_alerts']} inventory alerts are active",
+                    action_label="Review inventory alerts",
+                    target_view="queue",
+                    focus="inventory",
+                )
+                _render_monitoring_snapshot_card(
+                    card_key="monitor_snapshot_pricing",
+                    eyebrow="Cost",
+                    title="Price changes",
+                    value=str(price_alerts),
+                    description="Material price movements that may affect BOM cost.",
+                    preview=f"{price_alerts} price-change alerts are active",
+                    action_label="Review price changes",
+                    target_view="queue",
+                    focus="pricing",
+                )
+                _render_monitoring_snapshot_card(
+                    card_key="monitor_snapshot_components",
+                    eyebrow="Coverage",
+                    title="Monitored components",
+                    value=f"{monitored_count:,}",
+                    description="Components currently tracked for lifecycle and supply changes.",
+                    preview=f"{monitored_count:,} components have monitoring coverage",
+                    action_label="View monitored components",
+                    target_view="components",
+                )
+                with st.container(key="monitoring_plan_usage"):
+                    st.markdown(
+                        f"""
+                        <div class="cv320-limitrow">
+                          <span>{html.escape(str(selected_plan_name))} monitoring usage</span>
+                          <span>{monitored_count:,} / {monitor_limit_label}</span>
+                        </div>
+                        <div class="cv320-bar"><i style="width:{monitor_usage}%"></i></div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+                    if st.button(
+                        "Open billing settings",
+                        key="monitoring_plan_usage_action",
+                        use_container_width=True,
+                    ):
+                        navigate_to(
+                            "Settings",
+                            settings_tab="Billing",
+                        )
 
         stop_authenticated_page()
 
