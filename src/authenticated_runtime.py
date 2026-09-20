@@ -7588,34 +7588,34 @@ def run_authenticated_app() -> None:
                         source_page="reports_alternative_readiness",
                     )
                     rows.append(
-                        f"""
-                        <tr style="--cv-row-index:{row_number}">
-                          <td>{html.escape(mpn or '—')}</td>
-                          <td>{html.escape(manufacturer or '—')}</td>
-                          <td>{html.escape(str(row.get('Current Lifecycle', '—')))}</td>
-                          <td><span class="cv-report-status-pill">{html.escape(str(row.get('Replacement Status', '—')))}</span></td>
-                          <td>{html.escape(str(row.get('Recommended Replacement', '—')))}</td>
-                          <td>{html.escape(str(row.get('Alternative Count', 0)))}</td>
-                          <td><a class="cv-report-inline-action" href="{html.escape(action_href, quote=True)}" target="_self">{html.escape(action_label)}</a></td>
-                        </tr>
-                        """
+                        f'<tr style="--cv-row-index:{row_number}">'
+                        f"<td>{html.escape(mpn or '—')}</td>"
+                        f"<td>{html.escape(manufacturer or '—')}</td>"
+                        f"<td>{html.escape(str(row.get('Current Lifecycle', '—')))}</td>"
+                        '<td><span class="cv-report-status-pill">'
+                        f"{html.escape(str(row.get('Replacement Status', '—')))}</span></td>"
+                        f"<td>{html.escape(str(row.get('Recommended Replacement', '—')))}</td>"
+                        f"<td>{html.escape(str(row.get('Alternative Count', 0)))}</td>"
+                        '<td><a class="cv-report-inline-action" '
+                        f'href="{html.escape(action_href, quote=True)}" target="_self">'
+                        f"{html.escape(action_label)}</a></td>"
+                        "</tr>"
                     )
                 table_rows = "".join(rows)
-                st.markdown(
-                    f"""
-                    <div class="cv-report-action-table-wrap">
-                      <table class="cv-report-action-table">
-                        <thead><tr>
-                          <th>Original component</th><th>Manufacturer</th><th>Lifecycle</th>
-                          <th>Replacement status</th><th>Recommended replacement</th>
-                          <th>Alternatives</th><th>Next engineering step</th>
-                        </tr></thead>
-                        <tbody>{table_rows}</tbody>
-                      </table>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
+                table_html = (
+                    '<div class="cv-report-action-table-wrap">'
+                    '<table class="cv-report-action-table">'
+                    "<thead><tr>"
+                    "<th>Original component</th><th>Manufacturer</th><th>Lifecycle</th>"
+                    "<th>Replacement status</th><th>Recommended replacement</th>"
+                    "<th>Alternatives</th><th>Next engineering step</th>"
+                    "</tr></thead>"
+                    f"<tbody>{table_rows}</tbody>"
+                    "</table></div>"
                 )
+                # st.html renders the complete table as one DOM fragment. Markdown raw-HTML
+                # blocks terminate at blank lines, which can expose later <tr> rows as text.
+                st.html(table_html)
 
             from src.engineering_decision_engine import (
                 build_engineering_decision_brief,
