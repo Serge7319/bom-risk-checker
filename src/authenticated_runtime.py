@@ -99,6 +99,7 @@ from src.email_routing import BILLING_EMAIL, mailto_href
 from src.monitoring_email_preferences import monitoring_email_enabled
 from src.ui.navigation import (
     ALTERNATIVE_FINDER_PAGE,
+    alternative_finder_href,
     apply_alternative_finder_prefill,
     begin_authenticated_page,
     consume_alternative_finder_context,
@@ -6645,7 +6646,7 @@ def run_authenticated_app() -> None:
 
         st.markdown(
             """
-            <style id="cadivor-reports-decision-workspace-v10">
+            <style id="cadivor-reports-decision-workspace-v11">
             .st-key-reports_workspace > [data-testid="stVerticalBlock"]{
                 gap:12px;
             }
@@ -6713,6 +6714,93 @@ def run_authenticated_app() -> None:
             .cv-r9-preview-copy{
                 color:#52647A!important;font-size:11px;font-weight:720;line-height:1.55;
             }
+            [class*="st-key-report_preview_focus_"]{
+                animation:cv-report-focus-in .28s cubic-bezier(.2,.75,.25,1) both;
+            }
+            @keyframes cv-report-focus-in{
+                from{opacity:.18;transform:translateY(8px)}
+                to{opacity:1;transform:translateY(0)}
+            }
+            .cv-report-focus-banner{
+                display:flex;align-items:flex-start;justify-content:space-between;gap:16px;
+                margin:2px 0 10px;padding:11px 12px;border:1px solid #CFE0F4;
+                border-left:4px solid var(--cv-report-focus,#2563EB);border-radius:10px;
+                background:#F8FBFF;
+            }
+            .cv-report-focus-banner strong{
+                display:block;color:#0F2D57!important;font-size:11.5px;font-weight:850;
+                line-height:1.35;
+            }
+            .cv-report-focus-banner span{
+                display:block;margin-top:3px;color:#64748B!important;font-size:10.5px;
+                line-height:1.4;
+            }
+            .cv-report-focus-count{
+                flex:0 0 auto;margin:0!important;padding:4px 8px;border-radius:999px;
+                background:#EAF2FF;color:#1D4ED8!important;font-size:9.5px!important;
+                font-weight:850!important;white-space:nowrap;
+            }
+            .st-key-reports_workspace_actions{
+                margin-top:15px;padding-top:14px;border-top:1px solid #E2E8F0;
+            }
+            .st-key-reports_workspace_actions > [data-testid="stVerticalBlock"]{gap:8px}
+            section[data-testid="stMain"] .st-key-reports_workspace_actions
+                [data-testid="stButton"] button:not(:disabled){
+                min-height:34px!important;padding:5px 10px!important;border:1px solid #B8C8DB!important;
+                border-radius:8px!important;background:#FFFFFF!important;color:#0F2D57!important;
+                box-shadow:none!important;font-size:10px!important;font-weight:750!important;
+            }
+            section[data-testid="stMain"] .st-key-reports_workspace_actions
+                [data-testid="stButton"] button:not(:disabled):hover{
+                border-color:#6C9EE8!important;background:#F7FAFF!important;color:#1D4ED8!important;
+            }
+            section[data-testid="stMain"] .st-key-reports_workspace_actions
+                [data-testid="stButton"] button:not(:disabled) :is(p,span){
+                color:inherit!important;
+            }
+            .cv-report-action-table-wrap{
+                overflow-x:auto;border:1px solid #D8E2EE;border-radius:12px;background:#FFFFFF;
+                box-shadow:0 10px 26px rgba(15,23,42,.035);
+            }
+            .cv-report-action-table{
+                width:100%;min-width:960px;border-collapse:separate;border-spacing:0;
+                color:#263B56;font-size:10.5px;
+            }
+            .cv-report-action-table th{
+                padding:10px 11px;background:#EEF4FB;color:#52647A!important;text-align:left;
+                font-size:9px;font-weight:850;letter-spacing:.035em;text-transform:uppercase;
+                border-bottom:1px solid #D8E2EE;white-space:nowrap;
+            }
+            .cv-report-action-table td{
+                padding:10px 11px;border-bottom:1px solid #E6EDF5;vertical-align:middle;
+                line-height:1.35;
+            }
+            .cv-report-action-table tbody tr{
+                background:linear-gradient(90deg,#F4F0FF 0,#FFFFFF 28%);
+                animation:cv-report-row-in .24s ease both;
+                animation-delay:calc(var(--cv-row-index,0) * 35ms);
+            }
+            .cv-report-action-table tbody tr:hover{background:#EEF4FF}
+            .cv-report-action-table tbody tr:last-child td{border-bottom:0}
+            .cv-report-action-table td:first-child{font-weight:820;color:#0F2D57!important}
+            .cv-report-status-pill{
+                display:inline-flex;align-items:center;padding:4px 7px;border-radius:999px;
+                background:#F1EDFF;color:#5B49CC!important;font-size:9px;font-weight:820;
+                white-space:nowrap;
+            }
+            .cv-report-inline-action{
+                display:inline-flex;align-items:center;justify-content:center;min-height:30px;
+                padding:5px 9px;border:1px solid #7C6CF2;border-radius:8px;background:#FFFFFF;
+                color:#4F46C8!important;font-size:9.5px;font-weight:850;text-decoration:none!important;
+                white-space:nowrap;transition:transform .15s ease,background .15s ease,box-shadow .15s ease;
+            }
+            .cv-report-inline-action:hover{
+                transform:translateY(-1px);background:#F4F1FF;box-shadow:0 5px 12px rgba(92,76,210,.14);
+            }
+            @keyframes cv-report-row-in{
+                from{opacity:0;transform:translateX(-5px)}
+                to{opacity:1;transform:translateX(0)}
+            }
             :is(.st-key-report_package_engineering,.st-key-report_package_procurement,
                 .st-key-report_package_lifecycle,
                 .st-key-report_package_alternatives){
@@ -6732,6 +6820,11 @@ def run_authenticated_app() -> None:
                 .st-key-report_package_lifecycle,
                 .st-key-report_package_alternatives) > [data-testid="stVerticalBlock"]{
                 gap:7px;
+            }
+            :is(.st-key-report_package_engineering,.st-key-report_package_procurement,
+                .st-key-report_package_lifecycle,
+                .st-key-report_package_alternatives) [data-testid="stHorizontalBlock"]{
+                margin-top:9px;
             }
             .cv-report-package-eyebrow{
                 display:block;margin-bottom:5px;color:#2563EB!important;font-size:9px;
@@ -6756,29 +6849,44 @@ def run_authenticated_app() -> None:
                 border-radius:9px;background:#F7FAFF;color:#0F2D57!important;
                 font-size:11px;font-weight:750;line-height:1.35;
             }
-            :is(.st-key-report_package_engineering,.st-key-report_package_procurement,
+            section[data-testid="stMain"] :is(.st-key-report_package_engineering,.st-key-report_package_procurement,
                 .st-key-report_package_lifecycle,
-                .st-key-report_package_alternatives) [data-testid="stButton"] button{
+                .st-key-report_package_alternatives) [data-testid="stButton"] button:not(:disabled){
                 width:100%!important;min-height:32px;padding:4px 7px!important;
                 border:1px solid #9FB3CA!important;border-radius:8px;background:#FFFFFF!important;
                 color:#0F2D57!important;font-size:10px;font-weight:750;box-shadow:none!important;
             }
-            :is(.st-key-report_package_engineering,.st-key-report_package_procurement,
+            section[data-testid="stMain"] :is(.st-key-report_package_engineering,.st-key-report_package_procurement,
                 .st-key-report_package_lifecycle,
                 .st-key-report_package_alternatives) [data-testid="stButton"] button:hover{
                 border-color:#6C9EE8!important;background:#F7FAFF!important;color:#1D4ED8!important;
             }
-            :is(.st-key-report_package_engineering,.st-key-report_package_procurement,
+            section[data-testid="stMain"] :is(.st-key-report_package_engineering,.st-key-report_package_procurement,
                 .st-key-report_package_lifecycle,
-                .st-key-report_package_alternatives) [data-testid="stDownloadButton"] button{
+                .st-key-report_package_alternatives) [data-testid="stDownloadButton"] button:not(:disabled){
                 min-height:32px!important;padding:4px 7px!important;border-color:#CBD9EA!important;
                 border-radius:8px!important;background:#FFFFFF!important;color:#0F2D57!important;
                 font-size:10px!important;font-weight:750!important;box-shadow:none!important;
             }
-            :is(.st-key-report_package_engineering,.st-key-report_package_procurement,
+            section[data-testid="stMain"] :is(.st-key-report_package_engineering,.st-key-report_package_procurement,
                 .st-key-report_package_lifecycle,
                 .st-key-report_package_alternatives) [data-testid="stDownloadButton"] button:hover{
                 border-color:#8FB5ED!important;background:#F7FAFF!important;color:#1D4ED8!important;
+            }
+            section[data-testid="stMain"] :is(.st-key-report_package_engineering,
+                .st-key-report_package_procurement,.st-key-report_package_lifecycle,
+                .st-key-report_package_alternatives) :is([data-testid="stButton"],
+                [data-testid="stDownloadButton"]) button:not(:disabled) :is(p,span){
+                color:#0F2D57!important;
+            }
+            section[data-testid="stMain"] .st-key-reports_workspace
+                [data-testid="stDownloadButton"] button[kind="secondary"]:not(:disabled){
+                background:#FFFFFF!important;color:#0F2D57!important;border-color:#B8C8DB!important;
+                box-shadow:none!important;
+            }
+            section[data-testid="stMain"] .st-key-reports_workspace
+                [data-testid="stDownloadButton"] button[kind="secondary"]:not(:disabled) :is(p,span){
+                color:#0F2D57!important;
             }
             .cv-r9-empty{
                 border:1px dashed #CBD5E1;background:#F8FAFC;border-radius:18px;
@@ -6793,6 +6901,12 @@ def run_authenticated_app() -> None:
             }
             @media(max-width:650px){
                 .cv-r9-selected-grid{grid-template-columns:1fr}
+            }
+            @media(prefers-reduced-motion:reduce){
+                [class*="st-key-report_preview_focus_"],.cv-report-action-table tbody tr{
+                    animation:none!important;
+                }
+                .cv-report-inline-action{transition:none!important}
             }
             </style>
             """,
@@ -7009,7 +7123,7 @@ def run_authenticated_app() -> None:
                     return "Immediate sourcing action"
                 if suppliers <= 1:
                     return "Single-source exposure"
-                if lead >= 16:
+                if lead >= 12:
                     return "Long lead time"
                 if stock < 500:
                     return "Low stock coverage"
@@ -7024,6 +7138,47 @@ def run_authenticated_app() -> None:
                 if value in ("active", "new at mouser", "new"):
                     return "Routine monitoring"
                 return "Status verification required"
+
+            def _risk_flag(row: pd.Series) -> str:
+                level = str(row.get("risk_level", "") or "").strip().lower()
+                score = float(
+                    pd.to_numeric(row.get("risk_score", 0), errors="coerce") or 0
+                )
+                if level in {"critical", "high"} or score >= 50:
+                    return "High risk"
+                if level in {"medium", "moderate"} or score >= 25:
+                    return "Medium risk"
+                return "—"
+
+            def _sourcing_flags(row: pd.Series) -> str:
+                stock = float(
+                    pd.to_numeric(row.get("stock_available", 0), errors="coerce") or 0
+                )
+                suppliers = float(
+                    pd.to_numeric(row.get("supplier_count", 0), errors="coerce") or 0
+                )
+                lead = float(
+                    pd.to_numeric(row.get("lead_time_weeks", 0), errors="coerce") or 0
+                )
+                flags = []
+                if stock <= 0:
+                    flags.append("No stock")
+                if suppliers <= 1:
+                    flags.append("Limited sources")
+                if lead >= 12:
+                    flags.append("Long lead")
+                return " · ".join(flags) if flags else "—"
+
+            def _lifecycle_flag(status: str) -> str:
+                value = str(status or "").strip().lower()
+                if any(term in value for term in ("obsolete", "eol", "end of life")):
+                    return "Obsolete / EOL"
+                if any(
+                    term in value
+                    for term in ("replacement", "nrnd", "not recommended")
+                ):
+                    return "Replacement / NRND"
+                return "—"
 
             if selected_parts_df.empty:
                 engineering_df = pd.DataFrame()
@@ -7115,11 +7270,13 @@ def run_authenticated_app() -> None:
                     _risk_action,
                     axis=1,
                 )
+                role_source["Risk Flag"] = role_source.apply(_risk_flag, axis=1)
 
                 engineering_df = pd.DataFrame(
                     {
                         "Manufacturer Part Number": role_source["mpn"],
                         "Manufacturer": role_source["manufacturer"],
+                        "Why Flagged": role_source["Risk Flag"],
                         "Risk Level": role_source["risk_level"],
                         "Risk Score": role_source["risk_score"],
                         "Risk Explanation": role_source["risk_reasons"],
@@ -7137,10 +7294,15 @@ def run_authenticated_app() -> None:
                     _procurement_status,
                     axis=1,
                 )
+                role_source["Sourcing Flags"] = role_source.apply(
+                    _sourcing_flags,
+                    axis=1,
+                )
                 sourcing_df = pd.DataFrame(
                     {
                         "Manufacturer Part Number": role_source["mpn"],
                         "Manufacturer": role_source["manufacturer"],
+                        "Why Flagged": role_source["Sourcing Flags"],
                         "Primary Supplier": role_source["primary_supplier"],
                         "Available Stock": role_source["stock_available"],
                         "Unit Price": role_source["unit_price"],
@@ -7197,6 +7359,9 @@ def run_authenticated_app() -> None:
                 role_source["Review Priority"] = role_source[
                     "lifecycle_status"
                 ].apply(_lifecycle_priority)
+                role_source["Lifecycle Flag"] = role_source[
+                    "lifecycle_status"
+                ].apply(_lifecycle_flag)
 
                 lifecycle_rank = {
                     "Immediate replacement": 0,
@@ -7212,6 +7377,7 @@ def run_authenticated_app() -> None:
                     {
                         "Manufacturer Part Number": role_source["mpn"],
                         "Manufacturer": role_source["manufacturer"],
+                        "Why Flagged": role_source["Lifecycle Flag"],
                         "Lifecycle Status": role_source["lifecycle_status"],
                         "Future Availability": role_source["Future Availability"],
                         "Replacement Readiness": role_source["Replacement Readiness"],
@@ -7287,6 +7453,168 @@ def run_authenticated_app() -> None:
 
                 alternative_df = alternative_df.drop(
                     columns=["_sort_alternative_count", "_sort_risk_score"]
+                )
+
+            def _report_attention_mask(
+                frame: pd.DataFrame,
+                flag_column: str = "Why Flagged",
+            ) -> pd.Series:
+                if frame.empty or flag_column not in frame.columns:
+                    return pd.Series(False, index=frame.index, dtype=bool)
+                return frame[flag_column].fillna("—").astype(str).str.strip().ne("—")
+
+            def _style_report_attention_rows(
+                frame: pd.DataFrame,
+                *,
+                flag_column: str = "Why Flagged",
+                tone: str = "info",
+            ):
+                row_styles = {
+                    "danger": "background-color:#FFF1F2;color:#7F1D1D;font-weight:650;",
+                    "procurement": "background-color:#ECFDF5;color:#134E4A;font-weight:650;",
+                    "warning": "background-color:#FFFBEB;color:#78350F;font-weight:650;",
+                    "info": "background-color:#EFF6FF;color:#1E3A5F;font-weight:650;",
+                }
+                attention_style = row_styles.get(tone, row_styles["info"])
+
+                def _apply_attention_style(row: pd.Series) -> list[str]:
+                    flagged = str(row.get(flag_column, "—") or "—").strip() != "—"
+                    return [attention_style if flagged else ""] * len(row)
+
+                return frame.style.apply(_apply_attention_style, axis=1)
+
+            def _render_report_attention_table(
+                frame: pd.DataFrame,
+                *,
+                key: str,
+                tone: str,
+                focus_color: str,
+                summary: str,
+                column_config: dict | None = None,
+            ) -> None:
+                if frame.empty:
+                    st.info("No component-level evidence is available for this review.")
+                    return
+                attention_mask = _report_attention_mask(frame)
+                affected_count = int(attention_mask.sum())
+                show_affected_only = bool(affected_count)
+                if 0 < affected_count < len(frame):
+                    scope = st.radio(
+                        "Rows shown",
+                        ["Affected only", "All components"],
+                        horizontal=True,
+                        key=f"{key}_scope",
+                        help="Affected rows match the number and conditions summarized in the review card.",
+                    )
+                    show_affected_only = scope == "Affected only"
+                visible = frame.loc[attention_mask].copy() if show_affected_only else frame.copy()
+                noun = "component" if affected_count == 1 else "components"
+                st.markdown(
+                    f"""
+                    <div class="cv-report-focus-banner" style="--cv-report-focus:{focus_color}">
+                      <div>
+                        <strong>{html.escape(summary)}</strong>
+                        <span>Highlighted rows are the exact parts included in this review.</span>
+                      </div>
+                      <span class="cv-report-focus-count">{affected_count} {noun}</span>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+                if visible.empty:
+                    st.info("No components currently match this review.")
+                    return
+                cadivor_engineering_dataframe(
+                    _style_report_attention_rows(
+                        visible,
+                        tone=tone,
+                    ),
+                    key=f"{key}_table",
+                    height="content",
+                    column_config=column_config,
+                )
+
+            def _render_alternative_action_table(frame: pd.DataFrame) -> None:
+                if frame.empty:
+                    st.info("No alternative-readiness fields are available for this analysis.")
+                    return
+                search_mask = (
+                    frame["Replacement Status"].astype(str)
+                    == "Alternative search required"
+                )
+                search_count = int(search_mask.sum())
+                show_affected_only = bool(search_count)
+                if 0 < search_count < len(frame):
+                    scope = st.radio(
+                        "Rows shown",
+                        ["Search required", "All components"],
+                        horizontal=True,
+                        key=f"reports_alternative_scope_{selected_analysis_id}",
+                        help="Each action opens Alternative Finder with that row's component preloaded.",
+                    )
+                    show_affected_only = scope == "Search required"
+                visible = frame.loc[search_mask].copy() if show_affected_only else frame.copy()
+                noun = "component" if search_count == 1 else "components"
+                st.markdown(
+                    f"""
+                    <div class="cv-report-focus-banner" style="--cv-report-focus:#7C6CF2">
+                      <div>
+                        <strong>{search_count} {noun} need a part-specific alternative search.</strong>
+                        <span>Run Alternative Finder from the row so the MPN and BOM context are carried with you.</span>
+                      </div>
+                      <span class="cv-report-focus-count">{search_count} actions</span>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+                rows = []
+                for row_number, (_, row) in enumerate(visible.iterrows()):
+                    mpn = str(row.get("Original Component", "") or "").strip()
+                    manufacturer = str(row.get("Manufacturer", "") or "").strip()
+                    requires_search = (
+                        str(row.get("Replacement Status", ""))
+                        == "Alternative search required"
+                    )
+                    action_label = (
+                        "Run Alternative Finder"
+                        if requires_search
+                        else "Review candidates"
+                    )
+                    action_href = alternative_finder_href(
+                        mpn=mpn,
+                        manufacturer=manufacturer,
+                        analysis_id=str(selected_analysis_id or ""),
+                        return_analysis_id=str(selected_analysis_id or ""),
+                        source_page="reports_alternative_readiness",
+                    )
+                    rows.append(
+                        f"""
+                        <tr style="--cv-row-index:{row_number}">
+                          <td>{html.escape(mpn or '—')}</td>
+                          <td>{html.escape(manufacturer or '—')}</td>
+                          <td>{html.escape(str(row.get('Current Lifecycle', '—')))}</td>
+                          <td><span class="cv-report-status-pill">{html.escape(str(row.get('Replacement Status', '—')))}</span></td>
+                          <td>{html.escape(str(row.get('Recommended Replacement', '—')))}</td>
+                          <td>{html.escape(str(row.get('Alternative Count', 0)))}</td>
+                          <td><a class="cv-report-inline-action" href="{html.escape(action_href, quote=True)}" target="_self">{html.escape(action_label)}</a></td>
+                        </tr>
+                        """
+                    )
+                table_rows = "".join(rows)
+                st.markdown(
+                    f"""
+                    <div class="cv-report-action-table-wrap">
+                      <table class="cv-report-action-table">
+                        <thead><tr>
+                          <th>Original component</th><th>Manufacturer</th><th>Lifecycle</th>
+                          <th>Replacement status</th><th>Recommended replacement</th>
+                          <th>Alternatives</th><th>Next engineering step</th>
+                        </tr></thead>
+                        <tbody>{table_rows}</tbody>
+                      </table>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
                 )
 
             from src.engineering_decision_engine import (
@@ -7499,7 +7827,11 @@ def run_authenticated_app() -> None:
                 )
                 with action_columns[0]:
                     st.button(
-                        "Viewing" if preview_is_active else "Preview",
+                        (
+                            "Review open"
+                            if preview_is_active
+                            else "Show affected parts"
+                        ),
                         key=f"{key}_preview",
                         on_click=_select_report_preview,
                         args=(preview_name,),
@@ -7520,19 +7852,30 @@ def run_authenticated_app() -> None:
                 if "Replacement Status" in alternative_df.columns
                 else 0
             )
-            procurement_flag_count = int(ai_report["no_stock"]) + int(
-                ai_report["limited_sources"]
+            risk_affected_count = int(_report_attention_mask(engineering_df).sum())
+            risk_high_affected_count = (
+                int((engineering_df["Why Flagged"] == "High risk").sum())
+                if "Why Flagged" in engineering_df.columns
+                else 0
             )
+            risk_medium_affected_count = (
+                int((engineering_df["Why Flagged"] == "Medium risk").sum())
+                if "Why Flagged" in engineering_df.columns
+                else 0
+            )
+            sourcing_affected_count = int(_report_attention_mask(sourcing_df).sum())
+            lifecycle_affected_count = int(_report_attention_mask(lifecycle_df).sum())
 
             _render_report_package_card(
                 key="report_package_engineering",
                 eyebrow="Engineering",
                 title="Risk review",
-                value=f"{high_risk} high",
+                value=f"{risk_affected_count} affected",
                 description="Component-level risk evidence with an engineering priority and next action.",
                 evidence=(
-                    f"{high_risk} high-risk and {medium_risk} medium-risk components are "
-                    "ranked for technical review."
+                    f"{risk_high_affected_count} high-risk and "
+                    f"{risk_medium_affected_count} medium-risk components; "
+                    "the preview identifies each part and reason."
                 ),
                 preview_name="Engineering Risk Review",
                 downloads=[
@@ -7558,11 +7901,12 @@ def run_authenticated_app() -> None:
                 key="report_package_procurement",
                 eyebrow="Procurement",
                 title="Sourcing review",
-                value=f"{procurement_flag_count} flags",
+                value=f"{sourcing_affected_count} affected",
                 description="Availability, supplier coverage, lead time, price, and purchasing actions.",
                 evidence=(
                     f"{ai_report['no_stock']} no-stock, {ai_report['limited_sources']} "
-                    f"limited-source, and {ai_report['long_lead']} long-lead components."
+                    f"limited-source, and {ai_report['long_lead']} long-lead signals across "
+                    f"{sourcing_affected_count} components."
                 ),
                 preview_name="Procurement & Sourcing Review",
                 downloads=[
@@ -7588,11 +7932,11 @@ def run_authenticated_app() -> None:
                 key="report_package_lifecycle",
                 eyebrow="Lifecycle",
                 title="Readiness review",
-                value=f"{ai_report['lifecycle_concerns']} flagged",
+                value=f"{lifecycle_affected_count} affected",
                 description="Lifecycle continuity, future availability, and replacement readiness.",
                 evidence=(
-                    f"{ai_report['lifecycle_concerns']} components need lifecycle or "
-                    "successor review."
+                    f"{lifecycle_affected_count} components need lifecycle or successor "
+                    "review; the preview identifies each one."
                 ),
                 preview_name="Lifecycle Readiness Review",
                 downloads=[
@@ -7683,7 +8027,15 @@ def run_authenticated_app() -> None:
                 help="Executive downloads appear with the brief. Supporting review downloads remain in the report center.",
             )
 
-            with reports_workspace:
+            preview_slug = re.sub(
+                r"[^a-z0-9]+",
+                "_",
+                selected_preview.lower(),
+            ).strip("_")
+            preview_surface = reports_workspace.container(
+                key=f"report_preview_focus_{preview_slug}"
+            )
+            with preview_surface:
                 if selected_preview == "Executive Decision Brief":
                     st.markdown(
                         f"""
@@ -7767,68 +8119,88 @@ def run_authenticated_app() -> None:
                         "Components ranked by technical risk, with the evidence and "
                         "recommended engineering action."
                     )
-                    if engineering_df.empty:
-                        st.info("No component-level risk data is available.")
-                    else:
-                        cadivor_engineering_dataframe(
-                            engineering_df,
-                            height="content",
-                            column_config={
-                                "Manufacturer Part Number": st.column_config.TextColumn(
-                                    width="medium"
-                                ),
-                                "Risk Score": st.column_config.NumberColumn(format="%d"),
-                            },
-                        )
+                    _render_report_attention_table(
+                        engineering_df,
+                        key=f"reports_risk_focus_{selected_analysis_id}",
+                        tone="danger",
+                        focus_color="#EF4444",
+                        summary=(
+                            f"{risk_high_affected_count} high-risk and "
+                            f"{risk_medium_affected_count} medium-risk "
+                            "components require engineering review."
+                        ),
+                        column_config={
+                            "Manufacturer Part Number": st.column_config.TextColumn(
+                                width="medium"
+                            ),
+                            "Risk Score": st.column_config.NumberColumn(format="%d"),
+                        },
+                    )
                 elif selected_preview == "Procurement & Sourcing Review":
                     st.markdown("### Procurement & Sourcing Review")
                     st.caption(
                         "Purchasing availability, supplier coverage, lead time, pricing, "
                         "and the required sourcing response."
                     )
-                    if sourcing_df.empty:
-                        st.info("No sourcing fields are available for this analysis.")
-                    else:
-                        cadivor_engineering_dataframe(
-                            sourcing_df,
-                            height="content",
-                            column_config={
-                                "Manufacturer Part Number": st.column_config.TextColumn(
-                                    width="medium"
-                                ),
-                                "Available Stock": st.column_config.NumberColumn(
-                                    format="%,d"
-                                ),
-                            },
-                        )
+                    _render_report_attention_table(
+                        sourcing_df,
+                        key=f"reports_sourcing_focus_{selected_analysis_id}",
+                        tone="procurement",
+                        focus_color="#0F9F8F",
+                        summary=(
+                            f"{sourcing_affected_count} components account for "
+                            f"{ai_report['no_stock']} no-stock, "
+                            f"{ai_report['limited_sources']} limited-source, and "
+                            f"{ai_report['long_lead']} long-lead signals."
+                        ),
+                        column_config={
+                            "Manufacturer Part Number": st.column_config.TextColumn(
+                                width="medium"
+                            ),
+                            "Available Stock": st.column_config.NumberColumn(
+                                format="%,d"
+                            ),
+                        },
+                    )
                 elif selected_preview == "Lifecycle Readiness Review":
                     st.markdown("### Lifecycle Readiness Review")
                     st.caption(
                         "Lifecycle continuity, future availability, replacement readiness, "
                         "and review priority."
                     )
-                    if lifecycle_df.empty:
-                        st.info("No lifecycle fields are available for this analysis.")
-                    else:
-                        cadivor_engineering_dataframe(lifecycle_df, height="content")
+                    _render_report_attention_table(
+                        lifecycle_df,
+                        key=f"reports_lifecycle_focus_{selected_analysis_id}",
+                        tone="warning",
+                        focus_color="#F59E0B",
+                        summary=(
+                            f"{lifecycle_affected_count} components have an obsolete, EOL, "
+                            "NRND, or replacement-suggested lifecycle state."
+                        ),
+                    )
                 else:
                     st.markdown("### Alternative Readiness Review")
                     st.caption(
                         "Candidate availability and the next qualification action for every "
                         "component that may need a replacement."
                     )
-                    if alternative_df.empty:
-                        st.info("No alternative-readiness fields are available for this analysis.")
-                    else:
-                        cadivor_engineering_dataframe(alternative_df, height="content")
+                    _render_alternative_action_table(alternative_df)
 
-            action_cols = reports_workspace.columns(3, gap="small")
+            reports_workspace_actions = reports_workspace.container(
+                key="reports_workspace_actions"
+            )
+            reports_workspace_actions.caption("Continue with this saved BOM")
+            action_cols = reports_workspace_actions.columns(
+                [0.22, 0.22, 0.56],
+                gap="small",
+            )
             with action_cols[0]:
                 internal_nav_button(
                     "Analysis details",
                     "Analysis Details",
                     key="reports_open_analysis_details",
                     use_container_width=True,
+                    type="secondary",
                     analysis_id=selected_analysis_id,
                 )
             with action_cols[1]:
@@ -7837,102 +8209,8 @@ def run_authenticated_app() -> None:
                     "BOM Analyzer",
                     key="reports_open_bom_analyzer",
                     use_container_width=True,
+                    type="secondary",
                     analysis_id=selected_analysis_id,
-                )
-            with action_cols[2]:
-                internal_nav_button(
-                    "Find alternatives",
-                    ALTERNATIVE_FINDER_PAGE,
-                    key="reports_open_alternative_finder",
-                    use_container_width=True,
-                    analysis_id=selected_analysis_id,
-                    return_analysis_id=selected_analysis_id,
-                    source_page="reports_center",
-                )
-
-            display_rows = []
-            history_labels = []
-            for row, row_label in zip(report_records, labels):
-                row_created_at = str(
-                    _report_value(
-                        row,
-                        "created_at",
-                        "date",
-                        default="",
-                    )
-                )
-                row_created_date = (
-                    row_created_at.split("T")[0]
-                    if "T" in row_created_at
-                    else row_created_at[:10]
-                )
-                display_rows.append(
-                    {
-                        "Project": _report_value(
-                            row,
-                            "project_name",
-                            "name",
-                            default="Saved BOM",
-                        ),
-                        "Source File": _report_value(
-                            row,
-                            "filename",
-                            "uploaded_file",
-                            "file_name",
-                            default="—",
-                        ),
-                        "Date": row_created_date or "—",
-                        "Health": _report_int(
-                            _report_value(row, "health_score", default=0)
-                        ),
-                        "High Risk": _report_int(
-                            _report_value(
-                                row,
-                                "high_risk_count",
-                                "high_risk_parts",
-                                default=0,
-                            )
-                        ),
-                        "Parts": _report_int(
-                            _report_value(
-                                row,
-                                "total_parts",
-                                "part_count",
-                                "parts_count",
-                                default=0,
-                            )
-                        ),
-                    }
-                )
-                history_labels.append(row_label)
-
-            def _select_report_from_history() -> None:
-                table_state = st.session_state.get("reports_history_table", {})
-                table_selection = getattr(table_state, "selection", None)
-                if table_selection is None and isinstance(table_state, dict):
-                    table_selection = table_state.get("selection", {})
-                selected_rows = getattr(table_selection, "rows", None)
-                if selected_rows is None and isinstance(table_selection, dict):
-                    selected_rows = table_selection.get("rows", [])
-                if selected_rows:
-                    row_index = int(selected_rows[0])
-                    if 0 <= row_index < len(history_labels):
-                        st.session_state["reports_analysis_search"] = ""
-                        st.session_state["reports_selected_analysis"] = history_labels[
-                            row_index
-                        ]
-
-            with reports_workspace.expander(
-                f"Switch analysis · {len(report_records)} report-ready BOMs",
-                expanded=False,
-            ):
-                st.caption("Select a row to load that BOM into the report workspace.")
-                cadivor_engineering_dataframe(
-                    pd.DataFrame(display_rows),
-                    key="reports_history_table",
-                    on_select=_select_report_from_history,
-                    selection_mode="single-row",
-                    height="content",
                 )
         else:
             reports_workspace.markdown(

@@ -535,15 +535,16 @@ def comparison_matrix_dataframe_height(row_count: int) -> int | str:
     )
 
 
-def cadivor_dataframe(df: pd.DataFrame, **kwargs: Any) -> Any:
+def cadivor_dataframe(df: Any, **kwargs: Any) -> Any:
     """Render a Streamlit dataframe inside the Cadivor table host shell."""
-    if df is None or getattr(df, "empty", True):
+    source_df = getattr(df, "data", df)
+    if source_df is None or getattr(source_df, "empty", True):
         cadivor_empty_state("No records", "Nothing matches the current filters.", icon="search")
         return None
     host_class = str(kwargs.pop("host_class", "cv64-table-host") or "cv64-table-host").strip()
     kwargs.setdefault("use_container_width", True)
     kwargs.setdefault("hide_index", True)
-    row_count = len(df)
+    row_count = len(source_df)
     if "height" not in kwargs and row_count > 24:
         kwargs["height"] = min(520, 46 + min(row_count, 30) * 34)
     _render_html(f'<div class="{escape(host_class, quote=True)}">')
@@ -560,10 +561,11 @@ def cadivor_dataframe(df: pd.DataFrame, **kwargs: Any) -> Any:
     return result
 
 
-def build_dataframe_column_config(df: pd.DataFrame, overrides: Mapping[str, Any] | None = None) -> dict:
+def build_dataframe_column_config(df: Any, overrides: Mapping[str, Any] | None = None) -> dict:
     """Infer readable column_config for common engineering table fields."""
+    source_df = getattr(df, "data", df)
     config: dict[str, Any] = {}
-    for col in df.columns:
+    for col in source_df.columns:
         name = str(col)
         lower = name.lower()
         if any(token in lower for token in ("unit price", "target price", "extended cost", "shortage value", "run savings", "savings")):
@@ -582,7 +584,7 @@ def build_dataframe_column_config(df: pd.DataFrame, overrides: Mapping[str, Any]
 
 
 def cadivor_engineering_dataframe(
-    df: pd.DataFrame,
+    df: Any,
     *,
     column_config: Mapping[str, Any] | None = None,
     **kwargs: Any,
