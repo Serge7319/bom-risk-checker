@@ -71,12 +71,12 @@ class EmailRoutingContractTests(unittest.TestCase):
         self.assertIn('{"redirect_to": redirect_to}', self.auth_recovery)
         self.assertIn("customer_email=user_email", self.stripe_helper)
 
-    def test_billing_helpers_are_not_shadowed_inside_authenticated_app(self):
-        """Pricing must be able to read the module-level billing address.
+    def test_email_helpers_are_not_shadowed_inside_authenticated_app(self):
+        """Pricing and Billing must read the module-level email helpers.
 
-        Importing BILLING_EMAIL anywhere inside run_authenticated_app makes the
-        name local to that entire function and crashes earlier pricing branches
-        with UnboundLocalError.
+        Importing either helper anywhere inside run_authenticated_app makes the
+        name local to that entire function and can crash other page branches
+        with UnboundLocalError before the conditional import is reached.
         """
         tree = ast.parse(self.runtime)
         authenticated_app = next(
@@ -85,14 +85,15 @@ class EmailRoutingContractTests(unittest.TestCase):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
             and node.name == "run_authenticated_app"
         )
-        nested_billing_imports = [
-            node
+        nested_helper_imports = [
+            alias.name
             for node in ast.walk(authenticated_app)
             if isinstance(node, ast.ImportFrom)
             and node.module == "src.email_routing"
-            and any(alias.name == "BILLING_EMAIL" for alias in node.names)
+            for alias in node.names
+            if alias.name in {"BILLING_EMAIL", "mailto_href"}
         ]
-        self.assertEqual(nested_billing_imports, [])
+        self.assertEqual(nested_helper_imports, [])
         self.assertIn(
             "from src.email_routing import BILLING_EMAIL, mailto_href",
             self.runtime,

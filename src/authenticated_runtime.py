@@ -8087,8 +8087,6 @@ def run_authenticated_app() -> None:
                     if is_current:
                         st.markdown('<div class="cv311-current-note">Your active plan</div>', unsafe_allow_html=True)
                     elif plan_key == "student":
-                        from src.email_routing import mailto_href
-
                         st.link_button(
                             "Request Student Access",
                             mailto_href(
@@ -8238,8 +8236,6 @@ def run_authenticated_app() -> None:
                                 CHECKOUT_PLAN_TOKENS[plan["name"]],
                             )
                         elif plan_key == "enterprise":
-                            from src.email_routing import mailto_href
-
                             st.markdown(
                                 '<span class="cv311-contact-sales" data-testid="cv311-contact-sales"></span>',
                                 unsafe_allow_html=True,
