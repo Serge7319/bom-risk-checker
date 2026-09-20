@@ -95,7 +95,7 @@ from src.email_delivery import (
     send_transactional_email,
     send_workspace_invitation_email,
 )
-from src.email_routing import BILLING_EMAIL
+from src.email_routing import BILLING_EMAIL, mailto_href
 from src.monitoring_email_preferences import monitoring_email_enabled
 from src.ui.navigation import (
     ALTERNATIVE_FINDER_PAGE,
@@ -9972,8 +9972,6 @@ def run_authenticated_app() -> None:
                     use_container_width=True,
                 )
                 cadivor_button_wrap_end()
-                from src.email_routing import BILLING_EMAIL, mailto_href
-
                 st.markdown(
                     f'<p style="margin:12px 0 0;font-size:13px;color:#64748B">'
                     f'Billing support: '

@@ -1,3 +1,4 @@
+import ast
 from pathlib import Path
 import unittest
 
@@ -69,6 +70,33 @@ class EmailRoutingContractTests(unittest.TestCase):
         self.assertIn("reset_password_for_email", self.auth_recovery)
         self.assertIn('{"redirect_to": redirect_to}', self.auth_recovery)
         self.assertIn("customer_email=user_email", self.stripe_helper)
+
+    def test_billing_helpers_are_not_shadowed_inside_authenticated_app(self):
+        """Pricing must be able to read the module-level billing address.
+
+        Importing BILLING_EMAIL anywhere inside run_authenticated_app makes the
+        name local to that entire function and crashes earlier pricing branches
+        with UnboundLocalError.
+        """
+        tree = ast.parse(self.runtime)
+        authenticated_app = next(
+            node
+            for node in tree.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name == "run_authenticated_app"
+        )
+        nested_billing_imports = [
+            node
+            for node in ast.walk(authenticated_app)
+            if isinstance(node, ast.ImportFrom)
+            and node.module == "src.email_routing"
+            and any(alias.name == "BILLING_EMAIL" for alias in node.names)
+        ]
+        self.assertEqual(nested_billing_imports, [])
+        self.assertIn(
+            "from src.email_routing import BILLING_EMAIL, mailto_href",
+            self.runtime,
+        )
 
 
 if __name__ == "__main__":
