@@ -6425,14 +6425,6 @@ def run_authenticated_app() -> None:
             except Exception:
                 return default
 
-        def _report_float(value, default=0.0):
-            try:
-                if value is None or (isinstance(value, float) and pd.isna(value)):
-                    return default
-                return float(value)
-            except Exception:
-                return default
-
         def _report_value(row, *keys, default=None):
             for key in keys:
                 value = row.get(key)
@@ -6651,143 +6643,52 @@ def run_authenticated_app() -> None:
             buffer.seek(0)
             return buffer.getvalue()
 
-        total_reports = len(report_records)
-        total_parts = sum(
-            _report_int(
-                _report_value(
-                    row,
-                    "total_parts",
-                    "part_count",
-                    "parts_count",
-                    default=0,
-                )
-            )
-            for row in report_records
-        )
-        total_high_risk = sum(
-            _report_int(
-                _report_value(
-                    row,
-                    "high_risk_count",
-                    "high_risk_parts",
-                    default=0,
-                )
-            )
-            for row in report_records
-        )
-        health_values = [
-            _report_int(_report_value(row, "health_score", default=0))
-            for row in report_records
-            if _report_value(row, "health_score", default=None) is not None
-        ]
-        average_health = (
-            round(sum(health_values) / len(health_values))
-            if health_values
-            else 0
-        )
-
         st.markdown(
             """
-            <style id="cadivor-reports-professional-v9a">
-            .cv-r9-hero{
-                border:1px solid #BFDBFE;border-radius:26px;padding:30px 32px;
-                background:
-                    radial-gradient(circle at 88% 8%,rgba(37,99,235,.13),transparent 34%),
-                    linear-gradient(135deg,#FFFFFF 0%,#F8FBFF 62%,#EEF5FF 100%);
-                box-shadow:0 22px 58px rgba(15,23,42,.07);margin-bottom:18px;
+            <style id="cadivor-reports-decision-workspace-v10">
+            .st-key-reports_workspace > [data-testid="stVerticalBlock"]{
+                gap:12px;
             }
-            .cv-r9-eyebrow{
-                display:inline-flex;align-items:center;gap:7px;padding:7px 11px;
-                border:1px solid #BFDBFE;border-radius:999px;background:#EFF6FF;
-                color:#2563EB!important;font-size:10px;font-weight:950;
-                letter-spacing:.12em;text-transform:uppercase;margin-bottom:15px;
+            .st-key-reports_package_center{
+                padding:14px;border:1px solid #D4DEEB;border-radius:16px;
+                background:#F5F8FC;box-shadow:0 10px 26px rgba(15,23,42,.045);
             }
-            .cv-r9-title{
-                color:#0F172A!important;font-size:38px;line-height:1.05;font-weight:980;
-                letter-spacing:-.045em;margin:0 0 11px;
+            .st-key-reports_package_center > [data-testid="stVerticalBlock"]{
+                gap:12px;
             }
-            .cv-r9-copy{
-                color:#52647A!important;font-size:15px;line-height:1.62;font-weight:680;
-                max-width:880px;margin:0;
+            .cv-report-workspace-head,.cv-report-center-head{
+                margin:0 2px 2px;padding:2px 2px 6px;
             }
-            .cv-r9-metrics{
-                display:grid;grid-template-columns:repeat(4,minmax(0,1fr));
-                gap:12px;margin:18px 0 24px;
+            .cv-report-workspace-head span,.cv-report-center-head span{
+                display:block;margin-bottom:5px;color:#2563EB!important;font-size:9.5px;
+                font-weight:800;letter-spacing:.12em;text-transform:uppercase;
             }
-            .cv-r9-metric{
-                border:1px solid #E2E8F0;background:#FFFFFF;border-radius:19px;padding:17px;
-                box-shadow:0 14px 34px rgba(15,23,42,.05);
+            .cv-report-workspace-head h2,.cv-report-center-head h2{
+                margin:0;color:#0F2D57!important;font-size:19px;font-weight:780;
+                letter-spacing:-.025em;line-height:1.2;
             }
-            .cv-r9-metric span{
-                display:block;color:#64748B!important;font-size:9px;font-weight:950;
-                letter-spacing:.09em;text-transform:uppercase;margin-bottom:7px;
-            }
-            .cv-r9-metric strong{
-                display:block;color:#0F172A!important;font-size:27px;font-weight:980;
-                letter-spacing:-.03em;
-            }
-            .cv-r9-metric small{
-                display:block;color:#64748B!important;font-size:10px;font-weight:760;
-                margin-top:6px;line-height:1.4;
-            }
-            .cv-r9-section{
-                color:#0F172A!important;font-size:22px;font-weight:980;
-                letter-spacing:-.03em;margin:25px 0 5px;
-            }
-            .cv-r9-sub{
-                color:#64748B!important;font-size:12px;font-weight:740;margin-bottom:12px;
-            }
-            .cv-r9-template-grid{
-                display:grid;
-                gap:16px;
-                align-items:stretch;
-                width:100%;
-                margin:0 0 16px;
-            }
-            .cv-r9-template-grid.three{
-                grid-template-columns:repeat(3,minmax(0,1fr));
-            }
-            .cv-r9-template-grid.two{
-                grid-template-columns:repeat(2,minmax(0,1fr));
-            }
-            .cv-r9-template{
-                box-sizing:border-box;
-                width:100%;
-                min-width:0;
-                min-height:195px;
-                height:100%;
-                border:1px solid #E2E8F0;
-                background:#FFFFFF;
-                border-radius:21px;
-                padding:19px;
-                box-shadow:0 15px 38px rgba(15,23,42,.05);
-            }
-            .cv-r9-template-icon{
-                width:42px;height:42px;border-radius:13px;display:flex;
-                align-items:center;justify-content:center;background:#EFF6FF;
-                border:1px solid #BFDBFE;color:#2563EB!important;font-size:19px;
-                font-weight:950;margin-bottom:13px;
-            }
-            .cv-r9-template h4{
-                margin:0 0 7px;color:#0F172A!important;font-size:15px;font-weight:970;
-            }
-            .cv-r9-template p{
-                margin:0;color:#52647A!important;font-size:11px;font-weight:720;
-                line-height:1.52;min-height:50px;
-            }
-            .cv-r9-formats{display:flex;gap:6px;flex-wrap:wrap;margin-top:13px}
-            .cv-r9-format{
-                display:inline-flex;border:1px solid #DBEAFE;background:#EFF6FF;
-                color:#1D4ED8!important;border-radius:999px;padding:5px 8px;
-                font-size:9px;font-weight:950;
+            .cv-report-workspace-head p,.cv-report-center-head p{
+                margin:4px 0 0;color:#64748B!important;font-size:12.5px;line-height:1.45;
             }
             .cv-r9-selected{
                 border:1px solid #BFDBFE;background:linear-gradient(135deg,#FFFFFF,#EFF6FF);
-                border-radius:22px;padding:20px;box-shadow:0 17px 42px rgba(37,99,235,.07);
+                border-radius:18px;padding:18px;box-shadow:0 14px 32px rgba(37,99,235,.06);
                 margin:12px 0 15px;
             }
+            .cv-r9-selected-name span{
+                display:block;color:#2563EB!important;font-size:8.5px;font-weight:900;
+                letter-spacing:.11em;text-transform:uppercase;margin-bottom:5px;
+            }
+            .cv-r9-selected-name h3{
+                margin:0;color:#0F2D57!important;font-size:18px;font-weight:800;
+                letter-spacing:-.025em;line-height:1.25;
+            }
+            .cv-r9-selected-name p{
+                margin:5px 0 14px;color:#64748B!important;font-size:11.5px;line-height:1.4;
+                overflow-wrap:anywhere;
+            }
             .cv-r9-selected-grid{
-                display:grid;grid-template-columns:1.35fr repeat(4,minmax(0,1fr));
+                display:grid;grid-template-columns:repeat(4,minmax(0,1fr));
                 gap:10px;
             }
             .cv-r9-selected-cell{
@@ -6812,8 +6713,73 @@ def run_authenticated_app() -> None:
             .cv-r9-preview-copy{
                 color:#52647A!important;font-size:11px;font-weight:720;line-height:1.55;
             }
-            .cv-r9-history{
-                border:1px solid #E2E8F0;background:#FFFFFF;border-radius:19px;padding:16px;
+            :is(.st-key-report_package_executive,.st-key-report_package_engineering,
+                .st-key-report_package_procurement,.st-key-report_package_lifecycle,
+                .st-key-report_package_alternatives){
+                padding:15px 15px 12px;border:1px solid #D6E0EC;border-radius:12px;
+                background:#FFFFFF;transition:border-color .16s ease,box-shadow .16s ease;
+            }
+            :is(.st-key-report_package_executive,.st-key-report_package_engineering,
+                .st-key-report_package_procurement,.st-key-report_package_lifecycle,
+                .st-key-report_package_alternatives):hover{
+                border-color:#B9CBE2;box-shadow:0 6px 16px rgba(15,23,42,.055);
+            }
+            .st-key-report_package_executive{border-top:3px solid #3B82F6}
+            .st-key-report_package_engineering{border-top:3px solid #EF4444}
+            .st-key-report_package_procurement{border-top:3px solid #0F9F8F}
+            .st-key-report_package_lifecycle{border-top:3px solid #F59E0B}
+            .st-key-report_package_alternatives{border-top:3px solid #7C6CF2}
+            :is(.st-key-report_package_executive,.st-key-report_package_engineering,
+                .st-key-report_package_procurement,.st-key-report_package_lifecycle,
+                .st-key-report_package_alternatives) > [data-testid="stVerticalBlock"]{
+                gap:7px;
+            }
+            .cv-report-package-eyebrow{
+                display:block;margin-bottom:5px;color:#2563EB!important;font-size:9px;
+                font-weight:800;letter-spacing:.12em;text-transform:uppercase;
+            }
+            .cv-report-package-heading{
+                display:flex;align-items:baseline;justify-content:space-between;gap:12px;
+            }
+            .cv-report-package-heading h3{
+                margin:0;color:#0F2D57!important;font-size:15px;font-weight:780;
+                letter-spacing:-.025em;line-height:1.22;
+            }
+            .cv-report-package-heading strong{
+                flex:0 0 auto;color:#0F2D57!important;font-size:22px;font-weight:820;
+                letter-spacing:-.04em;line-height:1;
+            }
+            .cv-report-package-copy p{
+                margin:7px 0 0;color:#52647D!important;font-size:11.5px;line-height:1.42;
+            }
+            .cv-report-package-preview{
+                margin-top:11px;padding:10px 11px;border:1px solid #D7E2EF;
+                border-radius:9px;background:#F7FAFF;color:#0F2D57!important;
+                font-size:11px;font-weight:750;line-height:1.35;
+            }
+            :is(.st-key-report_package_executive,.st-key-report_package_engineering,
+                .st-key-report_package_procurement,.st-key-report_package_lifecycle,
+                .st-key-report_package_alternatives) [data-testid="stButton"] button{
+                width:auto!important;min-height:26px;margin-top:4px!important;padding:1px 0!important;
+                border:0!important;border-radius:0;background:transparent!important;
+                color:#2563EB!important;font-size:11.5px;font-weight:720;box-shadow:none!important;
+            }
+            :is(.st-key-report_package_executive,.st-key-report_package_engineering,
+                .st-key-report_package_procurement,.st-key-report_package_lifecycle,
+                .st-key-report_package_alternatives) [data-testid="stButton"] button:hover{
+                color:#1D4ED8!important;text-decoration:underline;text-underline-offset:3px;
+            }
+            :is(.st-key-report_package_executive,.st-key-report_package_engineering,
+                .st-key-report_package_procurement,.st-key-report_package_lifecycle,
+                .st-key-report_package_alternatives) [data-testid="stDownloadButton"] button{
+                min-height:34px!important;padding:5px 9px!important;border-color:#CBD9EA!important;
+                border-radius:8px!important;background:#FFFFFF!important;color:#0F2D57!important;
+                font-size:10.5px!important;font-weight:750!important;box-shadow:none!important;
+            }
+            :is(.st-key-report_package_executive,.st-key-report_package_engineering,
+                .st-key-report_package_procurement,.st-key-report_package_lifecycle,
+                .st-key-report_package_alternatives) [data-testid="stDownloadButton"] button:hover{
+                border-color:#8FB5ED!important;background:#F7FAFF!important;color:#1D4ED8!important;
             }
             .cv-r9-empty{
                 border:1px dashed #CBD5E1;background:#F8FAFC;border-radius:18px;
@@ -6821,17 +6787,13 @@ def run_authenticated_app() -> None:
                 font-weight:760;
             }
             @media(max-width:1050px){
-                .cv-r9-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
                 .cv-r9-selected-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
-                .cv-r9-template-grid.three{grid-template-columns:repeat(2,minmax(0,1fr))}
             }
             @media(max-width:760px){
-                .cv-r9-template-grid.three,
-                .cv-r9-template-grid.two{grid-template-columns:1fr}
+                .st-key-reports_package_center{margin-top:12px}
             }
             @media(max-width:650px){
-                .cv-r9-metrics,.cv-r9-selected-grid{grid-template-columns:1fr}
-                .cv-r9-title{font-size:31px}
+                .cv-r9-selected-grid{grid-template-columns:1fr}
             }
             </style>
             """,
@@ -6841,144 +6803,36 @@ def run_authenticated_app() -> None:
         cadivor_section_header(
             "Reports",
             eyebrow="Reports",
-            description="Choose a saved BOM, then generate a report.",
+            description="Select a saved BOM, review the decision evidence, and download the package your team needs.",
             icon="file-text",
         )
 
-        render_kpi_row_safe(
-            [
-                MetricCard(
-                    label="Reports",
-                    value=str(total_reports),
-                    detail="Saved analyses ready to export",
-                    tone="info",
-                    icon="file-text",
-                ),
-                MetricCard(
-                    label="Formats",
-                    value="PDF + CSV",
-                    detail="Available for every report package",
-                    tone="success",
-                    icon="download",
-                ),
-                MetricCard(
-                    label="Exports",
-                    value=str(total_reports),
-                    detail="Report packages available",
-                    tone="monitoring",
-                    icon="file-spreadsheet",
-                ),
-            ],
-            columns=3,
+        reports_workspace_col, reports_actions_col = st.columns(
+            [0.66, 0.34],
+            gap="large",
         )
-        st.markdown(
+        reports_workspace = reports_workspace_col.container(key="reports_workspace")
+        reports_package_center = reports_actions_col.container(
+            key="reports_package_center"
+        )
+        reports_workspace.markdown(
             """
-            <style>
-              .cv-resource-tour{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin:8px 0 18px}
-              .cv-resource-tour-card{border:1px solid #D9E3F2;border-radius:18px;background:#FFF;padding:16px;box-shadow:0 12px 30px rgba(15,35,70,.06)}
-              .cv-resource-tour-card h4{margin:0 0 6px;color:#11284B;font-size:16px}.cv-resource-tour-card p{margin:0;color:#58708F;font-size:13px;line-height:1.55;min-height:40px}
-              .cv-resource-demo{position:relative;overflow:hidden;margin-top:14px;height:138px;border:1px solid #DCE7F5;border-radius:13px;background:linear-gradient(145deg,#F7FAFF,#EFF5FF);padding:12px}
-              .cv-resource-demo-top{height:13px;width:58%;border-radius:5px;background:#C8D8F2}.cv-resource-demo-row{height:14px;margin-top:10px;border-radius:5px;background:#E1EAF7}.cv-resource-demo-row.active{background:#D8E8FF;animation:cv-resource-focus 6s ease-in-out infinite}.cv-resource-demo-row.short{width:62%}.cv-resource-demo-risk{position:absolute;right:12px;bottom:12px;border-radius:999px;background:#FFF0F0;color:#C2414A;font-weight:800;font-size:10px;padding:6px 8px;animation:cv-resource-pulse 2.2s ease-in-out infinite}.cv-resource-demo-check{position:absolute;right:12px;bottom:12px;border-radius:999px;background:#E9FBF2;color:#16734D;font-weight:800;font-size:10px;padding:6px 8px;animation:cv-resource-rise 6s ease-in-out infinite}.cv-resource-demo-line{position:absolute;left:12px;right:12px;bottom:12px;height:5px;border-radius:999px;background:#D7E4F7;overflow:hidden}.cv-resource-demo-line:after{content:'';display:block;width:42%;height:100%;background:#2865EB;border-radius:999px;animation:cv-resource-progress 6s ease-in-out infinite}.cv-resource-demo-node{display:inline-flex;align-items:center;justify-content:center;width:23px;height:23px;border-radius:8px;background:#2865EB;color:#FFF;font-size:11px;font-weight:900;margin:12px 6px 0 0;animation:cv-resource-rise 6s ease-in-out infinite}.cv-resource-demo-node:nth-child(2){animation-delay:.45s}.cv-resource-demo-node:nth-child(3){animation-delay:.9s}
-              @keyframes cv-resource-focus{0%,22%{transform:translateX(0);background:#E1EAF7}38%,67%{transform:translateX(4px);background:#CFE3FF;box-shadow:0 0 0 2px rgba(40,101,235,.14)}100%{transform:translateX(0);background:#E1EAF7}}@keyframes cv-resource-progress{0%{transform:translateX(-115%)}42%,70%{transform:translateX(72%)}100%{transform:translateX(225%)}}@keyframes cv-resource-pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.06);box-shadow:0 0 0 5px rgba(194,65,74,.08)}}@keyframes cv-resource-rise{0%,20%{opacity:.35;transform:translateY(6px)}35%,78%{opacity:1;transform:translateY(0)}100%{opacity:.35;transform:translateY(6px)}}
-              @media(max-width:900px){.cv-resource-tour{grid-template-columns:1fr}}@media(prefers-reduced-motion:reduce){.cv-resource-tour *{animation:none!important}}
-            </style>
+            <div class="cv-report-workspace-head">
+              <span>Selected analysis</span>
+              <h2>Build a report package</h2>
+              <p>Choose a saved BOM, inspect the evidence, and confirm what the report will communicate.</p>
+            </div>
             """,
             unsafe_allow_html=True,
         )
-
-        st.markdown(
-            '<div class="cv-r9-section">Professional report library</div>'
-            '<div class="cv-r9-sub">Portfolio context above shows the scale and overall risk behind the available report packages.</div>',
-            unsafe_allow_html=True,
-        )
-
-        first_template_data = [
-            (
-                "Executive BOM Summary",
-                "Leadership-ready health, priority risks, decision brief, and recommended actions.",
-                "▤",
-                ["PDF", "CSV"],
-            ),
-            (
-                "Engineering Risk Review",
-                "Component-level lifecycle, stock, supplier diversity, lead-time, and risk evidence.",
-                "△",
-                ["PDF", "CSV"],
-            ),
-            (
-                "Procurement & Sourcing",
-                "Supplier concentration, market stock, cost exposure, and secondary-source priorities.",
-                "⇄",
-                ["PDF", "CSV"],
-            ),
-        ]
-
-        first_template_cards = []
-        for title, copy, icon, formats in first_template_data:
-            format_html = "".join(
-                f'<span class="cv-r9-format">{fmt}</span>'
-                for fmt in formats
-            )
-            first_template_cards.append(
-                (
-                    f'<div class="cv-r9-template">'
-                    f'<div class="cv-r9-template-icon">{icon}</div>'
-                    f'<h4>{title}</h4>'
-                    f'<p>{copy}</p>'
-                    f'<div class="cv-r9-formats">{format_html}</div>'
-                    f'</div>'
-                )
-            )
-
-        st.markdown(
-            '<div class="cv-r9-template-grid three">'
-            + "".join(first_template_cards)
-            + "</div>",
-            unsafe_allow_html=True,
-        )
-
-        second_template_data = [
-            (
-                "Lifecycle Exposure Report",
-                "Lifecycle states, obsolete or replacement-suggested components, and alert-oriented review data.",
-                "◷",
-                ["PDF", "CSV"],
-            ),
-            (
-                "Alternative Replacement Report",
-                "Components requiring alternatives, candidate availability, and saved replacement-readiness fields.",
-                "↔",
-                ["PDF", "CSV"],
-            ),
-        ]
-
-        second_template_cards = []
-        for title, copy, icon, formats in second_template_data:
-            format_html = "".join(
-                f'<span class="cv-r9-format">{fmt}</span>'
-                for fmt in formats
-            )
-            second_template_cards.append(
-                (
-                    f'<div class="cv-r9-template">'
-                    f'<div class="cv-r9-template-icon">{icon}</div>'
-                    f'<h4>{title}</h4>'
-                    f'<p>{copy}</p>'
-                    f'<div class="cv-r9-formats">{format_html}</div>'
-                    f'</div>'
-                )
-            )
-
-        st.markdown(
-            '<div class="cv-r9-template-grid two">'
-            + "".join(second_template_cards)
-            + "</div>",
-            unsafe_allow_html=True,
-        )
-
-        st.markdown(
-            '<div class="cv-r9-section">Build a report package</div>'
-            '<div class="cv-r9-sub">Search for a saved BOM, confirm the selected engineering record, preview the content, and download the required files.</div>',
+        reports_package_center.markdown(
+            """
+            <div class="cv-report-center-head">
+              <span>Report center</span>
+              <h2>Decision packages</h2>
+              <p>Preview the audience-specific result, then download the files you need.</p>
+            </div>
+            """,
             unsafe_allow_html=True,
         )
 
@@ -7019,7 +6873,10 @@ def run_authenticated_app() -> None:
                     st.session_state["reports_selected_analysis"] = matching_label
                     st.session_state["reports_route_token"] = report_route_token
 
-            search_col, select_col = st.columns([0.34, 0.66], gap="medium")
+            search_col, select_col = reports_workspace.columns(
+                [0.38, 0.62],
+                gap="medium",
+            )
             with search_col:
                 report_search = st.text_input(
                     "Search saved analyses",
@@ -7037,7 +6894,7 @@ def run_authenticated_app() -> None:
                 ]
 
             if not filtered_labels:
-                st.warning("No saved analyses match that search.")
+                reports_workspace.warning("No saved analyses match that search.")
                 filtered_labels = labels
 
             current_selected = st.session_state.get("reports_selected_analysis")
@@ -7126,113 +6983,6 @@ def run_authenticated_app() -> None:
                 or "saved_bom"
             )
 
-            st.markdown(
-                f"""
-                <div class="cv-r9-selected">
-                  <div class="cv-r9-selected-grid">
-                    <div class="cv-r9-selected-cell">
-                      <span>Selected BOM</span>
-                      <strong>{html.escape(project_name)}</strong>
-                    </div>
-                    <div class="cv-r9-selected-cell">
-                      <span>Health</span>
-                      <strong>{health_score}/100</strong>
-                    </div>
-                    <div class="cv-r9-selected-cell">
-                      <span>Parts</span>
-                      <strong>{part_count}</strong>
-                    </div>
-                    <div class="cv-r9-selected-cell">
-                      <span>High / Medium Risk</span>
-                      <strong>{high_risk} / {medium_risk}</strong>
-                    </div>
-                    <div class="cv-r9-selected-cell">
-                      <span>Saved</span>
-                      <strong>{html.escape(created_date)}</strong>
-                    </div>
-                  </div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-            def _customer_report_table(
-                frame: pd.DataFrame,
-                preferred_columns: list[str] | None = None,
-            ) -> pd.DataFrame:
-                """Return a customer-facing report preview without database fields."""
-                if frame is None or frame.empty:
-                    return pd.DataFrame()
-
-                cleaned = frame.copy()
-
-                hidden_columns = {
-                    "id",
-                    "user_id",
-                    "analysis_id",
-                    "workspace_id",
-                    "organization_id",
-                    "created_at",
-                    "updated_at",
-                    "raw_data",
-                    "metadata",
-                }
-                cleaned = cleaned[
-                    [
-                        column
-                        for column in cleaned.columns
-                        if str(column).strip().lower() not in hidden_columns
-                    ]
-                ]
-
-                if preferred_columns:
-                    existing = [
-                        column
-                        for column in preferred_columns
-                        if column in cleaned.columns
-                    ]
-                    if existing:
-                        cleaned = cleaned[existing]
-
-                human_labels = {
-                    "project": "Project",
-                    "project_name": "Project",
-                    "source_file": "Source File",
-                    "filename": "Source File",
-                    "mpn": "Manufacturer Part Number",
-                    "MPN": "Manufacturer Part Number",
-                    "part_number": "Part Number",
-                    "manufacturer": "Manufacturer",
-                    "risk_score": "Risk Score",
-                    "risk_level": "Risk Level",
-                    "risk_reasons": "Risk Explanation",
-                    "lifecycle_status": "Lifecycle Status",
-                    "stock_available": "Available Stock",
-                    "stock": "Available Stock",
-                    "supplier_count": "Supplier Sources",
-                    "unit_price": "Unit Price",
-                    "lead_time": "Lead Time",
-                    "lead_time_weeks": "Lead Time (Weeks)",
-                    "has_alternates": "Alternatives Available",
-                    "alternate_count": "Alternative Count",
-                    "alternate_part_numbers": "Alternative Part Numbers",
-                    "health_score": "Health Score",
-                    "high_risk_parts": "High-Risk Components",
-                    "medium_risk_parts": "Medium-Risk Components",
-                    "message": "Status",
-                }
-
-                cleaned = cleaned.rename(
-                    columns={
-                        column: human_labels.get(
-                            column,
-                            str(column).replace("_", " ").strip().title(),
-                        )
-                        for column in cleaned.columns
-                    }
-                )
-                return cleaned
-
             def _first_existing(frame: pd.DataFrame, names: list[str], default=None):
                 for name in names:
                     if name in frame.columns:
@@ -7280,65 +7030,6 @@ def run_authenticated_app() -> None:
                     return "Routine monitoring"
                 return "Status verification required"
 
-            lifecycle_columns = [
-                column
-                for column in [
-                    "mpn",
-                    "MPN",
-                    "part_number",
-                    "manufacturer",
-                    "lifecycle_status",
-                    "Lifecycle Status",
-                    "risk_level",
-                    "risk_score",
-                    "stock_available",
-                    "supplier_count",
-                ]
-                if column in selected_parts_df.columns
-            ]
-            lifecycle_df = (
-                selected_parts_df[lifecycle_columns].copy()
-                if lifecycle_columns
-                else selected_parts_df.copy()
-            )
-
-            alternative_columns = [
-                column
-                for column in [
-                    "mpn",
-                    "MPN",
-                    "part_number",
-                    "manufacturer",
-                    "risk_level",
-                    "risk_score",
-                    "has_alternates",
-                    "alternate_count",
-                    "alternate_part_numbers",
-                    "lifecycle_status",
-                    "stock_available",
-                ]
-                if column in selected_parts_df.columns
-            ]
-            alternative_df = (
-                selected_parts_df[alternative_columns].copy()
-                if alternative_columns
-                else selected_parts_df.copy()
-            )
-
-            sourcing_candidates = [
-                "mpn",
-                "part_number",
-                "manufacturer",
-                "lifecycle_status",
-                "stock_available",
-                "stock",
-                "supplier_count",
-                "unit_price",
-                "risk_level",
-                "risk_score",
-                "has_alternates",
-                "alternate_count",
-            ]
             if selected_parts_df.empty:
                 engineering_df = pd.DataFrame()
                 sourcing_df = pd.DataFrame()
@@ -7764,292 +7455,381 @@ def run_authenticated_app() -> None:
                     options["type"] = "primary"
                 st.download_button(label, **options)
 
-            preview_tabs = st.tabs(
-                [
-                    "AI Executive Brief",
-                    "AI Procurement Brief",
-                    "Engineering Risk Review",
-                    "Procurement & Sourcing Review",
-                    "Lifecycle Readiness Review",
-                    "Alternative Readiness Review",
-                ]
+            preview_options = [
+                "Executive Decision Brief",
+                "Procurement Decision Brief",
+                "Engineering Risk Review",
+                "Procurement & Sourcing Review",
+                "Lifecycle Readiness Review",
+                "Alternative Readiness Review",
+            ]
+            if st.session_state.get("reports_preview_type") not in preview_options:
+                st.session_state["reports_preview_type"] = preview_options[0]
+
+            def _select_report_preview(preview_name: str) -> None:
+                st.session_state["reports_preview_type"] = preview_name
+
+            def _render_report_package_card(
+                *,
+                key: str,
+                eyebrow: str,
+                title: str,
+                value: str,
+                description: str,
+                evidence: str,
+                preview_name: str,
+                downloads: list[dict],
+            ) -> None:
+                card = reports_package_center.container(key=key)
+                card.markdown(
+                    f"""
+                    <span class="cv-report-package-eyebrow">{html.escape(eyebrow)}</span>
+                    <div class="cv-report-package-heading">
+                      <h3>{html.escape(title)}</h3>
+                      <strong>{html.escape(value)}</strong>
+                    </div>
+                    <div class="cv-report-package-copy">
+                      <p>{html.escape(description)}</p>
+                    </div>
+                    <div class="cv-report-package-preview">{html.escape(evidence)}</div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+                card.button(
+                    "Preview report →",
+                    key=f"{key}_preview",
+                    on_click=_select_report_preview,
+                    args=(preview_name,),
+                )
+                download_columns = card.columns(2, gap="small")
+                for download_index, download in enumerate(downloads):
+                    with download_columns[download_index % 2]:
+                        _report_download_button(**download)
+
+            alternative_search_count = (
+                int(
+                    (
+                        alternative_df["Replacement Status"]
+                        == "Alternative search required"
+                    ).sum()
+                )
+                if "Replacement Status" in alternative_df.columns
+                else 0
+            )
+            procurement_flag_count = int(ai_report["no_stock"]) + int(
+                ai_report["limited_sources"]
             )
 
-            with preview_tabs[0]:
-                st.markdown(
-                    f"""
-                    <div class="cv-r9-preview-card">
-                      <div class="cv-r9-preview-title">AI Executive Decision Brief</div>
-                      <div class="cv-r9-preview-copy">
-                        <b>Production readiness:</b> {html.escape(ai_report['readiness'])}
-                        <br><br>{html.escape(ai_report['executive_summary'])}
-                        <br><br><b>Management decision:</b>
-                        {html.escape(ai_report['executive_decision'])}
-                        <br><br><b>Projected health:</b>
-                        {ai_report['health']}/100 → {ai_report['projected_health']}/100
-                      </div>
+            _render_report_package_card(
+                key="report_package_executive",
+                eyebrow="Leadership",
+                title="Executive decision",
+                value=f"{ai_report['health']}→{ai_report['projected_health']}",
+                description="Release posture, priority risks, and the management decision in one brief.",
+                evidence=(
+                    f"{ai_report['readiness']}. Projected BOM health after the recommended "
+                    f"actions: {ai_report['projected_health']}/100."
+                ),
+                preview_name="Executive Decision Brief",
+                downloads=[
+                    {
+                        "label": "Decision PDF",
+                        "report_type": "Executive Decision Brief",
+                        "data": ai_executive_pdf,
+                        "file_name": f"{safe_project}_executive_decision_brief.pdf",
+                        "mime": "application/pdf",
+                        "key": f"report_center_executive_brief_{selected_analysis_id}",
+                        "primary": True,
+                    },
+                    {
+                        "label": "Summary PDF",
+                        "report_type": "Executive BOM Summary",
+                        "data": pdf_bytes,
+                        "file_name": f"{safe_project}_executive_summary.pdf",
+                        "mime": "application/pdf",
+                        "key": f"report_center_executive_summary_{selected_analysis_id}",
+                    },
+                    {
+                        "label": "Data CSV",
+                        "report_type": "Executive BOM Summary",
+                        "data": executive_csv,
+                        "file_name": f"{safe_project}_executive_summary.csv",
+                        "mime": "text/csv",
+                        "key": f"report_center_executive_csv_{selected_analysis_id}",
+                    },
+                ],
+            )
+            _render_report_package_card(
+                key="report_package_engineering",
+                eyebrow="Engineering",
+                title="Risk review",
+                value=f"{high_risk} high",
+                description="Component-level risk evidence with an engineering priority and next action.",
+                evidence=(
+                    f"{high_risk} high-risk and {medium_risk} medium-risk components are "
+                    "ranked for technical review."
+                ),
+                preview_name="Engineering Risk Review",
+                downloads=[
+                    {
+                        "label": "Review PDF",
+                        "report_type": "Engineering Risk Review",
+                        "data": risk_report_pdf,
+                        "file_name": f"{safe_project}_engineering_risk_review.pdf",
+                        "mime": "application/pdf",
+                        "key": f"report_center_risk_pdf_{selected_analysis_id}",
+                    },
+                    {
+                        "label": "Evidence CSV",
+                        "report_type": "Engineering Risk Review",
+                        "data": risk_report_csv,
+                        "file_name": f"{safe_project}_engineering_risk_review.csv",
+                        "mime": "text/csv",
+                        "key": f"report_center_risk_csv_{selected_analysis_id}",
+                    },
+                ],
+            )
+            _render_report_package_card(
+                key="report_package_procurement",
+                eyebrow="Procurement",
+                title="Sourcing review",
+                value=f"{procurement_flag_count} flags",
+                description="Availability, supplier coverage, lead time, price, and purchasing actions.",
+                evidence=(
+                    f"{ai_report['no_stock']} no-stock, {ai_report['limited_sources']} "
+                    f"limited-source, and {ai_report['long_lead']} long-lead components."
+                ),
+                preview_name="Procurement & Sourcing Review",
+                downloads=[
+                    {
+                        "label": "Decision PDF",
+                        "report_type": "Procurement Decision Brief",
+                        "data": ai_procurement_pdf,
+                        "file_name": f"{safe_project}_procurement_decision_brief.pdf",
+                        "mime": "application/pdf",
+                        "key": f"report_center_procurement_brief_{selected_analysis_id}",
+                        "primary": True,
+                    },
+                    {
+                        "label": "Review PDF",
+                        "report_type": "Procurement & Sourcing",
+                        "data": sourcing_report_pdf,
+                        "file_name": f"{safe_project}_procurement_sourcing_review.pdf",
+                        "mime": "application/pdf",
+                        "key": f"report_center_sourcing_pdf_{selected_analysis_id}",
+                    },
+                    {
+                        "label": "Evidence CSV",
+                        "report_type": "Procurement & Sourcing",
+                        "data": sourcing_report_csv,
+                        "file_name": f"{safe_project}_procurement_sourcing_review.csv",
+                        "mime": "text/csv",
+                        "key": f"report_center_sourcing_csv_{selected_analysis_id}",
+                    },
+                ],
+            )
+            _render_report_package_card(
+                key="report_package_lifecycle",
+                eyebrow="Lifecycle",
+                title="Readiness review",
+                value=f"{ai_report['lifecycle_concerns']} flagged",
+                description="Lifecycle continuity, future availability, and replacement readiness.",
+                evidence=(
+                    f"{ai_report['lifecycle_concerns']} components need lifecycle or "
+                    "successor review."
+                ),
+                preview_name="Lifecycle Readiness Review",
+                downloads=[
+                    {
+                        "label": "Review PDF",
+                        "report_type": "Lifecycle Exposure Report",
+                        "data": lifecycle_report_pdf,
+                        "file_name": f"{safe_project}_lifecycle_readiness_review.pdf",
+                        "mime": "application/pdf",
+                        "key": f"report_center_lifecycle_pdf_{selected_analysis_id}",
+                    },
+                    {
+                        "label": "Evidence CSV",
+                        "report_type": "Lifecycle Exposure Report",
+                        "data": lifecycle_report_csv,
+                        "file_name": f"{safe_project}_lifecycle_readiness_review.csv",
+                        "mime": "text/csv",
+                        "key": f"report_center_lifecycle_csv_{selected_analysis_id}",
+                    },
+                ],
+            )
+            _render_report_package_card(
+                key="report_package_alternatives",
+                eyebrow="Qualification",
+                title="Alternative readiness",
+                value=f"{alternative_search_count} needed",
+                description="Candidate availability and the next qualification step for each component.",
+                evidence=(
+                    f"{alternative_search_count} components still require an Alternative "
+                    "Finder search."
+                ),
+                preview_name="Alternative Readiness Review",
+                downloads=[
+                    {
+                        "label": "Review PDF",
+                        "report_type": "Alternative Replacement Report",
+                        "data": alternatives_report_pdf,
+                        "file_name": f"{safe_project}_alternative_readiness_review.pdf",
+                        "mime": "application/pdf",
+                        "key": f"report_center_alternatives_pdf_{selected_analysis_id}",
+                    },
+                    {
+                        "label": "Evidence CSV",
+                        "report_type": "Alternative Replacement Report",
+                        "data": alternatives_report_csv,
+                        "file_name": f"{safe_project}_alternative_readiness_review.csv",
+                        "mime": "text/csv",
+                        "key": f"report_center_alternatives_csv_{selected_analysis_id}",
+                    },
+                ],
+            )
+
+            reports_workspace.markdown(
+                f"""
+                <div class="cv-r9-selected">
+                  <div class="cv-r9-selected-name">
+                    <span>Selected BOM</span>
+                    <h3>{html.escape(project_name)}</h3>
+                    <p>{html.escape(source_file)} · Saved {html.escape(created_date)}</p>
+                  </div>
+                  <div class="cv-r9-selected-grid">
+                    <div class="cv-r9-selected-cell">
+                      <span>Production readiness</span>
+                      <strong>{html.escape(ai_report['readiness'])}</strong>
                     </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
-
-            with preview_tabs[1]:
-                procurement_items = "".join(
-                    f"<li>{html.escape(item)}</li>"
-                    for item in ai_report["procurement_actions"]
-                )
-                st.markdown(
-                    f"""
-                    <div class="cv-r9-preview-card">
-                      <div class="cv-r9-preview-title">AI Procurement Brief</div>
-                      <div class="cv-r9-preview-copy">
-                        {html.escape(ai_report['procurement_summary'])}
-                        <br><br><b>Priority actions</b>
-                        <ul>{procurement_items}</ul>
-                        <b>Estimated procurement effort:</b>
-                        {ai_report['procurement_hours']} hour(s)
-                      </div>
+                    <div class="cv-r9-selected-cell">
+                      <span>Health opportunity</span>
+                      <strong>{ai_report['health']} → {ai_report['projected_health']}/100</strong>
                     </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
-
-            with preview_tabs[2]:
-                st.markdown("### Engineering Risk Review")
-                st.caption(
-                    "For design and component engineers: components ranked by technical risk, "
-                    "with the reason and recommended engineering action."
-                )
-                if engineering_df.empty:
-                    st.info("No component-level risk data is available.")
-                else:
-                    cadivor_engineering_dataframe(
-                        engineering_df,
-                        column_config={
-                            "MPN": st.column_config.TextColumn(width="medium"),
-                            "Risk Score": st.column_config.NumberColumn(format="%d"),
-                        },
-                    )
-                    risk_pdf_col, risk_csv_col = st.columns(2)
-                    with risk_pdf_col:
-                        _report_download_button(
-                            "Download Risk Review PDF",
-                            report_type="Engineering Risk Review",
-                            data=risk_report_pdf,
-                            key=f"tab_risk_pdf_{selected_analysis_id}",
-                            file_name=f"{safe_project}_engineering_risk_review.pdf",
-                            mime="application/pdf",
-                        )
-                    with risk_csv_col:
-                        _report_download_button(
-                            "Download Risk Review CSV",
-                            report_type="Engineering Risk Review",
-                            data=risk_report_csv,
-                            key=f"tab_risk_csv_{selected_analysis_id}",
-                            file_name=f"{safe_project}_engineering_risk_review.csv",
-                            mime="text/csv",
-                        )
-
-            with preview_tabs[3]:
-                st.markdown("### Procurement & Sourcing Review")
-                st.caption(
-                    "For procurement and supply chain: purchasing availability, supplier coverage, "
-                    "lead time, pricing, and the required sourcing response."
-                )
-                if sourcing_df.empty:
-                    st.info("No sourcing fields are available for this analysis.")
-                else:
-                    cadivor_engineering_dataframe(
-                        sourcing_df,
-                        column_config={
-                            "MPN": st.column_config.TextColumn(width="medium"),
-                            "Stock Available": st.column_config.NumberColumn(format="%,d"),
-                        },
-                    )
-                    sourcing_pdf_col, sourcing_csv_col = st.columns(2)
-                    with sourcing_pdf_col:
-                        _report_download_button(
-                            "Download Sourcing Review PDF",
-                            report_type="Procurement & Sourcing",
-                            data=sourcing_report_pdf,
-                            key=f"tab_sourcing_pdf_{selected_analysis_id}",
-                            file_name=f"{safe_project}_procurement_sourcing_review.pdf",
-                            mime="application/pdf",
-                        )
-                    with sourcing_csv_col:
-                        _report_download_button(
-                            "Download Sourcing Review CSV",
-                            report_type="Procurement & Sourcing",
-                            data=sourcing_report_csv,
-                            key=f"tab_sourcing_csv_{selected_analysis_id}",
-                            file_name=f"{safe_project}_procurement_sourcing_review.csv",
-                            mime="text/csv",
-                        )
-
-            with preview_tabs[4]:
-                st.markdown("### Lifecycle Readiness Review")
-                st.caption(
-                    "For component engineering: lifecycle continuity, future availability, "
-                    "replacement readiness, and review priority."
-                )
-                if lifecycle_df.empty:
-                    st.info("No lifecycle fields are available for this analysis.")
-                else:
-                    cadivor_engineering_dataframe(lifecycle_df)
-                    lifecycle_pdf_col, lifecycle_csv_col = st.columns(2)
-                    with lifecycle_pdf_col:
-                        _report_download_button(
-                            "Download Lifecycle Review PDF",
-                            report_type="Lifecycle Exposure Report",
-                            data=lifecycle_report_pdf,
-                            key=f"tab_lifecycle_pdf_{selected_analysis_id}",
-                            file_name=f"{safe_project}_lifecycle_readiness_review.pdf",
-                            mime="application/pdf",
-                        )
-                    with lifecycle_csv_col:
-                        _report_download_button(
-                            "Download Lifecycle Review CSV",
-                            report_type="Lifecycle Exposure Report",
-                            data=lifecycle_report_csv,
-                            key=f"tab_lifecycle_csv_{selected_analysis_id}",
-                            file_name=f"{safe_project}_lifecycle_readiness_review.csv",
-                            mime="text/csv",
-                        )
-
-            with preview_tabs[5]:
-                st.markdown("### Alternative Readiness Review")
-                st.caption(
-                    "For replacement qualification: which components already have candidates "
-                    "and which require an Alternative Finder search."
-                )
-                if alternative_df.empty:
-                    st.info("No alternative-readiness fields are available for this analysis.")
-                else:
-                    cadivor_engineering_dataframe(alternative_df)
-                    alt_pdf_col, alt_csv_col = st.columns(2)
-                    with alt_pdf_col:
-                        _report_download_button(
-                            "Download Alternatives Review PDF",
-                            report_type="Alternative Replacement Report",
-                            data=alternatives_report_pdf,
-                            key=f"tab_alternatives_pdf_{selected_analysis_id}",
-                            file_name=f"{safe_project}_alternative_readiness_review.pdf",
-                            mime="application/pdf",
-                        )
-                    with alt_csv_col:
-                        _report_download_button(
-                            "Download Alternatives Review CSV",
-                            report_type="Alternative Replacement Report",
-                            data=alternatives_report_csv,
-                            key=f"tab_alternatives_csv_{selected_analysis_id}",
-                            file_name=f"{safe_project}_alternative_readiness_review.csv",
-                            mime="text/csv",
-                        )
-
-            st.markdown(
-                '<div class="cv-r9-section">Report packages</div>'
-                '<div class="cv-r9-sub">Downloads are generated from the selected saved BOM analysis.</div>',
+                    <div class="cv-r9-selected-cell">
+                      <span>Risk requiring review</span>
+                      <strong>{high_risk} high · {medium_risk} medium</strong>
+                    </div>
+                    <div class="cv-r9-selected-cell">
+                      <span>Component scope</span>
+                      <strong>{part_count} parts</strong>
+                    </div>
+                  </div>
+                </div>
+                """,
                 unsafe_allow_html=True,
             )
 
-            with st.expander("Executive reports", expanded=True):
-                st.caption("Leadership-ready summaries for release, risk, and management review.")
-                ai_exec_col, executive_pdf_col, executive_csv_col = st.columns(3)
-                with ai_exec_col:
-                    ai_exec_name = f"{safe_project}_ai_executive_brief.pdf"
-                    _report_download_button(
-                        "AI Executive Brief · PDF",
-                        report_type="AI Executive Brief",
-                        key=f"shared_ai_executive_pdf_{selected_analysis_id}",
-                        data=ai_executive_pdf,
-                        file_name=ai_exec_name,
-                        mime="application/pdf",
-                        primary=True,
-                    )
-                with executive_pdf_col:
-                    executive_pdf_name = f"{safe_project}_executive_summary.pdf"
-                    _report_download_button(
-                        "Executive Summary · PDF",
-                        report_type="Executive BOM Summary",
-                        key=f"shared_executive_pdf_{selected_analysis_id}",
-                        data=pdf_bytes,
-                        file_name=executive_pdf_name,
-                        mime="application/pdf",
-                    )
-                with executive_csv_col:
-                    executive_csv_name = f"{safe_project}_executive_summary.csv"
-                    _report_download_button(
-                        "Executive Data · CSV",
-                        report_type="Executive BOM Summary",
-                        key=f"shared_executive_csv_{selected_analysis_id}",
-                        data=executive_csv,
-                        file_name=executive_csv_name,
-                        mime="text/csv",
-                    )
+            selected_preview = reports_workspace.selectbox(
+                "Report preview",
+                preview_options,
+                key="reports_preview_type",
+                help="The preview changes here; downloads remain available in the report center.",
+            )
 
-            with st.expander("Engineering reports", expanded=False):
-                st.caption("Technical reviews for component risk, lifecycle readiness, and alternatives.")
-                risk_col, lifecycle_col, alternatives_col = st.columns(3)
-                with risk_col:
-                    risk_csv_name = f"{safe_project}_engineering_risk_review.csv"
-                    _report_download_button(
-                        "Risk Review · CSV",
-                        report_type="Engineering Risk Review",
-                        key=f"shared_risk_csv_{selected_analysis_id}",
-                        data=engineering_df.to_csv(index=False).encode("utf-8"),
-                        file_name=risk_csv_name,
-                        mime="text/csv",
+            with reports_workspace:
+                if selected_preview == "Executive Decision Brief":
+                    st.markdown(
+                        f"""
+                        <div class="cv-r9-preview-card">
+                          <div class="cv-r9-preview-title">Executive Decision Brief</div>
+                          <div class="cv-r9-preview-copy">
+                            <b>Production readiness:</b> {html.escape(ai_report['readiness'])}
+                            <br><br>{html.escape(ai_report['executive_summary'])}
+                            <br><br><b>Management decision:</b>
+                            {html.escape(ai_report['executive_decision'])}
+                            <br><br><b>Projected health:</b>
+                            {ai_report['health']}/100 → {ai_report['projected_health']}/100
+                          </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
                     )
-                with lifecycle_col:
-                    lifecycle_csv_name = f"{safe_project}_lifecycle_exposure.csv"
-                    _report_download_button(
-                        "Lifecycle Review · CSV",
-                        report_type="Lifecycle Exposure Report",
-                        key=f"shared_lifecycle_csv_{selected_analysis_id}",
-                        data=lifecycle_df.to_csv(index=False).encode("utf-8"),
-                        file_name=lifecycle_csv_name,
-                        mime="text/csv",
+                elif selected_preview == "Procurement Decision Brief":
+                    procurement_items = "".join(
+                        f"<li>{html.escape(item)}</li>"
+                        for item in ai_report["procurement_actions"]
                     )
-                with alternatives_col:
-                    alternatives_csv_name = f"{safe_project}_alternative_readiness.csv"
-                    _report_download_button(
-                        "Alternatives Review · CSV",
-                        report_type="Alternative Replacement Report",
-                        key=f"shared_alternatives_csv_{selected_analysis_id}",
-                        data=alternative_df.to_csv(index=False).encode("utf-8"),
-                        file_name=alternatives_csv_name,
-                        mime="text/csv",
+                    st.markdown(
+                        f"""
+                        <div class="cv-r9-preview-card">
+                          <div class="cv-r9-preview-title">Procurement Decision Brief</div>
+                          <div class="cv-r9-preview-copy">
+                            {html.escape(ai_report['procurement_summary'])}
+                            <br><br><b>Priority actions</b>
+                            <ul>{procurement_items}</ul>
+                            <b>Estimated procurement effort:</b>
+                            {ai_report['procurement_hours']} hour(s)
+                          </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
                     )
+                elif selected_preview == "Engineering Risk Review":
+                    st.markdown("### Engineering Risk Review")
+                    st.caption(
+                        "Components ranked by technical risk, with the evidence and "
+                        "recommended engineering action."
+                    )
+                    if engineering_df.empty:
+                        st.info("No component-level risk data is available.")
+                    else:
+                        cadivor_engineering_dataframe(
+                            engineering_df,
+                            height="content",
+                            column_config={
+                                "Manufacturer Part Number": st.column_config.TextColumn(
+                                    width="medium"
+                                ),
+                                "Risk Score": st.column_config.NumberColumn(format="%d"),
+                            },
+                        )
+                elif selected_preview == "Procurement & Sourcing Review":
+                    st.markdown("### Procurement & Sourcing Review")
+                    st.caption(
+                        "Purchasing availability, supplier coverage, lead time, pricing, "
+                        "and the required sourcing response."
+                    )
+                    if sourcing_df.empty:
+                        st.info("No sourcing fields are available for this analysis.")
+                    else:
+                        cadivor_engineering_dataframe(
+                            sourcing_df,
+                            height="content",
+                            column_config={
+                                "Manufacturer Part Number": st.column_config.TextColumn(
+                                    width="medium"
+                                ),
+                                "Available Stock": st.column_config.NumberColumn(
+                                    format="%,d"
+                                ),
+                            },
+                        )
+                elif selected_preview == "Lifecycle Readiness Review":
+                    st.markdown("### Lifecycle Readiness Review")
+                    st.caption(
+                        "Lifecycle continuity, future availability, replacement readiness, "
+                        "and review priority."
+                    )
+                    if lifecycle_df.empty:
+                        st.info("No lifecycle fields are available for this analysis.")
+                    else:
+                        cadivor_engineering_dataframe(lifecycle_df, height="content")
+                else:
+                    st.markdown("### Alternative Readiness Review")
+                    st.caption(
+                        "Candidate availability and the next qualification action for every "
+                        "component that may need a replacement."
+                    )
+                    if alternative_df.empty:
+                        st.info("No alternative-readiness fields are available for this analysis.")
+                    else:
+                        cadivor_engineering_dataframe(alternative_df, height="content")
 
-            with st.expander("Procurement reports", expanded=False):
-                st.caption("Purchasing and sourcing packages for procurement and supplier review.")
-                ai_proc_col, sourcing_col = st.columns(2)
-                with ai_proc_col:
-                    ai_proc_name = f"{safe_project}_ai_procurement_brief.pdf"
-                    _report_download_button(
-                        "AI Procurement Brief · PDF",
-                        report_type="AI Procurement Brief",
-                        key=f"shared_ai_procurement_pdf_{selected_analysis_id}",
-                        data=ai_procurement_pdf,
-                        file_name=ai_proc_name,
-                        mime="application/pdf",
-                        primary=True,
-                    )
-                with sourcing_col:
-                    sourcing_csv_name = f"{safe_project}_sourcing_summary.csv"
-                    _report_download_button(
-                        "Sourcing Review · CSV",
-                        report_type="Procurement & Sourcing",
-                        key=f"shared_sourcing_csv_{selected_analysis_id}",
-                        data=sourcing_df.to_csv(index=False).encode("utf-8"),
-                        file_name=sourcing_csv_name,
-                        mime="text/csv",
-                    )
-
-            action_cols = st.columns(3)
+            action_cols = reports_workspace.columns(3, gap="small")
             with action_cols[0]:
                 internal_nav_button(
-                    "Open Analysis Details",
+                    "Analysis details",
                     "Analysis Details",
                     key="reports_open_analysis_details",
                     use_container_width=True,
@@ -8057,7 +7837,7 @@ def run_authenticated_app() -> None:
                 )
             with action_cols[1]:
                 internal_nav_button(
-                    "Open in BOM Analyzer",
+                    "Open BOM",
                     "BOM Analyzer",
                     key="reports_open_bom_analyzer",
                     use_container_width=True,
@@ -8065,7 +7845,7 @@ def run_authenticated_app() -> None:
                 )
             with action_cols[2]:
                 internal_nav_button(
-                    "Open Alternative Finder",
+                    "Find alternatives",
                     ALTERNATIVE_FINDER_PAGE,
                     key="reports_open_alternative_finder",
                     use_container_width=True,
@@ -8074,79 +7854,97 @@ def run_authenticated_app() -> None:
                     source_page="reports_center",
                 )
 
-            with st.expander(
-                f"Browse all {len(report_records)} report-ready analyses",
+            display_rows = []
+            history_labels = []
+            for row, row_label in zip(report_records, labels):
+                row_created_at = str(
+                    _report_value(
+                        row,
+                        "created_at",
+                        "date",
+                        default="",
+                    )
+                )
+                row_created_date = (
+                    row_created_at.split("T")[0]
+                    if "T" in row_created_at
+                    else row_created_at[:10]
+                )
+                display_rows.append(
+                    {
+                        "Project": _report_value(
+                            row,
+                            "project_name",
+                            "name",
+                            default="Saved BOM",
+                        ),
+                        "Source File": _report_value(
+                            row,
+                            "filename",
+                            "uploaded_file",
+                            "file_name",
+                            default="—",
+                        ),
+                        "Date": row_created_date or "—",
+                        "Health": _report_int(
+                            _report_value(row, "health_score", default=0)
+                        ),
+                        "High Risk": _report_int(
+                            _report_value(
+                                row,
+                                "high_risk_count",
+                                "high_risk_parts",
+                                default=0,
+                            )
+                        ),
+                        "Parts": _report_int(
+                            _report_value(
+                                row,
+                                "total_parts",
+                                "part_count",
+                                "parts_count",
+                                default=0,
+                            )
+                        ),
+                    }
+                )
+                history_labels.append(row_label)
+
+            def _select_report_from_history() -> None:
+                table_state = st.session_state.get("reports_history_table", {})
+                table_selection = getattr(table_state, "selection", None)
+                if table_selection is None and isinstance(table_state, dict):
+                    table_selection = table_state.get("selection", {})
+                selected_rows = getattr(table_selection, "rows", None)
+                if selected_rows is None and isinstance(table_selection, dict):
+                    selected_rows = table_selection.get("rows", [])
+                if selected_rows:
+                    row_index = int(selected_rows[0])
+                    if 0 <= row_index < len(history_labels):
+                        st.session_state["reports_analysis_search"] = ""
+                        st.session_state["reports_selected_analysis"] = history_labels[
+                            row_index
+                        ]
+
+            with reports_workspace.expander(
+                f"Switch analysis · {len(report_records)} report-ready BOMs",
                 expanded=False,
             ):
-                display_rows = []
-                for row in report_records:
-                    row_created_at = str(
-                        _report_value(
-                            row,
-                            "created_at",
-                            "date",
-                            default="",
-                        )
-                    )
-                    row_created_date = (
-                        row_created_at.split("T")[0]
-                        if "T" in row_created_at
-                        else row_created_at[:10]
-                    )
-                    display_rows.append(
-                        {
-                            "Project": _report_value(
-                                row,
-                                "project_name",
-                                "name",
-                                default="Saved BOM",
-                            ),
-                            "Source File": _report_value(
-                                row,
-                                "filename",
-                                "uploaded_file",
-                                "file_name",
-                                default="—",
-                            ),
-                            "Date": row_created_date or "—",
-                            "Health": _report_int(
-                                _report_value(
-                                    row,
-                                    "health_score",
-                                    default=0,
-                                )
-                            ),
-                            "High Risk": _report_int(
-                                _report_value(
-                                    row,
-                                    "high_risk_count",
-                                    "high_risk_parts",
-                                    default=0,
-                                )
-                            ),
-                            "Medium Risk": _report_int(
-                                _report_value(
-                                    row,
-                                    "medium_risk_count",
-                                    "medium_risk_parts",
-                                    default=0,
-                                )
-                            ),
-                            "Parts": _report_int(
-                                _report_value(
-                                    row,
-                                    "total_parts",
-                                    "part_count",
-                                    "parts_count",
-                                    default=0,
-                                )
-                            ),
-                        }
-                    )
-                cadivor_engineering_dataframe(pd.DataFrame(display_rows))
+                st.caption("Select a row to load that BOM into the report workspace.")
+                cadivor_engineering_dataframe(
+                    pd.DataFrame(display_rows),
+                    key="reports_history_table",
+                    on_select=_select_report_from_history,
+                    selection_mode="single-row",
+                    height="content",
+                )
         else:
-            st.markdown(
+            reports_workspace.markdown(
                 '<div class="cv-r9-empty">No saved BOM analyses are available. Analyze and save a BOM before generating reports.</div>',
+                unsafe_allow_html=True,
+            )
+            reports_package_center.markdown(
+                '<div class="cv-r9-empty">Report packages appear here after a BOM analysis is saved.</div>',
                 unsafe_allow_html=True,
             )
 
