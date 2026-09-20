@@ -5201,21 +5201,14 @@ def run_authenticated_app() -> None:
                 )
                 decision_workspace_col, decision_metrics_col = st.columns([0.64, 0.36], gap="large")
                 with decision_workspace_col:
-                    refresh_decision_col, persistence_scope_col = st.columns([1, 3])
-                    with refresh_decision_col:
-                        cadivor_button_wrap("secondary")
-                        if st.button(
-                            "Refresh Decisions",
-                            key="refresh_persistent_decisions",
-                            use_container_width=True,
-                        ):
-                            _clear_engineering_decision_caches()
-                            st.rerun()
-                        cadivor_button_wrap_end()
-                    with persistence_scope_col:
-                        st.caption(
-                            f"Persistent scope: {active_workspace_name or 'Personal workspace'}"
-                        )
+                    cadivor_button_wrap("secondary")
+                    if st.button(
+                        "Refresh Decisions",
+                        key="refresh_persistent_decisions",
+                    ):
+                        _clear_engineering_decision_caches()
+                        st.rerun()
+                    cadivor_button_wrap_end()
     
                     queue_tab, workload_tab, analytics_tab, archive_tab = st.tabs(
                         [
@@ -5399,84 +5392,241 @@ def run_authenticated_app() -> None:
                             )
     
                     with analytics_tab:
-                        cadivor_section_header(
-                            "Decision Analytics",
-                            description="Portfolio impact from open and closed engineering decisions.",
-                            icon="chart-no-axes-combined",
+                        st.markdown("### Decision analytics")
+                        st.caption(
+                            "Understand queue urgency, workflow position, and the engineering problems driving review effort."
                         )
-                        cadivor_metric_row(
-                            [
-                                MetricCard(
-                                    label="Projected Health Gain",
-                                    value=f"+{decision_center['projected_health_gain']}",
-                                    tone="success",
-                                    icon="gauge",
-                                ),
-                                MetricCard(
-                                    label="Supply Risk Reduction",
-                                    value=f"-{decision_center['projected_risk_reduction']}",
-                                    tone="monitoring",
-                                    icon="radar",
-                                ),
-                                MetricCard(
-                                    label="Closed / Rejected",
-                                    value=str(decision_center["closed_count"]),
-                                    tone="neutral",
-                                    icon="circle-x",
-                                ),
-                                MetricCard(
-                                    label="Average Open Age",
-                                    value=f"{decision_center['average_age_days']} days",
-                                    tone="warning",
-                                    icon="clock",
-                                ),
-                            ],
+
+                        analytics_open_decisions = [
+                            decision
+                            for decision in all_decisions
+                            if decision["status"] not in ("Closed", "Rejected")
+                        ]
+                        analytics_open_count = len(analytics_open_decisions)
+                        analytics_critical_count = sum(
+                            1
+                            for decision in analytics_open_decisions
+                            if int(decision.get("priority_score", 0)) >= 85
                         )
-    
-                        if all_decisions:
-                            status_counts = (
-                                pd.DataFrame(all_decisions)["status"]
-                                .value_counts()
-                                .rename_axis("Workflow Stage")
-                                .reset_index(name="Decisions")
+                        analytics_critical_share = (
+                            round(analytics_critical_count / analytics_open_count * 100)
+                            if analytics_open_count
+                            else 0
+                        )
+                        analytics_owner_count = len(
+                            {
+                                str(decision.get("assigned_owner") or "Unassigned")
+                                for decision in analytics_open_decisions
+                            }
+                        )
+                        analytics_hours = sum(
+                            int(decision.get("estimated_effort_hours", 0) or 0)
+                            for decision in analytics_open_decisions
+                        )
+                        analytics_age = float(decision_center.get("average_age_days", 0) or 0)
+                        analytics_age_label = f"{analytics_age:.1f}".rstrip("0").rstrip(".")
+                        analytics_awaiting = int(
+                            decision_center.get("awaiting_approval_count", 0) or 0
+                        )
+                        analytics_approval_note = (
+                            f" {analytics_awaiting} decision"
+                            f"{'s are' if analytics_awaiting != 1 else ' is'} waiting for manager approval."
+                            if analytics_awaiting
+                            else " No decisions are currently waiting at manager approval."
+                        )
+
+                        if analytics_open_count == 0:
+                            analytics_headline = "The active decision queue is clear"
+                            analytics_summary = (
+                                "No engineering decisions are currently waiting for review or approval."
                             )
-                            owner_hours = (
-                                pd.DataFrame(
-                                    [
-                                        {
-                                            "Owner": decision["assigned_owner"],
-                                            "Estimated Hours": decision["estimated_effort_hours"],
-                                            "Priority Score": decision["priority_score"],
-                                        }
-                                        for decision in all_decisions
-                                        if decision["status"] not in ("Closed", "Rejected")
-                                    ]
+                            analytics_workload = (
+                                "New monitoring or BOM findings will appear here when action is required."
+                            )
+                        elif analytics_critical_count == 0:
+                            analytics_headline = "No critical decisions are blocking the queue"
+                            analytics_summary = (
+                                f"{analytics_open_count} open decisions remain, but none currently meet "
+                                "Cadivor's critical threshold."
+                            )
+                            analytics_workload = (
+                                f"The queue represents {analytics_hours} estimated engineering hours across "
+                                f"{analytics_owner_count} assigned owner"
+                                f"{'s' if analytics_owner_count != 1 else ''}. The average open decision has "
+                                f"waited {analytics_age_label} days.{analytics_approval_note}"
+                            )
+                        else:
+                            analytics_headline = (
+                                "Critical work dominates the active queue"
+                                if analytics_critical_share >= 50
+                                else "Critical work is concentrated in part of the queue"
+                            )
+                            analytics_summary = (
+                                f"{analytics_critical_count} of {analytics_open_count} open decisions "
+                                f"({analytics_critical_share}%) require immediate engineering attention."
+                            )
+                            analytics_workload = (
+                                f"The queue represents {analytics_hours} estimated engineering hours across "
+                                f"{analytics_owner_count} assigned owner"
+                                f"{'s' if analytics_owner_count != 1 else ''}. The average open decision has "
+                                f"waited {analytics_age_label} days.{analytics_approval_note}"
+                            )
+
+                        with st.container(border=True, key="ed_analytics_brief"):
+                            st.markdown(
+                                f"""
+                                <div data-testid="ed-analytics-brief" style="padding:2px 2px 4px">
+                                  <span style="display:block;margin-bottom:6px;color:#2563EB;font-size:10px;
+                                    font-weight:800;letter-spacing:.12em;text-transform:uppercase">
+                                    Queue interpretation
+                                  </span>
+                                  <h3 style="margin:0 0 8px;color:#0F2D57;font-size:20px;
+                                    line-height:1.25;letter-spacing:-.025em">
+                                    {html.escape(analytics_headline)}
+                                  </h3>
+                                  <p style="margin:0 0 7px;color:#334E68;font-size:13px;line-height:1.5">
+                                    {html.escape(analytics_summary)}
+                                  </p>
+                                  <p style="margin:0;color:#52647D;font-size:12.5px;line-height:1.5">
+                                    {html.escape(analytics_workload)}
+                                  </p>
+                                </div>
+                                """,
+                                unsafe_allow_html=True,
+                            )
+
+                        if all_decisions:
+                            workflow_meaning = {
+                                "Open": "Waiting for its first workflow action.",
+                                "New": "Not yet advanced into engineering review.",
+                                "Engineering Review": "Technical evidence is being evaluated.",
+                                "Procurement Review": "Supply and commercial evidence is being evaluated.",
+                                "Manager Approval": "Waiting for accountable approval.",
+                                "Awaiting Approval": "Waiting for accountable approval.",
+                                "Production Approved": "Cleared for the next release stage.",
+                                "Production Ready": "Cleared for the next release stage.",
+                                "Closed": "Completed and retained in decision history.",
+                                "Rejected": "Not approved for release.",
+                            }
+                            workflow_order = [
+                                "Open",
+                                "New",
+                                "Engineering Review",
+                                "Procurement Review",
+                                "Manager Approval",
+                                "Awaiting Approval",
+                                "Production Approved",
+                                "Production Ready",
+                                "Closed",
+                                "Rejected",
+                            ]
+                            workflow_counts: dict[str, int] = {}
+                            for decision in all_decisions:
+                                stage = str(decision.get("status") or "New")
+                                workflow_counts[stage] = workflow_counts.get(stage, 0) + 1
+                            ordered_stages = [
+                                stage for stage in workflow_order if stage in workflow_counts
+                            ] + sorted(
+                                stage for stage in workflow_counts if stage not in workflow_order
+                            )
+                            workflow_rows = [
+                                {
+                                    "Workflow Stage": stage,
+                                    "Volume": (
+                                        f"{workflow_counts[stage]} decision"
+                                        f"{'s' if workflow_counts[stage] != 1 else ''} · "
+                                        f"{round(workflow_counts[stage] / len(all_decisions) * 100)}%"
+                                    ),
+                                    "What this means": workflow_meaning.get(
+                                        stage,
+                                        "A decision is progressing through the engineering workflow.",
+                                    ),
+                                }
+                                for stage in ordered_stages
+                            ]
+
+                            st.markdown("#### Where decisions are in the workflow")
+                            st.caption(
+                                "This shows whether work is still new, under review, awaiting approval, or complete."
+                            )
+                            cadivor_table(
+                                pd.DataFrame(workflow_rows),
+                                caption=f"Distribution across {len(all_decisions)} engineering decisions",
+                                badge_columns=["Workflow Stage"],
+                                align={"Volume": "right"},
+                            )
+
+                        if analytics_open_decisions:
+                            driver_meaning = {
+                                "Lifecycle Decision": "Obsolescence, EOL, or lifecycle-transition exposure.",
+                                "Supply Decision": "Inventory, lead-time, or sourcing continuity risk.",
+                                "Cost Decision": "Cost exposure or purchasing action.",
+                                "Release Decision": "BOM risk that must be resolved before release.",
+                                "Engineering Review": "Component evidence or qualification work.",
+                                "Monitoring Review": "A monitored change that requires disposition.",
+                            }
+                            driver_groups: dict[str, list[dict]] = {}
+                            for decision in analytics_open_decisions:
+                                decision_type = str(
+                                    decision.get("decision_type") or "Engineering Decision"
                                 )
-                                .groupby("Owner", as_index=False)
-                                .agg(
+                                driver_groups.setdefault(decision_type, []).append(decision)
+                            driver_rows = []
+                            for decision_type, decisions in driver_groups.items():
+                                driver_critical_count = sum(
+                                    1
+                                    for decision in decisions
+                                    if int(decision.get("priority_score", 0)) >= 85
+                                )
+                                driver_estimated_hours = sum(
+                                    int(
+                                        decision.get(
+                                            "estimated_effort_hours",
+                                            0,
+                                        )
+                                        or 0
+                                    )
+                                    for decision in decisions
+                                )
+                                driver_rows.append(
                                     {
-                                        "Estimated Hours": "sum",
-                                        "Priority Score": "mean",
+                                        "Decision Type": decision_type,
+                                        "Queue": (
+                                            f"{len(decisions)} open · "
+                                            f"{driver_critical_count} critical"
+                                        ),
+                                        "Effort": f"{driver_estimated_hours} hrs",
+                                        "What it addresses": driver_meaning.get(
+                                            decision_type,
+                                            "An engineering decision requiring review and disposition.",
+                                        ),
+                                        "_critical": driver_critical_count,
+                                        "_open": len(decisions),
                                     }
                                 )
-                                .rename(columns={"Priority Score": "Average Priority"})
+                            driver_rows.sort(
+                                key=lambda row: (
+                                    -int(row["_critical"]),
+                                    -int(row["_open"]),
+                                    str(row["Decision Type"]),
+                                )
                             )
-                            analytics_left, analytics_right = st.columns(2)
-                            with analytics_left:
-                                st.markdown("#### Decisions by Workflow Stage")
-                                cadivor_table(
-                                    status_counts,
-                                    badge_columns=["Workflow Stage"],
-                                    numeric_columns=["Decisions"],
-                                    align={"Decisions": "right"},
-                                )
-                            with analytics_right:
-                                st.markdown("#### Open Workload Impact")
-                                cadivor_table(
-                                    owner_hours,
-                                    numeric_columns=["Estimated Hours", "Average Priority"],
-                                    align={"Estimated Hours": "right", "Average Priority": "right"},
-                                )
+                            for driver_row in driver_rows:
+                                driver_row.pop("_critical", None)
+                                driver_row.pop("_open", None)
+
+                            st.markdown("#### What is driving the active queue")
+                            st.caption(
+                                "This separates lifecycle, supply, cost, release, and qualification work."
+                            )
+                            cadivor_table(
+                                pd.DataFrame(driver_rows),
+                                caption="Open work grouped by the engineering problem that created it",
+                                align={
+                                    "Queue": "right",
+                                    "Effort": "right",
+                                },
+                            )
     
                     with archive_tab:
                         st.markdown("### Searchable Decision Archive")
