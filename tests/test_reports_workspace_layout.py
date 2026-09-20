@@ -100,6 +100,8 @@ class ReportsWorkspaceLayoutTests(unittest.TestCase):
         self.assertIn("action_href = alternative_finder_href(", REPORTS)
         self.assertIn('source_page="reports_alternative_readiness"', REPORTS)
         self.assertIn('class="cv-report-inline-action"', REPORTS)
+        self.assertIn("st.html(table_html)", REPORTS)
+        self.assertIn('f"<tbody>{table_rows}</tbody>"', REPORTS)
 
 
 if __name__ == "__main__":
