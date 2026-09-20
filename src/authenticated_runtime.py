@@ -6663,9 +6663,9 @@ def run_authenticated_app() -> None:
                 display:block;margin-bottom:5px;color:#2563EB!important;font-size:9.5px;
                 font-weight:800;letter-spacing:.12em;text-transform:uppercase;
             }
-            .cv-report-workspace-head h2,.cv-report-center-head h2{
+            .cv-report-workspace-title,.cv-report-center-title{
                 margin:0;color:#0F2D57!important;font-size:19px;font-weight:780;
-                letter-spacing:-.025em;line-height:1.2;
+                letter-spacing:-.025em;line-height:1.2;text-transform:none!important;
             }
             .cv-report-workspace-head p,.cv-report-center-head p{
                 margin:4px 0 0;color:#64748B!important;font-size:12.5px;line-height:1.45;
@@ -6679,9 +6679,9 @@ def run_authenticated_app() -> None:
                 display:block;color:#2563EB!important;font-size:8.5px;font-weight:900;
                 letter-spacing:.11em;text-transform:uppercase;margin-bottom:5px;
             }
-            .cv-r9-selected-name h3{
+            .cv-r9-selected-title{
                 margin:0;color:#0F2D57!important;font-size:18px;font-weight:800;
-                letter-spacing:-.025em;line-height:1.25;
+                letter-spacing:-.025em;line-height:1.25;text-transform:none!important;
             }
             .cv-r9-selected-name p{
                 margin:5px 0 14px;color:#64748B!important;font-size:11.5px;line-height:1.4;
@@ -6713,24 +6713,23 @@ def run_authenticated_app() -> None:
             .cv-r9-preview-copy{
                 color:#52647A!important;font-size:11px;font-weight:720;line-height:1.55;
             }
-            :is(.st-key-report_package_executive,.st-key-report_package_engineering,
-                .st-key-report_package_procurement,.st-key-report_package_lifecycle,
+            :is(.st-key-report_package_engineering,.st-key-report_package_procurement,
+                .st-key-report_package_lifecycle,
                 .st-key-report_package_alternatives){
                 padding:15px 15px 12px;border:1px solid #D6E0EC;border-radius:12px;
                 background:#FFFFFF;transition:border-color .16s ease,box-shadow .16s ease;
             }
-            :is(.st-key-report_package_executive,.st-key-report_package_engineering,
-                .st-key-report_package_procurement,.st-key-report_package_lifecycle,
+            :is(.st-key-report_package_engineering,.st-key-report_package_procurement,
+                .st-key-report_package_lifecycle,
                 .st-key-report_package_alternatives):hover{
                 border-color:#B9CBE2;box-shadow:0 6px 16px rgba(15,23,42,.055);
             }
-            .st-key-report_package_executive{border-top:3px solid #3B82F6}
             .st-key-report_package_engineering{border-top:3px solid #EF4444}
             .st-key-report_package_procurement{border-top:3px solid #0F9F8F}
             .st-key-report_package_lifecycle{border-top:3px solid #F59E0B}
             .st-key-report_package_alternatives{border-top:3px solid #7C6CF2}
-            :is(.st-key-report_package_executive,.st-key-report_package_engineering,
-                .st-key-report_package_procurement,.st-key-report_package_lifecycle,
+            :is(.st-key-report_package_engineering,.st-key-report_package_procurement,
+                .st-key-report_package_lifecycle,
                 .st-key-report_package_alternatives) > [data-testid="stVerticalBlock"]{
                 gap:7px;
             }
@@ -6757,27 +6756,27 @@ def run_authenticated_app() -> None:
                 border-radius:9px;background:#F7FAFF;color:#0F2D57!important;
                 font-size:11px;font-weight:750;line-height:1.35;
             }
-            :is(.st-key-report_package_executive,.st-key-report_package_engineering,
-                .st-key-report_package_procurement,.st-key-report_package_lifecycle,
+            :is(.st-key-report_package_engineering,.st-key-report_package_procurement,
+                .st-key-report_package_lifecycle,
                 .st-key-report_package_alternatives) [data-testid="stButton"] button{
-                width:auto!important;min-height:26px;margin-top:4px!important;padding:1px 0!important;
-                border:0!important;border-radius:0;background:transparent!important;
-                color:#2563EB!important;font-size:11.5px;font-weight:720;box-shadow:none!important;
+                width:100%!important;min-height:32px;padding:4px 7px!important;
+                border:1px solid #9FB3CA!important;border-radius:8px;background:#FFFFFF!important;
+                color:#0F2D57!important;font-size:10px;font-weight:750;box-shadow:none!important;
             }
-            :is(.st-key-report_package_executive,.st-key-report_package_engineering,
-                .st-key-report_package_procurement,.st-key-report_package_lifecycle,
+            :is(.st-key-report_package_engineering,.st-key-report_package_procurement,
+                .st-key-report_package_lifecycle,
                 .st-key-report_package_alternatives) [data-testid="stButton"] button:hover{
-                color:#1D4ED8!important;text-decoration:underline;text-underline-offset:3px;
+                border-color:#6C9EE8!important;background:#F7FAFF!important;color:#1D4ED8!important;
             }
-            :is(.st-key-report_package_executive,.st-key-report_package_engineering,
-                .st-key-report_package_procurement,.st-key-report_package_lifecycle,
+            :is(.st-key-report_package_engineering,.st-key-report_package_procurement,
+                .st-key-report_package_lifecycle,
                 .st-key-report_package_alternatives) [data-testid="stDownloadButton"] button{
-                min-height:34px!important;padding:5px 9px!important;border-color:#CBD9EA!important;
+                min-height:32px!important;padding:4px 7px!important;border-color:#CBD9EA!important;
                 border-radius:8px!important;background:#FFFFFF!important;color:#0F2D57!important;
-                font-size:10.5px!important;font-weight:750!important;box-shadow:none!important;
+                font-size:10px!important;font-weight:750!important;box-shadow:none!important;
             }
-            :is(.st-key-report_package_executive,.st-key-report_package_engineering,
-                .st-key-report_package_procurement,.st-key-report_package_lifecycle,
+            :is(.st-key-report_package_engineering,.st-key-report_package_procurement,
+                .st-key-report_package_lifecycle,
                 .st-key-report_package_alternatives) [data-testid="stDownloadButton"] button:hover{
                 border-color:#8FB5ED!important;background:#F7FAFF!important;color:#1D4ED8!important;
             }
@@ -6816,23 +6815,19 @@ def run_authenticated_app() -> None:
             key="reports_package_center"
         )
         reports_workspace.markdown(
-            """
-            <div class="cv-report-workspace-head">
-              <span>Selected analysis</span>
-              <h2>Build a report package</h2>
-              <p>Choose a saved BOM, inspect the evidence, and confirm what the report will communicate.</p>
-            </div>
-            """,
+            '<div class="cv-report-workspace-head">'
+            '<span>Selected analysis</span>'
+            '<div class="cv-report-workspace-title">Build a report package</div>'
+            '<p>Choose a saved BOM, inspect the evidence, and confirm what the report will communicate.</p>'
+            '</div>',
             unsafe_allow_html=True,
         )
         reports_package_center.markdown(
-            """
-            <div class="cv-report-center-head">
-              <span>Report center</span>
-              <h2>Decision packages</h2>
-              <p>Preview the audience-specific result, then download the files you need.</p>
-            </div>
-            """,
+            '<div class="cv-report-center-head">'
+            '<span>Report center</span>'
+            '<div class="cv-report-center-title">Supporting reviews</div>'
+            '<p>Open a focused review or download its engineering evidence.</p>'
+            '</div>',
             unsafe_allow_html=True,
         )
 
@@ -7495,15 +7490,24 @@ def run_authenticated_app() -> None:
                     """,
                     unsafe_allow_html=True,
                 )
-                card.button(
-                    "Preview report →",
-                    key=f"{key}_preview",
-                    on_click=_select_report_preview,
-                    args=(preview_name,),
+                action_columns = card.columns(
+                    1 + len(downloads),
+                    gap="small",
                 )
-                download_columns = card.columns(2, gap="small")
+                preview_is_active = (
+                    st.session_state.get("reports_preview_type") == preview_name
+                )
+                with action_columns[0]:
+                    st.button(
+                        "Viewing" if preview_is_active else "Preview",
+                        key=f"{key}_preview",
+                        on_click=_select_report_preview,
+                        args=(preview_name,),
+                        disabled=preview_is_active,
+                        use_container_width=True,
+                    )
                 for download_index, download in enumerate(downloads):
-                    with download_columns[download_index % 2]:
+                    with action_columns[download_index + 1]:
                         _report_download_button(**download)
 
             alternative_search_count = (
@@ -7521,45 +7525,6 @@ def run_authenticated_app() -> None:
             )
 
             _render_report_package_card(
-                key="report_package_executive",
-                eyebrow="Leadership",
-                title="Executive decision",
-                value=f"{ai_report['health']}→{ai_report['projected_health']}",
-                description="Release posture, priority risks, and the management decision in one brief.",
-                evidence=(
-                    f"{ai_report['readiness']}. Projected BOM health after the recommended "
-                    f"actions: {ai_report['projected_health']}/100."
-                ),
-                preview_name="Executive Decision Brief",
-                downloads=[
-                    {
-                        "label": "Decision PDF",
-                        "report_type": "Executive Decision Brief",
-                        "data": ai_executive_pdf,
-                        "file_name": f"{safe_project}_executive_decision_brief.pdf",
-                        "mime": "application/pdf",
-                        "key": f"report_center_executive_brief_{selected_analysis_id}",
-                        "primary": True,
-                    },
-                    {
-                        "label": "Summary PDF",
-                        "report_type": "Executive BOM Summary",
-                        "data": pdf_bytes,
-                        "file_name": f"{safe_project}_executive_summary.pdf",
-                        "mime": "application/pdf",
-                        "key": f"report_center_executive_summary_{selected_analysis_id}",
-                    },
-                    {
-                        "label": "Data CSV",
-                        "report_type": "Executive BOM Summary",
-                        "data": executive_csv,
-                        "file_name": f"{safe_project}_executive_summary.csv",
-                        "mime": "text/csv",
-                        "key": f"report_center_executive_csv_{selected_analysis_id}",
-                    },
-                ],
-            )
-            _render_report_package_card(
                 key="report_package_engineering",
                 eyebrow="Engineering",
                 title="Risk review",
@@ -7572,7 +7537,7 @@ def run_authenticated_app() -> None:
                 preview_name="Engineering Risk Review",
                 downloads=[
                     {
-                        "label": "Review PDF",
+                        "label": "Report PDF",
                         "report_type": "Engineering Risk Review",
                         "data": risk_report_pdf,
                         "file_name": f"{safe_project}_engineering_risk_review.pdf",
@@ -7602,16 +7567,7 @@ def run_authenticated_app() -> None:
                 preview_name="Procurement & Sourcing Review",
                 downloads=[
                     {
-                        "label": "Decision PDF",
-                        "report_type": "Procurement Decision Brief",
-                        "data": ai_procurement_pdf,
-                        "file_name": f"{safe_project}_procurement_decision_brief.pdf",
-                        "mime": "application/pdf",
-                        "key": f"report_center_procurement_brief_{selected_analysis_id}",
-                        "primary": True,
-                    },
-                    {
-                        "label": "Review PDF",
+                        "label": "Report PDF",
                         "report_type": "Procurement & Sourcing",
                         "data": sourcing_report_pdf,
                         "file_name": f"{safe_project}_procurement_sourcing_review.pdf",
@@ -7641,7 +7597,7 @@ def run_authenticated_app() -> None:
                 preview_name="Lifecycle Readiness Review",
                 downloads=[
                     {
-                        "label": "Review PDF",
+                        "label": "Report PDF",
                         "report_type": "Lifecycle Exposure Report",
                         "data": lifecycle_report_pdf,
                         "file_name": f"{safe_project}_lifecycle_readiness_review.pdf",
@@ -7671,7 +7627,7 @@ def run_authenticated_app() -> None:
                 preview_name="Alternative Readiness Review",
                 downloads=[
                     {
-                        "label": "Review PDF",
+                        "label": "Report PDF",
                         "report_type": "Alternative Replacement Report",
                         "data": alternatives_report_pdf,
                         "file_name": f"{safe_project}_alternative_readiness_review.pdf",
@@ -7694,7 +7650,7 @@ def run_authenticated_app() -> None:
                 <div class="cv-r9-selected">
                   <div class="cv-r9-selected-name">
                     <span>Selected BOM</span>
-                    <h3>{html.escape(project_name)}</h3>
+                    <div class="cv-r9-selected-title">{html.escape(project_name)}</div>
                     <p>{html.escape(source_file)} · Saved {html.escape(created_date)}</p>
                   </div>
                   <div class="cv-r9-selected-grid">
@@ -7724,7 +7680,7 @@ def run_authenticated_app() -> None:
                 "Report preview",
                 preview_options,
                 key="reports_preview_type",
-                help="The preview changes here; downloads remain available in the report center.",
+                help="Executive downloads appear with the brief. Supporting review downloads remain in the report center.",
             )
 
             with reports_workspace:
@@ -7745,6 +7701,35 @@ def run_authenticated_app() -> None:
                         """,
                         unsafe_allow_html=True,
                     )
+                    executive_export_cols = st.columns(3, gap="small")
+                    with executive_export_cols[0]:
+                        _report_download_button(
+                            "Decision PDF",
+                            report_type="Executive Decision Brief",
+                            data=ai_executive_pdf,
+                            file_name=f"{safe_project}_executive_decision_brief.pdf",
+                            mime="application/pdf",
+                            key=f"preview_executive_brief_{selected_analysis_id}",
+                            primary=True,
+                        )
+                    with executive_export_cols[1]:
+                        _report_download_button(
+                            "Summary PDF",
+                            report_type="Executive BOM Summary",
+                            data=pdf_bytes,
+                            file_name=f"{safe_project}_executive_summary.pdf",
+                            mime="application/pdf",
+                            key=f"preview_executive_summary_{selected_analysis_id}",
+                        )
+                    with executive_export_cols[2]:
+                        _report_download_button(
+                            "Data CSV",
+                            report_type="Executive BOM Summary",
+                            data=executive_csv,
+                            file_name=f"{safe_project}_executive_summary.csv",
+                            mime="text/csv",
+                            key=f"preview_executive_csv_{selected_analysis_id}",
+                        )
                 elif selected_preview == "Procurement Decision Brief":
                     procurement_items = "".join(
                         f"<li>{html.escape(item)}</li>"
@@ -7765,6 +7750,17 @@ def run_authenticated_app() -> None:
                         """,
                         unsafe_allow_html=True,
                     )
+                    procurement_export_col, _ = st.columns([0.34, 0.66], gap="small")
+                    with procurement_export_col:
+                        _report_download_button(
+                            "Decision PDF",
+                            report_type="Procurement Decision Brief",
+                            data=ai_procurement_pdf,
+                            file_name=f"{safe_project}_procurement_decision_brief.pdf",
+                            mime="application/pdf",
+                            key=f"preview_procurement_brief_{selected_analysis_id}",
+                            primary=True,
+                        )
                 elif selected_preview == "Engineering Risk Review":
                     st.markdown("### Engineering Risk Review")
                     st.caption(

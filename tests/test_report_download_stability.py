@@ -24,12 +24,12 @@ class ReportDownloadStabilityTests(unittest.TestCase):
         start = source.index("# ---------- Reports ----------")
         report_source = source[start:]
         for key_fragment in (
-            "report_center_executive_brief_",
-            "report_center_executive_summary_",
-            "report_center_executive_csv_",
+            "preview_executive_brief_",
+            "preview_executive_summary_",
+            "preview_executive_csv_",
+            "preview_procurement_brief_",
             "report_center_risk_pdf_",
             "report_center_risk_csv_",
-            "report_center_procurement_brief_",
             "report_center_sourcing_pdf_",
             "report_center_sourcing_csv_",
             "report_center_lifecycle_pdf_",
@@ -38,7 +38,8 @@ class ReportDownloadStabilityTests(unittest.TestCase):
             "report_center_alternatives_csv_",
         ):
             self.assertIn(key_fragment, report_source)
-        self.assertEqual(report_source.count('"key": f"report_center_'), 12)
+        self.assertEqual(report_source.count('"key": f"report_center_'), 8)
+        self.assertEqual(report_source.count('key=f"preview_'), 4)
         self.assertIn("_report_download_button(**download)", report_source)
 
 
