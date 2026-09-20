@@ -535,11 +535,11 @@ def comparison_matrix_dataframe_height(row_count: int) -> int | str:
     )
 
 
-def cadivor_dataframe(df: pd.DataFrame, **kwargs: Any) -> None:
+def cadivor_dataframe(df: pd.DataFrame, **kwargs: Any) -> Any:
     """Render a Streamlit dataframe inside the Cadivor table host shell."""
     if df is None or getattr(df, "empty", True):
         cadivor_empty_state("No records", "Nothing matches the current filters.", icon="search")
-        return
+        return None
     host_class = str(kwargs.pop("host_class", "cv64-table-host") or "cv64-table-host").strip()
     kwargs.setdefault("use_container_width", True)
     kwargs.setdefault("hide_index", True)
@@ -547,15 +547,17 @@ def cadivor_dataframe(df: pd.DataFrame, **kwargs: Any) -> None:
     if "height" not in kwargs and row_count > 24:
         kwargs["height"] = min(520, 46 + min(row_count, 30) * 34)
     _render_html(f'<div class="{escape(host_class, quote=True)}">')
+    result = None
     try:
-        st.dataframe(df, **kwargs)
+        result = st.dataframe(df, **kwargs)
     except Exception:
-        st.dataframe(df, use_container_width=True, hide_index=True)
+        result = st.dataframe(df, use_container_width=True, hide_index=True)
     if row_count > COMPARISON_MATRIX_EXPAND_ROW_LIMIT and "height" in kwargs:
         _render_html(
             f'<p class="cv71-table-note">Showing a scrollable view of {row_count:,} rows.</p>'
         )
     _render_html("</div>")
+    return result
 
 
 def build_dataframe_column_config(df: pd.DataFrame, overrides: Mapping[str, Any] | None = None) -> dict:
@@ -584,10 +586,10 @@ def cadivor_engineering_dataframe(
     *,
     column_config: Mapping[str, Any] | None = None,
     **kwargs: Any,
-) -> None:
+) -> Any:
     """Render a dataframe with shared engineering column formatting."""
     cfg = build_dataframe_column_config(df, column_config)
-    cadivor_dataframe(df, column_config=cfg, **kwargs)
+    return cadivor_dataframe(df, column_config=cfg, **kwargs)
 
 
 def cadivor_comparison_matrix_dataframe(

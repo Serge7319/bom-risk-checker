@@ -5591,42 +5591,205 @@ def run_authenticated_app() -> None:
                                 driver_rows.append(
                                     {
                                         "Decision Type": decision_type,
-                                        "Queue": (
-                                            f"{len(decisions)} open · "
-                                            f"{driver_critical_count} critical"
-                                        ),
-                                        "Effort": f"{driver_estimated_hours} hrs",
+                                        "Open": len(decisions),
+                                        "Critical": driver_critical_count,
+                                        "Effort (hrs)": driver_estimated_hours,
                                         "What it addresses": driver_meaning.get(
                                             decision_type,
                                             "An engineering decision requiring review and disposition.",
                                         ),
-                                        "_critical": driver_critical_count,
-                                        "_open": len(decisions),
                                     }
                                 )
                             driver_rows.sort(
                                 key=lambda row: (
-                                    -int(row["_critical"]),
-                                    -int(row["_open"]),
+                                    -int(row["Critical"]),
+                                    -int(row["Open"]),
                                     str(row["Decision Type"]),
                                 )
                             )
-                            for driver_row in driver_rows:
-                                driver_row.pop("_critical", None)
-                                driver_row.pop("_open", None)
 
                             st.markdown("#### What is driving the active queue")
                             st.caption(
-                                "This separates lifecycle, supply, cost, release, and qualification work."
+                                "Select a row to inspect the open and critical decisions behind it."
                             )
-                            cadivor_table(
+                            driver_table_state = cadivor_engineering_dataframe(
                                 pd.DataFrame(driver_rows),
-                                caption="Open work grouped by the engineering problem that created it",
-                                align={
-                                    "Queue": "right",
-                                    "Effort": "right",
+                                key="ed_analytics_driver_table",
+                                on_select="rerun",
+                                selection_mode="single-row",
+                                height="content",
+                                column_config={
+                                    "Decision Type": st.column_config.TextColumn(
+                                        "Decision type",
+                                        help="The engineering problem that created this work.",
+                                        width="medium",
+                                    ),
+                                    "Open": st.column_config.NumberColumn(
+                                        "Open",
+                                        help="Active decisions in this category.",
+                                        width="small",
+                                        format="%d",
+                                    ),
+                                    "Critical": st.column_config.NumberColumn(
+                                        "Critical",
+                                        help="Open decisions at or above Cadivor's critical threshold.",
+                                        width="small",
+                                        format="%d",
+                                    ),
+                                    "Effort (hrs)": st.column_config.NumberColumn(
+                                        "Effort",
+                                        help="Estimated engineering effort for the open work.",
+                                        width="small",
+                                        format="%d hrs",
+                                    ),
+                                    "What it addresses": st.column_config.TextColumn(
+                                        "What it addresses",
+                                        width="large",
+                                    ),
                                 },
                             )
+
+                            selected_driver_rows: list[int] = []
+                            driver_selection = getattr(
+                                driver_table_state,
+                                "selection",
+                                None,
+                            )
+                            if driver_selection is None and isinstance(
+                                driver_table_state,
+                                dict,
+                            ):
+                                driver_selection = driver_table_state.get("selection")
+                            if driver_selection is not None:
+                                selected_rows_value = getattr(
+                                    driver_selection,
+                                    "rows",
+                                    None,
+                                )
+                                if selected_rows_value is None and isinstance(
+                                    driver_selection,
+                                    dict,
+                                ):
+                                    selected_rows_value = driver_selection.get("rows", [])
+                                try:
+                                    selected_driver_rows = [
+                                        int(row_index)
+                                        for row_index in (selected_rows_value or [])
+                                    ]
+                                except (TypeError, ValueError):
+                                    selected_driver_rows = []
+
+                            if selected_driver_rows:
+                                selected_driver_index = selected_driver_rows[0]
+                                if 0 <= selected_driver_index < len(driver_rows):
+                                    selected_driver_type = str(
+                                        driver_rows[selected_driver_index]["Decision Type"]
+                                    )
+                                    selected_driver_decisions = list(
+                                        driver_groups.get(selected_driver_type, [])
+                                    )
+                                    selected_driver_critical = [
+                                        decision
+                                        for decision in selected_driver_decisions
+                                        if int(decision.get("priority_score", 0)) >= 85
+                                    ]
+                                    selected_driver_slug = re.sub(
+                                        r"[^a-z0-9]+",
+                                        "_",
+                                        selected_driver_type.lower(),
+                                    ).strip("_") or "decision"
+                                    open_view_label = (
+                                        f"All open ({len(selected_driver_decisions)})"
+                                    )
+                                    critical_view_label = (
+                                        f"Critical ({len(selected_driver_critical)})"
+                                    )
+
+                                    with st.container(
+                                        border=True,
+                                        key="ed_queue_driver_drilldown",
+                                    ):
+                                        st.markdown(
+                                            f"##### {html.escape(selected_driver_type)} queue"
+                                        )
+                                        st.caption(
+                                            "Choose a queue slice, then open the decision you want to review."
+                                        )
+                                        driver_view = st.pills(
+                                            "Queue slice",
+                                            [open_view_label, critical_view_label],
+                                            default=open_view_label,
+                                            selection_mode="single",
+                                            key=f"ed_driver_view_{selected_driver_slug}",
+                                            label_visibility="collapsed",
+                                        )
+                                        show_critical_driver = (
+                                            driver_view == critical_view_label
+                                        )
+                                        visible_driver_decisions = (
+                                            selected_driver_critical
+                                            if show_critical_driver
+                                            else selected_driver_decisions
+                                        )
+
+                                        if not visible_driver_decisions:
+                                            st.info(
+                                                "No critical decisions are currently in this queue."
+                                            )
+                                        else:
+                                            st.caption(
+                                                f"Showing {len(visible_driver_decisions)} "
+                                                f"{'critical' if show_critical_driver else 'open'} "
+                                                f"decision{'s' if len(visible_driver_decisions) != 1 else ''}."
+                                            )
+                                            for driver_decision in visible_driver_decisions:
+                                                decision_id = str(
+                                                    driver_decision.get("decision_id") or ""
+                                                )
+                                                with st.container(
+                                                    border=True,
+                                                    key=(
+                                                        "ed_driver_decision_"
+                                                        f"{selected_driver_slug}_{decision_id}"
+                                                    ),
+                                                ):
+                                                    decision_copy, decision_action = st.columns(
+                                                        [5, 1.25],
+                                                        gap="medium",
+                                                        vertical_alignment="center",
+                                                    )
+                                                    with decision_copy:
+                                                        st.markdown(
+                                                            f"**{html.escape(str(driver_decision.get('title') or 'Review decision'))}**"
+                                                        )
+                                                        st.caption(
+                                                            " · ".join(
+                                                                [
+                                                                    str(driver_decision.get("part_number") or "BOM"),
+                                                                    str(driver_decision.get("priority") or "Routine")
+                                                                    + " · "
+                                                                    + str(driver_decision.get("priority_score") or 0)
+                                                                    + "/100",
+                                                                    str(driver_decision.get("assigned_owner") or "Unassigned"),
+                                                                    str(driver_decision.get("status") or "New"),
+                                                                    str(driver_decision.get("days_open") or 0)
+                                                                    + " day(s) open",
+                                                                ]
+                                                            )
+                                                        )
+                                                    with decision_action:
+                                                        cadivor_button_wrap("primary")
+                                                        if st.button(
+                                                            "Review decision",
+                                                            key=f"ed_driver_review_{decision_id}",
+                                                            type="secondary",
+                                                            use_container_width=True,
+                                                        ):
+                                                            navigate_to(
+                                                                "Engineering Decisions",
+                                                                decision_id=decision_id,
+                                                            )
+                                                        cadivor_button_wrap_end()
     
                     with archive_tab:
                         st.markdown("### Searchable Decision Archive")
