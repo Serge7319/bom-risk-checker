@@ -60,7 +60,7 @@ class ReportsPricingLaunchIntegrityTests(unittest.TestCase):
         pdf_source = RUNTIME[
             RUNTIME.index("def _build_executive_pdf("):
             RUNTIME.index(
-                '<style id="cadivor-reports-decision-workspace-v10">'
+                '<style id="cadivor-reports-decision-workspace-v11">'
             )
         ]
         for style_name in (
@@ -89,7 +89,10 @@ class ReportsPricingLaunchIntegrityTests(unittest.TestCase):
 
     def test_every_reports_download_uses_the_safe_download_helper(self):
         start = RUNTIME.index("def _report_download_button(")
-        end = RUNTIME.index("action_cols = reports_workspace.columns(3", start)
+        end = RUNTIME.index(
+            "reports_workspace_actions = reports_workspace.container(",
+            start,
+        )
         report_downloads = RUNTIME[start:end]
         helper_end = report_downloads.index("preview_options = [")
         helper_source = report_downloads[:helper_end]
@@ -111,7 +114,7 @@ class ReportsPricingLaunchIntegrityTests(unittest.TestCase):
 
     def test_reports_have_mobile_layout_guards(self):
         css_start = RUNTIME.index(
-            '<style id="cadivor-reports-decision-workspace-v10">'
+            '<style id="cadivor-reports-decision-workspace-v11">'
         )
         css_end = RUNTIME.index("</style>", css_start)
         css = RUNTIME[css_start:css_end]
