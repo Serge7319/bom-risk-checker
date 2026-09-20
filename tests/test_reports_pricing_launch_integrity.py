@@ -21,9 +21,9 @@ class ReportsPricingLaunchIntegrityTests(unittest.TestCase):
         )
         report_center = RUNTIME[start:end]
         self.assertNotIn("Excel", report_center)
-        self.assertEqual(report_center.count('"mime": "application/pdf"'), 7)
-        self.assertEqual(report_center.count('"mime": "text/csv"'), 5)
-        self.assertEqual(report_center.count('key="report_package_'), 5)
+        self.assertEqual(report_center.count('"mime": "application/pdf"'), 4)
+        self.assertEqual(report_center.count('"mime": "text/csv"'), 4)
+        self.assertEqual(report_center.count('key="report_package_'), 4)
 
     def test_decision_cache_changes_when_current_bom_evidence_changes(self):
         start = RUNTIME.index("report_evidence_df = (")
@@ -97,7 +97,8 @@ class ReportsPricingLaunchIntegrityTests(unittest.TestCase):
         self.assertEqual(helper_source.count("st.download_button("), 1)
         self.assertNotIn("st.download_button(", card_source)
         self.assertIn('"on_click": "ignore"', RUNTIME)
-        self.assertEqual(card_source.count('"key": f"report_center_'), 12)
+        self.assertEqual(card_source.count('"key": f"report_center_'), 8)
+        self.assertEqual(card_source.count('key=f"preview_'), 4)
         self.assertIn("_report_download_button(**download)", card_source)
 
     def test_reports_do_not_display_unreliable_session_download_counts(self):
