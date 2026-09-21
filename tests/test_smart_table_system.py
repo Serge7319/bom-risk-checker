@@ -27,7 +27,8 @@ class SmartTableSystemTests(unittest.TestCase):
         self.assertIn("def selected_dataframe_rows(", COMPONENTS)
         self.assertIn("def cadivor_smart_dataframe(", COMPONENTS)
         self.assertIn('kwargs.setdefault("on_select", "rerun")', COMPONENTS)
-        self.assertIn('selection_mode: str = "single-row"', COMPONENTS)
+        self.assertIn('selection_mode: str | Sequence[str] = ("single-row", "single-cell")', COMPONENTS)
+        self.assertIn("cells = getattr(selection, \"cells\", None)", COMPONENTS)
         self.assertIn("def humanize_table_date(", COMPONENTS)
         self.assertIn("def semantic_priority_label(", COMPONENTS)
         for exported_name in (

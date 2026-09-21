@@ -4264,7 +4264,7 @@ def run_authenticated_app() -> None:
                     else "info"
                 ),
                 selection_hint=(
-                    "Select a row to inspect its evidence, recommendation, and workflow."
+                    "Click any cell or the checkbox to inspect evidence, recommendation, and workflow."
                 ),
                 column_config={
                     "Part Number": st.column_config.TextColumn(
@@ -4655,7 +4655,7 @@ def run_authenticated_app() -> None:
                     ),
                     count_label=f"{len(display_components):,} monitored components",
                     selection_hint=(
-                        "Select a component to review its latest evidence and actions."
+                        "Click any cell or the checkbox to review evidence and actions."
                     ),
                     column_config={
                         "Risk Level": st.column_config.TextColumn(
@@ -6233,7 +6233,7 @@ def run_authenticated_app() -> None:
                                     else "info"
                                 ),
                                 selection_hint=(
-                                    "Select a row to inspect its recommendation and next actions."
+                                    "Click any cell or the checkbox to inspect its recommendation and next actions."
                                 ),
                                 total_count=len(all_decisions),
                                 column_config={
@@ -6578,7 +6578,7 @@ def run_authenticated_app() -> None:
                                     "danger" if analytics_critical_count else "info"
                                 ),
                                 selection_hint=(
-                                    "Select a row, then choose all open or critical work."
+                                    "Click any cell or the checkbox, then choose open or critical work."
                                 ),
                                 column_config={
                                     "Decision Type": st.column_config.TextColumn(
@@ -8226,7 +8226,7 @@ def run_authenticated_app() -> None:
                         f"{'affected' if show_affected_only else 'all'}"
                     ),
                     selection_hint=(
-                        "Select a highlighted row to inspect why it is included and act on it."
+                        "Click any highlighted cell or its checkbox to inspect why it is included and act on it."
                     ),
                     column_config=column_config,
                 )
@@ -13752,7 +13752,7 @@ def run_authenticated_app() -> None:
                 count_label=f"{len(candidate_table):,} ranked candidates",
                 context_tone="success",
                 selection_hint=(
-                    "Select a different row to compare it with the original component."
+                    "Click any candidate cell or its checkbox to compare it with the original component."
                 ),
                 column_config={
                     "Current": st.column_config.TextColumn(
