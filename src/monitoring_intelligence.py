@@ -8,8 +8,15 @@ import pandas as pd
 def _text(value: Any, default: str = "") -> str:
     if value is None:
         return default
+    try:
+        if pd.isna(value):
+            return default
+    except (TypeError, ValueError):
+        pass
     text = str(value).strip()
-    return text or default
+    if not text or text.casefold() in {"nan", "nat", "none", "null"}:
+        return default
+    return text
 
 
 def _number(value: Any, default: float = 0.0) -> float:
@@ -104,8 +111,30 @@ def build_monitoring_action_center(alert_df: pd.DataFrame, monitor_df: pd.DataFr
 
     latest = pd.DataFrame()
     if not history.empty:
-        latest = history.rename(columns={"part_number":"Part Number","supplier":"Supplier","lifecycle_status":"Lifecycle Status","stock":"Available Stock","unit_price":"Unit Price","risk_level":"Risk Level","created_at":"Last Checked","analysis_id":"Analysis ID"})
-        cols = [c for c in ("Part Number","Supplier","Lifecycle Status","Available Stock","Unit Price","Risk Level","Last Checked","Analysis ID") if c in latest.columns]
+        latest = history.rename(
+            columns={
+                "part_number": "Part Number",
+                "supplier": "Supplier",
+                "lifecycle_status": "Lifecycle Status",
+                "stock": "Available Stock",
+                "unit_price": "Unit Price",
+                "risk_level": "Risk Level",
+                "created_at": "Last Checked",
+            }
+        )
+        cols = [
+            column
+            for column in (
+                "Part Number",
+                "Supplier",
+                "Lifecycle Status",
+                "Available Stock",
+                "Unit Price",
+                "Risk Level",
+                "Last Checked",
+            )
+            if column in latest.columns
+        ]
         latest = latest[cols].copy()
         if "Part Number" in latest.columns:
             latest = latest.drop_duplicates("Part Number", keep="first")
