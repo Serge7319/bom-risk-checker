@@ -83,6 +83,10 @@ from src.discussion_service import (
     unfollow_analysis,
 )
 from src.workspace_service import set_my_functional_roles
+from src.ui.cadivor_design_system import (
+    cadivor_smart_dataframe,
+    semantic_priority_label,
+)
 
 
 def _safe(value: Any, fallback: str = "—") -> str:
@@ -2261,7 +2265,7 @@ def render_analysis_detail(
                     if (target) {
                       target.scrollIntoView({behavior:'smooth', block:'start'});
                       window.setTimeout(() => {
-                        const selectedRow = doc.querySelector('.cv-analysis-component.is-selected');
+                        const selectedRow = doc.querySelector('.cv-smart-table-host [aria-selected="true"]');
                         const intelligence = doc.querySelector('.cv-component-detail');
                         if (selectedRow) selectedRow.scrollIntoView({behavior:'smooth', block:'center'});
                         if (intelligence) intelligence.setAttribute('tabindex', '-1');
@@ -2410,26 +2414,14 @@ def render_analysis_detail(
                 if st.session_state.get(selector_key) not in available_labels:
                     st.session_state[selector_key] = requested_label or available_labels[0]
 
-                selected_label = st.selectbox(
-                    "Select a component to inspect",
-                    options=available_labels,
-                    key=selector_key,
-                )
-                selected_part = part_labels[selected_label]
-                selected_mpn_value = _safe(
-                    _part_value(selected_part, "mpn", "MPN"),
-                    "",
-                ).strip()
-                if selected_mpn_value and selected_mpn_value.lower() not in {"unknown", "unknown mpn"}:
-                    st.session_state["cadivor_selected_component_mpn"] = selected_mpn_value
-                    st.session_state["cadivor_selected_component_analysis_id"] = str(analysis_id)
-                selected_mpn_for_row = selected_mpn_value.lower()
-
                 table_col, detail_col = st.columns([1.25, 0.75], gap="medium")
+                max_component_rows = 100
+                visible_parts = filtered_parts[:max_component_rows]
+                current_label = st.session_state[selector_key]
+                selected_part = part_labels[current_label]
+
                 with table_col:
-                    rows = []
-                    max_component_rows = 100
-                    visible_parts = filtered_parts[:max_component_rows]
+                    component_rows = []
                     for part in visible_parts:
                         mpn_value = _safe(
                             _part_value(part, "mpn", "MPN"),
@@ -2459,8 +2451,6 @@ def render_analysis_detail(
                             _part_value(part, "risk_score", "Risk Score"),
                             0,
                         )
-                        level_value = _risk_label(part)
-                        class_value = _risk_class(level_value, score_value)
                         supplier_count = _num(
                             _part_value(
                                 part,
@@ -2469,64 +2459,101 @@ def render_analysis_detail(
                             ),
                             0,
                         )
-                        primary_supplier = _safe(
-                            _part_value(
-                                part,
-                                "sources_available",
-                                "Sources Available",
-                                "primary_supplier",
-                                "best_source",
-                                "Best Source",
-                                "supplier",
+                        quantity_value = _num(
+                            _part_value(part, "quantity", "Quantity"),
+                            0,
+                        )
+                        row_label = f"{mpn_value} — {mfg_value}"
+                        component_rows.append(
+                            {
+                                "Current": "✓" if row_label == current_label else "",
+                                "Component": mpn_value,
+                                "Manufacturer": mfg_value,
+                                "Lifecycle": status_value,
+                                "Qty": quantity_value,
+                                "Stock": stock_value,
+                                "Suppliers": supplier_count,
+                                "Priority": semantic_priority_label(score_value),
+                            }
+                        )
+                    component_table = pd.DataFrame(component_rows)
+                    component_view_token = re.sub(
+                        r"[^a-zA-Z0-9_-]+",
+                        "_",
+                        f"{selected_risk}_{selected_lifecycle}_{search_text}",
+                    )[:64]
+                    component_table_result = cadivor_smart_dataframe(
+                        component_table,
+                        key=(
+                            f"analysis_component_table_{analysis_id}_"
+                            f"{component_view_token or 'all'}"
+                        ),
+                        context_title="Filtered components",
+                        context_detail=(
+                            "Every row is a component in this saved BOM. The detail panel "
+                            "tracks the selected row."
+                        ),
+                        count_label=(
+                            f"{len(filtered_parts):,} matching components"
+                        ),
+                        selection_hint=(
+                            "Select a row to inspect its risk evidence and engineering actions."
+                        ),
+                        total_count=len(parts),
+                        column_config={
+                            "Current": st.column_config.TextColumn(
+                                "",
+                                width="small",
+                                help="The component currently shown in Component Intelligence.",
                             ),
-                            "Suppliers",
-                        )
-                        rows.append(
-                            (
-                                f'<div class="cv-analysis-component{" is-selected" if mpn_value.strip().lower() == selected_mpn_for_row else ""}{" is-command-focus" if component_focus_requested and requested_component and mpn_value.strip().lower() == requested_component.strip().lower() else ""}" data-component="{html.escape(mpn_value, quote=True)}">'
-                                '<div>'
-                                f'<div class="head">{html.escape(mpn_value)}</div>'
-                                f'<div class="sub">{html.escape(mfg_value)}</div>'
-                                '</div>'
-                                '<div>'
-                                f'<div class="head">{html.escape(status_value)}</div>'
-                                '<div class="sub">Lifecycle</div>'
-                                '</div>'
-                                '<div>'
-                                f'<div class="head">{stock_value:,}</div>'
-                                '<div class="sub">Stock</div>'
-                                '</div>'
-                                '<div>'
-                                f'<div class="head">{supplier_count}</div>'
-                                f'<div class="sub">{html.escape(primary_supplier)}</div>'
-                                '</div>'
-                                '<div class="cv-analysis-pills">'
-                                f'<span class="cv-analysis-pill {class_value}">'
-                                f'{html.escape(level_value)}'
-                                '</span>'
-                                '</div>'
-                                '</div>'
-                            )
-                        )
-                    component_table_html = (
-                        '<div class="cv-analysis-table-wrap">'
-                        '<div class="cv-analysis-table-head">'
-                        '<strong>Filtered Components</strong>'
-                        f'<span>{len(filtered_parts)} records</span>'
-                        '</div>'
-                        + "".join(rows)
-                        + (
-                            f'<p class="cv71-table-note">Showing first {max_component_rows} of '
-                            f"{len(filtered_parts)} components. Refine filters to narrow the list.</p>"
-                            if len(filtered_parts) > max_component_rows
-                            else ""
-                        )
-                        + '</div>'
+                            "Component": st.column_config.TextColumn(width="medium"),
+                            "Manufacturer": st.column_config.TextColumn(width="medium"),
+                            "Lifecycle": st.column_config.TextColumn(width="medium"),
+                            "Qty": st.column_config.NumberColumn(format="%,d", width="small"),
+                            "Stock": st.column_config.NumberColumn(format="%,d", width="small"),
+                            "Suppliers": st.column_config.NumberColumn(format="%d", width="small"),
+                            "Priority": st.column_config.TextColumn(
+                                width="medium",
+                                help=(
+                                    "Red = critical, orange = immediate, yellow = review, "
+                                    "green = monitor."
+                                ),
+                            ),
+                        },
                     )
-                    st.markdown(
-                        component_table_html,
-                        unsafe_allow_html=True,
-                    )
+                    selected_component_position = component_table_result.first_selected_row
+                    if (
+                        selected_component_position is not None
+                        and 0 <= selected_component_position < len(visible_parts)
+                    ):
+                        selected_part = visible_parts[selected_component_position]
+                        selected_mpn_for_state = _safe(
+                            _part_value(selected_part, "mpn", "MPN"),
+                            "Unknown MPN",
+                        )
+                        selected_mfg_for_state = _safe(
+                            _part_value(selected_part, "manufacturer", "Manufacturer"),
+                            "Unknown manufacturer",
+                        )
+                        st.session_state[selector_key] = (
+                            f"{selected_mpn_for_state} — {selected_mfg_for_state}"
+                        )
+                    if len(filtered_parts) > max_component_rows:
+                        st.caption(
+                            f"Showing the first {max_component_rows} components. "
+                            "Refine the filters to narrow the list."
+                        )
+
+                selected_mpn_value = _safe(
+                    _part_value(selected_part, "mpn", "MPN"),
+                    "",
+                ).strip()
+                if selected_mpn_value and selected_mpn_value.lower() not in {
+                    "unknown",
+                    "unknown mpn",
+                }:
+                    st.session_state["cadivor_selected_component_mpn"] = selected_mpn_value
+                    st.session_state["cadivor_selected_component_analysis_id"] = str(analysis_id)
 
                 with detail_col:
                     selected_mpn = _safe(
