@@ -164,7 +164,9 @@ from src.ui.cadivor_design_system import (
     cadivor_button_wrap,
     cadivor_button_wrap_end,
     cadivor_engineering_dataframe,
+    cadivor_smart_dataframe,
     cadivor_comparison_matrix_dataframe,
+    humanize_table_date,
     cadivor_metric_row,
     cadivor_panel,
     cadivor_panel_end,
@@ -172,6 +174,8 @@ from src.ui.cadivor_design_system import (
     cadivor_table,
     render_decision_card_actions,
     render_kpi_row_safe,
+    selected_dataframe_rows,
+    semantic_priority_label,
 )
 from src.components.onboarding import (
     render_analysis_success,
@@ -4054,37 +4058,14 @@ def run_authenticated_app() -> None:
                 return None
 
         def _monitor_human_date(value, fallback="—", *, include_time=False):
-            cleaned = _monitor_display(value, "")
-            if not cleaned:
-                return fallback
-            if cleaned.casefold() in {
-                "today",
-                "this week",
-                "before production approval",
-                "before the next purchase order",
-            }:
-                return cleaned
-            try:
-                parsed = pd.to_datetime(cleaned, errors="coerce", utc=True)
-                if pd.isna(parsed):
-                    return cleaned
-                date_label = parsed.strftime("%b %d, %Y").replace(" 0", " ")
-                if not include_time:
-                    return date_label
-                time_label = parsed.strftime("%I:%M %p").lstrip("0")
-                return f"{date_label} · {time_label} UTC"
-            except Exception:
-                return cleaned
+            return humanize_table_date(
+                value,
+                fallback,
+                include_time=include_time,
+            )
 
         def _monitor_priority_label(score):
-            score_value = max(0, min(100, int(float(score or 0))))
-            if score_value >= 90:
-                return f"🔴 {score_value} · Critical"
-            if score_value >= 75:
-                return f"🟠 {score_value} · Immediate"
-            if score_value >= 50:
-                return f"🟡 {score_value} · Review"
-            return f"🟢 {score_value} · Monitor"
+            return semantic_priority_label(score)
 
         def _monitor_risk_label(value):
             risk = _monitor_display(value, "Unknown")
@@ -4128,18 +4109,7 @@ def run_authenticated_app() -> None:
         )
 
         def _monitor_selected_rows(table_state) -> list[int]:
-            selection = getattr(table_state, "selection", None)
-            if selection is None and isinstance(table_state, dict):
-                selection = table_state.get("selection")
-            if selection is None:
-                return []
-            rows = getattr(selection, "rows", None)
-            if rows is None and isinstance(selection, dict):
-                rows = selection.get("rows", [])
-            try:
-                return [int(row_index) for row_index in (rows or [])]
-            except (TypeError, ValueError):
-                return []
+            return list(selected_dataframe_rows(table_state))
 
         def _render_monitor_action_queue():
             queue = monitoring_center["prioritized_alerts"]
@@ -4196,6 +4166,11 @@ def run_authenticated_app() -> None:
                 status_filter,
                 type_filter,
             )
+            queue_view_token = re.sub(
+                r"[^a-zA-Z0-9_-]+",
+                "_",
+                "_".join((*filter_signature, search_filter.strip().lower())),
+            )[:80]
             effective_focus = next(
                 (
                     focus_token
@@ -4270,30 +4245,27 @@ def run_authenticated_app() -> None:
                 }
             )
             focus_title, focus_description = monitor_focus_labels[effective_focus]
-            st.markdown(
-                f"""
-                <div class="cv-monitor-current-filter">
-                  <div>
-                    <span>Current view</span>
-                    <strong>{html.escape(focus_title)}</strong>
-                  </div>
-                  <div class="cv-monitor-current-filter__summary">
-                    <b>{len(visible_queue)} matching alerts</b>
-                    <small>{html.escape(focus_description)}. All rows below match this view.</small>
-                  </div>
-                </div>
-                <div class="cv-monitor-queue-caption">
-                  <span>Select a row to inspect its evidence, recommendation, and workflow.</span>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-            queue_table_state = cadivor_engineering_dataframe(
+            queue_table_result = cadivor_smart_dataframe(
                 queue_table,
-                key=f"m32_queue_table_{monitor_filter_key}",
-                on_select="rerun",
-                selection_mode="single-row",
-                height="content",
+                key=(
+                    f"m32_queue_table_{monitor_filter_key}_"
+                    f"{queue_view_token or 'all'}"
+                ),
+                context_title=focus_title,
+                context_detail=(
+                    f"{focus_description}. All rows below match this view."
+                ),
+                count_label=f"{len(visible_queue)} matching alerts",
+                context_tone=(
+                    "danger"
+                    if effective_focus == "immediate"
+                    else "warning"
+                    if effective_focus in {"lifecycle", "inventory"}
+                    else "info"
+                ),
+                selection_hint=(
+                    "Select a row to inspect its evidence, recommendation, and workflow."
+                ),
                 column_config={
                     "Part Number": st.column_config.TextColumn(
                         "Component",
@@ -4323,6 +4295,7 @@ def run_authenticated_app() -> None:
                     ),
                 },
             )
+            queue_table_state = queue_table_result.event
 
             selected_rows = _monitor_selected_rows(queue_table_state)
             selected_position = selected_rows[0] if selected_rows else 0
@@ -4665,17 +4638,25 @@ def run_authenticated_app() -> None:
                     display_components = display_components.rename(
                         columns={"Last Checked": "Last checked (UTC)"}
                     )
-                st.markdown(
-                    f"""
-                    <div class="cv-monitor-queue-caption">
-                      <strong>{len(display_components):,} monitored components</strong>
-                      <span>Search by component, supplier, lifecycle status, or risk.</span>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
-                cadivor_engineering_dataframe(
+                component_view_token = re.sub(
+                    r"[^a-zA-Z0-9_-]+",
+                    "_",
+                    component_search.strip().lower(),
+                )[:64]
+                component_table_result = cadivor_smart_dataframe(
                     display_components,
+                    key=(
+                        "m32_monitored_components_table_"
+                        f"{component_view_token or 'all'}"
+                    ),
+                    context_title="Monitoring coverage",
+                    context_detail=(
+                        "Search by component, supplier, lifecycle status, or risk."
+                    ),
+                    count_label=f"{len(display_components):,} monitored components",
+                    selection_hint=(
+                        "Select a component to review its latest evidence and actions."
+                    ),
                     column_config={
                         "Risk Level": st.column_config.TextColumn(
                             "Risk",
@@ -4687,6 +4668,60 @@ def run_authenticated_app() -> None:
                         ),
                     },
                 )
+                if component_table_result.first_selected_row is not None:
+                    selected_component_position = component_table_result.first_selected_row
+                    if 0 <= selected_component_position < len(visible):
+                        selected_component = visible.iloc[selected_component_position]
+                        selected_component_mpn = _monitor_display(
+                            selected_component.get("Part Number"),
+                            "Unknown component",
+                        )
+                        selected_component_lifecycle = _monitor_display(
+                            selected_component.get("Lifecycle Status"),
+                            "Unknown lifecycle",
+                        )
+                        selected_component_risk = _monitor_display(
+                            selected_component.get("Risk Level"),
+                            "Unknown risk",
+                        )
+                        st.markdown(
+                            f"""
+                            <div class="cv-monitor-current-filter">
+                              <div>
+                                <span>Selected component</span>
+                                <strong>{html.escape(selected_component_mpn)}</strong>
+                              </div>
+                              <div class="cv-monitor-current-filter__summary">
+                                <b>{html.escape(selected_component_risk)} risk</b>
+                                <small>{html.escape(selected_component_lifecycle)} lifecycle</small>
+                              </div>
+                            </div>
+                            """,
+                            unsafe_allow_html=True,
+                        )
+                        component_action_columns = st.columns(2, gap="small")
+                        with component_action_columns[0]:
+                            if st.button(
+                                "View this component's alerts",
+                                key=f"m32_component_alerts_{selected_component_position}",
+                                use_container_width=True,
+                            ):
+                                navigate_to(
+                                    "Monitoring",
+                                    arm_opening=False,
+                                    monitor_view="queue",
+                                    mpn=selected_component_mpn,
+                                )
+                        with component_action_columns[1]:
+                            if st.button(
+                                "Run Alternative Finder",
+                                key=f"m32_component_alt_{selected_component_position}",
+                                use_container_width=True,
+                            ):
+                                navigate_to_alternative_finder(
+                                    mpn=selected_component_mpn,
+                                    source_page="monitoring_components",
+                                )
                 if (
                     monitoring_limit is not None
                     and not is_admin
@@ -6128,24 +6163,139 @@ def run_authenticated_app() -> None:
                         if not visible:
                             st.info("No engineering decisions match the selected filters.")
                         else:
-                            for decision in visible[:40]:
-                                # Keep each decision's contextual paths with its record.
-                                # A reviewer can begin with evidence, monitoring, or the
-                                # saved BOM instead of being pushed into a single sequence.
-                                with st.container(
-                                    border=True,
-                                    key=f"decision_queue_{decision['decision_id']}",
-                                ):
-                                    st.markdown(
-                                        decision_card_html(decision),
-                                        unsafe_allow_html=True,
+                            visible_decisions = visible[:40]
+                            decision_table = pd.DataFrame(
+                                [
+                                    {
+                                        "Component / BOM": decision["part_number"],
+                                        "Decision": decision["title"],
+                                        "Priority": semantic_priority_label(
+                                            decision.get("priority_score", 0)
+                                        ),
+                                        "Status": decision.get("status") or "New",
+                                        "Owner": (
+                                            decision.get("assigned_owner")
+                                            or "Unassigned"
+                                        ),
+                                        "Due": humanize_table_date(
+                                            decision.get("due_date"),
+                                            "Not scheduled",
+                                        ),
+                                        "Effort": int(
+                                            decision.get("estimated_effort_hours", 0)
+                                            or 0
+                                        ),
+                                    }
+                                    for decision in visible_decisions
+                                ]
+                            )
+                            decision_focus_labels = {
+                                "pending": "Pending decisions",
+                                "critical": "Critical decisions",
+                                "rejected": "Rejected decisions",
+                                "approved": "Approved decisions",
+                            }
+                            decision_view_title = decision_focus_labels.get(
+                                decision_focus,
+                                "Decision queue",
+                            )
+                            decision_view_token = re.sub(
+                                r"[^a-zA-Z0-9_-]+",
+                                "_",
+                                "_".join(
+                                    (
+                                        priority_filter,
+                                        status_filter,
+                                        search_decisions.strip().lower(),
                                     )
-                                    render_decision_card_actions(
-                                        decision,
-                                        navigate_to=navigate_to,
-                                        internal_nav_button=internal_nav_button,
-                                        key_prefix=f"queue_{decision['decision_id']}",
-                                    )
+                                ),
+                            )[:80]
+                            decision_table_result = cadivor_smart_dataframe(
+                                decision_table,
+                                key=(
+                                    "engineering_decision_queue_table_"
+                                    f"{filter_key_suffix or 'custom'}_"
+                                    f"{decision_view_token or 'all'}"
+                                ),
+                                context_title=decision_view_title,
+                                context_detail=(
+                                    "The focused decision card and its actions follow the "
+                                    "selected row."
+                                ),
+                                count_label=f"{len(visible):,} matching decisions",
+                                context_tone=(
+                                    "danger"
+                                    if decision_focus == "critical"
+                                    else "success"
+                                    if decision_focus == "approved"
+                                    else "warning"
+                                    if decision_focus == "rejected"
+                                    else "info"
+                                ),
+                                selection_hint=(
+                                    "Select a row to inspect its recommendation and next actions."
+                                ),
+                                total_count=len(all_decisions),
+                                column_config={
+                                    "Component / BOM": st.column_config.TextColumn(
+                                        width="medium"
+                                    ),
+                                    "Decision": st.column_config.TextColumn(width="large"),
+                                    "Priority": st.column_config.TextColumn(
+                                        width="medium",
+                                        help=(
+                                            "Red = critical, orange = immediate, yellow = "
+                                            "review, green = monitor."
+                                        ),
+                                    ),
+                                    "Status": st.column_config.TextColumn(width="small"),
+                                    "Owner": st.column_config.TextColumn(width="medium"),
+                                    "Due": st.column_config.TextColumn(width="medium"),
+                                    "Effort": st.column_config.NumberColumn(
+                                        format="%d hrs",
+                                        width="small",
+                                    ),
+                                },
+                            )
+                            selected_decision_position = (
+                                decision_table_result.first_selected_row
+                            )
+                            if (
+                                selected_decision_position is None
+                                or not 0 <= selected_decision_position < len(visible_decisions)
+                            ):
+                                selected_decision_position = 0
+                            focused_queue_decision = visible_decisions[
+                                selected_decision_position
+                            ]
+                            # Keep each decision's contextual paths with its record.
+                            # A reviewer can begin with evidence, monitoring, or the
+                            # saved BOM instead of being pushed into a single sequence.
+                            with st.container(
+                                border=True,
+                                key=(
+                                    "decision_queue_"
+                                    f"{focused_queue_decision['decision_id']}"
+                                ),
+                            ):
+                                st.caption(
+                                    "Selected decision"
+                                    if decision_table_result.selected_rows
+                                    else "Highest-priority decision · select another row to change focus"
+                                )
+                                st.markdown(
+                                    decision_card_html(focused_queue_decision),
+                                    unsafe_allow_html=True,
+                                )
+                                render_decision_card_actions(
+                                    focused_queue_decision,
+                                    navigate_to=navigate_to,
+                                    internal_nav_button=internal_nav_button,
+                                    key_prefix=(
+                                        "queue_"
+                                        f"{focused_queue_decision['decision_id']}"
+                                    ),
+                                )
 
                     with workload_tab:
                         st.markdown("### Team Workload")
@@ -6414,12 +6564,22 @@ def run_authenticated_app() -> None:
                             st.caption(
                                 "Select a row to inspect the open and critical decisions behind it."
                             )
-                            driver_table_state = cadivor_engineering_dataframe(
+                            driver_table_result = cadivor_smart_dataframe(
                                 pd.DataFrame(driver_rows),
                                 key="ed_analytics_driver_table",
-                                on_select="rerun",
-                                selection_mode="single-row",
-                                height="content",
+                                context_title="Active queue drivers",
+                                context_detail=(
+                                    "Open work grouped by the engineering problem that created it."
+                                ),
+                                count_label=(
+                                    f"{len(analytics_open_decisions):,} open decisions"
+                                ),
+                                context_tone=(
+                                    "danger" if analytics_critical_count else "info"
+                                ),
+                                selection_hint=(
+                                    "Select a row, then choose all open or critical work."
+                                ),
                                 column_config={
                                     "Decision Type": st.column_config.TextColumn(
                                         "Decision type",
@@ -6450,36 +6610,9 @@ def run_authenticated_app() -> None:
                                     ),
                                 },
                             )
-
-                            selected_driver_rows: list[int] = []
-                            driver_selection = getattr(
-                                driver_table_state,
-                                "selection",
-                                None,
+                            selected_driver_rows = list(
+                                driver_table_result.selected_rows
                             )
-                            if driver_selection is None and isinstance(
-                                driver_table_state,
-                                dict,
-                            ):
-                                driver_selection = driver_table_state.get("selection")
-                            if driver_selection is not None:
-                                selected_rows_value = getattr(
-                                    driver_selection,
-                                    "rows",
-                                    None,
-                                )
-                                if selected_rows_value is None and isinstance(
-                                    driver_selection,
-                                    dict,
-                                ):
-                                    selected_rows_value = driver_selection.get("rows", [])
-                                try:
-                                    selected_driver_rows = [
-                                        int(row_index)
-                                        for row_index in (selected_rows_value or [])
-                                    ]
-                                except (TypeError, ValueError):
-                                    selected_driver_rows = []
 
                             if selected_driver_rows:
                                 selected_driver_index = selected_driver_rows[0]
@@ -8083,15 +8216,62 @@ def run_authenticated_app() -> None:
                 if visible.empty:
                     st.info("No components currently match this review.")
                     return
-                cadivor_engineering_dataframe(
+                report_table_result = cadivor_smart_dataframe(
                     _style_report_attention_rows(
                         visible,
                         tone=tone,
                     ),
-                    key=f"{key}_table",
-                    height="content",
+                    key=(
+                        f"{key}_table_"
+                        f"{'affected' if show_affected_only else 'all'}"
+                    ),
+                    selection_hint=(
+                        "Select a highlighted row to inspect why it is included and act on it."
+                    ),
                     column_config=column_config,
                 )
+                selected_report_position = report_table_result.first_selected_row
+                if (
+                    selected_report_position is not None
+                    and 0 <= selected_report_position < len(visible)
+                ):
+                    selected_report_row = visible.iloc[selected_report_position]
+                    selected_report_mpn = str(
+                        selected_report_row.get("Manufacturer Part Number", "")
+                        or ""
+                    ).strip()
+                    selected_report_manufacturer = str(
+                        selected_report_row.get("Manufacturer", "") or ""
+                    ).strip()
+                    selected_report_reason = str(
+                        selected_report_row.get("Why Flagged", "Review required")
+                        or "Review required"
+                    ).strip()
+                    st.markdown(
+                        f"""
+                        <div class="cv-report-focus-banner" style="--cv-report-focus:{focus_color}">
+                          <div>
+                            <strong>Selected component: {html.escape(selected_report_mpn or 'Unknown component')}</strong>
+                            <span>{html.escape(selected_report_reason)}</span>
+                          </div>
+                          <span class="cv-report-focus-count">Focused evidence</span>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+                    if selected_report_mpn:
+                        if st.button(
+                            f"Run Alternative Finder for {selected_report_mpn}",
+                            key=f"{key}_selected_alternative",
+                            use_container_width=False,
+                        ):
+                            navigate_to_alternative_finder(
+                                mpn=selected_report_mpn,
+                                manufacturer=selected_report_manufacturer,
+                                analysis_id=str(selected_analysis_id or ""),
+                                return_analysis_id=str(selected_analysis_id or ""),
+                                source_page="reports_evidence_table",
+                            )
 
             def _render_alternative_action_table(frame: pd.DataFrame) -> None:
                 if frame.empty:
@@ -13460,7 +13640,7 @@ def run_authenticated_app() -> None:
             for caption in coverage.get("captions") or []:
                 st.caption(caption)
 
-            alternatives_df = pd.DataFrame(stored_candidates)
+            alternatives_df = pd.DataFrame(stored_candidates).reset_index(drop=True)
 
             best_alternative = max(
                 stored_candidates,
@@ -13480,13 +13660,14 @@ def run_authenticated_app() -> None:
             )
             if stored_selected in alternative_options:
                 best_index = alternative_options.index(stored_selected)
+            current_candidate = alternative_options[best_index]
 
             st.markdown(
                 f"""
                 <div class="af62b-section-head">
                   <div>
-                    <div class="af62b-section-title">2. Review evidence-backed candidates</div>
-                    <div class="af62b-section-meta">Direct supplier substitutes are shown first. When none are published, Cadivor can show clearly labelled catalog candidates for engineering review.</div>
+                    <div class="af62b-section-title">2. Review the recommended replacement</div>
+                    <div class="af62b-section-meta">Select any row to make it the active candidate. Direct supplier substitutes are shown first; catalog candidates remain clearly labelled for engineering review.</div>
                   </div>
                   <div class="af62b-found-pill">{len(alternatives_df)} candidates found</div>
                 </div>
@@ -13494,17 +13675,114 @@ def run_authenticated_app() -> None:
                 unsafe_allow_html=True,
             )
 
-            selected_alternative = st.selectbox(
-                "Recommended candidate",
-                alternative_options,
-                index=best_index,
-                key="alternative_selected_candidate_62b",
-                help="Choose another candidate to refresh the recommendation and comparison workspace.",
+            def _candidate_series(
+                names: list[str],
+                fallback: object = "—",
+            ) -> pd.Series:
+                for name in names:
+                    if name in alternatives_df.columns:
+                        return alternatives_df[name]
+                return pd.Series(
+                    [fallback] * len(alternatives_df),
+                    index=alternatives_df.index,
+                )
+
+            def _candidate_score_label(value: object) -> str:
+                try:
+                    score = max(0, min(100, int(round(float(value or 0)))))
+                except (TypeError, ValueError):
+                    score = 0
+                if score >= 75:
+                    return f"🟢 {score} · Strong"
+                if score >= 55:
+                    return f"🟡 {score} · Review"
+                return f"🔴 {score} · Weak"
+
+            candidate_scores = pd.to_numeric(
+                _candidate_series(["Recommendation Score"], 0),
+                errors="coerce",
+            ).fillna(0)
+            candidate_table = pd.DataFrame(
+                {
+                    "Current": [
+                        "✓" if candidate == current_candidate else ""
+                        for candidate in alternative_options
+                    ],
+                    "Candidate": alternative_options,
+                    "Relationship": _candidate_series(
+                        ["Classification", "Category", "Substitute Type"],
+                        "Supplier candidate",
+                    ).fillna("Supplier candidate"),
+                    "Recommendation": candidate_scores.map(
+                        _candidate_score_label
+                    ),
+                    "Lifecycle": _candidate_series(
+                        ["Lifecycle", "Lifecycle Status"],
+                        "Unknown",
+                    ).fillna("Unknown"),
+                    "Stock": pd.to_numeric(
+                        _candidate_series(["Stock", "Total Market Stock"], 0),
+                        errors="coerce",
+                    ).fillna(0),
+                    "Supplier": _candidate_series(
+                        ["Sources Available", "Supplier", "Best Source", "Source"],
+                        "Not listed",
+                    ).fillna("Not listed"),
+                    "Unit Price": pd.to_numeric(
+                        _candidate_series(["Unit Price", "Price"], 0),
+                        errors="coerce",
+                    ).fillna(0),
+                }
             )
+            candidate_table_result = cadivor_smart_dataframe(
+                candidate_table,
+                key=(
+                    "alternative_ranked_candidates_"
+                    + re.sub(
+                        r"[^a-zA-Z0-9_-]+",
+                        "_",
+                        str(current_search or "component"),
+                    )[:48]
+                ),
+                context_title=f"Current candidate: {current_candidate}",
+                context_detail=(
+                    "The recommendation, comparison, evidence, and decision workspace "
+                    "below follow the selected row."
+                ),
+                count_label=f"{len(candidate_table):,} ranked candidates",
+                context_tone="success",
+                selection_hint=(
+                    "Select a different row to compare it with the original component."
+                ),
+                column_config={
+                    "Current": st.column_config.TextColumn(
+                        "",
+                        width="small",
+                        help="The candidate currently shown below.",
+                    ),
+                    "Candidate": st.column_config.TextColumn(width="medium"),
+                    "Relationship": st.column_config.TextColumn(width="medium"),
+                    "Recommendation": st.column_config.TextColumn(width="medium"),
+                    "Lifecycle": st.column_config.TextColumn(width="medium"),
+                    "Stock": st.column_config.NumberColumn(format="%,d", width="small"),
+                    "Supplier": st.column_config.TextColumn(width="medium"),
+                    "Unit Price": st.column_config.NumberColumn(format="$%.4f", width="small"),
+                },
+            )
+            selected_candidate_position = candidate_table_result.first_selected_row
+            selected_alternative = current_candidate
+            if (
+                selected_candidate_position is not None
+                and 0 <= selected_candidate_position < len(alternative_options)
+            ):
+                selected_alternative = alternative_options[selected_candidate_position]
+            candidate_changed = selected_alternative != current_candidate
             sync_alternative_finder_selected_candidate_result(
                 st.session_state,
                 selected_alternative,
             )
+            if candidate_changed:
+                st.rerun()
 
             selected_row = alternatives_df[
                 alternatives_df["Alternative Part"].astype(str) == selected_alternative

@@ -48,8 +48,8 @@ class EngineeringDecisionAnalyticsLayoutTests(unittest.TestCase):
 
     def test_queue_driver_table_drills_into_open_and_critical_decisions(self):
         self.assertIn('key="ed_analytics_driver_table"', self.analytics)
-        self.assertIn('on_select="rerun"', self.analytics)
-        self.assertIn('selection_mode="single-row"', self.analytics)
+        self.assertIn("driver_table_result = cadivor_smart_dataframe(", self.analytics)
+        self.assertIn("driver_table_result.selected_rows", self.analytics)
         self.assertIn("selected_driver_rows", self.analytics)
         self.assertIn("selected_driver_critical", self.analytics)
         self.assertIn('key="ed_queue_driver_drilldown"', self.analytics)

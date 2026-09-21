@@ -87,6 +87,26 @@ class MetricCard:
     active: bool = False
 
 
+@dataclass(frozen=True)
+class SmartTableResult:
+    """Normalized result returned by every interactive Cadivor table.
+
+    Streamlit returns selection state as either an attribute object or a
+    mapping depending on the runtime/test harness. Pages should not need to
+    know about that distinction, so the design system exposes one stable
+    tuple of selected row positions.
+    """
+
+    event: Any = None
+    selected_rows: tuple[int, ...] = ()
+    visible_count: int = 0
+    total_count: int = 0
+
+    @property
+    def first_selected_row(self) -> int | None:
+        return self.selected_rows[0] if self.selected_rows else None
+
+
 _ALLOWED_TONES = frozenset(
     {"success", "warning", "danger", "info", "monitoring", "confidence", "neutral"}
 )
@@ -581,6 +601,153 @@ def build_dataframe_column_config(df: Any, overrides: Mapping[str, Any] | None =
     if overrides:
         config.update(overrides)
     return config
+
+
+def selected_dataframe_rows(table_event: Any) -> tuple[int, ...]:
+    """Return selected dataframe row positions across Streamlit result shapes."""
+    if table_event is None:
+        return ()
+    selection = getattr(table_event, "selection", None)
+    if selection is None and isinstance(table_event, Mapping):
+        selection = table_event.get("selection")
+    if selection is None:
+        return ()
+    rows = getattr(selection, "rows", None)
+    if rows is None and isinstance(selection, Mapping):
+        rows = selection.get("rows", ())
+    normalized: list[int] = []
+    for raw_row in rows or ():
+        try:
+            row = int(raw_row)
+        except (TypeError, ValueError):
+            continue
+        if row >= 0 and row not in normalized:
+            normalized.append(row)
+    return tuple(normalized)
+
+
+def humanize_table_date(
+    value: Any,
+    fallback: str = "Not scheduled",
+    *,
+    include_time: bool = False,
+) -> str:
+    """Format database timestamps for people while preserving plain-language dates."""
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return fallback
+    text = str(value).strip()
+    if not text or text.casefold() in {"nan", "none", "null", "nat"}:
+        return fallback
+    if text.casefold() in {
+        "today",
+        "this week",
+        "before production approval",
+        "before the next purchase order",
+    }:
+        return text
+    try:
+        parsed = pd.to_datetime(text, errors="coerce", utc=True)
+        if pd.isna(parsed):
+            return text
+        date_label = parsed.strftime("%b %d, %Y").replace(" 0", " ")
+        if not include_time:
+            return date_label
+        time_label = parsed.strftime("%I:%M %p").lstrip("0")
+        return f"{date_label} · {time_label} UTC"
+    except Exception:
+        return text
+
+
+def semantic_priority_label(score: Any) -> str:
+    """Translate a 0–100 priority score into a scannable, consistent label."""
+    try:
+        score_value = int(round(float(score or 0)))
+    except (TypeError, ValueError):
+        score_value = 0
+    score_value = max(0, min(100, score_value))
+    if score_value >= 90:
+        return f"🔴 {score_value} · Critical"
+    if score_value >= 75:
+        return f"🟠 {score_value} · Immediate"
+    if score_value >= 50:
+        return f"🟡 {score_value} · Review"
+    return f"🟢 {score_value} · Monitor"
+
+
+def render_smart_table_context(
+    title: str,
+    *,
+    detail: str = "",
+    count_label: str = "",
+    eyebrow: str = "Current view",
+    tone: str = "info",
+    selection_hint: str = "Select a row to inspect its evidence and available actions.",
+) -> None:
+    """Render the shared context banner used above an interactive table."""
+    normalized_tone = _normalize_tone(tone)
+    _render_html(
+        f'<div class="cv-smart-table-context cv-smart-table-context--{escape(normalized_tone)}" '
+        'data-testid="cadivor-smart-table-context">'
+        '<div class="cv-smart-table-context__main">'
+        f'<span>{escape(str(eyebrow or "Current view"))}</span>'
+        f'<strong>{escape(str(title or "Table view"))}</strong>'
+        f'<small>{escape(str(detail))}</small>'
+        '</div>'
+        '<div class="cv-smart-table-context__status">'
+        f'<b>{escape(str(count_label))}</b>'
+        f'<small>{escape(str(selection_hint))}</small>'
+        '</div>'
+        '</div>'
+    )
+
+
+def cadivor_smart_dataframe(
+    df: Any,
+    *,
+    key: str,
+    context_title: str = "",
+    context_detail: str = "",
+    count_label: str = "",
+    context_eyebrow: str = "Current view",
+    context_tone: str = "info",
+    selection_hint: str = "Select a row to inspect its evidence and available actions.",
+    total_count: int | None = None,
+    column_config: Mapping[str, Any] | None = None,
+    selection_mode: str = "single-row",
+    **kwargs: Any,
+) -> SmartTableResult:
+    """Render a selectable engineering table with one consistent interaction model."""
+    source_df = getattr(df, "data", df)
+    visible_count = 0 if source_df is None else len(source_df)
+    resolved_total = visible_count if total_count is None else max(0, int(total_count))
+    if context_title:
+        render_smart_table_context(
+            context_title,
+            detail=context_detail,
+            count_label=count_label or f"{visible_count:,} rows shown",
+            eyebrow=context_eyebrow,
+            tone=context_tone,
+            selection_hint=selection_hint,
+        )
+    kwargs.setdefault("on_select", "rerun")
+    kwargs.setdefault("selection_mode", selection_mode)
+    kwargs.setdefault(
+        "height",
+        min(620, max(120, 46 + visible_count * 34)),
+    )
+    kwargs.setdefault("host_class", "cv64-table-host cv-smart-table-host")
+    event = cadivor_engineering_dataframe(
+        df,
+        key=key,
+        column_config=column_config,
+        **kwargs,
+    )
+    return SmartTableResult(
+        event=event,
+        selected_rows=selected_dataframe_rows(event),
+        visible_count=visible_count,
+        total_count=resolved_total,
+    )
 
 
 def cadivor_engineering_dataframe(
