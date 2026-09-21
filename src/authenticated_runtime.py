@@ -4023,9 +4023,10 @@ def run_authenticated_app() -> None:
             .st-key-monitoring_snapshot{padding:14px;border:1px solid #d4deeb;border-radius:16px;background:#f5f8fc;box-shadow:0 10px 26px rgba(15,23,42,.045)}.st-key-monitoring_snapshot>[data-testid="stVerticalBlock"]{gap:12px}.cv-monitor-snapshot-head{margin:0 2px 2px;padding:2px 2px 6px}.cv-monitor-snapshot-eyebrow{display:block;margin-bottom:5px;color:#2563eb;font-size:9.5px;font-weight:800;letter-spacing:.12em;text-transform:uppercase}.cv-monitor-snapshot-title{display:block;color:#0f2d57;font-size:19px;font-weight:780;letter-spacing:-.025em;line-height:1.2}.cv-monitor-snapshot-head p{margin:4px 0 0;color:#64748b;font-size:12.5px;line-height:1.45}
             .st-key-monitor_snapshot_immediate,.st-key-monitor_snapshot_lifecycle,.st-key-monitor_snapshot_inventory,.st-key-monitor_snapshot_pricing,.st-key-monitor_snapshot_components{padding:14px 15px 11px;border:1px solid #d6e0ec;border-radius:12px;background:#fff;box-shadow:none;transition:border-color .16s ease,box-shadow .16s ease}.st-key-monitor_snapshot_immediate:hover,.st-key-monitor_snapshot_lifecycle:hover,.st-key-monitor_snapshot_inventory:hover,.st-key-monitor_snapshot_pricing:hover,.st-key-monitor_snapshot_components:hover{border-color:#b9cbe2;box-shadow:0 6px 16px rgba(15,23,42,.055)}.st-key-monitor_snapshot_immediate>[data-testid="stVerticalBlock"],.st-key-monitor_snapshot_lifecycle>[data-testid="stVerticalBlock"],.st-key-monitor_snapshot_inventory>[data-testid="stVerticalBlock"],.st-key-monitor_snapshot_pricing>[data-testid="stVerticalBlock"],.st-key-monitor_snapshot_components>[data-testid="stVerticalBlock"]{gap:6px}.cv-monitor-kpi-eyebrow{display:block;margin-bottom:5px;color:#2563eb;font-size:9px;font-weight:800;letter-spacing:.12em;text-transform:uppercase}.cv-monitor-kpi-heading{display:flex;align-items:baseline;justify-content:space-between;gap:14px}.cv-monitor-kpi-heading h3{margin:0;color:#0f2d57;font-size:16px;font-weight:760;letter-spacing:-.025em;line-height:1.2}.cv-monitor-kpi-heading strong{flex:0 0 auto;color:#0f2d57;font-size:25px;font-weight:820;letter-spacing:-.045em;line-height:1}.cv-monitor-kpi-copy>p{margin:7px 0 0;color:#52647d;font-size:11.5px;line-height:1.42}.cv-monitor-kpi-preview{margin-top:10px;padding:9px 11px;border:1px solid #d7e2ef;border-radius:9px;background:#f7faff}.cv-monitor-kpi-preview span{display:block;color:#64748b!important;font-size:8.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}.cv-monitor-kpi-preview b{display:block;margin-top:4px;color:#0f2d57;font-size:11.5px;font-weight:750;line-height:1.4}
             .st-key-monitor_snapshot_immediate button,.st-key-monitor_snapshot_lifecycle button,.st-key-monitor_snapshot_inventory button,.st-key-monitor_snapshot_pricing button,.st-key-monitor_snapshot_components button,.st-key-monitoring_plan_usage button{width:auto!important;min-height:26px;margin-top:9px!important;padding:1px 0!important;border:0!important;border-radius:0;background:transparent!important;color:#2563eb!important;font-size:11.5px;font-weight:720;box-shadow:none!important}.st-key-monitor_snapshot_immediate button::after,.st-key-monitor_snapshot_lifecycle button::after,.st-key-monitor_snapshot_inventory button::after,.st-key-monitor_snapshot_pricing button::after,.st-key-monitor_snapshot_components button::after,.st-key-monitoring_plan_usage button::after{content:" →";margin-left:4px}.st-key-monitor_snapshot_immediate button:hover,.st-key-monitor_snapshot_lifecycle button:hover,.st-key-monitor_snapshot_inventory button:hover,.st-key-monitor_snapshot_pricing button:hover,.st-key-monitor_snapshot_components button:hover,.st-key-monitoring_plan_usage button:hover{color:#1d4ed8!important;text-decoration:underline;text-underline-offset:3px}.st-key-monitoring_plan_usage{padding:12px 13px;border:1px solid #d7e2ef;border-radius:11px;background:#fff}
-            .cv-monitor-queue-caption{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:4px 0 9px;padding:9px 11px;border:1px solid #d7e2ef;border-radius:10px;background:#f7faff;color:#52647d!important;font-size:10.5px;font-weight:700}.cv-monitor-queue-caption strong{color:#0f2d57!important}.cv-monitor-detail-label{margin:15px 0 5px;color:#2563eb!important;font-size:9px;font-weight:850;letter-spacing:.11em;text-transform:uppercase}.cv-monitor-detail-evidence{margin-top:11px}[class*="st-key-monitor_detail_actions_"]{margin-top:13px;padding-top:12px;border-top:1px solid #e2e8f0}[class*="st-key-monitor_detail_actions_"]>[data-testid="stVerticalBlock"]{gap:9px}[class*="st-key-monitor_alert_detail_"]{animation:cv-monitor-detail-in .24s cubic-bezier(.2,.75,.25,1) both}@keyframes cv-monitor-detail-in{from{opacity:.2;transform:translateY(7px)}to{opacity:1;transform:translateY(0)}}
+            [class*="st-key-monitor_snapshot_"]:has(.cv-monitor-kpi-copy.is-active){border-color:#2563eb;background:#eff6ff;box-shadow:0 0 0 2px rgba(37,99,235,.12),0 8px 20px rgba(37,99,235,.08)}[class*="st-key-monitor_snapshot_"]:has(.cv-monitor-kpi-copy.is-active):hover{border-color:#2563eb;box-shadow:0 0 0 2px rgba(37,99,235,.15),0 8px 20px rgba(37,99,235,.1)}.cv-monitor-current-view{display:inline-flex;align-items:center;gap:5px;margin:8px 0 0;padding:4px 7px;border-radius:999px;background:#dbeafe;color:#1d4ed8!important;font-size:8.5px;font-weight:850;letter-spacing:.06em;text-transform:uppercase}.cv-monitor-current-view:before{content:"";width:6px;height:6px;border-radius:50%;background:#2563eb}.st-key-monitor_snapshot_immediate button:disabled,.st-key-monitor_snapshot_lifecycle button:disabled,.st-key-monitor_snapshot_inventory button:disabled,.st-key-monitor_snapshot_pricing button:disabled,.st-key-monitor_snapshot_components button:disabled{color:#1d4ed8!important;opacity:1!important;text-decoration:none!important;cursor:default!important}.st-key-monitor_snapshot_immediate button:disabled::after,.st-key-monitor_snapshot_lifecycle button:disabled::after,.st-key-monitor_snapshot_inventory button:disabled::after,.st-key-monitor_snapshot_pricing button:disabled::after,.st-key-monitor_snapshot_components button:disabled::after{content:""!important;margin:0!important}
+            .cv-monitor-current-filter{display:flex;align-items:center;justify-content:space-between;gap:18px;margin:4px 0 8px;padding:11px 13px;border:1px solid #93c5fd;border-left:4px solid #2563eb;border-radius:10px;background:#eff6ff}.cv-monitor-current-filter span{display:block;color:#2563eb!important;font-size:8.5px;font-weight:850;letter-spacing:.1em;text-transform:uppercase}.cv-monitor-current-filter strong{display:block;margin-top:2px;color:#0f2d57!important;font-size:13px;font-weight:850}.cv-monitor-current-filter__summary{text-align:right}.cv-monitor-current-filter__summary b{display:block;color:#0f2d57!important;font-size:11px}.cv-monitor-current-filter__summary small{display:block;margin-top:2px;color:#52647d!important;font-size:9.5px}.cv-monitor-queue-caption{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:4px 0 9px;padding:7px 10px;border:1px solid #d7e2ef;border-radius:9px;background:#f8fafc;color:#52647d!important;font-size:10.5px;font-weight:700}.cv-monitor-queue-caption strong{color:#0f2d57!important}.cv-monitor-detail-label{margin:15px 0 5px;color:#2563eb!important;font-size:9px;font-weight:850;letter-spacing:.11em;text-transform:uppercase}.cv-monitor-detail-evidence{margin-top:11px}[class*="st-key-monitor_detail_actions_"]{margin-top:13px;padding-top:12px;border-top:1px solid #e2e8f0}[class*="st-key-monitor_detail_actions_"]>[data-testid="stVerticalBlock"]{gap:9px}[class*="st-key-monitor_alert_detail_"]{animation:cv-monitor-detail-in .24s cubic-bezier(.2,.75,.25,1) both}@keyframes cv-monitor-detail-in{from{opacity:.2;transform:translateY(7px)}to{opacity:1;transform:translateY(0)}}
             [data-testid="stExpander"]{border-radius:14px!important;border-color:#dbe3ef!important;background:#fbfdff!important}[data-testid="stExpander"] summary{font-weight:850!important}.stButton>button,.stDownloadButton>button{min-height:42px!important;border-radius:10px!important;font-weight:850!important}
-            @media(max-width:800px){.cv-monitor-workspace-head{display:block}.cv-monitor-active-badge{display:inline-block;margin-top:9px}.cv320-cardhead{display:block}.cv320-score{display:inline-block;margin-top:9px}.cv320-evidence{grid-template-columns:1fr 1fr}.cv320-recommendation{grid-template-columns:auto 1fr}.cv320-confidence{grid-column:2;text-align:left;border-left:0;padding-left:0}.cv-monitor-queue-caption{display:block}.cv-monitor-queue-caption span{display:block;margin-top:4px}}
+            @media(max-width:800px){.cv-monitor-workspace-head{display:block}.cv-monitor-active-badge{display:inline-block;margin-top:9px}.cv320-cardhead{display:block}.cv320-score{display:inline-block;margin-top:9px}.cv320-evidence{grid-template-columns:1fr 1fr}.cv320-recommendation{grid-template-columns:auto 1fr}.cv320-confidence{grid-column:2;text-align:left;border-left:0;padding-left:0}.cv-monitor-current-filter{display:block}.cv-monitor-current-filter__summary{text-align:left;margin-top:7px}.cv-monitor-queue-caption{display:block}.cv-monitor-queue-caption span{display:block;margin-top:4px}}
             @media(prefers-reduced-motion:reduce){[class*="st-key-monitor_alert_detail_"]{animation:none!important}}
             </style>
             """,
@@ -4052,6 +4053,50 @@ def run_authenticated_app() -> None:
             except Exception:
                 return None
 
+        def _monitor_human_date(value, fallback="—", *, include_time=False):
+            cleaned = _monitor_display(value, "")
+            if not cleaned:
+                return fallback
+            if cleaned.casefold() in {
+                "today",
+                "this week",
+                "before production approval",
+                "before the next purchase order",
+            }:
+                return cleaned
+            try:
+                parsed = pd.to_datetime(cleaned, errors="coerce", utc=True)
+                if pd.isna(parsed):
+                    return cleaned
+                date_label = parsed.strftime("%b %d, %Y").replace(" 0", " ")
+                if not include_time:
+                    return date_label
+                time_label = parsed.strftime("%I:%M %p").lstrip("0")
+                return f"{date_label} · {time_label} UTC"
+            except Exception:
+                return cleaned
+
+        def _monitor_priority_label(score):
+            score_value = max(0, min(100, int(float(score or 0))))
+            if score_value >= 90:
+                return f"🔴 {score_value} · Critical"
+            if score_value >= 75:
+                return f"🟠 {score_value} · Immediate"
+            if score_value >= 50:
+                return f"🟡 {score_value} · Review"
+            return f"🟢 {score_value} · Monitor"
+
+        def _monitor_risk_label(value):
+            risk = _monitor_display(value, "Unknown")
+            normalized = risk.casefold()
+            if "critical" in normalized or "high" in normalized:
+                return f"🔴 {risk}"
+            if "medium" in normalized:
+                return f"🟠 {risk}"
+            if "low" in normalized:
+                return f"🟢 {risk}"
+            return f"⚪ {risk}"
+
         def _monitor_confidence(score):
             return max(65, min(98, int(round(float(score or 0) * 0.92 + 8))))
 
@@ -4062,6 +4107,14 @@ def run_authenticated_app() -> None:
             "lifecycle": ("All", "Active", "Lifecycle"),
             "inventory": ("All", "Active", "Inventory"),
             "pricing": ("All", "Active", "Price"),
+        }
+        monitor_focus_labels = {
+            "active": ("All active alerts", "Every unresolved monitoring change"),
+            "immediate": ("Immediate action", "Priority scores from 75 to 100"),
+            "lifecycle": ("Lifecycle changes", "Lifecycle, EOL, and obsolescence changes"),
+            "inventory": ("Inventory alerts", "Stock and availability changes"),
+            "pricing": ("Price changes", "Material price movements"),
+            "custom": ("Custom queue", "The filters above define this view"),
         }
         if monitor_focus not in monitor_focus_defaults:
             monitor_focus = ""
@@ -4090,6 +4143,7 @@ def run_authenticated_app() -> None:
 
         def _render_monitor_action_queue():
             queue = monitoring_center["prioritized_alerts"]
+            st.session_state["monitoring_effective_focus"] = monitor_focus or "active"
             if queue.empty:
                 st.success("No monitoring exception requires action. Continue scheduled supplier and lifecycle checks.")
                 return
@@ -4137,6 +4191,20 @@ def run_authenticated_app() -> None:
                 placeholder="Part number, owner, or alert text",
                 key=f"m32_search_{monitor_filter_key}",
             )
+            filter_signature = (
+                attention_filter,
+                status_filter,
+                type_filter,
+            )
+            effective_focus = next(
+                (
+                    focus_token
+                    for focus_token, defaults in monitor_focus_defaults.items()
+                    if defaults == filter_signature
+                ),
+                "custom",
+            )
+            st.session_state["monitoring_effective_focus"] = effective_focus
             filtered = queue.copy()
             if attention_filter == "Immediate action":
                 priority_scores = pd.to_numeric(
@@ -4189,19 +4257,32 @@ def run_authenticated_app() -> None:
                     "Part Number": visible_queue["Part Number"],
                     "Alert Type": visible_queue["Alert Type"],
                     "Change": visible_queue["Change"],
-                    "Priority Score": pd.to_numeric(
-                        visible_queue["Priority Score"],
-                        errors="coerce",
-                    ).fillna(0).astype(int),
+                    "Priority": visible_queue["Priority Score"].map(
+                        _monitor_priority_label
+                    ),
                     "Status": visible_queue["Status"],
-                    "Owner": visible_queue["Owner"],
-                    "Due Date": visible_queue["Due Date"],
+                    "Owner": visible_queue["Owner"].map(
+                        lambda value: _monitor_display(value, "Unassigned")
+                    ),
+                    "Due Date": visible_queue["Due Date"].map(
+                        lambda value: _monitor_human_date(value, "Not scheduled")
+                    ),
                 }
             )
+            focus_title, focus_description = monitor_focus_labels[effective_focus]
             st.markdown(
                 f"""
+                <div class="cv-monitor-current-filter">
+                  <div>
+                    <span>Current view</span>
+                    <strong>{html.escape(focus_title)}</strong>
+                  </div>
+                  <div class="cv-monitor-current-filter__summary">
+                    <b>{len(visible_queue)} matching alerts</b>
+                    <small>{html.escape(focus_description)}. All rows below match this view.</small>
+                  </div>
+                </div>
                 <div class="cv-monitor-queue-caption">
-                  <strong>{len(visible_queue)} alerts shown</strong>
                   <span>Select a row to inspect its evidence, recommendation, and workflow.</span>
                 </div>
                 """,
@@ -4226,12 +4307,13 @@ def run_authenticated_app() -> None:
                         "What changed",
                         width="large",
                     ),
-                    "Priority Score": st.column_config.ProgressColumn(
+                    "Priority": st.column_config.TextColumn(
                         "Priority",
-                        min_value=0,
-                        max_value=100,
-                        format="%d",
-                        width="small",
+                        help=(
+                            "Red = critical, orange = immediate, "
+                            "yellow = review, green = monitor."
+                        ),
+                        width="medium",
                     ),
                     "Status": st.column_config.TextColumn(width="small"),
                     "Owner": st.column_config.TextColumn(width="medium"),
@@ -4275,7 +4357,10 @@ def run_authenticated_app() -> None:
             )
             status = _monitor_display(row.get("Status"), "Open")
             owner = _monitor_display(row.get("Owner"), "Unassigned")
-            due_label = _monitor_display(row.get("Due Date"), "No due date")
+            due_label = _monitor_human_date(
+                row.get("Due Date"),
+                "Not scheduled",
+            )
             change = _monitor_display(
                 row.get("Change"),
                 "Monitoring evidence changed.",
@@ -4301,9 +4386,13 @@ def run_authenticated_app() -> None:
                 row.get("Supplier", row.get("Primary Supplier", "")),
                 "Supplier data pending",
             )
-            checked = _monitor_display(
-                row.get("Last Checked", row.get("Created At", row.get("created_at", ""))),
+            checked = _monitor_human_date(
+                row.get(
+                    "Last Checked",
+                    row.get("Created At", row.get("created_at", "")),
+                ),
                 "Recently",
+                include_time=True,
             )
             alert_id = str(row.get("Alert ID", "") or "")
             detail_key = re.sub(
@@ -4518,14 +4607,97 @@ def run_authenticated_app() -> None:
             if components.empty:
                 st.info("No monitored component snapshots are available yet.")
             else:
-                component_search = st.text_input("Search monitored components", placeholder="Part number, supplier, lifecycle, or risk", key="m32_component_search")
+                component_search = st.text_input(
+                    "Search monitored components",
+                    placeholder="Part number, supplier, lifecycle, or risk",
+                    key="m32_component_search",
+                )
                 visible = components.copy()
                 if component_search.strip():
                     q = component_search.strip().lower()
-                    visible = visible[visible.astype(str).apply(lambda c: c.str.lower().str.contains(q, regex=False)).any(axis=1)]
-                cadivor_engineering_dataframe(visible)
-                if monitoring_limit is not None and not is_admin and monitored_count >= int(monitoring_limit):
-                    st.warning(f"Your {selected_plan_name} workspace has reached its {int(monitoring_limit):,}-part monitoring limit. Existing monitoring remains active; upgrade to Business for unlimited monitoring.")
+                    visible = visible[
+                        visible.astype(str)
+                        .apply(
+                            lambda column: column.str.lower().str.contains(
+                                q,
+                                regex=False,
+                            )
+                        )
+                        .any(axis=1)
+                    ]
+                display_columns = [
+                    column
+                    for column in (
+                        "Part Number",
+                        "Supplier",
+                        "Lifecycle Status",
+                        "Available Stock",
+                        "Unit Price",
+                        "Risk Level",
+                        "Last Checked",
+                    )
+                    if column in visible.columns
+                ]
+                display_components = visible[display_columns].copy()
+                for text_column in (
+                    "Part Number",
+                    "Supplier",
+                    "Lifecycle Status",
+                ):
+                    if text_column in display_components.columns:
+                        display_components[text_column] = display_components[
+                            text_column
+                        ].map(lambda value: _monitor_display(value, "—"))
+                if "Risk Level" in display_components.columns:
+                    display_components["Risk Level"] = display_components[
+                        "Risk Level"
+                    ].map(_monitor_risk_label)
+                if "Last Checked" in display_components.columns:
+                    display_components["Last Checked"] = display_components[
+                        "Last Checked"
+                    ].map(
+                        lambda value: _monitor_human_date(
+                            value,
+                            "Not checked yet",
+                            include_time=True,
+                        )
+                    )
+                    display_components = display_components.rename(
+                        columns={"Last Checked": "Last checked (UTC)"}
+                    )
+                st.markdown(
+                    f"""
+                    <div class="cv-monitor-queue-caption">
+                      <strong>{len(display_components):,} monitored components</strong>
+                      <span>Search by component, supplier, lifecycle status, or risk.</span>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+                cadivor_engineering_dataframe(
+                    display_components,
+                    column_config={
+                        "Risk Level": st.column_config.TextColumn(
+                            "Risk",
+                            width="small",
+                        ),
+                        "Last checked (UTC)": st.column_config.TextColumn(
+                            "Last checked (UTC)",
+                            width="medium",
+                        ),
+                    },
+                )
+                if (
+                    monitoring_limit is not None
+                    and not is_admin
+                    and monitored_count >= int(monitoring_limit)
+                ):
+                    st.warning(
+                        f"Your {selected_plan_name} workspace has reached its "
+                        f"{int(monitoring_limit):,}-part monitoring limit. Existing "
+                        "monitoring remains active; upgrade to Business for unlimited "
+                        "monitoring."
+                    )
 
         def _render_monitoring_timeline():
             try:
@@ -4623,17 +4795,25 @@ def run_authenticated_app() -> None:
             action_label: str,
             target_view: str,
             focus: str = "",
+            is_active: bool = False,
         ) -> None:
+            active_class = " is-active" if is_active else ""
+            active_marker = (
+                '<span class="cv-monitor-current-view">Current view</span>'
+                if is_active
+                else ""
+            )
             with st.container(key=card_key):
                 st.markdown(
                     f"""
-                    <div class="cv-monitor-kpi-copy">
+                    <div class="cv-monitor-kpi-copy{active_class}">
                       <span class="cv-monitor-kpi-eyebrow">{html.escape(eyebrow)}</span>
                       <div class="cv-monitor-kpi-heading">
                         <h3>{html.escape(title)}</h3>
                         <strong>{html.escape(value)}</strong>
                       </div>
                       <p>{html.escape(description)}</p>
+                      {active_marker}
                       <div class="cv-monitor-kpi-preview">
                         <span>{html.escape(preview_label)}</span>
                         <b>{html.escape(preview)}</b>
@@ -4642,11 +4822,13 @@ def run_authenticated_app() -> None:
                     """,
                     unsafe_allow_html=True,
                 )
-                if st.button(
-                    action_label,
+                card_clicked = st.button(
+                    "Currently showing" if is_active else action_label,
                     key=f"{card_key}_action",
                     use_container_width=True,
-                ):
+                    disabled=is_active,
+                )
+                if card_clicked:
                     navigation_params = {"monitor_view": target_view}
                     if focus:
                         navigation_params["monitor_focus"] = focus
@@ -4727,6 +4909,14 @@ def run_authenticated_app() -> None:
 
         with monitoring_snapshot_col:
             with st.container(key="monitoring_snapshot"):
+                active_snapshot_focus = ""
+                if monitor_view == "queue":
+                    active_snapshot_focus = st.session_state.get(
+                        "monitoring_effective_focus",
+                        monitor_focus or "active",
+                    )
+                elif monitor_view == "components":
+                    active_snapshot_focus = "components"
                 st.markdown(
                     f"""
                     <div class="cv-monitor-snapshot-head">
@@ -4748,6 +4938,7 @@ def run_authenticated_app() -> None:
                     action_label="Review immediate actions",
                     target_view="queue",
                     focus="immediate",
+                    is_active=active_snapshot_focus == "immediate",
                 )
                 _render_monitoring_snapshot_card(
                     card_key="monitor_snapshot_lifecycle",
@@ -4760,6 +4951,7 @@ def run_authenticated_app() -> None:
                     action_label="Review lifecycle changes",
                     target_view="queue",
                     focus="lifecycle",
+                    is_active=active_snapshot_focus == "lifecycle",
                 )
                 _render_monitoring_snapshot_card(
                     card_key="monitor_snapshot_inventory",
@@ -4772,6 +4964,7 @@ def run_authenticated_app() -> None:
                     action_label="Review inventory alerts",
                     target_view="queue",
                     focus="inventory",
+                    is_active=active_snapshot_focus == "inventory",
                 )
                 if price_alerts > 0:
                     _render_monitoring_snapshot_card(
@@ -4785,6 +4978,7 @@ def run_authenticated_app() -> None:
                         action_label="Review price changes",
                         target_view="queue",
                         focus="pricing",
+                        is_active=active_snapshot_focus == "pricing",
                     )
                 _render_monitoring_snapshot_card(
                     card_key="monitor_snapshot_components",
@@ -4796,6 +4990,7 @@ def run_authenticated_app() -> None:
                     preview=f"{monitored_count:,} components actively tracked",
                     action_label="View monitored components",
                     target_view="components",
+                    is_active=active_snapshot_focus == "components",
                 )
                 if (
                     monitoring_limit is not None

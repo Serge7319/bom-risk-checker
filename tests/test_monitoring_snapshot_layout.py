@@ -46,6 +46,15 @@ class MonitoringSnapshotLayoutTests(unittest.TestCase):
         self.assertIn('_monitor_preview_parts("inventory")', self.branch)
         self.assertNotIn("cv-monitor-kpi-line cv-monitor-kpi-line--primary", self.branch)
 
+    def test_snapshot_makes_the_selected_shortcut_unmistakable(self):
+        self.assertIn("is_active: bool = False", self.branch)
+        self.assertIn('cv-monitor-kpi-copy{active_class}', self.branch)
+        self.assertIn("Current view", self.branch)
+        self.assertIn('"Currently showing" if is_active else action_label', self.branch)
+        self.assertIn("disabled=is_active", self.branch)
+        self.assertIn('active_snapshot_focus == "immediate"', self.branch)
+        self.assertIn('active_snapshot_focus == "components"', self.branch)
+
     def test_every_snapshot_card_has_a_destination(self):
         for action_label in (
             "Review immediate actions",
@@ -78,6 +87,23 @@ class MonitoringSnapshotLayoutTests(unittest.TestCase):
         self.assertIn('key=f"monitor_alert_detail_{detail_key}"', self.branch)
         self.assertIn("Highest-priority alert · select another row", self.branch)
         self.assertNotIn("for idx, row in filtered.head(50).iterrows()", self.branch)
+
+    def test_queue_explains_the_active_view_and_priority_meaning(self):
+        self.assertIn("monitor_focus_labels", self.branch)
+        self.assertIn("All rows below match this view", self.branch)
+        self.assertIn("def _monitor_priority_label(score)", self.branch)
+        for priority_label in ("Critical", "Immediate", "Review", "Monitor"):
+            self.assertIn(priority_label, self.branch)
+        self.assertNotIn("st.column_config.ProgressColumn", self.branch)
+
+    def test_monitored_components_hide_internal_ids_and_format_dates(self):
+        component_view = self.branch.split(
+            "def _render_monitored_components", 1
+        )[1].split("def _render_monitoring_timeline", 1)[0]
+        self.assertNotIn('"Analysis ID"', component_view)
+        self.assertIn('columns={"Last Checked": "Last checked (UTC)"}', component_view)
+        self.assertIn("include_time=True", component_view)
+        self.assertIn("Search by component, supplier, lifecycle status, or risk", component_view)
 
     def test_selected_alert_keeps_workflow_and_contextual_actions(self):
         for label in (
