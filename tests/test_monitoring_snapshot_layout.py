@@ -35,6 +35,16 @@ class MonitoringSnapshotLayoutTests(unittest.TestCase):
         self.assertNotIn('MetricCard(label="Stock"', self.branch)
         self.assertNotIn('MetricCard(label="Monitored"', self.branch)
         self.assertNotIn("render_kpi_row_safe(", self.branch)
+        self.assertIn("if price_alerts > 0:", self.branch)
+        self.assertIn("and monitor_usage >= 80", self.branch)
+
+    def test_snapshot_previews_name_the_actual_affected_components(self):
+        self.assertIn("def _monitor_preview_parts(focus: str)", self.branch)
+        self.assertIn('preview_label="Affected components"', self.branch)
+        self.assertIn('_monitor_preview_parts("immediate")', self.branch)
+        self.assertIn('_monitor_preview_parts("lifecycle")', self.branch)
+        self.assertIn('_monitor_preview_parts("inventory")', self.branch)
+        self.assertNotIn("cv-monitor-kpi-line cv-monitor-kpi-line--primary", self.branch)
 
     def test_every_snapshot_card_has_a_destination(self):
         for action_label in (
@@ -59,6 +69,26 @@ class MonitoringSnapshotLayoutTests(unittest.TestCase):
         self.assertIn('filtered = filtered[priority_scores >= 75]', self.branch)
         self.assertIn('key=f"m32_attention_{monitor_filter_key}"', self.branch)
         self.assertIn('key=f"m32_type_{monitor_filter_key}"', self.branch)
+
+    def test_action_queue_is_a_selectable_table_with_one_focused_record(self):
+        self.assertIn('key=f"m32_queue_table_{monitor_filter_key}"', self.branch)
+        self.assertIn('on_select="rerun"', self.branch)
+        self.assertIn('selection_mode="single-row"', self.branch)
+        self.assertIn("selected_rows = _monitor_selected_rows(queue_table_state)", self.branch)
+        self.assertIn('key=f"monitor_alert_detail_{detail_key}"', self.branch)
+        self.assertIn("Highest-priority alert · select another row", self.branch)
+        self.assertNotIn("for idx, row in filtered.head(50).iterrows()", self.branch)
+
+    def test_selected_alert_keeps_workflow_and_contextual_actions(self):
+        for label in (
+            "Save workflow",
+            "Run Alternative Finder",
+            "Open decisions",
+            "Export evidence",
+        ):
+            self.assertIn(label, self.branch)
+        self.assertIn("mpn=part_number", self.branch)
+        self.assertIn('source_page="monitoring"', self.branch)
 
     def test_monitoring_views_are_directly_addressable(self):
         for token, label in (

@@ -4019,12 +4019,14 @@ def run_authenticated_app() -> None:
             .cv320-card{--accent:#2563eb;border:1px solid #dbe3ef;border-left:5px solid var(--accent);background:#fff;border-radius:18px;padding:17px 18px;margin:11px 0;box-shadow:0 10px 28px rgba(15,23,42,.05);transition:transform .18s ease,box-shadow .18s ease}.cv320-card:hover{transform:translateY(-1px);box-shadow:0 16px 36px rgba(15,23,42,.075)}.cv320-card.critical{--accent:#dc2626}.cv320-card.high{--accent:#f97316}.cv320-card.medium{--accent:#eab308}.cv320-card.low{--accent:#16a34a}.cv320-cardhead{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.cv320-part{font-size:18px;font-weight:950;color:#0f172a!important}.cv320-type{font-size:10px;font-weight:950;letter-spacing:.07em;text-transform:uppercase;color:var(--accent)!important;margin-bottom:5px}.cv320-change{font-size:13px;font-weight:700;color:#475569!important;line-height:1.55;margin:10px 0}.cv320-pills{display:flex;flex-wrap:wrap;gap:7px}.cv320-pill{border:1px solid #dbeafe;background:#eff6ff;border-radius:999px;padding:6px 9px;font-size:10px;font-weight:850;color:#1d4ed8!important}.cv320-recommendation{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:start;border:1px solid #bfdbfe;background:linear-gradient(135deg,#eff6ff,#f8fbff);border-radius:14px;margin-top:13px;padding:13px 14px}.cv320-recicon{width:31px;height:31px;border-radius:10px;background:#dbeafe;color:#1d4ed8!important;display:flex;align-items:center;justify-content:center;font-weight:950}.cv320-rectitle{font-size:10px;font-weight:950;letter-spacing:.06em;text-transform:uppercase;color:#1d4ed8!important}.cv320-reccopy{font-size:12px;font-weight:850;color:#0f172a!important;line-height:1.45;margin-top:3px}.cv320-impact{font-size:10px;font-weight:760;color:#52647a!important;line-height:1.4;margin-top:5px}.cv320-confidence{border-left:1px solid #bfdbfe;padding-left:12px;text-align:right;white-space:nowrap}.cv320-confidence span{display:block;font-size:8px;font-weight:900;text-transform:uppercase;color:#64748b!important}.cv320-confidence strong{font-size:15px;font-weight:950;color:#1d4ed8!important}.cv320-score{border-radius:999px;padding:8px 11px;font-size:10px;font-weight:950;white-space:nowrap}.cv320-score.bad{background:#fef2f2;border:1px solid #fecaca;color:#b91c1c!important}.cv320-score.warn{background:#fffbeb;border:1px solid #fde68a;color:#a16207!important}.cv320-score.good{background:#ecfdf5;border:1px solid #a7f3d0;color:#047857!important}
             .cv320-evidence{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin:5px 0 13px}.cv320-evidence div{border:1px solid #e2e8f0;background:#f8fafc;border-radius:12px;padding:10px}.cv320-evidence span{display:block;font-size:8px;font-weight:950;text-transform:uppercase;letter-spacing:.06em;color:#64748b!important}.cv320-evidence strong{display:block;font-size:11px;font-weight:900;color:#0f172a!important;margin-top:4px}.cv320-section-title{font-size:12px;font-weight:950;color:#0f172a!important;margin:4px 0 10px}.cv320-limit{border:1px solid #dbeafe;background:#f8fbff;border-radius:15px;padding:13px 15px;margin:10px 0 18px}.cv320-limitrow{display:flex;justify-content:space-between;font-size:11px;font-weight:850;color:#475569!important;margin-bottom:8px}.cv320-bar{height:8px;border-radius:999px;background:#e2e8f0;overflow:hidden}.cv320-bar i{display:block;height:100%;background:linear-gradient(90deg,#2563eb,#60a5fa);border-radius:999px}.cv321-timeline{position:relative;margin:8px 0 10px;padding-left:22px}.cv321-timeline:before{content:"";position:absolute;left:7px;top:5px;bottom:5px;width:2px;background:#dbeafe}.cv321-event{position:relative;border:1px solid #e2e8f0;background:#fff;border-radius:14px;padding:12px 14px;margin:0 0 10px;box-shadow:0 8px 22px rgba(15,23,42,.04)}.cv321-event:before{content:"";position:absolute;left:-20px;top:17px;width:10px;height:10px;border-radius:50%;background:#2563eb;border:3px solid #eff6ff}.cv321-eventtime{font-size:9px;font-weight:850;color:#64748b!important}.cv321-eventtitle{font-size:13px;font-weight:950;color:#0f172a!important;margin-top:3px}.cv321-eventcopy{font-size:11px;font-weight:700;color:#52647a!important;margin-top:4px;line-height:1.45}
             .cv-monitor-workspace-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin:2px 0 14px}.cv-monitor-workspace-eyebrow{display:block;margin-bottom:5px;color:#2563eb;font-size:9.5px;font-weight:800;letter-spacing:.12em;text-transform:uppercase}.cv-monitor-workspace-title{display:block;color:#0f2d57;font-size:20px;font-weight:780;letter-spacing:-.025em;line-height:1.2}.cv-monitor-workspace-head p{margin:5px 0 0;color:#64748b;font-size:12.5px;line-height:1.45}.cv-monitor-active-badge{flex:0 0 auto;border:1px solid #fecaca;border-radius:999px;background:#fef2f2;color:#b91c1c!important;padding:6px 9px;font-size:10px;font-weight:800;white-space:nowrap}
-            .st-key-monitoring_view_navigation{margin-bottom:12px;border-bottom:1px solid #dbe3ef}.st-key-monitoring_view_navigation>[data-testid="stVerticalBlock"]{gap:0}.st-key-monitoring_view_navigation [data-testid="stHorizontalBlock"]{gap:16px}.st-key-monitoring_view_navigation .stButton>button{min-height:38px!important;padding:6px 2px 8px!important;border:0!important;border-bottom:3px solid transparent!important;border-radius:0!important;background:transparent!important;color:#52647d!important;font-size:12px;font-weight:720!important;box-shadow:none!important;white-space:nowrap}.st-key-monitoring_view_navigation .stButton>button[kind="primary"]{border-bottom-color:#2563eb!important;color:#1d4ed8!important}.st-key-monitoring_view_navigation .stButton>button:hover{color:#1d4ed8!important;background:#f8fbff!important}
+            .st-key-monitoring_view_navigation{margin-bottom:12px;border-bottom:1px solid #dbe3ef}.st-key-monitoring_view_navigation>[data-testid="stVerticalBlock"]{gap:0}.st-key-monitoring_view_navigation [data-testid="stHorizontalBlock"]{gap:8px;align-items:flex-end}.st-key-monitoring_view_navigation .stButton>button{min-height:36px!important;padding:5px 4px 7px!important;border:0!important;border-bottom:3px solid transparent!important;border-radius:0!important;background:transparent!important;color:#52647d!important;font-size:11.5px;font-weight:720!important;box-shadow:none!important;white-space:nowrap}.st-key-monitoring_view_navigation .stButton>button[kind="primary"]{border-bottom-color:#2563eb!important;color:#1d4ed8!important}.st-key-monitoring_view_navigation .stButton>button:hover{color:#1d4ed8!important;background:#f8fbff!important}
             .st-key-monitoring_snapshot{padding:14px;border:1px solid #d4deeb;border-radius:16px;background:#f5f8fc;box-shadow:0 10px 26px rgba(15,23,42,.045)}.st-key-monitoring_snapshot>[data-testid="stVerticalBlock"]{gap:12px}.cv-monitor-snapshot-head{margin:0 2px 2px;padding:2px 2px 6px}.cv-monitor-snapshot-eyebrow{display:block;margin-bottom:5px;color:#2563eb;font-size:9.5px;font-weight:800;letter-spacing:.12em;text-transform:uppercase}.cv-monitor-snapshot-title{display:block;color:#0f2d57;font-size:19px;font-weight:780;letter-spacing:-.025em;line-height:1.2}.cv-monitor-snapshot-head p{margin:4px 0 0;color:#64748b;font-size:12.5px;line-height:1.45}
-            .st-key-monitor_snapshot_immediate,.st-key-monitor_snapshot_lifecycle,.st-key-monitor_snapshot_inventory,.st-key-monitor_snapshot_pricing,.st-key-monitor_snapshot_components{padding:15px 15px 11px;border:1px solid #d6e0ec;border-radius:12px;background:#fff;box-shadow:none;transition:border-color .16s ease,box-shadow .16s ease}.st-key-monitor_snapshot_immediate:hover,.st-key-monitor_snapshot_lifecycle:hover,.st-key-monitor_snapshot_inventory:hover,.st-key-monitor_snapshot_pricing:hover,.st-key-monitor_snapshot_components:hover{border-color:#b9cbe2;box-shadow:0 6px 16px rgba(15,23,42,.055)}.st-key-monitor_snapshot_immediate>[data-testid="stVerticalBlock"],.st-key-monitor_snapshot_lifecycle>[data-testid="stVerticalBlock"],.st-key-monitor_snapshot_inventory>[data-testid="stVerticalBlock"],.st-key-monitor_snapshot_pricing>[data-testid="stVerticalBlock"],.st-key-monitor_snapshot_components>[data-testid="stVerticalBlock"]{gap:7px}.cv-monitor-kpi-eyebrow{display:block;margin-bottom:5px;color:#2563eb;font-size:9px;font-weight:800;letter-spacing:.12em;text-transform:uppercase}.cv-monitor-kpi-heading{display:flex;align-items:baseline;justify-content:space-between;gap:14px}.cv-monitor-kpi-heading h3{margin:0;color:#0f2d57;font-size:16px;font-weight:760;letter-spacing:-.025em;line-height:1.2}.cv-monitor-kpi-heading strong{flex:0 0 auto;color:#0f2d57;font-size:25px;font-weight:820;letter-spacing:-.045em;line-height:1}.cv-monitor-kpi-copy>p{margin:7px 0 0;color:#52647d;font-size:11.5px;line-height:1.42}.cv-monitor-kpi-preview{margin-top:12px;min-height:78px;padding:11px 12px;border:1px solid #d7e2ef;border-radius:9px;background:#f7faff}.cv-monitor-kpi-line{display:block;width:62%;height:6px;margin-bottom:6px;border-radius:999px;background:#dce6f2}.cv-monitor-kpi-line--long{width:78%}.cv-monitor-kpi-line--primary{width:42%;background:#8fb7f4}.st-key-monitor_snapshot_immediate .cv-monitor-kpi-line--primary{background:#f29595}.st-key-monitor_snapshot_lifecycle .cv-monitor-kpi-line--primary{background:#efb95e}.st-key-monitor_snapshot_inventory .cv-monitor-kpi-line--primary{background:#63cbb7}.st-key-monitor_snapshot_pricing .cv-monitor-kpi-line--primary{background:#9a9df5}.cv-monitor-kpi-preview b{display:block;margin-top:8px;color:#0f2d57;font-size:11.5px;font-weight:750;line-height:1.35}
+            .st-key-monitor_snapshot_immediate,.st-key-monitor_snapshot_lifecycle,.st-key-monitor_snapshot_inventory,.st-key-monitor_snapshot_pricing,.st-key-monitor_snapshot_components{padding:14px 15px 11px;border:1px solid #d6e0ec;border-radius:12px;background:#fff;box-shadow:none;transition:border-color .16s ease,box-shadow .16s ease}.st-key-monitor_snapshot_immediate:hover,.st-key-monitor_snapshot_lifecycle:hover,.st-key-monitor_snapshot_inventory:hover,.st-key-monitor_snapshot_pricing:hover,.st-key-monitor_snapshot_components:hover{border-color:#b9cbe2;box-shadow:0 6px 16px rgba(15,23,42,.055)}.st-key-monitor_snapshot_immediate>[data-testid="stVerticalBlock"],.st-key-monitor_snapshot_lifecycle>[data-testid="stVerticalBlock"],.st-key-monitor_snapshot_inventory>[data-testid="stVerticalBlock"],.st-key-monitor_snapshot_pricing>[data-testid="stVerticalBlock"],.st-key-monitor_snapshot_components>[data-testid="stVerticalBlock"]{gap:6px}.cv-monitor-kpi-eyebrow{display:block;margin-bottom:5px;color:#2563eb;font-size:9px;font-weight:800;letter-spacing:.12em;text-transform:uppercase}.cv-monitor-kpi-heading{display:flex;align-items:baseline;justify-content:space-between;gap:14px}.cv-monitor-kpi-heading h3{margin:0;color:#0f2d57;font-size:16px;font-weight:760;letter-spacing:-.025em;line-height:1.2}.cv-monitor-kpi-heading strong{flex:0 0 auto;color:#0f2d57;font-size:25px;font-weight:820;letter-spacing:-.045em;line-height:1}.cv-monitor-kpi-copy>p{margin:7px 0 0;color:#52647d;font-size:11.5px;line-height:1.42}.cv-monitor-kpi-preview{margin-top:10px;padding:9px 11px;border:1px solid #d7e2ef;border-radius:9px;background:#f7faff}.cv-monitor-kpi-preview span{display:block;color:#64748b!important;font-size:8.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}.cv-monitor-kpi-preview b{display:block;margin-top:4px;color:#0f2d57;font-size:11.5px;font-weight:750;line-height:1.4}
             .st-key-monitor_snapshot_immediate button,.st-key-monitor_snapshot_lifecycle button,.st-key-monitor_snapshot_inventory button,.st-key-monitor_snapshot_pricing button,.st-key-monitor_snapshot_components button,.st-key-monitoring_plan_usage button{width:auto!important;min-height:26px;margin-top:9px!important;padding:1px 0!important;border:0!important;border-radius:0;background:transparent!important;color:#2563eb!important;font-size:11.5px;font-weight:720;box-shadow:none!important}.st-key-monitor_snapshot_immediate button::after,.st-key-monitor_snapshot_lifecycle button::after,.st-key-monitor_snapshot_inventory button::after,.st-key-monitor_snapshot_pricing button::after,.st-key-monitor_snapshot_components button::after,.st-key-monitoring_plan_usage button::after{content:" →";margin-left:4px}.st-key-monitor_snapshot_immediate button:hover,.st-key-monitor_snapshot_lifecycle button:hover,.st-key-monitor_snapshot_inventory button:hover,.st-key-monitor_snapshot_pricing button:hover,.st-key-monitor_snapshot_components button:hover,.st-key-monitoring_plan_usage button:hover{color:#1d4ed8!important;text-decoration:underline;text-underline-offset:3px}.st-key-monitoring_plan_usage{padding:12px 13px;border:1px solid #d7e2ef;border-radius:11px;background:#fff}
+            .cv-monitor-queue-caption{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:4px 0 9px;padding:9px 11px;border:1px solid #d7e2ef;border-radius:10px;background:#f7faff;color:#52647d!important;font-size:10.5px;font-weight:700}.cv-monitor-queue-caption strong{color:#0f2d57!important}.cv-monitor-detail-label{margin:15px 0 5px;color:#2563eb!important;font-size:9px;font-weight:850;letter-spacing:.11em;text-transform:uppercase}.cv-monitor-detail-evidence{margin-top:11px}[class*="st-key-monitor_detail_actions_"]{margin-top:13px;padding-top:12px;border-top:1px solid #e2e8f0}[class*="st-key-monitor_detail_actions_"]>[data-testid="stVerticalBlock"]{gap:9px}[class*="st-key-monitor_alert_detail_"]{animation:cv-monitor-detail-in .24s cubic-bezier(.2,.75,.25,1) both}@keyframes cv-monitor-detail-in{from{opacity:.2;transform:translateY(7px)}to{opacity:1;transform:translateY(0)}}
             [data-testid="stExpander"]{border-radius:14px!important;border-color:#dbe3ef!important;background:#fbfdff!important}[data-testid="stExpander"] summary{font-weight:850!important}.stButton>button,.stDownloadButton>button{min-height:42px!important;border-radius:10px!important;font-weight:850!important}
-            @media(max-width:800px){.cv-monitor-workspace-head{display:block}.cv-monitor-active-badge{display:inline-block;margin-top:9px}.cv320-cardhead{display:block}.cv320-score{display:inline-block;margin-top:9px}.cv320-evidence{grid-template-columns:1fr 1fr}.cv320-recommendation{grid-template-columns:auto 1fr}.cv320-confidence{grid-column:2;text-align:left;border-left:0;padding-left:0}}
+            @media(max-width:800px){.cv-monitor-workspace-head{display:block}.cv-monitor-active-badge{display:inline-block;margin-top:9px}.cv320-cardhead{display:block}.cv320-score{display:inline-block;margin-top:9px}.cv320-evidence{grid-template-columns:1fr 1fr}.cv320-recommendation{grid-template-columns:auto 1fr}.cv320-confidence{grid-column:2;text-align:left;border-left:0;padding-left:0}.cv-monitor-queue-caption{display:block}.cv-monitor-queue-caption span{display:block;margin-top:4px}}
+            @media(prefers-reduced-motion:reduce){[class*="st-key-monitor_alert_detail_"]{animation:none!important}}
             </style>
             """,
             unsafe_allow_html=True,
@@ -4072,140 +4074,444 @@ def run_authenticated_app() -> None:
             else "default"
         )
 
+        def _monitor_selected_rows(table_state) -> list[int]:
+            selection = getattr(table_state, "selection", None)
+            if selection is None and isinstance(table_state, dict):
+                selection = table_state.get("selection")
+            if selection is None:
+                return []
+            rows = getattr(selection, "rows", None)
+            if rows is None and isinstance(selection, dict):
+                rows = selection.get("rows", [])
+            try:
+                return [int(row_index) for row_index in (rows or [])]
+            except (TypeError, ValueError):
+                return []
+
         def _render_monitor_action_queue():
             queue = monitoring_center["prioritized_alerts"]
             if queue.empty:
                 st.success("No monitoring exception requires action. Continue scheduled supplier and lifecycle checks.")
-            else:
-                f1, f2, f3, f4 = st.columns([1.1, 1.1, 1.1, 1.8])
-                attention_options = [
-                    "All",
-                    "Immediate action",
-                    "Critical",
-                    "High",
-                    "Medium",
-                    "Low",
-                ]
-                status_options_filter = [
-                    "Active",
-                    "All",
-                    "Open",
-                    "In Review",
-                    "Resolved",
-                    "Dismissed",
-                    "Reopened",
-                ]
-                type_options = ["All", "Lifecycle", "Inventory", "Price", "Supplier"]
-                attention_filter = f1.selectbox(
-                    "Attention",
-                    attention_options,
-                    index=attention_options.index(monitor_attention_default),
-                    key=f"m32_attention_{monitor_filter_key}",
-                )
-                status_filter = f2.selectbox(
-                    "Status",
-                    status_options_filter,
-                    index=status_options_filter.index(monitor_status_default),
-                    key=f"m32_status_filter_{monitor_filter_key}",
-                )
-                type_filter = f3.selectbox(
-                    "Change type",
-                    type_options,
-                    index=type_options.index(monitor_type_default),
-                    key=f"m32_type_{monitor_filter_key}",
-                )
-                search_filter = f4.text_input(
-                    "Search",
-                    value=focused_monitor_part,
-                    placeholder="Part number, owner, or alert text",
-                    key=f"m32_search_{monitor_filter_key}",
-                )
-                filtered = queue.copy()
-                if attention_filter == "Immediate action":
-                    priority_scores = pd.to_numeric(
-                        filtered["Priority Score"], errors="coerce"
-                    ).fillna(0)
-                    filtered = filtered[priority_scores >= 75]
-                elif attention_filter != "All":
-                    filtered = filtered[
-                        filtered["Severity"].str.lower() == attention_filter.lower()
-                    ]
-                if status_filter == "Active":
-                    filtered = filtered[
-                        ~filtered["Status"].isin(["Resolved", "Dismissed"])
-                    ]
-                elif status_filter != "All":
-                    filtered = filtered[filtered["Status"] == status_filter]
-                if type_filter != "All":
-                    pattern = "stock|inventory" if type_filter == "Inventory" else type_filter.lower()
-                    filtered = filtered[filtered["Alert Type"].str.contains(pattern, case=False, regex=True)]
-                if search_filter.strip():
-                    q = search_filter.strip().lower()
-                    filtered = filtered[filtered.astype(str).apply(lambda c: c.str.lower().str.contains(q, regex=False)).any(axis=1)]
-                st.caption(f"Showing {len(filtered)} of {len(queue)} monitoring records.")
+                return
 
-                for idx, row in filtered.head(50).iterrows():
-                    score = int(row["Priority Score"])
-                    tone = "bad" if score >= 75 else "warn" if score >= 45 else "good"
-                    severity = _monitor_display(row.get("Severity"), "Medium")
-                    severity_class = severity.lower() if severity.lower() in {"critical", "high", "medium", "low"} else "medium"
-                    part_number = _monitor_display(row.get("Part Number"), "Unknown component")
-                    alert_type = _monitor_display(row.get("Alert Type"), "Monitoring change")
-                    status = _monitor_display(row.get("Status"), "Open")
-                    owner = _monitor_display(row.get("Owner"), "Unassigned")
-                    due_label = _monitor_display(row.get("Due Date"), "No due date")
-                    change = _monitor_display(row.get("Change"), "Monitoring evidence changed.")
-                    recommended_action = _monitor_display(row.get("Recommended Action"), "Review this change and document the engineering response.")
-                    expected_impact = _monitor_display(row.get("Expected Impact"), "Confirm whether redesign, sourcing, or qualification action is required.")
-                    confidence = _monitor_confidence(score)
-                    current_value = _monitor_display(row.get("Current Value", row.get("Current", row.get("New Value", ""))), "Latest evidence available")
-                    previous_value = _monitor_display(row.get("Previous Value", row.get("Previous", row.get("Old Value", ""))), "Earlier baseline")
-                    supplier = _monitor_display(row.get("Supplier", row.get("Primary Supplier", "")), "Supplier data pending")
-                    checked = _monitor_display(row.get("Last Checked", row.get("Created At", row.get("created_at", ""))), "Recently")
-                    st.markdown(f"""<section class="cv320-card {severity_class}"><div class="cv320-cardhead"><div><div class="cv320-type">{html.escape(alert_type)}</div><div class="cv320-part">{html.escape(part_number)}</div></div><span class="cv320-score {tone}">Priority {score}/100</span></div><div class="cv320-change">{html.escape(change)}</div><div class="cv320-pills"><span class="cv320-pill">Status: {html.escape(status)}</span><span class="cv320-pill">Owner: {html.escape(owner)}</span><span class="cv320-pill">Due: {html.escape(due_label)}</span><span class="cv320-pill">Severity: {html.escape(severity)}</span></div><div class="cv320-recommendation"><div class="cv320-recicon">i</div><div><div class="cv320-rectitle">Cadivor recommendation</div><div class="cv320-reccopy">{html.escape(recommended_action)}</div><div class="cv320-impact"><b>Why it matters:</b> {html.escape(expected_impact)}</div></div><div class="cv320-confidence"><span>Confidence</span><strong>{confidence}%</strong></div></div></section>""", unsafe_allow_html=True)
+            f1, f2, f3, f4 = st.columns([1.1, 1.1, 1.1, 1.8])
+            attention_options = [
+                "All",
+                "Immediate action",
+                "Critical",
+                "High",
+                "Medium",
+                "Low",
+            ]
+            status_options_filter = [
+                "Active",
+                "All",
+                "Open",
+                "In Review",
+                "Resolved",
+                "Dismissed",
+                "Reopened",
+            ]
+            type_options = ["All", "Lifecycle", "Inventory", "Price", "Supplier"]
+            attention_filter = f1.selectbox(
+                "Attention",
+                attention_options,
+                index=attention_options.index(monitor_attention_default),
+                key=f"m32_attention_{monitor_filter_key}",
+            )
+            status_filter = f2.selectbox(
+                "Status",
+                status_options_filter,
+                index=status_options_filter.index(monitor_status_default),
+                key=f"m32_status_filter_{monitor_filter_key}",
+            )
+            type_filter = f3.selectbox(
+                "Change type",
+                type_options,
+                index=type_options.index(monitor_type_default),
+                key=f"m32_type_{monitor_filter_key}",
+            )
+            search_filter = f4.text_input(
+                "Search",
+                value=focused_monitor_part,
+                placeholder="Part number, owner, or alert text",
+                key=f"m32_search_{monitor_filter_key}",
+            )
+            filtered = queue.copy()
+            if attention_filter == "Immediate action":
+                priority_scores = pd.to_numeric(
+                    filtered["Priority Score"], errors="coerce"
+                ).fillna(0)
+                filtered = filtered[priority_scores >= 75]
+            elif attention_filter != "All":
+                filtered = filtered[
+                    filtered["Severity"].str.lower() == attention_filter.lower()
+                ]
+            if status_filter == "Active":
+                filtered = filtered[
+                    ~filtered["Status"].isin(["Resolved", "Dismissed"])
+                ]
+            elif status_filter != "All":
+                filtered = filtered[filtered["Status"] == status_filter]
+            if type_filter != "All":
+                pattern = (
+                    "stock|inventory"
+                    if type_filter == "Inventory"
+                    else type_filter.lower()
+                )
+                filtered = filtered[
+                    filtered["Alert Type"].str.contains(
+                        pattern,
+                        case=False,
+                        regex=True,
+                    )
+                ]
+            if search_filter.strip():
+                query = search_filter.strip().lower()
+                filtered = filtered[
+                    filtered.astype(str)
+                    .apply(
+                        lambda column: column.str.lower().str.contains(
+                            query,
+                            regex=False,
+                        )
+                    )
+                    .any(axis=1)
+                ]
 
-                    alert_id = str(row.get("Alert ID", ""))
-                    with st.expander("Engineering evidence and workflow", expanded=False):
-                        st.markdown(f"""<div class="cv320-section-title">Engineering evidence</div><div class="cv320-evidence"><div><span>Previous state</span><strong>{html.escape(previous_value)}</strong></div><div><span>Current state</span><strong>{html.escape(current_value)}</strong></div><div><span>Supplier</span><strong>{html.escape(supplier)}</strong></div><div><span>Last checked</span><strong>{html.escape(checked)}</strong></div></div><div class="cv320-section-title">Engineering workflow</div>""", unsafe_allow_html=True)
-                        w1, w2, w3 = st.columns(3)
-                        status_options = ["Open", "In Review", "Resolved", "Dismissed", "Reopened"]
-                        priority_options = ["Low", "Normal", "High", "Urgent"]
-                        row_status = status if status in status_options else "Open"
-                        row_priority = _monitor_display(row.get("Priority"), "Normal")
-                        row_priority = row_priority if row_priority in priority_options else "Normal"
-                        new_status = w1.selectbox("Status", status_options, index=status_options.index(row_status), key=f"m32_status_{alert_id}_{idx}")
-                        new_priority = w2.selectbox("Priority", priority_options, index=priority_options.index(row_priority), key=f"m32_priority_{alert_id}_{idx}")
-                        existing_owner = "" if owner in {"Unassigned", "Engineering", "Procurement", "Supply Chain", "Component Engineering", "Engineering & Supply Chain"} else owner
-                        new_owner = w3.text_input("Assigned to", value=existing_owner, placeholder="Name or team", key=f"m32_owner_{alert_id}_{idx}")
-                        d1, d2 = st.columns([1, 2])
-                        due_value = d1.date_input("Due date", value=_monitor_date(row.get("Due Date")), key=f"m32_due_{alert_id}_{idx}")
-                        note_value = d2.text_area("Engineering note", value=_monitor_display(row.get("Note"), ""), placeholder="Document rationale, validation evidence, or next step...", key=f"m32_note_{alert_id}_{idx}")
-                        a1, a2, a3, a4 = st.columns(4)
-                        if a1.button("Save workflow", type="primary", use_container_width=True, key=f"m32_save_{alert_id}_{idx}"):
+            visible_queue = filtered.head(50).reset_index(drop=True)
+            if visible_queue.empty:
+                st.info("No alerts match these filters. Adjust the filters or choose another monitoring shortcut.")
+                return
+
+            queue_table = pd.DataFrame(
+                {
+                    "Part Number": visible_queue["Part Number"],
+                    "Alert Type": visible_queue["Alert Type"],
+                    "Change": visible_queue["Change"],
+                    "Priority Score": pd.to_numeric(
+                        visible_queue["Priority Score"],
+                        errors="coerce",
+                    ).fillna(0).astype(int),
+                    "Status": visible_queue["Status"],
+                    "Owner": visible_queue["Owner"],
+                    "Due Date": visible_queue["Due Date"],
+                }
+            )
+            st.markdown(
+                f"""
+                <div class="cv-monitor-queue-caption">
+                  <strong>{len(visible_queue)} alerts shown</strong>
+                  <span>Select a row to inspect its evidence, recommendation, and workflow.</span>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            queue_table_state = cadivor_engineering_dataframe(
+                queue_table,
+                key=f"m32_queue_table_{monitor_filter_key}",
+                on_select="rerun",
+                selection_mode="single-row",
+                height="content",
+                column_config={
+                    "Part Number": st.column_config.TextColumn(
+                        "Component",
+                        width="medium",
+                    ),
+                    "Alert Type": st.column_config.TextColumn(
+                        "Change type",
+                        width="small",
+                    ),
+                    "Change": st.column_config.TextColumn(
+                        "What changed",
+                        width="large",
+                    ),
+                    "Priority Score": st.column_config.ProgressColumn(
+                        "Priority",
+                        min_value=0,
+                        max_value=100,
+                        format="%d",
+                        width="small",
+                    ),
+                    "Status": st.column_config.TextColumn(width="small"),
+                    "Owner": st.column_config.TextColumn(width="medium"),
+                    "Due Date": st.column_config.TextColumn(
+                        "Due",
+                        width="small",
+                    ),
+                },
+            )
+
+            selected_rows = _monitor_selected_rows(queue_table_state)
+            selected_position = selected_rows[0] if selected_rows else 0
+            if not 0 <= selected_position < len(visible_queue):
+                selected_position = 0
+            row = visible_queue.iloc[selected_position]
+            selection_hint = (
+                "Selected alert"
+                if selected_rows
+                else "Highest-priority alert · select another row to change focus"
+            )
+            st.markdown(
+                f'<div class="cv-monitor-detail-label">{html.escape(selection_hint)}</div>',
+                unsafe_allow_html=True,
+            )
+
+            score = int(row["Priority Score"])
+            tone = "bad" if score >= 75 else "warn" if score >= 45 else "good"
+            severity = _monitor_display(row.get("Severity"), "Medium")
+            severity_class = (
+                severity.lower()
+                if severity.lower() in {"critical", "high", "medium", "low"}
+                else "medium"
+            )
+            part_number = _monitor_display(
+                row.get("Part Number"),
+                "Unknown component",
+            )
+            alert_type = _monitor_display(
+                row.get("Alert Type"),
+                "Monitoring change",
+            )
+            status = _monitor_display(row.get("Status"), "Open")
+            owner = _monitor_display(row.get("Owner"), "Unassigned")
+            due_label = _monitor_display(row.get("Due Date"), "No due date")
+            change = _monitor_display(
+                row.get("Change"),
+                "Monitoring evidence changed.",
+            )
+            recommended_action = _monitor_display(
+                row.get("Recommended Action"),
+                "Review this change and document the engineering response.",
+            )
+            expected_impact = _monitor_display(
+                row.get("Expected Impact"),
+                "Confirm whether redesign, sourcing, or qualification action is required.",
+            )
+            confidence = _monitor_confidence(score)
+            current_value = _monitor_display(
+                row.get("Current Value", row.get("Current", row.get("New Value", ""))),
+                "Latest evidence available",
+            )
+            previous_value = _monitor_display(
+                row.get("Previous Value", row.get("Previous", row.get("Old Value", ""))),
+                "Earlier baseline",
+            )
+            supplier = _monitor_display(
+                row.get("Supplier", row.get("Primary Supplier", "")),
+                "Supplier data pending",
+            )
+            checked = _monitor_display(
+                row.get("Last Checked", row.get("Created At", row.get("created_at", ""))),
+                "Recently",
+            )
+            alert_id = str(row.get("Alert ID", "") or "")
+            detail_key = re.sub(
+                r"[^a-zA-Z0-9_-]",
+                "_",
+                alert_id or f"{part_number}_{selected_position}",
+            )[:64]
+
+            with st.container(key=f"monitor_alert_detail_{detail_key}"):
+                st.markdown(
+                    f"""
+                    <section class="cv320-card {severity_class}">
+                      <div class="cv320-cardhead">
+                        <div>
+                          <div class="cv320-type">{html.escape(alert_type)}</div>
+                          <div class="cv320-part">{html.escape(part_number)}</div>
+                        </div>
+                        <span class="cv320-score {tone}">Priority {score}/100</span>
+                      </div>
+                      <div class="cv320-change">{html.escape(change)}</div>
+                      <div class="cv320-pills">
+                        <span class="cv320-pill">Status: {html.escape(status)}</span>
+                        <span class="cv320-pill">Owner: {html.escape(owner)}</span>
+                        <span class="cv320-pill">Due: {html.escape(due_label)}</span>
+                        <span class="cv320-pill">Severity: {html.escape(severity)}</span>
+                      </div>
+                      <div class="cv320-recommendation">
+                        <div class="cv320-recicon">i</div>
+                        <div>
+                          <div class="cv320-rectitle">Cadivor recommendation</div>
+                          <div class="cv320-reccopy">{html.escape(recommended_action)}</div>
+                          <div class="cv320-impact"><b>Why it matters:</b> {html.escape(expected_impact)}</div>
+                        </div>
+                        <div class="cv320-confidence">
+                          <span>Confidence</span><strong>{confidence}%</strong>
+                        </div>
+                      </div>
+                      <div class="cv-monitor-detail-evidence">
+                        <div class="cv320-section-title">Engineering evidence</div>
+                        <div class="cv320-evidence">
+                          <div><span>Previous state</span><strong>{html.escape(previous_value)}</strong></div>
+                          <div><span>Current state</span><strong>{html.escape(current_value)}</strong></div>
+                          <div><span>Supplier</span><strong>{html.escape(supplier)}</strong></div>
+                          <div><span>Last checked</span><strong>{html.escape(checked)}</strong></div>
+                        </div>
+                      </div>
+                    </section>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+                with st.container(key=f"monitor_detail_actions_{detail_key}"):
+                    st.markdown("#### Update workflow")
+                    w1, w2, w3 = st.columns(3)
+                    status_options = [
+                        "Open",
+                        "In Review",
+                        "Resolved",
+                        "Dismissed",
+                        "Reopened",
+                    ]
+                    priority_options = ["Low", "Normal", "High", "Urgent"]
+                    row_status = status if status in status_options else "Open"
+                    row_priority = _monitor_display(row.get("Priority"), "Normal")
+                    row_priority = (
+                        row_priority
+                        if row_priority in priority_options
+                        else "Normal"
+                    )
+                    new_status = w1.selectbox(
+                        "Status",
+                        status_options,
+                        index=status_options.index(row_status),
+                        key=f"m32_status_{detail_key}",
+                    )
+                    new_priority = w2.selectbox(
+                        "Priority",
+                        priority_options,
+                        index=priority_options.index(row_priority),
+                        key=f"m32_priority_{detail_key}",
+                    )
+                    existing_owner = (
+                        ""
+                        if owner
+                        in {
+                            "Unassigned",
+                            "Engineering",
+                            "Procurement",
+                            "Supply Chain",
+                            "Component Engineering",
+                            "Engineering & Supply Chain",
+                        }
+                        else owner
+                    )
+                    new_owner = w3.text_input(
+                        "Assigned to",
+                        value=existing_owner,
+                        placeholder="Name or team",
+                        key=f"m32_owner_{detail_key}",
+                    )
+                    d1, d2 = st.columns([1, 2])
+                    due_value = d1.date_input(
+                        "Due date",
+                        value=_monitor_date(row.get("Due Date")),
+                        key=f"m32_due_{detail_key}",
+                    )
+                    note_value = d2.text_area(
+                        "Engineering note",
+                        value=_monitor_display(row.get("Note"), ""),
+                        placeholder="Document rationale, validation evidence, or next step...",
+                        key=f"m32_note_{detail_key}",
+                    )
+                    a1, a2, a3, a4 = st.columns([1.1, 1.25, 1, 1])
+                    if a1.button(
+                        "Save workflow",
+                        type="primary",
+                        use_container_width=True,
+                        key=f"m32_save_{detail_key}",
+                    ):
+                        try:
+                            payload = {
+                                "workflow_status": new_status,
+                                "priority": new_priority,
+                                "assigned_to": new_owner or None,
+                                "due_date": due_value.isoformat() if due_value else None,
+                                "review_note": note_value or None,
+                                "reviewed_at": datetime.now(timezone.utc).isoformat(),
+                                "resolved_at": (
+                                    datetime.now(timezone.utc).isoformat()
+                                    if new_status == "Resolved"
+                                    else None
+                                ),
+                            }
+                            supabase.table("monitor_alerts").update(payload).eq(
+                                "id",
+                                alert_id,
+                            ).eq("user_id", current_user["id"]).execute()
                             try:
-                                payload = {"workflow_status": new_status, "priority": new_priority, "assigned_to": new_owner or None, "due_date": due_value.isoformat() if due_value else None, "review_note": note_value or None, "reviewed_at": datetime.now(timezone.utc).isoformat(), "resolved_at": datetime.now(timezone.utc).isoformat() if new_status == "Resolved" else None}
-                                supabase.table("monitor_alerts").update(payload).eq("id", alert_id).eq("user_id", current_user["id"]).execute()
-                                try:
-                                    supabase.table("monitoring_events").insert({"user_id": current_user["id"], "workspace_id": active_workspace_id or None, "alert_id": alert_id or None, "analysis_id": str(row.get("Analysis ID", "") or "") or None, "part_number": str(row["Part Number"]), "event_type": "Workflow Updated", "event_summary": f"Alert moved to {new_status}; priority {new_priority}.", "previous_value": str(row["Status"]), "current_value": new_status, "metadata": {"assigned_to": new_owner, "due_date": payload["due_date"]}}).execute()
-                                except Exception:
-                                    pass
-                                st.success("Monitoring workflow saved.")
-                                st.rerun()
+                                supabase.table("monitoring_events").insert(
+                                    {
+                                        "user_id": current_user["id"],
+                                        "workspace_id": active_workspace_id or None,
+                                        "alert_id": alert_id or None,
+                                        "analysis_id": (
+                                            str(row.get("Analysis ID", "") or "")
+                                            or None
+                                        ),
+                                        "part_number": part_number,
+                                        "event_type": "Workflow Updated",
+                                        "event_summary": (
+                                            f"Alert moved to {new_status}; "
+                                            f"priority {new_priority}."
+                                        ),
+                                        "previous_value": status,
+                                        "current_value": new_status,
+                                        "metadata": {
+                                            "assigned_to": new_owner,
+                                            "due_date": payload["due_date"],
+                                        },
+                                    }
+                                ).execute()
                             except Exception:
-                                st.error(
-                                    "Cadivor could not save this monitoring workflow. "
-                                    "Please try again or contact support if the problem continues."
-                                )
-                        if a2.button("Find alternative", use_container_width=True, key=f"m32_alt_{alert_id}_{idx}"):
-                            navigate_to_alternative_finder(
-                                mpn=str(row["Part Number"]),
-                                analysis_id=str(row.get("Analysis ID", "") or return_analysis_id or ""),
-                                return_analysis_id=str(row.get("Analysis ID", "") or return_analysis_id or ""),
-                                source_page="monitoring",
+                                pass
+                            st.success("Monitoring workflow saved.")
+                            st.rerun()
+                        except Exception:
+                            st.error(
+                                "Cadivor could not save this monitoring workflow. "
+                                "Please try again or contact support if the problem continues."
                             )
-                        if a3.button("Open decisions", use_container_width=True, key=f"m32_decision_{alert_id}_{idx}"):
-                            navigate_to("Engineering Decisions", focus_part=str(row["Part Number"]))
-                        a4.download_button("Export evidence", data=pd.DataFrame([row]).to_csv(index=False).encode("utf-8"), file_name=f"{str(row['Part Number']).replace('/', '_')}_monitoring_evidence.csv", mime="text/csv", use_container_width=True, key=f"m32_export_{alert_id}_{idx}")
+                    if a2.button(
+                        "Run Alternative Finder",
+                        use_container_width=True,
+                        key=f"m32_alt_{detail_key}",
+                    ):
+                        navigate_to_alternative_finder(
+                            mpn=part_number,
+                            analysis_id=str(
+                                row.get("Analysis ID", "")
+                                or return_analysis_id
+                                or ""
+                            ),
+                            return_analysis_id=str(
+                                row.get("Analysis ID", "")
+                                or return_analysis_id
+                                or ""
+                            ),
+                            source_page="monitoring",
+                        )
+                    if a3.button(
+                        "Open decisions",
+                        use_container_width=True,
+                        key=f"m32_decision_{detail_key}",
+                    ):
+                        navigate_to(
+                            "Engineering Decisions",
+                            focus_part=part_number,
+                        )
+                    a4.download_button(
+                        "Export evidence",
+                        data=pd.DataFrame([row.to_dict()]).to_csv(index=False).encode("utf-8"),
+                        file_name=(
+                            f"{part_number.replace('/', '_')}_monitoring_evidence.csv"
+                        ),
+                        mime="text/csv",
+                        use_container_width=True,
+                        key=f"m32_export_{detail_key}",
+                    )
 
         def _render_monitored_components():
             components = monitoring_center["latest_components"]
@@ -4260,6 +4566,51 @@ def run_authenticated_app() -> None:
             e1.download_button("Download monitoring action queue", data=queue.to_csv(index=False).encode("utf-8"), file_name="cadivor_monitoring_action_queue.csv", mime="text/csv", type="primary", use_container_width=True, key="m32_queue_export")
             e2.download_button("Download monitored component snapshot", data=components.to_csv(index=False).encode("utf-8"), file_name="cadivor_monitored_components.csv", mime="text/csv", use_container_width=True, key="m32_components_export")
 
+        def _monitor_preview_parts(focus: str) -> str:
+            if not isinstance(active_queue, pd.DataFrame) or active_queue.empty:
+                return "No active components"
+            focused = active_queue.copy()
+            alert_types = focused["Alert Type"].astype(str)
+            if focus == "immediate":
+                scores = pd.to_numeric(
+                    focused["Priority Score"],
+                    errors="coerce",
+                ).fillna(0)
+                focused = focused[scores >= 75]
+            elif focus == "lifecycle":
+                focused = focused[
+                    alert_types.str.contains(
+                        "lifecycle|eol|obsolete",
+                        case=False,
+                        regex=True,
+                    )
+                ]
+            elif focus == "inventory":
+                focused = focused[
+                    alert_types.str.contains(
+                        "stock|inventory",
+                        case=False,
+                        regex=True,
+                    )
+                ]
+            elif focus == "pricing":
+                focused = focused[
+                    alert_types.str.contains("price", case=False, regex=True)
+                ]
+            if focused.empty or "Part Number" not in focused.columns:
+                return "No active components"
+            parts = []
+            for raw_part in focused["Part Number"].tolist():
+                part = _monitor_display(raw_part, "")
+                if part and part not in parts:
+                    parts.append(part)
+            if not parts:
+                return "No active components"
+            visible_parts = parts[:3]
+            remaining = len(parts) - len(visible_parts)
+            preview = " · ".join(visible_parts)
+            return f"{preview} · +{remaining} more" if remaining else preview
+
         def _render_monitoring_snapshot_card(
             *,
             card_key: str,
@@ -4267,6 +4618,7 @@ def run_authenticated_app() -> None:
             title: str,
             value: str,
             description: str,
+            preview_label: str,
             preview: str,
             action_label: str,
             target_view: str,
@@ -4283,9 +4635,7 @@ def run_authenticated_app() -> None:
                       </div>
                       <p>{html.escape(description)}</p>
                       <div class="cv-monitor-kpi-preview">
-                        <span class="cv-monitor-kpi-line cv-monitor-kpi-line--primary"></span>
-                        <span class="cv-monitor-kpi-line cv-monitor-kpi-line--long"></span>
-                        <span class="cv-monitor-kpi-line"></span>
+                        <span>{html.escape(preview_label)}</span>
                         <b>{html.escape(preview)}</b>
                       </div>
                     </div>
@@ -4343,7 +4693,10 @@ def run_authenticated_app() -> None:
                 unsafe_allow_html=True,
             )
             with st.container(key="monitoring_view_navigation"):
-                navigation_columns = st.columns([1, 1.35, 0.75, 0.65])
+                navigation_columns = st.columns(
+                    [0.9, 1.3, 0.65, 0.6, 3.2],
+                    gap="small",
+                )[:4]
                 for navigation_column, (view_token, view_label) in zip(
                     navigation_columns,
                     monitor_view_labels.items(),
@@ -4390,7 +4743,8 @@ def run_authenticated_app() -> None:
                     title="Immediate action",
                     value=str(monitoring_center["immediate_actions"]),
                     description="Alerts at or above Cadivor's immediate-action threshold.",
-                    preview=f"{monitoring_center['immediate_actions']} alerts have priority scores of 75 or higher",
+                    preview_label="Affected components",
+                    preview=_monitor_preview_parts("immediate"),
                     action_label="Review immediate actions",
                     target_view="queue",
                     focus="immediate",
@@ -4401,7 +4755,8 @@ def run_authenticated_app() -> None:
                     title="Lifecycle changes",
                     value=str(monitoring_center["lifecycle_alerts"]),
                     description="Lifecycle transitions that may require qualification or redesign.",
-                    preview=f"{monitoring_center['lifecycle_alerts']} lifecycle alerts are active",
+                    preview_label="Affected components",
+                    preview=_monitor_preview_parts("lifecycle"),
                     action_label="Review lifecycle changes",
                     target_view="queue",
                     focus="lifecycle",
@@ -4412,52 +4767,61 @@ def run_authenticated_app() -> None:
                     title="Inventory alerts",
                     value=str(monitoring_center["inventory_alerts"]),
                     description="Stock and availability changes that need sourcing review.",
-                    preview=f"{monitoring_center['inventory_alerts']} inventory alerts are active",
+                    preview_label="Affected components",
+                    preview=_monitor_preview_parts("inventory"),
                     action_label="Review inventory alerts",
                     target_view="queue",
                     focus="inventory",
                 )
-                _render_monitoring_snapshot_card(
-                    card_key="monitor_snapshot_pricing",
-                    eyebrow="Cost",
-                    title="Price changes",
-                    value=str(price_alerts),
-                    description="Material price movements that may affect BOM cost.",
-                    preview=f"{price_alerts} price-change alerts are active",
-                    action_label="Review price changes",
-                    target_view="queue",
-                    focus="pricing",
-                )
+                if price_alerts > 0:
+                    _render_monitoring_snapshot_card(
+                        card_key="monitor_snapshot_pricing",
+                        eyebrow="Cost",
+                        title="Price changes",
+                        value=str(price_alerts),
+                        description="Material price movements that may affect BOM cost.",
+                        preview_label="Affected components",
+                        preview=_monitor_preview_parts("pricing"),
+                        action_label="Review price changes",
+                        target_view="queue",
+                        focus="pricing",
+                    )
                 _render_monitoring_snapshot_card(
                     card_key="monitor_snapshot_components",
                     eyebrow="Coverage",
                     title="Monitored components",
                     value=f"{monitored_count:,}",
                     description="Components currently tracked for lifecycle and supply changes.",
-                    preview=f"{monitored_count:,} components have monitoring coverage",
+                    preview_label="Monitoring coverage",
+                    preview=f"{monitored_count:,} components actively tracked",
                     action_label="View monitored components",
                     target_view="components",
                 )
-                with st.container(key="monitoring_plan_usage"):
-                    st.markdown(
-                        f"""
-                        <div class="cv320-limitrow">
-                          <span>{html.escape(str(selected_plan_name))} monitoring usage</span>
-                          <span>{monitored_count:,} / {monitor_limit_label}</span>
-                        </div>
-                        <div class="cv320-bar"><i style="width:{monitor_usage}%"></i></div>
-                        """,
-                        unsafe_allow_html=True,
-                    )
-                    if st.button(
-                        "Open billing settings",
-                        key="monitoring_plan_usage_action",
-                        use_container_width=True,
-                    ):
-                        navigate_to(
-                            "Settings",
-                            settings_tab="Billing",
+                if (
+                    monitoring_limit is not None
+                    and not is_admin
+                    and monitor_usage >= 80
+                ):
+                    with st.container(key="monitoring_plan_usage"):
+                        st.markdown(
+                            f"""
+                            <div class="cv320-limitrow">
+                              <span>{html.escape(str(selected_plan_name))} monitoring usage</span>
+                              <span>{monitored_count:,} / {monitor_limit_label}</span>
+                            </div>
+                            <div class="cv320-bar"><i style="width:{monitor_usage}%"></i></div>
+                            """,
+                            unsafe_allow_html=True,
                         )
+                        if st.button(
+                            "Open billing settings",
+                            key="monitoring_plan_usage_action",
+                            use_container_width=True,
+                        ):
+                            navigate_to(
+                                "Settings",
+                                settings_tab="Billing",
+                            )
 
         stop_authenticated_page()
 
