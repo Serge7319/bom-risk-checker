@@ -2497,7 +2497,7 @@ def render_analysis_detail(
                             f"{len(filtered_parts):,} matching components"
                         ),
                         selection_hint=(
-                            "Select a row to inspect its risk evidence and engineering actions."
+                            "Click any cell or the checkbox to inspect risk evidence and engineering actions."
                         ),
                         total_count=len(parts),
                         column_config={

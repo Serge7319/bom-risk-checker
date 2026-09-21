@@ -615,6 +615,9 @@ def selected_dataframe_rows(table_event: Any) -> tuple[int, ...]:
     rows = getattr(selection, "rows", None)
     if rows is None and isinstance(selection, Mapping):
         rows = selection.get("rows", ())
+    cells = getattr(selection, "cells", None)
+    if cells is None and isinstance(selection, Mapping):
+        cells = selection.get("cells", ())
     normalized: list[int] = []
     for raw_row in rows or ():
         try:
@@ -623,6 +626,18 @@ def selected_dataframe_rows(table_event: Any) -> tuple[int, ...]:
             continue
         if row >= 0 and row not in normalized:
             normalized.append(row)
+    # Streamlit also supports cell selection. When a user clicks the body of
+    # a smart table, use the cell's row position as the focused row so the
+    # interaction feels like a normal clickable table instead of requiring
+    # discovery of the small checkbox column.
+    if not normalized:
+        for raw_cell in cells or ():
+            try:
+                row = int(raw_cell[0])
+            except (TypeError, ValueError, IndexError, KeyError):
+                continue
+            if row >= 0 and row not in normalized:
+                normalized.append(row)
     return tuple(normalized)
 
 
@@ -681,7 +696,7 @@ def render_smart_table_context(
     count_label: str = "",
     eyebrow: str = "Current view",
     tone: str = "info",
-    selection_hint: str = "Select a row to inspect its evidence and available actions.",
+    selection_hint: str = "Click any cell or the checkbox to inspect evidence and actions.",
 ) -> None:
     """Render the shared context banner used above an interactive table."""
     normalized_tone = _normalize_tone(tone)
@@ -710,10 +725,10 @@ def cadivor_smart_dataframe(
     count_label: str = "",
     context_eyebrow: str = "Current view",
     context_tone: str = "info",
-    selection_hint: str = "Select a row to inspect its evidence and available actions.",
+    selection_hint: str = "Click any cell or the checkbox to inspect evidence and actions.",
     total_count: int | None = None,
     column_config: Mapping[str, Any] | None = None,
-    selection_mode: str = "single-row",
+    selection_mode: str | Sequence[str] = ("single-row", "single-cell"),
     **kwargs: Any,
 ) -> SmartTableResult:
     """Render a selectable engineering table with one consistent interaction model."""
