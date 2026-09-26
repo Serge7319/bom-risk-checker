@@ -61,10 +61,14 @@ class SmartTableSystemTests(unittest.TestCase):
         monitoring = RUNTIME.split('if app_mode == "Monitoring":', 1)[1].split(
             'if app_mode == "Supply Risk Scenario":', 1
         )[0]
-        self.assertGreaterEqual(monitoring.count("cadivor_smart_dataframe("), 1)
+        self.assertGreaterEqual(monitoring.count("cadivor_expandable_table("), 2)
         self.assertIn("queue_table_result = cadivor_expandable_table(", monitoring)
         self.assertIn("queue_table_result.detail_slot.container()", monitoring)
+        self.assertIn("component_table_result = cadivor_expandable_table(", monitoring)
         self.assertIn("component_table_result.first_selected_row", monitoring)
+        self.assertIn("component_table_result.detail_slot.container()", monitoring)
+        self.assertIn("row_ids=(", monitoring)
+        self.assertIn("Click a component to expand", monitoring)
         self.assertIn("semantic_priority_label(score)", monitoring)
         self.assertIn("humanize_table_date(", monitoring)
 

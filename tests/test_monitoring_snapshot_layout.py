@@ -98,14 +98,28 @@ class MonitoringSnapshotLayoutTests(unittest.TestCase):
             self.assertIn(priority_label, self.branch)
         self.assertNotIn("st.column_config.ProgressColumn", self.branch)
 
-    def test_monitored_components_hide_internal_ids_and_format_dates(self):
+    def test_monitored_components_expand_inline_with_component_evidence(self):
         component_view = self.branch.split(
             "def _render_monitored_components", 1
         )[1].split("def _render_monitoring_timeline", 1)[0]
         self.assertNotIn('"Analysis ID"', component_view)
-        self.assertIn('columns={"Last Checked": "Last checked (UTC)"}', component_view)
+        self.assertIn("component_table_result = cadivor_expandable_table(", component_view)
+        self.assertIn('"m32_monitored_components_table_"', component_view)
+        self.assertIn('columns={"Last Checked": "Last checked"}', component_view)
         self.assertIn("include_time=True", component_view)
         self.assertIn("Search by component, supplier, lifecycle status, or risk", component_view)
+        self.assertIn("component_table_result.first_selected_row", component_view)
+        self.assertIn("component_table_result.detail_slot.container()", component_view)
+        self.assertIn("Expanded component details", component_view)
+        self.assertIn("Active monitoring alerts", component_view)
+        self.assertIn("Snapshots recorded", component_view)
+        self.assertIn("Related analyses", component_view)
+        self.assertIn("View active alerts", component_view)
+        self.assertIn("Run Alternative Finder", component_view)
+        self.assertIn("Open related BOM", component_view)
+        self.assertIn("Export snapshot", component_view)
+        self.assertNotIn("cadivor_smart_dataframe(", component_view)
+        self.assertNotIn("Click any cell or the checkbox", component_view)
 
     def test_selected_alert_keeps_workflow_and_contextual_actions(self):
         for label in (
