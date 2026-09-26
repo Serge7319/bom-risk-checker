@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from html import escape
 from pathlib import Path
+import re
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
 import pandas as pd
@@ -101,10 +102,23 @@ class SmartTableResult:
     selected_rows: tuple[int, ...] = ()
     visible_count: int = 0
     total_count: int = 0
+    detail_slot: Any = None
 
     @property
     def first_selected_row(self) -> int | None:
         return self.selected_rows[0] if self.selected_rows else None
+
+
+@dataclass(frozen=True)
+class ExpandableTableColumn:
+    """Presentation contract for one column in an inline expandable table."""
+
+    key: str
+    label: str = ""
+    width: float = 1.0
+    min_width: int = 110
+    align: str = "left"
+    kind: str = "text"
 
 
 _ALLOWED_TONES = frozenset(
@@ -713,6 +727,205 @@ def render_smart_table_context(
         f'<small>{escape(str(selection_hint))}</small>'
         '</div>'
         '</div>'
+    )
+
+
+def _expandable_table_token(value: Any, fallback: str) -> str:
+    text = "" if value is None else str(value).strip()
+    return text or fallback
+
+
+def _expandable_widget_token(value: Any, position: int) -> str:
+    cleaned = re.sub(r"[^a-zA-Z0-9_-]+", "_", str(value or "")).strip("_")
+    return f"{position}_{cleaned[:54] or 'row'}"
+
+
+def _toggle_expandable_table_row(state_key: str, row_token: str) -> None:
+    current = str(st.session_state.get(state_key, "") or "")
+    st.session_state[state_key] = "" if current == row_token else row_token
+
+
+def _expandable_cell_value(value: Any) -> str:
+    if value is None:
+        return "—"
+    try:
+        if pd.isna(value):
+            return "—"
+    except (TypeError, ValueError):
+        pass
+    text = str(value).strip()
+    return "—" if not text or text.casefold() in {"nan", "none", "null", "nat"} else text
+
+
+def _expandable_cell_html(value: Any, column: ExpandableTableColumn) -> str:
+    text = _expandable_cell_value(value)
+    kind = str(column.kind or "text").strip().lower()
+    if kind == "priority":
+        normalized = text.casefold()
+        tone = (
+            "danger"
+            if "critical" in normalized
+            else "warning"
+            if "immediate" in normalized or "review" in normalized
+            else "success"
+            if "monitor" in normalized
+            else "neutral"
+        )
+        return (
+            f'<span class="cv-expandable-table__pill '
+            f'cv-expandable-table__pill--{tone}">{escape(text)}</span>'
+        )
+    if kind == "status":
+        tone = badge_tone(text)
+        return (
+            f'<span class="cv-expandable-table__pill '
+            f'cv-expandable-table__pill--{escape(tone)}">{escape(text)}</span>'
+        )
+    if kind == "strong":
+        return f'<strong class="cv-expandable-table__strong">{escape(text)}</strong>'
+    if kind == "mono":
+        return f'<span class="cv-expandable-table__mono">{escape(text)}</span>'
+    return escape(text)
+
+
+def cadivor_expandable_table(
+    df: Any,
+    *,
+    key: str,
+    columns: Sequence[ExpandableTableColumn],
+    render_expanded: Callable[[pd.Series, int], None] | None = None,
+    row_ids: Sequence[Any] | None = None,
+    context_title: str = "",
+    context_detail: str = "",
+    count_label: str = "",
+    context_eyebrow: str = "Current view",
+    context_tone: str = "info",
+    selection_hint: str = "Click a row to expand its evidence and actions.",
+    total_count: int | None = None,
+) -> SmartTableResult:
+    """Render an Octopart-style table with one inline detail row at a time.
+
+    Each visible row is one native Streamlit button target, while its readable
+    cells are rendered as a CSS grid. The active row's caller-supplied content
+    is inserted immediately beneath it so filters, workflow widgets, and other
+    native Streamlit controls remain usable.
+    """
+    source_df = getattr(df, "data", df)
+    if source_df is None or getattr(source_df, "empty", True):
+        cadivor_empty_state("No records", "Nothing matches the current filters.", icon="search")
+        return SmartTableResult()
+
+    visible_columns = [column for column in columns if column.key in source_df.columns]
+    if not visible_columns:
+        visible_columns = [
+            ExpandableTableColumn(str(column), str(column))
+            for column in source_df.columns
+        ]
+    visible_count = len(source_df)
+    resolved_total = visible_count if total_count is None else max(0, int(total_count))
+    safe_key = re.sub(r"[^a-zA-Z0-9_-]+", "_", str(key)).strip("_")[:80] or "table"
+    state_key = f"_cv_expandable_row_{safe_key}"
+    supplied_ids = list(row_ids) if row_ids is not None else []
+    raw_tokens = [
+        _expandable_table_token(
+            supplied_ids[position] if position < len(supplied_ids) else position,
+            str(position),
+        )
+        for position in range(visible_count)
+    ]
+    token_counts: dict[str, int] = {}
+    row_tokens: list[str] = []
+    for raw_token in raw_tokens:
+        occurrence = token_counts.get(raw_token, 0)
+        token_counts[raw_token] = occurrence + 1
+        row_tokens.append(raw_token if occurrence == 0 else f"{raw_token}::{occurrence}")
+
+    selected_token = str(st.session_state.get(state_key, "") or "")
+    if selected_token and selected_token not in row_tokens:
+        st.session_state[state_key] = ""
+        selected_token = ""
+    selected_position = (
+        row_tokens.index(selected_token) if selected_token in row_tokens else None
+    )
+
+    if context_title:
+        render_smart_table_context(
+            context_title,
+            detail=context_detail,
+            count_label=count_label or f"{visible_count:,} rows shown",
+            eyebrow=context_eyebrow,
+            tone=context_tone,
+            selection_hint=selection_hint,
+        )
+
+    column_template = " ".join(
+        f"minmax({max(72, int(column.min_width))}px,{max(0.35, float(column.width)):.3g}fr)"
+        for column in visible_columns
+    )
+    template_style = escape(column_template, quote=True)
+    header_cells = "".join(
+        f'<div class="cv-expandable-table__head-cell cv-align-{escape(column.align)}">'
+        f'{escape(column.label or column.key)}</div>'
+        for column in visible_columns
+    )
+
+    detail_slot = None
+    with st.container(key=f"cv_expandable_table_{safe_key}"):
+        _render_html(
+            f'<div class="cv-expandable-table__viewport">'
+            f'<div class="cv-expandable-table__header" '
+            f'style="--cv-expand-cols:{template_style}">'
+            f'<span class="cv-expandable-table__disclosure-spacer" aria-hidden="true"></span>'
+            f'{header_cells}</div></div>'
+        )
+        for position, (_, row) in enumerate(source_df.iterrows()):
+            row_token = row_tokens[position]
+            widget_token = _expandable_widget_token(row_token, position)
+            is_expanded = selected_token == row_token
+            cells = "".join(
+                f'<div class="cv-expandable-table__cell cv-align-{escape(column.align)}" '
+                f'data-label="{escape(column.label or column.key, quote=True)}">'
+                f'{_expandable_cell_html(row[column.key], column)}</div>'
+                for column in visible_columns
+            )
+            open_class = " cv-expandable-table__row--open" if is_expanded else ""
+            chevron = "⌄" if is_expanded else "›"
+            action = "Collapse" if is_expanded else "Expand"
+            primary_value = _expandable_cell_value(row[visible_columns[0].key])
+            with st.container(
+                key=f"cv_expandable_trigger_{safe_key}_{widget_token}"
+            ):
+                _render_html(
+                    f'<div class="cv-expandable-table__viewport">'
+                    f'<div class="cv-expandable-table__row{open_class}" '
+                    f'style="--cv-expand-cols:{template_style}">'
+                    f'<span class="cv-expandable-table__chevron" aria-hidden="true">{chevron}</span>'
+                    f'{cells}</div></div>'
+                )
+                st.button(
+                    f"{action} details for {primary_value}",
+                    key=f"cv_expandable_toggle_{safe_key}_{widget_token}",
+                    type="tertiary",
+                    use_container_width=True,
+                    on_click=_toggle_expandable_table_row,
+                    args=(state_key, row_token),
+                    help=f"{action} this row's evidence and actions",
+                )
+            if is_expanded:
+                with st.container(
+                    key=f"cv_expandable_detail_{safe_key}_{widget_token}"
+                ):
+                    if render_expanded is None:
+                        detail_slot = st.empty()
+                    else:
+                        render_expanded(row, position)
+
+    return SmartTableResult(
+        event=None,
+        selected_rows=(selected_position,) if selected_position is not None else (),
+        visible_count=visible_count,
+        total_count=resolved_total,
+        detail_slot=detail_slot,
     )
 
 

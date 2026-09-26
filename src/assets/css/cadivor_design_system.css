@@ -1125,6 +1125,265 @@ section[data-testid="stMain"] .stDownloadButton > button:disabled {
   }
 }
 
+/* Inline expandable SmartTable: Octopart-style parent row + child workspace. */
+[class*="st-key-cv_expandable_table_"] {
+  overflow-x: auto;
+  overflow-y: visible;
+  border: 1px solid #cbd8e8;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, .045);
+}
+
+[class*="st-key-cv_expandable_table_"] > [data-testid="stVerticalBlock"] {
+  gap: 0 !important;
+}
+
+.cv-expandable-table__viewport {
+  overflow: visible;
+}
+
+.cv-expandable-table__header,
+.cv-expandable-table__row {
+  display: grid;
+  grid-template-columns: 34px var(--cv-expand-cols);
+  align-items: stretch;
+  min-width: max-content;
+}
+
+.cv-expandable-table__header {
+  min-height: 42px;
+  background: #e8eef7;
+  border-bottom: 1px solid #c5d3e4;
+}
+
+.cv-expandable-table__head-cell {
+  display: flex;
+  align-items: center;
+  min-height: 42px;
+  padding: 8px 11px;
+  color: #0f2d57 !important;
+  font-size: 11.5px;
+  font-weight: 780;
+  white-space: nowrap;
+}
+
+.cv-expandable-table__row {
+  min-height: 48px;
+  color: #172b4d;
+  background: #fff;
+  border-bottom: 1px solid #e5ebf3;
+  cursor: pointer;
+  transition: background-color .16s ease, box-shadow .16s ease;
+}
+
+.cv-expandable-table__row:hover {
+  background: #f2f7ff;
+}
+
+.cv-expandable-table__row--open {
+  background: #eaf3ff;
+  box-shadow: inset 4px 0 0 #2563eb, inset 0 -1px 0 #93c5fd;
+}
+
+.cv-expandable-table__disclosure-spacer,
+.cv-expandable-table__chevron {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100%;
+}
+
+.cv-expandable-table__chevron {
+  color: #2563eb !important;
+  font-size: 21px;
+  font-weight: 800;
+  line-height: 1;
+  transition: transform .16s ease;
+}
+
+.cv-expandable-table__cell {
+  display: flex;
+  align-items: center;
+  min-height: 48px;
+  padding: 8px 11px;
+  overflow: hidden;
+  color: #172b4d !important;
+  font-size: 11.5px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+}
+
+.cv-expandable-table__cell.cv-align-right,
+.cv-expandable-table__head-cell.cv-align-right {
+  justify-content: flex-end;
+  text-align: right;
+}
+
+.cv-expandable-table__cell.cv-align-center,
+.cv-expandable-table__head-cell.cv-align-center {
+  justify-content: center;
+  text-align: center;
+}
+
+.cv-expandable-table__strong {
+  color: #0f2d57 !important;
+  font-weight: 820;
+}
+
+.cv-expandable-table__mono {
+  color: #0f2d57 !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  font-weight: 720;
+}
+
+.cv-expandable-table__pill {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  min-height: 24px;
+  padding: 3px 8px;
+  overflow: hidden;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #475569 !important;
+  font-size: 10px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cv-expandable-table__pill--danger {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #b91c1c !important;
+}
+
+.cv-expandable-table__pill--warning {
+  border-color: #fde68a;
+  background: #fffbeb;
+  color: #a16207 !important;
+}
+
+.cv-expandable-table__pill--success {
+  border-color: #a7f3d0;
+  background: #ecfdf5;
+  color: #047857 !important;
+}
+
+.cv-expandable-table__pill--info {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8 !important;
+}
+
+[class*="st-key-cv_expandable_trigger_"] {
+  position: relative;
+}
+
+[class*="st-key-cv_expandable_trigger_"] > [data-testid="stVerticalBlock"] {
+  gap: 0 !important;
+}
+
+[class*="st-key-cv_expandable_trigger_"] [data-testid="stElementContainer"]:has(.stButton) {
+  position: absolute !important;
+  inset: 0 !important;
+  z-index: 4;
+  height: 100% !important;
+  margin: 0 !important;
+}
+
+[class*="st-key-cv_expandable_trigger_"] .stButton,
+[class*="st-key-cv_expandable_trigger_"] .stButton > button {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  opacity: 0 !important;
+  cursor: pointer !important;
+}
+
+[class*="st-key-cv_expandable_trigger_"]:has(button:focus-visible) .cv-expandable-table__row {
+  outline: 3px solid rgba(37, 99, 235, .35);
+  outline-offset: -3px;
+}
+
+[class*="st-key-cv_expandable_detail_"] {
+  padding: 14px 16px 17px;
+  border-bottom: 1px solid #93c5fd;
+  background: linear-gradient(180deg, #f8fbff 0%, #f3f7fc 100%);
+  box-shadow: inset 4px 0 0 #2563eb;
+  animation: cvExpandableDetailIn .18s ease-out both;
+}
+
+[class*="st-key-cv_expandable_detail_"] > [data-testid="stVerticalBlock"] {
+  gap: 10px;
+}
+
+@keyframes cvExpandableDetailIn {
+  from { opacity: .25; transform: translateY(-5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 760px) {
+  [class*="st-key-cv_expandable_table_"] {
+    overflow-x: hidden;
+  }
+
+  .cv-expandable-table__header {
+    display: none;
+  }
+
+  .cv-expandable-table__row {
+    grid-template-columns: 32px minmax(0, 1fr) !important;
+    padding: 7px 0;
+  }
+
+  .cv-expandable-table__chevron {
+    grid-row: 1 / span 20;
+    align-items: flex-start;
+    padding-top: 7px;
+  }
+
+  .cv-expandable-table__cell {
+    grid-column: 2;
+    display: grid;
+    grid-template-columns: minmax(92px, .42fr) minmax(0, 1fr);
+    min-height: 34px;
+    padding: 5px 10px 5px 4px;
+    overflow: visible;
+  }
+
+  .cv-expandable-table__cell::before {
+    content: attr(data-label);
+    color: #64748b;
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+  }
+
+  [class*="st-key-cv_expandable_detail_"] {
+    padding: 12px 11px 15px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cv-expandable-table__row,
+  .cv-expandable-table__chevron,
+  [class*="st-key-cv_expandable_detail_"] {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /* Sprint 66 — Engineering Decision Brief                             */
 /* ------------------------------------------------------------------ */

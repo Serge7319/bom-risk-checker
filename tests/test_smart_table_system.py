@@ -24,8 +24,10 @@ ANALYSIS_DETAIL = (ROOT / "src" / "pages" / "analysis_detail.py").read_text(
 class SmartTableSystemTests(unittest.TestCase):
     def test_design_system_owns_selection_and_context_contract(self):
         self.assertIn("class SmartTableResult", COMPONENTS)
+        self.assertIn("class ExpandableTableColumn", COMPONENTS)
         self.assertIn("def selected_dataframe_rows(", COMPONENTS)
         self.assertIn("def cadivor_smart_dataframe(", COMPONENTS)
+        self.assertIn("def cadivor_expandable_table(", COMPONENTS)
         self.assertIn('kwargs.setdefault("on_select", "rerun")', COMPONENTS)
         self.assertIn('selection_mode: str | Sequence[str] = ("single-row", "single-cell")', COMPONENTS)
         self.assertIn("cells = getattr(selection, \"cells\", None)", COMPONENTS)
@@ -33,6 +35,8 @@ class SmartTableSystemTests(unittest.TestCase):
         self.assertIn("def semantic_priority_label(", COMPONENTS)
         for exported_name in (
             "SmartTableResult",
+            "ExpandableTableColumn",
+            "cadivor_expandable_table",
             "cadivor_smart_dataframe",
             "humanize_table_date",
             "semantic_priority_label",
@@ -42,15 +46,24 @@ class SmartTableSystemTests(unittest.TestCase):
     def test_selected_rows_have_visible_shared_feedback(self):
         self.assertIn(".cv-smart-table-context", CSS)
         self.assertIn('[aria-selected="true"]', CSS)
+        self.assertIn(".cv-expandable-table__row--open", CSS)
+        self.assertIn('st-key-cv_expandable_detail_', CSS)
         self.assertIn("prefers-reduced-motion", CSS)
+
+    def test_expandable_table_owns_one_inline_detail_slot(self):
+        self.assertIn("def _toggle_expandable_table_row(", COMPONENTS)
+        self.assertIn("detail_slot = st.empty()", COMPONENTS)
+        self.assertIn("on_click=_toggle_expandable_table_row", COMPONENTS)
+        self.assertIn("selected_token == row_token", COMPONENTS)
+        self.assertIn("detail_slot=detail_slot", COMPONENTS)
 
     def test_monitoring_queue_and_coverage_share_the_contract(self):
         monitoring = RUNTIME.split('if app_mode == "Monitoring":', 1)[1].split(
             'if app_mode == "Supply Risk Scenario":', 1
         )[0]
-        self.assertGreaterEqual(monitoring.count("cadivor_smart_dataframe("), 2)
-        self.assertIn("queue_table_state = queue_table_result.event", monitoring)
-        self.assertIn("selected_rows = _monitor_selected_rows(queue_table_state)", monitoring)
+        self.assertGreaterEqual(monitoring.count("cadivor_smart_dataframe("), 1)
+        self.assertIn("queue_table_result = cadivor_expandable_table(", monitoring)
+        self.assertIn("queue_table_result.detail_slot.container()", monitoring)
         self.assertIn("component_table_result.first_selected_row", monitoring)
         self.assertIn("semantic_priority_label(score)", monitoring)
         self.assertIn("humanize_table_date(", monitoring)
