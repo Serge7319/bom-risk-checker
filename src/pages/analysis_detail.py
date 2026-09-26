@@ -84,7 +84,8 @@ from src.discussion_service import (
 )
 from src.workspace_service import set_my_functional_roles
 from src.ui.cadivor_design_system import (
-    cadivor_smart_dataframe,
+    ExpandableTableColumn,
+    cadivor_expandable_table,
     semantic_priority_label,
 )
 
@@ -173,6 +174,27 @@ def _sync_bom_area_widgets(*, analysis_id: str, section: str) -> None:
         st.session_state[more_key] = "More"
     elif visible in MORE_MENU:
         st.session_state[more_key] = visible
+
+
+def _open_component_analysis_section(
+    analysis_id: str,
+    section: str,
+    component_mpn: str,
+) -> None:
+    """Navigate within one saved BOM while keeping its section widgets aligned."""
+    st.session_state[PENDING_ANALYSIS_SECTION_KEY] = section
+    st.session_state[PENDING_ANALYSIS_SECTION_ID_KEY] = analysis_id
+    st.session_state["cadivor_active_analysis_tab"] = section
+    _sync_bom_area_widgets(analysis_id=analysis_id, section=section)
+    navigate_to(
+        "Analysis Details",
+        analysis_id=analysis_id,
+        analysis_tab=section,
+        component=component_mpn,
+        focus="component-risk",
+        _rerun=False,
+        arm_opening=False,
+    )
 
 
 def _sync_cadivor_active_analysis_tab(*, analysis_id: str = "") -> None:
@@ -500,6 +522,239 @@ def _risk_label(part: dict[str, Any]) -> str:
         _part_value(part, "risk_level", "Risk Level", "risk_level_display"),
         "Low",
     )
+
+
+def _matching_component_records(
+    records: list[dict[str, Any]],
+    mpn: str,
+    *keys: str,
+) -> list[dict[str, Any]]:
+    """Return records explicitly linked to one component, without fuzzy matching."""
+    target = str(mpn or "").strip().casefold()
+    if not target:
+        return []
+    return [
+        record
+        for record in records
+        if any(
+            str(record.get(key) or "").strip().casefold() == target
+            for key in keys
+        )
+    ]
+
+
+def _component_risk_detail_model(
+    part: dict[str, Any],
+    *,
+    alerts: list[dict[str, Any]],
+    alternatives: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Build decision-focused evidence for one Parts & Risk table row."""
+    mpn = _safe(_part_value(part, "mpn", "MPN"), "Unknown MPN")
+    manufacturer = _safe(
+        _part_value(part, "manufacturer", "Manufacturer"),
+        "Unknown manufacturer",
+    )
+    lifecycle = _safe(
+        _part_value(part, "lifecycle_status", "Lifecycle Status"),
+        "Unknown",
+    )
+    lifecycle_key = lifecycle.casefold()
+    lifecycle_exposed = any(
+        token in lifecycle_key
+        for token in (
+            "obsolete",
+            "end of life",
+            "eol",
+            "replacement",
+            "not recommended",
+            "nrnd",
+        )
+    )
+    lifecycle_unknown = lifecycle_key in {"", "unknown", "not available", "—"}
+
+    quantity_raw = _part_value(part, "quantity", "Quantity")
+    stock_raw = _part_value(part, "stock_available", "Stock Available")
+    supplier_raw = _part_value(part, "supplier_count", "Supplier Count")
+    lead_time_raw = _part_value(part, "lead_time_weeks", "Lead Time Weeks")
+    quantity = max(0, _num(quantity_raw, 0))
+    stock = max(0, _num(stock_raw, 0))
+    suppliers = max(0, _num(supplier_raw, 0))
+    lead_time = max(0, _num(lead_time_raw, 0))
+    stock_known = stock_raw is not None and str(stock_raw).strip() != ""
+    suppliers_known = supplier_raw is not None and str(supplier_raw).strip() != ""
+    lead_time_known = lead_time_raw is not None and str(lead_time_raw).strip() != ""
+    stock_exposed = stock_known and stock <= 0
+    stock_shortage = stock_known and quantity > 0 and stock < quantity
+    supplier_exposed = suppliers_known and suppliers <= 1
+    lead_time_exposed = lead_time_known and lead_time >= 12
+
+    risk_score = _num(_part_value(part, "risk_score", "Risk Score"), 0)
+    risk_level = _risk_label(part)
+    reason_raw = _part_value(
+        part,
+        "risk_reasons",
+        "Risk Reasons",
+        "risk_reason",
+        fallback="",
+    )
+    if isinstance(reason_raw, (list, tuple, set)):
+        risk_reason = "; ".join(
+            str(item).strip() for item in reason_raw if str(item).strip()
+        )
+    else:
+        risk_reason = str(reason_raw or "").strip()
+
+    matching_alerts = _matching_component_records(
+        alerts,
+        mpn,
+        "part_number",
+        "mpn",
+        "manufacturer_part_number",
+    )
+    matching_alternatives = _matching_component_records(
+        alternatives,
+        mpn,
+        "original_part",
+        "original_mpn",
+        "mpn",
+        "part_number",
+    )
+
+    drivers: list[tuple[str, str, str]] = []
+    if lifecycle_exposed:
+        drivers.append(
+            (
+                "Lifecycle continuity",
+                f"{lifecycle} can require redesign, qualification, or a successor before release.",
+                "bad",
+            )
+        )
+    elif lifecycle_unknown:
+        drivers.append(
+            (
+                "Lifecycle evidence gap",
+                "Lifecycle status is not verified, so release confidence is limited.",
+                "warn",
+            )
+        )
+    if stock_exposed:
+        drivers.append(
+            (
+                "Inventory blocker",
+                "No available stock is recorded for this BOM component.",
+                "bad",
+            )
+        )
+    elif stock_shortage:
+        drivers.append(
+            (
+                "Inventory shortfall",
+                f"{stock:,} units are recorded against {quantity:,} required per BOM.",
+                "warn",
+            )
+        )
+    if supplier_exposed:
+        drivers.append(
+            (
+                "Supplier concentration",
+                (
+                    "Only one recorded source leaves no sourcing redundancy."
+                    if suppliers == 1
+                    else "No qualified supplier source is recorded."
+                ),
+                "bad" if suppliers == 0 else "warn",
+            )
+        )
+    if lead_time_exposed:
+        drivers.append(
+            (
+                "Schedule exposure",
+                f"The recorded {lead_time}-week lead time can constrain the build schedule.",
+                "warn",
+            )
+        )
+
+    if quantity > 0 and stock_known:
+        covered_builds = stock // quantity
+        inventory_coverage = (
+            f"{covered_builds:,} complete BOM build{'s' if covered_builds != 1 else ''}"
+        )
+    elif stock_known:
+        inventory_coverage = f"{stock:,} units recorded; BOM quantity unavailable"
+    else:
+        inventory_coverage = "Inventory evidence unavailable"
+
+    needs_alternative = bool(
+        lifecycle_exposed
+        or stock_exposed
+        or supplier_exposed
+        or risk_score >= 60
+    )
+    needs_decision = bool(drivers or risk_score >= 30)
+    if needs_alternative:
+        recommendation = "Qualify a replacement or second source"
+        recommendation_detail = (
+            "Run Alternative Finder with this component preloaded, compare candidates, "
+            "then record the engineering disposition."
+        )
+    elif needs_decision:
+        recommendation = "Resolve the evidence gap before release"
+        recommendation_detail = (
+            "Confirm the flagged evidence and record an engineering disposition for this component."
+        )
+    else:
+        recommendation = "Continue controlled monitoring"
+        recommendation_detail = (
+            "No material component blocker is recorded; monitor for lifecycle, inventory, "
+            "or supplier changes."
+        )
+
+    unit_price_raw = _part_value(part, "unit_price", "Unit Price")
+    try:
+        unit_price = float(unit_price_raw) if unit_price_raw not in (None, "") else None
+    except (TypeError, ValueError):
+        unit_price = None
+    if unit_price is not None and unit_price <= 0:
+        unit_price = None
+
+    return {
+        "mpn": mpn,
+        "manufacturer": manufacturer,
+        "lifecycle": lifecycle,
+        "quantity": quantity,
+        "stock": stock,
+        "suppliers": suppliers,
+        "lead_time": lead_time,
+        "lead_time_known": lead_time_known,
+        "source": _safe(
+            _part_value(
+                part,
+                "primary_supplier",
+                "best_source",
+                "Best Source",
+                "supplier",
+            ),
+            "Not recorded",
+        ),
+        "url": _safe(
+            _part_value(part, "product_url", "Product URL", "datasheet_url"),
+            "",
+        ),
+        "risk_score": risk_score,
+        "risk_level": risk_level,
+        "risk_reason": risk_reason,
+        "drivers": drivers,
+        "inventory_coverage": inventory_coverage,
+        "alert_count": len(matching_alerts),
+        "alternative_count": len(matching_alternatives),
+        "unit_price": unit_price,
+        "extended_cost": unit_price * quantity if unit_price is not None and quantity else None,
+        "needs_alternative": needs_alternative,
+        "needs_decision": needs_decision,
+        "recommendation": recommendation,
+        "recommendation_detail": recommendation_detail,
+    }
 
 
 def _health_summary(health: int, high: int, medium: int) -> tuple[str, str, int]:
@@ -2242,7 +2497,7 @@ def render_analysis_detail(
         st.markdown('<div id="component-risk-report"></div>', unsafe_allow_html=True)
         _section_header(
             "Parts & Risk",
-            "Filter the saved parts. Select a part, then find a replacement.",
+            "Filter the saved parts, expand a row, and move from evidence to engineering action.",
         )
         # Sprint 34.2.4 — component results from Command Center should land on
         # the Components tab instead of restoring an unrelated browser position.
@@ -2254,6 +2509,9 @@ def render_analysis_detail(
         )
         if should_apply_component_focus:
             st.session_state[focus_state_key] = focus_token
+            st.session_state[f"analysis_component_search_{analysis_id}"] = ""
+            st.session_state[f"analysis_component_risk_{analysis_id}"] = "All"
+            st.session_state[f"analysis_component_lifecycle_{analysis_id}"] = "All"
             components.html(
                 """
                 <script>
@@ -2265,8 +2523,8 @@ def render_analysis_detail(
                     if (target) {
                       target.scrollIntoView({behavior:'smooth', block:'start'});
                       window.setTimeout(() => {
-                        const selectedRow = doc.querySelector('.cv-smart-table-host [aria-selected="true"]');
-                        const intelligence = doc.querySelector('.cv-component-detail');
+                        const selectedRow = doc.querySelector('.cv-expandable-table__row--open');
+                        const intelligence = doc.querySelector('.cv-part-risk-detail');
                         if (selectedRow) selectedRow.scrollIntoView({behavior:'smooth', block:'center'});
                         if (intelligence) intelligence.setAttribute('tabindex', '-1');
                       }, 260);
@@ -2374,333 +2632,306 @@ def render_analysis_detail(
             )
 
             if filtered_parts:
-                part_labels = {}
-                for part in filtered_parts:
-                    mpn_value = _safe(
-                        _part_value(part, "mpn", "MPN"),
-                        "Unknown MPN",
-                    )
-                    manufacturer_value = _safe(
-                        _part_value(part, "manufacturer", "Manufacturer"),
-                        "Unknown manufacturer",
-                    )
-                    label = f"{mpn_value} — {manufacturer_value}"
-                    part_labels[label] = part
-
                 selector_key = f"analysis_component_selector_{analysis_id}"
-                requested_label = None
+                requested_row_id = None
                 if requested_component:
                     requested_component_key = requested_component.strip().lower()
-                    requested_label = next(
+                    requested_row_id = next(
                         (
-                            label
-                            for label, part in part_labels.items()
-                            if _safe(_part_value(part, "mpn", "MPN"), "").strip().lower()
-                            == requested_component_key
+                            _safe(_part_value(part, "mpn", "MPN"), "")
+                            for part in filtered_parts
+                            if _safe(
+                                _part_value(part, "mpn", "MPN"),
+                                "",
+                            ).strip().lower() == requested_component_key
                         ),
                         None,
                     )
 
-                selection_token_key = f"cv3424_selected_component_{analysis_id}"
-                selection_token = f"{analysis_id}:{requested_component.lower()}"
-                if (
-                    requested_label
-                    and st.session_state.get(selection_token_key) != selection_token
-                ):
-                    st.session_state[selector_key] = requested_label
-                    st.session_state[selection_token_key] = selection_token
-
-                available_labels = list(part_labels.keys())
-                if st.session_state.get(selector_key) not in available_labels:
-                    st.session_state[selector_key] = requested_label or available_labels[0]
-
-                table_col, detail_col = st.columns([1.25, 0.75], gap="medium")
                 max_component_rows = 100
                 visible_parts = filtered_parts[:max_component_rows]
-                current_label = st.session_state[selector_key]
-                selected_part = part_labels[current_label]
-
-                with table_col:
-                    component_rows = []
-                    for part in visible_parts:
-                        mpn_value = _safe(
-                            _part_value(part, "mpn", "MPN"),
-                            "Unknown MPN",
-                        )
-                        mfg_value = _safe(
-                            _part_value(part, "manufacturer", "Manufacturer"),
-                            "Unknown manufacturer",
-                        )
-                        status_value = _safe(
-                            _part_value(
-                                part,
-                                "lifecycle_status",
-                                "Lifecycle Status",
-                            ),
-                            "Unknown",
-                        )
-                        stock_value = _num(
-                            _part_value(
-                                part,
-                                "stock_available",
-                                "Stock Available",
-                            ),
-                            0,
-                        )
-                        score_value = _num(
-                            _part_value(part, "risk_score", "Risk Score"),
-                            0,
-                        )
-                        supplier_count = _num(
-                            _part_value(
-                                part,
-                                "supplier_count",
-                                "Supplier Count",
-                            ),
-                            0,
-                        )
-                        quantity_value = _num(
-                            _part_value(part, "quantity", "Quantity"),
-                            0,
-                        )
-                        row_label = f"{mpn_value} — {mfg_value}"
-                        component_rows.append(
-                            {
-                                "Current": "✓" if row_label == current_label else "",
-                                "Component": mpn_value,
-                                "Manufacturer": mfg_value,
-                                "Lifecycle": status_value,
-                                "Qty": quantity_value,
-                                "Stock": stock_value,
-                                "Suppliers": supplier_count,
-                                "Priority": semantic_priority_label(score_value),
-                            }
-                        )
-                    component_table = pd.DataFrame(component_rows)
-                    component_view_token = re.sub(
-                        r"[^a-zA-Z0-9_-]+",
-                        "_",
-                        f"{selected_risk}_{selected_lifecycle}_{search_text}",
-                    )[:64]
-                    component_table_result = cadivor_smart_dataframe(
-                        component_table,
-                        key=(
-                            f"analysis_component_table_{analysis_id}_"
-                            f"{component_view_token or 'all'}"
-                        ),
-                        context_title="Filtered components",
-                        context_detail=(
-                            "Every row is a component in this saved BOM. The detail panel "
-                            "tracks the selected row."
-                        ),
-                        count_label=(
-                            f"{len(filtered_parts):,} matching components"
-                        ),
-                        selection_hint=(
-                            "Click any cell or the checkbox to inspect risk evidence and engineering actions."
-                        ),
-                        total_count=len(parts),
-                        column_config={
-                            "Current": st.column_config.TextColumn(
-                                "",
-                                width="small",
-                                help="The component currently shown in Component Intelligence.",
-                            ),
-                            "Component": st.column_config.TextColumn(width="medium"),
-                            "Manufacturer": st.column_config.TextColumn(width="medium"),
-                            "Lifecycle": st.column_config.TextColumn(width="medium"),
-                            "Qty": st.column_config.NumberColumn(format="%,d", width="small"),
-                            "Stock": st.column_config.NumberColumn(format="%,d", width="small"),
-                            "Suppliers": st.column_config.NumberColumn(format="%d", width="small"),
-                            "Priority": st.column_config.TextColumn(
-                                width="medium",
-                                help=(
-                                    "Red = critical, orange = immediate, yellow = review, "
-                                    "green = monitor."
-                                ),
-                            ),
-                        },
-                    )
-                    selected_component_position = component_table_result.first_selected_row
-                    if (
-                        selected_component_position is not None
-                        and 0 <= selected_component_position < len(visible_parts)
-                    ):
-                        selected_part = visible_parts[selected_component_position]
-                        selected_mpn_for_state = _safe(
-                            _part_value(selected_part, "mpn", "MPN"),
-                            "Unknown MPN",
-                        )
-                        selected_mfg_for_state = _safe(
-                            _part_value(selected_part, "manufacturer", "Manufacturer"),
-                            "Unknown manufacturer",
-                        )
-                        st.session_state[selector_key] = (
-                            f"{selected_mpn_for_state} — {selected_mfg_for_state}"
-                        )
-                    if len(filtered_parts) > max_component_rows:
-                        st.caption(
-                            f"Showing the first {max_component_rows} components. "
-                            "Refine the filters to narrow the list."
-                        )
-
-                selected_mpn_value = _safe(
-                    _part_value(selected_part, "mpn", "MPN"),
-                    "",
-                ).strip()
-                if selected_mpn_value and selected_mpn_value.lower() not in {
-                    "unknown",
-                    "unknown mpn",
-                }:
-                    st.session_state["cadivor_selected_component_mpn"] = selected_mpn_value
-                    st.session_state["cadivor_selected_component_analysis_id"] = str(analysis_id)
-
-                with detail_col:
-                    selected_mpn = _safe(
-                        _part_value(selected_part, "mpn", "MPN"),
+                component_rows = []
+                component_row_ids = []
+                for part in visible_parts:
+                    mpn_value = _safe(
+                        _part_value(part, "mpn", "MPN"),
                         "Unknown MPN",
                     )
-                    selected_mfg = _safe(
-                        _part_value(
-                            selected_part,
-                            "manufacturer",
-                            "Manufacturer",
-                        ),
-                        "Unknown manufacturer",
-                    )
-                    selected_lifecycle_value = _safe(
-                        _part_value(
-                            selected_part,
-                            "lifecycle_status",
-                            "Lifecycle Status",
-                        ),
-                        "Unknown",
-                    )
-                    selected_stock = _num(
-                        _part_value(
-                            selected_part,
-                            "stock_available",
-                            "Stock Available",
-                        ),
+                    score_value = _num(
+                        _part_value(part, "risk_score", "Risk Score"),
                         0,
                     )
-                    selected_suppliers = _num(
-                        _part_value(
-                            selected_part,
-                            "supplier_count",
-                            "Supplier Count",
-                        ),
-                        0,
-                    )
-                    selected_score = _num(
-                        _part_value(
-                            selected_part,
-                            "risk_score",
-                            "Risk Score",
-                        ),
-                        0,
-                    )
-                    selected_level = _risk_label(selected_part)
-                    selected_lead_time = _safe(
-                        _part_value(
-                            selected_part,
-                            "lead_time_weeks",
-                            "Lead Time Weeks",
-                        ),
-                        "Not available",
-                    )
-                    selected_lead_time_label = (
-                        selected_lead_time
-                        if selected_lead_time.lower() in {"not available", "unknown", "—"}
-                        else f"{selected_lead_time} weeks"
-                    )
-                    selected_source = _safe(
-                        _part_value(
-                            selected_part,
-                            "primary_supplier",
-                            "best_source",
-                            "Best Source",
-                            "supplier",
-                        ),
-                        "Not available",
-                    )
-                    selected_url = _safe(
-                        _part_value(
-                            selected_part,
-                            "product_url",
-                            "Product URL",
-                            "datasheet_url",
-                        ),
-                        "",
-                    )
-                    selected_reason = _safe(
-                        _part_value(
-                            selected_part,
-                            "risk_reasons",
-                            "Risk Reasons",
-                            "risk_reason",
-                        ),
-                        "No detailed risk explanation was stored.",
+                    component_row_ids.append(mpn_value)
+                    component_rows.append(
+                        {
+                            "Component": mpn_value,
+                            "Manufacturer": _safe(
+                                _part_value(part, "manufacturer", "Manufacturer"),
+                                "Unknown manufacturer",
+                            ),
+                            "Lifecycle": _safe(
+                                _part_value(
+                                    part,
+                                    "lifecycle_status",
+                                    "Lifecycle Status",
+                                ),
+                                "Unknown",
+                            ),
+                            "Qty": f"{_num(_part_value(part, 'quantity', 'Quantity'), 0):,}",
+                            "Stock": f"{_num(_part_value(part, 'stock_available', 'Stock Available'), 0):,}",
+                            "Sources": str(
+                                _num(
+                                    _part_value(
+                                        part,
+                                        "supplier_count",
+                                        "Supplier Count",
+                                    ),
+                                    0,
+                                )
+                            ),
+                            "Priority": semantic_priority_label(score_value),
+                        }
                     )
 
-                    st.markdown(
-                        f"""
-                        <div class="cv-component-detail{' is-command-focus' if component_focus_requested and requested_component and selected_mpn.strip().lower() == requested_component.strip().lower() else ''}">
-                          <div class="cv-analysis-card-title">
-                            <span>{'Selected Component' if component_focus_requested and requested_component else 'Component Intelligence'}</span>
-                            <span class="cv-analysis-pill {_risk_class(selected_level, selected_score)}">
-                              {html.escape(selected_level)} · {selected_score}
-                            </span>
-                          </div>
-                          <div class="cv-analysis-row-title">{html.escape(selected_mpn)}</div>
-                          <div class="cv-analysis-row-meta">{html.escape(selected_mfg)}</div>
-                          <div class="cv-component-detail-grid">
-                            <div><span>Lifecycle</span><strong>{html.escape(selected_lifecycle_value)}</strong></div>
-                            <div><span>Available Stock</span><strong>{selected_stock:,}</strong></div>
-                            <div><span>Suppliers</span><strong>{selected_suppliers}</strong></div>
-                            <div><span>Lead Time</span><strong>{html.escape(selected_lead_time_label)}</strong></div>
-                            <div><span>Best Source</span><strong>{html.escape(selected_source)}</strong></div>
-                            <div><span>Risk Score</span><strong>{selected_score}/100</strong></div>
-                          </div>
-                          <div class="cv-analysis-row-meta"><b>Risk explanation:</b> {html.escape(selected_reason)}</div>
-                        </div>
-                        """,
-                        unsafe_allow_html=True,
+                component_view_token = re.sub(
+                    r"[^a-zA-Z0-9_-]+",
+                    "_",
+                    f"{selected_risk}_{selected_lifecycle}_{search_text}",
+                )[:64]
+                component_table_result = cadivor_expandable_table(
+                    pd.DataFrame(component_rows),
+                    key=(
+                        f"analysis_component_table_{analysis_id}_"
+                        f"{component_view_token or 'all'}"
+                    ),
+                    columns=(
+                        ExpandableTableColumn(
+                            "Component", "Component", 1.15, 150, kind="strong"
+                        ),
+                        ExpandableTableColumn(
+                            "Manufacturer", "Manufacturer", 1.05, 150
+                        ),
+                        ExpandableTableColumn(
+                            "Lifecycle", "Lifecycle", 0.95, 125, kind="status"
+                        ),
+                        ExpandableTableColumn(
+                            "Qty", "BOM qty", 0.48, 80, align="right", kind="mono"
+                        ),
+                        ExpandableTableColumn(
+                            "Stock", "Stock", 0.62, 90, align="right", kind="mono"
+                        ),
+                        ExpandableTableColumn(
+                            "Sources", "Sources", 0.48, 80, align="right", kind="mono"
+                        ),
+                        ExpandableTableColumn(
+                            "Priority", "Priority", 0.92, 125, kind="priority"
+                        ),
+                    ),
+                    row_ids=component_row_ids,
+                    initial_row_id=(
+                        requested_row_id
+                        if should_apply_component_focus and requested_row_id
+                        else None
+                    ),
+                    context_title="Component risk and release evidence",
+                    context_detail=(
+                        "Components are ranked by saved risk. Expand a row to see what affects "
+                        "this BOM and take the next engineering action."
+                    ),
+                    count_label=f"{len(filtered_parts):,} matching components",
+                    selection_hint="Select a row to expand its risk drivers, BOM impact, and actions.",
+                    total_count=len(parts),
+                    context_eyebrow="Parts & Risk",
+                    context_tone="info",
+                )
+
+                selected_component_position = component_table_result.first_selected_row
+                if (
+                    selected_component_position is not None
+                    and 0 <= selected_component_position < len(visible_parts)
+                    and component_table_result.detail_slot is not None
+                ):
+                    selected_part = visible_parts[selected_component_position]
+                    detail = _component_risk_detail_model(
+                        selected_part,
+                        alerts=alerts,
+                        alternatives=alternatives,
                     )
-                    internal_nav_button(
-                        "Find Alternatives",
-                        "Alternative Finder",
-                        key=f"analysis_find_alternative_{analysis_id}_{selected_mpn}",
-                        use_container_width=True,
-                        original_part=selected_mpn,
-                        manufacturer=selected_mfg,
-                        analysis_id=analysis_id,
-                        source_page="analysis_detail",
-                    )
-                    internal_nav_button(
-                        "View Design Impact",
-                        "Design Impact Analyzer",
-                        key=f"analysis_design_impact_{analysis_id}_{selected_mpn}",
-                        use_container_width=True,
-                        mpn=selected_mpn,
-                        analysis_id=analysis_id,
-                        return_page="Analysis Details",
-                        return_section="Components",
-                    )
-                    internal_nav_button(
-                        "Monitor Component",
-                        "Monitoring",
-                        key=f"analysis_monitor_component_{analysis_id}_{selected_mpn}",
-                        use_container_width=True,
-                        mpn=selected_mpn,
-                        analysis_id=analysis_id,
-                    )
-                    if selected_url:
-                        st.link_button(
-                            "Open Datasheet / Source",
-                            selected_url,
-                            use_container_width=True,
+                    selected_mpn = detail["mpn"]
+                    selected_mfg = detail["manufacturer"]
+                    st.session_state[selector_key] = f"{selected_mpn} — {selected_mfg}"
+                    if selected_mpn.lower() not in {"unknown", "unknown mpn"}:
+                        st.session_state["cadivor_selected_component_mpn"] = selected_mpn
+                        st.session_state["cadivor_selected_component_analysis_id"] = str(analysis_id)
+
+                    drivers_html = "".join(
+                        (
+                            f'<div class="cv-part-risk-driver {html.escape(tone)}">'
+                            f'<strong>{html.escape(title)}</strong>'
+                            f'<span>{html.escape(copy)}</span></div>'
                         )
+                        for title, copy, tone in detail["drivers"]
+                    )
+                    if not drivers_html:
+                        drivers_html = (
+                            '<div class="cv-part-risk-driver good">'
+                            '<strong>No material blocker recorded</strong>'
+                            '<span>The saved lifecycle and sourcing evidence supports controlled use. '
+                            'Continue monitoring for change.</span></div>'
+                        )
+
+                    lead_time_label = (
+                        f"{detail['lead_time']} weeks"
+                        if detail["lead_time_known"]
+                        else "Not recorded"
+                    )
+                    quantity_label = (
+                        f"{detail['quantity']:,} per BOM"
+                        if detail["quantity"] > 0
+                        else "Not recorded"
+                    )
+                    cost_card = ""
+                    if detail["extended_cost"] is not None:
+                        cost_card = (
+                            '<div class="cv-part-risk-evidence-card">'
+                            '<span>Material cost per BOM</span>'
+                            f'<strong>${detail["extended_cost"]:,.2f}</strong>'
+                            f'<small>${detail["unit_price"]:,.4f} recorded unit price</small>'
+                            '</div>'
+                        )
+                    stored_reason = ""
+                    if detail["risk_reason"]:
+                        stored_reason = (
+                            '<div class="cv-part-risk-source-note"><b>Stored risk explanation:</b> '
+                            f'{html.escape(detail["risk_reason"])}</div>'
+                        )
+
+                    with component_table_result.detail_slot.container():
+                        st.markdown(
+                            f"""
+                            <div class="cv-part-risk-detail{' is-command-focus' if component_focus_requested and requested_component and selected_mpn.strip().lower() == requested_component.strip().lower() else ''}">
+                              <div class="cv-part-risk-summary">
+                                <div>
+                                  <span class="cv-part-risk-kicker">Decision context · {html.escape(selected_mpn)}</span>
+                                  <h4>{html.escape(detail['recommendation'])}</h4>
+                                  <p>{html.escape(detail['recommendation_detail'])}</p>
+                                </div>
+                                <span class="cv-analysis-pill {_risk_class(detail['risk_level'], detail['risk_score'])}">
+                                  {html.escape(detail['risk_level'])} · {detail['risk_score']}/100
+                                </span>
+                              </div>
+                              <div class="cv-part-risk-driver-grid">{drivers_html}</div>
+                              <div class="cv-part-risk-evidence-grid">
+                                <div class="cv-part-risk-evidence-card">
+                                  <span>BOM demand</span><strong>{quantity_label}</strong>
+                                  <small>Required each time this saved BOM is built</small>
+                                </div>
+                                <div class="cv-part-risk-evidence-card">
+                                  <span>Inventory coverage</span><strong>{html.escape(detail['inventory_coverage'])}</strong>
+                                  <small>{detail['stock']:,} units in the saved market snapshot</small>
+                                </div>
+                                <div class="cv-part-risk-evidence-card">
+                                  <span>Sourcing resilience</span><strong>{detail['suppliers']} recorded source{'s' if detail['suppliers'] != 1 else ''}</strong>
+                                  <small>Best source: {html.escape(detail['source'])}</small>
+                                </div>
+                                <div class="cv-part-risk-evidence-card">
+                                  <span>Schedule exposure</span><strong>{html.escape(lead_time_label)}</strong>
+                                  <small>12 weeks or more is treated as elevated</small>
+                                </div>
+                                <div class="cv-part-risk-evidence-card">
+                                  <span>Linked intelligence</span><strong>{detail['alert_count']} alert{'s' if detail['alert_count'] != 1 else ''} · {detail['alternative_count']} alternative{'s' if detail['alternative_count'] != 1 else ''}</strong>
+                                  <small>Records explicitly linked to this component</small>
+                                </div>
+                                {cost_card}
+                              </div>
+                              {stored_reason}
+                            </div>
+                            """,
+                            unsafe_allow_html=True,
+                        )
+
+                        action_specs = []
+                        if detail["needs_alternative"]:
+                            action_specs.append("alternative")
+                        if detail["needs_decision"]:
+                            action_specs.append("decision")
+                        action_specs.extend(("monitor", "impact"))
+                        if detail["url"] and len(action_specs) < 4:
+                            action_specs.append("source")
+                        action_columns = st.columns(len(action_specs), gap="small")
+                        action_key = re.sub(
+                            r"[^a-zA-Z0-9_-]+",
+                            "_",
+                            selected_mpn,
+                        )[:60] or "component"
+                        for action_index, action_name in enumerate(action_specs):
+                            with action_columns[action_index]:
+                                if action_name == "alternative":
+                                    internal_nav_button(
+                                        "Run Alternative Finder",
+                                        ALTERNATIVE_FINDER_PAGE,
+                                        key=f"analysis_part_alt_{analysis_id}_{action_key}",
+                                        use_container_width=True,
+                                        type="primary",
+                                        original_part=selected_mpn,
+                                        manufacturer=selected_mfg,
+                                        analysis_id=analysis_id,
+                                        return_analysis_id=analysis_id,
+                                        source_page="analysis_detail_parts_risk",
+                                    )
+                                elif action_name == "decision":
+                                    st.button(
+                                        "Open decision workflow",
+                                        key=f"analysis_part_decision_{analysis_id}_{action_key}",
+                                        use_container_width=True,
+                                        type=("primary" if action_index == 0 else "secondary"),
+                                        on_click=_open_component_analysis_section,
+                                        args=(
+                                            analysis_id,
+                                            "Engineering Decisions",
+                                            selected_mpn,
+                                        ),
+                                    )
+                                elif action_name == "monitor":
+                                    internal_nav_button(
+                                        (
+                                            f"Open {detail['alert_count']} alert"
+                                            f"{'s' if detail['alert_count'] != 1 else ''}"
+                                            if detail["alert_count"]
+                                            else "Monitor component"
+                                        ),
+                                        "Monitoring",
+                                        key=f"analysis_part_monitor_{analysis_id}_{action_key}",
+                                        use_container_width=True,
+                                        type=("primary" if action_index == 0 else "secondary"),
+                                        mpn=selected_mpn,
+                                        analysis_id=analysis_id,
+                                        return_analysis_id=analysis_id,
+                                    )
+                                elif action_name == "impact":
+                                    internal_nav_button(
+                                        "View design impact",
+                                        "Design Impact Analyzer",
+                                        key=f"analysis_part_impact_{analysis_id}_{action_key}",
+                                        use_container_width=True,
+                                        type="secondary",
+                                        mpn=selected_mpn,
+                                        analysis_id=analysis_id,
+                                        return_page="Analysis Details",
+                                        return_section="Components",
+                                    )
+                                elif action_name == "source":
+                                    st.link_button(
+                                        "Open datasheet / source",
+                                        detail["url"],
+                                        use_container_width=True,
+                                    )
+
+                if len(filtered_parts) > max_component_rows:
+                    st.caption(
+                        f"Showing the first {max_component_rows} components. "
+                        "Refine the filters to narrow the list."
+                    )
             else:
                 st.info("No components match the selected filters.")
         else:
