@@ -98,11 +98,10 @@ class MonitoringSnapshotLayoutTests(unittest.TestCase):
             self.assertIn(priority_label, self.branch)
         self.assertNotIn("st.column_config.ProgressColumn", self.branch)
 
-    def test_monitored_components_expand_inline_with_component_evidence(self):
+    def test_monitored_components_expand_inline_with_history_and_impact(self):
         component_view = self.branch.split(
             "def _render_monitored_components", 1
         )[1].split("def _render_monitoring_timeline", 1)[0]
-        self.assertNotIn('"Analysis ID"', component_view)
         self.assertIn("component_table_result = cadivor_expandable_table(", component_view)
         self.assertIn('"m32_monitored_components_table_"', component_view)
         self.assertIn('columns={"Last Checked": "Last checked"}', component_view)
@@ -110,16 +109,49 @@ class MonitoringSnapshotLayoutTests(unittest.TestCase):
         self.assertIn("Search by component, supplier, lifecycle status, or risk", component_view)
         self.assertIn("component_table_result.first_selected_row", component_view)
         self.assertIn("component_table_result.detail_slot.container()", component_view)
-        self.assertIn("Expanded component details", component_view)
-        self.assertIn("Active monitoring alerts", component_view)
-        self.assertIn("Snapshots recorded", component_view)
-        self.assertIn("Related analyses", component_view)
+        self.assertIn("Monitoring history &amp; impact", component_view)
+        self.assertIn("Stable monitoring status", component_view)
+        self.assertIn("Engineering review required", component_view)
+        self.assertIn("Monitoring baseline captured", component_view)
+        self.assertIn("Lifecycle history", component_view)
+        self.assertIn("Stock change", component_view)
+        self.assertIn("Price change", component_view)
+        self.assertIn("Supplier history", component_view)
+        self.assertIn("compared with", component_view)
+        self.assertNotIn("Snapshots recorded", component_view)
+        self.assertNotIn("Related analyses", component_view)
         self.assertIn("View active alerts", component_view)
         self.assertIn("Run Alternative Finder", component_view)
-        self.assertIn("Open related BOM", component_view)
-        self.assertIn("Export snapshot", component_view)
+        self.assertIn("if requires_alternative:", component_view)
+        self.assertIn("Download history", component_view)
+        self.assertNotIn("Open related BOM", component_view)
+        self.assertNotIn("Export snapshot", component_view)
         self.assertNotIn("cadivor_smart_dataframe(", component_view)
         self.assertNotIn("Click any cell or the checkbox", component_view)
+
+    def test_monitored_component_impact_names_and_opens_affected_boms(self):
+        component_view = self.branch.split(
+            "def _render_monitored_components", 1
+        )[1].split("def _render_monitoring_timeline", 1)[0]
+        self.assertIn("load_analysis_history(", component_view)
+        self.assertIn('saved_analysis.get("project_name")', component_view)
+        self.assertIn('saved_analysis.get("filename")', component_view)
+        self.assertIn("Affected saved BOMs", component_view)
+        self.assertIn("Open BOM", component_view)
+        self.assertIn('analysis_id=related_bom["id"]', component_view)
+        self.assertNotIn(">Analysis ID<", component_view)
+
+    def test_monitored_component_actions_follow_the_evidence(self):
+        component_view = self.branch.split(
+            "def _render_monitored_components", 1
+        )[1].split("def _render_monitoring_timeline", 1)[0]
+        self.assertIn('"alternative" in alert_routes', component_view)
+        self.assertIn("risky_lifecycle", component_view)
+        self.assertIn("high_risk", component_view)
+        self.assertIn("no_stock", component_view)
+        self.assertIn("if not active_component_alerts.empty:", component_view)
+        self.assertIn("if requires_alternative:", component_view)
+        self.assertIn("Recommended next action", component_view)
 
     def test_selected_alert_keeps_workflow_and_contextual_actions(self):
         for label in (
