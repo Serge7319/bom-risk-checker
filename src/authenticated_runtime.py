@@ -4031,8 +4031,9 @@ def run_authenticated_app() -> None:
             [class*="st-key-monitor_snapshot_"]:has(.cv-monitor-kpi-copy.is-active){border-color:#2563eb;background:#eff6ff;box-shadow:0 0 0 2px rgba(37,99,235,.12),0 8px 20px rgba(37,99,235,.08)}[class*="st-key-monitor_snapshot_"]:has(.cv-monitor-kpi-copy.is-active):hover{border-color:#2563eb;box-shadow:0 0 0 2px rgba(37,99,235,.15),0 8px 20px rgba(37,99,235,.1)}.cv-monitor-current-view{display:inline-flex;align-items:center;gap:5px;margin:8px 0 0;padding:4px 7px;border-radius:999px;background:#dbeafe;color:#1d4ed8!important;font-size:8.5px;font-weight:850;letter-spacing:.06em;text-transform:uppercase}.cv-monitor-current-view:before{content:"";width:6px;height:6px;border-radius:50%;background:#2563eb}.st-key-monitor_snapshot_immediate button:disabled,.st-key-monitor_snapshot_lifecycle button:disabled,.st-key-monitor_snapshot_inventory button:disabled,.st-key-monitor_snapshot_pricing button:disabled,.st-key-monitor_snapshot_components button:disabled{color:#1d4ed8!important;opacity:1!important;text-decoration:none!important;cursor:default!important}.st-key-monitor_snapshot_immediate button:disabled::after,.st-key-monitor_snapshot_lifecycle button:disabled::after,.st-key-monitor_snapshot_inventory button:disabled::after,.st-key-monitor_snapshot_pricing button:disabled::after,.st-key-monitor_snapshot_components button:disabled::after{content:""!important;margin:0!important}
             .cv-monitor-current-filter{display:flex;align-items:center;justify-content:space-between;gap:18px;margin:4px 0 8px;padding:11px 13px;border:1px solid #93c5fd;border-left:4px solid #2563eb;border-radius:10px;background:#eff6ff}.cv-monitor-current-filter span{display:block;color:#2563eb!important;font-size:8.5px;font-weight:850;letter-spacing:.1em;text-transform:uppercase}.cv-monitor-current-filter strong{display:block;margin-top:2px;color:#0f2d57!important;font-size:13px;font-weight:850}.cv-monitor-current-filter__summary{text-align:right}.cv-monitor-current-filter__summary b{display:block;color:#0f2d57!important;font-size:11px}.cv-monitor-current-filter__summary small{display:block;margin-top:2px;color:#52647d!important;font-size:9.5px}.cv-monitor-queue-caption{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:4px 0 9px;padding:7px 10px;border:1px solid #d7e2ef;border-radius:9px;background:#f8fafc;color:#52647d!important;font-size:10.5px;font-weight:700}.cv-monitor-queue-caption strong{color:#0f2d57!important}.cv-monitor-detail-label{margin:15px 0 5px;color:#2563eb!important;font-size:9px;font-weight:850;letter-spacing:.11em;text-transform:uppercase}.cv-monitor-detail-evidence{margin-top:11px}[class*="st-key-monitor_detail_actions_"]{margin-top:13px;padding-top:12px;border-top:1px solid #e2e8f0}[class*="st-key-monitor_detail_actions_"]>[data-testid="stVerticalBlock"]{gap:9px}[class*="st-key-monitor_alert_detail_"]{animation:cv-monitor-detail-in .24s cubic-bezier(.2,.75,.25,1) both}@keyframes cv-monitor-detail-in{from{opacity:.2;transform:translateY(7px)}to{opacity:1;transform:translateY(0)}}
             .cv-monitor-component-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin:2px 0 13px}.cv-monitor-component-eyebrow{display:block;color:#2563eb!important;font-size:8.5px;font-weight:850;letter-spacing:.1em;text-transform:uppercase}.cv-monitor-component-head h3{margin:4px 0 2px;color:#0f2d57;font-size:20px;font-weight:850;letter-spacing:-.025em}.cv-monitor-component-head p{margin:0;color:#64748b;font-size:11px;font-weight:680}.cv-monitor-component-evidence{grid-template-columns:repeat(3,minmax(0,1fr));margin-bottom:14px}.cv-monitor-component-alerts{margin:12px 0 2px;padding:12px;border:1px solid #d7e2ef;border-radius:12px;background:#fff}.cv-monitor-component-alerts__head{display:flex;justify-content:space-between;gap:12px;margin-bottom:7px}.cv-monitor-component-alerts__head strong{color:#0f2d57;font-size:12px}.cv-monitor-component-alerts__head span{color:#64748b;font-size:10px;font-weight:750}.cv-monitor-component-alert{display:grid;grid-template-columns:minmax(110px,.7fr) minmax(0,2fr) auto;gap:10px;align-items:center;padding:8px 0;border-top:1px solid #edf1f6}.cv-monitor-component-alert:first-of-type{border-top:0}.cv-monitor-component-alert b{color:#0f2d57;font-size:10.5px}.cv-monitor-component-alert span{overflow:hidden;color:#52647d;font-size:10.5px;text-overflow:ellipsis;white-space:nowrap}.cv-monitor-component-alert em{color:#b45309;font-size:9.5px;font-style:normal;font-weight:850;white-space:nowrap}[class*="st-key-monitor_component_actions_"]{margin-top:12px;padding-top:12px;border-top:1px solid #e2e8f0}[class*="st-key-monitor_component_actions_"]>[data-testid="stVerticalBlock"]{gap:8px}
+            .cv-monitor-impact-summary{--impact:#2563eb;margin:4px 0 12px;padding:14px 15px;border:1px solid #bfdbfe;border-left:4px solid var(--impact);border-radius:12px;background:#f8fbff}.cv-monitor-impact-summary.stable{--impact:#059669;border-color:#a7f3d0;background:#f0fdf8}.cv-monitor-impact-summary.watch{--impact:#d97706;border-color:#fde68a;background:#fffbeb}.cv-monitor-impact-summary.action{--impact:#dc2626;border-color:#fecaca;background:#fef2f2}.cv-monitor-impact-summary span{display:block;color:var(--impact)!important;font-size:8.5px;font-weight:900;letter-spacing:.11em;text-transform:uppercase}.cv-monitor-impact-summary h3{margin:5px 0 4px;color:#0f2d57;font-size:16px;font-weight:850;letter-spacing:-.02em}.cv-monitor-impact-summary p{margin:0;color:#475569;font-size:11.5px;font-weight:680;line-height:1.5}.cv-monitor-impact-summary small{display:block;margin-top:8px;color:#64748b;font-size:9.5px;font-weight:720}.cv-monitor-history-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin:0 0 13px}.cv-monitor-history-card{border:1px solid #dbe3ef;border-radius:11px;background:#fff;padding:10px 11px}.cv-monitor-history-card span{display:block;color:#64748b!important;font-size:8px;font-weight:900;letter-spacing:.08em;text-transform:uppercase}.cv-monitor-history-card strong{display:block;margin-top:5px;color:#0f2d57!important;font-size:11px;font-weight:850;line-height:1.4}.cv-monitor-history-card em{display:block;margin-top:4px;color:#52647d!important;font-size:9.5px;font-style:normal;font-weight:700}.cv-monitor-recommendation{margin:12px 0;padding:13px 14px;border:1px solid #bfdbfe;border-radius:12px;background:linear-gradient(135deg,#eff6ff,#f8fbff)}.cv-monitor-recommendation span{display:block;color:#2563eb!important;font-size:8.5px;font-weight:900;letter-spacing:.1em;text-transform:uppercase}.cv-monitor-recommendation strong{display:block;margin-top:5px;color:#0f2d57!important;font-size:12px;font-weight:850;line-height:1.45}.cv-monitor-recommendation p{margin:5px 0 0;color:#52647d!important;font-size:10.5px;font-weight:680;line-height:1.45}.cv-monitor-bom-intro{margin:13px 0 7px}.cv-monitor-bom-intro strong{display:block;color:#0f2d57!important;font-size:12px}.cv-monitor-bom-intro span{display:block;margin-top:3px;color:#64748b!important;font-size:10px}[class*="st-key-monitor_component_bom_link_"]{padding:8px 10px;border:1px solid #dbe3ef;border-radius:10px;background:#fff}[class*="st-key-monitor_component_bom_link_"]>[data-testid="stVerticalBlock"]{gap:4px}[class*="st-key-monitor_component_bom_link_"] [data-testid="stHorizontalBlock"]{align-items:center}[class*="st-key-monitor_component_bom_link_"] .stButton>button{min-height:31px!important;margin:0!important;padding:3px 10px!important;font-size:10px!important}.cv-monitor-bom-name{color:#0f2d57!important;font-size:10.5px;font-weight:850}.cv-monitor-bom-source{margin-top:2px;color:#64748b!important;font-size:9px;font-weight:650}[class*="st-key-monitor_component_actions_"]{margin-top:13px;padding-top:12px;border-top:1px solid #e2e8f0}[class*="st-key-monitor_component_actions_"]>[data-testid="stVerticalBlock"]{gap:8px}
             [data-testid="stExpander"]{border-radius:14px!important;border-color:#dbe3ef!important;background:#fbfdff!important}[data-testid="stExpander"] summary{font-weight:850!important}.stButton>button,.stDownloadButton>button{min-height:42px!important;border-radius:10px!important;font-weight:850!important}
-            @media(max-width:800px){.cv-monitor-workspace-head{display:block}.cv-monitor-active-badge{display:inline-block;margin-top:9px}.cv320-cardhead{display:block}.cv320-score{display:inline-block;margin-top:9px}.cv320-evidence{grid-template-columns:1fr 1fr}.cv320-recommendation{grid-template-columns:auto 1fr}.cv320-confidence{grid-column:2;text-align:left;border-left:0;padding-left:0}.cv-monitor-current-filter{display:block}.cv-monitor-current-filter__summary{text-align:left;margin-top:7px}.cv-monitor-queue-caption{display:block}.cv-monitor-queue-caption span{display:block;margin-top:4px}.cv-monitor-component-head{display:block}.cv-monitor-component-head .cv320-score{margin-top:9px}.cv-monitor-component-evidence{grid-template-columns:1fr 1fr}.cv-monitor-component-alert{grid-template-columns:1fr}.cv-monitor-component-alert span{white-space:normal}}
+            @media(max-width:800px){.cv-monitor-workspace-head{display:block}.cv-monitor-active-badge{display:inline-block;margin-top:9px}.cv320-cardhead{display:block}.cv320-score{display:inline-block;margin-top:9px}.cv320-evidence{grid-template-columns:1fr 1fr}.cv320-recommendation{grid-template-columns:auto 1fr}.cv320-confidence{grid-column:2;text-align:left;border-left:0;padding-left:0}.cv-monitor-current-filter{display:block}.cv-monitor-current-filter__summary{text-align:left;margin-top:7px}.cv-monitor-queue-caption{display:block}.cv-monitor-queue-caption span{display:block;margin-top:4px}.cv-monitor-component-head{display:block}.cv-monitor-component-head .cv320-score{margin-top:9px}.cv-monitor-component-evidence{grid-template-columns:1fr 1fr}.cv-monitor-component-alert{grid-template-columns:1fr}.cv-monitor-component-alert span{white-space:normal}.cv-monitor-history-grid{grid-template-columns:1fr}}
             @media(prefers-reduced-motion:reduce){[class*="st-key-monitor_alert_detail_"]{animation:none!important}}
             </style>
             """,
@@ -4605,6 +4606,36 @@ def run_authenticated_app() -> None:
                     except Exception:
                         return cleaned
 
+                def _component_number(value):
+                    cleaned = _monitor_display(value, "")
+                    if not cleaned:
+                        return None
+                    try:
+                        return float(
+                            cleaned.replace(",", "").replace("$", "")
+                        )
+                    except Exception:
+                        return None
+
+                def _component_numeric_delta(current, previous, *, price=False):
+                    if current is None or previous is None:
+                        return "Baseline recorded"
+                    delta = current - previous
+                    if abs(delta) < 1e-9:
+                        return "No change"
+                    direction = "Increased" if delta > 0 else "Decreased"
+                    absolute = (
+                        f"${abs(delta):,.4f}"
+                        if price
+                        else f"{abs(delta):,.0f}"
+                    )
+                    percent = (
+                        f" ({abs(delta / previous) * 100:.1f}%)"
+                        if previous
+                        else ""
+                    )
+                    return f"{direction} {absolute}{percent}"
+
                 component_search = st.text_input(
                     "Search monitored components",
                     placeholder="Part number, supplier, lifecycle, or risk",
@@ -4814,6 +4845,135 @@ def run_authenticated_app() -> None:
                             .str.casefold()
                             == selected_component_mpn.casefold()
                         ].reset_index(drop=True)
+                    if (
+                        not component_history.empty
+                        and "created_at" in component_history.columns
+                    ):
+                        component_history = (
+                            component_history.assign(
+                                _checked_at=pd.to_datetime(
+                                    component_history["created_at"],
+                                    errors="coerce",
+                                    utc=True,
+                                )
+                            )
+                            .sort_values(
+                                "_checked_at",
+                                ascending=False,
+                                na_position="last",
+                            )
+                            .drop(columns=["_checked_at"])
+                            .reset_index(drop=True)
+                        )
+
+                    latest_snapshot = (
+                        component_history.iloc[0]
+                        if not component_history.empty
+                        else None
+                    )
+                    previous_snapshot = (
+                        component_history.iloc[1]
+                        if len(component_history) > 1
+                        else None
+                    )
+
+                    def _snapshot_text(snapshot, key, fallback):
+                        if snapshot is None:
+                            return fallback
+                        return _monitor_display(snapshot.get(key), fallback)
+
+                    current_lifecycle = _snapshot_text(
+                        latest_snapshot,
+                        "lifecycle_status",
+                        selected_component_lifecycle,
+                    )
+                    previous_lifecycle = _snapshot_text(
+                        previous_snapshot,
+                        "lifecycle_status",
+                        "No earlier check",
+                    )
+                    current_supplier = _snapshot_text(
+                        latest_snapshot,
+                        "supplier",
+                        selected_component_supplier,
+                    )
+                    previous_supplier = _snapshot_text(
+                        previous_snapshot,
+                        "supplier",
+                        "No earlier check",
+                    )
+                    current_stock_number = _component_number(
+                        latest_snapshot.get("stock")
+                        if latest_snapshot is not None
+                        else selected_component.get("Available Stock")
+                    )
+                    previous_stock_number = _component_number(
+                        previous_snapshot.get("stock")
+                        if previous_snapshot is not None
+                        else None
+                    )
+                    current_price_number = _component_number(
+                        latest_snapshot.get("unit_price")
+                        if latest_snapshot is not None
+                        else selected_component.get("Unit Price")
+                    )
+                    previous_price_number = _component_number(
+                        previous_snapshot.get("unit_price")
+                        if previous_snapshot is not None
+                        else None
+                    )
+                    current_checked = _monitor_human_date(
+                        latest_snapshot.get("created_at")
+                        if latest_snapshot is not None
+                        else selected_component.get("Last Checked"),
+                        selected_component_checked,
+                        include_time=True,
+                    )
+                    previous_checked = (
+                        _monitor_human_date(
+                            previous_snapshot.get("created_at"),
+                            "Earlier check",
+                            include_time=True,
+                        )
+                        if previous_snapshot is not None
+                        else "No earlier check"
+                    )
+
+                    lifecycle_changed = (
+                        previous_snapshot is not None
+                        and current_lifecycle.casefold()
+                        != previous_lifecycle.casefold()
+                    )
+                    supplier_changed = (
+                        previous_snapshot is not None
+                        and current_supplier.casefold()
+                        != previous_supplier.casefold()
+                    )
+                    stock_change_ratio = (
+                        abs(
+                            (current_stock_number - previous_stock_number)
+                            / previous_stock_number
+                        )
+                        if current_stock_number is not None
+                        and previous_stock_number not in (None, 0)
+                        else 0
+                    )
+                    price_change_ratio = (
+                        abs(
+                            (current_price_number - previous_price_number)
+                            / previous_price_number
+                        )
+                        if current_price_number is not None
+                        and previous_price_number not in (None, 0)
+                        else 0
+                    )
+                    material_change = (
+                        lifecycle_changed
+                        or supplier_changed
+                        or stock_change_ratio >= 0.10
+                        or price_change_ratio >= 0.10
+                    )
+
                     related_analysis_ids = []
                     if (
                         not component_history.empty
@@ -4822,115 +4982,400 @@ def run_authenticated_app() -> None:
                         for analysis_value in component_history[
                             "analysis_id"
                         ].tolist():
-                            analysis_token = _monitor_display(
-                                analysis_value,
-                                "",
-                            )
+                            analysis_token = _monitor_display(analysis_value, "")
                             if (
                                 analysis_token
                                 and analysis_token not in related_analysis_ids
                             ):
                                 related_analysis_ids.append(analysis_token)
+                    if (
+                        not active_component_alerts.empty
+                        and "Analysis ID" in active_component_alerts.columns
+                    ):
+                        for analysis_value in active_component_alerts[
+                            "Analysis ID"
+                        ].tolist():
+                            analysis_token = _monitor_display(analysis_value, "")
+                            if (
+                                analysis_token
+                                and analysis_token not in related_analysis_ids
+                            ):
+                                related_analysis_ids.append(analysis_token)
+
+                    saved_analysis_rows = []
+                    try:
+                        saved_analysis_rows = load_analysis_history(
+                            current_user["id"]
+                        )
+                    except Exception:
+                        saved_analysis_rows = []
+                    saved_analysis_by_id = {
+                        str(saved_analysis.get("id") or ""): saved_analysis
+                        for saved_analysis in saved_analysis_rows
+                        if str(saved_analysis.get("id") or "")
+                    }
+                    related_boms = []
+                    for analysis_id in related_analysis_ids:
+                        saved_analysis = saved_analysis_by_id.get(analysis_id)
+                        if not saved_analysis:
+                            continue
+                        bom_title = _monitor_display(
+                            saved_analysis.get("project_name"),
+                            "",
+                        ) or _monitor_display(
+                            saved_analysis.get("filename"),
+                            "Saved BOM",
+                        )
+                        bom_source = _monitor_display(
+                            saved_analysis.get("filename"),
+                            "Saved analysis",
+                        )
+                        related_boms.append(
+                            {
+                                "id": analysis_id,
+                                "title": bom_title,
+                                "source": bom_source,
+                            }
+                        )
                     related_analysis_id = (
-                        related_analysis_ids[0]
+                        related_boms[0]["id"]
+                        if related_boms
+                        else related_analysis_ids[0]
                         if related_analysis_ids
                         else ""
                     )
-                    risk_normalized = selected_component_risk.casefold()
-                    risk_tone = (
-                        "bad"
-                        if any(
-                            token in risk_normalized
-                            for token in ("critical", "high")
+
+                    top_alert = (
+                        active_component_alerts.iloc[0]
+                        if not active_component_alerts.empty
+                        else None
+                    )
+                    top_alert_change = _snapshot_text(
+                        top_alert,
+                        "Change",
+                        "Monitoring evidence changed.",
+                    )
+                    recommended_action = _snapshot_text(
+                        top_alert,
+                        "Recommended Action",
+                        f"Review the monitoring evidence for {selected_component_mpn}.",
+                    )
+                    expected_impact = _snapshot_text(
+                        top_alert,
+                        "Expected Impact",
+                        "Confirm the component remains suitable for the next build.",
+                    )
+                    alert_routes = (
+                        active_component_alerts.get(
+                            "Route",
+                            pd.Series(dtype=str),
                         )
-                        else "warn"
-                        if "medium" in risk_normalized
-                        else "good"
-                        if "low" in risk_normalized
-                        else "warn"
+                        .astype(str)
+                        .str.casefold()
+                        .tolist()
+                        if not active_component_alerts.empty
+                        else []
+                    )
+                    lifecycle_normalized = current_lifecycle.casefold()
+                    risk_normalized = selected_component_risk.casefold()
+                    risky_lifecycle = any(
+                        token in lifecycle_normalized
+                        for token in (
+                            "obsolete",
+                            "end of life",
+                            "eol",
+                            "replacement suggested",
+                            "not recommended",
+                            "nrnd",
+                        )
+                    )
+                    high_risk = any(
+                        token in risk_normalized
+                        for token in ("critical", "high")
+                    )
+                    no_stock = (
+                        current_stock_number is not None
+                        and current_stock_number <= 0
+                    )
+                    requires_alternative = (
+                        "alternative" in alert_routes
+                        or risky_lifecycle
+                        or high_risk
+                        or no_stock
                     )
 
-                    alert_rows_html = ""
-                    for _, component_alert in active_component_alerts.head(4).iterrows():
-                        alert_type = _monitor_display(
-                            component_alert.get("Alert Type"),
-                            "Monitoring change",
+                    if not active_component_alerts.empty:
+                        assessment_tone = "action"
+                        assessment_title = "Engineering review required"
+                        assessment_copy = (
+                            f"{len(active_component_alerts):,} active alert"
+                            f"{'s' if len(active_component_alerts) != 1 else ''} "
+                            f"need attention. Latest signal: {top_alert_change}"
                         )
-                        alert_change = _monitor_display(
-                            component_alert.get("Change"),
-                            "Monitoring evidence changed.",
+                    elif risky_lifecycle or high_risk or no_stock:
+                        assessment_tone = "watch"
+                        assessment_title = "Component evidence needs review"
+                        assessment_copy = (
+                            "The current lifecycle, availability, or risk evidence "
+                            "may affect release or purchasing decisions."
                         )
-                        try:
-                            alert_score = int(
-                                float(component_alert.get("Priority Score") or 0)
-                            )
-                        except Exception:
-                            alert_score = 0
-                        alert_rows_html += (
-                            '<div class="cv-monitor-component-alert">'
-                            f'<b>{html.escape(alert_type)}</b>'
-                            f'<span>{html.escape(alert_change)}</span>'
-                            f'<em>{alert_score}/100 priority</em>'
-                            '</div>'
+                        recommended_action = (
+                            f"Review replacement and sourcing coverage for "
+                            f"{selected_component_mpn}."
                         )
-                    remaining_alerts = max(
-                        0,
-                        len(active_component_alerts) - 4,
+                        expected_impact = (
+                            "Resolve continuity risk before the component constrains "
+                            "the next build."
+                        )
+                    elif material_change:
+                        assessment_tone = "watch"
+                        assessment_title = "Monitoring change detected"
+                        assessment_copy = (
+                            "The latest check contains a material lifecycle, supplier, "
+                            "stock, or price change. Review the comparison below."
+                        )
+                    elif previous_snapshot is None:
+                        assessment_tone = "stable"
+                        assessment_title = "Monitoring baseline captured"
+                        assessment_copy = (
+                            "Cadivor has recorded the current state. A trend will appear "
+                            "after the next monitoring check."
+                        )
+                    else:
+                        assessment_tone = "stable"
+                        assessment_title = "Stable monitoring status"
+                        assessment_copy = (
+                            "No material lifecycle, supplier, stock, or pricing change "
+                            "was found between the two latest checks."
+                        )
+
+                    lifecycle_transition = (
+                        f"{previous_lifecycle} → {current_lifecycle}"
+                        if previous_snapshot is not None
+                        else current_lifecycle
                     )
-                    if remaining_alerts:
-                        alert_rows_html += (
-                            '<div class="cv-monitor-component-alert">'
-                            f'<b>+{remaining_alerts} more</b>'
-                            '<span>Open the filtered Action Queue to review every alert.</span>'
-                            '<em>View alerts</em>'
-                            '</div>'
+                    supplier_transition = (
+                        f"{previous_supplier} → {current_supplier}"
+                        if previous_snapshot is not None
+                        else current_supplier
+                    )
+                    stock_transition = (
+                        f"{_component_stock_label(previous_stock_number)} → "
+                        f"{_component_stock_label(current_stock_number)}"
+                        if previous_snapshot is not None
+                        else _component_stock_label(
+                            current_stock_number,
+                            "Not available",
+                        )
+                    )
+                    price_transition = (
+                        f"{_component_price_label(previous_price_number)} → "
+                        f"{_component_price_label(current_price_number)}"
+                        if previous_snapshot is not None
+                        else _component_price_label(
+                            current_price_number,
+                            "Not available",
+                        )
+                    )
+                    lifecycle_note = (
+                        "Changed since previous check"
+                        if lifecycle_changed
+                        else "No change"
+                        if previous_snapshot is not None
+                        else "Baseline recorded"
+                    )
+                    supplier_note = (
+                        "Supplier changed"
+                        if supplier_changed
+                        else "No change"
+                        if previous_snapshot is not None
+                        else "Baseline recorded"
+                    )
+                    stock_note = _component_numeric_delta(
+                        current_stock_number,
+                        previous_stock_number,
+                    )
+                    price_note = _component_numeric_delta(
+                        current_price_number,
+                        previous_price_number,
+                        price=True,
+                    )
+                    comparison_context = f"Latest check: {current_checked}"
+                    if previous_snapshot is not None:
+                        comparison_context += (
+                            f" · compared with {previous_checked}"
+                        )
+                    else:
+                        comparison_context += " · waiting for a second check"
+
+                    analysis_names_by_id = {
+                        related_bom["id"]: related_bom["title"]
+                        for related_bom in related_boms
+                    }
+                    export_records = []
+                    if not component_history.empty:
+                        for _, history_row in component_history.iterrows():
+                            history_analysis_id = _monitor_display(
+                                history_row.get("analysis_id"),
+                                "",
+                            )
+                            export_records.append(
+                                {
+                                    "Component": selected_component_mpn,
+                                    "Saved BOM": analysis_names_by_id.get(
+                                        history_analysis_id,
+                                        "",
+                                    ),
+                                    "Checked": _monitor_human_date(
+                                        history_row.get("created_at"),
+                                        "Not recorded",
+                                        include_time=True,
+                                    ),
+                                    "Supplier": _monitor_display(
+                                        history_row.get("supplier"),
+                                        "",
+                                    ),
+                                    "Lifecycle": _monitor_display(
+                                        history_row.get("lifecycle_status"),
+                                        "",
+                                    ),
+                                    "Available Stock": history_row.get("stock"),
+                                    "Unit Price": history_row.get("unit_price"),
+                                    "Risk": _monitor_display(
+                                        history_row.get("risk_level"),
+                                        "",
+                                    ),
+                                }
+                            )
+                    else:
+                        export_records.append(
+                            {
+                                "Component": selected_component_mpn,
+                                "Saved BOM": "",
+                                "Checked": current_checked,
+                                "Supplier": current_supplier,
+                                "Lifecycle": current_lifecycle,
+                                "Available Stock": current_stock_number,
+                                "Unit Price": current_price_number,
+                                "Risk": selected_component_risk,
+                            }
                         )
 
                     with component_table_result.detail_slot.container():
                         st.markdown(
                             f"""
-                            <div class="cv-monitor-detail-label">Expanded component details</div>
-                            <div class="cv-monitor-component-head">
-                              <div>
-                                <span class="cv-monitor-component-eyebrow">Monitored component</span>
-                                <h3>{html.escape(selected_component_mpn)}</h3>
-                                <p>{html.escape(selected_component_supplier)}</p>
-                              </div>
-                              <span class="cv320-score {risk_tone}">{html.escape(selected_component_risk)} risk</span>
+                            <div class="cv-monitor-detail-label">Monitoring history &amp; impact</div>
+                            <div class="cv-monitor-impact-summary {assessment_tone}">
+                              <span>{html.escape(selected_component_mpn)} · assessment</span>
+                              <h3>{html.escape(assessment_title)}</h3>
+                              <p>{html.escape(assessment_copy)}</p>
+                              <small>{html.escape(comparison_context)}</small>
                             </div>
-                            <div class="cv320-evidence cv-monitor-component-evidence">
-                              <div><span>Lifecycle</span><strong>{html.escape(selected_component_lifecycle)}</strong></div>
-                              <div><span>Available stock</span><strong>{html.escape(selected_component_stock)}</strong></div>
-                              <div><span>Unit price</span><strong>{html.escape(selected_component_price)}</strong></div>
-                              <div><span>Last checked</span><strong>{html.escape(selected_component_checked)}</strong></div>
-                              <div><span>Snapshots recorded</span><strong>{len(component_history):,}</strong></div>
-                              <div><span>Related analyses</span><strong>{len(related_analysis_ids):,}</strong></div>
+                            <div class="cv-monitor-history-grid">
+                              <div class="cv-monitor-history-card">
+                                <span>Lifecycle history</span>
+                                <strong>{html.escape(lifecycle_transition)}</strong>
+                                <em>{html.escape(lifecycle_note)}</em>
+                              </div>
+                              <div class="cv-monitor-history-card">
+                                <span>Stock change</span>
+                                <strong>{html.escape(stock_transition)}</strong>
+                                <em>{html.escape(stock_note)}</em>
+                              </div>
+                              <div class="cv-monitor-history-card">
+                                <span>Price change</span>
+                                <strong>{html.escape(price_transition)}</strong>
+                                <em>{html.escape(price_note)}</em>
+                              </div>
+                              <div class="cv-monitor-history-card">
+                                <span>Supplier history</span>
+                                <strong>{html.escape(supplier_transition)}</strong>
+                                <em>{html.escape(supplier_note)}</em>
+                              </div>
                             </div>
                             """,
                             unsafe_allow_html=True,
                         )
-                        if active_component_alerts.empty:
-                            st.success(
-                                "No active alerts are currently recorded for this component."
-                            )
-                        else:
+
+                        if (
+                            not active_component_alerts.empty
+                            or risky_lifecycle
+                            or high_risk
+                            or no_stock
+                        ):
                             st.markdown(
                                 f"""
-                                <div class="cv-monitor-component-alerts">
-                                  <div class="cv-monitor-component-alerts__head">
-                                    <strong>Active monitoring alerts</strong>
-                                    <span>{len(active_component_alerts):,} requiring review</span>
-                                  </div>
-                                  {alert_rows_html}
+                                <div class="cv-monitor-recommendation">
+                                  <span>Recommended next action</span>
+                                  <strong>{html.escape(recommended_action)}</strong>
+                                  <p><b>Why it matters:</b> {html.escape(expected_impact)}</p>
                                 </div>
                                 """,
                                 unsafe_allow_html=True,
                             )
 
+                        st.markdown(
+                            f"""
+                            <div class="cv-monitor-bom-intro">
+                              <strong>Affected saved BOMs</strong>
+                              <span>{len(related_boms):,} saved BOM{'s' if len(related_boms) != 1 else ''} currently reference this component.</span>
+                            </div>
+                            """,
+                            unsafe_allow_html=True,
+                        )
+                        if related_boms:
+                            for bom_index, related_bom in enumerate(
+                                related_boms[:4]
+                            ):
+                                bom_key = re.sub(
+                                    r"[^a-zA-Z0-9_-]+",
+                                    "_",
+                                    related_bom["id"],
+                                )[:48] or str(bom_index)
+                                with st.container(
+                                    key=(
+                                        "monitor_component_bom_link_"
+                                        f"{selected_component_key}_{bom_key}"
+                                    )
+                                ):
+                                    bom_label_col, bom_action_col = st.columns(
+                                        [3.2, 1],
+                                        gap="small",
+                                    )
+                                    bom_label_col.markdown(
+                                        f"""
+                                        <div class="cv-monitor-bom-name">{html.escape(related_bom['title'])}</div>
+                                        <div class="cv-monitor-bom-source">{html.escape(related_bom['source'])}</div>
+                                        """,
+                                        unsafe_allow_html=True,
+                                    )
+                                    if bom_action_col.button(
+                                        "Open BOM",
+                                        key=(
+                                            "m32_component_bom_"
+                                            f"{selected_component_key}_{bom_key}"
+                                        ),
+                                        use_container_width=True,
+                                    ):
+                                        navigate_to(
+                                            "Analysis Details",
+                                            analysis_id=related_bom["id"],
+                                        )
+                            if len(related_boms) > 4:
+                                st.caption(
+                                    f"+{len(related_boms) - 4:,} more affected saved "
+                                    "BOMs are available from the BOMs page."
+                                )
+                        else:
+                            st.caption(
+                                "No saved BOM relationship is available for this "
+                                "monitoring record."
+                            )
+
                         action_count = (
-                            2
+                            1
                             + int(not active_component_alerts.empty)
-                            + int(bool(related_analysis_id))
+                            + int(requires_alternative)
                         )
                         with st.container(
                             key=f"monitor_component_actions_{selected_component_key}"
@@ -4954,40 +5399,29 @@ def run_authenticated_app() -> None:
                                             mpn=selected_component_mpn,
                                         )
                                 action_position += 1
-                            with component_action_columns[action_position]:
-                                if st.button(
-                                    "Run Alternative Finder",
-                                    key=f"m32_component_alt_{selected_component_key}",
-                                    use_container_width=True,
-                                ):
-                                    navigate_to_alternative_finder(
-                                        mpn=selected_component_mpn,
-                                        analysis_id=related_analysis_id,
-                                        return_analysis_id=related_analysis_id,
-                                        source_page="monitoring_components",
-                                    )
-                            action_position += 1
-                            if related_analysis_id:
+                            if requires_alternative:
                                 with component_action_columns[action_position]:
                                     if st.button(
-                                        "Open related BOM",
-                                        key=f"m32_component_bom_{selected_component_key}",
+                                        "Run Alternative Finder",
+                                        key=f"m32_component_alt_{selected_component_key}",
                                         use_container_width=True,
                                     ):
-                                        navigate_to(
-                                            "Analysis Details",
+                                        navigate_to_alternative_finder(
+                                            mpn=selected_component_mpn,
                                             analysis_id=related_analysis_id,
+                                            return_analysis_id=related_analysis_id,
+                                            source_page="monitoring_components",
                                         )
                                 action_position += 1
                             with component_action_columns[action_position]:
                                 st.download_button(
-                                    "Export snapshot",
-                                    data=pd.DataFrame(
-                                        [selected_component.to_dict()]
-                                    ).to_csv(index=False).encode("utf-8"),
+                                    "Download history",
+                                    data=pd.DataFrame(export_records)
+                                    .to_csv(index=False)
+                                    .encode("utf-8"),
                                     file_name=(
                                         f"{selected_component_mpn.replace('/', '_')}"
-                                        "_monitoring_snapshot.csv"
+                                        "_monitoring_history.csv"
                                     ),
                                     mime="text/csv",
                                     use_container_width=True,
