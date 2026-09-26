@@ -113,10 +113,10 @@ class MonitoringSnapshotLayoutTests(unittest.TestCase):
         self.assertIn("Stable monitoring status", component_view)
         self.assertIn("Engineering review required", component_view)
         self.assertIn("Monitoring baseline captured", component_view)
-        self.assertIn("Lifecycle history", component_view)
-        self.assertIn("Stock change", component_view)
-        self.assertIn("Price change", component_view)
-        self.assertIn("Supplier history", component_view)
+        self.assertIn("Lifecycle changed", component_view)
+        self.assertIn("Stock changed", component_view)
+        self.assertIn("Price changed", component_view)
+        self.assertIn("Supplier changed", component_view)
         self.assertIn("compared with", component_view)
         self.assertNotIn("Snapshots recorded", component_view)
         self.assertNotIn("Related analyses", component_view)
@@ -128,6 +128,48 @@ class MonitoringSnapshotLayoutTests(unittest.TestCase):
         self.assertNotIn("Export snapshot", component_view)
         self.assertNotIn("cadivor_smart_dataframe(", component_view)
         self.assertNotIn("Click any cell or the checkbox", component_view)
+
+    def test_monitored_component_detail_is_state_adaptive(self):
+        component_view = self.branch.split(
+            "def _render_monitored_components", 1
+        )[1].split("def _render_monitoring_timeline", 1)[0]
+        for evidence_flag in (
+            "lifecycle_missing",
+            "supplier_missing",
+            "inventory_missing",
+            "price_missing",
+        ):
+            self.assertIn(evidence_flag, component_view)
+        for mode in (
+            'component_detail_mode = "alert"',
+            'component_detail_mode = "evidence"',
+            'component_detail_mode = "risk"',
+            'component_detail_mode = "change"',
+            'component_detail_mode = "baseline"',
+            'component_detail_mode = "stable"',
+        ):
+            self.assertIn(mode, component_view)
+        for evidence_copy in (
+            "Lifecycle evidence",
+            "Verification required",
+            "Supplier evidence",
+            "No qualified source",
+            "Availability blocker",
+            "No stock available",
+            "Pricing evidence",
+            "Pricing unavailable",
+        ):
+            self.assertIn(evidence_copy, component_view)
+        self.assertIn("detail_cards_html", component_view)
+        self.assertIn("if detail_cards_html", component_view)
+        self.assertIn("evidence_gap_labels", component_view)
+        self.assertIn("availability_blocker_labels", component_view)
+        self.assertIn("missing or unusable", component_view)
+        self.assertIn("No distributor inventory was found", component_view)
+        self.assertIn('is-{detail_card["tone"]}', component_view)
+        self.assertIn('type="primary"', component_view)
+        self.assertIn('type="secondary"', component_view)
+        self.assertNotIn("No change</em>", component_view)
 
     def test_monitored_component_impact_names_and_opens_affected_boms(self):
         component_view = self.branch.split(

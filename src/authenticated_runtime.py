@@ -4031,7 +4031,7 @@ def run_authenticated_app() -> None:
             [class*="st-key-monitor_snapshot_"]:has(.cv-monitor-kpi-copy.is-active){border-color:#2563eb;background:#eff6ff;box-shadow:0 0 0 2px rgba(37,99,235,.12),0 8px 20px rgba(37,99,235,.08)}[class*="st-key-monitor_snapshot_"]:has(.cv-monitor-kpi-copy.is-active):hover{border-color:#2563eb;box-shadow:0 0 0 2px rgba(37,99,235,.15),0 8px 20px rgba(37,99,235,.1)}.cv-monitor-current-view{display:inline-flex;align-items:center;gap:5px;margin:8px 0 0;padding:4px 7px;border-radius:999px;background:#dbeafe;color:#1d4ed8!important;font-size:8.5px;font-weight:850;letter-spacing:.06em;text-transform:uppercase}.cv-monitor-current-view:before{content:"";width:6px;height:6px;border-radius:50%;background:#2563eb}.st-key-monitor_snapshot_immediate button:disabled,.st-key-monitor_snapshot_lifecycle button:disabled,.st-key-monitor_snapshot_inventory button:disabled,.st-key-monitor_snapshot_pricing button:disabled,.st-key-monitor_snapshot_components button:disabled{color:#1d4ed8!important;opacity:1!important;text-decoration:none!important;cursor:default!important}.st-key-monitor_snapshot_immediate button:disabled::after,.st-key-monitor_snapshot_lifecycle button:disabled::after,.st-key-monitor_snapshot_inventory button:disabled::after,.st-key-monitor_snapshot_pricing button:disabled::after,.st-key-monitor_snapshot_components button:disabled::after{content:""!important;margin:0!important}
             .cv-monitor-current-filter{display:flex;align-items:center;justify-content:space-between;gap:18px;margin:4px 0 8px;padding:11px 13px;border:1px solid #93c5fd;border-left:4px solid #2563eb;border-radius:10px;background:#eff6ff}.cv-monitor-current-filter span{display:block;color:#2563eb!important;font-size:8.5px;font-weight:850;letter-spacing:.1em;text-transform:uppercase}.cv-monitor-current-filter strong{display:block;margin-top:2px;color:#0f2d57!important;font-size:13px;font-weight:850}.cv-monitor-current-filter__summary{text-align:right}.cv-monitor-current-filter__summary b{display:block;color:#0f2d57!important;font-size:11px}.cv-monitor-current-filter__summary small{display:block;margin-top:2px;color:#52647d!important;font-size:9.5px}.cv-monitor-queue-caption{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:4px 0 9px;padding:7px 10px;border:1px solid #d7e2ef;border-radius:9px;background:#f8fafc;color:#52647d!important;font-size:10.5px;font-weight:700}.cv-monitor-queue-caption strong{color:#0f2d57!important}.cv-monitor-detail-label{margin:15px 0 5px;color:#2563eb!important;font-size:9px;font-weight:850;letter-spacing:.11em;text-transform:uppercase}.cv-monitor-detail-evidence{margin-top:11px}[class*="st-key-monitor_detail_actions_"]{margin-top:13px;padding-top:12px;border-top:1px solid #e2e8f0}[class*="st-key-monitor_detail_actions_"]>[data-testid="stVerticalBlock"]{gap:9px}[class*="st-key-monitor_alert_detail_"]{animation:cv-monitor-detail-in .24s cubic-bezier(.2,.75,.25,1) both}@keyframes cv-monitor-detail-in{from{opacity:.2;transform:translateY(7px)}to{opacity:1;transform:translateY(0)}}
             .cv-monitor-component-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin:2px 0 13px}.cv-monitor-component-eyebrow{display:block;color:#2563eb!important;font-size:8.5px;font-weight:850;letter-spacing:.1em;text-transform:uppercase}.cv-monitor-component-head h3{margin:4px 0 2px;color:#0f2d57;font-size:20px;font-weight:850;letter-spacing:-.025em}.cv-monitor-component-head p{margin:0;color:#64748b;font-size:11px;font-weight:680}.cv-monitor-component-evidence{grid-template-columns:repeat(3,minmax(0,1fr));margin-bottom:14px}.cv-monitor-component-alerts{margin:12px 0 2px;padding:12px;border:1px solid #d7e2ef;border-radius:12px;background:#fff}.cv-monitor-component-alerts__head{display:flex;justify-content:space-between;gap:12px;margin-bottom:7px}.cv-monitor-component-alerts__head strong{color:#0f2d57;font-size:12px}.cv-monitor-component-alerts__head span{color:#64748b;font-size:10px;font-weight:750}.cv-monitor-component-alert{display:grid;grid-template-columns:minmax(110px,.7fr) minmax(0,2fr) auto;gap:10px;align-items:center;padding:8px 0;border-top:1px solid #edf1f6}.cv-monitor-component-alert:first-of-type{border-top:0}.cv-monitor-component-alert b{color:#0f2d57;font-size:10.5px}.cv-monitor-component-alert span{overflow:hidden;color:#52647d;font-size:10.5px;text-overflow:ellipsis;white-space:nowrap}.cv-monitor-component-alert em{color:#b45309;font-size:9.5px;font-style:normal;font-weight:850;white-space:nowrap}[class*="st-key-monitor_component_actions_"]{margin-top:12px;padding-top:12px;border-top:1px solid #e2e8f0}[class*="st-key-monitor_component_actions_"]>[data-testid="stVerticalBlock"]{gap:8px}
-            .cv-monitor-impact-summary{--impact:#2563eb;margin:4px 0 12px;padding:14px 15px;border:1px solid #bfdbfe;border-left:4px solid var(--impact);border-radius:12px;background:#f8fbff}.cv-monitor-impact-summary.stable{--impact:#059669;border-color:#a7f3d0;background:#f0fdf8}.cv-monitor-impact-summary.watch{--impact:#d97706;border-color:#fde68a;background:#fffbeb}.cv-monitor-impact-summary.action{--impact:#dc2626;border-color:#fecaca;background:#fef2f2}.cv-monitor-impact-summary span{display:block;color:var(--impact)!important;font-size:8.5px;font-weight:900;letter-spacing:.11em;text-transform:uppercase}.cv-monitor-impact-summary h3{margin:5px 0 4px;color:#0f2d57;font-size:16px;font-weight:850;letter-spacing:-.02em}.cv-monitor-impact-summary p{margin:0;color:#475569;font-size:11.5px;font-weight:680;line-height:1.5}.cv-monitor-impact-summary small{display:block;margin-top:8px;color:#64748b;font-size:9.5px;font-weight:720}.cv-monitor-history-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin:0 0 13px}.cv-monitor-history-card{border:1px solid #dbe3ef;border-radius:11px;background:#fff;padding:10px 11px}.cv-monitor-history-card span{display:block;color:#64748b!important;font-size:8px;font-weight:900;letter-spacing:.08em;text-transform:uppercase}.cv-monitor-history-card strong{display:block;margin-top:5px;color:#0f2d57!important;font-size:11px;font-weight:850;line-height:1.4}.cv-monitor-history-card em{display:block;margin-top:4px;color:#52647d!important;font-size:9.5px;font-style:normal;font-weight:700}.cv-monitor-recommendation{margin:12px 0;padding:13px 14px;border:1px solid #bfdbfe;border-radius:12px;background:linear-gradient(135deg,#eff6ff,#f8fbff)}.cv-monitor-recommendation span{display:block;color:#2563eb!important;font-size:8.5px;font-weight:900;letter-spacing:.1em;text-transform:uppercase}.cv-monitor-recommendation strong{display:block;margin-top:5px;color:#0f2d57!important;font-size:12px;font-weight:850;line-height:1.45}.cv-monitor-recommendation p{margin:5px 0 0;color:#52647d!important;font-size:10.5px;font-weight:680;line-height:1.45}.cv-monitor-bom-intro{margin:13px 0 7px}.cv-monitor-bom-intro strong{display:block;color:#0f2d57!important;font-size:12px}.cv-monitor-bom-intro span{display:block;margin-top:3px;color:#64748b!important;font-size:10px}[class*="st-key-monitor_component_bom_link_"]{padding:8px 10px;border:1px solid #dbe3ef;border-radius:10px;background:#fff}[class*="st-key-monitor_component_bom_link_"]>[data-testid="stVerticalBlock"]{gap:4px}[class*="st-key-monitor_component_bom_link_"] [data-testid="stHorizontalBlock"]{align-items:center}[class*="st-key-monitor_component_bom_link_"] .stButton>button{min-height:31px!important;margin:0!important;padding:3px 10px!important;font-size:10px!important}.cv-monitor-bom-name{color:#0f2d57!important;font-size:10.5px;font-weight:850}.cv-monitor-bom-source{margin-top:2px;color:#64748b!important;font-size:9px;font-weight:650}[class*="st-key-monitor_component_actions_"]{margin-top:13px;padding-top:12px;border-top:1px solid #e2e8f0}[class*="st-key-monitor_component_actions_"]>[data-testid="stVerticalBlock"]{gap:8px}
+            .cv-monitor-impact-summary{--impact:#2563eb;margin:4px 0 12px;padding:12px 14px;border:1px solid #bfdbfe;border-left:4px solid var(--impact);border-radius:12px;background:#f8fbff}.cv-monitor-impact-summary.stable{--impact:#059669;border-color:#a7f3d0;background:#f0fdf8}.cv-monitor-impact-summary.watch{--impact:#d97706;border-color:#fde68a;background:#fffbeb}.cv-monitor-impact-summary.action{--impact:#dc2626;border-color:#fecaca;background:#fef2f2}.cv-monitor-impact-summary span{display:block;color:var(--impact)!important;font-size:8.5px;font-weight:900;letter-spacing:.11em;text-transform:uppercase}.cv-monitor-impact-summary h3{margin:5px 0 4px;color:#0f2d57;font-size:16px;font-weight:850;letter-spacing:-.02em}.cv-monitor-impact-summary p{margin:0;color:#475569;font-size:11.5px;font-weight:680;line-height:1.5}.cv-monitor-impact-summary small{display:block;margin-top:8px;color:#64748b;font-size:9.5px;font-weight:720}.cv-monitor-history-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin:0 0 13px}.cv-monitor-history-card{border:1px solid #dbe3ef;border-radius:11px;background:#fff;padding:10px 11px}.cv-monitor-history-card.is-gap{border-color:#fcd34d;background:#fffbeb}.cv-monitor-history-card.is-blocker{border-color:#fdba74;background:#fff7ed}.cv-monitor-history-card.is-change{border-color:#93c5fd;background:#eff6ff}.cv-monitor-history-card.is-risk{border-color:#fca5a5;background:#fef2f2}.cv-monitor-history-card span{display:block;color:#64748b!important;font-size:8px;font-weight:900;letter-spacing:.08em;text-transform:uppercase}.cv-monitor-history-card strong{display:block;margin-top:5px;color:#0f2d57!important;font-size:11px;font-weight:850;line-height:1.4}.cv-monitor-history-card em{display:block;margin-top:4px;color:#52647d!important;font-size:9.5px;font-style:normal;font-weight:700}.cv-monitor-recommendation{margin:12px 0;padding:13px 14px;border:1px solid #bfdbfe;border-radius:12px;background:linear-gradient(135deg,#eff6ff,#f8fbff)}.cv-monitor-recommendation span{display:block;color:#2563eb!important;font-size:8.5px;font-weight:900;letter-spacing:.1em;text-transform:uppercase}.cv-monitor-recommendation strong{display:block;margin-top:5px;color:#0f2d57!important;font-size:12px;font-weight:850;line-height:1.45}.cv-monitor-recommendation p{margin:5px 0 0;color:#52647d!important;font-size:10.5px;font-weight:680;line-height:1.45}.cv-monitor-bom-intro{margin:13px 0 7px}.cv-monitor-bom-intro strong{display:block;color:#0f2d57!important;font-size:12px}.cv-monitor-bom-intro span{display:block;margin-top:3px;color:#64748b!important;font-size:10px}[class*="st-key-monitor_component_bom_link_"]{padding:8px 10px;border:1px solid #dbe3ef;border-radius:10px;background:#fff}[class*="st-key-monitor_component_bom_link_"]>[data-testid="stVerticalBlock"]{gap:4px}[class*="st-key-monitor_component_bom_link_"] [data-testid="stHorizontalBlock"]{align-items:center}[class*="st-key-monitor_component_bom_link_"] .stButton>button{min-height:31px!important;margin:0!important;padding:3px 10px!important;font-size:10px!important}.cv-monitor-bom-name{color:#0f2d57!important;font-size:10.5px;font-weight:850}.cv-monitor-bom-source{margin-top:2px;color:#64748b!important;font-size:9px;font-weight:650}[class*="st-key-monitor_component_actions_"]{margin-top:13px;padding-top:12px;border-top:1px solid #e2e8f0}[class*="st-key-monitor_component_actions_"]>[data-testid="stVerticalBlock"]{gap:8px}section[data-testid="stMain"] [class*="st-key-monitor_component_actions_"] .stDownloadButton>button:not(:disabled){background:#fff!important;border:1px solid #94a3b8!important;color:#0f2d57!important;box-shadow:none!important}section[data-testid="stMain"] [class*="st-key-monitor_component_actions_"] .stDownloadButton>button:not(:disabled) :is(p,span){color:#0f2d57!important}
             [data-testid="stExpander"]{border-radius:14px!important;border-color:#dbe3ef!important;background:#fbfdff!important}[data-testid="stExpander"] summary{font-weight:850!important}.stButton>button,.stDownloadButton>button{min-height:42px!important;border-radius:10px!important;font-weight:850!important}
             @media(max-width:800px){.cv-monitor-workspace-head{display:block}.cv-monitor-active-badge{display:inline-block;margin-top:9px}.cv320-cardhead{display:block}.cv320-score{display:inline-block;margin-top:9px}.cv320-evidence{grid-template-columns:1fr 1fr}.cv320-recommendation{grid-template-columns:auto 1fr}.cv320-confidence{grid-column:2;text-align:left;border-left:0;padding-left:0}.cv-monitor-current-filter{display:block}.cv-monitor-current-filter__summary{text-align:left;margin-top:7px}.cv-monitor-queue-caption{display:block}.cv-monitor-queue-caption span{display:block;margin-top:4px}.cv-monitor-component-head{display:block}.cv-monitor-component-head .cv320-score{margin-top:9px}.cv-monitor-component-evidence{grid-template-columns:1fr 1fr}.cv-monitor-component-alert{grid-template-columns:1fr}.cv-monitor-component-alert span{white-space:normal}.cv-monitor-history-grid{grid-template-columns:1fr}}
             @media(prefers-reduced-motion:reduce){[class*="st-key-monitor_alert_detail_"]{animation:none!important}}
@@ -4967,11 +4967,29 @@ def run_authenticated_app() -> None:
                         and previous_price_number not in (None, 0)
                         else 0
                     )
+                    stock_material_change = (
+                        current_stock_number is not None
+                        and previous_stock_number is not None
+                        and current_stock_number != previous_stock_number
+                        and (
+                            previous_stock_number == 0
+                            or stock_change_ratio >= 0.10
+                        )
+                    )
+                    price_material_change = (
+                        current_price_number is not None
+                        and previous_price_number is not None
+                        and current_price_number != previous_price_number
+                        and (
+                            previous_price_number == 0
+                            or price_change_ratio >= 0.10
+                        )
+                    )
                     material_change = (
                         lifecycle_changed
                         or supplier_changed
-                        or stock_change_ratio >= 0.10
-                        or price_change_ratio >= 0.10
+                        or stock_material_change
+                        or price_material_change
                     )
 
                     related_analysis_ids = []
@@ -5077,7 +5095,44 @@ def run_authenticated_app() -> None:
                         else []
                     )
                     lifecycle_normalized = current_lifecycle.casefold()
+                    supplier_normalized = current_supplier.casefold()
                     risk_normalized = selected_component_risk.casefold()
+                    lifecycle_missing = (
+                        not lifecycle_normalized
+                        or "unknown" in lifecycle_normalized
+                        or lifecycle_normalized
+                        in {
+                            "none",
+                            "not available",
+                            "unavailable",
+                            "pending",
+                            "n/a",
+                            "na",
+                            "—",
+                            "-",
+                        }
+                    )
+                    supplier_missing = (
+                        not supplier_normalized
+                        or "no supplier" in supplier_normalized
+                        or "supplier data pending" in supplier_normalized
+                        or supplier_normalized
+                        in {
+                            "unknown",
+                            "none",
+                            "not available",
+                            "unavailable",
+                            "n/a",
+                            "na",
+                            "—",
+                            "-",
+                        }
+                    )
+                    inventory_missing = current_stock_number is None
+                    price_missing = (
+                        current_price_number is None
+                        or current_price_number <= 0
+                    )
                     risky_lifecycle = any(
                         token in lifecycle_normalized
                         for token in (
@@ -5102,9 +5157,139 @@ def run_authenticated_app() -> None:
                         or risky_lifecycle
                         or high_risk
                         or no_stock
+                        or supplier_missing
                     )
 
+                    def _plain_language_list(values):
+                        if not values:
+                            return ""
+                        if len(values) == 1:
+                            return values[0]
+                        if len(values) == 2:
+                            return f"{values[0]} and {values[1]}"
+                        return f"{', '.join(values[:-1])}, and {values[-1]}"
+
+                    detail_cards = []
+                    evidence_gap_labels = []
+                    availability_blocker_labels = []
+
+                    def _add_component_detail_card(
+                        label,
+                        value,
+                        note,
+                        tone,
+                    ):
+                        detail_cards.append(
+                            {
+                                "label": label,
+                                "value": value,
+                                "note": note,
+                                "tone": tone,
+                            }
+                        )
+
+                    if lifecycle_missing:
+                        evidence_gap_labels.append("lifecycle status")
+                        _add_component_detail_card(
+                            "Lifecycle evidence",
+                            "Verification required",
+                            "No usable lifecycle status was returned.",
+                            "gap",
+                        )
+                    elif lifecycle_changed:
+                        _add_component_detail_card(
+                            "Lifecycle changed",
+                            f"{previous_lifecycle} → {current_lifecycle}",
+                            "Status changed since the previous check.",
+                            "change",
+                        )
+                    elif risky_lifecycle:
+                        _add_component_detail_card(
+                            "Lifecycle risk",
+                            current_lifecycle,
+                            "Replacement or qualification review is required.",
+                            "risk",
+                        )
+
+                    if supplier_missing:
+                        evidence_gap_labels.append("supplier source")
+                        _add_component_detail_card(
+                            "Supplier evidence",
+                            "No qualified source",
+                            "No supplier match is linked to this component.",
+                            "gap",
+                        )
+                    elif supplier_changed:
+                        _add_component_detail_card(
+                            "Supplier changed",
+                            f"{previous_supplier} → {current_supplier}",
+                            "The preferred source changed since the previous check.",
+                            "change",
+                        )
+
+                    if inventory_missing:
+                        evidence_gap_labels.append("available inventory")
+                        _add_component_detail_card(
+                            "Inventory evidence",
+                            "Availability unknown",
+                            "No usable distributor inventory value was returned.",
+                            "gap",
+                        )
+                    elif no_stock:
+                        availability_blocker_labels.append("available inventory")
+                        _add_component_detail_card(
+                            "Availability blocker",
+                            "No stock available",
+                            "No distributor inventory was found in the latest check.",
+                            "blocker",
+                        )
+                    elif stock_material_change:
+                        _add_component_detail_card(
+                            "Stock changed",
+                            (
+                                f"{_component_stock_label(previous_stock_number)} → "
+                                f"{_component_stock_label(current_stock_number)}"
+                            ),
+                            _component_numeric_delta(
+                                current_stock_number,
+                                previous_stock_number,
+                            ),
+                            "change",
+                        )
+
+                    if price_missing:
+                        evidence_gap_labels.append("unit pricing")
+                        _add_component_detail_card(
+                            "Pricing evidence",
+                            "Pricing unavailable",
+                            "No valid unit price was returned in the latest check.",
+                            "gap",
+                        )
+                    elif price_material_change:
+                        _add_component_detail_card(
+                            "Price changed",
+                            (
+                                f"{_component_price_label(previous_price_number)} → "
+                                f"{_component_price_label(current_price_number)}"
+                            ),
+                            _component_numeric_delta(
+                                current_price_number,
+                                previous_price_number,
+                                price=True,
+                            ),
+                            "change",
+                        )
+
+                    if high_risk and not detail_cards:
+                        _add_component_detail_card(
+                            "Risk classification",
+                            f"{selected_component_risk} risk",
+                            "Review the underlying lifecycle and sourcing evidence.",
+                            "risk",
+                        )
+
                     if not active_component_alerts.empty:
+                        component_detail_mode = "alert"
                         assessment_tone = "action"
                         assessment_title = "Engineering review required"
                         assessment_copy = (
@@ -5112,7 +5297,57 @@ def run_authenticated_app() -> None:
                             f"{'s' if len(active_component_alerts) != 1 else ''} "
                             f"need attention. Latest signal: {top_alert_change}"
                         )
+                    elif evidence_gap_labels or availability_blocker_labels:
+                        component_detail_mode = "evidence"
+                        assessment_tone = "watch"
+                        gap_count = len(evidence_gap_labels)
+                        blocker_count = len(availability_blocker_labels)
+                        issue_count = gap_count + blocker_count
+                        issue_groups = []
+                        if gap_count:
+                            issue_groups.append(
+                                f"{gap_count} evidence gap"
+                                f"{'s' if gap_count != 1 else ''}"
+                            )
+                        if blocker_count:
+                            issue_groups.append(
+                                f"{blocker_count} availability blocker"
+                                f"{'s' if blocker_count != 1 else ''}"
+                            )
+                        assessment_title = (
+                            f"{_plain_language_list(issue_groups).capitalize()} "
+                            f"{'require' if issue_count != 1 else 'requires'} review"
+                        )
+                        assessment_copy_parts = []
+                        recommended_action_parts = []
+                        if gap_count:
+                            gap_phrase = _plain_language_list(evidence_gap_labels)
+                            assessment_copy_parts.append(
+                                f"{gap_phrase.capitalize()} "
+                                f"{'is' if gap_count == 1 else 'are'} missing or unusable."
+                            )
+                            recommended_action_parts.append(
+                                f"Verify {gap_phrase} for {selected_component_mpn}."
+                            )
+                        if blocker_count:
+                            assessment_copy_parts.append(
+                                "No distributor inventory was found in the latest check."
+                            )
+                            recommended_action_parts.append(
+                                "Qualify an alternative because no distributor inventory "
+                                "is available."
+                            )
+                        assessment_copy = (
+                            " ".join(assessment_copy_parts)
+                            + " Resolve these items before release or purchasing."
+                        )
+                        recommended_action = " ".join(recommended_action_parts)
+                        expected_impact = (
+                            "Prevents an unverified component from becoming a sourcing "
+                            "or production constraint."
+                        )
                     elif risky_lifecycle or high_risk or no_stock:
+                        component_detail_mode = "risk"
                         assessment_tone = "watch"
                         assessment_title = "Component evidence needs review"
                         assessment_copy = (
@@ -5128,13 +5363,23 @@ def run_authenticated_app() -> None:
                             "the next build."
                         )
                     elif material_change:
+                        component_detail_mode = "change"
                         assessment_tone = "watch"
                         assessment_title = "Monitoring change detected"
                         assessment_copy = (
                             "The latest check contains a material lifecycle, supplier, "
                             "stock, or price change. Review the comparison below."
                         )
+                        recommended_action = (
+                            "Review the changed evidence and confirm whether the BOM "
+                            "needs a sourcing or engineering response."
+                        )
+                        expected_impact = (
+                            "Keeps release and purchasing decisions aligned with the "
+                            "latest component evidence."
+                        )
                     elif previous_snapshot is None:
+                        component_detail_mode = "baseline"
                         assessment_tone = "stable"
                         assessment_title = "Monitoring baseline captured"
                         assessment_copy = (
@@ -5142,6 +5387,7 @@ def run_authenticated_app() -> None:
                             "after the next monitoring check."
                         )
                     else:
+                        component_detail_mode = "stable"
                         assessment_tone = "stable"
                         assessment_title = "Stable monitoring status"
                         assessment_copy = (
@@ -5149,56 +5395,22 @@ def run_authenticated_app() -> None:
                             "was found between the two latest checks."
                         )
 
-                    lifecycle_transition = (
-                        f"{previous_lifecycle} → {current_lifecycle}"
-                        if previous_snapshot is not None
-                        else current_lifecycle
-                    )
-                    supplier_transition = (
-                        f"{previous_supplier} → {current_supplier}"
-                        if previous_snapshot is not None
-                        else current_supplier
-                    )
-                    stock_transition = (
-                        f"{_component_stock_label(previous_stock_number)} → "
-                        f"{_component_stock_label(current_stock_number)}"
-                        if previous_snapshot is not None
-                        else _component_stock_label(
-                            current_stock_number,
-                            "Not available",
+                    detail_cards_html = "".join(
+                        (
+                            '<div class="cv-monitor-history-card '
+                            f'is-{detail_card["tone"]}">'
+                            f'<span>{html.escape(detail_card["label"])}</span>'
+                            f'<strong>{html.escape(detail_card["value"])}</strong>'
+                            f'<em>{html.escape(detail_card["note"])}</em>'
+                            '</div>'
                         )
+                        for detail_card in detail_cards
                     )
-                    price_transition = (
-                        f"{_component_price_label(previous_price_number)} → "
-                        f"{_component_price_label(current_price_number)}"
-                        if previous_snapshot is not None
-                        else _component_price_label(
-                            current_price_number,
-                            "Not available",
-                        )
-                    )
-                    lifecycle_note = (
-                        "Changed since previous check"
-                        if lifecycle_changed
-                        else "No change"
-                        if previous_snapshot is not None
-                        else "Baseline recorded"
-                    )
-                    supplier_note = (
-                        "Supplier changed"
-                        if supplier_changed
-                        else "No change"
-                        if previous_snapshot is not None
-                        else "Baseline recorded"
-                    )
-                    stock_note = _component_numeric_delta(
-                        current_stock_number,
-                        previous_stock_number,
-                    )
-                    price_note = _component_numeric_delta(
-                        current_price_number,
-                        previous_price_number,
-                        price=True,
+                    detail_grid_html = (
+                        f'<div class="cv-monitor-history-grid">'
+                        f'{detail_cards_html}</div>'
+                        if detail_cards_html
+                        else ""
                     )
                     comparison_context = f"Latest check: {current_checked}"
                     if previous_snapshot is not None:
@@ -5271,38 +5483,17 @@ def run_authenticated_app() -> None:
                               <p>{html.escape(assessment_copy)}</p>
                               <small>{html.escape(comparison_context)}</small>
                             </div>
-                            <div class="cv-monitor-history-grid">
-                              <div class="cv-monitor-history-card">
-                                <span>Lifecycle history</span>
-                                <strong>{html.escape(lifecycle_transition)}</strong>
-                                <em>{html.escape(lifecycle_note)}</em>
-                              </div>
-                              <div class="cv-monitor-history-card">
-                                <span>Stock change</span>
-                                <strong>{html.escape(stock_transition)}</strong>
-                                <em>{html.escape(stock_note)}</em>
-                              </div>
-                              <div class="cv-monitor-history-card">
-                                <span>Price change</span>
-                                <strong>{html.escape(price_transition)}</strong>
-                                <em>{html.escape(price_note)}</em>
-                              </div>
-                              <div class="cv-monitor-history-card">
-                                <span>Supplier history</span>
-                                <strong>{html.escape(supplier_transition)}</strong>
-                                <em>{html.escape(supplier_note)}</em>
-                              </div>
-                            </div>
+                            {detail_grid_html}
                             """,
                             unsafe_allow_html=True,
                         )
 
-                        if (
-                            not active_component_alerts.empty
-                            or risky_lifecycle
-                            or high_risk
-                            or no_stock
-                        ):
+                        if component_detail_mode in {
+                            "alert",
+                            "evidence",
+                            "risk",
+                            "change",
+                        }:
                             st.markdown(
                                 f"""
                                 <div class="cv-monitor-recommendation">
@@ -5385,25 +5576,12 @@ def run_authenticated_app() -> None:
                                 gap="small",
                             )
                             action_position = 0
-                            if not active_component_alerts.empty:
-                                with component_action_columns[action_position]:
-                                    if st.button(
-                                        "View active alerts",
-                                        key=f"m32_component_alerts_{selected_component_key}",
-                                        use_container_width=True,
-                                    ):
-                                        navigate_to(
-                                            "Monitoring",
-                                            arm_opening=False,
-                                            monitor_view="queue",
-                                            mpn=selected_component_mpn,
-                                        )
-                                action_position += 1
                             if requires_alternative:
                                 with component_action_columns[action_position]:
                                     if st.button(
                                         "Run Alternative Finder",
                                         key=f"m32_component_alt_{selected_component_key}",
+                                        type="primary",
                                         use_container_width=True,
                                     ):
                                         navigate_to_alternative_finder(
@@ -5411,6 +5589,25 @@ def run_authenticated_app() -> None:
                                             analysis_id=related_analysis_id,
                                             return_analysis_id=related_analysis_id,
                                             source_page="monitoring_components",
+                                        )
+                                action_position += 1
+                            if not active_component_alerts.empty:
+                                with component_action_columns[action_position]:
+                                    if st.button(
+                                        "View active alerts",
+                                        key=f"m32_component_alerts_{selected_component_key}",
+                                        type=(
+                                            "secondary"
+                                            if requires_alternative
+                                            else "primary"
+                                        ),
+                                        use_container_width=True,
+                                    ):
+                                        navigate_to(
+                                            "Monitoring",
+                                            arm_opening=False,
+                                            monitor_view="queue",
+                                            mpn=selected_component_mpn,
                                         )
                                 action_position += 1
                             with component_action_columns[action_position]:
@@ -5424,6 +5621,7 @@ def run_authenticated_app() -> None:
                                         "_monitoring_history.csv"
                                     ),
                                     mime="text/csv",
+                                    type="secondary",
                                     use_container_width=True,
                                     key=f"m32_component_export_{selected_component_key}",
                                 )
