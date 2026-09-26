@@ -79,13 +79,15 @@ class MonitoringSnapshotLayoutTests(unittest.TestCase):
         self.assertIn('key=f"m32_attention_{monitor_filter_key}"', self.branch)
         self.assertIn('key=f"m32_type_{monitor_filter_key}"', self.branch)
 
-    def test_action_queue_is_a_selectable_table_with_one_focused_record(self):
-        self.assertIn("queue_table_result = cadivor_smart_dataframe(", self.branch)
+    def test_action_queue_expands_one_record_inside_the_table(self):
+        self.assertIn("queue_table_result = cadivor_expandable_table(", self.branch)
         self.assertIn('f"m32_queue_table_{monitor_filter_key}_"', self.branch)
-        self.assertIn("queue_table_result.event", self.branch)
-        self.assertIn("selected_rows = _monitor_selected_rows(queue_table_state)", self.branch)
+        self.assertIn("ExpandableTableColumn(", self.branch)
+        self.assertIn("queue_table_result.first_selected_row", self.branch)
+        self.assertIn("queue_table_result.detail_slot.container()", self.branch)
         self.assertIn('key=f"monitor_alert_detail_{detail_key}"', self.branch)
-        self.assertIn("Highest-priority alert · select another row", self.branch)
+        self.assertIn("Click a row to expand its evidence", self.branch)
+        self.assertNotIn("queue_table_result.event", self.branch)
         self.assertNotIn("for idx, row in filtered.head(50).iterrows()", self.branch)
 
     def test_queue_explains_the_active_view_and_priority_meaning(self):

@@ -160,10 +160,12 @@ from src.ui.executive_ux import inject_executive_ux_css, workflow_steps
 from src.ui.enterprise_experience import inject_enterprise_experience_css, operation_status
 from src.ui.cadivor_components import page_header as ds_page_header, kpi_grid as ds_kpi_grid, section_header as ds_section_header, empty_state as ds_empty_state
 from src.ui.cadivor_design_system import (
+    ExpandableTableColumn,
     MetricCard,
     cadivor_button_wrap,
     cadivor_button_wrap_end,
     cadivor_engineering_dataframe,
+    cadivor_expandable_table,
     cadivor_smart_dataframe,
     cadivor_comparison_matrix_dataframe,
     humanize_table_date,
@@ -174,7 +176,6 @@ from src.ui.cadivor_design_system import (
     cadivor_table,
     render_decision_card_actions,
     render_kpi_row_safe,
-    selected_dataframe_rows,
     semantic_priority_label,
 )
 from src.components.onboarding import (
@@ -4108,9 +4109,6 @@ def run_authenticated_app() -> None:
             else "default"
         )
 
-        def _monitor_selected_rows(table_state) -> list[int]:
-            return list(selected_dataframe_rows(table_state))
-
         def _render_monitor_action_queue():
             queue = monitoring_center["prioritized_alerts"]
             st.session_state["monitoring_effective_focus"] = monitor_focus or "active"
@@ -4245,11 +4243,63 @@ def run_authenticated_app() -> None:
                 }
             )
             focus_title, focus_description = monitor_focus_labels[effective_focus]
-            queue_table_result = cadivor_smart_dataframe(
+            queue_table_result = cadivor_expandable_table(
                 queue_table,
                 key=(
                     f"m32_queue_table_{monitor_filter_key}_"
                     f"{queue_view_token or 'all'}"
+                ),
+                columns=(
+                    ExpandableTableColumn(
+                        "Part Number",
+                        "Component",
+                        width=1.1,
+                        min_width=135,
+                        kind="strong",
+                    ),
+                    ExpandableTableColumn(
+                        "Alert Type",
+                        "Change type",
+                        width=1.05,
+                        min_width=125,
+                    ),
+                    ExpandableTableColumn(
+                        "Change",
+                        "What changed",
+                        width=2.2,
+                        min_width=260,
+                    ),
+                    ExpandableTableColumn(
+                        "Priority",
+                        "Priority",
+                        width=1.05,
+                        min_width=150,
+                        kind="priority",
+                    ),
+                    ExpandableTableColumn(
+                        "Status",
+                        "Status",
+                        width=.8,
+                        min_width=105,
+                        kind="status",
+                    ),
+                    ExpandableTableColumn(
+                        "Owner",
+                        "Owner",
+                        width=1.05,
+                        min_width=135,
+                    ),
+                    ExpandableTableColumn(
+                        "Due Date",
+                        "Due",
+                        width=.9,
+                        min_width=115,
+                    ),
+                ),
+                row_ids=(
+                    visible_queue["Alert ID"].tolist()
+                    if "Alert ID" in visible_queue.columns
+                    else [f"alert-{position}" for position in range(len(visible_queue))]
                 ),
                 context_title=focus_title,
                 context_detail=(
@@ -4264,316 +4314,283 @@ def run_authenticated_app() -> None:
                     else "info"
                 ),
                 selection_hint=(
-                    "Click any cell or the checkbox to inspect evidence, recommendation, and workflow."
+                    "Click a row to expand its evidence, recommendation, and workflow inline."
                 ),
-                column_config={
-                    "Part Number": st.column_config.TextColumn(
-                        "Component",
-                        width="medium",
-                    ),
-                    "Alert Type": st.column_config.TextColumn(
-                        "Change type",
-                        width="small",
-                    ),
-                    "Change": st.column_config.TextColumn(
-                        "What changed",
-                        width="large",
-                    ),
-                    "Priority": st.column_config.TextColumn(
-                        "Priority",
-                        help=(
-                            "Red = critical, orange = immediate, "
-                            "yellow = review, green = monitor."
-                        ),
-                        width="medium",
-                    ),
-                    "Status": st.column_config.TextColumn(width="small"),
-                    "Owner": st.column_config.TextColumn(width="medium"),
-                    "Due Date": st.column_config.TextColumn(
-                        "Due",
-                        width="small",
-                    ),
-                },
             )
-            queue_table_state = queue_table_result.event
-
-            selected_rows = _monitor_selected_rows(queue_table_state)
-            selected_position = selected_rows[0] if selected_rows else 0
+            selected_position = queue_table_result.first_selected_row
+            if selected_position is None or queue_table_result.detail_slot is None:
+                return
             if not 0 <= selected_position < len(visible_queue):
-                selected_position = 0
+                return
             row = visible_queue.iloc[selected_position]
-            selection_hint = (
-                "Selected alert"
-                if selected_rows
-                else "Highest-priority alert · select another row to change focus"
-            )
-            st.markdown(
-                f'<div class="cv-monitor-detail-label">{html.escape(selection_hint)}</div>',
-                unsafe_allow_html=True,
-            )
 
-            score = int(row["Priority Score"])
-            tone = "bad" if score >= 75 else "warn" if score >= 45 else "good"
-            severity = _monitor_display(row.get("Severity"), "Medium")
-            severity_class = (
-                severity.lower()
-                if severity.lower() in {"critical", "high", "medium", "low"}
-                else "medium"
-            )
-            part_number = _monitor_display(
-                row.get("Part Number"),
-                "Unknown component",
-            )
-            alert_type = _monitor_display(
-                row.get("Alert Type"),
-                "Monitoring change",
-            )
-            status = _monitor_display(row.get("Status"), "Open")
-            owner = _monitor_display(row.get("Owner"), "Unassigned")
-            due_label = _monitor_human_date(
-                row.get("Due Date"),
-                "Not scheduled",
-            )
-            change = _monitor_display(
-                row.get("Change"),
-                "Monitoring evidence changed.",
-            )
-            recommended_action = _monitor_display(
-                row.get("Recommended Action"),
-                "Review this change and document the engineering response.",
-            )
-            expected_impact = _monitor_display(
-                row.get("Expected Impact"),
-                "Confirm whether redesign, sourcing, or qualification action is required.",
-            )
-            confidence = _monitor_confidence(score)
-            current_value = _monitor_display(
-                row.get("Current Value", row.get("Current", row.get("New Value", ""))),
-                "Latest evidence available",
-            )
-            previous_value = _monitor_display(
-                row.get("Previous Value", row.get("Previous", row.get("Old Value", ""))),
-                "Earlier baseline",
-            )
-            supplier = _monitor_display(
-                row.get("Supplier", row.get("Primary Supplier", "")),
-                "Supplier data pending",
-            )
-            checked = _monitor_human_date(
-                row.get(
-                    "Last Checked",
-                    row.get("Created At", row.get("created_at", "")),
-                ),
-                "Recently",
-                include_time=True,
-            )
-            alert_id = str(row.get("Alert ID", "") or "")
-            detail_key = re.sub(
-                r"[^a-zA-Z0-9_-]",
-                "_",
-                alert_id or f"{part_number}_{selected_position}",
-            )[:64]
-
-            with st.container(key=f"monitor_alert_detail_{detail_key}"):
+            with queue_table_result.detail_slot.container():
                 st.markdown(
-                    f"""
-                    <section class="cv320-card {severity_class}">
-                      <div class="cv320-cardhead">
-                        <div>
-                          <div class="cv320-type">{html.escape(alert_type)}</div>
-                          <div class="cv320-part">{html.escape(part_number)}</div>
-                        </div>
-                        <span class="cv320-score {tone}">Priority {score}/100</span>
-                      </div>
-                      <div class="cv320-change">{html.escape(change)}</div>
-                      <div class="cv320-pills">
-                        <span class="cv320-pill">Status: {html.escape(status)}</span>
-                        <span class="cv320-pill">Owner: {html.escape(owner)}</span>
-                        <span class="cv320-pill">Due: {html.escape(due_label)}</span>
-                        <span class="cv320-pill">Severity: {html.escape(severity)}</span>
-                      </div>
-                      <div class="cv320-recommendation">
-                        <div class="cv320-recicon">i</div>
-                        <div>
-                          <div class="cv320-rectitle">Cadivor recommendation</div>
-                          <div class="cv320-reccopy">{html.escape(recommended_action)}</div>
-                          <div class="cv320-impact"><b>Why it matters:</b> {html.escape(expected_impact)}</div>
-                        </div>
-                        <div class="cv320-confidence">
-                          <span>Confidence</span><strong>{confidence}%</strong>
-                        </div>
-                      </div>
-                      <div class="cv-monitor-detail-evidence">
-                        <div class="cv320-section-title">Engineering evidence</div>
-                        <div class="cv320-evidence">
-                          <div><span>Previous state</span><strong>{html.escape(previous_value)}</strong></div>
-                          <div><span>Current state</span><strong>{html.escape(current_value)}</strong></div>
-                          <div><span>Supplier</span><strong>{html.escape(supplier)}</strong></div>
-                          <div><span>Last checked</span><strong>{html.escape(checked)}</strong></div>
-                        </div>
-                      </div>
-                    </section>
-                    """,
+                    '<div class="cv-monitor-detail-label">Expanded alert details</div>',
                     unsafe_allow_html=True,
                 )
+                score = int(row["Priority Score"])
+                tone = "bad" if score >= 75 else "warn" if score >= 45 else "good"
+                severity = _monitor_display(row.get("Severity"), "Medium")
+                severity_class = (
+                    severity.lower()
+                    if severity.lower() in {"critical", "high", "medium", "low"}
+                    else "medium"
+                )
+                part_number = _monitor_display(
+                    row.get("Part Number"),
+                    "Unknown component",
+                )
+                alert_type = _monitor_display(
+                    row.get("Alert Type"),
+                    "Monitoring change",
+                )
+                status = _monitor_display(row.get("Status"), "Open")
+                owner = _monitor_display(row.get("Owner"), "Unassigned")
+                due_label = _monitor_human_date(
+                    row.get("Due Date"),
+                    "Not scheduled",
+                )
+                change = _monitor_display(
+                    row.get("Change"),
+                    "Monitoring evidence changed.",
+                )
+                recommended_action = _monitor_display(
+                    row.get("Recommended Action"),
+                    "Review this change and document the engineering response.",
+                )
+                expected_impact = _monitor_display(
+                    row.get("Expected Impact"),
+                    "Confirm whether redesign, sourcing, or qualification action is required.",
+                )
+                confidence = _monitor_confidence(score)
+                current_value = _monitor_display(
+                    row.get("Current Value", row.get("Current", row.get("New Value", ""))),
+                    "Latest evidence available",
+                )
+                previous_value = _monitor_display(
+                    row.get("Previous Value", row.get("Previous", row.get("Old Value", ""))),
+                    "Earlier baseline",
+                )
+                supplier = _monitor_display(
+                    row.get("Supplier", row.get("Primary Supplier", "")),
+                    "Supplier data pending",
+                )
+                checked = _monitor_human_date(
+                    row.get(
+                        "Last Checked",
+                        row.get("Created At", row.get("created_at", "")),
+                    ),
+                    "Recently",
+                    include_time=True,
+                )
+                alert_id = str(row.get("Alert ID", "") or "")
+                detail_key = re.sub(
+                    r"[^a-zA-Z0-9_-]",
+                    "_",
+                    alert_id or f"{part_number}_{selected_position}",
+                )[:64]
 
-                with st.container(key=f"monitor_detail_actions_{detail_key}"):
-                    st.markdown("#### Update workflow")
-                    w1, w2, w3 = st.columns(3)
-                    status_options = [
-                        "Open",
-                        "In Review",
-                        "Resolved",
-                        "Dismissed",
-                        "Reopened",
-                    ]
-                    priority_options = ["Low", "Normal", "High", "Urgent"]
-                    row_status = status if status in status_options else "Open"
-                    row_priority = _monitor_display(row.get("Priority"), "Normal")
-                    row_priority = (
-                        row_priority
-                        if row_priority in priority_options
-                        else "Normal"
+                with st.container(key=f"monitor_alert_detail_{detail_key}"):
+                    st.markdown(
+                        f"""
+                        <section class="cv320-card {severity_class}">
+                          <div class="cv320-cardhead">
+                            <div>
+                              <div class="cv320-type">{html.escape(alert_type)}</div>
+                              <div class="cv320-part">{html.escape(part_number)}</div>
+                            </div>
+                            <span class="cv320-score {tone}">Priority {score}/100</span>
+                          </div>
+                          <div class="cv320-change">{html.escape(change)}</div>
+                          <div class="cv320-pills">
+                            <span class="cv320-pill">Status: {html.escape(status)}</span>
+                            <span class="cv320-pill">Owner: {html.escape(owner)}</span>
+                            <span class="cv320-pill">Due: {html.escape(due_label)}</span>
+                            <span class="cv320-pill">Severity: {html.escape(severity)}</span>
+                          </div>
+                          <div class="cv320-recommendation">
+                            <div class="cv320-recicon">i</div>
+                            <div>
+                              <div class="cv320-rectitle">Cadivor recommendation</div>
+                              <div class="cv320-reccopy">{html.escape(recommended_action)}</div>
+                              <div class="cv320-impact"><b>Why it matters:</b> {html.escape(expected_impact)}</div>
+                            </div>
+                            <div class="cv320-confidence">
+                              <span>Confidence</span><strong>{confidence}%</strong>
+                            </div>
+                          </div>
+                          <div class="cv-monitor-detail-evidence">
+                            <div class="cv320-section-title">Engineering evidence</div>
+                            <div class="cv320-evidence">
+                              <div><span>Previous state</span><strong>{html.escape(previous_value)}</strong></div>
+                              <div><span>Current state</span><strong>{html.escape(current_value)}</strong></div>
+                              <div><span>Supplier</span><strong>{html.escape(supplier)}</strong></div>
+                              <div><span>Last checked</span><strong>{html.escape(checked)}</strong></div>
+                            </div>
+                          </div>
+                        </section>
+                        """,
+                        unsafe_allow_html=True,
                     )
-                    new_status = w1.selectbox(
-                        "Status",
-                        status_options,
-                        index=status_options.index(row_status),
-                        key=f"m32_status_{detail_key}",
-                    )
-                    new_priority = w2.selectbox(
-                        "Priority",
-                        priority_options,
-                        index=priority_options.index(row_priority),
-                        key=f"m32_priority_{detail_key}",
-                    )
-                    existing_owner = (
-                        ""
-                        if owner
-                        in {
-                            "Unassigned",
-                            "Engineering",
-                            "Procurement",
-                            "Supply Chain",
-                            "Component Engineering",
-                            "Engineering & Supply Chain",
-                        }
-                        else owner
-                    )
-                    new_owner = w3.text_input(
-                        "Assigned to",
-                        value=existing_owner,
-                        placeholder="Name or team",
-                        key=f"m32_owner_{detail_key}",
-                    )
-                    d1, d2 = st.columns([1, 2])
-                    due_value = d1.date_input(
-                        "Due date",
-                        value=_monitor_date(row.get("Due Date")),
-                        key=f"m32_due_{detail_key}",
-                    )
-                    note_value = d2.text_area(
-                        "Engineering note",
-                        value=_monitor_display(row.get("Note"), ""),
-                        placeholder="Document rationale, validation evidence, or next step...",
-                        key=f"m32_note_{detail_key}",
-                    )
-                    a1, a2, a3, a4 = st.columns([1.1, 1.25, 1, 1])
-                    if a1.button(
-                        "Save workflow",
-                        type="primary",
-                        use_container_width=True,
-                        key=f"m32_save_{detail_key}",
-                    ):
-                        try:
-                            payload = {
-                                "workflow_status": new_status,
-                                "priority": new_priority,
-                                "assigned_to": new_owner or None,
-                                "due_date": due_value.isoformat() if due_value else None,
-                                "review_note": note_value or None,
-                                "reviewed_at": datetime.now(timezone.utc).isoformat(),
-                                "resolved_at": (
-                                    datetime.now(timezone.utc).isoformat()
-                                    if new_status == "Resolved"
-                                    else None
-                                ),
+
+                    with st.container(key=f"monitor_detail_actions_{detail_key}"):
+                        st.markdown("#### Update workflow")
+                        w1, w2, w3 = st.columns(3)
+                        status_options = [
+                            "Open",
+                            "In Review",
+                            "Resolved",
+                            "Dismissed",
+                            "Reopened",
+                        ]
+                        priority_options = ["Low", "Normal", "High", "Urgent"]
+                        row_status = status if status in status_options else "Open"
+                        row_priority = _monitor_display(row.get("Priority"), "Normal")
+                        row_priority = (
+                            row_priority
+                            if row_priority in priority_options
+                            else "Normal"
+                        )
+                        new_status = w1.selectbox(
+                            "Status",
+                            status_options,
+                            index=status_options.index(row_status),
+                            key=f"m32_status_{detail_key}",
+                        )
+                        new_priority = w2.selectbox(
+                            "Priority",
+                            priority_options,
+                            index=priority_options.index(row_priority),
+                            key=f"m32_priority_{detail_key}",
+                        )
+                        existing_owner = (
+                            ""
+                            if owner
+                            in {
+                                "Unassigned",
+                                "Engineering",
+                                "Procurement",
+                                "Supply Chain",
+                                "Component Engineering",
+                                "Engineering & Supply Chain",
                             }
-                            supabase.table("monitor_alerts").update(payload).eq(
-                                "id",
-                                alert_id,
-                            ).eq("user_id", current_user["id"]).execute()
+                            else owner
+                        )
+                        new_owner = w3.text_input(
+                            "Assigned to",
+                            value=existing_owner,
+                            placeholder="Name or team",
+                            key=f"m32_owner_{detail_key}",
+                        )
+                        d1, d2 = st.columns([1, 2])
+                        due_value = d1.date_input(
+                            "Due date",
+                            value=_monitor_date(row.get("Due Date")),
+                            key=f"m32_due_{detail_key}",
+                        )
+                        note_value = d2.text_area(
+                            "Engineering note",
+                            value=_monitor_display(row.get("Note"), ""),
+                            placeholder="Document rationale, validation evidence, or next step...",
+                            key=f"m32_note_{detail_key}",
+                        )
+                        a1, a2, a3, a4 = st.columns([1.1, 1.25, 1, 1])
+                        if a1.button(
+                            "Save workflow",
+                            type="primary",
+                            use_container_width=True,
+                            key=f"m32_save_{detail_key}",
+                        ):
                             try:
-                                supabase.table("monitoring_events").insert(
-                                    {
-                                        "user_id": current_user["id"],
-                                        "workspace_id": active_workspace_id or None,
-                                        "alert_id": alert_id or None,
-                                        "analysis_id": (
-                                            str(row.get("Analysis ID", "") or "")
-                                            or None
-                                        ),
-                                        "part_number": part_number,
-                                        "event_type": "Workflow Updated",
-                                        "event_summary": (
-                                            f"Alert moved to {new_status}; "
-                                            f"priority {new_priority}."
-                                        ),
-                                        "previous_value": status,
-                                        "current_value": new_status,
-                                        "metadata": {
-                                            "assigned_to": new_owner,
-                                            "due_date": payload["due_date"],
-                                        },
-                                    }
-                                ).execute()
+                                payload = {
+                                    "workflow_status": new_status,
+                                    "priority": new_priority,
+                                    "assigned_to": new_owner or None,
+                                    "due_date": due_value.isoformat() if due_value else None,
+                                    "review_note": note_value or None,
+                                    "reviewed_at": datetime.now(timezone.utc).isoformat(),
+                                    "resolved_at": (
+                                        datetime.now(timezone.utc).isoformat()
+                                        if new_status == "Resolved"
+                                        else None
+                                    ),
+                                }
+                                supabase.table("monitor_alerts").update(payload).eq(
+                                    "id",
+                                    alert_id,
+                                ).eq("user_id", current_user["id"]).execute()
+                                try:
+                                    supabase.table("monitoring_events").insert(
+                                        {
+                                            "user_id": current_user["id"],
+                                            "workspace_id": active_workspace_id or None,
+                                            "alert_id": alert_id or None,
+                                            "analysis_id": (
+                                                str(row.get("Analysis ID", "") or "")
+                                                or None
+                                            ),
+                                            "part_number": part_number,
+                                            "event_type": "Workflow Updated",
+                                            "event_summary": (
+                                                f"Alert moved to {new_status}; "
+                                                f"priority {new_priority}."
+                                            ),
+                                            "previous_value": status,
+                                            "current_value": new_status,
+                                            "metadata": {
+                                                "assigned_to": new_owner,
+                                                "due_date": payload["due_date"],
+                                            },
+                                        }
+                                    ).execute()
+                                except Exception:
+                                    pass
+                                st.success("Monitoring workflow saved.")
+                                st.rerun()
                             except Exception:
-                                pass
-                            st.success("Monitoring workflow saved.")
-                            st.rerun()
-                        except Exception:
-                            st.error(
-                                "Cadivor could not save this monitoring workflow. "
-                                "Please try again or contact support if the problem continues."
+                                st.error(
+                                    "Cadivor could not save this monitoring workflow. "
+                                    "Please try again or contact support if the problem continues."
+                                )
+                        if a2.button(
+                            "Run Alternative Finder",
+                            use_container_width=True,
+                            key=f"m32_alt_{detail_key}",
+                        ):
+                            navigate_to_alternative_finder(
+                                mpn=part_number,
+                                analysis_id=str(
+                                    row.get("Analysis ID", "")
+                                    or return_analysis_id
+                                    or ""
+                                ),
+                                return_analysis_id=str(
+                                    row.get("Analysis ID", "")
+                                    or return_analysis_id
+                                    or ""
+                                ),
+                                source_page="monitoring",
                             )
-                    if a2.button(
-                        "Run Alternative Finder",
-                        use_container_width=True,
-                        key=f"m32_alt_{detail_key}",
-                    ):
-                        navigate_to_alternative_finder(
-                            mpn=part_number,
-                            analysis_id=str(
-                                row.get("Analysis ID", "")
-                                or return_analysis_id
-                                or ""
+                        if a3.button(
+                            "Open decisions",
+                            use_container_width=True,
+                            key=f"m32_decision_{detail_key}",
+                        ):
+                            navigate_to(
+                                "Engineering Decisions",
+                                focus_part=part_number,
+                            )
+                        a4.download_button(
+                            "Export evidence",
+                            data=pd.DataFrame([row.to_dict()]).to_csv(index=False).encode("utf-8"),
+                            file_name=(
+                                f"{part_number.replace('/', '_')}_monitoring_evidence.csv"
                             ),
-                            return_analysis_id=str(
-                                row.get("Analysis ID", "")
-                                or return_analysis_id
-                                or ""
-                            ),
-                            source_page="monitoring",
+                            mime="text/csv",
+                            use_container_width=True,
+                            key=f"m32_export_{detail_key}",
                         )
-                    if a3.button(
-                        "Open decisions",
-                        use_container_width=True,
-                        key=f"m32_decision_{detail_key}",
-                    ):
-                        navigate_to(
-                            "Engineering Decisions",
-                            focus_part=part_number,
-                        )
-                    a4.download_button(
-                        "Export evidence",
-                        data=pd.DataFrame([row.to_dict()]).to_csv(index=False).encode("utf-8"),
-                        file_name=(
-                            f"{part_number.replace('/', '_')}_monitoring_evidence.csv"
-                        ),
-                        mime="text/csv",
-                        use_container_width=True,
-                        key=f"m32_export_{detail_key}",
-                    )
 
         def _render_monitored_components():
             components = monitoring_center["latest_components"]
