@@ -55,6 +55,8 @@ class SmartTableSystemTests(unittest.TestCase):
         self.assertIn("detail_slot = st.empty()", COMPONENTS)
         self.assertIn("on_click=_toggle_expandable_table_row", COMPONENTS)
         self.assertIn("selected_token == row_token", COMPONENTS)
+        self.assertIn("initial_row_id: Any | None = None", COMPONENTS)
+        self.assertIn("requested_token = _expandable_table_token(initial_row_id", COMPONENTS)
         self.assertIn("detail_slot=detail_slot", COMPONENTS)
 
     def test_monitoring_queue_and_coverage_share_the_contract(self):
@@ -74,8 +76,11 @@ class SmartTableSystemTests(unittest.TestCase):
 
     def test_saved_bom_components_use_row_selection_not_a_picker(self):
         component_branch = ANALYSIS_DETAIL.split("if parts:", 1)[1]
-        self.assertIn("component_table_result = cadivor_smart_dataframe(", component_branch)
+        self.assertIn("component_table_result = cadivor_expandable_table(", component_branch)
         self.assertIn("component_table_result.first_selected_row", component_branch)
+        self.assertIn("component_table_result.detail_slot.container()", component_branch)
+        self.assertIn("initial_row_id=(", component_branch)
+        self.assertIn("row_ids=component_row_ids", component_branch)
         self.assertNotIn('st.selectbox("Select a component to inspect"', component_branch)
 
     def test_alternative_finder_selection_drives_the_candidate_workspace(self):

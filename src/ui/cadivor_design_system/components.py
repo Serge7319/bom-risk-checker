@@ -795,6 +795,7 @@ def cadivor_expandable_table(
     columns: Sequence[ExpandableTableColumn],
     render_expanded: Callable[[pd.Series, int], None] | None = None,
     row_ids: Sequence[Any] | None = None,
+    initial_row_id: Any | None = None,
     context_title: str = "",
     context_detail: str = "",
     count_label: str = "",
@@ -844,6 +845,19 @@ def cadivor_expandable_table(
     if selected_token and selected_token not in row_tokens:
         st.session_state[state_key] = ""
         selected_token = ""
+    if initial_row_id is not None:
+        requested_token = _expandable_table_token(initial_row_id, "")
+        requested_selection = next(
+            (
+                token
+                for token in row_tokens
+                if token == requested_token or token.startswith(f"{requested_token}::")
+            ),
+            "",
+        )
+        if requested_selection:
+            selected_token = requested_selection
+            st.session_state[state_key] = selected_token
     selected_position = (
         row_tokens.index(selected_token) if selected_token in row_tokens else None
     )
