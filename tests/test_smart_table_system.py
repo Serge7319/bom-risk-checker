@@ -163,8 +163,19 @@ class SmartTableSystemTests(unittest.TestCase):
     def test_decision_actions_carry_component_context_to_monitoring(self):
         action_helper = COMPONENTS.split("def render_decision_card_actions(", 1)[1]
         self.assertIn('"Open Monitoring"', action_helper)
-        self.assertIn('mpn=decision["part_number"]', action_helper)
+        self.assertIn('mpn=(decision.get("mpn") or decision.get("part_number"))', action_helper)
         self.assertIn('return_analysis_id=str(decision.get("analysis_id")', action_helper)
+        self.assertIn('"Review affected components"', action_helper)
+        self.assertIn('target_type = str(decision.get("target_type")', action_helper)
+
+    def test_decision_queue_uses_explicit_target_scope_and_context(self):
+        decisions = RUNTIME.split('if app_mode == "Engineering Decisions":', 1)[1].split(
+            'if app_mode == "Reports":', 1
+        )[0]
+        self.assertIn('"Review target": decision_target_cell(decision)', decisions)
+        self.assertIn('kind="target"', decisions)
+        self.assertIn('decision_target_context(decision)', decisions)
+        self.assertIn('decision_target_type(selected_decision)', decisions)
 
 
 if __name__ == "__main__":

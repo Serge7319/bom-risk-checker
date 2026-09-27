@@ -4,6 +4,8 @@ from __future__ import annotations
 import html
 from typing import Any, Dict
 
+from src.decision_engine import decision_target_context, decision_target_label
+
 
 def decision_tone(score: int) -> str:
     if score >= 85:
@@ -17,6 +19,8 @@ def decision_card_html(decision: Dict[str, Any]) -> str:
     tone = decision_tone(int(decision.get("priority_score", 0)))
     aging_tone = str(decision.get("aging_tone", "good"))
     progress = int(decision.get("workflow_progress", 10))
+    target_label = decision_target_label(decision)
+    target_context = decision_target_context(decision)
     return f"""
     <section class="cv130-decision-card cv131-compact">
       <div class="cv130-decision-head">
@@ -24,6 +28,7 @@ def decision_card_html(decision: Dict[str, Any]) -> str:
           <div class="cv130-eyebrow">{html.escape(str(decision.get('decision_type', 'Engineering Decision')))}</div>
           <div class="cv130-decision-title">{html.escape(str(decision.get('title', 'Review decision')))}</div>
           <div class="cv130-reason">{html.escape(str(decision.get('reason', '')))}</div>
+          <div class="cv131-target-context"><strong>{html.escape(target_label)}</strong> · {html.escape(target_context)}</div>
         </div>
         <div class="cv131-card-badges">
           <span class="cv130-badge {tone}">{html.escape(str(decision.get('priority', 'Medium')))} · {int(decision.get('priority_score', 0))}/100</span>
@@ -46,6 +51,8 @@ def decision_card_html(decision: Dict[str, Any]) -> str:
 def packet_header_html(decision: Dict[str, Any]) -> str:
     tone = decision_tone(int(decision.get("priority_score", 0)))
     progress = int(decision.get("workflow_progress", 10))
+    target_label = decision_target_label(decision)
+    target_context = decision_target_context(decision)
     return f"""
     <section class="cv130-packet">
       <div class="cv130-decision-head">
@@ -53,6 +60,7 @@ def packet_header_html(decision: Dict[str, Any]) -> str:
           <div class="cv130-eyebrow">Engineering Decision Packet</div>
           <div class="cv130-packet-title">{html.escape(str(decision.get('title', 'Decision review')))}</div>
           <div class="cv130-reason">{html.escape(str(decision.get('reason', '')))}</div>
+          <div class="cv131-target-context"><strong>{html.escape(target_label)}</strong> · {html.escape(target_context)}</div>
         </div>
         <span class="cv130-badge {tone}">{html.escape(str(decision.get('status', 'New')))}</span>
       </div>

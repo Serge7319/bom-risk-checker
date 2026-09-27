@@ -24,7 +24,14 @@ from src.pages.dashboard_workspaces import (
     render_dashboard_page_heading,
     render_portfolio_intelligence_workspace,
 )
-from src.decision_engine import build_decision_center, STATUSES
+from src.decision_engine import (
+    build_decision_center,
+    decision_target_cell,
+    decision_target_context,
+    decision_target_label,
+    decision_target_type,
+    STATUSES,
+)
 from src.decision_dashboard import packet_header_html
 from src.decision_repository import (
     DECISION_LOAD_TIMEOUT_TOKEN,
@@ -3678,7 +3685,7 @@ def run_authenticated_app() -> None:
             alerts_response = execute_supabase_read(
                 _scoped_saved_query(
                     supabase.table("monitor_alerts").select(
-                        "id,part_number,mpn,alert_type,created_at,status,severity,user_id"
+                        "id,analysis_id,part_number,mpn,alert_type,alert_message,previous_value,current_value,created_at,status,severity,user_id"
                     ),
                     _saved_workspace_id,
                 )
@@ -6681,7 +6688,9 @@ def run_authenticated_app() -> None:
                     (
                         decision
                         for decision in all_decisions
-                        if str(decision["part_number"]).upper() == str(focus_part).upper()
+                        if decision_target_type(decision) == "component"
+                        and str(decision_target_label(decision)).upper()
+                        == str(focus_part).upper()
                     ),
                     None,
                 )
@@ -6737,7 +6746,13 @@ def run_authenticated_app() -> None:
                 with summary_tab:
                     render_kpi_row_safe(
                         [
-                            MetricCard(label="Component / BOM", value=str(selected_decision["part_number"]), tone="info", icon="package"),
+                            MetricCard(
+                                label="Review target",
+                                value=decision_target_label(selected_decision),
+                                detail=decision_target_context(selected_decision),
+                                tone="info",
+                                icon="package",
+                            ),
                             MetricCard(label="Priority", value=f"{selected_decision['priority_score']}/100", tone="warning", icon="triangle-alert"),
                             MetricCard(label="Confidence", value=f"{selected_decision['confidence']}%", tone="confidence", icon="gauge"),
                             MetricCard(label="Estimated Effort", value=f"{selected_decision['estimated_effort_hours']} hrs", tone="monitoring", icon="clock-3"),
@@ -6865,32 +6880,76 @@ def run_authenticated_app() -> None:
                             st.success("Decision workflow saved.")
                             st.rerun()
 
-                    navigation_cols = st.columns(4)
-                    with navigation_cols[0]:
-                        internal_nav_button(
-                            "Find Alternative",
-                            "Alternative Finder",
-                            key=f"decision_find_alt_{decision_id}",
-                            use_container_width=True,
-                            original_part=selected_decision["part_number"],
-                            analysis_id=str(selected_decision.get("analysis_id") or ""),
-                            source_page="engineering_decisions",
-                        )
-                    with navigation_cols[1]:
-                        internal_nav_button(
-                            "Open Monitoring",
-                            "Monitoring",
-                            key=f"decision_monitor_{decision_id}",
-                            use_container_width=True,
-                        )
-                    with navigation_cols[2]:
+                    is_component_decision = (
+                        decision_target_type(selected_decision) == "component"
+                    )
+                    navigation_cols = st.columns(
+                        4 if is_component_decision else 3
+                    )
+                    if is_component_decision:
+                        with navigation_cols[0]:
+                            internal_nav_button(
+                                "Find Alternative",
+                                "Alternative Finder",
+                                key=f"decision_find_alt_{decision_id}",
+                                use_container_width=True,
+                                original_part=(
+                                    selected_decision.get("mpn")
+                                    or selected_decision.get("part_number")
+                                ),
+                                analysis_id=str(
+                                    selected_decision.get("analysis_id") or ""
+                                ),
+                                project_name=str(
+                                    selected_decision.get("project_name") or ""
+                                ),
+                                bom_name=str(
+                                    selected_decision.get("bom_name") or ""
+                                ),
+                                source_page="engineering_decisions",
+                            )
+                        with navigation_cols[1]:
+                            internal_nav_button(
+                                "Open Monitoring",
+                                "Monitoring",
+                                key=f"decision_monitor_{decision_id}",
+                                use_container_width=True,
+                                mpn=(
+                                    selected_decision.get("mpn")
+                                    or selected_decision.get("part_number")
+                                ),
+                                return_analysis_id=str(
+                                    selected_decision.get("analysis_id") or ""
+                                ),
+                            )
+                        report_column = navigation_cols[2]
+                        saved_bom_column = navigation_cols[3]
+                    else:
+                        with navigation_cols[0]:
+                            internal_nav_button(
+                                "Review affected components",
+                                "Analysis Details",
+                                key=f"decision_components_{decision_id}",
+                                use_container_width=True,
+                                analysis_id=str(
+                                    selected_decision.get("analysis_id") or ""
+                                ),
+                                analysis_tab="Components",
+                                focus="component-risk",
+                            )
+                        report_column = navigation_cols[1]
+                        saved_bom_column = navigation_cols[2]
+                    with report_column:
                         internal_nav_button(
                             "Generate Report",
                             "Reports",
                             key=f"decision_report_{decision_id}",
                             use_container_width=True,
+                            analysis_id=str(
+                                selected_decision.get("analysis_id") or ""
+                            ),
                         )
-                    with navigation_cols[3]:
+                    with saved_bom_column:
                         if selected_decision.get("analysis_id"):
                             internal_nav_button(
                                 "Open Saved BOM",
@@ -7148,7 +7207,7 @@ def run_authenticated_app() -> None:
                         with filter_cols[2]:
                             search_decisions = st.text_input(
                                 "Search decisions",
-                                placeholder="Component, project, owner, or action",
+                                placeholder="Component, BOM, owner, or action",
                                 key=search_filter_key,
                             )
     
@@ -7190,7 +7249,8 @@ def run_authenticated_app() -> None:
                                 if query
                                 in " ".join(
                                     [
-                                        str(decision["part_number"]),
+                                        decision_target_label(decision),
+                                        decision_target_context(decision),
                                         str(decision["title"]),
                                         str(decision["assigned_owner"]),
                                         str(decision["reason"]),
@@ -7207,7 +7267,7 @@ def run_authenticated_app() -> None:
                             decision_table = pd.DataFrame(
                                 [
                                     {
-                                        "Component / BOM": decision["part_number"],
+                                        "Review target": decision_target_cell(decision),
                                         "Decision": decision["title"],
                                         "Priority": semantic_priority_label(
                                             decision.get("priority_score", 0)
@@ -7278,8 +7338,8 @@ def run_authenticated_app() -> None:
                                 ),
                                 columns=(
                                     ExpandableTableColumn(
-                                        "Component / BOM", "Component / BOM",
-                                        width=1.05, min_width=140, kind="strong",
+                                        "Review target", "Review target",
+                                        width=1.25, min_width=190, kind="target",
                                     ),
                                     ExpandableTableColumn(
                                         "Decision", "Decision",
@@ -7703,10 +7763,19 @@ def run_authenticated_app() -> None:
                                             st.markdown(
                                                 f"**{html.escape(str(driver_decision.get('title') or 'Review decision'))}**"
                                             )
+                                            target_label = decision_target_label(
+                                                driver_decision
+                                            )
+                                            target_context = decision_target_context(
+                                                driver_decision
+                                            )
+                                            st.markdown(
+                                                f"**{html.escape(target_label)}** · "
+                                                f"{html.escape(target_context)}"
+                                            )
                                             st.caption(
                                                 " · ".join(
                                                     [
-                                                        str(driver_decision.get("part_number") or "BOM"),
                                                         str(driver_decision.get("priority") or "Routine")
                                                         + " · "
                                                         + str(driver_decision.get("priority_score") or 0)
@@ -7796,7 +7865,8 @@ def run_authenticated_app() -> None:
                                 in " ".join(
                                     [
                                         str(decision["title"]),
-                                        str(decision["part_number"]),
+                                        decision_target_label(decision),
+                                        decision_target_context(decision),
                                         str(decision["assigned_owner"]),
                                         str(decision["decision_type"]),
                                         str(decision["status"]),
@@ -7811,7 +7881,8 @@ def run_authenticated_app() -> None:
                                 [
                                     {
                                         "Updated": decision["updated_at"],
-                                        "Project / Component": decision["part_number"],
+                                        "Review target": decision_target_label(decision),
+                                        "Context": decision_target_context(decision),
                                         "Decision": decision["title"],
                                         "Owner": decision["assigned_owner"],
                                         "Decision Type": decision["decision_type"],
@@ -7824,7 +7895,7 @@ def run_authenticated_app() -> None:
                             cadivor_table(
                                 archive_df,
                                 caption="Archived and production-approved decisions",
-                                monospace_columns=["Project / Component"],
+                                monospace_columns=["Review target"],
                                 badge_columns=["Outcome"],
                                 align={"Confidence": "right"},
                             )
@@ -13414,6 +13485,10 @@ def run_authenticated_app() -> None:
                 min-height:72px;
             }
 
+            .af62-field-wide {
+                grid-column:1 / -1;
+            }
+
             .af62-field span {
                 display:block;
                 color:#64748B!important;
@@ -14686,6 +14761,15 @@ def run_authenticated_app() -> None:
 
         with summary_col:
             with st.container(border=True, key="af62_summary"):
+                bom_context = _af62_prefill_value("project_name", "") or _af62_prefill_value(
+                    "bom_name", ""
+                )
+                bom_context_markup = (
+                    f'<div class="af62-field af62-field-wide"><span>BOM context</span>'
+                    f'<strong>{html.escape(bom_context)}</strong></div>'
+                    if bom_context
+                    else ""
+                )
                 st.markdown(
                     f"""
                     <div class="af62-card-head">
@@ -14706,6 +14790,7 @@ def run_authenticated_app() -> None:
                       <div class="af62-field"><span>Verified Suppliers</span><strong>{html.escape(_af62_first(original_summary_data, ["sources_available", "source"], fallback="Not available"))}</strong></div>
                       <div class="af62-field"><span>Supplier coverage</span><strong>{html.escape(_af62_provider_coverage(original_summary_data, discovery_summary))}</strong></div>
                       <div class="af62-field"><span>Datasheet / Source</span><strong>{datasheet_display}</strong></div>
+                      {bom_context_markup}
                     </div>
                     <div class="af62-search-status {current_status_class}">{current_status}</div>
                     """,

@@ -768,6 +768,19 @@ def _expandable_cell_value(value: Any) -> str:
 def _expandable_cell_html(value: Any, column: ExpandableTableColumn) -> str:
     text = _expandable_cell_value(value)
     kind = str(column.kind or "text").strip().lower()
+    if kind == "target":
+        primary, _, secondary = text.partition("\n")
+        secondary_markup = (
+            f'<small class="cv-expandable-table__target-context">'
+            f'{escape(secondary)}</small>'
+            if secondary
+            else ""
+        )
+        return (
+            '<span class="cv-expandable-table__target">'
+            f'<strong>{escape(primary)}</strong>{secondary_markup}'
+            '</span>'
+        )
     if kind == "priority":
         normalized = text.casefold()
         tone = (
@@ -1055,7 +1068,18 @@ def render_decision_card_actions(
 ) -> None:
     """Compact primary/secondary toolbar for a decision card."""
     _render_html('<div class="cv64-decision-toolbar">')
-    action_cols = st.columns([1.25, 1, 1, 1], gap="small")
+    target_type = str(decision.get("target_type") or "").strip().lower()
+    if target_type not in {"component", "bom"}:
+        target_type = (
+            "bom"
+            if str(decision.get("source") or "").strip().lower() == "bom analysis"
+            else "component"
+        )
+    is_component_target = target_type == "component"
+    action_cols = st.columns(
+        [1.25, 1, 1, 1] if is_component_target else [1.25, 1, 1],
+        gap="small",
+    )
     with action_cols[0]:
         cadivor_button_wrap("primary")
         if st.button(
@@ -1066,32 +1090,52 @@ def render_decision_card_actions(
         ):
             navigate_to("Engineering Decisions", decision_id=decision["decision_id"])
         cadivor_button_wrap_end()
-    with action_cols[1]:
-        cadivor_button_wrap("secondary")
-        internal_nav_button(
-            "View Alternative",
-            "Alternative Finder",
-            key=f"{key_prefix}_alt",
-            use_container_width=True,
-            type="secondary",
-            original_part=decision["part_number"],
-            analysis_id=str(decision.get("analysis_id") or ""),
-            source_page="engineering_decisions",
-        )
-        cadivor_button_wrap_end()
-    with action_cols[2]:
-        cadivor_button_wrap("secondary")
-        internal_nav_button(
-            "Open Monitoring",
-            "Monitoring",
-            key=f"{key_prefix}_monitor",
-            use_container_width=True,
-            type="secondary",
-            mpn=decision["part_number"],
-            return_analysis_id=str(decision.get("analysis_id") or ""),
-        )
-        cadivor_button_wrap_end()
-    with action_cols[3]:
+    if is_component_target:
+        with action_cols[1]:
+            cadivor_button_wrap("secondary")
+            internal_nav_button(
+                "View Alternative",
+                "Alternative Finder",
+                key=f"{key_prefix}_alt",
+                use_container_width=True,
+                type="secondary",
+                original_part=(decision.get("mpn") or decision.get("part_number")),
+                analysis_id=str(decision.get("analysis_id") or ""),
+                project_name=str(decision.get("project_name") or ""),
+                bom_name=str(decision.get("bom_name") or ""),
+                source_page="engineering_decisions",
+            )
+            cadivor_button_wrap_end()
+        with action_cols[2]:
+            cadivor_button_wrap("secondary")
+            internal_nav_button(
+                "Open Monitoring",
+                "Monitoring",
+                key=f"{key_prefix}_monitor",
+                use_container_width=True,
+                type="secondary",
+                mpn=(decision.get("mpn") or decision.get("part_number")),
+                return_analysis_id=str(decision.get("analysis_id") or ""),
+            )
+            cadivor_button_wrap_end()
+        saved_bom_column = action_cols[3]
+    else:
+        with action_cols[1]:
+            cadivor_button_wrap("secondary")
+            internal_nav_button(
+                "Review affected components",
+                "Analysis Details",
+                key=f"{key_prefix}_components",
+                use_container_width=True,
+                type="secondary",
+                analysis_id=str(decision.get("analysis_id") or ""),
+                analysis_tab="Components",
+                focus="component-risk",
+            )
+            cadivor_button_wrap_end()
+        saved_bom_column = action_cols[2]
+
+    with saved_bom_column:
         cadivor_button_wrap("secondary")
         if decision.get("analysis_id"):
             internal_nav_button(
