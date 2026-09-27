@@ -26,6 +26,7 @@ from src.ui.navigation import (
     internal_nav_button,
     navigate_to,
     navigate_to_alternative_finder,
+    read_query_params,
     return_to_saved_bom_list,
 )
 from src.ai_advisor import build_engineering_supply_advisor
@@ -612,40 +613,25 @@ def _risk_label(part: dict[str, Any]) -> str:
     return str(_component_priority_assessment(part)["risk_level"])
 
 
-def _sync_component_focus_url(analysis_id: str, component_mpn: str = "") -> None:
-    """Persist inline expansion in the address bar without a history entry."""
-    payload = json.dumps(
+def _persist_component_focus_query(analysis_id: str, component_mpn: Any = "") -> None:
+    """Commit row expansion at click time so refresh restores the same row."""
+    desired = read_query_params()
+    desired.update(
         {
-            "analysisId": str(analysis_id or "").strip(),
-            "component": str(component_mpn or "").strip(),
-        },
-        ensure_ascii=True,
-    ).replace("<", "\\u003c")
-    components.html(
-        f"""
-        <script>
-        (function(){{
-          const state = {payload};
-          const parentWindow = window.parent;
-          const url = new URL(parentWindow.location.href);
-          url.searchParams.set('page', 'Analysis Details');
-          if (state.analysisId) url.searchParams.set('analysis_id', state.analysisId);
-          url.searchParams.set('analysis_tab', 'Components');
-          if (state.component) {{
-            url.searchParams.set('component', state.component);
-            url.searchParams.set('focus', 'component-risk');
-          }} else {{
-            url.searchParams.delete('component');
-            url.searchParams.delete('focus');
-          }}
-          const next = url.pathname + url.search + url.hash;
-          const current = parentWindow.location.pathname + parentWindow.location.search + parentWindow.location.hash;
-          if (next !== current) parentWindow.history.replaceState(parentWindow.history.state, '', next);
-        }})();
-        </script>
-        """,
-        height=0,
-        width=0,
+            "page": "Analysis Details",
+            "analysis_id": str(analysis_id or "").strip(),
+            "analysis_tab": "Components",
+        }
+    )
+    component = str(component_mpn or "").strip()
+    if component:
+        desired["component"] = component
+        desired["focus"] = "component-risk"
+    else:
+        desired.pop("component", None)
+        desired.pop("focus", None)
+    st.query_params.from_dict(
+        {key: value for key, value in desired.items() if str(value).strip()}
     )
 
 
@@ -2857,6 +2843,10 @@ def render_analysis_detail(
                         if should_apply_component_focus and requested_row_id
                         else None
                     ),
+                    on_toggle=lambda component_mpn: _persist_component_focus_query(
+                        analysis_id,
+                        component_mpn,
+                    ),
                     context_title="Component risk and release evidence",
                     context_detail=(
                         "Components are ranked by saved risk. Expand a row to see what affects "
@@ -2870,18 +2860,6 @@ def render_analysis_detail(
                 )
 
                 selected_component_position = component_table_result.first_selected_row
-                selected_component_url_mpn = ""
-                if (
-                    selected_component_position is not None
-                    and 0 <= selected_component_position < len(component_row_ids)
-                ):
-                    selected_component_url_mpn = component_row_ids[
-                        selected_component_position
-                    ]
-                _sync_component_focus_url(
-                    analysis_id,
-                    selected_component_url_mpn,
-                )
                 if (
                     selected_component_position is not None
                     and 0 <= selected_component_position < len(visible_parts)

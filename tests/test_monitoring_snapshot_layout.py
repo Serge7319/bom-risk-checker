@@ -98,6 +98,12 @@ class MonitoringSnapshotLayoutTests(unittest.TestCase):
             self.assertIn(priority_label, self.branch)
         self.assertNotIn("st.column_config.ProgressColumn", self.branch)
 
+    def test_workflow_editor_names_and_aligns_editable_urgency(self):
+        self.assertIn("monitoring_workflow_urgency(", self.branch)
+        self.assertIn('"Workflow urgency"', self.branch)
+        self.assertIn("derives a minimum urgency from the evidence score", self.branch)
+        self.assertIn("all_priority_options.index(minimum_priority)", self.branch)
+
     def test_monitored_components_expand_inline_with_history_and_impact(self):
         component_view = self.branch.split(
             "def _render_monitored_components", 1

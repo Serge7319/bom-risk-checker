@@ -4,6 +4,8 @@ from __future__ import annotations
 import ast
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -65,11 +67,58 @@ class AnalysisPartsRiskIntelligenceTests(unittest.TestCase):
         self.assertIn("requested_row_id", self.branch)
 
     def test_expanded_component_is_persisted_in_the_url(self):
-        self.assertIn("def _sync_component_focus_url", ANALYSIS_DETAIL)
-        self.assertIn("history.replaceState", ANALYSIS_DETAIL)
-        self.assertIn("url.searchParams.set('component'", ANALYSIS_DETAIL)
-        self.assertIn("url.searchParams.set('focus', 'component-risk')", ANALYSIS_DETAIL)
-        self.assertIn("_sync_component_focus_url(", self.branch)
+        self.assertIn("def _persist_component_focus_query", ANALYSIS_DETAIL)
+        self.assertIn("st.query_params.from_dict(", ANALYSIS_DETAIL)
+        self.assertIn('desired["component"] = component', ANALYSIS_DETAIL)
+        self.assertIn('desired["focus"] = "component-risk"', ANALYSIS_DETAIL)
+        self.assertIn("on_toggle=lambda component_mpn:", self.branch)
+        self.assertIn("_persist_component_focus_query(", self.branch)
+        self.assertNotIn("_sync_component_focus_url(", self.branch)
+
+    def test_component_focus_query_round_trips_open_and_collapse(self):
+        tree = ast.parse(ANALYSIS_DETAIL)
+        helper = next(
+            node
+            for node in tree.body
+            if isinstance(node, ast.FunctionDef)
+            and node.name == "_persist_component_focus_query"
+        )
+        module = ast.Module(
+            body=[
+                ast.ImportFrom(
+                    module="__future__",
+                    names=[ast.alias(name="annotations")],
+                    level=0,
+                ),
+                helper,
+            ],
+            type_ignores=[],
+        )
+
+        class QueryParams(dict):
+            def from_dict(self, values):
+                self.clear()
+                self.update(values)
+
+        query_params = QueryParams(
+            {"page": "Analysis Details", "analysis_id": "analysis-1"}
+        )
+        namespace = {
+            "Any": Any,
+            "st": SimpleNamespace(query_params=query_params),
+            "read_query_params": lambda: dict(query_params),
+        }
+        exec(compile(ast.fix_missing_locations(module), "<focus-query>", "exec"), namespace)
+        persist = namespace["_persist_component_focus_query"]
+
+        persist("analysis-1", "MCP2551-I/SN")
+        self.assertEqual(query_params["component"], "MCP2551-I/SN")
+        self.assertEqual(query_params["focus"], "component-risk")
+        self.assertEqual(query_params["analysis_tab"], "Components")
+
+        persist("analysis-1", "")
+        self.assertNotIn("component", query_params)
+        self.assertNotIn("focus", query_params)
 
     def test_inline_detail_has_clear_responsive_visual_hierarchy(self):
         for selector in (

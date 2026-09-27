@@ -5,10 +5,42 @@ import unittest
 
 import pandas as pd
 
-from src.monitoring_intelligence import build_monitoring_action_center
+from src.monitoring_intelligence import (
+    build_monitoring_action_center,
+    monitoring_workflow_urgency,
+)
 
 
 class MonitoringIntelligencePresentationTests(unittest.TestCase):
+    def test_workflow_urgency_cannot_understate_the_evidence_score(self):
+        self.assertEqual(monitoring_workflow_urgency(95, "Normal"), "Urgent")
+        self.assertEqual(monitoring_workflow_urgency(80, "Low"), "High")
+        self.assertEqual(monitoring_workflow_urgency(55, ""), "Normal")
+        self.assertEqual(monitoring_workflow_urgency(20, "Urgent"), "Urgent")
+
+    def test_action_center_aligns_critical_score_and_workflow_urgency(self):
+        alerts = pd.DataFrame(
+            [
+                {
+                    "id": "alert-critical",
+                    "part_number": "TPS5430DDAR",
+                    "alert_type": "Stock Drop",
+                    "alert_message": "Stock dropped from 13918 to 0",
+                    "severity": "High",
+                    "current_value": 0,
+                    "priority": "Normal",
+                }
+            ]
+        )
+
+        record = build_monitoring_action_center(
+            alerts,
+            pd.DataFrame(),
+        )["prioritized_alerts"].iloc[0]
+
+        self.assertEqual(record["Priority Score"], 95)
+        self.assertEqual(record["Priority"], "Urgent")
+
     def test_missing_workflow_values_use_human_fallbacks(self):
         alerts = pd.DataFrame(
             [

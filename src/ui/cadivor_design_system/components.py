@@ -740,9 +740,17 @@ def _expandable_widget_token(value: Any, position: int) -> str:
     return f"{position}_{cleaned[:54] or 'row'}"
 
 
-def _toggle_expandable_table_row(state_key: str, row_token: str) -> None:
+def _toggle_expandable_table_row(
+    state_key: str,
+    row_token: str,
+    row_id: Any,
+    on_toggle: Callable[[Any], None] | None = None,
+) -> None:
     current = str(st.session_state.get(state_key, "") or "")
-    st.session_state[state_key] = "" if current == row_token else row_token
+    next_token = "" if current == row_token else row_token
+    st.session_state[state_key] = next_token
+    if on_toggle is not None:
+        on_toggle(row_id if next_token else "")
 
 
 def _expandable_cell_value(value: Any) -> str:
@@ -796,6 +804,7 @@ def cadivor_expandable_table(
     render_expanded: Callable[[pd.Series, int], None] | None = None,
     row_ids: Sequence[Any] | None = None,
     initial_row_id: Any | None = None,
+    on_toggle: Callable[[Any], None] | None = None,
     context_title: str = "",
     context_detail: str = "",
     count_label: str = "",
@@ -894,6 +903,11 @@ def cadivor_expandable_table(
         )
         for position, (_, row) in enumerate(source_df.iterrows()):
             row_token = row_tokens[position]
+            row_id = (
+                supplied_ids[position]
+                if position < len(supplied_ids)
+                else position
+            )
             widget_token = _expandable_widget_token(row_token, position)
             is_expanded = selected_token == row_token
             cells = "".join(
@@ -922,7 +936,7 @@ def cadivor_expandable_table(
                     type="tertiary",
                     use_container_width=True,
                     on_click=_toggle_expandable_table_row,
-                    args=(state_key, row_token),
+                    args=(state_key, row_token, row_id, on_toggle),
                     help=f"{action} this row's evidence and actions",
                 )
             if is_expanded:

@@ -2138,7 +2138,10 @@ def run_authenticated_app() -> None:
     # First admit AND every chrome-changing navigation need the in-main owner.
     # Skipping first-admit loading left Dashboard chrome with an empty canvas.
     _needs_main_transition = route_needs_main_transition(_shell_route, _presented_route)
-    _paint_opening = should_paint_opening_overlay(needs_transition=_needs_main_transition)
+    _paint_opening = should_paint_opening_overlay(
+        needs_transition=_needs_main_transition,
+        target_route=_shell_route,
+    )
     st.session_state[DELAY_ROUTE_BODY_REVEAL_KEY] = bool(_paint_opening)
     if _paint_opening:
         from src.boot_read_budget import begin_first_page_budget
@@ -4006,7 +4009,10 @@ def run_authenticated_app() -> None:
             st.error(f"Monitoring history could not be loaded: {exc}")
             monitor_df = pd.DataFrame()
 
-        from src.monitoring_intelligence import build_monitoring_action_center
+        from src.monitoring_intelligence import (
+            build_monitoring_action_center,
+            monitoring_workflow_urgency,
+        )
         monitoring_center = build_monitoring_action_center(alert_df, monitor_df)
         monitored_count = monitoring_center["monitored_components"]
         monitor_limit_label = "Unlimited" if monitoring_limit is None or is_admin else f"{int(monitoring_limit):,}"
@@ -4463,14 +4469,16 @@ def run_authenticated_app() -> None:
                             "Dismissed",
                             "Reopened",
                         ]
-                        priority_options = ["Low", "Normal", "High", "Urgent"]
+                        all_priority_options = ["Low", "Normal", "High", "Urgent"]
                         row_status = status if status in status_options else "Open"
-                        row_priority = _monitor_display(row.get("Priority"), "Normal")
-                        row_priority = (
-                            row_priority
-                            if row_priority in priority_options
-                            else "Normal"
+                        minimum_priority = monitoring_workflow_urgency(score)
+                        row_priority = monitoring_workflow_urgency(
+                            score,
+                            row.get("Priority"),
                         )
+                        priority_options = all_priority_options[
+                            all_priority_options.index(minimum_priority) :
+                        ]
                         new_status = w1.selectbox(
                             "Status",
                             status_options,
@@ -4478,10 +4486,14 @@ def run_authenticated_app() -> None:
                             key=f"m32_status_{detail_key}",
                         )
                         new_priority = w2.selectbox(
-                            "Priority",
+                            "Workflow urgency",
                             priority_options,
                             index=priority_options.index(row_priority),
                             key=f"m32_priority_{detail_key}",
+                            help=(
+                                "Cadivor derives a minimum urgency from the evidence score. "
+                                "You can raise it, but not lower it while the current risk remains."
+                            ),
                         )
                         existing_owner = (
                             ""
@@ -15479,14 +15491,11 @@ def run_authenticated_app() -> None:
             comparison_rows.extend(
                 [
                     {
-                        "Attribute": "Drop-In Confidence",
+                        "Attribute": "Engineering Compatibility",
                         "Original": "—",
-                        "Selected Alternative": selected_row.get("Drop-In Confidence", ""),
-                    },
-                    {
-                        "Attribute": "Drop-In Rating",
-                        "Original": "—",
-                        "Selected Alternative": selected_row.get("Drop-In Rating", ""),
+                        "Selected Alternative": (
+                            f"{engineering_comparison_confidence}% · {confidence_label}"
+                        ),
                     },
                 ]
             )
@@ -15748,7 +15757,7 @@ def run_authenticated_app() -> None:
                     </div>
                     <div class="af63-decision-metric">
                       <span>Compatibility</span>
-                      <strong>{drop_in_confidence}% · {confidence_label}</strong>
+                      <strong>{engineering_comparison_confidence}% · {confidence_label}</strong>
                     </div>
                     <div class="af63-decision-metric">
                       <span>Engineering Risk</span>
@@ -15808,7 +15817,7 @@ def run_authenticated_app() -> None:
                 "engineering_note": engineering_note,
                 "recommendation_score": recommendation_score,
                 "recommendation_rating": recommendation_label,
-                "compatibility_confidence": drop_in_confidence,
+                "compatibility_confidence": engineering_comparison_confidence,
                 "compatibility_rating": confidence_label,
                 "copilot_disposition": alternative_reasoning.get("disposition"),
                 "copilot_decision_confidence": alternative_reasoning.get("decision_confidence"),
@@ -15995,7 +16004,7 @@ def run_authenticated_app() -> None:
                 ).get(candidate_key, "Pending review"),
                 engineering_note=engineering_note,
                 recommendation_score=recommendation_score,
-                compatibility_confidence=drop_in_confidence,
+                compatibility_confidence=engineering_comparison_confidence,
                 lifecycle=lifecycle_value,
                 risk=risk_value,
                 supplier=supplier_value,
