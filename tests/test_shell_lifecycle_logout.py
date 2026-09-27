@@ -211,7 +211,18 @@ class OpeningSkipTests(unittest.TestCase):
             },
         }
         self.assertFalse(
-            should_paint_opening_overlay(needs_transition=True, session_state=state)
+            should_paint_opening_overlay(
+                needs_transition=True,
+                target_route="Dashboard",
+                session_state=state,
+            )
+        )
+        self.assertTrue(
+            should_paint_opening_overlay(
+                needs_transition=True,
+                target_route="Analysis Details",
+                session_state=state,
+            )
         )
         self.assertTrue(
             should_paint_opening_overlay(

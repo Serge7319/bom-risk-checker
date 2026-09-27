@@ -52,6 +52,37 @@ def _alert_priority(row: Dict[str, Any]) -> int:
     return min(100, score)
 
 
+WORKFLOW_URGENCY_LEVELS = ("Low", "Normal", "High", "Urgent")
+
+
+def monitoring_workflow_urgency(
+    evidence_score: Any,
+    stored_priority: Any = "",
+) -> str:
+    """Return a workflow urgency that never understates the evidence score.
+
+    A saved workflow value may raise urgency, but it cannot make a critical
+    evidence score appear normal. This keeps the editable workflow control and
+    the read-only Cadivor priority signal semantically aligned.
+    """
+    score = _number(evidence_score, 0)
+    derived = (
+        "Urgent"
+        if score >= 90
+        else "High"
+        if score >= 75
+        else "Normal"
+        if score >= 50
+        else "Low"
+    )
+    stored = _text(stored_priority).title()
+    if stored not in WORKFLOW_URGENCY_LEVELS:
+        return derived
+    stored_rank = WORKFLOW_URGENCY_LEVELS.index(stored)
+    derived_rank = WORKFLOW_URGENCY_LEVELS.index(derived)
+    return WORKFLOW_URGENCY_LEVELS[max(stored_rank, derived_rank)]
+
+
 def _recommended_action(row: Dict[str, Any]) -> Dict[str, str]:
     alert_type = _text(row.get("alert_type")).lower()
     message = _text(row.get("alert_message")).lower()
@@ -92,11 +123,12 @@ def build_monitoring_action_center(alert_df: pd.DataFrame, monitor_df: pd.DataFr
             continue
         seen_alerts.add(alert_identity)
         action = _recommended_action(raw)
+        priority_score = _alert_priority(raw)
         status = _text(raw.get("workflow_status"), "Open").title()
         records.append({
             "Alert ID": _text(raw.get("id")), "Part Number": _text(raw.get("part_number"), "Unknown"),
-            "Analysis ID": _text(raw.get("analysis_id")), "Priority Score": _alert_priority(raw),
-            "Priority": _text(raw.get("priority"), "High" if _alert_priority(raw) >= 70 else "Normal").title(),
+            "Analysis ID": _text(raw.get("analysis_id")), "Priority Score": priority_score,
+            "Priority": monitoring_workflow_urgency(priority_score, raw.get("priority")),
             "Severity": _text(raw.get("severity"), "Unknown").title(), "Alert Type": _text(raw.get("alert_type"), "Change detected"),
             "Change": _text(raw.get("alert_message"), "Monitoring change detected"), "Previous Value": _text(raw.get("previous_value"), "—"),
             "Current Value": _text(raw.get("current_value"), "—"), "Recommended Action": action["action"],

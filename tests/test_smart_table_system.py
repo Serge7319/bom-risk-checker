@@ -2,7 +2,10 @@
 from __future__ import annotations
 
 import unittest
+import ast
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any, Callable
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -58,6 +61,46 @@ class SmartTableSystemTests(unittest.TestCase):
         self.assertIn("initial_row_id: Any | None = None", COMPONENTS)
         self.assertIn("requested_token = _expandable_table_token(initial_row_id", COMPONENTS)
         self.assertIn("detail_slot=detail_slot", COMPONENTS)
+        self.assertIn("on_toggle: Callable[[Any], None] | None = None", COMPONENTS)
+        self.assertIn("on_toggle(row_id if next_token else", COMPONENTS)
+        self.assertIn("args=(state_key, row_token, row_id, on_toggle)", COMPONENTS)
+
+    def test_expandable_table_notifies_open_and_collapse_at_click_time(self):
+        tree = ast.parse(COMPONENTS)
+        helper = next(
+            node
+            for node in tree.body
+            if isinstance(node, ast.FunctionDef)
+            and node.name == "_toggle_expandable_table_row"
+        )
+        module = ast.Module(
+            body=[
+                ast.ImportFrom(
+                    module="__future__",
+                    names=[ast.alias(name="annotations")],
+                    level=0,
+                ),
+                helper,
+            ],
+            type_ignores=[],
+        )
+        state = {}
+        notifications = []
+        namespace = {
+            "Any": Any,
+            "Callable": Callable,
+            "st": SimpleNamespace(session_state=state),
+        }
+        exec(compile(ast.fix_missing_locations(module), "<table-toggle>", "exec"), namespace)
+        toggle = namespace["_toggle_expandable_table_row"]
+
+        toggle("selected", "row-token", "MCP2551-I/SN", notifications.append)
+        self.assertEqual(state["selected"], "row-token")
+        self.assertEqual(notifications[-1], "MCP2551-I/SN")
+
+        toggle("selected", "row-token", "MCP2551-I/SN", notifications.append)
+        self.assertEqual(state["selected"], "")
+        self.assertEqual(notifications[-1], "")
 
     def test_monitoring_queue_and_coverage_share_the_contract(self):
         monitoring = RUNTIME.split('if app_mode == "Monitoring":', 1)[1].split(

@@ -26,6 +26,7 @@ MAIN_TRANSITION_GEN_KEY = "cadivor_main_transition_gen"
 FAST_CACHED_NAV_OPENING_MS = 300
 OPENING_STARTED_AT_KEY = "cadivor_opening_started_at"
 OPENING_ROUTE_KEY = "cadivor_opening_route"
+SLOW_ROUTE_OPENING_TARGETS = frozenset({"Analysis Details"})
 
 
 def get_presented_route(session_state: MutableMapping[str, Any] | None = None) -> str:
@@ -85,6 +86,7 @@ def warm_session_nav_ready(session_state: MutableMapping[str, Any] | None = None
 def should_paint_opening_overlay(
     *,
     needs_transition: bool,
+    target_route: str = "",
     session_state: MutableMapping[str, Any] | None = None,
 ) -> bool:
     """Paint Opening only for slow/cold work — not routine warm cached nav."""
@@ -93,6 +95,14 @@ def should_paint_opening_overlay(
     state = session_state if session_state is not None else st.session_state
     # First admit (no foundation shell yet) always needs a continuity surface.
     if not state.get("cadivor_foundation_shell_mounted"):
+        return True
+    # Saved BOM details can still require database, evidence, and component
+    # rendering work after auth caches are warm. Keep the single transition
+    # owner mounted so the previous page cannot flash or duplicate underneath.
+    target = str(
+        target_route or state.get(MAIN_TRANSITION_ROUTE_KEY) or ""
+    ).strip()
+    if target in SLOW_ROUTE_OPENING_TARGETS:
         return True
     if warm_session_nav_ready(state):
         # Warm handoffs must not retain an Opening layer: that layer can outlive
