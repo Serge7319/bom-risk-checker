@@ -13,6 +13,7 @@ ALTERNATIVE_FINDER_PAGE = "Alternative Finder"
 ALT_FINDER_CONTEXT_KEY = "cadivor_alt_finder_pending_context"
 ALT_FINDER_RETURN_ANALYSIS_KEY = "cadivor_alt_finder_return_analysis_id"
 ALT_FINDER_RETURN_SECTION_KEY = "cadivor_alt_finder_return_analysis_section"
+ALT_FINDER_RETURN_COMPONENT_KEY = "cadivor_alt_finder_return_component_mpn"
 ALT_FINDER_RETURN_PAGE_KEY = "cadivor_alt_finder_return_page"
 ALT_FINDER_RETURN_MPN_KEY = "cadivor_alt_finder_return_mpn"
 ALT_FINDER_INTENT = "find_alternatives"
@@ -30,8 +31,11 @@ _ALT_NAV_KEYS = (
     "original_part",
     "manufacturer",
     "description",
+    "lifecycle",
+    "risk",
     "analysis_id",
     "return_analysis_id",
+    "return_component",
     "part_id",
     "source_page",
     "return_page",
@@ -296,6 +300,8 @@ def build_alternative_finder_context(
     mpn: str,
     manufacturer: str = "",
     description: str = "",
+    lifecycle: str = "",
+    risk: str = "",
     analysis_id: str = "",
     part_id: str = "",
     source_page: str = "",
@@ -308,6 +314,8 @@ def build_alternative_finder_context(
         "normalized_mpn": normalized_mpn,
         "manufacturer": str(manufacturer or "").strip(),
         "description": str(description or "").strip(),
+        "lifecycle": str(lifecycle or "").strip(),
+        "risk": str(risk or "").strip(),
         "analysis_id": str(analysis_id or "").strip(),
         "part_id": str(part_id or "").strip(),
         "source_page": str(source_page or "").strip(),
@@ -320,6 +328,8 @@ def navigate_to_alternative_finder(
     mpn: str,
     manufacturer: str = "",
     description: str = "",
+    lifecycle: str = "",
+    risk: str = "",
     analysis_id: str = "",
     part_id: str = "",
     source_page: str = "",
@@ -334,6 +344,8 @@ def navigate_to_alternative_finder(
         mpn=mpn,
         manufacturer=manufacturer,
         description=description,
+        lifecycle=lifecycle,
+        risk=risk,
         analysis_id=analysis_id,
         part_id=part_id,
         source_page=source_page,
@@ -352,13 +364,21 @@ def navigate_to_alternative_finder(
     if effective_analysis_id:
         st.session_state[ALT_FINDER_RETURN_ANALYSIS_KEY] = effective_analysis_id
         active_section = str(st.session_state.get("cadivor_active_analysis_tab", "") or "").strip()
+        if context["source_page"] == "analysis_detail_parts_risk":
+            active_section = "Components"
         if active_section:
             st.session_state[ALT_FINDER_RETURN_SECTION_KEY] = active_section
+        if active_section == "Components":
+            st.session_state[ALT_FINDER_RETURN_COMPONENT_KEY] = context["mpn"]
+            nav_kwargs["return_component"] = context["mpn"]
+        else:
+            st.session_state.pop(ALT_FINDER_RETURN_COMPONENT_KEY, None)
         nav_kwargs["analysis_id"] = effective_analysis_id
         nav_kwargs["return_analysis_id"] = effective_analysis_id
     else:
         st.session_state.pop(ALT_FINDER_RETURN_ANALYSIS_KEY, None)
         st.session_state.pop(ALT_FINDER_RETURN_SECTION_KEY, None)
+        st.session_state.pop(ALT_FINDER_RETURN_COMPONENT_KEY, None)
     if return_page:
         st.session_state[ALT_FINDER_RETURN_PAGE_KEY] = return_page
         st.session_state[ALT_FINDER_RETURN_MPN_KEY] = return_mpn or context["mpn"]
@@ -371,6 +391,10 @@ def navigate_to_alternative_finder(
         nav_kwargs["manufacturer"] = context["manufacturer"]
     if context["description"]:
         nav_kwargs["description"] = context["description"]
+    if context["lifecycle"]:
+        nav_kwargs["lifecycle"] = context["lifecycle"]
+    if context["risk"]:
+        nav_kwargs["risk"] = context["risk"]
     if context["part_id"]:
         nav_kwargs["part_id"] = context["part_id"]
     if context["source_page"]:
@@ -526,6 +550,8 @@ def consume_alternative_finder_context(
         mpn=original_part,
         manufacturer=str(qp_value("manufacturer", "") or ""),
         description=str(qp_value("description", "") or ""),
+        lifecycle=str(qp_value("lifecycle", "") or ""),
+        risk=str(qp_value("risk", "") or ""),
         analysis_id=str(qp_value("analysis_id", "") or ""),
         part_id=str(qp_value("part_id", "") or ""),
         source_page=str(qp_value("source_page", "") or ""),
@@ -533,6 +559,11 @@ def consume_alternative_finder_context(
     return_analysis_id = str(qp_value("return_analysis_id", "") or context["analysis_id"]).strip()
     if return_analysis_id:
         st.session_state[ALT_FINDER_RETURN_ANALYSIS_KEY] = return_analysis_id
+    return_component = str(qp_value("return_component", "") or "").strip()
+    if return_component:
+        st.session_state[ALT_FINDER_RETURN_COMPONENT_KEY] = return_component
+    else:
+        st.session_state.pop(ALT_FINDER_RETURN_COMPONENT_KEY, None)
     _clear_consumed_alt_nav_params()
     _clear_alt_query_params()
     return context
@@ -595,6 +626,12 @@ def apply_alternative_finder_prefill(context: Mapping[str, str]) -> None:
         st.session_state["alternative_original_manufacturer"] = context["manufacturer"]
     else:
         st.session_state.pop("alternative_original_manufacturer", None)
+    st.session_state["alternative_prefill_source_context"] = {
+        "mpn": context["mpn"],
+        "manufacturer": context.get("manufacturer", ""),
+        "lifecycle": context.get("lifecycle", ""),
+        "risk": context.get("risk", ""),
+    }
     if context.get("analysis_id"):
         st.session_state["cadivor_active_analysis_id"] = context["analysis_id"]
         st.session_state["analysis_id"] = context["analysis_id"]
@@ -604,6 +641,7 @@ def reset_alternative_finder_prefill() -> None:
     """Clear Alternative Finder prefill state during an intentional reset."""
     st.session_state.pop("alternative_prefill_token", None)
     st.session_state.pop("alternative_original_manufacturer", None)
+    st.session_state.pop("alternative_prefill_source_context", None)
 
 
 def alternative_finder_href(
@@ -611,6 +649,8 @@ def alternative_finder_href(
     mpn: str,
     manufacturer: str = "",
     description: str = "",
+    lifecycle: str = "",
+    risk: str = "",
     analysis_id: str = "",
     part_id: str = "",
     source_page: str = "",
@@ -621,6 +661,8 @@ def alternative_finder_href(
         mpn=mpn,
         manufacturer=manufacturer,
         description=description,
+        lifecycle=lifecycle,
+        risk=risk,
         analysis_id=analysis_id,
         part_id=part_id,
         source_page=source_page,
@@ -637,6 +679,10 @@ def alternative_finder_href(
         params["manufacturer"] = context["manufacturer"]
     if context["description"]:
         params["description"] = context["description"]
+    if context["lifecycle"]:
+        params["lifecycle"] = context["lifecycle"]
+    if context["risk"]:
+        params["risk"] = context["risk"]
     if context["part_id"]:
         params["part_id"] = context["part_id"]
     if context["source_page"]:
@@ -658,6 +704,8 @@ def _commit_internal_nav(page: str, params: dict[str, Any]) -> None:
                 mpn=str(params.get("original_part") or params.get("mpn") or ""),
                 manufacturer=str(params.get("manufacturer") or ""),
                 description=str(params.get("description") or ""),
+                lifecycle=str(params.get("lifecycle") or ""),
+                risk=str(params.get("risk") or ""),
                 analysis_id=str(params.get("analysis_id") or ""),
                 part_id=str(params.get("part_id") or ""),
                 source_page=str(params.get("source_page") or ""),

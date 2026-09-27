@@ -99,6 +99,7 @@ from src.email_routing import BILLING_EMAIL, mailto_href
 from src.monitoring_email_preferences import monitoring_email_enabled
 from src.ui.navigation import (
     ALTERNATIVE_FINDER_PAGE,
+    ALT_FINDER_RETURN_COMPONENT_KEY,
     alternative_finder_href,
     apply_alternative_finder_prefill,
     begin_authenticated_page,
@@ -13116,6 +13117,11 @@ def run_authenticated_app() -> None:
             or st.session_state.get("cadivor_alt_finder_return_mpn", "")
             or ""
         ).strip()
+        return_component = str(
+            _qp_value("return_component")
+            or st.session_state.get(ALT_FINDER_RETURN_COMPONENT_KEY, "")
+            or ""
+        ).strip()
         if return_page == "Design Impact Analyzer":
             def _return_to_design_impact() -> None:
                 st.session_state["design_impact_mpn"] = return_mpn
@@ -13135,17 +13141,30 @@ def run_authenticated_app() -> None:
                     st.session_state.get("cadivor_alt_finder_return_analysis_section", "")
                     or "Components"
                 ).strip()
+                component_to_restore = (
+                    return_component if return_section == "Components" else ""
+                )
                 st.session_state["cadivor_active_analysis_id"] = return_analysis_id
                 st.session_state["cadivor_pending_analysis_section"] = return_section
                 st.session_state["cadivor_pending_analysis_section_id"] = return_analysis_id
+                if component_to_restore:
+                    st.session_state["cadivor_selected_component_mpn"] = component_to_restore
+                    st.session_state["cadivor_selected_component_analysis_id"] = return_analysis_id
                 st.session_state.pop("cadivor_alt_finder_return_analysis_id", None)
                 st.session_state.pop("cadivor_alt_finder_return_analysis_section", None)
-                navigate_to(
-                    "Analysis Details",
-                    _rerun=False,
-                    analysis_id=return_analysis_id,
-                    analysis_tab=return_section,
-                )
+                st.session_state.pop(ALT_FINDER_RETURN_COMPONENT_KEY, None)
+                navigation_params = {
+                    "analysis_id": return_analysis_id,
+                    "analysis_tab": return_section,
+                }
+                if component_to_restore:
+                    navigation_params.update(
+                        {
+                            "component": component_to_restore,
+                            "focus": "component-risk",
+                        }
+                    )
+                navigate_to("Analysis Details", _rerun=False, **navigation_params)
 
             st.button(
                 "← Back to Saved BOM",
@@ -14410,6 +14429,24 @@ def run_authenticated_app() -> None:
                     return str(value).strip()
             return fallback
 
+        prefill_source_context = st.session_state.get(
+            "alternative_prefill_source_context",
+            {},
+        )
+        if not isinstance(prefill_source_context, dict):
+            prefill_source_context = {}
+        prefill_matches_current = bool(
+            current_search
+            and str(prefill_source_context.get("mpn") or "").strip().upper()
+            == str(current_search).strip().upper()
+        )
+
+        def _af62_prefill_value(key: str, fallback: str = "—") -> str:
+            if not prefill_matches_current:
+                return fallback
+            value = str(prefill_source_context.get(key) or "").strip()
+            return value or fallback
+
         def _af62_provider_coverage(data, discovery_metadata=None):
             from integrations.supplier_diagnostics import (
                 format_alternative_finder_provider_coverage,
@@ -14455,6 +14492,7 @@ def run_authenticated_app() -> None:
                     "manufacturer_name",
                     "brand",
                 ],
+                fallback=_af62_prefill_value("manufacturer"),
             )
         )
 
@@ -14467,6 +14505,7 @@ def run_authenticated_app() -> None:
                     "lifecycle",
                     "status",
                 ],
+                fallback=_af62_prefill_value("lifecycle"),
             )
         )
 
@@ -14488,6 +14527,7 @@ def run_authenticated_app() -> None:
             fallback=_af62_first(
                 original_summary_data,
                 ["risk_level", "Risk Level", "estimated_risk"],
+                fallback=_af62_prefill_value("risk"),
             ),
         )
         risk_display = html.escape(risk_display_raw)
@@ -14497,7 +14537,7 @@ def run_authenticated_app() -> None:
             risk_class = "risk-low"
         elif risk_display_raw.lower() == "medium":
             risk_class = "risk-medium"
-        elif risk_display_raw.lower() == "high":
+        elif risk_display_raw.lower() in {"high", "critical"}:
             risk_class = "risk-high"
 
         datasheet_url = _af62_first(
@@ -14535,6 +14575,12 @@ def run_authenticated_app() -> None:
         elif active_finder_result and original_summary_data:
             current_status = "Component intelligence loaded"
             current_status_class = "success"
+        elif prefill_matches_current and any(
+            _af62_prefill_value(key, "")
+            for key in ("manufacturer", "lifecycle", "risk")
+        ):
+            current_status = "Saved BOM context loaded — run search to refresh the evidence"
+            current_status_class = ""
         elif current_search:
             current_status = "Ready to search"
             current_status_class = ""

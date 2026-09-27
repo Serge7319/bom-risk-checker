@@ -2999,6 +2999,8 @@ def render_analysis_detail(
                                         type="primary",
                                         original_part=selected_mpn,
                                         manufacturer=selected_mfg,
+                                        lifecycle=detail["lifecycle"],
+                                        risk=detail["risk_level"],
                                         analysis_id=analysis_id,
                                         return_analysis_id=analysis_id,
                                         source_page="analysis_detail_parts_risk",
