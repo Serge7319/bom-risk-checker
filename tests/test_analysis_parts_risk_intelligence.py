@@ -59,6 +59,8 @@ class AnalysisPartsRiskIntelligenceTests(unittest.TestCase):
         self.assertIn('"Monitor component"', self.branch)
         self.assertIn('"View design impact"', self.branch)
         self.assertIn('if detail["url"] and len(action_specs) < 4:', self.branch)
+        self.assertIn('lifecycle=detail["lifecycle"]', self.branch)
+        self.assertIn('risk=detail["risk_level"]', self.branch)
 
     def test_deep_linked_component_opens_and_clears_stale_filters(self):
         self.assertIn('st.session_state[f"analysis_component_search_{analysis_id}"] = ""', self.branch)

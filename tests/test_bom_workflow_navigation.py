@@ -39,21 +39,61 @@ class BomWorkflowNavigationTests(unittest.TestCase):
 
     def test_alternative_navigation_preserves_analysis_and_section_after_consumption(self):
         self.streamlit.session_state["cadivor_active_analysis_tab"] = "Components"
-        self.navigation.navigate_to_alternative_finder(mpn="LM358N", analysis_id="bom-42", source_page="analysis_detail")
+        self.navigation.navigate_to_alternative_finder(
+            mpn="LM358N",
+            manufacturer="Texas Instruments",
+            lifecycle="Active",
+            risk="High",
+            analysis_id="bom-42",
+            source_page="analysis_detail_parts_risk",
+        )
         context = self.navigation.consume_alternative_finder_context(lambda key, default="": default)
         self.assertEqual(context["analysis_id"], "bom-42")
+        self.assertEqual(context["manufacturer"], "Texas Instruments")
+        self.assertEqual(context["lifecycle"], "Active")
+        self.assertEqual(context["risk"], "High")
         self.assertEqual(self.streamlit.session_state[self.navigation.ALT_FINDER_RETURN_ANALYSIS_KEY], "bom-42")
         self.assertEqual(self.streamlit.session_state[self.navigation.ALT_FINDER_RETURN_SECTION_KEY], "Components")
+        self.assertEqual(
+            self.streamlit.session_state[
+                self.navigation.ALT_FINDER_RETURN_COMPONENT_KEY
+            ],
+            "LM358N",
+        )
+
+        self.navigation.apply_alternative_finder_prefill(context)
+        self.assertEqual(
+            self.streamlit.session_state["alternative_prefill_source_context"],
+            {
+                "mpn": "LM358N",
+                "manufacturer": "Texas Instruments",
+                "lifecycle": "Active",
+                "risk": "High",
+            },
+        )
 
     def test_standalone_alternative_navigation_clears_previous_return(self):
         self.streamlit.session_state[self.navigation.ALT_FINDER_RETURN_ANALYSIS_KEY] = "old-bom"
+        self.streamlit.session_state[self.navigation.ALT_FINDER_RETURN_COMPONENT_KEY] = "LM358N"
         self.navigation.navigate_to_alternative_finder(mpn="LM358N")
         self.assertNotIn(self.navigation.ALT_FINDER_RETURN_ANALYSIS_KEY, self.streamlit.session_state)
+        self.assertNotIn(self.navigation.ALT_FINDER_RETURN_COMPONENT_KEY, self.streamlit.session_state)
 
     def test_external_context_preserves_return_after_query_cleanup(self):
-        values = {"original_part": "LM358N", "analysis_id": "bom-21", "return_analysis_id": "bom-21"}
+        values = {
+            "original_part": "LM358N",
+            "analysis_id": "bom-21",
+            "return_analysis_id": "bom-21",
+            "return_component": "LM358N",
+        }
         self.navigation.consume_alternative_finder_context(lambda key, default="": values.get(key, default))
         self.assertEqual(self.streamlit.session_state[self.navigation.ALT_FINDER_RETURN_ANALYSIS_KEY], "bom-21")
+        self.assertEqual(
+            self.streamlit.session_state[
+                self.navigation.ALT_FINDER_RETURN_COMPONENT_KEY
+            ],
+            "LM358N",
+        )
 
     def test_reports_use_internal_navigation_and_selected_analysis(self):
         source = (ROOT / "src/authenticated_runtime.py").read_text()
@@ -232,6 +272,9 @@ class BomWorkflowNavigationTests(unittest.TestCase):
 
         self.assertIn('_rerun=False', handler)
         self.assertIn('on_click=_return_to_saved_bom', handler)
+        self.assertIn('"component": component_to_restore', handler)
+        self.assertIn('"focus": "component-risk"', handler)
+        self.assertIn("ALT_FINDER_RETURN_COMPONENT_KEY", handler)
 
     def test_dashboard_drilldowns_stay_in_session(self):
         workspace = (ROOT / "src/living_workspace.py").read_text()

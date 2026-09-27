@@ -34,6 +34,16 @@ class AlternativeFinderUsabilityTests(unittest.TestCase):
         self.assertIn("Why Cadivor recommends this part", RUNTIME_SOURCE)
         self.assertIn("before approving a replacement", RUNTIME_SOURCE)
 
+    def test_saved_bom_prefill_identifies_known_component_context(self):
+        self.assertIn('"alternative_prefill_source_context"', RUNTIME_SOURCE)
+        self.assertIn('fallback=_af62_prefill_value("manufacturer")', RUNTIME_SOURCE)
+        self.assertIn('fallback=_af62_prefill_value("lifecycle")', RUNTIME_SOURCE)
+        self.assertIn('fallback=_af62_prefill_value("risk")', RUNTIME_SOURCE)
+        self.assertIn(
+            "Saved BOM context loaded — run search to refresh the evidence",
+            RUNTIME_SOURCE,
+        )
+
     def test_supplier_failure_does_not_expose_exception_types(self):
         self.assertNotIn('type(lookup_error).__name__', RUNTIME_SOURCE)
         self.assertNotIn('type(search_error).__name__', RUNTIME_SOURCE)
