@@ -43,8 +43,10 @@ class AlternativeFinderSearchFeedbackTests(unittest.TestCase):
         self.assertIn("Approve after reviewing the datasheet", SOURCE)
 
     def test_supplier_search_guidance_remains_visible_while_loading(self):
-        self.assertIn("Searching component intelligence", SOURCE)
-        self.assertIn("Checking supplier coverage, lifecycle evidence", SOURCE)
+        self.assertIn("Searching suppliers and replacement candidates", SOURCE)
+        self.assertIn("Keep this page open while Cadivor ranks the results", SOURCE)
+        self.assertIn('key="af62_search_status"', SOURCE)
+        self.assertIn("position:fixed!important", SOURCE)
 
 
 if __name__ == "__main__":

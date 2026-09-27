@@ -79,6 +79,47 @@ class BomWorkflowNavigationTests(unittest.TestCase):
         self.assertNotIn(self.navigation.ALT_FINDER_RETURN_ANALYSIS_KEY, self.streamlit.session_state)
         self.assertNotIn(self.navigation.ALT_FINDER_RETURN_COMPONENT_KEY, self.streamlit.session_state)
 
+    def test_generic_sidebar_launch_clears_stale_part_results_and_bom_return(self):
+        from src.alternative_finder_state import (
+            complete_alternative_finder_search,
+            get_alternative_finder_candidates,
+            get_alternative_finder_display_mpn,
+        )
+
+        complete_alternative_finder_search(
+            self.streamlit.session_state,
+            entered_mpn="STM32F103C8T6",
+            canonical_mpn="STM32F103C8T6",
+            original_data={"manufacturer_part_number": "STM32F103C8T6"},
+            original_risk={"risk_level": "High"},
+            candidates=[
+                {"Alternative Part": "STM32F103C8T6TR", "Recommendation Score": 54}
+            ],
+        )
+        self.streamlit.session_state[
+            self.navigation.ALT_FINDER_RETURN_ANALYSIS_KEY
+        ] = "bom-42"
+        self.streamlit.session_state[
+            self.navigation.ALT_FINDER_RETURN_COMPONENT_KEY
+        ] = "STM32F103C8T6"
+
+        self.navigation.navigate_to("Alternative Finder", _rerun=False)
+
+        self.assertEqual(
+            get_alternative_finder_display_mpn(self.streamlit.session_state), ""
+        )
+        self.assertEqual(
+            get_alternative_finder_candidates(self.streamlit.session_state), []
+        )
+        self.assertNotIn(
+            self.navigation.ALT_FINDER_RETURN_ANALYSIS_KEY,
+            self.streamlit.session_state,
+        )
+        self.assertNotIn(
+            self.navigation.ALT_FINDER_RETURN_COMPONENT_KEY,
+            self.streamlit.session_state,
+        )
+
     def test_same_component_handoff_restores_widget_and_keeps_results(self):
         from src.alternative_finder_state import (
             complete_alternative_finder_search,
