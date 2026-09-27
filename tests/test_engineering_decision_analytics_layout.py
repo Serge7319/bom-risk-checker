@@ -48,11 +48,12 @@ class EngineeringDecisionAnalyticsLayoutTests(unittest.TestCase):
 
     def test_queue_driver_table_drills_into_open_and_critical_decisions(self):
         self.assertIn('key="ed_analytics_driver_table"', self.analytics)
-        self.assertIn("driver_table_result = cadivor_smart_dataframe(", self.analytics)
-        self.assertIn("driver_table_result.selected_rows", self.analytics)
-        self.assertIn("selected_driver_rows", self.analytics)
+        self.assertIn("driver_table_result = cadivor_expandable_table(", self.analytics)
+        self.assertIn("render_expanded=_render_driver_queue_intelligence", self.analytics)
+        self.assertIn('row_ids=[row["Decision Type"] for row in driver_rows]', self.analytics)
         self.assertIn("selected_driver_critical", self.analytics)
-        self.assertIn('key="ed_queue_driver_drilldown"', self.analytics)
+        self.assertNotIn('key="ed_queue_driver_drilldown"', self.analytics)
+        self.assertIn("The underlying decisions stay inside this table row", self.analytics)
         self.assertIn("All open (", self.analytics)
         self.assertIn("Critical (", self.analytics)
         self.assertIn("st.pills(", self.analytics)

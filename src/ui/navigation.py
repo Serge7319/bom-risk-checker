@@ -112,6 +112,32 @@ def navigate_to(page: str, *, _rerun: bool = True, arm_opening: bool = True, **p
     instead of leaving the previous page name in the address bar.
     """
     current_page = str(st.session_state.get("cadivor_route", "") or "").strip()
+    if page == ALTERNATIVE_FINDER_PAGE and not str(
+        params.get("original_part") or params.get("mpn") or ""
+    ).strip():
+        # The global "Find a replacement" destination is a new standalone
+        # workspace.  It must not inherit the part, results, or return-to-BOM
+        # affordance from a prior contextual launch.  Contextual handoffs use
+        # navigate_to_alternative_finder() and include an MPN, so they retain
+        # their saved-BOM round trip and completed result.
+        from src.alternative_finder_state import (
+            clear_alternative_finder_search,
+            rearm_alternative_finder_navigation,
+        )
+
+        clear_alternative_finder_search(st.session_state, clear_widget=True)
+        rearm_alternative_finder_navigation(st.session_state)
+        for context_key in (
+            ALT_FINDER_CONTEXT_KEY,
+            ALT_FINDER_RETURN_ANALYSIS_KEY,
+            ALT_FINDER_RETURN_SECTION_KEY,
+            ALT_FINDER_RETURN_COMPONENT_KEY,
+            ALT_FINDER_RETURN_PAGE_KEY,
+            ALT_FINDER_RETURN_MPN_KEY,
+            "alternative_original_manufacturer",
+            "alternative_prefill_source_context",
+        ):
+            st.session_state.pop(context_key, None)
     # Any explicit in-app navigation supersedes a prior browser-history restore.
     # Without this reset, a stale Streamlit query snapshot could mask the new route.
     st.session_state.pop(HISTORY_RESTORE_SNAPSHOT_KEY, None)

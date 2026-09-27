@@ -103,6 +103,10 @@ class SmartTableSystemTests(unittest.TestCase):
         self.assertEqual(state["selected"], "")
         self.assertEqual(notifications[-1], "")
 
+        toggle("selected", "row-token", "MCP2551-I/SN", notifications.append)
+        self.assertEqual(state["selected"], "row-token")
+        self.assertEqual(notifications[-1], "MCP2551-I/SN")
+
     def test_monitoring_queue_and_coverage_share_the_contract(self):
         monitoring = RUNTIME.split('if app_mode == "Monitoring":', 1)[1].split(
             'if app_mode == "Supply Risk Scenario":', 1
@@ -147,11 +151,20 @@ class SmartTableSystemTests(unittest.TestCase):
         reports = RUNTIME.split('if app_mode == "Reports":', 1)[1].split(
             'if app_mode == "Notifications":', 1
         )[0]
-        self.assertIn("decision_table_result = cadivor_smart_dataframe(", decisions)
-        self.assertIn("driver_table_result = cadivor_smart_dataframe(", decisions)
+        self.assertIn("decision_table_result = cadivor_expandable_table(", decisions)
+        self.assertIn("render_expanded=_render_queue_decision", decisions)
+        self.assertIn("driver_table_result = cadivor_expandable_table(", decisions)
+        self.assertIn("render_expanded=_render_driver_queue_intelligence", decisions)
+        self.assertIn("Click a decision row to expand it", decisions)
         self.assertIn("report_table_result = cadivor_smart_dataframe(", reports)
         self.assertIn("selected_report_row = visible.iloc", reports)
         self.assertIn("Run Alternative Finder for", reports)
+
+    def test_decision_actions_carry_component_context_to_monitoring(self):
+        action_helper = COMPONENTS.split("def render_decision_card_actions(", 1)[1]
+        self.assertIn('"Open Monitoring"', action_helper)
+        self.assertIn('mpn=decision["part_number"]', action_helper)
+        self.assertIn('return_analysis_id=str(decision.get("analysis_id")', action_helper)
 
 
 if __name__ == "__main__":

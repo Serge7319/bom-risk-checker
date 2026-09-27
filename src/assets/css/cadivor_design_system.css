@@ -4378,3 +4378,93 @@ section[data-testid="stMain"] [class*="st-key-decision_queue_"] [class*="st-key-
     grid-template-columns: 1fr !important;
   }
 }
+
+/* Engineering Decisions — useful evidence lives inside the selected row. */
+.cv-ed-queue-detail {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.9fr);
+  gap: 12px;
+}
+
+.cv-ed-queue-detail__recommendation,
+.cv-ed-queue-detail__signals > div,
+.cv-ed-driver-summary > div {
+  min-width: 0;
+  padding: 12px 13px;
+  border: 1px solid #d6e2f1;
+  border-radius: 11px;
+  background: #fff;
+}
+
+.cv-ed-queue-detail span,
+.cv-ed-driver-summary span {
+  display: block;
+  margin-bottom: 5px;
+  color: #64748b !important;
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: .075em;
+  text-transform: uppercase;
+}
+
+.cv-ed-queue-detail strong,
+.cv-ed-driver-summary strong {
+  display: block;
+  color: #102a50 !important;
+  font-size: 12px;
+  font-weight: 820;
+  line-height: 1.45;
+}
+
+.cv-ed-queue-detail__recommendation {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+}
+
+.cv-ed-queue-detail__recommendation p {
+  margin: 8px 0 0;
+  color: #52647a !important;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.cv-ed-queue-detail__signals {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.cv-ed-queue-detail__signals small {
+  display: block;
+  margin-top: 5px;
+  color: #64748b !important;
+  font-size: 9.5px;
+  line-height: 1.35;
+}
+
+.cv-ed-driver-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 9px;
+  margin: 2px 0 4px;
+}
+
+@container (max-width: 760px) {
+  .cv-ed-queue-detail {
+    grid-template-columns: 1fr;
+  }
+
+  .cv-ed-queue-detail__signals {
+    grid-template-columns: 1fr;
+  }
+
+  .cv-ed-driver-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container (max-width: 420px) {
+  .cv-ed-driver-summary {
+    grid-template-columns: 1fr;
+  }
+}

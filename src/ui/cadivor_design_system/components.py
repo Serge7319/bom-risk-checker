@@ -1087,6 +1087,8 @@ def render_decision_card_actions(
             key=f"{key_prefix}_monitor",
             use_container_width=True,
             type="secondary",
+            mpn=decision["part_number"],
+            return_analysis_id=str(decision.get("analysis_id") or ""),
         )
         cadivor_button_wrap_end()
     with action_cols[3]:
