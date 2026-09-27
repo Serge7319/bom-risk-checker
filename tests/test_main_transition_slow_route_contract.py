@@ -13,6 +13,17 @@ SOURCE = (ROOT / "src" / "ui" / "main_transition.py").read_text(encoding="utf-8"
 
 
 class MainTransitionSlowRouteContractTests(unittest.TestCase):
+    def test_opening_clips_the_complete_main_viewport(self):
+        self.assertIn(
+            "width:calc(100vw - var(--cv-foundation-rail,228px))!important",
+            SOURCE,
+        )
+        self.assertIn("clip-path:inset(0)!important", SOURCE)
+        self.assertIn(
+            '> [data-testid="stElementContainer"][data-stale="true"]:not(',
+            SOURCE,
+        )
+
     def test_warm_analysis_details_keeps_opening_owner(self):
         tree = ast.parse(SOURCE)
         helper = next(

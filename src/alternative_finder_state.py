@@ -822,6 +822,19 @@ def alternative_finder_nav_already_consumed(
     return str(session_state.get(ALT_FINDER_NAV_CONSUMED_KEY) or "") == token
 
 
+def rearm_alternative_finder_navigation(
+    session_state: MutableMapping[str, Any],
+) -> None:
+    """Treat the next component handoff as a new navigation event.
+
+    Streamlit removes route-local widgets when the user returns to a BOM, but
+    persistent one-shot tokens remain. Clear only those guards so launching the
+    same component again restores its input without discarding search results.
+    """
+    session_state.pop(ALT_FINDER_NAV_CONSUMED_KEY, None)
+    session_state.pop("alternative_prefill_token", None)
+
+
 def should_apply_alternative_finder_prefill(
     session_state: Mapping[str, Any],
     *,

@@ -126,10 +126,12 @@ class ApplicationShellV2Tests(unittest.TestCase):
         self.assertEqual(group_names, ["", "Decision Tools", "Workspace"])
         self.assertEqual(len(NAV_GROUPS), 3)
 
-    def test_commit_navigation_logic_unchanged(self) -> None:
-        from src.ui import unified_shell
-
-        source = inspect.getsource(unified_shell._commit_navigation)
+    def test_commit_navigation_sends_primary_boms_to_saved_work(self) -> None:
+        source = self.unified_shell_source.split(
+            "def _commit_navigation", 1
+        )[1].split("\ndef ", 1)[0]
+        self.assertIn('if page == "BOM Analyzer"', source)
+        self.assertIn("return_to_saved_bom_list(_rerun=False", source)
         self.assertIn("navigate_to(page, _rerun=False, arm_opening=arm_opening)", source)
         self.assertIn('st.session_state.pop("cadivor_route_transition", None)', source)
 

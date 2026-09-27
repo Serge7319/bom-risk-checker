@@ -354,6 +354,9 @@ def navigate_to_alternative_finder(
         navigate_to(ALTERNATIVE_FINDER_PAGE, _rerun=_rerun, arm_opening=arm_opening)
         return
 
+    from src.alternative_finder_state import rearm_alternative_finder_navigation
+
+    rearm_alternative_finder_navigation(st.session_state)
     st.session_state[ALT_FINDER_CONTEXT_KEY] = context
 
     nav_kwargs: dict[str, str] = {
@@ -606,11 +609,23 @@ def apply_alternative_finder_prefill(context: Mapping[str, str]) -> None:
         should_apply_alternative_finder_prefill,
     )
 
-    if not should_apply_alternative_finder_prefill(
+    should_replace_workspace = should_apply_alternative_finder_prefill(
         st.session_state,
         mpn=context["mpn"],
         analysis_id=str(context.get("analysis_id") or ""),
-    ):
+    )
+    active_result = get_active_alternative_finder_result(st.session_state) or {}
+    active_mpn = str(active_result.get("entered_mpn") or "").strip()
+    active_matches_context = bool(
+        active_mpn
+        and (normalize_part_number(active_mpn) or active_mpn.upper())
+        == str(context.get("normalized_mpn") or "").strip()
+    )
+    reuse_completed_result = bool(
+        active_matches_context
+        and st.session_state.get("alternative_prefill_token") != prefill_token
+    )
+    if not should_replace_workspace and not reuse_completed_result:
         mark_alternative_finder_nav_consumed(st.session_state, token=prefill_token)
         return
 
@@ -618,7 +633,8 @@ def apply_alternative_finder_prefill(context: Mapping[str, str]) -> None:
         mark_alternative_finder_nav_consumed(st.session_state, token=prefill_token)
         return
 
-    clear_alternative_finder_search(st.session_state, clear_widget=False)
+    if not reuse_completed_result:
+        clear_alternative_finder_search(st.session_state, clear_widget=False)
     st.session_state["alternative_original_part"] = context["mpn"]
     st.session_state["alternative_prefill_token"] = prefill_token
     mark_alternative_finder_nav_consumed(st.session_state, token=prefill_token)

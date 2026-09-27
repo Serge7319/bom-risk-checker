@@ -138,10 +138,10 @@ def inject_main_transition_css(transition_gen: int) -> None:
           box-sizing:border-box!important;
           position:fixed!important;
           left:var(--cv-foundation-rail,228px)!important;
-          right:0!important;
+          right:auto!important;
           top:var(--cv-foundation-top,64px)!important;
           bottom:0!important;
-          width:auto!important;
+          width:calc(100vw - var(--cv-foundation-rail,228px))!important;
           max-width:none!important;
           min-width:0!important;
           min-height:calc(100vh - var(--cv-foundation-top,64px))!important;
@@ -154,7 +154,7 @@ def inject_main_transition_css(transition_gen: int) -> None:
           background:#F5F7FB!important;
           box-shadow:none!important;
           font-family:Inter,system-ui,sans-serif!important;
-          overflow:auto!important;
+          overflow:hidden!important;
           opacity:1!important;
           visibility:visible!important;
           pointer-events:none!important;
@@ -165,6 +165,8 @@ def inject_main_transition_css(transition_gen: int) -> None:
           backdrop-filter:none!important;
           -webkit-backdrop-filter:none!important;
           transform:none!important;
+          isolation:isolate!important;
+          clip-path:inset(0)!important;
           height:calc(100vh - var(--cv-foundation-top,64px))!important;
           height:calc(100dvh - var(--cv-foundation-top,64px))!important
         }}
@@ -241,6 +243,36 @@ def inject_main_transition_css(transition_gen: int) -> None:
           display:none!important;visibility:hidden!important;pointer-events:none!important;
           opacity:0!important;height:0!important;overflow:hidden!important
         }}
+        /* Hide outgoing Streamlit route wrappers while Opening owns the main
+           viewport. Persistent foundation chrome and the transition host stay. */
+        body:has([data-cadivor-main-transition="1"])
+          section[data-testid="stMain"] [data-testid="stMainBlockContainer"]
+          > [data-testid="stVerticalBlock"]
+          > [data-testid="stElementContainer"][data-stale="true"]:not(
+            :has([data-cadivor-transition-host])
+          ){{
+          pointer-events:none!important
+        }}
+        body:has([data-cadivor-main-transition="1"])
+          section[data-testid="stMain"] [data-testid="stMainBlockContainer"]
+          > [data-testid="stVerticalBlock"]
+          > [data-testid="stElementContainer"][data-stale="true"]:not(
+            :has([data-cadivor-topbar-flow-host])
+          ):not(
+            :has([class*="st-key-cv_foundation_"])
+          ):not(
+            :has([data-cadivor-transition-host])
+          ),
+        body:has([data-cadivor-main-transition="1"])
+          section[data-testid="stMain"] [data-testid="stMainBlockContainer"]
+          > [data-testid="stVerticalBlock"]
+          > [data-testid="stLayoutWrapper"][data-stale="true"]:not(
+            :has([class*="st-key-cv_foundation_"])
+          ):not(
+            :has([data-cadivor-transition-host])
+          ){{
+          visibility:hidden!important;opacity:0!important;pointer-events:none!important
+        }}
         /*
           Active transition wrappers: zero in-flow height; fixed Opening still paints.
           Do not apply height:0 to the Opening node itself.
@@ -300,7 +332,7 @@ def inject_main_transition_css(transition_gen: int) -> None:
           margin:0!important;padding:0!important;border:0!important;overflow:hidden!important
         }}
         @media (max-width:1100px){{
-          .cv-main-transition.cv-route-loading{{left:0!important}}
+          .cv-main-transition.cv-route-loading{{left:0!important;width:100vw!important}}
         }}
         </style>
         """,
