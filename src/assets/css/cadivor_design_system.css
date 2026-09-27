@@ -1186,6 +1186,13 @@ section[data-testid="stMain"] .stDownloadButton > button:disabled {
   box-shadow: inset 4px 0 0 #2563eb, inset 0 -1px 0 #93c5fd;
 }
 
+/* Keep the existing table legible while Streamlit swaps a local row rerun. */
+[data-stale="true"]:has(.cv-expandable-table__row),
+[data-stale="true"]:has(.cv-expandable-table__header) {
+  opacity: 1 !important;
+  filter: none !important;
+}
+
 .cv-expandable-table__disclosure-spacer,
 .cv-expandable-table__chevron {
   display: flex;
@@ -1315,6 +1322,20 @@ section[data-testid="stMain"] .stDownloadButton > button:disabled {
   outline-offset: -3px;
 }
 
+[class*="st-key-cv_expandable_trigger_"]:has(button:focus) .cv-expandable-table__row {
+  background: #eaf3ff;
+  box-shadow: inset 4px 0 0 #2563eb;
+}
+
+[class*="st-key-cv_expandable_trigger_"]:has(button:focus) .cv-expandable-table__chevron {
+  animation: cvExpandablePending .55s ease-in-out infinite alternate;
+}
+
+@keyframes cvExpandablePending {
+  from { transform: translateY(-1px); opacity: .45; }
+  to { transform: translateY(1px); opacity: 1; }
+}
+
 [class*="st-key-cv_expandable_detail_"] {
   padding: 14px 16px 17px;
   border-bottom: 1px solid #93c5fd;
@@ -1330,6 +1351,106 @@ section[data-testid="stMain"] .stDownloadButton > button:disabled {
 @keyframes cvExpandableDetailIn {
   from { opacity: .25; transform: translateY(-5px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+/* Critical inline-detail styling lives in the shared stylesheet as well as the
+   Analysis page stylesheet.  This prevents raw stacked HTML while a hard
+   refresh replaces page-scoped styles. */
+.cv-part-risk-detail { padding: 2px 2px 0; }
+.cv-part-risk-summary {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 2px 2px 14px;
+  border-bottom: 1px solid var(--cv-border, #dbe3ef);
+}
+.cv-part-risk-kicker {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--cv-primary, #2563eb) !important;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.cv-part-risk-summary h4 {
+  margin: 0;
+  color: var(--cv-text, #0f172a) !important;
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+.cv-part-risk-summary p {
+  max-width: 850px;
+  margin: 6px 0 0;
+  color: var(--cv-text-secondary, #52647a) !important;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.55;
+}
+.cv-part-risk-driver-grid,
+.cv-part-risk-evidence-grid {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0 10px;
+}
+.cv-part-risk-driver-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.cv-part-risk-evidence-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.cv-part-risk-driver,
+.cv-part-risk-evidence-card {
+  min-width: 0;
+  border: 1px solid var(--cv-border, #dbe3ef);
+  border-radius: 11px;
+  background: var(--cv-surface, #fff);
+  padding: 10px 12px;
+}
+.cv-part-risk-driver { border-left-width: 4px; }
+.cv-part-risk-driver strong,
+.cv-part-risk-driver span,
+.cv-part-risk-evidence-card span,
+.cv-part-risk-evidence-card strong,
+.cv-part-risk-evidence-card small { display: block; }
+.cv-part-risk-driver strong,
+.cv-part-risk-evidence-card strong {
+  color: var(--cv-text, #0f172a) !important;
+  font-size: 12px;
+  font-weight: 800;
+}
+.cv-part-risk-driver span,
+.cv-part-risk-evidence-card small {
+  margin-top: 4px;
+  color: var(--cv-text-secondary, #52647a) !important;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+.cv-part-risk-driver.bad { border-color: #fecaca; border-left-color: #dc2626; background: #fff7f7; }
+.cv-part-risk-driver.warn { border-color: #fde68a; border-left-color: #d97706; background: #fffdf5; }
+.cv-part-risk-driver.good { grid-column: 1 / -1; border-color: #a7f3d0; border-left-color: #059669; background: #f4fdf9; }
+.cv-part-risk-evidence-card { background: var(--cv-bg-subtle, #f8fafc); }
+.cv-part-risk-evidence-card span {
+  color: var(--cv-text-muted, #64748b) !important;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+.cv-part-risk-evidence-card strong { margin-top: 6px; overflow-wrap: anywhere; }
+.cv-part-risk-source-note {
+  margin: 0 2px 12px;
+  border-radius: 9px;
+  background: #f8fafc;
+  color: var(--cv-text-secondary, #52647a) !important;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+  padding: 9px 11px;
+}
+.cv-part-risk-source-note--priority {
+  border: 1px solid #fde68a;
+  background: #fffbeb;
+  color: #854d0e !important;
 }
 
 @media (max-width: 760px) {
@@ -1373,6 +1494,10 @@ section[data-testid="stMain"] .stDownloadButton > button:disabled {
   [class*="st-key-cv_expandable_detail_"] {
     padding: 12px 11px 15px;
   }
+
+  .cv-part-risk-summary { display: grid; grid-template-columns: 1fr; }
+  .cv-part-risk-driver-grid,
+  .cv-part-risk-evidence-grid { grid-template-columns: 1fr; }
 }
 
 @media (prefers-reduced-motion: reduce) {

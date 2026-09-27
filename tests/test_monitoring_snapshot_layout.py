@@ -217,6 +217,16 @@ class MonitoringSnapshotLayoutTests(unittest.TestCase):
         self.assertIn('_qp_value("monitor_view", "queue")', self.branch)
         self.assertIn('target_view="components"', self.branch)
 
+    def test_component_routes_filter_expand_and_return_to_the_same_bom_row(self):
+        self.assertIn('_qp_value("mpn") or _qp_value("part")', self.branch)
+        self.assertIn("value=focused_monitor_part", self.branch)
+        self.assertIn("initial_row_id=initial_alert_id", self.branch)
+        self.assertIn("m32_applied_alert_focus", self.branch)
+        self.assertIn("m32_applied_component_focus", self.branch)
+        self.assertIn('"analysis_tab": "Components"', self.branch)
+        self.assertIn('"component": focused_monitor_part', self.branch)
+        self.assertIn('"focus": "component-risk"', self.branch)
+
 
 if __name__ == "__main__":
     unittest.main()
