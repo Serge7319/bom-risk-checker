@@ -1238,6 +1238,32 @@ section[data-testid="stMain"] .stDownloadButton > button:disabled {
   font-weight: 820;
 }
 
+.cv-expandable-table__target {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+  line-height: 1.2;
+}
+
+.cv-expandable-table__target > strong {
+  overflow: hidden;
+  color: #0f2d57 !important;
+  font-size: 11.5px;
+  font-weight: 820;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cv-expandable-table__target-context {
+  overflow: hidden;
+  color: #64748b !important;
+  font-size: 9.5px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .cv-expandable-table__mono {
   color: #0f2d57 !important;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
@@ -4380,6 +4406,18 @@ section[data-testid="stMain"] [class*="st-key-decision_queue_"] [class*="st-key-
 }
 
 /* Engineering Decisions — useful evidence lives inside the selected row. */
+.cv131-target-context {
+  margin-top: 8px;
+  color: #52647a !important;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.cv131-target-context strong {
+  color: #0f2d57 !important;
+  font-weight: 850;
+}
+
 .cv-ed-queue-detail {
   display: grid;
   grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.9fr);

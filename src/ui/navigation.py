@@ -40,6 +40,8 @@ _ALT_NAV_KEYS = (
     "source_page",
     "return_page",
     "return_mpn",
+    "project_name",
+    "bom_name",
     "intent",
 )
 
@@ -331,6 +333,8 @@ def build_alternative_finder_context(
     analysis_id: str = "",
     part_id: str = "",
     source_page: str = "",
+    project_name: str = "",
+    bom_name: str = "",
 ) -> dict[str, str]:
     """Return one canonical Alternative Finder navigation payload."""
     trimmed_mpn = str(mpn or "").strip()
@@ -345,6 +349,8 @@ def build_alternative_finder_context(
         "analysis_id": str(analysis_id or "").strip(),
         "part_id": str(part_id or "").strip(),
         "source_page": str(source_page or "").strip(),
+        "project_name": str(project_name or "").strip(),
+        "bom_name": str(bom_name or "").strip(),
         "intent": ALT_FINDER_INTENT,
     }
 
@@ -362,6 +368,8 @@ def navigate_to_alternative_finder(
     return_analysis_id: str = "",
     return_page: str = "",
     return_mpn: str = "",
+    project_name: str = "",
+    bom_name: str = "",
     _rerun: bool = True,
     arm_opening: bool = True,
 ) -> None:
@@ -375,6 +383,8 @@ def navigate_to_alternative_finder(
         analysis_id=analysis_id,
         part_id=part_id,
         source_page=source_page,
+        project_name=project_name,
+        bom_name=bom_name,
     )
     if not context["mpn"]:
         navigate_to(ALTERNATIVE_FINDER_PAGE, _rerun=_rerun, arm_opening=arm_opening)
@@ -428,6 +438,10 @@ def navigate_to_alternative_finder(
         nav_kwargs["part_id"] = context["part_id"]
     if context["source_page"]:
         nav_kwargs["source_page"] = context["source_page"]
+    if context["project_name"]:
+        nav_kwargs["project_name"] = context["project_name"]
+    if context["bom_name"]:
+        nav_kwargs["bom_name"] = context["bom_name"]
 
     navigate_to(ALTERNATIVE_FINDER_PAGE, _rerun=_rerun, arm_opening=arm_opening, **nav_kwargs)
 
@@ -584,6 +598,8 @@ def consume_alternative_finder_context(
         analysis_id=str(qp_value("analysis_id", "") or ""),
         part_id=str(qp_value("part_id", "") or ""),
         source_page=str(qp_value("source_page", "") or ""),
+        project_name=str(qp_value("project_name", "") or ""),
+        bom_name=str(qp_value("bom_name", "") or ""),
     )
     return_analysis_id = str(qp_value("return_analysis_id", "") or context["analysis_id"]).strip()
     if return_analysis_id:
@@ -668,12 +684,16 @@ def apply_alternative_finder_prefill(context: Mapping[str, str]) -> None:
         st.session_state["alternative_original_manufacturer"] = context["manufacturer"]
     else:
         st.session_state.pop("alternative_original_manufacturer", None)
-    st.session_state["alternative_prefill_source_context"] = {
+    source_context = {
         "mpn": context["mpn"],
         "manufacturer": context.get("manufacturer", ""),
         "lifecycle": context.get("lifecycle", ""),
         "risk": context.get("risk", ""),
     }
+    for context_key in ("project_name", "bom_name"):
+        if context.get(context_key):
+            source_context[context_key] = context[context_key]
+    st.session_state["alternative_prefill_source_context"] = source_context
     if context.get("analysis_id"):
         st.session_state["cadivor_active_analysis_id"] = context["analysis_id"]
         st.session_state["analysis_id"] = context["analysis_id"]
@@ -697,6 +717,8 @@ def alternative_finder_href(
     part_id: str = "",
     source_page: str = "",
     return_analysis_id: str = "",
+    project_name: str = "",
+    bom_name: str = "",
 ) -> str:
     """Build a query-string link to Alternative Finder using the shared context."""
     context = build_alternative_finder_context(
@@ -708,6 +730,8 @@ def alternative_finder_href(
         analysis_id=analysis_id,
         part_id=part_id,
         source_page=source_page,
+        project_name=project_name,
+        bom_name=bom_name,
     )
     params: dict[str, str] = {
         "original_part": context["mpn"],
@@ -729,6 +753,10 @@ def alternative_finder_href(
         params["part_id"] = context["part_id"]
     if context["source_page"]:
         params["source_page"] = context["source_page"]
+    if context["project_name"]:
+        params["project_name"] = context["project_name"]
+    if context["bom_name"]:
+        params["bom_name"] = context["bom_name"]
     return internal_app_href(ALTERNATIVE_FINDER_PAGE, **params)
 
 
@@ -754,6 +782,8 @@ def _commit_internal_nav(page: str, params: dict[str, Any]) -> None:
                 return_analysis_id=str(params.get("return_analysis_id") or ""),
                 return_page=str(params.get("return_page") or ""),
                 return_mpn=str(params.get("return_mpn") or ""),
+                project_name=str(params.get("project_name") or ""),
+                bom_name=str(params.get("bom_name") or ""),
                 _rerun=False,
                 arm_opening=False,
             )

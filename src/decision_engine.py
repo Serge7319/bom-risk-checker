@@ -39,6 +39,66 @@ def _text(value: Any, default: str = "") -> str:
     return result or default
 
 
+def decision_target_type(decision: Dict[str, Any]) -> str:
+    """Return the engineering object this decision is asking a user to review.
+
+    Older records overloaded ``part_number`` with a project/BOM title for
+    analysis-level decisions.  Keep that data readable while exposing an
+    explicit scope for new renderers and navigation guards.
+    """
+    raw = _text(decision.get("target_type")).lower()
+    if raw in {"component", "bom"}:
+        return raw
+    source = _text(decision.get("source")).lower()
+    return "bom" if source == "bom analysis" else "component"
+
+
+def decision_target_label(decision: Dict[str, Any]) -> str:
+    """Return the primary human-readable target label for a decision."""
+    target_type = decision_target_type(decision)
+    if target_type == "bom":
+        return _text(
+            decision.get("target_label")
+            or decision.get("bom_name")
+            or decision.get("project_name")
+            or decision.get("part_number"),
+            "Saved BOM",
+        )
+    return _text(
+        decision.get("target_label")
+        or decision.get("mpn")
+        or decision.get("part_number"),
+        "Component",
+    )
+
+
+def decision_target_context(decision: Dict[str, Any]) -> str:
+    """Return the secondary context line shown below a decision target."""
+    if decision_target_type(decision) == "bom":
+        count = int(_number(decision.get("affected_component_count"), 0))
+        descriptor = _text(
+            decision.get("affected_component_descriptor"),
+            "affected components",
+        )
+        if count:
+            return f"BOM review · {count:,} {descriptor}"
+        return "BOM review"
+
+    project_name = _text(decision.get("project_name"))
+    bom_name = _text(decision.get("bom_name"))
+    source_filename = _text(decision.get("source_filename"))
+    if project_name and bom_name and project_name.casefold() != bom_name.casefold():
+        context = f"{project_name} · {bom_name}"
+    else:
+        context = project_name or bom_name or source_filename
+    return f"Component · {context}" if context else "Component"
+
+
+def decision_target_cell(decision: Dict[str, Any]) -> str:
+    """Return a two-line value for the shared expandable-table target cell."""
+    return f"{decision_target_label(decision)}\n{decision_target_context(decision)}"
+
+
 def _number(value: Any, default: float = 0.0) -> float:
     try:
         if value is None or (isinstance(value, float) and pd.isna(value)):
@@ -153,6 +213,14 @@ def _confidence_reasons(decision: Dict[str, Any]) -> List[str]:
 
 def enrich_decision(decision: Dict[str, Any]) -> Dict[str, Any]:
     enriched = dict(decision)
+    target_type = decision_target_type(enriched)
+    enriched["target_type"] = target_type
+    enriched.setdefault("target_label", decision_target_label(enriched))
+    if target_type == "component":
+        enriched.setdefault(
+            "mpn",
+            _text(enriched.get("part_number"), ""),
+        )
     status = _text(enriched.get("status"), "New")
     if status == "Open":
         status = "New"
@@ -265,6 +333,9 @@ def _alert_decision(alert: Dict[str, Any]) -> Dict[str, Any]:
         "source": "Monitoring",
         "analysis_id": _text(alert.get("analysis_id")),
         "part_number": part,
+        "mpn": part,
+        "target_type": "component",
+        "target_label": part,
         "decision_type": decision_type,
         "title": action,
         "reason": message,
@@ -306,6 +377,7 @@ def _analysis_decisions(analysis: Dict[str, Any]) -> List[Dict[str, Any]]:
     high = int(_number(analysis.get("high_risk_count") or analysis.get("high_risk_parts"), 0))
     medium = int(_number(analysis.get("medium_risk_count") or analysis.get("medium_risk_parts"), 0))
     created = _text(analysis.get("created_at"), "Unknown")
+    bom_name = _text(analysis.get("bom_name") or analysis.get("bom"))
     decisions: List[Dict[str, Any]] = []
 
     if high > 0:
@@ -317,6 +389,12 @@ def _analysis_decisions(analysis: Dict[str, Any]) -> List[Dict[str, Any]]:
                 "source": "BOM Analysis",
                 "analysis_id": analysis_id,
                 "part_number": project,
+                "project_name": project,
+                "bom_name": bom_name,
+                "target_type": "bom",
+                "target_label": project,
+                "affected_component_count": high,
+                "affected_component_descriptor": "high-risk components",
                 "decision_type": "Release Decision",
                 "title": f"Resolve high-risk components in {project}",
                 "reason": f"{high} high-risk component(s) require engineering review.",
@@ -353,6 +431,12 @@ def _analysis_decisions(analysis: Dict[str, Any]) -> List[Dict[str, Any]]:
                 "source": "BOM Analysis",
                 "analysis_id": analysis_id,
                 "part_number": project,
+                "project_name": project,
+                "bom_name": bom_name,
+                "target_type": "bom",
+                "target_label": project,
+                "affected_component_count": medium,
+                "affected_component_descriptor": "medium-risk components",
                 "decision_type": "Engineering Review",
                 "title": f"Complete focused review for {project}",
                 "reason": f"{medium} medium-risk component(s) remain before release.",
@@ -391,11 +475,35 @@ def build_decision_center(
 ) -> Dict[str, Any]:
     state = saved_state or {}
     decisions: List[Dict[str, Any]] = []
+    analysis_rows = list(analyses or [])
+    analyses_by_id = {
+        _text(analysis.get("id")): analysis
+        for analysis in analysis_rows
+        if _text(analysis.get("id"))
+    }
 
     if isinstance(alert_df, pd.DataFrame) and not alert_df.empty:
-        decisions.extend(_alert_decision(row) for row in alert_df.to_dict("records"))
+        for row in alert_df.to_dict("records"):
+            decision = _alert_decision(row)
+            related_analysis = analyses_by_id.get(
+                _text(decision.get("analysis_id"))
+            )
+            if related_analysis:
+                decision["project_name"] = _text(
+                    related_analysis.get("project_name")
+                    or related_analysis.get("name"),
+                    "",
+                )
+                decision["bom_name"] = _text(
+                    related_analysis.get("bom_name")
+                    or related_analysis.get("bom"),
+                )
+                decision["source_filename"] = _text(
+                    related_analysis.get("filename")
+                )
+            decisions.append(decision)
 
-    for analysis in analyses or []:
+    for analysis in analysis_rows:
         decisions.extend(_analysis_decisions(analysis))
 
     deduped: Dict[str, Dict[str, Any]] = {}
