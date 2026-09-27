@@ -3,6 +3,7 @@
 import unittest
 
 from src.alternative_finder_state import (
+    ALT_FINDER_NAV_CONSUMED_KEY,
     ALT_FINDER_RESULT_KEY,
     ALTERNATIVE_COMPLETED_ORIGINAL_PART_KEY,
     ALTERNATIVE_ORIGINAL_PART_WIDGET_KEY,
@@ -17,6 +18,7 @@ from src.alternative_finder_state import (
     get_alternative_finder_original_data,
     get_alternative_finder_selected_candidate,
     init_alternative_finder_state,
+    rearm_alternative_finder_navigation,
     sanitize_for_session,
     set_alternative_finder_selected_candidate,
     sync_alternative_finder_candidate_record,
@@ -87,6 +89,22 @@ class AlternativeFinderResultPersistenceTests(unittest.TestCase):
             get_alternative_finder_original_data(self.session)["package"],
             "0603",
         )
+
+    def test_rearm_keeps_completed_result(self):
+        complete_alternative_finder_search(
+            self.session,
+            entered_mpn="LM358N",
+            canonical_mpn="LM358N",
+            original_data={"manufacturer_part_number": "LM358N"},
+            original_risk={"risk_level": "High"},
+            candidates=_sample_candidates(2),
+        )
+        self.session[ALT_FINDER_NAV_CONSUMED_KEY] = "bom-42::LM358N"
+        self.session["alternative_prefill_token"] = "bom-42::LM358N"
+        rearm_alternative_finder_navigation(self.session)
+        self.assertNotIn(ALT_FINDER_NAV_CONSUMED_KEY, self.session)
+        self.assertNotIn("alternative_prefill_token", self.session)
+        self.assertEqual(len(get_alternative_finder_candidates(self.session)), 2)
 
     def test_complete_does_not_mutate_instantiated_original_part_widget_key(self):
         session = _WidgetBoundSession()

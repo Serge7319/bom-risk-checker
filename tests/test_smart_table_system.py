@@ -60,6 +60,7 @@ class SmartTableSystemTests(unittest.TestCase):
         self.assertIn("selected_token == row_token", COMPONENTS)
         self.assertIn("initial_row_id: Any | None = None", COMPONENTS)
         self.assertIn("requested_token = _expandable_table_token(initial_row_id", COMPONENTS)
+        self.assertIn("initial_request_key", COMPONENTS)
         self.assertIn("detail_slot=detail_slot", COMPONENTS)
         self.assertIn("on_toggle: Callable[[Any], None] | None = None", COMPONENTS)
         self.assertIn("on_toggle(row_id if next_token else", COMPONENTS)
@@ -130,8 +131,12 @@ class SmartTableSystemTests(unittest.TestCase):
         finder = RUNTIME.split('if app_mode == "Alternative Finder":', 1)[1].split(
             'if app_mode == "Compare Parts":', 1
         )[0]
-        self.assertIn("candidate_table_result = cadivor_smart_dataframe(", finder)
+        self.assertIn("candidate_table_result = cadivor_expandable_table(", finder)
         self.assertIn("candidate_table_result.first_selected_row", finder)
+        self.assertIn("candidate_table_result.detail_slot.container()", finder)
+        self.assertIn("row_ids=alternative_options", finder)
+        self.assertIn("Click a candidate row to expand", finder)
+        self.assertIn("build_alternative_candidate_insight(", finder)
         self.assertIn("sync_alternative_finder_selected_candidate_result(", finder)
         self.assertNotIn('st.selectbox("Recommended candidate"', finder)
 

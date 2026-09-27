@@ -179,6 +179,7 @@ from src.ui.cadivor_design_system import (
     render_kpi_row_safe,
     semantic_priority_label,
 )
+from src.alternative_candidate_intelligence import build_alternative_candidate_insight
 from src.components.onboarding import (
     render_analysis_success,
     render_upload_detected,
@@ -14736,7 +14737,7 @@ def run_authenticated_app() -> None:
                     "Stock": pd.to_numeric(
                         _candidate_series(["Stock", "Total Market Stock"], 0),
                         errors="coerce",
-                    ).fillna(0),
+                    ).fillna(0).map(lambda value: f"{int(value):,}"),
                     "Supplier": _candidate_series(
                         ["Sources Available", "Supplier", "Best Source", "Source"],
                         "Not listed",
@@ -14744,38 +14745,65 @@ def run_authenticated_app() -> None:
                     "Unit Price": pd.to_numeric(
                         _candidate_series(["Unit Price", "Price"], 0),
                         errors="coerce",
-                    ).fillna(0),
+                    ).fillna(0).map(lambda value: f"${float(value):,.4f}"),
                 }
             )
-            candidate_table_result = cadivor_smart_dataframe(
+            candidate_request_id = str(
+                st.session_state.get("alternative_finder_request_id")
+                or current_search
+                or "component"
+            )
+            candidate_table_key = "alternative_ranked_candidates_" + re.sub(
+                r"[^a-zA-Z0-9_-]+", "_", candidate_request_id
+            )[:64]
+            candidate_initial_request_key = "_alternative_candidate_table_initial_request"
+            candidate_initial_row = None
+            if st.session_state.get(candidate_initial_request_key) != candidate_request_id:
+                candidate_initial_row = current_candidate
+                st.session_state[candidate_initial_request_key] = candidate_request_id
+
+            candidate_table_result = cadivor_expandable_table(
                 candidate_table,
-                key=(
-                    "alternative_ranked_candidates_"
-                    + re.sub(
-                        r"[^a-zA-Z0-9_-]+",
-                        "_",
-                        str(current_search or "component"),
-                    )[:48]
+                key=candidate_table_key,
+                columns=(
+                    ExpandableTableColumn(
+                        "Candidate", "Candidate", width=1.15, min_width=150, kind="strong"
+                    ),
+                    ExpandableTableColumn(
+                        "Relationship", "Relationship", width=1.3, min_width=165
+                    ),
+                    ExpandableTableColumn(
+                        "Recommendation", "Recommendation", width=1.05,
+                        min_width=140, kind="priority",
+                    ),
+                    ExpandableTableColumn(
+                        "Lifecycle", "Lifecycle", width=.9, min_width=120, kind="status"
+                    ),
+                    ExpandableTableColumn(
+                        "Stock", "Stock", width=.7, min_width=95,
+                        align="right", kind="mono",
+                    ),
+                    ExpandableTableColumn(
+                        "Supplier", "Supplier", width=1, min_width=130
+                    ),
+                    ExpandableTableColumn(
+                        "Unit Price", "Unit price", width=.75, min_width=105,
+                        align="right", kind="mono",
+                    ),
                 ),
+                row_ids=alternative_options,
+                initial_row_id=candidate_initial_row,
                 context_title="Ranked replacement candidates",
                 context_detail=(
-                    "The recommendation, comparison, evidence, and decision workspace "
-                    "below follow the selected row."
+                    "Open a candidate to see why it ranks here, what still needs "
+                    "verification, and the next qualification action."
                 ),
                 count_label=f"{len(candidate_table):,} ranked candidates",
                 context_tone="success",
                 selection_hint=(
-                    "Click any candidate cell or its checkbox to compare it with the original component."
+                    "Click a candidate row to expand its decision evidence inline. "
+                    "Only one row stays open."
                 ),
-                column_config={
-                    "Candidate": st.column_config.TextColumn(width="medium"),
-                    "Relationship": st.column_config.TextColumn(width="medium"),
-                    "Recommendation": st.column_config.TextColumn(width="medium"),
-                    "Lifecycle": st.column_config.TextColumn(width="medium"),
-                    "Stock": st.column_config.NumberColumn(format="%,d", width="small"),
-                    "Supplier": st.column_config.TextColumn(width="medium"),
-                    "Unit Price": st.column_config.NumberColumn(format="$%.4f", width="small"),
-                },
             )
             selected_candidate_position = candidate_table_result.first_selected_row
             selected_alternative = current_candidate
@@ -14824,6 +14852,50 @@ def run_authenticated_app() -> None:
                 # row and detail panel cannot show conflicting supplier facts.
                 st.rerun()
             selected_row = pd.Series(enriched_candidate)
+
+            if candidate_table_result.detail_slot is not None:
+                candidate_insight = build_alternative_candidate_insight(enriched_candidate)
+                candidate_gaps = list(candidate_insight.get("verification_gaps") or [])
+                gaps_markup = "".join(
+                    f"<li>{html.escape(str(gap))}</li>" for gap in candidate_gaps
+                ) or (
+                    "<li>No specific mismatch is confirmed in the retrieved data. "
+                    "Complete normal datasheet, footprint, and circuit validation.</li>"
+                )
+                supplier_note = str(candidate_insight.get("supplier_summary") or "").strip()
+                supplier_markup = (
+                    f'<p class="cv-alt-candidate-detail__supplier">'
+                    f'{html.escape(supplier_note)}</p>' if supplier_note else ""
+                )
+                candidate_detail_markup = (
+                    '<div class="cv-alt-candidate-detail">'
+                    '<div class="cv-alt-candidate-detail__summary"><div>'
+                    '<span>Candidate intelligence</span>'
+                    f'<h4>{html.escape(selected_alternative)}</h4>'
+                    f'<p>{html.escape(str(candidate_insight["rank_explanation"]))}</p>'
+                    '</div>'
+                    f'<strong>{int(candidate_insight["score"])}/100</strong></div>'
+                    '<div class="cv-alt-candidate-detail__signals">'
+                    '<div><span>Engineering confidence</span>'
+                    f'<strong>{html.escape(str(candidate_insight["engineering_confidence_label"]))}</strong></div>'
+                    '<div><span>Supplier relationship</span>'
+                    f'<strong>{html.escape(str(candidate_insight["supplier_confidence_label"]))}</strong></div>'
+                    '<div><span>Lifecycle</span>'
+                    f'<strong>{html.escape(str(candidate_insight["lifecycle"]))}</strong></div>'
+                    '<div><span>Confirmed stock</span>'
+                    f'<strong>{html.escape(str(candidate_insight["stock_label"]))}</strong></div>'
+                    f'</div>{supplier_markup}'
+                    '<div class="cv-alt-candidate-detail__review"><div>'
+                    f'<span>Verification focus</span><ul>{gaps_markup}</ul></div>'
+                    '<div class="cv-alt-candidate-detail__next">'
+                    '<span>Next engineering action</span>'
+                    f'<strong>{html.escape(str(candidate_insight["next_action"]))}</strong>'
+                    '</div></div>'
+                    '<p class="cv-alt-candidate-detail__note">This selection also updates '
+                    'the full comparison and decision workspace below.</p></div>'
+                )
+                with candidate_table_result.detail_slot.container():
+                    st.markdown(candidate_detail_markup, unsafe_allow_html=True)
 
             def _af62b_value(row, keys, fallback="—"):
                 for key in keys:

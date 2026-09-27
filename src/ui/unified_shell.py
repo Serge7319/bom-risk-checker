@@ -11,7 +11,11 @@ from typing import Callable
 
 import streamlit as st
 
-from src.ui.navigation import inject_nav_scroll_reset_if_needed, navigate_to
+from src.ui.navigation import (
+    inject_nav_scroll_reset_if_needed,
+    navigate_to,
+    return_to_saved_bom_list,
+)
 
 
 NAV_GROUPS = (
@@ -187,7 +191,10 @@ def _commit_navigation(page: str, *, arm_opening: bool = True) -> None:
     Using a widget callback avoids the former click -> rerun -> explicit rerun
     sequence that could briefly expose an incomplete/public render.
     """
-    navigate_to(page, _rerun=False, arm_opening=arm_opening)
+    if page == "BOM Analyzer":
+        return_to_saved_bom_list(_rerun=False, arm_opening=arm_opening)
+    else:
+        navigate_to(page, _rerun=False, arm_opening=arm_opening)
     st.session_state.pop("cadivor_route_transition", None)
     st.session_state["cadivor_profile_menu_open"] = False
 

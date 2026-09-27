@@ -79,6 +79,40 @@ class BomWorkflowNavigationTests(unittest.TestCase):
         self.assertNotIn(self.navigation.ALT_FINDER_RETURN_ANALYSIS_KEY, self.streamlit.session_state)
         self.assertNotIn(self.navigation.ALT_FINDER_RETURN_COMPONENT_KEY, self.streamlit.session_state)
 
+    def test_same_component_handoff_restores_widget_and_keeps_results(self):
+        from src.alternative_finder_state import (
+            complete_alternative_finder_search,
+            get_alternative_finder_candidates,
+        )
+
+        self.navigation.navigate_to_alternative_finder(
+            mpn="LM358N", manufacturer="Texas Instruments", analysis_id="bom-42", _rerun=False
+        )
+        context = self.navigation.consume_alternative_finder_context(
+            lambda key, default="": default
+        )
+        self.navigation.apply_alternative_finder_prefill(context)
+        complete_alternative_finder_search(
+            self.streamlit.session_state,
+            entered_mpn="LM358N",
+            canonical_mpn="LM358N",
+            original_data={"manufacturer_part_number": "LM358N"},
+            original_risk={"risk_level": "High"},
+            candidates=[{"Alternative Part": "LM358P", "Recommendation Score": 88}],
+        )
+        self.streamlit.session_state.pop("alternative_original_part", None)
+
+        self.navigation.navigate_to_alternative_finder(
+            mpn="LM358N", manufacturer="Texas Instruments", analysis_id="bom-42", _rerun=False
+        )
+        context = self.navigation.consume_alternative_finder_context(
+            lambda key, default="": default
+        )
+        self.navigation.apply_alternative_finder_prefill(context)
+
+        self.assertEqual(self.streamlit.session_state["alternative_original_part"], "LM358N")
+        self.assertEqual(get_alternative_finder_candidates(self.streamlit.session_state)[0]["Alternative Part"], "LM358P")
+
     def test_external_context_preserves_return_after_query_cleanup(self):
         values = {
             "original_part": "LM358N",

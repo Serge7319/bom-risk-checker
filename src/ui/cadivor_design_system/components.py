@@ -772,11 +772,11 @@ def _expandable_cell_html(value: Any, column: ExpandableTableColumn) -> str:
         normalized = text.casefold()
         tone = (
             "danger"
-            if "critical" in normalized
+            if "critical" in normalized or "weak" in normalized
             else "warning"
             if "immediate" in normalized or "review" in normalized
             else "success"
-            if "monitor" in normalized
+            if "monitor" in normalized or "strong" in normalized
             else "neutral"
         )
         return (
@@ -835,6 +835,7 @@ def cadivor_expandable_table(
     resolved_total = visible_count if total_count is None else max(0, int(total_count))
     safe_key = re.sub(r"[^a-zA-Z0-9_-]+", "_", str(key)).strip("_")[:80] or "table"
     state_key = f"_cv_expandable_row_{safe_key}"
+    initial_request_key = f"{state_key}_initial_request"
     supplied_ids = list(row_ids) if row_ids is not None else []
     raw_tokens = [
         _expandable_table_token(
@@ -864,9 +865,14 @@ def cadivor_expandable_table(
             ),
             "",
         )
-        if requested_selection:
+        if (
+            requested_selection
+            and str(st.session_state.get(initial_request_key, "") or "")
+            != requested_selection
+        ):
             selected_token = requested_selection
             st.session_state[state_key] = selected_token
+            st.session_state[initial_request_key] = requested_selection
     selected_position = (
         row_tokens.index(selected_token) if selected_token in row_tokens else None
     )
