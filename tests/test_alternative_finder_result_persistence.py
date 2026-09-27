@@ -19,6 +19,7 @@ from src.alternative_finder_state import (
     init_alternative_finder_state,
     sanitize_for_session,
     set_alternative_finder_selected_candidate,
+    sync_alternative_finder_candidate_record,
     sync_alternative_finder_selected_candidate_result,
     should_apply_alternative_finder_prefill,
     should_start_new_alternative_search,
@@ -151,6 +152,60 @@ class AlternativeFinderResultPersistenceTests(unittest.TestCase):
         active = get_active_alternative_finder_result(self.session)
         assert active is not None
         self.assertEqual(active["selected_candidate_mpn"], "CAND-012")
+
+    def test_enriched_candidate_becomes_the_canonical_table_record(self):
+        candidates = _sample_candidates(2)
+        candidates[0].update(
+            {
+                "Lifecycle Status": "Unknown",
+                "Stock": 0,
+                "Supplier": "Unverified",
+            }
+        )
+        complete_alternative_finder_search(
+            self.session,
+            entered_mpn="SN65HVD230",
+            canonical_mpn="SN65HVD230",
+            original_data={"manufacturer_part_number": "SN65HVD230"},
+            original_risk={},
+            candidates=candidates,
+            selected_candidate_mpn="CAND-000",
+        )
+
+        changed = sync_alternative_finder_candidate_record(
+            self.session,
+            "cand-000",
+            {
+                "Alternative Part": "CAND-000",
+                "Lifecycle Status": "Active",
+                "Stock": 18420,
+                "Supplier": "DigiKey",
+                "Feature Tags": {"automotive", "can"},
+            },
+        )
+
+        self.assertTrue(changed)
+        stored = get_alternative_finder_candidates(self.session)[0]
+        self.assertEqual(stored["Lifecycle Status"], "Active")
+        self.assertEqual(stored["Stock"], 18420)
+        self.assertEqual(stored["Supplier"], "DigiKey")
+        self.assertIsInstance(stored["Feature Tags"], list)
+        self.assertEqual(
+            self.session["suggested_alternatives"][0]["Lifecycle Status"],
+            "Active",
+        )
+        self.assertEqual(
+            self.session[ALT_FINDER_RESULT_KEY]["selected_candidate_mpn"],
+            "CAND-000",
+        )
+
+        self.assertFalse(
+            sync_alternative_finder_candidate_record(
+                self.session,
+                "CAND-000",
+                stored,
+            )
+        )
 
     def test_init_restores_completed_result_into_legacy_keys(self):
         complete_alternative_finder_search(
@@ -297,6 +352,7 @@ class AlternativeFinderRuntimeContractTests(unittest.TestCase):
             "get_alternative_finder_candidates",
             "clear_alternative_finder_search",
             "alternative_search_was_attempted",
+            "sync_alternative_finder_candidate_record",
         ):
             with self.subTest(needle=needle):
                 self.assertIn(needle, alt_section)

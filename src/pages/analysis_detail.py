@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
 import html
+import json
 import re
 from pathlib import Path
 from typing import Any
@@ -517,10 +518,134 @@ def _part_value(part: dict[str, Any], *keys: str, fallback: Any = None) -> Any:
     return fallback
 
 
-def _risk_label(part: dict[str, Any]) -> str:
+def _stored_risk_label(part: dict[str, Any]) -> str:
     return _safe(
         _part_value(part, "risk_level", "Risk Level", "risk_level_display"),
         "Low",
+    )
+
+
+def _component_priority_assessment(part: dict[str, Any]) -> dict[str, Any]:
+    """Resolve one truthful priority from saved score plus release evidence.
+
+    Saved analyses can contain an older numeric score that predates a lifecycle
+    or sourcing change.  The UI must never call an EOL/no-stock component a
+    green Monitor item, so material evidence establishes a minimum score while
+    preserving a higher stored score.
+    """
+    stored_score = max(
+        0,
+        min(100, _num(_part_value(part, "risk_score", "Risk Score"), 0)),
+    )
+    stored_level = _stored_risk_label(part).strip().casefold()
+    floors: list[tuple[int, str]] = []
+    if stored_level in {"critical"}:
+        floors.append((90, "stored critical classification"))
+    elif stored_level in {"high", "high risk"}:
+        floors.append((75, "stored high-risk classification"))
+    elif stored_level in {"medium", "moderate"}:
+        floors.append((50, "stored medium-risk classification"))
+
+    lifecycle = _safe(
+        _part_value(part, "lifecycle_status", "Lifecycle Status"),
+        "Unknown",
+    ).strip().casefold()
+    if any(
+        token in lifecycle
+        for token in (
+            "obsolete",
+            "end of life",
+            "eol",
+            "replacement",
+            "not recommended",
+            "nrnd",
+        )
+    ):
+        floors.append((85, "lifecycle continuity risk"))
+    elif lifecycle in {"", "unknown", "not available", "—"}:
+        floors.append((50, "unverified lifecycle status"))
+
+    quantity_raw = _part_value(part, "quantity", "Quantity")
+    stock_raw = _part_value(part, "stock_available", "Stock Available")
+    supplier_raw = _part_value(part, "supplier_count", "Supplier Count")
+    lead_time_raw = _part_value(part, "lead_time_weeks", "Lead Time Weeks")
+    quantity = max(0, _num(quantity_raw, 0))
+    if stock_raw is not None and str(stock_raw).strip() != "":
+        stock = max(0, _num(stock_raw, 0))
+        if stock <= 0:
+            floors.append((85, "no recorded inventory"))
+        elif quantity > 0 and stock < quantity:
+            floors.append((75, "inventory below BOM demand"))
+    if supplier_raw is not None and str(supplier_raw).strip() != "":
+        suppliers = max(0, _num(supplier_raw, 0))
+        if suppliers <= 0:
+            floors.append((75, "no qualified source"))
+        elif suppliers == 1:
+            floors.append((60, "single-source exposure"))
+    if lead_time_raw is not None and str(lead_time_raw).strip() != "":
+        if max(0, _num(lead_time_raw, 0)) >= 12:
+            floors.append((60, "long lead-time exposure"))
+
+    floor_score, floor_reason = max(floors, default=(0, ""), key=lambda row: row[0])
+    effective_score = max(stored_score, floor_score)
+    risk_level = (
+        "Critical"
+        if effective_score >= 90
+        else "High"
+        if effective_score >= 75
+        else "Medium"
+        if effective_score >= 50
+        else "Low"
+    )
+    return {
+        "stored_score": stored_score,
+        "stored_level": _stored_risk_label(part),
+        "score": effective_score,
+        "risk_level": risk_level,
+        "priority": semantic_priority_label(effective_score),
+        "elevated": effective_score > stored_score,
+        "elevation_reason": floor_reason if effective_score > stored_score else "",
+    }
+
+
+def _risk_label(part: dict[str, Any]) -> str:
+    return str(_component_priority_assessment(part)["risk_level"])
+
+
+def _sync_component_focus_url(analysis_id: str, component_mpn: str = "") -> None:
+    """Persist inline expansion in the address bar without a history entry."""
+    payload = json.dumps(
+        {
+            "analysisId": str(analysis_id or "").strip(),
+            "component": str(component_mpn or "").strip(),
+        },
+        ensure_ascii=True,
+    ).replace("<", "\\u003c")
+    components.html(
+        f"""
+        <script>
+        (function(){{
+          const state = {payload};
+          const parentWindow = window.parent;
+          const url = new URL(parentWindow.location.href);
+          url.searchParams.set('page', 'Analysis Details');
+          if (state.analysisId) url.searchParams.set('analysis_id', state.analysisId);
+          url.searchParams.set('analysis_tab', 'Components');
+          if (state.component) {{
+            url.searchParams.set('component', state.component);
+            url.searchParams.set('focus', 'component-risk');
+          }} else {{
+            url.searchParams.delete('component');
+            url.searchParams.delete('focus');
+          }}
+          const next = url.pathname + url.search + url.hash;
+          const current = parentWindow.location.pathname + parentWindow.location.search + parentWindow.location.hash;
+          if (next !== current) parentWindow.history.replaceState(parentWindow.history.state, '', next);
+        }})();
+        </script>
+        """,
+        height=0,
+        width=0,
     )
 
 
@@ -589,8 +714,9 @@ def _component_risk_detail_model(
     supplier_exposed = suppliers_known and suppliers <= 1
     lead_time_exposed = lead_time_known and lead_time >= 12
 
-    risk_score = _num(_part_value(part, "risk_score", "Risk Score"), 0)
-    risk_level = _risk_label(part)
+    priority = _component_priority_assessment(part)
+    risk_score = int(priority["score"])
+    risk_level = str(priority["risk_level"])
     reason_raw = _part_value(
         part,
         "risk_reasons",
@@ -743,6 +869,10 @@ def _component_risk_detail_model(
         ),
         "risk_score": risk_score,
         "risk_level": risk_level,
+        "priority": priority["priority"],
+        "stored_risk_score": priority["stored_score"],
+        "priority_elevated": priority["elevated"],
+        "priority_reason": priority["elevation_reason"],
         "risk_reason": risk_reason,
         "drivers": drivers,
         "inventory_coverage": inventory_coverage,
@@ -2543,10 +2673,7 @@ def render_analysis_detail(
         if parts:
             normalized_parts = sorted(
                 parts,
-                key=lambda x: _num(
-                    _part_value(x, "risk_score", "Risk Score"),
-                    0,
-                ),
+                key=lambda x: _component_priority_assessment(x)["score"],
                 reverse=True,
             )
 
@@ -2657,10 +2784,7 @@ def render_analysis_detail(
                         _part_value(part, "mpn", "MPN"),
                         "Unknown MPN",
                     )
-                    score_value = _num(
-                        _part_value(part, "risk_score", "Risk Score"),
-                        0,
-                    )
+                    priority = _component_priority_assessment(part)
                     component_row_ids.append(mpn_value)
                     component_rows.append(
                         {
@@ -2689,7 +2813,7 @@ def render_analysis_detail(
                                     0,
                                 )
                             ),
-                            "Priority": semantic_priority_label(score_value),
+                            "Priority": priority["priority"],
                         }
                     )
 
@@ -2746,6 +2870,18 @@ def render_analysis_detail(
                 )
 
                 selected_component_position = component_table_result.first_selected_row
+                selected_component_url_mpn = ""
+                if (
+                    selected_component_position is not None
+                    and 0 <= selected_component_position < len(component_row_ids)
+                ):
+                    selected_component_url_mpn = component_row_ids[
+                        selected_component_position
+                    ]
+                _sync_component_focus_url(
+                    analysis_id,
+                    selected_component_url_mpn,
+                )
                 if (
                     selected_component_position is not None
                     and 0 <= selected_component_position < len(visible_parts)
@@ -2805,6 +2941,15 @@ def render_analysis_detail(
                             '<div class="cv-part-risk-source-note"><b>Stored risk explanation:</b> '
                             f'{html.escape(detail["risk_reason"])}</div>'
                         )
+                    priority_note = ""
+                    if detail["priority_elevated"]:
+                        priority_note = (
+                            '<div class="cv-part-risk-source-note cv-part-risk-source-note--priority">'
+                            '<b>Priority adjusted for current evidence:</b> '
+                            f'{detail["stored_risk_score"]}/100 saved score → '
+                            f'{detail["risk_score"]}/100 because of '
+                            f'{html.escape(detail["priority_reason"])}.</div>'
+                        )
 
                     with component_table_result.detail_slot.container():
                         st.markdown(
@@ -2844,6 +2989,7 @@ def render_analysis_detail(
                                 </div>
                                 {cost_card}
                               </div>
+                              {priority_note}
                               {stored_reason}
                             </div>
                             """,
@@ -2907,6 +3053,11 @@ def render_analysis_detail(
                                         mpn=selected_mpn,
                                         analysis_id=analysis_id,
                                         return_analysis_id=analysis_id,
+                                        monitor_view=(
+                                            "queue"
+                                            if detail["alert_count"]
+                                            else "components"
+                                        ),
                                     )
                                 elif action_name == "impact":
                                     internal_nav_button(

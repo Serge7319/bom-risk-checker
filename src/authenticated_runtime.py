@@ -3976,7 +3976,18 @@ def run_authenticated_app() -> None:
             "",
         )
         if return_analysis_id and st.button("← Back to Saved BOM", key="monitoring_back_to_saved_bom", type="secondary"):
-            navigate_to("Analysis Details", analysis_id=return_analysis_id)
+            return_params = {
+                "analysis_id": return_analysis_id,
+                "analysis_tab": "Components",
+            }
+            if focused_monitor_part:
+                return_params.update(
+                    {
+                        "component": focused_monitor_part,
+                        "focus": "component-risk",
+                    }
+                )
+            navigate_to("Analysis Details", **return_params)
 
         def _monitor_query(table_name, columns="*"):
             return _workspace_query(supabase.table(table_name).select(columns)).eq("user_id", current_user["id"])
@@ -4098,6 +4109,9 @@ def run_authenticated_app() -> None:
             "part_" + re.sub(r"[^a-zA-Z0-9_-]", "_", focused_monitor_part)[:36]
             if focused_monitor_part
             else "default"
+        )
+        monitor_entry_token = str(
+            st.session_state.get("cadivor_nav_scroll_reset_token", "0") or "0"
         )
 
         def _render_monitor_action_queue():
@@ -4234,6 +4248,19 @@ def run_authenticated_app() -> None:
                 }
             )
             focus_title, focus_description = monitor_focus_labels[effective_focus]
+            if focused_monitor_part:
+                focus_title = f"Alerts for {focused_monitor_part}"
+                focus_description = "Component-specific monitoring evidence"
+            initial_alert_id = None
+            if focused_monitor_part and "Alert ID" in visible_queue.columns:
+                focused_alert_token = (
+                    f"{monitor_entry_token}:{return_analysis_id}:"
+                    f"{focused_monitor_part.casefold()}:queue"
+                )
+                if st.session_state.get("m32_applied_alert_focus") != focused_alert_token:
+                    initial_alert_id = str(visible_queue.iloc[0].get("Alert ID") or "")
+                    if initial_alert_id:
+                        st.session_state["m32_applied_alert_focus"] = focused_alert_token
             queue_table_result = cadivor_expandable_table(
                 queue_table,
                 key=(
@@ -4292,6 +4319,7 @@ def run_authenticated_app() -> None:
                     if "Alert ID" in visible_queue.columns
                     else [f"alert-{position}" for position in range(len(visible_queue))]
                 ),
+                initial_row_id=initial_alert_id,
                 context_title=focus_title,
                 context_detail=(
                     f"{focus_description}. All rows below match this view."
@@ -4636,10 +4664,20 @@ def run_authenticated_app() -> None:
                     )
                     return f"{direction} {absolute}{percent}"
 
+                component_filter_key = (
+                    "part_" + re.sub(
+                        r"[^a-zA-Z0-9_-]+",
+                        "_",
+                        focused_monitor_part,
+                    )[:48]
+                    if focused_monitor_part
+                    else "default"
+                )
                 component_search = st.text_input(
                     "Search monitored components",
+                    value=focused_monitor_part,
                     placeholder="Part number, supplier, lifecycle, or risk",
-                    key="m32_component_search",
+                    key=f"m32_component_search_{component_filter_key}",
                 )
                 visible = components.copy()
                 if component_search.strip():
@@ -4763,6 +4801,16 @@ def run_authenticated_app() -> None:
                         if "Part Number" in display_components.columns
                         else None
                     ),
+                    initial_row_id=(
+                        focused_monitor_part
+                        if focused_monitor_part
+                        and st.session_state.get("m32_applied_component_focus")
+                        != (
+                            f"{monitor_entry_token}:{return_analysis_id}:"
+                            f"{focused_monitor_part.casefold()}:components"
+                        )
+                        else None
+                    ),
                     context_title="Monitoring coverage",
                     context_detail=(
                         "Search by component, supplier, lifecycle status, or risk."
@@ -4773,6 +4821,11 @@ def run_authenticated_app() -> None:
                     ),
                     total_count=len(components),
                 )
+                if focused_monitor_part:
+                    st.session_state["m32_applied_component_focus"] = (
+                        f"{monitor_entry_token}:{return_analysis_id}:"
+                        f"{focused_monitor_part.casefold()}:components"
+                    )
                 selected_component_position = (
                     component_table_result.first_selected_row
                 )
@@ -5830,6 +5883,8 @@ def run_authenticated_app() -> None:
                         navigation_params = {"monitor_view": view_token}
                         if return_analysis_id:
                             navigation_params["return_analysis_id"] = return_analysis_id
+                        if focused_monitor_part:
+                            navigation_params["mpn"] = focused_monitor_part
                         navigate_to(
                             "Monitoring",
                             arm_opening=False,
@@ -13029,6 +13084,7 @@ def run_authenticated_app() -> None:
             mark_alternative_finder_running,
             resolve_alternative_finder_submitted_mpn,
             should_show_terminal_search_error,
+            sync_alternative_finder_candidate_record,
             sync_alternative_finder_selected_candidate_result,
             set_alternative_finder_selected_candidate,
             should_start_new_alternative_search,
@@ -14607,10 +14663,6 @@ def run_authenticated_app() -> None:
             ).fillna(0)
             candidate_table = pd.DataFrame(
                 {
-                    "Current": [
-                        "✓" if candidate == current_candidate else ""
-                        for candidate in alternative_options
-                    ],
                     "Candidate": alternative_options,
                     "Relationship": _candidate_series(
                         ["Classification", "Category", "Substitute Type"],
@@ -14647,7 +14699,7 @@ def run_authenticated_app() -> None:
                         str(current_search or "component"),
                     )[:48]
                 ),
-                context_title=f"Current candidate: {current_candidate}",
+                context_title="Ranked replacement candidates",
                 context_detail=(
                     "The recommendation, comparison, evidence, and decision workspace "
                     "below follow the selected row."
@@ -14658,11 +14710,6 @@ def run_authenticated_app() -> None:
                     "Click any candidate cell or its checkbox to compare it with the original component."
                 ),
                 column_config={
-                    "Current": st.column_config.TextColumn(
-                        "",
-                        width="small",
-                        help="The candidate currently shown below.",
-                    ),
                     "Candidate": st.column_config.TextColumn(width="medium"),
                     "Relationship": st.column_config.TextColumn(width="medium"),
                     "Recommendation": st.column_config.TextColumn(width="medium"),
@@ -14679,13 +14726,10 @@ def run_authenticated_app() -> None:
                 and 0 <= selected_candidate_position < len(alternative_options)
             ):
                 selected_alternative = alternative_options[selected_candidate_position]
-            candidate_changed = selected_alternative != current_candidate
             sync_alternative_finder_selected_candidate_result(
                 st.session_state,
                 selected_alternative,
             )
-            if candidate_changed:
-                st.rerun()
 
             selected_row = alternatives_df[
                 alternatives_df["Alternative Part"].astype(str) == selected_alternative
@@ -14712,6 +14756,15 @@ def run_authenticated_app() -> None:
                     selected_mpn=selected_alternative,
                 )
             )
+            candidate_record_changed = sync_alternative_finder_candidate_record(
+                st.session_state,
+                selected_alternative,
+                enriched_candidate,
+            )
+            if candidate_record_changed:
+                # Repaint once from the canonical enriched record so the ranked
+                # row and detail panel cannot show conflicting supplier facts.
+                st.rerun()
             selected_row = pd.Series(enriched_candidate)
 
             def _af62b_value(row, keys, fallback="—"):

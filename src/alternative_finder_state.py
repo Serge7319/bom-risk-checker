@@ -657,6 +657,64 @@ def sync_alternative_finder_selected_candidate_result(
         result["selected_candidate_mpn"] = selected
 
 
+def sync_alternative_finder_candidate_record(
+    session_state: MutableMapping[str, Any],
+    candidate_mpn: str,
+    candidate: Mapping[str, Any],
+) -> bool:
+    """Replace one discovery snapshot with its canonical enriched record.
+
+    Alternative Finder initially stores inexpensive discovery rows and enriches
+    the selected candidate later.  Keeping that enrichment only in the detail
+    panel lets the ranked table and detail panel disagree about lifecycle,
+    stock, or supplier coverage.  This helper promotes the enriched record to
+    the durable result (and its legacy mirror) so every presentation reads the
+    same values on the next paint.
+    """
+    target = _normalize_mpn(candidate_mpn)
+    if not target:
+        return False
+    result = session_state.get(ALT_FINDER_RESULT_KEY)
+    if not isinstance(result, dict) or result.get("status") != STATUS_COMPLETED:
+        return False
+
+    sanitized = _safe_sanitize_mapping(candidate)
+    if not sanitized:
+        return False
+    sanitized_mpn = str(
+        sanitized.get("Alternative Part")
+        or sanitized.get("manufacturer_part_number")
+        or candidate_mpn
+    ).strip()
+    sanitized["Alternative Part"] = sanitized_mpn or candidate_mpn.strip()
+
+    candidates = list(result.get("candidates") or [])
+    changed = False
+    for index, existing in enumerate(candidates):
+        if not isinstance(existing, Mapping):
+            continue
+        existing_mpn = _normalize_mpn(
+            existing.get("Alternative Part")
+            or existing.get("manufacturer_part_number")
+        )
+        if existing_mpn != target:
+            continue
+        merged = dict(existing)
+        merged.update(sanitized)
+        merged = _safe_sanitize_mapping(merged)
+        if merged != dict(existing):
+            candidates[index] = merged
+            changed = True
+        break
+
+    if not changed:
+        return False
+    result["candidates"] = candidates
+    result["selected_candidate_mpn"] = sanitized["Alternative Part"]
+    _sync_legacy_from_result(session_state, result)
+    return True
+
+
 def should_start_new_alternative_search(
     session_state: Mapping[str, Any],
     submitted_mpn: str,
