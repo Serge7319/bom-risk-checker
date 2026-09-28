@@ -12,6 +12,7 @@ from src.decision_engine import (
     decision_target_context,
     decision_target_label,
     decision_target_type,
+    partition_decision_queue,
 )
 
 
@@ -94,6 +95,7 @@ class DecisionTargetConsistencyTests(unittest.TestCase):
             decision_target_context(decision),
             "Component · Project Alpha — Motor Controller BOM",
         )
+        self.assertEqual(decision_target_cell(decision), "LM358N")
         self.assertEqual(decision.get("mpn"), "LM358N")
 
     def test_legacy_records_are_classified_without_breaking_display(self):
@@ -128,6 +130,23 @@ class DecisionTargetConsistencyTests(unittest.TestCase):
             "Component · Power Board · Rev B BOM",
         )
 
+    def test_project_title_already_includes_bom_name_without_repeating_it(self):
+        project = "Radar Control Unit — Cadivor 10-Part Sample BOM"
+        bom = "Cadivor 10-Part Sample BOM"
+        self.assertEqual(
+            decision_target_label({
+                "target_type": "bom", "project_name": project, "bom_name": bom,
+            }),
+            project,
+        )
+        self.assertEqual(
+            decision_target_context({
+                "target_type": "component", "mpn": "LM358N",
+                "project_name": project, "bom_name": bom,
+            }),
+            f"Component · {project}",
+        )
+
     def test_unlinked_alert_in_one_saved_bom_shows_inferred_context(self):
         center = build_decision_center(
             alert_df=self._legacy_alert(),
@@ -139,7 +158,7 @@ class DecisionTargetConsistencyTests(unittest.TestCase):
         self.assertEqual(component["context_analysis_id"], "a1")
         self.assertEqual(
             decision_target_cell(component),
-            "LM358N\nComponent · Appears in Control Board · Rev A",
+            "LM358N",
         )
 
     def test_shared_part_lists_boms_without_claiming_one_as_alert_source(self):
@@ -184,6 +203,26 @@ class DecisionTargetConsistencyTests(unittest.TestCase):
         component = next(d for d in center["decisions"] if d["source"] == "Monitoring")
         self.assertEqual(component["analysis_id"], "")
         self.assertEqual(decision_target_context(component), "Component · No saved BOM linked")
+        self.assertEqual(decision_target_cell(component), "LM358N")
+
+    def test_component_and_saved_bom_reviews_keep_separate_targets_and_all_ids(self):
+        center = build_decision_center(
+            alert_df=self._legacy_alert(),
+            analyses=[
+                {"id": "a1", "project_name": "Control Board", "bom_name": "Rev A",
+                 "high_risk_count": 2, "health_score": 52},
+            ],
+            part_links=[{"analysis_id": "a1", "mpn": "LM358N"}],
+        )
+        components, saved_boms = partition_decision_queue(iter(center["decisions"]))
+        self.assertEqual(len(components), 1)
+        self.assertEqual(len(saved_boms), 1)
+        self.assertEqual(
+            {item["decision_id"] for item in components + saved_boms},
+            {item["decision_id"] for item in center["decisions"]},
+        )
+        self.assertEqual(decision_target_cell(components[0]), "LM358N")
+        self.assertTrue(decision_target_cell(saved_boms[0]).startswith("Control Board · Rev A\n"))
 
 
 if __name__ == "__main__":
