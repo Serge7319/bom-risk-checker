@@ -155,7 +155,7 @@ class SmartTableSystemTests(unittest.TestCase):
         self.assertIn("render_expanded=_render_queue_decision", decisions)
         self.assertIn("driver_table_result = cadivor_expandable_table(", decisions)
         self.assertIn("render_expanded=_render_driver_queue_intelligence", decisions)
-        self.assertIn("Click a decision row to expand it", decisions)
+        self.assertIn("Click a row to expand its evidence and actions.", decisions)
         self.assertIn("report_table_result = cadivor_smart_dataframe(", reports)
         self.assertIn("selected_report_row = visible.iloc", reports)
         self.assertIn("Run Alternative Finder for", reports)
@@ -172,8 +172,12 @@ class SmartTableSystemTests(unittest.TestCase):
         decisions = RUNTIME.split('if app_mode == "Engineering Decisions":', 1)[1].split(
             'if app_mode == "Reports":', 1
         )[0]
-        self.assertIn('"Review target": decision_target_cell(decision)', decisions)
+        self.assertIn('component_decisions, bom_decisions = partition_decision_queue(visible)', decisions)
+        self.assertIn('target_column: decision_target_cell(decision)', decisions)
+        self.assertIn('target_column="Component"', decisions)
+        self.assertIn('target_column="Saved BOM"', decisions)
         self.assertIn('kind="target"', decisions)
+        self.assertIn('Saved BOM context:', decisions)
         self.assertIn('decision_target_context(decision)', decisions)
         self.assertIn('decision_target_type(selected_decision)', decisions)
 

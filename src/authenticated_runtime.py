@@ -30,6 +30,7 @@ from src.decision_engine import (
     decision_target_context,
     decision_target_label,
     decision_target_type,
+    partition_decision_queue,
     STATUSES,
 )
 from src.decision_dashboard import packet_header_html
@@ -7195,21 +7196,35 @@ def run_authenticated_app() -> None:
                             """,
                             unsafe_allow_html=True,
                         )
-                        if len(related_boms) > 1:
-                            names = ", ".join(
-                                html.escape(str(bom.get("name") or "Saved BOM"))
-                                for bom in related_boms[:5]
-                            )
-                            overflow = (
-                                f" and {len(related_boms) - 5} more"
-                                if len(related_boms) > 5 else ""
-                            )
-                            st.markdown(
-                                f"<p><strong>Component appears in {len(related_boms)} "
-                                f"saved BOMs:</strong> {names}{overflow}. "
-                                "This monitoring alert has no specific BOM link.</p>",
-                                unsafe_allow_html=True,
-                            )
+                        if decision_target_type(decision) == "component":
+                            if len(related_boms) > 1:
+                                names = ", ".join(
+                                    html.escape(str(bom.get("name") or "Saved BOM"))
+                                    for bom in related_boms[:5]
+                                )
+                                overflow = (
+                                    f" and {len(related_boms) - 5} more"
+                                    if len(related_boms) > 5 else ""
+                                )
+                                st.markdown(
+                                    f"<p><strong>Appears in {len(related_boms)} saved BOMs:</strong> "
+                                    f"{names}{overflow}. The monitoring alert is not linked "
+                                    "to a specific BOM.</p>",
+                                    unsafe_allow_html=True,
+                                )
+                            else:
+                                bom_context = decision_target_context(decision)
+                                if bom_context != "Component · No saved BOM linked":
+                                    name = bom_context.removeprefix("Component · ")
+                                    st.markdown(
+                                        f"<p><strong>Saved BOM context:</strong> "
+                                        f"{html.escape(name)}</p>",
+                                        unsafe_allow_html=True,
+                                    )
+                                elif decision.get("analysis_id"):
+                                    st.caption("This alert references a saved BOM; its name is unavailable.")
+                                else:
+                                    st.caption("No saved BOM is associated with this monitoring alert.")
                         render_decision_card_actions(
                             decision,
                             navigate_to=navigate_to,
@@ -7362,47 +7377,23 @@ def run_authenticated_app() -> None:
                                 ).lower()
                             ]
     
-                        st.caption(f"Showing {len(visible)} of {len(all_decisions)} engineering decision(s).")
-    
+                        component_decisions, bom_decisions = partition_decision_queue(visible)
+                        all_components, all_boms = partition_decision_queue(all_decisions)
+                        st.caption(
+                            f"Showing {len(visible)} of {len(all_decisions)} engineering decisions: "
+                            f"{len(component_decisions)} component reviews and "
+                            f"{len(bom_decisions)} saved BOM reviews."
+                        )
+
                         if not visible:
                             st.info("No engineering decisions match the selected filters.")
                         else:
-                            visible_decisions = visible[:40]
-                            decision_table = pd.DataFrame(
-                                [
-                                    {
-                                        "Review target": decision_target_cell(decision),
-                                        "Decision": decision["title"],
-                                        "Priority": semantic_priority_label(
-                                            decision.get("priority_score", 0)
-                                        ),
-                                        "Status": decision.get("status") or "New",
-                                        "Owner": (
-                                            decision.get("assigned_owner")
-                                            or "Unassigned"
-                                        ),
-                                        "Due": humanize_table_date(
-                                            decision.get("due_date"),
-                                            "Not scheduled",
-                                        ),
-                                        "Effort": int(
-                                            decision.get("estimated_effort_hours", 0)
-                                            or 0
-                                        ),
-                                    }
-                                    for decision in visible_decisions
-                                ]
-                            )
-                            decision_focus_labels = {
-                                "pending": "Pending decisions",
-                                "critical": "Critical decisions",
-                                "rejected": "Rejected decisions",
-                                "approved": "Approved decisions",
-                            }
-                            decision_view_title = decision_focus_labels.get(
-                                decision_focus,
-                                "Decision queue",
-                            )
+                            focus_heading = {
+                                "pending": "Pending",
+                                "critical": "Critical",
+                                "rejected": "Rejected",
+                                "approved": "Approved",
+                            }.get(decision_focus, "")
                             decision_view_token = re.sub(
                                 r"[^a-zA-Z0-9_-]+",
                                 "_",
@@ -7414,85 +7405,133 @@ def run_authenticated_app() -> None:
                                     )
                                 ),
                             )[:80]
-                            def _render_queue_decision(
-                                _row: pd.Series,
-                                position: int,
+                            def _render_scoped_queue(
+                                decisions: list[dict],
+                                *,
+                                scope: str,
+                                target_column: str,
+                                context_title: str,
+                                context_detail: str,
+                                total_count: int,
                             ) -> None:
-                                if not 0 <= position < len(visible_decisions):
-                                    return
-                                queue_decision = visible_decisions[position]
-                                _render_decision_inline_intelligence(
-                                    queue_decision,
-                                    key_prefix=(
-                                        "queue_"
-                                        f"{queue_decision['decision_id']}"
-                                    ),
+                                visible_decisions = decisions[:40]
+                                decision_table = pd.DataFrame(
+                                    [
+                                        {
+                                            target_column: decision_target_cell(decision),
+                                            "Decision": decision["title"],
+                                            "Priority": semantic_priority_label(
+                                                decision.get("priority_score", 0)
+                                            ),
+                                            "Status": decision.get("status") or "New",
+                                            "Owner": decision.get("assigned_owner") or "Unassigned",
+                                            "Due": humanize_table_date(
+                                                decision.get("due_date"), "Not scheduled"
+                                            ),
+                                            "Effort": (
+                                                f"{int(decision.get('estimated_effort_hours', 0) or 0):,} hrs"
+                                            ),
+                                        }
+                                        for decision in visible_decisions
+                                    ]
                                 )
 
-                            decision_table_result = cadivor_expandable_table(
-                                decision_table.assign(
-                                    Effort=decision_table["Effort"].map(
-                                        lambda value: f"{int(value):,} hrs"
-                                    )
-                                ),
-                                key=(
-                                    "engineering_decision_queue_table_"
-                                    f"{filter_key_suffix or 'custom'}_"
-                                    f"{decision_view_token or 'all'}"
-                                ),
-                                columns=(
-                                    ExpandableTableColumn(
-                                        "Review target", "Review target",
-                                        width=1.25, min_width=190, kind="target",
+                                def _render_queue_decision(
+                                    _row: pd.Series, position: int
+                                ) -> None:
+                                    if 0 <= position < len(visible_decisions):
+                                        queue_decision = visible_decisions[position]
+                                        _render_decision_inline_intelligence(
+                                            queue_decision,
+                                            key_prefix=f"queue_{queue_decision['decision_id']}",
+                                        )
+
+                                decision_table_result = cadivor_expandable_table(
+                                    decision_table,
+                                    key=(
+                                        f"engineering_decision_{scope}_queue_table_"
+                                        f"{filter_key_suffix or 'custom'}_"
+                                        f"{decision_view_token or 'all'}"
                                     ),
-                                    ExpandableTableColumn(
-                                        "Decision", "Decision",
-                                        width=1.75, min_width=220,
+                                    columns=(
+                                        ExpandableTableColumn(
+                                            target_column, target_column,
+                                            width=1.25, min_width=190, kind="target",
+                                        ),
+                                        ExpandableTableColumn(
+                                            "Decision", "Decision", width=1.75, min_width=220,
+                                        ),
+                                        ExpandableTableColumn(
+                                            "Priority", "Priority", width=.95,
+                                            min_width=130, kind="priority",
+                                        ),
+                                        ExpandableTableColumn(
+                                            "Status", "Status", width=.8,
+                                            min_width=110, kind="status",
+                                        ),
+                                        ExpandableTableColumn(
+                                            "Owner", "Owner", width=.8, min_width=110,
+                                        ),
+                                        ExpandableTableColumn(
+                                            "Due", "Due", width=.85, min_width=120,
+                                        ),
+                                        ExpandableTableColumn(
+                                            "Effort", "Effort", width=.55,
+                                            min_width=85, align="right", kind="mono",
+                                        ),
                                     ),
-                                    ExpandableTableColumn(
-                                        "Priority", "Priority",
-                                        width=.95, min_width=130, kind="priority",
+                                    render_expanded=_render_queue_decision,
+                                    row_ids=[
+                                        decision.get("decision_id") or position
+                                        for position, decision in enumerate(visible_decisions)
+                                    ],
+                                    context_title=context_title,
+                                    context_detail=context_detail,
+                                    count_label=(
+                                        f"{len(visible_decisions):,} of {len(decisions):,} matching decisions"
+                                        if len(decisions) > len(visible_decisions)
+                                        else f"{len(decisions):,} matching decisions"
                                     ),
-                                    ExpandableTableColumn(
-                                        "Status", "Status",
-                                        width=.8, min_width=110, kind="status",
+                                    context_tone=(
+                                        "danger" if decision_focus == "critical" else "info"
                                     ),
-                                    ExpandableTableColumn(
-                                        "Owner", "Owner", width=.8, min_width=110,
+                                    selection_hint=(
+                                        "Click a row to expand its evidence and actions."
+                                        + (" Use search to find more." if len(decisions) > 40 else "")
                                     ),
-                                    ExpandableTableColumn(
-                                        "Due", "Due", width=.85, min_width=120,
+                                    total_count=total_count,
+                                )
+
+                            if component_decisions:
+                                _render_scoped_queue(
+                                    component_decisions,
+                                    scope="component",
+                                    target_column="Component",
+                                    context_title=(
+                                        f"{focus_heading} component decisions"
+                                        if focus_heading else "Component decisions"
                                     ),
-                                    ExpandableTableColumn(
-                                        "Effort", "Effort", width=.55, min_width=85,
-                                        align="right", kind="mono",
+                                    context_detail=(
+                                        "Each row is a monitored part. Expand it to see "
+                                        "the response and any verified saved BOM context."
                                     ),
-                                ),
-                                render_expanded=_render_queue_decision,
-                                row_ids=[
-                                    decision.get("decision_id") or position
-                                    for position, decision in enumerate(visible_decisions)
-                                ],
-                                context_title=decision_view_title,
-                                context_detail=(
-                                    "Open a decision to inspect its recommendation, "
-                                    "evidence, and next engineering action inline."
-                                ),
-                                count_label=f"{len(visible):,} matching decisions",
-                                context_tone=(
-                                    "danger"
-                                    if decision_focus == "critical"
-                                    else "success"
-                                    if decision_focus == "approved"
-                                    else "warning"
-                                    if decision_focus == "rejected"
-                                    else "info"
-                                ),
-                                selection_hint=(
-                                    "Click a decision row to expand it. Only one row stays open."
-                                ),
-                                total_count=len(all_decisions),
-                            )
+                                    total_count=len(all_components),
+                                )
+                            if bom_decisions:
+                                _render_scoped_queue(
+                                    bom_decisions,
+                                    scope="bom",
+                                    target_column="Saved BOM",
+                                    context_title=(
+                                        f"{focus_heading} saved BOM reviews"
+                                        if focus_heading else "Saved BOM reviews"
+                                    ),
+                                    context_detail=(
+                                        "Each row is a whole-BOM release review. "
+                                        "Expand for the release decision and a link to affected components."
+                                    ),
+                                    total_count=len(all_boms),
+                                )
 
                     with workload_tab:
                         st.markdown("### Team Workload")

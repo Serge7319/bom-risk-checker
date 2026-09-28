@@ -59,10 +59,14 @@ def decision_target_label(decision: Dict[str, Any]) -> str:
     """Return the primary human-readable target label for a decision."""
     target_type = decision_target_type(decision)
     if target_type == "bom":
+        project_name = _text(decision.get("project_name"))
+        bom_name = _text(decision.get("bom_name"))
+        if project_name and bom_name and not project_name.casefold().endswith(bom_name.casefold()):
+            return f"{project_name} · {bom_name}"
         return _text(
             decision.get("target_label")
-            or decision.get("bom_name")
             or decision.get("project_name")
+            or decision.get("bom_name")
             or decision.get("part_number"),
             "Saved BOM",
         )
@@ -92,7 +96,7 @@ def decision_target_context(decision: Dict[str, Any]) -> str:
     related_boms = decision.get("related_boms") or []
     if len(related_boms) > 1:
         return f"Component · In {len(related_boms):,} saved BOMs"
-    if project_name and bom_name and project_name.casefold() != bom_name.casefold():
+    if project_name and bom_name and not project_name.casefold().endswith(bom_name.casefold()):
         context = f"{project_name} · {bom_name}"
     else:
         context = project_name or bom_name or source_filename
@@ -102,14 +106,28 @@ def decision_target_context(decision: Dict[str, Any]) -> str:
 
 
 def decision_target_cell(decision: Dict[str, Any]) -> str:
-    """Return a two-line value for the shared expandable-table target cell."""
-    return f"{decision_target_label(decision)}\n{decision_target_context(decision)}"
+    """Keep component rows scannable; show saved BOM context when expanded."""
+    label = decision_target_label(decision)
+    if decision_target_type(decision) == "component":
+        return label
+    return f"{label}\n{decision_target_context(decision)}"
+
+
+def partition_decision_queue(
+    decisions: Iterable[Dict[str, Any]],
+) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """Separate part alerts from whole-BOM reviews without dropping either."""
+    components: List[Dict[str, Any]] = []
+    saved_boms: List[Dict[str, Any]] = []
+    for decision in decisions:
+        (components if decision_target_type(decision) == "component" else saved_boms).append(decision)
+    return components, saved_boms
 
 
 def _analysis_context_title(analysis: Dict[str, Any]) -> str:
     project = _text(analysis.get("project_name"))
     bom = _text(analysis.get("bom_name"))
-    if project and bom and project.casefold() != bom.casefold():
+    if project and bom and not project.casefold().endswith(bom.casefold()):
         return f"{project} · {bom}"
     return project or bom or _text(analysis.get("filename"), "Saved BOM")
 

@@ -1076,8 +1076,10 @@ def render_decision_card_actions(
             else "component"
         )
     is_component_target = target_type == "component"
+    saved_bom_id = decision.get("analysis_id") or decision.get("context_analysis_id")
+    show_saved_bom_action = not is_component_target or bool(saved_bom_id)
     action_cols = st.columns(
-        [1.25, 1, 1, 1] if is_component_target else [1.25, 1, 1],
+        [1.25, 1, 1, 1] if is_component_target and show_saved_bom_action else [1.25, 1, 1],
         gap="small",
     )
     with action_cols[0]:
@@ -1118,7 +1120,7 @@ def render_decision_card_actions(
                 return_analysis_id=str(decision.get("analysis_id") or ""),
             )
             cadivor_button_wrap_end()
-        saved_bom_column = action_cols[3]
+        saved_bom_column = action_cols[3] if show_saved_bom_action else None
     else:
         with action_cols[1]:
             cadivor_button_wrap("secondary")
@@ -1135,23 +1137,21 @@ def render_decision_card_actions(
             cadivor_button_wrap_end()
         saved_bom_column = action_cols[2]
 
-    with saved_bom_column:
-        cadivor_button_wrap("secondary")
-        saved_bom_id = decision.get("analysis_id") or decision.get("context_analysis_id")
-        if saved_bom_id:
-            internal_nav_button(
-                "Open Saved BOM",
-                "Analysis Details",
-                key=f"{key_prefix}_analysis",
-                use_container_width=True,
-                type="secondary",
-                analysis_id=saved_bom_id,
-            )
-        elif decision.get("related_boms"):
-            st.caption("Choose a saved BOM below")
-        else:
-            st.caption("No saved BOM linked")
-        cadivor_button_wrap_end()
+    if saved_bom_column is not None:
+        with saved_bom_column:
+            cadivor_button_wrap("secondary")
+            if saved_bom_id:
+                internal_nav_button(
+                    "Open Saved BOM",
+                    "Analysis Details",
+                    key=f"{key_prefix}_analysis",
+                    use_container_width=True,
+                    type="secondary",
+                    analysis_id=saved_bom_id,
+                )
+            else:
+                st.caption("Saved BOM unavailable")
+            cadivor_button_wrap_end()
     _render_html("</div>")
 
 
