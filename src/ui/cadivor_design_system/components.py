@@ -1137,15 +1137,18 @@ def render_decision_card_actions(
 
     with saved_bom_column:
         cadivor_button_wrap("secondary")
-        if decision.get("analysis_id"):
+        saved_bom_id = decision.get("analysis_id") or decision.get("context_analysis_id")
+        if saved_bom_id:
             internal_nav_button(
                 "Open Saved BOM",
                 "Analysis Details",
                 key=f"{key_prefix}_analysis",
                 use_container_width=True,
                 type="secondary",
-                analysis_id=decision["analysis_id"],
+                analysis_id=saved_bom_id,
             )
+        elif decision.get("related_boms"):
+            st.caption("Choose a saved BOM below")
         else:
             st.caption("No saved BOM linked")
         cadivor_button_wrap_end()

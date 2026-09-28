@@ -16,6 +16,24 @@ from src.decision_engine import (
 
 
 class DecisionTargetConsistencyTests(unittest.TestCase):
+    @staticmethod
+    def _legacy_alert(analysis_id=None):
+        return pd.DataFrame([{
+            "analysis_id": analysis_id,
+            "part_number": "LM358N",
+            "alert_type": "Lifecycle change",
+            "alert_message": "Lifecycle changed from obsolete to active",
+            "severity": "High",
+            "created_at": "2026-09-01T00:00:00Z",
+        }])
+
+    @staticmethod
+    def _saved_boms():
+        return [
+            {"id": "a1", "project_name": "Control Board", "bom_name": "Rev A"},
+            {"id": "a2", "project_name": "Power Board", "bom_name": "Rev B"},
+        ]
+
     def test_analysis_decisions_are_explicit_bom_targets(self):
         decisions = _analysis_decisions(
             {
@@ -109,6 +127,63 @@ class DecisionTargetConsistencyTests(unittest.TestCase):
             decision_target_context(decision),
             "Component · Power Board · Rev B BOM",
         )
+
+    def test_unlinked_alert_in_one_saved_bom_shows_inferred_context(self):
+        center = build_decision_center(
+            alert_df=self._legacy_alert(),
+            analyses=self._saved_boms(),
+            part_links=[{"analysis_id": "a1", "mpn": "lm358n"}],
+        )
+        component = next(d for d in center["decisions"] if d["source"] == "Monitoring")
+        self.assertEqual(component["analysis_id"], "")
+        self.assertEqual(component["context_analysis_id"], "a1")
+        self.assertEqual(
+            decision_target_cell(component),
+            "LM358N\nComponent · Appears in Control Board · Rev A",
+        )
+
+    def test_shared_part_lists_boms_without_claiming_one_as_alert_source(self):
+        center = build_decision_center(
+            alert_df=self._legacy_alert(),
+            analyses=self._saved_boms(),
+            part_links=[
+                {"analysis_id": "a2", "mpn": "LM358N"},
+                {"analysis_id": "a1", "mpn": "LM358N"},
+                {"analysis_id": "a1", "mpn": "LM358N"},
+            ],
+        )
+        component = next(d for d in center["decisions"] if d["source"] == "Monitoring")
+        self.assertEqual(component["analysis_id"], "")
+        self.assertNotIn("context_analysis_id", component)
+        self.assertEqual(decision_target_context(component), "Component · In 2 saved BOMs")
+        self.assertEqual(
+            [bom["name"] for bom in component["related_boms"]],
+            ["Control Board · Rev A", "Power Board · Rev B"],
+        )
+
+    def test_direct_link_wins_over_shared_part_matches(self):
+        center = build_decision_center(
+            alert_df=self._legacy_alert("a1"),
+            analyses=self._saved_boms(),
+            part_links=[{"analysis_id": "a2", "mpn": "LM358N"}],
+        )
+        component = next(d for d in center["decisions"] if d["source"] == "Monitoring")
+        self.assertEqual(component["analysis_id"], "a1")
+        self.assertNotIn("related_boms", component)
+        self.assertEqual(decision_target_context(component), "Component · Control Board · Rev A")
+
+    def test_missing_part_match_does_not_guess_saved_bom(self):
+        center = build_decision_center(
+            alert_df=self._legacy_alert(float("nan")),
+            analyses=self._saved_boms(),
+            part_links=[
+                {"analysis_id": "a1", "mpn": "ANOTHER-PART"},
+                {"analysis_id": "another-workspace", "mpn": "LM358N"},
+            ],
+        )
+        component = next(d for d in center["decisions"] if d["source"] == "Monitoring")
+        self.assertEqual(component["analysis_id"], "")
+        self.assertEqual(decision_target_context(component), "Component · No saved BOM linked")
 
 
 if __name__ == "__main__":

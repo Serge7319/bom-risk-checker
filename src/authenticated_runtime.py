@@ -6420,6 +6420,7 @@ def run_authenticated_app() -> None:
         )
         decision_alerts_key = f"{decision_cache_key}_alerts"
         decision_analyses_key = f"{decision_cache_key}_analyses"
+        decision_part_links_key = f"{decision_cache_key}_part_links"
         decision_load_error_key = f"{decision_cache_key}_load_error"
         decision_hydrate_key = f"{decision_cache_key}_hydrate"
         decision_timeout_key = f"{decision_cache_key}_timeout"
@@ -6447,6 +6448,7 @@ def run_authenticated_app() -> None:
                 decision_cache_key,
                 decision_alerts_key,
                 decision_analyses_key,
+                decision_part_links_key,
                 decision_hydrate_key,
             ):
                 st.session_state.pop(_key, None)
@@ -6456,6 +6458,7 @@ def run_authenticated_app() -> None:
                 decision_cache_key,
                 decision_alerts_key,
                 decision_analyses_key,
+                decision_part_links_key,
                 decision_load_error_key,
                 decision_hydrate_key,
                 decision_timeout_key,
@@ -6484,6 +6487,7 @@ def run_authenticated_app() -> None:
             decision_cache_key not in st.session_state
             or decision_alerts_key not in st.session_state
             or decision_analyses_key not in st.session_state
+            or decision_part_links_key not in st.session_state
         )
 
         # Pass 2 hydrate IO runs BEFORE any page chrome. Emitting the hero and then
@@ -6505,6 +6509,7 @@ def run_authenticated_app() -> None:
             timed_out = time.monotonic() >= load_deadline
             decision_alert_df = pd.DataFrame()
             decision_analyses: list = []
+            decision_part_links: list = []
             persistent_decision_state: dict = {}
             decision_load_error = None
             try:
@@ -6575,6 +6580,62 @@ def run_authenticated_app() -> None:
                         decision_load_error = None
                 elif not timed_out:
                     timed_out = True
+
+                # An optional lookup for older monitoring alerts without an
+                # analysis ID. Always load the decision queue first; failure
+                # here only leaves its BOM context unavailable.
+                if not timed_out and not decision_alert_df.empty and decision_analyses:
+                    def _unlinked_mpn(row):
+                        analysis_id = str(row.get("analysis_id")).strip()
+                        part_number = str(row.get("part_number")).strip()
+                        mpn = (
+                            part_number
+                            if part_number.casefold() not in {"", "nan", "none", "<na>"}
+                            else str(row.get("mpn")).strip()
+                        )
+                        return (
+                            mpn if analysis_id.casefold() in {"", "nan", "none", "<na>"}
+                            and mpn.casefold() not in {"", "nan", "none", "<na>"}
+                            else ""
+                        )
+
+                    unlinked_mpns = sorted({
+                        mpn for row in decision_alert_df.to_dict("records")
+                        if (mpn := _unlinked_mpn(row))
+                    })
+                    if unlinked_mpns and load_deadline - time.monotonic() > 0.7:
+                        def _load_decision_part_links():
+                            links = []
+                            for start in range(0, len(unlinked_mpns), 50):
+                                if load_deadline - time.monotonic() < 0.3:
+                                    break
+                                response = execute_supabase_read(
+                                    _workspace_query(
+                                        supabase.table("analysis_parts")
+                                        .select("analysis_id,mpn")
+                                    )
+                                    .eq("user_id", current_user["id"])
+                                    .in_("mpn", unlinked_mpns[start:start + 50])
+                                    .limit(1000),
+                                    operation="engineering_decisions.part_context",
+                                    attempts=1,
+                                )
+                                rows = getattr(response, "data", None) or []
+                                # A truncated result could falsely attribute
+                                # a component to only one saved BOM.
+                                if len(rows) < 1000:
+                                    links.extend(rows)
+                            return links
+
+                        from src.boot_read_budget import run_with_read_budget
+
+                        links, link_status = run_with_read_budget(
+                            _load_decision_part_links,
+                            budget_seconds=min(2.0, max(0.05, load_deadline - time.monotonic() - 0.3)),
+                            respect_first_page=False,
+                        )
+                        if link_status == "ok":
+                            decision_part_links = links or []
             except Exception:
                 decision_load_error = "Cadivor could not load engineering decisions right now."
 
@@ -6584,6 +6645,7 @@ def run_authenticated_app() -> None:
                 st.session_state.pop(decision_cache_key, None)
                 st.session_state.pop(decision_alerts_key, None)
                 st.session_state.pop(decision_analyses_key, None)
+                st.session_state.pop(decision_part_links_key, None)
                 print(
                     "ED_LOAD_TIMEOUT "
                     f"budget_s={ed_load_budget_s} smoke_delay={smoke_delay} "
@@ -6593,6 +6655,7 @@ def run_authenticated_app() -> None:
             else:
                 st.session_state[decision_alerts_key] = decision_alert_df
                 st.session_state[decision_analyses_key] = decision_analyses
+                st.session_state[decision_part_links_key] = decision_part_links
                 st.session_state[decision_cache_key] = persistent_decision_state
                 st.session_state[decision_load_error_key] = decision_load_error
                 st.session_state[decision_hydrate_key] = "ready"
@@ -6602,6 +6665,7 @@ def run_authenticated_app() -> None:
                 decision_cache_key not in st.session_state
                 or decision_alerts_key not in st.session_state
                 or decision_analyses_key not in st.session_state
+                or decision_part_links_key not in st.session_state
             )
 
         # Single paint path: one hero, then loading / timeout / ready body below it.
@@ -6661,12 +6725,14 @@ def run_authenticated_app() -> None:
             if not isinstance(decision_alert_df, pd.DataFrame):
                 decision_alert_df = pd.DataFrame()
             decision_analyses = st.session_state.get(decision_analyses_key) or []
+            decision_part_links = st.session_state.get(decision_part_links_key) or []
             decision_state = st.session_state.get(decision_cache_key) or {}
 
             decision_center = build_decision_center(
                 alert_df=decision_alert_df,
                 analyses=decision_analyses,
                 saved_state=decision_state,
+                part_links=decision_part_links,
             )
             all_decisions = decision_center["decisions"]
 
@@ -7111,6 +7177,7 @@ def run_authenticated_app() -> None:
                     )[:90]
 
                     with st.container(key=f"decision_queue_inline_{safe_key}"):
+                        related_boms = decision.get("related_boms") or []
                         st.markdown(
                             f"""
                             <div class="cv-ed-queue-detail">
@@ -7128,12 +7195,49 @@ def run_authenticated_app() -> None:
                             """,
                             unsafe_allow_html=True,
                         )
+                        if len(related_boms) > 1:
+                            names = ", ".join(
+                                html.escape(str(bom.get("name") or "Saved BOM"))
+                                for bom in related_boms[:5]
+                            )
+                            overflow = (
+                                f" and {len(related_boms) - 5} more"
+                                if len(related_boms) > 5 else ""
+                            )
+                            st.markdown(
+                                f"<p><strong>Component appears in {len(related_boms)} "
+                                f"saved BOMs:</strong> {names}{overflow}. "
+                                "This monitoring alert has no specific BOM link.</p>",
+                                unsafe_allow_html=True,
+                            )
                         render_decision_card_actions(
                             decision,
                             navigate_to=navigate_to,
                             internal_nav_button=internal_nav_button,
                             key_prefix=f"{safe_key}_actions",
                         )
+                        if len(related_boms) > 1:
+                            bom_by_id = {
+                                str(bom["id"]): str(bom["name"])
+                                for bom in related_boms
+                            }
+                            choice_col, open_col = st.columns([3, 1], gap="small")
+                            with choice_col:
+                                chosen_bom = st.selectbox(
+                                    "Saved BOM containing this component",
+                                    options=list(bom_by_id),
+                                    format_func=lambda analysis_id: bom_by_id[analysis_id],
+                                    key=f"{safe_key}_related_bom",
+                                )
+                            with open_col:
+                                internal_nav_button(
+                                    "Open selected BOM",
+                                    "Analysis Details",
+                                    key=f"{safe_key}_open_related_bom",
+                                    analysis_id=chosen_bom,
+                                    use_container_width=True,
+                                    type="secondary",
+                                )
 
                 decision_workspace_col, decision_metrics_col = st.columns([0.64, 0.36], gap="large")
                 with decision_workspace_col:

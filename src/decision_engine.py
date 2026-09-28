@@ -36,6 +36,8 @@ def _text(value: Any, default: str = "") -> str:
     if value is None:
         return default
     result = str(value).strip()
+    if result.casefold() in {"nan", "none", "<na>"}:
+        return default
     return result or default
 
 
@@ -87,16 +89,29 @@ def decision_target_context(decision: Dict[str, Any]) -> str:
     project_name = _text(decision.get("project_name"))
     bom_name = _text(decision.get("bom_name"))
     source_filename = _text(decision.get("source_filename"))
+    related_boms = decision.get("related_boms") or []
+    if len(related_boms) > 1:
+        return f"Component · In {len(related_boms):,} saved BOMs"
     if project_name and bom_name and project_name.casefold() != bom_name.casefold():
         context = f"{project_name} · {bom_name}"
     else:
         context = project_name or bom_name or source_filename
-    return f"Component · {context}" if context else "Component"
+    if context and related_boms:
+        return f"Component · Appears in {context}"
+    return f"Component · {context}" if context else "Component · No saved BOM linked"
 
 
 def decision_target_cell(decision: Dict[str, Any]) -> str:
     """Return a two-line value for the shared expandable-table target cell."""
     return f"{decision_target_label(decision)}\n{decision_target_context(decision)}"
+
+
+def _analysis_context_title(analysis: Dict[str, Any]) -> str:
+    project = _text(analysis.get("project_name"))
+    bom = _text(analysis.get("bom_name"))
+    if project and bom and project.casefold() != bom.casefold():
+        return f"{project} · {bom}"
+    return project or bom or _text(analysis.get("filename"), "Saved BOM")
 
 
 def _number(value: Any, default: float = 0.0) -> float:
@@ -246,7 +261,7 @@ def enrich_decision(decision: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _alert_decision(alert: Dict[str, Any]) -> Dict[str, Any]:
-    part = _text(alert.get("part_number"), "Component")
+    part = _text(alert.get("part_number")) or _text(alert.get("mpn"), "Component")
     alert_type = _text(alert.get("alert_type"), "Monitoring change")
     message = _text(alert.get("alert_message"), "Monitoring change detected")
     severity = _text(alert.get("severity"), "Medium").title()
@@ -472,6 +487,7 @@ def build_decision_center(
     alert_df: pd.DataFrame,
     analyses: Iterable[Dict[str, Any]],
     saved_state: Dict[str, Dict[str, Any]] | None = None,
+    part_links: Iterable[Dict[str, Any]] | None = None,
 ) -> Dict[str, Any]:
     state = saved_state or {}
     decisions: List[Dict[str, Any]] = []
@@ -481,6 +497,14 @@ def build_decision_center(
         for analysis in analysis_rows
         if _text(analysis.get("id"))
     }
+    # Older monitoring alerts have no analysis_id. Resolve their MPN against
+    # saved BOM parts, but never claim one BOM owns an alert when several do.
+    part_analysis_ids: Dict[str, set[str]] = {}
+    for link in part_links or []:
+        mpn = _text(link.get("mpn")).casefold()
+        analysis_id = _text(link.get("analysis_id"))
+        if mpn and analysis_id in analyses_by_id:
+            part_analysis_ids.setdefault(mpn, set()).add(analysis_id)
 
     if isinstance(alert_df, pd.DataFrame) and not alert_df.empty:
         for row in alert_df.to_dict("records"):
@@ -488,6 +512,23 @@ def build_decision_center(
             related_analysis = analyses_by_id.get(
                 _text(decision.get("analysis_id"))
             )
+            if not related_analysis and not _text(decision.get("analysis_id")):
+                related_ids = part_analysis_ids.get(
+                    _text(decision.get("mpn")).casefold(), set()
+                )
+                related_boms = [
+                    {
+                        "id": analysis_id,
+                        "name": _analysis_context_title(analyses_by_id[analysis_id]),
+                    }
+                    for analysis_id in related_ids
+                ]
+                related_boms.sort(key=lambda bom: (bom["name"].casefold(), bom["id"]))
+                if related_boms:
+                    decision["related_boms"] = related_boms
+                if len(related_boms) == 1:
+                    related_analysis = analyses_by_id[related_boms[0]["id"]]
+                    decision["context_analysis_id"] = related_boms[0]["id"]
             if related_analysis:
                 decision["project_name"] = _text(
                     related_analysis.get("project_name")
