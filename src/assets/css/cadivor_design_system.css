@@ -1148,7 +1148,8 @@ section[data-testid="stMain"] .stDownloadButton > button:disabled {
   display: grid;
   grid-template-columns: 34px var(--cv-expand-cols);
   align-items: stretch;
-  min-width: max-content;
+  box-sizing: border-box;
+  min-width: max(100%, var(--cv-expand-min-width, 100%));
 }
 
 .cv-expandable-table__header {
@@ -1160,6 +1161,7 @@ section[data-testid="stMain"] .stDownloadButton > button:disabled {
 .cv-expandable-table__head-cell {
   display: flex;
   align-items: center;
+  min-width: 0;
   min-height: 42px;
   padding: 8px 11px;
   color: #0f2d57 !important;
@@ -1212,6 +1214,7 @@ section[data-testid="stMain"] .stDownloadButton > button:disabled {
 .cv-expandable-table__cell {
   display: flex;
   align-items: center;
+  min-width: 0;
   min-height: 48px;
   padding: 8px 11px;
   overflow: hidden;
@@ -1262,6 +1265,16 @@ section[data-testid="stMain"] .stDownloadButton > button:disabled {
   font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.cv-expandable-table__decision {
+  min-width: 0;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow-wrap: anywhere;
 }
 
 .cv-expandable-table__mono {
@@ -1550,6 +1563,7 @@ section[data-testid="stMain"] .stDownloadButton > button:disabled {
 
   .cv-expandable-table__row {
     grid-template-columns: 32px minmax(0, 1fr) !important;
+    min-width: 100%;
     padding: 7px 0;
   }
 

@@ -6994,7 +6994,7 @@ def run_authenticated_app() -> None:
                     else:
                         with navigation_cols[0]:
                             internal_nav_button(
-                                "Review affected components",
+                                "Review BOM parts",
                                 "Analysis Details",
                                 key=f"decision_components_{decision_id}",
                                 use_container_width=True,
@@ -7419,7 +7419,10 @@ def run_authenticated_app() -> None:
                                     [
                                         {
                                             target_column: decision_target_cell(decision),
-                                            "Decision": decision["title"],
+                                            "Decision": (
+                                                decision.get("queue_title")
+                                                if scope == "bom" else None
+                                            ) or decision["title"],
                                             "Priority": semantic_priority_label(
                                                 decision.get("priority_score", 0)
                                             ),
@@ -7460,6 +7463,7 @@ def run_authenticated_app() -> None:
                                         ),
                                         ExpandableTableColumn(
                                             "Decision", "Decision", width=1.75, min_width=220,
+                                            kind="decision",
                                         ),
                                         ExpandableTableColumn(
                                             "Priority", "Priority", width=.95,
@@ -7527,8 +7531,9 @@ def run_authenticated_app() -> None:
                                         if focus_heading else "Saved BOM reviews"
                                     ),
                                     context_detail=(
-                                        "Each row is a whole-BOM release review. "
-                                        "Expand for the release decision and a link to affected components."
+                                        "Generated when a saved BOM has unresolved high- or medium-risk parts. "
+                                        "Each row tracks a whole-BOM release review; expand to inspect "
+                                        "the recommendation and review its parts."
                                     ),
                                     total_count=len(all_boms),
                                 )

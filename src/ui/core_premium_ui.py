@@ -130,11 +130,24 @@ def inject_workspace_geometry_final() -> None:
         section[data-testid="stMain"] [data-testid="stMainBlockContainer"],
         section[data-testid="stMain"] .main .block-container {
           padding-top: calc(var(--cv-foundation-top, 64px) + 24px) !important;
+          padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px)) !important;
+        }
+        @media (max-width: 1080px) {
+          section[data-testid="stMain"] [data-testid="stMainBlockContainer"],
+          section[data-testid="stMain"] .main .block-container {
+            padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px)) !important;
+          }
         }
         @media (max-width: 768px) {
           section[data-testid="stMain"] [data-testid="stMainBlockContainer"],
           section[data-testid="stMain"] .main .block-container {
             padding-top: calc(var(--cv-foundation-top, 64px) + 16px + env(safe-area-inset-top, 0px)) !important;
+          }
+        }
+        @media (max-width: 640px) {
+          section[data-testid="stMain"] [data-testid="stMainBlockContainer"],
+          section[data-testid="stMain"] .main .block-container {
+            padding-bottom: calc(56px + env(safe-area-inset-bottom, 0px)) !important;
           }
         }
         /* Root flex siblings only — removes Streamlit row-gap above route content. */
