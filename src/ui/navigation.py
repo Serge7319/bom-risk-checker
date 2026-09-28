@@ -789,6 +789,12 @@ def _commit_internal_nav(page: str, params: dict[str, Any]) -> None:
             )
             return
         navigate_to(destination, _rerun=False, arm_opening=False, **params)
+        if destination == "Analysis Details" and params.get("analysis_id") and params.get("analysis_tab"):
+            # The saved-BOM section widget may already be mounted from an
+            # earlier visit. Apply this deliberate deep link before that widget
+            # is created again, including when the user reopens the same BOM.
+            st.session_state["cadivor_pending_analysis_section"] = str(params["analysis_tab"])
+            st.session_state["cadivor_pending_analysis_section_id"] = str(params["analysis_id"])
     except Exception:
         st.session_state[NAV_ERROR_KEY] = (
             f"Couldn’t open {destination}. Your session is still signed in. Try again."

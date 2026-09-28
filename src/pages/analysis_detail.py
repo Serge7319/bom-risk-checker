@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
 import html
+import hashlib
 import json
 import re
 from pathlib import Path
@@ -1576,6 +1577,7 @@ def render_analysis_detail(
                 "manufacturer": manufacturer_value,
                 "risk_score": risk_score_value,
                 "risk_level": _risk_label(part),
+                "stored_risk_level": _stored_risk_label(part),
                 "reason": reason_value,
                 "stock": stock_value,
                 "sources": source_count,
@@ -1783,7 +1785,9 @@ def render_analysis_detail(
                 "Current reviewer",
             )
             reviewer_email = _safe(current_user.get("email"), "")
-            review_parts = ranked_parts[:5]
+            from src.bom_review_progress import select_bom_review_parts
+
+            review_parts = select_bom_review_parts(ranked_parts)
             total_review_items = len(review_parts)
             editable_roles = {"owner", "admin", "editor", "member"}
             role_text = str(workspace_role or "viewer").lower()
@@ -1824,14 +1828,15 @@ def render_analysis_detail(
             elif review_session_error:
                 st.warning(f"Engineering review data could not be loaded: {review_session_error}")
 
-            decision_map = {
-                _safe(row.get("mpn"), "Unknown MPN"): row
-                for row in review_items
-            }
+            decision_map = {}
+            for row in review_items:
+                # The service returns newest first. Match saved decisions the
+                # same way as the whole-BOM progress view, irrespective of MPN case.
+                decision_map.setdefault(_safe(row.get("mpn"), "Unknown MPN").casefold(), row)
             reviewed_count = sum(
                 1
                 for part in review_parts
-                if decision_map.get(_safe(part.get("mpn"), "Unknown MPN"), {}).get("decision")
+                if decision_map.get(_safe(part.get("mpn"), "Unknown MPN").casefold(), {}).get("decision")
                 in ("Approve", "Needs Investigation", "Reject")
             )
             review_percent = round(reviewed_count / max(1, total_review_items) * 100)
@@ -1943,19 +1948,36 @@ def render_analysis_detail(
                     help="Includes open, investigation, rejected, unassigned, and overdue items.",
                 )
                 filtered_review_parts = []
-                priority_target_mpn = _safe(st.session_state.get(f"cv26_priority_action_target_{analysis_id}"), "")
+                priority_target_mpn = _safe(
+                    st.query_params.get("review_component")
+                    or st.session_state.get(f"cv26_priority_action_target_{analysis_id}"), "",
+                )
                 if priority_target_mpn:
                     target_controls, target_clear = st.columns([4, 1])
-                    target_controls.info(f"Priority Action task open for **{priority_target_mpn}**. Assign a workspace member, set due context, and save the review decision below.")
+                    target_controls.info(
+                        f"Focused component review for **{priority_target_mpn}**. "
+                        "Record or update its engineering decision below."
+                    )
                     with target_clear:
                         if st.button("Show all tasks", key=f"cv26_clear_priority_target_{analysis_id}"):
                             st.session_state.pop(f"cv26_priority_action_target_{analysis_id}", None)
+                            if "review_component" in st.query_params:
+                                del st.query_params["review_component"]
                             st.rerun()
+                search_mpn = ""
+                if len(review_parts) > 25 and not priority_target_mpn:
+                    search_mpn = st.text_input(
+                        "Find component in review queue",
+                        placeholder="Enter a part number to find its decision",
+                        key=f"cv_ed_part_search_{analysis_id}",
+                    ).strip().casefold()
                 for candidate in review_parts:
                     c_mpn = _safe(candidate.get("mpn"), "Unknown MPN")
-                    if priority_target_mpn and c_mpn != priority_target_mpn:
+                    if priority_target_mpn and c_mpn.casefold() != priority_target_mpn.casefold():
                         continue
-                    c_saved = decision_map.get(c_mpn, {})
+                    if search_mpn and search_mpn not in c_mpn.casefold():
+                        continue
+                    c_saved = decision_map.get(c_mpn.casefold(), {})
                     c_decision = c_saved.get("decision") or "Not reviewed"
                     c_due = parse_due_date(c_saved, today=today)
                     c_score = _num(candidate.get("risk_score"),0)
@@ -1972,10 +1994,18 @@ def render_analysis_detail(
                     if decision_filter != "All" and c_decision != decision_filter: continue
                     if unresolved_only and not is_unresolved_review(c_saved, today=today): continue
                     filtered_review_parts.append(candidate)
-                st.caption(f"Showing {len(filtered_review_parts)} of {len(review_parts)} review items")
+                matching_review_count = len(filtered_review_parts)
+                if matching_review_count > 25:
+                    filtered_review_parts = filtered_review_parts[:25]
+                st.caption(
+                    f"Showing {len(filtered_review_parts)} of {len(review_parts)} review items"
+                    + (f" ({matching_review_count} match the current filters; search by part number to find more)"
+                       if matching_review_count > len(filtered_review_parts) else "")
+                )
                 for review_index, part in enumerate(filtered_review_parts, 1):
                     mpn = _safe(part.get("mpn"), "Unknown MPN")
-                    saved = decision_map.get(mpn, {})
+                    part_key = hashlib.sha256(mpn.casefold().encode("utf-8")).hexdigest()[:16]
+                    saved = decision_map.get(mpn.casefold(), {})
                     status_label = saved.get("decision") or "Not reviewed"
                     updated_label = _relative_date(saved.get("updated_at")) if saved else "Not saved"
                     saved_priority = _safe(saved.get("priority"), "High" if _num(part.get("risk_score"), 0) >= 70 else "Medium" if _num(part.get("risk_score"), 0) >= 35 else "Low")
@@ -2006,7 +2036,7 @@ def render_analysis_detail(
                         with alt_col:
                             if st.button(
                                 "Compare Alternatives",
-                                key=f"cv28_compare_{analysis_id}_{review_index}",
+                                key=f"cv28_compare_{analysis_id}_{part_key}",
                             ):
                                 navigate_to_alternative_finder(
                                     mpn=mpn,
@@ -2019,7 +2049,7 @@ def render_analysis_detail(
                         with monitor_col:
                             if st.button(
                                 "Open Monitoring",
-                                key=f"cv28_monitor_{analysis_id}_{review_index}",
+                                key=f"cv28_monitor_{analysis_id}_{part_key}",
                             ):
                                 navigate_to(
                                     "Monitoring",
@@ -2041,7 +2071,7 @@ def render_analysis_detail(
                                 "Decision",
                                 options,
                                 index=options.index(current_decision),
-                                key=f"cv271_decision_{analysis_id}_{review_index}",
+                                key=f"cv271_decision_{analysis_id}_{part_key}",
                                 disabled=disabled,
                             )
                         with col_owner:
@@ -2049,7 +2079,7 @@ def render_analysis_detail(
                                 "Owner",
                                 owner_options,
                                 index=owner_options.index(current_owner),
-                                key=f"cv271_owner_{analysis_id}_{review_index}",
+                                key=f"cv271_owner_{analysis_id}_{part_key}",
                                 disabled=disabled,
                             )
                         with col_due:
@@ -2057,21 +2087,21 @@ def render_analysis_detail(
                                 "Due",
                                 due_options,
                                 index=due_options.index(current_due),
-                                key=f"cv271_due_{analysis_id}_{review_index}",
+                                key=f"cv271_due_{analysis_id}_{part_key}",
                                 disabled=disabled,
                             )
                         saved_assignee_label = _safe(saved.get("assignee_name"), "Unassigned") + (f" · {saved.get('assignee_email')}" if saved.get("assignee_email") else "")
                         assignee_index = member_labels.index(saved_assignee_label) if saved_assignee_label in member_labels else 0
                         assign_col, priority_col = st.columns([1.35, .65])
-                        assignee_label = assign_col.selectbox("Assigned workspace member", member_labels, index=assignee_index, key=f"cv272_assignee_item_{analysis_id}_{review_index}", disabled=disabled)
+                        assignee_label = assign_col.selectbox("Assigned workspace member", member_labels, index=assignee_index, key=f"cv272_assignee_item_{analysis_id}_{part_key}", disabled=disabled)
                         selected_member = member_options[member_labels.index(assignee_label)]
                         priority_options = ["High", "Medium", "Low"]
                         default_priority = saved.get("priority") if saved.get("priority") in priority_options else ("High" if risk_score >= 70 else "Medium" if risk_score >=35 else "Low")
-                        priority_value = priority_col.selectbox("Priority", priority_options, index=priority_options.index(default_priority), key=f"cv272_priority_item_{analysis_id}_{review_index}", disabled=disabled)
+                        priority_value = priority_col.selectbox("Priority", priority_options, index=priority_options.index(default_priority), key=f"cv272_priority_item_{analysis_id}_{part_key}", disabled=disabled)
                         due_date_value = saved.get("due_date")
                         if due_value == "Custom":
                             default_custom = date.fromisoformat(str(due_date_value)[:10]) if due_date_value else today + timedelta(days=7)
-                            due_date_value = st.date_input("Custom due date", value=default_custom, key=f"cv272_custom_due_{analysis_id}_{review_index}", disabled=disabled).isoformat()
+                            due_date_value = st.date_input("Custom due date", value=default_custom, key=f"cv272_custom_due_{analysis_id}_{part_key}", disabled=disabled).isoformat()
                         elif due_value == "No due date":
                             due_date_value = None
                         else:
@@ -2080,7 +2110,7 @@ def render_analysis_detail(
                             "Engineering Notes",
                             value=_safe(saved.get("notes"), "") if saved else "",
                             placeholder="Record validation evidence, assumptions, and follow-up actions.",
-                            key=f"cv271_notes_{analysis_id}_{review_index}",
+                            key=f"cv271_notes_{analysis_id}_{part_key}",
                             disabled=disabled,
                         )
 
@@ -2171,7 +2201,7 @@ def render_analysis_detail(
                                 for comment in review_comments:
                                     st.markdown(f"**{html.escape(_safe(comment.get('author_name'),'Reviewer'))}** · {_relative_date(comment.get('created_at'))}")
                                     st.write(_safe(comment.get("body"), ""))
-                                with st.form(f"cv272_comment_form_{analysis_id}_{review_index}", clear_on_submit=True):
+                                with st.form(f"cv272_comment_form_{analysis_id}_{part_key}", clear_on_submit=True):
                                     comment_body = st.text_area("Add comment", placeholder="Ask a question, add evidence, or explain the decision.", disabled=disabled)
                                     submitted_comment = st.form_submit_button("Post comment", disabled=disabled)
                                     if submitted_comment:

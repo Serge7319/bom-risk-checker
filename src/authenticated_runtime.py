@@ -34,6 +34,11 @@ from src.decision_engine import (
     STATUSES,
 )
 from src.decision_dashboard import packet_header_html
+from src.bom_review_progress import (
+    bom_review_parts_html,
+    bom_review_progress_html,
+    load_bom_review_progress,
+)
 from src.decision_repository import (
     DECISION_LOAD_TIMEOUT_TOKEN,
     DEFAULT_DECISION_LOAD_BUDGET_SECONDS,
@@ -6737,6 +6742,34 @@ def run_authenticated_app() -> None:
             )
             all_decisions = decision_center["decisions"]
 
+            def _load_decision_bom_progress(decision: dict):
+                analysis_id = str(decision.get("analysis_id") or "")
+                # Decision history has already scoped the parent analysis to
+                # this authenticated user and workspace.
+                saved_analysis = next(
+                    (row for row in decision_analyses if str(row.get("id")) == analysis_id),
+                    None,
+                )
+                if saved_analysis is None:
+                    return None, "The saved BOM is unavailable in this workspace. Refresh Decisions to retry."
+                from src.boot_read_budget import run_with_read_budget
+
+                loaded, status = run_with_read_budget(
+                    lambda: load_bom_review_progress(
+                        supabase,
+                        analysis=saved_analysis,
+                        user_id=current_user["id"],
+                        workspace_id=active_workspace_id or None,
+                    ),
+                    budget_seconds=4.0,
+                    respect_first_page=False,
+                )
+                if status == "timeout":
+                    return None, "Component progress is taking longer to load. Reload this page to retry."
+                if status != "ok":
+                    return None, "Component progress is unavailable right now."
+                return loaded
+
             focus_decision_id = _qp_value("decision_id")
             focus_part = _qp_value("focus_part")
             selected_decision = None
@@ -6811,6 +6844,26 @@ def run_authenticated_app() -> None:
                 )
 
                 with summary_tab:
+                    if decision_target_type(selected_decision) == "bom":
+                        progress, progress_error = _load_decision_bom_progress(selected_decision)
+                        if progress is None:
+                            st.info(progress_error)
+                        else:
+                            st.markdown(
+                                bom_review_progress_html(
+                                    progress,
+                                    bom_status=str(selected_decision.get("status") or "New"),
+                                ),
+                                unsafe_allow_html=True,
+                            )
+                            internal_nav_button(
+                                "Continue component review",
+                                "Analysis Details",
+                                key=f"decision_{decision_id}_continue_parts",
+                                analysis_id=str(selected_decision.get("analysis_id") or ""),
+                                analysis_tab="Engineering Decisions",
+                                type="secondary",
+                            )
                     render_kpi_row_safe(
                         [
                             MetricCard(
@@ -7179,6 +7232,51 @@ def run_authenticated_app() -> None:
 
                     with st.container(key=f"decision_queue_inline_{safe_key}"):
                         related_boms = decision.get("related_boms") or []
+                        if decision_target_type(decision) == "bom":
+                            analysis_id = str(decision.get("analysis_id") or "")
+                            progress, progress_error = _load_decision_bom_progress(decision)
+                            if progress is None:
+                                st.info(progress_error)
+                            else:
+                                st.markdown(
+                                    bom_review_progress_html(
+                                        progress,
+                                        bom_status=str(decision.get("status") or "New"),
+                                    ),
+                                    unsafe_allow_html=True,
+                                )
+                                parts = progress["parts"]
+                                if parts:
+                                    st.markdown(
+                                        '<p class="cv-ed-bom-parts__label">Affected components · outstanding first</p>'
+                                        + bom_review_parts_html(parts[:8]),
+                                        unsafe_allow_html=True,
+                                    )
+                                    if len(parts) > 8:
+                                        with st.expander(f"Show {len(parts) - 8} more affected parts"):
+                                            st.markdown(bom_review_parts_html(parts[8:]), unsafe_allow_html=True)
+                                    part_options = [part["mpn"] for part in parts if part["can_open"]]
+                                    if part_options:
+                                        part_col, open_part_col = st.columns(
+                                            [2, 1], gap="small", vertical_alignment="bottom"
+                                        )
+                                        with part_col:
+                                            chosen_part = st.selectbox(
+                                                "Affected component to review",
+                                                options=part_options,
+                                                key=f"{safe_key}_affected_part",
+                                            )
+                                        with open_part_col:
+                                            internal_nav_button(
+                                                "Review selected part",
+                                                "Analysis Details",
+                                                key=f"{safe_key}_review_selected_part",
+                                                analysis_id=analysis_id,
+                                                analysis_tab="Engineering Decisions",
+                                                review_component=chosen_part,
+                                                type="secondary",
+                                                use_container_width=True,
+                                            )
                         st.markdown(
                             f"""
                             <div class="cv-ed-queue-detail">
@@ -7532,8 +7630,8 @@ def run_authenticated_app() -> None:
                                     ),
                                     context_detail=(
                                         "Generated when a saved BOM has unresolved high- or medium-risk parts. "
-                                        "Each row tracks a whole-BOM release review; expand to inspect "
-                                        "the recommendation and review its parts."
+                                        "Expand a row to see saved component decisions, remaining work, "
+                                        "and the separate BOM release decision."
                                     ),
                                     total_count=len(all_boms),
                                 )
