@@ -165,7 +165,7 @@ class SmartTableSystemTests(unittest.TestCase):
         self.assertIn('"Open Monitoring"', action_helper)
         self.assertIn('mpn=(decision.get("mpn") or decision.get("part_number"))', action_helper)
         self.assertIn('return_analysis_id=str(decision.get("analysis_id")', action_helper)
-        self.assertIn('"Review affected components"', action_helper)
+        self.assertIn('"Review BOM parts"', action_helper)
         self.assertIn('target_type = str(decision.get("target_type")', action_helper)
 
     def test_decision_queue_uses_explicit_target_scope_and_context(self):

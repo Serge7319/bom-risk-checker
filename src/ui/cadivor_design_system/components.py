@@ -777,9 +777,14 @@ def _expandable_cell_html(value: Any, column: ExpandableTableColumn) -> str:
             else ""
         )
         return (
-            '<span class="cv-expandable-table__target">'
+            f'<span class="cv-expandable-table__target" title="{escape(primary, quote=True)}">'
             f'<strong>{escape(primary)}</strong>{secondary_markup}'
             '</span>'
+        )
+    if kind == "decision":
+        return (
+            f'<span class="cv-expandable-table__decision" '
+            f'title="{escape(text, quote=True)}">{escape(text)}</span>'
         )
     if kind == "priority":
         normalized = text.casefold()
@@ -904,7 +909,13 @@ def cadivor_expandable_table(
         f"minmax({max(72, int(column.min_width))}px,{max(0.35, float(column.width)):.3g}fr)"
         for column in visible_columns
     )
-    template_style = escape(column_template, quote=True)
+    min_table_width = 34 + sum(
+        max(72, int(column.min_width)) for column in visible_columns
+    )
+    template_style = (
+        f"--cv-expand-cols:{escape(column_template, quote=True)};"
+        f"--cv-expand-min-width:{min_table_width}px"
+    )
     header_cells = "".join(
         f'<div class="cv-expandable-table__head-cell cv-align-{escape(column.align)}">'
         f'{escape(column.label or column.key)}</div>'
@@ -916,7 +927,7 @@ def cadivor_expandable_table(
         _render_html(
             f'<div class="cv-expandable-table__viewport">'
             f'<div class="cv-expandable-table__header" '
-            f'style="--cv-expand-cols:{template_style}">'
+            f'style="{template_style}">'
             f'<span class="cv-expandable-table__disclosure-spacer" aria-hidden="true"></span>'
             f'{header_cells}</div></div>'
         )
@@ -945,7 +956,7 @@ def cadivor_expandable_table(
                 _render_html(
                     f'<div class="cv-expandable-table__viewport">'
                     f'<div class="cv-expandable-table__row{open_class}" '
-                    f'style="--cv-expand-cols:{template_style}">'
+                    f'style="{template_style}">'
                     f'<span class="cv-expandable-table__chevron" aria-hidden="true">{chevron}</span>'
                     f'{cells}</div></div>'
                 )
@@ -1125,7 +1136,7 @@ def render_decision_card_actions(
         with action_cols[1]:
             cadivor_button_wrap("secondary")
             internal_nav_button(
-                "Review affected components",
+                "Review BOM parts",
                 "Analysis Details",
                 key=f"{key_prefix}_components",
                 use_container_width=True,

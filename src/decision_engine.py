@@ -430,6 +430,9 @@ def _analysis_decisions(analysis: Dict[str, Any]) -> List[Dict[str, Any]]:
                 "affected_component_descriptor": "high-risk components",
                 "decision_type": "Release Decision",
                 "title": f"Resolve high-risk components in {project}",
+                "queue_title": (
+                    f"Resolve {high} high-risk component{'s' if high != 1 else ''}"
+                ),
                 "reason": f"{high} high-risk component(s) require engineering review.",
                 "evidence": [
                     f"Current BOM health: {health}/100",
@@ -472,6 +475,9 @@ def _analysis_decisions(analysis: Dict[str, Any]) -> List[Dict[str, Any]]:
                 "affected_component_descriptor": "medium-risk components",
                 "decision_type": "Engineering Review",
                 "title": f"Complete focused review for {project}",
+                "queue_title": (
+                    f"Review {medium} medium-risk component{'s' if medium != 1 else ''}"
+                ),
                 "reason": f"{medium} medium-risk component(s) remain before release.",
                 "evidence": [
                     f"Current BOM health: {health}/100",

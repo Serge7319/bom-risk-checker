@@ -63,6 +63,19 @@ class DecisionTargetConsistencyTests(unittest.TestCase):
             decision_target_cell(decision),
             "Project Alpha — Motor Controller BOM\nBOM review · 3 high-risk components",
         )
+        self.assertEqual(decision["queue_title"], "Resolve 3 high-risk components")
+        self.assertEqual(
+            decision["title"],
+            "Resolve high-risk components in Project Alpha — Motor Controller BOM",
+        )
+
+    def test_medium_risk_bom_review_has_a_short_action_without_losing_its_title(self):
+        decision = _analysis_decisions({
+            "id": "analysis-2", "project_name": "Power Board Rev B",
+            "medium_risk_count": 1,
+        })[0]
+        self.assertEqual(decision["queue_title"], "Review 1 medium-risk component")
+        self.assertEqual(decision["title"], "Complete focused review for Power Board Rev B")
 
     def test_alert_decisions_keep_mpn_and_gain_bom_context(self):
         alert_df = pd.DataFrame(
