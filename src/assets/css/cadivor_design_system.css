@@ -1170,6 +1170,15 @@ section[data-testid="stMain"] .stDownloadButton > button:disabled {
   white-space: nowrap;
 }
 
+/* Whole-BOM rows are taller because their target has a second line. Give their
+   header an even inset so its labels do not hug the top border at browser zoom. */
+[class*="st-key-cv_expandable_table_engineering_decision_bom_queue_table_"]
+.cv-expandable-table__header {
+  min-height: 58px;
+  padding-block: 8px;
+  align-items: center;
+}
+
 .cv-expandable-table__row {
   min-height: 48px;
   color: #172b4d;
