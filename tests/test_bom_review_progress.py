@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from src.bom_review_progress import (
+    bom_review_progress_cache_key,
     bom_review_parts_html,
     bom_review_progress_html,
     load_bom_review_progress,
@@ -23,6 +24,16 @@ class BomReviewProgressTests(unittest.TestCase):
             {"analysis_id": "bom-1", "mpn": "C", "risk_level": "Medium"},
             {"analysis_id": "bom-1", "mpn": "D", "risk_level": "Low"},
         ]
+
+    def test_progress_cache_is_scoped_to_account_and_workspace(self):
+        self.assertNotEqual(
+            bom_review_progress_cache_key("u-1", "ws-1"),
+            bom_review_progress_cache_key("u-1", "ws-2"),
+        )
+        self.assertNotEqual(
+            bom_review_progress_cache_key("u-1", "ws-1"),
+            bom_review_progress_cache_key("u-2", "ws-1"),
+        )
 
     def test_saved_dispositions_show_recording_and_remaining_release_work_separately(self):
         result = summarize_bom_review_progress(self.analysis, self.parts, [
