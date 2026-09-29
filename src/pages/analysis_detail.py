@@ -72,6 +72,7 @@ from src.engineering_review_service import (
     set_review_lock,
     update_review_session_status,
 )
+from src.bom_review_progress import bom_review_progress_cache_key
 from src.discussion_service import (
     add_analysis_comment,
     create_workspace_notification,
@@ -1869,6 +1870,9 @@ def render_analysis_detail(
                             st.error(f"Could not start the review: {create_error}")
                         else:
                             st.session_state[review_key] = created_session
+                            st.session_state.pop(
+                                bom_review_progress_cache_key(user_id, workspace_id), None
+                            )
                             st.rerun()
                 with note_col:
                     # Sprint 50.1.2 — the large persistent-review banner was removed.
@@ -2172,6 +2176,9 @@ def render_analysis_detail(
                                 st.error(f"Save failed for {mpn}: {save_error}")
                             elif saved_item:
                                 st.caption("Saved just now")
+                                st.session_state.pop(
+                                    bom_review_progress_cache_key(user_id, workspace_id), None
+                                )
                                 st.rerun()
                         elif saved:
                             st.caption(f"Saved by {_safe(saved.get('reviewer_name'), reviewer_name)} · {updated_label}")
@@ -2249,6 +2256,9 @@ def render_analysis_detail(
                                 st.error(f"Could not complete the review: {complete_error}")
                             else:
                                 st.session_state.pop(confirm_key, None)
+                                st.session_state.pop(
+                                    bom_review_progress_cache_key(user_id, workspace_id), None
+                                )
                                 st.rerun()
                     with cancel_complete_col:
                         if st.button("Cancel", use_container_width=True, key=f"cv281_cancel_lock_{analysis_id}"):
@@ -2266,7 +2276,11 @@ def render_analysis_detail(
                                 else:
                                     _, unlock_error = reopen_review_session(supabase, session_id=review_session.get("id"), user_id=user_id, workspace_id=workspace_id, reason=reopen_reason.strip(), actor_name=reviewer_name, actor_email=reviewer_email)
                                     if unlock_error: st.error(f"Could not reopen the review: {unlock_error}")
-                                    else: st.rerun()
+                                    else:
+                                        st.session_state.pop(
+                                            bom_review_progress_cache_key(user_id, workspace_id), None
+                                        )
+                                        st.rerun()
                     elif session_status == "active" and st.button(
                         "Pause Review Session",
                         use_container_width=True,
@@ -2283,6 +2297,9 @@ def render_analysis_detail(
                         if pause_error:
                             st.error(f"Could not pause the review: {pause_error}")
                         else:
+                            st.session_state.pop(
+                                bom_review_progress_cache_key(user_id, workspace_id), None
+                            )
                             st.rerun()
 
         if stack_brief:

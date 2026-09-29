@@ -13,6 +13,7 @@ from src.engineering_review_service import get_latest_review_session, list_revie
 
 
 MAX_PART_ROWS = 500
+PROGRESS_CACHE_SECONDS = 30.0
 ACTION_ORDER = {"Not reviewed": 0, "Skip": 1, "Needs Investigation": 2, "Reject": 3, "Approve": 4}
 NEXT_ACTIONS = {
     "Not reviewed": "Record a component review decision",
@@ -21,6 +22,11 @@ NEXT_ACTIONS = {
     "Reject": "Qualify an acceptable alternative or document a resolution",
     "Approve": "Confirm supporting evidence for the BOM release decision",
 }
+
+
+def bom_review_progress_cache_key(user_id: str, workspace_id: str | None) -> str:
+    """Keep queue snapshots isolated by account and workspace."""
+    return f"engineering_decision_state_{user_id}_{workspace_id or 'personal'}_bom_progress"
 
 
 def select_bom_review_parts(ranked_parts: list[dict[str, Any]]) -> list[dict[str, Any]]:

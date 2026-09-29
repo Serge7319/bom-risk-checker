@@ -35,7 +35,9 @@ from src.decision_engine import (
 )
 from src.decision_dashboard import packet_header_html
 from src.bom_review_progress import (
+    PROGRESS_CACHE_SECONDS,
     bom_review_parts_html,
+    bom_review_progress_cache_key,
     bom_review_progress_html,
     load_bom_review_progress,
 )
@@ -6430,6 +6432,9 @@ def run_authenticated_app() -> None:
         decision_load_error_key = f"{decision_cache_key}_load_error"
         decision_hydrate_key = f"{decision_cache_key}_hydrate"
         decision_timeout_key = f"{decision_cache_key}_timeout"
+        decision_progress_cache_key = bom_review_progress_cache_key(
+            current_user["id"], active_workspace_id or None
+        )
         try:
             ed_load_budget_s = float(
                 str(
@@ -6468,6 +6473,7 @@ def run_authenticated_app() -> None:
                 decision_load_error_key,
                 decision_hydrate_key,
                 decision_timeout_key,
+                decision_progress_cache_key,
             ):
                 st.session_state.pop(_key, None)
 
@@ -6519,11 +6525,11 @@ def run_authenticated_app() -> None:
             persistent_decision_state: dict = {}
             decision_load_error = None
             try:
+                from src.boot_read_budget import run_with_read_budget
+
                 if not timed_out and time.monotonic() < load_deadline:
                     try:
                         remaining = max(0.05, load_deadline - time.monotonic())
-                        from concurrent.futures import ThreadPoolExecutor
-                        from concurrent.futures import TimeoutError as FuturesTimeout
 
                         def _load_alerts():
                             decision_alert_response = execute_supabase_read(
@@ -6540,13 +6546,13 @@ def run_authenticated_app() -> None:
                                 getattr(decision_alert_response, "data", None) or []
                             )
 
-                        with ThreadPoolExecutor(max_workers=1) as pool:
-                            future = pool.submit(_load_alerts)
-                            try:
-                                decision_alert_df = future.result(timeout=remaining)
-                            except FuturesTimeout:
-                                timed_out = True
-                                decision_alert_df = pd.DataFrame()
+                        alert_result, alert_status = run_with_read_budget(
+                            _load_alerts, budget_seconds=remaining, respect_first_page=False
+                        )
+                        if alert_status == "timeout":
+                            timed_out = True
+                        elif alert_status == "ok":
+                            decision_alert_df = alert_result
                     except Exception:
                         decision_alert_df = pd.DataFrame()
                 elif not timed_out:
@@ -6555,18 +6561,15 @@ def run_authenticated_app() -> None:
                 if not timed_out and time.monotonic() < load_deadline:
                     try:
                         remaining = max(0.05, load_deadline - time.monotonic())
-                        from concurrent.futures import ThreadPoolExecutor
-                        from concurrent.futures import TimeoutError as FuturesTimeout
-
-                        with ThreadPoolExecutor(max_workers=1) as pool:
-                            future = pool.submit(
-                                load_analysis_history, current_user["id"]
-                            )
-                            try:
-                                decision_analyses = future.result(timeout=remaining) or []
-                            except FuturesTimeout:
-                                timed_out = True
-                                decision_analyses = []
+                        analyses_result, analyses_status = run_with_read_budget(
+                            lambda: load_analysis_history(current_user["id"]),
+                            budget_seconds=remaining,
+                            respect_first_page=False,
+                        )
+                        if analyses_status == "timeout":
+                            timed_out = True
+                        elif analyses_status == "ok":
+                            decision_analyses = analyses_result or []
                     except Exception:
                         decision_analyses = []
                     if time.monotonic() >= load_deadline:
@@ -6575,15 +6578,25 @@ def run_authenticated_app() -> None:
                     timed_out = True
 
                 if not timed_out and time.monotonic() < load_deadline:
-                    persistent_decision_state, decision_load_error = load_decision_state(
-                        supabase,
-                        user_id=current_user["id"],
-                        workspace_id=active_workspace_id or None,
-                        deadline=load_deadline,
+                    state_result, state_status = run_with_read_budget(
+                        lambda: load_decision_state(
+                            supabase,
+                            user_id=current_user["id"],
+                            workspace_id=active_workspace_id or None,
+                            deadline=load_deadline,
+                        ),
+                        budget_seconds=max(0.05, load_deadline - time.monotonic()),
+                        respect_first_page=False,
                     )
-                    if decision_load_error == DECISION_LOAD_TIMEOUT_TOKEN:
+                    if state_status == "timeout":
                         timed_out = True
-                        decision_load_error = None
+                    elif state_status == "ok":
+                        persistent_decision_state, decision_load_error = state_result
+                        if decision_load_error == DECISION_LOAD_TIMEOUT_TOKEN:
+                            timed_out = True
+                            decision_load_error = None
+                    else:
+                        decision_load_error = "Cadivor could not load engineering decisions right now."
                 elif not timed_out:
                     timed_out = True
 
@@ -6752,6 +6765,10 @@ def run_authenticated_app() -> None:
                 )
                 if saved_analysis is None:
                     return None, "The saved BOM is unavailable in this workspace. Refresh Decisions to retry."
+                snapshots = st.session_state.setdefault(decision_progress_cache_key, {})
+                snapshot = snapshots.get(analysis_id)
+                if snapshot and time.monotonic() - snapshot[0] < PROGRESS_CACHE_SECONDS:
+                    return snapshot[1]
                 from src.boot_read_budget import run_with_read_budget
 
                 loaded, status = run_with_read_budget(
@@ -6768,6 +6785,8 @@ def run_authenticated_app() -> None:
                     return None, "Component progress is taking longer to load. Reload this page to retry."
                 if status != "ok":
                     return None, "Component progress is unavailable right now."
+                if loaded[0] is not None:
+                    snapshots[analysis_id] = (time.monotonic(), loaded)
                 return loaded
 
             focus_decision_id = _qp_value("decision_id")
@@ -6862,6 +6881,11 @@ def run_authenticated_app() -> None:
                                 key=f"decision_{decision_id}_continue_parts",
                                 analysis_id=str(selected_decision.get("analysis_id") or ""),
                                 analysis_tab="Engineering Decisions",
+                                review_component=next(
+                                    (part["mpn"] for part in progress["parts"]
+                                     if part["can_open"] and part["decision"] != "Approve"),
+                                    "",
+                                ),
                                 type="secondary",
                             )
                     render_kpi_row_safe(
@@ -7047,15 +7071,14 @@ def run_authenticated_app() -> None:
                     else:
                         with navigation_cols[0]:
                             internal_nav_button(
-                                "Review BOM parts",
+                                "Review component decisions",
                                 "Analysis Details",
                                 key=f"decision_components_{decision_id}",
                                 use_container_width=True,
                                 analysis_id=str(
                                     selected_decision.get("analysis_id") or ""
                                 ),
-                                analysis_tab="Components",
-                                focus="component-risk",
+                                analysis_tab="Engineering Decisions",
                             )
                         report_column = navigation_cols[1]
                         saved_bom_column = navigation_cols[2]
@@ -7248,34 +7271,49 @@ def run_authenticated_app() -> None:
                                 parts = progress["parts"]
                                 if parts:
                                     st.markdown(
-                                        '<p class="cv-ed-bom-parts__label">Affected components · outstanding first</p>'
-                                        + bom_review_parts_html(parts[:8]),
+                                        '<p class="cv-ed-bom-parts__label">Affected components · outstanding first</p>',
                                         unsafe_allow_html=True,
                                     )
-                                    if len(parts) > 8:
-                                        with st.expander(f"Show {len(parts) - 8} more affected parts"):
-                                            st.markdown(bom_review_parts_html(parts[8:]), unsafe_allow_html=True)
-                                    part_options = [part["mpn"] for part in parts if part["can_open"]]
-                                    if part_options:
-                                        part_col, open_part_col = st.columns(
-                                            [2, 1], gap="small", vertical_alignment="bottom"
-                                        )
-                                        with part_col:
-                                            chosen_part = st.selectbox(
-                                                "Affected component to review",
-                                                options=part_options,
-                                                key=f"{safe_key}_affected_part",
+
+                                    def _render_affected_parts(rows: list[dict], start: int = 0) -> None:
+                                        for index, part in enumerate(rows, start):
+                                            part_col, action_col = st.columns(
+                                                [3, 1], gap="small", vertical_alignment="center"
                                             )
-                                        with open_part_col:
+                                            with part_col:
+                                                st.markdown(bom_review_parts_html([part]), unsafe_allow_html=True)
+                                            with action_col:
+                                                if part["can_open"]:
+                                                    internal_nav_button(
+                                                        "Review part →",
+                                                        "Analysis Details",
+                                                        key=f"{safe_key}_review_part_{index}",
+                                                        analysis_id=analysis_id,
+                                                        analysis_tab="Engineering Decisions",
+                                                        review_component=part["mpn"],
+                                                        type="secondary",
+                                                        use_container_width=True,
+                                                    )
+
+                                    _render_affected_parts(parts[:8])
+                                    if len(parts) > 8:
+                                        with st.expander("Show more affected parts"):
+                                            st.markdown(
+                                                bom_review_parts_html(parts[8:33]),
+                                                unsafe_allow_html=True,
+                                            )
+                                            if len(parts) > 33:
+                                                st.caption(
+                                                    f"Showing the first 33 of {len(parts)} affected parts. "
+                                                    "Open component review to search the full queue."
+                                                )
                                             internal_nav_button(
-                                                "Review selected part",
+                                                "Open full component review",
                                                 "Analysis Details",
-                                                key=f"{safe_key}_review_selected_part",
+                                                key=f"{safe_key}_all_parts",
                                                 analysis_id=analysis_id,
                                                 analysis_tab="Engineering Decisions",
-                                                review_component=chosen_part,
                                                 type="secondary",
-                                                use_container_width=True,
                                             )
                         st.markdown(
                             f"""
