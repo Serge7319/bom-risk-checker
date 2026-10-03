@@ -2104,6 +2104,12 @@ def run_authenticated_app() -> None:
         app_mode = "Dashboard"
         st.session_state["cadivor_route"] = "Dashboard"
         st.session_state["app_mode"] = "Dashboard"
+    if st.session_state.pop("cadivor_stress_landing_pending", False):
+        # The email link was verified by Supabase Auth before this transition.
+        _shell_route = app_mode = "Reports"
+        st.session_state["cadivor_route"] = "Reports"
+        st.session_state["app_mode"] = "Reports"
+        st.session_state["cadivor_nav_params"] = {"page": "Reports"}
     _shell_cache = dict(st.session_state.get("cadivor_shell_cache") or {})
     _shell_email = str(
         getattr(_auth_user_early, "email", None) or _shell_cache.get("email") or ""
@@ -8470,6 +8476,9 @@ def run_authenticated_app() -> None:
 
     # ---------- Reports ----------
     if app_mode == "Reports":
+        from src.public_bom_stress_test import render_verified_report
+
+        render_verified_report(str(st.session_state.get("access_token") or ""))
         # Milestone 5.5 — Functional Reports Center
         try:
             report_records = load_analysis_history(current_user["id"]) or []

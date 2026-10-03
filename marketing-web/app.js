@@ -7,6 +7,14 @@
   const APP_ORIGIN = String(
     window.CADIVOR_APP_ORIGIN || window.CADIVOR_APP_URL || APP_PRODUCTION_DEFAULT
   ).replace(/\/$/, '');
+  const stressSection = document.getElementById('bomStressTestSection');
+  if (stressSection && window.CADIVOR_PUBLIC_BOM_STRESS_TEST_ENABLED === true) {
+    const stressFrame = document.getElementById('bomStressTestFrame');
+    if (stressFrame) stressFrame.src = `${APP_ORIGIN}/?public=stress&embed=true`;
+    const stressFullPage = document.getElementById('bomStressTestFullPage');
+    if (stressFullPage) stressFullPage.href = `${APP_ORIGIN}/?public=stress`;
+    stressSection.hidden = false;
+  }
 
   function buildAppUrl({ auth, intent, entry, source = 'marketing' } = {}) {
     const params = new URLSearchParams();

@@ -35,6 +35,14 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# A deliberately narrow public route. No authenticated runtime or workspace
+# storage is reached until the visitor verifies their email and signs in.
+if str(st.query_params.get("public", "") or "").strip().lower() == "stress":
+    from src.public_bom_stress_ui import render_public_bom_stress_test
+
+    render_public_bom_stress_test()
+    st.stop()
+
 from src.auth_bootstrap import ensure_authenticated_or_stop, log_startup_phase
 
 log_startup_phase("entrypoint_ready")
