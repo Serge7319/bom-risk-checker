@@ -51,6 +51,18 @@ def render_public_bom_stress_test() -> None:
         .cv-stress-brand-line {font-size:7px;letter-spacing:.08em}
         .st-key-cv_public_stress_test {padding:16px}}
     </style>""", unsafe_allow_html=True)
+    if embedded:
+        st.markdown("""<style>
+          .block-container {padding:0!important;max-width:none!important}
+          .stApp {background:#fff!important}
+          .st-key-cv_public_stress_test {
+            padding:22px 24px!important;border:0!important;border-radius:0!important;
+            box-shadow:none!important
+          }
+          @media(max-width:700px) {
+            .st-key-cv_public_stress_test {padding:18px 16px!important}
+          }
+        </style>""", unsafe_allow_html=True)
     if not embedded:
         st.markdown("""
         <header class="cv-stress-site-header">
