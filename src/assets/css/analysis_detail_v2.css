@@ -1082,3 +1082,61 @@ div[class*="st-key-cv_expandable_detail_analysis_component_table_"]
 
 /* Saved-BOM tabs live in saved_bom_nav.css and are rendered by
    render_saved_bom_section_nav. Do not restyle them from this page sheet. */
+
+.cv-review-focus-intro,
+.cv-review-focus-progress,
+.cv-review-focus-part {
+  border: 1px solid #d6e4f7;
+  border-radius: 14px;
+  padding: 16px 18px;
+  margin: 10px 0 14px;
+  background: #f5f9ff;
+}
+
+.cv-review-focus-intro {
+  background: linear-gradient(115deg, #fff, #edf5ff);
+  border-color: #bfdbfe;
+}
+
+.cv-review-focus-intro span,
+.cv-review-focus-part > div > span {
+  color: #1d4ed8;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .07em;
+}
+
+.cv-review-focus-intro h2 {
+  margin: 5px 0 8px;
+  color: #102141;
+  font-size: clamp(23px, 2.2vw, 30px);
+}
+
+.cv-review-focus-intro p {
+  margin: 0;
+  color: #475569;
+  line-height: 1.5;
+}
+
+.cv-review-focus-progress {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+}
+
+.cv-review-focus-progress strong { color: #102141; }
+.cv-review-focus-progress span { color: #52647a; font-size: 13px; }
+
+.cv-review-focus-part {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  flex-wrap: wrap;
+  background: #fff;
+}
+
+.cv-review-focus-part strong,
+.cv-review-focus-part small { display: block; }
+.cv-review-focus-part strong { color: #102141; font-size: 18px; margin-top: 3px; }
+.cv-review-focus-part small { color: #52647a; margin-top: 3px; }
