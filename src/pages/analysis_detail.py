@@ -72,7 +72,11 @@ from src.engineering_review_service import (
     set_review_lock,
     update_review_session_status,
 )
-from src.bom_review_progress import bom_review_progress_cache_key
+from src.bom_review_progress import (
+    bom_review_progress_cache_key,
+    select_bom_review_parts,
+    summarize_bom_review_progress,
+)
 from src.discussion_service import (
     add_analysis_comment,
     create_workspace_notification,
@@ -885,6 +889,321 @@ def _health_summary(health: int, high: int, medium: int) -> tuple[str, str, int]
     return "Release Hold Recommended", "Material lifecycle or sourcing risks require remediation.", 45
 
 
+def _render_focused_component_review(
+    *,
+    analysis: dict,
+    parts: list[dict],
+    requested_mpn: str,
+    current_user: dict,
+    supabase,
+    workspace_id: str | None,
+    workspace_role: str,
+    workspace_members: list[dict],
+) -> None:
+    """One component decision reached from a saved BOM review queue."""
+    analysis_id = str(analysis["id"])
+    user_id = str(current_user["id"])
+    matching = [
+        part for part in parts
+        if _safe(_part_value(part, "mpn", "MPN"), "").casefold() == requested_mpn.casefold()
+    ]
+    focus_part = max(
+        matching,
+        key=lambda part: _component_priority_assessment(part)["score"],
+        default=None,
+    )
+    st.markdown('<div id="cv-review-focus-top" style="scroll-margin-top:85px"></div>', unsafe_allow_html=True)
+    project = _safe(analysis.get("project_name"), "")
+    bom = _safe(analysis.get("bom_name"), "")
+    context = " · ".join(
+        label for label in (
+            f"Project: {project}" if project else "",
+            f"BOM: {bom}" if bom else "",
+        ) if label
+    ) or f"Saved analysis: {_safe(analysis.get('filename'), 'BOM')}"
+    st.markdown(
+        '<section class="cv-review-focus-intro">'
+        '<span>COMPONENT DECISION · SAVED BOM</span>'
+        f'<h2>Review {html.escape(requested_mpn)}</h2>'
+        f'<p>{html.escape(context)}. Record a decision for this part, then return to the saved BOM review. '
+        'A separate whole-BOM release decision is still required.</p></section>',
+        unsafe_allow_html=True,
+    )
+    back_col, brief_col = st.columns(2, gap="small")
+    with back_col:
+        internal_nav_button(
+            "← Back to saved BOM reviews", "Engineering Decisions",
+            key=f"focus_review_back_{analysis_id}", type="secondary",
+        )
+    with brief_col:
+        internal_nav_button(
+            "View full BOM brief", "Analysis Details",
+            key=f"focus_review_brief_{analysis_id}", type="secondary",
+            analysis_id=analysis_id, analysis_tab="Engineering Intelligence", focus="analysis-top",
+        )
+
+    if focus_part is None:
+        st.warning("This component was not found in the selected saved BOM. Return to its review queue and choose another part.")
+        return
+
+    reviewer_name = _safe(
+        current_user.get("full_name") or current_user.get("name") or current_user.get("email"),
+        "Current reviewer",
+    )
+    reviewer_email = _safe(current_user.get("email"), "")
+    ranked = sorted(
+        (
+            {
+                "mpn": _safe(_part_value(part, "mpn", "MPN"), ""),
+                "risk_score": _num(_part_value(part, "risk_score", "Risk Score"), 0),
+                "risk_level": _risk_label(part),
+                "stored_risk_level": _stored_risk_label(part),
+            }
+            for part in parts
+        ),
+        key=lambda part: part["risk_score"],
+        reverse=True,
+    )
+    review_session, session_error = get_latest_review_session(
+        supabase, analysis_id=analysis_id, user_id=user_id, workspace_id=workspace_id,
+    )
+    review_items = []
+    items_error = None
+    if review_session:
+        review_items, items_error = list_review_items(
+            supabase, session_id=review_session["id"], user_id=user_id, workspace_id=workspace_id,
+        )
+    if session_error or items_error:
+        st.error(f"Component review is unavailable: {session_error or items_error}")
+        return
+
+    progress = summarize_bom_review_progress(
+        analysis, parts, review_items, review_session=review_session,
+    )
+    progress_detail = (
+        f'{progress["needs_action"]} still need action. Investigation and rejection remain open until resolved.'
+        if progress["needs_action"] else
+        "Component actions are resolved. The whole-BOM release decision is still separate."
+    )
+    st.markdown(
+        '<section class="cv-review-focus-progress">'
+        f'<strong>{progress["recorded"]} of {progress["total"]} affected components have a recorded decision</strong>'
+        f'<span>{html.escape(progress_detail)}</span>'
+        '</section>',
+        unsafe_allow_html=True,
+    )
+    saved = next(
+        (item for item in review_items if _safe(item.get("mpn"), "").casefold() == requested_mpn.casefold()),
+        {},
+    )
+    priority_assessment = _component_priority_assessment(focus_part)
+    risk_score = priority_assessment["score"]
+    risk_level = priority_assessment["risk_level"]
+    lifecycle = _safe(_part_value(focus_part, "lifecycle_status", "Lifecycle Status"), "Unknown")
+    stock = _num(_part_value(focus_part, "stock_available", "Stock Available"), 0)
+    sources = _num(_part_value(focus_part, "supplier_count", "Supplier Count"), 0)
+    reason = _safe(
+        _part_value(focus_part, "risk_reasons", "Risk Reasons", "risk_reason"),
+        "Recorded engineering risk requires review.",
+    )
+    status = _safe(saved.get("decision"), "Not reviewed")
+    st.markdown(
+        '<section class="cv-review-focus-part">'
+        f'<div><span>PART TO DECIDE</span><strong>{html.escape(requested_mpn)}</strong>'
+        f'<small>{html.escape(_safe(_part_value(focus_part, "manufacturer", "Manufacturer"), "Unknown manufacturer"))}</small></div>'
+        f'<div><span>{html.escape(risk_level)} risk · {risk_score}/100</span>'
+        f'<strong>{html.escape(status)}</strong></div></section>',
+        unsafe_allow_html=True,
+    )
+    st.markdown(f"**Why it needs review:** {html.escape(reason)}")
+    if priority_assessment["elevated"]:
+        st.caption(f"Priority also reflects {priority_assessment['elevation_reason']}.")
+
+    role = str(workspace_role or "viewer").lower()
+    can_edit = role in {"owner", "admin", "editor", "member"} or not workspace_id
+    session_status = _safe((review_session or {}).get("status"), "not_started")
+    if session_status not in {"active", "completed"}:
+        start_label = "Resume component review" if session_status == "paused" else "Start component review"
+        if st.button(start_label, key=f"focus_review_start_{analysis_id}", type="primary", disabled=not can_edit):
+            _, create_error = create_review_session(
+                supabase, analysis_id=analysis_id, user_id=user_id, workspace_id=workspace_id,
+                reviewer_name=reviewer_name, reviewer_email=reviewer_email,
+                total_items=len(select_bom_review_parts(ranked)),
+            )
+            if create_error:
+                st.error(f"Could not start the review: {create_error}")
+            else:
+                st.session_state.pop(bom_review_progress_cache_key(user_id, workspace_id), None)
+                st.rerun()
+    else:
+        locked = bool(review_session.get("is_locked"))
+        if locked:
+            st.info("This review session is locked. Open the full BOM brief to manage the session.")
+        st.markdown("### Record the component decision")
+        st.caption(
+            "Approve when evidence supports this part; investigate unresolved checks; "
+            "reject an unsuitable part. Skipping requires a reason. "
+            "This component decision does not release the whole BOM."
+        )
+        part_key = hashlib.sha256(requested_mpn.casefold().encode("utf-8")).hexdigest()[:16]
+        member_options = [("Unassigned", "", "")]
+        for member in workspace_members or []:
+            name = _safe(member.get("full_name") or member.get("name") or member.get("email"), "Workspace member")
+            email = _safe(member.get("email"), "")
+            member_id = _safe(member.get("user_id") or member.get("id"), "")
+            if email or member_id:
+                member_options.append((name, email, member_id))
+        if reviewer_email and not any(value[1].casefold() == reviewer_email.casefold() for value in member_options):
+            member_options.append((reviewer_name, reviewer_email, user_id))
+        member_labels = [name + (f" · {email}" if email else "") for name, email, _ in member_options]
+        saved_assignee = _safe(saved.get("assignee_name"), "") + (
+            f" · {saved.get('assignee_email')}" if saved.get("assignee_email") else ""
+        )
+        disabled = locked or not can_edit
+        with st.form(f"focus_component_decision_{analysis_id}_{part_key}"):
+            decision_col, owner_col, due_col = st.columns([1.15, 1, 1])
+            options = ["Approve", "Needs Investigation", "Reject", "Skip"]
+            suggested = "Needs Investigation" if risk_score >= 35 else "Approve"
+            current_decision = saved.get("decision") if saved.get("decision") in options else suggested
+            decision = decision_col.selectbox("Decision", options, index=options.index(current_decision), disabled=disabled)
+            owner_options = ["Electrical", "Procurement", "Supply Chain", "Firmware", "Quality", "General Engineering"]
+            current_owner = saved.get("owner") if saved.get("owner") in owner_options else "General Engineering"
+            owner = owner_col.selectbox("Responsible team", owner_options, index=owner_options.index(current_owner), disabled=disabled)
+            due_options = ["No due date", "Today", "Tomorrow", "This Week", "Next Week", "Next Sprint", "Custom"]
+            current_due = saved.get("due_label") if saved.get("due_label") in due_options else "This Week"
+            due = due_col.selectbox("Due", due_options, index=due_options.index(current_due), disabled=disabled)
+            assignee_col, priority_col = st.columns([1.35, .65])
+            assignee = assignee_col.selectbox(
+                "Assigned workspace member", member_labels,
+                index=member_labels.index(saved_assignee) if saved_assignee in member_labels else 0,
+                disabled=disabled,
+            )
+            member = member_options[member_labels.index(assignee)]
+            priorities = ["High", "Medium", "Low"]
+            default_priority = "High" if risk_score >= 70 else "Medium" if risk_score >= 35 else "Low"
+            current_priority = saved.get("priority") if saved.get("priority") in priorities else default_priority
+            priority = priority_col.selectbox("Priority", priorities, index=priorities.index(current_priority), disabled=disabled)
+            today = date.today()
+            if due == "Custom":
+                try:
+                    custom_date = date.fromisoformat(str(saved.get("due_date"))[:10])
+                except (TypeError, ValueError):
+                    custom_date = today + timedelta(days=7)
+                due_date = st.date_input("Custom due date", value=custom_date, disabled=disabled).isoformat()
+            elif due == "No due date":
+                due_date = None
+            elif due == saved.get("due_label") and saved.get("due_date"):
+                due_date = str(saved["due_date"])[:10]
+            else:
+                due_date = {
+                    "Today": today, "Tomorrow": today + timedelta(days=1),
+                    "This Week": today + timedelta(days=7), "Next Week": today + timedelta(days=14),
+                    "Next Sprint": today + timedelta(days=21),
+                }[due].isoformat()
+            notes = st.text_area(
+                "Component review notes (saved with this decision)",
+                value=_safe(saved.get("notes"), ""),
+                placeholder="Record evidence, assumptions, and the next verification step.",
+                disabled=disabled,
+            )
+            submitted = st.form_submit_button("Save component decision", type="primary", disabled=disabled)
+
+        if submitted:
+            assignee_name = member[0] if member[0] != "Unassigned" else ""
+            changed = (
+                decision != saved.get("decision") or owner != saved.get("owner")
+                or due != saved.get("due_label") or notes.strip() != _safe(saved.get("notes"), "").strip()
+                or member[1] != _safe(saved.get("assignee_email"), "")
+                or priority != _safe(saved.get("priority"), default_priority)
+                or (due_date or "") != _safe(saved.get("due_date"), "")[:10]
+            )
+            valid, validation_error, validation_warning = validate_review_decision(
+                decision=decision, notes=notes, assignee_name=assignee_name,
+                risk_score=risk_score, lifecycle=lifecycle,
+            )
+            if not changed:
+                st.info("This decision already matches the saved record.")
+            elif not valid:
+                st.warning(validation_error or "Complete the required decision fields before saving.")
+            else:
+                if validation_warning:
+                    st.warning(validation_warning)
+                saved_item, save_error = save_review_item(
+                    supabase, session_id=review_session["id"], analysis_id=analysis_id,
+                    user_id=user_id, workspace_id=workspace_id, mpn=requested_mpn,
+                    manufacturer=_safe(_part_value(focus_part, "manufacturer", "Manufacturer"), ""),
+                    decision=decision, owner=owner, due_label=due, due_date=due_date,
+                    assignee_name=assignee_name, assignee_email=member[1], assignee_user_id=member[2],
+                    priority=priority, notes=notes.strip(), reviewer_name=reviewer_name,
+                    reviewer_email=reviewer_email, recommendation=suggested,
+                    recommendation_confidence=max(0, min(100, 100 - abs(risk_score - 50))),
+                    evidence={
+                        "risk_score": risk_score, "lifecycle": lifecycle, "stock": stock,
+                        "supplier_sources": sources, "reason": reason,
+                    },
+                )
+                if save_error:
+                    st.error(f"Could not save this component decision: {save_error}")
+                elif saved_item:
+                    st.session_state[f"focus_review_saved_{analysis_id}_{part_key}"] = True
+                    st.session_state.pop(bom_review_progress_cache_key(user_id, workspace_id), None)
+                    st.rerun()
+        if st.session_state.pop(f"focus_review_saved_{analysis_id}_{part_key}", False):
+            st.success(f"Decision for {requested_mpn} saved. The saved BOM review now reflects it.")
+        elif saved:
+            st.caption(
+                f"Current record: {status} · last saved {_relative_date(saved.get('updated_at'))}."
+            )
+
+    with st.expander("Supporting evidence and related tools", expanded=not review_session):
+        st.markdown(
+            f'<div class="cv28-evidence-grid">'
+            f'<div class="cv28-evidence-card"><span>Lifecycle</span><strong>{html.escape(lifecycle)}</strong></div>'
+            f'<div class="cv28-evidence-card"><span>Recorded stock</span><strong>{stock:,} available</strong></div>'
+            f'<div class="cv28-evidence-card"><span>Supplier coverage</span><strong>{sources} source(s)</strong></div>'
+            f'<div class="cv28-evidence-card"><span>Risk score</span><strong>{risk_score}/100</strong></div>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+        alternatives_col, monitoring_col = st.columns(2)
+        with alternatives_col:
+            if st.button("Find alternatives for this part", key=f"focus_alt_{analysis_id}"):
+                navigate_to_alternative_finder(
+                    mpn=requested_mpn, analysis_id=analysis_id, return_analysis_id=analysis_id,
+                    manufacturer=_safe(_part_value(focus_part, "manufacturer", "Manufacturer"), ""),
+                    source_page="analysis_detail", arm_opening=False,
+                )
+        with monitoring_col:
+            if st.button("Open monitoring for this part", key=f"focus_monitor_{analysis_id}"):
+                navigate_to(
+                    "Monitoring", mpn=requested_mpn, analysis_id=analysis_id,
+                    return_analysis_id=analysis_id, arm_opening=False,
+                )
+
+    if _safe(st.query_params.get("focus"), "") == "component-review":
+        components.html(
+            """
+            <script>
+            (function () {
+              const parentWindow = window.parent;
+              const focus = () => {
+                const target = parentWindow.document.getElementById('cv-review-focus-top');
+                if (target) target.scrollIntoView({ block: 'start', behavior: 'auto' });
+              };
+              [0, 100, 300, 700, 1300].forEach(delay => parentWindow.setTimeout(focus, delay));
+              parentWindow.setTimeout(() => {
+                const url = new URL(parentWindow.location.href);
+                if (url.searchParams.get('focus') === 'component-review') {
+                  url.searchParams.delete('focus');
+                  parentWindow.history.replaceState({}, '', url.toString());
+                }
+              }, 1600);
+            })();
+            </script>
+            """, height=0, width=0,
+        )
+
+
 def render_analysis_detail(
     *,
     current_user,
@@ -1389,6 +1708,31 @@ def render_analysis_detail(
         analysis_id=analysis_id,
         workspace_id=workspace_id,
     )
+
+    focused_mpn = _safe(st.query_params.get("review_component"), "").strip()
+    focused_section = _normalize_analysis_tab(st.query_params.get("analysis_tab", ""))
+    if focused_mpn and focused_section == "Engineering Decisions":
+        from src.pages.saved_analysis_control import release_saved_analysis_placeholder
+        from src.ui.navigation import reveal_authenticated_page_body
+
+        _consume_pending_analysis_section(analysis_id=analysis_id)
+        st.session_state["cadivor_active_analysis_tab"] = "Engineering Decisions"
+        st.session_state[_analysis_section_nav_key(analysis_id)] = "Engineering Decisions"
+        _sync_bom_area_widgets(analysis_id=analysis_id, section="Engineering Decisions")
+        release_saved_analysis_placeholder()
+        reveal_authenticated_page_body("Analysis Details")
+        _render_focused_component_review(
+            analysis=analysis,
+            parts=parts,
+            requested_mpn=focused_mpn,
+            current_user=current_user,
+            supabase=supabase,
+            workspace_id=workspace_id,
+            workspace_role=workspace_role,
+            workspace_members=workspace_members or [],
+        )
+        return
+
     alerts = _query_table(
         supabase,
         "monitor_alerts",

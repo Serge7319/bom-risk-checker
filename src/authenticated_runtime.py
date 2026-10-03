@@ -6886,6 +6886,7 @@ def run_authenticated_app() -> None:
                                      if part["can_open"] and part["decision"] != "Approve"),
                                     "",
                                 ),
+                                focus="component-review",
                                 type="secondary",
                             )
                     render_kpi_row_safe(
@@ -7291,6 +7292,7 @@ def run_authenticated_app() -> None:
                                                         analysis_id=analysis_id,
                                                         analysis_tab="Engineering Decisions",
                                                         review_component=part["mpn"],
+                                                        focus="component-review",
                                                         type="secondary",
                                                         use_container_width=True,
                                                     )
