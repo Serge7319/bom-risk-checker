@@ -1,4 +1,4 @@
-"""The signed-out BOM stress test, linked from and embedded by the homepage."""
+"""The signed-out BOM stress test embedded by the public audit page."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ import pandas as pd
 import streamlit as st
 
 from src.public_bom_stress_test import (
+    PUBLIC_BOM_LIMIT_MESSAGE,
     StressTestError,
     capture_lead,
     enabled,
@@ -32,11 +33,7 @@ def render_public_bom_stress_test() -> None:
       .cv-stress-brand-name {display:block;font-size:19px;font-weight:800;line-height:1.1}
       .cv-stress-brand-line {display:block;margin-top:3px;font-size:9px;font-weight:700;
         letter-spacing:.13em;text-transform:uppercase;color:#526783}
-      .cv-stress-site-nav {display:flex;align-items:center;gap:22px}
-      .cv-stress-site-nav a {color:#334d72;text-decoration:none;font-size:13px;font-weight:650}
-      .cv-stress-site-nav a:hover,.cv-stress-site-nav a:focus-visible {color:#255ff2;text-decoration:underline}
-      .cv-stress-site-nav .cv-stress-signin {padding:9px 16px;border:1px solid #b4c8e7;
-        border-radius:9px;background:#fff;color:#10284b}
+      .cv-stress-header-note {color:#526783;font-size:13px;font-weight:700}
       .st-key-cv_public_stress_test {padding:20px 24px;border:1px solid #cfe0f5;
         border-radius:20px;background:#fff;box-shadow:0 12px 32px rgba(10,28,59,.06)}
       .st-key-cv_public_stress_test [data-testid="stFileUploaderDropzone"] {
@@ -46,8 +43,6 @@ def render_public_bom_stress_test() -> None:
       .cv-stress-locked strong {display:block;font-size:17px;color:#0b2144}
       @media(max-width:700px){.block-container {padding:14px 12px 28px!important}
         .cv-stress-site-header {gap:12px;margin-bottom:16px;padding-bottom:16px}
-        .cv-stress-site-nav {gap:10px}
-        .cv-stress-site-nav .cv-stress-nav-secondary {display:none}
         .cv-stress-brand-line {font-size:7px;letter-spacing:.08em}
         .st-key-cv_public_stress_test {padding:16px}}
     </style>""", unsafe_allow_html=True)
@@ -71,11 +66,7 @@ def render_public_bom_stress_test() -> None:
             <span><span class="cv-stress-brand-name">Cadivor</span>
               <span class="cv-stress-brand-line">Engineering Decision Intelligence</span></span>
           </a>
-          <nav class="cv-stress-site-nav" aria-label="Cadivor navigation">
-            <a class="cv-stress-nav-secondary" href="https://www.cadivor.com/#/product" target="_self">Product</a>
-            <a class="cv-stress-nav-secondary" href="https://www.cadivor.com/#/pricing" target="_self">Pricing</a>
-            <a class="cv-stress-signin" href="https://app.cadivor.com/?auth=login" target="_self">Sign in</a>
-          </nav>
+          <span class="cv-stress-header-note">Free BOM audit</span>
         </header>
         """, unsafe_allow_html=True)
     with st.container(key="cv_public_stress_test"):
@@ -114,9 +105,12 @@ def render_public_bom_stress_test() -> None:
                         st.rerun()
                     except StressTestError as exc:
                         st.session_state["cv_stress_error"] = str(exc)
-        if st.session_state.get("cv_stress_error"):
-            st.error(st.session_state["cv_stress_error"])
-            if st.button("Retry audit", key="cv_stress_retry"):
+        audit_error = st.session_state.get("cv_stress_error")
+        if audit_error:
+            st.error(audit_error)
+            if audit_error == PUBLIC_BOM_LIMIT_MESSAGE:
+                st.caption("This allowance resets on a rolling 24-hour window. Return later to run another anonymous audit.")
+            elif st.button("Retry audit", key="cv_stress_retry"):
                 st.session_state.pop("cv_stress_last_digest", None)
                 st.session_state.pop("cv_stress_error", None)
                 st.rerun()
