@@ -23,6 +23,7 @@ class PublicBomStressTest(unittest.TestCase):
         entrypoint = (root / "streamlit_app.py").read_text()
         self.assertIn('id="bomStressTestFrame"', homepage)
         self.assertIn('id="bomStressTestSection"', homepage)
+        self.assertNotIn('id="bomStressTestFullPage"', homepage)
         self.assertIn('aria-labelledby="stressFunnelTitle" hidden', homepage)
         self.assertIn("CADIVOR_PUBLIC_BOM_STRESS_TEST_ENABLED === true", script)
         self.assertIn("window.CADIVOR_PUBLIC_BOM_STRESS_TEST_ENABLED = true;", homepage)
@@ -30,12 +31,13 @@ class PublicBomStressTest(unittest.TestCase):
         self.assertLess(homepage.index('class="hero experience-scene"'), homepage.index('data-page="analyze"'))
         self.assertLess(homepage.index('class="page-hero stress-page-hero"'), homepage.index('class="stress-funnel"'))
         self.assertIn("a.href = '#/analyze'", script)
+        self.assertNotIn("stressFullPage", script)
         self.assertIn("if (page === 'analyze')", script)
         self.assertIn("/?public=stress&embed=true", script)
         self.assertLess(entrypoint.index('st.query_params.get("public"'),
                         entrypoint.index("ensure_authenticated_or_stop()"))
 
-    def test_direct_audit_has_cadivor_navigation_without_duplicating_embedded_header(self):
+    def test_direct_audit_keeps_brand_without_distraction_links_or_embedded_header(self):
         rendered = []
         fake_st = types.ModuleType("streamlit")
         fake_st.query_params = {}
@@ -49,13 +51,39 @@ class PublicBomStressTest(unittest.TestCase):
             spec.loader.exec_module(module)
             with patch.object(module, "enabled", return_value=False):
                 module.render_public_bom_stress_test()
-                self.assertIn('aria-label="Cadivor navigation"', "".join(rendered))
+                self.assertIn('class="cv-stress-site-header"', "".join(rendered))
                 self.assertIn('href="https://www.cadivor.com/#/home"', "".join(rendered))
-                self.assertIn('href="https://app.cadivor.com/?auth=login"', "".join(rendered))
+                self.assertIn('class="cv-stress-header-note">Free BOM audit', "".join(rendered))
+                self.assertNotIn('href="https://www.cadivor.com/#/product"', "".join(rendered))
+                self.assertNotIn('href="https://www.cadivor.com/#/pricing"', "".join(rendered))
+                self.assertNotIn('href="https://app.cadivor.com/?auth=login"', "".join(rendered))
                 rendered.clear()
                 fake_st.query_params = {"embed": "true"}
                 module.render_public_bom_stress_test()
-                self.assertNotIn('aria-label="Cadivor navigation"', "".join(rendered))
+                self.assertNotIn('class="cv-stress-site-header"', "".join(rendered))
+
+    def test_daily_limit_does_not_offer_a_retry_that_cannot_succeed(self):
+        captions, buttons, errors = [], [], []
+        fake_st = types.ModuleType("streamlit")
+        fake_st.query_params = {"embed": "true"}
+        fake_st.session_state = {"cv_stress_error": funnel.PUBLIC_BOM_LIMIT_MESSAGE}
+        fake_st.markdown = lambda *_args, **_kwargs: None
+        fake_st.container = lambda **_kwargs: nullcontext()
+        fake_st.write = lambda *_args: None
+        fake_st.caption = lambda message: captions.append(message)
+        fake_st.error = lambda message: errors.append(message)
+        fake_st.button = lambda label, **_kwargs: buttons.append(label) or False
+        fake_st.file_uploader = lambda *_args, **_kwargs: None
+        filename = Path(__file__).resolve().parents[1] / "src/public_bom_stress_ui.py"
+        spec = importlib.util.spec_from_file_location("stress_rate_limit_ui_test", filename)
+        module = importlib.util.module_from_spec(spec)
+        with patch.dict(sys.modules, {"streamlit": fake_st}):
+            spec.loader.exec_module(module)
+            with patch.object(module, "enabled", return_value=True):
+                module.render_public_bom_stress_test()
+        self.assertEqual(errors, [funnel.PUBLIC_BOM_LIMIT_MESSAGE])
+        self.assertTrue(any("rolling 24-hour window" in caption for caption in captions))
+        self.assertNotIn("Retry audit", buttons)
 
     def test_visitor_must_be_signed_by_ingress(self):
         secret = "a" * 48

@@ -25,6 +25,7 @@ MAX_ROWS = 30
 PREVIEW_ROWS = 5
 MAX_XLSX_UNCOMPRESSED = 8_000_000
 VISITOR_HEADER = "X-Cadivor-Visitor"
+PUBLIC_BOM_LIMIT_MESSAGE = "This connection has used its two free BOM audits in the last 24 hours."
 CONSUMER_DOMAINS = frozenset({
     "gmail.com", "googlemail.com", "yahoo.com", "yahoo.co.uk", "ymail.com",
     "hotmail.com", "hotmail.co.uk", "outlook.com", "live.com", "msn.com",
@@ -144,7 +145,7 @@ def _reserve(ip_hash: str) -> str:
         ).execute()
     except Exception as exc:
         if "PUBLIC_BOM_DAILY_LIMIT" in str(exc):
-            raise StressTestError("This connection has used its two free BOM audits in the last 24 hours.") from None
+            raise StressTestError(PUBLIC_BOM_LIMIT_MESSAGE) from None
         raise StressTestError("The audit is temporarily unavailable. Please try later.") from None
     report_id = str(response.data or "").strip().strip('"')
     if not report_id:

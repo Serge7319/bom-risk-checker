@@ -117,7 +117,7 @@ The homepage flag is set in `marketing-web/index.html` by the launch change:
 window.CADIVOR_PUBLIC_BOM_STRESS_TEST_ENABLED = true;
 ~~~
 
-After step 7 passes, deploy the launch change to both the app and `marketing-web/` through their existing release processes. In a signed-out window open [www.cadivor.com](https://www.cadivor.com/). Click **Analyze a BOM free** in the hero and desktop/mobile navigation; each should open [the branded audit page](https://www.cadivor.com/#/analyze). Confirm the home hero remains the first section on the homepage, and the audit form sits beneath its own banner on the audit page. Test the upload there and the **Open the audit in a full page** fallback link. Share the audit page in outreach after the confirmed-email route unlocks the six-row audit in Reports.
+After step 7 passes, deploy the launch change to both the app and `marketing-web/` through their existing release processes. In a signed-out window open [www.cadivor.com](https://www.cadivor.com/). Click **Analyze a BOM free** in the hero and desktop/mobile navigation; each should open [the branded audit page](https://www.cadivor.com/#/analyze). Confirm the home hero remains the first section on the homepage, and the audit form sits beneath its own banner on the audit page. The old direct app URL remains available for compatibility but is not presented as a second entry point. Share the audit page in outreach after the confirmed-email route unlocks the six-row audit in Reports.
 
 ## Send me only the checkpoint result
 

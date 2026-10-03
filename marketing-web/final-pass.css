@@ -69,8 +69,6 @@
 }
 .stress-funnel__privacy {color: #59718d; font-size: 11px; font-weight: 600; letter-spacing: 0}
 .stress-funnel iframe {display: block; width: 100%; height: 490px; border: 0; background: #fff}
-.stress-funnel__fallback {margin: 0; padding: 14px 24px 18px; border-top: 1px solid #e1e8f2; color: #52657e; font-size: 13px}
-.stress-funnel__fallback a {color: #245ec8; font-weight: 700}
 @media (max-width: 900px) {
   .stress-funnel {grid-template-columns: 1fr; gap: 28px; padding-inline: 18px}
   .stress-funnel__intro {padding-top: 0}
@@ -81,7 +79,6 @@
   .stress-funnel__steps {grid-template-columns: 1fr; gap: 0}
   .stress-funnel__workspace-head {padding-inline: 16px}
   .stress-funnel iframe {height: 580px}
-  .stress-funnel__fallback {padding-inline: 16px}
 }
 
 .site-header {
