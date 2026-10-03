@@ -1,4 +1,4 @@
-"""The signed-out BOM stress test, embedded by the real Cadivor homepage."""
+"""The signed-out BOM stress test, linked from and embedded by the homepage."""
 
 from __future__ import annotations
 
@@ -18,10 +18,25 @@ from src.public_bom_stress_test import (
 
 def render_public_bom_stress_test() -> None:
     """Render only the five public rows; the full result remains on the server."""
+    embedded = str(st.query_params.get("embed", "") or "").strip().lower() in {"1", "true"}
     st.markdown("""<style>
       header[data-testid="stHeader"], [data-testid="stToolbar"] {display:none!important}
       .block-container {padding:18px 22px 32px!important;max-width:1080px!important}
       .stApp {background:#f4f8ff!important;color:#10284b}
+      .cv-stress-site-header {display:flex;align-items:center;justify-content:space-between;
+        gap:24px;margin:0 0 22px;padding:8px 2px 22px;border-bottom:1px solid #d9e4f3}
+      .cv-stress-brand {display:inline-flex;align-items:center;gap:11px;
+        color:#10284b!important;text-decoration:none!important}
+      .cv-stress-brand-mark {display:grid;place-items:center;width:36px;height:36px;
+        border-radius:11px;background:#255ff2;color:#fff;font-weight:800;font-size:23px}
+      .cv-stress-brand-name {display:block;font-size:19px;font-weight:800;line-height:1.1}
+      .cv-stress-brand-line {display:block;margin-top:3px;font-size:9px;font-weight:700;
+        letter-spacing:.13em;text-transform:uppercase;color:#526783}
+      .cv-stress-site-nav {display:flex;align-items:center;gap:22px}
+      .cv-stress-site-nav a {color:#334d72;text-decoration:none;font-size:13px;font-weight:650}
+      .cv-stress-site-nav a:hover,.cv-stress-site-nav a:focus-visible {color:#255ff2;text-decoration:underline}
+      .cv-stress-site-nav .cv-stress-signin {padding:9px 16px;border:1px solid #b4c8e7;
+        border-radius:9px;background:#fff;color:#10284b}
       .st-key-cv_public_stress_test {padding:20px 24px;border:1px solid #cfe0f5;
         border-radius:20px;background:#fff;box-shadow:0 12px 32px rgba(10,28,59,.06)}
       .st-key-cv_public_stress_test [data-testid="stFileUploaderDropzone"] {
@@ -29,9 +44,28 @@ def render_public_bom_stress_test() -> None:
       .cv-stress-locked {padding:18px;border:1px solid #b9cff1;border-radius:14px;
         background:#edf4ff;color:#163260;font-size:14px;line-height:1.6}
       .cv-stress-locked strong {display:block;font-size:17px;color:#0b2144}
-      @media(max-width:700px){.block-container {padding:10px!important}
+      @media(max-width:700px){.block-container {padding:14px 12px 28px!important}
+        .cv-stress-site-header {gap:12px;margin-bottom:16px;padding-bottom:16px}
+        .cv-stress-site-nav {gap:10px}
+        .cv-stress-site-nav .cv-stress-nav-secondary {display:none}
+        .cv-stress-brand-line {font-size:7px;letter-spacing:.08em}
         .st-key-cv_public_stress_test {padding:16px}}
     </style>""", unsafe_allow_html=True)
+    if not embedded:
+        st.markdown("""
+        <header class="cv-stress-site-header">
+          <a class="cv-stress-brand" href="https://www.cadivor.com/#/home" target="_self" aria-label="Cadivor home">
+            <span class="cv-stress-brand-mark" aria-hidden="true">C</span>
+            <span><span class="cv-stress-brand-name">Cadivor</span>
+              <span class="cv-stress-brand-line">Engineering Decision Intelligence</span></span>
+          </a>
+          <nav class="cv-stress-site-nav" aria-label="Cadivor navigation">
+            <a class="cv-stress-nav-secondary" href="https://www.cadivor.com/#/product" target="_self">Product</a>
+            <a class="cv-stress-nav-secondary" href="https://www.cadivor.com/#/pricing" target="_self">Pricing</a>
+            <a class="cv-stress-signin" href="https://app.cadivor.com/?auth=login" target="_self">Sign in</a>
+          </nav>
+        </header>
+        """, unsafe_allow_html=True)
     with st.container(key="cv_public_stress_test"):
         if not enabled():
             st.info("The free BOM stress test is being prepared. Please check back soon.")
@@ -100,7 +134,7 @@ def render_public_bom_stress_test() -> None:
             st.info("All components fit in the free preview. Verify a work email to save and download this audit.")
         pending = st.session_state.get("cv_stress_email_pending")
         if pending:
-            st.success(f"Check {pending} for your secure sign-in link. After verification, continue to Reports for the complete audit.")
+            st.success(f"Check {pending} for your Cadivor verification email. Open its link to confirm your address, then continue to Reports for the complete audit.")
             return
         with st.form("cv_stress_work_email_form", clear_on_submit=False):
             email = st.text_input("Work email", placeholder="you@company.com", autocomplete="email")

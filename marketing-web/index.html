@@ -92,8 +92,9 @@
   // Optional overrides before app.js loads:
   // window.CADIVOR_APP_ORIGIN = 'https://app.cadivor.com';
   // window.CADIVOR_MARKETING_ORIGIN = 'https://www.cadivor.com';
-  // Set window.CADIVOR_PUBLIC_BOM_STRESS_TEST_ENABLED = true only after the
-  // database migration, signed ingress, email template, and app flag are live.
+  // The public app route is live; the homepage's BOM CTAs and embedded uploader
+  // now point visitors to the anonymous five-component preview.
+  window.CADIVOR_PUBLIC_BOM_STRESS_TEST_ENABLED = true;
 </script>
 <script src="app.js?v=1.0-bom-stress"></script>
 </body></html>

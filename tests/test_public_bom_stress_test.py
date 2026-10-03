@@ -8,6 +8,7 @@ import importlib.util
 import sys
 import types
 import unittest
+from contextlib import nullcontext
 from pathlib import Path
 from unittest.mock import patch
 
@@ -24,10 +25,34 @@ class PublicBomStressTest(unittest.TestCase):
         self.assertIn('id="bomStressTestSection"', homepage)
         self.assertIn('aria-labelledby="stressFunnelTitle" hidden', homepage)
         self.assertIn("CADIVOR_PUBLIC_BOM_STRESS_TEST_ENABLED === true", script)
+        self.assertIn("window.CADIVOR_PUBLIC_BOM_STRESS_TEST_ENABLED = true;", homepage)
+        self.assertEqual(homepage.count('data-stress-cta="true"'), 3)
         self.assertLess(homepage.index('class="stress-funnel"'), homepage.index('class="hero experience-scene"'))
         self.assertIn("/?public=stress&embed=true", script)
         self.assertLess(entrypoint.index('st.query_params.get("public"'),
                         entrypoint.index("ensure_authenticated_or_stop()"))
+
+    def test_direct_audit_has_cadivor_navigation_without_duplicating_embedded_header(self):
+        rendered = []
+        fake_st = types.ModuleType("streamlit")
+        fake_st.query_params = {}
+        fake_st.markdown = lambda html, **kwargs: rendered.append(html)
+        fake_st.container = lambda **kwargs: nullcontext()
+        fake_st.info = lambda *_: None
+        filename = Path(__file__).resolve().parents[1] / "src/public_bom_stress_ui.py"
+        spec = importlib.util.spec_from_file_location("stress_public_header_test", filename)
+        module = importlib.util.module_from_spec(spec)
+        with patch.dict(sys.modules, {"streamlit": fake_st}):
+            spec.loader.exec_module(module)
+            with patch.object(module, "enabled", return_value=False):
+                module.render_public_bom_stress_test()
+                self.assertIn('aria-label="Cadivor navigation"', "".join(rendered))
+                self.assertIn('href="https://www.cadivor.com/#/home"', "".join(rendered))
+                self.assertIn('href="https://app.cadivor.com/?auth=login"', "".join(rendered))
+                rendered.clear()
+                fake_st.query_params = {"embed": "true"}
+                module.render_public_bom_stress_test()
+                self.assertNotIn('aria-label="Cadivor navigation"', "".join(rendered))
 
     def test_visitor_must_be_signed_by_ingress(self):
         secret = "a" * 48
