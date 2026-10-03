@@ -9,8 +9,6 @@
   ).replace(/\/$/, '');
   const stressSection = document.getElementById('bomStressTestSection');
   if (stressSection && window.CADIVOR_PUBLIC_BOM_STRESS_TEST_ENABLED === true) {
-    const stressFullPage = document.getElementById('bomStressTestFullPage');
-    if (stressFullPage) stressFullPage.href = `${APP_ORIGIN}/?public=stress`;
     stressSection.hidden = false;
   }
 
