@@ -16,7 +16,7 @@ from src import public_bom_stress_test as funnel
 
 
 class PublicBomStressTest(unittest.TestCase):
-    def test_real_homepage_embeds_the_signed_out_app_route_before_auth_gate(self):
+    def test_free_audit_opens_in_branded_page_below_banner(self):
         root = Path(__file__).resolve().parents[1]
         homepage = (root / "marketing-web/index.html").read_text()
         script = (root / "marketing-web/app.js").read_text()
@@ -27,7 +27,10 @@ class PublicBomStressTest(unittest.TestCase):
         self.assertIn("CADIVOR_PUBLIC_BOM_STRESS_TEST_ENABLED === true", script)
         self.assertIn("window.CADIVOR_PUBLIC_BOM_STRESS_TEST_ENABLED = true;", homepage)
         self.assertEqual(homepage.count('data-stress-cta="true"'), 3)
-        self.assertLess(homepage.index('class="stress-funnel"'), homepage.index('class="hero experience-scene"'))
+        self.assertLess(homepage.index('class="hero experience-scene"'), homepage.index('data-page="analyze"'))
+        self.assertLess(homepage.index('class="page-hero stress-page-hero"'), homepage.index('class="stress-funnel"'))
+        self.assertIn("a.href = '#/analyze'", script)
+        self.assertIn("if (page === 'analyze')", script)
         self.assertIn("/?public=stress&embed=true", script)
         self.assertLess(entrypoint.index('st.query_params.get("public"'),
                         entrypoint.index("ensure_authenticated_or_stop()"))

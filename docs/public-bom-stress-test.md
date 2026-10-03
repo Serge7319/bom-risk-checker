@@ -1,6 +1,6 @@
 # Public BOM stress test: launch checklist
 
-The public uploader is live at https://app.cadivor.com/?public=stress. The homepage launch change enables the embedded uploader and points its **Analyze a BOM free** buttons to that route. Before sharing the homepage in outreach, complete the email-to-Reports check in step 7. Use the Supabase project and Railway production service already serving app.cadivor.com. Do not send API keys, the signing secret, or a live email link in chat.
+The public entry page is https://www.cadivor.com/#/analyze. Its **Analyze a BOM free** buttons lead to a Cadivor-branded page with the anonymous uploader beneath the main banner. The direct fallback is https://app.cadivor.com/?public=stress. Before sharing the link in outreach, complete the email-to-Reports check in step 7. Use the Supabase project and Railway production service already serving app.cadivor.com. Do not send API keys, the signing secret, or a live email link in chat.
 
 **Expected visitor flow:** Upload a CSV/XLSX BOM (1–30 rows, up to 1 MB, with MPN and Qty columns), see the first five rows, verify a work email, then see the complete audit in Reports. There are two anonymous uploads per IP per rolling 24 hours. The full report expires after seven days and downloads as CSV; this feature does not generate a PDF.
 
@@ -117,7 +117,7 @@ The homepage flag is set in `marketing-web/index.html` by the launch change:
 window.CADIVOR_PUBLIC_BOM_STRESS_TEST_ENABLED = true;
 ~~~
 
-After step 7 passes, deploy the launch change to both the app and `marketing-web/` through their existing release processes. In a signed-out window open [www.cadivor.com](https://www.cadivor.com/). Click **Analyze a BOM free** in the hero and desktop/mobile navigation; each should open the branded anonymous uploader at https://app.cadivor.com/?public=stress instead of signup. The homepage's embedded **Try your own BOM** uploader uses the homepage header, while the full-page route has its own Cadivor header. Test both the embedded uploader and **Open the stress test in a full page** link. Share the homepage in outreach after the confirmed-email route unlocks the six-row audit in Reports.
+After step 7 passes, deploy the launch change to both the app and `marketing-web/` through their existing release processes. In a signed-out window open [www.cadivor.com](https://www.cadivor.com/). Click **Analyze a BOM free** in the hero and desktop/mobile navigation; each should open [the branded audit page](https://www.cadivor.com/#/analyze). Confirm the home hero remains the first section on the homepage, and the audit form sits beneath its own banner on the audit page. Test the upload there and the **Open the audit in a full page** fallback link. Share the audit page in outreach after the confirmed-email route unlocks the six-row audit in Reports.
 
 ## Send me only the checkpoint result
 
