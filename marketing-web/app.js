@@ -9,8 +9,6 @@
   ).replace(/\/$/, '');
   const stressSection = document.getElementById('bomStressTestSection');
   if (stressSection && window.CADIVOR_PUBLIC_BOM_STRESS_TEST_ENABLED === true) {
-    const stressFrame = document.getElementById('bomStressTestFrame');
-    if (stressFrame) stressFrame.src = `${APP_ORIGIN}/?public=stress&embed=true`;
     const stressFullPage = document.getElementById('bomStressTestFullPage');
     if (stressFullPage) stressFullPage.href = `${APP_ORIGIN}/?public=stress`;
     stressSection.hidden = false;
@@ -321,7 +319,10 @@
     $$('.app-link').forEach(a => {
       const auth = String(a.dataset.auth || '').trim().toLowerCase();
       if (a.dataset.stressCta === 'true' && window.CADIVOR_PUBLIC_BOM_STRESS_TEST_ENABLED === true) {
-        a.href = `${APP_ORIGIN}/?public=stress`;
+        a.href = '#/analyze';
+        a.addEventListener('click', () => {
+          if (location.hash === '#/analyze') window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
       } else if (auth === 'login' || auth === 'signin') {
         a.href = buildAppUrl({ auth: 'login', entry: a.dataset.entry || '' });
       } else if (auth === 'signup' || auth === 'trial') {
@@ -434,10 +435,17 @@
     if (status && !formCard?.classList.contains('is-success')) status.textContent = copy.formNote;
   }
 
-  const validPages = ['home', 'product', 'solutions', 'pricing', 'resources', 'company', 'contact', 'security', 'privacy', 'terms'];
+  const validPages = ['home', 'analyze', 'product', 'solutions', 'pricing', 'resources', 'company', 'contact', 'security', 'privacy', 'terms'];
   function route() {
     let page = (location.hash.match(/^#\/([^?#]+)/) || [])[1] || 'home';
     if (!validPages.includes(page)) page = 'home';
+    if (page === 'analyze' && stressSection?.hidden) page = 'home';
+    if (page === 'analyze') {
+      const stressFrame = document.getElementById('bomStressTestFrame');
+      if (stressFrame && !stressFrame.hasAttribute('src')) {
+        stressFrame.src = `${APP_ORIGIN}/?public=stress&embed=true`;
+      }
+    }
     $$('.page').forEach(p => p.classList.toggle('active', p.dataset.page === page));
     $$('.site-header nav a').forEach(a => a.classList.toggle('active', a.getAttribute('href') === `#/${page}`));
     document.title = `${page === 'home' ? 'Cadivor' : page[0].toUpperCase() + page.slice(1) + ' — Cadivor'}`;
