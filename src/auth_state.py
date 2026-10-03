@@ -296,7 +296,7 @@ def mark_authenticated(user: Any, session: Any, cookie_manager: Any = None) -> N
             st.session_state["cadivor_login_handoff_stage"] = "initializing"
 
     requested = str(st.session_state.pop("cadivor_requested_page", "") or "").strip()
-    route = requested or "Dashboard"
+    route = "Reports" if st.session_state.get("cadivor_stress_landing_pending") else requested or "Dashboard"
     st.session_state["cadivor_route"] = route
     st.session_state["app_mode"] = route
     # Marketing entry links use auth/source solely to select the signed-out

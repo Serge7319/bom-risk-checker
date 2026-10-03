@@ -102,6 +102,7 @@ def _nonempty_token(value: Any) -> bool:
 def _clear_signup_confirm_query_params() -> None:
     for key in (
         SIGNUP_CONFIRM_CALLBACK_MARKER,
+        "cadivor_stress_report",
         "token_hash",
         "type",
         "error",
@@ -289,10 +290,13 @@ def apply_signup_confirmation_from_query(supabase: Any) -> None:
         _clear_signup_confirm_query_params()
         return
 
+    stress_report_requested = _read_query_param("cadivor_stress_report") == "1"
     token_hash = _read_query_param("token_hash")
     # Drop token_hash from URL before/around verification outcome handling.
     # Verification uses the local variable only.
     kind = _activate_from_token_hash(supabase, token_hash)
+    if kind == RESULT_SESSION_READY and stress_report_requested:
+        st.session_state["cadivor_stress_landing_pending"] = True
     _mark_exchange_consumed()
     _clear_signup_confirm_query_params()
     if kind == RESULT_INVALID:

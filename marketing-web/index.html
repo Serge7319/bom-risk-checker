@@ -5,7 +5,7 @@
 <meta name="description" content="Find BOM risks before they delay production or increase cost.">
 <title>Cadivor — BOM Risk Analysis for Hardware Teams</title>
 <link rel="stylesheet" href="styles.css?v=1.0-pricing-layout2">
-<link rel="stylesheet" href="final-pass.css?v=1.0-freeze-v15">
+<link rel="stylesheet" href="final-pass.css?v=1.0-bom-stress">
 </head>
 <body>
 <header class="site-header" id="siteHeader">
@@ -21,6 +21,11 @@
 </header>
 <main id="app">
 <section class="page active" data-page="home">
+  <section class="stress-funnel" id="bomStressTestSection" aria-labelledby="stressFunnelTitle" hidden>
+    <div class="stress-funnel__heading"><span class="eyebrow">TRY YOUR OWN BOM</span><h2 id="stressFunnelTitle">Find the first risks before creating an account.</h2><p>Upload a CSV or Excel BOM and inspect five component results. Verify a work email to see the rest.</p></div>
+    <iframe id="bomStressTestFrame" title="Cadivor anonymous BOM stress test upload and results" loading="eager" referrerpolicy="no-referrer"></iframe>
+    <p class="stress-funnel__fallback">Need more room? <a id="bomStressTestFullPage" href="https://app.cadivor.com/?public=stress">Open the stress test in a full page</a>.</p>
+  </section>
   <section class="hero experience-scene" data-experience-scene="0" data-scene-name="BOM received" data-scene-detail="Preparing engineering review">
     <div class="hero-glow"></div>
     <div class="hero-copy reveal visible"><span class="eyebrow dark"><i></i>BOM RISK ANALYSIS</span><h1>Find BOM risks before they <em>delay production or increase cost.</em></h1><p>Upload your BOM to identify lifecycle, supply, sourcing, and component risks—then see exactly what needs attention.</p><div class="hero-actions"><a class="btn btn-primary btn-large app-link" data-auth="signup">Analyze a BOM free <span>→</span></a><a class="btn btn-ghost btn-large" href="#workflow">See how it works</a></div><div class="trust-row"><span>✓ No credit card required</span><span>✓ CSV and Excel BOMs</span><span>✓ Get your first analysis</span></div></div>
@@ -87,6 +92,8 @@
   // Optional overrides before app.js loads:
   // window.CADIVOR_APP_ORIGIN = 'https://app.cadivor.com';
   // window.CADIVOR_MARKETING_ORIGIN = 'https://www.cadivor.com';
+  // Set window.CADIVOR_PUBLIC_BOM_STRESS_TEST_ENABLED = true only after the
+  // database migration, signed ingress, email template, and app flag are live.
 </script>
-<script src="app.js?v=1.0-freeze-v8"></script>
+<script src="app.js?v=1.0-bom-stress"></script>
 </body></html>
