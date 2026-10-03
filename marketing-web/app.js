@@ -320,7 +320,9 @@
   function bindApplicationLinks() {
     $$('.app-link').forEach(a => {
       const auth = String(a.dataset.auth || '').trim().toLowerCase();
-      if (auth === 'login' || auth === 'signin') {
+      if (a.dataset.stressCta === 'true' && window.CADIVOR_PUBLIC_BOM_STRESS_TEST_ENABLED === true) {
+        a.href = `${APP_ORIGIN}/?public=stress`;
+      } else if (auth === 'login' || auth === 'signin') {
         a.href = buildAppUrl({ auth: 'login', entry: a.dataset.entry || '' });
       } else if (auth === 'signup' || auth === 'trial') {
         a.href = buildAppUrl({
