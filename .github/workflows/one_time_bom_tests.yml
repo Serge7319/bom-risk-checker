@@ -1,0 +1,39 @@
+name: One-time BOM billing tests
+
+on:
+  pull_request:
+    paths:
+      - 'src/one_time_bom.py'
+      - 'src/stripe_helper.py'
+      - 'src/report_generator.py'
+      - 'src/authenticated_runtime.py'
+      - 'supabase/functions/stripe-webhook/**'
+      - 'supabase/migrations/20261004_one_time_bom_reports.sql'
+      - 'tests/test_one_time_bom*'
+      - '.github/workflows/one_time_bom_tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'src/one_time_bom.py'
+      - 'src/stripe_helper.py'
+      - 'src/report_generator.py'
+      - 'src/authenticated_runtime.py'
+      - 'supabase/functions/stripe-webhook/**'
+      - 'supabase/migrations/20261004_one_time_bom_reports.sql'
+      - 'tests/test_one_time_bom*'
+
+jobs:
+  billing-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: python -m pip install pandas openpyxl
+      - run: python -m unittest tests.test_one_time_bom tests.test_stripe_webhook_billing tests.test_billing_plan_enforcement tests.test_billing_checkout_ux tests.test_report_download_stability -q
+      - run: node tests/test_one_time_bom_webhook.mjs
+      - run: python -m py_compile src/one_time_bom.py src/stripe_helper.py src/report_generator.py src/authenticated_runtime.py
