@@ -10,7 +10,7 @@ def save_results_to_csv(results: list, output_path: str) -> None:
     df.to_csv(output_path, index=False)
 
 
-def save_results_to_excel(results: list, output_path: str) -> None:
+def save_results_to_excel(results: list, output_path) -> None:
     df = pd.DataFrame(results)
 
     high_risk_df = df[df["Risk Level"] == "High"]
@@ -48,6 +48,8 @@ def save_results_to_excel(results: list, output_path: str) -> None:
 
 
 def format_excel_report(output_path: str) -> None:
+    if hasattr(output_path, "seek"):
+        output_path.seek(0)
     workbook = load_workbook(output_path)
 
     header_fill = PatternFill("solid", fgColor="1F2937")
@@ -87,6 +89,9 @@ def format_excel_report(output_path: str) -> None:
     if "High Risk Parts" in workbook.sheetnames:
         apply_risk_formatting(workbook["High Risk Parts"], high_fill, medium_fill, low_fill)
 
+    if hasattr(output_path, "seek"):
+        output_path.seek(0)
+        output_path.truncate(0)
     workbook.save(output_path)
 
 

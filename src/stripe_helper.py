@@ -53,6 +53,32 @@ def create_checkout_session(
     return session.url
 
 
+def create_one_time_bom_checkout(
+    *, price_id: str, user_email: str, user_id: str, order_id: str,
+    success_url: str, cancel_url: str,
+):
+    """Charge once for one full BOM analysis; the webhook grants its credit."""
+    if not all((price_id, user_email, user_id, order_id, success_url, cancel_url)):
+        raise ValueError("Incomplete one-time BOM checkout")
+    _ensure_stripe_api_key()
+    return stripe.checkout.Session.create(
+        mode="payment",
+        payment_method_types=["card"],
+        customer_email=user_email,
+        customer_creation="always",
+        line_items=[{"price": price_id, "quantity": 1}],
+        success_url=success_url,
+        cancel_url=cancel_url,
+        client_reference_id=order_id,
+        metadata={
+            "cadivor_product": "single_bom_report",
+            "cadivor_order_id": order_id,
+            "user_id": user_id,
+        },
+        idempotency_key=f"cadivor_single_bom_{order_id}",
+    )
+
+
 def create_billing_portal_session(customer_id: str, return_url: str) -> str:
     """Create a Stripe Customer Billing Portal session and return its hosted URL.
 

@@ -6,13 +6,12 @@ import {
   asId,
   billingDecision,
 } from "./billing.ts";
+import { oneTimeBOMAction } from "./one_time_bom_event.ts";
 
-// Versioned replacement for the exported deployed function.
-// Not deployed. JWT verification is disabled only in supabase/config.toml
-// because Stripe cannot send a Supabase JWT. Do not deploy until
-// 20260912_stripe_webhook_event_lease.sql is approved and the handler is
-// proven against a sandbox destination. Do not change the Active Live
-// webhook destination from this file.
+// Versioned webhook source. JWT verification is disabled in
+// supabase/config.toml because Stripe signs the raw request instead.
+// Apply both billing migrations and prove a sandbox destination before
+// replacing the live destination. The one-time product stays off until then.
 
 const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!, {
   apiVersion: "2024-06-20",
@@ -116,6 +115,7 @@ async function applySnapshot(
 async function subscriptionForEvent(event: Stripe.Event): Promise<Stripe.Subscription | null> {
   if (event.type === "checkout.session.completed") {
     const session = event.data.object as Stripe.Checkout.Session;
+    if (session.mode === "payment") return null;
     const subscriptionId = asId(session.subscription);
     if (!subscriptionId) {
       throw new WebhookConfigurationError("Completed checkout has no subscription.");
@@ -136,6 +136,52 @@ async function subscriptionForEvent(event: Stripe.Event): Promise<Stripe.Subscri
     return await stripe.subscriptions.retrieve(subscriptionId);
   }
   return null;
+}
+
+async function oneTimeBOMEvent(event: Stripe.Event): Promise<{
+  userId: string | null; customerId: string | null; outcome: string;
+} | null> {
+  const session = event.data.object as Stripe.Checkout.Session;
+  const action = oneTimeBOMAction(event.type, session);
+  if (!action) return null;
+  if (action === "ignore") {
+    return { userId: null, customerId: null, outcome: "ignored" };
+  }
+  const orderId = String(session.metadata?.cadivor_order_id || "");
+  const userId = String(session.metadata?.user_id || "");
+  const customerId = asId(session.customer);
+  if (action === "close") {
+    const { data, error } = await supabase.rpc("cadivor_close_one_time_bom_checkout", {
+      p_order_id: orderId, p_session_id: session.id,
+    });
+    if (error || data === "not_found") throw new Error("Unable to close one-time BOM order.");
+    return { userId, customerId, outcome: data === "applied" ? "applied" : "skipped_stale" };
+  }
+  // Checkout completion can precede delayed-payment settlement. Never grant
+  // an analysis credit for an unpaid Session or for a browser redirect.
+  if (action === "pending") {
+    return { userId, customerId, outcome: "ignored" };
+  }
+  const paymentIntent = asId(session.payment_intent);
+  const items = await stripe.checkout.sessions.listLineItems(session.id, { limit: 2 });
+  const item = items.data[0];
+  if (!paymentIntent || items.data.length !== 1 || item.quantity !== 1) {
+    throw new WebhookConfigurationError("One-time checkout has invalid payment or line items.");
+  }
+  const priceId = asId(item.price);
+  if (!priceId) throw new WebhookConfigurationError("One-time checkout has no price.");
+  const { data, error } = await supabase.rpc("cadivor_fulfill_one_time_bom_order", {
+    p_order_id: orderId,
+    p_user_id: userId,
+    p_session_id: session.id,
+    p_price_id: priceId,
+    p_payment_intent_id: paymentIntent,
+  });
+  if (error || data === "not_found") throw new Error("Unable to fulfill one-time BOM order.");
+  if (data !== "applied" && data !== "already_paid") {
+    throw new Error("Unexpected one-time BOM fulfillment outcome.");
+  }
+  return { userId, customerId, outcome: data === "applied" ? "applied" : "skipped_stale" };
 }
 
 serve(async (req) => {
@@ -166,6 +212,12 @@ serve(async (req) => {
       return new Response("Webhook event is already being processed", { status: 500 });
     }
     claimed = true;
+
+    const oneTime = await oneTimeBOMEvent(event);
+    if (oneTime) {
+      await completeEvent(event.id, oneTime.userId, oneTime.customerId, null, oneTime.outcome);
+      return Response.json({ received: true, outcome: oneTime.outcome });
+    }
 
     const subscription = await subscriptionForEvent(event);
     if (!subscription) {

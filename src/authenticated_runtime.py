@@ -16930,6 +16930,21 @@ def run_authenticated_app() -> None:
         )
         from src.report_generator import save_results_to_excel
         from src.stripe_helper import create_checkout_session
+        from src.one_time_bom import (
+            MAX_PARTS as ONE_TIME_BOM_MAX_PARTS,
+            OneTimeBOMError,
+            available_credit as one_time_credit_available,
+            attach_analysis as attach_one_time_analysis,
+            begin_checkout as begin_one_time_checkout,
+            consume_credit as consume_one_time_credit,
+            enabled as one_time_bom_enabled,
+            in_progress_credit as one_time_credit_in_progress,
+            pending_checkout as one_time_pending_checkout,
+            price_label as one_time_price_label,
+            release_credit as release_one_time_credit,
+            reserve_credit as reserve_one_time_credit,
+            reserved_credit as one_time_credit_reserved,
+        )
         # Sprint 50.1.2 — returning through navigation resumes the active engineering
         # analysis instead of reopening the Saved BOM selector. A deliberate New
         # Analysis request clears this context above and continues to the selector.
@@ -18744,20 +18759,102 @@ def run_authenticated_app() -> None:
             """,
             unsafe_allow_html=True,
         )
-        if not is_admin and selected_plan.get("can_create_analyses") is False:
-            if selected_plan_name == PLAN_SUBSCRIPTION_INACTIVE:
-                st.warning(
-                    "This subscription is not active. Saved analyses above remain available to open and download. "
-                    "Choose a paid plan to create a new analysis."
+        _one_time_blocked_plan = (
+            not is_admin and selected_plan.get("can_create_analyses") is False
+        )
+        _one_time_feature_enabled = one_time_bom_enabled()
+        _one_time_user_id = str(current_user["id"])
+        _one_time_order_id = str(
+            st.session_state.get("cadivor_one_time_bom_order_id") or ""
+        )
+        _one_time_reserved = (
+            _one_time_blocked_plan and one_time_credit_reserved(
+                _one_time_user_id, _one_time_order_id
+            )
+        )
+        _one_time_available = (
+            _one_time_blocked_plan and one_time_credit_available(_one_time_user_id)
+        )
+        _one_time_in_progress = (
+            _one_time_blocked_plan and one_time_credit_in_progress(_one_time_user_id)
+        )
+        if _one_time_blocked_plan:
+            if _one_time_reserved:
+                st.success("Your one-time BOM report is in progress. Finish this analysis to access its reports.")
+            elif _one_time_available:
+                st.success(
+                    f"Your one-time BOM report is ready. Upload up to {ONE_TIME_BOM_MAX_PARTS} unique components; "
+                    "the saved BOM and its report package will remain in your workspace."
                 )
+            elif _one_time_in_progress:
+                st.info(
+                    "A paid BOM analysis is already in progress for this account. "
+                    "Return to its open tab, or contact support if it was interrupted. "
+                    "An interrupted reservation becomes available again after four hours."
+                )
+                stop_authenticated_page()
             else:
-                st.warning(
-                    "Your trial has ended. Saved analyses above remain available to open and download. "
-                    "Choose a paid plan to create a new analysis."
-                )
-            if st.button("Choose a paid plan", type="primary", key="bom_trial_expired_choose_plan"):
-                navigate_to("Pricing")
-            stop_authenticated_page()
+                if _one_time_feature_enabled:
+                    st.warning(
+                        "Saved BOMs and reports remain available. A new full analysis requires "
+                        "a plan or one one-time BOM report purchase."
+                    )
+                    st.caption(
+                        f"One purchase covers one full analysis of up to {ONE_TIME_BOM_MAX_PARTS} unique components "
+                        "and its standard PDF and CSV reports. No subscription is required."
+                    )
+                    _checkout_key = f"cadivor_one_time_checkout_{_one_time_user_id}"
+                    _pending_checkout = one_time_pending_checkout(_one_time_user_id)
+                    try:
+                        _one_time_price = one_time_price_label(
+                            str(get_secret("STRIPE_ONE_TIME_BOM_REPORT_PRICE_ID", required=True))
+                        )
+                    except OneTimeBOMError as exc:
+                        st.error(str(exc))
+                        _one_time_price = ""
+                    if _one_time_price and not _pending_checkout and st.button(
+                        f"Buy one BOM report · {_one_time_price}",
+                        key="bom_one_time_buy", type="primary",
+                    ):
+                        try:
+                            st.session_state[_checkout_key] = begin_one_time_checkout(
+                                _one_time_user_id,
+                                str(current_user.get("email") or ""),
+                                app_checkout_url(page="BOM Analyzer", checkout="single_bom_success"),
+                                app_checkout_url(page="BOM Analyzer", checkout="single_bom_cancel"),
+                            )
+                        except OneTimeBOMError as exc:
+                            st.error(str(exc))
+                    if _pending_checkout and _pending_checkout[0] == "open":
+                        st.link_button(
+                            "Continue existing checkout →", _pending_checkout[1], type="primary"
+                        )
+                    elif _pending_checkout:
+                        st.info("Checkout is processing. Refresh shortly to see your paid report credit.")
+                    elif st.session_state.get(_checkout_key):
+                        st.link_button(
+                            "Continue to secure checkout →", st.session_state[_checkout_key],
+                            type="primary",
+                        )
+                    if _safe_text(_qp_value("checkout", "")) == "single_bom_success":
+                        st.info("Payment confirmation is processing. Refresh this page in a moment to use your report credit.")
+                elif selected_plan_name == PLAN_SUBSCRIPTION_INACTIVE:
+                    st.warning(
+                        "This subscription is not active. Saved analyses above remain available to open and download. "
+                        "Choose a paid plan to create a new analysis."
+                    )
+                else:
+                    st.warning(
+                        "Your trial has ended. Saved analyses above remain available to open and download. "
+                        "Choose a paid plan to create a new analysis."
+                    )
+                if st.button(
+                    "Compare plans" if _one_time_feature_enabled else "Choose a paid plan",
+                    key="bom_trial_expired_choose_plan",
+                    type="secondary" if _one_time_feature_enabled else "primary",
+                ):
+                    navigate_to("Pricing")
+                stop_authenticated_page()
 
         analysis_in_progress = bool(
             st.session_state.get("bom8_analysis_future")
@@ -19078,6 +19175,9 @@ def run_authenticated_app() -> None:
                     cancel_event = st.session_state.get("bom8_analysis_cancel_event")
                     if cancel_event is not None:
                         cancel_event.set()
+                    if _one_time_reserved:
+                        if release_one_time_credit(_one_time_user_id, _one_time_order_id):
+                            st.session_state.pop("cadivor_one_time_bom_order_id", None)
                     executor = st.session_state.pop("bom8_analysis_executor", None)
                     if executor is not None:
                         executor.shutdown(wait=False, cancel_futures=True)
@@ -19099,6 +19199,9 @@ def run_authenticated_app() -> None:
                 try:
                     analysis_result = current_future.result()
                 except Exception as e:
+                    if _one_time_reserved:
+                        if release_one_time_credit(_one_time_user_id, _one_time_order_id):
+                            st.session_state.pop("cadivor_one_time_bom_order_id", None)
                     st.session_state.pop("bom8_analysis_future", None)
                     st.session_state.pop("bom8_analysis_executor", None)
                     st.session_state.pop("bom8_analysis_progress_queue", None)
@@ -19116,6 +19219,9 @@ def run_authenticated_app() -> None:
                 st.session_state.pop("bom8_analysis_progress", None)
 
                 if analysis_result is None:
+                    if _one_time_reserved:
+                        if release_one_time_credit(_one_time_user_id, _one_time_order_id):
+                            st.session_state.pop("cadivor_one_time_bom_order_id", None)
                     st.session_state["bom8_analysis_cancelled_notice"] = True
                     st.rerun()
 
@@ -19144,7 +19250,24 @@ def run_authenticated_app() -> None:
             st.session_state.pop("health_score", None)
             st.session_state.pop("health_status", None)
 
-            if is_admin:
+            if _one_time_blocked_plan:
+                if len(bom_df) > ONE_TIME_BOM_MAX_PARTS:
+                    st.error(
+                        f"One-time reports support up to {ONE_TIME_BOM_MAX_PARTS} unique components. "
+                        "Reduce this BOM or choose a plan for a larger analysis."
+                    )
+                    stop_authenticated_page()
+                if not _one_time_reserved:
+                    try:
+                        _one_time_order_id = reserve_one_time_credit(_one_time_user_id)
+                    except OneTimeBOMError as exc:
+                        st.error(str(exc))
+                        stop_authenticated_page()
+                    st.session_state["cadivor_one_time_bom_order_id"] = _one_time_order_id
+                    _one_time_reserved = True
+                allowed = True
+                message = "Paid one-time BOM report reserved for this analysis."
+            elif is_admin:
                 allowed = True
                 message = "Admin account: plan limits bypassed."
             else:
@@ -19173,7 +19296,7 @@ def run_authenticated_app() -> None:
             saved_analysis_total = saved_analysis_count.count or 0
             max_saved_boms = selected_plan.get("max_saved_boms", 0)
 
-            if not is_admin and max_saved_boms is not None and saved_analysis_total >= max_saved_boms:
+            if not is_admin and not _one_time_blocked_plan and max_saved_boms is not None and saved_analysis_total >= max_saved_boms:
                 st.error(
                     f"Your {selected_plan_name} workspace includes {max_saved_boms:,} saved BOMs and that storage allowance is full. "
                     "Your existing work is safe. Delete an older analysis or upgrade to continue saving new results."
@@ -19291,9 +19414,16 @@ def run_authenticated_app() -> None:
                 st.session_state["health_status"] = health_status
 
                 try:
+                    if _one_time_reserved:
+                        from uuid import uuid4
+                        analysis_id = str(uuid4())
+                        attach_one_time_analysis(
+                            _one_time_user_id, _one_time_order_id, analysis_id
+                        )
                     analysis_response = supabase.table("analyses").insert(
                         _workspace_payload(
                             {
+                                **({"id": analysis_id} if _one_time_reserved else {}),
                                 "user_id": current_user["id"],
                                 "project_name": analysis_name,
                                 "filename": source_filename,
@@ -19312,6 +19442,10 @@ def run_authenticated_app() -> None:
                     st.session_state["cadivor_active_analysis_tab"] = "Engineering Intelligence"
 
                 except Exception as e:
+                    if _one_time_reserved:
+                        if release_one_time_credit(_one_time_user_id, _one_time_order_id):
+                            st.session_state.pop("cadivor_one_time_bom_order_id", None)
+                        st.session_state.pop("results_df", None)
                     st.error(f"Could not save analysis summary: {e}")
                     stop_authenticated_page()
 
@@ -19361,8 +19495,38 @@ def run_authenticated_app() -> None:
                     try:
                         supabase.table("analysis_parts").insert(part_records).execute()
                     except Exception as e:
-                        st.error(f"Could not save BOM parts: {e}")
+                        if _one_time_reserved:
+                            # An incomplete summary is not a delivered report.
+                            try:
+                                deleted = (supabase.table("analyses").delete()
+                                           .eq("id", analysis_id)
+                                           .eq("user_id", _one_time_user_id)
+                                           .select("id").execute()).data
+                                if deleted:
+                                    if release_one_time_credit(_one_time_user_id, _one_time_order_id):
+                                        st.session_state.pop("cadivor_one_time_bom_order_id", None)
+                                    st.session_state.pop("results_df", None)
+                                else:
+                                    st.session_state["analysis_saved"] = True
+                            except Exception:
+                                st.session_state["analysis_saved"] = True
+                        st.error(
+                            "Could not save BOM parts. Your payment remains recorded. "
+                            "Contact support if this persists."
+                            if _one_time_reserved else f"Could not save BOM parts: {e}"
+                        )
                         stop_authenticated_page()
+
+                if _one_time_reserved:
+                    try:
+                        consume_one_time_credit(
+                            _one_time_user_id, _one_time_order_id, str(analysis_id)
+                        )
+                    except OneTimeBOMError as exc:
+                        st.session_state["analysis_saved"] = True
+                        st.error(str(exc))
+                        stop_authenticated_page()
+                    st.session_state.pop("cadivor_one_time_bom_order_id", None)
 
                 monitor_records = []
                 alert_records = []
@@ -19463,7 +19627,7 @@ def run_authenticated_app() -> None:
                     except Exception as e:
                         st.error(f"Could not save monitor alerts: {e}")
 
-                new_upload_count = monthly_upload_count + 1
+                new_upload_count = monthly_upload_count + (0 if _one_time_blocked_plan else 1)
 
                 try:
                     supabase.table("users").update(
@@ -19490,6 +19654,8 @@ def run_authenticated_app() -> None:
                 st.session_state["pending_app_mode"] = "BOM Analyzer"
                 st.session_state["app_mode"] = "BOM Analyzer"
                 st.toast("Analysis complete. Opening your BOM analysis…", icon="✅")
+                if _one_time_blocked_plan:
+                    navigate_to("Analysis Details", analysis_id=str(analysis_id))
                 # The Saved BOM Manager was rendered earlier in this script run
                 # from pre-save history. Rebuild once after persistence so the
                 # new analysis appears immediately. analysis_saved prevents a
@@ -19676,20 +19842,18 @@ def run_authenticated_app() -> None:
                         st.markdown(f"[🔗 Open supplier product page]({row.get('Product URL')})")
 
 
-            output_path = "reports/bom_risk_report.xlsx"
-
+            from io import BytesIO
+            excel_report = BytesIO()
             save_results_to_excel(
                 results_df.drop(columns=["Risk Level Display"]).to_dict("records"),
-                output_path,
+                excel_report,
             )
-
-            with open(output_path, "rb") as file:
-                st.download_button(
-                    label="Download Excel Report",
-                    data=file,
-                    file_name="bom_risk_report.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                )
+            st.download_button(
+                label="Download Excel Report",
+                data=excel_report.getvalue(),
+                file_name="bom_risk_report.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
 
             if st.session_state.get("show_upgrade_modal") and not is_admin:
                 st.divider()
