@@ -63,6 +63,19 @@ ROUTE_DISPLAY = {
 }
 
 
+def one_time_report_nav_rows(
+    *, is_admin: bool, plan_name: str, offer_enabled: bool
+) -> tuple[tuple[str, str, str], ...]:
+    """Show the one-time option only when this account can actually buy it."""
+    if (
+        is_admin
+        or not offer_enabled
+        or str(plan_name).strip().casefold() not in {"trial expired", "subscription inactive"}
+    ):
+        return ()
+    return (("One-time report", "single-report", "Single BOM Report"),)
+
+
 def workspace_nav_rows(*, is_admin: bool) -> tuple[tuple[str, str, str], ...]:
     """Workspace sidebar destinations for the foundation shell.
 
@@ -356,12 +369,26 @@ def render_unified_shell(
             unsafe_allow_html=True,
         )
 
+        report_nav_rows = ()
+        if not is_admin and str(plan_name).strip().casefold() in {
+            "trial expired", "subscription inactive"
+        }:
+            from src.one_time_bom import enabled as one_time_report_enabled
+
+            report_nav_rows = one_time_report_nav_rows(
+                is_admin=is_admin,
+                plan_name=plan_name,
+                offer_enabled=one_time_report_enabled(),
+            )
+
         for group_name, configured_rows in NAV_GROUPS:
             rows = (
                 workspace_nav_rows(is_admin=is_admin)
                 if group_name == "Workspace"
                 else configured_rows
             )
+            if not group_name:
+                rows += report_nav_rows
             if group_name:
                 st.markdown(
                     f'<div class="cv-foundation-nav-group">{_escape(group_name)}</div>',
