@@ -436,6 +436,35 @@
     if (headline) headline.textContent = copy.headline;
     const intro = $('p', aside);
     if (intro) intro.textContent = copy.intro;
+    const reportInquiry = intent === 'single-report';
+    const benefits = reportInquiry
+      ? [
+        'Review one BOM without starting a recurring subscription',
+        'Get the standard risk analysis and PDF/CSV reports',
+        'Keep the saved analysis available in your Cadivor account'
+      ]
+      : [
+        'Product walkthrough tailored to your BOM workflow',
+        'Plan and deployment guidance for your team size',
+        'Engineering workflow review with evidence-linked decisions'
+      ];
+    $$('.contact-benefits li', page).forEach((item, index) => { item.textContent = benefits[index]; });
+    const agendaTitle = $('.contact-agenda h3', page);
+    if (agendaTitle) agendaTitle.textContent = reportInquiry ? 'What to include in your inquiry' : 'Expected demo agenda';
+    const agenda = reportInquiry
+      ? [
+        'Approximate number of unique components',
+        'CSV or Excel BOM format',
+        'Risks or decisions your team needs to review',
+        'When you need the finished report'
+      ]
+      : [
+        'Upload and validate a representative BOM',
+        'Review release blockers and supplier intelligence',
+        'Walk through Ask Cadivor and decision records',
+        'Discuss rollout, plans, and monitoring'
+      ];
+    $$('.contact-agenda li', page).forEach((item, index) => { item.textContent = agenda[index]; });
     const formCard = $('#contactFormCard');
     $('.contact-form-card__header .eyebrow', formCard)?.replaceChildren(document.createTextNode(copy.formEyebrow));
     const formTitle = $('.contact-form-card__header h2', formCard);
