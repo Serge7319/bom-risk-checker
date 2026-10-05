@@ -12,11 +12,12 @@
     stressSection.hidden = false;
   }
 
-  function buildAppUrl({ auth, intent, entry, source = 'marketing' } = {}) {
+  function buildAppUrl({ auth, intent, entry, page, source = 'marketing' } = {}) {
     const params = new URLSearchParams();
     if (auth) params.set('auth', auth);
     if (intent) params.set('intent', intent);
     if (entry) params.set('entry', entry);
+    if (page) params.set('page', page);
     if (source) params.set('source', source);
     const qs = params.toString();
     return qs ? `${APP_ORIGIN}/?${qs}` : `${APP_ORIGIN}/`;
@@ -321,6 +322,8 @@
         a.addEventListener('click', () => {
           if (location.hash === '#/analyze') window.scrollTo({ top: 0, behavior: 'smooth' });
         });
+      } else if (a.dataset.app === 'single-report') {
+        a.href = buildAppUrl({ auth: 'login', page: 'Single BOM Report', entry: 'one-time-report' });
       } else if (auth === 'login' || auth === 'signin') {
         a.href = buildAppUrl({ auth: 'login', entry: a.dataset.entry || '' });
       } else if (auth === 'signup' || auth === 'trial') {
@@ -350,6 +353,7 @@
     student: 'info@cadivor.com',
     enterprise: 'info@cadivor.com',
     sales: 'info@cadivor.com',
+    'single-report': 'info@cadivor.com',
     beta: 'beta@cadivor.com',
     blocker: 'beta@cadivor.com',
     support: 'support@cadivor.com',
@@ -386,6 +390,17 @@
       submitLabel: 'Request a demo',
       formNote: 'This form opens your email client with your demo request.',
       mailSubject: 'Cadivor demo request from'
+    },
+    'single-report': {
+      eyebrow: 'ONE-TIME BOM REPORT',
+      headline: 'Ask about a report for one BOM.',
+      intro: 'Tell us about the report you need. We can explain the one-time option while direct checkout for new visitors is being prepared.',
+      formEyebrow: 'REPORT INQUIRY',
+      formTitle: 'Ask about a one-time report',
+      formIntro: 'Share the size of your BOM and the decision you need to make.',
+      submitLabel: 'Prepare report inquiry',
+      formNote: 'This form opens your email client with the completed inquiry.',
+      mailSubject: 'Cadivor one-time BOM report inquiry from'
     }
   };
 
@@ -406,7 +421,7 @@
     if (!page) return;
     const qs = hashQueryParams();
     const intent = contactIntentFromQuery();
-    const mode = intent === 'demo' ? 'demo' : 'general';
+    const mode = intent === 'demo' || intent === 'single-report' ? intent : 'general';
     const copy = CONTACT_COPY[mode];
     const plan = String(qs.get('plan') || '').trim();
     page.dataset.contactMode = mode;
@@ -429,11 +444,17 @@
     if (formIntro) formIntro.textContent = copy.formIntro;
     const submitLabel = $('.contact-submit-label');
     if (submitLabel) submitLabel.textContent = copy.submitLabel;
+    const successMessage = $('.contact-success p', formCard);
+    if (successMessage) successMessage.textContent = intent === 'single-report'
+      ? 'Opening your email client with your one-time report inquiry.'
+      : intent === 'demo'
+        ? 'Opening your email client with your demo request.'
+        : 'Opening your email client with your message.';
     const status = $('#formStatus');
     if (status && !formCard?.classList.contains('is-success')) status.textContent = copy.formNote;
   }
 
-  const validPages = ['home', 'analyze', 'product', 'solutions', 'pricing', 'resources', 'company', 'contact', 'security', 'privacy', 'terms'];
+  const validPages = ['home', 'analyze', 'one-time-report', 'product', 'solutions', 'pricing', 'resources', 'company', 'contact', 'security', 'privacy', 'terms'];
   function route() {
     let page = (location.hash.match(/^#\/([^?#]+)/) || [])[1] || 'home';
     if (!validPages.includes(page)) page = 'home';
@@ -446,7 +467,9 @@
     }
     $$('.page').forEach(p => p.classList.toggle('active', p.dataset.page === page));
     $$('.site-header nav a').forEach(a => a.classList.toggle('active', a.getAttribute('href') === `#/${page}`));
-    document.title = `${page === 'home' ? 'Cadivor' : page[0].toUpperCase() + page.slice(1) + ' — Cadivor'}`;
+    document.title = page === 'home' ? 'Cadivor'
+      : page === 'one-time-report' ? 'One-time BOM report — Cadivor'
+        : `${page[0].toUpperCase() + page.slice(1)} — Cadivor`;
     $('#mainNav')?.classList.remove('open');
     document.body.classList.remove('menu-open');
     $('#menuToggle')?.setAttribute('aria-expanded', 'false');
@@ -2283,7 +2306,7 @@
       const topic = String(f.get('topic') || qs.get('intent') || 'general').trim().toLowerCase();
       const intent = CONTACT_INBOX[topic] ? topic : (qs.get('intent') === 'demo' ? 'demo' : 'general');
       const plan = String(qs.get('plan') || '').trim();
-      const copy = CONTACT_COPY[intent === 'demo' ? 'demo' : 'general'];
+      const copy = CONTACT_COPY[intent === 'demo' || intent === 'single-report' ? intent : 'general'];
       const inbox = resolveContactInbox(intent);
       const subject = encodeURIComponent(`${copy.mailSubject} ${name}`);
       const bodyParts = [

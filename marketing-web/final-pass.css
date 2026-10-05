@@ -19,6 +19,59 @@
   --heading-gap: clamp(18px, 2vw, 28px);
 }
 
+/* One-time report discovery: separate from the free audit and recurring plans. */
+.hero .hero-report-link {
+  margin-top: 17px;
+  color: #c8d8ef;
+  font-size: 13px;
+}
+.hero-report-link a { color: #fff; font-weight: 750; text-underline-offset: 4px; }
+.hero-report-link a:hover { color: #9fc5ff; }
+
+.single-report-pricing {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 24px;
+  width: min(calc(100% - 48px), 1180px);
+  margin: 42px auto -24px;
+  padding: 28px 32px;
+  box-sizing: border-box;
+  border: 1px solid #cbdcf9;
+  border-radius: 16px;
+  background: linear-gradient(110deg, #f8fbff, #eaf2ff);
+}
+.single-report-pricing h2 { margin: 8px 0; color: #10284b; font-size: clamp(22px, 2.5vw, 29px); }
+.single-report-pricing p { margin: 0; color: #536780; font-size: 14px; line-height: 1.55; }
+.single-report-pricing .btn { flex-shrink: 0; color: #12376d; border-color: #a9bedc; background: #fff; }
+
+.single-report-detail {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(290px, .8fr);
+  gap: clamp(28px, 5vw, 72px);
+  width: min(calc(100% - 48px), 1180px);
+  margin: 0 auto;
+  padding: clamp(48px, 6vw, 78px) 0 100px;
+  box-sizing: border-box;
+}
+.single-report-detail h2 { max-width: 690px; margin: 12px 0 20px; color: #10284b; font-size: clamp(30px, 3vw, 42px); line-height: 1.16; }
+.single-report-detail p { max-width: 690px; color: #52657e; font-size: 15px; line-height: 1.65; }
+.single-report-detail ul { margin: 25px 0; padding-left: 22px; color: #233e60; line-height: 2; }
+.single-report-detail__note { padding: 14px 18px; border: 1px solid #d7e3f4; border-radius: 9px; background: #f5f9ff; font-size: 13px !important; }
+.single-report-detail__actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 24px; }
+.single-report-detail__actions .btn-ghost { color: #1d4e93; border-color: #b7c9e4; }
+.single-report-detail__compare { align-self: start; padding: 22px; border: 1px solid #d7e3f4; border-radius: 16px; background: #f8fbff; }
+.single-report-detail__compare > span { color: #2862ca; font-size: 10px; font-weight: 800; letter-spacing: .12em; }
+.single-report-detail__compare article { margin-top: 14px; padding: 18px; border: 1px solid #e2e9f2; border-radius: 10px; background: #fff; }
+.single-report-detail__compare b { color: #10284b; font-size: 16px; }
+.single-report-detail__compare p { margin: 7px 0 12px; font-size: 13px; }
+.single-report-detail__compare a { color: #245dbb; font-size: 13px; font-weight: 750; text-decoration: none; }
+.single-report-detail__compare a:hover { text-decoration: underline; }
+@media (max-width: 760px) {
+  .single-report-pricing { flex-direction: column; align-items: flex-start; width: calc(100% - 36px); margin-top: 30px; margin-bottom: -36px; padding: 22px; }
+  .single-report-detail { grid-template-columns: 1fr; width: calc(100% - 36px); padding-bottom: 70px; }
+}
+
 /* The public audit lives below the same banner used by Cadivor's other pages. */
 .stress-page-hero h1 {max-width: 920px}
 .stress-funnel {
