@@ -19,14 +19,16 @@
   --heading-gap: clamp(18px, 2vw, 28px);
 }
 
-/* One-time report discovery: separate from the free audit and recurring plans. */
-.hero .hero-report-link {
-  margin-top: 17px;
-  color: #c8d8ef;
-  font-size: 13px;
+/* One-time report discovery: keep the paid option beside the free audit. */
+.hero .hero-report-cta {
+  border-color: rgba(157, 194, 255, .65);
+  color: #fff;
+  background: rgba(255, 255, 255, .08);
 }
-.hero-report-link a { color: #fff; font-weight: 750; text-underline-offset: 4px; }
-.hero-report-link a:hover { color: #9fc5ff; }
+.hero .hero-report-cta:hover {
+  border-color: #fff;
+  background: rgba(255, 255, 255, .16);
+}
 
 .single-report-pricing {
   display: flex;
