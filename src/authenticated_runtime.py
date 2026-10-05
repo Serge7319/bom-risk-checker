@@ -119,6 +119,7 @@ from src.ui.navigation import (
     apply_alternative_finder_prefill,
     begin_authenticated_page,
     consume_alternative_finder_context,
+    consume_new_analysis_navigation,
     consume_navigation_error,
     DELAY_ROUTE_BODY_REVEAL_KEY,
     get_presented_route,
@@ -3148,15 +3149,10 @@ def run_authenticated_app() -> None:
         "1", "true", "yes"
     }
     if _new_analysis_requested:
-        for _state_key in (
-            "cadivor_active_analysis_id",
-            "cadivor_active_analysis_tab",
-            "analysis_id",
-            "results_df",
-            "analysis_saved",
-            "uploaded_filename",
-        ):
-            st.session_state.pop(_state_key, None)
+        # This is a one-shot navigation instruction. Leaving it in the URL
+        # clears the new analysis on every Streamlit rerun, including the
+        # rerun that receives the paid BOM result.
+        consume_new_analysis_navigation()
 
     def _profile_for_shell():
         return get_user_profile(current_user) if "get_user_profile" in globals() else current_user
@@ -10506,6 +10502,36 @@ def run_authenticated_app() -> None:
             unsafe_allow_html=True,
         )
         reveal_authenticated_page_body("Pricing")
+        if (
+            not is_admin
+            and selected_plan.get("can_create_analyses") is False
+        ):
+            from src.one_time_bom import (
+                MAX_PARTS as _SINGLE_BOM_MAX_PARTS,
+                OneTimeBOMError as _SingleBOMPriceError,
+                enabled as _single_bom_offer_enabled,
+                price_label as _single_bom_price_label,
+            )
+            if _single_bom_offer_enabled():
+                with st.container(border=True):
+                    st.markdown("#### Need one BOM report?")
+                    st.caption(
+                        f"Analyze up to {_SINGLE_BOM_MAX_PARTS} unique components and "
+                        "keep the saved BOM and its PDF/CSV reports. No subscription is required."
+                    )
+                    try:
+                        _single_bom_price = _single_bom_price_label(
+                            str(get_secret("STRIPE_ONE_TIME_BOM_REPORT_PRICE_ID", required=True))
+                        )
+                    except _SingleBOMPriceError:
+                        st.info("The one-time report price is temporarily unavailable.")
+                    else:
+                        internal_nav_button(
+                            f"Get one BOM report · {_single_bom_price}",
+                            "BOM Analyzer",
+                            key="pricing_single_bom_report",
+                            new_analysis="1",
+                        )
         try:
             if not st.session_state.get("cadivor_workspace_command_cache"):
                 from src.boot_read_budget import run_with_read_budget as _budget_pricing_commands
@@ -12046,6 +12072,48 @@ def run_authenticated_app() -> None:
             )
 
         elif settings_tab == "Billing":
+            from src.one_time_bom import (
+                OneTimeBOMError as _SingleBOMError,
+                available_credit as _single_bom_credit_available,
+                enabled as _single_bom_sales_enabled,
+                purchase_history as _single_bom_purchase_history,
+                purchase_history_available as _single_bom_history_available,
+            )
+
+            _single_bom_orders = []
+            _single_bom_history_error = ""
+            if not is_admin and _single_bom_history_available():
+                try:
+                    _single_bom_orders = _single_bom_purchase_history(
+                        str(current_user["id"])
+                    )
+                except _SingleBOMError as exc:
+                    _single_bom_history_error = str(exc)
+            _single_bom_credit_ready = (
+                not is_admin and _single_bom_credit_available(str(current_user["id"]))
+            )
+            _single_bom_saved_reports = {}
+            _single_bom_report_lookup_failed = False
+            _single_bom_analysis_ids = [
+                str(order["analysis_id"])
+                for order in _single_bom_orders
+                if order.get("status") == "consumed" and order.get("analysis_id")
+            ]
+            if _single_bom_analysis_ids:
+                try:
+                    saved_rows = (
+                        _workspace_query(supabase.table("analyses").select("id,project_name"))
+                        .eq("user_id", current_user["id"])
+                        .in_("id", _single_bom_analysis_ids)
+                        .execute()
+                    ).data or []
+                    _single_bom_saved_reports = {
+                        str(row["id"]): str(row.get("project_name") or "Saved BOM")
+                        for row in saved_rows
+                    }
+                except Exception:
+                    _single_bom_report_lookup_failed = True
+
             st.subheader("Plan & billing")
             st.caption(
                 "Review the current plan. Compare plans only if the workspace is paused or you want to see other options."
@@ -12064,15 +12132,25 @@ def run_authenticated_app() -> None:
                 unsafe_allow_html=True,
             )
             if selected_plan_name == PLAN_TRIAL_EXPIRED:
-                st.warning(
-                    "Trial expired. View and download saved work from Dashboard, BOM Analyzer, and Reports. "
-                    "New analyses stay locked until a paid plan is confirmed."
-                )
+                if _single_bom_credit_ready:
+                    st.success("Your trial has ended, but your purchased BOM report is ready to use.")
+                else:
+                    st.warning(
+                        "Trial expired. Saved work is still available. "
+                        + ("Buy one BOM report or choose a plan to analyze another BOM."
+                           if _single_bom_sales_enabled() else
+                           "Choose a paid plan to analyze another BOM.")
+                    )
             elif selected_plan_name == PLAN_SUBSCRIPTION_INACTIVE:
-                st.warning(
-                    "Subscription inactive. A price or subscription id is not paid access. "
-                    "View and download saved work until the webhook records active or trialing."
-                )
+                if _single_bom_credit_ready:
+                    st.success("Your subscription is inactive, but your purchased BOM report is ready to use.")
+                else:
+                    st.warning(
+                        "Subscription inactive. Saved work is still available. "
+                        + ("Buy one BOM report or choose a plan to analyze another BOM."
+                           if _single_bom_sales_enabled() else
+                           "Choose a paid plan to analyze another BOM.")
+                    )
             elif selected_plan_name == PLAN_GRANDFATHERED_BETA:
                 st.caption(
                     "Beta access is grandfathered. A missing Stripe customer ID does not end this access."
@@ -12183,7 +12261,8 @@ def run_authenticated_app() -> None:
                     _clear_billing_portal_session_state()
                     if not is_admin:
                         st.caption(
-                            "No active Stripe subscription is connected to this account yet."
+                            "No active subscription is connected to this account. "
+                            "One-time BOM reports, if purchased, appear separately below."
                         )
 
                 cadivor_button_wrap("secondary")
@@ -12194,6 +12273,18 @@ def run_authenticated_app() -> None:
                     use_container_width=True,
                 )
                 cadivor_button_wrap_end()
+                if (
+                    not is_admin
+                    and selected_plan.get("can_create_analyses") is False
+                    and _single_bom_sales_enabled()
+                    and not _single_bom_credit_ready
+                ):
+                    internal_nav_button(
+                        "Get one BOM report",
+                        "BOM Analyzer",
+                        key="billing_single_bom_report",
+                        new_analysis="1",
+                    )
                 st.markdown(
                     f'<p style="margin:12px 0 0;font-size:13px;color:#64748B">'
                     f'Billing support: '
@@ -12201,6 +12292,72 @@ def run_authenticated_app() -> None:
                     f'{BILLING_EMAIL}</a></p>',
                     unsafe_allow_html=True,
                 )
+
+            if not is_admin and _single_bom_history_available():
+                st.subheader("Single BOM reports")
+                st.caption("One purchase covers one saved BOM analysis and its report package.")
+                if _single_bom_history_error:
+                    st.info(_single_bom_history_error)
+                elif not _single_bom_orders:
+                    st.caption("No single BOM report checkouts on this account yet.")
+                else:
+                    for order in _single_bom_orders:
+                        order_status = str(order.get("status") or "")
+                        date_value = str(order.get("paid_at") or order.get("created_at") or "")
+                        try:
+                            purchased_at = datetime.fromisoformat(
+                                date_value.replace("Z", "+00:00")
+                            )
+                            purchased_on = (
+                                f"{purchased_at.strftime('%b')} "
+                                f"{purchased_at.day}, {purchased_at.year}"
+                            )
+                        except ValueError:
+                            purchased_on = "Date unavailable"
+                        with st.container(border=True):
+                            purchase_col, state_col, action_col = st.columns(
+                                [0.40, 0.23, 0.37], gap="small"
+                            )
+                            with purchase_col:
+                                st.markdown(f"**One BOM report** · {purchased_on}")
+                                analysis_id = str(order.get("analysis_id") or "")
+                                if analysis_id in _single_bom_saved_reports:
+                                    st.caption(_single_bom_saved_reports[analysis_id])
+                            with state_col:
+                                st.write({
+                                    "pending": "Awaiting payment",
+                                    "paid": "Ready to use",
+                                    "reserved": "Analysis in progress",
+                                    "consumed": "Report ready",
+                                    "refunded": "Refunded",
+                                }.get(order_status, "Needs review"))
+                            with action_col:
+                                if order_status == "consumed" and analysis_id in _single_bom_saved_reports:
+                                    internal_nav_button(
+                                        "Open reports", "Reports",
+                                        key=f"single_bom_reports_{order['id']}",
+                                        analysis_id=analysis_id,
+                                    )
+                                elif order_status == "consumed":
+                                    st.caption(
+                                        "Report lookup unavailable; try again shortly."
+                                        if _single_bom_report_lookup_failed else
+                                        "Saved report is no longer in this workspace."
+                                    )
+                                elif order_status == "paid":
+                                    internal_nav_button(
+                                        "Analyze your BOM", "BOM Analyzer",
+                                        key=f"single_bom_use_{order['id']}",
+                                        new_analysis="1",
+                                    )
+                                elif order_status == "reserved":
+                                    if analysis_id:
+                                        st.caption("Report reconciliation needs billing support.")
+                                    else:
+                                        st.caption(
+                                            "Return to the tab running your analysis. "
+                                            "An interrupted credit becomes available after four hours."
+                                        )
 
         stop_authenticated_page()
 
@@ -18762,6 +18919,10 @@ def run_authenticated_app() -> None:
         _one_time_blocked_plan = (
             not is_admin and selected_plan.get("can_create_analyses") is False
         )
+        if _one_time_blocked_plan:
+            # A purchased report must never be spent on Cadivor's example BOM.
+            st.session_state.pop("bom8_sample_mode", None)
+            st.session_state.pop("bom8_sample_auto_analyze", None)
         _one_time_feature_enabled = one_time_bom_enabled()
         _one_time_user_id = str(current_user["id"])
         _one_time_order_id = str(
@@ -18838,6 +18999,8 @@ def run_authenticated_app() -> None:
                         )
                     if _safe_text(_qp_value("checkout", "")) == "single_bom_success":
                         st.info("Payment confirmation is processing. Refresh this page in a moment to use your report credit.")
+                    elif _safe_text(_qp_value("checkout", "")) == "single_bom_cancel":
+                        st.info("Checkout was canceled. No report credit was purchased.")
                 elif selected_plan_name == PLAN_SUBSCRIPTION_INACTIVE:
                     st.warning(
                         "This subscription is not active. Saved analyses above remain available to open and download. "
@@ -18873,14 +19036,19 @@ def run_authenticated_app() -> None:
                 key="bom9_upload_panel",
             )
             _bom_upload_panel_context.__enter__()
+            _bom_upload_intro = (
+                "Name the work, then upload your own CSV or Excel file."
+                if _one_time_blocked_plan else
+                "Name the work, then choose Cadivor's sample or upload your own CSV or Excel file."
+            )
             st.markdown(
-                """
+                f"""
                 <div class="bom9-upload-marker"></div>
                 <section class="bom9-panel-intro">
                   <div>
                     <div class="bom9-panel-kicker">New analysis</div>
                     <h2>Upload engineering BOM</h2>
-                    <p>Name the work, then choose Cadivor's sample or upload your own CSV or Excel file.</p>
+                    <p>{_bom_upload_intro}</p>
                   </div>
                 </section>
                 """,
@@ -18969,20 +19137,26 @@ def run_authenticated_app() -> None:
                 st.session_state.pop("bom8_sample_mode", None)
                 st.session_state.pop("bom8_sample_auto_analyze", None)
 
-            st.markdown(
-                '<div class="bom8-path-label">Option 1 — Explore Cadivor <span>Use Cadivor\'s included example to see a complete analysis. It will be saved as a sample, not your own BOM.</span></div>',
-                unsafe_allow_html=True,
-            )
-            st.button(
-                "Analyze the 10-Part Sample BOM",
-                key="bom8_try_sample",
-                type="primary",
-                help="Load and analyze Cadivor's sample BOM in this workspace—no download or re-upload required.",
-                on_click=_start_sample_bom,
-                disabled=analysis_in_progress,
-            )
+            if _one_time_blocked_plan:
+                st.caption(
+                    "Your paid report credit is for your own BOM. The Cadivor sample will not use it."
+                )
+            else:
+                st.markdown(
+                    '<div class="bom8-path-label">Option 1 — Explore Cadivor <span>Use Cadivor\'s included example to see a complete analysis. It will be saved as a sample, not your own BOM.</span></div>',
+                    unsafe_allow_html=True,
+                )
+                st.button(
+                    "Analyze the 10-Part Sample BOM",
+                    key="bom8_try_sample",
+                    type="primary",
+                    help="Load and analyze Cadivor's sample BOM in this workspace—no download or re-upload required.",
+                    on_click=_start_sample_bom,
+                    disabled=analysis_in_progress,
+                )
 
             st.markdown(
+                '<div class="bom8-path-label">Analyze your BOM <span>Upload your own CSV or Excel file for an engineering review of your actual design.</span></div>' if _one_time_blocked_plan else
                 '<div class="bom8-path-label">Option 2 — Analyze your BOM <span>Upload your own CSV or Excel file for an engineering review of your actual design.</span></div>',
                 unsafe_allow_html=True,
             )

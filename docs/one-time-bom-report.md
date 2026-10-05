@@ -6,6 +6,15 @@ This offer uses Cadivor's existing BOM Analyzer and Reports workspace. A verifie
 
 Turning the flag off stops **new** checkouts. Existing paid credits remain redeemable while the service-role database connection is available.
 
+## Cadivor customer journey prepared in the app
+
+- A signed-in account whose trial has ended or whose subscription is inactive sees the one-time option in **Compare plans**, **Settings → Billing**, and **BOMs → New analysis** when sales are enabled. The amount displayed comes from the active, nonrecurring Stripe Price. Cadivor does not advertise this purchase on the public marketing site while payment activation is untested.
+- The buyer returns to **BOM Analyzer** after Checkout. A return alone never grants a credit; the signed webhook must mark the private order paid. The page explains a pending payment, an available credit, an in-progress analysis, or a canceled checkout.
+- A paid credit accepts the buyer's own CSV/XLSX BOM of at most 100 distinct part numbers. Cadivor hides its example-BOM action in this path, reserves a credit before distributor lookups, and releases it on a canceled or failed analysis when safe to do so.
+- After the saved analysis is complete, the buyer opens its normal Analysis Details and Reports. **Settings → Billing → Single BOM reports** shows the account's recent pending, paid, in-progress, completed, or refunded order status. Completed orders link only to a saved report that still exists in the current workspace. The order history stays available if the sales flag is later turned off.
+
+**Current entry scope:** Active trial users can already analyze a BOM and export reports under their trial. The paid one-time choice appears when that entitlement ends; there is no public direct-purchase link for a new visitor. A direct paid path for a visitor who wants to skip the trial needs a separate, explicit onboarding flow before it can be advertised honestly. A one-time purchase does not promise continuing monitoring.
+
 ## Preconditions before enabling a test purchase
 
 1. Confirm the **existing** Stripe subscription webhook is working in a Stripe sandbox. `supabase/functions/stripe-webhook/index.ts` is versioned source; the repository's deployment notes say it has **not** replaced the live exported function. Do not assume merging this PR deploys it. The existing live destination must safely ignore `mode=payment` Checkout events, or it will retry every one-time payment as a missing subscription.
@@ -23,6 +32,7 @@ Turning the flag off stops **new** checkouts. Existing paid credits remain redee
 5. Cancel an in-progress analysis or induce a supplier analysis failure. The order should return from `reserved` to `paid` and be usable again. A browser crash may hold a reservation for up to four hours; a stale reservation is recoverable on the next analysis attempt. A persistence error should never silently consume a second credit.
 6. Repeat the paid event delivery, then deliver an unpaid `checkout.session.completed` and a failed delayed payment in sandbox. Only a paid event for the same stored order, Stripe Session, user, and Price can grant a credit. Existing subscription checkout must still activate only its subscription plan.
 7. Sign into a different account and confirm it cannot see, reserve, or consume the first account's purchase or saved BOM. Check the order table is unreadable with the anon and authenticated API keys.
+8. In **Settings → Billing**, confirm the paid order says **Ready to use** before upload, then **Report ready** afterward and opens the correct saved BOM in Reports. Pause new sales with the feature flag and confirm this order remains visible and its report remains accessible. Verify another signed-in account sees only its own orders. The Stripe subscription portal must remain separate from the one-time order list.
 
 After this passes, deploy the webhook to the live destination under the normal release procedure, create a live one-time Price, repeat one controlled live purchase and report retrieval, then enable the Railway production flag. The marketing homepage can get a direct one-time offer only after the live path is proven. Never share Stripe keys, webhook secrets, customer BOMs, or sign-in links in a support message.
 
@@ -32,3 +42,4 @@ After this passes, deploy the webhook to the live destination under the normal r
 - A full saved analysis consumes its credit after component records are written. Reports remain accessible under the existing saved-work policy when a trial ends.
 - A failed save after its summary is created attempts to remove the incomplete summary and restore the credit. If database reconciliation fails, the user sees a support error and the private order remains auditable.
 - Orders contain IDs and status, not a copy of the BOM. The existing saved BOM workspace owns the analysis data and its access policy.
+- The Billing order list is an in-app purchase record, not a Stripe invoice or tax receipt. Stripe's test/live payment records remain the financial source of truth. The refund decision and any customer receipt workflow require finance policy before launch.

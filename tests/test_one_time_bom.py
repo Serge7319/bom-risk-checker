@@ -117,6 +117,31 @@ class OneTimeBOMTests(unittest.TestCase):
              patch.object(one_time_bom, "enabled", return_value=False):
             self.assertTrue(one_time_bom.available_credit(USER))
 
+    def test_purchase_history_is_scoped_to_account_and_survives_sales_pause(self):
+        client = Mock()
+        query = client.table.return_value.select.return_value.eq.return_value
+        query.in_.return_value.order.return_value.limit.return_value.execute.return_value.data = [
+            {"id": ORDER, "status": "consumed", "analysis_id": ANALYSIS},
+        ]
+        with patch.object(one_time_bom, "_service_client", return_value=client), \
+             patch.object(one_time_bom, "_orders_available", return_value=True), \
+             patch.object(one_time_bom, "enabled", return_value=False):
+            rows = one_time_bom.purchase_history(USER)
+        client.table.return_value.select.return_value.eq.assert_called_once_with("user_id", USER)
+        query.in_.assert_called_once_with("status", [
+            "pending", "paid", "reserved", "consumed", "refunded"
+        ])
+        query.in_.return_value.order.return_value.limit.assert_called_once_with(10)
+        self.assertEqual(rows, [{"id": ORDER, "status": "consumed", "analysis_id": ANALYSIS}])
+
+    def test_purchase_history_fails_closed_on_database_error(self):
+        client = Mock()
+        client.table.side_effect = RuntimeError("private database error")
+        with patch.object(one_time_bom, "_service_client", return_value=client), \
+             patch.object(one_time_bom, "_orders_available", return_value=True):
+            with self.assertRaisesRegex(one_time_bom.OneTimeBOMError, "temporarily unavailable"):
+                one_time_bom.purchase_history(USER)
+
     def test_migration_keeps_entitlement_service_only_and_atomic(self):
         sql = (Path(__file__).resolve().parents[1] / "supabase/migrations/20261004_one_time_bom_reports.sql").read_text()
         self.assertIn("for update skip locked", sql)
