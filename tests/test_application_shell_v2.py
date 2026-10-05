@@ -119,6 +119,25 @@ class ApplicationShellV2Tests(unittest.TestCase):
         destinations = [destination for _, rows in NAV_GROUPS for _, _, destination in rows]
         self.assertEqual(destinations, EXPECTED_NAV_DESTINATIONS)
 
+    def test_one_time_report_navigation_requires_an_eligible_account_and_live_offer(self) -> None:
+        from src.ui.unified_shell import one_time_report_nav_rows
+
+        eligible = one_time_report_nav_rows(
+            is_admin=False, plan_name="Trial expired", offer_enabled=True,
+        )
+        self.assertEqual(eligible, (("One-time report", "single-report", "Single BOM Report"),))
+        self.assertEqual(one_time_report_nav_rows(
+            is_admin=False, plan_name="Subscription inactive", offer_enabled=True,
+        ), eligible)
+        for is_admin, plan_name, offer_enabled in (
+            (False, "Trial expired", False),
+            (False, "Professional", True),
+            (True, "Trial expired", True),
+        ):
+            self.assertEqual(one_time_report_nav_rows(
+                is_admin=is_admin, plan_name=plan_name, offer_enabled=offer_enabled,
+            ), ())
+
     def test_nav_groups_render_all_four_groups(self) -> None:
         from src.ui.unified_shell import NAV_GROUPS
 
