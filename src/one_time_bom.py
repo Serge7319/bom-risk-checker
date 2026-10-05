@@ -36,6 +36,26 @@ def _orders_available() -> bool:
     )
 
 
+def purchase_history_available() -> bool:
+    """A sales pause must not hide reports customers already purchased."""
+    return _orders_available()
+
+
+def purchase_history(user_id: str) -> list[dict]:
+    """Read this account's private order history for Billing, without Stripe IDs."""
+    if not _orders_available():
+        return []
+    try:
+        rows = (_service_client().table("cadivor_one_time_bom_orders")
+                .select("id,status,created_at,paid_at,analysis_id")
+                .eq("user_id", _identity(user_id))
+                .in_("status", ["pending", "paid", "reserved", "consumed", "refunded"])
+                .order("created_at", desc=True).limit(10).execute()).data or []
+        return rows
+    except Exception:
+        raise OneTimeBOMError("Your one-time report history is temporarily unavailable.") from None
+
+
 @lru_cache(maxsize=1)
 def _service_client():
     from supabase import create_client

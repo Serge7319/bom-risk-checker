@@ -37,6 +37,26 @@ class BomWorkflowNavigationTests(unittest.TestCase):
             else:
                 sys.modules[name] = module
 
+    def test_new_analysis_link_resets_old_bom_only_once(self):
+        self.streamlit.session_state.update({
+            "cadivor_nav_params": {"page": "BOM Analyzer", "new_analysis": "1"},
+            "cadivor_active_analysis_id": "old-bom",
+            "analysis_id": "old-bom",
+            "results_df": ["old result"],
+            "analysis_saved": True,
+        })
+        self.streamlit.query_params.update({"page": "BOM Analyzer", "new_analysis": "1"})
+
+        self.navigation.consume_new_analysis_navigation()
+        self.assertNotIn("analysis_id", self.streamlit.session_state)
+        self.assertNotIn("new_analysis", self.streamlit.session_state["cadivor_nav_params"])
+        self.assertNotIn("new_analysis", self.streamlit.query_params)
+
+        # The next Streamlit rerun must keep the newly completed paid analysis.
+        self.streamlit.session_state.update({"analysis_id": "paid-bom", "analysis_saved": True})
+        self.assertEqual(self.streamlit.session_state["analysis_id"], "paid-bom")
+        self.assertNotIn("new_analysis", self.streamlit.session_state["cadivor_nav_params"])
+
     def test_alternative_navigation_preserves_analysis_and_section_after_consumption(self):
         self.streamlit.session_state["cadivor_active_analysis_tab"] = "Components"
         self.navigation.navigate_to_alternative_finder(

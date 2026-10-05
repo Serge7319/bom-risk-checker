@@ -46,6 +46,26 @@ _ALT_NAV_KEYS = (
 )
 
 
+def consume_new_analysis_navigation() -> None:
+    """Clear the prior BOM once, then retire the navigation instruction."""
+    for state_key in (
+        "cadivor_active_analysis_id",
+        "cadivor_active_analysis_tab",
+        "analysis_id",
+        "results_df",
+        "analysis_saved",
+        "uploaded_filename",
+    ):
+        st.session_state.pop(state_key, None)
+    nav_params = dict(st.session_state.get("cadivor_nav_params") or {})
+    nav_params.pop("new_analysis", None)
+    st.session_state["cadivor_nav_params"] = nav_params
+    try:
+        st.query_params.pop("new_analysis", None)
+    except Exception:
+        pass
+
+
 def read_query_params() -> dict[str, str]:
     """Return the current address-bar query as a flat string map."""
     try:
