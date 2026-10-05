@@ -202,6 +202,34 @@ def test_home_to_alerts_one_push_then_back_and_forward_zero_restore_pushes(monke
     assert session["access_token"] == "live-a"
 
 
+def test_one_time_report_purchase_is_a_distinct_restorable_route(monkeypatch):
+    session = _Session({
+        "cadivor_route": "Pricing", "app_mode": "Pricing",
+        "cadivor_nav_params": {"page": "Pricing"},
+        "user": types.SimpleNamespace(id="user-1"),
+        "access_token": "live-a", "refresh_token": "live-r",
+        "cadivor_auth_status": "authenticated",
+    })
+    query = _Query({"page": "Pricing"})
+    _patch_runtime(monkeypatch, session, query)
+
+    navigation.navigate_to("Single BOM Report", _rerun=False)
+    assert query.get("page") == "Single BOM Report"
+    assert runtime.resolve_canonical_app_route() == "Single BOM Report"
+
+    query.clear()
+    query.update({"page": "Pricing"})
+    query.writes = 0
+    events = [{
+        "href": "http://127.0.0.1:8581/?page=Pricing",
+        "reason": "popstate", "event_id": "purchase-back-1",
+    }]
+    _patch_runtime(monkeypatch, session, query, consume=lambda: events.pop(0) if events else None)
+    assert runtime.resolve_canonical_app_route() == "Pricing"
+    assert query.writes == 0
+    assert session["access_token"] == "live-a"
+
+
 def test_home_to_reports_back_once_stays_authenticated(monkeypatch):
     session = _Session(
         {

@@ -1843,6 +1843,7 @@ def _canonical_route_allowlist() -> frozenset[str]:
             "Supply Risk Scenario",
             "Reports",
             "Pricing",
+            "Single BOM Report",
             "Settings",
             "Workspace",
             "Notifications",
@@ -2901,6 +2902,7 @@ def run_authenticated_app() -> None:
         "Supply Risk Scenario",
         "Reports",
         "Pricing",
+        "Single BOM Report",
         "Settings",
         "Workspace",
         "Notifications",
@@ -10375,6 +10377,118 @@ def run_authenticated_app() -> None:
         stop_authenticated_page()
 
 
+    # ---------- One-time full report purchase ----------
+    if app_mode == "Single BOM Report":
+        from src.one_time_bom import (
+            MAX_PARTS as _SINGLE_BOM_MAX_PARTS,
+            OneTimeBOMError as _SingleBOMPriceError,
+            available_credit as _single_bom_available_credit,
+            begin_checkout as _begin_single_bom_checkout,
+            enabled as _single_bom_offer_enabled,
+            in_progress_credit as _single_bom_in_progress,
+            pending_checkout as _single_bom_pending_checkout,
+            price_label as _single_bom_price_label,
+        )
+
+        reveal_authenticated_page_body("Single BOM Report")
+        st.markdown(
+            """
+            <style>
+            .cv-single-report-hero{border:1px solid #bfdbfe;border-radius:20px;
+                padding:28px 32px;background:linear-gradient(135deg,#fff,#eff6ff);
+                margin-bottom:20px}
+            .cv-single-report-hero small{color:#2563eb;font-size:11px;
+                font-weight:850;letter-spacing:.12em;text-transform:uppercase}
+            .cv-single-report-hero h1{margin:10px 0;color:#10284b}
+            .cv-single-report-hero p{margin:0;color:#475569;max-width:720px}
+            </style>
+            <section class="cv-single-report-hero">
+              <small>One-time purchase</small>
+              <h1>One full BOM report</h1>
+              <p>Pay once for one saved BOM analysis and its PDF and CSV reports.
+              The free BOM audit is a separate experience.</p>
+            </section>
+            """,
+            unsafe_allow_html=True,
+        )
+        if is_admin or selected_plan.get("can_create_analyses") is not False:
+            st.info("Your current access already includes BOM analyses. Use your plan's included reports.")
+            internal_nav_button(
+                "Analyze a BOM with your included access", "BOM Analyzer",
+                key="single_bom_included_analysis", new_analysis="1",
+            )
+        else:
+            _single_bom_user_id = str(current_user["id"])
+            _single_bom_checkout_key = f"cadivor_one_time_checkout_{_single_bom_user_id}"
+            _single_bom_credit_ready = _single_bom_available_credit(_single_bom_user_id)
+            _single_bom_analysis_open = _single_bom_in_progress(_single_bom_user_id)
+            with st.container(border=True):
+                st.markdown("#### Buy one full BOM report")
+                st.caption(
+                    f"Upload up to {_SINGLE_BOM_MAX_PARTS} unique components. One payment "
+                    "covers the saved analysis and standard PDF/CSV reports. "
+                    "No subscription or ongoing monitoring is included."
+                )
+                if _single_bom_credit_ready:
+                    st.success("Your full report is paid for and ready for your BOM.")
+                    internal_nav_button(
+                        "Upload your BOM for the paid report", "BOM Analyzer",
+                        key="single_bom_paid_upload", new_analysis="1",
+                    )
+                elif _single_bom_analysis_open:
+                    st.info(
+                        "A paid BOM analysis is already in progress. Return to its open tab "
+                        "or wait for an interrupted reservation to become available again."
+                    )
+                elif not _single_bom_offer_enabled():
+                    st.info("New one-time purchases are temporarily unavailable.")
+                else:
+                    _single_bom_pending = _single_bom_pending_checkout(_single_bom_user_id)
+                    if _single_bom_pending and _single_bom_pending[0] == "open":
+                        st.link_button(
+                            "Continue existing checkout →", _single_bom_pending[1],
+                            type="primary",
+                        )
+                    elif _single_bom_pending:
+                        st.info("Payment is processing. Refresh shortly to use your report credit.")
+                    elif st.session_state.get(_single_bom_checkout_key):
+                        st.link_button(
+                            "Continue to secure checkout →",
+                            st.session_state[_single_bom_checkout_key], type="primary",
+                        )
+                    else:
+                        try:
+                            _single_bom_price = _single_bom_price_label(
+                                str(get_secret("STRIPE_ONE_TIME_BOM_REPORT_PRICE_ID", required=True))
+                            )
+                        except _SingleBOMPriceError:
+                            st.info("The one-time report price is temporarily unavailable.")
+                        else:
+                            if st.button(
+                                f"Buy one full BOM report · {_single_bom_price}",
+                                key="single_bom_buy", type="primary",
+                            ):
+                                try:
+                                    st.session_state[_single_bom_checkout_key] = _begin_single_bom_checkout(
+                                        _single_bom_user_id,
+                                        str(current_user.get("email") or ""),
+                                        app_checkout_url(page="Single BOM Report", checkout="single_bom_success"),
+                                        app_checkout_url(page="Single BOM Report", checkout="single_bom_cancel"),
+                                    )
+                                except _SingleBOMPriceError as exc:
+                                    st.error(str(exc))
+                                else:
+                                    st.rerun()
+                if _safe_text(_qp_value("checkout", "")) == "single_bom_success" and not _single_bom_credit_ready:
+                    st.info("Payment confirmation is processing. Refresh shortly if your credit is not yet ready.")
+                elif _safe_text(_qp_value("checkout", "")) == "single_bom_cancel":
+                    st.info("Checkout was canceled. No report credit was purchased.")
+        internal_nav_button(
+            "Compare subscription plans", "Pricing", key="single_bom_compare_plans",
+            type="secondary",
+        )
+        stop_authenticated_page()
+
     # ---------- Pricing ----------
     if app_mode == "Pricing":
         # Sprint 31.3.1 — launch pricing polish patch.
@@ -10506,32 +10620,19 @@ def run_authenticated_app() -> None:
             not is_admin
             and selected_plan.get("can_create_analyses") is False
         ):
-            from src.one_time_bom import (
-                MAX_PARTS as _SINGLE_BOM_MAX_PARTS,
-                OneTimeBOMError as _SingleBOMPriceError,
-                enabled as _single_bom_offer_enabled,
-                price_label as _single_bom_price_label,
-            )
+            from src.one_time_bom import enabled as _single_bom_offer_enabled
+
             if _single_bom_offer_enabled():
                 with st.container(border=True):
-                    st.markdown("#### Need one BOM report?")
+                    st.markdown("#### Want a full report for one BOM?")
                     st.caption(
-                        f"Analyze up to {_SINGLE_BOM_MAX_PARTS} unique components and "
-                        "keep the saved BOM and its PDF/CSV reports. No subscription is required."
+                        "Buy one saved BOM analysis and its PDF/CSV report package "
+                        "without starting a subscription."
                     )
-                    try:
-                        _single_bom_price = _single_bom_price_label(
-                            str(get_secret("STRIPE_ONE_TIME_BOM_REPORT_PRICE_ID", required=True))
-                        )
-                    except _SingleBOMPriceError:
-                        st.info("The one-time report price is temporarily unavailable.")
-                    else:
-                        internal_nav_button(
-                            f"Get one BOM report · {_single_bom_price}",
-                            "BOM Analyzer",
-                            key="pricing_single_bom_report",
-                            new_analysis="1",
-                        )
+                    internal_nav_button(
+                        "View one-time report purchase", "Single BOM Report",
+                        key="pricing_single_bom_report",
+                    )
         try:
             if not st.session_state.get("cadivor_workspace_command_cache"):
                 from src.boot_read_budget import run_with_read_budget as _budget_pricing_commands
@@ -12280,10 +12381,9 @@ def run_authenticated_app() -> None:
                     and not _single_bom_credit_ready
                 ):
                     internal_nav_button(
-                        "Get one BOM report",
-                        "BOM Analyzer",
+                        "Buy one full BOM report",
+                        "Single BOM Report",
                         key="billing_single_bom_report",
-                        new_analysis="1",
                     )
                 st.markdown(
                     f'<p style="margin:12px 0 0;font-size:13px;color:#64748B">'
@@ -17092,12 +17192,9 @@ def run_authenticated_app() -> None:
             OneTimeBOMError,
             available_credit as one_time_credit_available,
             attach_analysis as attach_one_time_analysis,
-            begin_checkout as begin_one_time_checkout,
             consume_credit as consume_one_time_credit,
             enabled as one_time_bom_enabled,
             in_progress_credit as one_time_credit_in_progress,
-            pending_checkout as one_time_pending_checkout,
-            price_label as one_time_price_label,
             release_credit as release_one_time_credit,
             reserve_credit as reserve_one_time_credit,
             reserved_credit as one_time_credit_reserved,
@@ -18964,43 +19061,10 @@ def run_authenticated_app() -> None:
                         f"One purchase covers one full analysis of up to {ONE_TIME_BOM_MAX_PARTS} unique components "
                         "and its standard PDF and CSV reports. No subscription is required."
                     )
-                    _checkout_key = f"cadivor_one_time_checkout_{_one_time_user_id}"
-                    _pending_checkout = one_time_pending_checkout(_one_time_user_id)
-                    try:
-                        _one_time_price = one_time_price_label(
-                            str(get_secret("STRIPE_ONE_TIME_BOM_REPORT_PRICE_ID", required=True))
-                        )
-                    except OneTimeBOMError as exc:
-                        st.error(str(exc))
-                        _one_time_price = ""
-                    if _one_time_price and not _pending_checkout and st.button(
-                        f"Buy one BOM report · {_one_time_price}",
-                        key="bom_one_time_buy", type="primary",
-                    ):
-                        try:
-                            st.session_state[_checkout_key] = begin_one_time_checkout(
-                                _one_time_user_id,
-                                str(current_user.get("email") or ""),
-                                app_checkout_url(page="BOM Analyzer", checkout="single_bom_success"),
-                                app_checkout_url(page="BOM Analyzer", checkout="single_bom_cancel"),
-                            )
-                        except OneTimeBOMError as exc:
-                            st.error(str(exc))
-                    if _pending_checkout and _pending_checkout[0] == "open":
-                        st.link_button(
-                            "Continue existing checkout →", _pending_checkout[1], type="primary"
-                        )
-                    elif _pending_checkout:
-                        st.info("Checkout is processing. Refresh shortly to see your paid report credit.")
-                    elif st.session_state.get(_checkout_key):
-                        st.link_button(
-                            "Continue to secure checkout →", st.session_state[_checkout_key],
-                            type="primary",
-                        )
-                    if _safe_text(_qp_value("checkout", "")) == "single_bom_success":
-                        st.info("Payment confirmation is processing. Refresh this page in a moment to use your report credit.")
-                    elif _safe_text(_qp_value("checkout", "")) == "single_bom_cancel":
-                        st.info("Checkout was canceled. No report credit was purchased.")
+                    internal_nav_button(
+                        "Buy one full BOM report", "Single BOM Report",
+                        key="bom_one_time_buy",
+                    )
                 elif selected_plan_name == PLAN_SUBSCRIPTION_INACTIVE:
                     st.warning(
                         "This subscription is not active. Saved analyses above remain available to open and download. "
