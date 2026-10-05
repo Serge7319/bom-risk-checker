@@ -58,6 +58,7 @@ ROUTE_DISPLAY = {
     "Supply Risk Scenario": "Supply Scenario",
     "Portfolio Intelligence": "Portfolio Intelligence",
     "Pricing": "Compare plans",
+    "Single BOM Report": "One full BOM report",
     "Settings": "Settings",
 }
 
