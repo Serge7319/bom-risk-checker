@@ -66,7 +66,8 @@ class EmailRoutingContractTests(unittest.TestCase):
         self.assertIn("to authenticated", self.invitation_migration.lower())
 
     def test_supabase_auth_and_stripe_email_handoffs_are_wired(self):
-        self.assertIn('"email_redirect_to": confirm.signup_confirmation_redirect_url()', self.auth)
+        self.assertIn('"email_redirect_to": redirect_url', self.auth)
+        self.assertIn('else confirm.signup_confirmation_redirect_url()', self.auth)
         self.assertIn("reset_password_for_email", self.auth_recovery)
         self.assertIn('{"redirect_to": redirect_to}', self.auth_recovery)
         self.assertIn("customer_email=user_email", self.stripe_helper)

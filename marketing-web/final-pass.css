@@ -67,7 +67,7 @@
 .single-report-detail__compare article { margin-top: 14px; padding: 18px; border: 1px solid #e2e9f2; border-radius: 10px; background: #fff; }
 .single-report-detail__compare b { color: #10284b; font-size: 16px; }
 .single-report-detail__compare p { margin: 7px 0 12px; font-size: 13px; }
-.single-report-detail__compare a { color: #245dbb; font-size: 13px; font-weight: 750; text-decoration: none; }
+.single-report-detail__compare a { display: inline-block; margin: 3px 12px 2px 0; color: #245dbb; font-size: 13px; font-weight: 750; text-decoration: none; }
 .single-report-detail__compare a:hover { text-decoration: underline; }
 @media (max-width: 760px) {
   .single-report-pricing { flex-direction: column; align-items: flex-start; width: calc(100% - 36px); margin-top: 30px; margin-bottom: -36px; padding: 22px; }

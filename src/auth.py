@@ -33,6 +33,16 @@ def _auth_signup_confirmation():
     return auth_signup_confirmation
 
 
+def _one_time_report_checkout_price() -> str | None:
+    """A public report signup is available only when checkout is fully configured."""
+    try:
+        from src.one_time_bom import public_checkout_price
+
+        return public_checkout_price()
+    except Exception:
+        return None
+
+
 def _set_auth_cookie(cookie_manager, session, key: str):
     """Persist Supabase session tokens to the browser auth cookie."""
     if cookie_manager is None or session is None:
@@ -74,7 +84,7 @@ Cadivor may use distributor APIs, supplier records, public sources, third-party 
 You are responsible for confirming component specifications, fit, form, function, regulatory status, sourcing terms, and supplier information before purchasing, qualifying, or releasing a component.
 
 #### 5. Plans, trials, billing, and changes
-Plan features and usage limits are described on the Pricing page and may vary by subscription. A new account receives a 14-day trial with no card required. When that trial ends, saved work remains available, and creating new analyses requires a paid plan. Existing grandfathered beta access continues until Cadivor ends it. Paid subscriptions, renewal, taxes, refunds, and cancellation terms will be presented during checkout and in the final commercial agreement.
+Plan features and usage limits are described on the Pricing page and may vary by subscription. Standard new workspaces receive a 14-day trial with no card required. Accounts created through the one-time report checkout path do not receive trial analyses; they can pay once for one full BOM report or choose a subscription. A one-time report purchase does not renew. When a standard trial ends, saved work remains available, and creating new analyses requires a paid plan. Existing grandfathered beta access continues until Cadivor ends it. Paid subscriptions, renewal, taxes, refunds, and cancellation terms will be presented during checkout and in the final commercial agreement.
 
 #### 6. Availability and service changes
 Cadivor may modify features, integrations, limits, or availability to improve the service, address security or legal requirements, or respond to third-party service changes. We will use reasonable efforts to communicate material changes that affect paid customers.
@@ -596,6 +606,15 @@ def _enter_signup_confirmation_pending(email: str) -> None:
 
 def _submit_manual_signup(supabase, cookie_manager, email: str, password: str) -> None:
     """Create an account in the same script run as the Create Account submit."""
+    confirm = _auth_signup_confirmation()
+    report_purchase = confirm.report_purchase_requested()
+    if report_purchase and not _one_time_report_checkout_price():
+        st.warning(
+            "The one-time report checkout is not accepting new purchases yet. "
+            "No account was created; please try again later or sign in to an existing account."
+        )
+        return
+
     begin_manual_login(cookie_manager)
     st.session_state["cadivor_auth_status"] = AUTH_SIGNING_IN
     st.session_state["cadivor_root_state"] = APP_SIGNING_IN
@@ -603,13 +622,18 @@ def _submit_manual_signup(supabase, cookie_manager, email: str, password: str) -
 
     _log_manual_login_event("manual_login_provider_started", cookie_manager)
     try:
-        confirm = _auth_signup_confirmation()
+        redirect_url = (
+            confirm.signup_confirmation_redirect_url(report_purchase=True)
+            if report_purchase
+            else confirm.signup_confirmation_redirect_url()
+        )
+        signup_options = {"email_redirect_to": redirect_url}
+        if report_purchase:
+            signup_options["data"] = confirm.report_purchase_signup_metadata()
         response = supabase.auth.sign_up({
             "email": email,
             "password": password,
-            "options": {
-                "email_redirect_to": confirm.signup_confirmation_redirect_url(),
-            },
+            "options": signup_options,
         })
     except Exception as error:
         error_code = str(
@@ -736,10 +760,18 @@ def _render_signup_confirmation_pending() -> None:
 def _render_signup_confirmation_success(cookie_manager=None) -> None:
     confirm = _auth_signup_confirmation()
     session_ready = confirm.signup_confirmation_session_ready()
+    report_purchase = bool(
+        st.session_state.get("cadivor_report_purchase_pending")
+        or st.session_state.get("cadivor_requested_page") == "Single BOM Report"
+    )
     if session_ready:
         _render_auth_card_brand(
             eyebrow="EMAIL CONFIRMED",
-            context_sub="Your Cadivor workspace is ready.",
+            context_sub=(
+                "Continue to your one-time report checkout."
+                if report_purchase
+                else "Your Cadivor workspace is ready."
+            ),
         )
         _html(
             """
@@ -749,7 +781,7 @@ def _render_signup_confirmation_success(cookie_manager=None) -> None:
 """
         )
         if st.button(
-            "Continue to workspace",
+            "Continue to report checkout →" if report_purchase else "Continue to workspace",
             key="cadivor_signup_confirm_continue_workspace",
             type="primary",
             use_container_width=True,
@@ -759,13 +791,22 @@ def _render_signup_confirmation_success(cookie_manager=None) -> None:
 
     _render_auth_card_brand(
         eyebrow="EMAIL CONFIRMED",
-        context_sub="Your Cadivor account is ready.",
+        context_sub=(
+            "Sign in to continue to your one-time report checkout."
+            if report_purchase
+            else "Your Cadivor account is ready."
+        ),
+    )
+    report_copy = (
+        "Sign in to continue to your report checkout."
+        if report_purchase
+        else "Sign in to access your workspace."
     )
     _html(
-        """
+        f"""
 <div class="auth-confirm-status" role="status">Confirmation complete</div>
 <div class="auth-heading">Continue to Cadivor</div>
-<p class="auth-copy">Your email has been confirmed. Sign in to access your workspace.</p>
+<p class="auth-copy">Your email has been confirmed. {report_copy}</p>
 """
     )
     if st.button(
@@ -916,8 +957,15 @@ def _render_auth_page(
     session_expired: bool = False,
     auth_error: str = "",
 ):
+    confirm = _auth_signup_confirmation()
+    report_purchase = confirm.report_purchase_requested()
+    report_price = _one_time_report_checkout_price() if report_purchase else None
     _render_auth_card_brand(
-        context_sub="Engineering intelligence for modern electronics teams.",
+        context_sub=(
+            "Continue to a one-time BOM report."
+            if report_purchase
+            else "Engineering intelligence for modern electronics teams."
+        ),
     )
     if session_expired:
         st.markdown(
@@ -925,6 +973,16 @@ def _render_auth_page(
             <div class="auth-heading">Sign in again</div>
             <p class="auth-copy">Your Cadivor session expired after inactivity. Sign in again to return to your workspace.</p>
             <div class="auth-strip">🔒 Your BOMs, saved analyses, reports, recommendations, and subscription usage stay connected to your Cadivor workspace.</div>
+            <div class="auth-divider"></div>
+            """,
+            unsafe_allow_html=True,
+        )
+    elif report_purchase:
+        st.markdown(
+            """
+            <div class="auth-heading">Get one full BOM report</div>
+            <p class="auth-copy">Create a report-only account, verify your email, then complete secure one-time checkout.</p>
+            <div class="auth-strip">One saved analysis for up to 100 unique components, with PDF and CSV reports. No trial analyses or subscription.</div>
             <div class="auth-divider"></div>
             """,
             unsafe_allow_html=True,
@@ -939,6 +997,19 @@ def _render_auth_page(
             """,
             unsafe_allow_html=True,
         )
+
+    if report_purchase:
+        if report_price:
+            st.info(
+                f"One full BOM report: {report_price}, paid once after email verification. "
+                "Includes one analysis for up to 100 unique components and PDF/CSV reports; "
+                "no trial or subscription."
+            )
+        else:
+            st.warning(
+                "The one-time report checkout is not accepting new purchases yet. "
+                "You can sign in to an existing account, or return when checkout is available."
+            )
 
     # Mode selector is outside the form so one radio change immediately reruns
     # Python with the new value (Streamlit forms batch widgets until submit).
@@ -1000,19 +1071,28 @@ def _render_auth_page(
                 key=AUTH_PASSWORD_WIDGET_KEY,
                 autocomplete="new-password",
             )
-            st.markdown(
-                """
-                <div class="terms-box"><strong>Terms summary:</strong> Cadivor provides decision-support outputs only. You remain responsible for engineering validation, datasheet review, supplier confirmation, procurement decisions, and production release decisions.</div>
-                """,
-                unsafe_allow_html=True,
-            )
+            if report_purchase:
+                st.markdown(
+                    """
+                    <div class="terms-box"><strong>Report-only account:</strong> This account does not include trial analyses. After email verification, you can pay once for one saved BOM analysis and standard PDF/CSV reports. The purchase does not start a subscription.</div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.markdown(
+                    """
+                    <div class="terms-box"><strong>Terms summary:</strong> Cadivor provides decision-support outputs only. You remain responsible for engineering validation, datasheet review, supplier confirmation, procurement decisions, and production release decisions.</div>
+                    """,
+                    unsafe_allow_html=True,
+                )
             accepted_terms = st.checkbox("I agree to the Terms of Service and Privacy Policy.")
             with st.expander("View Terms of Service"):
                 st.markdown(CADIVOR_TERMS)
             submit = st.form_submit_button(
-                AUTH_MODE_SIGNUP,
+                "Create account for report checkout" if report_purchase else AUTH_MODE_SIGNUP,
                 key="cadivor_signup_submit",
                 use_container_width=True,
+                disabled=bool(report_purchase and not report_price),
             )
 
     if auth_mode == AUTH_MODE_LOGIN:

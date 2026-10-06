@@ -12,12 +12,13 @@
     stressSection.hidden = false;
   }
 
-  function buildAppUrl({ auth, intent, entry, page, source = 'marketing' } = {}) {
+  function buildAppUrl({ auth, intent, entry, page, purchase, source = 'marketing' } = {}) {
     const params = new URLSearchParams();
     if (auth) params.set('auth', auth);
     if (intent) params.set('intent', intent);
     if (entry) params.set('entry', entry);
     if (page) params.set('page', page);
+    if (purchase) params.set('cadivor_purchase', purchase);
     if (source) params.set('source', source);
     const qs = params.toString();
     return qs ? `${APP_ORIGIN}/?${qs}` : `${APP_ORIGIN}/`;
@@ -333,6 +334,14 @@
           if (location.hash === '#/analyze') window.scrollTo({ top: 0, behavior: 'smooth' });
         });
       } else if (a.dataset.app === 'single-report') {
+        a.href = buildAppUrl({
+          auth: 'signup',
+          intent: 'one-time-report',
+          page: 'Single BOM Report',
+          purchase: 'one_time_report',
+          entry: 'one-time-report'
+        });
+      } else if (a.dataset.app === 'single-report-login') {
         a.href = buildAppUrl({ auth: 'login', page: 'Single BOM Report', entry: 'one-time-report' });
       } else if (auth === 'login' || auth === 'signin') {
         a.href = buildAppUrl({ auth: 'login', entry: a.dataset.entry || '' });
@@ -404,7 +413,7 @@
     'single-report': {
       eyebrow: 'ONE-TIME BOM REPORT',
       headline: 'Ask about a report for one BOM.',
-      intro: 'Tell us about the report you need. We can explain the one-time option while direct checkout for new visitors is being prepared.',
+      intro: 'Contact us if you have questions about report fit, BOM size, or your engineering decision workflow.',
       formEyebrow: 'REPORT INQUIRY',
       formTitle: 'Ask about a one-time report',
       formIntro: 'Share the size of your BOM and the decision you need to make.',

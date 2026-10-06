@@ -304,7 +304,7 @@ def mark_authenticated(user: Any, session: Any, cookie_manager: Any = None) -> N
     # never retains a misleading login URL. Keep page= synchronized with the
     # session route so shell chrome and content cannot diverge.
     try:
-        for query_key in ("auth", "source"):
+        for query_key in ("auth", "source", "cadivor_purchase"):
             if query_key in st.query_params:
                 del st.query_params[query_key]
         st.query_params["page"] = route

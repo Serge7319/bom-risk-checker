@@ -92,6 +92,21 @@ def price_label(price_id: str) -> str:
         raise OneTimeBOMError("The report price is temporarily unavailable.") from None
 
 
+def public_checkout_price() -> str | None:
+    """Return a safe display price only when a new one-time checkout can start."""
+    if not enabled():
+        return None
+    price_id = str(
+        get_secret("STRIPE_ONE_TIME_BOM_REPORT_PRICE_ID", default="") or ""
+    ).strip()
+    if not price_id:
+        return None
+    try:
+        return price_label(price_id)
+    except OneTimeBOMError:
+        return None
+
+
 def available_credit(user_id: str) -> bool:
     if not _orders_available():
         return False

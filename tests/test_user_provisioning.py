@@ -12,6 +12,7 @@ from src.services.user_provisioning import (
     build_default_user_row,
     ensure_user_profile,
 )
+from src.plans import get_plan, resolve_effective_plan
 from src.supabase_read import SupabaseReadTransportError
 
 
@@ -35,6 +36,19 @@ class UserProvisioningTests(unittest.TestCase):
         delta = end - datetime.now(timezone.utc)
         self.assertGreater(delta.total_seconds(), 13 * 24 * 3600)
         self.assertLess(delta.total_seconds(), 15 * 24 * 3600)
+
+    def test_one_time_report_signup_has_no_trial_or_analysis_entitlement(self):
+        user = self._auth_user()
+        user.user_metadata["cadivor_signup_intent"] = "one_time_report"
+
+        row = build_default_user_row(user)
+
+        self.assertEqual(row["plan"], "Subscription inactive")
+        trial_end = datetime.fromisoformat(row["trial_ends_at"])
+        self.assertLessEqual(trial_end, datetime.now(timezone.utc))
+        self.assertEqual(row["monthly_upload_count"], 0)
+        effective_plan, _ = resolve_effective_plan(row)
+        self.assertFalse(get_plan(effective_plan)["can_create_analyses"])
 
     def test_existing_user_row_is_not_overwritten(self):
         supabase = MagicMock()
