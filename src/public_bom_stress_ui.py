@@ -12,6 +12,7 @@ from src.public_bom_stress_test import (
     StressTestError,
     capture_lead,
     enabled,
+    lead_source_from_query,
     run_audit,
     send_report_verification,
 )
@@ -156,7 +157,10 @@ def render_public_bom_stress_test() -> None:
                 st.error("Accept the Terms of Service and Privacy Policy to continue.")
             else:
                 try:
-                    address = capture_lead(report["id"], email)
+                    address = capture_lead(
+                        report["id"], email,
+                        source=lead_source_from_query(st.query_params),
+                    )
                     send_report_verification(address)
                 except StressTestError as exc:
                     st.error(str(exc))

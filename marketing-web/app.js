@@ -23,6 +23,16 @@
     return qs ? `${APP_ORIGIN}/?${qs}` : `${APP_ORIGIN}/`;
   }
 
+  function buildPublicStressUrl() {
+    const params = new URLSearchParams({ public: 'stress', embed: 'true' });
+    const campaign = new URLSearchParams(window.location.search);
+    ['utm_source', 'utm_medium', 'utm_campaign'].forEach(key => {
+      const value = campaign.get(key);
+      if (value) params.set(key, value.slice(0, 80));
+    });
+    return `${APP_ORIGIN}/?${params.toString()}`;
+  }
+
   const CADIVOR_LINKS = {
     app: APP_ORIGIN,
     marketing: MARKETING_ORIGIN,
@@ -491,12 +501,12 @@
     if (page === 'analyze') {
       const stressFrame = document.getElementById('bomStressTestFrame');
       if (stressFrame && !stressFrame.hasAttribute('src')) {
-        stressFrame.src = `${APP_ORIGIN}/?public=stress&embed=true`;
+        stressFrame.src = buildPublicStressUrl();
       }
     }
     $$('.page').forEach(p => p.classList.toggle('active', p.dataset.page === page));
     $$('.site-header nav a').forEach(a => a.classList.toggle('active', a.getAttribute('href') === `#/${page}`));
-    document.title = page === 'home' ? 'Cadivor'
+    document.title = page === 'home' ? 'Cadivor — Hardware Release Readiness'
       : page === 'one-time-report' ? 'One-time BOM report — Cadivor'
         : `${page[0].toUpperCase() + page.slice(1)} — Cadivor`;
     $('#mainNav')?.classList.remove('open');

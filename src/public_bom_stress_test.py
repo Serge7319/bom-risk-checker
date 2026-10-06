@@ -81,6 +81,17 @@ def work_email(value: str) -> str:
     return email
 
 
+def lead_source_from_query(query_params: Any) -> str:
+    """Keep bounded, non-PII campaign attribution on the minimal lead record."""
+    fields = []
+    for key in ("utm_source", "utm_medium", "utm_campaign"):
+        raw_value = str(query_params.get(key, "") or "").strip()
+        value = re.sub(r"[^A-Za-z0-9_.-]+", "-", raw_value).strip("-.")[:48]
+        if value:
+            fields.append(value)
+    return "utm:" + ":".join(fields) if fields else "homepage_stress_test"
+
+
 def parse_bom(filename: str, payload: bytes) -> list[dict[str, Any]]:
     """Bound the public parser before spending distributor credits."""
     suffix = str(filename or "").lower().rsplit(".", 1)[-1]
@@ -228,9 +239,12 @@ def run_audit(filename: str, payload: bytes, signed_header: str) -> dict[str, An
     }
 
 
-def capture_lead(report_id: str, address: str) -> str:
+def capture_lead(report_id: str, address: str, *, source: str = "homepage_stress_test") -> str:
     """Validate again on server and record only minimal sales metadata."""
     email = work_email(address)
+    lead_source = re.sub(r"[^A-Za-z0-9:_.-]+", "-", str(source or "")).strip("-:.")[:160]
+    if not lead_source:
+        lead_source = "homepage_stress_test"
     try:
         report = (_service_client().table("cadivor_public_bom_stress_tests")
                   .select("id,row_count,status,work_email,results").eq("id", report_id).single().execute()).data
@@ -245,7 +259,7 @@ def capture_lead(report_id: str, address: str) -> str:
         checked = list(report.get("results") or [])
         _service_client().table("cadivor_public_bom_leads").upsert({
             "report_id": report_id, "work_email": email,
-            "row_count": report["row_count"], "source": "homepage_stress_test",
+            "row_count": report["row_count"], "source": lead_source,
             "high_risk_count": sum(row.get("verified") and row.get("risk") == "High" for row in checked),
             "unverified_count": sum(not row.get("verified") for row in checked),
         }, on_conflict="report_id").execute()

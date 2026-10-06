@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Use this seven-check BOM review to identify lifecycle, availability, sourcing, alternate-qualification, and decision-record gaps before a hardware release.">
+  <meta name="robots" content="index,follow,max-image-preview:large">
+  <link rel="canonical" href="https://www.cadivor.com/release-readiness">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="Cadivor">
+  <meta property="og:title" content="Before You Release a Hardware Revision: 7 BOM Checks">
+  <meta property="og:description" content="A practical engineering checklist for lifecycle, supply, alternate qualification, and accountable release decisions.">
+  <meta property="og:url" content="https://www.cadivor.com/release-readiness">
+  <meta name="twitter:card" content="summary">
+  <title>Before You Release a Hardware Revision: 7 BOM Checks | Cadivor</title>
+  <link rel="stylesheet" href="/styles.css?v=1.0-pricing-layout2">
+  <link rel="stylesheet" href="/final-pass.css?v=1.0-single-report-discovery">
+  <link rel="stylesheet" href="/release-readiness.css?v=1">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    "headline": "Before You Release a Hardware Revision: 7 BOM Checks",
+    "description": "A practical engineering checklist for reviewing lifecycle, supply, alternate qualification, and decision ownership before a hardware release.",
+    "author": {"@type": "Organization", "name": "Cadivor Engineering"},
+    "publisher": {"@type": "Organization", "name": "Cadivor", "url": "https://www.cadivor.com"},
+    "datePublished": "2026-10-06",
+    "dateModified": "2026-10-06",
+    "mainEntityOfPage": "https://www.cadivor.com/release-readiness"
+  }
+  </script>
+</head>
+<body class="release-guide-page">
+  <a class="guide-skip" href="#guide-content">Skip to the checklist</a>
+  <header class="site-header" id="siteHeader">
+    <a class="logo" href="/#/home" aria-label="Cadivor home"><b>C</b><span>Cadivor</span></a>
+    <button class="menu-toggle" id="menuToggle" type="button" aria-label="Open navigation" aria-expanded="false" aria-controls="mainNav"><span></span><span></span><span></span></button>
+    <nav id="mainNav" aria-label="Main navigation">
+      <a href="/#/product">Product</a><a href="/#/solutions">Solutions</a><a href="/#/pricing">Pricing</a><a href="/#/resources">Resources</a><a href="/#/company">Company</a>
+      <a class="btn btn-ghost mobile-nav-cta" href="https://app.cadivor.com/?auth=login">Sign in</a>
+      <a class="btn btn-primary mobile-nav-cta" href="/?utm_source=release-readiness-guide&amp;utm_medium=owned-content&amp;utm_campaign=release-readiness#/analyze">Analyze a BOM free</a>
+    </nav>
+    <div class="header-actions"><a class="btn btn-ghost" href="https://app.cadivor.com/?auth=login">Sign in</a><a class="btn btn-primary" href="/?utm_source=release-readiness-guide&amp;utm_medium=owned-content&amp;utm_campaign=release-readiness#/analyze">Analyze a BOM free</a></div>
+  </header>
+
+  <main id="guide-content">
+    <section class="guide-hero">
+      <div class="guide-hero__inner">
+        <a class="guide-breadcrumb" href="/#/resources">Resources <span aria-hidden="true">/</span> Release readiness</a>
+        <p class="eyebrow guide-eyebrow">FIELD GUIDE · HARDWARE ENGINEERING</p>
+        <h1>Before You Release a Hardware Revision: <em>7 BOM Checks</em></h1>
+        <p class="guide-dek">A component warning is only useful when your team can judge its production impact, choose an action, and record who owns the decision. Use this checklist before design freeze or production release.</p>
+        <div class="guide-byline"><span>By Cadivor Engineering</span><span aria-hidden="true">·</span><time datetime="2026-10-06">October 6, 2026</time><span aria-hidden="true">·</span><span>7 checks · 1 review worksheet</span></div>
+        <div class="guide-hero__actions">
+          <a class="btn btn-primary btn-large" href="/?utm_source=release-readiness-guide&amp;utm_medium=owned-content&amp;utm_campaign=release-readiness#/analyze">Analyze a BOM free <span aria-hidden="true">→</span></a>
+          <a class="guide-text-link" href="/#/one-time-report">Explore the one-time full-report option</a>
+        </div>
+      </div>
+    </section>
+
+    <div class="guide-layout">
+      <article class="guide-article">
+        <p class="guide-lead">A BOM can look complete while a release decision is still missing. The part may be obsolete, the available stock may not cover the build, or a suggested alternate may not have been qualified. A useful review connects the signal to evidence, an owner, and a disposition.</p>
+        <div class="guide-callout"><strong>How to use this guide</strong><p>For each flagged part, record what changed, where the evidence came from, what the production impact is, who owns the next action, and whether the release can proceed.</p></div>
+
+        <nav class="guide-toc" aria-label="Checklist contents">
+          <strong>In this checklist</strong>
+          <ol>
+            <li><a href="#check-lifecycle">Confirm lifecycle status</a></li>
+            <li><a href="#check-notices">Review manufacturer notices</a></li>
+            <li><a href="#check-stock">Compare stock with build demand</a></li>
+            <li><a href="#check-lead-time">Check lead time against schedule</a></li>
+            <li><a href="#check-source">Find single-source exposure</a></li>
+            <li><a href="#check-alternate">Separate candidates from qualified alternates</a></li>
+            <li><a href="#check-record">Record the decision and monitor it</a></li>
+          </ol>
+        </nav>
+
+        <section class="guide-check" id="check-lifecycle">
+          <span class="guide-check__number">01</span><div><h2>Confirm lifecycle status from a dated source</h2><p>Check whether the manufacturer lists the part as active, not recommended for new designs, obsolete, or end of life. Record the source and the date you checked it; lifecycle data can change.</p><p><strong>Before release:</strong> Decide whether the status affects this product’s build horizon, service period, or redesign plan. A warning needs an owner and disposition, not just a color.</p></div>
+        </section>
+        <section class="guide-check" id="check-notices">
+          <span class="guide-check__number">02</span><div><h2>Review PCNs and other manufacturer notices</h2><p>Look for product-change and discontinuance notices that apply to the exact manufacturer part number and revision. Confirm the affected date codes or ordering codes before treating a notice as applicable.</p><p><strong>Before release:</strong> Attach the notice or source reference to the review and document whether the change affects form, fit, function, qualification, or supply timing.</p></div>
+        </section>
+        <section class="guide-check" id="check-stock">
+          <span class="guide-check__number">03</span><div><h2>Compare available stock with the actual build need</h2><p>Inventory is a snapshot. Compare the reported quantity with planned build demand, yield, service spares, and other programs competing for the same stock. Confirm the distributor and retrieval time.</p><p><strong>Before release:</strong> Identify which quantities are confirmed, which are estimates, and whether the source is authorized for your procurement policy.</p></div>
+        </section>
+        <section class="guide-check" id="check-lead-time">
+          <span class="guide-check__number">04</span><div><h2>Check lead time against the schedule buffer</h2><p>Compare lead time with the date the parts must arrive, including purchasing, receiving inspection, and qualification time. A lead time that fits today may still leave no recovery margin.</p><p><strong>Before release:</strong> Record the supplier’s stated lead time and date, the required-by date, and the contingency if the estimate slips.</p></div>
+        </section>
+        <section class="guide-check" id="check-source">
+          <span class="guide-check__number">05</span><div><h2>Find parts with only one viable source</h2><p>Count sources that can actually supply the required manufacturer part, package, region, and quantity. Multiple listings do not necessarily mean independent or qualified supply.</p><p><strong>Before release:</strong> Decide whether a second source is required, whether buffer stock is justified, or whether the risk is accepted by an accountable owner.</p></div>
+        </section>
+        <section class="guide-check" id="check-alternate">
+          <span class="guide-check__number">06</span><div><h2>Separate an alternate candidate from a qualified replacement</h2><p>A catalog match is a candidate, not an approval. Check electrical limits, package and pinout, thermal behavior, firmware or mechanical dependencies, availability, and the evidence needed by your qualification process.</p><p><strong>Before release:</strong> Show the qualification step and owner. Keep “search needed,” “under evaluation,” and “approved” as distinct states.</p></div>
+        </section>
+        <section class="guide-check" id="check-record">
+          <span class="guide-check__number">07</span><div><h2>Record the decision, open actions, and monitoring plan</h2><p>For every release-impacting item, capture the evidence, rationale, owner, approver, date, and disposition. If the team approves the part with a mitigation, define which future change should reopen the decision.</p><p><strong>Before release:</strong> Review unresolved actions as a group. Then monitor the signals that could make an approved decision unsafe later.</p></div>
+        </section>
+
+        <section class="guide-worksheet" aria-labelledby="worksheet-title">
+          <p class="eyebrow">REVIEW WORKSHEET</p><h2 id="worksheet-title">Make each risk actionable</h2>
+          <p>Use the same short record for every flagged component so the review stays clear across engineering and sourcing.</p>
+          <div class="guide-table-wrap"><table><thead><tr><th>Record</th><th>What to write down</th></tr></thead><tbody>
+            <tr><th scope="row">Signal</th><td>What changed, and which exact part or BOM is affected?</td></tr>
+            <tr><th scope="row">Evidence</th><td>Source, timestamp, quantity or status, and any uncertainty.</td></tr>
+            <tr><th scope="row">Impact</th><td>Build quantity, release date, service horizon, or qualification effect.</td></tr>
+            <tr><th scope="row">Action</th><td>Mitigation, owner, due date, and what counts as completion.</td></tr>
+            <tr><th scope="row">Disposition</th><td>Proceed, proceed with mitigation, hold, or escalate—with approver and rationale.</td></tr>
+            <tr><th scope="row">Monitor</th><td>What evidence change should trigger a new review?</td></tr>
+          </tbody></table></div>
+        </section>
+
+        <aside class="guide-caveat"><strong>Engineering judgment remains essential.</strong> This checklist supports review planning. It does not replace manufacturer confirmation, component qualification, safety analysis, or required regulatory and quality review.</aside>
+
+        <section class="guide-bottom-cta">
+          <p class="eyebrow">PUT THE CHECKLIST TO WORK</p>
+          <h2>See what your BOM review surfaces.</h2>
+          <p>Run the free BOM stress test for an initial view, or explore a full report as a separate one-time option.</p>
+          <div class="guide-hero__actions">
+            <a class="btn btn-primary btn-large" href="/?utm_source=release-readiness-guide&amp;utm_medium=owned-content&amp;utm_campaign=release-readiness#/analyze">Analyze a BOM free <span aria-hidden="true">→</span></a>
+            <a class="btn btn-ghost guide-report-button" href="/#/one-time-report">View one-time report option</a>
+          </div>
+        </section>
+      </article>
+
+      <aside class="guide-sidebar" aria-label="Release readiness actions">
+        <div class="guide-sidebar__card">
+          <span class="eyebrow">START WITH YOUR BOM</span>
+          <h2>Get an initial risk view.</h2>
+          <p>Use Cadivor’s free BOM stress test to begin reviewing lifecycle and supply signals.</p>
+          <a class="btn btn-primary" href="/?utm_source=release-readiness-guide&amp;utm_medium=owned-content&amp;utm_campaign=release-readiness#/analyze">Analyze a BOM free</a>
+          <small>Free analysis and full-report purchase are separate paths.</small>
+        </div>
+        <div class="guide-sidebar__note"><strong>Need a complete package?</strong><p>Review the separate one-time full-report option for a downloadable engineering report.</p><a href="/#/one-time-report">Explore the full report →</a></div>
+      </aside>
+    </div>
+  </main>
+
+  <footer class="site-footer guide-footer">
+    <div class="footer-brand"><a class="logo" href="/#/home"><b>C</b><span>Cadivor</span></a><p>Engineering Decision Intelligence for hardware teams.</p><small>© 2026 Cadivor. All rights reserved.</small></div>
+    <div><h4>Product</h4><a href="/#/product">Overview</a><a href="/#/pricing">Pricing</a></div>
+    <div><h4>Solutions</h4><a href="/#/solutions">Engineering</a><a href="/#/solutions">Supply Chain</a></div>
+    <div><h4>Resources</h4><a href="/#/resources">All resources</a><a href="/release-readiness.html">Release readiness checklist</a><a href="/#/security">Security</a></div>
+    <div><h4>Company</h4><a href="/#/company">About</a><a href="/#/contact">Contact</a><a href="/#/privacy">Privacy</a></div>
+  </footer>
+
+  <script>
+    (() => {
+      const button = document.getElementById('menuToggle');
+      const nav = document.getElementById('mainNav');
+      const close = () => {
+        nav?.classList.remove('open');
+        document.body.classList.remove('menu-open');
+        button?.setAttribute('aria-expanded', 'false');
+        button?.setAttribute('aria-label', 'Open navigation');
+      };
+      button?.addEventListener('click', () => {
+        const open = nav?.classList.toggle('open') === true;
+        document.body.classList.toggle('menu-open', open);
+        button.setAttribute('aria-expanded', String(open));
+        button.setAttribute('aria-label', open ? 'Close navigation' : 'Open navigation');
+      });
+      nav?.querySelectorAll('a').forEach(link => link.addEventListener('click', close));
+      document.addEventListener('keydown', event => { if (event.key === 'Escape') close(); });
+    })();
+  </script>
+</body>
+</html>
