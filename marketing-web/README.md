@@ -15,7 +15,7 @@ Open `http://localhost:3000/#/home`.
 
 - `#/home`
 - `#/analyze` (free anonymous BOM audit)
-- `#/one-time-report` (one-time report explanation and inquiry)
+- `#/one-time-report` (one-time report details and report-only account checkout entry)
 - `#/product`
 - `#/solutions`
 - `#/pricing`

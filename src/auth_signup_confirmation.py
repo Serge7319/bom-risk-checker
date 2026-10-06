@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import os
 from typing import Any
+from urllib.parse import urlencode
 
 import streamlit as st
 
@@ -18,6 +19,13 @@ from src.auth_state import (
     AUTH_SIGNED_OUT,
     SIGNUP_PENDING_EMAIL_KEY,
     log_auth_diagnostic,
+)
+from src.signup_intent import (
+    REPORT_PURCHASE_PENDING_SESSION_KEY,
+    REPORT_PURCHASE_QUERY_PARAM,
+    REPORT_PURCHASE_QUERY_VALUE,
+    REPORT_PURCHASE_ROUTE,
+    report_purchase_signup_metadata as _report_purchase_signup_metadata,
 )
 
 # Query / marker contract
@@ -36,15 +44,21 @@ RESULT_LOGIN_REQUIRED = "login_required"
 RESULT_INVALID = "invalid"
 
 
-def signup_confirmation_redirect_url() -> str:
-    """Canonical email_redirect_to for sign_up options."""
+def signup_confirmation_redirect_url(*, report_purchase: bool = False) -> str:
+    """Canonical email_redirect_to, preserving an explicitly requested report route."""
+    params = {SIGNUP_CONFIRM_CALLBACK_MARKER: "1"}
+    if report_purchase:
+        params.update({
+            "page": REPORT_PURCHASE_ROUTE,
+            REPORT_PURCHASE_QUERY_PARAM: REPORT_PURCHASE_QUERY_VALUE,
+        })
     try:
         from src.urls import app_url
 
-        return app_url("", **{SIGNUP_CONFIRM_CALLBACK_MARKER: "1"})
+        return app_url("", **params)
     except Exception:
         origin = str(os.getenv("CADIVOR_APP_ORIGIN", "https://app.cadivor.com")).rstrip("/")
-        return f"{origin}/?{SIGNUP_CONFIRM_CALLBACK_MARKER}=1"
+        return f"{origin}/?{urlencode(params)}"
 
 
 def _read_query_param(name: str) -> str:
@@ -59,6 +73,16 @@ def _read_query_param(name: str) -> str:
 
 def signup_confirmation_callback_requested() -> bool:
     return _read_query_param(SIGNUP_CONFIRM_CALLBACK_MARKER).lower() in {"1", "true", "yes"}
+
+
+def report_purchase_requested() -> bool:
+    """Recognize only Cadivor's explicit report-only signup link."""
+    value = _read_query_param(REPORT_PURCHASE_QUERY_PARAM).lower()
+    return value == REPORT_PURCHASE_QUERY_VALUE
+
+
+def report_purchase_signup_metadata() -> dict[str, str]:
+    return _report_purchase_signup_metadata()
 
 
 def _recovery_callback_requested() -> bool:
@@ -103,6 +127,7 @@ def _clear_signup_confirm_query_params() -> None:
     for key in (
         SIGNUP_CONFIRM_CALLBACK_MARKER,
         "cadivor_stress_report",
+        REPORT_PURCHASE_QUERY_PARAM,
         "token_hash",
         "type",
         "error",
@@ -136,6 +161,7 @@ def _exchange_already_consumed() -> bool:
 
 def _enter_invalid_result() -> None:
     st.session_state.pop(_SESSION_READY_KEY, None)
+    st.session_state.pop(REPORT_PURCHASE_PENDING_SESSION_KEY, None)
     st.session_state[_RESULT_KIND_KEY] = RESULT_INVALID
     st.session_state["cadivor_root_state"] = APP_SIGNUP_CONFIRMATION_INVALID
     st.session_state["cadivor_auth_status"] = AUTH_SIGNED_OUT
@@ -291,12 +317,16 @@ def apply_signup_confirmation_from_query(supabase: Any) -> None:
         return
 
     stress_report_requested = _read_query_param("cadivor_stress_report") == "1"
+    report_checkout_requested = report_purchase_requested()
     token_hash = _read_query_param("token_hash")
     # Drop token_hash from URL before/around verification outcome handling.
     # Verification uses the local variable only.
     kind = _activate_from_token_hash(supabase, token_hash)
     if kind == RESULT_SESSION_READY and stress_report_requested:
         st.session_state["cadivor_stress_landing_pending"] = True
+    if report_checkout_requested and kind in {RESULT_SESSION_READY, RESULT_LOGIN_REQUIRED}:
+        st.session_state[REPORT_PURCHASE_PENDING_SESSION_KEY] = True
+        st.session_state["cadivor_requested_page"] = REPORT_PURCHASE_ROUTE
     _mark_exchange_consumed()
     _clear_signup_confirm_query_params()
     if kind == RESULT_INVALID:
@@ -329,12 +359,16 @@ def continue_signup_confirmation_to_workspace(cookie_manager: Any = None) -> Non
     )()
     from src.auth_state import mark_authenticated
 
+    if st.session_state.pop(REPORT_PURCHASE_PENDING_SESSION_KEY, False):
+        st.session_state["cadivor_requested_page"] = REPORT_PURCHASE_ROUTE
     clear_signup_confirmation_result()
     mark_authenticated(user, session, cookie_manager)
     st.rerun()
 
 
 def continue_signup_confirmation_to_login() -> None:
+    if st.session_state.pop(REPORT_PURCHASE_PENDING_SESSION_KEY, False):
+        st.session_state["cadivor_requested_page"] = REPORT_PURCHASE_ROUTE
     clear_signup_confirmation_result()
     st.session_state.pop("access_token", None)
     st.session_state.pop("refresh_token", None)

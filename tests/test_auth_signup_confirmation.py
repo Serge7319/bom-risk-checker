@@ -79,7 +79,8 @@ class SignupConfirmationSourceGuards(unittest.TestCase):
 
     def test_sign_up_passes_email_redirect_to(self):
         self.assertIn("email_redirect_to", self.auth)
-        self.assertIn("signup_confirmation_redirect_url()", self.auth)
+        self.assertIn("signup_confirmation_redirect_url(", self.auth)
+        self.assertIn("else confirm.signup_confirmation_redirect_url()", self.auth)
 
     def test_implementation_does_not_depend_on_a1_recovery_reorder(self):
         # Committed/candidate auth.py must keep HEAD recovery order (after LOGIN/SIGNUP).
@@ -109,7 +110,8 @@ class SignupConfirmationSourceGuards(unittest.TestCase):
 
 class SignupConfirmationUnitTests(unittest.TestCase):
     def setUp(self):
-        self.st = _install_streamlit_stub({})
+        self.st, restore_streamlit = _install_streamlit_stub({})
+        self.addCleanup(restore_streamlit)
         self.st.rerun = MagicMock()
         for name in list(sys.modules):
             if name.startswith("src.auth"):
@@ -343,7 +345,8 @@ class SignupConfirmationUnitTests(unittest.TestCase):
 
 class SignupConfirmationUiTests(unittest.TestCase):
     def setUp(self):
-        self.st = _install_streamlit_stub({})
+        self.st, restore_streamlit = _install_streamlit_stub({})
+        self.addCleanup(restore_streamlit)
         self.st.rerun = MagicMock()
         self.bodies: list[str] = []
         self.buttons: dict[str, bool] = {}
@@ -410,7 +413,8 @@ class SignupConfirmationUiTests(unittest.TestCase):
 
 class SignupConfirmationSignUpOptionsTests(unittest.TestCase):
     def setUp(self):
-        self.st = _install_streamlit_stub({})
+        self.st, restore_streamlit = _install_streamlit_stub({})
+        self.addCleanup(restore_streamlit)
         self.st.rerun = MagicMock()
         for name in list(sys.modules):
             if name.startswith("src.auth") or name in {"src.secrets", "src.config", "src.ui.core_premium_ui"}:

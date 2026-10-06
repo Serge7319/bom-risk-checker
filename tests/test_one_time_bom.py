@@ -48,6 +48,18 @@ class OneTimeBOMTests(unittest.TestCase):
                 one_time_bom.price_label("price_recurring")
         one_time_bom.price_label.cache_clear()
 
+    def test_public_checkout_price_is_available_only_after_configuration(self):
+        with patch.object(one_time_bom, "enabled", return_value=True), \
+             patch.object(one_time_bom, "get_secret", return_value=self.price_id), \
+             patch.object(one_time_bom, "price_label", return_value="USD 49.00") as label:
+            self.assertEqual(one_time_bom.public_checkout_price(), "USD 49.00")
+            label.assert_called_once_with(self.price_id)
+
+        with patch.object(one_time_bom, "enabled", return_value=False), \
+             patch.object(one_time_bom, "price_label") as label:
+            self.assertIsNone(one_time_bom.public_checkout_price())
+            label.assert_not_called()
+
     def test_checkout_order_is_stored_before_url_is_returned(self):
         client = Mock()
         chain = client.table.return_value
