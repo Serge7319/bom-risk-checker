@@ -122,11 +122,30 @@ class ReportsPricingLaunchIntegrityTests(unittest.TestCase):
         self.assertIn("grid-template-columns:1fr", css)
         self.assertIn("@media(max-width:650px)", css)
 
-    def test_octopart_is_live_without_claiming_it_is_a_distributor(self):
+    def test_marketing_names_only_configured_distributor_sources(self):
         coverage = MARKETING.split('<div class="coverage">', 1)[1].split("</div>", 1)[0]
-        self.assertIn("SUPPLIER &amp; MARKET COVERAGE", coverage)
-        self.assertIn("<b>Octopart</b>", coverage)
-        self.assertNotIn("Planned", coverage)
+        self.assertIn("DISTRIBUTOR DATA SOURCES", coverage)
+        self.assertIn("COVERAGE VARIES BY PART", coverage)
+        self.assertIn("<b>DigiKey</b>", coverage)
+        self.assertIn("<b>Mouser</b>", coverage)
+        self.assertIn("<b>Newark</b>", coverage)
+        self.assertNotIn("Octopart", coverage)
+
+    def test_marketing_demo_is_labeled_as_sample_and_uses_a_coherent_baseline(self):
+        self.assertIn('class="sample-indicator">Illustrative sample', MARKETING)
+        self.assertIn("ILLUSTRATIVE RELEASE REVIEW · SAMPLE BOM", MARKETING)
+        self.assertIn("1,842 sample rows", MARKETING)
+        self.assertIn('data-kpi-counter="72"', MARKETING)
+        self.assertIn("BOM Health 72 · 4 blockers", MARKETING)
+        self.assertIn("17 lifecycle alerts", MARKETING)
+        self.assertIn("36 supplier records normalized", MARKETING)
+        self.assertNotIn("Live review", MARKETING)
+        self.assertNotIn("LIVE REVIEW", MARKETING)
+        self.assertNotIn("LIVE RECOMMENDATION", MARKETING)
+
+        marketing_js = (ROOT / "marketing-web" / "app.js").read_text()
+        self.assertIn("$('#heroMonitoringStatus').textContent = i >= 10 ? 'Monitoring active'", marketing_js)
+        self.assertIn("'Illustrative sample · 1,842 components'", marketing_js)
 
 
 if __name__ == "__main__":
