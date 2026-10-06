@@ -590,7 +590,7 @@
     { phase: 'Release posture resolved', health: 96, blockers: 0, alerts: 5, decisions: 18, ring: 'Ready for controlled production release', headline: 'Ready for controlled production release', detail: 'Cadivor linked 14 evidence points to DR-1048 and activated monitoring.', statuses: ['Resolved', 'Qualified', 'Monitoring'] }
   ];
   const WF_STEPS = [
-    { state: 'Validated', outcomeHtml: 'Validated · <b>1,842</b> components', detail: 'motor_controller_rev_c.xlsx · 36 suppliers normalized', duration: 1200 },
+    { state: 'Validated', outcomeHtml: 'Validated · <b>1,842</b> components', detail: 'motor_controller_rev_c.xlsx · 36 supplier records normalized', duration: 1200 },
     { state: 'Scored', outcomeHtml: 'BOM Health <b>72</b> · <b>4</b> blockers', detail: 'MPU6050 EOL · LM35DN lead time · lifecycle notices matched', duration: 1300 },
     { state: 'Reviewing', outcomeHtml: '<b>14</b> evidence points reviewed', detail: 'Lifecycle, supply, alternates, and prior decisions assembled', duration: 1300 },
     { state: 'Approved', outcomeHtml: '<b>DR-1048</b> approved', detail: 'Owner Jordan Ellis · evidence hash verified', duration: 1300 },
@@ -1020,7 +1020,6 @@
       if (i >= 9) productStatus.classList.add('state-ok');
       if (i === 10) productStatus.classList.add('state-live');
     }
-    $('#heroLiveIndicator')?.classList.toggle('visible', i >= 4 && i <= 6 || i === 10);
     $('#phaseFill').style.width = `${phaseWidths[i]}%`;
 
     const badge = $('.demo-main>header>span');
@@ -1032,7 +1031,7 @@
     positionHeroFile(i);
     $('#uploadCard')?.classList.toggle('imported', i >= 1);
     $('#uploadCard')?.classList.toggle('validating', i === 1);
-    $('#uploadState').textContent = i === 0 ? 'Waiting' : i === 1 ? 'Validating…' : 'Imported';
+    $('#uploadState').textContent = i === 0 ? 'Sample file' : i === 1 ? 'Validating…' : 'Imported';
     if (i === 1) {
       animateValidationProgress();
       cycleValidationCopy();
@@ -1040,13 +1039,14 @@
     } else {
       $('#uploadProgress').style.transform = `scaleX(${i === 0 ? 0 : 1})`;
     }
-    $('#uploadMeta').textContent = i >= 2 ? '1,842 components · 36 suppliers' : i === 1 ? VALIDATION_LINES[0] : 'Awaiting upload · 36 suppliers';
+    $('#uploadMeta').textContent = i >= 2 ? '1,842 components · 36 supplier records' : i === 1 ? VALIDATION_LINES[0] : 'Illustrative sample · 1,842 components';
     $('#importWorkspace')?.classList.toggle('visible', i >= 1);
-    if ($('#importRowCount')) $('#importRowCount').textContent = i >= 1 ? (i === 1 ? 'Validating 1,842 rows…' : '1,842 rows mapped') : '1,842 rows mapped';
+    if ($('#importRowCount')) $('#importRowCount').textContent = i >= 1 ? (i === 1 ? 'Validating 1,842 rows…' : '1,842 rows mapped') : '1,842 sample rows';
     if ($('#importColMap')) $('#importColMap').textContent = i >= 1 ? '4 required columns matched' : '4 required columns matched';
 
     const acts = ['#actParse', '#actLifecycle', '#actSupplier', '#actDecisions', '#actMonitor'];
     [i >= 1, i >= 2, i >= 3, i >= 5, i >= 10].forEach((on, n) => $(acts[n])?.classList.toggle('active', on));
+    if ($('#actMonitor')) $('#actMonitor').textContent = i >= 10 ? 'Monitoring active' : 'Monitoring after approval';
     applyHeroMetrics(i, i === 2 || i === 3);
     revealHeroRisks(i);
 
@@ -1126,6 +1126,9 @@
       heroApprove.textContent = i >= 9 ? '✓ Decision approved' : 'Approve decision';
     }
     if ($('#heroDecisionStatus')) $('#heroDecisionStatus').textContent = i >= 9 ? 'Decision approved' : 'Awaiting approval';
+    if ($('#heroMonitoringStatus')) {
+      $('#heroMonitoringStatus').textContent = i >= 10 ? 'Monitoring active' : 'Starts after approval';
+    }
 
     const cursor = $('#demoCursor');
     hideCursor(cursor);

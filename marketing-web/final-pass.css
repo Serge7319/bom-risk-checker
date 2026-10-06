@@ -3037,7 +3037,6 @@ summary:focus-visible {
 }
 
 .motion-pulse,
-.live-indicator i,
 .monitor-pulse-dot {
   animation: cadivorStatusPulse 2s ease infinite;
 }
