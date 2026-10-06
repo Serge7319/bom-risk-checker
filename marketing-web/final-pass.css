@@ -4470,3 +4470,21 @@ body.home-motion-restrained .page[data-page="home"] .company-stats .kpi-card:hov
     box-sizing: border-box;
   }
 }
+/* Release-readiness guide link under the home hero CTA and trust row. */
+.hero-copy .hero-resource-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 16px;
+  color: #c7dcff;
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-color: rgba(160, 195, 255, 0.55);
+  text-underline-offset: 4px;
+}
+
+.hero-copy .hero-resource-link:hover {
+  color: #fff;
+  text-decoration-color: currentColor;
+}
