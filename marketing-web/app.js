@@ -337,12 +337,12 @@
         a.href = buildAppUrl({
           auth: 'signup',
           intent: 'one-time-report',
-          page: 'Single BOM Report',
+          page: 'BOM Analyzer',
           purchase: 'one_time_report',
           entry: 'one-time-report'
         });
       } else if (a.dataset.app === 'single-report-login') {
-        a.href = buildAppUrl({ auth: 'login', page: 'Single BOM Report', entry: 'one-time-report' });
+        a.href = buildAppUrl({ auth: 'login', page: 'BOM Analyzer', entry: 'one-time-report' });
       } else if (auth === 'login' || auth === 'signin') {
         a.href = buildAppUrl({ auth: 'login', entry: a.dataset.entry || '' });
       } else if (auth === 'signup' || auth === 'trial') {

@@ -34,7 +34,7 @@ class OneTimeReportPublicEntryTests(unittest.TestCase):
 
         self.assertEqual(query["cadivor_signup_confirm"], ["1"])
         self.assertEqual(query["cadivor_purchase"], ["one_time_report"])
-        self.assertEqual(query["page"], ["Single BOM Report"])
+        self.assertEqual(query["page"], ["BOM Analyzer"])
 
     def test_ordinary_signup_confirmation_url_remains_unchanged(self):
         query = parse_qs(urlparse(self.confirm.signup_confirmation_redirect_url()).query)
@@ -57,7 +57,7 @@ class OneTimeReportPublicEntryTests(unittest.TestCase):
         self.assertEqual(options["data"], {"cadivor_signup_intent": "one_time_report"})
         redirect_query = parse_qs(urlparse(options["email_redirect_to"]).query)
         self.assertEqual(redirect_query["cadivor_purchase"], ["one_time_report"])
-        self.assertEqual(redirect_query["page"], ["Single BOM Report"])
+        self.assertEqual(redirect_query["page"], ["BOM Analyzer"])
 
     def test_report_signup_fails_closed_when_checkout_is_not_ready(self):
         self.st.query_params = {"cadivor_purchase": "one_time_report"}
@@ -73,7 +73,7 @@ class OneTimeReportPublicEntryTests(unittest.TestCase):
         self.st.query_params = {
             "cadivor_signup_confirm": "1",
             "cadivor_purchase": "one_time_report",
-            "page": "Single BOM Report",
+            "page": "BOM Analyzer",
             "token_hash": "test-token-hash",
             "type": "email",
         }
@@ -82,23 +82,42 @@ class OneTimeReportPublicEntryTests(unittest.TestCase):
             self.confirm.apply_signup_confirmation_from_query(MagicMock())
 
         self.assertTrue(self.st.session_state["cadivor_report_purchase_pending"])
-        self.assertEqual(self.st.session_state["cadivor_requested_page"], "Single BOM Report")
+        self.assertEqual(self.st.session_state["cadivor_requested_page"], "BOM Analyzer")
         self.assertNotIn("cadivor_purchase", self.st.query_params)
 
     def test_public_page_offers_checkout_and_separate_signin_routes(self):
         markup = (ROOT / "marketing-web" / "index.html").read_text()
         javascript = (ROOT / "marketing-web" / "app.js").read_text()
 
-        self.assertIn('data-app="single-report">Continue to secure purchase', markup)
+        self.assertIn('data-app="single-report">Create account and analyze your BOM', markup)
         self.assertIn('data-app="single-report-login">Already have an account? Sign in', markup)
         self.assertIn("purchase: 'one_time_report'", javascript)
-        self.assertIn("page: 'Single BOM Report'", javascript)
+        self.assertIn("page: 'BOM Analyzer'", javascript)
         self.assertIn("auth: 'signup'", javascript)
 
-    def test_public_copy_explains_pay_before_full_analysis(self):
+    def test_report_only_flow_counts_and_analyzes_before_checkout(self):
+        runtime = (ROOT / "src" / "authenticated_runtime.py").read_text()
+        auth = (ROOT / "src" / "auth.py").read_text()
         markup = (ROOT / "marketing-web" / "index.html").read_text()
+
         self.assertIn("Try the free audit first", markup)
-        self.assertIn("pay the displayed one-time price, then upload and run", markup)
+        self.assertIn("upload and run your BOM. Cadivor shows the exact unique-component count and active one-time price before checkout", markup)
+        self.assertIn("covers up to 100 unique components", markup)
+
+        upload_at = runtime.index('st.file_uploader(\n                "Upload your BOM file"')
+        count_at = runtime.index("This BOM has {len(bom_df)} unique components.")
+        analyze_at = runtime.index("if analyze_requested:")
+        paywall_at = runtime.index("Cadivor analyzed {_one_time_component_count} unique components.")
+        report_at = runtime.index("render_first_analysis_brief(", paywall_at)
+
+        self.assertLess(upload_at, count_at)
+        self.assertLess(count_at, analyze_at)
+        self.assertLess(analyze_at, paywall_at)
+        self.assertLess(paywall_at, report_at)
+        self.assertIn("if len(bom_df) > ONE_TIME_BOM_MAX_PARTS:", runtime)
+        self.assertIn("no payment will be requested", runtime)
+        self.assertIn("payment unlocks the full report", auth.lower())
+        self.assertNotIn("Continue existing checkout", runtime)
 
 
 if __name__ == "__main__":

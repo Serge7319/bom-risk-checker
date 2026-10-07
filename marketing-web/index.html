@@ -5,7 +5,7 @@
 <meta name="description" content="Know when your hardware is ready to release. Turn BOM and supply-chain evidence into accountable engineering decisions with Cadivor.">
 <title>Cadivor — Hardware Release Readiness</title>
 <link rel="stylesheet" href="styles.css?v=1.0-pricing-layout2">
-<link rel="stylesheet" href="final-pass.css?v=1.0-single-report-checkout">
+<link rel="stylesheet" href="final-pass.css?v=1.1-report-after-analysis">
 </head>
 <body>
 <header class="site-header" id="siteHeader">
@@ -107,9 +107,9 @@
         <li>Lifecycle, availability, sourcing, and risk review</li>
         <li>Standard PDF and CSV report downloads</li>
       </ul>
-      <p class="single-report-detail__note">Try the free audit first if you want to preview the first five component checks. For the full report, create and verify a report-only account, pay the displayed one-time price, then upload and run one BOM analysis for up to 100 unique components. Your purchase includes the saved analysis and standard PDF/CSV reports, with no trial analyses, ongoing monitoring, or recurring subscription.</p>
+      <p class="single-report-detail__note">Try the free audit first if you want to preview the first five component checks. For the full report, create and verify a report-only account, then upload and run your BOM. Cadivor shows the exact unique-component count and active one-time price before checkout. The one-time report covers up to 100 unique components; payment unlocks the full report and standard PDF/CSV downloads, with no trial analyses, ongoing monitoring, or recurring subscription.</p>
       <div class="single-report-detail__actions">
-        <a class="btn btn-primary app-link" data-app="single-report">Continue to secure purchase →</a>
+        <a class="btn btn-primary app-link" data-app="single-report">Create account and analyze your BOM →</a>
         <a class="btn btn-ghost app-link" data-app="single-report-login">Already have an account? Sign in</a>
         <a class="btn btn-ghost route-link" href="#/analyze">Try the free BOM audit</a>
       </div>
@@ -117,7 +117,7 @@
     <aside class="single-report-detail__compare" aria-label="Choose how to begin">
       <span>CHOOSE YOUR STARTING POINT</span>
       <article><b>Free BOM audit</b><p>Inspect the first five component checks before you create an account.</p><a class="route-link" href="#/analyze">Analyze a BOM free →</a></article>
-      <article><b>One-time full report</b><p>After creating a report-only account, pay once, then upload and run one full BOM analysis and download its PDF/CSV reports. No trial or subscription.</p><a class="app-link" data-app="single-report">Continue to secure purchase →</a><a class="app-link" data-app="single-report-login">Already have an account? Sign in</a></article>
+      <article><b>One-time full report</b><p>Create and verify a report-only account, upload and run your BOM, then pay the displayed price to unlock its full report and PDF/CSV downloads. The offer covers up to 100 unique components. No trial or subscription.</p><a class="app-link" data-app="single-report">Create account and analyze your BOM →</a><a class="app-link" data-app="single-report-login">Already have an account? Sign in</a></article>
       <article><b>Subscription</b><p>For recurring analyses, monitoring, and team workflows.</p><a class="route-link" href="#/pricing">Compare plans →</a></article>
     </aside>
   </div>
@@ -149,5 +149,5 @@
   // now point visitors to the anonymous five-component preview.
   window.CADIVOR_PUBLIC_BOM_STRESS_TEST_ENABLED = true;
 </script>
-<script src="app.js?v=1.0-single-report-checkout"></script>
+<script src="app.js?v=1.1-report-after-analysis"></script>
 </body></html>
