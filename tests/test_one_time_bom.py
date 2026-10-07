@@ -164,11 +164,12 @@ class OneTimeBOMTests(unittest.TestCase):
         spec = importlib.util.spec_from_file_location("cadivor_checkout_test", helper_file)
         helper = importlib.util.module_from_spec(spec)
         with patch.dict(sys.modules, {"stripe": stripe}):
-            spec.loader.exec_module(helper)
-            helper.create_one_time_bom_checkout(
-                price_id=self.price_id, user_email="eng@example.com", user_id=USER,
-                order_id=ORDER, success_url="https://app/success", cancel_url="https://app/cancel",
-            )
+            with patch("src.secrets.get_secret", return_value="sk_test_fake"):
+                spec.loader.exec_module(helper)
+                helper.create_one_time_bom_checkout(
+                    price_id=self.price_id, user_email="eng@example.com", user_id=USER,
+                    order_id=ORDER, success_url="https://app/success", cancel_url="https://app/cancel",
+                )
         options = create.call_args.kwargs
         self.assertEqual(options["mode"], "payment")
         self.assertEqual(options["line_items"], [{"price": self.price_id, "quantity": 1}])
