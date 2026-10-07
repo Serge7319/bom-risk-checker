@@ -6,6 +6,7 @@ verifies the payment and moves a private order to `paid` before use.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from functools import lru_cache
 from datetime import datetime, timedelta, timezone
@@ -75,23 +76,34 @@ def _identity(user_id: str) -> str:
         raise OneTimeBOMError("Sign in again to purchase a BOM report.") from None
 
 
-@lru_cache(maxsize=2)
-def price_label(price_id: str) -> str:
-    """Show the actual configured Stripe amount before asking for payment."""
+@lru_cache(maxsize=4)
+def _price_label_for_key(price_id: str, key_fingerprint: str) -> str:
+    """Cache the verified price per Stripe account without retaining the secret."""
     import stripe
+
+    price = stripe.Price.retrieve(price_id)
+    if (not price.active or price.recurring or price.currency != "usd"
+            or not isinstance(price.unit_amount, int) or price.unit_amount <= 0):
+        raise OneTimeBOMError("The one-time report price is not configured correctly.")
+    return f"USD {price.unit_amount / 100:,.2f}"
+
+
+def price_label(price_id: str) -> str:
+    """Show the active configured Stripe price before asking for payment."""
     from src.stripe_helper import _ensure_stripe_api_key
 
     try:
-        _ensure_stripe_api_key()
-        price = stripe.Price.retrieve(price_id)
-        if (not price.active or price.recurring or price.currency != "usd"
-                or not isinstance(price.unit_amount, int) or price.unit_amount <= 0):
-            raise OneTimeBOMError("The one-time report price is not configured correctly.")
-        return f"USD {price.unit_amount / 100:,.2f}"
+        api_key = _ensure_stripe_api_key()
+        key_fingerprint = hashlib.sha256(api_key.encode("utf-8")).hexdigest()
+        return _price_label_for_key(str(price_id), key_fingerprint)
     except OneTimeBOMError:
         raise
     except Exception:
         raise OneTimeBOMError("The report price is temporarily unavailable.") from None
+
+
+# Keep the existing cache invalidation hook used by tests and admin diagnostics.
+price_label.cache_clear = _price_label_for_key.cache_clear
 
 
 def public_checkout_price() -> str | None:
