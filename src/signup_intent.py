@@ -7,7 +7,7 @@ REPORT_PURCHASE_QUERY_PARAM = "cadivor_purchase"
 REPORT_PURCHASE_QUERY_VALUE = "one_time_report"
 REPORT_PURCHASE_METADATA_KEY = "cadivor_signup_intent"
 REPORT_PURCHASE_METADATA_VALUE = "one_time_report"
-REPORT_PURCHASE_ROUTE = "Single BOM Report"
+REPORT_PURCHASE_ROUTE = "BOM Analyzer"
 REPORT_PURCHASE_PENDING_SESSION_KEY = "cadivor_report_purchase_pending"
 
 
