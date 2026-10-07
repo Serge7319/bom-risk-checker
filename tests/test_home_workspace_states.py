@@ -250,15 +250,23 @@ def test_every_returning_state_uses_the_control_free_home():
     assert "New analyses are paused." in returning
 
 
-def test_home_presentation_keeps_actions_and_adds_visual_hierarchy():
+def test_home_presentation_uses_portfolio_cards_bom_table_and_part_photos():
     home = (ROOT / "src/pages/home_workspace.py").read_text(encoding="utf-8")
     onboarding = (ROOT / "src/components/onboarding.py").read_text(encoding="utf-8")
-    styles = (ROOT / "src/assets/css/dashboard_v2.css").read_text(encoding="utf-8")
+    styles = "\n".join(
+        [
+            (ROOT / "src/assets/css/dashboard_v2.css").read_text(encoding="utf-8"),
+            (ROOT / "src/assets/css/dashboard_visual_refresh.css").read_text(encoding="utf-8"),
+        ]
+    )
     first_run = onboarding.split("def render_first_run_dashboard", 1)[1].split(
         "def render_activation_strip", 1
     )[0]
-    assert "Next engineering action" in home
-    assert "cv-home-chip" in home
+    assert "cv-home-v3-header" in home
+    assert "cv-home-v3-metric" in home
+    assert "cv-home-v3-table-head" in home
+    assert "Priority components" in home
+    assert "render_part_image(part.get(\"image_url\")" in home
     assert "cv-home-notice--inline" in home
     assert "cv-home-notice--caution" in styles
     assert "cv-home-notice--account" in home
@@ -273,8 +281,9 @@ def test_home_presentation_keeps_actions_and_adds_visual_hierarchy():
     for token in (
         ".cv-home-notice--caution",
         ".cv-home-notice--account",
-        ".st-key-cv_home_next",
-        ".cv-home-chip--risk",
+        ".st-key-cv_home_recent_v3",
+        ".cv-home-v3-metric",
+        ".cv-home-v3-part-mpn",
         ":focus-visible",
     ):
         assert token in styles
