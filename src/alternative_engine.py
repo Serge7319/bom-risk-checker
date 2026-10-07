@@ -1289,6 +1289,13 @@ def apply_supplier_enrichment_to_candidate(
     enriched["Supply Voltage Max"] = enriched.get("Supply Voltage Max") or supplier_data.get("supply_voltage_max")
     enriched["Voltage Range"] = enriched.get("Voltage Range") or supplier_data.get("voltage_range", "")
     enriched["Datasheet URL"] = enriched.get("Datasheet URL") or supplier_data.get("datasheet_url", "")
+    from src.part_images import normalize_supplier_image_url
+
+    enriched["image_url"] = normalize_supplier_image_url(
+        supplier_data.get("image_url") or supplier_data.get("photo_url")
+        or enriched.get("image_url") or enriched.get("Image URL"),
+        provider=supplier_data.get("source", ""),
+    )
 
     for field_name, config in ELECTRICAL_FIELDS.items():
         enriched[config["display_key"]] = (

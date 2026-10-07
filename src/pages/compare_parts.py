@@ -37,6 +37,7 @@ from src.ui.cadivor_design_system import (
     cadivor_section_header,
     inject_cadivor_design_system,
     render_kpi_row_safe,
+    render_part_image,
     render_subsection_header,
 )
 
@@ -102,16 +103,20 @@ def _render_part_card(title: str, card: Mapping[str, Any]) -> None:
     supplier = str(card.get("supplier_url") or "")
     component_type = str(card.get("family_display_name") or "—")
     cadivor_panel(title)
-    st.markdown(
-        f'<div class="cp-part-mpn">{_esc(card.get("mpn") or "Not found")}</div>'
-        f'<div class="cp-part-meta">'
-        f"{_esc(card.get('manufacturer') or '—')}<br/>"
-        f"Component type: {_esc(component_type)}<br/>"
-        f"Package: {_esc(card.get('package') or '—')} · "
-        f"Lifecycle: {_esc(card.get('lifecycle_status') or '—')}"
-        f"</div>",
-        unsafe_allow_html=True,
-    )
+    image_col, details_col = st.columns([0.24, 0.76], gap="small", vertical_alignment="center")
+    with image_col:
+        render_part_image(card.get("image_url"), card.get("mpn"), size=88)
+    with details_col:
+        st.markdown(
+            f'<div class="cp-part-mpn">{_esc(card.get("mpn") or "Not found")}</div>'
+            f'<div class="cp-part-meta">'
+            f"{_esc(card.get('manufacturer') or '—')}<br/>"
+            f"Component type: {_esc(component_type)}<br/>"
+            f"Package: {_esc(card.get('package') or '—')} · "
+            f"Lifecycle: {_esc(card.get('lifecycle_status') or '—')}"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
     link_cols = st.columns(2)
     with link_cols[0]:
         if datasheet:

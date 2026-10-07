@@ -8,6 +8,7 @@ from urllib.parse import quote
 from integrations.pin_count import parse_pin_count_from_text, resolve_pin_count
 from integrations.stock_coercion import coerce_stock_total
 from src.secrets import get_secret
+from src.part_images import normalize_supplier_image_url
 from src.parsing.electrical_extractors import (
     extract_frequency_mhz,
     extract_slew_rate_v_us,
@@ -354,6 +355,10 @@ def search_digikey_substitutions(part_number: str) -> list[dict]:
                 "stock_total": coerce_stock_total(item.get("QuantityAvailable")),
                 "unit_price": _as_number(item.get("UnitPrice"), 0.0),
                 "product_detail_url": product_url,
+                "image_url": normalize_supplier_image_url(
+                    item.get("PhotoUrl") or item.get("PrimaryPhoto"),
+                    provider="DigiKey",
+                ),
                 "datasheet_url": str(item.get("DatasheetUrl") or "").strip(),
                 "digikey_part_number": digikey_part_number,
                 "supplier_part_id": digikey_part_number,
@@ -632,6 +637,10 @@ def normalize_digikey_product(product: dict) -> dict:
         "manufacturer_part_number": product.get("ManufacturerProductNumber", ""),
         "digikey_part_number": product.get("DigiKeyProductNumber", ""),
         "product_detail_url": product.get("ProductUrl", ""),
+        "image_url": normalize_supplier_image_url(
+            product.get("PhotoUrl") or product.get("PrimaryPhoto"),
+            provider="DigiKey",
+        ),
         "datasheet_url": product.get("DatasheetUrl", ""),
 
         "package": package,
@@ -710,6 +719,7 @@ def default_digikey_result(part_number: str) -> dict:
         "manufacturer_part_number": "",
         "digikey_part_number": "",
         "product_detail_url": "",
+        "image_url": "",
         "datasheet_url": "",
         "package": "",
         "pin_count": 0,

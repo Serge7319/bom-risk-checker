@@ -1,7 +1,8 @@
 """Cadivor Milestone 19.0 — Portfolio Intelligence.
 
 Turns saved BOM and component records into cross-project engineering,
-lifecycle, and supplier intelligence without requiring a new database schema.
+lifecycle, and supplier intelligence. Part photos are shown when saved records
+contain a trusted distributor image URL.
 """
 from __future__ import annotations
 
@@ -13,6 +14,7 @@ import pandas as pd
 import streamlit as st
 
 from src.ui.cadivor_design_system import MetricCard, cadivor_engineering_dataframe, render_kpi_row_safe
+from src.part_images import normalize_supplier_image_url, part_image_markup
 
 
 def _text(value: Any, default: str = "") -> str:
@@ -87,6 +89,9 @@ def build_portfolio_intelligence(
                 "Analysis ID": analysis_id,
                 "Project": analysis_names.get(analysis_id, _text(row.get("project_name"), "Saved BOM")),
                 "Part Number": mpn,
+                "Image URL": normalize_supplier_image_url(
+                    _first(row, "image_url", "Image URL", "photo_url")
+                ),
                 "Manufacturer": manufacturer,
                 "Lifecycle": lifecycle,
                 "Supplier Sources": supplier_count,
@@ -120,6 +125,7 @@ def build_portfolio_intelligence(
                 "Lowest Stock": min(row["Available Stock"] for row in rows),
                 "Minimum Supplier Sources": min(row["Supplier Sources"] for row in rows),
                 "Lifecycle": worst["Lifecycle"],
+                "Image URL": worst["Image URL"],
             }
         )
     shared_components.sort(
@@ -255,6 +261,7 @@ def render_portfolio_intelligence(
     internal_nav_button: Callable[..., Any],
 ) -> None:
     _css()
+    photo_column = st.column_config.ImageColumn("Part photo", width="small")
 
     st.markdown(
         f"""
@@ -292,9 +299,11 @@ def render_portfolio_intelligence(
         if not shared:
             st.info("No component is currently recorded across multiple saved projects.")
         for index, row in enumerate(shared):
+            photo = part_image_markup(row.get("Image URL"), row["Part Number"], size=64)
             st.markdown(
                 f"""
-                <section class="cv19-card">
+                <section class="cv19-card cv-part-card-layout">
+                  {photo}<div>
                   <div class="cv19-card-title">{html.escape(row['Part Number'])}</div>
                   <div class="cv19-card-copy">
                     Used in {row['Projects Using Part']} projects. One sourcing or replacement decision
@@ -305,7 +314,7 @@ def render_portfolio_intelligence(
                     <span>Lowest stock {row['Lowest Stock']:,}</span>
                     <span>{row['Minimum Supplier Sources']} source(s)</span>
                     <span>{html.escape(row['Lifecycle'])}</span>
-                  </div>
+                  </div></div>
                 </section>
                 """,
                 unsafe_allow_html=True,
@@ -331,7 +340,10 @@ def render_portfolio_intelligence(
 
         with st.expander("View all shared components", expanded=False):
             if intelligence["shared_components"]:
-                cadivor_engineering_dataframe(pd.DataFrame(intelligence["shared_components"]))
+                cadivor_engineering_dataframe(
+                    pd.DataFrame(intelligence["shared_components"]),
+                    column_config={"Image URL": photo_column},
+                )
 
     with right:
         st.markdown('<div class="cv19-section">Portfolio Exposure</div>', unsafe_allow_html=True)
@@ -392,8 +404,9 @@ def render_portfolio_intelligence(
         if rows:
             cadivor_engineering_dataframe(
                 pd.DataFrame(rows)[
-                    ["Project", "Part Number", "Manufacturer", "Supplier Sources", "Available Stock", "Risk Score"]
+                    ["Project", "Part Number", "Image URL", "Manufacturer", "Supplier Sources", "Available Stock", "Risk Score"]
                 ],
+                column_config={"Image URL": photo_column},
             )
         else:
             st.success("No single-source component record is currently identified.")
@@ -403,8 +416,9 @@ def render_portfolio_intelligence(
         if rows:
             cadivor_engineering_dataframe(
                 pd.DataFrame(rows)[
-                    ["Project", "Part Number", "Manufacturer", "Lifecycle", "Risk Score"]
+                    ["Project", "Part Number", "Image URL", "Manufacturer", "Lifecycle", "Risk Score"]
                 ],
+                column_config={"Image URL": photo_column},
             )
         else:
             st.success("No lifecycle-exposed component record is currently identified.")

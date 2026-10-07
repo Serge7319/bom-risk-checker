@@ -18,6 +18,7 @@ from src.datasheet_comparison import (
     user_may_view_comparison_diagnostics,
 )
 from src.parametric_compare import engineering_confidence_from_rows
+from src.part_images import normalize_supplier_image_url
 
 
 FINDING_COMPATIBLE = "Compatible on available evidence"
@@ -142,6 +143,9 @@ def public_part_card(part: Mapping[str, Any] | None, *, family: str = "") -> dic
         "description": str(data.get("description") or "").strip(),
         "family": profile.id,
         "family_display_name": profile.display_name,
+        "image_url": normalize_supplier_image_url(
+            data.get("image_url") or data.get("photo_url") or data.get("PhotoUrl")
+        ),
         "package": str(data.get("package") or "").strip(),
         "lifecycle_status": str(data.get("lifecycle_status") or "Unknown").strip() or "Unknown",
         "datasheet_url": datasheet if datasheet.startswith(("http://", "https://")) else "",

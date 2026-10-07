@@ -29,6 +29,7 @@ except ImportError:
 from integrations.octopart_client import search_octopart_by_part_number
 from src.alternative_classification import merge_discovery_candidates, utc_now_iso
 from src.secrets import get_secret
+from src.part_images import normalize_supplier_image_url
 
 try:
     from integrations.newark_client import search_newark_by_part_number
@@ -55,6 +56,7 @@ def _empty_supplier_result(source_name: str, *, provider_status: str, error: str
         "mouser_part_number": "",
         "manufacturer_part_number": "",
         "product_detail_url": "",
+        "image_url": "",
         "datasheet_url": "",
         "package": "",
         "pin_count": 0,
@@ -145,6 +147,7 @@ def _safe_supplier_lookup(source_name, lookup_func, part_number, request_id: str
         result.setdefault("package", "")
         result.setdefault("pin_count", 0)
         result.setdefault("mounting_style", "")
+        result.setdefault("image_url", "")
         result.setdefault("datasheet_url", "")
         result.setdefault("voltage_range", "")
         result.setdefault("architecture", "")
@@ -375,6 +378,15 @@ def get_best_part_data(part_number: str) -> dict:
         for result in valid_results:
             if result.get("mounting_style"):
                 best_result["mounting_style"] = result.get("mounting_style")
+                break
+
+    if not best_result.get("image_url"):
+        for result in valid_results:
+            image_url = normalize_supplier_image_url(
+                result.get("image_url"), provider=result.get("source", "")
+            )
+            if image_url:
+                best_result["image_url"] = image_url
                 break
 
     if not best_result.get("datasheet_url"):

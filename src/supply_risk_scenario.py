@@ -13,6 +13,7 @@ import pandas as pd
 import streamlit as st
 
 from src.ui.cadivor_design_system import cadivor_engineering_dataframe
+from src.part_images import normalize_supplier_image_url, part_image_markup
 
 
 def _text(value: Any, default: str = "") -> str:
@@ -118,6 +119,9 @@ def build_supply_scenario(
                 ),
                 "Project Health": analysis_lookup.get(analysis_id, {}).get("Health", 0),
                 "Part Number": _text(_first(row, "mpn", "MPN", "part_number"), "Unknown"),
+                "Image URL": normalize_supplier_image_url(
+                    _first(row, "image_url", "Image URL", "photo_url")
+                ),
                 "Manufacturer": _text(row.get("manufacturer"), "Unknown"),
                 "Lifecycle": lifecycle,
                 "Original Stock": stock,
@@ -344,6 +348,7 @@ def render_supply_scenario(
     internal_nav_button: Callable[..., Any],
 ) -> None:
     _css()
+    photo_column = st.column_config.ImageColumn("Part photo", width="small")
 
     st.markdown(
         """
@@ -432,15 +437,16 @@ def render_supply_scenario(
             "Prepare replacement plan" if row["Lifecycle Event"] else
             "Review component risk"
         )
+        photo = part_image_markup(row.get("Image URL"), row["Part Number"], size=64)
         st.markdown(
-            f"""<section class="cv22-card">
-              <div class="cv22-card-title">{html.escape(row['Part Number'])}</div>
+            f"""<section class="cv22-card cv-part-card-layout">
+              {photo}<div><div class="cv22-card-title">{html.escape(row['Part Number'])}</div>
               <div class="cv22-card-copy">{html.escape(row['Project'])} · {html.escape(action)}</div>
               <div class="cv22-meta">
                 <span>Scenario risk {row['Scenario Risk']}/100</span><span>Required {row['Required Units']:,}</span>
                 <span>Stock {row['Scenario Stock']:,}</span><span>Shortage {row['Shortage Units']:,}</span>
                 <span>{row['Scenario Sources']} source(s)</span><span>{html.escape(row['Lifecycle'])}</span>
-              </div></section>""", unsafe_allow_html=True)
+              </div></div></section>""", unsafe_allow_html=True)
         actions=st.columns(2)
         with actions[0]:
             internal_nav_button("Find Alternative","Alternative Finder",key=f"scenario_alt_{index}",use_container_width=True,original_part=row["Part Number"],source_page="supply_risk_scenario")
@@ -477,6 +483,7 @@ def render_supply_scenario(
                     [
                         "Project",
                         "Part Number",
+                        "Image URL",
                         "Manufacturer",
                         "Required Units",
                         "Scenario Stock",
@@ -486,6 +493,7 @@ def render_supply_scenario(
                     ]
                 ],
                 column_config={
+                    "Image URL": photo_column,
                     "Estimated Shortage Value": st.column_config.NumberColumn(format="$%.2f"),
                 },
             )
@@ -501,6 +509,7 @@ def render_supply_scenario(
                     [
                         "Project",
                         "Part Number",
+                        "Image URL",
                         "Manufacturer",
                         "Original Sources",
                         "Scenario Sources",
@@ -508,6 +517,7 @@ def render_supply_scenario(
                         "Scenario Risk",
                     ]
                 ],
+                column_config={"Image URL": photo_column},
             )
         else:
             st.success("Every recorded component retains more than one source.")
@@ -521,11 +531,13 @@ def render_supply_scenario(
                     [
                         "Project",
                         "Part Number",
+                        "Image URL",
                         "Manufacturer",
                         "Lifecycle",
                         "Scenario Risk",
                     ]
                 ],
+                column_config={"Image URL": photo_column},
             )
         else:
             st.success("No lifecycle exposure is modeled in this scenario.")
@@ -537,6 +549,7 @@ def render_supply_scenario(
                     [
                         "Project",
                         "Part Number",
+                        "Image URL",
                         "Manufacturer",
                         "Required Units",
                         "Scenario Stock",
@@ -547,6 +560,7 @@ def render_supply_scenario(
                         "Scenario Risk",
                     ]
                 ],
+                column_config={"Image URL": photo_column},
             )
 
     st.markdown(

@@ -79,6 +79,7 @@ def build_design_impact(
                 ),
                 "Project Health": analysis_lookup.get(analysis_id, {}).get("Health", 0),
                 "Part Number": _text(_first(row, "mpn", "MPN", "part_number"), "Unknown"),
+                "Image URL": _text(_first(row, "image_url", "Image URL", "photo_url"), ""),
                 "Manufacturer": _text(row.get("manufacturer"), "Unknown"),
                 "Lifecycle": _text(row.get("lifecycle_status"), "Unknown"),
                 "Package": _text(row.get("package"), "Not recorded"),
@@ -290,6 +291,7 @@ def build_design_impact(
         "impact_level": _impact_level(impact_score),
         "engineering_hours": engineering_hours,
         "manufacturer": _text(reference.get("Manufacturer"), "Unknown"),
+        "image_url": _text(reference.get("Image URL"), ""),
         "lifecycle": _text(reference.get("Lifecycle"), "Unknown"),
         "package": _text(reference.get("Package"), "Not recorded"),
         "pin_count": int(_number(reference.get("Pin Count"), 0)),
@@ -393,13 +395,20 @@ def render_design_impact(
         st.session_state["design_impact_mpn"] = selected
         st.rerun()
 
+    from src.part_images import part_image_markup
+    selected_photo_markup = part_image_markup(
+        intelligence.get("image_url"), current, size=76
+    )
     st.markdown(
         f"""
-        <section class="cv20-summary">
+        <section class="cv20-summary cv20-summary--with-photo">
+          {selected_photo_markup}
+          <div>
           <div class="cv20-summary-title">{html.escape(current)}</div>
           <div class="cv20-summary-copy">
             {html.escape(intelligence['manufacturer'])} · {html.escape(intelligence['lifecycle'])} ·
             {html.escape(intelligence['package'])}
+          </div>
           </div>
         </section>
         """,
