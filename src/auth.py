@@ -740,10 +740,10 @@ def _render_signup_confirmation_pending() -> None:
   <ol>
     <li>Check your inbox, spam, and promotions folders for an email titled “Confirm your Cadivor account.” Delivery may take a few minutes.</li>
     <li>Open the email and click its confirmation link.</li>
-    <li>Cadivor will verify your email and continue the report checkout. If asked to sign in, use this email and the password you created.</li>
+    <li>Cadivor will verify your email and take you to upload your BOM. You will see the component count and price before checkout. If asked to sign in, use this email and the password you created.</li>
   </ol>
 </div>
-<p class="auth-copy">Verifying your email does not charge you. The one-time payment happens on Stripe before you upload and run the BOM report.</p>
+<p class="auth-copy">Verifying your email does not charge you. Upload and run your BOM first; the full report stays hidden until you choose to pay after seeing its component count.</p>
 """
         )
         login_label = "Already have an account? Sign in"
@@ -1020,7 +1020,7 @@ def _render_auth_page(
         st.markdown(
             """
             <div class="auth-heading">Get one full BOM report</div>
-            <p class="auth-copy">Create a report-only account, then confirm your email from the link we send. After verification, pay once before you upload and run the full BOM analysis.</p>
+            <p class="auth-copy">Create a report-only account, confirm your email, then upload and run your BOM. Cadivor will show its unique-component count and the one-time price before checkout; payment unlocks the full report.</p>
             <div class="auth-strip">One saved analysis for up to 100 unique components, with PDF and CSV reports. No trial analyses or subscription.</div>
             <div class="auth-divider"></div>
             """,
@@ -1040,10 +1040,9 @@ def _render_auth_page(
     if report_purchase:
         if report_price:
             st.info(
-                f"One full BOM report: {report_price}, paid once after email verification. "
-                "After payment, upload one BOM for a full analysis of up to 100 unique components "
-                "and PDF/CSV reports. The free audit can preview the first five checks. "
-                "No trial or subscription."
+                f"One full BOM report: {report_price} for up to 100 unique components. "
+                "Upload and run the BOM first; you will see the exact count before checkout. "
+                "Payment unlocks the full report and PDF/CSV downloads. No trial or subscription."
             )
         else:
             st.warning(
@@ -1114,7 +1113,7 @@ def _render_auth_page(
             if report_purchase:
                 st.markdown(
                     """
-                    <div class="terms-box"><strong>Report-only account:</strong> This account does not include trial analyses. After email verification, pay once, then upload and run one BOM analysis (up to 100 unique components) and download standard PDF/CSV reports. The purchase does not start a subscription.</div>
+                    <div class="terms-box"><strong>Report-only account:</strong> This account does not include trial analyses. After email verification, upload and run one BOM first. Cadivor shows the unique-component count and active price before checkout. If the BOM is within the 100-component limit, payment unlocks the full report and standard PDF/CSV downloads. The purchase does not start a subscription.</div>
                     """,
                     unsafe_allow_html=True,
                 )
