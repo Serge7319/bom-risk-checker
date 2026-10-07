@@ -95,6 +95,11 @@ class OneTimeReportPublicEntryTests(unittest.TestCase):
         self.assertIn("page: 'Single BOM Report'", javascript)
         self.assertIn("auth: 'signup'", javascript)
 
+    def test_public_copy_explains_pay_before_full_analysis(self):
+        markup = (ROOT / "marketing-web" / "index.html").read_text()
+        self.assertIn("Try the free audit first", markup)
+        self.assertIn("pay the displayed one-time price, then upload and run", markup)
+
 
 if __name__ == "__main__":
     unittest.main()
