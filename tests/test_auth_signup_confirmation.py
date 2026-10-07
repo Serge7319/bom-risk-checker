@@ -77,6 +77,11 @@ class SignupConfirmationSourceGuards(unittest.TestCase):
         self.assertGreater(idx_signup, 0)
         self.assertGreater(idx_resolve, idx_signup)
 
+    def test_bootstrap_prioritizes_confirmation_before_cookie_restore(self):
+        self.assertIn("signup_confirmation_pending=signup_confirmation_pending", self.bootstrap)
+        self.assertIn('"signup_confirmation_first_paint"', self.bootstrap)
+        self.assertIn("if force_signed_out or signup_confirmation_pending", self.bootstrap)
+
     def test_sign_up_passes_email_redirect_to(self):
         self.assertIn("email_redirect_to", self.auth)
         self.assertIn("signup_confirmation_redirect_url(", self.auth)
@@ -123,6 +128,26 @@ class SignupConfirmationUnitTests(unittest.TestCase):
         url = self.confirm.signup_confirmation_redirect_url()
         self.assertIn("cadivor_signup_confirm=1", url)
         self.assertTrue(url.startswith("https://"))
+
+    def test_confirmation_callback_uses_progress_state_before_cookie_restore(self):
+        gate = importlib.import_module("src.auth_gate")
+        self.assertEqual(
+            gate.resolve_initial_gate_state(
+                has_tokens=True,
+                already_authenticated=True,
+                signup_confirmation_pending=True,
+            ),
+            "authenticating",
+        )
+        gate.render_full_page_gate_surface = MagicMock()
+        gate.paint_auth_gate(
+            "authenticating",
+            progress_message="Confirming your email… Keep this tab open while we verify your link.",
+        )
+        self.assertIn(
+            "Confirming your email… Keep this tab open while we verify your link.",
+            gate.render_full_page_gate_surface.call_args.kwargs["message"],
+        )
 
     def test_marker_token_hash_type_email_accepted(self):
         self.st.query_params = {

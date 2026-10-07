@@ -981,7 +981,7 @@ def _render_auth_page(
         st.markdown(
             """
             <div class="auth-heading">Get one full BOM report</div>
-            <p class="auth-copy">Create a report-only account, verify your email, then complete secure one-time checkout.</p>
+            <p class="auth-copy">Create a report-only account and verify your email. Pay once before you upload and run the full BOM analysis.</p>
             <div class="auth-strip">One saved analysis for up to 100 unique components, with PDF and CSV reports. No trial analyses or subscription.</div>
             <div class="auth-divider"></div>
             """,
@@ -1002,8 +1002,9 @@ def _render_auth_page(
         if report_price:
             st.info(
                 f"One full BOM report: {report_price}, paid once after email verification. "
-                "Includes one analysis for up to 100 unique components and PDF/CSV reports; "
-                "no trial or subscription."
+                "After payment, upload one BOM for a full analysis of up to 100 unique components "
+                "and PDF/CSV reports. The free audit can preview the first five checks. "
+                "No trial or subscription."
             )
         else:
             st.warning(
@@ -1074,7 +1075,7 @@ def _render_auth_page(
             if report_purchase:
                 st.markdown(
                     """
-                    <div class="terms-box"><strong>Report-only account:</strong> This account does not include trial analyses. After email verification, you can pay once for one saved BOM analysis and standard PDF/CSV reports. The purchase does not start a subscription.</div>
+                    <div class="terms-box"><strong>Report-only account:</strong> This account does not include trial analyses. After email verification, pay once, then upload and run one BOM analysis (up to 100 unique components) and download standard PDF/CSV reports. The purchase does not start a subscription.</div>
                     """,
                     unsafe_allow_html=True,
                 )

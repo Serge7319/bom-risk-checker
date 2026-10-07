@@ -10425,9 +10425,10 @@ def run_authenticated_app() -> None:
             with st.container(border=True):
                 st.markdown("#### Buy one full BOM report")
                 st.caption(
-                    f"Upload up to {_SINGLE_BOM_MAX_PARTS} unique components. One payment "
-                    "covers the saved analysis and standard PDF/CSV reports. "
-                    "No subscription or ongoing monitoring is included."
+                    f"Pay once, then upload and run one BOM with up to {_SINGLE_BOM_MAX_PARTS} "
+                    "unique components. The purchase covers the saved analysis and standard "
+                    "PDF/CSV reports. Try the free first-five audit before paying if you want "
+                    "a preview. No subscription or ongoing monitoring is included."
                 )
                 if _single_bom_credit_ready:
                     st.success("Your full report is paid for and ready for your BOM.")

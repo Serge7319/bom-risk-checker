@@ -6,13 +6,15 @@ verifies the payment and moves a private order to `paid` before use.
 
 from __future__ import annotations
 
+import logging
 from functools import lru_cache
 from datetime import datetime, timedelta, timezone
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from src.secrets import get_secret, get_secret_bool
 
 MAX_PARTS = 100
+_LOGGER = logging.getLogger(__name__)
 
 
 class OneTimeBOMError(RuntimeError):
@@ -176,6 +178,63 @@ def pending_checkout(user_id: str) -> tuple[str, str] | None:
         return "processing", ""
 
 
+def _log_checkout_failure(
+    reference: str, stage: str, error: Exception, order_id: str = ""
+) -> None:
+    """Log checkout diagnostics without customer data, secrets, or raw errors."""
+    _LOGGER.error(
+        "one_time_bom_checkout_failed checkout_ref=%s stage=%s order_id=%s "
+        "error_type=%s stripe_code=%s stripe_request_id=%s",
+        reference,
+        stage,
+        order_id or "none",
+        type(error).__name__,
+        str(getattr(error, "code", "") or "")[:80] or "none",
+        str(getattr(error, "request_id", "") or "")[:80] or "none",
+    )
+
+
+def _expire_unreturned_checkout(session_id: str, reference: str) -> None:
+    """Close a Stripe session if Cadivor could not safely return its URL."""
+    if not session_id:
+        return
+    try:
+        import stripe
+        from src.stripe_helper import _ensure_stripe_api_key
+
+        _ensure_stripe_api_key()
+        stripe.checkout.Session.expire(session_id)
+    except Exception as error:
+        # Keep the primary checkout failure visible in logs; this line helps
+        # reconcile a rare orphaned session without logging its URL or email.
+        _LOGGER.error(
+            "one_time_bom_checkout_cleanup_failed checkout_ref=%s "
+            "error_type=%s stripe_code=%s stripe_request_id=%s",
+            reference,
+            type(error).__name__,
+            str(getattr(error, "code", "") or "")[:80] or "none",
+            str(getattr(error, "request_id", "") or "")[:80] or "none",
+        )
+
+
+def _close_failed_pending_order(user_id: str, order_id: str, reference: str) -> None:
+    """Keep failed, unreturned attempts from blocking a later checkout retry."""
+    if not order_id:
+        return
+    try:
+        (_service_client().table("cadivor_one_time_bom_orders")
+         .update({"status": "expired"})
+         .eq("id", order_id).eq("user_id", user_id).eq("status", "pending")
+         .execute())
+    except Exception as error:
+        _LOGGER.error(
+            "one_time_bom_checkout_order_cleanup_failed checkout_ref=%s "
+            "error_type=%s",
+            reference,
+            type(error).__name__,
+        )
+
+
 def begin_checkout(user_id: str, verified_email: str, success_url: str, cancel_url: str) -> str:
     """Create a private pending order before issuing its one-time Stripe session."""
     if not enabled():
@@ -189,30 +248,40 @@ def begin_checkout(user_id: str, verified_email: str, success_url: str, cancel_u
         raise OneTimeBOMError("Verify your email before purchasing a report.")
     price_id = str(get_secret("STRIPE_ONE_TIME_BOM_REPORT_PRICE_ID", required=True))
     price_label(price_id)
+    checkout_ref = uuid4().hex[:12]
+    stage = "insert_pending_order"
+    order_id = ""
+    session_id = ""
     try:
         created = (_service_client().table("cadivor_one_time_bom_orders")
                    .insert({"user_id": uid, "price_id": price_id})
                    .execute()).data
         order_id = str(created[0]["id"])
+        stage = "create_stripe_session"
         session = create_one_time_bom_checkout(
             price_id=price_id, user_email=email, user_id=uid,
             order_id=order_id, success_url=success_url, cancel_url=cancel_url,
         )
-        session_id, url = str(session.id), str(session.url)
+        session_id = str(getattr(session, "id", "") or "").strip()
+        url = str(getattr(session, "url", "") or "").strip()
+        stage = "link_stripe_session_to_order"
+        if not session_id or not url:
+            raise ValueError("Stripe did not return a usable Checkout session")
         saved = (_service_client().table("cadivor_one_time_bom_orders")
                  .update({"stripe_session_id": session_id})
                  .eq("id", order_id).eq("user_id", uid).eq("status", "pending")
                  .select("id").execute()).data
         if not saved or not url:
-            # An orphaned checkout must never be presented for payment.
-            import stripe
-            stripe.checkout.Session.expire(session_id)
-            raise OneTimeBOMError("Could not prepare secure checkout. Please retry.")
+            raise RuntimeError("Checkout session could not be linked to its order")
         return url
-    except OneTimeBOMError:
-        raise
-    except Exception:
-        raise OneTimeBOMError("Could not prepare secure checkout. Please retry.") from None
+    except Exception as error:
+        _log_checkout_failure(checkout_ref, stage, error, order_id)
+        _expire_unreturned_checkout(session_id, checkout_ref)
+        _close_failed_pending_order(uid, order_id, checkout_ref)
+        raise OneTimeBOMError(
+            "Could not prepare secure checkout. No payment was taken. "
+            f"Please retry shortly. Support reference: {checkout_ref}."
+        ) from None
 
 
 def reserve_credit(user_id: str) -> str:

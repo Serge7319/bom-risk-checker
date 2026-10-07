@@ -458,7 +458,7 @@ def mark_page_content_ready(page: str = "") -> None:
         pass
 
 
-def paint_auth_gate(state: AuthGateState) -> None:
+def paint_auth_gate(state: AuthGateState, *, progress_message: str = "") -> None:
     """Render the exclusive surface for the current gate state (except ready)."""
     if state == "ready":
         return
@@ -479,7 +479,7 @@ def paint_auth_gate(state: AuthGateState) -> None:
     if state == "authenticating":
         render_full_page_gate_surface(
             title="Cadivor",
-            message="Signing you in…",
+            message=progress_message or "Signing you in…",
             kind="authenticating",
             show_progress=True,
         )
@@ -511,6 +511,7 @@ def resolve_initial_gate_state(
     has_tokens: bool = False,
     pending_credentials: bool = False,
     already_authenticated: bool = False,
+    signup_confirmation_pending: bool = False,
 ) -> AuthGateState:
     """Deterministic first paint choice before any network I/O.
 
@@ -519,6 +520,10 @@ def resolve_initial_gate_state(
     authenticating (handoff must not remount the centered gate over the shell).
     boot is reserved for cold session restore before the workspace is admitted.
     """
+    # A verification URL must be handled before a stale browser session cookie.
+    # Otherwise the visitor sees a generic restore spinner while verify_otp runs.
+    if signup_confirmation_pending:
+        return "authenticating"
     if force_signed_out:
         return "login"
     # Authenticated workspace admission wins over leftover login handoff flags.

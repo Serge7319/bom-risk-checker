@@ -80,6 +80,34 @@ class OneTimeBOMTests(unittest.TestCase):
         self.assertEqual(create.call_args.kwargs["order_id"], ORDER)
         chain.update.assert_called_once_with({"stripe_session_id": "cs_test_one"})
 
+    def test_checkout_provider_failure_has_safe_reference_and_stage_diagnostic(self):
+        client = Mock()
+        client.table.return_value.insert.return_value.execute.return_value.data = [{"id": ORDER}]
+        fake_helper = types.ModuleType("src.stripe_helper")
+        fake_helper.create_one_time_bom_checkout = Mock(
+            side_effect=RuntimeError("private provider response detail")
+        )
+        with patch.dict(sys.modules, {"src.stripe_helper": fake_helper}), \
+             patch.object(one_time_bom, "_service_client", return_value=client), \
+             patch.object(one_time_bom, "enabled", return_value=True), \
+             patch.object(one_time_bom, "pending_checkout", return_value=None), \
+             patch.object(one_time_bom, "price_label", return_value="USD 19.00"), \
+             patch.object(one_time_bom, "get_secret", return_value=self.price_id), \
+             self.assertLogs("src.one_time_bom", level="ERROR") as logs:
+            with self.assertRaisesRegex(
+                one_time_bom.OneTimeBOMError, "No payment was taken"
+            ) as raised:
+                one_time_bom.begin_checkout(
+                    USER, "eng@example.com", "https://app/success", "https://app/cancel"
+                )
+
+        message = str(raised.exception)
+        self.assertRegex(message, r"Support reference: [0-9a-f]{12}")
+        self.assertIn("stage=create_stripe_session", logs.output[0])
+        self.assertIn(f"order_id={ORDER}", logs.output[0])
+        self.assertNotIn("private provider response detail", logs.output[0])
+        client.table.return_value.update.assert_called_once_with({"status": "expired"})
+
     def test_an_open_checkout_cannot_create_a_second_order(self):
         client = Mock()
         with patch.object(one_time_bom, "enabled", return_value=True), \
