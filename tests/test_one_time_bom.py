@@ -155,6 +155,28 @@ class OneTimeBOMTests(unittest.TestCase):
         self.assertIn("st.rerun()", runtime)
         self.assertNotIn("Refresh shortly if your credit is not yet ready", runtime)
 
+    def test_subscription_checkout_uses_dashboard_payment_method_settings(self):
+        stripe = types.ModuleType("stripe")
+        stripe.api_key = "sk_test_fake"
+        create = Mock(return_value=types.SimpleNamespace(
+            id="cs_test_subscription", url="https://checkout.stripe.test/subscription"
+        ))
+        stripe.checkout = types.SimpleNamespace(Session=types.SimpleNamespace(create=create))
+        helper_file = Path(__file__).resolve().parents[1] / "src/stripe_helper.py"
+        spec = importlib.util.spec_from_file_location("cadivor_subscription_checkout_test", helper_file)
+        helper = importlib.util.module_from_spec(spec)
+        with patch.dict(sys.modules, {"stripe": stripe}):
+            with patch("src.secrets.get_secret", return_value="sk_test_fake"):
+                spec.loader.exec_module(helper)
+                helper.create_checkout_session(
+                    price_id="price_test_starter", user_email="eng@example.com", user_id=USER,
+                    success_url="https://app/success", cancel_url="https://app/cancel",
+                    cadivor_plan="starter",
+                )
+        options = create.call_args.kwargs
+        self.assertEqual(options["mode"], "subscription")
+        self.assertNotIn("payment_method_types", options)
+
     def test_stripe_checkout_is_one_payment_with_order_metadata(self):
         stripe = types.ModuleType("stripe")
         stripe.api_key = "sk_test_fake"
@@ -172,6 +194,7 @@ class OneTimeBOMTests(unittest.TestCase):
                 )
         options = create.call_args.kwargs
         self.assertEqual(options["mode"], "payment")
+        self.assertNotIn("payment_method_types", options)
         self.assertEqual(options["line_items"], [{"price": self.price_id, "quantity": 1}])
         self.assertEqual(options["metadata"]["cadivor_order_id"], ORDER)
         self.assertEqual(options["idempotency_key"], f"cadivor_single_bom_{ORDER}")
