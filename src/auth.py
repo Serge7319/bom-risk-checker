@@ -768,7 +768,7 @@ def _render_signup_confirmation_success(cookie_manager=None) -> None:
         _render_auth_card_brand(
             eyebrow="EMAIL CONFIRMED",
             context_sub=(
-                "Continue to your one-time report checkout."
+                "Opening your one-time report purchase page."
                 if report_purchase
                 else "Your Cadivor workspace is ready."
             ),
@@ -780,8 +780,14 @@ def _render_signup_confirmation_success(cookie_manager=None) -> None:
 <p class="auth-copy">Your email has been confirmed successfully.</p>
 """
         )
+        if report_purchase:
+            _html(
+                '<p class="auth-copy">Your email is confirmed. Opening the report purchase page now; no refresh is needed.</p>'
+            )
+            confirm.continue_signup_confirmation_to_workspace(cookie_manager)
+            return
         if st.button(
-            "Continue to report checkout →" if report_purchase else "Continue to workspace",
+            "Continue to workspace",
             key="cadivor_signup_confirm_continue_workspace",
             type="primary",
             use_container_width=True,
