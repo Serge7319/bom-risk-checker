@@ -38,7 +38,6 @@ def create_checkout_session(
     _ensure_stripe_api_key()
     session = stripe.checkout.Session.create(
         mode="subscription",
-        payment_method_types=["card"],
         customer_email=user_email,
         line_items=[
             {
@@ -67,7 +66,6 @@ def create_one_time_bom_checkout(
     _ensure_stripe_api_key()
     return stripe.checkout.Session.create(
         mode="payment",
-        payment_method_types=["card"],
         customer_email=user_email,
         customer_creation="always",
         line_items=[{"price": price_id, "quantity": 1}],
