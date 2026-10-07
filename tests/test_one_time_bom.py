@@ -40,12 +40,31 @@ class OneTimeBOMTests(unittest.TestCase):
             )),
         ))
         fake_helper = types.ModuleType("src.stripe_helper")
-        fake_helper._ensure_stripe_api_key = Mock()
+        fake_helper._ensure_stripe_api_key = Mock(return_value="sk_test_fake")
         with patch.dict(sys.modules, {"stripe": fake_stripe, "src.stripe_helper": fake_helper}):
             self.assertEqual(one_time_bom.price_label(self.price_id), "USD 49.00")
             fake_stripe.Price.retrieve.return_value.recurring = {"interval": "month"}
             with self.assertRaises(one_time_bom.OneTimeBOMError):
                 one_time_bom.price_label("price_recurring")
+        one_time_bom.price_label.cache_clear()
+
+    def test_price_label_cache_is_scoped_to_stripe_key(self):
+        one_time_bom.price_label.cache_clear()
+        fake_stripe = types.SimpleNamespace(Price=types.SimpleNamespace(
+            retrieve=Mock(side_effect=[
+                types.SimpleNamespace(active=True, recurring=None, currency="usd", unit_amount=1900),
+                types.SimpleNamespace(active=True, recurring=None, currency="usd", unit_amount=2500),
+            ]),
+        ))
+        fake_helper = types.ModuleType("src.stripe_helper")
+        fake_helper._ensure_stripe_api_key = Mock(
+            side_effect=["sk_live_account_a", "sk_live_account_a", "sk_live_account_b"]
+        )
+        with patch.dict(sys.modules, {"stripe": fake_stripe, "src.stripe_helper": fake_helper}):
+            self.assertEqual(one_time_bom.price_label(self.price_id), "USD 19.00")
+            self.assertEqual(one_time_bom.price_label(self.price_id), "USD 19.00")
+            self.assertEqual(one_time_bom.price_label(self.price_id), "USD 25.00")
+        self.assertEqual(fake_stripe.Price.retrieve.call_count, 2)
         one_time_bom.price_label.cache_clear()
 
     def test_public_checkout_price_is_available_only_after_configuration(self):
@@ -117,6 +136,25 @@ class OneTimeBOMTests(unittest.TestCase):
                 one_time_bom.begin_checkout(USER, "eng@example.com", "https://app/success", "https://app/cancel")
         client.table.assert_not_called()
 
+    def test_stripe_helper_replaces_a_stale_process_global_key(self):
+        fake_stripe = types.ModuleType("stripe")
+        fake_stripe.api_key = "sk_test_stale"
+        helper_file = Path(__file__).resolve().parents[1] / "src/stripe_helper.py"
+        spec = importlib.util.spec_from_file_location("cadivor_stripe_key_test", helper_file)
+        helper = importlib.util.module_from_spec(spec)
+        with patch.dict(sys.modules, {"stripe": fake_stripe}):
+            with patch("src.secrets.get_secret", return_value="sk_live_current"):
+                spec.loader.exec_module(helper)
+                self.assertEqual(helper._ensure_stripe_api_key(), "sk_live_current")
+        self.assertEqual(fake_stripe.api_key, "sk_live_current")
+
+    def test_success_return_polls_payment_without_refresh(self):
+        runtime = (Path(__file__).resolve().parents[1] / "src/authenticated_runtime.py").read_text()
+        self.assertIn('@st.fragment(run_every="5s")', runtime)
+        self.assertIn("You do not need to refresh", runtime)
+        self.assertIn("st.rerun()", runtime)
+        self.assertNotIn("Refresh shortly if your credit is not yet ready", runtime)
+
     def test_stripe_checkout_is_one_payment_with_order_metadata(self):
         stripe = types.ModuleType("stripe")
         stripe.api_key = "sk_test_fake"
@@ -126,11 +164,12 @@ class OneTimeBOMTests(unittest.TestCase):
         spec = importlib.util.spec_from_file_location("cadivor_checkout_test", helper_file)
         helper = importlib.util.module_from_spec(spec)
         with patch.dict(sys.modules, {"stripe": stripe}):
-            spec.loader.exec_module(helper)
-            helper.create_one_time_bom_checkout(
-                price_id=self.price_id, user_email="eng@example.com", user_id=USER,
-                order_id=ORDER, success_url="https://app/success", cancel_url="https://app/cancel",
-            )
+            with patch("src.secrets.get_secret", return_value="sk_test_fake"):
+                spec.loader.exec_module(helper)
+                helper.create_one_time_bom_checkout(
+                    price_id=self.price_id, user_email="eng@example.com", user_id=USER,
+                    order_id=ORDER, success_url="https://app/success", cancel_url="https://app/cancel",
+                )
         options = create.call_args.kwargs
         self.assertEqual(options["mode"], "payment")
         self.assertEqual(options["line_items"], [{"price": self.price_id, "quantity": 1}])

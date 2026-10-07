@@ -419,6 +419,21 @@ class SignupConfirmationUiTests(unittest.TestCase):
         labels = [c.args[0] for c in self.st.button.call_args_list]
         self.assertIn("Continue to workspace", labels)
 
+    def test_report_purchase_confirmation_auto_opens_purchase_page(self):
+        self.st.session_state["cadivor_root_state"] = self.state.APP_SIGNUP_CONFIRMATION_SUCCESS
+        self.st.session_state[self.confirm._SESSION_READY_KEY] = True
+        self.st.session_state["user"] = types.SimpleNamespace(id="u1")
+        self.st.session_state["access_token"] = "access-token"
+        self.st.session_state["refresh_token"] = "refresh-token"
+        self.st.session_state["cadivor_report_purchase_pending"] = True
+        with patch.object(self.confirm, "continue_signup_confirmation_to_workspace") as continue_to_report:
+            self.auth._render_signup_confirmation_success(None)
+        continue_to_report.assert_called_once_with(None)
+        joined = "\n".join(self.bodies)
+        self.assertIn("no refresh is needed", joined)
+        labels = [c.args[0] for c in self.st.button.call_args_list]
+        self.assertNotIn("Continue to report checkout →", labels)
+
     def test_success_login_required_cta(self):
         self.st.session_state["cadivor_root_state"] = self.state.APP_SIGNUP_CONFIRMATION_SUCCESS
         self.auth._render_signup_confirmation_success(None)

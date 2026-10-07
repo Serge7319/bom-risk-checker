@@ -10480,9 +10480,26 @@ def run_authenticated_app() -> None:
                                     st.error(str(exc))
                                 else:
                                     st.rerun()
-                if _safe_text(_qp_value("checkout", "")) == "single_bom_success" and not _single_bom_credit_ready:
-                    st.info("Payment confirmation is processing. Refresh shortly if your credit is not yet ready.")
-                elif _safe_text(_qp_value("checkout", "")) == "single_bom_cancel":
+                _single_bom_checkout_state = _safe_text(_qp_value("checkout", ""))
+                if _single_bom_checkout_state == "single_bom_success" and not _single_bom_credit_ready:
+                    @st.fragment(run_every="5s")
+                    def _poll_single_bom_checkout_confirmation():
+                        # The return URL is only a status hint. Paid access is
+                        # granted after available_credit sees webhook fulfillment.
+                        if _single_bom_available_credit(_single_bom_user_id):
+                            try:
+                                if _safe_text(_qp_value("checkout", "")) == "single_bom_success":
+                                    del st.query_params["checkout"]
+                            except Exception:
+                                pass
+                            st.rerun()
+                        st.info(
+                            "Stripe sent you back to Cadivor. We’re confirming your payment "
+                            "automatically. You do not need to refresh; keep this page open."
+                        )
+
+                    _poll_single_bom_checkout_confirmation()
+                elif _single_bom_checkout_state == "single_bom_cancel":
                     st.info("Checkout was canceled. No report credit was purchased.")
         internal_nav_button(
             "Compare subscription plans", "Pricing", key="single_bom_compare_plans",
