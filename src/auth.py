@@ -618,7 +618,12 @@ def _submit_manual_signup(supabase, cookie_manager, email: str, password: str) -
     begin_manual_login(cookie_manager)
     st.session_state["cadivor_auth_status"] = AUTH_SIGNING_IN
     st.session_state["cadivor_root_state"] = APP_SIGNING_IN
-    render_auth_transition("Creating your secure workspace…")
+    transition_message = (
+        "Creating your report account… Next, check your email for the confirmation link."
+        if report_purchase
+        else "Creating your secure workspace…"
+    )
+    render_auth_transition(transition_message)
 
     _log_manual_login_event("manual_login_provider_started", cookie_manager)
     try:
@@ -717,12 +722,38 @@ def _render_signup_confirmation_pending() -> None:
     _clear_signup_password_state()
     email = str(st.session_state.get(SIGNUP_PENDING_EMAIL_KEY) or "").strip()
     safe_email = html.escape(email) if email else "your inbox"
-    _render_auth_card_brand(
-        eyebrow="Next step",
-        context_sub="Continue when you’re ready.",
-    )
-    _html(
-        f"""
+    report_purchase = _auth_signup_confirmation().report_purchase_requested()
+
+    if report_purchase:
+        _render_auth_card_brand(
+            eyebrow="REPORT CHECKOUT · STEP 1 OF 2",
+            context_sub="Verify your email to continue to report checkout.",
+        )
+        _html(
+            f"""
+<div class="auth-confirm-status" role="status">Step 1 of 2 · Confirm your email</div>
+<div class="auth-heading">Check your email to continue</div>
+<p class="auth-copy">We received a report-only account request for:</p>
+<div class="auth-confirm-email">{safe_email}</div>
+<div class="auth-confirm-guidance">
+  <strong>Next steps</strong>
+  <ol>
+    <li>Check your inbox, spam, and promotions folders for an email titled “Confirm your Cadivor account.” Delivery may take a few minutes.</li>
+    <li>Open the email and click its confirmation link.</li>
+    <li>Cadivor will verify your email and continue the report checkout. If asked to sign in, use this email and the password you created.</li>
+  </ol>
+</div>
+<p class="auth-copy">Verifying your email does not charge you. The one-time payment happens on Stripe before you upload and run the BOM report.</p>
+"""
+        )
+        login_label = "Already have an account? Sign in"
+    else:
+        _render_auth_card_brand(
+            eyebrow="Next step",
+            context_sub="Continue when you’re ready.",
+        )
+        _html(
+            f"""
 <div class="auth-confirm-status" role="status">Signup request received</div>
 <div class="auth-heading">Check your email</div>
 <p class="auth-copy">We’ve received your signup request for:</p>
@@ -731,9 +762,11 @@ def _render_signup_confirmation_pending() -> None:
 <p class="auth-copy">Already have a Cadivor account? Return to login or reset your password.</p>
 <div class="auth-confirm-guidance">New account? Check your inbox, spam, and promotions folders. If a confirmation email arrives, open the link to activate your account.</div>
 """
-    )
+        )
+        login_label = "Return to login"
+
     clicked_login = st.button(
-        "Return to login",
+        login_label,
         key="cadivor_return_to_login_from_signup_pending",
         type="primary",
         use_container_width=True,
@@ -755,7 +788,6 @@ def _render_signup_confirmation_pending() -> None:
         _exit_signup_pending_to_password_reset()
     elif clicked_different_email:
         _exit_signup_pending_to_create_account()
-
 
 def _render_signup_confirmation_success(cookie_manager=None) -> None:
     confirm = _auth_signup_confirmation()
@@ -987,7 +1019,7 @@ def _render_auth_page(
         st.markdown(
             """
             <div class="auth-heading">Get one full BOM report</div>
-            <p class="auth-copy">Create a report-only account and verify your email. Pay once before you upload and run the full BOM analysis.</p>
+            <p class="auth-copy">Create a report-only account, then confirm your email from the link we send. After verification, pay once before you upload and run the full BOM analysis.</p>
             <div class="auth-strip">One saved analysis for up to 100 unique components, with PDF and CSV reports. No trial analyses or subscription.</div>
             <div class="auth-divider"></div>
             """,
@@ -1096,7 +1128,7 @@ def _render_auth_page(
             with st.expander("View Terms of Service"):
                 st.markdown(CADIVOR_TERMS)
             submit = st.form_submit_button(
-                "Create account for report checkout" if report_purchase else AUTH_MODE_SIGNUP,
+                "Create account and send confirmation link" if report_purchase else AUTH_MODE_SIGNUP,
                 key="cadivor_signup_submit",
                 use_container_width=True,
                 disabled=bool(report_purchase and not report_price),
