@@ -87,6 +87,20 @@ class SignupConfirmationSourceGuards(unittest.TestCase):
         self.assertIn("signup_confirmation_redirect_url(", self.auth)
         self.assertIn("else confirm.signup_confirmation_redirect_url()", self.auth)
 
+    def test_report_checkout_signup_explains_email_confirmation_next_step(self):
+        pending_start = self.auth.index("def _render_signup_confirmation_pending")
+        pending_end = self.auth.index("def _render_signup_confirmation_success", pending_start)
+        pending = self.auth[pending_start:pending_end]
+        self.assertIn("report_purchase_requested()", pending)
+        self.assertIn("Step 1 of 2", pending)
+        self.assertIn("Check your email to continue", pending)
+        self.assertIn("Confirm your Cadivor account", pending)
+        self.assertIn("click its confirmation link", pending)
+        self.assertIn("same email and the password you created", pending)
+        self.assertIn("Creating your report account", self.auth)
+        self.assertIn("Next, check your email", self.auth)
+        self.assertIn("New account? Check your inbox, spam, and promotions folders.", pending)
+
     def test_implementation_does_not_depend_on_a1_recovery_reorder(self):
         # Committed/candidate auth.py must keep HEAD recovery order (after LOGIN/SIGNUP).
         tree = ast.parse(self.auth)
