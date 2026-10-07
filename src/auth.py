@@ -789,6 +789,7 @@ def _render_signup_confirmation_pending() -> None:
     elif clicked_different_email:
         _exit_signup_pending_to_create_account()
 
+
 def _render_signup_confirmation_success(cookie_manager=None) -> None:
     confirm = _auth_signup_confirmation()
     session_ready = confirm.signup_confirmation_session_ready()
