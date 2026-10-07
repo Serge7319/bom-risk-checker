@@ -19356,12 +19356,6 @@ def run_authenticated_app() -> None:
             deduplicated_count=deduped_row_count,
         )
 
-        st.subheader("Sample BOM Preview" if sample_mode else "Uploaded BOM Preview")
-        st.data_editor(
-            bom_df,
-            use_container_width=True,
-            hide_index=True,
-        )
         _one_time_preflight_price = ""
         if _one_time_blocked_plan and not (_one_time_reserved or _one_time_available):
             if len(bom_df) > ONE_TIME_BOM_MAX_PARTS:
@@ -19379,10 +19373,9 @@ def run_authenticated_app() -> None:
                     st.error(str(exc))
                 else:
                     st.info(
-                        f"This BOM has {len(bom_df)} unique components. Run the analysis first; "
-                        f"then you can pay {_one_time_preflight_price} once to unlock its full report "
-                        f"and PDF/CSV downloads. The offer covers up to {ONE_TIME_BOM_MAX_PARTS} "
-                        "unique components and does not start a subscription."
+                        f"{len(bom_df)} unique components. Run the analysis first; "
+                        f"then pay {_one_time_preflight_price} once to unlock the full report. "
+                        f"Limit: {ONE_TIME_BOM_MAX_PARTS} unique components; no subscription."
                     )
 
 
@@ -19404,6 +19397,7 @@ def run_authenticated_app() -> None:
             "Analyzing BOM…" if analysis_in_progress else ("Analyze Sample BOM" if sample_mode else "Analyze BOM"),
             type="primary",
             disabled=bom_name_missing or analysis_in_progress or _one_time_analysis_blocked,
+            use_container_width=True,
         )
         if analyze_clicked:
             # Render the busy state before the long-running supplier and risk analysis.
@@ -19455,8 +19449,9 @@ def run_authenticated_app() -> None:
 
                 if not current_future.done():
                     st.info(
-                        f"Analyzing {completed} of {total_parts} components"
-                        + (f": {current_mpn}" if current_mpn else "…")
+                        "**Analysis in progress** — "
+                        f"{completed} of {total_parts} components complete"
+                        + (f" · Checking {current_mpn}" if current_mpn else "…")
                     )
                     st.progress(completed / total_parts if total_parts else 0)
                     return
@@ -19503,6 +19498,12 @@ def run_authenticated_app() -> None:
             _render_active_bom_analysis()
             st.stop()
 
+        st.subheader("Sample BOM Preview" if sample_mode else "Uploaded BOM Preview")
+        st.data_editor(
+            bom_df,
+            use_container_width=True,
+            hide_index=True,
+        )
         analyze_requested = bool(st.session_state.pop("bom8_analysis_pending", False))
         if st.session_state.pop("bom8_sample_auto_analyze", False):
             analyze_requested = True
@@ -19682,16 +19683,6 @@ def run_authenticated_app() -> None:
                         stop_authenticated_page()
                     if not one_time_credit_available(_one_time_user_id):
                         st.markdown("### Your BOM analysis is ready")
-                        st.success(
-                            f"Cadivor analyzed {_one_time_component_count} unique components. "
-                            "The full report and downloads are locked until payment is confirmed."
-                        )
-                        st.info(
-                            "This one-time report covers one BOM with up to "
-                            f"{ONE_TIME_BOM_MAX_PARTS} unique components. You will see the active "
-                            "Stripe price before checkout. No subscription is included. "
-                            "Keep this tab open; the report will unlock here automatically after payment."
-                        )
                         if not one_time_bom_enabled():
                             st.warning("One-time checkout is temporarily unavailable. Your report has not been saved.")
                             stop_authenticated_page()
@@ -19699,12 +19690,16 @@ def run_authenticated_app() -> None:
                             _one_time_final_price = one_time_report_price_label(
                                 str(get_secret("STRIPE_ONE_TIME_BOM_REPORT_PRICE_ID", required=True))
                             )
+                            st.caption(
+                                f"{_one_time_component_count} components analyzed · "
+                                f"up to {ONE_TIME_BOM_MAX_PARTS} per report · no subscription."
+                            )
                             _one_time_pending = pending_one_time_checkout(_one_time_user_id)
                             if _one_time_pending and _one_time_pending[0] == "open":
                                 _one_time_checkout_url = _one_time_pending[1]
                             elif _one_time_pending:
                                 _one_time_checkout_url = ""
-                                st.info("Stripe is processing your checkout. Cadivor will unlock the report after confirmation.")
+                                st.info("Stripe is confirming your payment. Your report will unlock here automatically.")
                             else:
                                 _one_time_checkout_url = begin_one_time_checkout(
                                     _one_time_user_id,
@@ -19714,9 +19709,14 @@ def run_authenticated_app() -> None:
                                 )
                             if _one_time_checkout_url:
                                 st.link_button(
-                                    f"Unlock this full report · {_one_time_final_price}",
+                                    f"Pay {_one_time_final_price} and unlock report",
                                     _one_time_checkout_url,
                                     type="primary",
+                                    use_container_width=True,
+                                )
+                                st.caption(
+                                    "Keep this tab open. After payment, the report appears here "
+                                    "and in Analysis Details."
                                 )
                         except OneTimeBOMError as exc:
                             st.error(str(exc))
@@ -19726,9 +19726,6 @@ def run_authenticated_app() -> None:
                             if one_time_credit_available(_one_time_user_id):
                                 st.success("Payment confirmed. Unlocking your full report…")
                                 st.rerun()
-                            st.caption(
-                                "Payment status is checked automatically. No refresh is needed."
-                            )
 
                         _poll_one_time_report_payment()
                         stop_authenticated_page()
