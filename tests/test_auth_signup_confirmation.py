@@ -96,7 +96,7 @@ class SignupConfirmationSourceGuards(unittest.TestCase):
         self.assertIn("Check your email to continue", pending)
         self.assertIn("Confirm your Cadivor account", pending)
         self.assertIn("click its confirmation link", pending)
-        self.assertIn("same email and the password you created", pending)
+        self.assertIn("use this email and the password you created", pending)
         self.assertIn("Creating your report account", self.auth)
         self.assertIn("Next, check your email", self.auth)
         self.assertIn("New account? Check your inbox, spam, and promotions folders.", pending)
