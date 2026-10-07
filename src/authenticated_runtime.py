@@ -3686,9 +3686,9 @@ def run_authenticated_app() -> None:
         def _load_dashboard_secondary():
             parts_response = execute_supabase_read(
                 _scoped_saved_query(
-                    supabase.table("analysis_parts").select(
-                        "id,analysis_id,user_id,mpn,risk_level,risk_score,lifecycle_status,manufacturer"
-                    ),
+                    # Select the row shape so this read remains compatible
+                    # before and after the optional image_url migration.
+                    supabase.table("analysis_parts").select("*"),
                     _saved_workspace_id,
                 )
                 .eq("user_id", _saved_user_id)
@@ -3823,12 +3823,8 @@ def run_authenticated_app() -> None:
 
         if workspace_category == "Engineering Overview":
             reveal_authenticated_page_body("Dashboard")
-            render_dashboard_page_heading(
-                home["title"],
-                "Open the highest-risk BOM, or start a new one."
-                if home["kind"] == "attention"
-                else "Pick up a saved BOM, or start a new one.",
-            )
+            # The returning-home view owns its greeting and page title.
+            render_dashboard_page_heading()
             pause_new = (
                 not is_admin
                 and not st.session_state.get(PROFILE_UNRESOLVED_KEY)
@@ -3849,6 +3845,13 @@ def run_authenticated_app() -> None:
                 home,
                 plan_notice=plan_notice,
                 pause_new_analyses=pause_new,
+                user_name=(
+                    profile_for_shell.get("full_name")
+                    or profile_for_shell.get("name")
+                    or profile_for_shell.get("email")
+                    or current_user.get("email", "")
+                ),
+                parts=overview_parts,
             )
             if not is_admin:
                     render_upgrade_prompt(
