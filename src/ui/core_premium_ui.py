@@ -198,6 +198,12 @@ def inject_workspace_geometry_final() -> None:
     from src.ui.bom_navigation import inject_saved_bom_nav_css
 
     inject_saved_bom_nav_css()
+    visual_refresh_css = _load_css("dashboard_visual_refresh.css")
+    if visual_refresh_css.strip():
+        st.markdown(
+            f"<style id='cadivor-dashboard-visual-refresh'>{visual_refresh_css}</style>",
+            unsafe_allow_html=True,
+        )
 
 
 def authenticated_surface_ready() -> bool:

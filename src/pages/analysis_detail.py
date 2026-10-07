@@ -3165,6 +3165,10 @@ def render_analysis_detail(
                     component_row_ids.append(mpn_value)
                     component_rows.append(
                         {
+                            "Photo": {
+                                "image_url": part.get("image_url") or part.get("Photo") or "",
+                                "mpn": mpn_value,
+                            },
                             "Component": mpn_value,
                             "Manufacturer": _safe(
                                 _part_value(part, "manufacturer", "Manufacturer"),
@@ -3206,6 +3210,9 @@ def render_analysis_detail(
                         f"{component_view_token or 'all'}"
                     ),
                     columns=(
+                        ExpandableTableColumn(
+                            "Photo", "Photo", 0.36, 72, align="center", kind="image"
+                        ),
                         ExpandableTableColumn(
                             "Component", "Component", 1.15, 150, kind="strong"
                         ),

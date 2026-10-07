@@ -42,6 +42,7 @@ from src.ui.cadivor_design_system.components import (
     selected_dataframe_rows,
     semantic_priority_label,
     render_metric_strip,
+    render_part_image,
     render_section_header,
     render_subsection_header,
 )
@@ -89,6 +90,7 @@ __all__ = [
     "selected_dataframe_rows",
     "semantic_priority_label",
     "render_metric_strip",
+    "render_part_image",
     "render_section_header",
     "render_subsection_header",
 ]

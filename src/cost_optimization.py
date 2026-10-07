@@ -1,8 +1,8 @@
 """Cadivor Milestone 21.0 — Cost Optimization.
 
 Uses saved BOM component records to identify priced spend, purchasing
-leverage, missing cost data, and estimated cost-reduction opportunities.
-No database migration is required.
+leverage, missing cost data, and estimated cost-reduction opportunities. Part
+photos are optional and appear when saved records contain a trusted image URL.
 """
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ import pandas as pd
 import streamlit as st
 
 from src.ui.cadivor_design_system import cadivor_engineering_dataframe
+from src.part_images import normalize_supplier_image_url, part_image_markup
 
 
 def _text(value: Any, default: str = "") -> str:
@@ -87,6 +88,9 @@ def build_cost_optimization(
                 "Part Number": _text(
                     _first(row, "mpn", "MPN", "part_number"),
                     "Unknown",
+                ),
+                "Image URL": normalize_supplier_image_url(
+                    _first(row, "image_url", "Image URL", "photo_url")
                 ),
                 "Manufacturer": _text(row.get("manufacturer"), "Unknown"),
                 "Supplier": _text(
@@ -163,6 +167,7 @@ def build_cost_optimization(
         opportunities.append(
             {
                 "Part Number": reference["Part Number"],
+                "Image URL": reference["Image URL"],
                 "Manufacturer": reference["Manufacturer"],
                 "Category": category,
                 "Projects": project_count,
@@ -306,6 +311,7 @@ def render_cost_optimization(
     internal_nav_button: Callable[..., Any],
 ) -> None:
     _css()
+    photo_column = st.column_config.ImageColumn("Part photo", width="small")
 
     st.markdown(
         '<div class="cv21-note">Estimated savings are planning guidance based on recorded prices, '
@@ -357,7 +363,8 @@ def render_cost_optimization(
     if not intelligence["opportunities"]:
         st.info("No priced component currently meets the volume, supplier, or shared-demand criteria for a modeled savings opportunity.")
     for index,row in enumerate(intelligence["opportunities"][:6]):
-        st.markdown(f"""<section class="cv21-card"><div class="cv21-card-title">{html.escape(row['Part Number'])}</div><div class="cv21-card-copy">{html.escape(row['Reason'])}</div><div class="cv21-meta"><span>{html.escape(row['Category'])}</span><span>{row['Projects']} project(s)</span><span>{row['Units per Build']} unit(s)/build</span><span>Current ${row['Current Unit Price']:,.4f}</span><span>Target ${row['Estimated Target Price']:,.4f}</span><span>Est. savings ${row['Estimated Run Savings']:,.2f}</span></div></section>""", unsafe_allow_html=True)
+        photo = part_image_markup(row.get("Image URL"), row["Part Number"], size=64)
+        st.markdown(f"""<section class="cv21-card cv-part-card-layout">{photo}<div><div class="cv21-card-title">{html.escape(row['Part Number'])}</div><div class="cv21-card-copy">{html.escape(row['Reason'])}</div><div class="cv21-meta"><span>{html.escape(row['Category'])}</span><span>{row['Projects']} project(s)</span><span>{row['Units per Build']} unit(s)/build</span><span>Current ${row['Current Unit Price']:,.4f}</span><span>Target ${row['Estimated Target Price']:,.4f}</span><span>Est. savings ${row['Estimated Run Savings']:,.2f}</span></div></div></section>""", unsafe_allow_html=True)
         cols=st.columns(2)
         with cols[0]: internal_nav_button("Review Sourcing","Procurement Advisor",key=f"cost_procurement_{index}",use_container_width=True)
         with cols[1]: internal_nav_button("Find Alternatives","Alternative Finder",key=f"cost_alternative_{index}",use_container_width=True,original_part=row["Part Number"],source_page="cost_optimization")
@@ -383,6 +390,7 @@ def render_cost_optimization(
                 [
                     "Project",
                     "Part Number",
+                    "Image URL",
                     "Manufacturer",
                     "Quantity per Build",
                     "Unit Price",
@@ -393,6 +401,7 @@ def render_cost_optimization(
                 ]
             ],
             column_config={
+                "Image URL": photo_column,
                 "Unit Price": st.column_config.NumberColumn(format="$%.4f"),
                 "Extended Cost per Build": st.column_config.NumberColumn(format="$%.2f"),
             },
@@ -411,6 +420,7 @@ def render_cost_optimization(
                 opportunity_df[
                     [
                         "Part Number",
+                        "Image URL",
                         "Manufacturer",
                         "Category",
                         "Projects",
@@ -423,6 +433,7 @@ def render_cost_optimization(
                     ]
                 ],
                 column_config={
+                    "Image URL": photo_column,
                     "Current Unit Price": st.column_config.NumberColumn(format="$%.4f"),
                     "Estimated Target Price": st.column_config.NumberColumn(format="$%.4f"),
                     "Estimated Run Savings": st.column_config.NumberColumn(format="$%.2f"),
@@ -439,6 +450,7 @@ def render_cost_optimization(
                     [
                         "Project",
                         "Part Number",
+                        "Image URL",
                         "Manufacturer",
                         "Quantity per Build",
                         "Supplier Sources",
@@ -446,6 +458,7 @@ def render_cost_optimization(
                         "Risk Score",
                     ]
                 ],
+                column_config={"Image URL": photo_column},
             )
         else:
             st.success("Every component record contains pricing data.")
@@ -458,6 +471,7 @@ def render_cost_optimization(
                     [
                         "Project",
                         "Part Number",
+                        "Image URL",
                         "Manufacturer",
                         "Quantity per Build",
                         "Unit Price",
@@ -469,6 +483,7 @@ def render_cost_optimization(
                     ]
                 ],
                 column_config={
+                    "Image URL": photo_column,
                     "Unit Price": st.column_config.NumberColumn(format="$%.4f"),
                     "Extended Cost per Build": st.column_config.NumberColumn(format="$%.2f"),
                 },

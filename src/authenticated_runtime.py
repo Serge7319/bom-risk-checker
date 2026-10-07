@@ -2485,6 +2485,7 @@ def run_authenticated_app() -> None:
             "Lead Time Weeks": part_data.get("lead_time_weeks", None),
             "Lifecycle Status": part_data.get("lifecycle_status", "Unknown"),
             "Product URL": part_data.get("product_detail_url", ""),
+            "Photo": part_data.get("image_url", ""),
             "Has Alternates": part_data.get("has_alternates", False),
             "Alternate Count": part_data.get("alternate_count", 0),
             "Alternative Part Numbers": part_data.get("alternative_part_numbers", ""),
@@ -6358,10 +6359,16 @@ def run_authenticated_app() -> None:
                 st.caption(
                     f"Showing {len(urgent_rows)} component(s) with a priority score of 75 or higher."
                 )
+            from src.part_images import part_image_markup
             for index, row in enumerate(urgent_rows):
+                urgent_photo_markup = part_image_markup(
+                    row.get("Image URL"), row["Part Number"], size=64
+                )
                 st.markdown(
                     f"""
-                    <section class="cv151-card">
+                    <section class="cv151-card cv151-card-layout">
+                      {urgent_photo_markup}
+                      <div>
                       <div class="cv151-card-title">{html.escape(row['Part Number'])}</div>
                       <div class="cv151-card-copy">
                         <b>Recommended action: {html.escape(row['Recommendation'])}</b><br>
@@ -6371,6 +6378,7 @@ def run_authenticated_app() -> None:
                         <span>Priority {row['Priority Score']}/100</span>
                         <span>Stock {row['Available Stock']:,}</span>
                         <span>{row['Supplier Sources']} supplier(s)</span>
+                      </div>
                       </div>
                     </section>
                     """,
@@ -6402,6 +6410,7 @@ def run_authenticated_app() -> None:
                 cadivor_engineering_dataframe(
                     advisor["recommendation_df"],
                     column_config={
+                        "Image URL": st.column_config.ImageColumn("Part photo", width="small"),
                         "Risk Level": st.column_config.TextColumn(width="small"),
                         "Recommended Action": st.column_config.TextColumn(width="medium"),
                     },
@@ -15917,10 +15926,17 @@ def run_authenticated_app() -> None:
                 else "Compatibility Confidence"
             )
 
+            from src.part_images import part_image_markup
+            candidate_photo_markup = part_image_markup(
+                selected_row.get("image_url") or selected_row.get("Image URL"),
+                selected_alternative,
+                size=82,
+            )
             with st.container(border=True, key="af62b_best_card"):
                 st.markdown(
                     f"""
                     <div class="af62b-best-top">
+                      <div class="af62b-best-image">{candidate_photo_markup}</div>
                       <div>
                         <div class="af62b-eyebrow">{html.escape(_af62_candidate_eyebrow(classification_value))}</div>
                         <div class="af62b-best-part">{html.escape(selected_alternative)}</div>
@@ -19794,6 +19810,8 @@ def run_authenticated_app() -> None:
                     st.error(f"Could not save analysis summary: {e}")
                     stop_authenticated_page()
 
+                from src.part_images import normalize_supplier_image_url
+
                 part_records = []
 
                 for _, part_row in results_df.iterrows():
@@ -19802,6 +19820,9 @@ def run_authenticated_app() -> None:
                             "analysis_id": analysis_id,
                             "user_id": current_user["id"],
                             "workspace_id": active_workspace_id,
+                            "image_url": normalize_supplier_image_url(
+                                part_row.get("Photo", "")
+                            ),
                             "project_name": analysis_name,
                             "mpn": part_row.get("MPN", ""),
                             "manufacturer": part_row.get("Manufacturer", ""),
@@ -19838,7 +19859,21 @@ def run_authenticated_app() -> None:
 
                 if part_records:
                     try:
-                        supabase.table("analysis_parts").insert(part_records).execute()
+                        try:
+                            supabase.table("analysis_parts").insert(part_records).execute()
+                        except Exception as photo_schema_error:
+                            error_text = str(photo_schema_error).casefold()
+                            missing_photo_column = (
+                                "image_url" in error_text
+                                and ("schema cache" in error_text or "column" in error_text)
+                            )
+                            if not missing_photo_column:
+                                raise
+                            legacy_records = [
+                                {key: value for key, value in record.items() if key != "image_url"}
+                                for record in part_records
+                            ]
+                            supabase.table("analysis_parts").insert(legacy_records).execute()
                     except Exception as e:
                         if _one_time_reserved:
                             # An incomplete summary is not a delivered report.
@@ -20072,7 +20107,10 @@ def run_authenticated_app() -> None:
 
             filtered_df = filtered_df.sort_values(by="Risk Score", ascending=False)
 
+            if "Photo" not in filtered_df.columns:
+                filtered_df["Photo"] = ""
             display_columns = [
+                "Photo",
                 "MPN",
                 "Manufacturer",
                 "Best Source",
@@ -20096,6 +20134,7 @@ def run_authenticated_app() -> None:
             cadivor_engineering_dataframe(
                 filtered_df[display_columns],
                 column_config={
+                    "Photo": st.column_config.ImageColumn("Part photo", width="small"),
                     "MPN": st.column_config.TextColumn(width="medium"),
                     "Manufacturer": st.column_config.TextColumn(width="medium"),
                     "Best Source": st.column_config.TextColumn(width="small"),
