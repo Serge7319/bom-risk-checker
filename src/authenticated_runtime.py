@@ -19691,8 +19691,8 @@ def run_authenticated_app() -> None:
                                 str(get_secret("STRIPE_ONE_TIME_BOM_REPORT_PRICE_ID", required=True))
                             )
                             st.caption(
-                                f"{_one_time_component_count} components analyzed · "
-                                f"up to {ONE_TIME_BOM_MAX_PARTS} per report · no subscription."
+                                f"Cadivor analyzed {_one_time_component_count} unique components. "
+                                f"One-time report covers up to {ONE_TIME_BOM_MAX_PARTS}; no subscription."
                             )
                             _one_time_pending = pending_one_time_checkout(_one_time_user_id)
                             if _one_time_pending and _one_time_pending[0] == "open":
