@@ -1,8 +1,4 @@
-"""Cadivor authenticated application shell.
-
-Launch foundation repair: one custom persistent navigation rail and one main
-workspace offset. The native Streamlit sidebar is deliberately not used.
-"""
+"""Cadivor authenticated application shell with a grouped product navigation rail."""
 from __future__ import annotations
 
 import html
@@ -21,42 +17,45 @@ from src.ui.navigation import (
 NAV_GROUPS = (
     ("", (
         ("Home", "dashboard", "Dashboard"),
-        ("BOMs", "bom", "BOM Analyzer"),
-        ("Engineering Decisions", "decisions", "Engineering Decisions"),
-        ("Alerts & Monitoring", "monitoring", "Monitoring"),
+        ("BOM Analysis", "bom", "BOM Analyzer"),
+        ("Parts Intelligence", "portfolio", "Portfolio Intelligence"),
+        ("Suppliers", "suppliers", "Procurement Advisor"),
         ("Reports", "reports", "Reports"),
+    )),
+    ("Library", (
+        ("Saved BOMs", "saved-boms", "BOM Analyzer"),
+        ("Watchlist", "watchlist", "Monitoring"),
+        ("Engineering Decisions", "decisions", "Engineering Decisions"),
+    )),
+    ("Admin", (
+        ("Workspace Settings", "settings", "Settings"),
+        ("Resources", "help", "Help"),
     )),
     ("Decision Tools", (
         ("Find a replacement", "alternatives", "Alternative Finder"),
         ("Compare parts", "compare", "Compare Parts"),
         ("Datasheet Q&A", "datasheet-qa", "Datasheet Q&A"),
         ("Design Impact", "impact", "Design Impact Analyzer"),
-        ("Procurement Advisor", "procurement", "Procurement Advisor"),
         ("Cost Optimization", "cost", "Cost Optimization"),
         ("Supply Scenario", "scenario", "Supply Risk Scenario"),
-        ("Portfolio Intelligence", "portfolio", "Portfolio Intelligence"),
-    )),
-    ("Workspace", (
-        ("Settings", "settings", "Settings"),
-        ("Resources", "help", "Help"),
     )),
 )
 
 ROUTE_DISPLAY = {
     "Dashboard": "Home",
-    "BOM Analyzer": "BOMs",
+    "BOM Analyzer": "BOM Analysis",
     "Engineering Decisions": "Engineering Decisions",
-    "Monitoring": "Alerts & Monitoring",
+    "Monitoring": "Watchlist",
     "Reports": "Reports",
     "Analysis Details": "Engineering Decision Brief",
     "Alternative Finder": "Find a replacement",
     "Compare Parts": "Compare parts",
     "Datasheet Q&A": "Datasheet Q&A",
     "Design Impact Analyzer": "Design Impact",
-    "Procurement Advisor": "Procurement Advisor",
+    "Procurement Advisor": "Suppliers",
     "Cost Optimization": "Cost Optimization",
     "Supply Risk Scenario": "Supply Scenario",
-    "Portfolio Intelligence": "Portfolio Intelligence",
+    "Portfolio Intelligence": "Parts Intelligence",
     "Pricing": "Compare plans",
     "Single BOM Report": "One full BOM report",
     "Settings": "Settings",
@@ -77,16 +76,16 @@ def one_time_report_nav_rows(
 
 
 def workspace_nav_rows(*, is_admin: bool) -> tuple[tuple[str, str, str], ...]:
-    """Workspace sidebar destinations for the foundation shell.
+    """Admin destinations for the persistent authenticated rail.
 
     Admin Console is injected only when ``is_admin`` is true (from
     ``public.users.role`` via the authenticated runtime). Non-admins never
     receive the Admin Console destination.
     """
-    rows = next(group for name, group in NAV_GROUPS if name == "Workspace")
+    rows = next(group for name, group in NAV_GROUPS if name == "Admin")
     if is_admin:
-        return (("Admin Console", "admin", "Admin Console"),) + rows
-    return tuple(row for row in rows if row[2] != "Help")
+        return rows + (("Admin Console", "admin", "Admin Console"),)
+    return tuple(row for row in rows if row[2] == "Settings")
 
 
 def _load_css() -> str:
@@ -282,29 +281,6 @@ def render_unified_shell(
         else:
             inject_main_transition_css(gen)
 
-    st.markdown(
-        f"""
-        <div data-cadivor-topbar-flow-host="1" data-testid="cadivor-topbar-flow-host">
-        <div class="cv-foundation-topbar" aria-label="Cadivor application header">
-          <div class="cv-foundation-brand">
-            <span class="cv-foundation-brand-mark">C</span>
-            <span class="cv-foundation-brand-copy">
-              <strong>Cadivor</strong><small>Engineering Decision Intelligence</small>
-            </span>
-          </div>
-          <div class="cv-foundation-page-context">
-            <strong>{_escape(ROUTE_DISPLAY.get(current_page, current_page))}</strong>
-            <span class="cv-foundation-search cadivor-search-pill" role="button" tabindex="0" aria-label="Open Search Cadivor command center">Search Cadivor <kbd>⌘K</kbd></span>
-          </div>
-          <div class="cv-foundation-profile-copy">
-            <small>Workspace</small><strong>{_escape(full_name)}</strong><em>{_escape(secondary)}</em>
-          </div>
-        </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
     if loading_route:
         from src.ui.main_transition import paint_prepared_main_transition
 
@@ -355,6 +331,14 @@ def render_unified_shell(
 
     with st.container(key="cv_foundation_navigation"):
         st.markdown(
+            """<div class="cv-foundation-sidebar-brand">
+              <span class="cv-foundation-brand-mark">C</span>
+              <span class="cv-foundation-brand-copy"><strong>Cadivor</strong>
+              <small>Engineering Intelligence</small></span>
+            </div>""",
+            unsafe_allow_html=True,
+        )
+        st.markdown(
             f"""
             <div class="cv-foundation-workspace" aria-label="Current workspace">
               <span class="cv-foundation-workspace-mark" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 20V7l8-4 8 4v13M9 20v-5h6v5M8 10h.01M16 10h.01"/></svg></span>
@@ -384,7 +368,7 @@ def render_unified_shell(
         for group_name, configured_rows in NAV_GROUPS:
             rows = (
                 workspace_nav_rows(is_admin=is_admin)
-                if group_name == "Workspace"
+                if group_name == "Admin"
                 else configured_rows
             )
             if not group_name:
@@ -398,28 +382,31 @@ def render_unified_shell(
                 # Session navigation only — raw ?page= hrefs hard-reload the app and
                 # briefly clear the authenticated shell (blank white/black frames).
                 is_active = destination == current_page
-                st.button(
-                    label,
-                    key=f"cv_foundation_nav_{slug}",
-                    use_container_width=True,
-                    type="primary" if is_active else "secondary",
-                    on_click=_commit_navigation,
-                    args=(destination,),
-                )
-
-        st.markdown(
-            f"""<div class="cv-foundation-plan-card"><strong>{_escape(plan_name)}</strong><span>Your subscription</span><span>{_escape(usage_summary)}</span><span>{_escape(saved_summary)}</span></div>""",
-            unsafe_allow_html=True,
-        )
-        if str(plan_name).lower() in {"trial expired", "subscription inactive"}:
-            st.button("Compare plans", key="cv_foundation_compare_plans", use_container_width=True, on_click=_open_compare_plans)
-        if st.button(
-            "＋ New BOM analysis",
-            key="cv_foundation_new_analysis",
-            type="primary",
-            use_container_width=True,
-        ):
-            clear_analysis()
+                if destination == "BOM Analyzer":
+                    is_active = (
+                        label == "Saved BOMs"
+                        if st.session_state.get("cadivor_show_saved_boms")
+                        else label == "BOM Analysis"
+                    ) and current_page == "BOM Analyzer"
+                if label == "BOM Analysis":
+                    if st.button(
+                        label,
+                        key=f"cv_foundation_nav_{slug}",
+                        use_container_width=True,
+                        type="primary" if is_active else "secondary",
+                    ):
+                        st.session_state.pop("cadivor_show_saved_boms", None)
+                        st.session_state.pop("cadivor_preselect_saved_bom_id", None)
+                        clear_analysis()
+                else:
+                    st.button(
+                        label,
+                        key=f"cv_foundation_nav_{slug}",
+                        use_container_width=True,
+                        type="primary" if is_active else "secondary",
+                        on_click=_commit_navigation,
+                        args=(destination,),
+                    )
 
     # After chrome paints: reset scroll only when sidebar navigation changed pages.
     inject_nav_scroll_reset_if_needed()
