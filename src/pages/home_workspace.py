@@ -8,7 +8,6 @@ from typing import Any, Mapping
 
 import streamlit as st
 
-from src.ui.cadivor_design_system import render_part_image
 from src.ui.navigation import navigate_to, open_saved_bom
 
 HOME_NEW = "new"
@@ -126,7 +125,7 @@ def build_home_model(
         "title": title,
         "analyses": scoped,
         "primary": primary,
-        "recent": [_recent_card(row) for row in _sorted_recent(scoped)[:3]],
+        "recent": [_recent_card(row) for row in _sorted_recent(scoped)[:6]],
         "secondary_failed": bool(secondary_failed and scoped),
         "show_onboarding": kind == HOME_NEW,
     }
@@ -228,10 +227,8 @@ def render_returning_home(
             refresh_failed=bool(model.get("secondary_refresh_failed")),
         )
 
-    primary = model.get("primary") or {}
     recent = list(model.get("recent") or [])
     analyses = list(model.get("analyses") or [])
-    available_parts = [part for part in (parts or []) if isinstance(part, dict)]
     review_boms = sum(1 for row in analyses if _int(row.get("high_risk_count")) > 0)
     high_risk_total = sum(_int(row.get("high_risk_count")) for row in analyses)
     health_scores = [
@@ -249,8 +246,6 @@ def render_returning_home(
         name = name.split("@", 1)[0]
     first_name = name.replace(".", " ").replace("_", " ").split()[0].title() if name else ""
     greeting = f"Welcome back, {first_name}" if first_name else "Your engineering workspace"
-    priority_parts = _ranked_priority_parts(available_parts)[:3]
-
     with st.container(key="cv_home_workspace"):
         st.markdown(
             f"""<header class="cv-home-v3-header">
@@ -262,15 +257,7 @@ def render_returning_home(
             </header>""",
             unsafe_allow_html=True,
         )
-        action_col, _header_space, new_col = st.columns([1.3, 5, 1.2], gap="small")
-        with action_col:
-            if st.button(
-                str(primary.get("action_label") or primary.get("label") or "Open BOM"),
-                key="home_primary_action",
-                type="primary",
-                use_container_width=True,
-            ):
-                _run_primary(primary)
+        _, new_col = st.columns([7.5, 1.4], gap="small")
         with new_col:
             if pause_new_analyses:
                 if st.button("Open reports", key="home_open_reports", use_container_width=True):
@@ -297,95 +284,74 @@ def render_returning_home(
                     unsafe_allow_html=True,
                 )
 
-        content_col, focus_col = st.columns([1.65, 1], gap="medium")
-        with content_col:
-            with st.container(key="cv_home_recent_v3"):
+        with st.container(key="cv_home_recent_v3"):
+            st.markdown(
+                f"""<div class="cv-home-v3-section-head">
+                  <div><h2>Recent BOMs</h2><p>Your latest analyses and their current status.</p></div>
+                  <span>{len(analyses)} saved</span>
+                </div>""",
+                unsafe_allow_html=True,
+            )
+            if recent:
                 st.markdown(
-                    f"""<div class="cv-home-v3-section-head">
-                      <div><h2>Recent BOMs</h2><p>Your latest engineering reviews</p></div>
-                      <span>{len(analyses)} saved</span>
-                    </div>""",
+                    '<div class="cv-home-v3-table-head"><span>BOM</span><span>Project</span>'
+                    '<span>Components</span><span>Health</span><span>High-risk parts</span>'
+                    '<span>Last analyzed</span><span>Open</span></div>',
                     unsafe_allow_html=True,
                 )
-                if recent:
-                    st.markdown(
-                        '<div class="cv-home-v3-table-head"><span>BOM / project</span>'
-                        '<span>Components</span><span>Health</span><span></span></div>',
-                        unsafe_allow_html=True,
-                    )
-                    for card in recent:
-                        with st.container(key=f"cv_home_bom_{card['id']}"):
-                            name_col, parts_col, health_col, open_col = st.columns(
-                                [4.4, 1.1, 1.15, 1.2], gap="small", vertical_alignment="center"
+                for card in recent:
+                    with st.container(key=f"cv_home_bom_{card['id']}"):
+                        bom_col, project_col, parts_col, health_col, risk_col, date_col, open_col = st.columns(
+                            [2.45, 1.45, 0.85, 0.9, 1.1, 1.25, 0.75],
+                            gap="small",
+                            vertical_alignment="center",
+                        )
+                        with bom_col:
+                            st.markdown(
+                                f"""<div class="cv-home-v3-bom-name">{html.escape(str(card.get('display_name') or card['name']))}</div>
+                                <div class="cv-home-v3-bom-date">{html.escape(str(card.get('name') or 'Saved BOM'))}</div>""",
+                                unsafe_allow_html=True,
                             )
-                            with name_col:
-                                st.markdown(
-                                    f"""<div class="cv-home-v3-bom-name">{html.escape(card['name'])}</div>
-                                    <div class="cv-home-v3-bom-date">Updated {html.escape(str(card.get('updated') or 'recently'))}</div>""",
-                                    unsafe_allow_html=True,
-                                )
-                            with parts_col:
-                                count = card.get("total_parts")
-                                st.markdown(
-                                    f'<div class="cv-home-v3-bom-count">{html.escape(str(count if count is not None else "—"))}</div>',
-                                    unsafe_allow_html=True,
-                                )
-                            with health_col:
-                                st.markdown(_health_badge(card.get("health")), unsafe_allow_html=True)
-                            with open_col:
-                                if st.button(
-                                    "Open",
-                                    key=f"home_continue_{card['id']}",
-                                    use_container_width=True,
-                                ):
-                                    open_saved_bom(card["id"], arm_opening=True, _rerun=True)
-                else:
-                    st.markdown(
-                        '<div class="cv-home-v3-empty">No saved BOM reviews yet. Start an analysis to see it here.</div>',
-                        unsafe_allow_html=True,
-                    )
-                if len(analyses) > len(recent):
-                    if st.button("View all saved BOMs", key="home_view_all_boms"):
-                        navigate_to("BOM Analyzer", arm_opening=False)
-
-        with focus_col:
-            with st.container(key="cv_home_priority_v3"):
+                        with project_col:
+                            st.markdown(
+                                f'<div class="cv-home-v3-table-value">{html.escape(str(card.get("project") or "—"))}</div>',
+                                unsafe_allow_html=True,
+                            )
+                        with parts_col:
+                            count = card.get("total_parts")
+                            st.markdown(
+                                f'<div class="cv-home-v3-table-value">{html.escape(str(count if count is not None else "—"))}</div>',
+                                unsafe_allow_html=True,
+                            )
+                        with health_col:
+                            st.markdown(_health_badge(card.get("health")), unsafe_allow_html=True)
+                        with risk_col:
+                            risk_count = _int(card.get("high_risk_count"))
+                            tone = "risk" if risk_count else "clear"
+                            st.markdown(
+                                f'<span class="cv-home-v3-risk-pill cv-home-v3-risk-pill--{tone}">{risk_count}</span>',
+                                unsafe_allow_html=True,
+                            )
+                        with date_col:
+                            st.markdown(
+                                f'<div class="cv-home-v3-table-value">{html.escape(str(card.get("updated") or "—"))}</div>',
+                                unsafe_allow_html=True,
+                            )
+                        with open_col:
+                            if st.button(
+                                "Open",
+                                key=f"home_continue_{card['id']}",
+                                use_container_width=True,
+                            ):
+                                open_saved_bom(card["id"], arm_opening=True, _rerun=True)
+            else:
                 st.markdown(
-                    f"""<div class="cv-home-v3-section-head">
-                      <div><h2>Priority components</h2><p>Parts that need an engineering look</p></div>
-                      <span class="cv-home-v3-priority-count">{high_risk_total} high risk</span>
-                    </div>""",
+                    '<div class="cv-home-v3-empty">No saved BOM reviews yet. Start an analysis to see it here.</div>',
                     unsafe_allow_html=True,
                 )
-                if priority_parts:
-                    for index, part in enumerate(priority_parts):
-                        mpn = str(part.get("mpn") or part.get("part_number") or "Component")
-                        with st.container(key=f"cv_home_priority_part_{index}"):
-                            image_col, detail_col = st.columns(
-                                [0.9, 3.1], gap="small", vertical_alignment="center"
-                            )
-                            with image_col:
-                                render_part_image(part.get("image_url"), mpn, size=64)
-                            with detail_col:
-                                st.markdown(
-                                    f"""<div class="cv-home-v3-part-mpn">{html.escape(mpn)}</div>
-                                    <div class="cv-home-v3-part-meta">{html.escape(str(part.get('manufacturer') or 'Manufacturer unavailable'))}</div>
-                                    <div class="cv-home-v3-part-score">Risk score {html.escape(str(part.get('risk_score') or '—'))}</div>""",
-                                    unsafe_allow_html=True,
-                                )
-                else:
-                    if high_risk_total:
-                        st.markdown(
-                            '<div class="cv-home-v3-no-risk cv-home-v3-no-risk--warning"><span>!</span><div><strong>High-risk parts are recorded</strong><p>Open a saved BOM to review component details.</p></div></div>',
-                            unsafe_allow_html=True,
-                        )
-                    else:
-                        st.markdown(
-                            '<div class="cv-home-v3-no-risk"><span>✓</span><div><strong>No priority components</strong><p>There are no high-risk components in the loaded BOM data.</p></div></div>',
-                            unsafe_allow_html=True,
-                        )
-                if st.button("Review components", key="home_kpi_risk_action", use_container_width=True):
-                    _run_primary(primary)
+            if len(analyses) > len(recent):
+                if st.button("View all saved BOMs", key="home_view_all_boms"):
+                    navigate_to("BOM Analyzer", arm_opening=False)
 
 
 def _ranked_priority_parts(parts: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -533,9 +499,12 @@ def _continue_action(row: Mapping[str, Any] | None) -> dict[str, str]:
 def _recent_card(row: Mapping[str, Any]) -> dict[str, Any]:
     health = row.get("health_score")
     high = row.get("high_risk_count")
+    filename = str(row.get("filename") or "").strip()
     return {
         "id": str(row.get("id") or "").strip(),
         "name": _bom_name(row),
+        "display_name": filename or _bom_name(row),
+        "project": str(row.get("project_name") or "").strip(),
         "health": int(health) if health is not None and str(health).strip() != "" else None,
         "high_risk_count": int(high) if high is not None and str(high).strip() != "" else None,
         "total_parts": _int(row.get("total_parts")) if row.get("total_parts") not in (None, "") else None,

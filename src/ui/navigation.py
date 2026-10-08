@@ -51,6 +51,8 @@ def consume_new_analysis_navigation() -> None:
     for state_key in (
         "cadivor_active_analysis_id",
         "cadivor_active_analysis_tab",
+        "cadivor_show_saved_boms",
+        "cadivor_preselect_saved_bom_id",
         "analysis_id",
         "results_df",
         "analysis_saved",
