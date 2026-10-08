@@ -138,9 +138,9 @@ def render_reports_center(current_user, supabase, load_analysis_history, _qp_val
         """
         <section class="cv-report-hero">
           <div>
-            <div class="cv-report-pill">▣ Reports Center</div>
+            <div class="cv-report-pill">REPORTS</div>
             <h1 class="cv-report-title">Engineering reports</h1>
-            <p class="cv-report-copy">Generate executive-ready BOM risk packages, sourcing summaries, lifecycle reviews, and exportable engineering records from saved Cadivor analyses.</p>
+            <p class="cv-report-copy">Choose a template, then export it from a saved BOM. BOM Risk, Supply &amp; Availability, and Alternatives stay on the Engineering Intelligence report.</p>
             <div class="cv-report-actions"></div>
           </div>
         </section>
@@ -204,7 +204,7 @@ def render_reports_center(current_user, supabase, load_analysis_history, _qp_val
     )
 
     st.markdown(
-        '<div class="cv-report-section-head"><div><h2 class="cv-report-section-title">Recent report sources</h2><div class="cv-report-section-sub">Saved BOM analyses ready for export or review.</div></div></div>',
+        '<div class="cv-report-section-head"><div><h2 class="cv-report-section-title">Recent sources</h2><div class="cv-report-section-sub">Saved BOM analyses available for these report templates. BOM Risk, Supply & Availability, and Alternatives stay on the Engineering Intelligence report.</div></div></div>',
         unsafe_allow_html=True,
     )
 

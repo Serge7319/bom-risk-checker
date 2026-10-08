@@ -327,13 +327,13 @@ section[data-testid="stMain"] .stDownloadButton > button:disabled {
 }
 
 /* Action groups — wrap on laptop. Settings tabs, setup actions, and saved-BOM page tabs stay compact. */
-section[data-testid="stMain"] div[data-testid="stHorizontalBlock"]:has(> div:nth-child(3) .stButton):not(.st-key-cv_settings_nav):not(.st-key-cv_settings_nav *):not(.st-key-cv_settings_setup_actions):not(.st-key-cv_settings_setup_actions *):not(.st-key-cv_analysis_section_nav):not(.st-key-cv_analysis_section_nav *) {
+section[data-testid="stMain"] div[data-testid="stHorizontalBlock"]:has(> div:nth-child(3) .stButton):not(.st-key-cv_settings_nav):not(.st-key-cv_settings_nav *):not(.st-key-cv_settings_setup_actions):not(.st-key-cv_settings_setup_actions *):not(.st-key-cv_analysis_section_nav):not(.st-key-cv_analysis_section_nav *):not(.st-key-cv_foundation_top_navigation):not(.st-key-cv_foundation_top_navigation *):not(.st-key-cv_ei_report_tabs):not(.st-key-cv_ei_report_tabs *) {
   flex-wrap: wrap !important;
   gap: 10px 12px !important;
   align-items: stretch !important;
 }
 
-section[data-testid="stMain"] div[data-testid="stHorizontalBlock"]:has(> div:nth-child(3) .stButton):not(.st-key-cv_settings_nav):not(.st-key-cv_settings_nav *):not(.st-key-cv_settings_setup_actions):not(.st-key-cv_settings_setup_actions *):not(.st-key-cv_analysis_section_nav):not(.st-key-cv_analysis_section_nav *) > div {
+section[data-testid="stMain"] div[data-testid="stHorizontalBlock"]:has(> div:nth-child(3) .stButton):not(.st-key-cv_settings_nav):not(.st-key-cv_settings_nav *):not(.st-key-cv_settings_setup_actions):not(.st-key-cv_settings_setup_actions *):not(.st-key-cv_analysis_section_nav):not(.st-key-cv_analysis_section_nav *):not(.st-key-cv_foundation_top_navigation):not(.st-key-cv_foundation_top_navigation *):not(.st-key-cv_ei_report_tabs):not(.st-key-cv_ei_report_tabs *) > div {
   min-width: min(180px, 100%) !important;
 }
 

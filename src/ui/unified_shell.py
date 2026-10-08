@@ -11,6 +11,12 @@ from typing import Callable
 
 import streamlit as st
 
+from src.ui.approved_shell_nav import (
+    active_nav_label,
+    nav_groups_for_page,
+    top_nav_items,
+    uses_top_nav,
+)
 from src.ui.navigation import (
     inject_nav_scroll_reset_if_needed,
     navigate_to,
@@ -111,9 +117,152 @@ def inject_unified_shell_css() -> None:
           background:#173c81!important;color:#fff!important
         }
         </style>
-        """,
+        """ + _approved_shell_css(),
         unsafe_allow_html=True,
     )
+
+
+def _approved_shell_css() -> str:
+    return """
+        <style id="cadivor-approved-shell">
+        :root{--cv-foundation-rail:248px;--cv-foundation-top:8px;--cv-foundation-bg:#f8fafc}
+        .cv-foundation-topbar{display:none!important}
+        .st-key-cv_foundation_navigation{
+          top:0!important;height:100vh!important;background:#f8fafc!important;
+          border-right:1px solid #e6edf5!important;padding:18px 12px 24px!important
+        }
+        .cv-approved-brand{display:flex;align-items:center;gap:10px;padding:4px 8px 14px}
+        .cv-approved-brand strong{display:block;color:#0f172a;font-size:16px;letter-spacing:-.02em}
+        .cv-approved-brand small{display:block;color:#94a3b8;font-size:9px;letter-spacing:.08em;font-weight:700}
+        .cv-approved-brand-mark{width:32px;height:32px;border-radius:10px;background:#2563eb;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:800}
+        .cv-foundation-workspace{background:#fff!important;border:1px solid #e6edf5!important;border-radius:12px!important}
+        .cv-foundation-plan-card,.st-key-cv_foundation_new_analysis,.st-key-cv_foundation_compare_plans{display:none!important}
+        section[data-testid="stMain"] .st-key-cv_foundation_navigation .stButton>button,
+        section[data-testid="stMain"] .st-key-cv_foundation_navigation .stButton>button[kind="secondary"]{
+          color:#334155!important;background:transparent!important;border-color:transparent!important;
+          border-radius:10px!important;min-height:36px!important;font-weight:650!important
+        }
+        section[data-testid="stMain"] .st-key-cv_foundation_navigation .stButton>button[kind="primary"],
+        section[data-testid="stMain"] .st-key-cv_foundation_navigation .stButton>button[kind="primary"]:hover{
+          background:#e8eefc!important;color:#1d4ed8!important;border-color:transparent!important;box-shadow:none!important
+        }
+        section[data-testid="stMain"] .st-key-cv_foundation_navigation .stButton>button[kind="primary"] p{color:#1d4ed8!important}
+        .cv-foundation-nav-group{color:#94a3b8!important;letter-spacing:.12em!important}
+        .st-key-cv_foundation_top_navigation{
+          display:block!important;visibility:visible!important;position:relative!important;
+          top:auto!important;left:auto!important;right:auto!important;bottom:auto!important;
+          height:auto!important;min-height:64px!important;max-height:none!important;
+          width:100%!important;min-width:100%!important;max-width:none!important;
+          margin:0!important;padding:8px 18px 4px!important;overflow:visible!important;
+          background:#fff!important;border:0!important;border-bottom:1px solid #e6edf5!important;
+          box-shadow:none!important;z-index:40!important
+        }
+        .st-key-cv_foundation_top_navigation [data-testid="stHorizontalBlock"]{
+          display:flex!important;flex-direction:row!important;flex-wrap:nowrap!important;
+          align-items:center!important;width:100%!important;gap:6px!important
+        }
+        .st-key-cv_foundation_top_navigation [data-testid="stColumn"],
+        .st-key-cv_foundation_top_navigation [data-testid="column"]{
+          flex:0 1 auto!important;width:auto!important;min-width:0!important
+        }
+        .st-key-cv_foundation_top_navigation [data-testid="stHorizontalBlock"] > div:last-child{
+          flex:1 1 220px!important;margin-left:auto!important
+        }
+        .st-key-cv_foundation_top_navigation .stButton{width:auto!important;margin:0!important}
+        .st-key-cv_foundation_top_navigation .stButton>button,
+        .st-key-cv_foundation_top_navigation .stButton>button[kind="secondary"],
+        .st-key-cv_foundation_top_navigation .stButton>button[kind="primary"],
+        .st-key-cv_foundation_top_navigation button[data-testid="stBaseButton-primary"],
+        .st-key-cv_foundation_top_navigation button[data-testid="stBaseButton-secondary"]{
+          width:auto!important;min-height:36px!important;padding:8px 8px 10px!important;border:0!important;
+          border-radius:0!important;background:transparent!important;color:#334155!important;
+          font-weight:650!important;box-shadow:none!important;white-space:nowrap!important
+        }
+        .st-key-cv_foundation_top_navigation .stButton>button::before{display:none!important;content:none!important}
+        .st-key-cv_foundation_top_navigation .st-key-cv_foundation_nav_ei button,
+        .st-key-cv_foundation_top_navigation .stButton>button[kind="primary"]{
+          color:#1d4ed8!important;background:transparent!important;border-radius:0!important;
+          box-shadow:inset 0 -2px 0 #2563eb!important
+        }
+        .st-key-cv_foundation_top_navigation .stButton>button p{color:inherit!important;white-space:nowrap!important}
+        .st-key-cv_ei_report_tabs [data-testid="stHorizontalBlock"]{flex-wrap:nowrap!important;justify-content:flex-end!important}
+        .st-key-cv_ei_report_tabs .stButton>button,
+        .st-key-cv_ei_report_tabs button{
+          background:transparent!important;border:0!important;border-radius:0!important;
+          box-shadow:none!important;color:#64748b!important;min-height:32px!important;padding:6px 8px 8px!important
+        }
+        .st-key-cv_ei_report_tabs .stButton>button[kind="primary"],
+        .st-key-cv_ei_report_tabs button[data-testid="stBaseButton-primary"]{
+          color:#1d4ed8!important;background:transparent!important;box-shadow:inset 0 -2px 0 #2563eb!important
+        }
+        body:has(.st-key-cv_foundation_top_navigation) section[data-testid="stMain"]{
+          margin-left:0!important;width:100%!important;max-width:none!important
+        }
+        html body section[data-testid="stMain"] .st-key-cv_foundation_top_navigation div[data-testid="stHorizontalBlock"]{
+          display:flex!important;flex-direction:row!important;flex-wrap:nowrap!important;
+          align-items:center!important;width:100%!important;gap:8px!important
+        }
+        html body section[data-testid="stMain"] .st-key-cv_foundation_top_navigation div[data-testid="stHorizontalBlock"] > div{
+          flex:0 0 auto!important;width:auto!important;min-width:0!important;max-width:none!important
+        }
+        html body section[data-testid="stMain"] .st-key-cv_foundation_top_navigation div[data-testid="stHorizontalBlock"] > div:last-child{
+          flex:0 0 240px!important;width:240px!important;max-width:240px!important;margin-left:auto!important
+        }
+        html body section[data-testid="stMain"] .st-key-cv_foundation_top_navigation button{
+          background:transparent!important;border:0!important;border-radius:0!important;
+          box-shadow:none!important;color:#334155!important;padding:8px 8px 10px!important
+        }
+        html body section[data-testid="stMain"] .st-key-cv_foundation_top_navigation .st-key-cv_foundation_nav_ei button{
+          color:#1d4ed8!important;background:transparent!important;box-shadow:inset 0 -2px 0 #2563eb!important
+        }
+        html body section[data-testid="stMain"] .st-key-cv_ei_report_tabs div[data-testid="stHorizontalBlock"]{
+          display:flex!important;flex-wrap:nowrap!important;justify-content:flex-end!important;gap:4px!important
+        }
+        html body section[data-testid="stMain"] .st-key-cv_ei_report_tabs div[data-testid="stHorizontalBlock"] > div{
+          flex:0 0 auto!important;width:auto!important;max-width:none!important
+        }
+        html body section[data-testid="stMain"] .st-key-cv_ei_report_tabs button{
+          background:transparent!important;border:0!important;border-radius:0!important;box-shadow:none!important;
+          color:#64748b!important;padding:6px 8px 8px!important
+        }
+        html body section[data-testid="stMain"] .st-key-cv_ei_report_tabs button[kind="primary"],
+        html body section[data-testid="stMain"] .st-key-cv_ei_report_tabs button[data-testid="stBaseButton-primary"]{
+          color:#1d4ed8!important;background:transparent!important;box-shadow:inset 0 -2px 0 #2563eb!important
+        }
+        .st-key-cv_foundation_navigation{width:248px!important;min-width:248px!important;max-width:248px!important}
+        section[data-testid="stMain"] .st-key-cv_foundation_navigation .stButton>button::before{
+          content:""!important;display:block!important;flex:0 0 16px!important;
+          width:16px!important;height:16px!important;margin-right:10px!important;opacity:1!important;
+          background-repeat:no-repeat!important;background-position:center!important;background-size:16px 16px!important
+        }
+        section[data-testid="stMain"] .st-key-cv_foundation_navigation .stButton>button[kind="primary"]::before{
+          filter:brightness(0) saturate(100%) invert(27%) sepia(98%) saturate(1800%) hue-rotate(213deg) brightness(95%) contrast(95%)!important
+        }
+        section[data-testid="stMain"] .st-key-cv_foundation_nav_saved-boms button::before,
+        section[data-testid="stMain"] .st-key-cv_foundation_nav_boms button::before,
+        section[data-testid="stMain"] .st-key-cv_foundation_nav_projects button::before{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23334155' stroke-width='1.8'%3E%3Cpath d='M3 7h6l2 2h10v10H3z'/%3E%3C/svg%3E")!important}
+        section[data-testid="stMain"] .st-key-cv_foundation_nav_integrations button::before,
+        section[data-testid="stMain"] .st-key-cv_foundation_nav_workspace-settings button::before,
+        section[data-testid="stMain"] .st-key-cv_foundation_nav_preferences button::before,
+        section[data-testid="stMain"] .st-key-cv_foundation_nav_team button::before,
+        section[data-testid="stMain"] .st-key-cv_foundation_nav_members button::before{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23334155' stroke-width='1.8'%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3Cpath d='M12 3v2M12 19v2M3 12h2M19 12h2'/%3E%3C/svg%3E")!important}
+        section[data-testid="stMain"] .st-key-cv_foundation_nav_compare button::before,
+        section[data-testid="stMain"] .st-key-cv_foundation_nav_parts-library button::before,
+        section[data-testid="stMain"] .st-key-cv_foundation_nav_datasheet-qa button::before,
+        section[data-testid="stMain"] .st-key-cv_foundation_nav_document-analysis button::before,
+        section[data-testid="stMain"] .st-key-cv_foundation_nav_watchlists button::before,
+        section[data-testid="stMain"] .st-key-cv_foundation_nav_saved-searches button::before,
+        section[data-testid="stMain"] .st-key-cv_foundation_nav_component-search button::before,
+        section[data-testid="stMain"] .st-key-cv_foundation_nav_parts-database button::before,
+        section[data-testid="stMain"] .st-key-cv_foundation_nav_shared button::before,
+        section[data-testid="stMain"] .st-key-cv_foundation_nav_suppliers button::before,
+        section[data-testid="stMain"] .st-key-cv_foundation_nav_risk-monitor button::before,
+        section[data-testid="stMain"] .st-key-cv_foundation_nav_reports-templates button::before{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23334155' stroke-width='1.8'%3E%3Ccircle cx='11' cy='11' r='6'/%3E%3Cpath d='m16 16 4 4'/%3E%3C/svg%3E")!important}
+        body:has(.cv-ei-report) [class*="st-key-cv_analysis_section_nav"]{
+          display:none!important;height:0!important;overflow:hidden!important
+        }
+        </style>
+    """
 
 
 def paint_authenticated_continuity_shell(*, page: str = "Dashboard") -> None:
@@ -339,7 +488,71 @@ def render_unified_shell(
                 on_click=_commit_signout,
             )
 
+    analysis_tab = str(st.session_state.get("cadivor_active_analysis_tab") or "")
+    detailed_risk = bool(st.session_state.get("cadivor_show_detailed_risk"))
+    top_nav = uses_top_nav(current_page, analysis_tab=analysis_tab, detailed_risk=detailed_risk)
+    if top_nav:
+        st.markdown('<div class="cv-shell-top" hidden></div>', unsafe_allow_html=True)
+        with st.container(key="cv_foundation_top_navigation"):
+            brand, *item_cols, search_col = st.columns([1.3, 0.9, 0.7, 1.6, 0.9, 1.1, 0.9, 2.2])
+            with brand:
+                st.markdown(
+                    """
+                    <div class="cv-approved-brand">
+                      <span class="cv-approved-brand-mark">C</span>
+                      <span><strong>Cadivor</strong></span>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+            for column, (label, slug, destination) in zip(item_cols, top_nav_items()):
+                with column:
+                    st.button(
+                        label,
+                        key=f"cv_foundation_nav_{slug}",
+                        type="tertiary",
+                        on_click=_commit_navigation,
+                        args=(destination,),
+                    )
+            with search_col:
+                query = st.text_input(
+                    "Search parts, MPNs, or projects",
+                    key="cv_ei_top_search",
+                    label_visibility="collapsed",
+                    placeholder="Search parts, MPNs, or projects",
+                )
+                if query and query.strip():
+                    st.session_state["cadivor_replacement_query"] = query.strip()
+            inject_nav_scroll_reset_if_needed()
+            st.markdown(
+                """
+                <style>
+                html body section[data-testid="stMain"] .st-key-cv_foundation_top_navigation .stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton) > button,
+                html body section[data-testid="stMain"] .st-key-cv_foundation_top_navigation .stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton) > button *{
+                  background:transparent!important;background-color:transparent!important;
+                  border:0!important;border-radius:0!important;box-shadow:none!important;color:#334155!important;min-height:0!important
+                }
+                html body section[data-testid="stMain"] .st-key-cv_foundation_top_navigation .st-key-cv_foundation_nav_ei.stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton) > button,
+                html body section[data-testid="stMain"] .st-key-cv_foundation_top_navigation .st-key-cv_foundation_nav_ei.stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton) > button *{
+                  color:#1d4ed8!important;background:transparent!important;background-color:transparent!important;
+                  box-shadow:inset 0 -2px 0 #2563eb!important;border-radius:0!important
+                }
+                </style>
+                """,
+                unsafe_allow_html=True,
+            )
+        return
+
     with st.container(key="cv_foundation_navigation"):
+        st.markdown(
+            """
+            <div class="cv-approved-brand">
+              <span class="cv-approved-brand-mark">C</span>
+              <span><strong>Cadivor</strong><small>ENGINEERING INTELLIGENCE</small></span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
         st.markdown(
             f"""
             <div class="cv-foundation-workspace" aria-label="Current workspace">
@@ -355,10 +568,16 @@ def render_unified_shell(
             unsafe_allow_html=True,
         )
 
-        for group_name, configured_rows in NAV_GROUPS:
+        page_groups = None if top_nav else nav_groups_for_page(current_page)
+        preferred = active_nav_label(current_page)
+        if page_groups is None:
+            source_groups = NAV_GROUPS
+        else:
+            source_groups = page_groups
+        for group_name, configured_rows in source_groups:
             rows = (
                 workspace_nav_rows(is_admin=is_admin)
-                if group_name == "Workspace"
+                if page_groups is None and group_name == "Workspace"
                 else configured_rows
             )
             if group_name:
@@ -369,7 +588,10 @@ def render_unified_shell(
             for label, slug, destination in rows:
                 # Session navigation only — raw ?page= hrefs hard-reload the app and
                 # briefly clear the authenticated shell (blank white/black frames).
-                is_active = destination == current_page
+                if page_groups is None:
+                    is_active = destination == current_page
+                else:
+                    is_active = label == preferred
                 st.button(
                     label,
                     key=f"cv_foundation_nav_{slug}",

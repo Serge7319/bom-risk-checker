@@ -1827,7 +1827,11 @@ def render_analysis_detail(
     graph_counts = graph_summary.get("counts") or {}
 
     badge_tone = {"good": "success", "warn": "warning", "bad": "danger"}.get(health_cls, "neutral")
-    st.markdown(
+    show_legacy_analysis_header = str(
+        st.session_state.get("cadivor_active_analysis_tab") or "Engineering Intelligence"
+    ) != "Engineering Intelligence"
+    if show_legacy_analysis_header:
+        st.markdown(
         f"""
         <div class="cv-analysis-workspace">
           <div class="cv-analysis-detail-page">
@@ -1848,15 +1852,16 @@ def render_analysis_detail(
         </div>
         """,
         unsafe_allow_html=True,
-    )
+        )
     from src.pages.saved_analysis_control import release_saved_analysis_placeholder
     from src.ui.navigation import reveal_authenticated_page_body
 
     release_saved_analysis_placeholder()
     reveal_authenticated_page_body("Analysis Details")
-    with st.container(key="cv_analysis_hero_actions"):
-        if st.button("Back to BOMs", key="analysis_back_to_boms", type="secondary"):
-            return_to_saved_bom_list(arm_opening=False)
+    if show_legacy_analysis_header:
+        with st.container(key="cv_analysis_hero_actions"):
+            if st.button("Back to BOMs", key="analysis_back_to_boms", type="secondary"):
+                return_to_saved_bom_list(arm_opening=False)
     _sync_cadivor_active_analysis_tab(analysis_id=analysis_id)
     active_tab = _render_analysis_section_navigation(analysis_id=analysis_id)
 
@@ -1987,6 +1992,17 @@ def render_analysis_detail(
                 advisor=advisor,
             )
             cache_decision_brief(brief_cache_key, decision_brief)
+
+        if active_tab == "Engineering Intelligence":
+            from src.ui.ei_bom_report import render_engineering_intelligence_report
+
+            render_engineering_intelligence_report(
+                analysis=analysis,
+                parts=parts or [],
+                alternatives=alternatives or [],
+                health_score=health,
+            )
+            return
 
         st.markdown('<div class="cv672-workspace-root"></div>', unsafe_allow_html=True)
         if stack_brief:

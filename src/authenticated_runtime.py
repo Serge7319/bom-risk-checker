@@ -3820,6 +3820,13 @@ def run_authenticated_app() -> None:
 
         if workspace_category == "Engineering Overview":
             reveal_authenticated_page_body("Dashboard")
+            from src.ui.approved_pages import render_home
+
+            render_home(
+                name=str(shell_name or ""),
+                analyses=list(real_overview_analyses or []),
+                plan_notice="",
+            )
             render_dashboard_page_heading(
                 home["title"],
                 "Open the highest-risk BOM, or start a new one."
@@ -4020,6 +4027,10 @@ def run_authenticated_app() -> None:
         except Exception as exc:
             st.error(f"Monitoring alerts could not be loaded: {exc}")
             alert_df = pd.DataFrame()
+
+        from src.ui.approved_pages import render_monitoring
+
+        render_monitoring([] if alert_df.empty else alert_df.to_dict("records"))
 
         try:
             monitor_history = _monitor_query("part_monitor_history").order("created_at", desc=True).limit(5000).execute()
@@ -6063,6 +6074,59 @@ def run_authenticated_app() -> None:
         except Exception:
             scenario_parts = []
 
+        from src.supply_risk_scenario import build_supply_scenario
+        from src.ui.approved_pages import render_simple_workspace, supply_scenario_chart
+
+        scenario_choice = st.selectbox(
+            "Scenario",
+            ["Primary supplier disruption", "No disruption"],
+            key="approved_supply_scenario",
+        )
+        st.selectbox("Time horizon", ["90 days"], key="approved_supply_horizon")
+        stock_cut = 0
+        demand_growth = 0
+        scenario = build_supply_scenario(
+            scenario_analyses,
+            scenario_parts,
+            stock_reduction_percent=stock_cut,
+            demand_growth_percent=demand_growth,
+        )
+        exposed = int(scenario.get("component_count") or 0)
+        stock_points = []
+        for part in scenario_parts or []:
+            if not isinstance(part, dict):
+                continue
+            label = str(part.get("mpn") or part.get("part_number") or "").strip()
+            if not label:
+                continue
+            try:
+                stock_points.append((label, float(part.get("stock_available") or 0)))
+            except (TypeError, ValueError):
+                continue
+        render_simple_workspace(
+                kicker="SUPPLY CHAIN",
+                title="Supply scenario",
+                subtitle="Model supplier, component, and demand disruptions to understand impact and evaluate mitigation options.",
+                kpis=[
+                    ("Exposed components", str(exposed)),
+                    ("Shortage components", str(scenario.get("shortage_components") or 0)),
+                    ("Single-source", str(scenario.get("single_source_components") or 0)),
+                    ("BOMs affected", str(scenario.get("affected_projects") or 0)),
+                ],
+                headers=["Component", "Scenario stock", "Required units", "Shortage"],
+                table_rows=[
+                    [
+                        str(row.get("Part Number") or "Component"),
+                        str(row.get("Scenario Stock") or "—"),
+                        str(row.get("Required Units") or "—"),
+                        str(row.get("Shortage Units") or "—"),
+                    ]
+                    for row in (scenario.get("impacted") or scenario.get("rows") or [])[:8]
+                    if isinstance(row, dict)
+                ],
+                chart_html=supply_scenario_chart(scenario_parts, scenario, scenario_choice),
+            )
+
         st.markdown("### Scenario assumptions")
         s1, s2, s3, s4 = st.columns(4)
         with s1:
@@ -6145,36 +6209,55 @@ def run_authenticated_app() -> None:
         except Exception:
             cost_parts = []
 
-        st.markdown(
-            """
-            <section class="cv21-hero">
-              <div class="cv21-eyebrow">Cost</div>
-              <div class="cv21-title">Cost Optimization</div>
-              <div class="cv21-copy">
-                Set a build quantity. Modeled spend uses prices already saved on the BOM.
-              </div>
-            </section>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        st.markdown("### Production scenario")
-        build_quantity = st.number_input(
-            "Number of builds to model",
-            min_value=1,
-            max_value=1_000_000,
-            value=int(st.session_state.get("cost_build_quantity", 100)),
-            step=10,
-            key="cost_build_quantity",
-            help="Cadivor multiplies recorded BOM quantities and unit prices by this production quantity.",
-        )
+        build_quantity = int(st.session_state.get("cost_build_quantity", 100) or 100)
 
         from src.cost_optimization import build_cost_optimization, render_cost_optimization
         cost_intelligence = build_cost_optimization(
             cost_analyses,
             cost_parts,
-            int(build_quantity),
+            build_quantity,
         )
+
+        def _cost_build_control() -> None:
+            _spacer, control_col = st.columns([4.2, 1.3], vertical_alignment="bottom")
+            with control_col:
+                st.session_state.setdefault("cost_build_quantity", build_quantity)
+                st.number_input(
+                    "Builds to model",
+                    min_value=1,
+                    max_value=1_000_000,
+                    step=10,
+                    key="cost_build_quantity",
+                    help="Cadivor multiplies recorded BOM quantities and unit prices by this production quantity.",
+                )
+        from src.ui.approved_pages import render_simple_workspace
+
+        render_simple_workspace(
+                kicker="COST OPTIMIZATION",
+                title="Cost optimization",
+                subtitle="Identify lower-cost alternatives, reduce spend, and optimize your bill of materials without compromising performance.",
+                kpis=[
+                    ("Estimated annual savings", "—"),
+                    ("Addressable spend", "—"),
+                    ("Opportunities", str(len(cost_parts or []))),
+                ],
+                headers=["Component", "Current unit price", "Alternative", "Estimated savings", "Fit"],
+                table_rows=[
+                    [
+                        str(part.get("mpn") or part.get("part_number") or "Component"),
+                        str(part.get("unit_price") or "—"),
+                        "—",
+                        "—",
+                        str(part.get("risk_level") or "—"),
+                    ]
+                    for part in (cost_parts or [])[:8]
+                    if isinstance(part, dict)
+                ],
+                legacy_page="Cost Optimization",
+                legacy_label="Open cost workspace",
+                control=_cost_build_control,
+            )
+
         render_cost_optimization(
             intelligence=cost_intelligence,
             internal_nav_button=internal_nav_button,
@@ -6250,6 +6333,53 @@ def run_authenticated_app() -> None:
             _safe_text(row.get("part_number"), "").upper() == str(impact_mpn).upper()
             for row in impact_decision_rows
         )
+        from src.ui.approved_pages import impact_map_html, render_simple_workspace
+
+        focus = next((part for part in (impact_parts or []) if isinstance(part, dict)), {})
+        focus_name = str(focus.get("mpn") or focus.get("part_number") or "Component")
+        supplier_name = str(focus.get("manufacturer") or focus.get("best_source") or "")
+        lifecycle_name = str(focus.get("lifecycle_status") or "")
+        render_simple_workspace(
+                kicker="DESIGN IMPACT",
+                title="Design impact",
+                subtitle="Understand how changes to a component affect your projects, BOMs and supply chain.",
+                kpis=[
+                    ("Affected projects", str(len(impact_analyses or []))),
+                    ("Impact score", str(focus.get("risk_score") or "—")),
+                    ("Available stock", str(focus.get("stock_available") or "—")),
+                    ("Supplier sources", str(focus.get("supplier_count") or "—")),
+                    ("Estimated review", "—"),
+                ],
+                headers=["Project", "BOM", "Usage", "Design phase", "Impact"],
+                table_rows=[
+                    [
+                        str(row.get("project_name") or "Project"),
+                        str(row.get("filename") or "BOM"),
+                        str(row.get("total_parts") or "—"),
+                        "Saved",
+                        str(row.get("high_risk_count") or "—"),
+                    ]
+                    for row in (impact_analyses or [])[:6]
+                    if isinstance(row, dict)
+                ],
+                legacy_page="Design Impact Analyzer",
+                legacy_label="Start impact review",
+                lead_html=impact_map_html(
+                    part=focus_name,
+                    projects=[
+                        (
+                            str(row.get("project_name") or ""),
+                            str(row.get("filename") or ""),
+                        )
+                        for row in (impact_analyses or [])[:6]
+                        if isinstance(row, dict)
+                    ],
+                    supplier=supplier_name,
+                    supplier_count=str(focus.get("supplier_count") or ""),
+                    lifecycle=lifecycle_name,
+                ),
+            )
+
         render_design_impact(
             intelligence=impact_intelligence,
             internal_nav_button=internal_nav_button,
@@ -6297,6 +6427,63 @@ def run_authenticated_app() -> None:
             portfolio_parts,
             portfolio_alerts,
         )
+        from src.ui.approved_pages import (
+            legacy_tools_open,
+            portfolio_charts_html,
+            render_legacy_back,
+            render_simple_workspace,
+        )
+
+        high_parts = 0
+        mpn_projects: dict[str, set[str]] = {}
+        single_source = 0
+        supplier_known = False
+        for part in portfolio_parts or []:
+            if not isinstance(part, dict):
+                continue
+            if "high" in str(part.get("risk_level") or "").casefold():
+                high_parts += 1
+            mpn = str(part.get("mpn") or part.get("part_number") or "").strip()
+            analysis_id = str(part.get("analysis_id") or "")
+            if mpn:
+                mpn_projects.setdefault(mpn, set()).add(analysis_id)
+            if part.get("supplier_count") is not None and str(part.get("supplier_count")).strip() != "":
+                supplier_known = True
+                try:
+                    if int(float(part.get("supplier_count"))) <= 1:
+                        single_source += 1
+                except (TypeError, ValueError):
+                    pass
+        shared_components = sum(1 for projects in mpn_projects.values() if len(projects) > 1)
+        render_simple_workspace(
+                kicker="PORTFOLIO",
+                title="Portfolio intelligence",
+                subtitle="A cross-project view of your engineering data, supply chain risk, and lifecycle exposure.",
+                kpis=[
+                    ("Saved Projects", str(len(portfolio_analyses or []))),
+                    ("Component Records", str(len(portfolio_parts or []))),
+                    ("Shared Components", str(shared_components)),
+                    ("Single-Source Records", str(single_source) if supplier_known else "—"),
+                    ("Lifecycle Exposure", str(high_parts)),
+                ],
+                headers=["Project", "BOM name", "Total components", "At-risk components", "Risk level", "Last updated"],
+                table_rows=[
+                    [
+                        str(row.get("project_name") or "Project"),
+                        str(row.get("filename") or "BOM"),
+                        str(row.get("total_parts") or "—"),
+                        str(row.get("high_risk_count") or "0"),
+                        "High" if int(row.get("high_risk_count") or 0) else "Low",
+                        str(row.get("created_at") or "")[:10],
+                    ]
+                    for row in (portfolio_analyses or [])[:8]
+                    if isinstance(row, dict)
+                ],
+                legacy_page="Portfolio Intelligence",
+                legacy_label="View all BOMs",
+                chart_html=portfolio_charts_html(portfolio_parts),
+            )
+
         render_portfolio_intelligence(
             intelligence=portfolio_intelligence,
             internal_nav_button=internal_nav_button,
@@ -6323,6 +6510,39 @@ def run_authenticated_app() -> None:
             parts=pa_parts,
             alerts=[],
         )
+        from src.ui.approved_pages import procurement_header_html, render_simple_workspace
+
+        focus = next((part for part in (pa_parts or []) if isinstance(part, dict)), {})
+        focus_mpn = str(focus.get("mpn") or focus.get("part_number") or "Part")
+        focus_maker = str(focus.get("manufacturer") or "Manufacturer not recorded")
+        render_simple_workspace(
+                kicker="PROCUREMENT ADVISOR",
+                title="Procurement advisor",
+                subtitle="AI-powered supplier insights and sourcing recommendations to reduce risk, ensure supply continuity, and optimize total cost.",
+                kpis=[
+                    ("Sourcing coverage", str(focus.get("supplier_count") or "—")),
+                    ("Estimated annual savings", "Not recorded"),
+                    ("Supply risk", str(focus.get("risk_level") or "—")),
+                    ("Recommendation", "Review supplier coverage"),
+                ],
+                headers=["Supplier", "Unit price", "Available stock", "Lead time", "Region", "Supply risk"],
+                table_rows=[
+                    [
+                        str(part.get("manufacturer") or part.get("best_source") or "Supplier"),
+                        str(part.get("unit_price") or "—"),
+                        str(part.get("stock_available") or "—"),
+                        str(part.get("lead_time_weeks") or "—"),
+                        "—",
+                        str(part.get("risk_level") or "—"),
+                    ]
+                    for part in (pa_parts or [])[:6]
+                    if isinstance(part, dict)
+                ],
+                legacy_page="Procurement Advisor",
+                legacy_label="Edit sourcing details",
+                lead_html=procurement_header_html(focus),
+            )
+
         st.markdown('<div class="cv64-page-shell">', unsafe_allow_html=True)
         cadivor_section_header(
             "Procurement Advisor",
@@ -6509,6 +6729,13 @@ def run_authenticated_app() -> None:
         if (
             not st.session_state.get(decision_timeout_key)
             and needs_decision_hydrate
+            and st.session_state.get(decision_hydrate_key) != "loading"
+        ):
+            st.session_state[decision_hydrate_key] = "loading"
+            st.rerun()
+        if (
+            not st.session_state.get(decision_timeout_key)
+            and needs_decision_hydrate
             and st.session_state.get(decision_hydrate_key) == "loading"
         ):
             try:
@@ -6689,6 +6916,18 @@ def run_authenticated_app() -> None:
                 or decision_part_links_key not in st.session_state
             )
 
+        cached_decisions = st.session_state.get(decision_cache_key)
+        alert_frame = st.session_state.get(decision_alerts_key)
+        decision_rows = []
+        if isinstance(cached_decisions, dict):
+            decision_rows = [row for row in cached_decisions.values() if isinstance(row, dict)]
+        elif isinstance(cached_decisions, list):
+            decision_rows = [row for row in cached_decisions if isinstance(row, dict)]
+        if not decision_rows and hasattr(alert_frame, "to_dict"):
+            decision_rows = [row for row in alert_frame.to_dict("records") if isinstance(row, dict)]
+        from src.ui.approved_pages import render_decision_queue
+
+        render_decision_queue(decision_rows)
         # Single paint path: one hero, then loading / timeout / ready body below it.
         st.markdown(
             '<div class="cv64-page-shell" data-testid="ed-page-shell">',
@@ -8520,6 +8759,10 @@ def run_authenticated_app() -> None:
             report_records = load_analysis_history(current_user["id"]) or []
         except Exception:
             report_records = []
+
+        from src.ui.approved_pages import render_reports_list
+
+        render_reports_list(report_records if isinstance(report_records, list) else [])
 
         def _report_int(value, default=0):
             try:
@@ -11207,6 +11450,19 @@ def run_authenticated_app() -> None:
 
     # ---------- Settings ----------
     if app_mode == "Settings":
+        from src.ui.approved_pages import begin_approved_page, end_approved_page, legacy_tools_open, render_legacy_back
+
+        if False:
+            render_legacy_back("Settings")
+        else:
+            from src.ui.approved_pages import render_settings_workspace
+
+            profile_preview = get_user_profile(current_user)
+            if not isinstance(profile_preview, dict):
+                profile_preview = current_user if isinstance(current_user, dict) else {}
+            if isinstance(current_user, dict):
+                profile_preview = {**profile_preview, "id": current_user.get("id")}
+            render_settings_workspace(profile_preview, str(selected_plan_name or ""))
         _incoming_settings_tab = str(_qp_value("settings_tab", "") or "").strip()
         if _incoming_settings_tab in {
             "Profile",
@@ -13644,20 +13900,23 @@ def run_authenticated_app() -> None:
         stop_authenticated_page()
 
     if app_mode == "Compare Parts":
-        from src.pages.compare_parts import render_compare_parts_page
+        from src.ui.approved_pages import render_compare_live
 
-        render_compare_parts_page(is_admin=bool(is_admin), role=str(current_user.get("role") or ""))
+        render_compare_live()
         reveal_authenticated_page_body("Compare Parts")
         stop_authenticated_page()
 
     if app_mode == "Datasheet Q&A":
-        from src.pages.datasheet_qa import render_datasheet_qa_page
+        from src.ui.approved_pages import render_datasheet_live
 
-        render_datasheet_qa_page()
+        render_datasheet_live()
         reveal_authenticated_page_body("Datasheet Q&A")
         stop_authenticated_page()
 
     if app_mode == "Alternative Finder":
+        from src.ui.approved_pages import render_replacement_search
+
+        render_replacement_search()
 
         from integrations.supplier_aggregator import get_best_part_data
         from src.alternative_engine import (
@@ -18014,1172 +18273,1190 @@ def run_authenticated_app() -> None:
         # Revealing after imports (before this header) left BOM chrome with neither
         # "Opening BOM Analyzer…" nor page copy during the CSS/setup gap.
         reveal_authenticated_page_body("BOM Analyzer")
-        # Cross-BOM review belongs with the File readiness guidance below,
-        # not as a disconnected page-level action.
+        from src.ui.approved_pages import render_bom_catalog
 
-        if st.session_state.get("bom81_high_risk_review"):
-            st.markdown(
-                f"""
-                <section class="bom81-review-hero">
-                  <div class="bom81-review-eyebrow">Engineering review queue</div>
-                  <h1>High-risk components</h1>
-                  <p>{total_high_risk} component{'s' if total_high_risk != 1 else ''} need engineering review across your saved BOMs.</p>
-                </section>
-                """,
-                unsafe_allow_html=True,
-            )
-            if st.button("Back to BOMs", key="bom81_return_from_high_risk", type="secondary"):
-                st.session_state.pop("bom81_high_risk_review", None)
-                navigate_to("BOM Analyzer", show_saved_analyses="1", arm_opening=False)
-            try:
-                high_risk_parts_response = (
-                    _workspace_query(supabase.table("analysis_parts").select("*"))
-                    .eq("user_id", current_user["id"])
-                    .limit(5000)
-                    .execute()
-                )
-                high_risk_parts = high_risk_parts_response.data or []
-            except Exception:
-                high_risk_parts = []
-
-            high_risk_rows = [
-                row for row in high_risk_parts
-                if str(row.get("risk_level") or row.get("Risk Level") or "").strip().lower() == "high"
-            ]
-            analysis_labels = {
-                str(row.get("id") or ""): str(row.get("project_name") or row.get("filename") or "Saved BOM analysis")
-                for row in history_data
-            }
-            if not high_risk_rows:
-                st.info("No saved high-risk component records are currently available to review.")
-            else:
-                st.markdown(
-                    """
-                    <style>
-                    .bom81-review-hero{
-                        margin:0 0 18px;padding:22px 24px;border:1px solid #dbe3ef;border-radius:18px;
-                        background:linear-gradient(135deg,#ffffff 0%,#fffaf7 100%);box-shadow:0 8px 24px rgba(15,23,42,.04)
-                    }
-                    .bom81-review-eyebrow{color:#b45309;font-size:10px;font-weight:850;letter-spacing:.1em;text-transform:uppercase;margin-bottom:7px}
-                    .bom81-review-hero h1{margin:0 0 6px;color:#0f172a;font-size:28px;letter-spacing:-.03em}
-                    .bom81-review-hero p{margin:0;color:#64748b;font-size:14px}
-                    .bom81-risk-kicker{color:#c2410c;font-size:10px;font-weight:850;letter-spacing:.08em;text-transform:uppercase}
-                    .bom81-risk-title{margin:7px 0 5px;color:#0f172a;font-size:18px;font-weight:850}
-                    .bom81-risk-meta{color:#64748b;font-size:12px;line-height:1.5}
-                    .bom81-risk-meta strong{color:#334155}
-                    [data-testid="stVerticalBlockBorderWrapper"]:has(.bom81-risk-kicker){border-color:#dbe3ef!important;border-radius:14px!important;background:#fff;box-shadow:0 5px 16px rgba(15,23,42,.035)}
-                    </style>
-                    """,
-                    unsafe_allow_html=True,
-                )
-                for row_start in range(0, len(high_risk_rows), 2):
-                    card_columns = st.columns(2, gap="large")
-                    for column, (index, part) in zip(
-                        card_columns,
-                        enumerate(high_risk_rows[row_start:row_start + 2], start=row_start),
-                    ):
-                        part_number = str(
-                            part.get("mpn") or part.get("part_number") or part.get("manufacturer_part_number") or "Component"
-                        )
-                        analysis_id_value = str(part.get("analysis_id") or "").strip()
-                        manufacturer = str(part.get("manufacturer") or "Unknown manufacturer")
-                        risk_score = part.get("risk_score") or part.get("Risk Score") or "—"
-                        component_available = bool(analysis_id_value and analysis_id_value in analysis_labels)
-                        project_label = analysis_labels.get(analysis_id_value, "Saved BOM analysis")
-                        with column:
-                            with st.container(border=True):
-                                st.markdown(
-                                    f'<div class="bom81-risk-kicker">High risk · score {html.escape(str(risk_score))}</div>'
-                                    f'<div class="bom81-risk-title">{html.escape(part_number)}</div>'
-                                    f'<div class="bom81-risk-meta">{html.escape(manufacturer)} · <strong>Saved BOM:</strong> {html.escape(project_label)}</div>',
-                                    unsafe_allow_html=True,
-                                )
-                                if st.button(
-                                    "Open component details",
-                                    key=f"bom81_open_high_risk_{analysis_id_value}_{part_number}_{index}",
-                                    type="primary",
-                                    use_container_width=True,
-                                    disabled=not component_available,
-                                ):
-                                    st.session_state.pop("bom81_high_risk_review", None)
-                                    open_component_in_saved_bom(
-                                        analysis_id_value,
-                                        part_number,
-                                        _rerun=True,
-                                        arm_opening=True,
-                                    )
-                                if not component_available:
-                                    st.caption("This component's saved BOM is not available in the current workspace.")
-            stop_authenticated_page()
-
-        # Reserve the primary workflow at the top of the BOM page. The saved
-        # manager is rendered next, then the new-analysis workflow fills this
-        # slot below; Streamlit keeps the slot in its original top position.
-        bom_new_analysis_slot = st.empty()
-
-        def _render_saved_bom_manager() -> None:
-            """Render saved analyses beside the new-BOM workflow on desktop."""
-            # Milestone 8.1 — Saved BOM Manager. One control, only with loaded rows.
-            # An empty expander is a labeled placeholder and must not be created.
-            from src.pages.saved_analysis_control import (
-                MANAGE_SAVED_ANALYSES,
-                release_saved_analysis_placeholder,
-                should_render_saved_analysis_control,
-            )
-    
-            st.markdown('<div id="saved-bom-manager" hidden></div>', unsafe_allow_html=True)
-            st.markdown(
-                f"""
-                <div class="bom9-saved-marker"></div>
-                <section class="bom9-panel-intro">
-                  <div>
-                    <div class="bom9-panel-kicker">Saved work</div>
-                    <h2>Saved BOMs</h2>
-                    <p>{
-                      "Showing saved analyses with high-risk components."
-                      if st.session_state.get("bom81_high_risk_review")
-                      else "Search, compare, rename, open, or safely remove analyses from this workspace."
-                    }</p>
-                  </div>
-                  <span class="bom9-count-pill">{saved_analysis_count} saved</span>
-                </section>
-                """,
-                unsafe_allow_html=True,
-            )
-            if should_render_saved_analysis_control(history_data, route=app_mode, status="ok"):
-                if st.session_state.get("bom81_high_risk_review"):
-                    if st.button(
-                        "Show all saved analyses",
-                        key="bom81_clear_high_risk_review",
-                        type="secondary",
-                    ):
-                        st.session_state.pop("bom81_high_risk_review", None)
-                        st.rerun()
-                _manager_slot = st.empty()
-                _manager_slot.empty()
-                with _manager_slot.container():
-                    with st.container(key="bom81_saved_manager"):
-                        st.markdown(
-                            '<div data-saved-analyses="ready" hidden></div>',
-                            unsafe_allow_html=True,
-                        )
-                        with st.expander(
-                            MANAGE_SAVED_ANALYSES,
-                            expanded=True,
-                        ):
-    
-                            if history_data:
-                                manager_df = pd.DataFrame(history_data).copy()
-    
-                                required_defaults = {
-                                    "id": "",
-                                    "project_name": "Saved BOM analysis",
-                                    "filename": "—",
-                                    "total_parts": 0,
-                                    "health_score": 0,
-                                    "high_risk_count": 0,
-                                    "medium_risk_count": 0,
-                                    "low_risk_count": 0,
-                                    "created_at": pd.NaT,
-                                }
-                                for column_name, default_value in required_defaults.items():
-                                    if column_name not in manager_df.columns:
-                                        manager_df[column_name] = default_value
-    
-                                manager_df["project_name"] = manager_df["project_name"].fillna(
-                                    manager_df["filename"]
-                                )
-                                manager_df["project_name"] = manager_df["project_name"].fillna(
-                                    "Saved BOM analysis"
-                                )
-                                manager_df["filename"] = manager_df["filename"].fillna("—")
-    
-                                for numeric_column in (
-                                    "total_parts",
-                                    "health_score",
-                                    "high_risk_count",
-                                    "medium_risk_count",
-                                    "low_risk_count",
-                                ):
-                                    manager_df[numeric_column] = pd.to_numeric(
-                                        manager_df[numeric_column],
-                                        errors="coerce",
-                                    ).fillna(0).astype(int)
-    
-                                if st.session_state.get("bom81_high_risk_review"):
-                                    manager_df = manager_df[manager_df["high_risk_count"] > 0]
-    
-                                manager_df["created_at_sort"] = pd.to_datetime(
-                                    manager_df["created_at"],
-                                    errors="coerce",
-                                    utc=True,
-                                )
-                                manager_df["Updated"] = manager_df["created_at_sort"].dt.strftime(
-                                    "%b %d, %Y"
-                                ).fillna("—")
-
-                                # Earlier saved analyses stored the project and BOM name together.
-                                # Keep those records readable while presenting the same two names
-                                # that users enter in the upload form.
-                                legacy_title = manager_df["project_name"].astype(str).str.strip()
-                                title_parts = legacy_title.str.split(
-                                    " — ", n=1, expand=True
-                                ).reindex(columns=[0, 1])
-                                has_project_group = legacy_title.str.contains(
-                                    " — ", regex=False, na=False
-                                )
-                                manager_df["Project Name"] = title_parts[0].where(
-                                    has_project_group, "—"
-                                ).replace("", "—")
-                                manager_df["BOM Name"] = title_parts[1].where(
-                                    has_project_group, legacy_title
-                                ).fillna("Saved BOM analysis").replace("", "Saved BOM analysis")
-                                manager_df["Components"] = manager_df["total_parts"].clip(lower=0)
-                                manager_df["Health"] = manager_df["health_score"].clip(
-                                    lower=0,
-                                    upper=100,
-                                )
-
-                                def _saved_bom_next_step(row):
-                                    high = int(row["high_risk_count"])
-                                    medium = int(row["medium_risk_count"])
-                                    if high:
-                                        return f"🔴 Review {high} high-risk"
-                                    if medium:
-                                        return f"🟠 Monitor {medium} medium-risk"
-                                    if int(row["health_score"]) < 75:
-                                        return "🟡 Inspect health score"
-                                    return "🟢 Ready · no open risk"
-
-                                manager_df["Next step"] = manager_df.apply(
-                                    _saved_bom_next_step,
-                                    axis=1,
-                                )
-
-                                filter_col, focus_col, sort_col = st.columns(
-                                    [0.52, 0.20, 0.28],
-                                    gap="medium",
-                                )
-    
-                                with filter_col:
-                                    manager_search = st.text_input(
-                                        "Search saved analyses",
-                                        placeholder="Search project name, BOM name, or source file",
-                                        key="bom81_manager_search",
-                                    )
-
-                                with focus_col:
-                                    manager_focus = st.selectbox(
-                                        "Show",
-                                        options=["All BOMs", "Needs review", "Ready"],
-                                        key="bom81_manager_focus",
-                                    )
-
-                                with sort_col:
-                                    manager_sort = st.selectbox(
-                                        "Sort",
-                                        options=[
-                                            "Needs attention first",
-                                            "Newest first",
-                                            "Oldest first",
-                                            "Health: high to low",
-                                            "Health: low to high",
-                                            "High risk: high to low",
-                                            "Project name",
-                                        ],
-                                        key="bom81_manager_sort",
-                                    )
-
-                                if manager_focus == "Needs review":
-                                    manager_df = manager_df[
-                                        (manager_df["high_risk_count"] > 0)
-                                        | (manager_df["medium_risk_count"] > 0)
-                                        | (manager_df["health_score"] < 75)
-                                    ]
-                                elif manager_focus == "Ready":
-                                    manager_df = manager_df[
-                                        (manager_df["high_risk_count"] == 0)
-                                        & (manager_df["medium_risk_count"] == 0)
-                                        & (manager_df["health_score"] >= 75)
-                                    ]
-
-                                if manager_search.strip():
-                                    search_value = manager_search.strip().lower()
-                                    manager_df = manager_df[
-                                        manager_df["Project Name"]
-                                        .astype(str)
-                                        .str.lower()
-                                        .str.contains(search_value, na=False)
-                                        | manager_df["BOM Name"]
-                                        .astype(str)
-                                        .str.lower()
-                                        .str.contains(search_value, na=False)
-                                        | manager_df["filename"]
-                                        .astype(str)
-                                        .str.lower()
-                                        .str.contains(search_value, na=False)
-                                    ]
-    
-                                if manager_sort == "Needs attention first":
-                                    manager_df = manager_df.sort_values(
-                                        [
-                                            "high_risk_count",
-                                            "medium_risk_count",
-                                            "health_score",
-                                            "created_at_sort",
-                                        ],
-                                        ascending=[False, False, True, False],
-                                        na_position="last",
-                                    )
-                                elif manager_sort == "Newest first":
-                                    manager_df = manager_df.sort_values(
-                                        "created_at_sort",
-                                        ascending=False,
-                                        na_position="last",
-                                    )
-                                elif manager_sort == "Oldest first":
-                                    manager_df = manager_df.sort_values(
-                                        "created_at_sort",
-                                        ascending=True,
-                                        na_position="last",
-                                    )
-                                elif manager_sort == "Health: high to low":
-                                    manager_df = manager_df.sort_values(
-                                        "health_score",
-                                        ascending=False,
-                                    )
-                                elif manager_sort == "Health: low to high":
-                                    manager_df = manager_df.sort_values(
-                                        "health_score",
-                                        ascending=True,
-                                    )
-                                elif manager_sort == "High risk: high to low":
-                                    manager_df = manager_df.sort_values(
-                                        "high_risk_count",
-                                        ascending=False,
-                                    )
-                                else:
-                                    manager_df = manager_df.sort_values(
-                                        "project_name",
-                                        ascending=True,
-                                    )
-    
-                                if manager_df.empty:
-                                    st.info("No saved analyses match the current search.")
-                                else:
-                                    st.markdown(
-                                        f"""
-                                        <div class="bom81-result-count">
-                                          Showing <strong>{len(manager_df)}</strong> of <strong>{saved_analysis_count}</strong> saved BOMs
-                                        </div>
-                                        <div class="bom81-table-intelligence">
-                                          <strong>Decision view</strong>
-                                          <span>Health shows release readiness from 0–100. Next step identifies the highest-priority engineering action. Select a BOM to act on it.</span>
-                                        </div>
-                                        """,
-                                        unsafe_allow_html=True,
-                                    )
-                                    # Keep this id until the user clears it or opens the BOM.
-                                    # Popping it after one paint lets the next click rerun
-                                    # rebuild the editor with every checkbox false.
-                                    preselect_id = str(
-                                        st.session_state.get("cadivor_preselect_saved_bom_id", "") or ""
-                                    ).strip()
-                                    editor_df = pd.DataFrame(
-                                        {
-                                            # Keep the editor input stable: feeding its selected
-                                            # rows back into the input remounts the widget and
-                                            # loses the selection on the following interaction.
-                                            # A one-shot preselect uses a new editor key below.
-                                            "Select": False,
-                                            "Project Name": manager_df["Project Name"].astype(str),
-                                            "BOM Name": manager_df["BOM Name"].astype(str),
-                                            "Components": manager_df["Components"].astype(int),
-                                            "Health": manager_df["Health"].astype(int),
-                                            "Next step": manager_df["Next step"].astype(str),
-                                            "Updated": manager_df["Updated"].astype(str),
-                                            "_analysis_id": manager_df["id"].astype(str),
-                                        }
-                                    ).reset_index(drop=True)
-                                    editor_revision = int(
-                                        st.session_state.get("bom81_saved_analysis_editor_revision", 0)
-                                    )
-                                    editor_key = "bom81_saved_analysis_editor"
-                                    if editor_revision:
-                                        editor_key = f"{editor_key}_{editor_revision}"
-                                    if preselect_id and preselect_id in set(editor_df["_analysis_id"].astype(str)):
-                                        match = editor_df["_analysis_id"].astype(str) == preselect_id
-                                        row_index = int(editor_df.index[match][0])
-                                        widget_state = st.session_state.get(editor_key)
-                                        edited_rows = {}
-                                        if isinstance(widget_state, dict):
-                                            edited_rows = widget_state.get("edited_rows") or {}
-                                        row_edit = edited_rows.get(row_index) or edited_rows.get(str(row_index)) or {}
-                                        user_cleared = isinstance(row_edit, dict) and row_edit.get("Select") is False
-                                        if user_cleared:
-                                            st.session_state.pop("cadivor_preselect_saved_bom_id", None)
-                                            st.session_state["bom81_selected_analysis_ids"] = []
-                                        else:
-                                            editor_df.loc[match, "Select"] = True
-                                            st.session_state["bom81_selected_analysis_ids"] = [preselect_id]
-                                            applied_key = str(
-                                                st.session_state.get("cadivor_preselect_applied_editor_key") or ""
-                                            )
-                                            if applied_key != editor_key:
-                                                editor_revision += 1
-                                                st.session_state["bom81_saved_analysis_editor_revision"] = editor_revision
-                                                editor_key = f"bom81_saved_analysis_editor_{editor_revision}"
-                                                st.session_state["cadivor_preselect_applied_editor_key"] = editor_key
-                                    elif preselect_id:
-                                        st.session_state["cadivor_preselect_saved_bom_id"] = preselect_id
-    
-                                    edited_manager = st.data_editor(
-                                        editor_df,
-                                        use_container_width=True,
-                                        hide_index=True,
-                                        height=min(520, 76 + len(editor_df) * 44),
-                                        disabled=[
-                                            "Components",
-                                            "Health",
-                                            "Next step",
-                                            "Updated",
-                                            "_analysis_id",
-                                        ],
-                                        column_config={
-                                            "Select": st.column_config.CheckboxColumn(
-                                                "Select",
-                                                help="Select one analysis to open or several analyses to delete.",
-                                                width="small",
-                                            ),
-                                            "Project Name": st.column_config.TextColumn(
-                                                "Project Name",
-                                                help="Optional. Edit this value, then use Save names.",
-                                                width="small",
-                                            ),
-                                            "BOM Name": st.column_config.TextColumn(
-                                                "BOM Name",
-                                                help="Edit this value, then use Save names.",
-                                                width="medium",
-                                            ),
-                                            "Components": st.column_config.NumberColumn(
-                                                "Parts",
-                                                help="Total component rows analyzed in this BOM.",
-                                                width="small",
-                                                format="%d",
-                                            ),
-                                            "Health": st.column_config.ProgressColumn(
-                                                "Health",
-                                                help="Cadivor release-readiness score from 0 to 100.",
-                                                width="small",
-                                                min_value=0,
-                                                max_value=100,
-                                                format="%d",
-                                            ),
-                                            "Next step": st.column_config.TextColumn(
-                                                "Next step",
-                                                help="The highest-priority action based on open component risk and BOM health.",
-                                                width="medium",
-                                            ),
-                                            "Updated": st.column_config.TextColumn(
-                                                "Updated",
-                                                width="small",
-                                            ),
-                                            "_analysis_id": None,
-                                        },
-                                        key=editor_key,
-                                    )
-    
-                                    selected_rows = edited_manager[
-                                        edited_manager["Select"] == True
-                                    ]
-                                    selected_ids = selected_rows["_analysis_id"].astype(str).tolist()
-                                    if (
-                                        not selected_ids
-                                        and preselect_id
-                                        and preselect_id in set(editor_df["_analysis_id"].astype(str))
-                                    ):
-                                        # The click rerun can drop the canvas checkbox before
-                                        # this handler reads it. The list request still names
-                                        # the BOM the user came from.
-                                        selected_ids = [preselect_id]
-                                        selected_rows = editor_df[
-                                            editor_df["_analysis_id"].astype(str) == preselect_id
-                                        ]
-                                    st.session_state["bom81_selected_analysis_ids"] = selected_ids
-    
-                                    selected_count = len(selected_ids)
-                                    selection_label = "analysis" if selected_count == 1 else "analyses"
-                                    selected_project = ""
-                                    selected_next_step = ""
-                                    if selected_count == 1 and "BOM Name" in selected_rows.columns:
-                                        selected_project = str(selected_rows.iloc[0]["BOM Name"] or "").strip()
-                                        selected_next_step = str(
-                                            selected_rows.iloc[0].get("Next step") or ""
-                                        ).strip()
-    
-                                    selection_copy = (
-                                        "Select one BOM to enable Open BOM."
-                                        if selected_count == 0
-                                        else (
-                                            f"Selected: {selected_project}. {selected_next_step or 'Open BOM is ready.'}"
-                                            if selected_project
-                                            else "One BOM selected. Open BOM is ready."
-                                        )
-                                        if selected_count == 1
-                                        else "Multiple BOMs selected. Use Delete or Clear; BOMs open one at a time."
-                                    )
-                                    st.markdown(
-                                        f"""
-                                        <div class="bom81-selection-status">
-                                          <strong>{selected_count}</strong>
-                                          {selection_label} selected
-                                          <span>{html.escape(selection_copy)}</span>
-                                        </div>
-                                        """,
-                                        unsafe_allow_html=True,
-                                    )
-    
-                                    original_names = editor_df.set_index("_analysis_id")[
-                                        ["Project Name", "BOM Name"]
-                                    ].fillna("").astype(str).to_dict("index")
-                                    name_changes = edited_manager[
-                                        edited_manager.apply(
-                                            lambda row: (
-                                                str(row["Project Name"] or "").strip()
-                                                != str(
-                                                    original_names.get(
-                                                        str(row["_analysis_id"]), {}
-                                                    ).get("Project Name", "")
-                                                    or ""
-                                                ).strip()
-                                                or str(row["BOM Name"] or "").strip()
-                                                != str(
-                                                    original_names.get(
-                                                        str(row["_analysis_id"]), {}
-                                                    ).get("BOM Name", "")
-                                                    or ""
-                                                ).strip()
-                                            ),
-                                            axis=1,
-                                        )
-                                    ]
-
-                                    st.caption(
-                                        "Edit a Project Name or BOM Name directly in the table."
-                                    )
-                                    pending_name_action = st.session_state.get(
-                                        "bom81_pending_name_action"
-                                    )
-                                    if not name_changes.empty and not pending_name_action:
-                                        @st.dialog("Save name changes?")
-                                        def _confirm_saved_bom_name_changes():
-                                            st.write(
-                                                f"You changed the name{'s' if len(name_changes) != 1 else ''} "
-                                                f"for {len(name_changes)} saved BOM"
-                                                f"{'s' if len(name_changes) != 1 else ''}."
-                                            )
-                                            st.caption(
-                                                "Save these changes before continuing, or cancel to keep the original names."
-                                            )
-                                            dialog_save, dialog_cancel = st.columns(2)
-                                            with dialog_save:
-                                                if st.button(
-                                                    "Save changes",
-                                                    type="primary",
-                                                    use_container_width=True,
-                                                    key="bom81_dialog_save_names",
-                                                ):
-                                                    st.session_state[
-                                                        "bom81_pending_name_action"
-                                                    ] = "save"
-                                                    st.rerun()
-                                            with dialog_cancel:
-                                                if st.button(
-                                                    "Cancel changes",
-                                                    use_container_width=True,
-                                                    key="bom81_dialog_cancel_names",
-                                                ):
-                                                    st.session_state[
-                                                        "bom81_pending_name_action"
-                                                    ] = "discard"
-                                                    st.rerun()
-
-                                        _confirm_saved_bom_name_changes()
-
-                                    if pending_name_action == "discard":
-                                        st.session_state[
-                                            "bom81_saved_analysis_editor_revision"
-                                        ] = editor_revision + 1
-                                        st.session_state.pop(
-                                            "bom81_pending_name_action", None
-                                        )
-                                        st.rerun()
-
-                                    save_col, open_col, delete_col, clear_col = st.columns(
-                                        [0.24, 0.26, 0.25, 0.25],
-                                        gap="medium",
-                                    )
-
-                                    with save_col:
-                                        if (
-                                            st.button(
-                                                "Save names",
-                                                type="secondary",
-                                                use_container_width=True,
-                                                disabled=name_changes.empty,
-                                                key="bom81_save_project_names",
-                                            )
-                                            or st.session_state.pop(
-                                                "bom81_pending_name_action", ""
-                                            ) == "save"
-                                        ):
-                                            update_errors = []
-                                            updated_count = 0
-                                            for _, changed_row in name_changes.iterrows():
-                                                analysis_id_value = str(
-                                                    changed_row["_analysis_id"] or ""
-                                                ).strip()
-                                                bom_title = str(
-                                                    changed_row["BOM Name"] or ""
-                                                ).strip()
-                                                project_title = str(
-                                                    changed_row["Project Name"] or ""
-                                                ).strip()
-                                                if project_title == "—":
-                                                    project_title = ""
-                                                saved_title = (
-                                                    f"{project_title} — {bom_title}"
-                                                    if project_title
-                                                    else bom_title
-                                                )
-                                                if not analysis_id_value or not saved_title:
-                                                    continue
-                                                try:
-                                                    supabase.table("analyses").update(
-                                                        {"project_name": saved_title}
-                                                    ).eq(
-                                                        "id", analysis_id_value
-                                                    ).eq(
-                                                        "user_id", current_user["id"]
-                                                    ).execute()
-                                                    supabase.table("analysis_parts").update(
-                                                        {"project_name": saved_title}
-                                                    ).eq(
-                                                        "analysis_id", analysis_id_value
-                                                    ).eq(
-                                                        "user_id", current_user["id"]
-                                                    ).execute()
-                                                    updated_count += 1
-                                                except Exception as update_error:
-                                                    update_errors.append(
-                                                        f"{bom_title or analysis_id_value}: {update_error}"
-                                                    )
-
-                                            if update_errors:
-                                                st.error(
-                                                    "Some names could not be saved. "
-                                                    + " | ".join(update_errors[:2])
-                                                )
-                                            elif updated_count:
-                                                st.session_state[
-                                                    "bom81_saved_analysis_editor_revision"
-                                                ] = editor_revision + 1
-                                                st.success(
-                                                    f"Saved names for {updated_count} BOM"
-                                                    f"{'s' if updated_count != 1 else ''}."
-                                                )
-                                                st.rerun()
-
-                                    with open_col:
-                                        if st.button(
-                                            "Open BOM" if selected_count == 1 else "Open BOM (select 1)",
-                                            type="primary",
-                                            use_container_width=True,
-                                            disabled=selected_count != 1,
-                                            key="bom81_open_selected",
-                                        ):
-                                            if not selected_ids:
-                                                selected_ids = []
-                                            selected_saved_id = selected_ids[0] if selected_ids else ""
-                                            if not selected_saved_id:
-                                                st.stop()
-                                            st.session_state.pop("cadivor_show_saved_boms", None)
-                                            st.session_state.pop("cadivor_preselect_saved_bom_id", None)
-                                            st.session_state.pop("cadivor_preselect_applied_editor_key", None)
-                                            st.session_state["cadivor_active_analysis_id"] = str(selected_saved_id)
-                                            st.session_state["analysis_id"] = str(selected_saved_id)
-                                            navigate_to(
-                                                "Analysis Details",
-                                                analysis_id=selected_saved_id,
-                                                arm_opening=False,
-                                            )
-    
-                                    with delete_col:
-                                        if st.button(
-                                            f"Delete ({selected_count})",
-                                            type="secondary",
-                                            use_container_width=True,
-                                            disabled=selected_count == 0,
-                                            key="bom81_request_bulk_delete",
-                                        ):
-                                            st.session_state["bom81_pending_delete_ids"] = selected_ids
-                                            st.rerun()
-    
-                                    with clear_col:
-                                        if st.button(
-                                            "Clear",
-                                            use_container_width=True,
-                                            disabled=selected_count == 0,
-                                            key="bom81_clear_selection",
-                                        ):
-                                            st.session_state["bom81_selected_analysis_ids"] = []
-                                            st.session_state.pop("bom81_pending_delete_ids", None)
-                                            st.session_state.pop("cadivor_preselect_saved_bom_id", None)
-                                            st.session_state.pop("cadivor_preselect_applied_editor_key", None)
-                                            st.session_state["bom81_saved_analysis_editor_revision"] = (
-                                                editor_revision + 1
-                                            )
-                                            st.rerun()
-    
-                                    pending_delete_ids = [
-                                        str(value)
-                                        for value in st.session_state.get(
-                                            "bom81_pending_delete_ids",
-                                            [],
-                                        )
-                                        if str(value).strip()
-                                    ]
-    
-                                    if pending_delete_ids:
-                                        delete_records = manager_df[
-                                            manager_df["id"].astype(str).isin(pending_delete_ids)
-                                        ]
-                                        delete_names = delete_records["project_name"].astype(str).tolist()
-                                        preview_names = delete_names[:5]
-                                        remaining_names = max(0, len(delete_names) - len(preview_names))
-    
-                                        name_lines = "".join(
-                                            f"<li>{html.escape(name)}</li>"
-                                            for name in preview_names
-                                        )
-                                        if remaining_names:
-                                            name_lines += (
-                                                f"<li>and {remaining_names} more "
-                                                f"{'analyses' if remaining_names != 1 else 'analysis'}</li>"
-                                            )
-    
-                                        st.markdown(
-                                            f"""
-                                            <div class="bom81-delete-confirmation">
-                                              <div class="bom81-delete-icon">!</div>
-                                              <div>
-                                                <strong>Permanently delete {len(pending_delete_ids)}
-                                                saved BOM {"analyses" if len(pending_delete_ids) != 1 else "analysis"}?</strong>
-                                                <p>
-                                                  All saved component records associated with these
-                                                  analyses will also be removed. This action cannot be undone.
-                                                </p>
-                                                <ul>{name_lines}</ul>
-                                              </div>
-                                            </div>
-                                            """,
-                                            unsafe_allow_html=True,
-                                        )
-    
-                                        confirm_col, cancel_col = st.columns(
-                                            [0.5, 0.5],
-                                            gap="medium",
-                                        )
-    
-                                        with confirm_col:
-                                            if st.button(
-                                                f"Yes, Delete {len(pending_delete_ids)} Permanently",
-                                                type="primary",
-                                                use_container_width=True,
-                                                key="bom81_confirm_bulk_delete",
-                                            ):
-                                                deletion_errors = []
-    
-                                                for analysis_id_value in pending_delete_ids:
-                                                    try:
-                                                        supabase.table("analysis_parts").delete().eq(
-                                                            "analysis_id",
-                                                            analysis_id_value,
-                                                        ).execute()
-    
-                                                        try:
-                                                            supabase.table(
-                                                                "part_monitor_history"
-                                                            ).delete().eq(
-                                                                "analysis_id",
-                                                                analysis_id_value,
-                                                            ).execute()
-                                                        except Exception:
-                                                            pass
-    
-                                                        supabase.table("analyses").delete().eq(
-                                                            "id",
-                                                            analysis_id_value,
-                                                        ).eq(
-                                                            "user_id",
-                                                            current_user["id"],
-                                                        ).execute()
-                                                    except Exception as deletion_error:
-                                                        deletion_errors.append(
-                                                            f"{analysis_id_value}: {deletion_error}"
-                                                        )
-    
-                                                st.session_state["bom81_selected_analysis_ids"] = []
-                                                st.session_state["bom81_saved_analysis_editor_revision"] = (
-                                                    editor_revision + 1
-                                                )
-                                                st.session_state.pop(
-                                                    "bom81_pending_delete_ids",
-                                                    None,
-                                                )
-    
-                                                if deletion_errors:
-                                                    st.error(
-                                                        "Some analyses could not be deleted. "
-                                                        + " | ".join(deletion_errors[:3])
-                                                    )
-                                                else:
-                                                    st.success(
-                                                        f"{len(pending_delete_ids)} saved BOM "
-                                                        f"{'analyses' if len(pending_delete_ids) != 1 else 'analysis'} "
-                                                        "permanently deleted."
-                                                    )
-                                                    st.rerun()
-    
-                                        with cancel_col:
-                                            if st.button(
-                                                "Cancel",
-                                                use_container_width=True,
-                                                key="bom81_cancel_bulk_delete",
-                                            ):
-                                                st.session_state.pop(
-                                                    "bom81_pending_delete_ids",
-                                                    None,
-                                                )
-                                                st.rerun()
-    
-                                    st.caption(
-                                        "Select one BOM to open it. Select multiple BOMs only when you want to delete them together."
-                                    )
-    
-            else:
-                release_saved_analysis_placeholder()
-                st.markdown(
-                    """
-                    <div class="bom9-empty-state">
-                      <strong>No saved BOMs yet</strong>
-                      <span>Your completed analyses will appear here with health, risk, and update details.</span>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
-
-            if total_high_risk:
-                with st.container(key="bom9_review_queue"):
-                    review_copy_col, review_action_col = st.columns([0.76, 0.24], gap="small")
-                    with review_copy_col:
-                        st.markdown(
-                            f"""
-                            <div class="bom9-review-copy">
-                              <strong>Review queue</strong>
-                              <span>{total_high_risk} high-risk component{'s' if total_high_risk != 1 else ''} need engineering review.</span>
-                            </div>
-                            """,
-                            unsafe_allow_html=True,
-                        )
-                    with review_action_col:
-                        if st.button(
-                            "Review high-risk parts",
-                            key="bom81_review_high_risk_components",
-                            type="secondary",
-                            use_container_width=False,
-                            help="Open the saved components that need engineering review.",
-                        ):
-                            open_high_risk_component_review(arm_opening=False)
-
-        # Keep the primary task together: workflow and form occupy the reserved top slot
-        # occupy the reserved top slot; saved analyses remain below it.
-        _bom_new_analysis_context = bom_new_analysis_slot.container()
-        _bom_new_analysis_context.__enter__()
-        st.markdown(
-            f"""
-            <section class="bom9-workspace-hero">
-              <div class="bom9-workspace-eyebrow">BOM workspace</div>
-              <h1>Build or reopen an engineering BOM</h1>
-              <p>Start a new analysis, or continue saved work with health, component scope, and the next engineering action already in view.</p>
-            </section>
-            """,
-            unsafe_allow_html=True,
-        )
-        _one_time_blocked_plan = (
-            not is_admin and selected_plan.get("can_create_analyses") is False
-        )
-        if _one_time_blocked_plan:
-            # A purchased report must never be spent on Cadivor's example BOM.
+        render_bom_catalog(history_data if isinstance(history_data, list) else [])
+        uploaded_file = st.session_state.pop("cadivor_pending_upload", None)
+        project_name = str(st.session_state.pop("cadivor_pending_project", "") or "")
+        bom_name = str(st.session_state.pop("cadivor_pending_bom_name", "") or "")
+        st.session_state.pop("cadivor_bom_analysis_ready", None)
+        if uploaded_file is not None:
             st.session_state.pop("bom8_sample_mode", None)
-            st.session_state.pop("bom8_sample_auto_analyze", None)
-        _one_time_feature_enabled = one_time_bom_enabled()
-        _one_time_user_id = str(current_user["id"])
-        _one_time_order_id = str(
-            st.session_state.get("cadivor_one_time_bom_order_id") or ""
-        )
-        _one_time_reserved = (
-            _one_time_blocked_plan and one_time_credit_reserved(
-                _one_time_user_id, _one_time_order_id
-            )
-        )
-        _one_time_available = (
-            _one_time_blocked_plan and one_time_credit_available(_one_time_user_id)
-        )
-        _one_time_in_progress = (
-            _one_time_blocked_plan and one_time_credit_in_progress(_one_time_user_id)
-        )
-        if _one_time_blocked_plan:
-            if _one_time_reserved:
-                st.success("Your one-time BOM report is in progress. Finish this analysis to access its reports.")
-            elif _one_time_available:
-                st.success(
-                    f"Your one-time BOM report is ready. Upload up to {ONE_TIME_BOM_MAX_PARTS} unique components; "
-                    "the saved BOM and its report package will remain in your workspace."
-                )
-            elif _one_time_in_progress:
-                st.info(
-                    "A paid BOM analysis is already in progress for this account. "
-                    "Return to its open tab, or contact support if it was interrupted. "
-                    "An interrupted reservation becomes available again after four hours."
-                )
-                stop_authenticated_page()
-            else:
-                if _one_time_feature_enabled:
-                    st.warning(
-                        "Saved BOMs and reports remain available. A new full analysis requires "
-                        "a plan or one one-time BOM report purchase."
-                    )
-                    st.caption(
-                        f"One purchase covers one full analysis of up to {ONE_TIME_BOM_MAX_PARTS} unique components "
-                        "and its standard PDF and CSV reports. No subscription is required."
-                    )
-                    _checkout_key = f"cadivor_one_time_checkout_{_one_time_user_id}"
-                    _pending_checkout = one_time_pending_checkout(_one_time_user_id)
-                    try:
-                        _one_time_price = one_time_price_label(
-                            str(get_secret("STRIPE_ONE_TIME_BOM_REPORT_PRICE_ID", required=True))
-                        )
-                    except OneTimeBOMError as exc:
-                        st.error(str(exc))
-                        _one_time_price = ""
-                    if _one_time_price and not _pending_checkout and st.button(
-                        f"Buy one BOM report · {_one_time_price}",
-                        key="bom_one_time_buy", type="primary",
-                    ):
-                        try:
-                            st.session_state[_checkout_key] = begin_one_time_checkout(
-                                _one_time_user_id,
-                                str(current_user.get("email") or ""),
-                                app_checkout_url(page="BOM Analyzer", checkout="single_bom_success"),
-                                app_checkout_url(page="BOM Analyzer", checkout="single_bom_cancel"),
-                            )
-                        except OneTimeBOMError as exc:
-                            st.error(str(exc))
-                    if _pending_checkout and _pending_checkout[0] == "open":
-                        st.link_button(
-                            "Continue existing checkout →", _pending_checkout[1], type="primary"
-                        )
-                    elif _pending_checkout:
-                        st.info("Checkout is processing. Refresh shortly to see your paid report credit.")
-                    elif st.session_state.get(_checkout_key):
-                        st.link_button(
-                            "Continue to secure checkout →", st.session_state[_checkout_key],
-                            type="primary",
-                        )
-                    if _safe_text(_qp_value("checkout", "")) == "single_bom_success":
-                        st.info("Payment confirmation is processing. Refresh this page in a moment to use your report credit.")
-                    elif _safe_text(_qp_value("checkout", "")) == "single_bom_cancel":
-                        st.info("Checkout was canceled. No report credit was purchased.")
-                elif selected_plan_name == PLAN_SUBSCRIPTION_INACTIVE:
-                    st.warning(
-                        "This subscription is not active. Saved analyses above remain available to open and download. "
-                        "Choose a paid plan to create a new analysis."
-                    )
-                else:
-                    st.warning(
-                        "Your trial has ended. Saved analyses above remain available to open and download. "
-                        "Choose a paid plan to create a new analysis."
-                    )
-                if st.button(
-                    "Compare plans" if _one_time_feature_enabled else "Choose a paid plan",
-                    key="bom_trial_expired_choose_plan",
-                    type="secondary" if _one_time_feature_enabled else "primary",
-                ):
-                    navigate_to("Pricing")
-                stop_authenticated_page()
-
         analysis_in_progress = bool(
             st.session_state.get("bom8_analysis_future")
             or st.session_state.get("bom8_analysis_pending")
             or st.session_state.get("bom8_sample_auto_analyze")
         )
-        if st.session_state.pop("bom8_analysis_cancelled_notice", False):
-            st.success("Analysis canceled. No BOM analysis was saved.")
-        _bom_workspace_grid_context = st.container(key="bom9_workspace_grid")
-        _bom_workspace_grid_context.__enter__()
-        input_col, saved_manager_col = st.columns([0.38, 0.62], gap="large")
+        sample_bom = pd.DataFrame()
+        if uploaded_file is None:
+            stop_authenticated_page()
+        if False:
+            # Cross-BOM review belongs with the File readiness guidance below,
+            # not as a disconnected page-level action.
 
-        with input_col:
-            _bom_upload_panel_context = st.container(
-                border=True,
-                key="bom9_upload_panel",
-            )
-            _bom_upload_panel_context.__enter__()
-            _bom_upload_intro = (
-                "Name the work, then upload your own CSV or Excel file."
-                if _one_time_blocked_plan else
-                "Name the work, then choose Cadivor's sample or upload your own CSV or Excel file."
-            )
+            if st.session_state.get("bom81_high_risk_review"):
+                st.markdown(
+                    f"""
+                    <section class="bom81-review-hero">
+                      <div class="bom81-review-eyebrow">Engineering review queue</div>
+                      <h1>High-risk components</h1>
+                      <p>{total_high_risk} component{'s' if total_high_risk != 1 else ''} need engineering review across your saved BOMs.</p>
+                    </section>
+                    """,
+                    unsafe_allow_html=True,
+                )
+                if st.button("Back to BOMs", key="bom81_return_from_high_risk", type="secondary"):
+                    st.session_state.pop("bom81_high_risk_review", None)
+                    navigate_to("BOM Analyzer", show_saved_analyses="1", arm_opening=False)
+                try:
+                    high_risk_parts_response = (
+                        _workspace_query(supabase.table("analysis_parts").select("*"))
+                        .eq("user_id", current_user["id"])
+                        .limit(5000)
+                        .execute()
+                    )
+                    high_risk_parts = high_risk_parts_response.data or []
+                except Exception:
+                    high_risk_parts = []
+
+                high_risk_rows = [
+                    row for row in high_risk_parts
+                    if str(row.get("risk_level") or row.get("Risk Level") or "").strip().lower() == "high"
+                ]
+                analysis_labels = {
+                    str(row.get("id") or ""): str(row.get("project_name") or row.get("filename") or "Saved BOM analysis")
+                    for row in history_data
+                }
+                if not high_risk_rows:
+                    st.info("No saved high-risk component records are currently available to review.")
+                else:
+                    st.markdown(
+                        """
+                        <style>
+                        .bom81-review-hero{
+                            margin:0 0 18px;padding:22px 24px;border:1px solid #dbe3ef;border-radius:18px;
+                            background:linear-gradient(135deg,#ffffff 0%,#fffaf7 100%);box-shadow:0 8px 24px rgba(15,23,42,.04)
+                        }
+                        .bom81-review-eyebrow{color:#b45309;font-size:10px;font-weight:850;letter-spacing:.1em;text-transform:uppercase;margin-bottom:7px}
+                        .bom81-review-hero h1{margin:0 0 6px;color:#0f172a;font-size:28px;letter-spacing:-.03em}
+                        .bom81-review-hero p{margin:0;color:#64748b;font-size:14px}
+                        .bom81-risk-kicker{color:#c2410c;font-size:10px;font-weight:850;letter-spacing:.08em;text-transform:uppercase}
+                        .bom81-risk-title{margin:7px 0 5px;color:#0f172a;font-size:18px;font-weight:850}
+                        .bom81-risk-meta{color:#64748b;font-size:12px;line-height:1.5}
+                        .bom81-risk-meta strong{color:#334155}
+                        [data-testid="stVerticalBlockBorderWrapper"]:has(.bom81-risk-kicker){border-color:#dbe3ef!important;border-radius:14px!important;background:#fff;box-shadow:0 5px 16px rgba(15,23,42,.035)}
+                        </style>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+                    for row_start in range(0, len(high_risk_rows), 2):
+                        card_columns = st.columns(2, gap="large")
+                        for column, (index, part) in zip(
+                            card_columns,
+                            enumerate(high_risk_rows[row_start:row_start + 2], start=row_start),
+                        ):
+                            part_number = str(
+                                part.get("mpn") or part.get("part_number") or part.get("manufacturer_part_number") or "Component"
+                            )
+                            analysis_id_value = str(part.get("analysis_id") or "").strip()
+                            manufacturer = str(part.get("manufacturer") or "Unknown manufacturer")
+                            risk_score = part.get("risk_score") or part.get("Risk Score") or "—"
+                            component_available = bool(analysis_id_value and analysis_id_value in analysis_labels)
+                            project_label = analysis_labels.get(analysis_id_value, "Saved BOM analysis")
+                            with column:
+                                with st.container(border=True):
+                                    st.markdown(
+                                        f'<div class="bom81-risk-kicker">High risk · score {html.escape(str(risk_score))}</div>'
+                                        f'<div class="bom81-risk-title">{html.escape(part_number)}</div>'
+                                        f'<div class="bom81-risk-meta">{html.escape(manufacturer)} · <strong>Saved BOM:</strong> {html.escape(project_label)}</div>',
+                                        unsafe_allow_html=True,
+                                    )
+                                    if st.button(
+                                        "Open component details",
+                                        key=f"bom81_open_high_risk_{analysis_id_value}_{part_number}_{index}",
+                                        type="primary",
+                                        use_container_width=True,
+                                        disabled=not component_available,
+                                    ):
+                                        st.session_state.pop("bom81_high_risk_review", None)
+                                        open_component_in_saved_bom(
+                                            analysis_id_value,
+                                            part_number,
+                                            _rerun=True,
+                                            arm_opening=True,
+                                        )
+                                    if not component_available:
+                                        st.caption("This component's saved BOM is not available in the current workspace.")
+                stop_authenticated_page()
+
+            # Reserve the primary workflow at the top of the BOM page. The saved
+            # manager is rendered next, then the new-analysis workflow fills this
+            # slot below; Streamlit keeps the slot in its original top position.
+            bom_new_analysis_slot = st.empty()
+
+            def _render_saved_bom_manager() -> None:
+                """Render saved analyses beside the new-BOM workflow on desktop."""
+                # Milestone 8.1 — Saved BOM Manager. One control, only with loaded rows.
+                # An empty expander is a labeled placeholder and must not be created.
+                from src.pages.saved_analysis_control import (
+                    MANAGE_SAVED_ANALYSES,
+                    release_saved_analysis_placeholder,
+                    should_render_saved_analysis_control,
+                )
+    
+                st.markdown('<div id="saved-bom-manager" hidden></div>', unsafe_allow_html=True)
+                st.markdown(
+                    f"""
+                    <div class="bom9-saved-marker"></div>
+                    <section class="bom9-panel-intro">
+                      <div>
+                        <div class="bom9-panel-kicker">Saved work</div>
+                        <h2>Saved BOMs</h2>
+                        <p>{
+                          "Showing saved analyses with high-risk components."
+                          if st.session_state.get("bom81_high_risk_review")
+                          else "Search, compare, rename, open, or safely remove analyses from this workspace."
+                        }</p>
+                      </div>
+                      <span class="bom9-count-pill">{saved_analysis_count} saved</span>
+                    </section>
+                    """,
+                    unsafe_allow_html=True,
+                )
+                if should_render_saved_analysis_control(history_data, route=app_mode, status="ok"):
+                    if st.session_state.get("bom81_high_risk_review"):
+                        if st.button(
+                            "Show all saved analyses",
+                            key="bom81_clear_high_risk_review",
+                            type="secondary",
+                        ):
+                            st.session_state.pop("bom81_high_risk_review", None)
+                            st.rerun()
+                    _manager_slot = st.empty()
+                    _manager_slot.empty()
+                    with _manager_slot.container():
+                        with st.container(key="bom81_saved_manager"):
+                            st.markdown(
+                                '<div data-saved-analyses="ready" hidden></div>',
+                                unsafe_allow_html=True,
+                            )
+                            with st.expander(
+                                MANAGE_SAVED_ANALYSES,
+                                expanded=True,
+                            ):
+    
+                                if history_data:
+                                    manager_df = pd.DataFrame(history_data).copy()
+    
+                                    required_defaults = {
+                                        "id": "",
+                                        "project_name": "Saved BOM analysis",
+                                        "filename": "—",
+                                        "total_parts": 0,
+                                        "health_score": 0,
+                                        "high_risk_count": 0,
+                                        "medium_risk_count": 0,
+                                        "low_risk_count": 0,
+                                        "created_at": pd.NaT,
+                                    }
+                                    for column_name, default_value in required_defaults.items():
+                                        if column_name not in manager_df.columns:
+                                            manager_df[column_name] = default_value
+    
+                                    manager_df["project_name"] = manager_df["project_name"].fillna(
+                                        manager_df["filename"]
+                                    )
+                                    manager_df["project_name"] = manager_df["project_name"].fillna(
+                                        "Saved BOM analysis"
+                                    )
+                                    manager_df["filename"] = manager_df["filename"].fillna("—")
+    
+                                    for numeric_column in (
+                                        "total_parts",
+                                        "health_score",
+                                        "high_risk_count",
+                                        "medium_risk_count",
+                                        "low_risk_count",
+                                    ):
+                                        manager_df[numeric_column] = pd.to_numeric(
+                                            manager_df[numeric_column],
+                                            errors="coerce",
+                                        ).fillna(0).astype(int)
+    
+                                    if st.session_state.get("bom81_high_risk_review"):
+                                        manager_df = manager_df[manager_df["high_risk_count"] > 0]
+    
+                                    manager_df["created_at_sort"] = pd.to_datetime(
+                                        manager_df["created_at"],
+                                        errors="coerce",
+                                        utc=True,
+                                    )
+                                    manager_df["Updated"] = manager_df["created_at_sort"].dt.strftime(
+                                        "%b %d, %Y"
+                                    ).fillna("—")
+
+                                    # Earlier saved analyses stored the project and BOM name together.
+                                    # Keep those records readable while presenting the same two names
+                                    # that users enter in the upload form.
+                                    legacy_title = manager_df["project_name"].astype(str).str.strip()
+                                    title_parts = legacy_title.str.split(
+                                        " — ", n=1, expand=True
+                                    ).reindex(columns=[0, 1])
+                                    has_project_group = legacy_title.str.contains(
+                                        " — ", regex=False, na=False
+                                    )
+                                    manager_df["Project Name"] = title_parts[0].where(
+                                        has_project_group, "—"
+                                    ).replace("", "—")
+                                    manager_df["BOM Name"] = title_parts[1].where(
+                                        has_project_group, legacy_title
+                                    ).fillna("Saved BOM analysis").replace("", "Saved BOM analysis")
+                                    manager_df["Components"] = manager_df["total_parts"].clip(lower=0)
+                                    manager_df["Health"] = manager_df["health_score"].clip(
+                                        lower=0,
+                                        upper=100,
+                                    )
+
+                                    def _saved_bom_next_step(row):
+                                        high = int(row["high_risk_count"])
+                                        medium = int(row["medium_risk_count"])
+                                        if high:
+                                            return f"🔴 Review {high} high-risk"
+                                        if medium:
+                                            return f"🟠 Monitor {medium} medium-risk"
+                                        if int(row["health_score"]) < 75:
+                                            return "🟡 Inspect health score"
+                                        return "🟢 Ready · no open risk"
+
+                                    manager_df["Next step"] = manager_df.apply(
+                                        _saved_bom_next_step,
+                                        axis=1,
+                                    )
+
+                                    filter_col, focus_col, sort_col = st.columns(
+                                        [0.52, 0.20, 0.28],
+                                        gap="medium",
+                                    )
+    
+                                    with filter_col:
+                                        manager_search = st.text_input(
+                                            "Search saved analyses",
+                                            placeholder="Search project name, BOM name, or source file",
+                                            key="bom81_manager_search",
+                                        )
+
+                                    with focus_col:
+                                        manager_focus = st.selectbox(
+                                            "Show",
+                                            options=["All BOMs", "Needs review", "Ready"],
+                                            key="bom81_manager_focus",
+                                        )
+
+                                    with sort_col:
+                                        manager_sort = st.selectbox(
+                                            "Sort",
+                                            options=[
+                                                "Needs attention first",
+                                                "Newest first",
+                                                "Oldest first",
+                                                "Health: high to low",
+                                                "Health: low to high",
+                                                "High risk: high to low",
+                                                "Project name",
+                                            ],
+                                            key="bom81_manager_sort",
+                                        )
+
+                                    if manager_focus == "Needs review":
+                                        manager_df = manager_df[
+                                            (manager_df["high_risk_count"] > 0)
+                                            | (manager_df["medium_risk_count"] > 0)
+                                            | (manager_df["health_score"] < 75)
+                                        ]
+                                    elif manager_focus == "Ready":
+                                        manager_df = manager_df[
+                                            (manager_df["high_risk_count"] == 0)
+                                            & (manager_df["medium_risk_count"] == 0)
+                                            & (manager_df["health_score"] >= 75)
+                                        ]
+
+                                    if manager_search.strip():
+                                        search_value = manager_search.strip().lower()
+                                        manager_df = manager_df[
+                                            manager_df["Project Name"]
+                                            .astype(str)
+                                            .str.lower()
+                                            .str.contains(search_value, na=False)
+                                            | manager_df["BOM Name"]
+                                            .astype(str)
+                                            .str.lower()
+                                            .str.contains(search_value, na=False)
+                                            | manager_df["filename"]
+                                            .astype(str)
+                                            .str.lower()
+                                            .str.contains(search_value, na=False)
+                                        ]
+    
+                                    if manager_sort == "Needs attention first":
+                                        manager_df = manager_df.sort_values(
+                                            [
+                                                "high_risk_count",
+                                                "medium_risk_count",
+                                                "health_score",
+                                                "created_at_sort",
+                                            ],
+                                            ascending=[False, False, True, False],
+                                            na_position="last",
+                                        )
+                                    elif manager_sort == "Newest first":
+                                        manager_df = manager_df.sort_values(
+                                            "created_at_sort",
+                                            ascending=False,
+                                            na_position="last",
+                                        )
+                                    elif manager_sort == "Oldest first":
+                                        manager_df = manager_df.sort_values(
+                                            "created_at_sort",
+                                            ascending=True,
+                                            na_position="last",
+                                        )
+                                    elif manager_sort == "Health: high to low":
+                                        manager_df = manager_df.sort_values(
+                                            "health_score",
+                                            ascending=False,
+                                        )
+                                    elif manager_sort == "Health: low to high":
+                                        manager_df = manager_df.sort_values(
+                                            "health_score",
+                                            ascending=True,
+                                        )
+                                    elif manager_sort == "High risk: high to low":
+                                        manager_df = manager_df.sort_values(
+                                            "high_risk_count",
+                                            ascending=False,
+                                        )
+                                    else:
+                                        manager_df = manager_df.sort_values(
+                                            "project_name",
+                                            ascending=True,
+                                        )
+    
+                                    if manager_df.empty:
+                                        st.info("No saved analyses match the current search.")
+                                    else:
+                                        st.markdown(
+                                            f"""
+                                            <div class="bom81-result-count">
+                                              Showing <strong>{len(manager_df)}</strong> of <strong>{saved_analysis_count}</strong> saved BOMs
+                                            </div>
+                                            <div class="bom81-table-intelligence">
+                                              <strong>Decision view</strong>
+                                              <span>Health shows release readiness from 0–100. Next step identifies the highest-priority engineering action. Select a BOM to act on it.</span>
+                                            </div>
+                                            """,
+                                            unsafe_allow_html=True,
+                                        )
+                                        # Keep this id until the user clears it or opens the BOM.
+                                        # Popping it after one paint lets the next click rerun
+                                        # rebuild the editor with every checkbox false.
+                                        preselect_id = str(
+                                            st.session_state.get("cadivor_preselect_saved_bom_id", "") or ""
+                                        ).strip()
+                                        editor_df = pd.DataFrame(
+                                            {
+                                                # Keep the editor input stable: feeding its selected
+                                                # rows back into the input remounts the widget and
+                                                # loses the selection on the following interaction.
+                                                # A one-shot preselect uses a new editor key below.
+                                                "Select": False,
+                                                "Project Name": manager_df["Project Name"].astype(str),
+                                                "BOM Name": manager_df["BOM Name"].astype(str),
+                                                "Components": manager_df["Components"].astype(int),
+                                                "Health": manager_df["Health"].astype(int),
+                                                "Next step": manager_df["Next step"].astype(str),
+                                                "Updated": manager_df["Updated"].astype(str),
+                                                "_analysis_id": manager_df["id"].astype(str),
+                                            }
+                                        ).reset_index(drop=True)
+                                        editor_revision = int(
+                                            st.session_state.get("bom81_saved_analysis_editor_revision", 0)
+                                        )
+                                        editor_key = "bom81_saved_analysis_editor"
+                                        if editor_revision:
+                                            editor_key = f"{editor_key}_{editor_revision}"
+                                        if preselect_id and preselect_id in set(editor_df["_analysis_id"].astype(str)):
+                                            match = editor_df["_analysis_id"].astype(str) == preselect_id
+                                            row_index = int(editor_df.index[match][0])
+                                            widget_state = st.session_state.get(editor_key)
+                                            edited_rows = {}
+                                            if isinstance(widget_state, dict):
+                                                edited_rows = widget_state.get("edited_rows") or {}
+                                            row_edit = edited_rows.get(row_index) or edited_rows.get(str(row_index)) or {}
+                                            user_cleared = isinstance(row_edit, dict) and row_edit.get("Select") is False
+                                            if user_cleared:
+                                                st.session_state.pop("cadivor_preselect_saved_bom_id", None)
+                                                st.session_state["bom81_selected_analysis_ids"] = []
+                                            else:
+                                                editor_df.loc[match, "Select"] = True
+                                                st.session_state["bom81_selected_analysis_ids"] = [preselect_id]
+                                                applied_key = str(
+                                                    st.session_state.get("cadivor_preselect_applied_editor_key") or ""
+                                                )
+                                                if applied_key != editor_key:
+                                                    editor_revision += 1
+                                                    st.session_state["bom81_saved_analysis_editor_revision"] = editor_revision
+                                                    editor_key = f"bom81_saved_analysis_editor_{editor_revision}"
+                                                    st.session_state["cadivor_preselect_applied_editor_key"] = editor_key
+                                        elif preselect_id:
+                                            st.session_state["cadivor_preselect_saved_bom_id"] = preselect_id
+    
+                                        edited_manager = st.data_editor(
+                                            editor_df,
+                                            use_container_width=True,
+                                            hide_index=True,
+                                            height=min(520, 76 + len(editor_df) * 44),
+                                            disabled=[
+                                                "Components",
+                                                "Health",
+                                                "Next step",
+                                                "Updated",
+                                                "_analysis_id",
+                                            ],
+                                            column_config={
+                                                "Select": st.column_config.CheckboxColumn(
+                                                    "Select",
+                                                    help="Select one analysis to open or several analyses to delete.",
+                                                    width="small",
+                                                ),
+                                                "Project Name": st.column_config.TextColumn(
+                                                    "Project Name",
+                                                    help="Optional. Edit this value, then use Save names.",
+                                                    width="small",
+                                                ),
+                                                "BOM Name": st.column_config.TextColumn(
+                                                    "BOM Name",
+                                                    help="Edit this value, then use Save names.",
+                                                    width="medium",
+                                                ),
+                                                "Components": st.column_config.NumberColumn(
+                                                    "Parts",
+                                                    help="Total component rows analyzed in this BOM.",
+                                                    width="small",
+                                                    format="%d",
+                                                ),
+                                                "Health": st.column_config.ProgressColumn(
+                                                    "Health",
+                                                    help="Cadivor release-readiness score from 0 to 100.",
+                                                    width="small",
+                                                    min_value=0,
+                                                    max_value=100,
+                                                    format="%d",
+                                                ),
+                                                "Next step": st.column_config.TextColumn(
+                                                    "Next step",
+                                                    help="The highest-priority action based on open component risk and BOM health.",
+                                                    width="medium",
+                                                ),
+                                                "Updated": st.column_config.TextColumn(
+                                                    "Updated",
+                                                    width="small",
+                                                ),
+                                                "_analysis_id": None,
+                                            },
+                                            key=editor_key,
+                                        )
+    
+                                        selected_rows = edited_manager[
+                                            edited_manager["Select"] == True
+                                        ]
+                                        selected_ids = selected_rows["_analysis_id"].astype(str).tolist()
+                                        if (
+                                            not selected_ids
+                                            and preselect_id
+                                            and preselect_id in set(editor_df["_analysis_id"].astype(str))
+                                        ):
+                                            # The click rerun can drop the canvas checkbox before
+                                            # this handler reads it. The list request still names
+                                            # the BOM the user came from.
+                                            selected_ids = [preselect_id]
+                                            selected_rows = editor_df[
+                                                editor_df["_analysis_id"].astype(str) == preselect_id
+                                            ]
+                                        st.session_state["bom81_selected_analysis_ids"] = selected_ids
+    
+                                        selected_count = len(selected_ids)
+                                        selection_label = "analysis" if selected_count == 1 else "analyses"
+                                        selected_project = ""
+                                        selected_next_step = ""
+                                        if selected_count == 1 and "BOM Name" in selected_rows.columns:
+                                            selected_project = str(selected_rows.iloc[0]["BOM Name"] or "").strip()
+                                            selected_next_step = str(
+                                                selected_rows.iloc[0].get("Next step") or ""
+                                            ).strip()
+    
+                                        selection_copy = (
+                                            "Select one BOM to enable Open BOM."
+                                            if selected_count == 0
+                                            else (
+                                                f"Selected: {selected_project}. {selected_next_step or 'Open BOM is ready.'}"
+                                                if selected_project
+                                                else "One BOM selected. Open BOM is ready."
+                                            )
+                                            if selected_count == 1
+                                            else "Multiple BOMs selected. Use Delete or Clear; BOMs open one at a time."
+                                        )
+                                        st.markdown(
+                                            f"""
+                                            <div class="bom81-selection-status">
+                                              <strong>{selected_count}</strong>
+                                              {selection_label} selected
+                                              <span>{html.escape(selection_copy)}</span>
+                                            </div>
+                                            """,
+                                            unsafe_allow_html=True,
+                                        )
+    
+                                        original_names = editor_df.set_index("_analysis_id")[
+                                            ["Project Name", "BOM Name"]
+                                        ].fillna("").astype(str).to_dict("index")
+                                        name_changes = edited_manager[
+                                            edited_manager.apply(
+                                                lambda row: (
+                                                    str(row["Project Name"] or "").strip()
+                                                    != str(
+                                                        original_names.get(
+                                                            str(row["_analysis_id"]), {}
+                                                        ).get("Project Name", "")
+                                                        or ""
+                                                    ).strip()
+                                                    or str(row["BOM Name"] or "").strip()
+                                                    != str(
+                                                        original_names.get(
+                                                            str(row["_analysis_id"]), {}
+                                                        ).get("BOM Name", "")
+                                                        or ""
+                                                    ).strip()
+                                                ),
+                                                axis=1,
+                                            )
+                                        ]
+
+                                        st.caption(
+                                            "Edit a Project Name or BOM Name directly in the table."
+                                        )
+                                        pending_name_action = st.session_state.get(
+                                            "bom81_pending_name_action"
+                                        )
+                                        if not name_changes.empty and not pending_name_action:
+                                            @st.dialog("Save name changes?")
+                                            def _confirm_saved_bom_name_changes():
+                                                st.write(
+                                                    f"You changed the name{'s' if len(name_changes) != 1 else ''} "
+                                                    f"for {len(name_changes)} saved BOM"
+                                                    f"{'s' if len(name_changes) != 1 else ''}."
+                                                )
+                                                st.caption(
+                                                    "Save these changes before continuing, or cancel to keep the original names."
+                                                )
+                                                dialog_save, dialog_cancel = st.columns(2)
+                                                with dialog_save:
+                                                    if st.button(
+                                                        "Save changes",
+                                                        type="primary",
+                                                        use_container_width=True,
+                                                        key="bom81_dialog_save_names",
+                                                    ):
+                                                        st.session_state[
+                                                            "bom81_pending_name_action"
+                                                        ] = "save"
+                                                        st.rerun()
+                                                with dialog_cancel:
+                                                    if st.button(
+                                                        "Cancel changes",
+                                                        use_container_width=True,
+                                                        key="bom81_dialog_cancel_names",
+                                                    ):
+                                                        st.session_state[
+                                                            "bom81_pending_name_action"
+                                                        ] = "discard"
+                                                        st.rerun()
+
+                                            _confirm_saved_bom_name_changes()
+
+                                        if pending_name_action == "discard":
+                                            st.session_state[
+                                                "bom81_saved_analysis_editor_revision"
+                                            ] = editor_revision + 1
+                                            st.session_state.pop(
+                                                "bom81_pending_name_action", None
+                                            )
+                                            st.rerun()
+
+                                        save_col, open_col, delete_col, clear_col = st.columns(
+                                            [0.24, 0.26, 0.25, 0.25],
+                                            gap="medium",
+                                        )
+
+                                        with save_col:
+                                            if (
+                                                st.button(
+                                                    "Save names",
+                                                    type="secondary",
+                                                    use_container_width=True,
+                                                    disabled=name_changes.empty,
+                                                    key="bom81_save_project_names",
+                                                )
+                                                or st.session_state.pop(
+                                                    "bom81_pending_name_action", ""
+                                                ) == "save"
+                                            ):
+                                                update_errors = []
+                                                updated_count = 0
+                                                for _, changed_row in name_changes.iterrows():
+                                                    analysis_id_value = str(
+                                                        changed_row["_analysis_id"] or ""
+                                                    ).strip()
+                                                    bom_title = str(
+                                                        changed_row["BOM Name"] or ""
+                                                    ).strip()
+                                                    project_title = str(
+                                                        changed_row["Project Name"] or ""
+                                                    ).strip()
+                                                    if project_title == "—":
+                                                        project_title = ""
+                                                    saved_title = (
+                                                        f"{project_title} — {bom_title}"
+                                                        if project_title
+                                                        else bom_title
+                                                    )
+                                                    if not analysis_id_value or not saved_title:
+                                                        continue
+                                                    try:
+                                                        supabase.table("analyses").update(
+                                                            {"project_name": saved_title}
+                                                        ).eq(
+                                                            "id", analysis_id_value
+                                                        ).eq(
+                                                            "user_id", current_user["id"]
+                                                        ).execute()
+                                                        supabase.table("analysis_parts").update(
+                                                            {"project_name": saved_title}
+                                                        ).eq(
+                                                            "analysis_id", analysis_id_value
+                                                        ).eq(
+                                                            "user_id", current_user["id"]
+                                                        ).execute()
+                                                        updated_count += 1
+                                                    except Exception as update_error:
+                                                        update_errors.append(
+                                                            f"{bom_title or analysis_id_value}: {update_error}"
+                                                        )
+
+                                                if update_errors:
+                                                    st.error(
+                                                        "Some names could not be saved. "
+                                                        + " | ".join(update_errors[:2])
+                                                    )
+                                                elif updated_count:
+                                                    st.session_state[
+                                                        "bom81_saved_analysis_editor_revision"
+                                                    ] = editor_revision + 1
+                                                    st.success(
+                                                        f"Saved names for {updated_count} BOM"
+                                                        f"{'s' if updated_count != 1 else ''}."
+                                                    )
+                                                    st.rerun()
+
+                                        with open_col:
+                                            if st.button(
+                                                "Open BOM" if selected_count == 1 else "Open BOM (select 1)",
+                                                type="primary",
+                                                use_container_width=True,
+                                                disabled=selected_count != 1,
+                                                key="bom81_open_selected",
+                                            ):
+                                                if not selected_ids:
+                                                    selected_ids = []
+                                                selected_saved_id = selected_ids[0] if selected_ids else ""
+                                                if not selected_saved_id:
+                                                    st.stop()
+                                                st.session_state.pop("cadivor_show_saved_boms", None)
+                                                st.session_state.pop("cadivor_preselect_saved_bom_id", None)
+                                                st.session_state.pop("cadivor_preselect_applied_editor_key", None)
+                                                st.session_state["cadivor_active_analysis_id"] = str(selected_saved_id)
+                                                st.session_state["analysis_id"] = str(selected_saved_id)
+                                                navigate_to(
+                                                    "Analysis Details",
+                                                    analysis_id=selected_saved_id,
+                                                    arm_opening=False,
+                                                )
+    
+                                        with delete_col:
+                                            if st.button(
+                                                f"Delete ({selected_count})",
+                                                type="secondary",
+                                                use_container_width=True,
+                                                disabled=selected_count == 0,
+                                                key="bom81_request_bulk_delete",
+                                            ):
+                                                st.session_state["bom81_pending_delete_ids"] = selected_ids
+                                                st.rerun()
+    
+                                        with clear_col:
+                                            if st.button(
+                                                "Clear",
+                                                use_container_width=True,
+                                                disabled=selected_count == 0,
+                                                key="bom81_clear_selection",
+                                            ):
+                                                st.session_state["bom81_selected_analysis_ids"] = []
+                                                st.session_state.pop("bom81_pending_delete_ids", None)
+                                                st.session_state.pop("cadivor_preselect_saved_bom_id", None)
+                                                st.session_state.pop("cadivor_preselect_applied_editor_key", None)
+                                                st.session_state["bom81_saved_analysis_editor_revision"] = (
+                                                    editor_revision + 1
+                                                )
+                                                st.rerun()
+    
+                                        pending_delete_ids = [
+                                            str(value)
+                                            for value in st.session_state.get(
+                                                "bom81_pending_delete_ids",
+                                                [],
+                                            )
+                                            if str(value).strip()
+                                        ]
+    
+                                        if pending_delete_ids:
+                                            delete_records = manager_df[
+                                                manager_df["id"].astype(str).isin(pending_delete_ids)
+                                            ]
+                                            delete_names = delete_records["project_name"].astype(str).tolist()
+                                            preview_names = delete_names[:5]
+                                            remaining_names = max(0, len(delete_names) - len(preview_names))
+    
+                                            name_lines = "".join(
+                                                f"<li>{html.escape(name)}</li>"
+                                                for name in preview_names
+                                            )
+                                            if remaining_names:
+                                                name_lines += (
+                                                    f"<li>and {remaining_names} more "
+                                                    f"{'analyses' if remaining_names != 1 else 'analysis'}</li>"
+                                                )
+    
+                                            st.markdown(
+                                                f"""
+                                                <div class="bom81-delete-confirmation">
+                                                  <div class="bom81-delete-icon">!</div>
+                                                  <div>
+                                                    <strong>Permanently delete {len(pending_delete_ids)}
+                                                    saved BOM {"analyses" if len(pending_delete_ids) != 1 else "analysis"}?</strong>
+                                                    <p>
+                                                      All saved component records associated with these
+                                                      analyses will also be removed. This action cannot be undone.
+                                                    </p>
+                                                    <ul>{name_lines}</ul>
+                                                  </div>
+                                                </div>
+                                                """,
+                                                unsafe_allow_html=True,
+                                            )
+    
+                                            confirm_col, cancel_col = st.columns(
+                                                [0.5, 0.5],
+                                                gap="medium",
+                                            )
+    
+                                            with confirm_col:
+                                                if st.button(
+                                                    f"Yes, Delete {len(pending_delete_ids)} Permanently",
+                                                    type="primary",
+                                                    use_container_width=True,
+                                                    key="bom81_confirm_bulk_delete",
+                                                ):
+                                                    deletion_errors = []
+    
+                                                    for analysis_id_value in pending_delete_ids:
+                                                        try:
+                                                            supabase.table("analysis_parts").delete().eq(
+                                                                "analysis_id",
+                                                                analysis_id_value,
+                                                            ).execute()
+    
+                                                            try:
+                                                                supabase.table(
+                                                                    "part_monitor_history"
+                                                                ).delete().eq(
+                                                                    "analysis_id",
+                                                                    analysis_id_value,
+                                                                ).execute()
+                                                            except Exception:
+                                                                pass
+    
+                                                            supabase.table("analyses").delete().eq(
+                                                                "id",
+                                                                analysis_id_value,
+                                                            ).eq(
+                                                                "user_id",
+                                                                current_user["id"],
+                                                            ).execute()
+                                                        except Exception as deletion_error:
+                                                            deletion_errors.append(
+                                                                f"{analysis_id_value}: {deletion_error}"
+                                                            )
+    
+                                                    st.session_state["bom81_selected_analysis_ids"] = []
+                                                    st.session_state["bom81_saved_analysis_editor_revision"] = (
+                                                        editor_revision + 1
+                                                    )
+                                                    st.session_state.pop(
+                                                        "bom81_pending_delete_ids",
+                                                        None,
+                                                    )
+    
+                                                    if deletion_errors:
+                                                        st.error(
+                                                            "Some analyses could not be deleted. "
+                                                            + " | ".join(deletion_errors[:3])
+                                                        )
+                                                    else:
+                                                        st.success(
+                                                            f"{len(pending_delete_ids)} saved BOM "
+                                                            f"{'analyses' if len(pending_delete_ids) != 1 else 'analysis'} "
+                                                            "permanently deleted."
+                                                        )
+                                                        st.rerun()
+    
+                                            with cancel_col:
+                                                if st.button(
+                                                    "Cancel",
+                                                    use_container_width=True,
+                                                    key="bom81_cancel_bulk_delete",
+                                                ):
+                                                    st.session_state.pop(
+                                                        "bom81_pending_delete_ids",
+                                                        None,
+                                                    )
+                                                    st.rerun()
+    
+                                        st.caption(
+                                            "Select one BOM to open it. Select multiple BOMs only when you want to delete them together."
+                                        )
+    
+                else:
+                    release_saved_analysis_placeholder()
+                    st.markdown(
+                        """
+                        <div class="bom9-empty-state">
+                          <strong>No saved BOMs yet</strong>
+                          <span>Your completed analyses will appear here with health, risk, and update details.</span>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+
+                if total_high_risk:
+                    with st.container(key="bom9_review_queue"):
+                        review_copy_col, review_action_col = st.columns([0.76, 0.24], gap="small")
+                        with review_copy_col:
+                            st.markdown(
+                                f"""
+                                <div class="bom9-review-copy">
+                                  <strong>Review queue</strong>
+                                  <span>{total_high_risk} high-risk component{'s' if total_high_risk != 1 else ''} need engineering review.</span>
+                                </div>
+                                """,
+                                unsafe_allow_html=True,
+                            )
+                        with review_action_col:
+                            if st.button(
+                                "Review high-risk parts",
+                                key="bom81_review_high_risk_components",
+                                type="secondary",
+                                use_container_width=False,
+                                help="Open the saved components that need engineering review.",
+                            ):
+                                open_high_risk_component_review(arm_opening=False)
+
+            # Keep the primary task together: workflow and form occupy the reserved top slot
+            # occupy the reserved top slot; saved analyses remain below it.
+            _bom_new_analysis_context = bom_new_analysis_slot.container()
+            _bom_new_analysis_context.__enter__()
             st.markdown(
                 f"""
-                <div class="bom9-upload-marker"></div>
-                <section class="bom9-panel-intro">
-                  <div>
-                    <div class="bom9-panel-kicker">New analysis</div>
-                    <h2>Upload engineering BOM</h2>
-                    <p>{_bom_upload_intro}</p>
-                  </div>
+                <section class="bom9-workspace-hero">
+                  <div class="bom9-workspace-eyebrow">BOM workspace</div>
+                  <h1>Build or reopen an engineering BOM</h1>
+                  <p>Start a new analysis, or continue saved work with health, component scope, and the next engineering action already in view.</p>
                 </section>
                 """,
                 unsafe_allow_html=True,
             )
+            _one_time_blocked_plan = (
+                not is_admin and selected_plan.get("can_create_analyses") is False
+            )
+            if _one_time_blocked_plan:
+                # A purchased report must never be spent on Cadivor's example BOM.
+                st.session_state.pop("bom8_sample_mode", None)
+                st.session_state.pop("bom8_sample_auto_analyze", None)
+            _one_time_feature_enabled = one_time_bom_enabled()
+            _one_time_user_id = str(current_user["id"])
+            _one_time_order_id = str(
+                st.session_state.get("cadivor_one_time_bom_order_id") or ""
+            )
+            _one_time_reserved = (
+                _one_time_blocked_plan and one_time_credit_reserved(
+                    _one_time_user_id, _one_time_order_id
+                )
+            )
+            _one_time_available = (
+                _one_time_blocked_plan and one_time_credit_available(_one_time_user_id)
+            )
+            _one_time_in_progress = (
+                _one_time_blocked_plan and one_time_credit_in_progress(_one_time_user_id)
+            )
+            if _one_time_blocked_plan:
+                if _one_time_reserved:
+                    st.success("Your one-time BOM report is in progress. Finish this analysis to access its reports.")
+                elif _one_time_available:
+                    st.success(
+                        f"Your one-time BOM report is ready. Upload up to {ONE_TIME_BOM_MAX_PARTS} unique components; "
+                        "the saved BOM and its report package will remain in your workspace."
+                    )
+                elif _one_time_in_progress:
+                    st.info(
+                        "A paid BOM analysis is already in progress for this account. "
+                        "Return to its open tab, or contact support if it was interrupted. "
+                        "An interrupted reservation becomes available again after four hours."
+                    )
+                    stop_authenticated_page()
+                else:
+                    if _one_time_feature_enabled:
+                        st.warning(
+                            "Saved BOMs and reports remain available. A new full analysis requires "
+                            "a plan or one one-time BOM report purchase."
+                        )
+                        st.caption(
+                            f"One purchase covers one full analysis of up to {ONE_TIME_BOM_MAX_PARTS} unique components "
+                            "and its standard PDF and CSV reports. No subscription is required."
+                        )
+                        _checkout_key = f"cadivor_one_time_checkout_{_one_time_user_id}"
+                        _pending_checkout = one_time_pending_checkout(_one_time_user_id)
+                        try:
+                            _one_time_price = one_time_price_label(
+                                str(get_secret("STRIPE_ONE_TIME_BOM_REPORT_PRICE_ID", required=True))
+                            )
+                        except OneTimeBOMError as exc:
+                            st.error(str(exc))
+                            _one_time_price = ""
+                        if _one_time_price and not _pending_checkout and st.button(
+                            f"Buy one BOM report · {_one_time_price}",
+                            key="bom_one_time_buy", type="primary",
+                        ):
+                            try:
+                                st.session_state[_checkout_key] = begin_one_time_checkout(
+                                    _one_time_user_id,
+                                    str(current_user.get("email") or ""),
+                                    app_checkout_url(page="BOM Analyzer", checkout="single_bom_success"),
+                                    app_checkout_url(page="BOM Analyzer", checkout="single_bom_cancel"),
+                                )
+                            except OneTimeBOMError as exc:
+                                st.error(str(exc))
+                        if _pending_checkout and _pending_checkout[0] == "open":
+                            st.link_button(
+                                "Continue existing checkout →", _pending_checkout[1], type="primary"
+                            )
+                        elif _pending_checkout:
+                            st.info("Checkout is processing. Refresh shortly to see your paid report credit.")
+                        elif st.session_state.get(_checkout_key):
+                            st.link_button(
+                                "Continue to secure checkout →", st.session_state[_checkout_key],
+                                type="primary",
+                            )
+                        if _safe_text(_qp_value("checkout", "")) == "single_bom_success":
+                            st.info("Payment confirmation is processing. Refresh this page in a moment to use your report credit.")
+                        elif _safe_text(_qp_value("checkout", "")) == "single_bom_cancel":
+                            st.info("Checkout was canceled. No report credit was purchased.")
+                    elif selected_plan_name == PLAN_SUBSCRIPTION_INACTIVE:
+                        st.warning(
+                            "This subscription is not active. Saved analyses above remain available to open and download. "
+                            "Choose a paid plan to create a new analysis."
+                        )
+                    else:
+                        st.warning(
+                            "Your trial has ended. Saved analyses above remain available to open and download. "
+                            "Choose a paid plan to create a new analysis."
+                        )
+                    if st.button(
+                        "Compare plans" if _one_time_feature_enabled else "Choose a paid plan",
+                        key="bom_trial_expired_choose_plan",
+                        type="secondary" if _one_time_feature_enabled else "primary",
+                    ):
+                        navigate_to("Pricing")
+                    stop_authenticated_page()
 
-            project_name_col, bom_name_col = st.columns(2, gap="small")
-            with project_name_col:
-                project_name = st.text_input(
-                    "Project Name (optional)",
-                    placeholder="Example: Motor Controller",
-                    key="bom8_project_name",
-                    disabled=analysis_in_progress,
-                    help="Use a project to group multiple BOM revisions or assemblies.",
+            analysis_in_progress = bool(
+                st.session_state.get("bom8_analysis_future")
+                or st.session_state.get("bom8_analysis_pending")
+                or st.session_state.get("bom8_sample_auto_analyze")
+            )
+            if st.session_state.pop("bom8_analysis_cancelled_notice", False):
+                st.success("Analysis canceled. No BOM analysis was saved.")
+            _bom_workspace_grid_context = st.container(key="bom9_workspace_grid")
+            _bom_workspace_grid_context.__enter__()
+            input_col, saved_manager_col = st.columns([0.38, 0.62], gap="large")
+
+            with input_col:
+                _bom_upload_panel_context = st.container(
+                    border=True,
+                    key="bom9_upload_panel",
                 )
-            with bom_name_col:
-                bom_name = st.text_input(
-                    "BOM Name",
-                    placeholder="Example: Motor Controller Rev A",
-                    key="bom8_bom_name",
-                    disabled=analysis_in_progress,
-                    help="Required. Name this specific BOM, revision, or assembly.",
+                _bom_upload_panel_context.__enter__()
+                _bom_upload_intro = (
+                    "Name the work, then upload your own CSV or Excel file."
+                    if _one_time_blocked_plan else
+                    "Name the work, then choose Cadivor's sample or upload your own CSV or Excel file."
                 )
-            if not bom_name.strip() and not st.session_state.get("bom8_sample_auto_analyze"):
                 st.markdown(
-                    """
-                    <div class="bom9-form-note" role="status">
-                      <strong>Required</strong>
-                      <span>Add a BOM Name before uploading. Project Name is optional and helps group revisions.</span>
-                    </div>
+                    f"""
+                    <div class="bom9-upload-marker"></div>
+                    <section class="bom9-panel-intro">
+                      <div>
+                        <div class="bom9-panel-kicker">New analysis</div>
+                        <h2>Upload engineering BOM</h2>
+                        <p>{_bom_upload_intro}</p>
+                      </div>
+                    </section>
                     """,
                     unsafe_allow_html=True,
                 )
 
-            sample_bom = pd.DataFrame(
-                {
-                    "mpn": [
-                        "STM32F103C8T6",
-                        "TPS5430DDAR",
-                        "MCP2551-I/SN",
-                        "BQ24074RGTR",
-                        "ADS1115IDGSR",
-                        "W25Q64JVSSIQ",
-                        "SN74LVC2T45DCUR",
-                        "PC817X2NSZ1F",
-                        "GRM188R71C104KA01D",
-                        "RC0603FR-0710KL",
-                    ],
-                    "quantity": [1, 2, 1, 1, 1, 1, 2, 4, 12, 8],
-                    "description": [
-                        "32-bit microcontroller",
-                        "3 A buck regulator",
-                        "CAN transceiver",
-                        "Li-ion battery charger",
-                        "16-bit ADC",
-                        "64 Mbit serial flash memory",
-                        "Dual-bit voltage-level translator",
-                        "Optocoupler",
-                        "0.1 uF ceramic capacitor",
-                        "10 kOhm resistor",
-                    ],
-                }
-            )
-            st.markdown(
-                """
-                <div class="cv-beta-trust-note"><strong>Your BOM stays in your authenticated workspace.</strong> Cadivor uses it to generate your analysis and does not present customer BOM data as a product for sale.</div>
-                """,
-                unsafe_allow_html=True,
-            )
+                project_name_col, bom_name_col = st.columns(2, gap="small")
+                with project_name_col:
+                    project_name = st.text_input(
+                        "Project Name (optional)",
+                        placeholder="Example: Motor Controller",
+                        key="bom8_project_name",
+                        disabled=analysis_in_progress,
+                        help="Use a project to group multiple BOM revisions or assemblies.",
+                    )
+                with bom_name_col:
+                    bom_name = st.text_input(
+                        "BOM Name",
+                        placeholder="Example: Motor Controller Rev A",
+                        key="bom8_bom_name",
+                        disabled=analysis_in_progress,
+                        help="Required. Name this specific BOM, revision, or assembly.",
+                    )
+                if not bom_name.strip() and not st.session_state.get("bom8_sample_auto_analyze"):
+                    st.markdown(
+                        """
+                        <div class="bom9-form-note" role="status">
+                          <strong>Required</strong>
+                          <span>Add a BOM Name before uploading. Project Name is optional and helps group revisions.</span>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
 
-            def _start_sample_bom() -> None:
-                st.session_state["bom8_sample_mode"] = True
-                st.session_state["bom8_sample_auto_analyze"] = True
-                st.session_state["bom8_project_name"] = "Cadivor sample"
-                st.session_state["bom8_bom_name"] = "10-Part Sample BOM"
-                for state_key in (
-                    "results_df",
-                    "analysis_saved",
-                    "analysis_id",
-                    "health_score",
-                    "health_status",
-                ):
-                    st.session_state.pop(state_key, None)
-
-            def _use_uploaded_bom() -> None:
-                st.session_state.pop("bom8_sample_mode", None)
-                st.session_state.pop("bom8_sample_auto_analyze", None)
-
-            if _one_time_blocked_plan:
-                st.caption(
-                    "Your paid report credit is for your own BOM. The Cadivor sample will not use it."
+                sample_bom = pd.DataFrame(
+                    {
+                        "mpn": [
+                            "STM32F103C8T6",
+                            "TPS5430DDAR",
+                            "MCP2551-I/SN",
+                            "BQ24074RGTR",
+                            "ADS1115IDGSR",
+                            "W25Q64JVSSIQ",
+                            "SN74LVC2T45DCUR",
+                            "PC817X2NSZ1F",
+                            "GRM188R71C104KA01D",
+                            "RC0603FR-0710KL",
+                        ],
+                        "quantity": [1, 2, 1, 1, 1, 1, 2, 4, 12, 8],
+                        "description": [
+                            "32-bit microcontroller",
+                            "3 A buck regulator",
+                            "CAN transceiver",
+                            "Li-ion battery charger",
+                            "16-bit ADC",
+                            "64 Mbit serial flash memory",
+                            "Dual-bit voltage-level translator",
+                            "Optocoupler",
+                            "0.1 uF ceramic capacitor",
+                            "10 kOhm resistor",
+                        ],
+                    }
                 )
-            else:
                 st.markdown(
-                    '<div class="bom8-path-label">Option 1 — Explore Cadivor <span>Use Cadivor\'s included example to see a complete analysis. It will be saved as a sample, not your own BOM.</span></div>',
+                    """
+                    <div class="cv-beta-trust-note"><strong>Your BOM stays in your authenticated workspace.</strong> Cadivor uses it to generate your analysis and does not present customer BOM data as a product for sale.</div>
+                    """,
                     unsafe_allow_html=True,
                 )
-                st.button(
-                    "Analyze the 10-Part Sample BOM",
-                    key="bom8_try_sample",
-                    type="primary",
-                    help="Load and analyze Cadivor's sample BOM in this workspace—no download or re-upload required.",
-                    on_click=_start_sample_bom,
+
+                def _start_sample_bom() -> None:
+                    st.session_state["bom8_sample_mode"] = True
+                    st.session_state["bom8_sample_auto_analyze"] = True
+                    st.session_state["bom8_project_name"] = "Cadivor sample"
+                    st.session_state["bom8_bom_name"] = "10-Part Sample BOM"
+                    for state_key in (
+                        "results_df",
+                        "analysis_saved",
+                        "analysis_id",
+                        "health_score",
+                        "health_status",
+                    ):
+                        st.session_state.pop(state_key, None)
+
+                def _use_uploaded_bom() -> None:
+                    st.session_state.pop("bom8_sample_mode", None)
+                    st.session_state.pop("bom8_sample_auto_analyze", None)
+
+                if _one_time_blocked_plan:
+                    st.caption(
+                        "Your paid report credit is for your own BOM. The Cadivor sample will not use it."
+                    )
+                else:
+                    st.markdown(
+                        '<div class="bom8-path-label">Option 1 — Explore Cadivor <span>Use Cadivor\'s included example to see a complete analysis. It will be saved as a sample, not your own BOM.</span></div>',
+                        unsafe_allow_html=True,
+                    )
+                    st.button(
+                        "Analyze the 10-Part Sample BOM",
+                        key="bom8_try_sample",
+                        type="primary",
+                        help="Load and analyze Cadivor's sample BOM in this workspace—no download or re-upload required.",
+                        on_click=_start_sample_bom,
+                        disabled=analysis_in_progress,
+                    )
+
+                st.markdown(
+                    '<div class="bom8-path-label">Analyze your BOM <span>Upload your own CSV or Excel file for an engineering review of your actual design.</span></div>' if _one_time_blocked_plan else
+                    '<div class="bom8-path-label">Option 2 — Analyze your BOM <span>Upload your own CSV or Excel file for an engineering review of your actual design.</span></div>',
+                    unsafe_allow_html=True,
+                )
+                uploaded_file = st.file_uploader(
+                    "Upload your BOM file",
+                    type=["csv", "xlsx"],
+                    key="bom_file_uploader",
+                    help="Cadivor accepts CSV and XLSX files up to the Streamlit upload limit.",
+                    on_change=_use_uploaded_bom,
                     disabled=analysis_in_progress,
                 )
+                _bom_upload_panel_context.__exit__(None, None, None)
 
-            st.markdown(
-                '<div class="bom8-path-label">Analyze your BOM <span>Upload your own CSV or Excel file for an engineering review of your actual design.</span></div>' if _one_time_blocked_plan else
-                '<div class="bom8-path-label">Option 2 — Analyze your BOM <span>Upload your own CSV or Excel file for an engineering review of your actual design.</span></div>',
-                unsafe_allow_html=True,
-            )
-            uploaded_file = st.file_uploader(
-                "Upload your BOM file",
-                type=["csv", "xlsx"],
-                key="bom_file_uploader",
-                help="Cadivor accepts CSV and XLSX files up to the Streamlit upload limit.",
-                on_change=_use_uploaded_bom,
-                disabled=analysis_in_progress,
-            )
-            _bom_upload_panel_context.__exit__(None, None, None)
+            with saved_manager_col:
+                _bom_saved_panel_context = st.container(
+                    border=True,
+                    key="bom9_saved_panel",
+                )
+                _bom_saved_panel_context.__enter__()
+                _render_saved_bom_manager()
+                _bom_saved_panel_context.__exit__(None, None, None)
 
-        with saved_manager_col:
-            _bom_saved_panel_context = st.container(
-                border=True,
-                key="bom9_saved_panel",
-            )
-            _bom_saved_panel_context.__enter__()
-            _render_saved_bom_manager()
-            _bom_saved_panel_context.__exit__(None, None, None)
-
-        _bom_workspace_grid_context.__exit__(None, None, None)
+            _bom_workspace_grid_context.__exit__(None, None, None)
         sample_mode = bool(st.session_state.get("bom8_sample_mode"))
         source_filename = "cadivor_10_part_sample_bom.csv" if sample_mode else (
             uploaded_file.name if uploaded_file is not None else ""

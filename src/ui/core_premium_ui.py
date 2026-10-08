@@ -198,6 +198,110 @@ def inject_workspace_geometry_final() -> None:
     from src.ui.bom_navigation import inject_saved_bom_nav_css
 
     inject_saved_bom_nav_css()
+    _inject_approved_visual_overrides()
+
+
+def _inject_approved_visual_overrides() -> None:
+    """Win over the late pill-button rules for the approved mockup chrome."""
+    tab = str(st.session_state.get("cadivor_ei_report_tab") or "BOM Risk")
+    active_slug = tab.casefold().replace(" ", "-").replace("&", "and")
+    beat = (
+        ":not(.st-key-cv_foundation_navigation .stButton)"
+        ":not(.st-key-cv_analysis_section_nav .stButton)"
+        ":not(.st-key-cv_analysis_section_nav *)"
+        ":not([class*='st-key-cadivor_bom_tab_'])"
+        ":not(.st-key-cv_saved_bom_nav_more .stButton)"
+        "> button:not([kind='primary']):not(:disabled)"
+    )
+    st.markdown(
+        f"""
+        <style id="cadivor-approved-visual-overrides">
+        html body section[data-testid="stMain"] .st-key-cv_foundation_top_navigation .stButton{beat},
+        html body section[data-testid="stMain"] .st-key-cv_foundation_top_navigation .stButton{beat} *,
+        html body section[data-testid="stMain"] .st-key-cv_ei_report_tabs .stButton{beat},
+        html body section[data-testid="stMain"] .st-key-cv_ei_report_tabs .stButton{beat} * {{
+          background:transparent !important;background-color:transparent !important;
+          border:0 !important;border-width:0 !important;border-style:none !important;
+          border-radius:0 !important;box-shadow:none !important;
+          min-width:0 !important;min-height:0 !important;width:auto !important;height:auto !important;
+          padding:8px 10px 10px !important;color:#334155 !important;font-weight:650 !important
+        }}
+        html body section[data-testid="stMain"] .st-key-cv_foundation_top_navigation .st-key-cv_foundation_nav_ei .stButton{beat} {{
+          color:#1d4ed8 !important;background:transparent !important;background-color:transparent !important;
+          border:0 !important;border-bottom:2px solid #2563eb !important;border-radius:0 !important;box-shadow:none !important
+        }}
+        html body section[data-testid="stMain"] .st-key-cv_foundation_top_navigation .st-key-cv_foundation_nav_ei .stButton{beat} * {{
+          color:#1d4ed8 !important;background:transparent !important;border:0 !important;box-shadow:none !important
+        }}
+        html body section[data-testid="stMain"] .st-key-cv_ei_report_tabs [class*="st-key-ei_tab_{active_slug}"] .stButton{beat} {{
+          color:#1d4ed8 !important;background:transparent !important;background-color:transparent !important;
+          border:0 !important;border-bottom:2px solid #2563eb !important;border-radius:0 !important;box-shadow:none !important
+        }}
+        html body section[data-testid="stMain"] .st-key-cv_ei_report_tabs [class*="st-key-ei_tab_{active_slug}"] .stButton{beat} * {{
+          color:#1d4ed8 !important;background:transparent !important;border:0 !important;box-shadow:none !important
+        }}
+        html body section[data-testid="stMain"] [class*="st-key-approved_home_menu_"] button,
+        html body section[data-testid="stMain"] [class*="st-key-approved_bom_menu_"] button,
+        html body section[data-testid="stMain"] [class*="st-key-approved_report_menu_"] button,
+        html body section[data-testid="stMain"] [class*="st-key-approved_decision_menu_"] button {{
+          min-width:28px !important;width:28px !important;max-width:28px !important;
+          min-height:28px !important;height:28px !important;padding:0 !important;
+          border:0 !important;border-width:0 !important;border-style:none !important;
+          border-radius:6px !important;background:transparent !important;background-color:transparent !important;
+          box-shadow:none !important;color:#64748b !important
+        }}
+        html body section[data-testid="stMain"] [class*="st-key-approved_decision_review_"] .stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton) > button[kind="primary"] {{
+          min-width:0 !important;width:auto !important;min-height:32px !important;height:32px !important;
+          padding:0 12px !important;border-radius:8px !important;font-size:13px !important
+        }}
+        html body section[data-testid="stMain"] [class*="st-key-approved_home_row_"],
+        html body section[data-testid="stMain"] [class*="st-key-approved_bom_row_"],
+        html body section[data-testid="stMain"] [class*="st-key-approved_report_row_"],
+        html body section[data-testid="stMain"] [class*="st-key-approved_home_head"],
+        html body section[data-testid="stMain"] [class*="st-key-approved_bom_head"],
+        html body section[data-testid="stMain"] [class*="st-key-approved_report_head"] {{
+          margin:0 !important;padding:0 !important;min-height:0 !important
+        }}
+        html body section[data-testid="stMain"] [class*="st-key-approved_home_row_"] [data-testid="stVerticalBlock"],
+        html body section[data-testid="stMain"] [class*="st-key-approved_bom_row_"] [data-testid="stVerticalBlock"],
+        html body section[data-testid="stMain"] [class*="st-key-approved_report_row_"] [data-testid="stVerticalBlock"],
+        html body section[data-testid="stMain"] [class*="st-key-approved_home_head"] [data-testid="stVerticalBlock"],
+        html body section[data-testid="stMain"] [class*="st-key-approved_bom_head"] [data-testid="stVerticalBlock"],
+        html body section[data-testid="stMain"] [class*="st-key-approved_report_head"] [data-testid="stVerticalBlock"],
+        html body section[data-testid="stMain"] [class*="st-key-approved_home_row_"] [data-testid="stHorizontalBlock"],
+        html body section[data-testid="stMain"] [class*="st-key-approved_bom_row_"] [data-testid="stHorizontalBlock"],
+        html body section[data-testid="stMain"] [class*="st-key-approved_report_row_"] [data-testid="stHorizontalBlock"],
+        html body section[data-testid="stMain"] [class*="st-key-approved_home_head"] [data-testid="stHorizontalBlock"],
+        html body section[data-testid="stMain"] [class*="st-key-approved_bom_head"] [data-testid="stHorizontalBlock"],
+        html body section[data-testid="stMain"] [class*="st-key-approved_report_head"] [data-testid="stHorizontalBlock"] {{
+          gap:0 !important;min-height:0 !important
+        }}
+        html body section[data-testid="stMain"] [class*="st-key-approved_home_row_"] [data-testid="stElementContainer"],
+        html body section[data-testid="stMain"] [class*="st-key-approved_bom_row_"] [data-testid="stElementContainer"],
+        html body section[data-testid="stMain"] [class*="st-key-approved_report_row_"] [data-testid="stElementContainer"],
+        html body section[data-testid="stMain"] [class*="st-key-approved_home_head"] [data-testid="stElementContainer"],
+        html body section[data-testid="stMain"] [class*="st-key-approved_bom_head"] [data-testid="stElementContainer"],
+        html body section[data-testid="stMain"] [class*="st-key-approved_report_head"] [data-testid="stElementContainer"],
+        html body section[data-testid="stMain"] [class*="st-key-approved_home_row_"] [data-testid="stColumn"],
+        html body section[data-testid="stMain"] [class*="st-key-approved_bom_row_"] [data-testid="stColumn"],
+        html body section[data-testid="stMain"] [class*="st-key-approved_report_row_"] [data-testid="stColumn"],
+        html body section[data-testid="stMain"] [class*="st-key-approved_home_head"] [data-testid="stColumn"],
+        html body section[data-testid="stMain"] [class*="st-key-approved_bom_head"] [data-testid="stColumn"],
+        html body section[data-testid="stMain"] [class*="st-key-approved_report_head"] [data-testid="stColumn"] {{
+          margin:0 !important;padding:1px 8px !important;min-height:0 !important
+        }}
+        html body section[data-testid="stMain"] [class*="st-key-approved_home_row_"] [data-testid="stMarkdownContainer"] p,
+        html body section[data-testid="stMain"] [class*="st-key-approved_bom_row_"] [data-testid="stMarkdownContainer"] p,
+        html body section[data-testid="stMain"] [class*="st-key-approved_report_row_"] [data-testid="stMarkdownContainer"] p,
+        html body section[data-testid="stMain"] [class*="st-key-approved_home_head"] [data-testid="stMarkdownContainer"] p,
+        html body section[data-testid="stMain"] [class*="st-key-approved_bom_head"] [data-testid="stMarkdownContainer"] p,
+        html body section[data-testid="stMain"] [class*="st-key-approved_report_head"] [data-testid="stMarkdownContainer"] p {{
+          margin:0 !important;line-height:1.2 !important;font-size:13px !important
+        }}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def authenticated_surface_ready() -> bool:

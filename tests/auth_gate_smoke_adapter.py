@@ -144,72 +144,16 @@ def install_smoke_auth_patches() -> None:
     import streamlit as st
 
     import src.auth as auth_mod
-    import src.auth_atomic_login as atomic_mod
     import src.auth_gate as gate_mod
     import src.auth_state as state_mod
-    from src.auth_bootstrap import fail_login_handoff
+
+    _orig_execute = auth_mod.execute_password_login
 
     def smoke_execute_password_login(
         supabase: Any, cookie_manager: Any, email: str, password: str
     ) -> bool:
-        del supabase, cookie_manager
-        # Brief pause so the authenticating surface can paint before provider
-        # doubles resolve (production I/O is slower; smoke must still observe it).
-        time.sleep(0.45)
-        email_n = str(email or "").strip()
-        if email_n.casefold() == SMOKE_EMAIL and str(password or "") == SMOKE_PASSWORD:
-            _activate_smoke_session(email=email_n)
-            return True
-        fail_login_handoff(
-            message="Email or password is incorrect. Please try again.",
-            email=email_n,
-        )
-        return False
-
-    def smoke_render_atomic_login(
-        *,
-        key: str = "cadivor_atomic_login",
-        disabled: bool = False,
-        submit_label: str = "Login",
-        prefill_email: str = "",
-        error_message: str = "",
-        error_epoch: int = 0,
-    ) -> dict[str, str] | None:
-        del key, error_epoch
-        if error_message:
-            st.error(str(error_message))
-        draft = str(prefill_email or "").strip()
-        email_key = "cadivor_auth_gate_smoke_email"
-        password_key = "cadivor_auth_gate_smoke_password"
-        if draft and not st.session_state.get(email_key):
-            st.session_state[email_key] = draft
-        with st.form("cadivor_auth_gate_smoke_login", clear_on_submit=False, border=False):
-            email = st.text_input(
-                "Email",
-                placeholder="you@company.com",
-                key=email_key,
-                autocomplete="email",
-            )
-            password = st.text_input(
-                "Password",
-                type="password",
-                placeholder="Enter your password",
-                key=password_key,
-                autocomplete="current-password",
-            )
-            submitted = st.form_submit_button(
-                submit_label or "Login",
-                type="primary",
-                use_container_width=True,
-                disabled=bool(disabled),
-            )
-        if submitted and str(email or "").strip() and str(password or ""):
-            return {
-                "request_id": str(uuid.uuid4()),
-                "email": str(email).strip(),
-                "password": str(password),
-            }
-        return None
+        """Keep the production login function. The smoke client answers sign-in."""
+        return _orig_execute(supabase, cookie_manager, email, password)
 
     _orig_resolve = state_mod.resolve_auth_state
 
@@ -261,8 +205,6 @@ def install_smoke_auth_patches() -> None:
         )
 
     auth_mod.execute_password_login = smoke_execute_password_login
-    atomic_mod.render_atomic_login = smoke_render_atomic_login
-    auth_mod.render_atomic_login = smoke_render_atomic_login
     state_mod.resolve_auth_state = smoke_resolve_auth_state
     gate_mod.resolve_initial_gate_state = smoke_resolve_initial_gate_state
 
@@ -421,6 +363,19 @@ class _SmokeSupabase:
 
             def sign_out(self, *args: Any, **kwargs: Any) -> None:
                 del args, kwargs
+
+            def sign_in_with_password(self, credentials: dict[str, Any]) -> Any:
+                email = str((credentials or {}).get("email") or "").strip()
+                password = str((credentials or {}).get("password") or "")
+                if email.casefold() != SMOKE_EMAIL or password != SMOKE_PASSWORD:
+                    raise RuntimeError("Invalid login credentials")
+                signed_in = types.SimpleNamespace(id="auth-smoke-user", email=email)
+                session = types.SimpleNamespace(
+                    access_token=SMOKE_ACCESS_TOKEN,
+                    refresh_token=SMOKE_REFRESH_TOKEN,
+                    user=signed_in,
+                )
+                return types.SimpleNamespace(user=signed_in, session=session)
 
         return _Auth()
 
