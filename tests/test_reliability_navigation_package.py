@@ -16,12 +16,13 @@ from src.ui.bom_navigation import (
 from src.ui.main_transition import DELAY_ROUTE_BODY_REVEAL_KEY, MAIN_TRANSITION_ACTIVE_KEY
 from src.ui.navigation import (
     navigate_to,
+    consume_new_analysis_navigation,
     open_high_risk_component_review,
     open_component_in_saved_bom,
     open_saved_bom,
     return_to_saved_bom_list,
 )
-from src.ui.unified_shell import NAV_GROUPS, _open_plan_and_billing
+from src.ui.unified_shell import NAV_GROUPS, _open_plan_and_billing, workspace_nav_rows
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -220,22 +221,53 @@ def test_primary_rail_keeps_specialist_tools():
     assert labels[0][0] == ""
     assert labels[0][1] == [
         "Home",
-        "BOMs",
-        "Engineering Decisions",
-        "Alerts & Monitoring",
+        "BOM Analysis",
+        "Parts Intelligence",
+        "Suppliers",
         "Reports",
     ]
-    assert labels[1][0] == "Decision Tools"
-    assert set(labels[1][1]) == {
+    assert labels[1][0] == "Library"
+    assert labels[1][1] == ["Saved BOMs", "Watchlist", "Engineering Decisions"]
+    assert labels[2][0] == "Admin"
+    assert labels[3][0] == "Decision Tools"
+    assert set(labels[3][1]) == {
         "Find a replacement",
         "Compare parts",
         "Datasheet Q&A",
         "Design Impact",
-        "Procurement Advisor",
         "Cost Optimization",
         "Supply Scenario",
-        "Portfolio Intelligence",
     }
+    assert workspace_nav_rows(is_admin=False) == (
+        ("Workspace Settings", "settings", "Settings"),
+    )
+    assert workspace_nav_rows(is_admin=True) == (
+        ("Workspace Settings", "settings", "Settings"),
+        ("Resources", "help", "Help"),
+        ("Admin Console", "admin", "Admin Console"),
+    )
+
+
+def test_new_analysis_clears_saved_list_navigation_state(monkeypatch):
+    state = {
+        "cadivor_active_analysis_id": "old-bom",
+        "analysis_id": "old-bom",
+        "cadivor_show_saved_boms": True,
+        "cadivor_preselect_saved_bom_id": "old-bom",
+        "cadivor_nav_params": {"page": "BOM Analyzer", "new_analysis": "1"},
+    }
+
+    class _Params(dict):
+        pass
+
+    monkeypatch.setattr("src.ui.navigation.st.session_state", state)
+    monkeypatch.setattr("src.ui.navigation.st.query_params", _Params(new_analysis="1"))
+    consume_new_analysis_navigation()
+    assert "cadivor_show_saved_boms" not in state
+    assert "cadivor_preselect_saved_bom_id" not in state
+    assert "cadivor_active_analysis_id" not in state
+    assert "analysis_id" not in state
+    assert "new_analysis" not in state["cadivor_nav_params"]
 
 
 def test_plan_and_billing_opens_settings_billing_without_opening(monkeypatch):
