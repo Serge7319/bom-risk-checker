@@ -3848,7 +3848,7 @@ def run_authenticated_app() -> None:
                     refresh_failed=bool(home.get("secondary_refresh_failed")),
                 )
             if not is_admin:
-                render_upgrade_prompt(
+                    render_upgrade_prompt(
                     plan_name=selected_plan_name,
                     monthly_used=len(real_overview_analyses),
                     monthly_limit=selected_plan.get("monthly_bom_limit"),
@@ -19372,11 +19372,7 @@ def run_authenticated_app() -> None:
                                 )
                             except OneTimeBOMError as exc:
                                 st.error(str(exc))
-                        if _pending_checkout and _pending_checkout[0] == "open":
-                            st.link_button(
-                                "Continue existing checkout →", _pending_checkout[1], type="primary"
-                            )
-                        elif _pending_checkout:
+                        if _pending_checkout:
                             st.info("Checkout is processing. Refresh shortly to see your paid report credit.")
                         elif st.session_state.get(_checkout_key):
                             st.link_button(
@@ -19547,7 +19543,7 @@ def run_authenticated_app() -> None:
                     unsafe_allow_html=True,
                 )
                 uploaded_file = st.file_uploader(
-                    "Upload your BOM file",
+                "Upload your BOM file",
                     type=["csv", "xlsx"],
                     key="bom_file_uploader",
                     help="Cadivor accepts CSV and XLSX files up to the Streamlit upload limit.",
