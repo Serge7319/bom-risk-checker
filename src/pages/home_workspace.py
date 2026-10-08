@@ -247,23 +247,27 @@ def render_returning_home(
     first_name = name.replace(".", " ").replace("_", " ").split()[0].title() if name else ""
     greeting = f"Welcome back, {first_name}" if first_name else "Your engineering workspace"
     with st.container(key="cv_home_workspace"):
-        st.markdown(
-            f"""<header class="cv-home-v3-header">
-              <div>
-                <p class="cv-home-v3-eyebrow">ENGINEERING OVERVIEW</p>
-                <h1>{html.escape(greeting)}</h1>
-                <p>Here’s what’s happening with your BOMs today.</p>
-              </div>
-            </header>""",
-            unsafe_allow_html=True,
-        )
-        _, new_col = st.columns([7.5, 1.4], gap="small")
-        with new_col:
-            if pause_new_analyses:
-                if st.button("Open reports", key="home_open_reports", use_container_width=True):
-                    navigate_to("Reports", arm_opening=False)
-            elif st.button("＋  New BOM analysis", key="home_new_bom", use_container_width=True):
-                navigate_to("BOM Analyzer", new_analysis="1", arm_opening=False)
+        with st.container(key="cv_home_header_row"):
+            heading_col, new_col = st.columns(
+                [4, 1], gap="small", vertical_alignment="top"
+            )
+            with heading_col:
+                st.markdown(
+                    f"""<header class="cv-home-v3-header">
+                      <div>
+                        <p class="cv-home-v3-eyebrow">HOME</p>
+                        <h1>{html.escape(greeting)}</h1>
+                        <p>Here’s what’s happening with your BOMs today.</p>
+                      </div>
+                    </header>""",
+                    unsafe_allow_html=True,
+                )
+            with new_col:
+                if pause_new_analyses:
+                    if st.button("Open reports", key="home_open_reports", use_container_width=True):
+                        navigate_to("Reports", arm_opening=False)
+                elif st.button("＋  New BOM analysis", key="home_new_bom", use_container_width=True):
+                    navigate_to("BOM Analyzer", new_analysis="1", arm_opening=False)
 
         metrics = [
             ("Saved BOMs", f"{len(analyses)}", "Engineering reviews in this workspace", "archive"),

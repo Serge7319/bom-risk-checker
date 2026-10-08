@@ -342,14 +342,7 @@ def _css() -> None:
     )
 
 
-def render_supply_scenario(
-    *,
-    intelligence: Dict[str, Any],
-    internal_nav_button: Callable[..., Any],
-) -> None:
-    _css()
-    photo_column = st.column_config.ImageColumn("Part photo", width="small")
-
+def render_supply_scenario_header() -> None:
     st.markdown(
         """
         <section class="cv22-hero">
@@ -364,6 +357,18 @@ def render_supply_scenario(
         """,
         unsafe_allow_html=True,
     )
+
+
+def render_supply_scenario(
+    *,
+    intelligence: Dict[str, Any],
+    internal_nav_button: Callable[..., Any],
+    show_header: bool = True,
+) -> None:
+    _css()
+    photo_column = st.column_config.ImageColumn("Part photo", width="small")
+    if show_header:
+        render_supply_scenario_header()
 
     lifecycle_badge = (
         '<span class="cv22-badge">Lifecycle disruption modeled</span>'

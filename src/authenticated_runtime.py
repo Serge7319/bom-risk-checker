@@ -3686,9 +3686,11 @@ def run_authenticated_app() -> None:
         def _load_dashboard_secondary():
             parts_response = execute_supabase_read(
                 _scoped_saved_query(
-                    # Select the row shape so this read remains compatible
-                    # before and after the optional image_url migration.
-                    supabase.table("analysis_parts").select("*"),
+                    # Home's risk action needs only these stable fields. Keep
+                    # the optional image_url migration out of this read.
+                    supabase.table("analysis_parts").select(
+                        "analysis_id,mpn,part_number,risk_level,risk_score"
+                    ),
                     _saved_workspace_id,
                 )
                 .eq("user_id", _saved_user_id)
@@ -6053,6 +6055,13 @@ def run_authenticated_app() -> None:
 
     # ---------- Supply Risk Scenario ----------
     if app_mode == "Supply Risk Scenario":
+        from src.supply_risk_scenario import (
+            build_supply_scenario,
+            render_supply_scenario,
+            render_supply_scenario_header,
+        )
+
+        render_supply_scenario_header()
         try:
             scenario_analyses = load_analysis_history(current_user["id"]) or []
         except Exception:
@@ -6115,7 +6124,6 @@ def run_authenticated_app() -> None:
             key="scenario_lifecycle_event",
         )
 
-        from src.supply_risk_scenario import build_supply_scenario, render_supply_scenario
         scenario_intelligence = build_supply_scenario(
             scenario_analyses,
             scenario_parts,
@@ -6129,6 +6137,7 @@ def run_authenticated_app() -> None:
         render_supply_scenario(
             intelligence=scenario_intelligence,
             internal_nav_button=internal_nav_button,
+            show_header=False,
         )
         stop_authenticated_page()
 
