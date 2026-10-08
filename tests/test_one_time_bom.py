@@ -40,13 +40,44 @@ class OneTimeBOMTests(unittest.TestCase):
             )),
         ))
         fake_helper = types.ModuleType("src.stripe_helper")
-        fake_helper._ensure_stripe_api_key = Mock()
+        fake_helper._ensure_stripe_api_key = Mock(return_value="sk_test_fake")
         with patch.dict(sys.modules, {"stripe": fake_stripe, "src.stripe_helper": fake_helper}):
             self.assertEqual(one_time_bom.price_label(self.price_id), "USD 49.00")
             fake_stripe.Price.retrieve.return_value.recurring = {"interval": "month"}
             with self.assertRaises(one_time_bom.OneTimeBOMError):
                 one_time_bom.price_label("price_recurring")
         one_time_bom.price_label.cache_clear()
+
+    def test_price_label_cache_is_scoped_to_stripe_key(self):
+        one_time_bom.price_label.cache_clear()
+        fake_stripe = types.SimpleNamespace(Price=types.SimpleNamespace(
+            retrieve=Mock(side_effect=[
+                types.SimpleNamespace(active=True, recurring=None, currency="usd", unit_amount=1900),
+                types.SimpleNamespace(active=True, recurring=None, currency="usd", unit_amount=2500),
+            ]),
+        ))
+        fake_helper = types.ModuleType("src.stripe_helper")
+        fake_helper._ensure_stripe_api_key = Mock(
+            side_effect=["sk_live_account_a", "sk_live_account_a", "sk_live_account_b"]
+        )
+        with patch.dict(sys.modules, {"stripe": fake_stripe, "src.stripe_helper": fake_helper}):
+            self.assertEqual(one_time_bom.price_label(self.price_id), "USD 19.00")
+            self.assertEqual(one_time_bom.price_label(self.price_id), "USD 19.00")
+            self.assertEqual(one_time_bom.price_label(self.price_id), "USD 25.00")
+        self.assertEqual(fake_stripe.Price.retrieve.call_count, 2)
+        one_time_bom.price_label.cache_clear()
+
+    def test_public_checkout_price_is_available_only_after_configuration(self):
+        with patch.object(one_time_bom, "enabled", return_value=True), \
+             patch.object(one_time_bom, "get_secret", return_value=self.price_id), \
+             patch.object(one_time_bom, "price_label", return_value="USD 49.00") as label:
+            self.assertEqual(one_time_bom.public_checkout_price(), "USD 49.00")
+            label.assert_called_once_with(self.price_id)
+
+        with patch.object(one_time_bom, "enabled", return_value=False), \
+             patch.object(one_time_bom, "price_label") as label:
+            self.assertIsNone(one_time_bom.public_checkout_price())
+            label.assert_not_called()
 
     def test_checkout_order_is_stored_before_url_is_returned(self):
         client = Mock()
@@ -68,6 +99,34 @@ class OneTimeBOMTests(unittest.TestCase):
         self.assertEqual(create.call_args.kwargs["order_id"], ORDER)
         chain.update.assert_called_once_with({"stripe_session_id": "cs_test_one"})
 
+    def test_checkout_provider_failure_has_safe_reference_and_stage_diagnostic(self):
+        client = Mock()
+        client.table.return_value.insert.return_value.execute.return_value.data = [{"id": ORDER}]
+        fake_helper = types.ModuleType("src.stripe_helper")
+        fake_helper.create_one_time_bom_checkout = Mock(
+            side_effect=RuntimeError("private provider response detail")
+        )
+        with patch.dict(sys.modules, {"src.stripe_helper": fake_helper}), \
+             patch.object(one_time_bom, "_service_client", return_value=client), \
+             patch.object(one_time_bom, "enabled", return_value=True), \
+             patch.object(one_time_bom, "pending_checkout", return_value=None), \
+             patch.object(one_time_bom, "price_label", return_value="USD 19.00"), \
+             patch.object(one_time_bom, "get_secret", return_value=self.price_id), \
+             self.assertLogs("src.one_time_bom", level="ERROR") as logs:
+            with self.assertRaisesRegex(
+                one_time_bom.OneTimeBOMError, "No payment was taken"
+            ) as raised:
+                one_time_bom.begin_checkout(
+                    USER, "eng@example.com", "https://app/success", "https://app/cancel"
+                )
+
+        message = str(raised.exception)
+        self.assertRegex(message, r"Support reference: [0-9a-f]{12}")
+        self.assertIn("stage=create_stripe_session", logs.output[0])
+        self.assertIn(f"order_id={ORDER}", logs.output[0])
+        self.assertNotIn("private provider response detail", logs.output[0])
+        client.table.return_value.update.assert_called_once_with({"status": "expired"})
+
     def test_an_open_checkout_cannot_create_a_second_order(self):
         client = Mock()
         with patch.object(one_time_bom, "enabled", return_value=True), \
@@ -76,6 +135,47 @@ class OneTimeBOMTests(unittest.TestCase):
             with self.assertRaisesRegex(one_time_bom.OneTimeBOMError, "already open"):
                 one_time_bom.begin_checkout(USER, "eng@example.com", "https://app/success", "https://app/cancel")
         client.table.assert_not_called()
+
+    def test_stripe_helper_replaces_a_stale_process_global_key(self):
+        fake_stripe = types.ModuleType("stripe")
+        fake_stripe.api_key = "sk_test_stale"
+        helper_file = Path(__file__).resolve().parents[1] / "src/stripe_helper.py"
+        spec = importlib.util.spec_from_file_location("cadivor_stripe_key_test", helper_file)
+        helper = importlib.util.module_from_spec(spec)
+        with patch.dict(sys.modules, {"stripe": fake_stripe}):
+            with patch("src.secrets.get_secret", return_value="sk_live_current"):
+                spec.loader.exec_module(helper)
+                self.assertEqual(helper._ensure_stripe_api_key(), "sk_live_current")
+        self.assertEqual(fake_stripe.api_key, "sk_live_current")
+
+    def test_success_return_polls_payment_without_refresh(self):
+        runtime = (Path(__file__).resolve().parents[1] / "src/authenticated_runtime.py").read_text()
+        self.assertIn('@st.fragment(run_every="5s")', runtime)
+        self.assertIn("You do not need to refresh", runtime)
+        self.assertIn("st.rerun()", runtime)
+        self.assertNotIn("Refresh shortly if your credit is not yet ready", runtime)
+
+    def test_subscription_checkout_uses_dashboard_payment_method_settings(self):
+        stripe = types.ModuleType("stripe")
+        stripe.api_key = "sk_test_fake"
+        create = Mock(return_value=types.SimpleNamespace(
+            id="cs_test_subscription", url="https://checkout.stripe.test/subscription"
+        ))
+        stripe.checkout = types.SimpleNamespace(Session=types.SimpleNamespace(create=create))
+        helper_file = Path(__file__).resolve().parents[1] / "src/stripe_helper.py"
+        spec = importlib.util.spec_from_file_location("cadivor_subscription_checkout_test", helper_file)
+        helper = importlib.util.module_from_spec(spec)
+        with patch.dict(sys.modules, {"stripe": stripe}):
+            with patch("src.secrets.get_secret", return_value="sk_test_fake"):
+                spec.loader.exec_module(helper)
+                helper.create_checkout_session(
+                    price_id="price_test_starter", user_email="eng@example.com", user_id=USER,
+                    success_url="https://app/success", cancel_url="https://app/cancel",
+                    cadivor_plan="starter",
+                )
+        options = create.call_args.kwargs
+        self.assertEqual(options["mode"], "subscription")
+        self.assertNotIn("payment_method_types", options)
 
     def test_stripe_checkout_is_one_payment_with_order_metadata(self):
         stripe = types.ModuleType("stripe")
@@ -86,13 +186,15 @@ class OneTimeBOMTests(unittest.TestCase):
         spec = importlib.util.spec_from_file_location("cadivor_checkout_test", helper_file)
         helper = importlib.util.module_from_spec(spec)
         with patch.dict(sys.modules, {"stripe": stripe}):
-            spec.loader.exec_module(helper)
-            helper.create_one_time_bom_checkout(
-                price_id=self.price_id, user_email="eng@example.com", user_id=USER,
-                order_id=ORDER, success_url="https://app/success", cancel_url="https://app/cancel",
-            )
+            with patch("src.secrets.get_secret", return_value="sk_test_fake"):
+                spec.loader.exec_module(helper)
+                helper.create_one_time_bom_checkout(
+                    price_id=self.price_id, user_email="eng@example.com", user_id=USER,
+                    order_id=ORDER, success_url="https://app/success", cancel_url="https://app/cancel",
+                )
         options = create.call_args.kwargs
         self.assertEqual(options["mode"], "payment")
+        self.assertNotIn("payment_method_types", options)
         self.assertEqual(options["line_items"], [{"price": self.price_id, "quantity": 1}])
         self.assertEqual(options["metadata"]["cadivor_order_id"], ORDER)
         self.assertEqual(options["idempotency_key"], f"cadivor_single_bom_{ORDER}")

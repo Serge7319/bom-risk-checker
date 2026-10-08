@@ -179,7 +179,17 @@ def install_smoke_auth_patches() -> None:
         has_tokens: bool = False,
         pending_credentials: bool = False,
         already_authenticated: bool = False,
+        signup_confirmation_pending: bool = False,
     ):
+        if signup_confirmation_pending:
+            return _orig_initial(
+                signup_confirmation_pending=True,
+                force_signed_out=force_signed_out,
+                handoff_active=handoff_active,
+                has_tokens=has_tokens,
+                pending_credentials=pending_credentials,
+                already_authenticated=already_authenticated,
+            )
         if already_authenticated and not force_signed_out and not pending_credentials:
             return "ready"
         if _smoke_cookie_present() or (
@@ -202,6 +212,7 @@ def install_smoke_auth_patches() -> None:
             has_tokens=has_tokens,
             pending_credentials=pending_credentials,
             already_authenticated=already_authenticated,
+            signup_confirmation_pending=signup_confirmation_pending,
         )
 
     auth_mod.execute_password_login = smoke_execute_password_login

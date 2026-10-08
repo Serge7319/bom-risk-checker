@@ -2,6 +2,7 @@
 from __future__ import annotations
 from typing import Any, Dict, Iterable
 import pandas as pd
+from src.part_images import normalize_supplier_image_url
 
 def _t(v, default=""):
     if v is None:
@@ -66,6 +67,9 @@ def _recommend(row: Dict[str, Any]) -> Dict[str, Any]:
 
     return {
         "Part Number": part,
+        "Image URL": normalize_supplier_image_url(
+            _first(row, "image_url", "Image URL", "photo_url")
+        ),
         "Manufacturer": manufacturer,
         "Recommendation": recommendation,
         "Next Step": next_step,

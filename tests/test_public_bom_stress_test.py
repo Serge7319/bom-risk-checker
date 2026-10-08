@@ -33,7 +33,8 @@ class PublicBomStressTest(unittest.TestCase):
         self.assertIn("a.href = '#/analyze'", script)
         self.assertNotIn("stressFullPage", script)
         self.assertIn("if (page === 'analyze')", script)
-        self.assertIn("/?public=stress&embed=true", script)
+        self.assertIn("new URLSearchParams({ public: 'stress', embed: 'true' })", script)
+        self.assertIn("params.set(key, value.slice(0, 80))", script)
         self.assertLess(entrypoint.index('st.query_params.get("public"'),
                         entrypoint.index("ensure_authenticated_or_stop()"))
 
@@ -114,6 +115,73 @@ class PublicBomStressTest(unittest.TestCase):
             funnel.parse_bom("board.csv", b"x" * (funnel.MAX_BYTES + 1))
         self.assertEqual(funnel._safe_export_cell(" =WEBSERVICE(\"https://example.com\")"),
                          "' =WEBSERVICE(\"https://example.com\")")
+
+    def test_release_readiness_campaign_attribution_is_bounded_and_saved_on_lead(self):
+        params = {
+            "utm_source": "release-readiness-guide",
+            "utm_medium": "owned content",
+            "utm_campaign": "release-readiness",
+        }
+        source = funnel.lead_source_from_query(params)
+        self.assertEqual(source, "utm:release-readiness-guide:owned-content:release-readiness")
+        self.assertEqual(funnel.lead_source_from_query({}), "homepage_stress_test")
+        self.assertNotIn("@", funnel.lead_source_from_query({"utm_source": "hello@company.com"}))
+
+        class FakeSupabase:
+            def __init__(self):
+                self.current_table = ""
+                self.lead = None
+                self.is_update = False
+
+            def table(self, name):
+                self.current_table = name
+                self.is_update = False
+                return self
+
+            def select(self, *_):
+                return self
+
+            def eq(self, *_):
+                return self
+
+            def single(self):
+                return self
+
+            def update(self, *_):
+                self.is_update = True
+                return self
+
+            def upsert(self, payload, **_):
+                self.lead = payload
+                return self
+
+            def execute(self):
+                if self.current_table == "cadivor_public_bom_stress_tests":
+                    data = [{"id": "report-1"}] if self.is_update else {
+                        "id": "report-1", "row_count": 10,
+                        "status": "ready", "work_email": None,
+                        "results": [],
+                    }
+                    return types.SimpleNamespace(data=data)
+                return types.SimpleNamespace(data=None)
+
+        client = FakeSupabase()
+        with patch.object(funnel, "_service_client", return_value=client):
+            funnel.capture_lead("report-1", "engineer@company.com", source=source)
+        self.assertEqual(client.lead["source"], source)
+
+    def test_release_readiness_guide_is_linked_from_marketing_entry_points(self):
+        root = Path(__file__).resolve().parents[1]
+        homepage = (root / "marketing-web/index.html").read_text()
+        guide = (root / "marketing-web/release-readiness.html").read_text()
+        script = (root / "marketing-web/app.js").read_text()
+        self.assertIn("Know when your hardware is", homepage)
+        self.assertIn("Cadivor — Hardware Release Readiness", script)
+        self.assertIn('href="/release-readiness.html"', homepage)
+        self.assertIn("7 BOM Checks", guide)
+        self.assertEqual(guide.count('id="check-'), 7)
+        self.assertIn("buildPublicStressUrl()", script)
+        self.assertIn("utm_campaign", script)
 
     def test_rate_slot_is_reserved_before_any_provider_call_and_locked_rows_never_return(self):
         class FakeUpdate:

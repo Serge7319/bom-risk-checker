@@ -14,6 +14,8 @@ Open `http://localhost:3000/#/home`.
 ## Routes
 
 - `#/home`
+- `#/analyze` (free anonymous BOM audit)
+- `#/one-time-report` (one-time report details and report-only account checkout entry)
 - `#/product`
 - `#/solutions`
 - `#/pricing`

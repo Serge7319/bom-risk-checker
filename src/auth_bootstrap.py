@@ -628,6 +628,10 @@ def _ensure_authenticated_or_stop_impl() -> None:
     # Explicit Sign out still wins: it clears tokens before the redirect.
     drop_stale_logout_query_for_authenticated_page_hop()
 
+    from src.auth_signup_confirmation import signup_confirmation_callback_requested
+
+    signup_confirmation_pending = signup_confirmation_callback_requested()
+
     # Durable logout marker from hard reload (?cadivor_signed_out=1) must win
     # before any cookie peek can send the gate to boot restore.
     force_signed_out = apply_signed_out_query_marker()
@@ -638,17 +642,18 @@ def _ensure_authenticated_or_stop_impl() -> None:
     # while cold visitors (no tokens, no cookie) go straight to Login.
     cookie_tokens, _cookie_peek_source = (
         (None, "none")
-        if force_signed_out
+        if force_signed_out or signup_confirmation_pending
         else read_auth_cookie_tokens_with_source(cookie_manager=None)
     )
     has_restore_candidate = (
         False
-        if force_signed_out
+        if force_signed_out or signup_confirmation_pending
         else (bool(access and refresh) or bool(cookie_tokens))
     )
     already_authenticated = (
         str(st.session_state.get("cadivor_auth_status") or "") == AUTH_AUTHENTICATED
         and not force_signed_out
+        and not signup_confirmation_pending
     )
     gate_state = resolve_initial_gate_state(
         force_signed_out=force_signed_out,
@@ -656,8 +661,16 @@ def _ensure_authenticated_or_stop_impl() -> None:
         has_tokens=has_restore_candidate,
         pending_credentials=has_pending_credentials(),
         already_authenticated=already_authenticated,
+        signup_confirmation_pending=signup_confirmation_pending,
     )
-    set_auth_gate_state(gate_state, reason="bootstrap_first_paint")
+    set_auth_gate_state(
+        gate_state,
+        reason=(
+            "signup_confirmation_first_paint"
+            if signup_confirmation_pending
+            else "bootstrap_first_paint"
+        ),
+    )
 
     # Already-authenticated workspace navigation: never paint boot/authenticating
     # over the durable shell — admit runtime with zero gate paint once shell exists.
@@ -679,7 +692,15 @@ def _ensure_authenticated_or_stop_impl() -> None:
         return
 
     # FIRST paint for signed-out / restore / credential flows only.
-    paint_auth_gate(gate_state)
+    if signup_confirmation_pending:
+        paint_auth_gate(
+            gate_state,
+            progress_message=(
+                "Confirming your email… Keep this tab open while we verify your link."
+            ),
+        )
+    else:
+        paint_auth_gate(gate_state)
     log_auth_correlation(
         "bootstrap_entry",
         cookie_manager=None,

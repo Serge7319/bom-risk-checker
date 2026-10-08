@@ -1843,6 +1843,7 @@ def _canonical_route_allowlist() -> frozenset[str]:
             "Supply Risk Scenario",
             "Reports",
             "Pricing",
+            "Single BOM Report",
             "Settings",
             "Workspace",
             "Notifications",
@@ -2484,6 +2485,7 @@ def run_authenticated_app() -> None:
             "Lead Time Weeks": part_data.get("lead_time_weeks", None),
             "Lifecycle Status": part_data.get("lifecycle_status", "Unknown"),
             "Product URL": part_data.get("product_detail_url", ""),
+            "Photo": part_data.get("image_url", ""),
             "Has Alternates": part_data.get("has_alternates", False),
             "Alternate Count": part_data.get("alternate_count", 0),
             "Alternative Part Numbers": part_data.get("alternative_part_numbers", ""),
@@ -2901,6 +2903,7 @@ def run_authenticated_app() -> None:
         "Supply Risk Scenario",
         "Reports",
         "Pricing",
+        "Single BOM Report",
         "Settings",
         "Workspace",
         "Notifications",
@@ -3644,6 +3647,7 @@ def run_authenticated_app() -> None:
             build_home_model,
             render_returning_home,
             render_saved_boms_unavailable,
+            render_secondary_update_banner,
         )
 
         # Snapshot session scope on the script thread. A budgeted worker that
@@ -3683,8 +3687,10 @@ def run_authenticated_app() -> None:
         def _load_dashboard_secondary():
             parts_response = execute_supabase_read(
                 _scoped_saved_query(
+                    # Home's risk action needs only these stable fields. Keep
+                    # the optional image_url migration out of this read.
                     supabase.table("analysis_parts").select(
-                        "id,analysis_id,user_id,mpn,risk_level,risk_score,lifecycle_status,manufacturer"
+                        "analysis_id,mpn,part_number,risk_level,risk_score"
                     ),
                     _saved_workspace_id,
                 )
@@ -3820,19 +3826,6 @@ def run_authenticated_app() -> None:
 
         if workspace_category == "Engineering Overview":
             reveal_authenticated_page_body("Dashboard")
-            from src.ui.approved_pages import render_home
-
-            render_home(
-                name=str(shell_name or ""),
-                analyses=list(real_overview_analyses or []),
-                plan_notice="",
-            )
-            render_dashboard_page_heading(
-                home["title"],
-                "Open the highest-risk BOM, or start a new one."
-                if home["kind"] == "attention"
-                else "Pick up a saved BOM, or start a new one.",
-            )
             pause_new = (
                 not is_admin
                 and not st.session_state.get(PROFILE_UNRESOLVED_KEY)
@@ -3849,17 +3842,25 @@ def run_authenticated_app() -> None:
                     "This subscription is not active. New analyses are paused. "
                     "Your saved BOMs and reports are still available."
                 )
-            render_returning_home(
-                home,
+            if home.get("secondary_section_unavailable") or home.get("secondary_refresh_failed"):
+                render_secondary_update_banner(
+                    unavailable=bool(home.get("secondary_section_unavailable")),
+                    refresh_failed=bool(home.get("secondary_refresh_failed")),
+                )
+            if not is_admin:
+                render_upgrade_prompt(
+                    plan_name=selected_plan_name,
+                    monthly_used=len(real_overview_analyses),
+                    monthly_limit=selected_plan.get("monthly_bom_limit"),
+                )
+            from src.ui.approved_pages import render_home
+
+            render_home(
+                name=str(shell_name or ""),
+                analyses=list(real_overview_analyses or []),
                 plan_notice=plan_notice,
                 pause_new_analyses=pause_new,
             )
-            if not is_admin:
-                    render_upgrade_prompt(
-                        plan_name=selected_plan_name,
-                        monthly_used=len(real_overview_analyses),
-                        monthly_limit=selected_plan.get("monthly_bom_limit"),
-                    )
         elif workspace_category == "Portfolio Intelligence":
             if portfolio_cache_key not in st.session_state:
                 st.session_state[portfolio_cache_key] = load_portfolio_dashboard_context(
@@ -6058,6 +6059,13 @@ def run_authenticated_app() -> None:
 
     # ---------- Supply Risk Scenario ----------
     if app_mode == "Supply Risk Scenario":
+        from src.supply_risk_scenario import (
+            build_supply_scenario,
+            render_supply_scenario,
+            render_supply_scenario_header,
+        )
+
+        render_supply_scenario_header()
         try:
             scenario_analyses = load_analysis_history(current_user["id"]) or []
         except Exception:
@@ -6173,7 +6181,6 @@ def run_authenticated_app() -> None:
             key="scenario_lifecycle_event",
         )
 
-        from src.supply_risk_scenario import build_supply_scenario, render_supply_scenario
         scenario_intelligence = build_supply_scenario(
             scenario_analyses,
             scenario_parts,
@@ -6187,6 +6194,7 @@ def run_authenticated_app() -> None:
         render_supply_scenario(
             intelligence=scenario_intelligence,
             internal_nav_button=internal_nav_button,
+            show_header=False,
         )
         stop_authenticated_page()
 
@@ -6576,10 +6584,16 @@ def run_authenticated_app() -> None:
                 st.caption(
                     f"Showing {len(urgent_rows)} component(s) with a priority score of 75 or higher."
                 )
+            from src.part_images import part_image_markup
             for index, row in enumerate(urgent_rows):
+                urgent_photo_markup = part_image_markup(
+                    row.get("Image URL"), row["Part Number"], size=64
+                )
                 st.markdown(
                     f"""
-                    <section class="cv151-card">
+                    <section class="cv151-card cv151-card-layout">
+                      {urgent_photo_markup}
+                      <div>
                       <div class="cv151-card-title">{html.escape(row['Part Number'])}</div>
                       <div class="cv151-card-copy">
                         <b>Recommended action: {html.escape(row['Recommendation'])}</b><br>
@@ -6589,6 +6603,7 @@ def run_authenticated_app() -> None:
                         <span>Priority {row['Priority Score']}/100</span>
                         <span>Stock {row['Available Stock']:,}</span>
                         <span>{row['Supplier Sources']} supplier(s)</span>
+                      </div>
                       </div>
                     </section>
                     """,
@@ -6620,6 +6635,7 @@ def run_authenticated_app() -> None:
                 cadivor_engineering_dataframe(
                     advisor["recommendation_df"],
                     column_config={
+                        "Image URL": st.column_config.ImageColumn("Part photo", width="small"),
                         "Risk Level": st.column_config.TextColumn(width="small"),
                         "Recommended Action": st.column_config.TextColumn(width="medium"),
                     },
@@ -10618,6 +10634,101 @@ def run_authenticated_app() -> None:
         stop_authenticated_page()
 
 
+    # ---------- One-time full report purchase ----------
+    if app_mode == "Single BOM Report":
+        from src.one_time_bom import (
+            MAX_PARTS as _SINGLE_BOM_MAX_PARTS,
+            available_credit as _single_bom_available_credit,
+            enabled as _single_bom_offer_enabled,
+            in_progress_credit as _single_bom_in_progress,
+        )
+
+        reveal_authenticated_page_body("Single BOM Report")
+        st.markdown(
+            """
+            <style>
+            .cv-single-report-hero{border:1px solid #bfdbfe;border-radius:20px;
+                padding:28px 32px;background:linear-gradient(135deg,#fff,#eff6ff);
+                margin-bottom:20px}
+            .cv-single-report-hero small{color:#2563eb;font-size:11px;
+                font-weight:850;letter-spacing:.12em;text-transform:uppercase}
+            .cv-single-report-hero h1{margin:10px 0;color:#10284b}
+            .cv-single-report-hero p{margin:0;color:#475569;max-width:720px}
+            </style>
+            <section class="cv-single-report-hero">
+              <small>One-time purchase</small>
+              <h1>One full BOM report</h1>
+              <p>Run your BOM first. Cadivor shows the exact unique-component count and active price
+              before checkout. Payment unlocks the full report and PDF/CSV downloads for up to
+              100 unique components; no subscription is included.</p>
+            </section>
+            """,
+            unsafe_allow_html=True,
+        )
+        if is_admin or selected_plan.get("can_create_analyses") is not False:
+            st.info("Your current access already includes BOM analyses. Use your plan's included reports.")
+            internal_nav_button(
+                "Analyze a BOM with your included access", "BOM Analyzer",
+                key="single_bom_included_analysis", new_analysis="1",
+            )
+        else:
+            _single_bom_user_id = str(current_user["id"])
+            _single_bom_credit_ready = _single_bom_available_credit(_single_bom_user_id)
+            _single_bom_analysis_open = _single_bom_in_progress(_single_bom_user_id)
+            with st.container(border=True):
+                st.markdown("#### Analyze your BOM before you pay")
+                st.caption(
+                    "Upload and run your BOM first. Cadivor confirms the unique-component count "
+                    "and shows the active price before checkout. The one-time report covers up to "
+                    f"{_SINGLE_BOM_MAX_PARTS} unique components; the full report and standard "
+                    "PDF/CSV downloads unlock only after payment. No subscription or ongoing "
+                    "monitoring is included."
+                )
+                if _single_bom_credit_ready:
+                    st.success("Your full report is paid for and ready for your BOM.")
+                    internal_nav_button(
+                        "Upload your BOM for the paid report", "BOM Analyzer",
+                        key="single_bom_paid_upload", new_analysis="1",
+                    )
+                elif _single_bom_analysis_open:
+                    st.info(
+                        "A paid BOM analysis is already in progress. Return to its open tab "
+                        "or wait for an interrupted reservation to become available again."
+                    )
+                elif not _single_bom_offer_enabled():
+                    st.info("New one-time purchases are temporarily unavailable.")
+                else:
+                    internal_nav_button(
+                        "Upload and analyze your BOM first", "BOM Analyzer",
+                        key="single_bom_start_analysis", new_analysis="1",
+                    )
+                _single_bom_checkout_state = _safe_text(_qp_value("checkout", ""))
+                if _single_bom_checkout_state == "single_bom_success" and not _single_bom_credit_ready:
+                    @st.fragment(run_every="5s")
+                    def _poll_single_bom_checkout_confirmation():
+                        # The return URL is only a status hint. Paid access is
+                        # granted after available_credit sees webhook fulfillment.
+                        if _single_bom_available_credit(_single_bom_user_id):
+                            try:
+                                if _safe_text(_qp_value("checkout", "")) == "single_bom_success":
+                                    del st.query_params["checkout"]
+                            except Exception:
+                                pass
+                            st.rerun()
+                        st.info(
+                            "Stripe sent you back to Cadivor. We’re confirming your payment "
+                            "automatically. You do not need to refresh; keep this page open."
+                        )
+
+                    _poll_single_bom_checkout_confirmation()
+                elif _single_bom_checkout_state == "single_bom_cancel":
+                    st.info("Checkout was canceled. No report credit was purchased.")
+        internal_nav_button(
+            "Compare subscription plans", "Pricing", key="single_bom_compare_plans",
+            type="secondary",
+        )
+        stop_authenticated_page()
+
     # ---------- Pricing ----------
     if app_mode == "Pricing":
         # Sprint 31.3.1 — launch pricing polish patch.
@@ -10749,32 +10860,19 @@ def run_authenticated_app() -> None:
             not is_admin
             and selected_plan.get("can_create_analyses") is False
         ):
-            from src.one_time_bom import (
-                MAX_PARTS as _SINGLE_BOM_MAX_PARTS,
-                OneTimeBOMError as _SingleBOMPriceError,
-                enabled as _single_bom_offer_enabled,
-                price_label as _single_bom_price_label,
-            )
+            from src.one_time_bom import enabled as _single_bom_offer_enabled
+
             if _single_bom_offer_enabled():
                 with st.container(border=True):
-                    st.markdown("#### Need one BOM report?")
+                    st.markdown("#### Want a full report for one BOM?")
                     st.caption(
-                        f"Analyze up to {_SINGLE_BOM_MAX_PARTS} unique components and "
-                        "keep the saved BOM and its PDF/CSV reports. No subscription is required."
+                        "Buy one saved BOM analysis and its PDF/CSV report package "
+                        "without starting a subscription."
                     )
-                    try:
-                        _single_bom_price = _single_bom_price_label(
-                            str(get_secret("STRIPE_ONE_TIME_BOM_REPORT_PRICE_ID", required=True))
-                        )
-                    except _SingleBOMPriceError:
-                        st.info("The one-time report price is temporarily unavailable.")
-                    else:
-                        internal_nav_button(
-                            f"Get one BOM report · {_single_bom_price}",
-                            "BOM Analyzer",
-                            key="pricing_single_bom_report",
-                            new_analysis="1",
-                        )
+                    internal_nav_button(
+                        "View one-time report purchase", "Single BOM Report",
+                        key="pricing_single_bom_report",
+                    )
         try:
             if not st.session_state.get("cadivor_workspace_command_cache"):
                 from src.boot_read_budget import run_with_read_budget as _budget_pricing_commands
@@ -12536,10 +12634,9 @@ def run_authenticated_app() -> None:
                     and not _single_bom_credit_ready
                 ):
                     internal_nav_button(
-                        "Get one BOM report",
-                        "BOM Analyzer",
+                        "Buy one full BOM report",
+                        "Single BOM Report",
                         key="billing_single_bom_report",
-                        new_analysis="1",
                     )
                 st.markdown(
                     f'<p style="margin:12px 0 0;font-size:13px;color:#64748B">'
@@ -16093,10 +16190,17 @@ def run_authenticated_app() -> None:
                 else "Compatibility Confidence"
             )
 
+            from src.part_images import part_image_markup
+            candidate_photo_markup = part_image_markup(
+                selected_row.get("image_url") or selected_row.get("Image URL"),
+                selected_alternative,
+                size=82,
+            )
             with st.container(border=True, key="af62b_best_card"):
                 st.markdown(
                     f"""
                     <div class="af62b-best-top">
+                      <div class="af62b-best-image">{candidate_photo_markup}</div>
                       <div>
                         <div class="af62b-eyebrow">{html.escape(_af62_candidate_eyebrow(classification_value))}</div>
                         <div class="af62b-best-part">{html.escape(selected_alternative)}</div>
@@ -17355,8 +17459,8 @@ def run_authenticated_app() -> None:
             consume_credit as consume_one_time_credit,
             enabled as one_time_bom_enabled,
             in_progress_credit as one_time_credit_in_progress,
-            pending_checkout as one_time_pending_checkout,
-            price_label as one_time_price_label,
+            pending_checkout as pending_one_time_checkout,
+            price_label as one_time_report_price_label,
             release_credit as release_one_time_credit,
             reserve_credit as reserve_one_time_credit,
             reserved_credit as one_time_credit_reserved,
@@ -18275,22 +18379,27 @@ def run_authenticated_app() -> None:
         reveal_authenticated_page_body("BOM Analyzer")
         from src.ui.approved_pages import render_bom_catalog
 
-        render_bom_catalog(history_data if isinstance(history_data, list) else [])
-        uploaded_file = st.session_state.pop("cadivor_pending_upload", None)
-        project_name = str(st.session_state.pop("cadivor_pending_project", "") or "")
-        bom_name = str(st.session_state.pop("cadivor_pending_bom_name", "") or "")
-        st.session_state.pop("cadivor_bom_analysis_ready", None)
-        if uploaded_file is not None:
-            st.session_state.pop("bom8_sample_mode", None)
+        if st.session_state.get("bom81_high_risk_review"):
+            uploaded_file = None
+            project_name = ""
+            bom_name = ""
+        else:
+            render_bom_catalog(history_data if isinstance(history_data, list) else [])
+            uploaded_file = st.session_state.pop("cadivor_pending_upload", None)
+            project_name = str(st.session_state.pop("cadivor_pending_project", "") or "")
+            bom_name = str(st.session_state.pop("cadivor_pending_bom_name", "") or "")
+            st.session_state.pop("cadivor_bom_analysis_ready", None)
+            if uploaded_file is not None:
+                st.session_state.pop("bom8_sample_mode", None)
         analysis_in_progress = bool(
             st.session_state.get("bom8_analysis_future")
             or st.session_state.get("bom8_analysis_pending")
             or st.session_state.get("bom8_sample_auto_analyze")
         )
         sample_bom = pd.DataFrame()
-        if uploaded_file is None:
+        if uploaded_file is None and not st.session_state.get("bom81_high_risk_review"):
             stop_authenticated_page()
-        if False:
+        if st.session_state.get("bom81_high_risk_review"):
             # Cross-BOM review belongs with the File readiness guidance below,
             # not as a disconnected page-level action.
 
@@ -19532,8 +19641,8 @@ def run_authenticated_app() -> None:
         if st.session_state.get("uploaded_filename") != source_filename:
             st.session_state.pop("results_df", None)
             st.session_state.pop("analysis_saved", None)
+            st.session_state.pop("cadivor_one_time_pending_component_count", None)
             st.session_state["uploaded_filename"] = source_filename
-
     
         original_row_count = len(bom_df)
 
@@ -19572,12 +19681,27 @@ def run_authenticated_app() -> None:
             deduplicated_count=deduped_row_count,
         )
 
-        st.subheader("Sample BOM Preview" if sample_mode else "Uploaded BOM Preview")
-        st.data_editor(
-            bom_df,
-            use_container_width=True,
-            hide_index=True,
-        )
+        _one_time_preflight_price = ""
+        if _one_time_blocked_plan and not (_one_time_reserved or _one_time_available):
+            if len(bom_df) > ONE_TIME_BOM_MAX_PARTS:
+                st.error(
+                    f"This BOM has {len(bom_df)} unique components. The one-time report covers "
+                    f"up to {ONE_TIME_BOM_MAX_PARTS}; no payment will be requested. "
+                    "Reduce the BOM or compare plans for a larger analysis."
+                )
+            else:
+                try:
+                    _one_time_preflight_price = one_time_report_price_label(
+                        str(get_secret("STRIPE_ONE_TIME_BOM_REPORT_PRICE_ID", required=True))
+                    )
+                except OneTimeBOMError as exc:
+                    st.error(str(exc))
+                else:
+                    st.info(
+                        f"{len(bom_df)} unique components. Run the analysis first; "
+                        f"then pay {_one_time_preflight_price} once to unlock the full report. "
+                        f"Limit: {ONE_TIME_BOM_MAX_PARTS} unique components; no subscription."
+                    )
 
 
         bom_name_missing = not bom_name.strip() and not sample_mode
@@ -19586,10 +19710,19 @@ def run_authenticated_app() -> None:
             if project_name.strip() and bom_name.strip()
             else bom_name.strip() or source_filename
         )
+        _one_time_analysis_blocked = (
+            _one_time_blocked_plan
+            and not (_one_time_reserved or _one_time_available)
+            and (
+                len(bom_df) > ONE_TIME_BOM_MAX_PARTS
+                or not _one_time_preflight_price
+            )
+        )
         analyze_clicked = st.button(
             "Analyzing BOM…" if analysis_in_progress else ("Analyze Sample BOM" if sample_mode else "Analyze BOM"),
             type="primary",
-            disabled=bom_name_missing or analysis_in_progress,
+            disabled=bom_name_missing or analysis_in_progress or _one_time_analysis_blocked,
+            use_container_width=True,
         )
         if analyze_clicked:
             # Render the busy state before the long-running supplier and risk analysis.
@@ -19641,8 +19774,9 @@ def run_authenticated_app() -> None:
 
                 if not current_future.done():
                     st.info(
-                        f"Analyzing {completed} of {total_parts} components"
-                        + (f": {current_mpn}" if current_mpn else "…")
+                        "**Analysis in progress** — "
+                        f"{completed} of {total_parts} components complete"
+                        + (f" · Checking {current_mpn}" if current_mpn else "…")
                     )
                     st.progress(completed / total_parts if total_parts else 0)
                     return
@@ -19689,6 +19823,12 @@ def run_authenticated_app() -> None:
             _render_active_bom_analysis()
             st.stop()
 
+        st.subheader("Sample BOM Preview" if sample_mode else "Uploaded BOM Preview")
+        st.data_editor(
+            bom_df,
+            use_container_width=True,
+            hide_index=True,
+        )
         analyze_requested = bool(st.session_state.pop("bom8_analysis_pending", False))
         if st.session_state.pop("bom8_sample_auto_analyze", False):
             analyze_requested = True
@@ -19704,11 +19844,15 @@ def run_authenticated_app() -> None:
             if _one_time_blocked_plan:
                 if len(bom_df) > ONE_TIME_BOM_MAX_PARTS:
                     st.error(
-                        f"One-time reports support up to {ONE_TIME_BOM_MAX_PARTS} unique components. "
-                        "Reduce this BOM or choose a plan for a larger analysis."
+                        f"This BOM has {len(bom_df)} unique components. The one-time report covers "
+                        f"up to {ONE_TIME_BOM_MAX_PARTS}; no payment was requested. Reduce the BOM "
+                        "or compare plans for a larger analysis."
                     )
                     stop_authenticated_page()
-                if not _one_time_reserved:
+                if _one_time_reserved:
+                    allowed = True
+                    message = "Your paid one-time report is reserved for this analysis."
+                elif _one_time_available:
                     try:
                         _one_time_order_id = reserve_one_time_credit(_one_time_user_id)
                     except OneTimeBOMError as exc:
@@ -19716,8 +19860,15 @@ def run_authenticated_app() -> None:
                         stop_authenticated_page()
                     st.session_state["cadivor_one_time_bom_order_id"] = _one_time_order_id
                     _one_time_reserved = True
-                allowed = True
-                message = "Paid one-time BOM report reserved for this analysis."
+                    allowed = True
+                    message = "Your paid one-time report is reserved for this analysis."
+                else:
+                    if not _one_time_preflight_price:
+                        st.error("The one-time report price is unavailable. No analysis was started.")
+                        stop_authenticated_page()
+                    st.session_state["cadivor_one_time_pending_component_count"] = int(len(bom_df))
+                    allowed = True
+                    message = "Your BOM is being analyzed. The full report will be offered after the component count is confirmed."
             elif is_admin:
                 allowed = True
                 message = "Admin account: plan limits bypassed."
@@ -19842,6 +19993,74 @@ def run_authenticated_app() -> None:
             results_df = st.session_state["results_df"]
 
             if not st.session_state.get("analysis_saved", False):
+                if _one_time_blocked_plan and not _one_time_reserved:
+                    _one_time_component_count = int(
+                        st.session_state.get(
+                            "cadivor_one_time_pending_component_count", len(results_df)
+                        )
+                    )
+                    if _one_time_component_count > ONE_TIME_BOM_MAX_PARTS:
+                        st.error(
+                            f"The one-time report covers up to {ONE_TIME_BOM_MAX_PARTS} unique components. "
+                            f"This BOM has {_one_time_component_count}; no payment was requested. "
+                            "Reduce the BOM or compare plans for a larger analysis."
+                        )
+                        stop_authenticated_page()
+                    if not one_time_credit_available(_one_time_user_id):
+                        st.markdown("### Your BOM analysis is ready")
+                        if not one_time_bom_enabled():
+                            st.warning("One-time checkout is temporarily unavailable. Your report has not been saved.")
+                            stop_authenticated_page()
+                        try:
+                            _one_time_final_price = one_time_report_price_label(
+                                str(get_secret("STRIPE_ONE_TIME_BOM_REPORT_PRICE_ID", required=True))
+                            )
+                            st.caption(
+                                f"Cadivor analyzed {_one_time_component_count} unique components. "
+                                f"One-time report covers up to {ONE_TIME_BOM_MAX_PARTS}; no subscription."
+                            )
+                            _one_time_pending = pending_one_time_checkout(_one_time_user_id)
+                            if _one_time_pending and _one_time_pending[0] == "open":
+                                _one_time_checkout_url = _one_time_pending[1]
+                            elif _one_time_pending:
+                                _one_time_checkout_url = ""
+                                st.info("Stripe is confirming your payment. Your report will unlock here automatically.")
+                            else:
+                                _one_time_checkout_url = begin_one_time_checkout(
+                                    _one_time_user_id,
+                                    str(current_user.get("email") or ""),
+                                    app_checkout_url(page="BOM Analyzer", checkout="single_bom_success"),
+                                    app_checkout_url(page="BOM Analyzer", checkout="single_bom_cancel"),
+                                )
+                            if _one_time_checkout_url:
+                                st.link_button(
+                                    f"Pay {_one_time_final_price} and unlock report",
+                                    _one_time_checkout_url,
+                                    type="primary",
+                                    use_container_width=True,
+                                )
+                                st.caption(
+                                    "Keep this tab open. After payment, the report appears here "
+                                    "and in Analysis Details."
+                                )
+                        except OneTimeBOMError as exc:
+                            st.error(str(exc))
+
+                        @st.fragment(run_every="5s")
+                        def _poll_one_time_report_payment():
+                            if one_time_credit_available(_one_time_user_id):
+                                st.success("Payment confirmed. Unlocking your full report…")
+                                st.rerun()
+
+                        _poll_one_time_report_payment()
+                        stop_authenticated_page()
+                    try:
+                        _one_time_order_id = reserve_one_time_credit(_one_time_user_id)
+                    except OneTimeBOMError as exc:
+                        st.error(str(exc))
+                        stop_authenticated_page()
+                    st.session_state["cadivor_one_time_bom_order_id"] = _one_time_order_id
+                    _one_time_reserved = True
                 high_count = len(results_df[results_df["Risk Level"] == "High"])
                 medium_count = len(results_df[results_df["Risk Level"] == "Medium"])
                 low_count = len(results_df[results_df["Risk Level"] == "Low"])
@@ -19900,6 +20119,8 @@ def run_authenticated_app() -> None:
                     st.error(f"Could not save analysis summary: {e}")
                     stop_authenticated_page()
 
+                from src.part_images import normalize_supplier_image_url
+
                 part_records = []
 
                 for _, part_row in results_df.iterrows():
@@ -19908,6 +20129,9 @@ def run_authenticated_app() -> None:
                             "analysis_id": analysis_id,
                             "user_id": current_user["id"],
                             "workspace_id": active_workspace_id,
+                            "image_url": normalize_supplier_image_url(
+                                part_row.get("Photo", "")
+                            ),
                             "project_name": analysis_name,
                             "mpn": part_row.get("MPN", ""),
                             "manufacturer": part_row.get("Manufacturer", ""),
@@ -19944,7 +20168,21 @@ def run_authenticated_app() -> None:
 
                 if part_records:
                     try:
-                        supabase.table("analysis_parts").insert(part_records).execute()
+                        try:
+                            supabase.table("analysis_parts").insert(part_records).execute()
+                        except Exception as photo_schema_error:
+                            error_text = str(photo_schema_error).casefold()
+                            missing_photo_column = (
+                                "image_url" in error_text
+                                and ("schema cache" in error_text or "column" in error_text)
+                            )
+                            if not missing_photo_column:
+                                raise
+                            legacy_records = [
+                                {key: value for key, value in record.items() if key != "image_url"}
+                                for record in part_records
+                            ]
+                            supabase.table("analysis_parts").insert(legacy_records).execute()
                     except Exception as e:
                         if _one_time_reserved:
                             # An incomplete summary is not a delivered report.
@@ -20178,7 +20416,10 @@ def run_authenticated_app() -> None:
 
             filtered_df = filtered_df.sort_values(by="Risk Score", ascending=False)
 
+            if "Photo" not in filtered_df.columns:
+                filtered_df["Photo"] = ""
             display_columns = [
+                "Photo",
                 "MPN",
                 "Manufacturer",
                 "Best Source",
@@ -20202,6 +20443,7 @@ def run_authenticated_app() -> None:
             cadivor_engineering_dataframe(
                 filtered_df[display_columns],
                 column_config={
+                    "Photo": st.column_config.ImageColumn("Part photo", width="small"),
                     "MPN": st.column_config.TextColumn(width="medium"),
                     "Manufacturer": st.column_config.TextColumn(width="medium"),
                     "Best Source": st.column_config.TextColumn(width="small"),

@@ -4,6 +4,7 @@ import requests
 
 from integrations.pin_count import parse_pin_count_from_text, resolve_pin_count
 from src.secrets import get_secret
+from src.part_images import normalize_supplier_image_url
 
 
 def search_mouser_by_part_number(part_number: str) -> dict:
@@ -146,6 +147,10 @@ def normalize_mouser_part(part: dict) -> dict:
         "mouser_part_number": part.get("MouserPartNumber", ""),
         "manufacturer_part_number": part.get("ManufacturerPartNumber", ""),
         "product_detail_url": part.get("ProductDetailUrl", ""),
+        "image_url": normalize_supplier_image_url(
+            part.get("ImagePath") or part.get("ImageURL") or part.get("ImageUrl"),
+            provider="Mouser",
+        ),
         "datasheet_url": part.get("DataSheetUrl", ""),
         "package": package,
         "pin_count": pin_count,
@@ -178,6 +183,7 @@ def default_part_result() -> dict:
         "mouser_part_number": "",
         "manufacturer_part_number": "",
         "product_detail_url": "",
+        "image_url": "",
         "datasheet_url": "",
         "package": "",
         "pin_count": 0,

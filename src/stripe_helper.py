@@ -5,10 +5,14 @@ from src.plans import checkout_metadata
 from src.secrets import get_secret
 
 
-def _ensure_stripe_api_key() -> None:
-    if stripe.api_key:
-        return
-    stripe.api_key = get_secret("STRIPE_SECRET_KEY", required=True)
+def _ensure_stripe_api_key() -> str:
+    """Refresh the Stripe SDK's process-global key from current Cadivor config."""
+    configured_key = str(get_secret("STRIPE_SECRET_KEY", required=True) or "").strip()
+    if not configured_key:
+        raise ValueError("Stripe secret key is not configured")
+    if stripe.api_key != configured_key:
+        stripe.api_key = configured_key
+    return configured_key
 
 
 def create_checkout_session(
@@ -34,7 +38,6 @@ def create_checkout_session(
     _ensure_stripe_api_key()
     session = stripe.checkout.Session.create(
         mode="subscription",
-        payment_method_types=["card"],
         customer_email=user_email,
         line_items=[
             {
@@ -63,7 +66,6 @@ def create_one_time_bom_checkout(
     _ensure_stripe_api_key()
     return stripe.checkout.Session.create(
         mode="payment",
-        payment_method_types=["card"],
         customer_email=user_email,
         customer_creation="always",
         line_items=[{"price": price_id, "quantity": 1}],

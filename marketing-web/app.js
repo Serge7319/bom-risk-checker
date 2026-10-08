@@ -12,14 +12,26 @@
     stressSection.hidden = false;
   }
 
-  function buildAppUrl({ auth, intent, entry, source = 'marketing' } = {}) {
+  function buildAppUrl({ auth, intent, entry, page, purchase, source = 'marketing' } = {}) {
     const params = new URLSearchParams();
     if (auth) params.set('auth', auth);
     if (intent) params.set('intent', intent);
     if (entry) params.set('entry', entry);
+    if (page) params.set('page', page);
+    if (purchase) params.set('cadivor_purchase', purchase);
     if (source) params.set('source', source);
     const qs = params.toString();
     return qs ? `${APP_ORIGIN}/?${qs}` : `${APP_ORIGIN}/`;
+  }
+
+  function buildPublicStressUrl() {
+    const params = new URLSearchParams({ public: 'stress', embed: 'true' });
+    const campaign = new URLSearchParams(window.location.search);
+    ['utm_source', 'utm_medium', 'utm_campaign'].forEach(key => {
+      const value = campaign.get(key);
+      if (value) params.set(key, value.slice(0, 80));
+    });
+    return `${APP_ORIGIN}/?${params.toString()}`;
   }
 
   const CADIVOR_LINKS = {
@@ -321,6 +333,16 @@
         a.addEventListener('click', () => {
           if (location.hash === '#/analyze') window.scrollTo({ top: 0, behavior: 'smooth' });
         });
+      } else if (a.dataset.app === 'single-report') {
+        a.href = buildAppUrl({
+          auth: 'signup',
+          intent: 'one-time-report',
+          page: 'BOM Analyzer',
+          purchase: 'one_time_report',
+          entry: 'one-time-report'
+        });
+      } else if (a.dataset.app === 'single-report-login') {
+        a.href = buildAppUrl({ auth: 'login', page: 'BOM Analyzer', entry: 'one-time-report' });
       } else if (auth === 'login' || auth === 'signin') {
         a.href = buildAppUrl({ auth: 'login', entry: a.dataset.entry || '' });
       } else if (auth === 'signup' || auth === 'trial') {
@@ -350,6 +372,7 @@
     student: 'info@cadivor.com',
     enterprise: 'info@cadivor.com',
     sales: 'info@cadivor.com',
+    'single-report': 'info@cadivor.com',
     beta: 'beta@cadivor.com',
     blocker: 'beta@cadivor.com',
     support: 'support@cadivor.com',
@@ -386,6 +409,17 @@
       submitLabel: 'Request a demo',
       formNote: 'This form opens your email client with your demo request.',
       mailSubject: 'Cadivor demo request from'
+    },
+    'single-report': {
+      eyebrow: 'ONE-TIME BOM REPORT',
+      headline: 'Ask about a report for one BOM.',
+      intro: 'Contact us if you have questions about report fit, BOM size, or your engineering decision workflow.',
+      formEyebrow: 'REPORT INQUIRY',
+      formTitle: 'Ask about a one-time report',
+      formIntro: 'Share the size of your BOM and the decision you need to make.',
+      submitLabel: 'Prepare report inquiry',
+      formNote: 'This form opens your email client with the completed inquiry.',
+      mailSubject: 'Cadivor one-time BOM report inquiry from'
     }
   };
 
@@ -406,7 +440,7 @@
     if (!page) return;
     const qs = hashQueryParams();
     const intent = contactIntentFromQuery();
-    const mode = intent === 'demo' ? 'demo' : 'general';
+    const mode = intent === 'demo' || intent === 'single-report' ? intent : 'general';
     const copy = CONTACT_COPY[mode];
     const plan = String(qs.get('plan') || '').trim();
     page.dataset.contactMode = mode;
@@ -421,6 +455,35 @@
     if (headline) headline.textContent = copy.headline;
     const intro = $('p', aside);
     if (intro) intro.textContent = copy.intro;
+    const reportInquiry = intent === 'single-report';
+    const benefits = reportInquiry
+      ? [
+        'Review one BOM without starting a recurring subscription',
+        'Get the standard risk analysis and PDF/CSV reports',
+        'Keep the saved analysis available in your Cadivor account'
+      ]
+      : [
+        'Product walkthrough tailored to your BOM workflow',
+        'Plan and deployment guidance for your team size',
+        'Engineering workflow review with evidence-linked decisions'
+      ];
+    $$('.contact-benefits li', page).forEach((item, index) => { item.textContent = benefits[index]; });
+    const agendaTitle = $('.contact-agenda h3', page);
+    if (agendaTitle) agendaTitle.textContent = reportInquiry ? 'What to include in your inquiry' : 'Expected demo agenda';
+    const agenda = reportInquiry
+      ? [
+        'Approximate number of unique components',
+        'CSV or Excel BOM format',
+        'Risks or decisions your team needs to review',
+        'When you need the finished report'
+      ]
+      : [
+        'Upload and validate a representative BOM',
+        'Review release blockers and supplier intelligence',
+        'Walk through Ask Cadivor and decision records',
+        'Discuss rollout, plans, and monitoring'
+      ];
+    $$('.contact-agenda li', page).forEach((item, index) => { item.textContent = agenda[index]; });
     const formCard = $('#contactFormCard');
     $('.contact-form-card__header .eyebrow', formCard)?.replaceChildren(document.createTextNode(copy.formEyebrow));
     const formTitle = $('.contact-form-card__header h2', formCard);
@@ -429,11 +492,17 @@
     if (formIntro) formIntro.textContent = copy.formIntro;
     const submitLabel = $('.contact-submit-label');
     if (submitLabel) submitLabel.textContent = copy.submitLabel;
+    const successMessage = $('.contact-success p', formCard);
+    if (successMessage) successMessage.textContent = intent === 'single-report'
+      ? 'Opening your email client with your one-time report inquiry.'
+      : intent === 'demo'
+        ? 'Opening your email client with your demo request.'
+        : 'Opening your email client with your message.';
     const status = $('#formStatus');
     if (status && !formCard?.classList.contains('is-success')) status.textContent = copy.formNote;
   }
 
-  const validPages = ['home', 'analyze', 'product', 'solutions', 'pricing', 'resources', 'company', 'contact', 'security', 'privacy', 'terms'];
+  const validPages = ['home', 'analyze', 'one-time-report', 'product', 'solutions', 'pricing', 'resources', 'company', 'contact', 'security', 'privacy', 'terms'];
   function route() {
     let page = (location.hash.match(/^#\/([^?#]+)/) || [])[1] || 'home';
     if (!validPages.includes(page)) page = 'home';
@@ -441,12 +510,14 @@
     if (page === 'analyze') {
       const stressFrame = document.getElementById('bomStressTestFrame');
       if (stressFrame && !stressFrame.hasAttribute('src')) {
-        stressFrame.src = `${APP_ORIGIN}/?public=stress&embed=true`;
+        stressFrame.src = buildPublicStressUrl();
       }
     }
     $$('.page').forEach(p => p.classList.toggle('active', p.dataset.page === page));
     $$('.site-header nav a').forEach(a => a.classList.toggle('active', a.getAttribute('href') === `#/${page}`));
-    document.title = `${page === 'home' ? 'Cadivor' : page[0].toUpperCase() + page.slice(1) + ' — Cadivor'}`;
+    document.title = page === 'home' ? 'Cadivor — Hardware Release Readiness'
+      : page === 'one-time-report' ? 'One-time BOM report — Cadivor'
+        : `${page[0].toUpperCase() + page.slice(1)} — Cadivor`;
     $('#mainNav')?.classList.remove('open');
     document.body.classList.remove('menu-open');
     $('#menuToggle')?.setAttribute('aria-expanded', 'false');
@@ -528,7 +599,7 @@
     { phase: 'Release posture resolved', health: 96, blockers: 0, alerts: 5, decisions: 18, ring: 'Ready for controlled production release', headline: 'Ready for controlled production release', detail: 'Cadivor linked 14 evidence points to DR-1048 and activated monitoring.', statuses: ['Resolved', 'Qualified', 'Monitoring'] }
   ];
   const WF_STEPS = [
-    { state: 'Validated', outcomeHtml: 'Validated · <b>1,842</b> components', detail: 'motor_controller_rev_c.xlsx · 36 suppliers normalized', duration: 1200 },
+    { state: 'Validated', outcomeHtml: 'Validated · <b>1,842</b> components', detail: 'motor_controller_rev_c.xlsx · 36 supplier records normalized', duration: 1200 },
     { state: 'Scored', outcomeHtml: 'BOM Health <b>72</b> · <b>4</b> blockers', detail: 'MPU6050 EOL · LM35DN lead time · lifecycle notices matched', duration: 1300 },
     { state: 'Reviewing', outcomeHtml: '<b>14</b> evidence points reviewed', detail: 'Lifecycle, supply, alternates, and prior decisions assembled', duration: 1300 },
     { state: 'Approved', outcomeHtml: '<b>DR-1048</b> approved', detail: 'Owner Jordan Ellis · evidence hash verified', duration: 1300 },
@@ -958,7 +1029,6 @@
       if (i >= 9) productStatus.classList.add('state-ok');
       if (i === 10) productStatus.classList.add('state-live');
     }
-    $('#heroLiveIndicator')?.classList.toggle('visible', i >= 4 && i <= 6 || i === 10);
     $('#phaseFill').style.width = `${phaseWidths[i]}%`;
 
     const badge = $('.demo-main>header>span');
@@ -970,7 +1040,7 @@
     positionHeroFile(i);
     $('#uploadCard')?.classList.toggle('imported', i >= 1);
     $('#uploadCard')?.classList.toggle('validating', i === 1);
-    $('#uploadState').textContent = i === 0 ? 'Waiting' : i === 1 ? 'Validating…' : 'Imported';
+    $('#uploadState').textContent = i === 0 ? 'Sample file' : i === 1 ? 'Validating…' : 'Imported';
     if (i === 1) {
       animateValidationProgress();
       cycleValidationCopy();
@@ -978,13 +1048,14 @@
     } else {
       $('#uploadProgress').style.transform = `scaleX(${i === 0 ? 0 : 1})`;
     }
-    $('#uploadMeta').textContent = i >= 2 ? '1,842 components · 36 suppliers' : i === 1 ? VALIDATION_LINES[0] : 'Awaiting upload · 36 suppliers';
+    $('#uploadMeta').textContent = i >= 2 ? '1,842 components · 36 supplier records' : i === 1 ? VALIDATION_LINES[0] : 'Illustrative sample · 1,842 components';
     $('#importWorkspace')?.classList.toggle('visible', i >= 1);
-    if ($('#importRowCount')) $('#importRowCount').textContent = i >= 1 ? (i === 1 ? 'Validating 1,842 rows…' : '1,842 rows mapped') : '1,842 rows mapped';
+    if ($('#importRowCount')) $('#importRowCount').textContent = i >= 1 ? (i === 1 ? 'Validating 1,842 rows…' : '1,842 rows mapped') : '1,842 sample rows';
     if ($('#importColMap')) $('#importColMap').textContent = i >= 1 ? '4 required columns matched' : '4 required columns matched';
 
     const acts = ['#actParse', '#actLifecycle', '#actSupplier', '#actDecisions', '#actMonitor'];
     [i >= 1, i >= 2, i >= 3, i >= 5, i >= 10].forEach((on, n) => $(acts[n])?.classList.toggle('active', on));
+    if ($('#actMonitor')) $('#actMonitor').textContent = i >= 10 ? 'Monitoring active' : 'Monitoring after approval';
     applyHeroMetrics(i, i === 2 || i === 3);
     revealHeroRisks(i);
 
@@ -1064,6 +1135,9 @@
       heroApprove.textContent = i >= 9 ? '✓ Decision approved' : 'Approve decision';
     }
     if ($('#heroDecisionStatus')) $('#heroDecisionStatus').textContent = i >= 9 ? 'Decision approved' : 'Awaiting approval';
+    if ($('#heroMonitoringStatus')) {
+      $('#heroMonitoringStatus').textContent = i >= 10 ? 'Monitoring active' : 'Starts after approval';
+    }
 
     const cursor = $('#demoCursor');
     hideCursor(cursor);
@@ -2283,7 +2357,7 @@
       const topic = String(f.get('topic') || qs.get('intent') || 'general').trim().toLowerCase();
       const intent = CONTACT_INBOX[topic] ? topic : (qs.get('intent') === 'demo' ? 'demo' : 'general');
       const plan = String(qs.get('plan') || '').trim();
-      const copy = CONTACT_COPY[intent === 'demo' ? 'demo' : 'general'];
+      const copy = CONTACT_COPY[intent === 'demo' || intent === 'single-report' ? intent : 'general'];
       const inbox = resolveContactInbox(intent);
       const subject = encodeURIComponent(`${copy.mailSubject} ${name}`);
       const bodyParts = [

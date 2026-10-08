@@ -109,6 +109,23 @@ def test_returning_user_without_urgent_risk_continues_most_recent_bom():
     assert home["show_onboarding"] is False
 
 
+def test_home_lists_six_recent_boms_with_separate_file_and_project_fields():
+    rows = [
+        _bom(
+            id=f"bom-{index}",
+            filename=f"design-{index}.csv",
+            project_name=f"Program {index}",
+            created_at=f"2026-09-{index + 1:02d}T12:00:00+00:00",
+            high_risk_count=0,
+        )
+        for index in range(8)
+    ]
+    home = build_home_model(user_id="user-1", analyses=rows, parts=[])
+    assert len(home["recent"]) == 6
+    assert home["recent"][0]["display_name"] == "design-7.csv"
+    assert home["recent"][0]["project"] == "Program 7"
+
+
 def test_secondary_timeout_keeps_saved_boms_and_does_not_invent_a_part():
     cached = [_bom()]
     session = {}
@@ -227,7 +244,7 @@ def test_returning_home_hides_analytics_and_onboarding_controls():
     assert SECONDARY_UPDATE_BANNER in home
     assert RETRY_UPDATES_LABEL in home
     shell = (ROOT / "src/ui/unified_shell.py").read_text(encoding="utf-8")
-    assert '("Portfolio Intelligence", "portfolio", "Portfolio Intelligence")' in shell
+    assert '("Parts Intelligence", "portfolio", "Portfolio Intelligence")' in shell
 
 
 def test_every_returning_state_uses_the_control_free_home():
@@ -250,21 +267,31 @@ def test_every_returning_state_uses_the_control_free_home():
     assert "New analyses are paused." in returning
 
 
-def test_home_presentation_keeps_actions_and_adds_visual_hierarchy():
+def test_home_presentation_uses_the_full_width_bom_table():
     home = (ROOT / "src/pages/home_workspace.py").read_text(encoding="utf-8")
     onboarding = (ROOT / "src/components/onboarding.py").read_text(encoding="utf-8")
-    styles = (ROOT / "src/assets/css/dashboard_v2.css").read_text(encoding="utf-8")
+    styles = "\n".join(
+        [
+            (ROOT / "src/assets/css/dashboard_v2.css").read_text(encoding="utf-8"),
+            (ROOT / "src/assets/css/dashboard_visual_refresh.css").read_text(encoding="utf-8"),
+        ]
+    )
     first_run = onboarding.split("def render_first_run_dashboard", 1)[1].split(
         "def render_activation_strip", 1
     )[0]
-    assert "Next engineering action" in home
-    assert "cv-home-chip" in home
+    assert "cv-home-v3-header" in home
+    assert "cv-home-v3-metric" in home
+    assert "cv-home-v3-table-head" in home
+    assert "High-risk parts" in home
+    assert "Last analyzed" in home
+    assert "Priority components" not in home
+    assert "home_primary_action" not in home
     assert "cv-home-notice--inline" in home
     assert "cv-home-notice--caution" in styles
     assert "cv-home-notice--account" in home
     assert SECONDARY_UPDATE_BANNER in home
     assert 'key="home_retry_updates"' in home
-    assert 'key="home_primary_action"' in home
+    assert 'key="home_new_bom"' in home
     assert 'open_saved_bom(card["id"], arm_opening=True, _rerun=True)' in home
     assert 'open_saved_bom(analysis_id, arm_opening=True, _rerun=True)' in home
     assert "A first review in four steps" in first_run
@@ -273,8 +300,9 @@ def test_home_presentation_keeps_actions_and_adds_visual_hierarchy():
     for token in (
         ".cv-home-notice--caution",
         ".cv-home-notice--account",
-        ".st-key-cv_home_next",
-        ".cv-home-chip--risk",
+        ".st-key-cv_home_recent_v3",
+        ".cv-home-v3-metric",
+        ".cv-home-v3-part-mpn",
         ":focus-visible",
     ):
         assert token in styles

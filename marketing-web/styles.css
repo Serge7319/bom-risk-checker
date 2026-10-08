@@ -64,7 +64,8 @@ button { cursor: pointer; }
 .product-header small { margin-top: 2px; color: #75839a; font-size: 8px; }
 .product-header__status { display: flex; align-items: center; gap: 10px; color: #718098; font-size: 9px; }
 .product-header__status em { font-style: normal; color: #138963; }
-.live-indicator i { display: inline-block; width: 7px; height: 7px; margin-right: 4px; border-radius: 50%; background: #28bd87; }
+.product-header__status .sample-indicator { display: inline-flex; align-items: center; padding: 5px 8px; color: #385b89; border: 1px solid #d7e5fb; border-radius: 999px; background: #f2f7ff; font-size: 8px; font-style: normal; font-weight: 750; letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; }
+.sample-data-note { max-width: 680px; margin: 10px 0 0; padding: 9px 12px; color: #556b87; border-left: 3px solid #7ba5ed; border-radius: 0 6px 6px 0; background: #f3f7fd; font-size: 12px; line-height: 1.55; }
 .window-layout { display: grid; grid-template-columns: 64px minmax(0,1fr); min-height: 640px; }
 .window-layout aside { display: flex; flex-direction: column; gap: 5px; padding: 12px 8px; color: #94accd; background: #082248; }
 .mini-logo { width: 28px; height: 28px; margin: 0 auto 7px; border-radius: 7px; font-size: 10px; font-weight: 800; }

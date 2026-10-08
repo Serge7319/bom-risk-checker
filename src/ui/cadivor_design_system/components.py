@@ -11,6 +11,7 @@ import pandas as pd
 import streamlit as st
 
 from src.ui.cadivor_design_system.icons import icon_or_empty, lucide
+from src.part_images import part_image_markup
 
 Tone = str
 
@@ -50,6 +51,11 @@ def inject_cadivor_design_system() -> None:
     except OSError:
         return
     _render_html(f"<style id='cadivor-design-system-s64'>{css}</style>")
+
+
+def render_part_image(image_url: Any, part_number: Any, *, size: int = 76) -> None:
+    """Show a supplier product photo or a neutral part thumbnail."""
+    _render_html(part_image_markup(image_url, part_number, size=size))
 
 
 def badge_tone(raw: Any) -> Tone:
@@ -766,8 +772,12 @@ def _expandable_cell_value(value: Any) -> str:
 
 
 def _expandable_cell_html(value: Any, column: ExpandableTableColumn) -> str:
-    text = _expandable_cell_value(value)
     kind = str(column.kind or "text").strip().lower()
+    if kind == "image":
+        image_url = value.get("image_url", "") if isinstance(value, Mapping) else value
+        part_number = value.get("mpn", "component") if isinstance(value, Mapping) else "component"
+        return part_image_markup(image_url, part_number, size=44)
+    text = _expandable_cell_value(value)
     if kind == "target":
         primary, _, secondary = text.partition("\n")
         secondary_markup = (

@@ -6,6 +6,7 @@ import time
 from typing import Any
 
 from src.supabase_read import SupabaseReadTransportError, execute_supabase_read
+from src.signup_intent import is_report_only_signup
 
 TRIAL_DAYS = 14
 # A newly authenticated user can briefly authenticate before their profile is
@@ -33,13 +34,21 @@ def build_default_user_row(auth_user: Any) -> dict[str, Any]:
 
     email = _safe_text(getattr(auth_user, "email", ""))
     metadata = getattr(auth_user, "user_metadata", {}) or {}
-    trial_ends_at = datetime.now(timezone.utc) + timedelta(days=TRIAL_DAYS)
+    report_only = is_report_only_signup(metadata)
+    now = datetime.now(timezone.utc)
+    # Preserve compatibility with schemas that require trial_ends_at to be
+    # populated. The inactive plan means this timestamp never grants a trial.
+    trial_ends_at = (
+        (now - timedelta(seconds=1)).isoformat()
+        if report_only
+        else (now + timedelta(days=TRIAL_DAYS)).isoformat()
+    )
 
     return {
         "id": user_id,
         "email": email,
-        "plan": "Trial",
-        "trial_ends_at": trial_ends_at.isoformat(),
+        "plan": "Subscription inactive" if report_only else "Trial",
+        "trial_ends_at": trial_ends_at,
         "monthly_upload_count": 0,
         "full_name": _safe_text(metadata.get("full_name"), _safe_text(metadata.get("name"), "")),
         "company_name": _safe_text(metadata.get("company_name"), _safe_text(metadata.get("company"), "")),

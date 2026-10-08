@@ -311,7 +311,13 @@ def risk_mix_chart(parts: list[dict[str, Any]] | None) -> str:
     )
 
 
-def render_home(*, name: str, analyses: list[dict[str, Any]] | None, plan_notice: str = "") -> None:
+def render_home(
+    *,
+    name: str,
+    analyses: list[dict[str, Any]] | None,
+    plan_notice: str = "",
+    pause_new_analyses: bool = False,
+) -> None:
     begin_approved_page()
     rows = _records(analyses)
     high = sum(_num(_first(row, "high_risk_count")) for row in rows)
@@ -334,7 +340,10 @@ def render_home(*, name: str, analyses: list[dict[str, Any]] | None, plan_notice
             unsafe_allow_html=True,
         )
     with action_col:
-        if st.button("+ New BOM analysis", key="approved_home_new_bom", type="primary"):
+        if pause_new_analyses:
+            if st.button("Open reports", key="approved_home_open_reports", type="primary"):
+                navigate_to("Reports")
+        elif st.button("+ New BOM analysis", key="approved_home_new_bom", type="primary"):
             st.session_state["cadivor_bom_upload_open"] = True
             navigate_to("BOM Analyzer")
     saved_delta = _prior_delta(rows, "prior_bom_count", "previous_bom_count")

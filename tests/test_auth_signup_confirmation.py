@@ -77,9 +77,29 @@ class SignupConfirmationSourceGuards(unittest.TestCase):
         self.assertGreater(idx_signup, 0)
         self.assertGreater(idx_resolve, idx_signup)
 
+    def test_bootstrap_prioritizes_confirmation_before_cookie_restore(self):
+        self.assertIn("signup_confirmation_pending=signup_confirmation_pending", self.bootstrap)
+        self.assertIn('"signup_confirmation_first_paint"', self.bootstrap)
+        self.assertIn("if force_signed_out or signup_confirmation_pending", self.bootstrap)
+
     def test_sign_up_passes_email_redirect_to(self):
         self.assertIn("email_redirect_to", self.auth)
-        self.assertIn("signup_confirmation_redirect_url()", self.auth)
+        self.assertIn("signup_confirmation_redirect_url(", self.auth)
+        self.assertIn("else confirm.signup_confirmation_redirect_url()", self.auth)
+
+    def test_report_checkout_signup_explains_email_confirmation_next_step(self):
+        pending_start = self.auth.index("def _render_signup_confirmation_pending")
+        pending_end = self.auth.index("def _render_signup_confirmation_success", pending_start)
+        pending = self.auth[pending_start:pending_end]
+        self.assertIn("report_purchase_requested()", pending)
+        self.assertIn("Step 1 of 2", pending)
+        self.assertIn("Check your email to continue", pending)
+        self.assertIn("Confirm your Cadivor account", pending)
+        self.assertIn("click its confirmation link", pending)
+        self.assertIn("use this email and the password you created", pending)
+        self.assertIn("Creating your report account", self.auth)
+        self.assertIn("Next, check your email", self.auth)
+        self.assertIn("New account? Check your inbox, spam, and promotions folders.", pending)
 
     def test_implementation_does_not_depend_on_a1_recovery_reorder(self):
         # Committed/candidate auth.py must keep HEAD recovery order (after LOGIN/SIGNUP).
@@ -109,7 +129,8 @@ class SignupConfirmationSourceGuards(unittest.TestCase):
 
 class SignupConfirmationUnitTests(unittest.TestCase):
     def setUp(self):
-        self.st = _install_streamlit_stub({})
+        self.st, restore_streamlit = _install_streamlit_stub({})
+        self.addCleanup(restore_streamlit)
         self.st.rerun = MagicMock()
         for name in list(sys.modules):
             if name.startswith("src.auth"):
@@ -121,6 +142,26 @@ class SignupConfirmationUnitTests(unittest.TestCase):
         url = self.confirm.signup_confirmation_redirect_url()
         self.assertIn("cadivor_signup_confirm=1", url)
         self.assertTrue(url.startswith("https://"))
+
+    def test_confirmation_callback_uses_progress_state_before_cookie_restore(self):
+        gate = importlib.import_module("src.auth_gate")
+        self.assertEqual(
+            gate.resolve_initial_gate_state(
+                has_tokens=True,
+                already_authenticated=True,
+                signup_confirmation_pending=True,
+            ),
+            "authenticating",
+        )
+        gate.render_full_page_gate_surface = MagicMock()
+        gate.paint_auth_gate(
+            "authenticating",
+            progress_message="Confirming your email… Keep this tab open while we verify your link.",
+        )
+        self.assertIn(
+            "Confirming your email… Keep this tab open while we verify your link.",
+            gate.render_full_page_gate_surface.call_args.kwargs["message"],
+        )
 
     def test_marker_token_hash_type_email_accepted(self):
         self.st.query_params = {
@@ -343,7 +384,8 @@ class SignupConfirmationUnitTests(unittest.TestCase):
 
 class SignupConfirmationUiTests(unittest.TestCase):
     def setUp(self):
-        self.st = _install_streamlit_stub({})
+        self.st, restore_streamlit = _install_streamlit_stub({})
+        self.addCleanup(restore_streamlit)
         self.st.rerun = MagicMock()
         self.bodies: list[str] = []
         self.buttons: dict[str, bool] = {}
@@ -391,6 +433,21 @@ class SignupConfirmationUiTests(unittest.TestCase):
         labels = [c.args[0] for c in self.st.button.call_args_list]
         self.assertIn("Continue to workspace", labels)
 
+    def test_report_purchase_confirmation_auto_opens_purchase_page(self):
+        self.st.session_state["cadivor_root_state"] = self.state.APP_SIGNUP_CONFIRMATION_SUCCESS
+        self.st.session_state[self.confirm._SESSION_READY_KEY] = True
+        self.st.session_state["user"] = types.SimpleNamespace(id="u1")
+        self.st.session_state["access_token"] = "access-token"
+        self.st.session_state["refresh_token"] = "refresh-token"
+        self.st.session_state["cadivor_report_purchase_pending"] = True
+        with patch.object(self.confirm, "continue_signup_confirmation_to_workspace") as continue_to_report:
+            self.auth._render_signup_confirmation_success(None)
+        continue_to_report.assert_called_once_with(None)
+        joined = "\n".join(self.bodies)
+        self.assertIn("no refresh is needed", joined)
+        labels = [c.args[0] for c in self.st.button.call_args_list]
+        self.assertNotIn("Continue to report checkout →", labels)
+
     def test_success_login_required_cta(self):
         self.st.session_state["cadivor_root_state"] = self.state.APP_SIGNUP_CONFIRMATION_SUCCESS
         self.auth._render_signup_confirmation_success(None)
@@ -410,7 +467,8 @@ class SignupConfirmationUiTests(unittest.TestCase):
 
 class SignupConfirmationSignUpOptionsTests(unittest.TestCase):
     def setUp(self):
-        self.st = _install_streamlit_stub({})
+        self.st, restore_streamlit = _install_streamlit_stub({})
+        self.addCleanup(restore_streamlit)
         self.st.rerun = MagicMock()
         for name in list(sys.modules):
             if name.startswith("src.auth") or name in {"src.secrets", "src.config", "src.ui.core_premium_ui"}:

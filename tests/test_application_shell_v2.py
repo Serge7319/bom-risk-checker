@@ -29,6 +29,7 @@ EXPECTED_NAV_OPTIONS = [
     "Supply Risk Scenario",
     "Reports",
     "Pricing",
+    "Single BOM Report",
     "Settings",
     "Workspace",
     "Notifications",
@@ -38,19 +39,20 @@ EXPECTED_NAV_OPTIONS = [
 EXPECTED_NAV_DESTINATIONS = [
     "Dashboard",
     "BOM Analyzer",
-    "Engineering Decisions",
-    "Monitoring",
+    "Portfolio Intelligence",
+    "Procurement Advisor",
     "Reports",
+    "BOM Analyzer",
+    "Monitoring",
+    "Engineering Decisions",
+    "Settings",
+    "Help",
     "Alternative Finder",
     "Compare Parts",
     "Datasheet Q&A",
     "Design Impact Analyzer",
-    "Procurement Advisor",
     "Cost Optimization",
     "Supply Risk Scenario",
-    "Portfolio Intelligence",
-    "Settings",
-    "Help",
 ]
 
 SHELL_DS_V2_TOKENS = (
@@ -119,12 +121,31 @@ class ApplicationShellV2Tests(unittest.TestCase):
         destinations = [destination for _, rows in NAV_GROUPS for _, _, destination in rows]
         self.assertEqual(destinations, EXPECTED_NAV_DESTINATIONS)
 
+    def test_one_time_report_navigation_requires_an_eligible_account_and_live_offer(self) -> None:
+        from src.ui.unified_shell import one_time_report_nav_rows
+
+        eligible = one_time_report_nav_rows(
+            is_admin=False, plan_name="Trial expired", offer_enabled=True,
+        )
+        self.assertEqual(eligible, (("One-time report", "single-report", "Single BOM Report"),))
+        self.assertEqual(one_time_report_nav_rows(
+            is_admin=False, plan_name="Subscription inactive", offer_enabled=True,
+        ), eligible)
+        for is_admin, plan_name, offer_enabled in (
+            (False, "Trial expired", False),
+            (False, "Professional", True),
+            (True, "Trial expired", True),
+        ):
+            self.assertEqual(one_time_report_nav_rows(
+                is_admin=is_admin, plan_name=plan_name, offer_enabled=offer_enabled,
+            ), ())
+
     def test_nav_groups_render_all_four_groups(self) -> None:
         from src.ui.unified_shell import NAV_GROUPS
 
         group_names = [name for name, _ in NAV_GROUPS]
-        self.assertEqual(group_names, ["", "Decision Tools", "Workspace"])
-        self.assertEqual(len(NAV_GROUPS), 3)
+        self.assertEqual(group_names, ["", "Library", "Admin", "Decision Tools"])
+        self.assertEqual(len(NAV_GROUPS), 4)
 
     def test_commit_navigation_sends_primary_boms_to_saved_work(self) -> None:
         source = self.unified_shell_source.split(
@@ -161,11 +182,10 @@ class ApplicationShellV2Tests(unittest.TestCase):
         self.assertIn("cv_foundation_profile_trigger", self.app_shell_css)
         self.assertIn("cv_foundation_profile_panel", self.app_shell_css)
 
-    def test_search_chip_wired_to_command_center(self) -> None:
-        self.assertIn("cv-foundation-search", self.unified_shell_source)
-        self.assertIn("cadivor-search-pill", self.unified_shell_source)
-        command_center = (REPO_ROOT / "src" / "components" / "command_center.py").read_text(encoding="utf-8")
-        self.assertIn(".cv-foundation-search", command_center)
+    def test_authenticated_shell_uses_the_persistent_navigation_rail(self) -> None:
+        self.assertIn('key="cv_foundation_navigation"', self.unified_shell_source)
+        self.assertIn('key=f"cv_foundation_nav_{slug}"', self.unified_shell_source)
+        self.assertIn('class="cv-foundation-sidebar-brand"', self.unified_shell_source)
 
     def test_workspace_not_decorative_button(self) -> None:
         self.assertNotIn('cv-foundation-workspace" role="button"', self.unified_shell_source)

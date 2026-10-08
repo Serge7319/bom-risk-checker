@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 
 from integrations.pin_count import parse_pin_count_from_text, resolve_pin_count
 from src.secrets import get_secret
+from src.part_images import normalize_supplier_image_url
 
 load_dotenv()
 
@@ -30,7 +31,7 @@ def search_newark_by_part_number(part_number: str) -> dict:
         "storeInfo.id": "www.newark.com",
         "resultsSettings.offset": 0,
         "resultsSettings.numberOfResults": 5,
-        "resultsSettings.responseGroup": "medium",
+        "resultsSettings.responseGroup": "large",
         "term": f"manuPartNum:{requested_part_number}",
     }
 
@@ -103,6 +104,10 @@ def normalize_newark_product(product: dict) -> dict:
         "manufacturer_part_number": product.get("translatedManufacturerPartNumber", "")
         or product.get("manufacturerPartNumber", ""),
         "product_detail_url": product.get("productUrl", ""),
+        "image_url": normalize_supplier_image_url(
+            product.get("image") or product.get("imageUrl"),
+            provider="Newark",
+        ),
         "datasheet_url": product.get("datasheetUrl", "") or product.get("datasheet", ""),
         "package": package,
         "pin_count": pin_count,
@@ -272,6 +277,7 @@ def default_newark_result(part_number: str) -> dict:
         "mouser_part_number": "",
         "manufacturer_part_number": "",
         "product_detail_url": "",
+        "image_url": "",
         "package": "",
         "pin_count": 0,
         "mounting_style": "",

@@ -1,8 +1,4 @@
-"""Cadivor authenticated application shell.
-
-Launch foundation repair: one custom persistent navigation rail and one main
-workspace offset. The native Streamlit sidebar is deliberately not used.
-"""
+"""Cadivor authenticated application shell with a grouped product navigation rail."""
 from __future__ import annotations
 
 import html
@@ -27,58 +23,75 @@ from src.ui.navigation import (
 NAV_GROUPS = (
     ("", (
         ("Home", "dashboard", "Dashboard"),
-        ("BOMs", "bom", "BOM Analyzer"),
-        ("Engineering Decisions", "decisions", "Engineering Decisions"),
-        ("Alerts & Monitoring", "monitoring", "Monitoring"),
+        ("BOM Analysis", "bom", "BOM Analyzer"),
+        ("Parts Intelligence", "portfolio", "Portfolio Intelligence"),
+        ("Suppliers", "suppliers", "Procurement Advisor"),
         ("Reports", "reports", "Reports"),
+    )),
+    ("Library", (
+        ("Saved BOMs", "saved-boms", "BOM Analyzer"),
+        ("Watchlist", "watchlist", "Monitoring"),
+        ("Engineering Decisions", "decisions", "Engineering Decisions"),
+    )),
+    ("Admin", (
+        ("Workspace Settings", "settings", "Settings"),
+        ("Resources", "help", "Help"),
     )),
     ("Decision Tools", (
         ("Find a replacement", "alternatives", "Alternative Finder"),
         ("Compare parts", "compare", "Compare Parts"),
         ("Datasheet Q&A", "datasheet-qa", "Datasheet Q&A"),
         ("Design Impact", "impact", "Design Impact Analyzer"),
-        ("Procurement Advisor", "procurement", "Procurement Advisor"),
         ("Cost Optimization", "cost", "Cost Optimization"),
         ("Supply Scenario", "scenario", "Supply Risk Scenario"),
-        ("Portfolio Intelligence", "portfolio", "Portfolio Intelligence"),
-    )),
-    ("Workspace", (
-        ("Settings", "settings", "Settings"),
-        ("Resources", "help", "Help"),
     )),
 )
 
 ROUTE_DISPLAY = {
     "Dashboard": "Home",
-    "BOM Analyzer": "BOMs",
+    "BOM Analyzer": "BOM Analysis",
     "Engineering Decisions": "Engineering Decisions",
-    "Monitoring": "Alerts & Monitoring",
+    "Monitoring": "Watchlist",
     "Reports": "Reports",
     "Analysis Details": "Engineering Decision Brief",
     "Alternative Finder": "Find a replacement",
     "Compare Parts": "Compare parts",
     "Datasheet Q&A": "Datasheet Q&A",
     "Design Impact Analyzer": "Design Impact",
-    "Procurement Advisor": "Procurement Advisor",
+    "Procurement Advisor": "Suppliers",
     "Cost Optimization": "Cost Optimization",
     "Supply Risk Scenario": "Supply Scenario",
-    "Portfolio Intelligence": "Portfolio Intelligence",
+    "Portfolio Intelligence": "Parts Intelligence",
     "Pricing": "Compare plans",
+    "Single BOM Report": "One full BOM report",
     "Settings": "Settings",
 }
 
 
+def one_time_report_nav_rows(
+    *, is_admin: bool, plan_name: str, offer_enabled: bool
+) -> tuple[tuple[str, str, str], ...]:
+    """Show the one-time option only when this account can actually buy it."""
+    if (
+        is_admin
+        or not offer_enabled
+        or str(plan_name).strip().casefold() not in {"trial expired", "subscription inactive"}
+    ):
+        return ()
+    return (("One-time report", "single-report", "Single BOM Report"),)
+
+
 def workspace_nav_rows(*, is_admin: bool) -> tuple[tuple[str, str, str], ...]:
-    """Workspace sidebar destinations for the foundation shell.
+    """Admin destinations for the persistent authenticated rail.
 
     Admin Console is injected only when ``is_admin`` is true (from
     ``public.users.role`` via the authenticated runtime). Non-admins never
     receive the Admin Console destination.
     """
-    rows = next(group for name, group in NAV_GROUPS if name == "Workspace")
+    rows = next(group for name, group in NAV_GROUPS if name == "Admin")
     if is_admin:
-        return (("Admin Console", "admin", "Admin Console"),) + rows
-    return tuple(row for row in rows if row[2] != "Help")
+        return rows + (("Admin Console", "admin", "Admin Console"),)
+    return tuple(row for row in rows if row[2] == "Settings")
 
 
 def _load_css() -> str:
@@ -131,10 +144,10 @@ def _approved_shell_css() -> str:
           top:0!important;height:100vh!important;background:#f8fafc!important;
           border-right:1px solid #e6edf5!important;padding:18px 12px 24px!important
         }
-        .cv-approved-brand{display:flex;align-items:center;gap:10px;padding:4px 8px 14px}
-        .cv-approved-brand strong{display:block;color:#0f172a;font-size:16px;letter-spacing:-.02em}
-        .cv-approved-brand small{display:block;color:#94a3b8;font-size:9px;letter-spacing:.08em;font-weight:700}
-        .cv-approved-brand-mark{width:32px;height:32px;border-radius:10px;background:#2563eb;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:800}
+        .cv-approved-brand,.cv-foundation-sidebar-brand{display:flex;align-items:center;gap:10px;padding:4px 8px 14px}
+        .cv-approved-brand strong,.cv-foundation-sidebar-brand strong{display:block;color:#0f172a;font-size:16px;letter-spacing:-.02em}
+        .cv-approved-brand small,.cv-foundation-sidebar-brand small{display:block;color:#94a3b8;font-size:9px;letter-spacing:.08em;font-weight:700}
+        .cv-approved-brand-mark,.cv-foundation-brand-mark{width:32px;height:32px;border-radius:10px;background:#2563eb;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:800}
         .cv-foundation-workspace{background:#fff!important;border:1px solid #e6edf5!important;border-radius:12px!important}
         .cv-foundation-plan-card,.st-key-cv_foundation_new_analysis,.st-key-cv_foundation_compare_plans{display:none!important}
         section[data-testid="stMain"] .st-key-cv_foundation_navigation .stButton>button,
@@ -417,29 +430,6 @@ def render_unified_shell(
         else:
             inject_main_transition_css(gen)
 
-    st.markdown(
-        f"""
-        <div data-cadivor-topbar-flow-host="1" data-testid="cadivor-topbar-flow-host">
-        <div class="cv-foundation-topbar" aria-label="Cadivor application header">
-          <div class="cv-foundation-brand">
-            <span class="cv-foundation-brand-mark">C</span>
-            <span class="cv-foundation-brand-copy">
-              <strong>Cadivor</strong><small>Engineering Decision Intelligence</small>
-            </span>
-          </div>
-          <div class="cv-foundation-page-context">
-            <strong>{_escape(ROUTE_DISPLAY.get(current_page, current_page))}</strong>
-            <span class="cv-foundation-search cadivor-search-pill" role="button" tabindex="0" aria-label="Open Search Cadivor command center">Search Cadivor <kbd>⌘K</kbd></span>
-          </div>
-          <div class="cv-foundation-profile-copy">
-            <small>Workspace</small><strong>{_escape(full_name)}</strong><em>{_escape(secondary)}</em>
-          </div>
-        </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
     if loading_route:
         from src.ui.main_transition import paint_prepared_main_transition
 
@@ -546,9 +536,9 @@ def render_unified_shell(
     with st.container(key="cv_foundation_navigation"):
         st.markdown(
             """
-            <div class="cv-approved-brand">
-              <span class="cv-approved-brand-mark">C</span>
-              <span><strong>Cadivor</strong><small>ENGINEERING INTELLIGENCE</small></span>
+            <div class="cv-foundation-sidebar-brand">
+              <span class="cv-foundation-brand-mark">C</span>
+              <span class="cv-foundation-brand-copy"><strong>Cadivor</strong><small>ENGINEERING INTELLIGENCE</small></span>
             </div>
             """,
             unsafe_allow_html=True,
@@ -568,18 +558,33 @@ def render_unified_shell(
             unsafe_allow_html=True,
         )
 
+        report_nav_rows = ()
+        if not is_admin and str(plan_name).strip().casefold() in {
+            "trial expired", "subscription inactive"
+        }:
+            from src.one_time_bom import enabled as one_time_report_enabled
+
+            report_nav_rows = one_time_report_nav_rows(
+                is_admin=is_admin,
+                plan_name=plan_name,
+                offer_enabled=one_time_report_enabled(),
+            )
+
         page_groups = None if top_nav else nav_groups_for_page(current_page)
         preferred = active_nav_label(current_page)
-        if page_groups is None:
-            source_groups = NAV_GROUPS
-        else:
-            source_groups = page_groups
+        source_groups = NAV_GROUPS if page_groups is None else page_groups
+        if report_nav_rows and not any(not name for name, _rows in source_groups):
+            first_name, first_rows = source_groups[0]
+            source_groups = ((first_name, first_rows + report_nav_rows),) + tuple(source_groups[1:])
+            report_nav_rows = ()
         for group_name, configured_rows in source_groups:
             rows = (
                 workspace_nav_rows(is_admin=is_admin)
-                if page_groups is None and group_name == "Workspace"
+                if page_groups is None and group_name == "Admin"
                 else configured_rows
             )
+            if not group_name:
+                rows += report_nav_rows
             if group_name:
                 st.markdown(
                     f'<div class="cv-foundation-nav-group">{_escape(group_name)}</div>',
@@ -590,16 +595,33 @@ def render_unified_shell(
                 # briefly clear the authenticated shell (blank white/black frames).
                 if page_groups is None:
                     is_active = destination == current_page
+                    if destination == "BOM Analyzer":
+                        is_active = (
+                            label == "Saved BOMs"
+                            if st.session_state.get("cadivor_show_saved_boms")
+                            else label == "BOM Analysis"
+                        ) and current_page == "BOM Analyzer"
                 else:
                     is_active = label == preferred
-                st.button(
-                    label,
-                    key=f"cv_foundation_nav_{slug}",
-                    use_container_width=True,
-                    type="primary" if is_active else "secondary",
-                    on_click=_commit_navigation,
-                    args=(destination,),
-                )
+                if label == "BOM Analysis":
+                    if st.button(
+                        label,
+                        key=f"cv_foundation_nav_{slug}",
+                        use_container_width=True,
+                        type="primary" if is_active else "secondary",
+                    ):
+                        st.session_state.pop("cadivor_show_saved_boms", None)
+                        st.session_state.pop("cadivor_preselect_saved_bom_id", None)
+                        clear_analysis()
+                else:
+                    st.button(
+                        label,
+                        key=f"cv_foundation_nav_{slug}",
+                        use_container_width=True,
+                        type="primary" if is_active else "secondary",
+                        on_click=_commit_navigation,
+                        args=(destination,),
+                    )
 
         st.markdown(
             f"""<div class="cv-foundation-plan-card"><strong>{_escape(plan_name)}</strong><span>Your subscription</span><span>{_escape(usage_summary)}</span><span>{_escape(saved_summary)}</span></div>""",
