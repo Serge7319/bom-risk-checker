@@ -15,6 +15,16 @@ import streamlit as st
 from src.ui.navigation import internal_nav_button, navigate_to
 
 
+PROJECT_ICON = (
+    '<svg class="cv-ap-chip" width="28" height="28" viewBox="0 0 32 32" aria-hidden="true" '
+    'style="width:28px;height:28px;display:inline-block;vertical-align:middle;margin-right:8px">'
+    '<rect width="32" height="32" rx="8" fill="#eef2ff"/>'
+    '<path d="M8 13h6l2 2h8v9H8z" fill="#fff" stroke="#2563eb" stroke-width="1.4"/>'
+    '<path d="M8 13V11h5l2 2" fill="none" stroke="#2563eb" stroke-width="1.4"/>'
+    "</svg>"
+)
+
+
 DOC = (
     '<svg class="cv-ap-chip" width="28" height="28" viewBox="0 0 32 32" aria-hidden="true" '
     'style="width:28px;height:28px;display:inline-block;vertical-align:middle;margin-right:8px">'
@@ -87,6 +97,41 @@ def _first(row: dict[str, Any], *keys: str, fallback: Any = None) -> Any:
         if value is not None and str(value).strip() not in {"", "nan", "None"}:
             return value
     return fallback
+
+
+def _candidate_mpn(row: dict[str, Any]) -> str:
+    """Read the supplier candidate part number. Blank means the row is not a part."""
+    for key in (
+        "Alternative Part",
+        "mpn",
+        "MPN",
+        "alternative_mpn",
+        "manufacturer_part_number",
+        "part_number",
+        "Part Number",
+    ):
+        text = str(row.get(key) or "").strip()
+        if text and text.casefold() not in {"nan", "none", "—", "-"}:
+            return text
+    return ""
+
+
+def _candidate_field(row: dict[str, Any], *keys: str, fallback: str = "—") -> str:
+    for key in keys:
+        if key not in row or row.get(key) is None:
+            continue
+        text = str(row.get(key)).strip()
+        if not text or text.casefold() in {"nan", "none"}:
+            continue
+        return html.escape(text)
+    return fallback
+
+
+def _candidate_stock(row: dict[str, Any]) -> int:
+    for key in ("Stock", "stock_total", "stock_available"):
+        if key in row and row.get(key) not in (None, ""):
+            return _num(row.get(key))
+    return 0
 
 
 def begin_approved_page() -> None:
@@ -406,6 +451,22 @@ def render_home(
 def render_bom_catalog(records: list[dict[str, Any]] | None) -> None:
     begin_approved_page()
     rows = _records(records)
+    with st.container(key="approved_bom_title"):
+        title_col, action_col = st.columns([5.2, 1.6], vertical_alignment="center")
+        with title_col:
+            st.markdown(
+                """
+                <div class="cv-ap">
+                  <h1>BOMs</h1>
+                  <p class="cv-ap-sub">Saved analyses in this workspace.</p>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        with action_col:
+            if st.button("+ New BOM analysis", key="approved_bom_new", type="primary"):
+                st.session_state["cadivor_bom_upload_open"] = True
+                st.rerun()
     query = st.text_input("Search BOMs, projects, or files", key="approved_bom_search")
     project, health, dates = st.columns(3)
     with project:
@@ -432,42 +493,54 @@ def render_bom_catalog(records: list[dict[str, Any]] | None) -> None:
         if health_filter != "All health" and label != health_filter:
             continue
         visible.append((row, label))
-    st.markdown(
-        """
-        <div class="cv-ap">
-          <h1>BOMs</h1>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
     with st.container(key="approved_bom_head"):
-        header = st.columns([1.6, 1.5, 0.7, 0.9, 0.8, 1.1, 0.6])
+        header = st.columns([1.7, 1.5, 0.6, 0.8, 0.7, 1.0, 1.3])
         for column, label in zip(header, ("Project", "File", "Parts", "Health", "High risk", "Last analyzed", "Actions")):
             column.markdown(f"<div class='cv-ap-meta'>{label}</div>", unsafe_allow_html=True)
     if not visible:
         st.caption("No BOMs match these filters.")
     for index, (row, label) in enumerate(visible[:12]):
         kind = {"Healthy": "low", "Review": "medium", "At risk": "high"}[label]
+        project_name = _esc(_first(row, "project_name", "name", fallback="Saved BOM"))
+        filename = str(_first(row, "filename", fallback="") or "").strip()
+        analysis_id = str(row.get("id") or "")
         with st.container(key=f"approved_bom_row_{index}"):
-            cells = st.columns([1.6, 1.5, 0.7, 0.9, 0.8, 1.1, 0.6], vertical_alignment="center")
-            cells[0].markdown(f"<div class='cv-ap-name'>{_esc(_first(row, 'project_name', 'name', fallback='Saved BOM'))}</div>", unsafe_allow_html=True)
-            cells[1].markdown(_esc(_first(row, "filename", fallback="—")))
+            cells = st.columns([1.7, 1.5, 0.6, 0.8, 0.7, 1.0, 1.3], vertical_alignment="center")
+            cells[0].markdown(f"{PROJECT_ICON}<span class='cv-ap-name'>{project_name}</span>", unsafe_allow_html=True)
+            with cells[1]:
+                if filename and analysis_id:
+                    internal_nav_button(
+                        filename,
+                        "Analysis Details",
+                        key=f"approved_bom_file_{index}",
+                        type="tertiary",
+                        analysis_id=analysis_id,
+                    )
+                else:
+                    st.markdown(_esc(filename or "—"))
             cells[2].markdown(str(_num(_first(row, "total_parts"))))
             cells[3].markdown(f"<span class='cv-pill {kind}'>{label}</span>", unsafe_allow_html=True)
             cells[4].markdown(str(_num(_first(row, "high_risk_count"))))
             cells[5].markdown(_esc(str(_first(row, "created_at", fallback=""))[:10]))
-            analysis_id = str(row.get("id") or "")
             with cells[6]:
-                _row_actions(
-                    index,
-                    menu_key=f"approved_bom_menu_{index}",
-                    open_key=f"approved_bom_open_{index}",
-                    destination="Analysis Details",
-                    analysis_id=analysis_id,
-                )
-    if st.button("+ New BOM analysis", key="approved_bom_new", type="primary"):
-        st.session_state["cadivor_bom_upload_open"] = True
-        st.rerun()
+                open_col, menu_col = st.columns([1.6, 0.7], vertical_alignment="center")
+                with open_col:
+                    if analysis_id:
+                        internal_nav_button(
+                            "Open",
+                            "Analysis Details",
+                            key=f"approved_bom_row_open_{index}",
+                            type="primary",
+                            analysis_id=analysis_id,
+                        )
+                with menu_col:
+                    _row_actions(
+                        index,
+                        menu_key=f"approved_bom_menu_{index}",
+                        open_key=f"approved_bom_open_{index}",
+                        destination="Analysis Details",
+                        analysis_id=analysis_id,
+                    )
     if st.session_state.get("cadivor_bom_upload_open"):
         project_name = st.text_input("Project name", key="approved_bom_project_name")
         bom_name = st.text_input("BOM name", key="approved_bom_name")
@@ -560,7 +633,7 @@ def render_decision_queue(records: list[dict[str, Any]] | None) -> None:
         subtitle = f"<div class='cv-ap-meta'>{_esc(detail)}</div>" if detail else ""
         due = _first(row, "due_date", fallback=None)
         due_label = _esc(str(due)[:10]) if due else "Not recorded"
-        photo = part_photo(str(_first(row, "image_url", "photo_url", "image", fallback="") or ""), size=40)
+        photo = part_photo(str(_first(row, "image_url", "photo_url", "image", fallback="") or ""), size=48, part=row)
         cells = st.columns([1.7, 1.8, 0.8, 0.9, 0.9, 0.9, 1.3], vertical_alignment="center")
         cells[0].markdown(f"{photo}<span class='cv-ap-name'>{_esc(mpn)}</span>{subtitle}", unsafe_allow_html=True)
         cells[1].markdown(_esc(_first(row, "title", "summary", "alert_message", fallback="Engineering decision")))
@@ -815,15 +888,11 @@ def render_simple_workspace(
     end_approved_page()
 
 
-def part_photo(url: str = "", size: int = 72) -> str:
-    """Reference-sized product photo. Missing images stay a neutral placeholder."""
-    clean = str(url or "").strip()
-    px = 40 if size <= 40 else 72
-    if clean.startswith(("http://", "https://", "/")):
-        return (
-            f'<img class="cv-part-photo" src="{html.escape(clean, quote=True)}" alt="" width="{px}" height="{px}" style="width:{px}px;height:{px}px"/>'
-        )
-    return f'<span class="cv-part-photo" role="img" aria-label="Product photo not recorded" style="width:{px}px;height:{px}px"></span>'
+def part_photo(url: str = "", size: int = 72, part: dict[str, Any] | None = None) -> str:
+    """Supplier photo, or a category illustration labeled as artwork."""
+    from src.part_images import part_image_markup
+
+    return part_image_markup(url, "", size=size, part=part)
 
 
 def part_thumbnail(seed: str = "", url: str = "") -> str:
@@ -944,7 +1013,7 @@ def procurement_header_html(part: dict[str, Any]) -> str:
     category = html.escape(str(part.get("category") or "Not recorded"))
     price = part.get("unit_price")
     price_label = "Not recorded" if price in (None, "") else html.escape(str(price))
-    photo = part_photo(str(part.get("image_url") or part.get("photo_url") or ""))
+    photo = part_photo(str(part.get("image_url") or part.get("photo_url") or ""), part=part)
     savings = "Not recorded" if price in (None, "") else "Recorded price has no savings comparison"
     fields = (
         ("MPN", mpn),
@@ -1205,9 +1274,9 @@ def render_replacement_search() -> None:
         sort_choice = st.selectbox("Sort by", ["Overall match", "Stock", "Risk"], key="approved_replacement_sort")
     filtered = []
     for row in candidates:
-        level = str(row.get("risk_level") or row.get("risk") or "")
-        lifecycle = str(row.get("lifecycle_status") or row.get("lifecycle") or "")
-        stock_value = _num(row.get("stock_total") or row.get("stock_available"))
+        level = str(row.get("Estimated Risk") or row.get("risk_level") or row.get("risk") or "")
+        lifecycle = str(row.get("Lifecycle") or row.get("lifecycle_status") or row.get("lifecycle") or "")
+        stock_value = _candidate_stock(row)
         if life_choice != "All" and life_choice.casefold() not in lifecycle.casefold():
             continue
         if risk_choice != "All" and risk_choice.casefold() not in level.casefold():
@@ -1218,32 +1287,65 @@ def render_replacement_search() -> None:
             continue
         filtered.append(row)
     if sort_choice == "Stock":
-        filtered.sort(key=lambda row: _num(row.get("stock_total") or row.get("stock_available")), reverse=True)
+        filtered.sort(key=_candidate_stock, reverse=True)
     elif sort_choice == "Risk":
-        filtered.sort(key=lambda row: str(row.get("risk_level") or ""))
-    candidates = filtered
+        filtered.sort(key=lambda row: str(row.get("Estimated Risk") or row.get("risk_level") or ""))
+    named = [row for row in filtered if _candidate_mpn(row)]
+    dropped = len(filtered) - len(named)
+    candidates = named
     del fit_choice
     mpn = _esc(original.get("manufacturer_part_number") or original.get("mpn") or (query or "Search an MPN"))
-    manufacturer = _esc(original.get("manufacturer") or "—")
+    manufacturer = _esc(original.get("manufacturer") or original.get("Manufacturer") or original.get("manufacturer_name") or "—")
     description = _esc(original.get("description") or original.get("category") or "")
+    notice = ""
+    if isinstance(result, dict):
+        notice = str(result.get("search_error") or result.get("lookup_error") or "").strip()
+    if query.strip() and isinstance(result, dict) and not candidates and not notice:
+        notice = "No supplier alternatives were returned for this part."
+    elif dropped and not notice:
+        notice = f"{dropped} supplier row{'s' if dropped != 1 else ''} had no part number and {'were' if dropped != 1 else 'was'} left out."
+    shown = candidates[:25]
     body = []
-    for row in candidates[:8]:
-        level = _esc(row.get("risk_level") or row.get("risk") or "—")
-        kind = "high" if "high" in level.casefold() else ("low" if "low" in level.casefold() else "medium")
-        candidate = _esc(row.get("mpn") or row.get("alternative_mpn") or row.get("part_number") or "—")
+    from src.part_images import part_image_markup
+
+    for row in shown:
+        level = _candidate_field(row, "Estimated Risk", "risk_level", "risk")
+        kind = ""
+        if "high" in level.casefold():
+            kind = "high"
+        elif "low" in level.casefold():
+            kind = "low"
+        elif "medium" in level.casefold():
+            kind = "medium"
+        level_html = f"<span class='cv-pill {kind}'>{level}</span>" if kind else level
+        candidate = _esc(_candidate_mpn(row))
+        discovery = row.get("_discovery_row") if isinstance(row.get("_discovery_row"), dict) else {}
+        image = str(
+            row.get("image_url")
+            or row.get("photo_url")
+            or row.get("Image URL")
+            or discovery.get("image_url")
+            or discovery.get("photo_url")
+            or ""
+        )
         body.append(
             "<tr>"
-            f"<td>{part_photo(str(row.get('image_url') or row.get('photo_url') or ''))}<span class='cv-ap-name'>{candidate}</span></td>"
-            f"<td>{_esc(row.get('manufacturer') or '—')}</td>"
-            f"<td>{_esc(row.get('fit') or row.get('parametric_fit') or row.get('match_score') or '—')}</td>"
-            f"<td>{_esc(row.get('lifecycle_status') or row.get('lifecycle') or '—')}</td>"
-            f"<td>{_esc(row.get('stock_total') or row.get('stock_available') or '—')}</td>"
-            f"<td>{_esc(row.get('supplier_count') or '—')}</td>"
-            f"<td><span class='cv-pill {kind}'>{level}</span></td>"
+            f"<td>{part_image_markup(image, _candidate_mpn(row), size=48, part=row)}<span class='cv-ap-name'>{candidate}</span></td>"
+            f"<td>{_candidate_field(row, 'Manufacturer', 'manufacturer')}</td>"
+            f"<td>{_candidate_field(row, 'Classification', 'Category', 'fit', 'parametric_fit')}</td>"
+            f"<td>{_candidate_field(row, 'Lifecycle', 'lifecycle_status', 'lifecycle')}</td>"
+            f"<td>{_candidate_field(row, 'Stock', 'stock_total', 'stock_available')}</td>"
+            f"<td>{_candidate_field(row, 'Supplier', 'supplier_count', 'supplier')}</td>"
+            f"<td>{level_html}</td>"
             "</tr>"
         )
+    if len(candidates) > len(shown) and not notice:
+        notice = f"Showing {len(shown)} of {len(candidates)} supplier alternatives."
+    notice_html = f"<p class='cv-ap-sub'>{_esc(notice)}</p>" if notice and body else ""
     if not body:
-        body.append("<tr><td colspan='7'>Search a manufacturer part number. Results come from the live supplier search.</td></tr>")
+        empty = _esc(notice or "Search a manufacturer part number. Results come from the live supplier search.")
+        body.append(f"<tr><td colspan='7'>{empty}</td></tr>")
+        notice_html = ""
     st.markdown(
         f"""
         <div class="cv-ap">
@@ -1251,10 +1353,11 @@ def render_replacement_search() -> None:
           <p class="cv-ap-sub">Search for a part to find compatible alternatives across suppliers.</p>
           <section class="cv-ap-card">
             <div class="cv-ap-meta">Source part</div>
-            <div>{part_photo(str(original.get('image_url') or original.get('photo_url') or ''))}<span class="cv-ap-name">{mpn}</span></div>
+            <div>{part_photo(str(original.get('image_url') or original.get('photo_url') or ''), part=original)}<span class="cv-ap-name">{mpn}</span></div>
             <p class="cv-ap-meta">{description}</p>
             <p>Manufacturer {manufacturer}</p>
           </section>
+          {notice_html}
           <h2>Replacement options ({len(candidates)})</h2>
           <section class="cv-ap-card"><table class="cv-ap-table"><thead><tr>
             <th>Candidate MPN</th><th>Manufacturer</th><th>Parametric fit</th><th>Lifecycle</th><th>Stock</th><th>Suppliers</th><th>Risk</th>
@@ -1264,7 +1367,7 @@ def render_replacement_search() -> None:
         unsafe_allow_html=True,
     )
     for index, row in enumerate(candidates[:5]):
-        candidate = str(row.get("mpn") or row.get("alternative_mpn") or row.get("part_number") or "")
+        candidate = _candidate_mpn(row)
         if candidate and st.button(f"Compare {candidate}", key=f"approved_replacement_compare_{index}"):
             st.session_state["cadivor_compare_part_a"] = str(original.get("manufacturer_part_number") or query or "")
             st.session_state["cadivor_compare_part_b"] = candidate
@@ -1324,8 +1427,8 @@ def render_compare_live() -> None:
             <article class="cv-ap-kpi"><span>Needs validation</span><strong>{_esc(counts.get('needs_data', '—'))}</strong></article>
           </section>
           <section class="cv-ap-cards">
-            <article class="cv-ap-template">{part_photo(str(card_a.get('image_url') or card_a.get('photo_url') or ''))}<h3>{name_a}</h3><p>{_esc(card_a.get('description') or card_a.get('manufacturer') or 'Not recorded')}</p></article>
-            <article class="cv-ap-template">{part_photo(str(card_b.get('image_url') or card_b.get('photo_url') or ''))}<h3>{name_b}</h3><p>{_esc(card_b.get('description') or card_b.get('manufacturer') or 'Not recorded')}</p></article>
+            <article class="cv-ap-template">{part_photo(str(card_a.get('image_url') or card_a.get('photo_url') or ''), part=card_a)}<h3>{name_a}</h3><p>{_esc(card_a.get('description') or card_a.get('manufacturer') or 'Not recorded')}</p></article>
+            <article class="cv-ap-template">{part_photo(str(card_b.get('image_url') or card_b.get('photo_url') or ''), part=card_b)}<h3>{name_b}</h3><p>{_esc(card_b.get('description') or card_b.get('manufacturer') or 'Not recorded')}</p></article>
             <article class="cv-ap-template">{part_photo('')}<h3>Add part</h3><p>No third candidate is selected.</p></article>
           </section>
           <section class="cv-ap-card"><table class="cv-ap-table"><thead><tr>

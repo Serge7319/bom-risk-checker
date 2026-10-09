@@ -6587,7 +6587,7 @@ def run_authenticated_app() -> None:
             from src.part_images import part_image_markup
             for index, row in enumerate(urgent_rows):
                 urgent_photo_markup = part_image_markup(
-                    row.get("Image URL"), row["Part Number"], size=64
+                    row.get("Image URL"), row["Part Number"], size=64, part=row
                 )
                 st.markdown(
                     f"""
@@ -16195,6 +16195,7 @@ def run_authenticated_app() -> None:
                 selected_row.get("image_url") or selected_row.get("Image URL"),
                 selected_alternative,
                 size=82,
+                part=selected_row,
             )
             with st.container(border=True, key="af62b_best_card"):
                 st.markdown(

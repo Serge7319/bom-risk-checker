@@ -7,12 +7,7 @@ from typing import Callable
 
 import streamlit as st
 
-from src.ui.approved_shell_nav import (
-    active_nav_label,
-    nav_groups_for_page,
-    top_nav_items,
-    uses_top_nav,
-)
+from src.ui.approved_shell_nav import shared_nav_groups
 from src.ui.navigation import (
     inject_nav_scroll_reset_if_needed,
     navigate_to,
@@ -138,7 +133,7 @@ def inject_unified_shell_css() -> None:
 def _approved_shell_css() -> str:
     return """
         <style id="cadivor-approved-shell">
-        :root{--cv-foundation-rail:248px;--cv-foundation-top:8px;--cv-foundation-bg:#f8fafc}
+        :root{--cv-foundation-rail:296px;--cv-foundation-top:8px;--cv-foundation-bg:#f8fafc}
         .cv-foundation-topbar{display:none!important}
         .st-key-cv_foundation_navigation{
           top:0!important;height:100vh!important;background:#f8fafc!important;
@@ -208,7 +203,7 @@ def _approved_shell_css() -> str:
         .st-key-cv_ei_report_tabs button[data-testid="stBaseButton-primary"]{
           color:#1d4ed8!important;background:transparent!important;box-shadow:inset 0 -2px 0 #2563eb!important
         }
-        body:has(.st-key-cv_foundation_top_navigation) section[data-testid="stMain"]{
+        body:has(.st-key-cv_foundation_top_navigation):not(:has(.st-key-cv_foundation_navigation)) section[data-testid="stMain"]{
           margin-left:0!important;width:100%!important;max-width:none!important
         }
         html body section[data-testid="stMain"] .st-key-cv_foundation_top_navigation div[data-testid="stHorizontalBlock"]{
@@ -242,7 +237,7 @@ def _approved_shell_css() -> str:
         html body section[data-testid="stMain"] .st-key-cv_ei_report_tabs button[data-testid="stBaseButton-primary"]{
           color:#1d4ed8!important;background:transparent!important;box-shadow:inset 0 -2px 0 #2563eb!important
         }
-        .st-key-cv_foundation_navigation{width:248px!important;min-width:248px!important;max-width:248px!important}
+        .st-key-cv_foundation_navigation{width:296px!important;min-width:296px!important;max-width:296px!important}
         section[data-testid="stMain"] .st-key-cv_foundation_navigation .stButton>button::before{
           content:""!important;display:block!important;flex:0 0 16px!important;
           width:16px!important;height:16px!important;margin-right:10px!important;opacity:1!important;
@@ -345,6 +340,19 @@ def paint_authenticated_continuity_shell(*, page: str = "Dashboard") -> None:
 
 def _escape(value: object) -> str:
     return html.escape(str(value or ""))
+
+
+def _open_rail_item(destination: str, mode: str = "") -> None:
+    """Open a shared-rail destination. Intelligence modes stay on Analysis Details."""
+    if mode == "detailed":
+        st.session_state["cadivor_show_detailed_risk"] = True
+        st.session_state["cadivor_active_analysis_tab"] = "Engineering Intelligence"
+    elif mode == "intelligence":
+        st.session_state["cadivor_show_detailed_risk"] = False
+        st.session_state["cadivor_active_analysis_tab"] = "Engineering Intelligence"
+    else:
+        st.session_state["cadivor_show_detailed_risk"] = False
+    _commit_navigation(destination)
 
 
 def _commit_navigation(page: str, *, arm_opening: bool = True) -> None:
@@ -478,60 +486,7 @@ def render_unified_shell(
                 on_click=_commit_signout,
             )
 
-    analysis_tab = str(st.session_state.get("cadivor_active_analysis_tab") or "")
     detailed_risk = bool(st.session_state.get("cadivor_show_detailed_risk"))
-    top_nav = uses_top_nav(current_page, analysis_tab=analysis_tab, detailed_risk=detailed_risk)
-    if top_nav:
-        st.markdown('<div class="cv-shell-top" hidden></div>', unsafe_allow_html=True)
-        with st.container(key="cv_foundation_top_navigation"):
-            brand, *item_cols, search_col = st.columns([1.3, 0.9, 0.7, 1.6, 0.9, 1.1, 0.9, 2.2])
-            with brand:
-                st.markdown(
-                    """
-                    <div class="cv-approved-brand">
-                      <span class="cv-approved-brand-mark">C</span>
-                      <span><strong>Cadivor</strong></span>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
-            for column, (label, slug, destination) in zip(item_cols, top_nav_items()):
-                with column:
-                    st.button(
-                        label,
-                        key=f"cv_foundation_nav_{slug}",
-                        type="tertiary",
-                        on_click=_commit_navigation,
-                        args=(destination,),
-                    )
-            with search_col:
-                query = st.text_input(
-                    "Search parts, MPNs, or projects",
-                    key="cv_ei_top_search",
-                    label_visibility="collapsed",
-                    placeholder="Search parts, MPNs, or projects",
-                )
-                if query and query.strip():
-                    st.session_state["cadivor_replacement_query"] = query.strip()
-            inject_nav_scroll_reset_if_needed()
-            st.markdown(
-                """
-                <style>
-                html body section[data-testid="stMain"] .st-key-cv_foundation_top_navigation .stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton) > button,
-                html body section[data-testid="stMain"] .st-key-cv_foundation_top_navigation .stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton) > button *{
-                  background:transparent!important;background-color:transparent!important;
-                  border:0!important;border-radius:0!important;box-shadow:none!important;color:#334155!important;min-height:0!important
-                }
-                html body section[data-testid="stMain"] .st-key-cv_foundation_top_navigation .st-key-cv_foundation_nav_ei.stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton) > button,
-                html body section[data-testid="stMain"] .st-key-cv_foundation_top_navigation .st-key-cv_foundation_nav_ei.stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton) > button *{
-                  color:#1d4ed8!important;background:transparent!important;background-color:transparent!important;
-                  box-shadow:inset 0 -2px 0 #2563eb!important;border-radius:0!important
-                }
-                </style>
-                """,
-                unsafe_allow_html=True,
-            )
-        return
 
     with st.container(key="cv_foundation_navigation"):
         st.markdown(
@@ -570,21 +525,13 @@ def render_unified_shell(
                 offer_enabled=one_time_report_enabled(),
             )
 
-        page_groups = None if top_nav else nav_groups_for_page(current_page)
-        preferred = active_nav_label(current_page)
-        source_groups = NAV_GROUPS if page_groups is None else page_groups
-        if report_nav_rows and not any(not name for name, _rows in source_groups):
-            first_name, first_rows = source_groups[0]
-            source_groups = ((first_name, first_rows + report_nav_rows),) + tuple(source_groups[1:])
-            report_nav_rows = ()
+        source_groups = shared_nav_groups()
         for group_name, configured_rows in source_groups:
-            rows = (
-                workspace_nav_rows(is_admin=is_admin)
-                if page_groups is None and group_name == "Admin"
-                else configured_rows
-            )
-            if not group_name:
-                rows += report_nav_rows
+            rows = configured_rows
+            if group_name == "Workspace" and report_nav_rows:
+                rows = rows + report_nav_rows
+            if group_name == "Intelligence" and is_admin:
+                rows = rows + (("Admin Console", "admin", "Admin Console"),)
             if group_name:
                 st.markdown(
                     f'<div class="cv-foundation-nav-group">{_escape(group_name)}</div>',
@@ -593,49 +540,23 @@ def render_unified_shell(
             for label, slug, destination in rows:
                 # Session navigation only — raw ?page= hrefs hard-reload the app and
                 # briefly clear the authenticated shell (blank white/black frames).
-                if page_groups is None:
+                if label == "Detailed Risk Report":
+                    is_active = current_page == "Analysis Details" and detailed_risk
+                    mode = "detailed"
+                elif label == "Engineering Intelligence":
+                    is_active = current_page == "Analysis Details" and not detailed_risk
+                    mode = "intelligence"
+                else:
                     is_active = destination == current_page
-                    if destination == "BOM Analyzer":
-                        is_active = (
-                            label == "Saved BOMs"
-                            if st.session_state.get("cadivor_show_saved_boms")
-                            else label == "BOM Analysis"
-                        ) and current_page == "BOM Analyzer"
-                else:
-                    is_active = label == preferred
-                if label == "BOM Analysis":
-                    if st.button(
-                        label,
-                        key=f"cv_foundation_nav_{slug}",
-                        use_container_width=True,
-                        type="primary" if is_active else "secondary",
-                    ):
-                        st.session_state.pop("cadivor_show_saved_boms", None)
-                        st.session_state.pop("cadivor_preselect_saved_bom_id", None)
-                        clear_analysis()
-                else:
-                    st.button(
-                        label,
-                        key=f"cv_foundation_nav_{slug}",
-                        use_container_width=True,
-                        type="primary" if is_active else "secondary",
-                        on_click=_commit_navigation,
-                        args=(destination,),
-                    )
-
-        st.markdown(
-            f"""<div class="cv-foundation-plan-card"><strong>{_escape(plan_name)}</strong><span>Your subscription</span><span>{_escape(usage_summary)}</span><span>{_escape(saved_summary)}</span></div>""",
-            unsafe_allow_html=True,
-        )
-        if str(plan_name).lower() in {"trial expired", "subscription inactive"}:
-            st.button("Compare plans", key="cv_foundation_compare_plans", use_container_width=True, on_click=_open_compare_plans)
-        if st.button(
-            "＋ New BOM analysis",
-            key="cv_foundation_new_analysis",
-            type="primary",
-            use_container_width=True,
-        ):
-            clear_analysis()
+                    mode = ""
+                st.button(
+                    label,
+                    key=f"cv_foundation_nav_{slug}",
+                    use_container_width=True,
+                    type="primary" if is_active else "secondary",
+                    on_click=_open_rail_item,
+                    args=(destination, mode),
+                )
 
     # After chrome paints: reset scroll only when sidebar navigation changed pages.
     inject_nav_scroll_reset_if_needed()

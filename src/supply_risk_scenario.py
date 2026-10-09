@@ -442,7 +442,7 @@ def render_supply_scenario(
             "Prepare replacement plan" if row["Lifecycle Event"] else
             "Review component risk"
         )
-        photo = part_image_markup(row.get("Image URL"), row["Part Number"], size=64)
+        photo = part_image_markup(row.get("Image URL"), row["Part Number"], size=64, part=row)
         st.markdown(
             f"""<section class="cv22-card cv-part-card-layout">
               {photo}<div><div class="cv22-card-title">{html.escape(row['Part Number'])}</div>

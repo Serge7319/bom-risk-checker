@@ -105,7 +105,7 @@ def _render_part_card(title: str, card: Mapping[str, Any]) -> None:
     cadivor_panel(title)
     image_col, details_col = st.columns([0.24, 0.76], gap="small", vertical_alignment="center")
     with image_col:
-        render_part_image(card.get("image_url"), card.get("mpn"), size=88)
+        render_part_image(card.get("image_url"), card.get("mpn"), size=88, part=card)
     with details_col:
         st.markdown(
             f'<div class="cp-part-mpn">{_esc(card.get("mpn") or "Not found")}</div>'

@@ -256,9 +256,58 @@ def _inject_approved_visual_overrides() -> None:
           border-radius:6px !important;background:transparent !important;background-color:transparent !important;
           box-shadow:none !important;color:#64748b !important
         }}
-        html body section[data-testid="stMain"] [class*="st-key-approved_decision_review_"] .stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton) > button[kind="primary"] {{
+        html body section[data-testid="stMain"] [class*="st-key-approved_decision_review_"] .stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton) > button[kind="primary"],
+        html body section[data-testid="stMain"] [class*="st-key-approved_bom_row_open_"] .stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton) > button[kind="primary"] {{
           min-width:0 !important;width:auto !important;min-height:32px !important;height:32px !important;
           padding:0 12px !important;border-radius:8px !important;font-size:13px !important
+        }}
+        html body section[data-testid="stMain"] [class*="st-key-cv_risk_open_"] {{
+          background:#f8fafc !important;border-left:3px solid #2563eb !important;border-radius:12px !important
+        }}
+        html body section[data-testid="stMain"] [class*="st-key-cv_risk_expand_"] .stButton > button {{
+          min-width:0 !important;width:auto !important;min-height:36px !important;height:auto !important;
+          padding:6px 10px !important;border-radius:8px !important;font-size:13px !important;
+          justify-content:flex-start !important;text-align:left !important
+        }}
+        html body section[data-testid="stMain"] [class*="st-key-approved_bom_title"] [data-testid="stHorizontalBlock"] {{
+          align-items:center !important
+        }}
+        html body section[data-testid="stMain"] [class*="st-key-approved_bom_title"] [data-testid="stColumn"]:last-child {{
+          display:flex !important;justify-content:flex-end !important
+        }}
+        html body section[data-testid="stMain"] [class*="st-key-approved_bom_file_"] .stButton{beat},
+        html body section[data-testid="stMain"] [class*="st-key-approved_bom_file_"] .stButton{beat} * {{
+          background:transparent !important;background-color:transparent !important;
+          border:0 !important;border-width:0 !important;border-style:none !important;
+          border-radius:0 !important;box-shadow:none !important;
+          min-width:0 !important;min-height:0 !important;width:auto !important;height:auto !important;
+          padding:0 !important;color:#2563eb !important;font-weight:650 !important;text-align:left !important
+        }}
+        /* The rail is position:fixed, so every authenticated page must reserve the
+           same width. This beats earlier rules that reset the main column to the
+           viewport edge while the rail stays on top of it. */
+        @media (min-width: 701px) {{
+          html body:has(.st-key-cv_foundation_navigation) {{
+            --cv-foundation-rail: 296px;
+          }}
+          html body:has(.st-key-cv_foundation_navigation) .st-key-cv_foundation_navigation {{
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            bottom: 0 !important;
+            width: var(--cv-foundation-rail) !important;
+            min-width: var(--cv-foundation-rail) !important;
+            max-width: var(--cv-foundation-rail) !important;
+            height: 100vh !important;
+            z-index: 999999 !important;
+          }}
+          html body:has(.st-key-cv_foundation_navigation) section[data-testid="stMain"],
+          html body:has(.st-key-cv_foundation_navigation) [data-testid="stMain"] {{
+            margin-left: var(--cv-foundation-rail) !important;
+            width: calc(100% - var(--cv-foundation-rail)) !important;
+            max-width: none !important;
+            box-sizing: border-box !important;
+          }}
         }}
         html body section[data-testid="stMain"] [class*="st-key-approved_home_row_"],
         html body section[data-testid="stMain"] [class*="st-key-approved_bom_row_"],

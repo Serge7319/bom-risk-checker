@@ -292,6 +292,8 @@ def build_design_impact(
         "engineering_hours": engineering_hours,
         "manufacturer": _text(reference.get("Manufacturer"), "Unknown"),
         "image_url": _text(reference.get("Image URL"), ""),
+        "description": _text(reference.get("Description") or reference.get("description"), ""),
+        "category": _text(reference.get("Category") or reference.get("category"), ""),
         "lifecycle": _text(reference.get("Lifecycle"), "Unknown"),
         "package": _text(reference.get("Package"), "Not recorded"),
         "pin_count": int(_number(reference.get("Pin Count"), 0)),
@@ -397,7 +399,7 @@ def render_design_impact(
 
     from src.part_images import part_image_markup
     selected_photo_markup = part_image_markup(
-        intelligence.get("image_url"), current, size=76
+        intelligence.get("image_url"), current, size=76, part=intelligence
     )
     st.markdown(
         f"""

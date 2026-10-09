@@ -53,9 +53,16 @@ def inject_cadivor_design_system() -> None:
     _render_html(f"<style id='cadivor-design-system-s64'>{css}</style>")
 
 
-def render_part_image(image_url: Any, part_number: Any, *, size: int = 76) -> None:
-    """Show a supplier product photo or a neutral part thumbnail."""
-    _render_html(part_image_markup(image_url, part_number, size=size))
+def render_part_image(
+    image_url: Any,
+    part_number: Any,
+    *,
+    size: int = 76,
+    category: Any = None,
+    part: Any = None,
+) -> None:
+    """Show a supplier product photo or a labeled category illustration."""
+    _render_html(part_image_markup(image_url, part_number, size=size, category=category, part=part))
 
 
 def badge_tone(raw: Any) -> Tone:
@@ -776,7 +783,12 @@ def _expandable_cell_html(value: Any, column: ExpandableTableColumn) -> str:
     if kind == "image":
         image_url = value.get("image_url", "") if isinstance(value, Mapping) else value
         part_number = value.get("mpn", "component") if isinstance(value, Mapping) else "component"
-        return part_image_markup(image_url, part_number, size=44)
+        return part_image_markup(
+            image_url,
+            part_number,
+            size=44,
+            part=value if isinstance(value, Mapping) else None,
+        )
     text = _expandable_cell_value(value)
     if kind == "target":
         primary, _, secondary = text.partition("\n")
