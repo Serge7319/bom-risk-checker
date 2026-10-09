@@ -12,12 +12,19 @@ from typing import Any
 
 import streamlit as st
 
+from src.saved_bom_project import (
+    NEW_PROJECT_CHOICE,
+    analysis_title_for_upload,
+    assign_project,
+    project_choices,
+    resolve_project_choice,
+    split_project_and_bom,
+)
 from src.ui.navigation import internal_nav_button, navigate_to
 
 
 PROJECT_ICON = (
-    '<svg class="cv-ap-chip" width="28" height="28" viewBox="0 0 32 32" aria-hidden="true" '
-    'style="width:28px;height:28px;display:inline-block;vertical-align:middle;margin-right:8px">'
+    '<svg class="cv-ap-project-icon" width="40" height="40" viewBox="0 0 32 32" aria-hidden="true">'
     '<rect width="32" height="32" rx="8" fill="#eef2ff"/>'
     '<path d="M8 13h6l2 2h8v9H8z" fill="#fff" stroke="#2563eb" stroke-width="1.4"/>'
     '<path d="M8 13V11h5l2 2" fill="none" stroke="#2563eb" stroke-width="1.4"/>'
@@ -510,8 +517,30 @@ def begin_approved_page() -> None:
         .cv-ap-kpi{background:#fff;border:1px solid #e6edf5;border-radius:16px;padding:12px 14px;min-height:92px}
         .cv-ap-kpi-top{display:flex;align-items:center;gap:8px}
         .cv-ap-kpi-row{display:flex;align-items:center;justify-content:space-between;gap:8px}
-        .cv-ap-ico{width:28px;height:28px;border-radius:9px;display:inline-flex;align-items:center;justify-content:center;background:#eff6ff;flex:0 0 28px}
-        .cv-ap-ico svg{width:16px;height:16px;display:block}
+        .cv-ap-ico{width:40px;height:40px;border-radius:12px;display:inline-flex;align-items:center;justify-content:center;background:#eff6ff;flex:0 0 40px}
+        .cv-ap-ico svg{width:20px;height:20px;display:block}
+        .cv-ap-ico.warn{background:#fff7ed}
+        .cv-ap-ico.risk{background:#fff1f2}
+        .cv-ap-ico.ok{background:#ecfdf5}
+        .cv-ap-project{display:flex;align-items:center;gap:10px;min-height:40px}
+        .cv-ap-project-icon{width:40px;height:40px;flex:0 0 40px;display:block}
+        .cv-ed-queue{border:1px solid #e6edf5;border-radius:16px;background:#fff;padding:14px 14px 6px;margin-top:8px}
+        .cv-ed-queue h2{margin:0;font-size:16px}
+        .cv-pill.review{background:#ede9fe;color:#6d28d9}
+        [class*="st-key-approved_home_open_"] button,
+        [class*="st-key-approved_home_open_"] button *,
+        [class*="st-key-approved_bom_row_open_"] button,
+        [class*="st-key-approved_bom_row_open_"] button *{
+          background:#f1f5f9 !important;background-color:#f1f5f9 !important;color:#2563eb !important;
+          border:1px solid #e2e8f0 !important;border-radius:8px !important;
+          min-height:32px !important;height:32px !important;min-width:0 !important;width:auto !important;
+          padding:0 14px !important;font-weight:700 !important;box-shadow:none !important
+        }
+        [class*="st-key-approved_decision_record_"] button{
+          background:#fff !important;color:#2563eb !important;border:1px solid #bfdbfe !important;
+          border-radius:8px !important;min-height:32px !important;height:32px !important;
+          min-width:0 !important;width:auto !important;padding:0 12px !important;font-weight:700 !important
+        }
         [class*="st-key-approved_home_menu_"] button,[class*="st-key-approved_bom_menu_"] button,[class*="st-key-approved_report_menu_"] button,[class*="st-key-approved_decision_menu_"] button{width:32px!important;min-width:32px!important;max-width:32px!important;height:32px!important;min-height:32px!important;padding:0!important;border-radius:8px!important}
         [class*="st-key-approved_home_menu_"] button svg,[class*="st-key-approved_bom_menu_"] button svg,[class*="st-key-approved_report_menu_"] button svg,[class*="st-key-approved_decision_menu_"] button svg{display:none!important}
         [class*="st-key-approved_home_row_"],[class*="st-key-approved_bom_row_"],[class*="st-key-approved_report_row_"]{border-top:1px solid #eef2f7;padding:0;margin:0}
@@ -579,6 +608,21 @@ def begin_approved_page() -> None:
         .cv-ap-chart{background:#fff;border:1px solid #e6edf5;border-radius:16px;padding:14px 16px 8px;margin:0 0 14px}
         .cv-ap-chart h3{margin:0 0 8px;font-size:14px}
         .cv-ap-charts{display:grid;grid-template-columns:1.4fr .8fr;gap:14px;margin-bottom:14px}
+        .cv-ed-card{display:flex;align-items:center;gap:12px;background:transparent;border:0;padding:8px 8px 8px 4px;min-height:84px}
+        [class*="st-key-approved_decision_cardwrap_"]{position:relative;border:1px solid #e6edf5;border-radius:16px;background:#fff;padding:6px 52px 6px 12px;overflow:hidden}
+        [class*="st-key-approved_decision_cardwrap_"]:has(.is-active){border-color:#93c5fd;box-shadow:0 0 0 1px #bfdbfe}
+        .cv-ed-card .cv-ed-copy{flex:1;min-width:0}
+        .cv-ed-card .cv-ed-copy span{display:block;color:#64748b;font-size:13px;font-weight:650}
+        .cv-ed-card .cv-ed-copy strong{display:block;margin-top:4px;font-size:28px;letter-spacing:-.03em;color:#0f172a}
+        .cv-ed-chevron{color:#94a3b8;font-size:22px;line-height:1}
+        .cv-due-late{color:#be123c;font-weight:700}
+        [class*="st-key-approved_decision_cardwrap_"] [data-testid="stHorizontalBlock"]{align-items:center}
+        [class*="st-key-approved_decision_queue"]{border:1px solid #e6edf5;border-radius:16px;background:#fff;padding:10px 12px 6px;margin-top:8px}
+        [class*="st-key-approved_bom_toolbar"] [data-testid="stHorizontalBlock"]{flex-wrap:nowrap;align-items:flex-end}
+        @media(max-width:1100px){
+          [class*="st-key-approved_bom_toolbar"] [data-testid="stHorizontalBlock"]{flex-wrap:wrap}
+          [class*="st-key-approved_bom_toolbar"] [data-testid="stColumn"]{flex:1 1 180px !important;width:auto !important;min-width:160px}
+        }
         @media(max-width:900px){.cv-ap-kpis,.cv-ap-cards,.cv-ap-split{display:block}}
         </style>
         """,
@@ -620,6 +664,250 @@ def _health_pill(score: int) -> str:
     else:
         kind = "high"
     return f'<span class="cv-pill {kind}">{score}/100</span>'
+
+
+def _rows_with_project_edits(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    edits = st.session_state.get("cadivor_saved_project_titles") or {}
+    if not isinstance(edits, dict) or not edits:
+        return rows
+    merged = []
+    for row in rows:
+        title = edits.get(str(row.get("id") or ""))
+        merged.append({**row, "project_name": title} if title else row)
+    return merged
+
+
+def _persist_project_title(analysis_id: str, user_id: str, stored_title: str) -> None:
+    """Write the same project title the saved-BOM manager already stores."""
+    from src.authenticated_runtime import supabase
+
+    supabase.table("analyses").update({"project_name": stored_title}).eq("id", analysis_id).eq(
+        "user_id", user_id
+    ).execute()
+    supabase.table("analysis_parts").update({"project_name": stored_title}).eq(
+        "analysis_id", analysis_id
+    ).eq("user_id", user_id).execute()
+
+
+def _render_project_editor(row: dict[str, Any], scope: str, rows: list[dict[str, Any]], user_id: str) -> None:
+    analysis_id = str(row.get("id") or "")
+    current, _bom = split_project_and_bom(row)
+    choices = project_choices(rows)
+    if current and current not in choices:
+        choices = [current, *[name for name in choices if name != current]]
+    options = [*choices, NEW_PROJECT_CHOICE]
+    selected = st.selectbox(
+        "Project",
+        options,
+        index=options.index(current) if current in options else 0,
+        key=f"{scope}_project_choice_{analysis_id}",
+    )
+    typed = ""
+    if selected == NEW_PROJECT_CHOICE:
+        typed = st.text_input(
+            "New project name",
+            key=f"{scope}_project_typed_{analysis_id}",
+            placeholder="Project name",
+        )
+    save_col, cancel_col = st.columns([1, 1])
+    with save_col:
+        if st.button("Save project", key=f"{scope}_project_save_{analysis_id}", type="primary"):
+            project = resolve_project_choice(selected, typed, blank_uses_general=not current)
+            if not project:
+                st.caption("Enter a project name to save this assignment.")
+            else:
+                updated = assign_project(row, project)
+                if user_id and analysis_id:
+                    _persist_project_title(analysis_id, user_id, updated["project_name"])
+                titles = dict(st.session_state.get("cadivor_saved_project_titles") or {})
+                titles[analysis_id] = updated["project_name"]
+                st.session_state["cadivor_saved_project_titles"] = titles
+                st.session_state.pop("approved_project_editor", None)
+                st.rerun()
+    with cancel_col:
+        if st.button("Cancel", key=f"{scope}_project_cancel_{analysis_id}"):
+            st.session_state.pop("approved_project_editor", None)
+            st.rerun()
+
+
+def _render_project_cell(
+    column,
+    row: dict[str, Any],
+    scope: str,
+    rows: list[dict[str, Any]],
+    user_id: str,
+) -> None:
+    project, _bom = split_project_and_bom(row)
+    analysis_id = str(row.get("id") or "")
+    action = "Edit project" if project else "Add project"
+    label = project or "No project"
+    with column:
+        st.markdown(
+            f"<div class='cv-ap-project'>{PROJECT_ICON}<span class='cv-ap-name'>{_esc(label)}</span></div>",
+            unsafe_allow_html=True,
+        )
+        if analysis_id and st.button(action, key=f"approved_{scope}_project_action_{analysis_id}", type="tertiary"):
+            st.session_state["approved_project_editor"] = analysis_id
+            st.rerun()
+    if analysis_id and st.session_state.get("approved_project_editor") == analysis_id:
+        _render_project_editor(row, scope, rows, user_id)
+
+
+def catalog_health_label(score: int, high_risk: int) -> str:
+    if high_risk >= 20 or score < 55:
+        return "At risk"
+    if high_risk >= 5 or score < 80:
+        return "Review"
+    return "Healthy"
+
+
+def _parse_timestamp(value: Any):
+    text = str(value or "").strip()
+    if not text or text.lower() in {"nan", "none", "—"}:
+        return None
+    from datetime import date, datetime
+
+    normalized = text.replace("Z", "+00:00")
+    try:
+        return datetime.fromisoformat(normalized)
+    except ValueError:
+        try:
+            return datetime.combine(date.fromisoformat(normalized[:10]), datetime.min.time())
+        except ValueError:
+            return None
+
+
+def analyzed_label(value: Any) -> str:
+    parsed = _parse_timestamp(value)
+    if parsed is None:
+        text = str(value or "").strip()
+        if not text or text.lower() in {"nan", "none"}:
+            return "Not recorded"
+        return text[:10]
+    label = parsed.strftime("%b %d, %Y").replace(" 0", " ")
+    if parsed.hour or parsed.minute or parsed.second:
+        clock = parsed.strftime("%I:%M %p").lstrip("0")
+        label = f"{label}<br>{clock}"
+    return label
+
+
+def within_analyzed_range(value: Any, date_range: str, today) -> bool:
+    if date_range == "All time":
+        return True
+    parsed = _parse_timestamp(value)
+    if parsed is None:
+        return False
+    window = 30 if "30" in date_range else 90
+    analyzed = parsed.date()
+    return 0 <= (today - analyzed).days <= window
+
+
+def catalog_project_options(rows: list[dict[str, Any]]) -> list[str]:
+    names = []
+    for row in rows:
+        project, _bom = split_project_and_bom(row)
+        if project and project not in names:
+            names.append(project)
+    return ["All projects", *sorted(names)]
+
+
+def reset_catalog_filters(state: dict[str, Any]) -> None:
+    """New widget keys restore Search, Project, Health, and Date range to their defaults."""
+    state["approved_bom_filter_nonce"] = int(state.get("approved_bom_filter_nonce") or 0) + 1
+
+
+def decision_status_label(row: dict[str, Any], today) -> str:
+    status = str(_first(row, "status", "decision_status", fallback="Open") or "Open")
+    folded = status.casefold()
+    if any(token in folded for token in ("resolv", "closed", "approved", "accepted")):
+        return "Resolved"
+    if "review" in folded:
+        return "In review"
+    if "over" in folded:
+        return "Overdue"
+    due = _parse_timestamp(_first(row, "due_date", "due_at", fallback=None))
+    if due is not None and due.date() < today and "resolv" not in folded:
+        return "Overdue"
+    return "Open"
+
+
+def decision_queue_view(
+    records: list[dict[str, Any]] | None,
+    *,
+    query: str = "",
+    status_filter: str = "All statuses",
+    sort_by: str = "Due date",
+    scope: str = "",
+    today=None,
+) -> dict[str, Any]:
+    """Counts use every loaded record. Search, status, and card scope filter the queue."""
+    from datetime import date
+
+    today = today or date.today()
+    source = _records(records)
+    prepared = []
+    for row in source:
+        status = decision_status_label(row, today)
+        prepared.append((row, status))
+    open_count = sum(1 for _row, status in prepared if status == "Open")
+    overdue = sum(1 for _row, status in prepared if status == "Overdue")
+    resolved_month = 0
+    for row, status in prepared:
+        if status != "Resolved":
+            continue
+        stamp = _parse_timestamp(
+            _first(row, "resolved_at", "updated_at", "created_at", fallback=None)
+        )
+        if stamp is not None and stamp.year == today.year and stamp.month == today.month:
+            resolved_month += 1
+    affected = len({
+        str(_first(row, "analysis_id", fallback="") or "")
+        for row, _status in prepared
+        if str(_first(row, "analysis_id", fallback="") or "").strip()
+    })
+    needle = query.strip().casefold()
+    visible = []
+    for row, status in prepared:
+        if scope == "boms" and not str(_first(row, "analysis_id", fallback="") or "").strip():
+            continue
+        if status_filter != "All statuses" and status_filter.casefold() != status.casefold():
+            continue
+        blob = " ".join(
+            str(_first(row, key, fallback="") or "")
+            for key in ("mpn", "part_number", "title", "summary", "alert_message", "owner", "assignee")
+        ).casefold()
+        if needle and needle not in blob:
+            continue
+        visible.append((row, status))
+    risk_rank = {"high": 0, "medium": 1, "low": 2}
+
+    def _risk_key(item):
+        level = str(_first(item[0], "risk_level", "severity", fallback="")).casefold()
+        for name, rank in risk_rank.items():
+            if name in level:
+                return rank
+        return 3
+
+    if sort_by == "Component":
+        visible.sort(key=lambda item: str(_first(item[0], "mpn", "part_number", fallback="")).casefold())
+    elif sort_by == "Risk level":
+        visible.sort(key=_risk_key)
+    else:
+        visible.sort(key=lambda item: str(_first(item[0], "due_date", "created_at", fallback="") or "9999"))
+    return {
+        "open": open_count,
+        "overdue": overdue,
+        "resolved_month": resolved_month,
+        "affected": affected,
+        "rows": visible,
+    }
+
+
+def decision_action_label(row: dict[str, Any], status: str) -> str:
+    recorded = _first(row, "decision", "resolution", "decision_text", fallback=None)
+    if status in {"In review", "Resolved"} or recorded:
+        return "Review"
+    return "Record decision"
 
 
 def _records(rows: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
@@ -750,9 +1038,10 @@ def render_home(
     analyses: list[dict[str, Any]] | None,
     plan_notice: str = "",
     pause_new_analyses: bool = False,
+    user_id: str = "",
 ) -> None:
     begin_approved_page()
-    rows = _records(analyses)
+    rows = _rows_with_project_edits(_records(analyses))
     high = sum(_num(_first(row, "high_risk_count")) for row in rows)
     review = sum(1 for row in rows if _num(_first(row, "high_risk_count")) or _num(_first(row, "health_score"), 100) < 80)
     health_values = [_num(_first(row, "health_score")) for row in rows]
@@ -800,28 +1089,28 @@ def render_home(
         """,
         unsafe_allow_html=True,
     )
+    home_widths = [1.8, 1.7, 0.7, 0.9, 1.1, 1.2, 0.8]
     with st.container(key="approved_home_head"):
-        header = st.columns([2.3, 1.5, 0.9, 1, 1.1, 1.2, 0.7])
-        for column, label in zip(header, ("Name", "Project", "Part count", "Health", "High-risk parts", "Last analyzed", "Actions")):
+        header = st.columns(home_widths)
+        for column, label in zip(header, ("Project", "BOM name", "Parts", "Health", "High-risk parts", "Last analyzed", "Actions")):
             column.markdown(f"<div class='cv-ap-meta'>{label}</div>", unsafe_allow_html=True)
     if not rows:
         st.caption("No saved BOMs yet. Start a new BOM analysis to fill this workspace.")
     for index, row in enumerate(rows[:6]):
-        title = _esc(_first(row, "project_name", "name", fallback="Saved BOM"))
-        filename = _esc(_first(row, "filename", fallback=""))
-        project = _esc(_first(row, "project", "customer_name", fallback="") or title)
+        project, bom_name = split_project_and_bom(row)
         parts = _num(_first(row, "total_parts"))
         score = _num(_first(row, "health_score"))
         risk = _num(_first(row, "high_risk_count"))
-        updated = _esc(str(_first(row, "created_at", fallback=""))[:10])
+        risk_html = f"<span class='cv-pill high'>{risk}</span>" if risk else str(risk)
+        updated = analyzed_label(_first(row, "created_at", "updated_at", fallback=""))
         with st.container(key=f"approved_home_row_{index}"):
-            cells = st.columns([2.3, 1.5, 0.9, 1, 1.1, 1.2, 0.7], vertical_alignment="center")
-            cells[0].markdown(f"{DOC}<span class='cv-ap-name'>{title}</span><div class='cv-ap-meta'>{filename}</div>", unsafe_allow_html=True)
-            cells[1].markdown(project, unsafe_allow_html=True)
+            cells = st.columns(home_widths, vertical_alignment="center")
+            _render_project_cell(cells[0], row, "home", rows, user_id)
+            cells[1].markdown(f"<span class='cv-ap-name'>{_esc(bom_name)}</span>", unsafe_allow_html=True)
             cells[2].markdown(str(parts))
             cells[3].markdown(_health_pill(score), unsafe_allow_html=True)
-            cells[4].markdown(f"<span class='cv-pill high'>{risk}</span>", unsafe_allow_html=True)
-            cells[5].markdown(updated)
+            cells[4].markdown(risk_html, unsafe_allow_html=True)
+            cells[5].markdown(updated, unsafe_allow_html=True)
             analysis_id = str(row.get("id") or "")
             with cells[6]:
                 if analysis_id:
@@ -829,7 +1118,7 @@ def render_home(
                         "Open",
                         "Analysis Details",
                         key=f"approved_home_open_{index}",
-                        type="primary",
+                        type="secondary",
                         analysis_id=analysis_id,
                     )
     if plan_notice and st.button("Compare plans", key="approved_home_compare_plans"):
@@ -837,91 +1126,134 @@ def render_home(
     end_approved_page()
 
 
-def render_bom_catalog(records: list[dict[str, Any]] | None) -> None:
+def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") -> None:
     begin_approved_page()
-    rows = _records(records)
+    rows = _rows_with_project_edits(_records(records))
     with st.container(key="approved_bom_title"):
-        title_col, action_col = st.columns([5.2, 1.6], vertical_alignment="center")
+        title_col, manage_col, action_col = st.columns([4.2, 1.6, 1.6], vertical_alignment="center")
         with title_col:
             st.markdown(
                 """
                 <div class="cv-ap">
                   <h1>BOMs</h1>
-                  <p class="cv-ap-sub">Saved analyses in this workspace.</p>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
+        with manage_col:
+            if st.button("Manage saved BOMs", key="approved_bom_manage", type="tertiary"):
+                st.session_state["cadivor_manage_saved_boms"] = True
+                st.rerun()
         with action_col:
             if st.button("+ New BOM analysis", key="approved_bom_new", type="primary"):
                 st.session_state["cadivor_bom_upload_open"] = True
                 st.rerun()
-    query = st.text_input("Search BOMs, projects, or files", key="approved_bom_search")
-    project, health, dates = st.columns(3)
-    with project:
-        st.selectbox("Project", ["All projects"], key="approved_bom_project")
-    with health:
-        health_filter = st.selectbox("Health", ["All health", "Healthy", "Review", "At risk"], key="approved_bom_health")
-    with dates:
-        st.selectbox("Date range", ["Last 90 days", "All time"], key="approved_bom_dates")
+    if st.session_state.get("cadivor_manage_saved_boms"):
+        st.caption("Open a saved analysis below. New files use Analyze BOM.")
+    from datetime import date
+
+    project_options = catalog_project_options(rows)
+    filter_nonce = int(st.session_state.get("approved_bom_filter_nonce") or 0)
+    project_key = f"approved_bom_project_{filter_nonce}"
+    if st.session_state.get(project_key) not in project_options and project_key in st.session_state:
+        st.session_state[project_key] = "All projects"
+    with st.container(key="approved_bom_toolbar"):
+        search_col, project_col, health_col, date_col, clear_col = st.columns(
+            [1.7, 1.05, 1, 1.05, 0.85],
+            vertical_alignment="bottom",
+        )
+        with search_col:
+            query = st.text_input(
+                "Search",
+                key=f"approved_bom_search_{filter_nonce}",
+                placeholder="Search BOMs, projects, or files",
+                label_visibility="collapsed",
+            )
+        with project_col:
+            project_filter = st.selectbox("Project", project_options, key=project_key)
+        with health_col:
+            health_filter = st.selectbox(
+                "Health",
+                ["All health", "Healthy", "Review", "At risk"],
+                key=f"approved_bom_health_{filter_nonce}",
+            )
+        with date_col:
+            date_filter = st.selectbox(
+                "Date range",
+                ["Last 90 days", "Last 30 days", "All time"],
+                key=f"approved_bom_dates_{filter_nonce}",
+            )
+        with clear_col:
+            if st.button("Clear filters", key="approved_bom_clear"):
+                reset_catalog_filters(st.session_state)
+                st.rerun()
     needle = query.strip().casefold()
+    today = date.today()
     visible = []
     for row in rows:
-        name = str(_first(row, "project_name", "name", fallback=""))
-        filename = str(_first(row, "filename", fallback=""))
-        if needle and needle not in f"{name} {filename}".casefold():
+        project_name, bom_name = split_project_and_bom(row)
+        filename = str(_first(row, "filename", "source_filename", fallback="") or "")
+        if needle and needle not in f"{project_name} {bom_name} {filename}".casefold():
+            continue
+        if project_filter != "All projects" and project_name != project_filter:
             continue
         score = _num(_first(row, "health_score"))
         high = _num(_first(row, "high_risk_count"))
-        if high >= 20 or score < 55:
-            label = "At risk"
-        elif high >= 5 or score < 80:
-            label = "Review"
-        else:
-            label = "Healthy"
+        label = catalog_health_label(score, high)
         if health_filter != "All health" and label != health_filter:
             continue
-        visible.append((row, label))
+        if not within_analyzed_range(_first(row, "created_at", "updated_at", fallback=""), date_filter, today):
+            continue
+        visible.append((row, label, project_name, bom_name))
+    bom_widths = [1.7, 1.6, 0.6, 0.8, 0.8, 1.1, 0.8]
     with st.container(key="approved_bom_head"):
-        header = st.columns([1.7, 1.5, 0.6, 0.8, 0.7, 1.0, 1.3])
-        for column, label in zip(header, ("Project", "File", "Parts", "Health", "High risk", "Last analyzed", "Actions")):
+        header = st.columns(bom_widths)
+        for column, label in zip(header, ("Project", "BOM name", "Parts", "Health", "High-risk parts", "Last analyzed", "Actions")):
             column.markdown(f"<div class='cv-ap-meta'>{label}</div>", unsafe_allow_html=True)
     if not visible:
         st.caption("No BOMs match these filters.")
-    for index, (row, label) in enumerate(visible[:12]):
+    for index, (row, label, project_name, bom_name) in enumerate(visible[:12]):
         kind = {"Healthy": "low", "Review": "medium", "At risk": "high"}[label]
-        project_name = _esc(_first(row, "project_name", "name", fallback="Saved BOM"))
-        filename = str(_first(row, "filename", fallback="") or "").strip()
         analysis_id = str(row.get("id") or "")
+        high = _num(_first(row, "high_risk_count"))
         with st.container(key=f"approved_bom_row_{index}"):
-            cells = st.columns([1.7, 1.5, 0.6, 0.8, 0.7, 1.0, 1.3], vertical_alignment="center")
-            cells[0].markdown(f"{PROJECT_ICON}<span class='cv-ap-name'>{project_name}</span>", unsafe_allow_html=True)
-            with cells[1]:
-                if filename and analysis_id:
-                    internal_nav_button(
-                        filename,
-                        "Analysis Details",
-                        key=f"approved_bom_file_{index}",
-                        type="tertiary",
-                        analysis_id=analysis_id,
-                    )
-                else:
-                    st.markdown(_esc(filename or "—"))
+            cells = st.columns(bom_widths, vertical_alignment="center")
+            _render_project_cell(cells[0], row, "catalog", rows, user_id)
+            cells[1].markdown(f"<span class='cv-ap-name'>{_esc(bom_name)}</span>", unsafe_allow_html=True)
             cells[2].markdown(str(_num(_first(row, "total_parts"))))
             cells[3].markdown(f"<span class='cv-pill {kind}'>{label}</span>", unsafe_allow_html=True)
-            cells[4].markdown(str(_num(_first(row, "high_risk_count"))))
-            cells[5].markdown(_esc(str(_first(row, "created_at", fallback=""))[:10]))
+            cells[4].markdown(
+                f"<span class='cv-pill high'>{high}</span>" if high else "0",
+                unsafe_allow_html=True,
+            )
+            cells[5].markdown(
+                analyzed_label(_first(row, "created_at", "updated_at", fallback="")),
+                unsafe_allow_html=True,
+            )
             with cells[6]:
                 if analysis_id:
                     internal_nav_button(
                         "Open",
                         "Analysis Details",
                         key=f"approved_bom_row_open_{index}",
-                        type="primary",
+                        type="secondary",
                         analysis_id=analysis_id,
                     )
     if st.session_state.get("cadivor_bom_upload_open"):
-        project_name = st.text_input("Project name", key="approved_bom_project_name")
+        choices = [*project_choices(rows), NEW_PROJECT_CHOICE]
+        selected_project = st.selectbox(
+            "Project",
+            choices,
+            key="approved_bom_project_choice",
+            help="Choose a saved project, or enter a new name. Leave a new name blank to use General.",
+        )
+        typed_project = ""
+        if selected_project == NEW_PROJECT_CHOICE:
+            typed_project = st.text_input(
+                "New project name",
+                key="approved_bom_project_name",
+                placeholder="Leave blank to use General",
+            )
         bom_name = st.text_input("BOM name", key="approved_bom_name")
         uploaded = st.file_uploader(
             "Upload your BOM file",
@@ -932,15 +1264,15 @@ def render_bom_catalog(records: list[dict[str, Any]] | None) -> None:
         if st.button("Analyze BOM", key="approved_bom_analyze", type="primary") and uploaded is not None:
             st.session_state["cadivor_bom_analysis_ready"] = True
             st.session_state["cadivor_pending_upload"] = uploaded
-            st.session_state["cadivor_pending_project"] = project_name
+            st.session_state["cadivor_pending_project"] = resolve_project_choice(
+                selected_project,
+                typed_project,
+                blank_uses_general=True,
+            )
             st.session_state["cadivor_pending_bom_name"] = bom_name
             return
         if uploaded is None:
             st.caption("Choose a CSV or Excel file to run the existing BOM analysis.")
-    if st.button("Manage saved BOMs", key="approved_bom_manage"):
-        st.session_state["cadivor_manage_saved_boms"] = True
-    if st.session_state.get("cadivor_manage_saved_boms"):
-        st.caption("Open a saved analysis below. New files use Analyze BOM.")
     if st.session_state.get("cadivor_bom_analysis_ready"):
         return
     end_approved_page()
@@ -948,7 +1280,9 @@ def render_bom_catalog(records: list[dict[str, Any]] | None) -> None:
 
 def render_decision_queue(records: list[dict[str, Any]] | None) -> None:
     begin_approved_page()
-    source = _records(records)
+    from datetime import date
+
+    counts = decision_queue_view(records, today=date.today())
     st.markdown(
         """
         <div class="cv-ap">
@@ -959,86 +1293,140 @@ def render_decision_queue(records: list[dict[str, Any]] | None) -> None:
         """,
         unsafe_allow_html=True,
     )
-    query = st.text_input("Search components, decisions or owners", key="approved_decision_search")
-    filter_col, sort_col = st.columns(2)
-    with filter_col:
-        status_filter = st.selectbox("Filter", ["All statuses", "Open", "Overdue", "Resolved"], key="approved_decision_filter")
-    with sort_col:
-        sort_by = st.selectbox("Sort", ["Due date", "Risk level", "Component"], key="approved_decision_sort")
-    needle = query.strip().casefold()
-    rows = []
-    for row in source:
-        status = str(_first(row, "status", "decision_status", fallback="Open"))
-        blob = " ".join(
-            str(_first(row, key, fallback="") or "")
-            for key in ("mpn", "part_number", "title", "summary", "alert_message", "owner", "assignee")
-        ).casefold()
-        if needle and needle not in blob:
-            continue
-        if status_filter != "All statuses" and status_filter.casefold() not in status.casefold():
-            continue
-        rows.append(row)
-    if sort_by == "Component":
-        rows.sort(key=lambda row: str(_first(row, "mpn", "part_number", fallback="")))
-    elif sort_by == "Risk level":
-        rows.sort(key=lambda row: str(_first(row, "risk_level", "severity", fallback="")))
-    else:
-        rows.sort(key=lambda row: str(_first(row, "due_date", "created_at", fallback="")))
-    rows = rows[:8]
-    open_count = len(rows)
-    overdue = sum(1 for row in rows if "over" in str(_first(row, "status", "decision_status", fallback="")).casefold())
-    resolved = sum(1 for row in rows if "resolv" in str(_first(row, "status", "decision_status", fallback="")).casefold())
-    affected = len({str(_first(row, "analysis_id", fallback="")) for row in rows if _first(row, "analysis_id")})
-    st.markdown(
-        f"""
-        <div class="cv-ap">
-          <section class="cv-ap-kpis">
-            <article class="cv-ap-kpi"><div class="cv-ap-kpi-top"><span class="cv-ap-ico">☰</span><span>Open decisions</span></div><strong>{open_count}</strong></article>
-            <article class="cv-ap-kpi"><div class="cv-ap-kpi-top"><span class="cv-ap-ico">!</span><span>Overdue</span></div><strong>{overdue}</strong></article>
-            <article class="cv-ap-kpi"><div class="cv-ap-kpi-top"><span class="cv-ap-ico">✓</span><span>Resolved this month</span></div><strong>{resolved}</strong><em class="muted">From the loaded queue</em></article>
-            <article class="cv-ap-kpi"><div class="cv-ap-kpi-top"><span class="cv-ap-ico">▣</span><span>BOMs affected</span></div><strong>{affected}</strong></article>
-          </section>
-          <h2>Decision queue ({open_count})</h2>
-        </div>
-        """,
-        unsafe_allow_html=True,
+    icon_open = '<svg viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="1.8"><path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5"/></svg>'
+    icon_over = '<svg viewBox="0 0 24 24" fill="none" stroke="#e11d48" stroke-width="1.8"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17h.01"/></svg>'
+    icon_ok = '<svg viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="1.8"><circle cx="12" cy="12" r="8"/><path d="M8 12l3 3 5-6"/></svg>'
+    icon_boms = '<svg viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="1.8"><path d="M12 3l8 4-8 4-8-4z"/><path d="M4 12l8 4 8-4"/><path d="M4 16l8 4 8-4"/></svg>'
+    cards = (
+        ("open", "Open decisions", counts["open"], "Open", "", icon_open, ""),
+        ("overdue", "Overdue", counts["overdue"], "Overdue", "", icon_over, "risk"),
+        ("resolved", "Resolved this month", counts["resolved_month"], "Resolved", "", icon_ok, "ok"),
+        ("boms", "BOMs affected", counts["affected"], "All statuses", "boms", icon_boms, ""),
     )
-    header = st.columns([1.6, 1.8, 0.8, 0.9, 0.9, 0.8, 1.1])
-    for column, label in zip(header, ("Component", "Title", "Risk level", "Decision status", "Owner", "Due date", "Actions")):
-        column.markdown(f"<div class='cv-ap-meta'>{label}</div>", unsafe_allow_html=True)
-    if not rows:
-        st.caption("No open engineering decisions in this workspace.")
-    for index, row in enumerate(rows):
-        level = str(_first(row, "risk_level", "severity", fallback="Medium"))
-        kind = "high" if "high" in level.casefold() else ("low" if "low" in level.casefold() else "medium")
-        status = str(_first(row, "status", "decision_status", fallback="Open"))
-        owner = _first(row, "owner", "assignee", fallback=None)
-        owner_label = "Unassigned" if owner is None else _esc(owner)
-        mpn = str(_first(row, "mpn", "part_number", "component", fallback="Component"))
-        detail = _first(row, "description", "part_description", fallback=None)
-        subtitle = f"<div class='cv-ap-meta'>{_esc(detail)}</div>" if detail else ""
-        due = _first(row, "due_date", fallback=None)
-        due_label = _esc(str(due)[:10]) if due else "Not recorded"
-        photo = part_photo(str(_first(row, "image_url", "photo_url", "image", fallback="") or ""), size=48, part=row)
-        cells = st.columns([1.7, 1.8, 0.8, 0.9, 0.9, 0.9, 1.3], vertical_alignment="center")
-        cells[0].markdown(
-            f"<div class='cv-ei-part'>{photo}<span class='cv-ei-part-copy'><span class='cv-ap-name'>{_esc(mpn)}</span>{subtitle}</span></div>",
-            unsafe_allow_html=True,
+    active_filter = str(st.session_state.get("approved_decision_filter") or "All statuses")
+    active_scope = str(st.session_state.get("approved_decision_scope") or "")
+    with st.container(key="approved_decision_cards"):
+        card_cols = st.columns(4)
+        for column, (key, label, count, status, scope, icon, tone) in zip(card_cols, cards):
+            selected = active_scope == scope and (
+                scope == "boms" or active_filter == status
+            )
+            selected_class = " is-active" if selected and (scope or status != "All statuses") else ""
+            with column:
+                with st.container(key=f"approved_decision_cardwrap_{key}"):
+                    body, action = st.columns([5, 1], vertical_alignment="center")
+                    body.markdown(
+                        f"<article class='cv-ed-card{selected_class}'>"
+                        f"<span class='cv-ap-ico {tone}'>{icon}</span>"
+                        f"<div class='cv-ed-copy'><span>{label}</span><strong>{count}</strong></div>"
+                        f"</article>",
+                        unsafe_allow_html=True,
+                    )
+                    with action:
+                        if st.button("›", key=f"approved_decision_card_{key}", help=label):
+                            st.session_state["approved_decision_filter"] = status
+                            st.session_state["approved_decision_scope"] = scope
+                            st.rerun()
+    with st.container(key="approved_decision_queue"):
+        heading, search_col, filter_col, sort_col = st.columns(
+            [1.5, 2.1, 0.9, 0.9],
+            vertical_alignment="bottom",
         )
-        cells[1].markdown(_esc(_first(row, "title", "summary", "alert_message", fallback="Engineering decision")))
-        cells[2].markdown(f"<span class='cv-pill {kind}'>{_esc(level)}</span>", unsafe_allow_html=True)
-        cells[3].markdown(f"<span class='cv-pill open'>{_esc(status)}</span>", unsafe_allow_html=True)
-        cells[4].markdown(owner_label)
-        cells[5].markdown(due_label)
-        analysis_id = str(row.get("analysis_id") or "")
-        with cells[6]:
-            if st.button("Review", key=f"approved_decision_review_{index}", type="primary"):
-                if analysis_id:
-                    st.session_state["cadivor_active_analysis_id"] = analysis_id
-                    st.session_state["analysis_id"] = analysis_id
-                    navigate_to("Analysis Details", analysis_id=analysis_id)
-                else:
-                    st.session_state["cadivor_decision_focus_mpn"] = mpn
+        with search_col:
+            query = st.text_input(
+                "Search",
+                key="approved_decision_search",
+                placeholder="Search components, decisions or owners",
+                label_visibility="collapsed",
+            )
+        with filter_col:
+            status_filter = st.selectbox(
+                "Filter",
+                ["All statuses", "Open", "Overdue", "In review", "Resolved"],
+                key="approved_decision_filter",
+                on_change=lambda: st.session_state.__setitem__("approved_decision_scope", ""),
+            )
+        with sort_col:
+            sort_by = st.selectbox(
+                "Sort",
+                ["Due date", "Risk level", "Component"],
+                key="approved_decision_sort",
+            )
+        view = decision_queue_view(
+            records,
+            query=query,
+            status_filter=status_filter,
+            sort_by=sort_by,
+            scope=str(st.session_state.get("approved_decision_scope") or ""),
+            today=date.today(),
+        )
+        with heading:
+            st.markdown(f"<h2>Decision queue ({len(view['rows'])})</h2>", unsafe_allow_html=True)
+        widths = [1.6, 1.7, 0.8, 1.0, 0.9, 0.9, 1.1]
+        header = st.columns(widths)
+        for column, label in zip(header, ("Component", "Title", "Risk level", "Decision status", "Owner", "Due date", "Actions")):
+            column.markdown(f"<div class='cv-ap-meta'>{label}</div>", unsafe_allow_html=True)
+        if not view["rows"]:
+            st.caption("No engineering decisions match this view.")
+        for index, (row, status) in enumerate(view["rows"][:20]):
+            level = _first(row, "risk_level", "severity", fallback=None)
+            if not level:
+                level_html = "Not recorded"
+            else:
+                folded = str(level).casefold()
+                kind = "high" if "high" in folded else ("low" if "low" in folded else "medium")
+                level_html = f"<span class='cv-pill {kind}'>{_esc(level)}</span>"
+            status_kind = {"Open": "open", "Overdue": "high", "In review": "review", "Resolved": "low"}.get(status, "open")
+            owner = _first(row, "owner", "assignee", fallback=None)
+            owner_label = "Unassigned" if owner is None else _esc(owner)
+            mpn = str(_first(row, "mpn", "part_number", "component", fallback="Not recorded"))
+            detail = _first(row, "description", "part_description", fallback=None)
+            subtitle = f"<div class='cv-ap-meta'>{_esc(detail)}</div>" if detail else ""
+            due = _first(row, "due_date", "due_at", fallback=None)
+            if not due:
+                due_label = "Not recorded"
+            else:
+                due_text = analyzed_label(due).split("<br>", 1)[0]
+                due_label = f"<span class='cv-due-late'>{due_text}</span>" if status == "Overdue" else due_text
+            title = _first(row, "title", "summary", "alert_message", fallback=None)
+            title_label = "Not recorded" if title is None else _esc(title)
+            photo = part_photo(str(_first(row, "image_url", "photo_url", "image", fallback="") or ""), size=40, part=row)
+            with st.container(key=f"approved_decision_row_{index}"):
+                cells = st.columns(widths, vertical_alignment="center")
+                cells[0].markdown(
+                    f"<div class='cv-ei-part'>{photo}<span class='cv-ei-part-copy'><span class='cv-ap-name'>{_esc(mpn)}</span>{subtitle}</span></div>",
+                    unsafe_allow_html=True,
+                )
+                cells[1].markdown(title_label)
+                cells[2].markdown(level_html, unsafe_allow_html=True)
+                cells[3].markdown(f"<span class='cv-pill {status_kind}'>{_esc(status)}</span>", unsafe_allow_html=True)
+                cells[4].markdown(owner_label)
+                cells[5].markdown(due_label, unsafe_allow_html=True)
+                analysis_id = str(row.get("analysis_id") or "")
+                action = decision_action_label(row, status)
+                with cells[6]:
+                    button_type = "primary" if action == "Review" else "secondary"
+                    button_key = (
+                        f"approved_decision_review_{index}"
+                        if action == "Review"
+                        else f"approved_decision_record_{index}"
+                    )
+                    if st.button(action, key=button_key, type=button_type):
+                        st.session_state["cadivor_decision_focus_mpn"] = mpn
+                        if analysis_id:
+                            st.session_state["cadivor_active_analysis_id"] = analysis_id
+                            st.session_state["analysis_id"] = analysis_id
+                            if action == "Record decision":
+                                st.session_state["cadivor_pending_analysis_section"] = "Engineering Decisions"
+                                st.session_state["cadivor_pending_analysis_section_id"] = analysis_id
+                                navigate_to(
+                                    "Analysis Details",
+                                    analysis_id=analysis_id,
+                                    analysis_tab="Engineering Decisions",
+                                    component=mpn,
+                                )
+                            else:
+                                navigate_to("Analysis Details", analysis_id=analysis_id)
     end_approved_page()
 
 

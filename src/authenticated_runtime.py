@@ -3871,6 +3871,7 @@ def run_authenticated_app() -> None:
                 analyses=list(real_overview_analyses or []),
                 plan_notice=plan_notice,
                 pause_new_analyses=pause_new,
+                user_id=str((current_user or {}).get("id") or ""),
             )
         elif workspace_category == "Portfolio Intelligence":
             if portfolio_cache_key not in st.session_state:
@@ -18404,10 +18405,17 @@ def run_authenticated_app() -> None:
             project_name = ""
             bom_name = ""
         else:
-            render_bom_catalog(history_data if isinstance(history_data, list) else [])
+            render_bom_catalog(
+                history_data if isinstance(history_data, list) else [],
+                user_id=str((current_user or {}).get("id") or ""),
+            )
             uploaded_file = st.session_state.pop("cadivor_pending_upload", None)
             project_name = str(st.session_state.pop("cadivor_pending_project", "") or "")
             bom_name = str(st.session_state.pop("cadivor_pending_bom_name", "") or "")
+            if project_name and "bom8_project_name" not in st.session_state:
+                st.session_state["bom8_project_name"] = project_name
+            if bom_name and "bom8_bom_name" not in st.session_state:
+                st.session_state["bom8_bom_name"] = bom_name
             st.session_state.pop("cadivor_bom_analysis_ready", None)
             if uploaded_file is not None:
                 st.session_state.pop("bom8_sample_mode", None)
@@ -19721,10 +19729,11 @@ def run_authenticated_app() -> None:
 
 
         bom_name_missing = not bom_name.strip() and not sample_mode
-        analysis_name = (
-            f"{project_name.strip()} — {bom_name.strip()}"
-            if project_name.strip() and bom_name.strip()
-            else bom_name.strip() or source_filename
+        from src.saved_bom_project import analysis_title_for_upload
+
+        analysis_name = analysis_title_for_upload(
+            project_name,
+            bom_name.strip() or source_filename,
         )
         _one_time_analysis_blocked = (
             _one_time_blocked_plan
