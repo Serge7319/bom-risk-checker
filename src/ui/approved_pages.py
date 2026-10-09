@@ -20,15 +20,14 @@ from src.saved_bom_project import (
     resolve_project_choice,
     split_project_and_bom,
 )
+from src.ui.cadivor_design_system.icons import lucide
 from src.ui.navigation import internal_nav_button, navigate_to
 
 
 PROJECT_ICON = (
-    '<svg class="cv-ap-project-icon" width="40" height="40" viewBox="0 0 32 32" aria-hidden="true">'
-    '<rect width="32" height="32" rx="8" fill="#eef2ff"/>'
-    '<path d="M8 13h6l2 2h8v9H8z" fill="#fff" stroke="#2563eb" stroke-width="1.4"/>'
-    '<path d="M8 13V11h5l2 2" fill="none" stroke="#2563eb" stroke-width="1.4"/>'
-    "</svg>"
+    '<span class="cv-ap-project-icon" aria-hidden="true">'
+    f"{lucide('layers', 22)}"
+    "</span>"
 )
 
 
@@ -523,23 +522,37 @@ def begin_approved_page() -> None:
         .cv-ap-ico.risk{background:#fff1f2}
         .cv-ap-ico.ok{background:#ecfdf5}
         .cv-ap-project{display:flex;align-items:center;gap:10px;min-height:40px}
-        .cv-ap-project-icon{width:40px;height:40px;flex:0 0 40px;display:block}
+        .cv-ap-project-icon{width:40px;height:40px;flex:0 0 40px;display:inline-flex;align-items:center;justify-content:center;border-radius:10px;background:#eef2ff;color:#2563eb}
+        .cv-ap-project-icon svg{width:22px;height:22px;display:block;stroke:#2563eb}
         .cv-ed-queue{border:1px solid #e6edf5;border-radius:16px;background:#fff;padding:14px 14px 6px;margin-top:8px}
         .cv-ed-queue h2{margin:0;font-size:16px}
         .cv-pill.review{background:#ede9fe;color:#6d28d9}
         [class*="st-key-approved_home_open_"] button,
-        [class*="st-key-approved_home_open_"] button *,
-        [class*="st-key-approved_bom_row_open_"] button,
-        [class*="st-key-approved_bom_row_open_"] button *{
+        [class*="st-key-approved_bom_row_open_"] button{
           background:#f1f5f9 !important;background-color:#f1f5f9 !important;color:#2563eb !important;
           border:1px solid #e2e8f0 !important;border-radius:8px !important;
           min-height:32px !important;height:32px !important;min-width:0 !important;width:auto !important;
-          padding:0 14px !important;font-weight:700 !important;box-shadow:none !important
+          padding:0 14px !important;font-weight:700 !important;box-shadow:none !important;outline:none
+        }
+        [class*="st-key-approved_home_open_"] button *,
+        [class*="st-key-approved_bom_row_open_"] button *{
+          background:transparent !important;border:0 !important;box-shadow:none !important;
+          color:#2563eb !important;height:auto !important;min-height:0 !important;padding:0 !important
+        }
+        [class*="st-key-approved_home_open_"] button:focus-visible,
+        [class*="st-key-approved_bom_row_open_"] button:focus-visible,
+        [class*="st-key-approved_decision_record_"] button:focus-visible{
+          outline:2px solid #2563eb !important;outline-offset:2px !important;box-shadow:none !important
         }
         [class*="st-key-approved_decision_record_"] button{
           background:#fff !important;color:#2563eb !important;border:1px solid #bfdbfe !important;
           border-radius:8px !important;min-height:32px !important;height:32px !important;
-          min-width:0 !important;width:auto !important;padding:0 12px !important;font-weight:700 !important
+          min-width:0 !important;width:auto !important;padding:0 12px !important;font-weight:700 !important;
+          box-shadow:none !important;outline:none
+        }
+        [class*="st-key-approved_decision_record_"] button *{
+          background:transparent !important;border:0 !important;box-shadow:none !important;
+          color:#2563eb !important;height:auto !important;min-height:0 !important;padding:0 !important
         }
         [class*="st-key-approved_home_menu_"] button,[class*="st-key-approved_bom_menu_"] button,[class*="st-key-approved_report_menu_"] button,[class*="st-key-approved_decision_menu_"] button{width:32px!important;min-width:32px!important;max-width:32px!important;height:32px!important;min-height:32px!important;padding:0!important;border-radius:8px!important}
         [class*="st-key-approved_home_menu_"] button svg,[class*="st-key-approved_bom_menu_"] button svg,[class*="st-key-approved_report_menu_"] button svg,[class*="st-key-approved_decision_menu_"] button svg{display:none!important}
@@ -566,7 +579,8 @@ def begin_approved_page() -> None:
         .cv-plan-card{background:#eff6ff;border:1px solid #dbeafe;border-radius:16px;padding:16px 18px}
         .cv-ap-name{font-weight:750}
         .cv-ap-meta{color:#64748b;font-size:12px}
-        .cv-pill{display:inline-flex;border-radius:999px;padding:3px 8px;font-size:12px;font-weight:750}
+        .cv-pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:3px 8px;font-size:12px;font-weight:750}
+        .cv-pill-dot{width:7px;height:7px;border-radius:50%;background:currentColor;flex:0 0 7px}
         .cv-pill.high{background:#ffe4e6;color:#be123c}
         .cv-pill.medium{background:#fef3c7;color:#b45309}
         .cv-pill.low{background:#dcfce7;color:#15803d}
@@ -608,13 +622,16 @@ def begin_approved_page() -> None:
         .cv-ap-chart{background:#fff;border:1px solid #e6edf5;border-radius:16px;padding:14px 16px 8px;margin:0 0 14px}
         .cv-ap-chart h3{margin:0 0 8px;font-size:14px}
         .cv-ap-charts{display:grid;grid-template-columns:1.4fr .8fr;gap:14px;margin-bottom:14px}
-        .cv-ed-card{display:flex;align-items:center;gap:12px;background:transparent;border:0;padding:8px 8px 8px 4px;min-height:84px}
-        [class*="st-key-approved_decision_cardwrap_"]{position:relative;border:1px solid #e6edf5;border-radius:16px;background:#fff;padding:6px 52px 6px 12px;overflow:hidden}
-        [class*="st-key-approved_decision_cardwrap_"]:has(.is-active){border-color:#93c5fd;box-shadow:0 0 0 1px #bfdbfe}
+        .cv-ed-card{display:flex;align-items:center;gap:14px;background:transparent;border:0;padding:16px 18px;min-height:0;height:100%;box-sizing:border-box}
+        .cv-ed-card .cv-ap-ico{width:48px;height:48px;flex:0 0 48px;border-radius:50%}
+        .cv-ed-card .cv-ap-ico svg{width:24px;height:24px}
+        [class*="st-key-approved_decision_cardwrap_"]{position:relative;border:1px solid #e6edf5;border-radius:16px;background:#fff;padding:0;overflow:hidden;box-sizing:border-box;height:112px;min-height:112px}
+        [class*="st-key-approved_decision_cardwrap_"]:has(.is-active),
+        [class*="st-key-approved_decision_cardwrap_"]:has(button:focus-visible){border-color:#93c5fd;box-shadow:0 0 0 2px #bfdbfe}
         .cv-ed-card .cv-ed-copy{flex:1;min-width:0}
-        .cv-ed-card .cv-ed-copy span{display:block;color:#64748b;font-size:13px;font-weight:650}
-        .cv-ed-card .cv-ed-copy strong{display:block;margin-top:4px;font-size:28px;letter-spacing:-.03em;color:#0f172a}
-        .cv-ed-chevron{color:#94a3b8;font-size:22px;line-height:1}
+        .cv-ed-card .cv-ed-copy span{display:block;color:#64748b;font-size:14px;font-weight:650}
+        .cv-ed-card .cv-ed-copy strong{display:flex;align-items:center;gap:8px;margin-top:4px;font-size:32px;letter-spacing:-.03em;color:#0f172a}
+        .cv-ed-chevron{width:18px;height:18px;flex:0 0 18px;display:block}
         .cv-due-late{color:#be123c;font-weight:700}
         [class*="st-key-approved_decision_cardwrap_"] [data-testid="stHorizontalBlock"]{align-items:center}
         [class*="st-key-approved_decision_queue"]{border:1px solid #e6edf5;border-radius:16px;background:#fff;padding:10px 12px 6px;margin-top:8px}
@@ -663,7 +680,7 @@ def _health_pill(score: int) -> str:
         kind = "medium"
     else:
         kind = "high"
-    return f'<span class="cv-pill {kind}">{score}/100</span>'
+    return f'<span class="cv-pill {kind}"><span class="cv-pill-dot" aria-hidden="true"></span>{score}/100</span>'
 
 
 def _rows_with_project_edits(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -742,13 +759,19 @@ def _render_project_cell(
     action = "Edit project" if project else "Add project"
     label = project or "No project"
     with column:
-        st.markdown(
-            f"<div class='cv-ap-project'>{PROJECT_ICON}<span class='cv-ap-name'>{_esc(label)}</span></div>",
-            unsafe_allow_html=True,
-        )
-        if analysis_id and st.button(action, key=f"approved_{scope}_project_action_{analysis_id}", type="tertiary"):
-            st.session_state["approved_project_editor"] = analysis_id
-            st.rerun()
+        with st.container(key=f"approved_{scope}_project_line_{analysis_id or 'row'}"):
+            name_col, action_col = st.columns([1.15, 1], vertical_alignment="center")
+            name_col.markdown(
+                f"<div class='cv-ap-project'>{PROJECT_ICON}<span class='cv-ap-name'>{_esc(label)}</span></div>",
+                unsafe_allow_html=True,
+            )
+            if analysis_id and action_col.button(
+                action,
+                key=f"approved_{scope}_project_action_{analysis_id}",
+                type="tertiary",
+            ):
+                st.session_state["approved_project_editor"] = analysis_id
+                st.rerun()
     if analysis_id and st.session_state.get("approved_project_editor") == analysis_id:
         _render_project_editor(row, scope, rows, user_id)
 
@@ -1221,7 +1244,10 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
             _render_project_cell(cells[0], row, "catalog", rows, user_id)
             cells[1].markdown(f"<span class='cv-ap-name'>{_esc(bom_name)}</span>", unsafe_allow_html=True)
             cells[2].markdown(str(_num(_first(row, "total_parts"))))
-            cells[3].markdown(f"<span class='cv-pill {kind}'>{label}</span>", unsafe_allow_html=True)
+            cells[3].markdown(
+                f"<span class='cv-pill {kind}'><span class='cv-pill-dot' aria-hidden='true'></span>{label}</span>",
+                unsafe_allow_html=True,
+            )
             cells[4].markdown(
                 f"<span class='cv-pill high'>{high}</span>" if high else "0",
                 unsafe_allow_html=True,
@@ -1314,19 +1340,18 @@ def render_decision_queue(records: list[dict[str, Any]] | None) -> None:
             selected_class = " is-active" if selected and (scope or status != "All statuses") else ""
             with column:
                 with st.container(key=f"approved_decision_cardwrap_{key}"):
-                    body, action = st.columns([5, 1], vertical_alignment="center")
-                    body.markdown(
+                    st.markdown(
                         f"<article class='cv-ed-card{selected_class}'>"
                         f"<span class='cv-ap-ico {tone}'>{icon}</span>"
-                        f"<div class='cv-ed-copy'><span>{label}</span><strong>{count}</strong></div>"
+                        f"<div class='cv-ed-copy'><span>{label}</span>"
+                        f"<strong>{count}<svg class='cv-ed-chevron' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='#94a3b8' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><path d='m9 18 6-6-6-6'/></svg></strong></div>"
                         f"</article>",
                         unsafe_allow_html=True,
                     )
-                    with action:
-                        if st.button("›", key=f"approved_decision_card_{key}", help=label):
-                            st.session_state["approved_decision_filter"] = status
-                            st.session_state["approved_decision_scope"] = scope
-                            st.rerun()
+                    if st.button(label, key=f"approved_decision_drill_{key}"):
+                        st.session_state["approved_decision_filter"] = status
+                        st.session_state["approved_decision_scope"] = scope
+                        st.rerun()
     with st.container(key="approved_decision_queue"):
         heading, search_col, filter_col, sort_col = st.columns(
             [1.5, 2.1, 0.9, 0.9],
