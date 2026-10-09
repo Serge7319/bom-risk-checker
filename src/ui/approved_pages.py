@@ -134,6 +134,368 @@ def _candidate_stock(row: dict[str, Any]) -> int:
     return 0
 
 
+_CANDIDATE_BLANK = {"", "—", "-", "–", "nan", "none", "n/a", "not available", "null"}
+
+
+def _candidate_recorded(row: dict[str, Any], *keys: str, missing: str = "Not recorded") -> str:
+    for key in keys:
+        if key not in row or row.get(key) is None:
+            continue
+        text = str(row.get(key)).strip()
+        if text and text.casefold() not in _CANDIDATE_BLANK:
+            return text
+    return missing
+
+
+def _candidate_http_url(value: Any) -> str:
+    text = str(value or "").strip()
+    if text.lower().startswith(("https://", "http://")):
+        return text
+    return ""
+
+
+def _part_field(part: dict[str, Any], *keys: str) -> str:
+    for key in keys:
+        if key not in part or part.get(key) is None:
+            continue
+        if key in {"pin_count", "channel_count", "Pin Count"}:
+            try:
+                number = int(float(part.get(key)))
+            except (TypeError, ValueError):
+                continue
+            if number <= 0:
+                continue
+            return str(number)
+        text = str(part.get(key)).strip()
+        if text and text.casefold() not in _CANDIDATE_BLANK and text not in {"0", "0.0"}:
+            return text
+    return ""
+
+
+def _field_source(part: dict[str, Any], key: str, fallback: str = "") -> str:
+    sources = part.get("field_sources") if isinstance(part.get("field_sources"), dict) else {}
+    source = str(sources.get(key) or fallback or part.get("source") or "").strip()
+    return source
+
+
+def _finding_label(status: str, original: str, candidate: str, evidence: str = "") -> tuple[str, str]:
+    note = str(evidence or "").strip()
+    if original and candidate and status == "Match":
+        if note and "match exactly" not in note.casefold() and "equivalent" not in note.casefold():
+            return "Compatible", f"{note} This is not an approval to use the part."
+        return "Compatible", "The retrieved values match. This is not an approval to use the part."
+    if original and candidate and status == "Different":
+        return "Known conflict", note or "The retrieved values differ. Review this difference before use."
+    if original and candidate and status == "Needs review":
+        return (
+            "Needs review",
+            note or "Both values were retrieved and they differ. This is not proof of electrical fit.",
+        )
+    if not original and not candidate:
+        return "Unknown", "Neither supplier record included this attribute."
+    missing = "original" if not original else "candidate"
+    return "Needs review", f"The {missing} record does not include this attribute, so fit cannot be confirmed."
+
+
+def _value_cell(value: str, source: str, note: str = "") -> str:
+    if not value:
+        shown = "Unknown"
+        detail = note or "Not in the retrieved supplier record."
+    else:
+        shown = value
+        detail = source or "Supplier record"
+    extra = f"<small>{_esc(detail)}</small>"
+    if note and value:
+        extra += f"<small>{_esc(note)}</small>"
+    return f"<div>{_esc(shown)}{extra}</div>"
+
+
+def _candidate_part_payload(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "description": _part_field(row, "description", "Description"),
+        "manufacturer": _part_field(row, "Manufacturer", "manufacturer"),
+        "package": _part_field(row, "package", "Package"),
+        "pin_count": row.get("pin_count") or row.get("Pin Count") or 0,
+        "mounting_style": _part_field(row, "mounting_style", "Mounting Style"),
+        "voltage_range": _part_field(row, "voltage_range", "Voltage Range"),
+        "temperature_range": _part_field(row, "temperature_range", "Temperature Range"),
+        "channel_count": row.get("channel_count") or row.get("Channel Count") or 0,
+        "architecture": _part_field(row, "architecture", "Architecture"),
+        "lifecycle_status": _part_field(row, "Lifecycle", "lifecycle_status"),
+        "stock_total": row.get("Stock", row.get("stock_total")),
+        "unit_price": row.get("unit_price", row.get("Unit Price")),
+        "lead_time_weeks": row.get("lead_time_weeks"),
+        "bandwidth_mhz": row.get("bandwidth_mhz"),
+        "slew_rate_v_us": row.get("slew_rate_v_us"),
+        "input_offset_mv": row.get("input_offset_mv"),
+        "input_bias_na": row.get("input_bias_na"),
+        "quiescent_current_ma": row.get("quiescent_current_ma"),
+        "gbw_mhz": row.get("gbw_mhz"),
+        "source": _part_field(row, "Supplier", "source") or "DigiKey",
+        "field_sources": row.get("field_sources") if isinstance(row.get("field_sources"), dict) else {},
+        "manufacturer_part_number": _candidate_mpn(row),
+    }
+
+
+def _comparison_table(rows: list[tuple]) -> str:
+    body = []
+    for row in rows:
+        label, original, original_source, candidate, candidate_source, status = row[:6]
+        note = row[6] if len(row) > 6 else ""
+        evidence = row[7] if len(row) > 7 else ""
+        finding, why = _finding_label(status, original, candidate, evidence)
+        if finding == "Unknown":
+            why = (
+                f"{label} was not in either supplier record. "
+                "Check the datasheet or product page before treating it as a match."
+            )
+        kind = {
+            "Compatible": "compatible",
+            "Needs review": "review",
+            "Known conflict": "conflict",
+        }.get(finding, "unknown")
+        body.append(
+            "<tr>"
+            f"<td>{_esc(label)}</td>"
+            f"<td>{_value_cell(original, original_source, note)}</td>"
+            f"<td>{_value_cell(candidate, candidate_source)}</td>"
+            f"<td><span class='cv-finding {kind}'>{_esc(finding)}</span><small>{_esc(why)}</small></td>"
+            "</tr>"
+        )
+    return (
+        "<table class='cv-candidate-compare'><thead><tr>"
+        "<th>Attribute</th><th>Original</th><th>Candidate</th><th>Finding</th>"
+        f"</tr></thead><tbody>{''.join(body)}</tbody></table>"
+    )
+
+
+def _candidate_detail_html(row: dict[str, Any], original: dict[str, Any] | None = None) -> str:
+    """Compare one candidate with the original using retrieved supplier evidence."""
+    from src.datasheet_comparison import build_datasheet_comparison
+    from src.risk_engine import recorded_supply_factors
+
+    original = original if isinstance(original, dict) else {}
+    candidate = _candidate_part_payload(row)
+    mpn = _candidate_mpn(row)
+    original_mpn = _part_field(original, "manufacturer_part_number", "mpn") or "Original"
+    classification = _part_field(row, "Classification", "Category")
+    verified = classification == "Verified direct substitute"
+    comparison = build_datasheet_comparison(original, candidate)
+    technical = []
+    for item in comparison.get("rows") or []:
+        key = str(item.get("Key") or "")
+        if key == "lifecycle_status":
+            continue
+        label = str(item.get("Attribute") or key)
+        original_value = str(item.get("Original") or "")
+        candidate_value = str(item.get("Candidate") or "")
+        if original_value.casefold() in _CANDIDATE_BLANK or original_value.casefold() == "not available":
+            original_value = ""
+        if candidate_value.casefold() in _CANDIDATE_BLANK or candidate_value.casefold() == "not available":
+            candidate_value = ""
+        status = str(item.get("Status") or "")
+        evidence = str(item.get("Evidence") or "")
+        if key == "architecture" and status == "Different" and original_value and candidate_value:
+            status = "Needs review"
+            evidence = "The supplier category labels differ. This is not a verified functional conflict."
+        if key == "voltage_range" and original_value and candidate_value:
+            from src.parametric_compare import supply_range_finding
+
+            covered = supply_range_finding(original_value, candidate_value)
+            if covered:
+                status, evidence = covered
+        if key == "input_bias_na" and original_value and candidate_value:
+            from src.parametric_compare import bias_condition_finding
+
+            judged = bias_condition_finding(
+                original_value,
+                candidate_value,
+                design_limit=original.get("input_bias_design_limit")
+                or original.get("design_limit_input_bias"),
+            )
+            if judged:
+                status, evidence = judged
+        if key == "temperature_range" and original_value and candidate_value:
+            import re
+
+            stripped = [
+                re.sub(r"\s*\([^)]*\)", "", value).strip()
+                for value in (original_value, candidate_value)
+            ]
+            if stripped[0].casefold() == stripped[1].casefold():
+                status = "Match"
+                evidence = "The temperature ranges match. A parenthetical note such as (TA) is the measurement condition, not a second limit."
+        notes = original.get("field_source_notes") if isinstance(original.get("field_source_notes"), dict) else {}
+        technical.append((
+            label,
+            original_value,
+            _field_source(original, key),
+            candidate_value,
+            _field_source(candidate, key, candidate.get("source") or "DigiKey"),
+            status,
+            str(notes.get(key) or ""),
+            evidence,
+        ))
+        conflicts = [
+            item[0]
+            for item in technical
+            if _finding_label(item[5], item[1], item[3], item[7] if len(item) > 7 else "")[0] == "Known conflict"
+        ]
+    if conflicts:
+        fit = (
+            "Technical fit is not established. Known conflicts: "
+            + ", ".join(conflicts)
+            + ". Part-number or family similarity is not compatibility evidence."
+        )
+    else:
+        fit = (
+            "Technical fit is not established. No retrieved attribute was a known conflict, "
+            "but missing evidence still has to be checked. Part-number or family similarity "
+            "is not compatibility evidence."
+        )
+    if verified:
+        relationship = (
+            "The supplier recorded this as a verified direct substitute. "
+            "That relationship is not an approval to use the part."
+        )
+    else:
+        relationship = "Compatibility is not verified."
+        if classification:
+            relationship += f" Supplier classification: {classification}."
+    recommendation = _part_field(row, "Recommendation")
+    next_step = recommendation or "Check the datasheet, footprint, and qualification before use."
+
+    supply_rows = []
+    supply_specs = (
+        ("Manufacturer", "manufacturer", "manufacturer"),
+        ("Lifecycle", "lifecycle_status", "lifecycle_status"),
+        ("Stock", "stock_total", "stock_total"),
+        ("Lead time", "lead_time_weeks", "lead_time_weeks"),
+        ("Unit price", "unit_price", "unit_price"),
+        ("Distributor", "source", "source"),
+    )
+    for label, original_key, candidate_key in supply_specs:
+        original_value = _part_field(original, original_key)
+        candidate_value = _part_field(candidate, candidate_key)
+        if original_key == "stock_total" and original.get("stock_total") not in (None, ""):
+            original_value = f"{_num(original.get('stock_total')):,}"
+        if candidate_key == "stock_total" and candidate.get("stock_total") not in (None, ""):
+            candidate_value = f"{_num(candidate.get('stock_total')):,}"
+        if original_key == "lead_time_weeks" and _evidence_number(original.get("lead_time_weeks")):
+            original_value = f"{original.get('lead_time_weeks')} weeks"
+        if candidate_key == "lead_time_weeks" and _evidence_number(candidate.get("lead_time_weeks")):
+            candidate_value = f"{candidate.get('lead_time_weeks')} weeks"
+        if original_key == "unit_price" and _evidence_number(original.get("unit_price"), positive=True):
+            original_value = f"${float(original.get('unit_price')):.4f}".rstrip("0").rstrip(".")
+        if candidate_key == "unit_price" and _evidence_number(candidate.get("unit_price"), positive=True):
+            candidate_value = f"${float(candidate.get('unit_price')):.4f}".rstrip("0").rstrip(".")
+        status = "Match" if original_value and candidate_value and original_value.casefold() == candidate_value.casefold() else "Different"
+        if label in {"Stock", "Unit price", "Distributor", "Manufacturer", "Lead time"} and original_value and candidate_value and status == "Different":
+            status = "Needs review"
+        supply_evidence = ""
+        if label == "Lead time" and status == "Needs review":
+            supply_evidence = (
+                "Both records include a lead time. The difference is schedule evidence, "
+                "not electrical compatibility."
+            )
+        elif label == "Lifecycle" and status == "Different":
+            supply_evidence = (
+                "Lifecycle status differs. This is supply evidence and is separate from electrical fit."
+            )
+        supply_rows.append((
+            label,
+            original_value,
+            _field_source(original, original_key, str(original.get("source") or "")),
+            candidate_value,
+            _field_source(candidate, candidate_key, str(candidate.get("source") or "")),
+            status,
+            "",
+            supply_evidence,
+        ))
+
+    factors = recorded_supply_factors({
+        "lifecycle_status": candidate.get("lifecycle_status"),
+        "stock_total": candidate.get("stock_total"),
+        "lead_time_weeks": candidate.get("lead_time_weeks"),
+        "source": candidate.get("source") or "DigiKey",
+        "quantity": 0,
+    })
+    factor_html = []
+    applied_points = 0
+    for factor in factors:
+        reasons = factor["reasons"] or ["Cadivor's recorded-data rules did not add a penalty for this value."]
+        if factor["factor"] == "Stock" and not factor["reasons"]:
+            reasons = ["No BOM quantity was supplied, so shortage rules were not applied."]
+        applied_points += int(factor["points"])
+        factor_html.append(
+            f"<li><strong>{_esc(factor['factor'])}:</strong> {_esc(factor['recorded'])} "
+            f"({_esc(factor['source'] or 'Supplier')}). {_esc(' '.join(reasons))}</li>"
+        )
+    if candidate.get("lead_time_weeks") in (None, ""):
+        factor_html.append(
+            "<li><strong>Lead time:</strong> Unknown. DigiKey's manufacturer lead time was not in this record. "
+            "Use the product page or datasheet before judging schedule risk.</li>"
+        )
+    factor_html.append(
+        "<li><strong>Supplier diversity:</strong> Unknown. This row is one distributor listing, "
+        "not a manufacturer source count, so Cadivor's single-source rule was not applied.</li>"
+    )
+    risk_html = (
+        "<p>Supply and lifecycle risk is separate from technical fit. "
+        f"Recorded-factor points under Cadivor's existing rules: {applied_points}. "
+        "Rules without evidence were not scored.</p>"
+        f"<ul>{''.join(factor_html)}</ul>"
+    )
+    links = _detail_links(original, row)
+    return (
+        f'<div class="cv-candidate-detail" data-candidate-mpn="{_esc(mpn)}">'
+        f'<p class="cv-candidate-title">{_esc(mpn)} compared with {_esc(original_mpn)}</p>'
+        f"<p class='cv-candidate-unverified'>{_esc(relationship)} {_esc(fit)}</p>"
+        "<p class='cv-candidate-section'>Does it technically fit?</p>"
+        f"{_comparison_table(technical)}"
+        "<p class='cv-candidate-section'>Supply and lifecycle risk</p>"
+        f"{_comparison_table(supply_rows)}"
+        f"{risk_html}"
+        f"<p><strong>Next step.</strong> {_esc(next_step)}</p>"
+        f"<p class='cv-candidate-links'>{links}</p>"
+        "</div>"
+    )
+
+
+def _evidence_number(value: Any, positive: bool = False) -> bool:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return False
+    return number > 0 if positive else True
+
+
+def _detail_links(original: dict[str, Any], row: dict[str, Any]) -> str:
+    links = []
+    for label, source in (
+        (f"{_part_field(original, 'manufacturer_part_number') or 'Original'} product page", original),
+        (f"{_candidate_mpn(row)} product page", row),
+        (f"{_candidate_mpn(row)} datasheet", row),
+    ):
+        url = ""
+        for key in ("product_detail_url", "Product URL", "Source URL", "datasheet_url", "Datasheet URL"):
+            if "datasheet" in label.casefold() and "data" not in key.casefold() and "Datasheet" not in key:
+                continue
+            if "product page" in label.casefold() and "data" in key.casefold():
+                continue
+            url = _candidate_http_url(source.get(key) if isinstance(source, dict) else "")
+            if url:
+                break
+        if url and url not in {item[1] for item in links}:
+            links.append((label, url))
+    if not links:
+        return "No supplier or datasheet link was recorded."
+    return " ".join(
+        f'<a href="{html.escape(url, quote=True)}" rel="noopener noreferrer">{_esc(label)}</a>'
+        for label, url in links
+    )
+
+
 def begin_approved_page() -> None:
     st.markdown(
         """
@@ -186,6 +548,32 @@ def begin_approved_page() -> None:
         .cv-ap-template p{margin:0 0 12px;color:#64748b;font-size:13px}
         .cv-ap-chip{display:inline-flex;margin-right:6px;padding:2px 8px;border-radius:999px;background:#e0e7ff;color:#3730a3;font-size:11px;font-weight:750}
         .cv-ap-chip-icon{width:36px;height:36px;vertical-align:middle;margin-right:8px}
+        [class*="st-key-cv_candidate_hit_"]{position:relative;border-radius:12px;transition:background .15s ease,box-shadow .15s ease}
+        [class*="st-key-cv_candidate_hit_"]:hover{background:#f8fbff}
+        [class*="st-key-cv_candidate_hit_"]:has(button:focus-visible){background:#f8fbff;box-shadow:inset 0 0 0 2px #bfdbfe}
+        [class*="st-key-cv_candidate_row_open_"] [class*="st-key-cv_candidate_hit_"]{background:#f8fbff}
+        [class*="st-key-cv_candidate_hit_"] [data-testid="stHorizontalBlock"],[class*="st-key-cv_candidate_hit_"] [data-testid="stColumn"],[class*="st-key-cv_candidate_hit_"] [data-testid="column"],[class*="st-key-cv_candidate_hit_"] [class*="st-key-cv_candidate_open_"],[class*="st-key-cv_candidate_hit_"] [data-testid="stButton"]{position:static !important;overflow:visible !important}
+        [class*="st-key-cv_candidate_open_"] button{position:static !important;background:transparent !important;border:0 !important;box-shadow:none !important;color:#2563eb !important;font-weight:750 !important;padding:0 !important;min-height:0 !important;height:auto !important;justify-content:flex-start !important;text-align:left !important}
+        [class*="st-key-cv_candidate_open_"] button p,[class*="st-key-cv_candidate_open_"] button span{color:#2563eb !important}
+        [class*="st-key-cv_candidate_hit_"]:hover [class*="st-key-cv_candidate_open_"] button{text-decoration:underline;text-underline-offset:3px}
+        [class*="st-key-cv_candidate_open_"] button::before{content:"";position:absolute;inset:0;z-index:2;cursor:pointer}
+        .cv-candidate-detail{margin:4px 0 12px;padding:14px 16px;border:1px solid #e6edf5;border-radius:14px;background:#fff}
+        .cv-candidate-title,.cv-candidate-section{margin:12px 0 6px;font-size:16px;font-weight:750;color:#0f172a}
+        .cv-candidate-compare{width:100%;border-collapse:collapse;margin:0 0 8px}
+        .cv-candidate-compare th,.cv-candidate-compare td{text-align:left;vertical-align:top;padding:8px 10px;border-top:1px solid #e6edf5;font-size:13px}
+        .cv-candidate-compare th{font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:#64748b}
+        .cv-candidate-compare small{display:block;color:#64748b;font-size:11px;margin-top:3px}
+        .cv-finding{display:inline-flex;border-radius:999px;padding:2px 8px;font-size:12px;font-weight:750}
+        .cv-finding.compatible{background:#dcfce7;color:#166534}
+        .cv-finding.review{background:#fef3c7;color:#92400e}
+        .cv-finding.conflict{background:#ffe4e6;color:#9f1239}
+        .cv-finding.unknown{background:#f1f5f9;color:#475569}
+        .cv-candidate-unverified{margin:0 0 10px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:8px 10px;font-size:13px}
+        .cv-candidate-verified{margin:0 0 10px;color:#1e3a8a;background:#eff6ff;border:1px solid #dbeafe;border-radius:10px;padding:8px 10px;font-size:13px}
+        .cv-candidate-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 18px;margin:0}
+        .cv-candidate-facts div{font-size:13px}
+        .cv-candidate-facts span{display:block;color:#64748b;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+        .cv-candidate-links a{color:#2563eb}
         .cv-ap-banner{background:#eff6ff;border:1px solid #dbeafe;border-radius:16px;padding:18px 20px;margin-bottom:14px}
         .cv-ap-split{display:grid;grid-template-columns:1.4fr .8fr;gap:14px}
         .cv-ap-chart{background:#fff;border:1px solid #e6edf5;border-radius:16px;padding:14px 16px 8px;margin:0 0 14px}
@@ -436,13 +824,14 @@ def render_home(
             cells[5].markdown(updated)
             analysis_id = str(row.get("id") or "")
             with cells[6]:
-                _row_actions(
-                    index,
-                    menu_key=f"approved_home_menu_{index}",
-                    open_key=f"approved_home_open_{index}",
-                    destination="Analysis Details",
-                    analysis_id=analysis_id,
-                )
+                if analysis_id:
+                    internal_nav_button(
+                        "Open",
+                        "Analysis Details",
+                        key=f"approved_home_open_{index}",
+                        type="primary",
+                        analysis_id=analysis_id,
+                    )
     if plan_notice and st.button("Compare plans", key="approved_home_compare_plans"):
         navigate_to("Pricing")
     end_approved_page()
@@ -523,22 +912,12 @@ def render_bom_catalog(records: list[dict[str, Any]] | None) -> None:
             cells[4].markdown(str(_num(_first(row, "high_risk_count"))))
             cells[5].markdown(_esc(str(_first(row, "created_at", fallback=""))[:10]))
             with cells[6]:
-                open_col, menu_col = st.columns([1.6, 0.7], vertical_alignment="center")
-                with open_col:
-                    if analysis_id:
-                        internal_nav_button(
-                            "Open",
-                            "Analysis Details",
-                            key=f"approved_bom_row_open_{index}",
-                            type="primary",
-                            analysis_id=analysis_id,
-                        )
-                with menu_col:
-                    _row_actions(
-                        index,
-                        menu_key=f"approved_bom_menu_{index}",
-                        open_key=f"approved_bom_open_{index}",
-                        destination="Analysis Details",
+                if analysis_id:
+                    internal_nav_button(
+                        "Open",
+                        "Analysis Details",
+                        key=f"approved_bom_row_open_{index}",
+                        type="primary",
                         analysis_id=analysis_id,
                     )
     if st.session_state.get("cadivor_bom_upload_open"):
@@ -570,6 +949,16 @@ def render_bom_catalog(records: list[dict[str, Any]] | None) -> None:
 def render_decision_queue(records: list[dict[str, Any]] | None) -> None:
     begin_approved_page()
     source = _records(records)
+    st.markdown(
+        """
+        <div class="cv-ap">
+          <p class="cv-ap-kicker">ENGINEERING</p>
+          <h1>Engineering decisions</h1>
+          <p class="cv-ap-sub">Track and resolve key engineering decisions that impact your products, BOMs and supply chain.</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
     query = st.text_input("Search components, decisions or owners", key="approved_decision_search")
     filter_col, sort_col = st.columns(2)
     with filter_col:
@@ -603,9 +992,6 @@ def render_decision_queue(records: list[dict[str, Any]] | None) -> None:
     st.markdown(
         f"""
         <div class="cv-ap">
-          <p class="cv-ap-kicker">ENGINEERING</p>
-          <h1>Engineering decisions</h1>
-          <p class="cv-ap-sub">Track and resolve key engineering decisions that impact your products, BOMs and supply chain.</p>
           <section class="cv-ap-kpis">
             <article class="cv-ap-kpi"><div class="cv-ap-kpi-top"><span class="cv-ap-ico">☰</span><span>Open decisions</span></div><strong>{open_count}</strong></article>
             <article class="cv-ap-kpi"><div class="cv-ap-kpi-top"><span class="cv-ap-ico">!</span><span>Overdue</span></div><strong>{overdue}</strong></article>
@@ -635,7 +1021,10 @@ def render_decision_queue(records: list[dict[str, Any]] | None) -> None:
         due_label = _esc(str(due)[:10]) if due else "Not recorded"
         photo = part_photo(str(_first(row, "image_url", "photo_url", "image", fallback="") or ""), size=48, part=row)
         cells = st.columns([1.7, 1.8, 0.8, 0.9, 0.9, 0.9, 1.3], vertical_alignment="center")
-        cells[0].markdown(f"{photo}<span class='cv-ap-name'>{_esc(mpn)}</span>{subtitle}", unsafe_allow_html=True)
+        cells[0].markdown(
+            f"<div class='cv-ei-part'>{photo}<span class='cv-ei-part-copy'><span class='cv-ap-name'>{_esc(mpn)}</span>{subtitle}</span></div>",
+            unsafe_allow_html=True,
+        )
         cells[1].markdown(_esc(_first(row, "title", "summary", "alert_message", fallback="Engineering decision")))
         cells[2].markdown(f"<span class='cv-pill {kind}'>{_esc(level)}</span>", unsafe_allow_html=True)
         cells[3].markdown(f"<span class='cv-pill open'>{_esc(status)}</span>", unsafe_allow_html=True)
@@ -643,22 +1032,13 @@ def render_decision_queue(records: list[dict[str, Any]] | None) -> None:
         cells[5].markdown(due_label)
         analysis_id = str(row.get("analysis_id") or "")
         with cells[6]:
-            review, menu = st.columns([2.2, 0.8])
-            with review:
-                if st.button("Review", key=f"approved_decision_review_{index}", type="primary"):
-                    if analysis_id:
-                        st.session_state["cadivor_active_analysis_id"] = analysis_id
-                        navigate_to("Analysis Details")
-                    else:
-                        st.session_state["cadivor_decision_focus_mpn"] = mpn
-            with menu:
-                _row_actions(
-                    index,
-                    menu_key=f"approved_decision_menu_{index}",
-                    open_key=f"approved_decision_open_{index}",
-                    destination="Analysis Details",
-                    analysis_id=analysis_id,
-                )
+            if st.button("Review", key=f"approved_decision_review_{index}", type="primary"):
+                if analysis_id:
+                    st.session_state["cadivor_active_analysis_id"] = analysis_id
+                    st.session_state["analysis_id"] = analysis_id
+                    navigate_to("Analysis Details", analysis_id=analysis_id)
+                else:
+                    st.session_state["cadivor_decision_focus_mpn"] = mpn
     end_approved_page()
 
 
@@ -708,6 +1088,15 @@ def _next_action(row: dict[str, Any]) -> tuple[str, str]:
 def render_monitoring(alerts: list[dict[str, Any]] | None) -> None:
     begin_approved_page()
     source = _records(alerts)
+    st.markdown(
+        """
+        <div class="cv-ap">
+          <h1>Alerts & monitoring</h1>
+          <p class="cv-ap-sub">Stay ahead of changes in component availability, lifecycle status, pricing and supplier activity.</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
     selected = st.segmented_control(
         "Show",
         ["All alerts", "Stock & supply", "Lifecycle", "Price movement", "Supplier", "Quality", "Regulatory"],
@@ -734,8 +1123,6 @@ def render_monitoring(alerts: list[dict[str, Any]] | None) -> None:
     st.markdown(
         f"""
         <div class="cv-ap">
-          <h1>Alerts & monitoring</h1>
-          <p class="cv-ap-sub">Stay ahead of changes in component availability, lifecycle status, pricing and supplier activity.</p>
           <section class="cv-ap-kpis">
             <article class="cv-ap-kpi cv-ap-kpi-row"><div><span>Active alerts</span><strong>{len(source)}</strong></div>{active_spark}</article>
             <article class="cv-ap-kpi cv-ap-kpi-row"><div><span>High priority</span><strong>{high}</strong></div>{high_spark}</article>
@@ -816,13 +1203,14 @@ def render_reports_list(records: list[dict[str, Any]] | None) -> None:
             cells[4].markdown(str(_num(_first(row, "high_risk_count"))))
             analysis_id = str(row.get("id") or "")
             with cells[5]:
-                _row_actions(
-                    index,
-                    menu_key=f"approved_report_menu_{index}",
-                    open_key=f"approved_report_open_{index}",
-                    destination="Analysis Details",
-                    analysis_id=analysis_id,
-                )
+                if analysis_id:
+                    internal_nav_button(
+                        "Open",
+                        "Analysis Details",
+                        key=f"approved_report_open_{index}",
+                        type="primary",
+                        analysis_id=analysis_id,
+                    )
     end_approved_page()
 
 
@@ -897,19 +1285,6 @@ def part_photo(url: str = "", size: int = 72, part: dict[str, Any] | None = None
 
 def part_thumbnail(seed: str = "", url: str = "") -> str:
     return part_photo(url)
-
-
-def _row_actions(index: int, *, menu_key: str, open_key: str, destination: str, analysis_id: str) -> None:
-    """Open the row menu first. Navigation runs only after Open is chosen."""
-    with st.container(key=menu_key):
-        with st.popover("⋯", use_container_width=False):
-            internal_nav_button(
-                "Open",
-                destination,
-                key=open_key,
-                type="secondary",
-                analysis_id=analysis_id,
-            )
 
 
 def _prior_delta(rows: list[dict[str, Any]], *prior_keys: str) -> str:
@@ -1249,11 +1624,12 @@ def render_replacement_search() -> None:
         query = st.text_input("Search MPN", key="approved_replacement_query")
     with button_col:
         run = st.button("Search", key="approved_replacement_search", type="primary")
+    query = str(query or st.session_state.get("approved_replacement_query") or "").strip()
     result = st.session_state.get("alternative_finder_result")
-    if run and query.strip():
+    if run and query:
         from src.alternative_finder_search import run_alternative_finder_search
 
-        run_alternative_finder_search(st.session_state, query.strip())
+        run_alternative_finder_search(st.session_state, query)
         result = st.session_state.get("alternative_finder_result")
     original = {}
     candidates: list[dict[str, Any]] = []
@@ -1298,27 +1674,72 @@ def render_replacement_search() -> None:
     manufacturer = _esc(original.get("manufacturer") or original.get("Manufacturer") or original.get("manufacturer_name") or "—")
     description = _esc(original.get("description") or original.get("category") or "")
     notice = ""
+    lookup_error = ""
+    search_error = ""
+    candidate_status = ""
     if isinstance(result, dict):
-        notice = str(result.get("search_error") or result.get("lookup_error") or "").strip()
-    if query.strip() and isinstance(result, dict) and not candidates and not notice:
-        notice = "No supplier alternatives were returned for this part."
-    elif dropped and not notice:
-        notice = f"{dropped} supplier row{'s' if dropped != 1 else ''} had no part number and {'were' if dropped != 1 else 'was'} left out."
+        lookup_error = str(result.get("lookup_error") or "").strip()
+        search_error = str(result.get("search_error") or "").strip()
+        discovery = result.get("discovery_metadata")
+        if isinstance(discovery, dict):
+            candidate_status = str(discovery.get("candidate_status") or "").strip()
+    source_notice = lookup_error
+    candidate_notice = ""
+    if query.strip() and isinstance(result, dict) and not candidates:
+        candidate_notice = search_error or candidate_status or "No replacement candidates were returned for this part."
+    elif dropped:
+        candidate_notice = (
+            f"{dropped} supplier row{'s' if dropped != 1 else ''} had no part number "
+            f"and {'were' if dropped != 1 else 'was'} left out."
+        )
+    notice = candidate_notice
     shown = candidates[:25]
-    body = []
+    if len(candidates) > len(shown) and not notice:
+        notice = f"Showing {len(shown)} of {len(candidates)} supplier alternatives."
+    notice_html = f"<p class='cv-ap-sub'>{_esc(notice)}</p>" if notice and shown else ""
+    if not shown and not notice:
+        notice_html = "<p class='cv-ap-sub'>Search a manufacturer part number. Results come from the live supplier search.</p>"
+    elif not shown and notice:
+        notice_html = f"<p class='cv-ap-sub'>{_esc(notice)}</p>"
+    source_html = f"<p class='cv-ap-sub'>{_esc(source_notice)}</p>" if source_notice else ""
+    st.markdown(
+        f"""
+        <div class="cv-ap">
+          <h1>Find a replacement</h1>
+          <p class="cv-ap-sub">Search for a part to find compatible alternatives across suppliers.</p>
+          {source_html}
+          <section class="cv-ap-card">
+            <div class="cv-ap-meta">Source part</div>
+            <div class="cv-ei-part">{part_photo(str(original.get('image_url') or original.get('photo_url') or ''), part=original)}<span class="cv-ei-part-copy"><span class="cv-ap-name">{mpn}</span><span class="cv-ei-meta">{description}</span></span></div>
+            <p>Manufacturer {manufacturer}</p>
+          </section>
+          {notice_html}
+          <h2>Replacement options ({len(candidates)})</h2>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
     from src.part_images import part_image_markup
 
-    for row in shown:
-        level = _candidate_field(row, "Estimated Risk", "risk_level", "risk")
-        kind = ""
+    header = st.columns([2.4, 1.3, 1.8, 0.9, 0.8, 0.9, 0.7])
+    for column, label in zip(
+        header,
+        ("Candidate MPN", "Manufacturer", "Parametric fit", "Lifecycle", "Stock", "Suppliers", "Risk"),
+    ):
+        column.markdown(f"<div class='cv-ap-meta'>{label}</div>", unsafe_allow_html=True)
+    selected = str(st.session_state.get("cadivor_replacement_open_mpn") or "")
+    for index, row in enumerate(shown):
+        candidate_mpn = _candidate_mpn(row)
+        is_open = candidate_mpn == selected
+        level = _candidate_field(row, "Estimated Risk", "risk_level", "risk", fallback="Unknown")
+        pill = ""
         if "high" in level.casefold():
-            kind = "high"
+            pill = "high"
         elif "low" in level.casefold():
-            kind = "low"
+            pill = "low"
         elif "medium" in level.casefold():
-            kind = "medium"
-        level_html = f"<span class='cv-pill {kind}'>{level}</span>" if kind else level
-        candidate = _esc(_candidate_mpn(row))
+            pill = "medium"
+        level_html = f"<span class='cv-pill {pill}'>{level}</span>" if pill else level
         discovery = row.get("_discovery_row") if isinstance(row.get("_discovery_row"), dict) else {}
         image = str(
             row.get("image_url")
@@ -1328,44 +1749,34 @@ def render_replacement_search() -> None:
             or discovery.get("photo_url")
             or ""
         )
-        body.append(
-            "<tr>"
-            f"<td>{part_image_markup(image, _candidate_mpn(row), size=48, part=row)}<span class='cv-ap-name'>{candidate}</span></td>"
-            f"<td>{_candidate_field(row, 'Manufacturer', 'manufacturer')}</td>"
-            f"<td>{_candidate_field(row, 'Classification', 'Category', 'fit', 'parametric_fit')}</td>"
-            f"<td>{_candidate_field(row, 'Lifecycle', 'lifecycle_status', 'lifecycle')}</td>"
-            f"<td>{_candidate_field(row, 'Stock', 'stock_total', 'stock_available')}</td>"
-            f"<td>{_candidate_field(row, 'Supplier', 'supplier_count', 'supplier')}</td>"
-            f"<td>{level_html}</td>"
-            "</tr>"
-        )
-    if len(candidates) > len(shown) and not notice:
-        notice = f"Showing {len(shown)} of {len(candidates)} supplier alternatives."
-    notice_html = f"<p class='cv-ap-sub'>{_esc(notice)}</p>" if notice and body else ""
-    if not body:
-        empty = _esc(notice or "Search a manufacturer part number. Results come from the live supplier search.")
-        body.append(f"<tr><td colspan='7'>{empty}</td></tr>")
-        notice_html = ""
-    st.markdown(
-        f"""
-        <div class="cv-ap">
-          <h1>Find a replacement</h1>
-          <p class="cv-ap-sub">Search for a part to find compatible alternatives across suppliers.</p>
-          <section class="cv-ap-card">
-            <div class="cv-ap-meta">Source part</div>
-            <div>{part_photo(str(original.get('image_url') or original.get('photo_url') or ''), part=original)}<span class="cv-ap-name">{mpn}</span></div>
-            <p class="cv-ap-meta">{description}</p>
-            <p>Manufacturer {manufacturer}</p>
-          </section>
-          {notice_html}
-          <h2>Replacement options ({len(candidates)})</h2>
-          <section class="cv-ap-card"><table class="cv-ap-table"><thead><tr>
-            <th>Candidate MPN</th><th>Manufacturer</th><th>Parametric fit</th><th>Lifecycle</th><th>Stock</th><th>Suppliers</th><th>Risk</th>
-          </tr></thead><tbody>{''.join(body)}</tbody></table></section>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+        row_key = f"cv_candidate_row_{'open' if is_open else 'shut'}_{index}"
+        with st.container(key=row_key):
+            with st.container(key=f"cv_candidate_hit_{index}"):
+                cells = st.columns([2.4, 1.3, 1.8, 0.9, 0.8, 0.9, 0.7], vertical_alignment="center")
+                with cells[0]:
+                    photo_col, name_col = st.columns([0.35, 1.5], vertical_alignment="center")
+                    photo_col.markdown(
+                        part_image_markup(image, candidate_mpn, size=48, part=row),
+                        unsafe_allow_html=True,
+                    )
+                    if name_col.button(
+                        candidate_mpn,
+                        key=f"cv_candidate_open_{index}",
+                        help=(
+                            f"Show recorded details for {candidate_mpn}. "
+                            "Press Enter or Space."
+                        ),
+                    ):
+                        st.session_state["cadivor_replacement_open_mpn"] = "" if is_open else candidate_mpn
+                        st.rerun()
+                cells[1].markdown(_candidate_field(row, "Manufacturer", "manufacturer"))
+                cells[2].markdown(_candidate_field(row, "Classification", "Category", "fit", "parametric_fit"))
+                cells[3].markdown(_candidate_field(row, "Lifecycle", "lifecycle_status", "lifecycle"))
+                cells[4].markdown(_candidate_field(row, "Stock", "stock_total", "stock_available"))
+                cells[5].markdown(_candidate_field(row, "Supplier", "supplier_count", "supplier"))
+                cells[6].markdown(level_html, unsafe_allow_html=True)
+            if is_open:
+                st.markdown(_candidate_detail_html(row, original), unsafe_allow_html=True)
     for index, row in enumerate(candidates[:5]):
         candidate = _candidate_mpn(row)
         if candidate and st.button(f"Compare {candidate}", key=f"approved_replacement_compare_{index}"):
@@ -1378,17 +1789,59 @@ def render_replacement_search() -> None:
 def render_compare_live() -> None:
     """Compare-parts layout wired to the live two-part comparison."""
     begin_approved_page()
-    from src.parts_compare import run_compare_parts
+    from src.parts_compare import resolve_compare_parts_submitted_mpn, run_compare_parts
 
     st.session_state.setdefault("approved_compare_a", str(st.session_state.get("cadivor_compare_part_a") or ""))
     st.session_state.setdefault("approved_compare_b", str(st.session_state.get("cadivor_compare_part_b") or ""))
-    left, right = st.columns(2)
-    with left:
-        part_a = st.text_input("Part A", key="approved_compare_a")
-    with right:
-        part_b = st.text_input("Part B", key="approved_compare_b")
-    if st.button("Compare parts", key="approved_compare_run", type="primary") and part_a.strip() and part_b.strip():
-        st.session_state["cadivor_compare_result"] = run_compare_parts(part_a.strip(), part_b.strip())
+    st.markdown(
+        """
+        <div class="cv-ap">
+          <p class="cv-ap-kicker">PARTS</p>
+          <h1>Compare parts</h1>
+          <p class="cv-ap-sub">Compare key parameters, identify differences, and find the best fit for your design.</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    with st.form("approved_compare_form", clear_on_submit=False):
+        left, right = st.columns(2)
+        with left:
+            entered_a = st.text_input("Part A", key="approved_compare_a")
+        with right:
+            entered_b = st.text_input("Part B", key="approved_compare_b")
+        submitted = st.form_submit_button(
+            "Compare parts",
+            type="primary",
+            key="approved_compare_run",
+        )
+    part_a = resolve_compare_parts_submitted_mpn(
+        entered_a,
+        st.session_state.get("approved_compare_a"),
+        st.session_state.get("cadivor_compare_part_a"),
+    )
+    part_b = resolve_compare_parts_submitted_mpn(
+        entered_b,
+        st.session_state.get("approved_compare_b"),
+        st.session_state.get("cadivor_compare_part_b"),
+    )
+    if submitted:
+        if part_a and part_b:
+            try:
+                st.session_state["cadivor_compare_result"] = run_compare_parts(part_a, part_b)
+            except Exception:
+                st.session_state["cadivor_compare_result"] = {
+                    "status": "failed",
+                    "part_a": part_a,
+                    "part_b": part_b,
+                    "error": "Cadivor could not complete this comparison right now. Please try again.",
+                }
+        else:
+            st.session_state["cadivor_compare_result"] = {
+                "status": "failed",
+                "part_a": part_a,
+                "part_b": part_b,
+                "error": "Enter both Part A and Part B manufacturer part numbers.",
+            }
     result = st.session_state.get("cadivor_compare_result")
     comparison = result.get("comparison") if isinstance(result, dict) else {}
     if not isinstance(comparison, dict):
@@ -1398,42 +1851,80 @@ def render_compare_live() -> None:
     card_b = comparison.get("part_b") if isinstance(comparison.get("part_b"), dict) else {}
     rows = comparison.get("rows") if isinstance(comparison.get("rows"), list) else []
     body = []
-    for row in rows[:12]:
+    missing = {"", "—", "-", "–", "not available", "not recorded", "n/a", "none", "nan"}
+
+    def _recorded(row: dict[str, Any], *keys: str) -> str:
+        for key in keys:
+            text = str(row.get(key) or "").strip()
+            if text and text.casefold() not in missing:
+                return text
+        return ""
+
+    for row in rows[:24]:
         if not isinstance(row, dict):
             continue
-        label = _esc(row.get("label") or row.get("parameter") or row.get("field") or "Parameter")
-        raw_a = str(row.get("part_a") or row.get("a") or row.get("value_a") or "—")
-        raw_b = str(row.get("part_b") or row.get("b") or row.get("value_b") or "—")
-        value_a = _esc(raw_a)
-        value_b = _esc(raw_b)
-        highlight = " style='background:#eff6ff'" if raw_a.strip() != raw_b.strip() else ""
-        body.append(f"<tr><td>{label}</td><td{highlight}>{value_a}</td><td{highlight}>{value_b}</td><td></td></tr>")
+        label = _recorded(row, "Attribute", "label", "parameter", "field")
+        if not label or label.casefold() == "parameter":
+            continue
+        raw_a = _recorded(row, "Part A", "part_a", "a", "value_a", "Original")
+        raw_b = _recorded(row, "Part B", "part_b", "b", "value_b", "Candidate")
+        if not raw_a and not raw_b:
+            continue
+        value_a = _esc(raw_a or "Not recorded")
+        value_b = _esc(raw_b or "Not recorded")
+        highlight = " style='background:#eff6ff'" if raw_a != raw_b else ""
+        assessment = _recorded(row, "Assessment", "Result", "Status")
+        note = f"<div class='cv-ap-meta'>{_esc(assessment)}</div>" if assessment else ""
+        body.append(
+            f"<tr><td>{_esc(label)}{note}</td><td{highlight}>{value_a}</td><td{highlight}>{value_b}</td><td></td></tr>"
+        )
+    ran = isinstance(result, dict) and str(result.get("status") or "") in {"completed", "failed"}
+    error = str(result.get("error") if isinstance(result, dict) else "").strip()
     if not body:
-        body.append("<tr><td colspan='4'>Enter two manufacturer part numbers. The third column stays empty until another part is added.</td></tr>")
-    name_a = _esc(card_a.get("mpn") or part_a or "Part A")
-    name_b = _esc(card_b.get("mpn") or part_b or "Part B")
-    error = _esc(result.get("error") if isinstance(result, dict) else "")
-    notice = f"<p class='cv-ap-sub'>{error}</p>" if error and error != "—" else ""
+        if ran and error and error != "—":
+            empty = error
+        elif ran or comparison:
+            empty = "No comparable attributes were recorded for these parts."
+        elif part_a.strip() and part_b.strip():
+            empty = "No comparison is available yet. Run Compare parts to load recorded attributes."
+        else:
+            empty = "Enter two manufacturer part numbers. The third column stays empty until another part is added."
+    else:
+        empty = ""
+    submitted_a = str(result.get("part_a") or "") if isinstance(result, dict) else ""
+    submitted_b = str(result.get("part_b") or "") if isinstance(result, dict) else ""
+    name_a = _esc(card_a.get("mpn") or submitted_a or part_a or "Part A")
+    name_b = _esc(card_b.get("mpn") or submitted_b or part_b or "Part B")
+    notice = ""
+    table = (
+        f"<p class='cv-ap-sub'>{_esc(empty)}</p>"
+        if empty
+        else (
+            "<section class='cv-ap-card'><table class='cv-ap-table'><thead><tr>"
+            f"<th>Parameter</th><th>{name_a}</th><th>{name_b}</th><th>Part C</th>"
+            f"</tr></thead><tbody>{''.join(body)}</tbody></table></section>"
+        )
+    )
+    figures = ""
+    if comparison:
+        figures = (
+            "<section class='cv-ap-kpis three'>"
+            f"<article class='cv-ap-kpi'><span>Compatible fields</span><strong>{_esc(counts.get('compatible', '—'))}</strong></article>"
+            f"<article class='cv-ap-kpi'><span>Material differences</span><strong>{_esc(counts.get('material_difference', '—'))}</strong></article>"
+            f"<article class='cv-ap-kpi'><span>Needs validation</span><strong>{_esc(counts.get('needs_data', '—'))}</strong></article>"
+            "</section>"
+        )
     st.markdown(
         f"""
         <div class="cv-ap">
-          <p class="cv-ap-kicker">PARTS</p>
-          <h1>Compare parts</h1>
-          <p class="cv-ap-sub">Compare key parameters, identify differences, and find the best fit for your design.</p>
           {notice}
-          <section class="cv-ap-kpis three">
-            <article class="cv-ap-kpi"><span>Compatible fields</span><strong>{_esc(counts.get('compatible', '—'))}</strong></article>
-            <article class="cv-ap-kpi"><span>Material differences</span><strong>{_esc(counts.get('material_difference', '—'))}</strong></article>
-            <article class="cv-ap-kpi"><span>Needs validation</span><strong>{_esc(counts.get('needs_data', '—'))}</strong></article>
-          </section>
+          {figures}
           <section class="cv-ap-cards">
-            <article class="cv-ap-template">{part_photo(str(card_a.get('image_url') or card_a.get('photo_url') or ''), part=card_a)}<h3>{name_a}</h3><p>{_esc(card_a.get('description') or card_a.get('manufacturer') or 'Not recorded')}</p></article>
-            <article class="cv-ap-template">{part_photo(str(card_b.get('image_url') or card_b.get('photo_url') or ''), part=card_b)}<h3>{name_b}</h3><p>{_esc(card_b.get('description') or card_b.get('manufacturer') or 'Not recorded')}</p></article>
-            <article class="cv-ap-template">{part_photo('')}<h3>Add part</h3><p>No third candidate is selected.</p></article>
+            <article class="cv-ap-template"><div class="cv-ei-part">{part_photo(str(card_a.get('image_url') or card_a.get('photo_url') or ''), size=48, part=card_a)}<span class="cv-ei-part-copy"><h3>{name_a}</h3><p>{_esc(card_a.get('description') or card_a.get('manufacturer') or 'Not recorded')}</p></span></div></article>
+            <article class="cv-ap-template"><div class="cv-ei-part">{part_photo(str(card_b.get('image_url') or card_b.get('photo_url') or ''), size=48, part=card_b)}<span class="cv-ei-part-copy"><h3>{name_b}</h3><p>{_esc(card_b.get('description') or card_b.get('manufacturer') or 'Not recorded')}</p></span></div></article>
+            <article class="cv-ap-template"><div class="cv-ei-part">{part_photo('', size=48)}<span class="cv-ei-part-copy"><h3>Add part</h3><p>No third candidate is selected.</p></span></div></article>
           </section>
-          <section class="cv-ap-card"><table class="cv-ap-table"><thead><tr>
-            <th>Parameter</th><th>{name_a}</th><th>{name_b}</th><th>Part C</th>
-          </tr></thead><tbody>{''.join(body)}</tbody></table></section>
+          {table}
         </div>
         """,
         unsafe_allow_html=True,

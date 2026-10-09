@@ -142,14 +142,6 @@ def illustration_kind(part: object = None, category: object = None) -> str:
             ("category", ("category_raw", "category", "Category")),
             ("architecture", ("architecture", "Architecture")),
             ("device_type", ("device_type", "Device Type", "device type")),
-            ("manufacturer_part_number", (
-                "manufacturer_part_number",
-                "Manufacturer Part Number",
-                "mpn",
-                "MPN",
-                "part_number",
-                "Part Number",
-            )),
         ):
             for key in keys:
                 value = part.get(key)

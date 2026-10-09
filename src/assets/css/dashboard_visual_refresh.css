@@ -310,14 +310,30 @@ section[data-testid="stMain"] [data-testid="stAlert"] {
 .cv-part-photo__placeholder {
   display: grid !important;
   place-items: center !important;
-  width: 42px !important;
-  height: 42px !important;
+  width: 72% !important;
+  height: 72% !important;
   color: #8aa0bd !important;
 }
 .cv-part-photo__placeholder svg {
   display: block !important;
-  width: 30px !important;
-  height: 30px !important;
+  width: 100% !important;
+  height: 100% !important;
+}
+.cv-ei-part {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 10px !important;
+  min-width: 0 !important;
+}
+.cv-ei-part-copy {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: flex-start !important;
+  min-width: 0 !important;
+}
+.cv-ei-part .cv-part-photo {
+  flex: 0 0 auto !important;
 }
 .cv20-summary--with-photo,
 .cv151-card-layout,
@@ -986,10 +1002,10 @@ section[data-testid="stMain"] .main .block-container {
 
 /* Shared page styling aligned to the approved authenticated mockups. */
 .st-key-cv_foundation_navigation .stButton > button::before {
-  flex-basis: 18px !important;
-  width: 18px !important;
-  height: 18px !important;
-  background-size: 18px 18px !important;
+  flex-basis: 20px !important;
+  width: 20px !important;
+  height: 20px !important;
+  background-size: 20px 20px !important;
 }
 .st-key-cv_foundation_navigation .stButton > button[kind="primary"]::before,
 .st-key-cv_foundation_navigation .stButton > button[data-testid="baseButton-primary"]::before {

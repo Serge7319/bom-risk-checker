@@ -23,6 +23,111 @@ _SECRET_PATTERN = re.compile(
 _BEARER_PATTERN = re.compile(r"(?i)bearer\s+[a-z0-9._\-+/=]{8,}")
 
 
+_SUPPLEMENT_KEYS = (
+    "package",
+    "pin_count",
+    "mounting_style",
+    "voltage_range",
+    "temperature_range",
+    "channel_count",
+    "architecture",
+    "lead_time_weeks",
+    "datasheet_url",
+    "product_detail_url",
+    "bandwidth_mhz",
+    "slew_rate_v_us",
+    "input_offset_mv",
+    "input_bias_na",
+    "quiescent_current_ma",
+    "gbw_mhz",
+)
+
+
+def _evidence_present(key: str, value: Any) -> bool:
+    if value is None:
+        return False
+    if key in {"pin_count", "channel_count"}:
+        try:
+            return int(float(value)) > 0
+        except (TypeError, ValueError):
+            return False
+    if key == "lead_time_weeks":
+        try:
+            float(value)
+        except (TypeError, ValueError):
+            return False
+        return True
+    if key == "unit_price":
+        try:
+            return float(value) > 0
+        except (TypeError, ValueError):
+            return False
+    return bool(str(value).strip())
+
+
+def _supplement_resolved_part_evidence(part: dict) -> dict:
+    """Fill empty original attributes from an exact DigiKey record of the resolved MPN."""
+    if not isinstance(part, dict) or not part:
+        return part
+    canonical = str(part.get("manufacturer_part_number") or "").strip()
+    if not canonical:
+        return part
+    sources = dict(part.get("field_sources") or {})
+    notes = dict(part.get("field_source_notes") or {})
+    primary = str(part.get("source") or "Supplier")
+    for key in _SUPPLEMENT_KEYS:
+        if _evidence_present(key, part.get(key)):
+            sources.setdefault(key, primary)
+    try:
+        from integrations.digikey_client import search_digikey_by_part_number
+
+        extra = search_digikey_by_part_number(canonical) or {}
+    except Exception:
+        extra = {}
+    if str(extra.get("manufacturer_part_number") or "").strip().casefold() != canonical.casefold():
+        extra = {}
+    for key in _SUPPLEMENT_KEYS:
+        if not _evidence_present(key, extra.get(key)):
+            continue
+        if not _evidence_present(key, part.get(key)):
+            part[key] = extra.get(key)
+            sources[key] = "DigiKey"
+            continue
+        current = str(part.get(key)).strip()
+        incoming = str(extra.get(key)).strip()
+        if current.casefold() != incoming.casefold() and sources.get(key) != "DigiKey":
+            notes[key] = f"DigiKey also recorded {incoming}."
+    part["field_sources"] = sources
+    if notes:
+        part["field_source_notes"] = notes
+    return part
+
+
+def _replacement_candidate_cause(discovery: Mapping[str, Any]) -> str:
+    """Describe an empty replacement search from the supplier response."""
+    messages: list[str] = []
+    failures = discovery.get("provider_failures") or []
+    if isinstance(failures, list):
+        for item in failures:
+            if isinstance(item, Mapping):
+                text = str(item.get("message") or item.get("error") or "").strip()
+            else:
+                text = str(item or "").strip()
+            if text and text not in messages:
+                messages.append(_truncate(_redact_secrets(text), 180))
+    providers = discovery.get("providers") or {}
+    if isinstance(providers, Mapping):
+        for name, status in providers.items():
+            if not isinstance(status, Mapping):
+                continue
+            text = str(status.get("message") or "").strip()
+            if text and text not in messages:
+                messages.append(f"{name}: {_truncate(_redact_secrets(text), 160)}")
+    if messages:
+        return "No replacement candidates were returned. " + " ".join(messages[:3])
+    return "No replacement candidates were returned for this part."
+
+
 def _redact_secrets(message: str) -> str:
     text = str(message or "")
     text = _SECRET_PATTERN.sub(r"\1=<redacted>", text)
@@ -301,11 +406,25 @@ def run_alternative_finder_search(
                     safe_risk = calculate_risk(safe_original) or {}
                 except Exception:
                     safe_risk = {}
-                if not safe_original.get("supplier_data_verified"):
-                    safe_lookup_error = (
-                        f'No exact supplier match was found for "{entered_mpn}". '
-                        "Enter the complete manufacturer part number, including package or suffix where applicable."
-                    )
+                returned_mpn = str(safe_original.get("manufacturer_part_number") or "").strip()
+                entered_key = re.sub(r"[^A-Za-z0-9]", "", entered_mpn).casefold()
+                returned_key = re.sub(r"[^A-Za-z0-9]", "", returned_mpn).casefold()
+                exact_source_match = bool(
+                    safe_original.get("supplier_data_verified")
+                    and entered_key
+                    and returned_key == entered_key
+                )
+                if not exact_source_match:
+                    if returned_mpn and returned_key != entered_key:
+                        safe_lookup_error = (
+                            f'No exact supplier match was found for "{entered_mpn}". '
+                            f'Supplier records returned "{returned_mpn}" instead.'
+                        )
+                    else:
+                        safe_lookup_error = (
+                            f'No exact supplier match was found for "{entered_mpn}". '
+                            "Enter the complete manufacturer part number, including package or suffix where applicable."
+                        )
             except Exception as original_exc:
                 if _is_streamlit_control_flow(original_exc):
                     raise
@@ -317,15 +436,17 @@ def run_alternative_finder_search(
                 )
                 search_run.log_stage_warning(original_exc, stage=STAGE_ORIGINAL_LOOKUP)
 
+        safe_original = _supplement_resolved_part_evidence(safe_original)
         candidates: list = []
         discovery: dict = {}
-        if safe_original.get("supplier_data_verified"):
-            with search_run.stage(STAGE_CANDIDATE_ENGINE):
-                search_run.operation = "suggest_alternatives_v2"
-                search_run.provider = "digikey"
-                candidates = suggest_alternatives_v2(entered_mpn) or []
-            discovery = get_alternative_discovery_metadata() or {}
+        with search_run.stage(STAGE_CANDIDATE_ENGINE):
+            search_run.operation = "suggest_alternatives_v2"
+            search_run.provider = "digikey"
+            candidates = suggest_alternatives_v2(entered_mpn) or []
+        discovery = get_alternative_discovery_metadata() or {}
         discovery = merge_supplier_failures_into_discovery(discovery, safe_original)
+        if not candidates:
+            discovery["candidate_status"] = _replacement_candidate_cause(discovery)
         with search_run.stage(STAGE_PERSIST):
             canonical_mpn = str(
                 safe_original.get("manufacturer_part_number") or entered_mpn

@@ -204,6 +204,8 @@ def _safe_supplier_lookup(source_name, lookup_func, part_number, request_id: str
         result["provider_status"] = PROVIDER_AVAILABLE
         result.pop("error", None)
         result["stock_total"] = coerce_stock_total(result.get("stock_total"))
+        if not str(result.get("retrieved_at") or "").strip():
+            result["retrieved_at"] = utc_now_iso()
         if started is not None:
             emit_timing(
                 "supplier.lookup",
@@ -328,6 +330,7 @@ def get_best_part_data(part_number: str) -> dict:
 
     if not valid_results:
         aggregated = default_aggregated_result(part_number, supplier_results)
+        aggregated["supplier_offers"] = []
         return aggregated
 
     best_result = max(
@@ -499,6 +502,12 @@ def get_best_part_data(part_number: str) -> dict:
     best_result.setdefault("quiescent_current_ma", None)
     best_result.setdefault("input_bias_na", None)
     best_result.setdefault("gbw_mhz", None)
+    from src.saved_bom_cost import collect_supplier_offers
+
+    best_result["supplier_offers"] = collect_supplier_offers(
+        valid_results,
+        mpn=str(best_result.get("manufacturer_part_number") or part_number),
+    )
     for field_name in (
         "capacitance",
         "resistance",

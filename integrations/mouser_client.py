@@ -5,6 +5,7 @@ import requests
 from integrations.pin_count import parse_pin_count_from_text, resolve_pin_count
 from src.secrets import get_secret
 from src.part_images import normalize_supplier_image_url
+from src.saved_bom_cost import price_breaks_from_payload
 
 
 def search_mouser_by_part_number(part_number: str) -> dict:
@@ -137,6 +138,7 @@ def normalize_mouser_part(part: dict) -> dict:
         "lifecycle_status": infer_lifecycle_status(part),
         "stock_total": stock_total,
         "unit_price": extract_mouser_price(part),
+        "price_breaks": price_breaks_from_payload(part.get("PriceBreaks")),
         "supplier_count": 1,
         "lead_time_weeks": None,
         "has_alternates": False,

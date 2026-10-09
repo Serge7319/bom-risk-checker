@@ -223,14 +223,40 @@ def _inject_approved_visual_overrides() -> None:
         f"""
         <style id="cadivor-approved-visual-overrides">
         html body section[data-testid="stMain"] .st-key-cv_foundation_top_navigation .stButton{beat},
-        html body section[data-testid="stMain"] .st-key-cv_foundation_top_navigation .stButton{beat} *,
-        html body section[data-testid="stMain"] .st-key-cv_ei_report_tabs .stButton{beat},
-        html body section[data-testid="stMain"] .st-key-cv_ei_report_tabs .stButton{beat} * {{
+        html body section[data-testid="stMain"] .st-key-cv_foundation_top_navigation .stButton{beat} * {{
           background:transparent !important;background-color:transparent !important;
           border:0 !important;border-width:0 !important;border-style:none !important;
           border-radius:0 !important;box-shadow:none !important;
           min-width:0 !important;min-height:0 !important;width:auto !important;height:auto !important;
           padding:8px 10px 10px !important;color:#334155 !important;font-weight:650 !important
+        }}
+        html body section[data-testid="stMain"] [data-testid="stHorizontalBlock"]:has(.st-key-cv_ei_report_tabs) {{
+          align-items: flex-end !important;
+        }}
+        html body section[data-testid="stMain"] .st-key-cv_ei_report_tabs,
+        html body section[data-testid="stMain"] .st-key-cv_ei_report_tabs [data-testid="stVerticalBlock"],
+        html body section[data-testid="stMain"] .st-key-cv_ei_report_tabs [data-testid="stHorizontalBlock"],
+        html body section[data-testid="stMain"] .st-key-cv_ei_report_tabs [data-testid="stElementContainer"],
+        html body section[data-testid="stMain"] .st-key-cv_ei_report_tabs .stButton {{
+          height: auto !important; min-height: 0 !important; align-self: flex-end !important;
+        }}
+        html body section[data-testid="stMain"] .st-key-cv_ei_report_tabs [data-testid="stHorizontalBlock"] {{
+          flex-wrap: nowrap !important; gap: 2px !important; width: 100% !important;
+          justify-content: flex-end !important;
+        }}
+        html body section[data-testid="stMain"] .st-key-cv_ei_report_tabs .stButton{beat} {{
+          background:transparent !important;background-color:transparent !important;
+          border:0 !important;border-width:0 !important;border-style:none !important;
+          border-radius:0 !important;box-shadow:none !important;
+          min-width:0 !important;min-height:0 !important;width:auto !important;height:auto !important;
+          margin:0 !important;padding:2px 10px 4px !important;line-height:1.15 !important;
+          color:#334155 !important;font-weight:650 !important;white-space:nowrap !important
+        }}
+        html body section[data-testid="stMain"] .st-key-cv_ei_report_tabs .stButton{beat} * {{
+          background:transparent !important;background-color:transparent !important;
+          border:0 !important;box-shadow:none !important;margin:0 !important;padding:0 !important;
+          line-height:1.15 !important;color:#334155 !important;font-weight:650 !important;
+          white-space:nowrap !important;min-height:0 !important;height:auto !important
         }}
         html body section[data-testid="stMain"] .st-key-cv_foundation_top_navigation .st-key-cv_foundation_nav_ei .stButton{beat} {{
           color:#1d4ed8 !important;background:transparent !important;background-color:transparent !important;
@@ -241,7 +267,8 @@ def _inject_approved_visual_overrides() -> None:
         }}
         html body section[data-testid="stMain"] .st-key-cv_ei_report_tabs [class*="st-key-ei_tab_{active_slug}"] .stButton{beat} {{
           color:#1d4ed8 !important;background:transparent !important;background-color:transparent !important;
-          border:0 !important;border-bottom:2px solid #2563eb !important;border-radius:0 !important;box-shadow:none !important
+          border:0 !important;border-bottom:2px solid #2563eb !important;border-radius:0 !important;
+          box-shadow:none !important;padding:2px 10px 4px !important
         }}
         html body section[data-testid="stMain"] .st-key-cv_ei_report_tabs [class*="st-key-ei_tab_{active_slug}"] .stButton{beat} * {{
           color:#1d4ed8 !important;background:transparent !important;border:0 !important;box-shadow:none !important

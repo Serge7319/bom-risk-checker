@@ -1947,6 +1947,16 @@ def resolve_canonical_app_route(*, allow_admin: bool = True) -> str:
     query_diverged = bool(
         query_page and session_page and query_page != session_page
     )
+    # An explicit BOM Analyzer click can race a stale Analysis Details query.
+    # That snapshot has no analysis id and paints the red empty-report error.
+    # Keep the catalog until the user opens a saved BOM.
+    if (
+        not browser_page
+        and session_page == "BOM Analyzer"
+        and bool(st.session_state.get("cadivor_bom_catalog_requested"))
+        and query_page != "BOM Analyzer"
+    ):
+        query_diverged = False
     stale_query_after_restore = bool(
         snapshot_active
         and query_diverged
@@ -2485,6 +2495,7 @@ def run_authenticated_app() -> None:
             "Lead Time Weeks": part_data.get("lead_time_weeks", None),
             "Lifecycle Status": part_data.get("lifecycle_status", "Unknown"),
             "Product URL": part_data.get("product_detail_url", ""),
+            "Supplier Offers": part_data.get("supplier_offers") or [],
             "Photo": part_data.get("image_url", ""),
             "Has Alternates": part_data.get("has_alternates", False),
             "Alternate Count": part_data.get("alternate_count", 0),
@@ -6062,10 +6073,7 @@ def run_authenticated_app() -> None:
         from src.supply_risk_scenario import (
             build_supply_scenario,
             render_supply_scenario,
-            render_supply_scenario_header,
         )
-
-        render_supply_scenario_header()
         try:
             scenario_analyses = load_analysis_history(current_user["id"]) or []
         except Exception:
@@ -6085,12 +6093,21 @@ def run_authenticated_app() -> None:
         from src.supply_risk_scenario import build_supply_scenario
         from src.ui.approved_pages import render_simple_workspace, supply_scenario_chart
 
-        scenario_choice = st.selectbox(
-            "Scenario",
-            ["Primary supplier disruption", "No disruption"],
-            key="approved_supply_scenario",
+        scenario_choice = str(
+            st.session_state.get("approved_supply_scenario") or "Primary supplier disruption"
         )
-        st.selectbox("Time horizon", ["90 days"], key="approved_supply_horizon")
+
+        def _supply_controls() -> None:
+            choice_col, horizon_col = st.columns(2)
+            with choice_col:
+                st.selectbox(
+                    "Scenario",
+                    ["Primary supplier disruption", "No disruption"],
+                    key="approved_supply_scenario",
+                )
+            with horizon_col:
+                st.selectbox("Time horizon", ["90 days"], key="approved_supply_horizon")
+
         stock_cut = 0
         demand_growth = 0
         scenario = build_supply_scenario(
@@ -6133,6 +6150,7 @@ def run_authenticated_app() -> None:
                     if isinstance(row, dict)
                 ],
                 chart_html=supply_scenario_chart(scenario_parts, scenario, scenario_choice),
+                control=_supply_controls,
             )
 
         st.markdown("### Scenario assumptions")
@@ -17482,6 +17500,7 @@ def run_authenticated_app() -> None:
             and not _new_analysis_requested
             and not _show_saved_analyses
             and not st.session_state.get("bom81_high_risk_review")
+            and not st.session_state.get("cadivor_bom_catalog_requested")
         ):
             navigate_to("Analysis Details", analysis_id=_resume_analysis_id)
 
@@ -20117,10 +20136,17 @@ def run_authenticated_app() -> None:
                     stop_authenticated_page()
 
                 from src.part_images import normalize_supplier_image_url
+                from src.saved_bom_cost import (
+                    OPTIONAL_SAVED_PART_COLUMNS,
+                    analysis_part_cost_fields,
+                    omitted_optional_column,
+                    without_column,
+                )
 
                 part_records = []
 
                 for _, part_row in results_df.iterrows():
+                    cost_fields = analysis_part_cost_fields(part_row)
                     part_records.append(
                         {
                             "analysis_id": analysis_id,
@@ -20144,19 +20170,11 @@ def run_authenticated_app() -> None:
                                 part_row.get("Supplier Count", 0),
                                 default=0,
                             ),
-                            "quantity": _json_safe_number(
-                                part_row.get("Quantity", 1),
-                                default=1,
-                            ),
-                            "unit_price": _json_safe_number(
-                                part_row.get("Unit Price", 0),
-                                default=0,
-                            ),
-                            "primary_supplier": (
-                                ""
-                                if pd.isna(part_row.get("Best Source", ""))
-                                else str(part_row.get("Best Source", "") or "")
-                            ),
+                            "quantity": cost_fields["quantity"],
+                            "unit_price": cost_fields["unit_price"],
+                            "primary_supplier": cost_fields["primary_supplier"],
+                            "product_url": cost_fields["product_url"],
+                            "supplier_offers": cost_fields["supplier_offers"],
                             "lead_time_weeks": _json_safe_optional_number(
                                 part_row.get("Lead Time Weeks", None)
                             ),
@@ -20165,21 +20183,20 @@ def run_authenticated_app() -> None:
 
                 if part_records:
                     try:
-                        try:
-                            supabase.table("analysis_parts").insert(part_records).execute()
-                        except Exception as photo_schema_error:
-                            error_text = str(photo_schema_error).casefold()
-                            missing_photo_column = (
-                                "image_url" in error_text
-                                and ("schema cache" in error_text or "column" in error_text)
-                            )
-                            if not missing_photo_column:
-                                raise
-                            legacy_records = [
-                                {key: value for key, value in record.items() if key != "image_url"}
-                                for record in part_records
-                            ]
-                            supabase.table("analysis_parts").insert(legacy_records).execute()
+                        pending_records = part_records
+                        for _attempt in range(len(OPTIONAL_SAVED_PART_COLUMNS) + 1):
+                            try:
+                                supabase.table("analysis_parts").insert(pending_records).execute()
+                                break
+                            except Exception as optional_column_error:
+                                missing_column = omitted_optional_column(str(optional_column_error))
+                                if not missing_column or all(
+                                    missing_column not in record for record in pending_records
+                                ):
+                                    raise
+                                pending_records = without_column(pending_records, missing_column)
+                        else:
+                            raise RuntimeError("Could not save BOM parts after dropping unknown columns.")
                     except Exception as e:
                         if _one_time_reserved:
                             # An incomplete summary is not a delivered report.
