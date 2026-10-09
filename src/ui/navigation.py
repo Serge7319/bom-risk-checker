@@ -190,6 +190,14 @@ def navigate_to(page: str, *, _rerun: bool = True, arm_opening: bool = True, **p
     # own Streamlit reruns.
     if page == "BOM Analyzer" and not str(params.get("high_risk_review") or "").strip():
         st.session_state.pop("bom81_high_risk_review", None)
+    # The catalog is the BOM Analyzer destination. A report opens only after
+    # the user selects a saved BOM, so a stale Detailed Risk query must not
+    # replace this navigation.
+    if page == "BOM Analyzer" and str(params.get("show_saved_analyses") or "").strip():
+        st.session_state["cadivor_bom_catalog_requested"] = True
+        st.session_state["cadivor_show_detailed_risk"] = False
+    elif page != "BOM Analyzer":
+        st.session_state.pop("cadivor_bom_catalog_requested", None)
 
     st.session_state["cadivor_route"] = page
     st.session_state["app_mode"] = page

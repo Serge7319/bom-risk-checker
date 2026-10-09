@@ -116,6 +116,49 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
         self.assertIn("Recommended action", html)
         self.assertIn("MPN-001", html)
 
+    def test_cost_insights_does_not_treat_a_zero_price_as_money(self):
+        parts = [
+            {
+                "mpn": "MAX32625ITK+",
+                "manufacturer": "Analog Devices",
+                "risk_level": "High",
+                "risk_reasons": "Lifecycle and single-source exposure require a replacement review.",
+                "unit_price": 0.0,
+                "stock_available": 0,
+            },
+            {
+                "mpn": "TPS54331D",
+                "manufacturer": "Texas Instruments",
+                "risk_level": "Medium",
+                "risk_reasons": "Lead time is longer than the release window.",
+                "unit_price": 1.2,
+                "quantity": 10,
+                "primary_supplier": "DigiKey",
+                "stock_available": 1200,
+                "product_url": "https://www.digikey.com/en/products/detail/ti/TPS54331D/1",
+            },
+        ]
+        html = engineering_intelligence_html(
+            bom_name="Industrial Controller BOM",
+            part_count=2,
+            tab="Cost Insights",
+            parts=parts,
+        )
+        self.assertIn("Not recorded", html)
+        self.assertNotIn("0.0", html)
+        self.assertNotIn("$0.00", html)
+        self.assertNotIn(">Best source<", html)
+        self.assertIn("Recorded source", html)
+        self.assertIn("DigiKey", html)
+        self.assertIn("$1.2", html)
+        self.assertIn("$12", html)
+        self.assertIn("https://www.digikey.com/en/products/detail/ti/TPS54331D/1", html)
+        self.assertIn("A distributor comparison is unavailable.", html)
+        self.assertNotIn("Not labeled best", html)
+        self.assertIn("Lifecycle and single-source exposure require a replacement review.", html)
+        self.assertIn("Not calculated", html)
+        self.assertIn("Re-run the BOM analysis", html)
+
     def test_bom_catalog_is_a_list_not_an_intelligence_report(self):
         html = bom_catalog_html(
             [

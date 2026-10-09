@@ -307,6 +307,7 @@ def _normalize_search_result(result_row: dict) -> dict:
 
     seller_names = set()
     prices = []
+    seller_offers = []
     for seller in part.get("sellers") or []:
         if not isinstance(seller, dict):
             continue
@@ -320,9 +321,10 @@ def _normalize_search_result(result_row: dict) -> dict:
             if not isinstance(offer, dict):
                 continue
             try:
-                result["stock_total"] += coerce_stock_total(offer.get("inventoryLevel"))
+                stock = coerce_stock_total(offer.get("inventoryLevel"))
+                result["stock_total"] += stock
             except (TypeError, ValueError):
-                pass
+                stock = None
             for tier in offer.get("prices") or []:
                 if not isinstance(tier, dict):
                     continue
@@ -333,8 +335,28 @@ def _normalize_search_result(result_row: dict) -> dict:
                         prices.append((quantity, price))
                 except (TypeError, ValueError):
                     continue
+                break_quantity = None
+                if tier.get("quantity") not in (None, ""):
+                    try:
+                        parsed_quantity = float(tier.get("quantity"))
+                        if parsed_quantity > 0:
+                            break_quantity = parsed_quantity
+                    except (TypeError, ValueError):
+                        break_quantity = None
+                if seller_name and price > 0:
+                    seller_offers.append(
+                        {
+                            "distributor": seller_name,
+                            "unit_price": price,
+                            "currency": "",
+                            "price_break_quantity": break_quantity,
+                            "stock": stock,
+                            "product_url": "",
+                        }
+                    )
 
     result["octopart_sellers"] = sorted(seller_names)
+    result["seller_offers"] = seller_offers
     result["supplier_count"] = len(seller_names)
     if prices:
         smallest_quantity = min(quantity for quantity, _ in prices)

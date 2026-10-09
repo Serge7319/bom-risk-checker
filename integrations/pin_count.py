@@ -26,6 +26,18 @@ _OUTLINE_WITH_PIN_RE = re.compile(
     r"(?i)\b(?:TO|SOT|SC|SOD|TSOT|TSOP)\s*-?\s*\d+(?:\.\d+)?\s*-\s*(\d{1,3})\b"
 )
 
+# DigiKey writes the count first: 8-SOIC, 8-PDIP, 8-TSSOP.
+_NAMED_PACKAGE_PIN_PREFIX_RE = re.compile(
+    r"(?i)\b(\d{1,4})\s*-\s*(?:"
+    r"U?FBGA|PBGA|MBGA|LFBGA|TFBGA|UBGA|BGA|"
+    r"WLCSP|UCSP|CSP|"
+    r"LQFP|TQFP|PQFP|VQFP|QFP|"
+    r"VQFN|WQFN|UQFN|QFN|DFN|UTDFN|UDFN|"
+    r"SOIC|SOP|SSOP|TSSOP|MSOP|VSSOP|QSOP|SO|"
+    r"PDIP|CDIP|DIP|PLCC|LGA"
+    r")(?![A-Za-z])"
+)
+
 # SOIC-8, QFN-32, LQFP-64, BGA-256, WLCSP-16, DIP-8, ...
 # (?![A-Za-z]) prevents SO matching inside SOIC, DIP inside PDIP, etc.
 _NAMED_PACKAGE_PIN_RE = re.compile(
@@ -75,6 +87,9 @@ def _parse_package_segment(segment: str) -> int:
     if match:
         return int(match.group(1))
     match = _NAMED_PACKAGE_PIN_RE.search(text)
+    if match:
+        return int(match.group(1))
+    match = _NAMED_PACKAGE_PIN_PREFIX_RE.search(text)
     if match:
         return int(match.group(1))
     return 0

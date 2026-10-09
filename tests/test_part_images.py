@@ -64,6 +64,51 @@ def test_every_component_family_has_an_illustration_fallback():
     assert seen == _KINDS
 
 
+def test_mpn_alone_does_not_select_a_category_illustration():
+    markup = part_image_markup("", "LM358DT", part={"manufacturer_part_number": "LM358DT"})
+    assert 'data-illustration="generic"' in markup
+    assert 'data-illustration="ic"' not in markup
+    assert ILLUSTRATION_LABEL in markup
+
+
+def test_supplier_photo_is_used_when_the_url_is_trusted():
+    markup = part_image_markup(
+        "https://mm.digikey.com/Volume0/opasdata/d220001/medias/images/2/LM358.jpg",
+        "LM358DT",
+        part={"description": "IC OPAMP GP 2 CIRCUIT 8SO"},
+    )
+    assert "<img" in markup
+    assert "Product photo for LM358DT" in markup
+    assert ILLUSTRATION_LABEL not in markup
+    assert "data-illustration" not in markup
+
+
+def test_supplier_description_selects_the_op_amp_illustration():
+    markup = part_image_markup(
+        "",
+        "LM358DT",
+        part={
+            "description": "IC OPAMP GP 2 CIRCUIT 8SO",
+            "Category": "Catalog candidate — insufficient evidence for compatibility",
+            "Estimated Risk": "Unknown",
+        },
+    )
+    assert 'data-illustration="ic"' in markup
+    assert ILLUSTRATION_LABEL in markup
+    assert "<img" not in markup
+
+
+def test_missing_category_metadata_uses_the_generic_illustration():
+    markup = part_image_markup(
+        "",
+        "ABC-123",
+        part={"Category": "Catalog candidate — insufficient evidence for compatibility"},
+    )
+    assert 'data-illustration="generic"' in markup
+    assert ILLUSTRATION_LABEL in markup
+    assert "<img" not in markup
+
+
 def test_stored_description_selects_the_category_drawing():
     capacitor = part_image_markup("", "GRM188", part={"description": "Ceramic capacitor"})
     ic = part_image_markup("", "MAX32625", part={"description": "Low-power microcontroller"})

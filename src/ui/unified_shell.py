@@ -197,7 +197,8 @@ def _approved_shell_css() -> str:
         .st-key-cv_ei_report_tabs .stButton>button,
         .st-key-cv_ei_report_tabs button{
           background:transparent!important;border:0!important;border-radius:0!important;
-          box-shadow:none!important;color:#64748b!important;min-height:32px!important;padding:6px 8px 8px!important
+          box-shadow:none!important;color:#64748b!important;min-height:0!important;height:auto!important;
+          padding:2px 10px 4px!important;line-height:1.15!important;white-space:nowrap!important
         }
         .st-key-cv_ei_report_tabs .stButton>button[kind="primary"],
         .st-key-cv_ei_report_tabs button[data-testid="stBaseButton-primary"]{
@@ -231,7 +232,8 @@ def _approved_shell_css() -> str:
         }
         html body section[data-testid="stMain"] .st-key-cv_ei_report_tabs button{
           background:transparent!important;border:0!important;border-radius:0!important;box-shadow:none!important;
-          color:#64748b!important;padding:6px 8px 8px!important
+          color:#64748b!important;min-height:0!important;height:auto!important;min-width:0!important;
+          padding:2px 10px 4px!important;line-height:1.15!important;white-space:nowrap!important
         }
         html body section[data-testid="stMain"] .st-key-cv_ei_report_tabs button[kind="primary"],
         html body section[data-testid="stMain"] .st-key-cv_ei_report_tabs button[data-testid="stBaseButton-primary"]{
@@ -239,9 +241,9 @@ def _approved_shell_css() -> str:
         }
         .st-key-cv_foundation_navigation{width:296px!important;min-width:296px!important;max-width:296px!important}
         section[data-testid="stMain"] .st-key-cv_foundation_navigation .stButton>button::before{
-          content:""!important;display:block!important;flex:0 0 16px!important;
-          width:16px!important;height:16px!important;margin-right:10px!important;opacity:1!important;
-          background-repeat:no-repeat!important;background-position:center!important;background-size:16px 16px!important
+          content:""!important;display:block!important;flex:0 0 20px!important;
+          width:20px!important;height:20px!important;margin-right:10px!important;opacity:1!important;
+          background-repeat:no-repeat!important;background-position:center!important;background-size:20px 20px!important
         }
         section[data-testid="stMain"] .st-key-cv_foundation_navigation .stButton>button[kind="primary"]::before{
           filter:brightness(0) saturate(100%) invert(27%) sepia(98%) saturate(1800%) hue-rotate(213deg) brightness(95%) contrast(95%)!important
@@ -266,6 +268,21 @@ def _approved_shell_css() -> str:
         section[data-testid="stMain"] .st-key-cv_foundation_nav_suppliers button::before,
         section[data-testid="stMain"] .st-key-cv_foundation_nav_risk-monitor button::before,
         section[data-testid="stMain"] .st-key-cv_foundation_nav_reports-templates button::before{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23334155' stroke-width='1.8'%3E%3Ccircle cx='11' cy='11' r='6'/%3E%3Cpath d='m16 16 4 4'/%3E%3C/svg%3E")!important}
+        section[data-testid="stMain"] .st-key-cv_foundation_nav_home button::before{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%23334155' stroke-width='1.8'%3E%3Cpath d='M4 11 12 4l8 7'/%3E%3Cpath d='M6 10v9h12v-9'/%3E%3C/svg%3E")!important}
+        section[data-testid="stMain"] .st-key-cv_foundation_nav_bom-analyzer button::before{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%23334155' stroke-width='1.8'%3E%3Cpath d='M3 7h6l2 2h10v10H3z'/%3E%3C/svg%3E")!important}
+        section[data-testid="stMain"] .st-key-cv_foundation_nav_engineering-decisions button::before{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%23334155' stroke-width='1.8'%3E%3Cpath d='M8 4h8l1 3H7z'/%3E%3Cpath d='M7 7h10v13H7z'/%3E%3Cpath d='m9 13 2 2 4-4'/%3E%3C/svg%3E")!important}
+        section[data-testid="stMain"] .st-key-cv_foundation_nav_monitoring button::before{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%23334155' stroke-width='1.8'%3E%3Cpath d='M6 16V10a6 6 0 0 1 12 0v6'/%3E%3Cpath d='M5 16h14v2H5z'/%3E%3C/svg%3E")!important}
+        section[data-testid="stMain"] .st-key-cv_foundation_nav_find-replacement button::before{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%23334155' stroke-width='1.8'%3E%3Ccircle cx='11' cy='11' r='6'/%3E%3Cpath d='m16 16 4 4'/%3E%3C/svg%3E")!important}
+        section[data-testid="stMain"] .st-key-cv_foundation_nav_reports button::before{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%23334155' stroke-width='1.8'%3E%3Cpath d='M6 3h9l4 4v14H6z'/%3E%3Cpath d='M15 3v5h5M9 13h6M9 17h6'/%3E%3C/svg%3E")!important}
+        section[data-testid="stMain"] .st-key-cv_foundation_nav_compare-parts button::before{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%23334155' stroke-width='1.8'%3E%3Cpath d='M4 5h6v14H4zM14 5h6v14h-6z'/%3E%3C/svg%3E")!important}
+        section[data-testid="stMain"] .st-key-cv_foundation_nav_procurement button::before{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%23334155' stroke-width='1.8'%3E%3Cpath d='M4 6h16l-1.5 9h-13z'/%3E%3Cpath d='M8 6 7 3H4M9 20h.01M17 20h.01'/%3E%3C/svg%3E")!important}
+        section[data-testid="stMain"] .st-key-cv_foundation_nav_design-impact button::before{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%23334155' stroke-width='1.8'%3E%3Ccircle cx='6' cy='12' r='2.2'/%3E%3Ccircle cx='18' cy='6' r='2.2'/%3E%3Ccircle cx='18' cy='18' r='2.2'/%3E%3Cpath d='M8 12h6M16 8l-6 3M16 16l-6-3'/%3E%3C/svg%3E")!important}
+        section[data-testid="stMain"] .st-key-cv_foundation_nav_cost button::before{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%23334155' stroke-width='1.8'%3E%3Cpath d='M12 3v18M16 7.5c0-1.5-1.5-2.5-4-2.5s-4 1-4 2.5 1.6 2.4 4 2.8 4 1.2 4 2.7-1.5 2.5-4 2.5-4-1-4-2.5'/%3E%3C/svg%3E")!important}
+        section[data-testid="stMain"] .st-key-cv_foundation_nav_supply-scenario button::before{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%23334155' stroke-width='1.8'%3E%3Cpath d='M3 8h11v8H3zM14 11h4l3 3v2h-7z'/%3E%3Ccircle cx='7' cy='18' r='1.4'/%3E%3Ccircle cx='17' cy='18' r='1.4'/%3E%3C/svg%3E")!important}
+        section[data-testid="stMain"] .st-key-cv_foundation_nav_settings button::before{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%23334155' stroke-width='1.8'%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3Cpath d='M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M18.4 5.6 17 7M7 17l-1.4 1.4'/%3E%3C/svg%3E")!important}
+        section[data-testid="stMain"] .st-key-cv_foundation_nav_portfolio button::before{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%23334155' stroke-width='1.8'%3E%3Cpath d='M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z'/%3E%3C/svg%3E")!important}
+        section[data-testid="stMain"] .st-key-cv_foundation_nav_detailed-risk button::before{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%23334155' stroke-width='1.8'%3E%3Cpath d='M12 4 3 19h18z'/%3E%3Cpath d='M12 9v5M12 17h.01'/%3E%3C/svg%3E")!important}
+        section[data-testid="stMain"] .st-key-cv_foundation_nav_engineering-intelligence button::before{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%23334155' stroke-width='1.8'%3E%3Cpath d='M4 19V9M10 19V5M16 19v-7M22 19H2'/%3E%3C/svg%3E")!important}
         body:has(.cv-ei-report) [class*="st-key-cv_analysis_section_nav"]{
           display:none!important;height:0!important;overflow:hidden!important
         }
@@ -362,8 +379,25 @@ def _commit_navigation(page: str, *, arm_opening: bool = True) -> None:
     sequence that could briefly expose an incomplete/public render.
     """
     if page == "BOM Analyzer":
+        st.session_state["cadivor_show_detailed_risk"] = False
         return_to_saved_bom_list(_rerun=False, arm_opening=arm_opening)
     else:
+        if page == "Analysis Details":
+            analysis_id = str(
+                st.session_state.get("cadivor_active_analysis_id")
+                or st.session_state.get("analysis_id")
+                or ""
+            ).strip()
+            if analysis_id:
+                navigate_to(
+                    page,
+                    _rerun=False,
+                    arm_opening=arm_opening,
+                    analysis_id=analysis_id,
+                )
+                st.session_state.pop("cadivor_route_transition", None)
+                st.session_state["cadivor_profile_menu_open"] = False
+                return
         navigate_to(page, _rerun=False, arm_opening=arm_opening)
     st.session_state.pop("cadivor_route_transition", None)
     st.session_state["cadivor_profile_menu_open"] = False

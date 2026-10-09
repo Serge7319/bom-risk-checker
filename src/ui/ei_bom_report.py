@@ -10,6 +10,7 @@ risk report. Mockup #2 is the BOM catalog.
 from __future__ import annotations
 
 import html
+import textwrap
 from typing import Any
 
 
@@ -27,7 +28,7 @@ def _component_cell(row: dict[str, Any], *, description: bool = True) -> str:
         part=row,
     )
     copy = f"<span class='cv-ei-part-copy'><span>{row['mpn']}</span>"
-    if description:
+    if description and str(row.get("description_raw") or "").strip():
         copy += f"<span class='cv-ei-meta'>{row['description']}</span>"
     copy += "</span>"
     return f"<div class='cv-ei-part'>{art}{copy}</div>"
@@ -58,6 +59,78 @@ def _num(value: Any, default: int = 0) -> int:
         return int(float(value))
     except (TypeError, ValueError):
         return default
+
+
+def _recorded_number(value: Any) -> float | None:
+    """A saved number. Zero and blanks are missing defaults, not a real measurement."""
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text or text.lower() in {"nan", "none"}:
+        return None
+    try:
+        number = float(text)
+    except (TypeError, ValueError):
+        return None
+    if number != number:
+        return None
+    return number
+
+
+def _positive_price(part: dict[str, Any]) -> float | None:
+    raw = _first(part, "unit_price", "Unit Price", "price", "best_price")
+    number = _recorded_number(raw)
+    if number is None or number <= 0:
+        return None
+    return number
+
+
+def _positive_quantity(part: dict[str, Any]) -> float | None:
+    raw = _first(part, "quantity", "Quantity", "qty", "required_quantity")
+    number = _recorded_number(raw)
+    if number is None or number <= 0:
+        return None
+    return number
+
+
+def _money(amount: float) -> str:
+    return f"${amount:,.4f}".rstrip("0").rstrip(".")
+
+
+def _source_name(part: dict[str, Any]) -> str:
+    return str(
+        _first(
+            part,
+            "primary_supplier",
+            "best_source",
+            "Best Source",
+            "supplier",
+            "distributor",
+            fallback="",
+        )
+        or ""
+    ).strip()
+
+
+def _source_url(part: dict[str, Any]) -> str:
+    for key in (
+        "product_url",
+        "Product URL",
+        "product_detail_url",
+        "source_url",
+        "datasheet_url",
+        "Datasheet URL",
+    ):
+        text = str(part.get(key) or "").strip()
+        if text.startswith("https://") or text.startswith("http://"):
+            return text
+    return ""
+
+
+def _risk_reason(part: dict[str, Any]) -> str:
+    return str(
+        _first(part, "risk_reasons", "Risk Reasons", "risk_reason", fallback="") or ""
+    ).strip()
 
 
 def _first(row: dict[str, Any], *keys: str, fallback: Any = None) -> Any:
@@ -129,6 +202,126 @@ def _action(level: str) -> tuple[str, str]:
     )
 
 
+def _cost_cells(part: dict[str, Any]) -> dict[str, str]:
+    """Cost columns from saved fields only. A zero price is a missing default."""
+    from src.saved_bom_cost import distributor_comparison, extended_cost, normalize_saved_offers
+
+    price = _positive_price(part)
+    quantity = _positive_quantity(part)
+    name = _source_name(part)
+    url = _source_url(part)
+    stock = _recorded_number(_first(part, "stock_available", "Stock Available", "stock"))
+    mpn = str(_first(part, "mpn", "MPN", "part_number", fallback="") or "")
+    offers = normalize_saved_offers(
+        part.get("supplier_offers") or part.get("Supplier Offers"),
+        mpn=mpn,
+    )
+    comparison = distributor_comparison(offers, mpn=mpn, bom_quantity=quantity)
+    price_html = _esc(_money(price)) if price is not None else "Not recorded"
+    link = ""
+    if url:
+        link = (
+            f'<a href="{html.escape(url, quote=True)}" rel="noopener noreferrer">'
+            "Product page</a>"
+        )
+    elif name or price is not None:
+        link = "<small>Product URL was not saved.</small>"
+    savings = comparison["savings_per_unit"]
+    if savings is not None:
+        break_quantity = float(comparison["break_quantity"])
+        savings_note = (
+            f"<small>Savings of {_esc(_money(savings))} per unit versus "
+            f"{_esc(comparison['higher_distributor'])} "
+            f"{_esc(_money(comparison['higher_price']))} "
+            f"at quantity {_esc(f'{break_quantity:g}')} "
+            f"{_esc(comparison['currency'])}. "
+            f"The {_esc(comparison['lower_distributor'])} price is "
+            f"{_esc(_money(comparison['lower_price']))}.</small>"
+        )
+    elif offers:
+        savings_note = f"<small>{_esc(comparison['message'])}</small>"
+    elif name and price is not None:
+        savings_note = "<small>A distributor comparison is unavailable.</small>"
+    else:
+        savings_note = ""
+    refresh = (
+        "<small>Re-run the BOM analysis to save a missing distributor, unit price, "
+        "BOM quantity, or product URL when the supplier or the BOM file returns it.</small>"
+    )
+    if name and price is not None:
+        details = [f"<small>{price_html}</small>"]
+        if stock is not None:
+            details.append(f"<small>Stock {int(stock):,}</small>")
+        if link:
+            details.append(link)
+        details.append("<small>Recorded offer.</small>")
+        for offer in offers[:8]:
+            bits = [str(offer["distributor"]), _money(float(offer["unit_price"]))]
+            if offer.get("currency"):
+                bits.append(str(offer["currency"]))
+            if offer.get("price_break_quantity") is not None:
+                bits.append(f"from {float(offer['price_break_quantity']):g}")
+            if offer.get("stock") is not None:
+                bits.append(f"stock {int(offer['stock']):,}")
+            if offer.get("retrieved_at"):
+                bits.append(f"retrieved {offer['retrieved_at']}")
+            line = _esc(" · ".join(bits))
+            if offer.get("product_url"):
+                line += (
+                    f' <a href="{html.escape(offer["product_url"], quote=True)}" '
+                    'rel="noopener noreferrer">Product page</a>'
+                )
+            details.append(f"<small>{line}</small>")
+        details.append(savings_note)
+        source_html = f"<strong>{_esc(name)}</strong>{''.join(details)}"
+    elif name:
+        source_html = (
+            f"<strong>{_esc(name)}</strong>"
+            "<small>Distributor was saved. Unit price was not saved, so this is not a comparable offer.</small>"
+            + link
+            + savings_note
+            + refresh
+        )
+    else:
+        stock_note = (
+            f" Recorded stock is {int(stock):,}."
+            if stock is not None
+            else ""
+        )
+        source_html = (
+            "Not recorded"
+            "<small>Distributor was not saved."
+            f"{html.escape(stock_note)}</small>"
+            + savings_note
+            + refresh
+        )
+    total = extended_cost(price, quantity)
+    if total is not None:
+        extended_html = (
+            f"{_esc(_money(total))}"
+            f"<small>{price_html} × {_esc(f'{quantity:g}')} recorded</small>"
+        )
+    else:
+        missing = []
+        if price is None:
+            missing.append("unit price")
+        if quantity is None:
+            missing.append("BOM quantity")
+        joined = " and ".join(missing)
+        verb = "was" if len(missing) == 1 else "were"
+        extended_html = (
+            "Not calculated"
+            f"<small>{_esc(joined)} {verb} not saved. Extended cost needs both. "
+            "Re-run the BOM analysis to save a missing unit price or BOM quantity "
+            "when the supplier or the BOM file returns it.</small>"
+        )
+    return {
+        "cost_price": price_html,
+        "cost_source": source_html,
+        "cost_extended": extended_html,
+    }
+
+
 def _part_rows(parts: list[dict[str, Any]]) -> list[dict[str, Any]]:
     ranked = []
     for part in parts or []:
@@ -157,8 +350,19 @@ def _part_rows(parts: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "suppliers": _num(_first(part, "supplier_count", "Supplier Count"), 0),
                 "lifecycle": _esc(_first(part, "lifecycle_status", "Lifecycle Status", fallback="Unknown")),
                 "lead": _esc(_first(part, "lead_time_weeks", "Lead Time Weeks", fallback="—")),
-                "source": _esc(_first(part, "best_source", "Best Source", "distributor", fallback="—")),
+                "source": _esc(
+                    _first(
+                        part,
+                        "primary_supplier",
+                        "best_source",
+                        "Best Source",
+                        "distributor",
+                        fallback="—",
+                    )
+                ),
                 "price": _esc(_first(part, "unit_price", "Unit Price", "price", fallback="—")),
+                "risk_reason": _esc(_risk_reason(part)),
+                **_cost_cells(part),
                 "image": str(
                     _first(
                         part,
@@ -207,7 +411,7 @@ def report_styles() -> str:
       .cv-ei-table { width:100%; border-collapse:separate; border-spacing:0; background:#fff; border:1px solid #e6edf5; border-radius:16px; overflow:hidden; }
       .cv-ei-table th { text-align:left; font-size:12px; letter-spacing:.04em; text-transform:uppercase; color:#94a3b8; padding:12px 14px; background:#f8fafc; }
       .cv-ei-table td { padding:14px; border-top:1px solid #eef2f7; vertical-align:top; font-size:14px; }
-      .cv-ei-part { font-weight:750; display:flex; align-items:center; gap:10px; }
+      .cv-ei-part { font-weight:750; display:flex; flex-direction:row; align-items:center; gap:10px; }
       .cv-ei-part-copy { display:flex; flex-direction:column; min-width:0; }
       .cv-ei-meta { color:#64748b; font-size:12px; margin-top:2px; }
       .cv-pill { display:inline-flex; align-items:center; gap:6px; border-radius:999px; padding:4px 10px; font-size:12px; font-weight:750; }
@@ -221,6 +425,9 @@ def report_styles() -> str:
       .cv-ei-reasons li { margin:2px 0; }
       .cv-ei-action { color:#2563eb; font-weight:750; }
       .cv-ei-action small { display:block; color:#64748b; font-weight:500; margin-top:3px; }
+      .cv-ei-table td small, .cv-ei-offer a { display:block; margin-top:4px; color:#64748b; font-size:12px; font-weight:500; line-height:1.35; }
+      .cv-ei-offer a { color:#2563eb; font-size:12px; font-weight:650; }
+      [class*="st-key-cv_risk_expand_"] button { background:transparent !important; border:0 !important; box-shadow:none !important; color:#0f172a !important; font-weight:750 !important; padding:0 !important; min-height:0 !important; height:auto !important; justify-content:flex-start !important; text-align:left !important; }
       .cv-risk-wrap { background:#fff; border:1px solid #e6edf5; border-radius:16px; overflow:hidden; }
       .cv-risk-row, .cv-risk-head { display:grid; grid-template-columns: 1.1fr 1fr .9fr .6fr .7fr .8fr .6fr .7fr; gap:8px; padding:12px 16px; align-items:center; }
       .cv-risk-head { color:#94a3b8; font-size:12px; letter-spacing:.04em; text-transform:uppercase; background:#f8fafc; }
@@ -257,35 +464,39 @@ def engineering_intelligence_html(
     active = tab if tab in EI_TABS else "BOM Risk"
     banner = ""
     if active == "BOM Risk":
-        banner = f"""
-        <section class="cv-ei-banner">
-          <div class="cv-ei-icon warn">!</div>
-          <div>
-            <h2>Engineering review required</h2>
-            <p>{len(high)} components with high risk may impact build timelines. Review the items below and consider approved alternatives.</p>
-          </div>
-        </section>
-        <section class="cv-ei-kpis">
-          <div class="cv-ei-kpi"><div class="cv-ei-icon health">♡</div><div><span>Health</span><strong>{_esc(health)}/100</strong></div></div>
-          <div class="cv-ei-kpi"><div class="cv-ei-icon review">▣</div><div><span>Needs review</span><strong>{len(high)}</strong></div></div>
-          <div class="cv-ei-kpi"><div class="cv-ei-icon stock">▢</div><div><span>No-stock parts</span><strong>{len(no_stock)}</strong></div></div>
-          <div class="cv-ei-kpi"><div class="cv-ei-icon source">⚭</div><div><span>Single-source</span><strong>{len(single)}</strong></div></div>
-        </section>
-        """
-    body = _tab_body(active, rows, alternatives or [])
+        # Keep these tags at column 0. Indented HTML becomes a Markdown code
+        # block, which is what left the summary looking like an empty banner.
+        banner = textwrap.dedent(
+            f"""
+            <section class="cv-ei-banner">
+              <div class="cv-ei-icon warn">!</div>
+              <div>
+                <h2>Engineering review required</h2>
+                <p>{len(high)} components with high risk may impact build timelines. Review the items below and consider approved alternatives.</p>
+              </div>
+            </section>
+            <section class="cv-ei-kpis">
+              <div class="cv-ei-kpi"><div class="cv-ei-icon health">♡</div><div><span>Health</span><strong>{_esc(health)}/100</strong></div></div>
+              <div class="cv-ei-kpi"><div class="cv-ei-icon review">▣</div><div><span>Needs review</span><strong>{len(high)}</strong></div></div>
+              <div class="cv-ei-kpi"><div class="cv-ei-icon stock">▢</div><div><span>No-stock parts</span><strong>{len(no_stock)}</strong></div></div>
+              <div class="cv-ei-kpi"><div class="cv-ei-icon source">⚭</div><div><span>Single-source</span><strong>{len(single)}</strong></div></div>
+            </section>
+            """
+        ).strip()
+    body = textwrap.dedent(_tab_body(active, rows, alternatives or [])).strip()
     heading = ""
     if include_heading:
         heading = (
             f"<p class='cv-ei-kicker'>{_esc(bom_name)} · {_esc(part_count)} components</p>"
             "<h1 class='cv-ei-title'>Engineering Intelligence</h1>"
         )
-    return f"""
-    <div class="cv-ei-report">
-      {heading}
-      {banner}
-      {body}
-    </div>
-    """
+    return (
+        '<div class="cv-ei-report">'
+        + heading
+        + banner
+        + body
+        + "</div>"
+    )
 
 
 def _tab_body(tab: str, rows: list[dict[str, Any]], alternatives: list[dict[str, Any]]) -> str:
@@ -341,14 +552,25 @@ def _tab_body(tab: str, rows: list[dict[str, Any]], alternatives: list[dict[str,
             "".join(alt_rows[:12]),
         )
     if tab == "Cost Insights":
-        body = "".join(
-            f"<tr><td>{_component_cell(row, description=False)}</td><td>{row['manufacturer']}</td><td>{row['price']}</td><td>{row['source']}</td><td><span class='cv-pill {_level_class(row['level'])}'>{row['level']}</span></td></tr>"
-            for row in rows[:12]
-        )
+        if not rows:
+            body = "<tr><td colspan='6'>No saved components are available for a cost decision.</td></tr>"
+        else:
+            body = "".join(
+                "<tr>"
+                f"<td>{_component_cell(row, description=False)}</td>"
+                f"<td>{row['manufacturer']}</td>"
+                f"<td>{row['cost_price']}</td>"
+                f"<td class='cv-ei-offer'>{row['cost_source']}</td>"
+                f"<td>{row['cost_extended']}</td>"
+                f"<td><span class='cv-pill {_level_class(row['level'])}'>{row['level']}</span>"
+                f"<small class='cv-ei-reason'>{row['risk_reason'] or 'No saved risk reason was stored for this rating.'}</small></td>"
+                "</tr>"
+                for row in rows[:12]
+            )
         return _table(
             "Cost insights",
-            "Unit price is shown only when the saved analysis recorded one.",
-            ["Component", "Manufacturer", "Unit price", "Best source", "Risk"],
+            "Unit price, distributor, BOM quantity, and product URL are shown only when they were saved. Extended cost is calculated only when both a positive unit price and a BOM quantity were saved. Savings are shown only when two saved offers for the same part share a currency and a price break that applies to the BOM quantity. One saved offer means a distributor comparison is unavailable. The recorded offer is not a price ranking. A stored 0 is not a price or a quantity. Re-run the BOM analysis to save offers the supplier returns. The risk rating is the saved analysis rating.",
+            ["Component", "Manufacturer", "Unit price", "Recorded source", "Extended cost", "Risk"],
             body,
         )
     if tab == "Lifecycle":
@@ -428,24 +650,30 @@ def render_detailed_risk_rows(
     for index, row in enumerate(rows[:12]):
         is_open = row["mpn_raw"] == selected
         state = "open" if is_open else "shut"
-        verb = "Collapse" if is_open else "Expand"
         with st.container(key=f"cv_risk_{state}_{index}"):
             cells = st.columns([1.5, 1.05, 0.9, 0.55, 0.6, 0.75, 0.55, 0.7], vertical_alignment="center")
             with cells[0]:
-                st.markdown(
+                art_col, name_col = st.columns([0.42, 1.5], vertical_alignment="center")
+                art_col.markdown(
                     f"<div class='cv-ei-part'>{_part_art(row['mpn_raw'], row['image'], part=row)}</div>",
                     unsafe_allow_html=True,
                 )
-                if st.button(
-                    f"{verb} {row['mpn_raw']}",
-                    key=f"cv_risk_expand_{index}",
-                    help=(
-                        f"{verb} risk drivers and recommended action for {row['mpn_raw']}. "
-                        "Press Enter or Space."
-                    ),
-                ):
-                    st.session_state["cadivor_detailed_risk_mpn"] = "" if is_open else row["mpn_raw"]
-                    st.rerun()
+                with name_col:
+                    if st.button(
+                        row["mpn_raw"],
+                        key=f"cv_risk_expand_{index}",
+                        help=(
+                            f"Show risk drivers and the recommended action for {row['mpn_raw']}. "
+                            "Press Enter or Space."
+                        ),
+                    ):
+                        st.session_state["cadivor_detailed_risk_mpn"] = "" if is_open else row["mpn_raw"]
+                        st.rerun()
+                    if str(row.get("description_raw") or "").strip():
+                        name_col.markdown(
+                            f"<div class='cv-ei-meta'>{row['description']}</div>",
+                            unsafe_allow_html=True,
+                        )
             cells[1].markdown(row["manufacturer"])
             cells[2].markdown(row["source"])
             cells[3].markdown(str(row["suppliers"]))
@@ -458,12 +686,17 @@ def render_detailed_risk_rows(
             )
             if is_open:
                 reasons = "".join(f"<li>{driver}</li>" for driver in row["drivers"])
+                recorded_description = (
+                    f"<p>{row['description']}</p>"
+                    if str(row.get("description_raw") or "").strip()
+                    else ""
+                )
                 st.markdown(
                     f"""
                     <div class="cv-risk-detail" data-expanded-mpn="{_esc(row['mpn_raw'])}">
                       <article class="cv-risk-card">
-                        <div class="cv-ei-part">{_part_art(row['mpn_raw'], row['image'], part=row)}<h3>{row['mpn']}</h3></div>
-                        <p>{row['description']}</p>
+                        <div class="cv-ei-part">{_part_art(row['mpn_raw'], row['image'], part=row)}<span class="cv-ei-part-copy"><h3>{row['mpn']}</h3></span></div>
+                        {recorded_description}
                         <p>Manufacturer {row['manufacturer']}</p>
                         <p>Best source {row['source']}</p>
                         <p>Suppliers {row['suppliers']}</p>
@@ -505,8 +738,7 @@ def detailed_risk_report_html(
                 f"""
                 <div class="cv-risk-detail">
                   <article class="cv-risk-card">
-                    <div class="cv-ei-part">{_part_art(row['mpn_raw'], row['image'], part=row)}<h3>{row['mpn']}</h3></div>
-                    <p>{row['description']}</p>
+                    <div class="cv-ei-part">{_part_art(row['mpn_raw'], row['image'], part=row)}<span class="cv-ei-part-copy"><h3>{row['mpn']}</h3>{f"<span class='cv-ei-meta'>{row['description']}</span>" if str(row.get('description_raw') or '').strip() else ""}</span></div>
                     <p>Manufacturer {_esc(row['manufacturer'])}</p>
                     <p>Best source {_esc(row['source'])}</p>
                     <p>Suppliers {row['suppliers']}</p>
@@ -572,15 +804,12 @@ def render_engineering_intelligence_report(
 ) -> None:
     import streamlit as st
 
-    if hasattr(st, "html"):
-        st.html(report_styles())
-    else:
-        st.markdown(report_styles(), unsafe_allow_html=True)
+    st.markdown(report_styles(), unsafe_allow_html=True)
     bom_name = str(analysis.get("project_name") or analysis.get("filename") or "Saved BOM")
     detailed = bool(st.session_state.get("cadivor_show_detailed_risk"))
     tab = str(st.session_state.get("cadivor_ei_report_tab") or "BOM Risk")
     if not detailed:
-        title_col, tab_col = st.columns([1.2, 1.4], vertical_alignment="center")
+        title_col, tab_col = st.columns([0.9, 1.8], vertical_alignment="bottom")
         with title_col:
             st.markdown(
                 f"<div class='cv-ap'><p class='cv-ap-kicker'>{html.escape(bom_name)} · {len(parts or [])} components</p>"
@@ -603,15 +832,22 @@ def render_engineering_intelligence_report(
             st.markdown(
                 f"""
                 <style>
-                html body section[data-testid="stMain"] .st-key-cv_ei_report_tabs .stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton) > button,
-                html body section[data-testid="stMain"] .st-key-cv_ei_report_tabs .stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton) > button *{{
+                html body section[data-testid="stMain"] .st-key-cv_ei_report_tabs .stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton) > button{{
                   background:transparent!important;background-color:transparent!important;
-                  border:0!important;border-radius:0!important;box-shadow:none!important;color:#64748b!important;min-height:0!important
+                  border:0!important;border-radius:0!important;box-shadow:none!important;color:#64748b!important;
+                  min-height:0!important;height:auto!important;min-width:0!important;width:auto!important;
+                  margin:0!important;padding:2px 10px 4px!important;line-height:1.15!important;white-space:nowrap!important
                 }}
-                html body section[data-testid="stMain"] .st-key-cv_ei_report_tabs [class*="st-key-ei_tab_{active_slug}"].stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton) > button,
-                html body section[data-testid="stMain"] .st-key-cv_ei_report_tabs [class*="st-key-ei_tab_{active_slug}"].stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton) > button *{{
+                html body section[data-testid="stMain"] .st-key-cv_ei_report_tabs .stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton) > button *{{
+                  margin:0!important;padding:0!important;line-height:1.15!important;border:0!important;box-shadow:none!important
+                }}
+                html body section[data-testid="stMain"] .st-key-cv_ei_report_tabs [class*="st-key-ei_tab_{active_slug}"].stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton) > button{{
                   color:#1d4ed8!important;background:transparent!important;background-color:transparent!important;
-                  box-shadow:inset 0 -2px 0 #2563eb!important;border-radius:0!important
+                  border-bottom:2px solid #2563eb!important;box-shadow:none!important;border-radius:0!important;
+                  padding:2px 10px 4px!important
+                }}
+                html body section[data-testid="stMain"] .st-key-cv_ei_report_tabs [class*="st-key-ei_tab_{active_slug}"].stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton) > button *{{
+                  color:#1d4ed8!important;border:0!important;box-shadow:none!important;padding:0!important;margin:0!important
                 }}
                 </style>
                 """,

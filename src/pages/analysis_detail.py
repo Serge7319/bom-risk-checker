@@ -3319,7 +3319,7 @@ def render_analysis_detail(
                             'Continue monitoring for change.</span></div>'
                         )
 
-                    lead_time_label = (
+                    selected_lead_time_label = (
                         f"{detail['lead_time']} weeks"
                         if detail["lead_time_known"]
                         else "Not recorded"
@@ -3384,7 +3384,7 @@ def render_analysis_detail(
                                   <small>Best source: {html.escape(detail['source'])}</small>
                                 </div>
                                 <div class="cv-part-risk-evidence-card">
-                                  <span>Schedule exposure</span><strong>{html.escape(lead_time_label)}</strong>
+                                  <span>Schedule exposure</span><strong>{html.escape(selected_lead_time_label)}</strong>
                                   <small>12 weeks or more is treated as elevated</small>
                                 </div>
                                 <div class="cv-part-risk-evidence-card">

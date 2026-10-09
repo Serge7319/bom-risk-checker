@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 from integrations.pin_count import parse_pin_count_from_text, resolve_pin_count
 from src.secrets import get_secret
 from src.part_images import normalize_supplier_image_url
+from src.saved_bom_cost import price_breaks_from_payload
 
 load_dotenv()
 
@@ -96,6 +97,7 @@ def normalize_newark_product(product: dict) -> dict:
         "supplier_count": 1,
         "lead_time_weeks": extract_newark_lead_time_weeks(product),
         "unit_price": extract_newark_price(product),
+        "price_breaks": price_breaks_from_payload(product.get("prices")),
         "has_alternates": False,
         "source": "Newark",
         "manufacturer": manufacturer,

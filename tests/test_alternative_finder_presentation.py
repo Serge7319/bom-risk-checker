@@ -227,5 +227,160 @@ class AlternativeFinderPresentationTests(unittest.TestCase):
         )
 
 
+class ReplacementCandidateDecisionTests(unittest.TestCase):
+    def test_detail_shows_package_conflict_and_does_not_qualify_catalog_candidate(self):
+        from src.ui.approved_pages import _candidate_detail_html
+
+        original = {
+            "manufacturer_part_number": "LM358DGKRG4",
+            "manufacturer": "Texas Instruments",
+            "description": "Operational Amplifiers - Op Amps Dual General-Purpose Op Amp",
+            "package": '8-TSSOP, 8-MSOP (0.118", 3.00mm Width)',
+            "pin_count": 8,
+            "mounting_style": "Surface Mount",
+            "voltage_range": "3 V ~ 30 V",
+            "temperature_range": "0°C ~ 70°C",
+            "channel_count": 2,
+            "input_bias_na": "20 nA",
+            "architecture": "Operational Amplifier",
+            "lifecycle_status": "End of Life",
+            "stock_total": 685,
+            "unit_price": 0.2,
+            "source": "Mouser",
+            "lead_time_weeks": None,
+            "product_detail_url": "https://www.mouser.com/ProductDetail/LM358DGKRG4",
+            "field_sources": {
+                "package": "DigiKey",
+                "mounting_style": "DigiKey",
+                "voltage_range": "DigiKey",
+                "temperature_range": "DigiKey",
+                "channel_count": "DigiKey",
+                "lifecycle_status": "Mouser",
+                "stock_total": "Mouser",
+            },
+        }
+        row = {
+            "Alternative Part": "LM358DR2G",
+            "Manufacturer": "onsemi",
+            "description": "IC OP AMP 2CH 8-SOIC",
+            "architecture": "Standard (General Purpose)",
+            "package": '8-SOIC (0.154", 3.90mm Width)',
+            "pin_count": 8,
+            "mounting_style": "Surface Mount",
+            "voltage_range": "3 V ~ 32 V",
+            "temperature_range": "0°C ~ 70°C",
+            "channel_count": 2,
+            "input_bias_na": "45 nA",
+            "Lifecycle": "Active",
+            "Stock": 36121,
+            "unit_price": 0.25,
+            "lead_time_weeks": 13,
+            "Supplier": "DigiKey",
+            "Classification": "Catalog candidate — insufficient evidence for compatibility",
+            "Recommendation": "Catalog discovery only; insufficient evidence for compatibility.",
+            "Product URL": "https://www.digikey.com/en/products/detail/onsemi/LM358DR2G/123",
+            "Datasheet URL": "https://www.onsemi.com/pdf/datasheet/lm358-d.pdf",
+            "field_sources": {
+                "package": "DigiKey",
+                "mounting_style": "DigiKey",
+                "voltage_range": "DigiKey",
+                "channel_count": "DigiKey",
+                "lead_time_weeks": "DigiKey",
+            },
+        }
+        html_text = _candidate_detail_html(row, original)
+        self.assertIn("8-SOIC", html_text)
+        self.assertIn("Surface Mount", html_text)
+        self.assertIn("3 V ~ 32 V", html_text)
+        self.assertIn("Known conflict", html_text)
+        self.assertIn("Compatibility is not verified", html_text)
+        package = html_text.split("Package", 1)[1].split("Pin count", 1)[0]
+        self.assertIn("8-TSSOP", package)
+        self.assertIn("Known conflict", package)
+        voltage = html_text.split("Supply voltage", 1)[1].split("Bandwidth", 1)[0]
+        self.assertIn("3 V ~ 30 V", voltage)
+        self.assertIn("3 V ~ 32 V", voltage)
+        self.assertIn("Needs review", voltage)
+        self.assertIn("wider maximum", voltage)
+        self.assertNotIn("Known conflict", voltage)
+        bias = html_text.split("Input bias", 1)[1].split("Pinout", 1)[0]
+        self.assertIn("20 nA", bias)
+        self.assertIn("45 nA", bias)
+        self.assertIn("Needs review", bias)
+        self.assertIn("higher input bias", bias)
+        self.assertIn("not a confirmed design-limit conflict", bias)
+        self.assertNotIn("Known conflict", bias)
+        self.assertIn("Pinout was not in either supplier record", html_text)
+        self.assertNotIn("qualified", html_text.casefold())
+        self.assertIn("Moderate lead time risk", html_text)
+        self.assertIn("Lead time is between 8 and 16 weeks", html_text)
+        self.assertIn("https://www.onsemi.com/pdf/datasheet/lm358-d.pdf", html_text)
+        self.assertIn("Pinout was not in either supplier record", html_text)
+        self.assertNotIn(">Not recorded<", html_text)
+
+    def test_missing_attribute_stays_unknown_and_links_out(self):
+        from src.ui.approved_pages import _candidate_detail_html
+
+        original = {
+            "manufacturer_part_number": "LM358DGKRG4",
+            "description": "Operational Amplifiers - Op Amps",
+            "source": "Mouser",
+            "product_detail_url": "https://www.mouser.com/ProductDetail/LM358DGKRG4",
+        }
+        row = {
+            "Alternative Part": "LM358DR2G",
+            "description": "IC OP AMP 2CH 8-SOIC",
+            "Classification": "Catalog candidate — insufficient evidence for compatibility",
+            "Supplier": "DigiKey",
+            "Product URL": "https://www.digikey.com/en/products/detail/onsemi/LM358DR2G/123",
+        }
+        html_text = _candidate_detail_html(row, original)
+        self.assertIn("Unknown", html_text)
+        self.assertIn("was not in either supplier record", html_text)
+        self.assertIn("https://www.digikey.com/en/products/detail/onsemi/LM358DR2G/123", html_text)
+        self.assertNotIn("qualified", html_text.casefold())
+
+
+class TechnicalFindingLabelTests(unittest.TestCase):
+    def test_wider_supply_range_covers_the_original_span(self):
+        from src.parametric_compare import supply_range_finding
+
+        status, note = supply_range_finding("3 V ~ 30 V", "3 V ~ 32 V")
+        self.assertEqual(status, "Needs review")
+        self.assertIn("covers the original range", note)
+        self.assertIn("wider maximum", note)
+
+    def test_narrower_supply_range_does_not_cover(self):
+        from src.parametric_compare import supply_range_finding
+
+        status, note = supply_range_finding("3 V ~ 32 V", "3 V ~ 30 V")
+        self.assertEqual(status, "Different")
+        self.assertIn("does not cover", note)
+
+    def test_higher_bias_without_a_design_limit_stays_a_review(self):
+        from src.parametric_compare import bias_condition_finding
+
+        status, note = bias_condition_finding("20 nA", "45 nA")
+        self.assertEqual(status, "Needs review")
+        self.assertIn("higher input bias", note)
+        self.assertIn("typical or maximum", note)
+        self.assertIn("not a confirmed design-limit conflict", note)
+
+    def test_higher_bias_over_an_explicit_design_limit_is_a_conflict(self):
+        from src.parametric_compare import bias_condition_finding
+
+        status, note = bias_condition_finding("20 nA", "45 nA", design_limit="30 nA")
+        self.assertEqual(status, "Different")
+        self.assertIn("explicit design limit", note)
+        self.assertIn("30 nA", note)
+
+    def test_bias_inside_an_explicit_design_limit_is_not_a_conflict(self):
+        from src.parametric_compare import bias_condition_finding
+
+        status, note = bias_condition_finding("20 nA", "45 nA", design_limit="50 nA")
+        self.assertEqual(status, "Needs review")
+        self.assertIn("not a confirmed design-limit conflict", note)
+
+
 if __name__ == "__main__":
     unittest.main()

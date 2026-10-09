@@ -117,3 +117,63 @@ def calculate_risk(part_data: dict) -> dict:
         "risk_level": risk_level,
         "risk_reasons": reasons,
     }
+
+
+def recorded_supply_factors(part_data: dict) -> list[dict]:
+    """Apply calculate_risk thresholds only to fields this record actually contains.
+
+    Neutral inputs keep unrelated rules from firing. Their values are not
+    reported as evidence.
+    """
+    if not isinstance(part_data, dict):
+        return []
+    neutral = {
+        "lifecycle_status": "Active",
+        "stock_total": 100000,
+        "quantity": 0,
+        "supplier_count": 5,
+        "lead_time_weeks": 0,
+        "has_alternates": True,
+    }
+    baseline = calculate_risk(neutral)
+    factors = []
+
+    def _delta(overrides: dict, label: str, recorded: str, source: str) -> None:
+        scored = calculate_risk({**neutral, **overrides})
+        reasons = [
+            reason for reason in scored["risk_reasons"] if reason not in baseline["risk_reasons"]
+        ]
+        points = int(scored["risk_score"]) - int(baseline["risk_score"])
+        factors.append({
+            "factor": label,
+            "recorded": recorded,
+            "source": source,
+            "reasons": reasons,
+            "points": points,
+        })
+
+    lifecycle = str(part_data.get("lifecycle_status") or "").strip()
+    if lifecycle and lifecycle.casefold() != "unknown":
+        _delta(
+            {"lifecycle_status": lifecycle},
+            "Lifecycle",
+            lifecycle,
+            str(part_data.get("lifecycle_source") or part_data.get("source") or ""),
+        )
+    if part_data.get("stock_total") is not None and part_data.get("stock_total") != "":
+        stock = part_data.get("stock_total")
+        _delta(
+            {"stock_total": stock, "quantity": part_data.get("quantity") or 0},
+            "Stock",
+            str(stock),
+            str(part_data.get("stock_source") or part_data.get("source") or ""),
+        )
+    lead = part_data.get("lead_time_weeks")
+    if lead is not None and str(lead).strip() != "":
+        _delta(
+            {"lead_time_weeks": lead},
+            "Lead time",
+            f"{lead} weeks",
+            str(part_data.get("lead_source") or part_data.get("source") or ""),
+        )
+    return factors

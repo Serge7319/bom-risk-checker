@@ -38,6 +38,9 @@ class PinCountParsingTests(unittest.TestCase):
         self.assertEqual(parse_pin_count_from_text("SOT-23-3"), 3)
         self.assertEqual(parse_pin_count_from_text("SOT-23-5"), 5)
         self.assertEqual(parse_pin_count_from_text("SOIC-8"), 8)
+        self.assertEqual(parse_pin_count_from_text("8-SOIC"), 8)
+        self.assertEqual(parse_pin_count_from_text('8-SOIC (0.154", 3.90mm Width)'), 8)
+        self.assertEqual(parse_pin_count_from_text("8-PDIP"), 8)
         self.assertEqual(parse_pin_count_from_text("QFN-32"), 32)
         self.assertEqual(parse_pin_count_from_text("LQFP-64"), 64)
 
@@ -112,6 +115,32 @@ class PinCountParsingTests(unittest.TestCase):
         result = normalize_digikey_product(product)
         self.assertEqual(result["pin_count"], 3)
         self.assertNotEqual(result["pin_count"], 236)
+
+    def test_digikey_prefix_package_voltage_span_and_lead_weeks(self):
+        product = {
+            "Manufacturer": {"Name": "onsemi"},
+            "ManufacturerProductNumber": "LM358DR2G",
+            "QuantityAvailable": 36121,
+            "ManufacturerLeadWeeks": "13",
+            "UnitPrice": 0.25,
+            "ProductStatus": {"Status": "Active"},
+            "Parameters": [
+                {"ParameterText": "Package / Case", "ValueText": '8-SOIC (0.154", 3.90mm Width)'},
+                {"ParameterText": "Mounting Type", "ValueText": "Surface Mount"},
+                {"ParameterText": "Number of Circuits", "ValueText": "2"},
+                {"ParameterText": "Voltage - Supply Span (Min)", "ValueText": "3 V"},
+                {"ParameterText": "Voltage - Supply Span (Max)", "ValueText": "32 V"},
+                {"ParameterText": "Operating Temperature", "ValueText": "0°C ~ 70°C"},
+            ],
+            "Description": {"ProductDescription": "IC OP AMP 2CH 8-SOIC"},
+        }
+        result = normalize_digikey_product(product)
+        self.assertEqual(result["pin_count"], 8)
+        self.assertEqual(result["mounting_style"], "Surface Mount")
+        self.assertEqual(result["voltage_range"], "3 V ~ 32 V")
+        self.assertEqual(result["channel_count"], 2)
+        self.assertEqual(result["lead_time_weeks"], 13)
+        self.assertEqual(result["temperature_range"], "0°C ~ 70°C")
 
     def test_digikey_explicit_number_of_pins_wins(self):
         product = {

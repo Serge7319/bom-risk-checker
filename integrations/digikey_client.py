@@ -9,6 +9,7 @@ from integrations.pin_count import parse_pin_count_from_text, resolve_pin_count
 from integrations.stock_coercion import coerce_stock_total
 from src.secrets import get_secret
 from src.part_images import normalize_supplier_image_url
+from src.saved_bom_cost import price_breaks_from_payload
 from src.parsing.electrical_extractors import (
     extract_frequency_mhz,
     extract_slew_rate_v_us,
@@ -426,6 +427,7 @@ def search_digikey_catalog_candidates(part_number: str, *, limit: int = 12) -> l
             ):
                 continue
             seen_part_numbers.add(mpn.casefold())
+            fields = _digikey_evidence_fields(normalized)
             candidates.append({
                 "source": "DigiKey",
                 "evidence_type": "Distributor catalog match",
@@ -433,6 +435,8 @@ def search_digikey_catalog_candidates(part_number: str, *, limit: int = 12) -> l
                 "manufacturer_part_number": mpn,
                 "manufacturer": normalized.get("manufacturer", ""),
                 "description": normalized.get("description", ""),
+                "image_url": normalized.get("image_url", ""),
+                "architecture": normalized.get("architecture", ""),
                 "stock_total": normalized.get("stock_total", 0),
                 "unit_price": normalized.get("unit_price", 0.0),
                 "product_detail_url": normalized.get("product_detail_url", ""),
@@ -441,6 +445,7 @@ def search_digikey_catalog_candidates(part_number: str, *, limit: int = 12) -> l
                 "lifecycle_status": normalized.get("lifecycle_status", "Unknown"),
                 "retrieval_status": "ok",
                 "retrieved_at": retrieved_at,
+                **fields,
             })
     return candidates
 
@@ -534,10 +539,14 @@ def normalize_digikey_product(product: dict) -> dict:
     architecture = infer_architecture_from_description(description)
     channel_count = infer_channel_count_from_description(description)
 
+    span_min = extract_digikey_parameter(product, ["Voltage - Supply Span (Min)"])
+    span_max = extract_digikey_parameter(product, ["Voltage - Supply Span (Max)"])
     voltage_range = extract_digikey_parameter(
         product,
         ["Voltage - Supply", "Supply Voltage", "Operating Supply Voltage"],
     )
+    if span_min and span_max:
+        voltage_range = f"{span_min} ~ {span_max}"
 
     supply_voltage_min, supply_voltage_max = extract_voltage_limits(voltage_range)
 
@@ -623,8 +632,12 @@ def normalize_digikey_product(product: dict) -> dict:
         "lifecycle_status": infer_digikey_lifecycle(product),
         "stock_total": stock_total,
         "unit_price": extract_digikey_price(product),
+        "price_breaks": price_breaks_from_payload(
+            _digikey_price_break_payload(product),
+            currency=_digikey_recorded_currency(product),
+        ),
         "supplier_count": 1,
-        "lead_time_weeks": None,
+        "lead_time_weeks": _digikey_lead_time_weeks(product),
         "has_alternates": False,
         "source": "DigiKey",
         "manufacturer": manufacturer_name,
@@ -659,6 +672,88 @@ def normalize_digikey_product(product: dict) -> dict:
         "gbw_mhz": gbw_mhz,
         **parametric,
     }
+
+def _digikey_evidence_fields(normalized: dict) -> dict:
+    """Keep supplier parametric values on a catalog candidate."""
+    keys = (
+        "package",
+        "pin_count",
+        "mounting_style",
+        "voltage_range",
+        "temperature_range",
+        "channel_count",
+        "lead_time_weeks",
+        "bandwidth_mhz",
+        "slew_rate_v_us",
+        "input_offset_mv",
+        "input_bias_na",
+        "quiescent_current_ma",
+        "gbw_mhz",
+    )
+    fields = {}
+    sources = {}
+    for key in keys:
+        value = normalized.get(key)
+        if value in (None, "", 0):
+            continue
+        fields[key] = value
+        sources[key] = "DigiKey"
+    for key in ("stock_total", "unit_price", "lifecycle_status", "architecture", "description"):
+        value = normalized.get(key)
+        if value in (None, "", 0, 0.0):
+            if key == "stock_total" and value == 0:
+                sources[key] = "DigiKey"
+            continue
+        sources.setdefault(key, "DigiKey")
+    if normalized.get("product_detail_url"):
+        sources["product_detail_url"] = "DigiKey"
+    if normalized.get("datasheet_url"):
+        sources["datasheet_url"] = "DigiKey"
+    fields["field_sources"] = sources
+    return fields
+
+
+def _digikey_lead_time_weeks(product: dict):
+    """Use DigiKey's manufacturer lead-time field when the product includes it."""
+    raw = product.get("ManufacturerLeadWeeks")
+    if raw in (None, ""):
+        return None
+    try:
+        return int(float(raw))
+    except (TypeError, ValueError):
+        return None
+
+
+def _digikey_recorded_currency(product: dict) -> str:
+    """Currency only when the product payload includes it."""
+    for key in ("Currency", "currency"):
+        text = str(product.get(key) or "").strip()
+        if text:
+            return text
+    for key in ("SearchLocaleUsed", "ProductLocale"):
+        locale = product.get(key)
+        if isinstance(locale, dict):
+            text = str(locale.get("Currency") or locale.get("currency") or "").strip()
+            if text:
+                return text
+    return ""
+
+
+def _digikey_price_break_payload(product: dict):
+    rows = []
+    variations = product.get("ProductVariations")
+    if isinstance(variations, list):
+        for variation in variations:
+            pricing = variation.get("StandardPricing") if isinstance(variation, dict) else None
+            if isinstance(pricing, list):
+                rows.extend(pricing)
+    if rows:
+        return rows
+    pricing = product.get("StandardPricing")
+    if isinstance(pricing, list) and pricing:
+        return pricing
+    return product.get("UnitPrice")
+
 
 def extract_digikey_price(product: dict) -> float:
     price_breaks = product.get("UnitPrice") or product.get("StandardPricing") or []

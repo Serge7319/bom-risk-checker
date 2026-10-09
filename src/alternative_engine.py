@@ -109,6 +109,25 @@ def build_salvage_candidates_from_discovery(
         salvage.append(
             {
                 "Alternative Part": candidate_part,
+                "description": str(result.get("description") or "").strip(),
+                "architecture": str(result.get("architecture") or "").strip(),
+                "package": result.get("package") or "",
+                "pin_count": result.get("pin_count") or 0,
+                "mounting_style": result.get("mounting_style") or "",
+                "voltage_range": result.get("voltage_range") or "",
+                "temperature_range": result.get("temperature_range") or "",
+                "channel_count": result.get("channel_count") or 0,
+                "lead_time_weeks": result.get("lead_time_weeks"),
+                "bandwidth_mhz": result.get("bandwidth_mhz"),
+                "slew_rate_v_us": result.get("slew_rate_v_us"),
+                "input_offset_mv": result.get("input_offset_mv"),
+                "input_bias_na": result.get("input_bias_na"),
+                "quiescent_current_ma": result.get("quiescent_current_ma"),
+                "gbw_mhz": result.get("gbw_mhz"),
+                "unit_price": result.get("unit_price", 0.0),
+                "product_detail_url": result.get("product_detail_url") or "",
+                "field_sources": dict(result.get("field_sources") or {}),
+                "image_url": str(result.get("image_url") or result.get("photo_url") or "").strip(),
                 "Category": classification,
                 "Classification": classification,
                 "Supplier": str(result.get("source") or "DigiKey"),
@@ -595,8 +614,19 @@ def _discovery_row_to_part_data(row: dict) -> dict:
         "architecture": str(row.get("architecture") or "").strip(),
         "channel_count": row.get("channel_count", 0),
         "voltage_range": str(row.get("voltage_range") or "").strip(),
+        "temperature_range": str(row.get("temperature_range") or "").strip(),
+        "lead_time_weeks": row.get("lead_time_weeks"),
+        "bandwidth_mhz": row.get("bandwidth_mhz"),
+        "slew_rate_v_us": row.get("slew_rate_v_us"),
+        "input_offset_mv": row.get("input_offset_mv"),
+        "input_bias_na": row.get("input_bias_na"),
+        "quiescent_current_ma": row.get("quiescent_current_ma"),
+        "gbw_mhz": row.get("gbw_mhz"),
+        "product_detail_url": str(row.get("product_detail_url") or "").strip(),
+        "field_sources": dict(row.get("field_sources") or {}),
         "lifecycle_status": str(row.get("lifecycle_status") or row.get("Lifecycle") or "").strip(),
         "source": str(row.get("source") or "DigiKey"),
+        "image_url": str(row.get("image_url") or row.get("photo_url") or "").strip(),
         "supplier_data_verified": bool(mpn),
         **passive_fields,
     }
@@ -1274,9 +1304,18 @@ def apply_supplier_enrichment_to_candidate(
         ("Pin Count", "pin_count"),
         ("Mounting Style", "mounting_style"),
         ("Architecture", "architecture"),
+        ("Temperature Range", "temperature_range"),
     ):
         if supplier_data.get(supplier_key) not in (None, "", 0):
             enriched[candidate_key] = supplier_data.get(supplier_key)
+    if supplier_data.get("lead_time_weeks") not in (None, ""):
+        enriched["lead_time_weeks"] = supplier_data.get("lead_time_weeks")
+    if supplier_data.get("field_sources"):
+        enriched["field_sources"] = dict(supplier_data.get("field_sources") or {})
+    if supplier_data.get("product_detail_url"):
+        enriched["product_detail_url"] = supplier_data.get("product_detail_url")
+    if supplier_data.get("channel_count") not in (None, "", 0):
+        enriched["channel_count"] = supplier_data.get("channel_count")
 
     enriched["Pin Count"] = effective_pin_count(
         {
@@ -1573,6 +1612,25 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
         supplier_candidates.append(
             {
                 "Alternative Part": candidate_part,
+                "description": str(result.get("description") or "").strip(),
+                "architecture": str(result.get("architecture") or "").strip(),
+                "package": result.get("package") or "",
+                "pin_count": result.get("pin_count") or 0,
+                "mounting_style": result.get("mounting_style") or "",
+                "voltage_range": result.get("voltage_range") or "",
+                "temperature_range": result.get("temperature_range") or "",
+                "channel_count": result.get("channel_count") or 0,
+                "lead_time_weeks": result.get("lead_time_weeks"),
+                "bandwidth_mhz": result.get("bandwidth_mhz"),
+                "slew_rate_v_us": result.get("slew_rate_v_us"),
+                "input_offset_mv": result.get("input_offset_mv"),
+                "input_bias_na": result.get("input_bias_na"),
+                "quiescent_current_ma": result.get("quiescent_current_ma"),
+                "gbw_mhz": result.get("gbw_mhz"),
+                "unit_price": result.get("unit_price", 0.0),
+                "product_detail_url": result.get("product_detail_url") or "",
+                "field_sources": dict(result.get("field_sources") or {}),
+                "image_url": str(result.get("image_url") or result.get("photo_url") or "").strip(),
                 "Category": classification,
                 "Classification": classification,
                 "Supplier": str(result.get("source") or "DigiKey"),

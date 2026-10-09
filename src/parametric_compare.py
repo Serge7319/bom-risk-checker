@@ -199,6 +199,116 @@ def compare_field_values(
     return "Different", "The retrieved values differ; engineer review is required."
 
 
+_SPAN_RE = re.compile(
+    r"([+-]?\d+(?:\.\d+)?)\s*v?\s*(?:~|–|—|-|to)\s*([+-]?\d+(?:\.\d+)?)",
+    re.IGNORECASE,
+)
+
+
+def parse_supply_span(text: object) -> tuple[float, float] | None:
+    """Return the low and high ends of a supply span, in the text's voltage unit."""
+    raw = str(text or "").replace("–", "-").replace("—", "-")
+    match = _SPAN_RE.search(raw)
+    if not match:
+        return None
+    low = float(match.group(1))
+    high = float(match.group(2))
+    if high < low:
+        low, high = high, low
+    return low, high
+
+
+def supply_range_finding(original: object, candidate: object) -> tuple[str, str] | None:
+    """Compare supply spans by coverage. A wider covering range is not a conflict."""
+    original_span = parse_supply_span(original)
+    candidate_span = parse_supply_span(candidate)
+    if original_span is None or candidate_span is None:
+        return None
+    original_min, original_max = original_span
+    candidate_min, candidate_max = candidate_span
+    same_min = abs(candidate_min - original_min) <= 1e-9
+    same_max = abs(candidate_max - original_max) <= 1e-9
+    if same_min and same_max:
+        return None
+    covers = candidate_min <= original_min + 1e-9 and candidate_max >= original_max - 1e-9
+    if covers:
+        differences = []
+        if candidate_max > original_max + 1e-9:
+            differences.append("a wider maximum")
+        if candidate_min < original_min - 1e-9:
+            differences.append("a lower minimum")
+        detail = " and ".join(differences) or "the same endpoints"
+        return (
+            "Needs review",
+            "The candidate range covers the original range, with "
+            f"{detail}. This is a specification difference, not a known conflict.",
+        )
+    return (
+        "Different",
+        "The candidate supply range does not cover the original range.",
+    )
+
+
+def _condition_label(text: object) -> str:
+    folded = str(text or "").casefold()
+    if "typ" in folded:
+        return "typical"
+    if re.search(r"\bmax(?:imum)?\b", folded):
+        return "maximum"
+    return ""
+
+
+def bias_condition_finding(
+    original: object,
+    candidate: object,
+    *,
+    design_limit: object = None,
+) -> tuple[str, str] | None:
+    """A higher bias current is a review item unless it breaks an explicit design limit."""
+    original_text = str(original or "").strip()
+    candidate_text = str(candidate or "").strip()
+    original_value, _original_unit = parse_numeric_with_unit(original_text, preferred_unit="A")
+    candidate_value, _candidate_unit = parse_numeric_with_unit(candidate_text, preferred_unit="A")
+    if original_value is None or candidate_value is None:
+        return None
+    if abs(candidate_value - original_value) <= max(abs(original_value), abs(candidate_value), 1e-30) * 0.02:
+        return None
+    original_condition = _condition_label(original_text)
+    candidate_condition = _condition_label(candidate_text)
+    if original_condition and candidate_condition and original_condition != candidate_condition:
+        condition = (
+            f"The original value is labeled {original_condition} and the candidate value is labeled "
+            f"{candidate_condition}, so the conditions are not comparable."
+        )
+    elif original_condition and original_condition == candidate_condition:
+        condition = f"Both values are labeled {original_condition}."
+    else:
+        condition = (
+            "The supplier records do not state whether these are typical or maximum values, "
+            "so the conditions are not confirmed to be comparable."
+        )
+    if candidate_value <= original_value:
+        return (
+            "Needs review",
+            f"The candidate input bias is lower than the retrieved original value. {condition}",
+        )
+    limit_value = None
+    limit_text = str(design_limit or "").strip()
+    if limit_text and limit_text.casefold() not in {"none", "nan"}:
+        limit_value, _limit_unit = parse_numeric_with_unit(limit_text, preferred_unit="A")
+    if limit_value is not None and candidate_value > limit_value + 1e-15:
+        return (
+            "Different",
+            "The candidate input bias exceeds the explicit design limit "
+            f"({limit_text}). {condition}",
+        )
+    return (
+        "Needs review",
+        "The candidate has higher input bias than the retrieved original value. "
+        f"{condition} This is not a confirmed design-limit conflict.",
+    )
+
+
 def engineering_confidence_from_rows(
     rows: list[dict[str, Any]],
     *,
