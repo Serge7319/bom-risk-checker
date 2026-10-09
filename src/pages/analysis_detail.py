@@ -267,6 +267,14 @@ def _render_analysis_section_navigation(*, analysis_id: str) -> str:
         or st.session_state.get("cadivor_active_analysis_tab"),
         "Engineering Intelligence",
     )
+    if stored == "Engineering Intelligence":
+        # The approved report owns its tabs. Do not also paint the legacy section rail.
+        st.session_state["cadivor_stack_decision_brief"] = True
+        st.session_state["cadivor_decision_focus"] = False
+        return _commit_analysis_section_selection(
+            analysis_id=analysis_id,
+            selected="Engineering Intelligence",
+        )
     area_key = f"cadivor_bom_area_{analysis_id}"
     more_key = f"cadivor_bom_more_{analysis_id}"
     visible = visible_area_for_section(stored)
@@ -3185,6 +3193,8 @@ def render_analysis_detail(
                             "Photo": {
                                 "image_url": part.get("image_url") or part.get("Photo") or "",
                                 "mpn": mpn_value,
+                                "description": part.get("description") or part.get("Description") or "",
+                                "category": part.get("category") or part.get("Category") or "",
                             },
                             "Component": mpn_value,
                             "Manufacturer": _safe(
@@ -3349,7 +3359,7 @@ def render_analysis_detail(
                             f"""
                             <div class="cv-part-risk-detail{' is-command-focus' if component_focus_requested and requested_component and selected_mpn.strip().lower() == requested_component.strip().lower() else ''}">
                               <div class="cv-part-risk-summary cv-part-risk-summary--with-photo">
-                                <div class="cv-part-risk-photo">{part_image_markup(selected_part.get("image_url") or selected_part.get("Photo"), selected_mpn, size=88)}</div>
+                                <div class="cv-part-risk-photo">{part_image_markup(selected_part.get("image_url") or selected_part.get("Photo"), selected_mpn, size=88, part=selected_part)}</div>
                                 <div>
                                   <span class="cv-part-risk-kicker">Decision context · {html.escape(selected_mpn)}</span>
                                   <h4>{html.escape(detail['recommendation'])}</h4>

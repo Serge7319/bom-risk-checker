@@ -299,7 +299,7 @@ def render_portfolio_intelligence(
         if not shared:
             st.info("No component is currently recorded across multiple saved projects.")
         for index, row in enumerate(shared):
-            photo = part_image_markup(row.get("Image URL"), row["Part Number"], size=64)
+            photo = part_image_markup(row.get("Image URL"), row["Part Number"], size=64, part=row)
             st.markdown(
                 f"""
                 <section class="cv19-card cv-part-card-layout">

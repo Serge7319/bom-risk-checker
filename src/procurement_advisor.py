@@ -79,6 +79,8 @@ def _recommend(row: Dict[str, Any]) -> Dict[str, Any]:
         "Supplier Sources": suppliers,
         "Lead Time (Weeks)": lead,
         "Lifecycle Status": lifecycle,
+        "description": _t(_first(row, "description", "Description", default="")),
+        "category": _t(_first(row, "category", "Category", "device_type", default="")),
     }
 
 def build_procurement_advisor(*, analyses: Iterable[Dict[str, Any]], parts: Iterable[Dict[str, Any]], alerts=None):

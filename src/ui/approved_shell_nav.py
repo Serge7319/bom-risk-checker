@@ -1,40 +1,67 @@
-"""Per-mockup navigation. NAV_GROUPS stays the stable product map for tests.
+"""One authenticated navigation rail. NAV_GROUPS stays the stable product map for tests.
 
-Each approved screen shows the sidebar (or top nav) from its own reference.
-Labels that have no separate route open the closest existing workflow.
+Every signed-in route renders the same groups, order, and destinations.
+Only the active item changes. Engineering Intelligence report tabs stay on that page.
 """
 
 from __future__ import annotations
 
 
+# Label, widget slug, destination. Order is the rail order on every route.
+SHARED_NAV_GROUPS = (
+    ("Workspace", (
+        ("Home", "home", "Dashboard"),
+        ("BOM Analyzer", "bom-analyzer", "BOM Analyzer"),
+        ("Engineering Decisions", "engineering-decisions", "Engineering Decisions"),
+        ("Monitoring", "monitoring", "Monitoring"),
+        ("Find a replacement", "find-replacement", "Alternative Finder"),
+        ("Reports", "reports", "Reports"),
+    )),
+    ("Decision Tools", (
+        ("Compare Parts", "compare-parts", "Compare Parts"),
+        ("Datasheet Q&A", "datasheet-qa", "Datasheet Q&A"),
+        ("Procurement Advisor", "procurement", "Procurement Advisor"),
+        ("Design Impact Analyzer", "design-impact", "Design Impact Analyzer"),
+        ("Cost Optimization", "cost", "Cost Optimization"),
+        ("Supply Risk Scenario", "supply-scenario", "Supply Risk Scenario"),
+    )),
+    ("Intelligence", (
+        ("Settings", "settings", "Settings"),
+        ("Portfolio Intelligence", "portfolio", "Portfolio Intelligence"),
+        ("Detailed Risk Report", "detailed-risk", "Analysis Details"),
+        ("Engineering Intelligence", "engineering-intelligence", "Analysis Details"),
+    )),
+)
+
+
+def shared_nav_groups() -> tuple:
+    """Return the single rail used by every authenticated route."""
+    return SHARED_NAV_GROUPS
+
+
 def nav_groups_for_page(page: str) -> tuple | None:
-    """Return mockup groups for a route, or None to keep the default rail."""
-    return _SHELLS.get(page)
+    """Page shells are retired. The shared rail does not change with the route."""
+    return None
 
 
-def active_nav_label(page: str) -> str:
-    return _ACTIVE.get(page, "")
+def active_nav_label(page: str, *, detailed_risk: bool = False) -> str:
+    if page == "Analysis Details":
+        return "Detailed Risk Report" if detailed_risk else "Engineering Intelligence"
+    for _group, rows in SHARED_NAV_GROUPS:
+        for label, _slug, destination in rows:
+            if destination == page:
+                return label
+    return ""
 
 
 def top_nav_items() -> tuple:
-    """Horizontal bar from the Engineering Intelligence reference."""
-    return (
-        ("Projects", "projects", "Portfolio Intelligence"),
-        ("BOMs", "bom", "BOM Analyzer"),
-        ("Engineering Intelligence", "ei", "Analysis Details"),
-        ("Suppliers", "procurement", "Procurement Advisor"),
-        ("Parts Search", "alternatives", "Alternative Finder"),
-        ("Reports", "reports", "Reports"),
-    )
+    """Kept for callers. The shell no longer replaces the rail with this bar."""
+    return ()
 
 
 def uses_top_nav(page: str, *, analysis_tab: str = "", detailed_risk: bool = False) -> bool:
-    if detailed_risk:
-        return False
-    if page != "Analysis Details":
-        return False
-    tab = str(analysis_tab or "Engineering Intelligence").strip()
-    return tab in {"", "Engineering Intelligence"}
+    """Report tabs stay inside Engineering Intelligence. They never replace the rail."""
+    return False
 
 
 _ACTIVE = {

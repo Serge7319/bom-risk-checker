@@ -50,6 +50,7 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
         self.assertIn("Review these components first", html)
         self.assertIn("MPN-001", html)
         self.assertIn("72/100", html)
+        self.assertIn("cv-part-photo__placeholder", html)
         self.assertNotIn("Supply & Availability", html)
 
     def test_supply_and_alternatives_keep_the_same_report_family(self):
@@ -68,10 +69,40 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
         )
         self.assertIn("Supply and availability", supply)
         self.assertIn("Digi-Key", supply)
+        self.assertIn("cv-part-photo__placeholder", supply)
         self.assertIn("MPN-901", alternatives)
+        self.assertIn("cv-part-photo", alternatives)
+        empty = engineering_intelligence_html(
+            bom_name="Sample BOM",
+            part_count=2,
+            tab="Alternatives",
+            parts=PARTS,
+            alternatives=[],
+        )
+        self.assertIn(
+            "No approved alternative is stored for this BOM yet. Use Find a replacement to qualify one.",
+            empty,
+        )
+        self.assertNotIn("cv-part-photo", empty)
         self.assertIn("BOM Risk", EI_TABS)
         self.assertIn("Supply & Availability", EI_TABS)
         self.assertIn("Alternatives", EI_TABS)
+
+    def test_tables_use_catalog_photos_and_the_same_placeholder(self):
+        catalog = "https://media.digikey.com/Photos/Texas%20Instruments/LM358.jpg"
+        parts = [dict(PARTS[0], image_url=catalog), PARTS[1]]
+        html = engineering_intelligence_html(
+            bom_name="Sample BOM",
+            part_count=2,
+            tab="Lifecycle",
+            parts=parts,
+        )
+        self.assertIn(f'src="{catalog}"', html)
+        self.assertIn("Product photo for MPN-001", html)
+        self.assertIn("Image for illustration purposes only", html)
+        self.assertNotIn("Product photo for MPN-002", html)
+        self.assertIn('data-illustration="ic"', html)
+        self.assertNotIn("https://example.test", html)
 
     def test_detailed_risk_report_expands_the_selected_part(self):
         html = detailed_risk_report_html(

@@ -363,7 +363,7 @@ def render_cost_optimization(
     if not intelligence["opportunities"]:
         st.info("No priced component currently meets the volume, supplier, or shared-demand criteria for a modeled savings opportunity.")
     for index,row in enumerate(intelligence["opportunities"][:6]):
-        photo = part_image_markup(row.get("Image URL"), row["Part Number"], size=64)
+        photo = part_image_markup(row.get("Image URL"), row["Part Number"], size=64, part=row)
         st.markdown(f"""<section class="cv21-card cv-part-card-layout">{photo}<div><div class="cv21-card-title">{html.escape(row['Part Number'])}</div><div class="cv21-card-copy">{html.escape(row['Reason'])}</div><div class="cv21-meta"><span>{html.escape(row['Category'])}</span><span>{row['Projects']} project(s)</span><span>{row['Units per Build']} unit(s)/build</span><span>Current ${row['Current Unit Price']:,.4f}</span><span>Target ${row['Estimated Target Price']:,.4f}</span><span>Est. savings ${row['Estimated Run Savings']:,.2f}</span></div></div></section>""", unsafe_allow_html=True)
         cols=st.columns(2)
         with cols[0]: internal_nav_button("Review Sourcing","Procurement Advisor",key=f"cost_procurement_{index}",use_container_width=True)

@@ -13,10 +13,24 @@ import html
 from typing import Any
 
 
-def _part_art(mpn: str, url: str = "") -> str:
-    from src.ui.approved_pages import part_photo
+def _part_art(mpn: str, url: str = "", part: dict[str, Any] | None = None) -> str:
+    """Supplier photo, or a category illustration that is not claimed as that MPN."""
+    from src.part_images import part_image_markup
 
-    return part_photo(url)
+    return part_image_markup(url, mpn, size=48, part=part)
+
+
+def _component_cell(row: dict[str, Any], *, description: bool = True) -> str:
+    art = _part_art(
+        str(row.get("mpn_raw") or row.get("mpn") or ""),
+        str(row.get("image") or ""),
+        part=row,
+    )
+    copy = f"<span class='cv-ei-part-copy'><span>{row['mpn']}</span>"
+    if description:
+        copy += f"<span class='cv-ei-meta'>{row['description']}</span>"
+    copy += "</span>"
+    return f"<div class='cv-ei-part'>{art}{copy}</div>"
 
 
 EI_TABS = (
@@ -122,9 +136,17 @@ def _part_rows(parts: list[dict[str, Any]]) -> list[dict[str, Any]]:
             continue
         level = _level(part)
         title, detail = _action(level)
+        raw_mpn = str(_first(part, "mpn", "MPN", "part_number", fallback="Part") or "Part")
         ranked.append(
             {
-                "mpn": _esc(_first(part, "mpn", "MPN", "part_number", fallback="Part")),
+                "mpn_raw": raw_mpn,
+                "mpn": _esc(raw_mpn),
+                "description_raw": str(
+                    _first(part, "description", "Description", "part_description", fallback="") or ""
+                ),
+                "category_raw": str(
+                    _first(part, "category", "Category", "device_type", "architecture", fallback="") or ""
+                ),
                 "description": _esc(
                     _first(part, "description", "Description", "part_description", fallback="Component")
                 ),
@@ -137,7 +159,19 @@ def _part_rows(parts: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "lead": _esc(_first(part, "lead_time_weeks", "Lead Time Weeks", fallback="—")),
                 "source": _esc(_first(part, "best_source", "Best Source", "distributor", fallback="—")),
                 "price": _esc(_first(part, "unit_price", "Unit Price", "price", fallback="—")),
-                "image": str(_first(part, "image_url", "photo_url", "image", fallback="") or ""),
+                "image": str(
+                    _first(
+                        part,
+                        "image_url",
+                        "photo_url",
+                        "Photo",
+                        "Image URL",
+                        "image",
+                        "PrimaryPhoto",
+                        fallback="",
+                    )
+                    or ""
+                ),
                 "drivers": [_esc(item) for item in _drivers(part)],
                 "action": _esc(title),
                 "action_detail": _esc(detail),
@@ -173,8 +207,8 @@ def report_styles() -> str:
       .cv-ei-table { width:100%; border-collapse:separate; border-spacing:0; background:#fff; border:1px solid #e6edf5; border-radius:16px; overflow:hidden; }
       .cv-ei-table th { text-align:left; font-size:12px; letter-spacing:.04em; text-transform:uppercase; color:#94a3b8; padding:12px 14px; background:#f8fafc; }
       .cv-ei-table td { padding:14px; border-top:1px solid #eef2f7; vertical-align:top; font-size:14px; }
-      .cv-ei-part { font-weight:750; display:flex; align-items:center; gap:8px; }
-      .cv-part-photo { width:72px; height:72px; border-radius:12px; background:#f1f5f9; border:1px solid #e2e8f0; display:inline-block; object-fit:cover; flex:0 0 72px; }
+      .cv-ei-part { font-weight:750; display:flex; align-items:center; gap:10px; }
+      .cv-ei-part-copy { display:flex; flex-direction:column; min-width:0; }
       .cv-ei-meta { color:#64748b; font-size:12px; margin-top:2px; }
       .cv-pill { display:inline-flex; align-items:center; gap:6px; border-radius:999px; padding:4px 10px; font-size:12px; font-weight:750; }
       .cv-pill.high { background:#ffe4e6; color:#be123c; }
@@ -258,7 +292,7 @@ def _tab_body(tab: str, rows: list[dict[str, Any]], alternatives: list[dict[str,
     if tab == "Supply & Availability":
         body = "".join(
             "<tr>"
-            f"<td><div class='cv-ei-part'>{row['mpn']}</div><div class='cv-ei-meta'>{row['description']}</div></td>"
+            f"<td>{_component_cell(row)}</td>"
             f"<td>{row['source']}</td><td>{row['suppliers']}</td><td>{row['stock']:,}</td>"
             f"<td>{row['lead']}</td><td>{row['lifecycle']}</td>"
             f"<td><span class='cv-pill { _level_class(row['level']) }'>{row['level']}</span></td>"
@@ -272,16 +306,29 @@ def _tab_body(tab: str, rows: list[dict[str, Any]], alternatives: list[dict[str,
             body,
         )
     if tab == "Alternatives":
+        photos = {row["mpn"]: row for row in rows}
         alt_rows = []
         for alt in alternatives:
             if not isinstance(alt, dict):
                 continue
-            original = _esc(_first(alt, "original_part", "original_mpn", "mpn", fallback="—"))
-            replacement = _esc(_first(alt, "alternative_part", "alternative_mpn", fallback="—"))
+            original_raw = str(_first(alt, "original_part", "original_mpn", "mpn", fallback="") or "").strip()
+            replacement_raw = str(_first(alt, "alternative_part", "alternative_mpn", fallback="") or "").strip()
+            if not original_raw and not replacement_raw:
+                continue
+            original = _esc(original_raw or "—")
+            replacement = _esc(replacement_raw or "—")
             maker = _esc(_first(alt, "manufacturer", "alternative_manufacturer", fallback="—"))
             reason = _esc(_first(alt, "reason", "match_reason", "notes", fallback="Saved alternative"))
+            source = photos.get(original) if isinstance(photos.get(original), dict) else {}
+            original_photo = str(source.get("image") or "")
+            replacement_photo = str(
+                _first(alt, "image_url", "photo_url", "Photo", "Image URL", "image", fallback="") or ""
+            )
             alt_rows.append(
-                f"<tr><td>{original}</td><td><div class='cv-ei-part'>{replacement}</div></td><td>{maker}</td><td>{reason}</td></tr>"
+                "<tr>"
+                f"<td>{_component_cell({'mpn': original, 'mpn_raw': original_raw or '—', 'image': original_photo, 'description': '', 'description_raw': source.get('description_raw') or '', 'category_raw': source.get('category_raw') or '', 'category': source.get('category_raw') or ''}, description=False)}</td>"
+                f"<td>{_component_cell({'mpn': replacement, 'mpn_raw': replacement_raw or '—', 'image': replacement_photo, 'description': '', 'description_raw': str(_first(alt, 'description', 'Description', fallback='') or ''), 'category_raw': str(_first(alt, 'category', 'Category', fallback='') or ''), 'category': str(_first(alt, 'category', 'Category', fallback='') or '')}, description=False)}</td>"
+                f"<td>{maker}</td><td>{reason}</td></tr>"
             )
         if not alt_rows:
             alt_rows.append(
@@ -295,7 +342,7 @@ def _tab_body(tab: str, rows: list[dict[str, Any]], alternatives: list[dict[str,
         )
     if tab == "Cost Insights":
         body = "".join(
-            f"<tr><td><div class='cv-ei-part'>{row['mpn']}</div></td><td>{row['manufacturer']}</td><td>{row['price']}</td><td>{row['source']}</td><td><span class='cv-pill {_level_class(row['level'])}'>{row['level']}</span></td></tr>"
+            f"<tr><td>{_component_cell(row, description=False)}</td><td>{row['manufacturer']}</td><td>{row['price']}</td><td>{row['source']}</td><td><span class='cv-pill {_level_class(row['level'])}'>{row['level']}</span></td></tr>"
             for row in rows[:12]
         )
         return _table(
@@ -306,7 +353,7 @@ def _tab_body(tab: str, rows: list[dict[str, Any]], alternatives: list[dict[str,
         )
     if tab == "Lifecycle":
         body = "".join(
-            f"<tr><td><div class='cv-ei-part'>{row['mpn']}</div><div class='cv-ei-meta'>{row['description']}</div></td><td>{row['lifecycle']}</td><td>{row['manufacturer']}</td><td><span class='cv-pill {_level_class(row['level'])}'>{row['level']}</span></td></tr>"
+            f"<tr><td>{_component_cell(row)}</td><td>{row['lifecycle']}</td><td>{row['manufacturer']}</td><td><span class='cv-pill {_level_class(row['level'])}'>{row['level']}</span></td></tr>"
             for row in rows[:12]
         )
         return _table(
@@ -322,7 +369,7 @@ def _tab_body(tab: str, rows: list[dict[str, Any]], alternatives: list[dict[str,
         body.append(
             "<tr>"
             f"<td>{index}</td>"
-            f"<td><div class='cv-ei-part'>{_part_art(row['mpn'], row.get('image') or '')}{row['mpn']}</div><div class='cv-ei-meta'>{row['description']}</div></td>"
+            f"<td>{_component_cell(row)}</td>"
             f"<td><span class='cv-pill {_level_class(row['level'])}'>{row['level']}</span></td>"
             f"<td><ul class='cv-ei-reasons'>{reasons}</ul></td>"
             f"<td><div class='cv-ei-action'>→ {row['action']}<small>{row['action_detail']}</small></div></td>"
@@ -347,6 +394,92 @@ def _table(title: str, copy: str, headers: list[str], body: str) -> str:
     """
 
 
+def render_detailed_risk_rows(
+    *,
+    bom_name: str,
+    analyzed_on: str,
+    parts: list[dict[str, Any]],
+) -> None:
+    """One expanded part at a time. Each row's control is a real button."""
+    import streamlit as st
+
+    rows = _part_rows(parts)
+    if "cadivor_detailed_risk_mpn" not in st.session_state:
+        st.session_state["cadivor_detailed_risk_mpn"] = rows[0]["mpn_raw"] if rows else ""
+    selected = str(st.session_state.get("cadivor_detailed_risk_mpn") or "")
+    st.markdown(
+        f"""
+        <div class="cv-ei-report">
+          <h1 class="cv-ei-title">Detailed Risk Report</h1>
+          <p class="cv-ei-sub">{_esc(bom_name)} · {len(rows)} parts · Analyzed on {_esc(analyzed_on)}</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    if not rows:
+        st.caption("This BOM has no saved components.")
+        return
+    header = st.columns([1.5, 1.05, 0.9, 0.55, 0.6, 0.75, 0.55, 0.7])
+    for column, label in zip(
+        header,
+        ("MPN", "Manufacturer", "Best source", "Suppliers", "Stock", "Lifecycle", "Risk score", "Risk level"),
+    ):
+        column.markdown(f"<div class='cv-ap-meta'>{label}</div>", unsafe_allow_html=True)
+    for index, row in enumerate(rows[:12]):
+        is_open = row["mpn_raw"] == selected
+        state = "open" if is_open else "shut"
+        verb = "Collapse" if is_open else "Expand"
+        with st.container(key=f"cv_risk_{state}_{index}"):
+            cells = st.columns([1.5, 1.05, 0.9, 0.55, 0.6, 0.75, 0.55, 0.7], vertical_alignment="center")
+            with cells[0]:
+                st.markdown(
+                    f"<div class='cv-ei-part'>{_part_art(row['mpn_raw'], row['image'], part=row)}</div>",
+                    unsafe_allow_html=True,
+                )
+                if st.button(
+                    f"{verb} {row['mpn_raw']}",
+                    key=f"cv_risk_expand_{index}",
+                    help=(
+                        f"{verb} risk drivers and recommended action for {row['mpn_raw']}. "
+                        "Press Enter or Space."
+                    ),
+                ):
+                    st.session_state["cadivor_detailed_risk_mpn"] = "" if is_open else row["mpn_raw"]
+                    st.rerun()
+            cells[1].markdown(row["manufacturer"])
+            cells[2].markdown(row["source"])
+            cells[3].markdown(str(row["suppliers"]))
+            cells[4].markdown(f"{row['stock']:,}")
+            cells[5].markdown(row["lifecycle"])
+            cells[6].markdown(str(row["score"]))
+            cells[7].markdown(
+                f"<span class='cv-pill {_level_class(row['level'])}'>{row['level']}</span>",
+                unsafe_allow_html=True,
+            )
+            if is_open:
+                reasons = "".join(f"<li>{driver}</li>" for driver in row["drivers"])
+                st.markdown(
+                    f"""
+                    <div class="cv-risk-detail" data-expanded-mpn="{_esc(row['mpn_raw'])}">
+                      <article class="cv-risk-card">
+                        <div class="cv-ei-part">{_part_art(row['mpn_raw'], row['image'], part=row)}<h3>{row['mpn']}</h3></div>
+                        <p>{row['description']}</p>
+                        <p>Manufacturer {row['manufacturer']}</p>
+                        <p>Best source {row['source']}</p>
+                        <p>Suppliers {row['suppliers']}</p>
+                        <p>Stock (total) {row['stock']:,}</p>
+                        <p>Lifecycle {row['lifecycle']}</p>
+                      </article>
+                      <div>
+                        <article class="cv-risk-drivers"><h3>Risk drivers</h3><ul class="cv-ei-reasons">{reasons}</ul></article>
+                        <article class="cv-risk-action"><h3>Recommended action</h3><p>{row['action']}</p><p>{row['action_detail']}</p></article>
+                      </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+
 def detailed_risk_report_html(
     *,
     bom_name: str,
@@ -362,7 +495,7 @@ def detailed_risk_report_html(
     for row in rows[:12]:
         body.append(
             "<div class='cv-risk-row'>"
-            f"<div class='cv-ei-part'>{_part_art(row['mpn'], row.get('image') or '')}{row['mpn']}</div><div>{row['manufacturer']}</div><div>{row['source']}</div>"
+            f"<div>{_component_cell(row, description=False)}</div><div>{row['manufacturer']}</div><div>{row['source']}</div>"
             f"<div>{row['suppliers']}</div><div>{row['stock']:,}</div><div>{row['lifecycle']}</div><div>{row['score']}</div>"
             f"<div><span class='cv-pill {_level_class(row['level'])}'>{row['level']}</span></div></div>"
         )
@@ -372,7 +505,7 @@ def detailed_risk_report_html(
                 f"""
                 <div class="cv-risk-detail">
                   <article class="cv-risk-card">
-                    <h3>{row['mpn']}</h3>
+                    <div class="cv-ei-part">{_part_art(row['mpn_raw'], row['image'], part=row)}<h3>{row['mpn']}</h3></div>
                     <p>{row['description']}</p>
                     <p>Manufacturer {_esc(row['manufacturer'])}</p>
                     <p>Best source {_esc(row['source'])}</p>
@@ -484,34 +617,16 @@ def render_engineering_intelligence_report(
                 """,
                 unsafe_allow_html=True,
             )
-    st.session_state["cadivor_shell_variant"] = (
-        "detailed" if st.session_state.get("cadivor_show_detailed_risk") else "top"
-    )
     if st.session_state.get("cadivor_show_detailed_risk"):
         if st.button("Back to Engineering Intelligence", key="ei_back_from_detailed_risk"):
             st.session_state["cadivor_show_detailed_risk"] = False
             st.rerun()
         analyzed = str(analysis.get("created_at") or "saved analysis")
-        _render_html = st.html if hasattr(st, "html") else None
-        if _render_html is not None:
-            _render_html(
-            detailed_risk_report_html(
-                bom_name=bom_name,
-                analyzed_on=analyzed,
-                parts=parts,
-                expanded_mpn=str(st.session_state.get("cadivor_detailed_risk_mpn") or ""),
-            ),
-            )
-        else:
-            st.markdown(
-            detailed_risk_report_html(
-                bom_name=bom_name,
-                analyzed_on=analyzed,
-                parts=parts,
-                expanded_mpn=str(st.session_state.get("cadivor_detailed_risk_mpn") or ""),
-            ),
-            unsafe_allow_html=True,
-            )
+        render_detailed_risk_rows(
+            bom_name=bom_name,
+            analyzed_on=analyzed,
+            parts=parts or [],
+        )
         try:
             from src.ui.approved_pages import excel_bytes
 
@@ -525,21 +640,7 @@ def render_engineering_intelligence_report(
         except Exception:
             st.caption("Excel export is unavailable for this analysis.")
         return
-    _render_html = st.html if hasattr(st, "html") else None
-    if _render_html is not None:
-        _render_html(
-        engineering_intelligence_html(
-            bom_name=bom_name,
-            part_count=len(parts or []),
-            tab=str(tab or "BOM Risk"),
-            parts=parts or [],
-            alternatives=alternatives or [],
-            health_score=health_score,
-            include_heading=False,
-        ),
-        )
-    else:
-        st.markdown(
+    st.markdown(
         engineering_intelligence_html(
             bom_name=bom_name,
             part_count=len(parts or []),
@@ -550,7 +651,7 @@ def render_engineering_intelligence_report(
             include_heading=False,
         ),
         unsafe_allow_html=True,
-        )
+    )
     if st.button("Open detailed risk report", key="ei_open_detailed_risk"):
         st.session_state["cadivor_show_detailed_risk"] = True
         st.rerun()
