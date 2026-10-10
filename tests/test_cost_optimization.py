@@ -13,6 +13,7 @@ class CostOptimizationWorkspaceTests(unittest.TestCase):
                     "analysis_id": "analysis-1",
                     "mpn": "CAP-100",
                     "description": "Ceramic capacitor",
+                    "category": "Ceramic capacitor",
                     "manufacturer": "Acme",
                     "quantity": 10,
                     "unit_price": 1.25,
@@ -27,6 +28,7 @@ class CostOptimizationWorkspaceTests(unittest.TestCase):
         self.assertEqual(intelligence["production_run_cost"], 1250)
         self.assertEqual(intelligence["estimated_savings"], 62.5)
         self.assertEqual(intelligence["opportunities"][0]["Description"], "Ceramic capacitor")
+        self.assertEqual(intelligence["opportunities"][0]["Component Category"], "Ceramic capacitor")
 
         markup = _opportunity_table_markup(intelligence["opportunities"])
 
