@@ -1830,6 +1830,7 @@ def _canonical_route_allowlist() -> frozenset[str]:
         {
             "Dashboard",
             "BOM Analyzer",
+            "BOM Settings",
             "High Risk Review",
             "Alternative Finder",
             "Compare Parts",
