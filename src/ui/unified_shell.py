@@ -562,6 +562,13 @@ def render_unified_shell(
         source_groups = shared_nav_groups()
         for group_name, configured_rows in source_groups:
             rows = configured_rows
+            if group_name == "Workspace" and current_page == "BOM Settings":
+                rows = tuple(
+                    ("BOM Settings", "bom-settings", "BOM Settings")
+                    if destination == "BOM Analyzer"
+                    else (label, slug, destination)
+                    for label, slug, destination in rows
+                )
             if group_name == "Workspace" and report_nav_rows:
                 rows = rows + report_nav_rows
             if group_name == "Intelligence" and is_admin:
