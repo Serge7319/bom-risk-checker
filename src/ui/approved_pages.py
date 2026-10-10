@@ -625,7 +625,9 @@ def begin_approved_page() -> None:
         [class*="st-key-approved_home_row_"]{box-sizing:border-box!important;min-height:108px!important;margin:0!important;padding:16px 30px!important;border-top:0!important;border-bottom:1px solid #e5ebf3!important;background:#fff!important}
         [class*="st-key-approved_home_row_"] [data-testid="stVerticalBlock"]{gap:0!important;justify-content:center!important;min-height:76px!important}
         [class*="st-key-approved_home_row_"] [data-testid="stElementContainer"]{margin:0!important;padding:0!important}
-        [class*="st-key-approved_home_row_"] [data-testid="stHorizontalBlock"]{align-items:stretch!important;min-height:76px!important}\n        [class*="st-key-approved_home_row_"] [data-testid="column"]{align-self:stretch!important;display:flex!important;align-items:center!important;min-height:76px!important}\n        [class*="st-key-approved_home_row_"] [data-testid="stVerticalBlock"]{justify-content:center!important}
+        [class*="st-key-approved_home_row_"] [data-testid="stHorizontalBlock"]{align-items:stretch!important;min-height:76px!important}
+        [class*="st-key-approved_home_row_"] [data-testid="column"]{align-self:stretch!important;display:flex!important;align-items:center!important;min-height:76px!important}
+        [class*="st-key-approved_home_row_"] [data-testid="stVerticalBlock"]{justify-content:center!important}
         [class*="st-key-approved_home_row_"] [data-testid="stMarkdownContainer"] p{margin:0!important;color:#52647b!important;font-size:20px!important;line-height:1.4!important}
         .cv-ap-home-bom{display:flex;align-items:center;gap:18px;min-width:0;min-height:76px}
         .cv-ap-home-row-icon{display:inline-flex;align-items:center;justify-content:center;flex:0 0 60px;width:60px;height:60px;border-radius:50%;background:#edf4ff;color:#2563eb}
@@ -636,7 +638,8 @@ def begin_approved_page() -> None:
         .cv-ap-home-project{display:flex;align-items:center;min-height:76px;overflow:hidden;color:#52647b;font-size:20px;line-height:1.4;text-overflow:ellipsis;white-space:nowrap}
         .st-key-approved_home_recent_card .cv-pill{min-height:48px;padding:10px 14px;font-size:18px;font-weight:750}
         .st-key-approved_home_recent_card .cv-pill-dot{width:8px;height:8px;flex-basis:8px}
-        .cv-home-risk-count{display:inline-flex;align-items:center;justify-content:center;min-width:68px;min-height:48px;padding:0 14px;border-radius:12px;background:#fee9ed;color:#d81b43;font-size:20px;font-weight:750;line-height:1}\n        .cv-home-risk-count.clear{background:#dcfce7;color:#15803d}
+        .cv-home-risk-count{display:inline-flex;align-items:center;justify-content:center;min-width:68px;min-height:48px;padding:0 14px;border-radius:12px;background:#fee9ed;color:#d81b43;font-size:20px;font-weight:750;line-height:1}
+        .cv-home-risk-count.clear{background:#dcfce7;color:#15803d}
         [class*="st-key-approved_home_menu_"] [data-testid="stPopover"] button[aria-expanded]{display:inline-flex!important;align-items:center!important;justify-content:center!important;width:44px!important;min-width:44px!important;height:44px!important;min-height:44px!important;padding:0!important;border:0!important;border-radius:10px!important;background:transparent!important;color:#64748b!important;box-shadow:none!important;font-size:22px!important;font-weight:750!important;line-height:1!important}
         [class*="st-key-approved_home_menu_"] [data-testid="stPopover"] button[aria-expanded] svg,[class*="st-key-approved_home_menu_"] [data-testid="stPopover"] button[aria-expanded] [data-testid="stIconMaterial"]{display:none!important}
         [class*="st-key-approved_home_row_"] [data-testid="stColumn"]:last-child{text-align:right}
@@ -662,7 +665,9 @@ def begin_approved_page() -> None:
           .cv-ap-home-table-head{gap:12px!important;min-height:60px!important;padding:0 16px!important}
           .cv-ap-home-table-head [role="columnheader"]{font-size:13px!important;letter-spacing:.03em!important}
           [class*="st-key-approved_home_row_"]{min-height:84px!important;padding:12px 16px!important}
-          [class*="st-key-approved_home_row_"] [data-testid="stHorizontalBlock"]{align-items:stretch!important;gap:12px!important;min-height:60px!important}\n          [class*="st-key-approved_home_row_"] [data-testid="column"]{min-height:60px!important}\n          [class*="st-key-approved_home_row_"] [data-testid="stVerticalBlock"]{min-height:60px!important}
+          [class*="st-key-approved_home_row_"] [data-testid="stHorizontalBlock"]{align-items:stretch!important;gap:12px!important;min-height:60px!important}
+          [class*="st-key-approved_home_row_"] [data-testid="column"]{min-height:60px!important}
+          [class*="st-key-approved_home_row_"] [data-testid="stVerticalBlock"]{min-height:60px!important}
           [class*="st-key-approved_home_row_"] [data-testid="stMarkdownContainer"] p{font-size:16px!important}
           .cv-ap-home-bom{gap:12px!important;min-height:60px}
           .cv-ap-home-row-icon{flex-basis:48px;width:48px;height:48px}
@@ -697,7 +702,9 @@ def begin_approved_page() -> None:
           .cv-ap-home-table-head{gap:8px!important;min-height:48px!important;padding:0 12px!important}
           .cv-ap-home-table-head [role="columnheader"]{font-size:11px!important;letter-spacing:.02em!important}
           [class*="st-key-approved_home_row_"]{min-height:68px!important;padding:8px 12px!important}
-          [class*="st-key-approved_home_row_"] [data-testid="stHorizontalBlock"]{align-items:stretch!important;gap:8px!important;min-height:50px!important}\n          [class*="st-key-approved_home_row_"] [data-testid="column"]{min-height:50px!important}\n          [class*="st-key-approved_home_row_"] [data-testid="stVerticalBlock"]{min-height:50px!important}
+          [class*="st-key-approved_home_row_"] [data-testid="stHorizontalBlock"]{align-items:stretch!important;gap:8px!important;min-height:50px!important}
+          [class*="st-key-approved_home_row_"] [data-testid="column"]{min-height:50px!important}
+          [class*="st-key-approved_home_row_"] [data-testid="stVerticalBlock"]{min-height:50px!important}
           [class*="st-key-approved_home_row_"] [data-testid="stMarkdownContainer"] p{font-size:13px!important}
           .cv-ap-home-bom{gap:9px!important;min-height:50px}
           .cv-ap-home-row-icon{flex-basis:38px;width:38px;height:38px}
@@ -1485,7 +1492,11 @@ def render_home(
                 parts = _num(_first(row, "total_parts"))
                 score = _num(_first(row, "health_score"))
                 risk = _num(_first(row, "high_risk_count"))
-                risk_html = (\n                    f"<span class='cv-home-risk-count high'>{risk}</span>"\n                    if risk\n                    else "<span class='cv-home-risk-count clear'>0</span>"\n                )
+                risk_html = (
+                    f"<span class='cv-home-risk-count high'>{risk}</span>"
+                    if risk
+                    else "<span class='cv-home-risk-count clear'>0</span>"
+                )
                 updated = analyzed_label(_first(row, "created_at", "updated_at", fallback=""))
                 analysis_id = str(row.get("id") or "")
                 display_bom_name = bom_name or source_filename or "Saved BOM"
