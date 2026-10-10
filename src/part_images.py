@@ -196,4 +196,98 @@ def part_image_markup(
     )
 
 
-__all__ = ["ILLUSTRATION_LABEL", "illustration_kind", "normalize_supplier_image_url", "part_image_markup"]
+__all__ = [
+    "ILLUSTRATION_LABEL",
+    "attach_saved_component_images",
+    "illustration_kind",
+    "normalize_supplier_image_url",
+    "part_image_markup",
+]
+def attach_saved_component_images(
+    records: list[Mapping[str, object]] | None,
+    saved_parts: list[Mapping[str, object]] | None,
+) -> list[dict[str, object]]:
+    """Attach a trusted saved photo to decisions by analysis and MPN.
+
+    Unlinked decisions use a photo only when all matching saved rows agree on one
+    trusted URL. This prevents an MPN shared by different records from receiving
+    an arbitrary component photo.
+    """
+    image_keys = (
+        "image_url", "product_image_url", "primary_image_url", "supplier_image_url",
+        "photo_url", "PhotoUrl", "photoUrl", "ImageURL", "ImageUrl",
+        "PrimaryPhoto", "Photo", "image", "photo",
+    )
+    mpn_keys = (
+        "mpn", "MPN", "manufacturer_part_number", "part_number", "part number",
+        "component",
+    )
+    metadata_keys = (
+        "manufacturer", "description", "description_raw", "part_description",
+        "category", "category_raw", "architecture", "device_type",
+    )
+
+    def _mpn(row: Mapping[str, object]) -> str:
+        for key in mpn_keys:
+            value = str(row.get(key) or "").strip()
+            if value.casefold() not in {"", "nan", "none", "<na>"}:
+                return " ".join(value.casefold().split())
+        return ""
+
+    def _analysis_id(row: Mapping[str, object]) -> str:
+        value = str(row.get("analysis_id") or "").strip()
+        return "" if value.casefold() in {"", "nan", "none", "<na>"} else value
+
+    def _trusted_image(row: Mapping[str, object]) -> str:
+        for key in image_keys:
+            value = row.get(key)
+            if value:
+                image = normalize_supplier_image_url(value)
+                if image:
+                    return image
+        return ""
+
+    by_mpn: dict[str, list[Mapping[str, object]]] = {}
+    for part in saved_parts or []:
+        if not isinstance(part, Mapping):
+            continue
+        key = _mpn(part)
+        if key:
+            by_mpn.setdefault(key, []).append(part)
+
+    enriched: list[dict[str, object]] = []
+    for record in records or []:
+        if not isinstance(record, Mapping):
+            continue
+        row = dict(record)
+        candidates = by_mpn.get(_mpn(row), [])
+        analysis_id = _analysis_id(row)
+        exact = [
+            part for part in candidates
+            if analysis_id and _analysis_id(part) == analysis_id
+        ]
+        metadata_source = exact[0] if exact else None
+        existing_image = _trusted_image(row)
+        image_source = next((part for part in exact if _trusted_image(part)), None)
+
+        if image_source is None and not existing_image:
+            image_candidates = [part for part in candidates if _trusted_image(part)]
+            unique_urls = {_trusted_image(part) for part in image_candidates}
+            if len(unique_urls) == 1 and image_candidates:
+                image_source = image_candidates[0]
+                metadata_source = metadata_source or image_source
+        if metadata_source is None and len(candidates) == 1:
+            metadata_source = candidates[0]
+
+        if not existing_image and image_source is not None:
+            row["image_url"] = _trusted_image(image_source)
+        if metadata_source is not None:
+            for key in metadata_keys:
+                value = metadata_source.get(key)
+                current = row.get(key)
+                if value not in (None, "") and current in (None, ""):
+                    row[key] = value
+        enriched.append(row)
+    return enriched
+
+
