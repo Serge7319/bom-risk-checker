@@ -1,5 +1,13 @@
+import unittest
+
 from src.component_family_profiles import FAMILY_PROFILES
-from src.part_images import ILLUSTRATION_LABEL, illustration_kind, normalize_supplier_image_url, part_image_markup
+from src.part_images import (
+    ILLUSTRATION_LABEL,
+    attach_saved_component_images,
+    illustration_kind,
+    normalize_supplier_image_url,
+    part_image_markup,
+)
 
 _KINDS = {
     "ic",
@@ -126,3 +134,40 @@ def test_part_thumbnail_escapes_part_number_and_only_embeds_trusted_image():
     assert "<script>" not in markup
     assert "&lt;script&gt;" in markup
     assert 'src="https://media.digikey.com/photos/sample.jpg"' in markup
+
+
+
+class SavedComponentImageTests(unittest.TestCase):
+    def test_saved_component_photo_attaches_by_analysis_and_mpn(self):
+        rows = attach_saved_component_images(
+            [{"analysis_id": "analysis-1", "mpn": "LM358DT"}],
+            [{
+                "analysis_id": "analysis-1",
+                "mpn": "LM358DT",
+                "image_url": "https://media.digikey.com/Photos/TI/LM358.jpg",
+                "manufacturer": "Texas Instruments",
+                "description_raw": "Operational amplifier",
+            }],
+        )
+        self.assertEqual(rows[0]["image_url"], "https://media.digikey.com/Photos/TI/LM358.jpg")
+        self.assertEqual(rows[0]["manufacturer"], "Texas Instruments")
+        self.assertEqual(rows[0]["description_raw"], "Operational amplifier")
+
+    def test_unlinked_component_uses_only_a_unique_trusted_saved_photo(self):
+        unique = attach_saved_component_images(
+            [{"mpn": "LM358DT"}],
+            [{
+                "analysis_id": "analysis-1",
+                "mpn": "LM358DT",
+                "image_url": "https://media.digikey.com/Photos/TI/LM358.jpg",
+            }],
+        )
+        ambiguous = attach_saved_component_images(
+            [{"mpn": "LM358DT"}],
+            [
+                {"analysis_id": "analysis-1", "mpn": "LM358DT", "image_url": "https://media.digikey.com/Photos/TI/LM358.jpg"},
+                {"analysis_id": "analysis-2", "mpn": "LM358DT", "image_url": "https://www.mouser.com/images/LM358.jpg"},
+            ],
+        )
+        self.assertEqual(unique[0]["image_url"], "https://media.digikey.com/Photos/TI/LM358.jpg")
+        self.assertNotIn("image_url", ambiguous[0])
