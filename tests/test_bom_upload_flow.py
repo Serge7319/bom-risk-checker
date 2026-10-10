@@ -3,6 +3,7 @@ import unittest
 from src.bom_upload_flow import (
     consume_approved_bom_submission,
     resume_approved_bom_submission,
+    should_stop_approved_bom_renderer,
 )
 
 
@@ -62,6 +63,19 @@ class ApprovedBOMSubmissionTests(unittest.TestCase):
 
         self.assertIs(resumed_upload, upload)
         self.assertEqual((project, name), ("Motor project", "Rev B"))
+
+    def test_upload_form_allows_runtime_to_resume_active_pipeline(self):
+        active = {"cadivor_bom_pipeline_active": True}
+
+        self.assertFalse(
+            should_stop_approved_bom_renderer(active, upload_mode=True)
+        )
+        self.assertTrue(
+            should_stop_approved_bom_renderer({}, upload_mode=True)
+        )
+        self.assertTrue(
+            should_stop_approved_bom_renderer(active, upload_mode=False)
+        )
 
     def test_missing_upload_does_not_queue_analysis(self):
         state = {
