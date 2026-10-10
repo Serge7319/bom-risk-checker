@@ -598,6 +598,64 @@ def begin_approved_page() -> None:
         .cv-ap-home-bom .cv-ap-name{display:block;overflow:hidden;color:#17253e;font-size:13px;font-weight:750;text-overflow:ellipsis;white-space:nowrap}
         .cv-ap-home-bom small{display:block;margin-top:3px;overflow:hidden;color:#74839a;font-size:11px;text-overflow:ellipsis;white-space:nowrap}
         .cv-ap-home-project{display:block;overflow:hidden;color:#52647b;font-size:13px;line-height:1.4;text-overflow:ellipsis;white-space:nowrap}
+        .st-key-approved_home_page{padding:42px 30px 32px!important}
+        .st-key-approved_home_page > [data-testid="stVerticalBlock"]{gap:22px!important}
+        .st-key-approved_home_header{margin:0!important;padding:0!important}
+        .st-key-approved_home_header [data-testid="stHorizontalBlock"]{align-items:flex-start!important;gap:20px!important}
+        .st-key-approved_home_header .cv-ap-kicker{margin:0 0 10px!important;font-size:14px!important}
+        .st-key-approved_home_header .cv-ap h1{margin:0 0 8px!important;font-size:44px!important;line-height:1.15!important;letter-spacing:-.04em!important}
+        .st-key-approved_home_header .cv-ap-sub{margin:0!important;font-size:19px!important;line-height:1.4!important}
+        .st-key-approved_home_header [data-testid="stColumn"]:last-child [data-testid="stVerticalBlock"]{align-items:flex-end!important}
+        .st-key-approved_home_header [class*="st-key-approved_home_new_bom"] button,.st-key-approved_home_header [class*="st-key-approved_home_open_reports"] button{min-height:56px!important;height:56px!important;padding:0 24px!important;border-radius:12px!important;font-size:16px!important;font-weight:700!important;white-space:nowrap!important}
+        .cv-ap-home-kpis{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:18px!important;margin:0!important}
+        .cv-ap-home-kpi{display:flex!important;align-items:flex-start!important;gap:16px!important;box-sizing:border-box!important;min-height:180px!important;padding:24px 20px!important;border:1px solid #dce7f5!important;border-radius:16px!important;background:#f9fbff!important;box-shadow:0 2px 7px rgba(15,23,42,.035)!important}
+        .cv-ap-home-kpi .cv-ap-home-icon{display:flex!important;align-items:center!important;justify-content:center!important;flex:0 0 60px!important;width:60px!important;height:60px!important;border-radius:50%!important;background:#e8f1ff!important;margin:0!important}
+        .cv-ap-home-icon svg{width:30px!important;height:30px!important}
+        .cv-ap-home-icon.warn{background:#fff3d5!important}
+        .cv-ap-home-icon.risk{background:#fee9ed!important}
+        .cv-ap-home-icon.ok{background:#e7f8ee!important}
+        .cv-ap-home-kpi-copy{display:flex;flex:1;flex-direction:column;min-width:0;min-height:130px;padding-top:4px}
+        .cv-ap-home-kpi .cv-ap-home-kpi-label{display:block!important;color:#64748b!important;font-size:17px!important;font-weight:650!important;line-height:1.3!important;white-space:nowrap}
+        .cv-ap-home-kpi-copy strong{display:block!important;margin-top:10px!important;color:#0f172a!important;font-size:40px!important;font-weight:780!important;line-height:1.05!important;letter-spacing:-.04em!important;white-space:nowrap}
+        .cv-ap-home-kpi-copy em{display:block!important;margin-top:auto!important;padding-top:18px!important;font-size:14px!important;line-height:1.25!important}
+        .st-key-approved_home_recent_card{margin:0!important;padding:0!important;border:1px solid #d8e1ed!important;border-radius:16px!important;background:#fff!important;box-shadow:0 3px 12px rgba(15,23,42,.045)!important}
+        .st-key-approved_home_recent_card [data-testid="stVerticalBlock"]{gap:0!important}
+        .st-key-approved_home_recent_card [data-testid="stElementContainer"]{margin:0!important;padding:0!important}
+        .st-key-approved_home_recent_heading{margin:0!important;padding:22px 24px 18px!important}
+        .st-key-approved_home_recent_heading [data-testid="stVerticalBlock"]{gap:0!important}
+        .st-key-approved_home_recent_heading [data-testid="stHorizontalBlock"]{align-items:center!important}
+        .st-key-approved_home_recent_heading [data-testid="stColumn"]:last-child [data-testid="stVerticalBlock"]{align-items:flex-end!important}
+        .cv-ap-home-recent-heading{padding:0!important}
+        .cv-ap-home-recent-heading h2{margin:0 0 5px!important;color:#0f172a!important;font-size:26px!important;font-weight:760!important;line-height:1.2!important;letter-spacing:-.025em!important}
+        .cv-ap-home-recent-heading p{margin:0!important;color:#64748b!important;font-size:17px!important;line-height:1.4!important}
+        [class*="st-key-approved_home_view_all"] button{width:112px!important;max-width:112px!important;min-width:104px!important;height:46px!important;min-height:46px!important;margin-left:auto!important;padding:0 14px!important;border:1px solid #cbdcf7!important;border-radius:10px!important;background:#fff!important;color:#2563eb!important;box-shadow:none!important;font-size:15px!important;font-weight:700!important}
+        [class*="st-key-approved_home_view_all"] button:hover{background:#f8fbff!important;border-color:#93b4ee!important}
+        .st-key-approved_home_head{min-height:56px!important;padding:13px 24px!important;background:#f7f9fc!important;border-top:1px solid #e5ebf3!important;border-bottom:1px solid #dce4ef!important}
+        .st-key-approved_home_head [data-testid="stVerticalBlock"]{gap:0!important}
+        .st-key-approved_home_head [data-testid="stElementContainer"]{margin:0!important;padding:0!important}
+        .st-key-approved_home_head [data-testid="stHorizontalBlock"]{align-items:center!important}
+        .st-key-approved_home_head .cv-ap-meta{color:#64748b!important;font-size:13px!important;font-weight:750!important;letter-spacing:.045em!important}
+        [class*="st-key-approved_home_row_"]{box-sizing:border-box!important;min-height:86px!important;margin:0!important;padding:13px 24px!important;border-top:0!important;border-bottom:1px solid #e5ebf3!important;background:#fff!important}
+        [class*="st-key-approved_home_row_"] [data-testid="stVerticalBlock"]{gap:0!important}
+        [class*="st-key-approved_home_row_"] [data-testid="stElementContainer"]{margin:0!important;padding:0!important}
+        [class*="st-key-approved_home_row_"] [data-testid="stHorizontalBlock"]{align-items:center!important}
+        [class*="st-key-approved_home_row_"] [data-testid="stMarkdownContainer"] p{margin:0!important;color:#52647b!important;font-size:16px!important;line-height:1.4!important}
+        .cv-ap-home-bom{display:flex;align-items:center;gap:14px;min-width:0;min-height:52px}
+        .cv-ap-home-row-icon{display:inline-flex;align-items:center;justify-content:center;flex:0 0 48px;width:48px;height:48px;border-radius:50%;background:#edf4ff;color:#2563eb}
+        .cv-ap-home-row-icon svg{width:24px;height:24px;display:block}
+        .cv-ap-home-bom-copy{display:flex;flex-direction:column;min-width:0}
+        .cv-ap-home-bom .cv-ap-name{display:block;overflow:hidden;color:#17253e;font-size:17px;font-weight:750;line-height:1.28;text-overflow:ellipsis;white-space:nowrap}
+        .cv-ap-home-bom small{display:block;margin-top:4px;overflow:hidden;color:#74839a;font-size:13px;line-height:1.25;text-overflow:ellipsis;white-space:nowrap}
+        .cv-ap-home-project{display:block;overflow:hidden;color:#52647b;font-size:16px;line-height:1.4;text-overflow:ellipsis;white-space:nowrap}
+        .st-key-approved_home_recent_card .cv-pill{min-height:40px;padding:8px 12px;font-size:15px;font-weight:750}
+        .st-key-approved_home_recent_card .cv-pill-dot{width:8px;height:8px;flex-basis:8px}
+        .cv-home-risk-count{display:inline-flex;align-items:center;justify-content:center;min-width:56px;min-height:40px;padding:0 12px;border-radius:12px;background:#fee9ed;color:#d81b43;font-size:16px;font-weight:750;line-height:1}
+        [class*="st-key-approved_home_menu_"] [data-testid="stPopover"] button[aria-expanded]{display:inline-flex!important;align-items:center!important;justify-content:center!important;width:40px!important;min-width:40px!important;height:40px!important;min-height:40px!important;padding:0!important;border:0!important;border-radius:10px!important;background:transparent!important;color:#64748b!important;box-shadow:none!important;font-size:22px!important;font-weight:750!important;line-height:1!important}
+        [class*="st-key-approved_home_menu_"] [data-testid="stPopover"] button[aria-expanded] svg,[class*="st-key-approved_home_menu_"] [data-testid="stPopover"] button[aria-expanded] [data-testid="stIconMaterial"]{display:none!important}
+        [class*="st-key-approved_home_row_"] [data-testid="stColumn"]:last-child{text-align:right}
+        .cv-ap-home-empty{padding:26px 24px;color:#64748b;font-size:16px}
+        @media(max-width:1100px){.st-key-approved_home_page{padding:30px 24px 28px!important}.cv-ap-home-kpis{grid-template-columns:repeat(2,minmax(0,1fr))!important}.cv-ap-home-kpi{min-height:160px!important}.cv-ap-home-kpi-copy{min-height:110px}}
+        @media(max-width:700px){.st-key-approved_home_page{padding:24px 16px!important}.st-key-approved_home_header [data-testid="stHorizontalBlock"]{flex-wrap:wrap!important}.st-key-approved_home_header .cv-ap h1{font-size:34px!important}.st-key-approved_home_header .cv-ap-sub{font-size:16px!important}.cv-ap-home-kpis{grid-template-columns:1fr!important;gap:12px!important}.cv-ap-home-kpi{min-height:132px!important;padding:18px!important}.cv-ap-home-kpi-copy{min-height:90px}.st-key-approved_home_recent_heading{padding:18px 16px 14px!important}.st-key-approved_home_head{padding:12px 16px!important}[class*="st-key-approved_home_row_"]{padding:12px 16px!important}}
         .st-key-approved_saved_bom_edit_screen,.st-key-approved_saved_bom_delete_screen{max-width:760px!important;padding:22px!important;border:1px solid #d7e0eb!important;border-radius:16px!important;background:#fff!important}
         .st-key-approved_saved_bom_delete_screen button[kind="primary"]{background:#be123c!important;border-color:#be123c!important}
         .cv-pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:3px 8px;font-size:12px;font-weight:750}
@@ -1279,89 +1337,117 @@ def render_home(
     average = round(sum(health_values) / len(health_values)) if health_values else 0
     greeting = name or "there"
     notice = f"<p class='cv-ap-sub'>{_esc(plan_notice)}</p>" if plan_notice else ""
-    title_col, action_col = st.columns([5.2, 1.5], vertical_alignment="center")
-    with title_col:
+    with st.container(key="approved_home_page"):
+        with st.container(key="approved_home_header"):
+            title_col, action_col = st.columns([5.2, 1.8], vertical_alignment="top")
+            with title_col:
+                st.markdown(
+                    f"""
+                    <div class="cv-ap">
+                      <p class="cv-ap-kicker">HOME</p>
+                      <h1>Good afternoon, {_esc(greeting)}</h1>
+                      <p class="cv-ap-sub">Here's what's happening with your BOMs today.</p>
+                      {notice}
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+            with action_col:
+                if pause_new_analyses:
+                    if st.button("Open reports", key="approved_home_open_reports", type="primary"):
+                        navigate_to("Reports")
+                elif st.button("+ New BOM analysis", key="approved_home_new_bom", type="primary"):
+                    st.session_state["cadivor_bom_upload_open"] = True
+                    navigate_to("BOM Analyzer")
+
+        saved_delta = _prior_delta(rows, "prior_bom_count", "previous_bom_count")
+        review_delta = _prior_delta(rows, "prior_needs_review", "previous_needs_review")
+        risk_delta = _prior_delta(rows, "prior_high_risk_count", "previous_high_risk_count")
+        health_delta = _prior_delta(rows, "prior_health_score", "previous_health_score")
         st.markdown(
             f"""
-            <div class="cv-ap">
-              <p class="cv-ap-kicker">HOME</p>
-              <h1>Good afternoon, {_esc(greeting)}</h1>
-              <p class="cv-ap-sub">Here's what's happening with your BOMs today.</p>
-              {notice}
-            </div>
+            <section class="cv-ap cv-ap-kpis cv-ap-home-kpis">
+              <article class="cv-ap-kpi cv-ap-home-kpi">
+                <span class="cv-ap-ico cv-ap-home-icon">{ICO_DOC}</span>
+                <div class="cv-ap-home-kpi-copy"><span class="cv-ap-home-kpi-label">Saved BOMs</span><strong>{len(rows)}</strong>{saved_delta}</div>
+              </article>
+              <article class="cv-ap-kpi cv-ap-home-kpi">
+                <span class="cv-ap-ico cv-ap-home-icon warn">{ICO_WARN}</span>
+                <div class="cv-ap-home-kpi-copy"><span class="cv-ap-home-kpi-label">Needs review</span><strong>{review}</strong>{review_delta}</div>
+              </article>
+              <article class="cv-ap-kpi cv-ap-home-kpi">
+                <span class="cv-ap-ico cv-ap-home-icon risk">{ICO_RISK}</span>
+                <div class="cv-ap-home-kpi-copy"><span class="cv-ap-home-kpi-label">High-risk parts</span><strong>{high}</strong>{risk_delta}</div>
+              </article>
+              <article class="cv-ap-kpi cv-ap-home-kpi">
+                <span class="cv-ap-ico cv-ap-home-icon ok">{ICO_HEALTH}</span>
+                <div class="cv-ap-home-kpi-copy"><span class="cv-ap-home-kpi-label">Average health</span><strong>{average}/100</strong>{health_delta}</div>
+              </article>
+            </section>
             """,
             unsafe_allow_html=True,
         )
-    with action_col:
-        if pause_new_analyses:
-            if st.button("Open reports", key="approved_home_open_reports", type="primary"):
-                navigate_to("Reports")
-        elif st.button("+ New BOM analysis", key="approved_home_new_bom", type="primary"):
-            st.session_state["cadivor_bom_upload_open"] = True
-            navigate_to("BOM Analyzer")
-    saved_delta = _prior_delta(rows, "prior_bom_count", "previous_bom_count")
-    review_delta = _prior_delta(rows, "prior_needs_review", "previous_needs_review")
-    risk_delta = _prior_delta(rows, "prior_high_risk_count", "previous_high_risk_count")
-    health_delta = _prior_delta(rows, "prior_health_score", "previous_health_score")
-    st.markdown(
-        f"""
-        <div class="cv-ap">
-          <section class="cv-ap-kpis">
-            <article class="cv-ap-kpi"><div class="cv-ap-kpi-top"><span class="cv-ap-ico">{ICO_DOC}</span><span>Saved BOMs</span></div><strong>{len(rows)}</strong>{saved_delta}</article>
-            <article class="cv-ap-kpi"><div class="cv-ap-kpi-top"><span class="cv-ap-ico">{ICO_WARN}</span><span>Needs review</span></div><strong>{review}</strong>{review_delta}</article>
-            <article class="cv-ap-kpi"><div class="cv-ap-kpi-top"><span class="cv-ap-ico">{ICO_RISK}</span><span>High-risk parts</span></div><strong>{high}</strong>{risk_delta}</article>
-            <article class="cv-ap-kpi"><div class="cv-ap-kpi-top"><span class="cv-ap-ico">{ICO_HEALTH}</span><span>Average health</span></div><strong>{average}/100</strong>{health_delta}</article>
-          </section>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    home_widths = [2.05, 1.45, 0.7, 0.9, 1.1, 1.2, 0.8]
-    with st.container(key="approved_home_recent_card"):
-        st.markdown(
-            "<div class='cv-ap-home-recent-heading'><h2>Recent BOMs</h2>"
-            "<p>Your latest analyses and their current status.</p></div>",
-            unsafe_allow_html=True,
-        )
-        with st.container(key="approved_home_head"):
-            header = st.columns(home_widths, vertical_alignment="center")
-            for column, label in zip(header, ("BOM name", "Project", "Parts", "Health", "High-risk parts", "Last analyzed", "Actions")):
-                column.markdown(f"<div class='cv-ap-meta'>{label}</div>", unsafe_allow_html=True)
-        if not rows:
-            st.markdown(
-                "<div class='cv-ap-home-empty'>No saved BOMs yet. Start a new BOM analysis to fill this workspace.</div>",
-                unsafe_allow_html=True,
-            )
-        for index, row in enumerate(rows[:6]):
-            project, bom_name = split_project_and_bom(row)
-            source_filename = str(_first(row, "filename", "source_filename", fallback="") or "").strip()
-            parts = _num(_first(row, "total_parts"))
-            score = _num(_first(row, "health_score"))
-            risk = _num(_first(row, "high_risk_count"))
-            risk_html = f"<span class='cv-pill high'>{risk}</span>" if risk else str(risk)
-            updated = analyzed_label(_first(row, "created_at", "updated_at", fallback=""))
-            analysis_id = str(row.get("id") or "")
-            display_bom_name = bom_name or source_filename or "Saved BOM"
-            file_note = (
-                f"<small>{_esc(source_filename)}</small>"
-                if source_filename and source_filename.casefold() != display_bom_name.casefold()
-                else ""
-            )
-            with st.container(key=f"approved_home_row_{index}"):
-                cells = st.columns(home_widths, vertical_alignment="center")
-                cells[0].markdown(
-                    f"<div class='cv-ap-home-bom'>{DOC}<span class='cv-ap-home-bom-copy'>"
-                    f"<strong class='cv-ap-name'>{_esc(display_bom_name)}</strong>{file_note}</span></div>",
+
+        home_widths = [2.05, 1.45, 0.78, 0.9, 1.15, 1.22, 0.75]
+        with st.container(key="approved_home_recent_card"):
+            with st.container(key="approved_home_recent_heading"):
+                heading_col, view_all_col = st.columns([10, 1], vertical_alignment="center")
+                with heading_col:
+                    st.markdown(
+                        "<div class='cv-ap-home-recent-heading'><h2>Recent BOMs</h2>"
+                        "<p>Your latest analyses and their current status.</p></div>",
+                        unsafe_allow_html=True,
+                    )
+                with view_all_col:
+                    if st.button(
+                        "View all",
+                        key="approved_home_view_all",
+                        type="secondary",
+                        use_container_width=True,
+                    ):
+                        navigate_to("BOM Analyzer", show_saved_analyses="1", arm_opening=False)
+            with st.container(key="approved_home_head"):
+                header = st.columns(home_widths, vertical_alignment="center")
+                for column, label in zip(
+                    header,
+                    ("Name", "Project", "Part count", "Health", "High-risk parts", "Last analyzed", "Actions"),
+                ):
+                    column.markdown(f"<div class='cv-ap-meta'>{label}</div>", unsafe_allow_html=True)
+            if not rows:
+                st.markdown(
+                    "<div class='cv-ap-home-empty'>No saved BOMs yet. Start a new BOM analysis to fill this workspace.</div>",
                     unsafe_allow_html=True,
                 )
-                _render_project_cell(cells[1], row, "home", rows, user_id)
-                cells[2].markdown(str(parts))
-                cells[3].markdown(_health_pill(score), unsafe_allow_html=True)
-                cells[4].markdown(risk_html, unsafe_allow_html=True)
-                cells[5].markdown(updated, unsafe_allow_html=True)
-                _render_saved_bom_actions(cells[6], analysis_id, scope="home", row_key=str(index))
-    if plan_notice and st.button("Compare plans", key="approved_home_compare_plans"):
-        navigate_to("Pricing")
+            for index, row in enumerate(rows[:3]):
+                project, bom_name = split_project_and_bom(row)
+                source_filename = str(_first(row, "filename", "source_filename", fallback="") or "").strip()
+                parts = _num(_first(row, "total_parts"))
+                score = _num(_first(row, "health_score"))
+                risk = _num(_first(row, "high_risk_count"))
+                risk_html = f"<span class='cv-home-risk-count'>{risk}</span>" if risk else "0"
+                updated = analyzed_label(_first(row, "created_at", "updated_at", fallback=""))
+                analysis_id = str(row.get("id") or "")
+                display_bom_name = bom_name or source_filename or "Saved BOM"
+                file_note = (
+                    f"<small>{_esc(source_filename)}</small>"
+                    if source_filename and source_filename.casefold() != display_bom_name.casefold()
+                    else ""
+                )
+                with st.container(key=f"approved_home_row_{index}"):
+                    cells = st.columns(home_widths, vertical_alignment="center")
+                    cells[0].markdown(
+                        f"<div class='cv-ap-home-bom'><span class='cv-ap-home-row-icon'>{lucide('file-text', 24)}</span>"
+                        f"<span class='cv-ap-home-bom-copy'><strong class='cv-ap-name'>{_esc(display_bom_name)}</strong>{file_note}</span></div>",
+                        unsafe_allow_html=True,
+                    )
+                    _render_project_cell(cells[1], row, "home", rows, user_id)
+                    cells[2].markdown(str(parts))
+                    cells[3].markdown(_health_pill(score), unsafe_allow_html=True)
+                    cells[4].markdown(risk_html, unsafe_allow_html=True)
+                    cells[5].markdown(updated, unsafe_allow_html=True)
+                    _render_saved_bom_actions(cells[6], analysis_id, scope="home", row_key=str(index))
+        if plan_notice and st.button("Compare plans", key="approved_home_compare_plans"):
+            navigate_to("Pricing")
     end_approved_page()
 
 
