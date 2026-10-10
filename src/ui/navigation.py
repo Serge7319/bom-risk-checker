@@ -136,7 +136,8 @@ def navigate_to(page: str, *, _rerun: bool = True, arm_opening: bool = True, **p
     instead of leaving the previous page name in the address bar.
     """
     current_page = str(st.session_state.get("cadivor_route", "") or "").strip()
-    if page != "BOM Analyzer":
+    # Keep the selected saved BOM only while its dedicated settings route is active.
+    if page != "BOM Settings":
         st.session_state.pop("approved_saved_bom_edit_id", None)
         st.session_state.pop("approved_saved_bom_delete_id", None)
     if page == ALTERNATIVE_FINDER_PAGE and not str(
