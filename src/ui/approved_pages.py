@@ -643,7 +643,7 @@ def begin_approved_page() -> None:
         .cv-ap-home-empty{padding:26px 24px;color:#64748b;font-size:16px}
         @media(max-width:1600px){
           .st-key-approved_home_page{padding:44px 26px 28px!important}
-          .st-key-approved_home_header .cv-ap h1{font-size:40px!important;line-height:1.12!important}
+          .st-key-approved_home_header .cv-ap h1{font-size:30px!important;line-height:1.12!important}
           .st-key-approved_home_header .cv-ap-sub{font-size:17px!important}
           [class*="st-key-approved_home_new_bom"] button,[class*="st-key-approved_home_open_reports"] button{min-height:48px!important;height:48px!important;padding:0 14px!important;font-size:14px!important}
           .cv-ap-home-kpis{gap:14px!important;margin-top:42px!important}
@@ -678,7 +678,7 @@ def begin_approved_page() -> None:
         }
         @media(max-width:1250px){
           .st-key-approved_home_page{padding:28px 18px 24px!important}
-          .st-key-approved_home_header .cv-ap h1{font-size:30px!important;line-height:1.14!important}
+          .st-key-approved_home_header .cv-ap h1{font-size:26px!important;line-height:1.14!important}
           .st-key-approved_home_header .cv-ap-sub{font-size:15px!important}
           [class*="st-key-approved_home_new_bom"] button,[class*="st-key-approved_home_open_reports"] button{min-height:42px!important;height:42px!important;padding:0 10px!important;font-size:13px!important}
           .cv-ap-home-kpis{gap:10px!important;margin-top:26px!important}
@@ -711,7 +711,7 @@ def begin_approved_page() -> None:
           [class*="st-key-approved_home_menu_"] [data-testid="stPopover"] button[aria-expanded]{width:32px!important;min-width:32px!important;height:32px!important;min-height:32px!important;font-size:16px!important}
           .cv-ap-home-empty{padding:14px 12px;font-size:13px}
         }
-        @media(max-width:900px){.st-key-approved_home_header .cv-ap h1{font-size:26px!important}}
+        @media(max-width:900px){.st-key-approved_home_header .cv-ap h1{font-size:24px!important}}
         @media(max-width:1100px){.st-key-approved_home_page{padding:26px 18px 24px!important}.cv-ap-home-kpis{grid-template-columns:repeat(2,minmax(0,1fr))!important}.cv-ap-home-kpi{min-height:132px!important}.cv-ap-home-kpi-copy{min-height:92px}}
 
         @media(max-width:700px){.st-key-approved_home_page{padding:24px 16px!important}.st-key-approved_home_header [data-testid="stHorizontalBlock"]{flex-wrap:wrap!important}.st-key-approved_home_header .cv-ap h1{font-size:34px!important}.st-key-approved_home_header .cv-ap-sub{font-size:16px!important}.cv-ap-home-kpis{grid-template-columns:1fr!important;gap:12px!important}.cv-ap-home-kpi{min-height:132px!important;padding:18px!important}.cv-ap-home-kpi-copy{min-height:90px}.st-key-approved_home_recent_heading{padding:18px 16px 14px!important}[class*="st-key-approved_home_row_"]{padding:12px 16px!important}}
