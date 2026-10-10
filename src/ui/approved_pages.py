@@ -1659,7 +1659,7 @@ def render_home(
               </article>
               <article class="cv-ap-kpi cv-ap-home-kpi">
                 <span class="cv-ap-ico cv-ap-home-icon warn">{ICO_WARN}</span>
-                <div class="cv-ap-home-kpi-copy"><span class="cv-ap-home-kpi-label">Needs review</span><strong>{review}</strong>{review_delta}</div>
+                <div class="cv-ap-home-kpi-copy"><span class="cv-ap-home-kpi-label">BOMs needing review</span><strong>{review}</strong>{review_delta}</div>
               </article>
               <article class="cv-ap-kpi cv-ap-home-kpi">
                 <span class="cv-ap-ico cv-ap-home-icon risk">{ICO_RISK}</span>
@@ -2322,9 +2322,9 @@ def render_reports_list(records: list[dict[str, Any]] | None) -> None:
     begin_approved_page()
     rows = _records(records)[:8]
     templates = (
-        ("Executive BOM Report", "High-level summary of cost, supply risk and key insights for stakeholders.", ("DOCX", "XLSX", "PPTX")),
-        ("Engineering Risk Review", "Detailed assessment of supply, obsolescence and compliance risks across your BOM.", ("DOCX", "XLSX")),
-        ("Sourcing Summary", "Supplier options, cost comparison and recommended sourcing strategies.", ("XLSX", "PPTX")),
+        ("Executive BOM Report", "High-level summary of cost, supply risk and key insights for stakeholders.", ("PDF", "CSV")),
+        ("Engineering Risk Review", "Detailed assessment of supply, obsolescence and compliance risks across your BOM.", ("PDF", "CSV")),
+        ("Sourcing Summary", "Supplier options, cost comparison and recommended sourcing strategies.", ("PDF", "CSV")),
     )
     cards = []
     for title, copy, formats in templates:

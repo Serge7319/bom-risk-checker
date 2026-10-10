@@ -121,6 +121,56 @@ def detect_monitor_alerts(
 
     return alerts, messages
 
+
+def build_updated_monitor_snapshot(
+    user_id,
+    part_number,
+    previous_snapshot,
+    fresh_data,
+):
+    """Build a fresh provider snapshot while retaining its saved BOM scope."""
+    previous_snapshot = previous_snapshot or {}
+    fresh_data = fresh_data or {}
+    return {
+        "user_id": user_id,
+        "workspace_id": previous_snapshot.get("workspace_id"),
+        "analysis_id": previous_snapshot.get("analysis_id"),
+        "part_number": part_number,
+        "supplier": fresh_data.get("source", ""),
+        "lifecycle_status": fresh_data.get("lifecycle_status", ""),
+        "stock": fresh_data.get("stock_total", 0),
+        "unit_price": fresh_data.get("unit_price", 0.0),
+        "risk_level": previous_snapshot.get("risk_level", ""),
+    }
+
+
+def detect_monitored_part_changes(
+    user_id,
+    part_number,
+    previous_snapshot,
+    current_snapshot,
+):
+    """Compare two snapshots using the detector's analysis/workspace scope."""
+    previous_snapshot = previous_snapshot or {}
+    current_snapshot = current_snapshot or {}
+    analysis_id = (
+        current_snapshot.get("analysis_id")
+        or previous_snapshot.get("analysis_id")
+    )
+    workspace_id = (
+        current_snapshot.get("workspace_id")
+        or previous_snapshot.get("workspace_id")
+    )
+    return detect_monitor_alerts(
+        user_id,
+        analysis_id,
+        part_number,
+        previous_snapshot,
+        current_snapshot,
+        workspace_id=workspace_id,
+    )
+
+
 def monitoring_entitlement_message(plan_name, monitored_count, monitored_limit, is_admin=False):
     """Return a launch-safe monitoring limit message for UI and service checks."""
     if is_admin or monitored_limit is None:
