@@ -35,7 +35,9 @@ class CostOptimizationWorkspaceTests(unittest.TestCase):
         self.assertIn("CAP-100", markup)
         self.assertIn("$1.2500", markup)
         self.assertIn("$62.50", markup)
-        self.assertIn("Optimization path", markup)
+        self.assertIn("Opportunity", markup)
+        self.assertIn("Review status", markup)
+        self.assertIn("Needs review", markup)
 
     def test_cost_route_uses_the_data_driven_workspace(self):
         source = Path("src/authenticated_runtime.py").read_text(encoding="utf-8")
