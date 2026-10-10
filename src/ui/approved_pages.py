@@ -2132,7 +2132,7 @@ def render_decision_queue(records: list[dict[str, Any]] | None) -> None:
             )
             photo = part_photo(
                 image_source,
-                size=48,
+                size=60,
                 part=row,
                 part_number=mpn,
             )
@@ -2459,6 +2459,94 @@ def part_photo(
     )
     return part_image_markup(url, number, size=size, part=part)
 
+
+
+def render_bom_component_table(records: Any) -> None:
+    """Render BOM risk results as a compact, image-led component register."""
+    if hasattr(records, "to_dict"):
+        rows = records.to_dict("records")
+    else:
+        rows = list(records or [])
+    if not rows:
+        st.info("No components match the selected filters.")
+        return
+
+    def value(row: dict[str, Any], *keys: str, default: str = "Not recorded") -> str:
+        for key in keys:
+            raw = row.get(key)
+            if raw is None:
+                continue
+            text = str(raw).strip()
+            if text.casefold() not in {"", "nan", "none", "<na>"}:
+                return text
+        return default
+
+    def count_label(raw: str) -> str:
+        try:
+            return f"{int(float(raw)):,}"
+        except (TypeError, ValueError, OverflowError):
+            return "Not recorded"
+
+    body = []
+    for row in rows:
+        mpn = value(row, "MPN", "mpn", "part_number", "component")
+        maker = value(row, "Manufacturer", "manufacturer", default="")
+        image_url = value(
+            row,
+            "Photo", "image_url", "product_image_url", "primary_image_url",
+            "supplier_image_url", "photo_url", "PhotoUrl", "photoUrl",
+            "ImageURL", "ImageUrl", "PrimaryPhoto", default="",
+        )
+        photo = part_photo(image_url, size=64, part=row, part_number=mpn)
+        stock = count_label(value(row, "Stock Available", "stock_available", default=""))
+        supplier_count = count_label(value(row, "Supplier Count", "supplier_count", default=""))
+        lifecycle = value(row, "Lifecycle Status", "lifecycle_status")
+        risk = value(row, "Risk Level", "risk_level")
+        folded_risk = risk.casefold()
+        risk_tone = "high" if "high" in folded_risk else (
+            "low" if "low" in folded_risk else ("medium" if "medium" in folded_risk else "unknown")
+        )
+        score = value(row, "Risk Score", "risk_score")
+        source = value(row, "Best Source", "best_source", "preferred_supplier")
+        maker_html = f"<span>{html.escape(maker)}</span>" if maker else ""
+        body.append(
+            "<tr>"
+            f"<td><div class='cv-bom-component'>{photo}<div class='cv-bom-component-copy'>"
+            f"<strong>{html.escape(mpn)}</strong>{maker_html}</div></div></td>"
+            f"<td><strong>{html.escape(stock)}</strong><span>{html.escape(supplier_count)} suppliers</span></td>"
+            f"<td>{html.escape(lifecycle)}</td>"
+            f"<td><div class='cv-bom-risk-cell'><strong>{html.escape(score)}</strong>"
+            f"<span class='cv-bom-risk cv-bom-risk--{risk_tone}'>{html.escape(risk)}</span></div></td>"
+            f"<td>{html.escape(source)}</td>"
+            "</tr>"
+        )
+
+    st.markdown(
+        """
+        <style>
+          .cv-bom-results-scroll{width:100%;overflow-x:auto;border:1px solid #e2e8f0;border-radius:14px;background:#fff}
+          .cv-bom-results{width:100%;min-width:760px;border-collapse:separate;border-spacing:0;table-layout:fixed}
+          .cv-bom-results th{padding:12px 14px;text-align:left;background:#f8fafc;color:#475569;font-size:11px;font-weight:750;letter-spacing:.045em;text-transform:uppercase;border-bottom:1px solid #e2e8f0}
+          .cv-bom-results td{padding:10px 14px;vertical-align:middle;border-bottom:1px solid #edf2f7;color:#334155;font-size:13px;line-height:1.35;overflow-wrap:anywhere}
+          .cv-bom-results tr:last-child td{border-bottom:0}
+          .cv-bom-results th:first-child{width:34%}.cv-bom-results th:nth-child(2){width:19%}.cv-bom-results th:nth-child(3){width:17%}.cv-bom-results th:nth-child(4){width:15%}.cv-bom-results th:nth-child(5){width:15%}
+          .cv-bom-component{display:flex;align-items:center;gap:12px;min-height:64px}
+          .cv-bom-component .cv-part-photo{display:inline-flex;flex:0 0 auto;width:var(--cv-part-photo-size);height:var(--cv-part-photo-size);align-items:center;justify-content:center;overflow:hidden;border:1px solid #e2e8f0;border-radius:12px;background:#f8fafc;color:#64748b}
+          .cv-bom-component .cv-part-photo img{width:100%;height:100%;object-fit:contain;display:block}
+          .cv-bom-component .cv-part-photo__placeholder svg{width:28px;height:28px}
+          .cv-bom-component-copy{display:flex;min-width:0;flex-direction:column;gap:3px}.cv-bom-component-copy strong{color:#0f172a;font-size:13px;line-height:1.3;overflow-wrap:anywhere}.cv-bom-component-copy span,.cv-bom-results td>span{color:#64748b;font-size:11px}
+          .cv-bom-risk-cell{display:flex;flex-direction:column;align-items:flex-start;gap:5px}.cv-bom-risk-cell strong{color:#0f172a;font-variant-numeric:tabular-nums}
+          .cv-bom-risk{display:inline-flex;align-items:center;border-radius:999px;padding:3px 8px;font-size:11px;font-weight:700;white-space:nowrap}
+          .cv-bom-risk--high{background:#fff1f2;color:#be123c}.cv-bom-risk--medium{background:#fffbeb;color:#b45309}.cv-bom-risk--low{background:#ecfdf5;color:#047857}.cv-bom-risk--unknown{background:#f1f5f9;color:#475569}
+          @media(max-width:820px){.cv-bom-results{min-width:700px}.cv-bom-results th,.cv-bom-results td{padding-left:10px;padding-right:10px}}
+        </style>
+        <div class="cv-bom-results-scroll" role="region" aria-label="BOM component register" tabindex="0">
+          <table class="cv-bom-results"><thead><tr><th>Component</th><th>Stock / suppliers</th><th>Lifecycle</th><th>Risk</th><th>Preferred source</th></tr></thead>
+          <tbody>__ROWS__</tbody></table>
+        </div>
+        """.replace("__ROWS__", "".join(body)),
+        unsafe_allow_html=True,
+    )
 
 def part_thumbnail(seed: str = "", url: str = "") -> str:
     return part_photo(url)

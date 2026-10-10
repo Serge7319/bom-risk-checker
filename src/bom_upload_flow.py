@@ -49,6 +49,7 @@ def resume_approved_bom_submission(
 __all__ = [
     "consume_approved_bom_submission",
     "resume_approved_bom_submission",
+    "should_render_bom_analysis_body",
     "should_stop_approved_bom_renderer",
 ]
 
@@ -60,3 +61,12 @@ def should_stop_approved_bom_renderer(
 ) -> bool:
     """Keep the authenticated BOM pipeline running after its upload form reruns."""
     return not (bool(upload_mode) and bool(state.get("cadivor_bom_pipeline_active")))
+
+
+def should_render_bom_analysis_body(
+    app_mode: object,
+    *,
+    high_risk_review: bool = False,
+) -> bool:
+    """Render the analysis pipeline for BOM Analyzer and the cross-BOM review."""
+    return str(app_mode or "").strip() == "BOM Analyzer" or bool(high_risk_review)
