@@ -4,11 +4,18 @@ from pathlib import Path
 from src.bom_upload_flow import (
     consume_approved_bom_submission,
     resume_approved_bom_submission,
+    should_render_bom_analysis_body,
     should_stop_approved_bom_renderer,
 )
 
 
 class ApprovedBOMPageContractTests(unittest.TestCase):
+    def test_bom_analyzer_renders_component_register_and_guards_context_exit(self):
+        source = Path("src/authenticated_runtime.py").read_text(encoding="utf-8")
+        self.assertIn("render_bom_component_table(filtered_df)", source)
+        self.assertIn("if _bom_new_analysis_context is not None:", source)
+        self.assertIn("should_render_bom_analysis_body(", source)
+
     def test_project_name_is_an_always_editable_text_field(self):
         source = Path("src/ui/approved_pages.py").read_text(encoding="utf-8")
         start = source.index('with st.container(key="approved_bom_upload_panel")')
@@ -89,6 +96,16 @@ class ApprovedBOMSubmissionTests(unittest.TestCase):
         )
         self.assertTrue(
             should_stop_approved_bom_renderer(active, upload_mode=False)
+        )
+
+
+    def test_analysis_body_renders_on_bom_analyzer_without_review_flag(self):
+        self.assertTrue(should_render_bom_analysis_body("BOM Analyzer"))
+        self.assertFalse(should_render_bom_analysis_body("Monitoring"))
+
+    def test_analysis_body_renders_when_high_risk_review_is_active(self):
+        self.assertTrue(
+            should_render_bom_analysis_body("High Risk Review", high_risk_review=True)
         )
 
     def test_missing_upload_does_not_queue_analysis(self):
