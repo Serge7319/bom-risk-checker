@@ -1772,6 +1772,11 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
         end_approved_page()
         return
     upload_mode = bool(st.session_state.get("cadivor_bom_upload_open"))
+    analysis_running = bool(
+        st.session_state.get("bom8_analysis_future")
+        or st.session_state.get("bom8_analysis_pending")
+        or st.session_state.get("bom8_analysis_in_progress")
+    )
     with st.container(key="approved_bom_title"):
         title_col, action_col = st.columns([5.2, 1.8], vertical_alignment="center")
         with title_col:
@@ -1785,12 +1790,24 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
             )
         with action_col:
             if upload_mode:
-                if st.button("Manage saved BOMs", key="approved_bom_manage", type="tertiary"):
+                if st.button(
+                    "Manage saved BOMs",
+                    key="approved_bom_manage",
+                    type="tertiary",
+                    disabled=analysis_running,
+                ):
                     st.session_state["cadivor_bom_upload_open"] = False
                     st.session_state["cadivor_manage_saved_boms"] = False
+                    st.session_state.pop("cadivor_bom_pipeline_active", None)
+                    st.session_state.pop("bom8_analysis_upload_file", None)
                     st.rerun()
             else:
-                if st.button("+ New BOM analysis", key="approved_bom_new", type="primary"):
+                if st.button(
+                    "+ New BOM analysis",
+                    key="approved_bom_new",
+                    type="primary",
+                    disabled=analysis_running,
+                ):
                     st.session_state["cadivor_bom_upload_open"] = True
                     st.session_state["cadivor_manage_saved_boms"] = False
                     st.rerun()
@@ -1811,6 +1828,7 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
                 choices,
                 key="approved_bom_project_choice",
                 help="Choose a saved project, or enter a new name. Leave a new name blank to use General.",
+                disabled=analysis_running,
             )
             typed_project = ""
             if selected_project == NEW_PROJECT_CHOICE:
@@ -1818,15 +1836,26 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
                     "New project name",
                     key="approved_bom_project_name",
                     placeholder="Leave blank to use General",
+                    disabled=analysis_running,
                 )
-            bom_name = st.text_input("BOM name", key="approved_bom_name")
+            bom_name = st.text_input(
+                "BOM name",
+                key="approved_bom_name",
+                disabled=analysis_running,
+            )
             uploaded = st.file_uploader(
                 "Upload your BOM file",
                 type=["csv", "xlsx"],
                 key="bom_file_uploader",
                 help="CSV or Excel with MPN and Quantity columns.",
+                disabled=analysis_running,
             )
-            if st.button("Analyze BOM", key="approved_bom_analyze", type="primary") and uploaded is not None:
+            if st.button(
+                "Analyzing BOM…" if analysis_running else "Analyze BOM",
+                key="approved_bom_analyze",
+                type="primary",
+                disabled=analysis_running,
+            ) and uploaded is not None:
                 st.session_state["cadivor_bom_analysis_ready"] = True
                 st.session_state["cadivor_pending_upload"] = uploaded
                 st.session_state["cadivor_pending_project"] = resolve_project_choice(

@@ -3123,6 +3123,12 @@ def run_authenticated_app() -> None:
         app_mode = "Dashboard"
     st.session_state["cadivor_route"] = app_mode
     st.session_state["app_mode"] = app_mode  # compatibility mirror
+    if app_mode not in {"BOM Analyzer", "High Risk Review"} and not (
+        st.session_state.get("bom8_analysis_future")
+        or st.session_state.get("bom8_analysis_pending")
+    ):
+        st.session_state.pop("cadivor_bom_pipeline_active", None)
+        st.session_state.pop("bom8_analysis_upload_file", None)
     # Do not rewrite st.query_params here. Streamlit pushState-s every write;
     # resolve_canonical_app_route / navigate_to already own history integrity.
     if st.session_state.get("cadivor_support_last_page") != app_mode:
@@ -18417,12 +18423,16 @@ def run_authenticated_app() -> None:
         # "Opening BOM Analyzer…" nor page copy during the CSS/setup gap.
         reveal_authenticated_page_body("BOM Analyzer")
         from src.ui.approved_pages import render_bom_catalog
-        from src.bom_upload_flow import consume_approved_bom_submission
+        from src.bom_upload_flow import (
+            consume_approved_bom_submission,
+            resume_approved_bom_submission,
+        )
 
         if st.session_state.get("bom81_high_risk_review"):
             uploaded_file = None
             project_name = ""
             bom_name = ""
+            _approved_bom_submitted = False
         else:
             render_bom_catalog(
                 history_data if isinstance(history_data, list) else [],
@@ -18431,6 +18441,14 @@ def run_authenticated_app() -> None:
             _approved_bom_submitted, uploaded_file, project_name, bom_name = (
                 consume_approved_bom_submission(st.session_state)
             )
+            if not _approved_bom_submitted and st.session_state.get("cadivor_bom_pipeline_active"):
+                resumed_upload, resumed_project, resumed_bom_name = (
+                    resume_approved_bom_submission(st.session_state)
+                )
+                widget_upload = st.session_state.get("bom_file_uploader")
+                uploaded_file = widget_upload or resumed_upload
+                project_name = resumed_project
+                bom_name = resumed_bom_name
             if project_name and "bom8_project_name" not in st.session_state:
                 st.session_state["bom8_project_name"] = project_name
             if bom_name and "bom8_bom_name" not in st.session_state:
@@ -18438,10 +18456,19 @@ def run_authenticated_app() -> None:
             st.session_state.pop("cadivor_bom_analysis_ready", None)
             if uploaded_file is not None:
                 st.session_state.pop("bom8_sample_mode", None)
+        _approved_bom_pipeline_active = bool(
+            st.session_state.get("cadivor_bom_pipeline_active")
+            or st.session_state.get("bom8_analysis_future")
+            or st.session_state.get("bom8_analysis_pending")
+        )
+        _approved_analysis_requested = bool(
+            st.session_state.pop("bom8_analysis_pending", False)
+        )
         analysis_in_progress = bool(
             st.session_state.get("bom8_analysis_future")
-            or st.session_state.get("bom8_analysis_pending")
+            or _approved_analysis_requested
             or st.session_state.get("bom8_sample_auto_analyze")
+            or st.session_state.get("bom8_analysis_in_progress")
         )
         sample_bom = pd.DataFrame()
         if uploaded_file is None and not st.session_state.get("bom81_high_risk_review"):
@@ -19456,8 +19483,10 @@ def run_authenticated_app() -> None:
 
             analysis_in_progress = bool(
                 st.session_state.get("bom8_analysis_future")
+                or _approved_analysis_requested
                 or st.session_state.get("bom8_analysis_pending")
                 or st.session_state.get("bom8_sample_auto_analyze")
+                or st.session_state.get("bom8_analysis_in_progress")
             )
             if st.session_state.pop("bom8_analysis_cancelled_notice", False):
                 st.success("Analysis canceled. No BOM analysis was saved.")
@@ -19628,8 +19657,10 @@ def run_authenticated_app() -> None:
             if sample_mode:
                 bom_df = sample_bom.copy()
             elif uploaded_file.name.endswith(".csv"):
+                uploaded_file.seek(0)
                 bom_df = pd.read_csv(uploaded_file)
             else:
+                uploaded_file.seek(0)
                 bom_df = pd.read_excel(uploaded_file)
 
         except Exception as e:
@@ -19768,12 +19799,14 @@ def run_authenticated_app() -> None:
                 or not _one_time_preflight_price
             )
         )
-        analyze_clicked = st.button(
-            "Analyzing BOM…" if analysis_in_progress else ("Analyze Sample BOM" if sample_mode else "Analyze BOM"),
-            type="primary",
-            disabled=bom_name_missing or analysis_in_progress or _one_time_analysis_blocked,
-            use_container_width=True,
-        )
+        analyze_clicked = False
+        if not _approved_bom_pipeline_active:
+            analyze_clicked = st.button(
+                "Analyzing BOM…" if analysis_in_progress else ("Analyze Sample BOM" if sample_mode else "Analyze BOM"),
+                type="primary",
+                disabled=bom_name_missing or analysis_in_progress or _one_time_analysis_blocked,
+                use_container_width=True,
+            )
         if analyze_clicked:
             # Render the busy state before the long-running supplier and risk analysis.
             st.session_state["bom8_analysis_in_progress"] = True
@@ -19879,7 +19912,9 @@ def run_authenticated_app() -> None:
             use_container_width=True,
             hide_index=True,
         )
-        analyze_requested = bool(st.session_state.pop("bom8_analysis_pending", False))
+        analyze_requested = _approved_analysis_requested or bool(
+            st.session_state.pop("bom8_analysis_pending", False)
+        )
         if st.session_state.pop("bom8_sample_auto_analyze", False):
             analyze_requested = True
 
