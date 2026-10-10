@@ -46,4 +46,17 @@ def resume_approved_bom_submission(
     )
 
 
-__all__ = ["consume_approved_bom_submission", "resume_approved_bom_submission"]
+__all__ = [
+    "consume_approved_bom_submission",
+    "resume_approved_bom_submission",
+    "should_stop_approved_bom_renderer",
+]
+
+
+def should_stop_approved_bom_renderer(
+    state: MutableMapping[str, Any],
+    *,
+    upload_mode: bool,
+) -> bool:
+    """Keep the authenticated BOM pipeline running after its upload form reruns."""
+    return not (bool(upload_mode) and bool(state.get("cadivor_bom_pipeline_active")))
