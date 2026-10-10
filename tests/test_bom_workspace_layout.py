@@ -13,6 +13,16 @@ def test_bom_workspace_uses_distinct_new_and_saved_work_panels():
     assert "Build or reopen an engineering BOM" in RUNTIME_SOURCE
 
 
+def test_approved_upload_does_not_render_the_legacy_duplicate_uploader():
+    guard = "if should_render_legacy_bom_workspace(st.session_state):"
+    start = RUNTIME_SOURCE.index(guard)
+    end = RUNTIME_SOURCE.index('        sample_mode = bool(st.session_state.get("bom8_sample_mode"))', start)
+    legacy_workspace = RUNTIME_SOURCE[start:end]
+
+    assert 'key="bom_file_uploader"' in legacy_workspace
+    assert "should_render_legacy_bom_workspace" in RUNTIME_SOURCE[:start]
+
+
 def test_saved_bom_library_keeps_context_and_management_actions():
     assert 'class="bom81-result-count"' in RUNTIME_SOURCE
     assert 'class="bom81-table-intelligence"' in RUNTIME_SOURCE

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import importlib
+import re
 from pathlib import Path
 import sys
 import types
@@ -104,7 +105,9 @@ class OneTimeReportPublicEntryTests(unittest.TestCase):
         self.assertIn("upload and run your BOM. Cadivor shows the exact unique-component count and active one-time price before checkout", markup)
         self.assertIn("covers up to 100 unique components", markup)
 
-        upload_at = runtime.index('st.file_uploader(\n                "Upload your BOM file"')
+        upload_match = re.search(r'st\.file_uploader\(\s*"Upload your BOM file"', runtime)
+        self.assertIsNotNone(upload_match)
+        upload_at = upload_match.start()
         count_at = runtime.index("This BOM has {len(bom_df)} unique components.")
         analyze_at = runtime.index("if analyze_requested:")
         paywall_at = runtime.index("Cadivor analyzed {_one_time_component_count} unique components.")
