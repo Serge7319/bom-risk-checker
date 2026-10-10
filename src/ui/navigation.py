@@ -136,6 +136,9 @@ def navigate_to(page: str, *, _rerun: bool = True, arm_opening: bool = True, **p
     instead of leaving the previous page name in the address bar.
     """
     current_page = str(st.session_state.get("cadivor_route", "") or "").strip()
+    if page != "BOM Analyzer":
+        st.session_state.pop("approved_saved_bom_edit_id", None)
+        st.session_state.pop("approved_saved_bom_delete_id", None)
     if page == ALTERNATIVE_FINDER_PAGE and not str(
         params.get("original_part") or params.get("mpn") or ""
     ).strip():
