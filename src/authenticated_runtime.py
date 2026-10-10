@@ -6860,61 +6860,77 @@ def run_authenticated_app() -> None:
                 elif not timed_out:
                     timed_out = True
 
-                # An optional lookup for older monitoring alerts without an
-                # analysis ID. Always load the decision queue first; failure
-                # here only leaves its BOM context unavailable.
-                if not timed_out and not decision_alert_df.empty and decision_analyses:
-                    def _unlinked_mpn(row):
-                        analysis_id = str(row.get("analysis_id")).strip()
-                        part_number = str(row.get("part_number")).strip()
-                        mpn = (
-                            part_number
-                            if part_number.casefold() not in {"", "nan", "none", "<na>"}
-                            else str(row.get("mpn")).strip()
-                        )
-                        return (
-                            mpn if analysis_id.casefold() in {"", "nan", "none", "<na>"}
-                            and mpn.casefold() not in {"", "nan", "none", "<na>"}
-                            else ""
-                        )
+                # Load saved component records for matching decision rows so the
+                # queue can show trusted supplier photos and category illustrations.
+                decision_source_rows = []
+                if not decision_alert_df.empty:
+                    decision_source_rows.extend(decision_alert_df.to_dict("records"))
+                if isinstance(persistent_decision_state, dict):
+                    decision_source_rows.extend(
+                        row for row in persistent_decision_state.values()
+                        if isinstance(row, dict)
+                    )
+                elif isinstance(persistent_decision_state, list):
+                    decision_source_rows.extend(
+                        row for row in persistent_decision_state
+                        if isinstance(row, dict)
+                    )
 
-                    unlinked_mpns = sorted({
-                        mpn for row in decision_alert_df.to_dict("records")
-                        if (mpn := _unlinked_mpn(row))
-                    })
-                    if unlinked_mpns and load_deadline - time.monotonic() > 0.7:
-                        def _load_decision_part_links():
-                            links = []
-                            for start in range(0, len(unlinked_mpns), 50):
-                                if load_deadline - time.monotonic() < 0.3:
-                                    break
-                                response = execute_supabase_read(
-                                    _workspace_query(
-                                        supabase.table("analysis_parts")
-                                        .select("analysis_id,mpn")
-                                    )
-                                    .eq("user_id", current_user["id"])
-                                    .in_("mpn", unlinked_mpns[start:start + 50])
-                                    .limit(1000),
-                                    operation="engineering_decisions.part_context",
-                                    attempts=1,
+                def _decision_mpn(row):
+                    for key in (
+                        "mpn", "MPN", "part_number", "part number",
+                        "manufacturer_part_number", "component",
+                    ):
+                        value = row.get(key)
+                        normalized = str(value or "").strip()
+                        if normalized.casefold() not in {"", "nan", "none", "<na>"}:
+                            return normalized
+                    return ""
+
+                decision_mpns = sorted({
+                    mpn for row in decision_source_rows
+                    if (mpn := _decision_mpn(row))
+                })
+                if decision_mpns and load_deadline - time.monotonic() > 0.7:
+                    def _load_decision_part_links():
+                        links = []
+                        for start in range(0, len(decision_mpns), 50):
+                            if load_deadline - time.monotonic() < 0.3:
+                                break
+                            response = execute_supabase_read(
+                                _workspace_query(
+                                    supabase.table("analysis_parts").select("*")
                                 )
-                                rows = getattr(response, "data", None) or []
-                                # A truncated result could falsely attribute
-                                # a component to only one saved BOM.
-                                if len(rows) < 1000:
-                                    links.extend(rows)
-                            return links
+                                .eq("user_id", current_user["id"])
+                                .in_("mpn", decision_mpns[start:start + 50])
+                                .limit(1000),
+                                operation="engineering_decisions.part_images",
+                                attempts=1,
+                            )
+                            rows = getattr(response, "data", None) or []
+                            # A truncated result could falsely attribute one BOM's
+                            # component image to another; skip that whole chunk.
+                            if len(rows) < 1000:
+                                links.extend(rows)
+                        return links
 
+                    try:
                         from src.boot_read_budget import run_with_read_budget
 
                         links, link_status = run_with_read_budget(
                             _load_decision_part_links,
-                            budget_seconds=min(2.0, max(0.05, load_deadline - time.monotonic() - 0.3)),
+                            budget_seconds=min(
+                                2.0,
+                                max(0.05, load_deadline - time.monotonic() - 0.3),
+                            ),
                             respect_first_page=False,
                         )
                         if link_status == "ok":
                             decision_part_links = links or []
+                    except Exception:
+                        # Image hydration is optional; keep the decision queue usable.
+                        decision_part_links = []
+
             except Exception:
                 decision_load_error = "Cadivor could not load engineering decisions right now."
 
@@ -6956,6 +6972,11 @@ def run_authenticated_app() -> None:
             decision_rows = [row for row in cached_decisions if isinstance(row, dict)]
         if not decision_rows and hasattr(alert_frame, "to_dict"):
             decision_rows = [row for row in alert_frame.to_dict("records") if isinstance(row, dict)]
+        from src.part_images import attach_saved_component_images
+        decision_rows = attach_saved_component_images(
+            decision_rows,
+            st.session_state.get(decision_part_links_key) or [],
+        )
         from src.ui.approved_pages import render_decision_queue
 
         render_decision_queue(decision_rows)
@@ -18398,6 +18419,7 @@ def run_authenticated_app() -> None:
         from src.bom_upload_flow import (
             consume_approved_bom_submission,
             resume_approved_bom_submission,
+            should_render_bom_analysis_body,
         )
 
         if st.session_state.get("bom81_high_risk_review"):
@@ -18470,7 +18492,11 @@ def run_authenticated_app() -> None:
             and one_time_credit_in_progress(_one_time_user_id)
         )
 
-        if st.session_state.get("bom81_high_risk_review"):
+        _bom_new_analysis_context = None
+        if should_render_bom_analysis_body(
+            app_mode,
+            high_risk_review=bool(st.session_state.get("bom81_high_risk_review")),
+        ):
             # Cross-BOM review belongs with the File readiness guidance below,
             # not as a disconnected page-level action.
 
@@ -20440,15 +20466,17 @@ def run_authenticated_app() -> None:
                     health_score=int(st.session_state.get("health_score", 0) or 0),
                 )
                 cache_decision_brief(decision_cache_key, decision_brief)
-            render_engineering_decision_brief(decision_brief)
+            with st.expander("Engineering decisions and recommendations", expanded=False):
+                render_engineering_decision_brief(decision_brief)
 
-            show_dashboard_summary(results_df)
+            with st.expander("Portfolio analytics", expanded=False):
+                show_dashboard_summary(results_df)
 
             results_df["Risk Level Display"] = results_df["Risk Level"].apply(risk_badge)
 
         
             st.markdown('<div id="detailed-risk-report"></div>', unsafe_allow_html=True)
-            st.subheader("Detailed Risk Report")
+            st.subheader("Component register")
 
             risk_filter = st.selectbox(
                 "Filter by risk level",
@@ -20471,53 +20499,8 @@ def run_authenticated_app() -> None:
 
             filtered_df = filtered_df.sort_values(by="Risk Score", ascending=False)
 
-            if "Photo" not in filtered_df.columns:
-                filtered_df["Photo"] = ""
-            display_columns = [
-                "Photo",
-                "MPN",
-                "Manufacturer",
-                "Best Source",
-                "Sources Available",
-                "Supplier Count",
-                "Stock Available",
-                "Lifecycle Status",
-                "Risk Score",
-                "Risk Level Display",
-
-            ]
-
-            filtered_df["Risk Level Display"] = filtered_df["Risk Level"].replace(
-                {
-                    "High": "🔴 High",
-                    "Medium": "🟡 Medium",
-                    "Low": "🟢 Low",
-                }
-            )
-
-            cadivor_engineering_dataframe(
-                filtered_df[display_columns],
-                column_config={
-                    "Photo": st.column_config.ImageColumn("Part photo", width="small"),
-                    "MPN": st.column_config.TextColumn(width="medium"),
-                    "Manufacturer": st.column_config.TextColumn(width="medium"),
-                    "Best Source": st.column_config.TextColumn(width="small"),
-                    "Sources Available": st.column_config.TextColumn(
-                        "Available Suppliers", width="medium"
-                    ),
-                    "Supplier Count": st.column_config.NumberColumn(width="small", format="%,d"),
-                    "Stock Available": st.column_config.NumberColumn(width="small", format="%,d"),
-                    "Lifecycle Status": st.column_config.TextColumn(width="medium"),
-                    "Has Alternates": st.column_config.CheckboxColumn(width="small"),
-                    "Risk Score": st.column_config.NumberColumn(width="small", format="%d"),
-                    "Risk Level Display": st.column_config.TextColumn(width="small"),
-                    "Risk Reasons": st.column_config.TextColumn(
-                        "Risk Reasons",
-                        width="large",
-                    ),
-                },
-            )
-
+            from src.ui.approved_pages import render_bom_component_table
+            render_bom_component_table(filtered_df)
 
             st.subheader("Part Details")
 
@@ -20612,7 +20595,8 @@ def run_authenticated_app() -> None:
                     navigate_to("Pricing")
 
 
-        _bom_new_analysis_context.__exit__(None, None, None)
+        if _bom_new_analysis_context is not None:
+            _bom_new_analysis_context.__exit__(None, None, None)
 
     # Authentication persistence is intentionally session scoped in this repair.
     # Re-introduce durable persistence only through a server-side/HttpOnly mechanism,
