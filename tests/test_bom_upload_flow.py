@@ -121,7 +121,6 @@ class ApprovedBOMSubmissionTests(unittest.TestCase):
         self.assertIsNone(upload)
         self.assertNotIn("bom8_analysis_pending", state)
 
-
     def test_approved_upload_hides_duplicate_legacy_workspace(self):
         self.assertFalse(
             should_render_legacy_bom_workspace({"cadivor_bom_upload_open": True})
