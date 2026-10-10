@@ -589,9 +589,9 @@ section[data-testid="stMain"] .st-key-bom81_clear_selection .stButton > button:n
 section[data-testid="stMain"] [data-testid="stMainBlockContainer"],
 section[data-testid="stMain"] .main .block-container {
   width: 100% !important;
-  max-width: none !important;
-  margin-left: 0 !important;
-  margin-right: 0 !important;
+  max-width: 1440px !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
   /* Compact permanent inset: topbar clearance + 24px to first route surface. */
   padding-top: calc(var(--cv-foundation-top, 64px) + 24px) !important;
   padding-left: var(--cv-foundation-gutter, 28px) !important;
