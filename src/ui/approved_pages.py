@@ -625,10 +625,12 @@ def begin_approved_page() -> None:
         .cv-ap-home-recent-heading h2{margin:0 0 5px!important;color:#0f172a!important;font-size:28px!important;font-weight:760!important;line-height:1.2!important;letter-spacing:-.025em!important}
         .st-key-approved_home_view_all_wrap [data-testid="stVerticalBlock"]{width:100%!important}
         .st-key-approved_home_view_all_wrap [data-testid="stElementContainer"]{display:flex!important;justify-content:flex-end!important;width:100%!important}
-        .st-key-approved_home_view_all_wrap button,.st-key-approved_home_view_all_wrap button *{color:#2563eb!important}
+        [class*="st-key-approved_home_view_all"] button,[class*="st-key-approved_home_view_all"] button *{color:#2563eb!important}
         .cv-ap-home-recent-heading p{margin:0!important;color:#64748b!important;font-size:16px!important;line-height:1.4!important}
-        .st-key-approved_home_view_all_wrap button{width:108px!important;max-width:108px!important;min-width:100px!important;height:48px!important;min-height:48px!important;margin-left:auto!important;padding:0 12px!important;border:1px solid #bfdbfe!important;border-radius:10px!important;background:#eaf2ff!important;color:#2563eb!important;box-shadow:none!important;font-size:15px!important;font-weight:700!important}
-        .st-key-approved_home_view_all_wrap button:hover{background:#dbeafe!important;border-color:#93b4ee!important}
+        [class*="st-key-approved_home_view_all"] button{width:108px!important;max-width:108px!important;min-width:100px!important;height:48px!important;min-height:48px!important;margin-left:auto!important;padding:0 12px!important;border:1px solid #bfdbfe!important;border-radius:10px!important;background:#eaf2ff!important;color:#2563eb!important;box-shadow:none!important;font-size:15px!important;font-weight:700!important}
+        [class*="st-key-approved_home_view_all"] button *,[class*="st-key-approved_home_view_all"] button p,[class*="st-key-approved_home_view_all"] button span{color:#2563eb!important}
+        [class*="st-key-approved_home_view_all"] button:hover{background:#dbeafe!important;border-color:#93b4ee!important}
+        [class*="st-key-approved_home_new_bom"] button,[class*="st-key-approved_home_new_bom"] button p,[class*="st-key-approved_home_new_bom"] button span{white-space:nowrap!important}
         [class*="st-key-approved_home_row_"]{box-sizing:border-box!important;min-height:120px!important;margin:0!important;padding:18px 30px!important;border-top:0!important;border-bottom:1px solid #e5ebf3!important;background:#fff!important}
         [class*="st-key-approved_home_row_"] [data-testid="stVerticalBlock"]{display:flex!important;flex-direction:column!important;gap:0!important;justify-content:center!important;min-height:84px!important}
         [class*="st-key-approved_home_row_"] [data-testid="stElementContainer"]{margin:0!important;padding:0!important}
@@ -1416,7 +1418,7 @@ def render_home(
     notice = f"<p class='cv-ap-sub'>{_esc(plan_notice)}</p>" if plan_notice else ""
     with st.container(key="approved_home_page"):
         with st.container(key="approved_home_header"):
-            title_col, action_col = st.columns([6.1, 1], vertical_alignment="top")
+            title_col, action_col = st.columns([4.8, 1], vertical_alignment="top")
             with title_col:
                 st.markdown(
                     f"""
@@ -1433,7 +1435,12 @@ def render_home(
                 if pause_new_analyses:
                     if st.button("Open reports", key="approved_home_open_reports", type="primary"):
                         navigate_to("Reports")
-                elif st.button("+ New BOM analysis", key="approved_home_new_bom", type="primary"):
+                elif st.button(
+                    "+ New BOM analysis",
+                    key="approved_home_new_bom",
+                    type="primary",
+                    width="stretch",
+                ):
                     st.session_state["cadivor_bom_upload_open"] = True
                     navigate_to("BOM Analyzer")
 
@@ -1478,10 +1485,10 @@ def render_home(
                 with view_all_col:
                     with st.container(key="approved_home_view_all_wrap"):
                         if st.button(
-                            "View all",
+                            ":blue[View all]",
                             key="approved_home_view_all",
                             type="secondary",
-                            use_container_width=True,
+                            width="stretch",
                         ):
                             navigate_to("BOM Analyzer", show_saved_analyses="1", arm_opening=False)
             header_labels = ("Name", "Project", "Part count", "Health", "High-risk parts", "Last analyzed", "Actions")
