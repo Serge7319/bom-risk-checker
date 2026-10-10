@@ -575,7 +575,23 @@ def begin_approved_page() -> None:
         .cv-ap-table{width:100%;border-collapse:separate;border-spacing:0}
         .cv-ap-table th{text-align:left;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#94a3b8;padding:8px 10px}
         .cv-ap-table td{padding:8px 10px;border-top:1px solid #eef2f7;font-size:13px;vertical-align:middle}
-        .cv-part-photo{width:72px;height:72px;border-radius:12px;background:#f1f5f9;border:1px solid #e2e8f0;display:inline-block;object-fit:cover;vertical-align:middle;margin-right:10px}
+        .cv-part-photo{box-sizing:border-box;flex:0 0 var(--cv-part-photo-size,72px);width:var(--cv-part-photo-size,72px);height:var(--cv-part-photo-size,72px);border-radius:12px;background:#f1f5f9;border:1px solid #e2e8f0;display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;overflow:hidden;margin-right:10px;color:#64748b}
+        .cv-part-photo img{display:block;width:100%;height:100%;padding:4px;box-sizing:border-box;object-fit:contain}
+        .cv-part-photo__placeholder{display:flex;width:100%;height:100%;align-items:center;justify-content:center}
+        .cv-part-photo__placeholder svg{display:block;width:62%;height:62%}
+        .cv-part-photo[data-illustration="ic"]{background:#eff6ff;border-color:#dbeafe;color:#2563eb}
+        .cv-part-photo[data-illustration="capacitor"]{background:#f5f3ff;border-color:#e9d5ff;color:#7c3aed}
+        .cv-part-photo[data-illustration="resistor"]{background:#fff7ed;border-color:#fed7aa;color:#c2410c}
+        .cv-part-photo[data-illustration="inductor"]{background:#f0fdfa;border-color:#ccfbf1;color:#0f766e}
+        .cv-part-photo[data-illustration="connector"]{background:#ecfeff;border-color:#cffafe;color:#0e7490}
+        .cv-part-photo[data-illustration="diode"]{background:#fff1f2;border-color:#ffe4e6;color:#be123c}
+        .cv-part-photo[data-illustration="transistor"]{background:#f0fdf4;border-color:#dcfce7;color:#15803d}
+        .cv-part-photo[data-illustration="sensor"]{background:#ecfeff;border-color:#cffafe;color:#0891b2}
+        .cv-part-photo[data-illustration="switch"]{background:#fffbeb;border-color:#fef3c7;color:#b45309}
+        .cv-ei-part{display:flex;align-items:center;gap:9px;min-width:0}
+        .cv-ei-part .cv-part-photo{flex:0 0 var(--cv-part-photo-size,48px);margin:0}
+        .cv-ei-part-copy{display:flex;flex-direction:column;gap:2px;min-width:0}
+        .cv-ei-part-copy .cv-ap-name{display:block;overflow-wrap:anywhere}
         .cv-map{display:grid;grid-template-columns:180px 1fr;gap:18px;align-items:center;padding:8px 8px 16px}
         .cv-map-part{border:1px solid #bfdbfe;background:#eff6ff;border-radius:12px;padding:12px}
         .cv-map-branches{display:grid;gap:10px;border-left:2px solid #cbd5e1;padding-left:16px}
@@ -2071,7 +2087,27 @@ def render_decision_queue(records: list[dict[str, Any]] | None) -> None:
                 due_label = f"<span class='cv-due-late'>{due_text}</span>" if status == "Overdue" else due_text
             title = _first(row, "title", "summary", "alert_message", fallback=None)
             title_label = "Not recorded" if title is None else _esc(title)
-            photo = part_photo(str(_first(row, "image_url", "photo_url", "image", fallback="") or ""), size=40, part=row)
+            image_source = _first(
+                row,
+                "image_url",
+                "product_image_url",
+                "primary_image_url",
+                "supplier_image_url",
+                "photo_url",
+                "PhotoUrl",
+                "photoUrl",
+                "ImageURL",
+                "ImageUrl",
+                "PrimaryPhoto",
+                "image",
+                fallback="",
+            )
+            photo = part_photo(
+                image_source,
+                size=48,
+                part=row,
+                part_number=mpn,
+            )
             with st.container(key=f"approved_decision_row_{index}"):
                 cells = st.columns(widths, vertical_alignment="center")
                 cells[0].markdown(
@@ -2372,11 +2408,28 @@ def render_simple_workspace(
     end_approved_page()
 
 
-def part_photo(url: str = "", size: int = 72, part: dict[str, Any] | None = None) -> str:
+def part_photo(
+    url: Any = "",
+    size: int = 72,
+    part: dict[str, Any] | None = None,
+    part_number: str = "",
+) -> str:
     """Supplier photo, or a category illustration labeled as artwork."""
     from src.part_images import part_image_markup
 
-    return part_image_markup(url, "", size=size, part=part)
+    number = part_number or str(
+        _first(
+            part or {},
+            "mpn",
+            "MPN",
+            "manufacturer_part_number",
+            "part_number",
+            "component",
+            fallback="",
+        )
+        or ""
+    )
+    return part_image_markup(url, number, size=size, part=part)
 
 
 def part_thumbnail(seed: str = "", url: str = "") -> str:
