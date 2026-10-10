@@ -93,6 +93,17 @@ def build_cost_optimization(
                     _first(row, "description", "Description", "part_description", "product_description"),
                     "",
                 ),
+                "Component Category": _text(
+                    _first(
+                        row,
+                        "category_raw",
+                        "category",
+                        "part_category",
+                        "component_category",
+                        "device_type",
+                    ),
+                    "",
+                ),
                 "Image URL": normalize_supplier_image_url(
                     _first(row, "image_url", "Image URL", "photo_url")
                 ),
@@ -172,6 +183,7 @@ def build_cost_optimization(
             {
                 "Part Number": reference["Part Number"],
                 "Description": reference["Description"],
+                "Component Category": reference["Component Category"],
                 "Image URL": reference["Image URL"],
                 "Manufacturer": reference["Manufacturer"],
                 "Category": category,
@@ -355,7 +367,7 @@ def _opportunity_table_markup(rows: List[Dict[str, Any]]) -> str:
             part={
                 "description": description,
                 "manufacturer": manufacturer,
-                "category": row.get("Category"),
+                "category": row.get("Component Category"),
             },
         )
         unit_price = _number(row.get("Current Unit Price"), 0.0)
