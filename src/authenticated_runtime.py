@@ -18419,6 +18419,7 @@ def run_authenticated_app() -> None:
         from src.bom_upload_flow import (
             consume_approved_bom_submission,
             resume_approved_bom_submission,
+            should_render_legacy_bom_workspace,
             should_render_bom_analysis_body,
         )
 
@@ -19488,160 +19489,162 @@ def run_authenticated_app() -> None:
             )
             if st.session_state.pop("bom8_analysis_cancelled_notice", False):
                 st.success("Analysis canceled. No BOM analysis was saved.")
-            _bom_workspace_grid_context = st.container(key="bom9_workspace_grid")
-            _bom_workspace_grid_context.__enter__()
-            input_col, saved_manager_col = st.columns([0.38, 0.62], gap="large")
+            sample_bom = pd.DataFrame()
+            if should_render_legacy_bom_workspace(st.session_state):
+                _bom_workspace_grid_context = st.container(key="bom9_workspace_grid")
+                _bom_workspace_grid_context.__enter__()
+                input_col, saved_manager_col = st.columns([0.38, 0.62], gap="large")
 
-            with input_col:
-                _bom_upload_panel_context = st.container(
-                    border=True,
-                    key="bom9_upload_panel",
-                )
-                _bom_upload_panel_context.__enter__()
-                _bom_upload_intro = (
-                    "Name the work, then upload your own CSV or Excel file."
-                    if _one_time_blocked_plan else
-                    "Name the work, then choose Cadivor's sample or upload your own CSV or Excel file."
-                )
-                st.markdown(
-                    f"""
-                    <div class="bom9-upload-marker"></div>
-                    <section class="bom9-panel-intro">
-                      <div>
-                        <div class="bom9-panel-kicker">New analysis</div>
-                        <h2>Upload engineering BOM</h2>
-                        <p>{_bom_upload_intro}</p>
-                      </div>
-                    </section>
-                    """,
-                    unsafe_allow_html=True,
-                )
-
-                project_name_col, bom_name_col = st.columns(2, gap="small")
-                with project_name_col:
-                    project_name = st.text_input(
-                        "Project Name (optional)",
-                        placeholder="Example: Motor Controller",
-                        key="bom8_project_name",
-                        disabled=analysis_in_progress,
-                        help="Use a project to group multiple BOM revisions or assemblies.",
+                with input_col:
+                    _bom_upload_panel_context = st.container(
+                        border=True,
+                        key="bom9_upload_panel",
                     )
-                with bom_name_col:
-                    bom_name = st.text_input(
-                        "BOM Name",
-                        placeholder="Example: Motor Controller Rev A",
-                        key="bom8_bom_name",
-                        disabled=analysis_in_progress,
-                        help="Required. Name this specific BOM, revision, or assembly.",
+                    _bom_upload_panel_context.__enter__()
+                    _bom_upload_intro = (
+                        "Name the work, then upload your own CSV or Excel file."
+                        if _one_time_blocked_plan else
+                        "Name the work, then choose Cadivor's sample or upload your own CSV or Excel file."
                     )
-                if not bom_name.strip() and not st.session_state.get("bom8_sample_auto_analyze"):
                     st.markdown(
-                        """
-                        <div class="bom9-form-note" role="status">
-                          <strong>Required</strong>
-                          <span>Add a BOM Name before uploading. Project Name is optional and helps group revisions.</span>
-                        </div>
+                        f"""
+                        <div class="bom9-upload-marker"></div>
+                        <section class="bom9-panel-intro">
+                          <div>
+                            <div class="bom9-panel-kicker">New analysis</div>
+                            <h2>Upload engineering BOM</h2>
+                            <p>{_bom_upload_intro}</p>
+                          </div>
+                        </section>
                         """,
                         unsafe_allow_html=True,
                     )
 
-                sample_bom = pd.DataFrame(
-                    {
-                        "mpn": [
-                            "STM32F103C8T6",
-                            "TPS5430DDAR",
-                            "MCP2551-I/SN",
-                            "BQ24074RGTR",
-                            "ADS1115IDGSR",
-                            "W25Q64JVSSIQ",
-                            "SN74LVC2T45DCUR",
-                            "PC817X2NSZ1F",
-                            "GRM188R71C104KA01D",
-                            "RC0603FR-0710KL",
-                        ],
-                        "quantity": [1, 2, 1, 1, 1, 1, 2, 4, 12, 8],
-                        "description": [
-                            "32-bit microcontroller",
-                            "3 A buck regulator",
-                            "CAN transceiver",
-                            "Li-ion battery charger",
-                            "16-bit ADC",
-                            "64 Mbit serial flash memory",
-                            "Dual-bit voltage-level translator",
-                            "Optocoupler",
-                            "0.1 uF ceramic capacitor",
-                            "10 kOhm resistor",
-                        ],
-                    }
-                )
-                st.markdown(
-                    """
-                    <div class="cv-beta-trust-note"><strong>Your BOM stays in your authenticated workspace.</strong> Cadivor uses it to generate your analysis and does not present customer BOM data as a product for sale.</div>
-                    """,
-                    unsafe_allow_html=True,
-                )
+                    project_name_col, bom_name_col = st.columns(2, gap="small")
+                    with project_name_col:
+                        project_name = st.text_input(
+                            "Project Name (optional)",
+                            placeholder="Example: Motor Controller",
+                            key="bom8_project_name",
+                            disabled=analysis_in_progress,
+                            help="Use a project to group multiple BOM revisions or assemblies.",
+                        )
+                    with bom_name_col:
+                        bom_name = st.text_input(
+                            "BOM Name",
+                            placeholder="Example: Motor Controller Rev A",
+                            key="bom8_bom_name",
+                            disabled=analysis_in_progress,
+                            help="Required. Name this specific BOM, revision, or assembly.",
+                        )
+                    if not bom_name.strip() and not st.session_state.get("bom8_sample_auto_analyze"):
+                        st.markdown(
+                            """
+                            <div class="bom9-form-note" role="status">
+                              <strong>Required</strong>
+                              <span>Add a BOM Name before uploading. Project Name is optional and helps group revisions.</span>
+                            </div>
+                            """,
+                            unsafe_allow_html=True,
+                        )
 
-                def _start_sample_bom() -> None:
-                    st.session_state["bom8_sample_mode"] = True
-                    st.session_state["bom8_sample_auto_analyze"] = True
-                    st.session_state["bom8_project_name"] = "Cadivor sample"
-                    st.session_state["bom8_bom_name"] = "10-Part Sample BOM"
-                    for state_key in (
-                        "results_df",
-                        "analysis_saved",
-                        "analysis_id",
-                        "health_score",
-                        "health_status",
-                    ):
-                        st.session_state.pop(state_key, None)
-
-                def _use_uploaded_bom() -> None:
-                    st.session_state.pop("bom8_sample_mode", None)
-                    st.session_state.pop("bom8_sample_auto_analyze", None)
-
-                if _one_time_blocked_plan:
-                    st.caption(
-                        "Your paid report credit is for your own BOM. The Cadivor sample will not use it."
+                    sample_bom = pd.DataFrame(
+                        {
+                            "mpn": [
+                                "STM32F103C8T6",
+                                "TPS5430DDAR",
+                                "MCP2551-I/SN",
+                                "BQ24074RGTR",
+                                "ADS1115IDGSR",
+                                "W25Q64JVSSIQ",
+                                "SN74LVC2T45DCUR",
+                                "PC817X2NSZ1F",
+                                "GRM188R71C104KA01D",
+                                "RC0603FR-0710KL",
+                            ],
+                            "quantity": [1, 2, 1, 1, 1, 1, 2, 4, 12, 8],
+                            "description": [
+                                "32-bit microcontroller",
+                                "3 A buck regulator",
+                                "CAN transceiver",
+                                "Li-ion battery charger",
+                                "16-bit ADC",
+                                "64 Mbit serial flash memory",
+                                "Dual-bit voltage-level translator",
+                                "Optocoupler",
+                                "0.1 uF ceramic capacitor",
+                                "10 kOhm resistor",
+                            ],
+                        }
                     )
-                else:
                     st.markdown(
-                        '<div class="bom8-path-label">Option 1 — Explore Cadivor <span>Use Cadivor\'s included example to see a complete analysis. It will be saved as a sample, not your own BOM.</span></div>',
+                        """
+                        <div class="cv-beta-trust-note"><strong>Your BOM stays in your authenticated workspace.</strong> Cadivor uses it to generate your analysis and does not present customer BOM data as a product for sale.</div>
+                        """,
                         unsafe_allow_html=True,
                     )
-                    st.button(
-                        "Analyze the 10-Part Sample BOM",
-                        key="bom8_try_sample",
-                        type="primary",
-                        help="Load and analyze Cadivor's sample BOM in this workspace—no download or re-upload required.",
-                        on_click=_start_sample_bom,
+
+                    def _start_sample_bom() -> None:
+                        st.session_state["bom8_sample_mode"] = True
+                        st.session_state["bom8_sample_auto_analyze"] = True
+                        st.session_state["bom8_project_name"] = "Cadivor sample"
+                        st.session_state["bom8_bom_name"] = "10-Part Sample BOM"
+                        for state_key in (
+                            "results_df",
+                            "analysis_saved",
+                            "analysis_id",
+                            "health_score",
+                            "health_status",
+                        ):
+                            st.session_state.pop(state_key, None)
+
+                    def _use_uploaded_bom() -> None:
+                        st.session_state.pop("bom8_sample_mode", None)
+                        st.session_state.pop("bom8_sample_auto_analyze", None)
+
+                    if _one_time_blocked_plan:
+                        st.caption(
+                            "Your paid report credit is for your own BOM. The Cadivor sample will not use it."
+                        )
+                    else:
+                        st.markdown(
+                            '<div class="bom8-path-label">Option 1 — Explore Cadivor <span>Use Cadivor\'s included example to see a complete analysis. It will be saved as a sample, not your own BOM.</span></div>',
+                            unsafe_allow_html=True,
+                        )
+                        st.button(
+                            "Analyze the 10-Part Sample BOM",
+                            key="bom8_try_sample",
+                            type="primary",
+                            help="Load and analyze Cadivor's sample BOM in this workspace—no download or re-upload required.",
+                            on_click=_start_sample_bom,
+                            disabled=analysis_in_progress,
+                        )
+
+                    st.markdown(
+                        '<div class="bom8-path-label">Analyze your BOM <span>Upload your own CSV or Excel file for an engineering review of your actual design.</span></div>' if _one_time_blocked_plan else
+                        '<div class="bom8-path-label">Option 2 — Analyze your BOM <span>Upload your own CSV or Excel file for an engineering review of your actual design.</span></div>',
+                        unsafe_allow_html=True,
+                    )
+                    uploaded_file = st.file_uploader(
+                    "Upload your BOM file",
+                        type=["csv", "xlsx"],
+                        key="bom_file_uploader",
+                        help="Cadivor accepts CSV and XLSX files up to the Streamlit upload limit.",
+                        on_change=_use_uploaded_bom,
                         disabled=analysis_in_progress,
                     )
+                    _bom_upload_panel_context.__exit__(None, None, None)
 
-                st.markdown(
-                    '<div class="bom8-path-label">Analyze your BOM <span>Upload your own CSV or Excel file for an engineering review of your actual design.</span></div>' if _one_time_blocked_plan else
-                    '<div class="bom8-path-label">Option 2 — Analyze your BOM <span>Upload your own CSV or Excel file for an engineering review of your actual design.</span></div>',
-                    unsafe_allow_html=True,
-                )
-                uploaded_file = st.file_uploader(
-                "Upload your BOM file",
-                    type=["csv", "xlsx"],
-                    key="bom_file_uploader",
-                    help="Cadivor accepts CSV and XLSX files up to the Streamlit upload limit.",
-                    on_change=_use_uploaded_bom,
-                    disabled=analysis_in_progress,
-                )
-                _bom_upload_panel_context.__exit__(None, None, None)
+                with saved_manager_col:
+                    _bom_saved_panel_context = st.container(
+                        border=True,
+                        key="bom9_saved_panel",
+                    )
+                    _bom_saved_panel_context.__enter__()
+                    _render_saved_bom_manager()
+                    _bom_saved_panel_context.__exit__(None, None, None)
 
-            with saved_manager_col:
-                _bom_saved_panel_context = st.container(
-                    border=True,
-                    key="bom9_saved_panel",
-                )
-                _bom_saved_panel_context.__enter__()
-                _render_saved_bom_manager()
-                _bom_saved_panel_context.__exit__(None, None, None)
-
-            _bom_workspace_grid_context.__exit__(None, None, None)
+                _bom_workspace_grid_context.__exit__(None, None, None)
         sample_mode = bool(st.session_state.get("bom8_sample_mode"))
         source_filename = "cadivor_10_part_sample_bom.csv" if sample_mode else (
             uploaded_file.name if uploaded_file is not None else ""

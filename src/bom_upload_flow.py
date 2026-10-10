@@ -49,6 +49,7 @@ def resume_approved_bom_submission(
 __all__ = [
     "consume_approved_bom_submission",
     "resume_approved_bom_submission",
+    "should_render_legacy_bom_workspace",
     "should_render_bom_analysis_body",
     "should_stop_approved_bom_renderer",
 ]
@@ -61,6 +62,14 @@ def should_stop_approved_bom_renderer(
 ) -> bool:
     """Keep the authenticated BOM pipeline running after its upload form reruns."""
     return not (bool(upload_mode) and bool(state.get("cadivor_bom_pipeline_active")))
+
+
+def should_render_legacy_bom_workspace(state: MutableMapping[str, Any]) -> bool:
+    """Avoid rendering a second upload form while the approved BOM form is active."""
+    return not (
+        bool(state.get("cadivor_bom_upload_open"))
+        or bool(state.get("cadivor_bom_pipeline_active"))
+    )
 
 
 def should_render_bom_analysis_body(

@@ -4,6 +4,7 @@ from pathlib import Path
 from src.bom_upload_flow import (
     consume_approved_bom_submission,
     resume_approved_bom_submission,
+    should_render_legacy_bom_workspace,
     should_render_bom_analysis_body,
     should_stop_approved_bom_renderer,
 )
@@ -119,6 +120,16 @@ class ApprovedBOMSubmissionTests(unittest.TestCase):
         self.assertTrue(submitted)
         self.assertIsNone(upload)
         self.assertNotIn("bom8_analysis_pending", state)
+
+
+    def test_approved_upload_hides_duplicate_legacy_workspace(self):
+        self.assertFalse(
+            should_render_legacy_bom_workspace({"cadivor_bom_upload_open": True})
+        )
+        self.assertFalse(
+            should_render_legacy_bom_workspace({"cadivor_bom_pipeline_active": True})
+        )
+        self.assertTrue(should_render_legacy_bom_workspace({}))
 
 
 if __name__ == "__main__":
