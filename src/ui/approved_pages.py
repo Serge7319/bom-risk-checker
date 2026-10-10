@@ -14,6 +14,7 @@ from typing import Any
 
 import streamlit as st
 
+from src.bom_upload_flow import should_stop_approved_bom_renderer
 from src.saved_bom_project import (
     NEW_PROJECT_CHOICE,
     analysis_title_for_upload,
@@ -1822,22 +1823,13 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
                 """,
                 unsafe_allow_html=True,
             )
-            choices = [*project_choices(rows), NEW_PROJECT_CHOICE]
-            selected_project = st.selectbox(
-                "Project",
-                choices,
-                key="approved_bom_project_choice",
-                help="Choose a saved project, or enter a new name. Leave a new name blank to use General.",
+            typed_project = st.text_input(
+                "Project name",
+                key="approved_bom_project_name",
+                placeholder="Example: Motor Controller",
+                help="Enter a new name or reuse an existing project name. Leave blank to use General.",
                 disabled=analysis_running,
             )
-            typed_project = ""
-            if selected_project == NEW_PROJECT_CHOICE:
-                typed_project = st.text_input(
-                    "New project name",
-                    key="approved_bom_project_name",
-                    placeholder="Leave blank to use General",
-                    disabled=analysis_running,
-                )
             bom_name = st.text_input(
                 "BOM name",
                 key="approved_bom_name",
@@ -1859,7 +1851,7 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
                 st.session_state["cadivor_bom_analysis_ready"] = True
                 st.session_state["cadivor_pending_upload"] = uploaded
                 st.session_state["cadivor_pending_project"] = resolve_project_choice(
-                    selected_project,
+                    NEW_PROJECT_CHOICE,
                     typed_project,
                     blank_uses_general=True,
                 )
@@ -1985,7 +1977,14 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
                     )
     if st.session_state.get("cadivor_bom_analysis_ready"):
         return
-    end_approved_page()
+    # On ordinary visits this renderer owns the page and stops the legacy route.
+    # A submitted upload must continue through the same runtime so it can parse,
+    # analyze, save, and render the result on subsequent Streamlit reruns.
+    if should_stop_approved_bom_renderer(
+        st.session_state,
+        upload_mode=upload_mode,
+    ):
+        end_approved_page()
 
 
 def render_decision_queue(records: list[dict[str, Any]] | None) -> None:
