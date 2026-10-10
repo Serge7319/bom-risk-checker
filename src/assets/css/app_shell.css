@@ -4,6 +4,7 @@
   --cv-foundation-bg:var(--cv-bg,#f6f8fc);
   --cv-foundation-canvas:none;
   --cv-foundation-gutter:var(--cv-shell-gap,28px);
+  --cv-page-max:1440px;
   --cv-foundation-border:var(--cv-border,#e2e8f0);
   --cv-foundation-text:var(--cv-text,#0f172a);
   --cv-foundation-muted:var(--cv-text-muted,#64748b);
@@ -140,9 +141,10 @@ section[data-testid="stMain"]{
 }
 [data-testid="stMainBlockContainer"],.main .block-container{
   width:100%!important;
-  max-width:var(--cv-page-max,none)!important;
+  max-width:var(--cv-page-max,1440px)!important;
   min-width:0!important;
-  margin:0!important;
+  margin-left:auto!important;
+  margin-right:auto!important;
   padding:calc(var(--cv-foundation-top) + 24px) var(--cv-foundation-gutter) var(--cv-space-12,56px)!important;
   box-sizing:border-box!important;
   overflow:visible!important;
