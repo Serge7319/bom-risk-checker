@@ -6270,48 +6270,20 @@ def run_authenticated_app() -> None:
         )
 
         def _cost_build_control() -> None:
-            _spacer, control_col = st.columns([4.2, 1.3], vertical_alignment="bottom")
-            with control_col:
-                st.session_state.setdefault("cost_build_quantity", build_quantity)
-                st.number_input(
-                    "Builds to model",
-                    min_value=1,
-                    max_value=1_000_000,
-                    step=10,
-                    key="cost_build_quantity",
-                    help="Cadivor multiplies recorded BOM quantities and unit prices by this production quantity.",
-                )
-        from src.ui.approved_pages import render_simple_workspace
-
-        render_simple_workspace(
-                kicker="COST OPTIMIZATION",
-                title="Cost optimization",
-                subtitle="Identify lower-cost alternatives, reduce spend, and optimize your bill of materials without compromising performance.",
-                kpis=[
-                    ("Estimated annual savings", "—"),
-                    ("Addressable spend", "—"),
-                    ("Opportunities", str(len(cost_parts or []))),
-                ],
-                headers=["Component", "Current unit price", "Alternative", "Estimated savings", "Fit"],
-                table_rows=[
-                    [
-                        str(part.get("mpn") or part.get("part_number") or "Component"),
-                        str(part.get("unit_price") or "—"),
-                        "—",
-                        "—",
-                        str(part.get("risk_level") or "—"),
-                    ]
-                    for part in (cost_parts or [])[:8]
-                    if isinstance(part, dict)
-                ],
-                legacy_page="Cost Optimization",
-                legacy_label="Open cost workspace",
-                control=_cost_build_control,
+            st.session_state.setdefault("cost_build_quantity", build_quantity)
+            st.number_input(
+                "Builds to model",
+                min_value=1,
+                max_value=1_000_000,
+                step=10,
+                key="cost_build_quantity",
+                help="Cadivor multiplies recorded BOM quantities and unit prices by this production quantity.",
             )
 
         render_cost_optimization(
             intelligence=cost_intelligence,
             internal_nav_button=internal_nav_button,
+            control=_cost_build_control,
         )
         stop_authenticated_page()
 
