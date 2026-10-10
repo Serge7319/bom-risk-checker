@@ -2,6 +2,7 @@ from pathlib import Path
 
 
 RUNTIME_SOURCE = Path("src/authenticated_runtime.py").read_text(encoding="utf-8")
+APPROVED_SOURCE = Path("src/ui/approved_pages.py").read_text(encoding="utf-8")
 
 
 def test_bom_workspace_uses_distinct_new_and_saved_work_panels():
@@ -49,3 +50,16 @@ def test_bom_workspace_has_laptop_tablet_and_mobile_rules():
         'div[data-testid="stHorizontalBlock"]:has(.st-key-bom81_save_project_names)'
         ":has(.st-key-bom81_open_selected)"
     ) in RUNTIME_SOURCE
+
+
+
+def test_new_bom_project_name_is_free_text():
+    start = APPROVED_SOURCE.index('with st.container(key="approved_bom_upload_panel")')
+    end = APPROVED_SOURCE.index('    else:\n        from datetime import date', start)
+    upload_form = APPROVED_SOURCE[start:end]
+
+    assert 'typed_project = st.text_input(' in upload_form
+    assert '"Project name"' in upload_form
+    assert 'selected_project = st.selectbox(' not in upload_form
+    assert 'resolve_project_choice(' in upload_form
+    assert 'NEW_PROJECT_CHOICE' in upload_form

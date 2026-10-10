@@ -1,9 +1,24 @@
 import unittest
+from pathlib import Path
 
 from src.bom_upload_flow import (
     consume_approved_bom_submission,
     resume_approved_bom_submission,
+    should_stop_approved_bom_renderer,
 )
+
+
+class ApprovedBOMPageContractTests(unittest.TestCase):
+    def test_project_name_is_an_always_editable_text_field(self):
+        source = Path("src/ui/approved_pages.py").read_text(encoding="utf-8")
+        start = source.index('with st.container(key="approved_bom_upload_panel")')
+        end = source.index('    else:\n        from datetime import date', start)
+        upload_form = source[start:end]
+
+        self.assertIn('typed_project = st.text_input(', upload_form)
+        self.assertIn('"Project name"', upload_form)
+        self.assertNotIn('selected_project = st.selectbox(', upload_form)
+        self.assertIn('resolve_project_choice(', upload_form)
 
 
 class ApprovedBOMSubmissionTests(unittest.TestCase):
@@ -62,6 +77,19 @@ class ApprovedBOMSubmissionTests(unittest.TestCase):
 
         self.assertIs(resumed_upload, upload)
         self.assertEqual((project, name), ("Motor project", "Rev B"))
+
+    def test_upload_form_allows_runtime_to_resume_active_pipeline(self):
+        active = {"cadivor_bom_pipeline_active": True}
+
+        self.assertFalse(
+            should_stop_approved_bom_renderer(active, upload_mode=True)
+        )
+        self.assertTrue(
+            should_stop_approved_bom_renderer({}, upload_mode=True)
+        )
+        self.assertTrue(
+            should_stop_approved_bom_renderer(active, upload_mode=False)
+        )
 
     def test_missing_upload_does_not_queue_analysis(self):
         state = {
