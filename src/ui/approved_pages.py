@@ -588,9 +588,6 @@ def begin_approved_page() -> None:
         .cv-ap-home-recent-heading{padding:18px 20px 14px}
         .cv-ap-home-recent-heading h2{margin:0 0 4px;color:#0f172a;font-size:21px;font-weight:760;letter-spacing:-.02em}
         .cv-ap-home-recent-heading p{margin:0;color:#64748b;font-size:13px}
-        .st-key-approved_home_head{padding:11px 20px!important;background:#f7f9fc!important;border-top:1px solid #e2e8f0!important;border-bottom:1px solid #d5deea!important}
-        .st-key-approved_home_head [data-testid="stHorizontalBlock"]{align-items:center!important}
-        .st-key-approved_home_head .cv-ap-meta{color:#5b6d84!important;font-size:10px!important;font-weight:800!important;letter-spacing:.05em!important;text-transform:uppercase!important}
         [class*="st-key-approved_home_row_"]{min-height:66px!important;margin:0!important;padding:7px 20px!important;border-top:0!important;border-bottom:1px solid #e5ebf3!important;background:#fff!important}
         [class*="st-key-approved_home_row_"] [data-testid="stHorizontalBlock"]{align-items:center!important}
         .cv-ap-home-bom{display:flex;align-items:center;min-width:0;min-height:40px}
@@ -600,13 +597,6 @@ def begin_approved_page() -> None:
         .cv-ap-home-project{display:block;overflow:hidden;color:#52647b;font-size:13px;line-height:1.4;text-overflow:ellipsis;white-space:nowrap}
         .st-key-approved_home_page{padding:60px 30px 32px!important}
         .st-key-approved_home_page > [data-testid="stVerticalBlock"]{gap:22px!important}
-        .st-key-approved_home_header{margin:0!important;padding:0!important}
-        .st-key-approved_home_header [data-testid="stHorizontalBlock"]{align-items:flex-start!important;gap:20px!important}
-        .st-key-approved_home_header .cv-ap-kicker{margin:0 0 12px!important;font-size:18px!important}
-        .st-key-approved_home_header .cv-ap h1{margin:0 0 10px!important;font-size:56px!important;line-height:1.15!important;letter-spacing:-.04em!important}
-        .st-key-approved_home_header .cv-ap-sub{margin:0!important;font-size:23px!important;line-height:1.4!important}
-        .st-key-approved_home_header [data-testid="stColumn"]:last-child [data-testid="stVerticalBlock"]{align-items:flex-end!important}
-        .st-key-approved_home_header [class*="st-key-approved_home_new_bom"] button,.st-key-approved_home_header [class*="st-key-approved_home_open_reports"] button{min-height:68px!important;height:68px!important;padding:0 28px!important;border-radius:12px!important;font-size:18px!important;font-weight:700!important;white-space:nowrap!important}
         .cv-ap-home-kpis{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:18px!important;margin:66px 0 0!important}
         .cv-ap-home-kpi{display:flex!important;align-items:flex-start!important;gap:20px!important;box-sizing:border-box!important;min-height:225px!important;padding:30px 26px!important;border:1px solid #dce7f5!important;border-radius:16px!important;background:#f9fbff!important;box-shadow:0 2px 7px rgba(15,23,42,.035)!important}
         .cv-ap-home-kpi .cv-ap-home-icon{display:flex!important;align-items:center!important;justify-content:center!important;flex:0 0 72px!important;width:72px!important;height:72px!important;border-radius:50%!important;background:#e8f1ff!important;margin:0!important}
@@ -621,6 +611,8 @@ def begin_approved_page() -> None:
         .st-key-approved_home_recent_card{margin:38px 0 0!important;padding:0!important;border:1px solid #cbd8e8!important;border-radius:16px!important;background:#fff!important;box-shadow:0 3px 12px rgba(15,23,42,.045)!important}
         .st-key-approved_home_recent_card [data-testid="stVerticalBlock"]{gap:0!important}
         .st-key-approved_home_recent_card [data-testid="stElementContainer"]{margin:0!important;padding:0!important}
+        .cv-ap-home-table-head{display:grid!important;grid-template-columns:2.05fr 1.45fr .78fr .9fr 1.15fr 1.22fr .75fr!important;align-items:center!important;gap:16px!important;box-sizing:border-box!important;min-height:76px!important;padding:0 14px!important;background:#f7f9fc!important;border-top:1px solid #e5ebf3!important;border-bottom:1px solid #dce4ef!important}
+        .cv-ap-home-table-head [role="columnheader"]{display:flex;align-items:center;min-width:0;min-height:48px;overflow:hidden;color:#64748b;font-size:18px;font-weight:750;line-height:1.3;letter-spacing:.045em;text-overflow:ellipsis;text-transform:uppercase;white-space:nowrap}
         .st-key-approved_home_recent_heading{margin:0!important;padding:28px 30px 22px!important}
         .st-key-approved_home_recent_heading [data-testid="stVerticalBlock"]{gap:0!important}
         .st-key-approved_home_recent_heading [data-testid="stHorizontalBlock"]{align-items:center!important}
@@ -630,11 +622,6 @@ def begin_approved_page() -> None:
         .cv-ap-home-recent-heading p{margin:0!important;color:#64748b!important;font-size:22px!important;line-height:1.4!important}
         [class*="st-key-approved_home_view_all"] button{width:112px!important;max-width:112px!important;min-width:104px!important;height:56px!important;min-height:56px!important;margin-left:auto!important;padding:0 14px!important;border:1px solid #cbdcf7!important;border-radius:10px!important;background:#fff!important;color:#2563eb!important;box-shadow:none!important;font-size:17px!important;font-weight:700!important}
         [class*="st-key-approved_home_view_all"] button:hover{background:#f8fbff!important;border-color:#93b4ee!important}
-        .st-key-approved_home_head{min-height:68px!important;padding:16px 30px!important;background:#f7f9fc!important;border-top:1px solid #e5ebf3!important;border-bottom:1px solid #dce4ef!important}
-        .st-key-approved_home_head [data-testid="stVerticalBlock"]{gap:0!important}
-        .st-key-approved_home_head [data-testid="stElementContainer"]{margin:0!important;padding:0!important}
-        .st-key-approved_home_head [data-testid="stHorizontalBlock"]{align-items:center!important;min-height:76px!important}
-        .st-key-approved_home_head .cv-ap-meta{display:block!important;color:#64748b!important;font-size:18px!important;font-weight:750!important;line-height:1.3!important;letter-spacing:.045em!important}
         [class*="st-key-approved_home_row_"]{box-sizing:border-box!important;min-height:108px!important;margin:0!important;padding:16px 30px!important;border-top:0!important;border-bottom:1px solid #e5ebf3!important;background:#fff!important}
         [class*="st-key-approved_home_row_"] [data-testid="stVerticalBlock"]{gap:0!important}
         [class*="st-key-approved_home_row_"] [data-testid="stElementContainer"]{margin:0!important;padding:0!important}
@@ -655,7 +642,7 @@ def begin_approved_page() -> None:
         [class*="st-key-approved_home_row_"] [data-testid="stColumn"]:last-child{text-align:right}
         .cv-ap-home-empty{padding:26px 24px;color:#64748b;font-size:16px}
         @media(max-width:1100px){.st-key-approved_home_page{padding:30px 24px 28px!important}.cv-ap-home-kpis{grid-template-columns:repeat(2,minmax(0,1fr))!important}.cv-ap-home-kpi{min-height:160px!important}.cv-ap-home-kpi-copy{min-height:110px}}
-        @media(max-width:700px){.st-key-approved_home_page{padding:24px 16px!important}.st-key-approved_home_header [data-testid="stHorizontalBlock"]{flex-wrap:wrap!important}.st-key-approved_home_header .cv-ap h1{font-size:34px!important}.st-key-approved_home_header .cv-ap-sub{font-size:16px!important}.cv-ap-home-kpis{grid-template-columns:1fr!important;gap:12px!important}.cv-ap-home-kpi{min-height:132px!important;padding:18px!important}.cv-ap-home-kpi-copy{min-height:90px}.st-key-approved_home_recent_heading{padding:18px 16px 14px!important}.st-key-approved_home_head{padding:12px 16px!important}[class*="st-key-approved_home_row_"]{padding:12px 16px!important}}
+        @media(max-width:700px){.st-key-approved_home_page{padding:24px 16px!important}.st-key-approved_home_header [data-testid="stHorizontalBlock"]{flex-wrap:wrap!important}.st-key-approved_home_header .cv-ap h1{font-size:34px!important}.st-key-approved_home_header .cv-ap-sub{font-size:16px!important}.cv-ap-home-kpis{grid-template-columns:1fr!important;gap:12px!important}.cv-ap-home-kpi{min-height:132px!important;padding:18px!important}.cv-ap-home-kpi-copy{min-height:90px}.st-key-approved_home_recent_heading{padding:18px 16px 14px!important}[class*="st-key-approved_home_row_"]{padding:12px 16px!important}}
         .st-key-approved_saved_bom_edit_screen,.st-key-approved_saved_bom_delete_screen{max-width:760px!important;padding:22px!important;border:1px solid #d7e0eb!important;border-radius:16px!important;background:#fff!important}
         .st-key-approved_saved_bom_delete_screen button[kind="primary"]{background:#be123c!important;border-color:#be123c!important}
         .cv-pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:3px 8px;font-size:12px;font-weight:750}
@@ -1406,13 +1393,15 @@ def render_home(
                         use_container_width=True,
                     ):
                         navigate_to("BOM Analyzer", show_saved_analyses="1", arm_opening=False)
-            with st.container(key="approved_home_head"):
-                header = st.columns(home_widths, vertical_alignment="center")
-                for column, label in zip(
-                    header,
-                    ("Name", "Project", "Part count", "Health", "High-risk parts", "Last analyzed", "Actions"),
-                ):
-                    column.markdown(f"<div class='cv-ap-meta'>{label}</div>", unsafe_allow_html=True)
+            header_labels = ("Name", "Project", "Part count", "Health", "High-risk parts", "Last analyzed", "Actions")
+            header_cells = "".join(
+                f"<span role='columnheader'>{_esc(label)}</span>"
+                for label in header_labels
+            )
+            st.markdown(
+                f"<div class='cv-ap-home-table-head' role='row'>{header_cells}</div>",
+                unsafe_allow_html=True,
+            )
             if not rows:
                 st.markdown(
                     "<div class='cv-ap-home-empty'>No saved BOMs yet. Start a new BOM analysis to fill this workspace.</div>",
