@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import html
 import io
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import streamlit as st
@@ -591,7 +592,7 @@ def begin_approved_page() -> None:
         [class*="st-key-approved_home_row_"]{min-height:66px!important;margin:0!important;padding:7px 20px!important;border-top:0!important;border-bottom:1px solid #e5ebf3!important;background:#fff!important}
         [class*="st-key-approved_home_row_"] [data-testid="stHorizontalBlock"]{align-items:center!important}
         .cv-ap-home-bom{display:flex;align-items:center;min-width:0;min-height:40px}
-        .cv-ap-home-bom-copy{display:flex;flex-direction:column;min-width:0}
+        .cv-ap-home-bom-copy{display:flex;flex:1;flex-direction:column;min-width:0}
         .cv-ap-home-bom .cv-ap-name{display:block;overflow:hidden;color:#17253e;font-size:13px;font-weight:750;text-overflow:ellipsis;white-space:nowrap}
         .cv-ap-home-bom small{display:block;margin-top:3px;overflow:hidden;color:#74839a;font-size:11px;text-overflow:ellipsis;white-space:nowrap}
         .cv-ap-home-project{display:block;overflow:hidden;color:#52647b;font-size:13px;line-height:1.4;text-overflow:ellipsis;white-space:nowrap}
@@ -605,14 +606,15 @@ def begin_approved_page() -> None:
         .cv-ap-home-icon.risk{background:#fee9ed!important}
         .cv-ap-home-icon.ok{background:#e7f8ee!important}
         .cv-ap-home-kpi-copy{display:flex;flex:1;flex-direction:column;min-width:0;min-height:132px;padding-top:4px}
-        .cv-ap-home-kpi .cv-ap-home-kpi-label{display:block!important;color:#64748b!important;font-size:18px!important;font-weight:650!important;line-height:1.3!important;white-space:nowrap}
-        .cv-ap-home-kpi-copy strong{display:block!important;margin-top:8px!important;color:#0f172a!important;font-size:42px!important;font-weight:780!important;line-height:1.05!important;letter-spacing:-.04em!important;white-space:nowrap}
+        .cv-ap-home-kpi .cv-ap-home-kpi-label{display:block!important;color:#64748b!important;font-size:16px!important;font-weight:650!important;line-height:1.3!important;white-space:nowrap}
+        .cv-ap-home-kpi-copy strong{display:block!important;margin-top:8px!important;color:#0f172a!important;font-size:36px!important;font-weight:780!important;line-height:1.05!important;letter-spacing:-.04em!important;white-space:nowrap}
         .cv-ap-home-kpi-copy em{display:block!important;margin-top:auto!important;padding-top:14px!important;font-size:15px!important;line-height:1.25!important}
         .st-key-approved_home_recent_card{margin:26px 0 0!important;padding:0!important;border:1px solid #cbd8e8!important;border-radius:16px!important;background:#fff!important;box-shadow:0 3px 12px rgba(15,23,42,.045)!important}
         .st-key-approved_home_recent_card [data-testid="stVerticalBlock"]{gap:0!important}
         .st-key-approved_home_recent_card [data-testid="stElementContainer"]{margin:0!important;padding:0!important}
-        .cv-ap-home-table-head{display:grid!important;grid-template-columns:2.05fr 1.45fr .78fr .9fr 1.15fr 1.22fr .75fr!important;align-items:center!important;gap:16px!important;box-sizing:border-box!important;min-height:68px!important;padding:0 30px!important;background:#f7f9fc!important;border-top:1px solid #e5ebf3!important;border-bottom:1px solid #dce4ef!important}
-        .cv-ap-home-table-head [role="columnheader"]{display:flex;align-items:center;min-width:0;min-height:48px;overflow:hidden;color:#64748b;font-size:16px;font-weight:750;line-height:1.3;letter-spacing:.045em;text-overflow:ellipsis;text-transform:uppercase;white-space:nowrap}
+        .cv-ap-home-table-head{display:grid!important;grid-template-columns:2.25fr 1.35fr .76fr .84fr 1fr 1.18fr .68fr!important;align-items:center!important;gap:16px!important;box-sizing:border-box!important;min-height:68px!important;padding:0 30px!important;background:#f7f9fc!important;border-top:1px solid #e5ebf3!important;border-bottom:1px solid #dce4ef!important}
+        .cv-ap-home-table-head [role="columnheader"]{display:flex;align-items:center;min-width:0;min-height:48px;overflow:visible;color:#64748b;font-size:14px;font-weight:750;line-height:1.25;letter-spacing:.035em;text-transform:uppercase;white-space:normal;overflow-wrap:anywhere}
+        .cv-ap-home-table-head [role="columnheader"]:nth-child(n+3){justify-content:center!important;text-align:center}
         .st-key-approved_home_recent_heading{margin:0!important;padding:22px 26px 16px!important}
         .st-key-approved_home_recent_heading [data-testid="stVerticalBlock"]{gap:0!important}
         .st-key-approved_home_recent_heading [data-testid="stHorizontalBlock"]{align-items:center!important}
@@ -621,26 +623,34 @@ def begin_approved_page() -> None:
         .st-key-approved_home_recent_heading [data-testid="stColumn"]:last-child [data-testid="stVerticalBlock"]{align-items:flex-end!important}
         .cv-ap-home-recent-heading{padding:0!important}
         .cv-ap-home-recent-heading h2{margin:0 0 5px!important;color:#0f172a!important;font-size:28px!important;font-weight:760!important;line-height:1.2!important;letter-spacing:-.025em!important}
-        .cv-ap-home-recent-heading p{margin:0!important;color:#64748b!important;font-size:18px!important;line-height:1.4!important}
+        .st-key-approved_home_header [data-testid="stHorizontalBlock"]>div:last-child [data-testid="stVerticalBlock"]{align-items:flex-end!important}
+        .st-key-approved_home_header [data-testid="stHorizontalBlock"]>div:last-child [data-testid="stElementContainer"]{display:flex!important;justify-content:flex-end!important;width:100%!important}
+        [class*="st-key-approved_home_new_bom"] button{margin-left:auto!important;margin-right:0!important}
+        [class*="st-key-approved_home_view_all"] button,[class*="st-key-approved_home_view_all"] button *{color:#2563eb!important}
+        .cv-ap-home-recent-heading p{margin:0!important;color:#64748b!important;font-size:16px!important;line-height:1.4!important}
         [class*="st-key-approved_home_view_all"] button{width:108px!important;max-width:108px!important;min-width:100px!important;height:48px!important;min-height:48px!important;margin-left:auto!important;padding:0 12px!important;border:1px solid #cbdcf7!important;border-radius:10px!important;background:#fff!important;color:#2563eb!important;box-shadow:none!important;font-size:15px!important;font-weight:700!important}
         [class*="st-key-approved_home_view_all"] button:hover{background:#f8fbff!important;border-color:#93b4ee!important}
         [class*="st-key-approved_home_row_"]{box-sizing:border-box!important;min-height:120px!important;margin:0!important;padding:18px 30px!important;border-top:0!important;border-bottom:1px solid #e5ebf3!important;background:#fff!important}
         [class*="st-key-approved_home_row_"] [data-testid="stVerticalBlock"]{display:flex!important;flex-direction:column!important;gap:0!important;justify-content:center!important;min-height:84px!important}
         [class*="st-key-approved_home_row_"] [data-testid="stElementContainer"]{margin:0!important;padding:0!important}
         [class*="st-key-approved_home_row_"] [data-testid="stHorizontalBlock"]{align-items:stretch!important;min-height:84px!important}
-        [class*="st-key-approved_home_row_"] [data-testid="column"]{align-self:stretch!important;display:flex!important;align-items:center!important;min-height:84px!important}
+        [class*="st-key-approved_home_row_"] [data-testid="column"]{align-self:stretch!important;display:flex!important;align-items:center!important;justify-content:center!important;min-height:84px!important}
+        [class*="st-key-approved_home_row_"] [data-testid="column"]:nth-child(-n+2){justify-content:flex-start!important}
+        [class*="st-key-approved_home_row_"] [data-testid="column"] [data-testid="stMarkdownContainer"]{width:100%!important}
+        [class*="st-key-approved_home_row_"] [data-testid="column"]:nth-child(n+3) [data-testid="stVerticalBlock"]{align-items:center!important}
+        .cv-ap-home-cell-center{display:flex;align-items:center;justify-content:center;width:100%;min-height:38px;text-align:center;line-height:1.25}
         [class*="st-key-approved_home_row_"] [data-testid="stVerticalBlock"]{justify-content:center!important}
-        [class*="st-key-approved_home_row_"] [data-testid="stMarkdownContainer"] p{margin:0!important;color:#52647b!important;font-size:20px!important;line-height:1.4!important}
-        .cv-ap-home-bom{display:flex;align-items:center;gap:18px;min-width:0;min-height:84px}
-        .cv-ap-home-row-icon{display:inline-flex;align-items:center;justify-content:center;flex:0 0 60px;width:60px;height:60px;border-radius:50%;background:#edf4ff;color:#2563eb}
-        .cv-ap-home-row-icon svg{width:30px;height:30px;display:block}
-        .cv-ap-home-bom-copy{display:flex;flex-direction:column;min-width:0}
-        .cv-ap-home-bom .cv-ap-name{display:block;overflow:hidden;color:#17253e;font-size:20px;font-weight:750;line-height:1.28;text-overflow:ellipsis;white-space:nowrap}
+        [class*="st-key-approved_home_row_"] [data-testid="stMarkdownContainer"] p{margin:0!important;color:#52647b!important;font-size:14px!important;line-height:1.35!important}
+        .cv-ap-home-bom{display:flex;align-items:center;gap:16px;min-width:0;min-height:84px}
+        .cv-ap-home-row-icon{display:inline-flex;align-items:center;justify-content:center;flex:0 0 48px;width:48px;height:48px;border-radius:50%;background:#edf4ff;color:#2563eb}
+        .cv-ap-home-row-icon svg{width:24px;height:24px;display:block}
+        .cv-ap-home-bom-copy{display:flex;flex:1;flex-direction:column;min-width:0}
+        .cv-ap-home-bom .cv-ap-name{display:block;min-width:0;color:#17253e;font-size:15px;font-weight:750;line-height:1.28;white-space:normal;overflow-wrap:anywhere}
         .cv-ap-home-bom small{display:block;margin-top:4px;overflow:hidden;color:#74839a;font-size:13px;line-height:1.25;text-overflow:ellipsis;white-space:nowrap}
-        .cv-ap-home-project{display:flex;align-items:center;min-height:84px;overflow:hidden;color:#52647b;font-size:20px;line-height:1.4;text-overflow:ellipsis;white-space:nowrap}
-        .st-key-approved_home_recent_card .cv-pill{min-height:48px;padding:10px 14px;font-size:18px;font-weight:750}
+        .cv-ap-home-project{display:flex;align-items:center;min-width:0;min-height:84px;overflow:visible;color:#52647b;font-size:14px;line-height:1.3;white-space:normal;overflow-wrap:anywhere}
+        .st-key-approved_home_recent_card .cv-pill{min-height:40px;padding:8px 12px;font-size:14px;font-weight:750}
         .st-key-approved_home_recent_card .cv-pill-dot{width:8px;height:8px;flex-basis:8px}
-        .cv-home-risk-count{display:inline-flex;align-items:center;justify-content:center;min-width:68px;min-height:48px;padding:0 14px;border-radius:12px;background:#fee9ed;color:#d81b43;font-size:20px;font-weight:750;line-height:1}
+        .cv-home-risk-count{display:inline-flex;align-items:center;justify-content:center;min-width:52px;min-height:40px;padding:0 12px;border-radius:12px;background:#fee9ed;color:#d81b43;font-size:16px;font-weight:750;line-height:1}
         .cv-home-risk-count.clear{background:#dcfce7;color:#15803d}
         [class*="st-key-approved_home_menu_"] [data-testid="stPopover"] button[aria-expanded]{display:inline-flex!important;align-items:center!important;justify-content:center!important;width:44px!important;min-width:44px!important;height:44px!important;min-height:44px!important;padding:0!important;border:0!important;border-radius:10px!important;background:transparent!important;color:#64748b!important;box-shadow:none!important;font-size:22px!important;font-weight:750!important;line-height:1!important}
         [class*="st-key-approved_home_menu_"] [data-testid="stPopover"] button[aria-expanded] svg,[class*="st-key-approved_home_menu_"] [data-testid="stPopover"] button[aria-expanded] [data-testid="stIconMaterial"]{display:none!important}
@@ -661,22 +671,22 @@ def begin_approved_page() -> None:
           .cv-ap-home-kpi-copy em{padding-top:8px!important;font-size:13px!important}
           .st-key-approved_home_recent_card{margin-top:18px!important}
           .st-key-approved_home_recent_heading{padding:16px 18px 12px!important}
-          .cv-ap-home-recent-heading h2{font-size:22px!important}
-          .cv-ap-home-recent-heading p{font-size:14px!important}
+          .cv-ap-home-recent-heading h2{font-size:20px!important}
+          .cv-ap-home-recent-heading p{font-size:13px!important}
           [class*="st-key-approved_home_view_all"] button{width:92px!important;max-width:92px!important;min-width:86px!important;height:40px!important;min-height:40px!important;padding:0 10px!important;font-size:13px!important}
           .cv-ap-home-table-head{gap:12px!important;min-height:56px!important;padding:0 16px!important}
-          .cv-ap-home-table-head [role="columnheader"]{font-size:13px!important;letter-spacing:.03em!important}
+          .cv-ap-home-table-head [role="columnheader"]{font-size:12px!important;letter-spacing:.025em!important}
           [class*="st-key-approved_home_row_"]{min-height:112px!important;padding:18px 22px!important}
           [class*="st-key-approved_home_row_"] [data-testid="stHorizontalBlock"]{align-items:stretch!important;gap:12px!important;min-height:76px!important}
           [class*="st-key-approved_home_row_"] [data-testid="column"]{min-height:76px!important}
           [class*="st-key-approved_home_row_"] [data-testid="stVerticalBlock"]{min-height:76px!important}
-          [class*="st-key-approved_home_row_"] [data-testid="stMarkdownContainer"] p{font-size:16px!important}
+          [class*="st-key-approved_home_row_"] [data-testid="stMarkdownContainer"] p{font-size:14px!important}
           .cv-ap-home-bom{gap:16px!important;min-height:76px}
           .cv-ap-home-row-icon{flex-basis:48px;width:48px;height:48px}
           .cv-ap-home-row-icon svg{width:24px;height:24px}
-          .cv-ap-home-bom .cv-ap-name{font-size:16px}
+          .cv-ap-home-bom .cv-ap-name{font-size:14px}
           .cv-ap-home-bom small{font-size:11px}
-          .cv-ap-home-project{min-height:76px;font-size:16px}
+          .cv-ap-home-project{min-height:76px;font-size:14px}
           .st-key-approved_home_recent_card .cv-pill{min-height:38px;padding:8px 10px;font-size:14px}
           .st-key-approved_home_recent_card .cv-pill-dot{width:7px;height:7px;flex-basis:7px}
           .cv-home-risk-count{min-width:48px;min-height:38px;padding:0 10px;font-size:16px}
@@ -702,18 +712,18 @@ def begin_approved_page() -> None:
           .cv-ap-home-recent-heading p{font-size:12px!important}
           [class*="st-key-approved_home_view_all"] button{width:78px!important;max-width:78px!important;min-width:76px!important;height:34px!important;min-height:34px!important;padding:0 6px!important;font-size:11px!important}
           .cv-ap-home-table-head{gap:8px!important;min-height:44px!important;padding:0 12px!important}
-          .cv-ap-home-table-head [role="columnheader"]{font-size:11px!important;letter-spacing:.02em!important}
+          .cv-ap-home-table-head [role="columnheader"]{font-size:10px!important;letter-spacing:.015em!important}
           [class*="st-key-approved_home_row_"]{min-height:96px!important;padding:16px!important}
           [class*="st-key-approved_home_row_"] [data-testid="stHorizontalBlock"]{align-items:stretch!important;gap:8px!important;min-height:64px!important}
           [class*="st-key-approved_home_row_"] [data-testid="column"]{min-height:64px!important}
           [class*="st-key-approved_home_row_"] [data-testid="stVerticalBlock"]{min-height:64px!important}
-          [class*="st-key-approved_home_row_"] [data-testid="stMarkdownContainer"] p{font-size:13px!important}
+          [class*="st-key-approved_home_row_"] [data-testid="stMarkdownContainer"] p{font-size:12px!important}
           .cv-ap-home-bom{gap:12px!important;min-height:64px}
           .cv-ap-home-row-icon{flex-basis:38px;width:38px;height:38px}
           .cv-ap-home-row-icon svg{width:20px;height:20px}
-          .cv-ap-home-bom .cv-ap-name{font-size:14px}
+          .cv-ap-home-bom .cv-ap-name{font-size:12px}
           .cv-ap-home-bom small{font-size:10px}
-          .cv-ap-home-project{min-height:64px;font-size:13px}
+          .cv-ap-home-project{min-height:64px;font-size:12px}
           .st-key-approved_home_recent_card .cv-pill{min-height:30px;padding:6px 8px;font-size:12px}
           .st-key-approved_home_recent_card .cv-pill-dot{width:6px;height:6px;flex-basis:6px}
           .cv-home-risk-count{min-width:38px;min-height:30px;padding:0 8px;font-size:14px}
@@ -1428,10 +1438,10 @@ def render_home(
                     st.session_state["cadivor_bom_upload_open"] = True
                     navigate_to("BOM Analyzer")
 
-        saved_delta = _prior_delta(rows, "prior_bom_count", "previous_bom_count")
-        review_delta = _prior_delta(rows, "prior_needs_review", "previous_needs_review")
-        risk_delta = _prior_delta(rows, "prior_high_risk_count", "previous_high_risk_count")
-        health_delta = _prior_delta(rows, "prior_health_score", "previous_health_score")
+        saved_delta = _home_weekly_delta(rows, "saved_boms")
+        review_delta = _home_weekly_delta(rows, "needs_review")
+        risk_delta = _home_weekly_delta(rows, "high_risk_parts")
+        health_delta = _home_weekly_delta(rows, "average_health")
         st.markdown(
             f"""
             <section class="cv-ap cv-ap-kpis cv-ap-home-kpis">
@@ -1456,7 +1466,7 @@ def render_home(
             unsafe_allow_html=True,
         )
 
-        home_widths = [2.05, 1.45, 0.78, 0.9, 1.15, 1.22, 0.75]
+        home_widths = [2.25, 1.35, 0.76, 0.84, 1.0, 1.18, 0.68]
         with st.container(key="approved_home_recent_card"):
             with st.container(key="approved_home_recent_heading"):
                 heading_col, view_all_col = st.columns([10, 1], vertical_alignment="center")
@@ -1512,10 +1522,21 @@ def render_home(
                         unsafe_allow_html=True,
                     )
                     _render_project_cell(cells[1], row, "home", rows, user_id)
-                    cells[2].markdown(str(parts))
-                    cells[3].markdown(_health_pill(score), unsafe_allow_html=True)
-                    cells[4].markdown(risk_html, unsafe_allow_html=True)
-                    cells[5].markdown(updated, unsafe_allow_html=True)
+                    cells[2].markdown(
+                        f"<div class='cv-ap-home-cell-center'>{parts}</div>", unsafe_allow_html=True
+                    )
+                    cells[3].markdown(
+                        f"<div class='cv-ap-home-cell-center'>{_health_pill(score)}</div>",
+                        unsafe_allow_html=True,
+                    )
+                    cells[4].markdown(
+                        f"<div class='cv-ap-home-cell-center'>{risk_html}</div>",
+                        unsafe_allow_html=True,
+                    )
+                    cells[5].markdown(
+                        f"<div class='cv-ap-home-cell-center'>{updated}</div>",
+                        unsafe_allow_html=True,
+                    )
                     _render_saved_bom_actions(cells[6], analysis_id, scope="home", row_key=str(index))
         if plan_notice and st.button("Compare plans", key="approved_home_compare_plans"):
             navigate_to("Pricing")
@@ -2097,6 +2118,111 @@ def _prior_delta(rows: list[dict[str, Any]], *prior_keys: str) -> str:
     if not values:
         return "<em class='muted'>Not recorded</em>"
     return f"<em>{sum(values)}</em>"
+
+
+def _home_weekly_delta(
+    rows: list[dict[str, Any]],
+    metric: str,
+    *,
+    now: datetime | None = None,
+) -> str:
+    """Compare live BOM records from the latest 7 days with the 7 days before."""
+    point = now or datetime.now(timezone.utc)
+    if point.tzinfo is None:
+        point = point.replace(tzinfo=timezone.utc)
+    point = point.astimezone(timezone.utc)
+    current_start = point - timedelta(days=7)
+    previous_start = point - timedelta(days=14)
+    current_rows: list[dict[str, Any]] = []
+    previous_rows: list[dict[str, Any]] = []
+
+    for row in rows:
+        recorded_at = _parse_timestamp(_first(row, "created_at", fallback=None))
+        if recorded_at is None:
+            continue
+        if recorded_at.tzinfo is None:
+            recorded_at = recorded_at.replace(tzinfo=timezone.utc)
+        recorded_at = recorded_at.astimezone(timezone.utc)
+        if current_start <= recorded_at < point:
+            current_rows.append(row)
+        elif previous_start <= recorded_at < current_start:
+            previous_rows.append(row)
+
+    if not current_rows and not previous_rows:
+        if metric == "saved_boms":
+            return (
+                "<em class='muted' title='No BOMs were analyzed in the last 14 days.'>"
+                "No new BOMs in the past 14 days</em>"
+            )
+        if metric == "average_health":
+            if rows:
+                return (
+                    f"<em class='muted' title='Portfolio health averaged across all saved BOMs; "
+                    f"no two recent weekly groups are available.'>Across {len(rows)} saved BOMs</em>"
+                )
+            return "<em class='muted'>No saved BOMs to compare</em>"
+        return (
+            "<em class='muted' title='No BOMs were analyzed in the last 14 days.'>"
+            "No recent analyses to compare</em>"
+        )
+
+    if metric == "saved_boms":
+        current_value = len(current_rows)
+        previous_value = len(previous_rows)
+        detail = "BOMs analyzed in the latest 7 days compared with the 7 days before"
+        higher_is_better = True
+    elif metric == "needs_review":
+        current_value = sum(
+            1
+            for row in current_rows
+            if _num(_first(row, "high_risk_count")) > 0
+            or _num(_first(row, "health_score"), 100) < 80
+        )
+        previous_value = sum(
+            1
+            for row in previous_rows
+            if _num(_first(row, "high_risk_count")) > 0
+            or _num(_first(row, "health_score"), 100) < 80
+        )
+        detail = "BOMs needing review in the latest 7 days compared with the 7 days before"
+        higher_is_better = False
+    elif metric == "high_risk_parts":
+        current_value = sum(_num(_first(row, "high_risk_count")) for row in current_rows)
+        previous_value = sum(_num(_first(row, "high_risk_count")) for row in previous_rows)
+        detail = "High-risk parts in BOMs analyzed in the latest 7 days compared with the 7 days before"
+        higher_is_better = False
+    elif metric == "average_health":
+        current_scores = [
+            _num(_first(row, "health_score"))
+            for row in current_rows
+            if _first(row, "health_score", fallback=None) is not None
+        ]
+        previous_scores = [
+            _num(_first(row, "health_score"))
+            for row in previous_rows
+            if _first(row, "health_score", fallback=None) is not None
+        ]
+        if not current_scores or not previous_scores:
+            return (
+                f"<em class='muted' title='No health scores are available in both weekly groups.'>"
+                f"Across {len(rows)} saved BOMs</em>"
+            )
+        current_value = round(sum(current_scores) / len(current_scores))
+        previous_value = round(sum(previous_scores) / len(previous_scores))
+        detail = "Average health for BOMs analyzed in the latest 7 days compared with the 7 days before"
+        higher_is_better = True
+    else:
+        return "<em class='muted'>Trend unavailable</em>"
+
+    delta = current_value - previous_value
+    if delta == 0:
+        return f"<em class='muted' title='{detail}'>→ 0 from last week</em>"
+
+    favorable = (delta > 0) == higher_is_better
+    tone = "" if favorable else "down"
+    arrow = "↗" if delta > 0 else "↘"
+    signed = f"+{delta}" if delta > 0 else f"−{abs(delta)}"
+    return f"<em class='{tone}' title='{detail}'>{arrow} {signed} from last week</em>"
 
 
 def spark_slots(values: list[float | None], color: str = "#2563eb") -> str:
