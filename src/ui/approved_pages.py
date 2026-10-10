@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import html
 import io
+from functools import wraps
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -596,6 +597,19 @@ def begin_approved_page() -> None:
         .cv-ap-home-bom .cv-ap-name{display:block;overflow:hidden;color:#17253e;font-size:13px;font-weight:750;text-overflow:ellipsis;white-space:nowrap}
         .cv-ap-home-bom small{display:block;margin-top:3px;overflow:hidden;color:#74839a;font-size:11px;text-overflow:ellipsis;white-space:nowrap}
         .cv-ap-home-project{display:block;overflow:hidden;color:#52647b;font-size:13px;line-height:1.4;text-overflow:ellipsis;white-space:nowrap}
+        /* Route canvas widths mirror Home by default; table-heavy views get a bounded wider canvas. */
+        section[data-testid="stMain"] [class*="st-key-approved_page_canvas_standard_"]{
+          box-sizing:border-box!important;width:100%!important;max-width:1440px!important;min-width:0!important;
+          margin-left:auto!important;margin-right:auto!important
+        }
+        section[data-testid="stMain"] [class*="st-key-approved_page_canvas_wide_"]{
+          box-sizing:border-box!important;width:100%!important;max-width:1560px!important;min-width:0!important;
+          margin-left:auto!important;margin-right:auto!important
+        }
+        section[data-testid="stMain"] [class*="st-key-approved_page_canvas_standard_"]>[data-testid="stVerticalBlock"],
+        section[data-testid="stMain"] [class*="st-key-approved_page_canvas_wide_"]>[data-testid="stVerticalBlock"]{
+          box-sizing:border-box!important;width:100%!important;max-width:100%!important;min-width:0!important
+        }
         .st-key-approved_home_page{box-sizing:border-box!important;width:100%!important;max-width:1440px!important;margin-left:auto!important;margin-right:auto!important;padding:48px 0 28px!important}
         .st-key-approved_home_page > [data-testid="stVerticalBlock"]{gap:22px!important}
         .cv-ap-home-kpis{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:16px!important;margin:44px 0 0!important}
@@ -3194,3 +3208,34 @@ def _render_settings_panels(profile, name, email, company, role, timezone, works
         )
         if st.button("Manage plan", key="approved_settings_manage_plan", type="primary"):
             navigate_to("Pricing")
+
+
+# Apply one centered page canvas to every approved page renderer. Dense data views
+# use a slightly wider cap; each canvas remains fluid below its max-width.
+def _with_approved_page_canvas(width_variant: str):
+    def decorate(renderer):
+        @wraps(renderer)
+        def wrapped(*args, **kwargs):
+            key = f"approved_page_canvas_{width_variant}_{renderer.__name__}"
+            with st.container(key=key):
+                return renderer(*args, **kwargs)
+        return wrapped
+    return decorate
+
+
+for _renderer_name, _width_variant in (
+    ("render_saved_bom_settings", "standard"),
+    ("render_home", "standard"),
+    ("render_bom_catalog", "wide"),
+    ("render_decision_queue", "wide"),
+    ("render_monitoring", "wide"),
+    ("render_reports_list", "wide"),
+    ("render_simple_workspace", "wide"),
+    ("render_replacement_search", "wide"),
+    ("render_compare_live", "wide"),
+    ("render_datasheet_live", "standard"),
+    ("render_settings_workspace", "standard"),
+):
+    globals()[_renderer_name] = _with_approved_page_canvas(_width_variant)(
+        globals()[_renderer_name]
+    )
