@@ -1813,7 +1813,7 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
                     unsafe_allow_html=True,
                 )
                 cells[3].markdown(
-                    f"<div class='cv-ap-table-center'>{score_pill(_num(_first(row, 'health_score')))}</div>",
+                    f"<div class='cv-ap-table-center'>{_health_pill(_num(_first(row, 'health_score')))}</div>",
                     unsafe_allow_html=True,
                 )
                 cells[4].markdown(
