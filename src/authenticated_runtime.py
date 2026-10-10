@@ -2902,6 +2902,7 @@ def run_authenticated_app() -> None:
     NAV_OPTIONS = [
         "Dashboard",
         "BOM Analyzer",
+        "BOM Settings",
         "Alternative Finder",
         "Compare Parts",
         "Datasheet Q&A",
@@ -3991,6 +3992,22 @@ def run_authenticated_app() -> None:
         """,
         unsafe_allow_html=True,
     )
+
+    if app_mode == "BOM Settings":
+        reveal_authenticated_page_body("BOM Settings")
+        settings_user_id = str((current_user or {}).get("id") or "")
+        try:
+            settings_history = load_analysis_history(settings_user_id) or []
+        except Exception:
+            settings_history = []
+            st.error("Saved BOM settings could not be loaded. Please return to BOMs and try again.")
+        from src.ui.approved_pages import render_saved_bom_settings
+
+        render_saved_bom_settings(
+            settings_history if isinstance(settings_history, list) else [],
+            user_id=settings_user_id,
+        )
+        stop_authenticated_page()
 
     if app_mode == "Monitoring":
         monitoring_allowed = is_admin or selected_plan_name in {"Trial", "Professional", "Business", "Enterprise"}
