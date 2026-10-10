@@ -832,10 +832,57 @@ def begin_approved_page() -> None:
         .cv-due-late{color:#be123c;font-weight:700}
         [class*="st-key-approved_decision_cardwrap_"] [data-testid="stHorizontalBlock"]{align-items:center}
         [class*="st-key-approved_decision_queue"]{border:1px solid #e6edf5;border-radius:16px;background:#fff;padding:10px 12px 6px;margin-top:8px}
+        /* BOM list frame and title/toolbar actions share the same right edge. */
+        .st-key-approved_bom_catalog_table{box-sizing:border-box!important;margin:14px 0 16px!important;padding:0!important;border:1px solid #cbd8e8!important;border-radius:16px!important;background:#fff!important;box-shadow:0 3px 12px rgba(15,23,42,.045)!important}
+        .st-key-approved_bom_catalog_table>[data-testid="stVerticalBlock"]{gap:0!important}
+        .st-key-approved_bom_catalog_table [data-testid="stElementContainer"]{margin:0!important;padding:0!important}
+        .st-key-approved_bom_catalog_table .cv-ap-home-table-head{border-top:0!important;border-radius:15px 15px 0 0!important}
+        .st-key-approved_bom_title [data-testid="stColumn"]:last-child [data-testid="stVerticalBlock"],
+        .st-key-approved_bom_toolbar [data-testid="stColumn"]:last-child [data-testid="stVerticalBlock"]{align-items:flex-end!important}
+        .st-key-approved_bom_title [data-testid="stColumn"]:last-child [data-testid="stElementContainer"],
+        .st-key-approved_bom_toolbar [data-testid="stColumn"]:last-child [data-testid="stElementContainer"]{display:flex!important;justify-content:flex-end!important;width:100%!important}
+        .st-key-approved_bom_title [data-testid="stColumn"]:last-child button{white-space:nowrap!important}
+        .st-key-approved_bom_toolbar [data-testid="stColumn"]:last-child button{white-space:nowrap!important}
+        .st-key-approved_bom_upload_panel{box-sizing:border-box!important;width:100%!important;max-width:960px!important;margin:22px auto 0!important;padding:26px 30px 22px!important;border:1px solid #dce5f0!important;border-radius:18px!important;background:#fff!important;box-shadow:0 4px 18px rgba(15,23,42,.055)!important}
+        .st-key-approved_bom_upload_panel>[data-testid="stVerticalBlock"]{gap:.85rem!important}
+        .cv-bom-upload-heading h2{margin:0 0 5px!important;color:#142239!important;font-size:21px!important;font-weight:750!important;letter-spacing:-.02em!important}
+        .cv-bom-upload-heading p{margin:0!important;color:#64748b!important;font-size:14px!important;line-height:1.45!important}
+        [class*="st-key-approved_bom_analyze"] button{width:100%!important;min-height:44px!important}
+        /* Engineering decision cards and controls follow the approved light-tint dashboard style. */
+        .st-key-approved_decision_cardwrap_open{background:#f2f7ff!important;border-color:#dbeafe!important}
+        .st-key-approved_decision_cardwrap_overdue{background:#fff4f5!important;border-color:#ffe0e6!important}
+        .st-key-approved_decision_cardwrap_resolved{background:#effaf3!important;border-color:#d8f3e2!important}
+        .st-key-approved_decision_cardwrap_boms{background:#f2f7ff!important;border-color:#dbeafe!important}
+        .st-key-approved_decision_toolbar [data-testid="stHorizontalBlock"]{align-items:center!important;gap:10px!important}
+        .st-key-approved_decision_queue [data-testid="stTextInput"] input{box-sizing:border-box!important;height:42px!important;min-height:42px!important;border:1px solid #d8e1ed!important;border-radius:9px!important;background-color:#fff!important;padding-left:38px!important;color:#17253e!important;font-size:14px!important;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='%2364778b' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-4-4'/%3E%3C/svg%3E")!important;background-repeat:no-repeat!important;background-position:12px center!important;background-size:16px 16px!important}
+        .st-key-approved_decision_queue [data-testid="stPopover"]>button{display:flex!important;align-items:center!important;justify-content:center!important;gap:8px!important;width:100%!important;min-width:0!important;height:42px!important;min-height:42px!important;padding:0 12px!important;border:1px solid #d8e1ed!important;border-radius:9px!important;background:#fff!important;color:#334155!important;box-shadow:none!important;font-size:13px!important;font-weight:650!important;white-space:nowrap!important}
+        .st-key-approved_decision_queue [data-testid="stPopover"]>button:hover{border-color:#aebfd2!important;background:#f8fafc!important}
+        .st-key-approved_decision_queue [data-testid="stPopover"]>button p{margin:0!important;color:#334155!important;font-size:13px!important;font-weight:650!important}
+        .st-key-approved_decision_queue [data-testid="stPopover"]>button svg{width:16px!important;height:16px!important;color:#64748b!important}
+        .st-key-approved_decision_table_head{margin:7px -12px 0!important;padding:0 12px!important;border-top:1px solid #e5ebf3!important;border-bottom:1px solid #e5ebf3!important;background:#f5f7fa!important}
+        .st-key-approved_decision_table_head>[data-testid="stVerticalBlock"]{gap:0!important}
+        .st-key-approved_decision_table_head [data-testid="stHorizontalBlock"]{align-items:center!important;min-height:46px!important}
+        .cv-decision-table-heading{color:#64748b;font-size:11px;font-weight:750;line-height:1.25;letter-spacing:.055em;text-transform:uppercase;overflow-wrap:anywhere}
+        [class*="st-key-approved_decision_row_"]{margin:0!important;padding:10px 0!important;border-bottom:1px solid #e8edf3!important}
+        [class*="st-key-approved_decision_row_"] [data-testid="stHorizontalBlock"]{align-items:center!important}
+        [class*="st-key-approved_decision_row_"] [data-testid="stVerticalBlock"]{gap:0!important}
         [class*="st-key-approved_bom_toolbar"] [data-testid="stHorizontalBlock"]{flex-wrap:nowrap;align-items:flex-end}
         @media(max-width:1100px){
           [class*="st-key-approved_bom_toolbar"] [data-testid="stHorizontalBlock"]{flex-wrap:wrap}
           [class*="st-key-approved_bom_toolbar"] [data-testid="stColumn"]{flex:1 1 180px !important;width:auto !important;min-width:160px}
+          .st-key-approved_decision_cards>[data-testid="stHorizontalBlock"]{flex-wrap:wrap!important;gap:12px!important}
+          .st-key-approved_decision_cards>[data-testid="stHorizontalBlock"]>[data-testid="column"]{flex:1 1 calc(50% - 12px)!important;width:auto!important;min-width:245px!important}
+          .st-key-approved_decision_toolbar [data-testid="stHorizontalBlock"]{flex-wrap:wrap!important}
+          .st-key-approved_decision_toolbar [data-testid="stColumn"]:first-child{flex:1 1 100%!important;width:100%!important}
+          .st-key-approved_decision_toolbar [data-testid="stColumn"]:not(:first-child){flex:1 1 155px!important;width:auto!important;min-width:140px!important}
+          .st-key-approved_bom_upload_panel{padding:22px 22px 18px!important}
+        }
+        @media(max-width:620px){
+          .st-key-approved_decision_cards>[data-testid="stHorizontalBlock"]>[data-testid="column"]{flex:1 1 100%!important;min-width:0!important}
+          .st-key-approved_bom_title [data-testid="stHorizontalBlock"]{flex-wrap:wrap!important;gap:10px!important}
+          .st-key-approved_bom_title [data-testid="stColumn"]:first-child{flex:1 1 100%!important;width:100%!important}
+          .st-key-approved_bom_title [data-testid="stColumn"]:last-child{flex:1 1 auto!important;width:auto!important}
+          .st-key-approved_bom_upload_panel{padding:18px 16px 14px!important}
         }
         @media(max-width:900px){.cv-ap-kpis,.cv-ap-cards,.cv-ap-split{display:block}}
         </style>
@@ -1708,8 +1755,9 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
             _render_saved_bom_edit_page(target_row, user_id)
         end_approved_page()
         return
+    upload_mode = bool(st.session_state.get("cadivor_bom_upload_open"))
     with st.container(key="approved_bom_title"):
-        title_col, manage_col, action_col = st.columns([4.2, 1.6, 1.6], vertical_alignment="center")
+        title_col, action_col = st.columns([5.2, 1.8], vertical_alignment="center")
         with title_col:
             st.markdown(
                 """
@@ -1719,165 +1767,177 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
                 """,
                 unsafe_allow_html=True,
             )
-        with manage_col:
-            if st.button("Manage saved BOMs", key="approved_bom_manage", type="tertiary"):
-                st.session_state["cadivor_manage_saved_boms"] = True
-                st.rerun()
         with action_col:
-            if st.button("+ New BOM analysis", key="approved_bom_new", type="primary"):
-                st.session_state["cadivor_bom_upload_open"] = True
-                st.rerun()
-    if st.session_state.get("cadivor_manage_saved_boms"):
-        st.caption("Open a saved analysis below. New files use Analyze BOM.")
-    from datetime import date
-
-    project_options = catalog_project_options(rows)
-    filter_nonce = int(st.session_state.get("approved_bom_filter_nonce") or 0)
-    project_key = f"approved_bom_project_{filter_nonce}"
-    if st.session_state.get(project_key) not in project_options and project_key in st.session_state:
-        st.session_state[project_key] = "All projects"
-    with st.container(key="approved_bom_toolbar"):
-        search_col, project_col, health_col, date_col, clear_col = st.columns(
-            [1.7, 1.05, 1, 1.05, 0.85],
-            vertical_alignment="bottom",
-        )
-        with search_col:
-            query = st.text_input(
-                "Search",
-                key=f"approved_bom_search_{filter_nonce}",
-                placeholder="Search BOMs, projects, or files",
-                label_visibility="collapsed",
-            )
-        with project_col:
-            project_filter = st.selectbox("Project", project_options, key=project_key)
-        with health_col:
-            health_filter = st.selectbox(
-                "Health",
-                ["All health", "Healthy", "Review", "At risk"],
-                key=f"approved_bom_health_{filter_nonce}",
-            )
-        with date_col:
-            date_filter = st.selectbox(
-                "Date range",
-                ["Last 90 days", "Last 30 days", "All time"],
-                key=f"approved_bom_dates_{filter_nonce}",
-            )
-        with clear_col:
-            if st.button("Clear filters", key="approved_bom_clear"):
-                reset_catalog_filters(st.session_state)
-                st.rerun()
-    needle = query.strip().casefold()
-    today = date.today()
-    visible = []
-    for row in rows:
-        project_name, bom_name = split_project_and_bom(row)
-        filename = str(_first(row, "filename", "source_filename", fallback="") or "")
-        if needle and needle not in f"{project_name} {bom_name} {filename}".casefold():
-            continue
-        if project_filter != "All projects" and project_name != project_filter:
-            continue
-        score = _num(_first(row, "health_score"))
-        high = _num(_first(row, "high_risk_count"))
-        label = catalog_health_label(score, high)
-        if health_filter != "All health" and label != health_filter:
-            continue
-        if not within_analyzed_range(_first(row, "created_at", "updated_at", fallback=""), date_filter, today):
-            continue
-        visible.append((row, label, project_name, bom_name))
-    bom_widths = [2.25, 1.35, 0.76, 0.84, 1.0, 1.18, 0.68]
-    with st.container(key="approved_home_recent_card"):
-        header_labels = ("Name", "Project", "Part count", "Health", "High-risk parts", "Last analyzed", "Actions")
-        header_cells = "".join(
-            f"<span role='columnheader'>{_esc(label)}</span>"
-            for label in header_labels
-        )
-        st.markdown(
-            f"<div class='cv-ap-home-table-head' role='row'>{header_cells}</div>",
-            unsafe_allow_html=True,
-        )
-        if not visible:
+            if upload_mode:
+                if st.button("Manage saved BOMs", key="approved_bom_manage", type="tertiary"):
+                    st.session_state["cadivor_bom_upload_open"] = False
+                    st.session_state["cadivor_manage_saved_boms"] = False
+                    st.rerun()
+            else:
+                if st.button("+ New BOM analysis", key="approved_bom_new", type="primary"):
+                    st.session_state["cadivor_bom_upload_open"] = True
+                    st.session_state["cadivor_manage_saved_boms"] = False
+                    st.rerun()
+    if upload_mode:
+        with st.container(key="approved_bom_upload_panel"):
             st.markdown(
-                "<div class='cv-ap-home-empty'>No BOMs match these filters.</div>",
+                """
+                <div class="cv-bom-upload-heading">
+                  <h2>New BOM analysis</h2>
+                  <p>Choose a project, name your analysis, and upload a BOM file to review its risk.</p>
+                </div>
+                """,
                 unsafe_allow_html=True,
             )
-        for index, (row, label, project_name, bom_name) in enumerate(visible[:12]):
-            kind = {"Healthy": "low", "Review": "medium", "At risk": "high"}[label]
-            analysis_id = str(row.get("id") or "")
+            choices = [*project_choices(rows), NEW_PROJECT_CHOICE]
+            selected_project = st.selectbox(
+                "Project",
+                choices,
+                key="approved_bom_project_choice",
+                help="Choose a saved project, or enter a new name. Leave a new name blank to use General.",
+            )
+            typed_project = ""
+            if selected_project == NEW_PROJECT_CHOICE:
+                typed_project = st.text_input(
+                    "New project name",
+                    key="approved_bom_project_name",
+                    placeholder="Leave blank to use General",
+                )
+            bom_name = st.text_input("BOM name", key="approved_bom_name")
+            uploaded = st.file_uploader(
+                "Upload your BOM file",
+                type=["csv", "xlsx"],
+                key="bom_file_uploader",
+                help="CSV or Excel with MPN and Quantity columns.",
+            )
+            if st.button("Analyze BOM", key="approved_bom_analyze", type="primary") and uploaded is not None:
+                st.session_state["cadivor_bom_analysis_ready"] = True
+                st.session_state["cadivor_pending_upload"] = uploaded
+                st.session_state["cadivor_pending_project"] = resolve_project_choice(
+                    selected_project,
+                    typed_project,
+                    blank_uses_general=True,
+                )
+                st.session_state["cadivor_pending_bom_name"] = bom_name
+                return
+            if uploaded is None:
+                st.caption("Choose a CSV or Excel file to run the existing BOM analysis.")
+    else:
+        from datetime import date
+
+        project_options = catalog_project_options(rows)
+        filter_nonce = int(st.session_state.get("approved_bom_filter_nonce") or 0)
+        project_key = f"approved_bom_project_{filter_nonce}"
+        if st.session_state.get(project_key) not in project_options and project_key in st.session_state:
+            st.session_state[project_key] = "All projects"
+        with st.container(key="approved_bom_toolbar"):
+            search_col, project_col, health_col, date_col, clear_col = st.columns(
+                [1.7, 1.05, 1, 1.05, 0.85],
+                vertical_alignment="bottom",
+            )
+            with search_col:
+                query = st.text_input(
+                    "Search",
+                    key=f"approved_bom_search_{filter_nonce}",
+                    placeholder="Search BOMs, projects, or files",
+                    label_visibility="collapsed",
+                )
+            with project_col:
+                project_filter = st.selectbox("Project", project_options, key=project_key)
+            with health_col:
+                health_filter = st.selectbox(
+                    "Health",
+                    ["All health", "Healthy", "Review", "At risk"],
+                    key=f"approved_bom_health_{filter_nonce}",
+                )
+            with date_col:
+                date_filter = st.selectbox(
+                    "Date range",
+                    ["Last 90 days", "Last 30 days", "All time"],
+                    key=f"approved_bom_dates_{filter_nonce}",
+                )
+            with clear_col:
+                if st.button("Clear filters", key="approved_bom_clear"):
+                    reset_catalog_filters(st.session_state)
+                    st.rerun()
+        needle = query.strip().casefold()
+        today = date.today()
+        visible = []
+        for row in rows:
+            project_name, bom_name = split_project_and_bom(row)
+            filename = str(_first(row, "filename", "source_filename", fallback="") or "")
+            if needle and needle not in f"{project_name} {bom_name} {filename}".casefold():
+                continue
+            if project_filter != "All projects" and project_name != project_filter:
+                continue
+            score = _num(_first(row, "health_score"))
             high = _num(_first(row, "high_risk_count"))
-            source_filename = str(_first(row, "filename", "source_filename", fallback="") or "").strip()
-            display_bom_name = bom_name or source_filename or "Saved BOM"
-            if not bom_name and display_bom_name.casefold().endswith(".csv"):
-                display_bom_name = display_bom_name[:-4]
-            risk_html = (
-                f"<span class='cv-home-risk-count high'>{high}</span>"
-                if high
-                else "<span class='cv-home-risk-count clear'>0</span>"
+            label = catalog_health_label(score, high)
+            if health_filter != "All health" and label != health_filter:
+                continue
+            if not within_analyzed_range(_first(row, "created_at", "updated_at", fallback=""), date_filter, today):
+                continue
+            visible.append((row, label, project_name, bom_name))
+        bom_widths = [2.25, 1.35, 0.76, 0.84, 1.0, 1.18, 0.68]
+        with st.container(key="approved_bom_catalog_table"):
+            header_labels = ("Name", "Project", "Part count", "Health", "High-risk parts", "Last analyzed", "Actions")
+            header_cells = "".join(
+                f"<span role='columnheader'>{_esc(label)}</span>"
+                for label in header_labels
             )
-            analyzed = analyzed_label(_first(row, "created_at", "updated_at", fallback=""))
-            with st.container(key=f"approved_home_row_{index}"):
-                cells = st.columns(bom_widths, vertical_alignment="center")
-                cells[0].markdown(
-                    f"<div class='cv-ap-home-bom'><span class='cv-ap-home-row-icon'>{lucide('file-text', 24)}</span>"
-                    f"<span class='cv-ap-home-bom-copy'><strong class='cv-ap-name'>{_esc(display_bom_name)}</strong></span></div>",
-                    unsafe_allow_html=True,
-                )
-                _render_project_cell(cells[1], row, "home", rows, user_id)
-                cells[2].markdown(
-                    f"<div class='cv-ap-home-project cv-ap-table-center'>{_num(_first(row, 'total_parts'))}</div>",
-                    unsafe_allow_html=True,
-                )
-                cells[3].markdown(
-                    f"<div class='cv-ap-table-center'>{_health_pill(_num(_first(row, 'health_score')))}</div>",
-                    unsafe_allow_html=True,
-                )
-                cells[4].markdown(
-                    f"<div class='cv-ap-table-center'>{risk_html}</div>",
-                    unsafe_allow_html=True,
-                )
-                cells[5].markdown(
-                    f"<div class='cv-ap-home-project cv-ap-table-center'>{analyzed}</div>",
-                    unsafe_allow_html=True,
-                )
-                _render_saved_bom_actions(
-                    cells[6],
-                    analysis_id,
-                    scope="home",
-                    row_key=str(index),
-                )
-    if st.session_state.get("cadivor_bom_upload_open"):
-        choices = [*project_choices(rows), NEW_PROJECT_CHOICE]
-        selected_project = st.selectbox(
-            "Project",
-            choices,
-            key="approved_bom_project_choice",
-            help="Choose a saved project, or enter a new name. Leave a new name blank to use General.",
-        )
-        typed_project = ""
-        if selected_project == NEW_PROJECT_CHOICE:
-            typed_project = st.text_input(
-                "New project name",
-                key="approved_bom_project_name",
-                placeholder="Leave blank to use General",
+            st.markdown(
+                f"<div class='cv-ap-home-table-head' role='row'>{header_cells}</div>",
+                unsafe_allow_html=True,
             )
-        bom_name = st.text_input("BOM name", key="approved_bom_name")
-        uploaded = st.file_uploader(
-            "Upload your BOM file",
-            type=["csv", "xlsx"],
-            key="bom_file_uploader",
-            help="CSV or Excel with MPN and Quantity columns.",
-        )
-        if st.button("Analyze BOM", key="approved_bom_analyze", type="primary") and uploaded is not None:
-            st.session_state["cadivor_bom_analysis_ready"] = True
-            st.session_state["cadivor_pending_upload"] = uploaded
-            st.session_state["cadivor_pending_project"] = resolve_project_choice(
-                selected_project,
-                typed_project,
-                blank_uses_general=True,
-            )
-            st.session_state["cadivor_pending_bom_name"] = bom_name
-            return
-        if uploaded is None:
-            st.caption("Choose a CSV or Excel file to run the existing BOM analysis.")
+            if not visible:
+                st.markdown(
+                    "<div class='cv-ap-home-empty'>No BOMs match these filters.</div>",
+                    unsafe_allow_html=True,
+                )
+            for index, (row, label, project_name, bom_name) in enumerate(visible[:12]):
+                kind = {"Healthy": "low", "Review": "medium", "At risk": "high"}[label]
+                analysis_id = str(row.get("id") or "")
+                high = _num(_first(row, "high_risk_count"))
+                source_filename = str(_first(row, "filename", "source_filename", fallback="") or "").strip()
+                display_bom_name = bom_name or source_filename or "Saved BOM"
+                if not bom_name and display_bom_name.casefold().endswith(".csv"):
+                    display_bom_name = display_bom_name[:-4]
+                risk_html = (
+                    f"<span class='cv-home-risk-count high'>{high}</span>"
+                    if high
+                    else "<span class='cv-home-risk-count clear'>0</span>"
+                )
+                analyzed = analyzed_label(_first(row, "created_at", "updated_at", fallback=""))
+                with st.container(key=f"approved_home_row_{index}"):
+                    cells = st.columns(bom_widths, vertical_alignment="center")
+                    cells[0].markdown(
+                        f"<div class='cv-ap-home-bom'><span class='cv-ap-home-row-icon'>{lucide('file-text', 24)}</span>"
+                        f"<span class='cv-ap-home-bom-copy'><strong class='cv-ap-name'>{_esc(display_bom_name)}</strong></span></div>",
+                        unsafe_allow_html=True,
+                    )
+                    _render_project_cell(cells[1], row, "home", rows, user_id)
+                    cells[2].markdown(
+                        f"<div class='cv-ap-home-project cv-ap-table-center'>{_num(_first(row, 'total_parts'))}</div>",
+                        unsafe_allow_html=True,
+                    )
+                    cells[3].markdown(
+                        f"<div class='cv-ap-table-center'>{_health_pill(_num(_first(row, 'health_score')))}</div>",
+                        unsafe_allow_html=True,
+                    )
+                    cells[4].markdown(
+                        f"<div class='cv-ap-table-center'>{risk_html}</div>",
+                        unsafe_allow_html=True,
+                    )
+                    cells[5].markdown(
+                        f"<div class='cv-ap-home-project cv-ap-table-center'>{analyzed}</div>",
+                        unsafe_allow_html=True,
+                    )
+                    _render_saved_bom_actions(
+                        cells[6],
+                        analysis_id,
+                        scope="home",
+                        row_key=str(index),
+                    )
     if st.session_state.get("cadivor_bom_analysis_ready"):
         return
     end_approved_page()
@@ -1932,30 +1992,43 @@ def render_decision_queue(records: list[dict[str, Any]] | None) -> None:
                         st.session_state["approved_decision_scope"] = scope
                         st.rerun()
     with st.container(key="approved_decision_queue"):
-        heading, search_col, filter_col, sort_col = st.columns(
-            [1.5, 2.1, 0.9, 0.9],
-            vertical_alignment="bottom",
-        )
-        with search_col:
-            query = st.text_input(
-                "Search",
-                key="approved_decision_search",
-                placeholder="Search components, decisions or owners",
-                label_visibility="collapsed",
+        with st.container(key="approved_decision_toolbar"):
+            heading, search_col, filter_col, sort_col = st.columns(
+                [1.55, 2.35, 0.85, 0.85],
+                vertical_alignment="center",
             )
-        with filter_col:
-            status_filter = st.selectbox(
-                "Filter",
-                ["All statuses", "Open", "Overdue", "In review", "Resolved"],
-                key="approved_decision_filter",
-                on_change=lambda: st.session_state.__setitem__("approved_decision_scope", ""),
-            )
-        with sort_col:
-            sort_by = st.selectbox(
-                "Sort",
-                ["Due date", "Risk level", "Component"],
-                key="approved_decision_sort",
-            )
+            with search_col:
+                query = st.text_input(
+                    "Search",
+                    key="approved_decision_search",
+                    placeholder="Search components, decisions or owners",
+                    label_visibility="collapsed",
+                )
+            with filter_col:
+                with st.popover(
+                    "Filter",
+                    icon=":material/filter_list:",
+                    key="approved_decision_filter_popover",
+                ):
+                    status_filter = st.selectbox(
+                        "Status",
+                        ["All statuses", "Open", "Overdue", "In review", "Resolved"],
+                        key="approved_decision_filter",
+                        label_visibility="collapsed",
+                        on_change=lambda: st.session_state.__setitem__("approved_decision_scope", ""),
+                    )
+            with sort_col:
+                with st.popover(
+                    "Sort",
+                    icon=":material/sort:",
+                    key="approved_decision_sort_popover",
+                ):
+                    sort_by = st.selectbox(
+                        "Sort by",
+                        ["Due date", "Risk level", "Component"],
+                        key="approved_decision_sort",
+                        label_visibility="collapsed",
+                    )
         view = decision_queue_view(
             records,
             query=query,
@@ -1967,9 +2040,13 @@ def render_decision_queue(records: list[dict[str, Any]] | None) -> None:
         with heading:
             st.markdown(f"<h2>Decision queue ({len(view['rows'])})</h2>", unsafe_allow_html=True)
         widths = [1.6, 1.7, 0.8, 1.0, 0.9, 0.9, 1.1]
-        header = st.columns(widths)
-        for column, label in zip(header, ("Component", "Title", "Risk level", "Decision status", "Owner", "Due date", "Actions")):
-            column.markdown(f"<div class='cv-ap-meta'>{label}</div>", unsafe_allow_html=True)
+        with st.container(key="approved_decision_table_head"):
+            header = st.columns(widths, vertical_alignment="center")
+            for column, label in zip(header, ("Component", "Title", "Risk level", "Decision status", "Owner", "Due date", "Actions")):
+                column.markdown(
+                    f"<div class='cv-decision-table-heading' role='columnheader'>{_esc(label)}</div>",
+                    unsafe_allow_html=True,
+                )
         if not view["rows"]:
             st.caption("No engineering decisions match this view.")
         for index, (row, status) in enumerate(view["rows"][:20]):
