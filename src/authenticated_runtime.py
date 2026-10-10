@@ -6368,10 +6368,10 @@ def run_authenticated_app() -> None:
                 subtitle="Understand how changes to a component affect your projects, BOMs and supply chain.",
                 kpis=[
                     ("Affected projects", str(len(impact_analyses or []))),
-                    ("Impact score", str(focus.get("risk_score") or "—")),
+                    ("Focus part risk", str(focus.get("risk_score") or "—")),
                     ("Available stock", str(focus.get("stock_available") or "—")),
                     ("Supplier sources", str(focus.get("supplier_count") or "—")),
-                    ("Estimated review", "—"),
+                    ("Lifecycle status", lifecycle_name or "Unknown"),
                 ],
                 headers=["Project", "BOM", "Usage", "Design phase", "Impact"],
                 table_rows=[
@@ -6487,7 +6487,7 @@ def run_authenticated_app() -> None:
                     ("Component Records", str(len(portfolio_parts or []))),
                     ("Shared Components", str(shared_components)),
                     ("Single-Source Records", str(single_source) if supplier_known else "—"),
-                    ("Lifecycle Exposure", str(high_parts)),
+                    ("High-risk component records", str(high_parts)),
                 ],
                 headers=["Project", "BOM name", "Total components", "At-risk components", "Risk level", "Last updated"],
                 table_rows=[
@@ -6533,6 +6533,12 @@ def run_authenticated_app() -> None:
             parts=pa_parts,
             alerts=[],
         )
+        procurement_recommendations = advisor.get("recommendations") or []
+        top_recommendation = (
+            str(procurement_recommendations[0].get("Recommendation") or "No recommendation")
+            if procurement_recommendations
+            else "No data available"
+        )
         from src.ui.approved_pages import procurement_header_html, render_simple_workspace
 
         focus = next((part for part in (pa_parts or []) if isinstance(part, dict)), {})
@@ -6541,12 +6547,12 @@ def run_authenticated_app() -> None:
         render_simple_workspace(
                 kicker="PROCUREMENT ADVISOR",
                 title="Procurement advisor",
-                subtitle="AI-powered supplier insights and sourcing recommendations to reduce risk, ensure supply continuity, and optimize total cost.",
+                subtitle="Review supplier, inventory, lifecycle, and lead-time evidence, then prioritize sourcing actions.",
                 kpis=[
-                    ("Sourcing coverage", str(focus.get("supplier_count") or "—")),
-                    ("Estimated annual savings", "Not recorded"),
-                    ("Supply risk", str(focus.get("risk_level") or "—")),
-                    ("Recommendation", "Review supplier coverage"),
+                    ("Focus part sources", str(focus.get("supplier_count") if focus.get("supplier_count") not in (None, "") else "—")),
+                    ("Urgent components", str(advisor.get("urgent_count", 0))),
+                    ("Focus part supply risk", str(focus.get("risk_level") or "—")),
+                    ("Top recommendation", top_recommendation),
                 ],
                 headers=["Supplier", "Unit price", "Available stock", "Lead time", "Region", "Supply risk"],
                 table_rows=[

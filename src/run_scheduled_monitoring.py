@@ -11,7 +11,10 @@ sys.path.append(str(ROOT_DIR))
 from integrations.supplier_aggregator import get_best_part_data
 from src.email_delivery import EmailDeliveryError, send_transactional_email
 from src.email_routing import DEFAULT_ALERT_FROM
-from src.monitoring_engine import detect_monitor_alerts
+from src.monitoring_engine import (
+    build_updated_monitor_snapshot,
+    detect_monitored_part_changes,
+)
 from src.monitoring_email_preferences import monitoring_email_enabled
 
 print("Starting scheduled BOM monitoring...")
@@ -110,17 +113,14 @@ for user in users:
 
        
 
-        current_snapshot = {
-            "user_id": user_id,
-            "part_number": part_number,
-            "supplier": fresh_data.get("source", ""),
-            "lifecycle_status": fresh_data.get("lifecycle_status", ""),
-            "stock": fresh_data.get("stock_total", 0),
-            "unit_price": fresh_data.get("unit_price", 0.0),
-            "risk_level": previous_snapshot.get("risk_level", ""),
-        }
+        current_snapshot = build_updated_monitor_snapshot(
+            user_id,
+            part_number,
+            previous_snapshot,
+            fresh_data,
+        )
 
-        new_alert_records, alert_messages = detect_monitor_alerts(
+        new_alert_records, alert_messages = detect_monitored_part_changes(
             user_id,
             part_number,
             previous_snapshot,
