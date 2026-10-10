@@ -611,7 +611,7 @@ def begin_approved_page() -> None:
         .st-key-approved_home_recent_card{margin:38px 0 0!important;padding:0!important;border:1px solid #cbd8e8!important;border-radius:16px!important;background:#fff!important;box-shadow:0 3px 12px rgba(15,23,42,.045)!important}
         .st-key-approved_home_recent_card [data-testid="stVerticalBlock"]{gap:0!important}
         .st-key-approved_home_recent_card [data-testid="stElementContainer"]{margin:0!important;padding:0!important}
-        .cv-ap-home-table-head{display:grid!important;grid-template-columns:2.05fr 1.45fr .78fr .9fr 1.15fr 1.22fr .75fr!important;align-items:center!important;gap:16px!important;box-sizing:border-box!important;min-height:76px!important;padding:0 14px!important;background:#f7f9fc!important;border-top:1px solid #e5ebf3!important;border-bottom:1px solid #dce4ef!important}
+        .cv-ap-home-table-head{display:grid!important;grid-template-columns:2.05fr 1.45fr .78fr .9fr 1.15fr 1.22fr .75fr!important;align-items:center!important;gap:16px!important;box-sizing:border-box!important;min-height:76px!important;padding:0 30px!important;background:#f7f9fc!important;border-top:1px solid #e5ebf3!important;border-bottom:1px solid #dce4ef!important}
         .cv-ap-home-table-head [role="columnheader"]{display:flex;align-items:center;min-width:0;min-height:48px;overflow:hidden;color:#64748b;font-size:18px;font-weight:750;line-height:1.3;letter-spacing:.045em;text-overflow:ellipsis;text-transform:uppercase;white-space:nowrap}
         .st-key-approved_home_recent_heading{margin:0!important;padding:28px 30px 22px!important}
         .st-key-approved_home_recent_heading [data-testid="stVerticalBlock"]{gap:0!important}
@@ -623,9 +623,11 @@ def begin_approved_page() -> None:
         [class*="st-key-approved_home_view_all"] button{width:112px!important;max-width:112px!important;min-width:104px!important;height:56px!important;min-height:56px!important;margin-left:auto!important;padding:0 14px!important;border:1px solid #cbdcf7!important;border-radius:10px!important;background:#fff!important;color:#2563eb!important;box-shadow:none!important;font-size:17px!important;font-weight:700!important}
         [class*="st-key-approved_home_view_all"] button:hover{background:#f8fbff!important;border-color:#93b4ee!important}
         [class*="st-key-approved_home_row_"]{box-sizing:border-box!important;min-height:108px!important;margin:0!important;padding:16px 30px!important;border-top:0!important;border-bottom:1px solid #e5ebf3!important;background:#fff!important}
-        [class*="st-key-approved_home_row_"] [data-testid="stVerticalBlock"]{gap:0!important}
+        [class*="st-key-approved_home_row_"] [data-testid="stVerticalBlock"]{gap:0!important;justify-content:center!important;min-height:76px!important}
         [class*="st-key-approved_home_row_"] [data-testid="stElementContainer"]{margin:0!important;padding:0!important}
-        [class*="st-key-approved_home_row_"] [data-testid="stHorizontalBlock"]{align-items:center!important;min-height:76px!important}
+        [class*="st-key-approved_home_row_"] [data-testid="stHorizontalBlock"]{align-items:stretch!important;min-height:76px!important}
+        [class*="st-key-approved_home_row_"] [data-testid="column"]{align-self:stretch!important;display:flex!important;align-items:center!important;min-height:76px!important}
+        [class*="st-key-approved_home_row_"] [data-testid="stVerticalBlock"]{justify-content:center!important}
         [class*="st-key-approved_home_row_"] [data-testid="stMarkdownContainer"] p{margin:0!important;color:#52647b!important;font-size:20px!important;line-height:1.4!important}
         .cv-ap-home-bom{display:flex;align-items:center;gap:18px;min-width:0;min-height:76px}
         .cv-ap-home-row-icon{display:inline-flex;align-items:center;justify-content:center;flex:0 0 60px;width:60px;height:60px;border-radius:50%;background:#edf4ff;color:#2563eb}
@@ -637,11 +639,88 @@ def begin_approved_page() -> None:
         .st-key-approved_home_recent_card .cv-pill{min-height:48px;padding:10px 14px;font-size:18px;font-weight:750}
         .st-key-approved_home_recent_card .cv-pill-dot{width:8px;height:8px;flex-basis:8px}
         .cv-home-risk-count{display:inline-flex;align-items:center;justify-content:center;min-width:68px;min-height:48px;padding:0 14px;border-radius:12px;background:#fee9ed;color:#d81b43;font-size:20px;font-weight:750;line-height:1}
+        .cv-home-risk-count.clear{background:#dcfce7;color:#15803d}
         [class*="st-key-approved_home_menu_"] [data-testid="stPopover"] button[aria-expanded]{display:inline-flex!important;align-items:center!important;justify-content:center!important;width:44px!important;min-width:44px!important;height:44px!important;min-height:44px!important;padding:0!important;border:0!important;border-radius:10px!important;background:transparent!important;color:#64748b!important;box-shadow:none!important;font-size:22px!important;font-weight:750!important;line-height:1!important}
         [class*="st-key-approved_home_menu_"] [data-testid="stPopover"] button[aria-expanded] svg,[class*="st-key-approved_home_menu_"] [data-testid="stPopover"] button[aria-expanded] [data-testid="stIconMaterial"]{display:none!important}
         [class*="st-key-approved_home_row_"] [data-testid="stColumn"]:last-child{text-align:right}
         .cv-ap-home-empty{padding:26px 24px;color:#64748b;font-size:16px}
-        @media(max-width:1100px){.st-key-approved_home_page{padding:30px 24px 28px!important}.cv-ap-home-kpis{grid-template-columns:repeat(2,minmax(0,1fr))!important}.cv-ap-home-kpi{min-height:160px!important}.cv-ap-home-kpi-copy{min-height:110px}}
+        @media(max-width:1600px){
+          .st-key-approved_home_page{padding:44px 26px 28px!important}
+          .st-key-approved_home_header .cv-ap h1{font-size:30px!important;line-height:1.12!important}
+          .st-key-approved_home_header .cv-ap-sub{font-size:17px!important}
+          [class*="st-key-approved_home_new_bom"] button,[class*="st-key-approved_home_open_reports"] button{min-height:48px!important;height:48px!important;padding:0 14px!important;font-size:14px!important}
+          .cv-ap-home-kpis{gap:14px!important;margin-top:42px!important}
+          .cv-ap-home-kpi{gap:14px!important;min-height:172px!important;padding:22px 18px!important}
+          .cv-ap-home-kpi .cv-ap-home-icon{flex-basis:58px!important;width:58px!important;height:58px!important}
+          .cv-ap-home-icon svg{width:28px!important;height:28px!important}
+          .cv-ap-home-kpi-copy{min-height:120px}
+          .cv-ap-home-kpi .cv-ap-home-kpi-label{font-size:16px!important}
+          .cv-ap-home-kpi-copy strong{margin-top:8px!important;font-size:38px!important}
+          .cv-ap-home-kpi-copy em{padding-top:14px!important;font-size:14px!important}
+          .st-key-approved_home_recent_card{margin-top:26px!important}
+          .st-key-approved_home_recent_heading{padding:20px 22px 16px!important}
+          .cv-ap-home-recent-heading h2{font-size:26px!important}
+          .cv-ap-home-recent-heading p{font-size:16px!important}
+          [class*="st-key-approved_home_view_all"] button{width:96px!important;max-width:96px!important;min-width:88px!important;height:46px!important;min-height:46px!important;padding:0 10px!important;font-size:14px!important}
+          .cv-ap-home-table-head{gap:12px!important;min-height:60px!important;padding:0 16px!important}
+          .cv-ap-home-table-head [role="columnheader"]{font-size:13px!important;letter-spacing:.03em!important}
+          [class*="st-key-approved_home_row_"]{min-height:84px!important;padding:12px 16px!important}
+          [class*="st-key-approved_home_row_"] [data-testid="stHorizontalBlock"]{align-items:stretch!important;gap:12px!important;min-height:60px!important}
+          [class*="st-key-approved_home_row_"] [data-testid="column"]{min-height:60px!important}
+          [class*="st-key-approved_home_row_"] [data-testid="stVerticalBlock"]{min-height:60px!important}
+          [class*="st-key-approved_home_row_"] [data-testid="stMarkdownContainer"] p{font-size:16px!important}
+          .cv-ap-home-bom{gap:12px!important;min-height:60px}
+          .cv-ap-home-row-icon{flex-basis:48px;width:48px;height:48px}
+          .cv-ap-home-row-icon svg{width:24px;height:24px}
+          .cv-ap-home-bom .cv-ap-name{font-size:16px}
+          .cv-ap-home-bom small{font-size:11px}
+          .cv-ap-home-project{min-height:60px;font-size:16px}
+          .st-key-approved_home_recent_card .cv-pill{min-height:38px;padding:8px 10px;font-size:14px}
+          .st-key-approved_home_recent_card .cv-pill-dot{width:7px;height:7px;flex-basis:7px}
+          .cv-home-risk-count{min-width:48px;min-height:38px;padding:0 10px;font-size:16px}
+          [class*="st-key-approved_home_menu_"] [data-testid="stPopover"] button[aria-expanded]{width:36px!important;min-width:36px!important;height:36px!important;min-height:36px!important;font-size:18px!important}
+          .cv-ap-home-empty{padding:18px 16px;font-size:14px}
+        }
+        @media(max-width:1250px){
+          .st-key-approved_home_page{padding:28px 18px 24px!important}
+          .st-key-approved_home_header .cv-ap h1{font-size:26px!important;line-height:1.14!important}
+          .st-key-approved_home_header .cv-ap-sub{font-size:15px!important}
+          [class*="st-key-approved_home_new_bom"] button,[class*="st-key-approved_home_open_reports"] button{min-height:42px!important;height:42px!important;padding:0 10px!important;font-size:13px!important}
+          .cv-ap-home-kpis{gap:10px!important;margin-top:26px!important}
+          .cv-ap-home-kpi{gap:10px!important;min-height:132px!important;padding:14px 12px!important}
+          .cv-ap-home-kpi .cv-ap-home-icon{flex-basis:44px!important;width:44px!important;height:44px!important}
+          .cv-ap-home-icon svg{width:22px!important;height:22px!important}
+          .cv-ap-home-kpi-copy{min-height:92px;padding-top:1px}
+          .cv-ap-home-kpi .cv-ap-home-kpi-label{font-size:13px!important}
+          .cv-ap-home-kpi-copy strong{margin-top:6px!important;font-size:30px!important}
+          .cv-ap-home-kpi-copy em{padding-top:8px!important;font-size:12px!important}
+          .st-key-approved_home_recent_card{margin-top:20px!important}
+          .st-key-approved_home_recent_heading{padding:14px 16px 12px!important}
+          .cv-ap-home-recent-heading h2{font-size:21px!important}
+          .cv-ap-home-recent-heading p{font-size:13px!important}
+          [class*="st-key-approved_home_view_all"] button{width:82px!important;max-width:82px!important;min-width:78px!important;height:38px!important;min-height:38px!important;padding:0 8px!important;font-size:12px!important}
+          .cv-ap-home-table-head{gap:8px!important;min-height:48px!important;padding:0 12px!important}
+          .cv-ap-home-table-head [role="columnheader"]{font-size:11px!important;letter-spacing:.02em!important}
+          [class*="st-key-approved_home_row_"]{min-height:68px!important;padding:8px 12px!important}
+          [class*="st-key-approved_home_row_"] [data-testid="stHorizontalBlock"]{align-items:stretch!important;gap:8px!important;min-height:50px!important}
+          [class*="st-key-approved_home_row_"] [data-testid="column"]{min-height:50px!important}
+          [class*="st-key-approved_home_row_"] [data-testid="stVerticalBlock"]{min-height:50px!important}
+          [class*="st-key-approved_home_row_"] [data-testid="stMarkdownContainer"] p{font-size:13px!important}
+          .cv-ap-home-bom{gap:9px!important;min-height:50px}
+          .cv-ap-home-row-icon{flex-basis:38px;width:38px;height:38px}
+          .cv-ap-home-row-icon svg{width:20px;height:20px}
+          .cv-ap-home-bom .cv-ap-name{font-size:14px}
+          .cv-ap-home-bom small{font-size:10px}
+          .cv-ap-home-project{min-height:50px;font-size:13px}
+          .st-key-approved_home_recent_card .cv-pill{min-height:30px;padding:6px 8px;font-size:12px}
+          .st-key-approved_home_recent_card .cv-pill-dot{width:6px;height:6px;flex-basis:6px}
+          .cv-home-risk-count{min-width:38px;min-height:30px;padding:0 8px;font-size:14px}
+          [class*="st-key-approved_home_menu_"] [data-testid="stPopover"] button[aria-expanded]{width:32px!important;min-width:32px!important;height:32px!important;min-height:32px!important;font-size:16px!important}
+          .cv-ap-home-empty{padding:14px 12px;font-size:13px}
+        }
+        @media(max-width:900px){.st-key-approved_home_header .cv-ap h1{font-size:24px!important}}
+        @media(max-width:1100px){.st-key-approved_home_page{padding:26px 18px 24px!important}.cv-ap-home-kpis{grid-template-columns:repeat(2,minmax(0,1fr))!important}.cv-ap-home-kpi{min-height:132px!important}.cv-ap-home-kpi-copy{min-height:92px}}
+
         @media(max-width:700px){.st-key-approved_home_page{padding:24px 16px!important}.st-key-approved_home_header [data-testid="stHorizontalBlock"]{flex-wrap:wrap!important}.st-key-approved_home_header .cv-ap h1{font-size:34px!important}.st-key-approved_home_header .cv-ap-sub{font-size:16px!important}.cv-ap-home-kpis{grid-template-columns:1fr!important;gap:12px!important}.cv-ap-home-kpi{min-height:132px!important;padding:18px!important}.cv-ap-home-kpi-copy{min-height:90px}.st-key-approved_home_recent_heading{padding:18px 16px 14px!important}[class*="st-key-approved_home_row_"]{padding:12px 16px!important}}
         .st-key-approved_saved_bom_edit_screen,.st-key-approved_saved_bom_delete_screen{max-width:760px!important;padding:22px!important;border:1px solid #d7e0eb!important;border-radius:16px!important;background:#fff!important}
         .st-key-approved_saved_bom_delete_screen button[kind="primary"]{background:#be123c!important;border-color:#be123c!important}
@@ -1413,7 +1492,11 @@ def render_home(
                 parts = _num(_first(row, "total_parts"))
                 score = _num(_first(row, "health_score"))
                 risk = _num(_first(row, "high_risk_count"))
-                risk_html = f"<span class='cv-home-risk-count'>{risk}</span>" if risk else "0"
+                risk_html = (
+                    f"<span class='cv-home-risk-count high'>{risk}</span>"
+                    if risk
+                    else "<span class='cv-home-risk-count clear'>0</span>"
+                )
                 updated = analyzed_label(_first(row, "created_at", "updated_at", fallback=""))
                 analysis_id = str(row.get("id") or "")
                 display_bom_name = bom_name or source_filename or "Saved BOM"
