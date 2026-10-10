@@ -18417,6 +18417,7 @@ def run_authenticated_app() -> None:
         # "Opening BOM Analyzer…" nor page copy during the CSS/setup gap.
         reveal_authenticated_page_body("BOM Analyzer")
         from src.ui.approved_pages import render_bom_catalog
+        from src.bom_upload_flow import consume_approved_bom_submission
 
         if st.session_state.get("bom81_high_risk_review"):
             uploaded_file = None
@@ -18427,9 +18428,9 @@ def run_authenticated_app() -> None:
                 history_data if isinstance(history_data, list) else [],
                 user_id=str((current_user or {}).get("id") or ""),
             )
-            uploaded_file = st.session_state.pop("cadivor_pending_upload", None)
-            project_name = str(st.session_state.pop("cadivor_pending_project", "") or "")
-            bom_name = str(st.session_state.pop("cadivor_pending_bom_name", "") or "")
+            _approved_bom_submitted, uploaded_file, project_name, bom_name = (
+                consume_approved_bom_submission(st.session_state)
+            )
             if project_name and "bom8_project_name" not in st.session_state:
                 st.session_state["bom8_project_name"] = project_name
             if bom_name and "bom8_bom_name" not in st.session_state:
@@ -18445,6 +18446,31 @@ def run_authenticated_app() -> None:
         sample_bom = pd.DataFrame()
         if uploaded_file is None and not st.session_state.get("bom81_high_risk_review"):
             stop_authenticated_page()
+
+        # The approved upload path bypasses the legacy saved-BOM controls below,
+        # but the parser and report pipeline still consume these plan checks.
+        # Initialize them before any uploaded rows are parsed.
+        _one_time_blocked_plan = (
+            not is_admin and selected_plan.get("can_create_analyses") is False
+        )
+        _one_time_feature_enabled = one_time_bom_enabled()
+        _one_time_user_id = str((current_user or {}).get("id") or "")
+        _one_time_order_id = str(
+            st.session_state.get("cadivor_one_time_bom_order_id") or ""
+        )
+        _one_time_reserved = (
+            _one_time_blocked_plan
+            and one_time_credit_reserved(_one_time_user_id, _one_time_order_id)
+        )
+        _one_time_available = (
+            _one_time_blocked_plan
+            and one_time_credit_available(_one_time_user_id)
+        )
+        _one_time_in_progress = (
+            _one_time_blocked_plan
+            and one_time_credit_in_progress(_one_time_user_id)
+        )
+
         if st.session_state.get("bom81_high_risk_review"):
             # Cross-BOM review belongs with the File readiness guidance below,
             # not as a disconnected page-level action.
@@ -19348,29 +19374,10 @@ def run_authenticated_app() -> None:
                 """,
                 unsafe_allow_html=True,
             )
-            _one_time_blocked_plan = (
-                not is_admin and selected_plan.get("can_create_analyses") is False
-            )
             if _one_time_blocked_plan:
                 # A purchased report must never be spent on Cadivor's example BOM.
                 st.session_state.pop("bom8_sample_mode", None)
                 st.session_state.pop("bom8_sample_auto_analyze", None)
-            _one_time_feature_enabled = one_time_bom_enabled()
-            _one_time_user_id = str(current_user["id"])
-            _one_time_order_id = str(
-                st.session_state.get("cadivor_one_time_bom_order_id") or ""
-            )
-            _one_time_reserved = (
-                _one_time_blocked_plan and one_time_credit_reserved(
-                    _one_time_user_id, _one_time_order_id
-                )
-            )
-            _one_time_available = (
-                _one_time_blocked_plan and one_time_credit_available(_one_time_user_id)
-            )
-            _one_time_in_progress = (
-                _one_time_blocked_plan and one_time_credit_in_progress(_one_time_user_id)
-            )
             if _one_time_blocked_plan:
                 if _one_time_reserved:
                     st.success("Your one-time BOM report is in progress. Finish this analysis to access its reports.")
