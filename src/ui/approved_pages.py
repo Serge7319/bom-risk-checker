@@ -633,8 +633,8 @@ def begin_approved_page() -> None:
         .st-key-approved_home_head{min-height:68px!important;padding:16px 30px!important;background:#f7f9fc!important;border-top:1px solid #e5ebf3!important;border-bottom:1px solid #dce4ef!important}
         .st-key-approved_home_head [data-testid="stVerticalBlock"]{gap:0!important}
         .st-key-approved_home_head [data-testid="stElementContainer"]{margin:0!important;padding:0!important}
-        .st-key-approved_home_head [data-testid="stHorizontalBlock"]{align-items:center!important}
-        .st-key-approved_home_head .cv-ap-meta{color:#64748b!important;font-size:16px!important;font-weight:750!important;letter-spacing:.045em!important}
+        .st-key-approved_home_head [data-testid="stHorizontalBlock"]{align-items:center!important;min-height:76px!important}
+        .st-key-approved_home_head .cv-ap-meta{display:block!important;color:#64748b!important;font-size:18px!important;font-weight:750!important;line-height:1.3!important;letter-spacing:.045em!important}
         [class*="st-key-approved_home_row_"]{box-sizing:border-box!important;min-height:108px!important;margin:0!important;padding:16px 30px!important;border-top:0!important;border-bottom:1px solid #e5ebf3!important;background:#fff!important}
         [class*="st-key-approved_home_row_"] [data-testid="stVerticalBlock"]{gap:0!important}
         [class*="st-key-approved_home_row_"] [data-testid="stElementContainer"]{margin:0!important;padding:0!important}
