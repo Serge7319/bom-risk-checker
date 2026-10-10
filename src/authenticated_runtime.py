@@ -3123,6 +3123,12 @@ def run_authenticated_app() -> None:
         app_mode = "Dashboard"
     st.session_state["cadivor_route"] = app_mode
     st.session_state["app_mode"] = app_mode  # compatibility mirror
+    if app_mode not in {"BOM Analyzer", "High Risk Review"} and not (
+        st.session_state.get("bom8_analysis_future")
+        or st.session_state.get("bom8_analysis_pending")
+    ):
+        st.session_state.pop("cadivor_bom_pipeline_active", None)
+        st.session_state.pop("bom8_analysis_upload_file", None)
     # Do not rewrite st.query_params here. Streamlit pushState-s every write;
     # resolve_canonical_app_route / navigate_to already own history integrity.
     if st.session_state.get("cadivor_support_last_page") != app_mode:
@@ -17474,13 +17480,6 @@ def run_authenticated_app() -> None:
             )
 
         stop_authenticated_page()
-    if app_mode not in {"BOM Analyzer", "High Risk Review"} and not (
-        st.session_state.get("bom8_analysis_future")
-        or st.session_state.get("bom8_analysis_pending")
-    ):
-        st.session_state.pop("cadivor_bom_pipeline_active", None)
-        st.session_state.pop("bom8_analysis_upload_file", None)
-
     if app_mode in {"BOM Analyzer", "High Risk Review"}:
 
         from integrations.supplier_aggregator import get_best_part_data
