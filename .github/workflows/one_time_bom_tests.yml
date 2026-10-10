@@ -8,6 +8,10 @@ on:
       - 'src/report_generator.py'
       - 'src/authenticated_runtime.py'
       - 'src/bom_upload_flow.py'
+      - 'src/cost_optimization.py'
+      - 'src/ui/approved_pages.py'
+      - 'tests/test_cost_optimization.py'
+      - 'tests/test_bom_workspace_layout.py'
       - 'tests/test_bom_upload_flow.py'
       - 'src/auth.py'
       - 'src/auth_bootstrap.py'
@@ -29,6 +33,10 @@ on:
       - 'src/report_generator.py'
       - 'src/authenticated_runtime.py'
       - 'src/bom_upload_flow.py'
+      - 'src/cost_optimization.py'
+      - 'src/ui/approved_pages.py'
+      - 'tests/test_cost_optimization.py'
+      - 'tests/test_bom_workspace_layout.py'
       - 'tests/test_bom_upload_flow.py'
       - 'src/auth.py'
       - 'src/auth_bootstrap.py'
@@ -53,7 +61,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - run: python -m pip install pandas openpyxl
-      - run: python -m unittest tests.test_bom_upload_flow tests.test_one_time_bom tests.test_auth_signup_confirmation tests.test_one_time_report_public_entry tests.test_stripe_webhook_billing tests.test_billing_plan_enforcement tests.test_billing_checkout_ux tests.test_report_download_stability -q
+      - run: python -m pip install pandas openpyxl streamlit
+      - run: python -m unittest tests.test_bom_upload_flow tests.test_cost_optimization tests.test_one_time_bom tests.test_auth_signup_confirmation tests.test_one_time_report_public_entry tests.test_stripe_webhook_billing tests.test_billing_plan_enforcement tests.test_billing_checkout_ux tests.test_report_download_stability -q
       - run: node tests/test_one_time_bom_webhook.mjs
-      - run: python -m py_compile src/one_time_bom.py src/stripe_helper.py src/report_generator.py src/authenticated_runtime.py src/bom_upload_flow.py src/ui/approved_pages.py src/auth.py src/auth_bootstrap.py src/auth_gate.py
+      - run: python -m py_compile src/one_time_bom.py src/stripe_helper.py src/report_generator.py src/authenticated_runtime.py src/bom_upload_flow.py src/cost_optimization.py src/ui/approved_pages.py src/auth.py src/auth_bootstrap.py src/auth_gate.py
