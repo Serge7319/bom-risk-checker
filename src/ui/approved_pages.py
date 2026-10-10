@@ -596,7 +596,7 @@ def begin_approved_page() -> None:
         .cv-ap-home-bom .cv-ap-name{display:block;overflow:hidden;color:#17253e;font-size:13px;font-weight:750;text-overflow:ellipsis;white-space:nowrap}
         .cv-ap-home-bom small{display:block;margin-top:3px;overflow:hidden;color:#74839a;font-size:11px;text-overflow:ellipsis;white-space:nowrap}
         .cv-ap-home-project{display:block;overflow:hidden;color:#52647b;font-size:13px;line-height:1.4;text-overflow:ellipsis;white-space:nowrap}
-        .st-key-approved_home_page{box-sizing:border-box!important;width:100%!important;max-width:1380px!important;margin-left:auto!important;margin-right:auto!important;padding:48px 28px 28px!important}
+        .st-key-approved_home_page{box-sizing:border-box!important;width:100%!important;max-width:1440px!important;margin-left:auto!important;margin-right:auto!important;padding:48px 0 28px!important}
         .st-key-approved_home_page > [data-testid="stVerticalBlock"]{gap:22px!important}
         .cv-ap-home-kpis{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:16px!important;margin:44px 0 0!important}
         .cv-ap-home-kpi{display:flex!important;align-items:flex-start!important;gap:18px!important;box-sizing:border-box!important;min-height:190px!important;padding:24px 22px!important;border:1px solid #dce7f5!important;border-radius:16px!important;background:#f9fbff!important;box-shadow:0 2px 7px rgba(15,23,42,.035)!important}
@@ -658,7 +658,7 @@ def begin_approved_page() -> None:
         [class*="st-key-approved_home_row_"] [data-testid="stColumn"]:last-child{text-align:right}
         .cv-ap-home-empty{padding:26px 24px;color:#64748b;font-size:16px}
         @media(max-width:1600px){
-          .st-key-approved_home_page{padding:36px 24px 24px!important}
+          .st-key-approved_home_page{padding:36px 0 24px!important}
           .st-key-approved_home_header .cv-ap h1{font-size:30px!important;line-height:1.12!important}
           .st-key-approved_home_header .cv-ap-sub{font-size:17px!important}
           [class*="st-key-approved_home_new_bom"] button,[class*="st-key-approved_home_open_reports"] button{min-height:48px!important;height:48px!important;padding:0 14px!important;font-size:14px!important}
@@ -695,7 +695,7 @@ def begin_approved_page() -> None:
           .cv-ap-home-empty{padding:18px 16px;font-size:14px}
         }
         @media(max-width:1250px){
-          .st-key-approved_home_page{padding:22px 16px 20px!important}
+          .st-key-approved_home_page{padding:22px 0 20px!important}
           .st-key-approved_home_header .cv-ap h1{font-size:26px!important;line-height:1.14!important}
           .st-key-approved_home_header .cv-ap-sub{font-size:15px!important}
           [class*="st-key-approved_home_new_bom"] button,[class*="st-key-approved_home_open_reports"] button{min-height:42px!important;height:42px!important;padding:0 10px!important;font-size:13px!important}
@@ -732,11 +732,36 @@ def begin_approved_page() -> None:
           .cv-ap-home-empty{padding:14px 12px;font-size:13px}
         }
         @media(max-width:900px){.st-key-approved_home_header .cv-ap h1{font-size:24px!important}}
-        @media(max-width:1100px){.st-key-approved_home_page{padding:22px 16px 20px!important}.cv-ap-home-kpis{grid-template-columns:repeat(2,minmax(0,1fr))!important}.cv-ap-home-kpi{min-height:124px!important}.cv-ap-home-kpi-copy{min-height:88px}}
+        @media(max-width:1100px){.st-key-approved_home_page{padding:22px 0 20px!important}.cv-ap-home-kpis{grid-template-columns:repeat(2,minmax(0,1fr))!important}.cv-ap-home-kpi{min-height:124px!important}.cv-ap-home-kpi-copy{min-height:88px}}
 
-        @media(max-width:700px){.st-key-approved_home_page{padding:24px 16px!important}.st-key-approved_home_header [data-testid="stHorizontalBlock"]{flex-wrap:wrap!important}.st-key-approved_home_header .cv-ap h1{font-size:34px!important}.st-key-approved_home_header .cv-ap-sub{font-size:16px!important}.cv-ap-home-kpis{grid-template-columns:1fr!important;gap:12px!important}.cv-ap-home-kpi{min-height:132px!important;padding:18px!important}.cv-ap-home-kpi-copy{min-height:90px}.st-key-approved_home_recent_heading{padding:18px 16px 14px!important}[class*="st-key-approved_home_row_"]{padding:12px 16px!important}}
-        .st-key-approved_saved_bom_edit_screen,.st-key-approved_saved_bom_delete_screen{max-width:760px!important;padding:22px!important;border:1px solid #d7e0eb!important;border-radius:16px!important;background:#fff!important}
+        @media(max-width:700px){.st-key-approved_home_page{padding:24px 0!important}.st-key-approved_home_header [data-testid="stHorizontalBlock"]{flex-wrap:wrap!important}.st-key-approved_home_header .cv-ap h1{font-size:34px!important}.st-key-approved_home_header .cv-ap-sub{font-size:16px!important}.cv-ap-home-kpis{grid-template-columns:1fr!important;gap:12px!important}.cv-ap-home-kpi{min-height:132px!important;padding:18px!important}.cv-ap-home-kpi-copy{min-height:90px}.st-key-approved_home_recent_heading{padding:18px 16px 14px!important}[class*="st-key-approved_home_row_"]{padding:12px 16px!important}}
+        .st-key-approved_saved_bom_settings_page{box-sizing:border-box!important;width:100%!important;max-width:760px!important;margin:0 auto 24px!important;padding:0!important}
+        .st-key-approved_saved_bom_settings_page>[data-testid="stVerticalBlock"]{gap:12px!important}
+        .st-key-approved_saved_bom_edit_screen,.st-key-approved_saved_bom_delete_screen{box-sizing:border-box!important;width:100%!important;max-width:none!important;margin:0 auto!important;padding:22px!important;border:1px solid #d7e0eb!important;border-radius:16px!important;background:#fff!important}
         .st-key-approved_saved_bom_delete_screen button[kind="primary"]{background:#be123c!important;border-color:#be123c!important}
+        .st-key-approved_monitoring_alert_card{box-sizing:border-box!important;width:100%!important;margin:8px 0 20px!important;overflow-x:auto!important;border:1px solid #cbd8e8!important;border-radius:16px!important;background:#fff!important;box-shadow:0 3px 12px rgba(15,23,42,.045)!important}
+        .st-key-approved_monitoring_alert_card>[data-testid="stVerticalBlock"]{gap:0!important}
+        .cv-ap-monitoring-table-head{display:grid!important;grid-template-columns:.8fr 1.3fr 1.6fr .9fr 1.2fr!important;align-items:center!important;gap:12px!important;box-sizing:border-box!important;min-height:56px!important;padding:0 20px!important;background:#f7f9fc!important;border-bottom:1px solid #dce4ef!important}
+        .cv-ap-monitoring-table-head [role="columnheader"]{display:flex!important;align-items:center!important;min-width:0!important;min-height:44px!important;color:#64748b!important;font-size:12px!important;font-weight:750!important;letter-spacing:.035em!important;text-transform:uppercase!important}
+        .cv-ap-monitoring-table-head [role="columnheader"]:first-child,.cv-ap-monitoring-table-head [role="columnheader"]:nth-child(4),.cv-ap-monitoring-table-head [role="columnheader"]:last-child{justify-content:center!important;text-align:center!important}
+        [class*="st-key-approved_monitoring_alert_row_"]{box-sizing:border-box!important;min-height:68px!important;margin:0!important;padding:9px 20px!important;border-bottom:1px solid #e5ebf3!important;background:#fff!important}
+        [class*="st-key-approved_monitoring_alert_row_"] [data-testid="stVerticalBlock"]{gap:0!important}
+        [class*="st-key-approved_monitoring_alert_row_"] [data-testid="stHorizontalBlock"]{align-items:center!important;gap:12px!important}
+        [class*="st-key-approved_monitoring_alert_row_"] [data-testid="stColumn"],[class*="st-key-approved_monitoring_alert_row_"] [data-testid="column"]{box-sizing:border-box!important;min-width:0!important;padding:4px 5px!important;display:flex!important;align-items:center!important}
+        [class*="st-key-approved_monitoring_alert_row_"] [data-testid="stMarkdownContainer"] p{margin:0!important;color:#52647b!important;font-size:13px!important;line-height:1.4!important;overflow-wrap:anywhere!important}
+        [class*="st-key-approved_monitoring_alert_row_"] .cv-ap-meta{margin-top:3px!important;font-size:11px!important}
+        .cv-ap-monitoring-detected{width:100%;color:#52647b;text-align:center;font-size:12px;line-height:1.35}
+        [class*="st-key-approved_alert_action_"] button{min-height:34px!important;height:auto!important;padding:6px 8px!important;white-space:normal!important;font-size:12px!important}
+        .cv-ap-table-center{width:100%;display:flex;align-items:center;justify-content:center;text-align:center}
+        @media(max-width:1100px){
+          .cv-ap-monitoring-table-head{gap:8px!important;padding:0 14px!important}
+          [class*="st-key-approved_monitoring_alert_row_"]{padding:8px 14px!important}
+          [class*="st-key-approved_monitoring_alert_row_"] [data-testid="stHorizontalBlock"]{gap:8px!important}
+          [class*="st-key-approved_monitoring_alert_row_"] [data-testid="stMarkdownContainer"] p{font-size:12px!important}
+        }
+        @media(max-width:760px){
+          .cv-ap-monitoring-table-head,[class*="st-key-approved_monitoring_alert_row_"]{min-width:720px!important}
+        }
         .cv-pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:3px 8px;font-size:12px;font-weight:750}
         .cv-pill-dot{width:7px;height:7px;border-radius:50%;background:currentColor;flex:0 0 7px}
         .cv-pill.high{background:#ffe4e6;color:#be123c}
@@ -852,6 +877,39 @@ def _rows_with_project_edits(rows: list[dict[str, Any]]) -> list[dict[str, Any]]
     return merged
 
 
+def _update_home_saved_analysis_cache(
+    analysis_id: str,
+    user_id: str,
+    *,
+    stored_title: str | None = None,
+    filename: str | None = None,
+    deleted: bool = False,
+) -> None:
+    """Keep Home's last-known rows in sync with a saved BOM edit."""
+    from src.pages.home_workspace import SAVED_ANALYSES_CACHE_KEY
+
+    cache = st.session_state.get(SAVED_ANALYSES_CACHE_KEY)
+    if not isinstance(cache, dict) or str(cache.get("user_id") or "") != str(user_id or ""):
+        return
+    analysis_key = str(analysis_id or "")
+    updated_rows = []
+    for row in list(cache.get("rows") or []):
+        if not isinstance(row, dict):
+            continue
+        if str(row.get("id") or "") != analysis_key:
+            updated_rows.append(row)
+            continue
+        if deleted:
+            continue
+        updated = dict(row)
+        if stored_title is not None:
+            updated["project_name"] = stored_title
+        if filename is not None:
+            updated["filename"] = filename
+        updated_rows.append(updated)
+    st.session_state[SAVED_ANALYSES_CACHE_KEY] = {**cache, "rows": updated_rows}
+
+
 def _persist_project_title(
     analysis_id: str,
     user_id: str,
@@ -865,13 +923,19 @@ def _persist_project_title(
     updates = {"project_name": stored_title}
     if filename is not None and str(filename).strip():
         updates["filename"] = str(filename).strip()
-    supabase.table("analyses").update(updates).eq("id", analysis_id).eq(
-        "user_id", user_id
-    ).execute()
+    response = (
+        supabase.table("analyses")
+        .update(updates)
+        .eq("id", analysis_id)
+        .eq("user_id", user_id)
+        .select("id")
+        .execute()
+    )
+    if not getattr(response, "data", None):
+        raise RuntimeError("The saved BOM could not be found for this user.")
     supabase.table("analysis_parts").update({"project_name": stored_title}).eq(
         "analysis_id", analysis_id
     ).eq("user_id", user_id).execute()
-
 
 def _render_project_editor(row: dict[str, Any], scope: str, rows: list[dict[str, Any]], user_id: str) -> None:
     analysis_id = str(row.get("id") or "")
@@ -906,6 +970,11 @@ def _render_project_editor(row: dict[str, Any], scope: str, rows: list[dict[str,
                 titles = dict(st.session_state.get("cadivor_saved_project_titles") or {})
                 titles[analysis_id] = updated["project_name"]
                 st.session_state["cadivor_saved_project_titles"] = titles
+                _update_home_saved_analysis_cache(
+                    analysis_id,
+                    user_id,
+                    stored_title=updated["project_name"],
+                )
                 st.session_state.pop("approved_project_editor", None)
                 st.rerun()
     with cancel_col:
@@ -943,7 +1012,12 @@ def _queue_saved_bom_action(analysis_id: str, action: str) -> None:
         st.session_state[SAVED_BOM_EDIT_STATE] = target
     else:
         st.session_state[SAVED_BOM_DELETE_STATE] = target
-    navigate_to("BOM Analyzer", show_saved_analyses="1", arm_opening=False)
+    navigate_to(
+        "BOM Settings",
+        saved_bom_id=target,
+        saved_bom_action=action,
+        arm_opening=False,
+    )
 
 
 def _render_saved_bom_actions(column, analysis_id: str, *, scope: str, row_key: str) -> None:
@@ -998,127 +1072,177 @@ def _render_saved_bom_edit_page(row: dict[str, Any], user_id: str) -> None:
     if source_filename in {"—", "-"}:
         source_filename = ""
     nonce = int(st.session_state.get(SAVED_BOM_EDIT_REVISION_STATE) or 0)
-    st.markdown(
-        """
-        <div class="cv-ap">
-          <p class="cv-ap-kicker">BOM SETTINGS</p>
-          <h1>Edit saved BOM</h1>
-          <p class="cv-ap-sub">Update the project, BOM name, or uploaded file name for this saved analysis.</p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    with st.container(key="approved_saved_bom_edit_screen"):
-        with st.form(key=f"approved_saved_bom_edit_form_{analysis_id}_{nonce}"):
-            project_value = st.text_input(
-                "Project name",
-                value=project or "General",
-                key=f"approved_saved_bom_project_{analysis_id}_{nonce}",
-            )
-            bom_value = st.text_input(
-                "BOM name",
-                value=bom_name,
-                key=f"approved_saved_bom_name_{analysis_id}_{nonce}",
-            )
-            filename_value = st.text_input(
-                "Uploaded file name",
-                value=source_filename,
-                key=f"approved_saved_bom_filename_{analysis_id}_{nonce}",
-                help="This changes the file name shown in Cadivor. It does not replace the uploaded file contents.",
-            )
-            st.caption("Changing these labels does not rerun the analysis or replace its uploaded contents.")
-            save_col, cancel_col = st.columns([1, 1])
-            with save_col:
-                save = st.form_submit_button(
-                    "Save changes",
-                    type="primary",
-                    use_container_width=True,
+    with st.container(key="approved_saved_bom_settings_page"):
+        st.markdown(
+            """
+            <div class="cv-ap">
+              <p class="cv-ap-kicker">BOM SETTINGS</p>
+              <h1>Edit saved BOM</h1>
+              <p class="cv-ap-sub">Update the project, BOM name, or uploaded file name for this saved analysis.</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        with st.container(key="approved_saved_bom_edit_screen"):
+            with st.form(key=f"approved_saved_bom_edit_form_{analysis_id}_{nonce}"):
+                project_value = st.text_input(
+                    "Project name",
+                    value=project or "General",
+                    key=f"approved_saved_bom_project_{analysis_id}_{nonce}",
                 )
-            with cancel_col:
-                cancel = st.form_submit_button(
-                    "Cancel",
-                    use_container_width=True,
+                bom_value = st.text_input(
+                    "BOM name",
+                    value=bom_name,
+                    key=f"approved_saved_bom_name_{analysis_id}_{nonce}",
                 )
-        if cancel:
-            st.session_state.pop(SAVED_BOM_EDIT_STATE, None)
-            navigate_to("BOM Analyzer", show_saved_analyses="1", arm_opening=False)
-        if save:
-            clean_bom_name = str(bom_value or "").strip()
-            clean_filename = str(filename_value or "").strip()
-            if not clean_bom_name:
-                st.error("Enter a BOM name before saving.")
-            else:
-                stored_title = analysis_title_for_upload(project_value, clean_bom_name)
-                try:
-                    _persist_project_title(
-                        analysis_id,
-                        user_id,
-                        stored_title,
-                        filename=clean_filename or None,
+                filename_value = st.text_input(
+                    "Uploaded file name",
+                    value=source_filename,
+                    key=f"approved_saved_bom_filename_{analysis_id}_{nonce}",
+                    help="This changes the file name shown in Cadivor. It does not replace the uploaded file contents.",
+                )
+                st.caption("Changing these labels does not rerun the analysis or replace its uploaded contents.")
+                save_col, cancel_col = st.columns([1, 1])
+                with save_col:
+                    save = st.form_submit_button(
+                        "Save changes",
+                        type="primary",
+                        use_container_width=True,
                     )
-                except Exception:
-                    st.error("Cadivor couldn't save these changes. Please try again.")
+                with cancel_col:
+                    cancel = st.form_submit_button(
+                        "Cancel",
+                        use_container_width=True,
+                    )
+            if cancel:
+                st.session_state.pop(SAVED_BOM_EDIT_STATE, None)
+                navigate_to("BOM Analyzer", show_saved_analyses="1", arm_opening=False)
+            if save:
+                clean_bom_name = str(bom_value or "").strip()
+                clean_filename = str(filename_value or "").strip()
+                if not clean_bom_name:
+                    st.error("Enter a BOM name before saving.")
                 else:
-                    titles = dict(st.session_state.get("cadivor_saved_project_titles") or {})
-                    titles[analysis_id] = stored_title
-                    st.session_state["cadivor_saved_project_titles"] = titles
-                    st.session_state.pop(SAVED_BOM_EDIT_STATE, None)
-                    navigate_to("BOM Analyzer", show_saved_analyses="1", arm_opening=False)
-        st.divider()
-        if st.button(
-            "Delete this BOM",
-            key=f"approved_saved_bom_edit_delete_{analysis_id}",
-            type="secondary",
-        ):
-            _queue_saved_bom_action(analysis_id, "delete")
+                    stored_title = analysis_title_for_upload(project_value, clean_bom_name)
+                    try:
+                        _persist_project_title(
+                            analysis_id,
+                            user_id,
+                            stored_title,
+                            filename=clean_filename or None,
+                        )
+                    except Exception:
+                        st.error("Cadivor couldn't save these changes. Please try again.")
+                    else:
+                        titles = dict(st.session_state.get("cadivor_saved_project_titles") or {})
+                        titles[analysis_id] = stored_title
+                        st.session_state["cadivor_saved_project_titles"] = titles
+                        _update_home_saved_analysis_cache(
+                            analysis_id,
+                            user_id,
+                            stored_title=stored_title,
+                            filename=clean_filename or None,
+                        )
+                        st.session_state.pop(SAVED_BOM_EDIT_STATE, None)
+                        navigate_to("BOM Analyzer", show_saved_analyses="1", arm_opening=False)
+            st.divider()
+            if st.button(
+                "Delete this BOM",
+                key=f"approved_saved_bom_edit_delete_{analysis_id}",
+                type="secondary",
+            ):
+                _queue_saved_bom_action(analysis_id, "delete")
 
 
 def _render_saved_bom_delete_page(row: dict[str, Any], user_id: str) -> None:
     analysis_id = str(row.get("id") or "").strip()
     _project, bom_name = split_project_and_bom(row)
     display_name = bom_name or str(row.get("filename") or "Saved BOM")
-    st.markdown(
-        f"""
-        <div class="cv-ap">
-          <p class="cv-ap-kicker">BOM SETTINGS</p>
-          <h1>Delete saved BOM</h1>
-          <p class="cv-ap-sub">Confirm before removing this analysis.</p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    with st.container(key="approved_saved_bom_delete_screen"):
-        st.warning(
-            f"Delete “{display_name}” and its saved component records? "
-            "This action cannot be undone."
+    with st.container(key="approved_saved_bom_settings_page"):
+        st.markdown(
+            """
+            <div class="cv-ap">
+              <p class="cv-ap-kicker">BOM SETTINGS</p>
+              <h1>Delete saved BOM</h1>
+              <p class="cv-ap-sub">Confirm before removing this analysis.</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
         )
-        cancel_col, delete_col = st.columns([1, 1])
-        with cancel_col:
-            if st.button(
-                "Cancel",
-                key="approved_saved_bom_delete_cancel",
-                use_container_width=True,
-            ):
-                st.session_state.pop(SAVED_BOM_DELETE_STATE, None)
-                navigate_to("BOM Analyzer", show_saved_analyses="1", arm_opening=False)
-        with delete_col:
-            if st.button(
-                "Delete permanently",
-                key="approved_saved_bom_delete_confirm",
-                type="primary",
-                use_container_width=True,
-            ):
-                try:
-                    _delete_saved_bom(analysis_id, user_id)
-                except Exception:
-                    st.error("Cadivor couldn't delete this BOM. Please try again.")
-                else:
-                    titles = dict(st.session_state.get("cadivor_saved_project_titles") or {})
-                    titles.pop(analysis_id, None)
-                    st.session_state["cadivor_saved_project_titles"] = titles
+        with st.container(key="approved_saved_bom_delete_screen"):
+            st.warning(
+                f"Delete “{display_name}” and its saved component records? "
+                "This action cannot be undone."
+            )
+            cancel_col, delete_col = st.columns([1, 1])
+            with cancel_col:
+                if st.button(
+                    "Cancel",
+                    key="approved_saved_bom_delete_cancel",
+                    use_container_width=True,
+                ):
                     st.session_state.pop(SAVED_BOM_DELETE_STATE, None)
-                    st.session_state.pop(SAVED_BOM_EDIT_STATE, None)
                     navigate_to("BOM Analyzer", show_saved_analyses="1", arm_opening=False)
+            with delete_col:
+                if st.button(
+                    "Delete permanently",
+                    key="approved_saved_bom_delete_confirm",
+                    type="primary",
+                    use_container_width=True,
+                ):
+                    try:
+                        _delete_saved_bom(analysis_id, user_id)
+                    except Exception:
+                        st.error("Cadivor couldn't delete this BOM. Please try again.")
+                    else:
+                        titles = dict(st.session_state.get("cadivor_saved_project_titles") or {})
+                        titles.pop(analysis_id, None)
+                        st.session_state["cadivor_saved_project_titles"] = titles
+                        _update_home_saved_analysis_cache(
+                            analysis_id,
+                            user_id,
+                            deleted=True,
+                        )
+                        st.session_state.pop(SAVED_BOM_DELETE_STATE, None)
+                        st.session_state.pop(SAVED_BOM_EDIT_STATE, None)
+                        navigate_to("BOM Analyzer", show_saved_analyses="1", arm_opening=False)
+
+
+def render_saved_bom_settings(records: list[dict[str, Any]] | None, user_id: str = "") -> None:
+    """Render the standalone settings page for a selected saved BOM."""
+    begin_approved_page()
+    rows = _rows_with_project_edits(_records(records))
+    query_id = ""
+    query_action = ""
+    try:
+        query_id = str(st.query_params.get("saved_bom_id", "") or "").strip()
+        query_action = str(st.query_params.get("saved_bom_action", "") or "").strip().casefold()
+    except Exception:
+        pass
+    edit_id = str(st.session_state.get(SAVED_BOM_EDIT_STATE) or query_id).strip()
+    delete_id = str(st.session_state.get(SAVED_BOM_DELETE_STATE) or "").strip()
+    if not delete_id and query_action == "delete":
+        delete_id = query_id
+    target_id = delete_id or edit_id
+    target_row = next(
+        (row for row in rows if str(row.get("id") or "").strip() == target_id),
+        None,
+    )
+    if target_row is None:
+        st.markdown(
+            "<div class='cv-ap'><p class='cv-ap-kicker'>BOM SETTINGS</p>"
+            "<h1>Saved BOM settings</h1><p class='cv-ap-sub'>Select a saved BOM from the BOMs page to edit its details.</p></div>",
+            unsafe_allow_html=True,
+        )
+        if st.button("Return to BOMs", key="approved_saved_bom_settings_back"):
+            st.session_state.pop(SAVED_BOM_EDIT_STATE, None)
+            st.session_state.pop(SAVED_BOM_DELETE_STATE, None)
+            navigate_to("BOM Analyzer", show_saved_analyses="1", arm_opening=False)
+    elif delete_id:
+        _render_saved_bom_delete_page(target_row, user_id)
+    else:
+        _render_saved_bom_edit_page(target_row, user_id)
+    end_approved_page()
 
 
 def catalog_health_label(score: int, high_risk: int) -> str:
@@ -1646,40 +1770,66 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
         if not within_analyzed_range(_first(row, "created_at", "updated_at", fallback=""), date_filter, today):
             continue
         visible.append((row, label, project_name, bom_name))
-    bom_widths = [1.7, 1.6, 0.6, 0.8, 0.8, 1.1, 0.8]
-    with st.container(key="approved_bom_head"):
-        header = st.columns(bom_widths)
-        for column, label in zip(header, ("Project", "BOM name", "Parts", "Health", "High-risk parts", "Last analyzed", "Actions")):
-            column.markdown(f"<div class='cv-ap-meta'>{label}</div>", unsafe_allow_html=True)
-    if not visible:
-        st.caption("No BOMs match these filters.")
-    for index, (row, label, project_name, bom_name) in enumerate(visible[:12]):
-        kind = {"Healthy": "low", "Review": "medium", "At risk": "high"}[label]
-        analysis_id = str(row.get("id") or "")
-        high = _num(_first(row, "high_risk_count"))
-        with st.container(key=f"approved_bom_row_{index}"):
-            cells = st.columns(bom_widths, vertical_alignment="center")
-            _render_project_cell(cells[0], row, "catalog", rows, user_id)
-            cells[1].markdown(f"<span class='cv-ap-name'>{_esc(bom_name)}</span>", unsafe_allow_html=True)
-            cells[2].markdown(str(_num(_first(row, "total_parts"))))
-            cells[3].markdown(
-                f"<span class='cv-pill {kind}'><span class='cv-pill-dot' aria-hidden='true'></span>{label}</span>",
+    bom_widths = [2.25, 1.35, 0.76, 0.84, 1.0, 1.18, 0.68]
+    with st.container(key="approved_home_recent_card"):
+        header_labels = ("Name", "Project", "Part count", "Health", "High-risk parts", "Last analyzed", "Actions")
+        header_cells = "".join(
+            f"<span role='columnheader'>{_esc(label)}</span>"
+            for label in header_labels
+        )
+        st.markdown(
+            f"<div class='cv-ap-home-table-head' role='row'>{header_cells}</div>",
+            unsafe_allow_html=True,
+        )
+        if not visible:
+            st.markdown(
+                "<div class='cv-ap-home-empty'>No BOMs match these filters.</div>",
                 unsafe_allow_html=True,
             )
-            cells[4].markdown(
-                f"<span class='cv-pill high'>{high}</span>" if high else "0",
-                unsafe_allow_html=True,
+        for index, (row, label, project_name, bom_name) in enumerate(visible[:12]):
+            kind = {"Healthy": "low", "Review": "medium", "At risk": "high"}[label]
+            analysis_id = str(row.get("id") or "")
+            high = _num(_first(row, "high_risk_count"))
+            source_filename = str(_first(row, "filename", "source_filename", fallback="") or "").strip()
+            display_bom_name = bom_name or source_filename or "Saved BOM"
+            if not bom_name and display_bom_name.casefold().endswith(".csv"):
+                display_bom_name = display_bom_name[:-4]
+            risk_html = (
+                f"<span class='cv-home-risk-count high'>{high}</span>"
+                if high
+                else "<span class='cv-home-risk-count clear'>0</span>"
             )
-            cells[5].markdown(
-                analyzed_label(_first(row, "created_at", "updated_at", fallback="")),
-                unsafe_allow_html=True,
-            )
-            _render_saved_bom_actions(
-                cells[6],
-                analysis_id,
-                scope="bom",
-                row_key=str(index),
-            )
+            analyzed = analyzed_label(_first(row, "created_at", "updated_at", fallback=""))
+            with st.container(key=f"approved_home_row_{index}"):
+                cells = st.columns(bom_widths, vertical_alignment="center")
+                cells[0].markdown(
+                    f"<div class='cv-ap-home-bom'><span class='cv-ap-home-row-icon'>{lucide('file-text', 24)}</span>"
+                    f"<span class='cv-ap-home-bom-copy'><strong class='cv-ap-name'>{_esc(display_bom_name)}</strong></span></div>",
+                    unsafe_allow_html=True,
+                )
+                _render_project_cell(cells[1], row, "home", rows, user_id)
+                cells[2].markdown(
+                    f"<div class='cv-ap-home-project cv-ap-table-center'>{_num(_first(row, 'total_parts'))}</div>",
+                    unsafe_allow_html=True,
+                )
+                cells[3].markdown(
+                    f"<div class='cv-ap-table-center'>{score_pill(_num(_first(row, 'health_score')))}</div>",
+                    unsafe_allow_html=True,
+                )
+                cells[4].markdown(
+                    f"<div class='cv-ap-table-center'>{risk_html}</div>",
+                    unsafe_allow_html=True,
+                )
+                cells[5].markdown(
+                    f"<div class='cv-ap-home-project cv-ap-table-center'>{analyzed}</div>",
+                    unsafe_allow_html=True,
+                )
+                _render_saved_bom_actions(
+                    cells[6],
+                    analysis_id,
+                    scope="home",
+                    row_key=str(index),
+                )
     if st.session_state.get("cadivor_bom_upload_open"):
         choices = [*project_choices(rows), NEW_PROJECT_CHOICE]
         selected_project = st.selectbox(
@@ -1963,26 +2113,53 @@ def render_monitoring(alerts: list[dict[str, Any]] | None) -> None:
         """,
         unsafe_allow_html=True,
     )
-    header = st.columns([0.8, 1.3, 1.6, 0.9, 1.2])
-    for column, label in zip(header, ("Severity", "Component", "Signal", "Detected", "Next action")):
-        column.markdown(f"<div class='cv-ap-meta'>{label}</div>", unsafe_allow_html=True)
-    if not rows:
-        st.caption("No alerts in the selected period.")
-    for index, row in enumerate(rows):
-        severity = str(_first(row, "severity", fallback="Low"))
-        kind = "high" if "high" in severity.casefold() else ("medium" if "med" in severity.casefold() else "low")
-        action_label, destination = _next_action(row)
-        cells = st.columns([0.8, 1.3, 1.6, 0.9, 1.2], vertical_alignment="center")
-        cells[0].markdown(f"<span class='cv-pill {kind}'>{_esc(severity)}</span>", unsafe_allow_html=True)
-        cells[1].markdown(f"<div class='cv-ap-name'>{_esc(_first(row, 'mpn', 'part_number', fallback='Component'))}</div>", unsafe_allow_html=True)
-        cells[2].markdown(
-            f"<div class='cv-ap-name'>{_esc(_first(row, 'alert_type', fallback='Update'))}</div><div class='cv-ap-meta'>{_esc(_first(row, 'alert_message', fallback=''))}</div>",
+    monitoring_widths = [0.8, 1.3, 1.6, 0.9, 1.2]
+    with st.container(key="approved_monitoring_alert_card"):
+        header_labels = ("Severity", "Component", "Signal", "Detected", "Next action")
+        header_cells = "".join(
+            f"<span role='columnheader'>{_esc(label)}</span>"
+            for label in header_labels
+        )
+        st.markdown(
+            f"<div class='cv-ap-monitoring-table-head' role='row'>{header_cells}</div>",
             unsafe_allow_html=True,
         )
-        cells[3].markdown(_esc(str(_first(row, "created_at", fallback=""))[:10]))
-        with cells[4]:
-            if st.button(action_label, key=f"approved_alert_action_{index}"):
-                navigate_to(destination)
+        if not rows:
+            st.markdown(
+                "<div class='cv-ap-home-empty'>No alerts in the selected period.</div>",
+                unsafe_allow_html=True,
+            )
+        for index, row in enumerate(rows):
+            severity = str(_first(row, "severity", fallback="Low"))
+            kind = "high" if "high" in severity.casefold() else ("medium" if "med" in severity.casefold() else "low")
+            action_label, destination = _next_action(row)
+            with st.container(key=f"approved_monitoring_alert_row_{index}"):
+                cells = st.columns(monitoring_widths, vertical_alignment="center")
+                cells[0].markdown(
+                    f"<span class='cv-pill {kind}'>{_esc(severity)}</span>",
+                    unsafe_allow_html=True,
+                )
+                cells[1].markdown(
+                    f"<div class='cv-ap-name'>{_esc(_first(row, 'mpn', 'part_number', fallback='Component'))}</div>",
+                    unsafe_allow_html=True,
+                )
+                cells[2].markdown(
+                    f"<div class='cv-ap-name'>{_esc(_first(row, 'alert_type', fallback='Update'))}</div>"
+                    f"<div class='cv-ap-meta'>{_esc(_first(row, 'alert_message', fallback=''))}</div>",
+                    unsafe_allow_html=True,
+                )
+                cells[3].markdown(
+                    f"<div class='cv-ap-monitoring-detected'>{_esc(str(_first(row, 'created_at', fallback=''))[:10])}</div>",
+                    unsafe_allow_html=True,
+                )
+                with cells[4]:
+                    if st.button(
+                        action_label,
+                        key=f"approved_alert_action_{index}",
+                        type="secondary",
+                        use_container_width=True,
+                    ):
+                        navigate_to(destination)
     end_approved_page()
 
 
