@@ -253,7 +253,7 @@ def _css() -> None:
     st.markdown(
         """
         <style id="cadivor-cost-optimization-22">
-          .cv21-page{width:100%;max-width:1420px;margin:0 auto;box-sizing:border-box}
+          .cv21-page{width:100%;max-width:1600px;margin:0 auto;box-sizing:border-box}
           .cv21-heading{display:grid;grid-template-columns:minmax(0,1fr) minmax(180px,250px);align-items:end;gap:24px;margin:0 0 20px}
           .cv21-eyebrow{margin:0 0 8px;color:#2563eb;font-size:12px;font-weight:850;letter-spacing:.08em;text-transform:uppercase}
           .cv21-title{margin:0 0 8px;color:#0f172a;font-size:34px;line-height:1.12;font-weight:900;letter-spacing:-.04em}
@@ -270,7 +270,7 @@ def _css() -> None:
           .cv21-section-subtitle{margin:5px 0 0;color:#64748b;font-size:13px;font-weight:600;line-height:1.45}
           .cv21-table-card{width:100%;border:1px solid #dbe3ef;border-radius:16px;background:#fff;overflow:hidden;box-shadow:0 6px 20px rgba(15,23,42,.035);box-sizing:border-box}
           .cv21-table-scroll{width:100%;overflow-x:auto}
-          .cv21-table{width:100%;min-width:930px;border-collapse:separate;border-spacing:0;color:#0f172a}
+          .cv21-table{width:100%;min-width:900px;border-collapse:separate;border-spacing:0;color:#0f172a}
           .cv21-table th{height:42px;padding:10px 12px;background:#f1f5f9;border-bottom:1px solid #dce4ee;color:#64748b;text-align:left;font-size:10px;font-weight:850;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap}
           .cv21-table td{height:64px;padding:10px 12px;border-bottom:1px solid #e5eaf1;vertical-align:middle;text-align:left;font-size:12px;font-weight:620;line-height:1.35}
           .cv21-table tbody tr:last-child td{border-bottom:0}
@@ -289,11 +289,19 @@ def _css() -> None:
           .cv21-savings-rate{color:#64748b;font-size:10px;font-weight:700}
           .cv21-progress{width:100%;height:7px;margin-top:7px;border-radius:999px;background:#e6eef8;overflow:hidden}
           .cv21-progress span{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#3b82f6,#2563eb)}
-          .cv21-review-pill{display:inline-flex;align-items:center;justify-content:center;padding:6px 9px;border:1px solid #bfdbfe;border-radius:8px;background:#eff6ff;color:#1d4ed8;font-size:10px;font-weight:800;white-space:nowrap}
+          .cv21-review-pill{display:inline-flex;align-items:center;justify-content:center;padding:6px 9px;border:1px solid #fde68a;border-radius:8px;background:#fffbeb;color:#a16207;font-size:10px;font-weight:800;white-space:nowrap}
           .cv21-empty{margin:0;padding:24px;border:1px dashed #cbd5e1;border-radius:14px;background:#f8fafc;color:#64748b;font-size:13px;font-weight:620;line-height:1.5}
           .cv21-data-note{margin:12px 0 18px;color:#64748b;font-size:12px;font-weight:600;line-height:1.5}
           .cv21-detail-heading{margin:0 0 12px;color:#0f172a;font-size:17px;font-weight:850}
+          .st-key-cost_optimization_opportunities{width:100%;max-width:1600px;margin:0 auto 22px;padding:18px;border:1px solid #dbe3ef;border-radius:18px;background:#fff;box-shadow:0 8px 24px rgba(15,23,42,.04);box-sizing:border-box}
+          .st-key-cost_optimization_opportunities .cv21-table-card{border:0;border-radius:12px;box-shadow:none}
+          .st-key-cost_optimization_opportunities .cv21-table-scroll{border:1px solid #e5eaf1;border-radius:12px}
+          .cv21-table th:first-child{width:42px}.cv21-table th:nth-child(2){width:25%}.cv21-table th:nth-child(3){width:13%}.cv21-table th:nth-child(4){width:24%}.cv21-table th:nth-child(5){width:18%}.cv21-table th:nth-child(6){width:120px}
+          .st-key-cost_optimization_opportunities [data-testid="stButton"] button{min-height:40px;border-radius:9px;font-weight:750;white-space:nowrap}
           @media(max-width:1100px){
+            .cv21-page{max-width:100%}
+            .st-key-cost_optimization_opportunities{padding:14px}
+
             .cv21-kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
             .cv21-kpi:last-child{grid-column:1/-1}
             .cv21-heading{grid-template-columns:minmax(0,1fr) minmax(170px,220px)}
@@ -370,17 +378,17 @@ def _opportunity_table_markup(rows: List[Dict[str, Any]]) -> str:
             f"<span>{'$' + format(estimated_savings, ',.2f')}</span>"
             f"<span class='cv21-savings-rate'>{savings_rate}%</span></div>"
             f"<div class='cv21-progress' role='presentation'><span style='width:{bar_width}%'></span></div></td>"
-            "<td><span class='cv21-review-pill' title='Review this optimization with engineering before adopting it'>Review</span></td>"
+            "<td><span class='cv21-review-pill' title='Modeled opportunity only; confirm supplier pricing and engineering fit before action'>Needs review</span></td>"
             "</tr>"
         )
     return (
-        "<div class='cv21-page'><div class='cv21-table-card'><div class='cv21-table-scroll'>"
+        "<div class='cv21-table-card'><div class='cv21-table-scroll'>"
         "<table class='cv21-table'><thead><tr>"
         "<th>#</th><th>Component</th><th>Current unit price</th>"
-        "<th>Optimization path</th><th>Estimated savings</th><th>Fit</th>"
+        "<th>Opportunity</th><th>Estimated savings</th><th>Review status</th>"
         "</tr></thead><tbody>"
         + "".join(body)
-        + "</tbody></table></div></div></div>"
+        + "</tbody></table></div></div>"
     )
 
 
@@ -486,85 +494,89 @@ def render_cost_optimization(
     if st.session_state.get(filter_key) not in filter_options:
         st.session_state[filter_key] = filter_options[0]
 
-    title_col, filter_col = st.columns([3.4, 1.15], vertical_alignment="center")
-    with title_col:
-        st.markdown(
-            """
-            <div class="cv-ap cv21-page cv21-section-heading">
-              <div>
-                <h2 class="cv21-section-title">Top cost optimization opportunities</h2>
-                <p class="cv21-section-subtitle">Ranked by estimated savings from the current saved BOM data.</p>
-              </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-    with filter_col:
-        selected_category = st.selectbox(
-            "Filter opportunities",
-            filter_options,
-            key=filter_key,
-            label_visibility="collapsed",
-            disabled=not category_options,
-        )
-
-    filtered_opportunities = (
-        opportunities
-        if selected_category == "All opportunities"
-        else [row for row in opportunities if _text(row.get("Category"), "Cost review") == selected_category]
-    )
-    visible_opportunities = filtered_opportunities[:8]
-    if visible_opportunities:
-        st.markdown(
-            _opportunity_table_markup(visible_opportunities),
-            unsafe_allow_html=True,
-        )
-        if len(filtered_opportunities) > len(visible_opportunities):
-            st.caption(
-                f"Showing the top {len(visible_opportunities)} of {len(filtered_opportunities)} opportunities."
+    with st.container(key="cost_optimization_opportunities"):
+        title_col, filter_col = st.columns([3.4, 1.15], vertical_alignment="center")
+        with title_col:
+            st.markdown(
+                """
+                <div class="cv21-section-heading">
+                  <div>
+                    <h2 class="cv21-section-title">Top cost optimization opportunities</h2>
+                    <p class="cv21-section-subtitle">Ranked by estimated savings from the current saved BOM data.</p>
+                  </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        with filter_col:
+            selected_category = st.selectbox(
+                "Filter opportunities",
+                filter_options,
+                key=filter_key,
+                label_visibility="collapsed",
+                disabled=not category_options,
             )
 
-        labels = [
-            f"{_text(row.get('Part Number'), 'Component')} · {_text(row.get('Category'), 'Cost review')}"
-            for row in filtered_opportunities
-        ]
-        option_map = dict(zip(labels, filtered_opportunities))
-        action_key = "cost_optimization_selected_opportunity"
-        if st.session_state.get(action_key) not in option_map:
-            st.session_state[action_key] = labels[0]
-        selected_label = st.selectbox(
-            "Choose an opportunity to review",
-            labels,
-            key=action_key,
-            label_visibility="collapsed",
+        filtered_opportunities = (
+            opportunities
+            if selected_category == "All opportunities"
+            else [row for row in opportunities if _text(row.get("Category"), "Cost review") == selected_category]
         )
-        selected_row = option_map[selected_label]
-        action_cols = st.columns(2)
-        with action_cols[0]:
-            internal_nav_button(
-                "Find alternatives",
-                "Alternative Finder",
-                key="cost_selected_find_alternatives",
-                original_part=selected_row["Part Number"],
-                source_page="cost_optimization",
+        visible_opportunities = filtered_opportunities[:8]
+        if visible_opportunities:
+            st.markdown(
+                _opportunity_table_markup(visible_opportunities),
+                unsafe_allow_html=True,
             )
-        with action_cols[1]:
-            internal_nav_button(
-                "Review sourcing",
-                "Procurement Advisor",
-                key="cost_selected_review_sourcing",
-                original_part=selected_row["Part Number"],
+            if len(filtered_opportunities) > len(visible_opportunities):
+                st.caption(
+                    f"Showing the top {len(visible_opportunities)} of {len(filtered_opportunities)} opportunities."
+                )
+
+            labels = [
+                f"{_text(row.get('Part Number'), 'Component')} · {_text(row.get('Category'), 'Cost review')}"
+                for row in visible_opportunities
+            ]
+            option_map = dict(zip(labels, visible_opportunities))
+            action_key = "cost_optimization_selected_opportunity"
+            if st.session_state.get(action_key) not in option_map:
+                st.session_state[action_key] = labels[0]
+            action_cols = st.columns([4.6, 1.2, 1.2], vertical_alignment="center")
+            with action_cols[0]:
+                selected_label = st.selectbox(
+                    "Choose an opportunity to review",
+                    labels,
+                    key=action_key,
+                    label_visibility="collapsed",
+                )
+            selected_row = option_map[selected_label]
+            with action_cols[1]:
+                internal_nav_button(
+                    "Find alternatives",
+                    "Alternative Finder",
+                    key="cost_selected_find_alternatives",
+                    original_part=selected_row["Part Number"],
+                    source_page="cost_optimization",
+                    use_container_width=True,
+                )
+            with action_cols[2]:
+                internal_nav_button(
+                    "Review sourcing",
+                    "Procurement Advisor",
+                    key="cost_selected_review_sourcing",
+                    original_part=selected_row["Part Number"],
+                    use_container_width=True,
+                )
+        elif opportunities:
+            st.markdown(
+                "<p class='cv21-empty'>No opportunities match this filter. Select another opportunity type to continue.</p>",
+                unsafe_allow_html=True,
             )
-    elif opportunities:
-        st.markdown(
-            "<div class='cv21-page'><p class='cv21-empty'>No opportunities match this filter. Select another opportunity type to continue.</p></div>",
-            unsafe_allow_html=True,
-        )
-    else:
-        st.markdown(
-            "<div class='cv21-page'><p class='cv21-empty'>No priced component currently meets the saved supplier, quantity, or shared-demand criteria for a modeled savings opportunity.</p></div>",
-            unsafe_allow_html=True,
-        )
+        else:
+            st.markdown(
+                "<p class='cv21-empty'>No priced component currently meets the saved supplier, quantity, or shared-demand criteria for a modeled savings opportunity.</p>",
+                unsafe_allow_html=True,
+            )
 
     with st.expander("Cost data quality and detailed records"):
         st.markdown('<div class="cv21-detail-heading">Cost data quality</div>', unsafe_allow_html=True)
@@ -657,13 +669,3 @@ def render_cost_optimization(
                 )
             else:
                 st.info("No saved component records are available.")
-
-    review_cols = st.columns(4)
-    with review_cols[0]:
-        internal_nav_button("Procurement Advisor", "Procurement Advisor", key="cost_procurement", use_container_width=True)
-    with review_cols[1]:
-        internal_nav_button("Portfolio Intelligence", "Portfolio Intelligence", key="cost_portfolio", use_container_width=True)
-    with review_cols[2]:
-        internal_nav_button("Design Impact", "Design Impact Analyzer", key="cost_design_impact", use_container_width=True)
-    with review_cols[3]:
-        internal_nav_button("Reports", "Reports", key="cost_reports", use_container_width=True)
