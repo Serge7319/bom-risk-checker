@@ -267,14 +267,6 @@ def _render_analysis_section_navigation(*, analysis_id: str) -> str:
         or st.session_state.get("cadivor_active_analysis_tab"),
         "Engineering Intelligence",
     )
-    if stored == "Engineering Intelligence":
-        # The approved report owns its tabs. Do not also paint the legacy section rail.
-        st.session_state["cadivor_stack_decision_brief"] = True
-        st.session_state["cadivor_decision_focus"] = False
-        return _commit_analysis_section_selection(
-            analysis_id=analysis_id,
-            selected="Engineering Intelligence",
-        )
     area_key = f"cadivor_bom_area_{analysis_id}"
     more_key = f"cadivor_bom_more_{analysis_id}"
     visible = visible_area_for_section(stored)
