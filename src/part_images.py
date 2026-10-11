@@ -2,8 +2,11 @@
 from __future__ import annotations
 
 import base64
+from functools import lru_cache
 from html import escape
+from pathlib import Path
 from collections.abc import Mapping
+import re
 from urllib.parse import quote, urlsplit, urlunsplit
 
 _ALLOWED_IMAGE_HOSTS = (
@@ -89,9 +92,10 @@ def normalize_supplier_image_url(value: object, *, provider: str = "") -> str:
     return urlunsplit(("https", netloc, parsed.path, parsed.query, ""))
 
 
-ILLUSTRATION_LABEL = "Image for illustration purposes only"
+ILLUSTRATION_LABEL = "Representative component image; actual part may vary"
 
-# Existing family ids from component_family_profiles. Unlisted families use the generic drawing.
+# Existing family ids from component_family_profiles. Unlisted families use a
+# neutral, unbranded package image rather than a chip glyph.
 _KIND_BY_FAMILY = {
     "Capacitor": "capacitor",
     "Resistor": "resistor",
@@ -105,36 +109,90 @@ _KIND_BY_FAMILY = {
     "MCU / processor": "ic",
     "FPGA / CPLD": "ic",
     "Connector / electromechanical": "connector",
+    "Relay": "relay",
     "Sensor": "sensor",
     "Switch": "switch",
+    "Oscillator / crystal": "crystal",
+    "Transformer": "transformer",
+    "General electronic component": "generic",
 }
 
-_ILLUSTRATION_SVG = {
-    "ic": (
-        '<rect x="6" y="6" width="12" height="12" rx="2"/>'
-        '<path d="M9 6V3m6 3V3M9 21v-3m6 3v-3M6 9H3m3 6H3m18-6h-3m3 6h-3"/>'
-    ),
-    "resistor": '<path d="M2 12h3l2-4 3 8 3-8 2 4h3l2-4 2 4h2"/>',
-    "capacitor": '<path d="M8 4v16M16 4v16M4 12H8m8 0h8"/>',
-    "connector": (
-        '<rect x="3" y="7" width="10" height="10" rx="1"/>'
-        '<path d="M13 10h8M13 14h8M6 7V4m4 3V4"/>'
-    ),
-    "diode": '<path d="M5 6l8 6-8 6zM13 6v12M18 7v10"/>',
-    "transistor": '<path d="M8 4v16M8 8l8-3v4M8 16l8 3v-4M16 5v3m0 8v3"/>',
-    "inductor": '<path d="M3 15c2-6 2-6 4 0s2 6 4 0 2 6 4 0 2 6 4 0"/>',
-    "sensor": '<circle cx="12" cy="12" r="3"/><path d="M12 5v2m0 10v2M5 12h2m10 0h2M7 7l1.5 1.5M15.5 15.5 17 17M17 7l-1.5 1.5M8.5 15.5 7 17"/>',
-    "switch": '<path d="M4 16h4l8-8h4M8 16a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm12-8a2 2 0 1 1-4 0 2 2 0 0 1 4 0z"/>',
-    "generic": (
-        '<rect x="7" y="7" width="10" height="10" rx="1.5"/>'
-        '<path d="M9 3v4m6-4v4m-6 10v4m6-4v4M3 9h4m10 0h4M3 15h4m10 0h4"/>'
-        '<circle cx="12" cy="12" r="2.2"/>'
-    ),
+_ASSET_VARIANTS = {
+    "capacitor": ("capacitor_smd", "capacitor_th"),
+    "resistor": ("resistor_smd", "resistor_th"),
+    "inductor": ("inductor_smd", "inductor_th"),
+    "diode": ("diode_smd", "diode_th"),
+    "transistor": ("transistor_smd", "transistor_th"),
+    "ic": ("ic_smd", "ic_th"),
+    "connector": ("connector_smd", "connector_th"),
+    "relay": ("relay_smd", "relay_th"),
+    "sensor": ("sensor_smd", "sensor_th"),
+    "switch": ("switch_smd", "switch_th"),
+    "crystal": ("crystal_smd", "crystal_th"),
+    "transformer": ("transformer_smd", "transformer_th"),
+    "generic": ("generic_smd", "generic_th"),
 }
+_THROUGH_HOLE = re.compile(
+    r"\b(?:tht|through[\s-]?hole|pth|dip|pdip|to-\d{2,3}|axial|radial|leaded|hc-49)\b",
+    re.IGNORECASE,
+)
+_SURFACE_MOUNT = re.compile(
+    r"\b(?:smd|smt|surface[\s-]?mount|0[26]03|0805|1206|1210|2010|2512|qfn|qfp|soic|sot-\d+|sod-\d+|sma|smb|smc|bga|dfn|hc-49s)\b",
+    re.IGNORECASE,
+)
+_PACKAGE_KEYS = (
+    "package", "package_type", "package type", "package_case", "case_package",
+    "case", "mounting_type", "mounting type", "mount_type", "mounting",
+    "mounting_technology", "mount technology", "technology", "footprint",
+)
+_THROUGH_HOLE_KEYS = ("through_hole", "is_through_hole", "tht", "is_tht")
+_SMD_KEYS = ("surface_mount", "is_surface_mount", "smd", "smt", "is_smd")
+
+
+def _part_values(part: object) -> list[str]:
+    if not isinstance(part, Mapping):
+        return []
+    keys = (
+        "description_raw", "description", "Description", "part_description",
+        "category_raw", "category", "Category", "architecture", "Architecture",
+        "device_type", "Device Type", "device type",
+    ) + _PACKAGE_KEYS
+    return [str(part[key]).strip() for key in keys if part.get(key) not in (None, "")]
+
+
+def _package_style(part: object) -> str:
+    if isinstance(part, Mapping):
+        for key in _THROUGH_HOLE_KEYS:
+            value = str(part.get(key) or "").strip().casefold()
+            if value in {"1", "true", "yes", "y", "through-hole", "tht"}:
+                return "th"
+        for key in _SMD_KEYS:
+            value = str(part.get(key) or "").strip().casefold()
+            if value in {"1", "true", "yes", "y", "surface-mount", "smd", "smt"}:
+                return "smd"
+        package_values = [
+            str(part[key]).strip()
+            for key in _PACKAGE_KEYS
+            if part.get(key) not in (None, "")
+        ]
+        package_text = " ".join(package_values)
+        if _THROUGH_HOLE.search(package_text):
+            return "th"
+        if _SURFACE_MOUNT.search(package_text):
+            return "smd"
+    descriptive_text = " ".join(_part_values(part))
+    if _THROUGH_HOLE.search(descriptive_text):
+        return "th"
+    if _SURFACE_MOUNT.search(descriptive_text):
+        return "smd"
+    # Common electrolytic and radial capacitor descriptions imply leaded parts.
+    if re.search(r"\\b(?:electrolytic|radial leads?)\\b", descriptive_text, re.IGNORECASE):
+        return "th"
+    return "smd"
 
 
 def illustration_kind(part: object = None, category: object = None) -> str:
-    """Map stored category text onto an illustration. Unknown text stays generic."""
+    """Map saved family/category text to a representative component image."""
     from src.component_family_profiles import infer_family_id
 
     payload: dict[str, str] = {}
@@ -157,24 +215,28 @@ def illustration_kind(part: object = None, category: object = None) -> str:
     return _KIND_BY_FAMILY.get(infer_family_id(payload), "generic")
 
 
-
-def part_image_source(
-    image_url: object,
-    part_number: object,
-    *,
-    size: int = 64,
-    category: object = None,
-    part: object = None,
-) -> str:
-    """Trusted product URL or a self-contained, family-colored SVG for image columns."""
-    image = normalize_supplier_image_url(image_url)
-    if image:
-        return image
+@lru_cache(maxsize=32)
+def _illustration_data_uri(asset_name: str) -> str:
+    """Load a bundled, optimized PNG stored as base64 text for GitHub-safe writes."""
+    asset_file = Path(__file__).resolve().parent / "component_images" / f"{asset_name}.png.b64"
     try:
-        dimension = min(132, max(48, int(size)))
-    except (TypeError, ValueError):
-        dimension = 64
-    kind = illustration_kind(part, category)
+        encoded = asset_file.read_text(encoding="ascii").strip()
+        if not encoded:
+            return ""
+        base64.b64decode(encoded, validate=True)
+    except (OSError, ValueError):
+        return ""
+    return f"data:image/png;base64,{encoded}"
+
+
+def _asset_name(kind: str, part: object = None) -> str:
+    variants = _ASSET_VARIANTS.get(kind) or _ASSET_VARIANTS["generic"]
+    index = 1 if _package_style(part) == "th" else 0
+    return variants[index]
+
+
+def _svg_data_uri(kind: str, dimension: int) -> str:
+    """Small visual safety fallback if a packaged photo asset is unavailable."""
     drawing = _ILLUSTRATION_SVG.get(kind, _ILLUSTRATION_SVG["generic"])
     palettes = {
         "ic": ("#eff6ff", "#dbeafe", "#2563eb"),
@@ -186,6 +248,9 @@ def part_image_source(
         "transistor": ("#f0fdf4", "#dcfce7", "#15803d"),
         "sensor": ("#ecfeff", "#cffafe", "#0891b2"),
         "switch": ("#fffbeb", "#fef3c7", "#b45309"),
+        "relay": ("#f8fafc", "#cbd5e1", "#334155"),
+        "transformer": ("#fff7ed", "#fed7aa", "#9a3412"),
+        "crystal": ("#f8fafc", "#cbd5e1", "#475569"),
         "generic": ("#f0f9ff", "#bae6fd", "#0369a1"),
     }
     background, border, foreground = palettes.get(kind, palettes["generic"])
@@ -195,8 +260,45 @@ def part_image_source(
         f'<g transform="translate(20 20)" fill="none" stroke="{foreground}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'
         f'{drawing}</g></svg>'
     )
-    encoded = base64.b64encode(svg.encode("utf-8")).decode("ascii")
-    return f"data:image/svg+xml;base64,{encoded}"
+    return "data:image/svg+xml;base64," + base64.b64encode(svg.encode("utf-8")).decode("ascii")
+
+
+_ILLUSTRATION_SVG = {
+    "ic": '<rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 6V3m6 3V3M9 21v-3m6 3v-3M6 9H3m3 6H3m18-6h-3m3 6h-3"/>',
+    "resistor": '<path d="M2 12h3l2-4 3 8 3-8 2 4h3l2-4 2 4h2"/>',
+    "capacitor": '<path d="M8 4v16M16 4v16M4 12H8m8 0h8"/>',
+    "connector": '<rect x="3" y="7" width="10" height="10" rx="1"/><path d="M13 10h8M13 14h8M6 7V4m4 3V4"/>',
+    "diode": '<path d="M5 6l8 6-8 6zM13 6v12M18 7v10"/>',
+    "transistor": '<path d="M8 4v16M8 8l8-3v4M8 16l8 3v-4M16 5v3m0 8v3"/>',
+    "inductor": '<path d="M3 15c2-6 2-6 4 0s2 6 4 0 2 6 4 0 2 6 4 0"/>',
+    "sensor": '<circle cx="12" cy="12" r="3"/><path d="M12 5v2m0 10v2M5 12h2m10 0h2M7 7l1.5 1.5M15.5 15.5 17 17M17 7l-1.5 1.5M8.5 15.5 7 17"/>',
+    "switch": '<path d="M4 16h4l8-8h4M8 16a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm12-8a2 2 0 1 1-4 0 2 2 0 0 1 4 0z"/>',
+    "relay": '<rect x="4" y="7" width="16" height="10" rx="2"/><path d="M7 4v3m10-3v3M7 17v3m10-3v3"/>',
+    "transformer": '<path d="M6 6c4 0 4 12 0 12m12-12c-4 0-4 12 0 12M8 8h8m-8 8h8"/>',
+    "crystal": '<rect x="8" y="5" width="8" height="14" rx="3"/><path d="M10 19v3m4-3v3"/>',
+    "generic": '<rect x="7" y="7" width="10" height="10" rx="1.5"/><path d="M9 3v4m6-4v4m-6 10v4m6-4v4M3 9h4m10 0h4M3 15h4m10 0h4"/><circle cx="12" cy="12" r="2.2"/>',
+}
+
+
+def part_image_source(
+    image_url: object,
+    part_number: object,
+    *,
+    size: int = 64,
+    category: object = None,
+    part: object = None,
+) -> str:
+    """Return supplier photography first, then the bundled package illustration."""
+    image = normalize_supplier_image_url(image_url)
+    if image:
+        return image
+    try:
+        dimension = min(132, max(48, int(size)))
+    except (TypeError, ValueError):
+        dimension = 64
+    kind = illustration_kind(part, category)
+    asset = _illustration_data_uri(_asset_name(kind, part))
+    return asset or _svg_data_uri(kind, dimension)
 
 
 def part_image_markup(
@@ -207,7 +309,7 @@ def part_image_markup(
     category: object = None,
     part: object = None,
 ) -> str:
-    """Supplier photo when the URL is trusted. Otherwise a labeled category illustration."""
+    """Use an exact supplier photo when available, otherwise a labeled family image."""
     try:
         dimension = min(132, max(48, int(size)))
     except (TypeError, ValueError):
@@ -215,23 +317,32 @@ def part_image_markup(
     mpn = str(part_number or "").strip() or "component"
     safe_mpn = escape(mpn, quote=True)
     image = normalize_supplier_image_url(image_url)
+    kind = ""
     if image:
-        visual = (
-            f'<img src="{escape(image, quote=True)}" alt="Product photo for {safe_mpn}" '
-            'loading="lazy" decoding="async" referrerpolicy="no-referrer">'
-        )
         label = f"Product photo for {safe_mpn}"
-        kind = ""
+        visual = (
+            f'<img class="cv-part-photo__image" src="{escape(image, quote=True)}" '
+            f'alt="{label}" loading="lazy" decoding="async" referrerpolicy="no-referrer" '
+            'style="width:100%;height:100%;object-fit:contain;vertical-align:middle">'
+        )
     else:
         kind = illustration_kind(part, category)
-        drawing = _ILLUSTRATION_SVG.get(kind, _ILLUSTRATION_SVG["generic"])
-        visual = (
-            '<span class="cv-part-photo__placeholder" aria-hidden="true">'
-            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" '
-            'stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">'
-            f"{drawing}</svg></span>"
-        )
         label = ILLUSTRATION_LABEL
+        source = _illustration_data_uri(_asset_name(kind, part))
+        if source:
+            visual = (
+                f'<img class="cv-part-photo__image" src="{source}" '
+                f'alt="{escape(label, quote=True)}" loading="lazy" decoding="async" '
+                'style="width:100%;height:100%;object-fit:contain;vertical-align:middle">'
+            )
+        else:
+            drawing = _ILLUSTRATION_SVG.get(kind, _ILLUSTRATION_SVG["generic"])
+            visual = (
+                '<span class="cv-part-photo__placeholder" aria-hidden="true">'
+                '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+                'stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">'
+                f"{drawing}</svg></span>"
+            )
     kind_attr = f' data-illustration="{escape(kind, quote=True)}"' if kind else ""
     return (
         f'<div class="cv-part-photo" style="--cv-part-photo-size:{dimension}px" '
@@ -270,6 +381,11 @@ def attach_saved_component_images(
     metadata_keys = (
         "manufacturer", "description", "description_raw", "part_description",
         "category", "category_raw", "architecture", "device_type",
+        "package", "package_type", "package type", "package_case", "case_package",
+        "case", "mounting_type", "mounting type", "mount_type", "mounting",
+        "mounting_technology", "mount technology", "technology", "footprint",
+        "through_hole", "is_through_hole", "tht", "surface_mount", "is_surface_mount",
+        "smd", "smt",
     )
 
     def _mpn(row: Mapping[str, object]) -> str:

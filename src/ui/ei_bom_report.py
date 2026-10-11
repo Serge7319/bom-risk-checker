@@ -42,18 +42,26 @@ class _DescriptionTextParser(HTMLParser):
 
 
 def _description_text(value: Any) -> str:
-    """Turn saved supplier markup into plain descriptive text, dropping serialized UI blocks."""
-    raw = html.unescape(str(value or "").strip())
+    """Decode supplier markup safely and discard serialized analysis fields."""
+    raw = str(value or "").strip()
     if not raw:
         return ""
+    # Records may have been HTML escaped more than once before they were saved.
+    for _ in range(3):
+        decoded = html.unescape(raw)
+        if decoded == raw:
+            break
+        raw = decoded
     parser = _DescriptionTextParser()
     try:
         parser.feed(raw)
         text = " ".join(" ".join(parser.parts).split())
     except Exception:
         text = " ".join(re.sub(r"(?is)<[^>]*>", " ", raw).split())
-    structured_labels = ("manufacturer", "best source", "suppliers", "stock", "lifecycle")
+    structured_labels = ("manufacturer", "best source", "supplier", "suppliers", "stock", "lifecycle")
     if sum(bool(re.search(rf"\b{label}\b", text, re.IGNORECASE)) for label in structured_labels) >= 2:
+        return ""
+    if re.match(r"^(?:manufacturer|best source|suppliers?|stock(?:\s+(?:total|available))?|lifecycle)\s*(?::|=|\s)", text, re.IGNORECASE):
         return ""
     return text
 
@@ -411,14 +419,14 @@ def _part_rows(parts: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "mpn_raw": raw_mpn,
                 "mpn": _esc(raw_mpn),
                 "description_raw": _description_text(
-                    _first(part, "description", "Description", "part_description", fallback="")
+                    _first(part, "description_raw", "description", "Description", "part_description", fallback="")
                 ),
                 "category_raw": str(
                     _first(part, "category", "Category", "device_type", "architecture", fallback="") or ""
                 ),
                 "description": _esc(
                     _description_text(
-                        _first(part, "description", "Description", "part_description", fallback="Component")
+                        _first(part, "description_raw", "description", "Description", "part_description", fallback="Component")
                     ) or "Component"
                 ),
                 "manufacturer": _esc(_first(part, "manufacturer", "Manufacturer", fallback="—")),
@@ -467,7 +475,8 @@ def _part_rows(parts: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def report_styles() -> str:
     return """
     <style>
-      .cv-ei-report { color:#0f172a; font-family: Inter, "Segoe UI", sans-serif; width:100%;max-width:1500px;margin:0 auto;box-sizing:border-box }
+      .st-key-ei_report_workspace { width:min(100%,1500px)!important;max-width:1500px!important;margin-inline:auto!important;box-sizing:border-box }
+      .st-key-ei_report_workspace .cv-ei-report { color:#0f172a; font-family: Inter, "Segoe UI", sans-serif; width:100%;max-width:1500px;margin:0 auto;box-sizing:border-box }
       .cv-part-photo[data-illustration="generic"]{background:#f0f9ff;border-color:#bae6fd;color:#0369a1}
       .cv-ei-kicker { color:#64748b; font-size:13px; font-weight:600; margin:0 0 6px; }
       .cv-ei-title { font-size:32px; line-height:1.15; font-weight:760; letter-spacing:-.03em; margin:0; }
@@ -513,7 +522,9 @@ def report_styles() -> str:
       .cv-risk-row, .cv-risk-head { display:grid; grid-template-columns: 1.1fr 1fr .9fr .6fr .7fr .8fr .6fr .7fr; gap:8px; padding:12px 16px; align-items:center; }
       .cv-risk-head { color:#94a3b8; font-size:12px; letter-spacing:.04em; text-transform:uppercase; background:#f8fafc; }
       .cv-risk-row { border-top:1px solid #eef2f7; font-size:14px; }
-      .cv-risk-detail { display:grid; grid-template-columns: 1.1fr .9fr; gap:16px; padding:8px 16px 18px 42px; }
+      .cv-risk-grid-head { background:#f1f5f9;border:1px solid #e2e8f0;border-radius:8px;padding:9px 10px;color:#64748b;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;min-height:34px;box-sizing:border-box }
+      .st-key-ei_report_workspace [class*="st-key-cv_risk_shut_"], .st-key-ei_report_workspace [class*="st-key-cv_risk_open_"] { border-bottom:1px solid #e8edf3;padding:5px 0 }
+      .cv-risk-detail { display:grid; grid-template-columns:1.1fr .9fr; gap:16px; padding:14px 0 18px; }
       .cv-risk-card, .cv-risk-drivers, .cv-risk-action { border:1px solid #e6edf5; border-radius:14px; padding:16px; background:#fff; }
       .cv-risk-drivers { background:#fff5f5; border-color:#fecdd3; }
       .cv-risk-action { background:#eff6ff; border-color:#bfdbfe; margin-top:12px; }
@@ -521,7 +532,9 @@ def report_styles() -> str:
       .cv-bom-search, .cv-bom-filter { background:#fff; border:1px solid #e6edf5; border-radius:12px; padding:10px 12px; color:#64748b; font-size:14px; }
       .cv-bom-search { flex:1; }
       @media (max-width: 900px) {
-        .cv-ei-kpis, .cv-risk-detail, .cv-risk-row, .cv-risk-head { display:block; }
+        .cv-ei-kpis, .cv-risk-row, .cv-risk-head { display:block; }
+        .cv-risk-detail { grid-template-columns:1fr; padding:12px 0; }
+        .cv-risk-grid-head { font-size:10px;padding:8px 5px }
       }
     </style>
     """
@@ -720,7 +733,7 @@ def render_detailed_risk_rows(
     parts: list[dict[str, Any]],
     analysis_id: str = "",
 ) -> None:
-    """One expanded part at a time. Each row's control is a real button."""
+    """Render a compact risk table with user-controlled, one-row details."""
     import streamlit as st
 
     rows = _part_rows(parts)
@@ -740,19 +753,19 @@ def render_detailed_risk_rows(
     if not rows:
         st.caption("This BOM has no saved components.")
         return
-    header = st.columns([1.5, 1.05, 0.9, 0.55, 0.6, 0.75, 0.55, 0.7])
-    for column, label in zip(
-        header,
-        ("MPN", "Manufacturer", "Best source", "Suppliers", "Stock", "Lifecycle", "Risk score", "Risk level"),
-    ):
-        column.markdown(f"<div class='cv-ap-meta'>{label}</div>", unsafe_allow_html=True)
+
+    widths = [2.2, 1.1, 1.45, 1.15, 0.9]
+    header = st.columns(widths, vertical_alignment="center")
+    for column, label in zip(header, ("Component", "Manufacturer", "Supply", "Lifecycle", "Risk")):
+        column.markdown(f"<div class='cv-risk-grid-head'>{label}</div>", unsafe_allow_html=True)
+
     for index, row in enumerate(rows[:12]):
         is_open = row["mpn_raw"] == selected
         state = "open" if is_open else "shut"
         with st.container(key=f"cv_risk_{state}_{index}"):
-            cells = st.columns([1.5, 1.05, 0.9, 0.55, 0.6, 0.75, 0.55, 0.7], vertical_alignment="center")
+            cells = st.columns(widths, vertical_alignment="center")
             with cells[0]:
-                art_col, name_col = st.columns([0.42, 1.5], vertical_alignment="center")
+                art_col, name_col = st.columns([0.38, 1.62], vertical_alignment="center")
                 art_col.markdown(
                     f"<div class='cv-ei-part'>{_part_art(row['mpn_raw'], row['image'], part=row)}</div>",
                     unsafe_allow_html=True,
@@ -761,10 +774,7 @@ def render_detailed_risk_rows(
                     if st.button(
                         row["mpn_raw"],
                         key=f"cv_risk_expand_{index}",
-                        help=(
-                            f"Show risk drivers and the recommended action for {row['mpn_raw']}. "
-                            "Press Enter or Space."
-                        ),
+                        help=f"Show risk drivers and the recommended action for {row['mpn_raw']}.",
                     ):
                         st.session_state[selection_key] = "" if is_open else row["mpn_raw"]
                         st.rerun()
@@ -774,13 +784,15 @@ def render_detailed_risk_rows(
                             unsafe_allow_html=True,
                         )
             cells[1].markdown(row["manufacturer"])
-            cells[2].markdown(row["source"])
-            cells[3].markdown(str(row["suppliers"]))
-            cells[4].markdown(f"{row['stock']:,}")
-            cells[5].markdown(row["lifecycle"])
-            cells[6].markdown(str(row["score"]))
-            cells[7].markdown(
-                f"<span class='cv-pill {_level_class(row['level'])}'>{row['level']}</span>",
+            cells[2].markdown(
+                f"<strong>{row['source']}</strong>"
+                f"<div class='cv-ei-meta'>{row['suppliers']} supplier(s) · {row['stock']:,} in stock</div>",
+                unsafe_allow_html=True,
+            )
+            cells[3].markdown(row["lifecycle"])
+            cells[4].markdown(
+                f"<span class='cv-pill {_level_class(row['level'])}'>{row['level']}</span>"
+                f"<div class='cv-ei-meta'>Score {row['score']}</div>",
                 unsafe_allow_html=True,
             )
             if is_open:
@@ -802,11 +814,12 @@ def render_detailed_risk_rows(
                       <article class="cv-risk-card">
                         <div class="cv-ei-part">{_part_art(row['mpn_raw'], row['image'], part=row)}<span class="cv-ei-part-copy"><h3>{row['mpn']}</h3></span></div>
                         {recorded_description}
-                        <p>Manufacturer {row['manufacturer']}</p>
-                        <p>Best source {row['source']}</p>
-                        <p>Suppliers {row['suppliers']}</p>
-                        <p>Stock (total) {row['stock']:,}</p>
-                        <p>Lifecycle {row['lifecycle']}</p>
+                        <p><strong>Manufacturer</strong> {row['manufacturer']}</p>
+                        <p><strong>Best source</strong> {row['source']}</p>
+                        <p><strong>Supplier count</strong> {row['suppliers']}</p>
+                        <p><strong>Stock available</strong> {row['stock']:,}</p>
+                        <p><strong>Lifecycle</strong> {row['lifecycle']}</p>
+                        <p><strong>Risk score</strong> {row['score']}</p>
                       </article>
                       <div>
                         <article class="cv-risk-drivers"><h3>Risk drivers</h3><ul class="cv-ei-reasons">{reasons}</ul></article>
@@ -917,91 +930,94 @@ def render_engineering_intelligence_report(
     import streamlit as st
 
     st.markdown(report_styles(), unsafe_allow_html=True)
-    bom_name = str(analysis.get("project_name") or analysis.get("filename") or "Saved BOM")
-    detailed = bool(st.session_state.get("cadivor_show_detailed_risk"))
-    tab = str(st.session_state.get("cadivor_ei_report_tab") or "BOM Risk")
-    if not detailed:
-        title_col, tab_col = st.columns([0.9, 1.8], vertical_alignment="bottom")
-        with title_col:
-            st.markdown(
-                f"<div class='cv-ap'><p class='cv-ap-kicker'>{html.escape(bom_name)} · {len(parts or [])} components</p>"
-                "<h1>Engineering Intelligence</h1></div>",
-                unsafe_allow_html=True,
+    with st.container(key="ei_report_workspace"):
+        bom_name = str(analysis.get("project_name") or analysis.get("filename") or "Saved BOM")
+        detailed = bool(st.session_state.get("cadivor_show_detailed_risk"))
+        tab = str(st.session_state.get("cadivor_ei_report_tab") or "BOM Risk")
+        if not detailed:
+            title_col, tab_col = st.columns([0.9, 1.8], vertical_alignment="bottom")
+            with title_col:
+                st.markdown(
+                    f"<div class='cv-ap'><p class='cv-ap-kicker'>{html.escape(bom_name)} · {len(parts or [])} components</p>"
+                    "<h1>Engineering Intelligence</h1></div>",
+                    unsafe_allow_html=True,
+                )
+            with tab_col:
+                with st.container(key="cv_ei_report_tabs"):
+                    tab_buttons = st.columns(len(EI_TABS))
+                    for column, name in zip(tab_buttons, EI_TABS):
+                        slug = name.casefold().replace(" ", "-").replace("&", "and")
+                        if column.button(
+                            name,
+                            key=f"ei_tab_{slug}",
+                            type="tertiary",
+                        ):
+                            st.session_state["cadivor_ei_report_tab"] = name
+                            st.rerun()
+                active_slug = str(tab or "BOM Risk").casefold().replace(" ", "-").replace("&", "and")
+                st.markdown(
+                    f"""
+                    <style>
+                    html body section[data-testid="stMain"] .st-key-cv_ei_report_tabs .stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton) > button{{
+                      background:transparent!important;background-color:transparent!important;
+                      border:0!important;border-radius:0!important;box-shadow:none!important;color:#64748b!important;
+                      min-height:0!important;height:auto!important;min-width:0!important;width:auto!important;
+                      margin:0!important;padding:2px 10px 4px!important;line-height:1.15!important;white-space:nowrap!important
+                    }}
+                    html body section[data-testid="stMain"] .st-key-cv_ei_report_tabs .stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton) > button *{{
+                      margin:0!important;padding:0!important;line-height:1.15!important;border:0!important;box-shadow:none!important
+                    }}
+                    html body section[data-testid="stMain"] .st-key-cv_ei_report_tabs [class*="st-key-ei_tab_{active_slug}"].stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton) > button{{
+                      color:#1d4ed8!important;background:transparent!important;background-color:transparent!important;
+                      border-bottom:2px solid #2563eb!important;box-shadow:none!important;border-radius:0!important;
+                      padding:2px 10px 4px!important
+                    }}
+                    html body section[data-testid="stMain"] .st-key-cv_ei_report_tabs [class*="st-key-ei_tab_{active_slug}"].stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton) > button *{{
+                      color:#1d4ed8!important;border:0!important;box-shadow:none!important;padding:0!important;margin:0!important
+                    }}
+                    </style>
+                    """,
+                    unsafe_allow_html=True,
+                )
+        if st.session_state.get("cadivor_show_detailed_risk"):
+            if st.button("Back to Engineering Intelligence", key="ei_back_from_detailed_risk"):
+                st.session_state["cadivor_show_detailed_risk"] = False
+                st.rerun()
+            analyzed = str(analysis.get("created_at") or "saved analysis")
+            render_detailed_risk_rows(
+                bom_name=bom_name,
+                analyzed_on=analyzed,
+                parts=parts or [],
+                analysis_id=str(analysis.get("id") or ""),
             )
-        with tab_col:
-            with st.container(key="cv_ei_report_tabs"):
-                tab_buttons = st.columns(len(EI_TABS))
-                for column, name in zip(tab_buttons, EI_TABS):
-                    slug = name.casefold().replace(" ", "-").replace("&", "and")
-                    if column.button(
-                        name,
-                        key=f"ei_tab_{slug}",
-                        type="tertiary",
-                    ):
-                        st.session_state["cadivor_ei_report_tab"] = name
-                        st.rerun()
-            active_slug = str(tab or "BOM Risk").casefold().replace(" ", "-").replace("&", "and")
-            st.markdown(
-                f"""
-                <style>
-                html body section[data-testid="stMain"] .st-key-cv_ei_report_tabs .stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton) > button{{
-                  background:transparent!important;background-color:transparent!important;
-                  border:0!important;border-radius:0!important;box-shadow:none!important;color:#64748b!important;
-                  min-height:0!important;height:auto!important;min-width:0!important;width:auto!important;
-                  margin:0!important;padding:2px 10px 4px!important;line-height:1.15!important;white-space:nowrap!important
-                }}
-                html body section[data-testid="stMain"] .st-key-cv_ei_report_tabs .stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton) > button *{{
-                  margin:0!important;padding:0!important;line-height:1.15!important;border:0!important;box-shadow:none!important
-                }}
-                html body section[data-testid="stMain"] .st-key-cv_ei_report_tabs [class*="st-key-ei_tab_{active_slug}"].stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton) > button{{
-                  color:#1d4ed8!important;background:transparent!important;background-color:transparent!important;
-                  border-bottom:2px solid #2563eb!important;box-shadow:none!important;border-radius:0!important;
-                  padding:2px 10px 4px!important
-                }}
-                html body section[data-testid="stMain"] .st-key-cv_ei_report_tabs [class*="st-key-ei_tab_{active_slug}"].stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton) > button *{{
-                  color:#1d4ed8!important;border:0!important;box-shadow:none!important;padding:0!important;margin:0!important
-                }}
-                </style>
-                """,
-                unsafe_allow_html=True,
-            )
-    if st.session_state.get("cadivor_show_detailed_risk"):
-        if st.button("Back to Engineering Intelligence", key="ei_back_from_detailed_risk"):
-            st.session_state["cadivor_show_detailed_risk"] = False
-            st.rerun()
-        analyzed = str(analysis.get("created_at") or "saved analysis")
-        render_detailed_risk_rows(
-            bom_name=bom_name,
-            analyzed_on=analyzed,
-            parts=parts or [],
-            analysis_id=str(analysis.get("id") or ""),
-        )
-        try:
-            from src.ui.approved_pages import excel_bytes
+            try:
+                from src.ui.approved_pages import excel_bytes
 
-            st.download_button(
-                "Download Excel Report",
-                data=excel_bytes(parts or []),
-                file_name="detailed-risk-report.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                key="approved_detailed_risk_excel",
-            )
-        except Exception:
-            st.caption("Excel export is unavailable for this analysis.")
-        return
-    st.markdown(
-        engineering_intelligence_html(
-            bom_name=bom_name,
-            part_count=len(parts or []),
-            tab=str(tab or "BOM Risk"),
-            parts=parts or [],
-            alternatives=alternatives or [],
-            health_score=health_score,
-            include_heading=False,
-            analysis_id=str(analysis.get("id") or ""),
-        ),
-        unsafe_allow_html=True,
-    )
-    if st.button("Open detailed risk report", key="ei_open_detailed_risk"):
-        st.session_state["cadivor_show_detailed_risk"] = True
-        st.rerun()
+                st.download_button(
+                    "Download Excel Report",
+                    data=excel_bytes(parts or []),
+                    file_name="detailed-risk-report.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="approved_detailed_risk_excel",
+                )
+            except Exception:
+                st.caption("Excel export is unavailable for this analysis.")
+            return
+        st.markdown(
+            engineering_intelligence_html(
+                bom_name=bom_name,
+                part_count=len(parts or []),
+                tab=str(tab or "BOM Risk"),
+                parts=parts or [],
+                alternatives=alternatives or [],
+                health_score=health_score,
+                include_heading=False,
+                analysis_id=str(analysis.get("id") or ""),
+            ),
+            unsafe_allow_html=True,
+        )
+        analysis_id = str(analysis.get("id") or "")
+        if st.button("Open detailed risk report", key="ei_open_detailed_risk"):
+            st.session_state[f"cadivor_detailed_risk_mpn_{analysis_id or bom_name}"] = ""
+            st.session_state["cadivor_show_detailed_risk"] = True
+            st.rerun()
