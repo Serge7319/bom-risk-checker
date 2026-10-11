@@ -2400,8 +2400,9 @@ def run_authenticated_app() -> None:
             part_data = {
                 "mpn": part_number,
                 "lifecycle_status": "Unknown",
-                "stock_available": 0,
-                "supplier_count": 0,
+                "stock_total": None,
+                "total_market_stock": None,
+                "supplier_count": None,
                 "supplier_data_verified": False,
                 "provider_health": {
                     "has_verified_data": False,
@@ -2416,6 +2417,12 @@ def run_authenticated_app() -> None:
 
         except Exception:
             alternative_part_numbers = []
+            part_data["alternate_search_status"] = "Search unavailable"
+        else:
+            part_data["alternate_search_status"] = (
+                "Candidates returned" if alternative_part_numbers
+                else "No candidate returned; search coverage is not confirmed"
+            )
 
         part_data["has_alternates"] = len(alternative_part_numbers) > 0
         part_data["alternate_count"] = len(alternative_part_numbers)
@@ -2461,10 +2468,17 @@ def run_authenticated_app() -> None:
     def analyze_single_part(row):
         from src.risk_engine import calculate_risk
         from integrations.provider_health import unverified_supplier_reason_replacements
+        from integrations.stock_coercion import stock_evidence_note
         part_data = get_part_data(row)
         risk_result = calculate_risk(part_data)
         risk_reasons = list(risk_result["risk_reasons"])
-        supplier_verified = bool(part_data.get("supplier_data_verified", True))
+        supplier_verified = bool(part_data.get("supplier_data_verified", False))
+        if not bool(part_data.get("stock_data_complete", False)):
+            incomplete_inventory_reason = (
+                "Supplier inventory coverage is incomplete; BOM quantity coverage is not confirmed"
+            )
+            if incomplete_inventory_reason not in risk_reasons:
+                risk_reasons.append(incomplete_inventory_reason)
         if not supplier_verified:
             replacements = unverified_supplier_reason_replacements()
             risk_reasons = [replacements.get(reason, reason) for reason in risk_reasons]
@@ -2501,10 +2515,22 @@ def run_authenticated_app() -> None:
             ),
             "Quantity": row.get("quantity", 0),
             "Best Source": part_data.get("source", ""),
-            "Supplier Count": part_data.get("supplier_count", 0),
-            "Total Market Stock": part_data.get("total_market_stock", 0),
+            "Supplier Count": part_data.get("supplier_count"),
+            "Supplier Coverage": str(
+                (part_data.get("provider_health") or {}).get("summary_message")
+                or "Supplier data could not be verified during this analysis"
+            ),
+            "Total Market Stock": part_data.get("total_market_stock"),
             "Sources Available": part_data.get("sources_available", ""),
-            "Stock Available": part_data.get("stock_total", 0),
+            "Stock Available": part_data.get("total_market_stock") if part_data.get("total_market_stock") is not None else part_data.get("stock_total"),
+            "Stock Data Sources": list(part_data.get("stock_data_sources") or []),
+            "Stock Data Complete": bool(part_data.get("stock_data_complete")),
+            "Stock Evidence": stock_evidence_note(
+                part_data.get("total_market_stock") if part_data.get("total_market_stock") is not None else part_data.get("stock_total"),
+                part_data.get("stock_data_sources") or [],
+                complete=bool(part_data.get("stock_data_complete")),
+                matching_supplier_count=part_data.get("supplier_count"),
+            ),
             "Unit Price": (
                 part_data.get("unit_price")
                 or part_data.get("price")
@@ -2513,18 +2539,31 @@ def run_authenticated_app() -> None:
                 or 0
             ),
             "Lead Time Weeks": part_data.get("lead_time_weeks", None),
+            "Lead Time Source": part_data.get("lead_time_source", ""),
             "Lifecycle Status": part_data.get("lifecycle_status", "Unknown"),
+            "Lifecycle Evidence": list(part_data.get("lifecycle_evidence") or []),
+            "Lifecycle Evidence Summary": "; ".join(
+                f"{evidence.get('source')}: {evidence.get('status')}"
+                for evidence in (part_data.get("lifecycle_evidence") or [])
+                if isinstance(evidence, dict)
+            ),
+            "Lifecycle Conflict": bool(part_data.get("lifecycle_conflict")),
             "Product URL": part_data.get("product_detail_url", ""),
             "Supplier Offers": part_data.get("supplier_offers") or [],
             "Photo": part_data.get("image_url", ""),
             "Has Alternates": part_data.get("has_alternates", False),
             "Alternate Count": part_data.get("alternate_count", 0),
+            "Alternate Search Status": part_data.get("alternate_search_status", "Not checked"),
             "Alternative Part Numbers": part_data.get("alternative_part_numbers", ""),
             "Supplier Data Verified": supplier_verified,
             "Sourcing Updated At": part_data.get("retrieved_at") or part_data.get("updated_at") or None,
             "Risk Score": risk_result["risk_score"],
             "Risk Level": risk_result["risk_level"],
-            "Risk Reasons": "; ".join(risk_reasons) or "No major risk found",
+            "Risk Reasons": "; ".join(risk_reasons) or (
+                "Supplier evidence is insufficient to assign a risk score"
+                if risk_result["risk_level"] == "Needs verification"
+                else "No elevated risk indicators in the recorded evidence"
+            ),
         }
 
     def analyze_bom(df, progress_queue=None, cancel_event=None):
@@ -2565,19 +2604,29 @@ def run_authenticated_app() -> None:
                             "Description": "",
                             "Quantity": row.get("quantity", 0),
                             "Best Source": "",
-                            "Supplier Count": 0,
-                            "Total Market Stock": 0,
+                            "Supplier Count": None,
+                            "Supplier Coverage": "Supplier data could not be verified during this analysis",
+                            "Total Market Stock": None,
                             "Sources Available": "",
-                            "Stock Available": 0,
+                            "Stock Available": None,
+                            "Stock Data Sources": [],
+                            "Stock Data Complete": False,
                             "Lead Time Weeks": None,
+                            "Lead Time Source": "",
                             "Lifecycle Status": "Unknown",
+                            "Lifecycle Evidence": [],
+                            "Lifecycle Evidence Summary": "",
+                            "Lifecycle Conflict": False,
                             "Product URL": "",
                             "Has Alternates": False,
                             "Alternate Count": 0,
                             "Alternative Part Numbers": "",
-                            "Risk Score": 100,
-                            "Risk Level": "High",
-                            "Risk Reasons": f"Part analysis failed: {e}",
+                            "Alternate Search Status": "Search unavailable",
+                            "Risk Score": None,
+                            "Risk Level": "Needs verification",
+                            "Risk Reasons": f"Part analysis failed; risk could not be assessed: {e}",
+                            "Supplier Data Verified": False,
+                            "Sourcing Updated At": None,
                         }
                     )
 
@@ -2604,12 +2653,13 @@ def run_authenticated_app() -> None:
         medium_risk = (results_df["Risk Level"] == "Medium").sum()
         low_risk = (results_df["Risk Level"] == "Low").sum()
 
-        avg_risk_score = results_df["Risk Score"].mean()
-        bom_health_score = max(0, round(100 - avg_risk_score))
+        needs_verification = int((results_df["Risk Level"] == "Needs verification").sum())
+        health_data = calculate_bom_health_score(results_df)
+        health_score = health_data.get("health_score")
 
-        health_score = bom_health_score
-
-        if health_score >= 90:
+        if health_score is None:
+            health_status = "⚪ Needs verification"
+        elif health_score >= 90:
             health_status = "🟢 Excellent"
         elif health_score >= 75:
             health_status = "🟢 Healthy"
@@ -2624,12 +2674,14 @@ def run_authenticated_app() -> None:
 
         col1.metric(
             "BOM Health Score",
-            f"{health_score}/100",
+            f"{health_score}/100" if health_score is not None else "Not assessed",
             health_status,
         )
         col2.metric("Total Parts", total_parts)
         col3.metric("High Risk", high_risk)
         col4.metric("Medium Risk", medium_risk)
+        if needs_verification:
+            st.caption(f"Overall score withheld: supplier evidence is missing for {needs_verification} component(s).")
 
     
 
@@ -2639,7 +2691,7 @@ def run_authenticated_app() -> None:
 
         with col_a:
             st.subheader("Risk Breakdown")
-            risk_order = ["High", "Medium", "Low"]
+            risk_order = ["High", "Medium", "Low", "Needs verification"]
             risk_counts = (
                 results_df["Risk Level"]
                 .value_counts()
@@ -2699,45 +2751,43 @@ def run_authenticated_app() -> None:
 
         st.divider()
 
-        st.subheader("🚨 Top Critical Parts")
+        st.subheader("🚨 Highest Scored Components")
 
-        top_risks = results_df.sort_values(
-            by="Risk Score",
-            ascending=False
-        ).head(5)
+        top_risks = results_df[
+            results_df["Risk Level"].isin(["High", "Medium", "Low"])
+        ].sort_values(by="Risk Score", ascending=False).head(5)
 
-        cadivor_engineering_dataframe(
-            top_risks[
-                [
-                    "MPN",
-                    "Manufacturer",
-                    "Risk Score",
-                    "Risk Level",
-                    "Stock Available",
-                    "Supplier Count",
-                    "Risk Reasons",
-                ]
-            ].reset_index(drop=True),
-            column_config={
-                "MPN": st.column_config.TextColumn(width="medium"),
-                "Risk Score": st.column_config.NumberColumn(format="%d"),
-                "Stock Available": st.column_config.NumberColumn(format="%,d"),
-                "Supplier Count": st.column_config.NumberColumn(format="%d"),
-            },
-        )
+        if top_risks.empty:
+            st.info("No component has enough supplier evidence for a risk score yet.")
+        else:
+            cadivor_engineering_dataframe(
+                top_risks[
+                    [
+                        "MPN",
+                        "Manufacturer",
+                        "Risk Score",
+                        "Risk Level",
+                        "Stock Available",
+                        "Supplier Count",
+                        "Risk Reasons",
+                    ]
+                ].reset_index(drop=True),
+                column_config={
+                    "MPN": st.column_config.TextColumn(width="medium"),
+                    "Risk Score": st.column_config.NumberColumn(format="%d"),
+                    "Stock Available": st.column_config.NumberColumn(format="%,d"),
+                    "Supplier Count": st.column_config.NumberColumn(format="%d"),
+                },
+            )
         st.divider()
 
         st.subheader("✅ Recommended Actions")
 
         recommended_actions = []
 
-        single_source_count = len(
-            results_df[results_df["Supplier Count"] <= 1]
-        )
-
-        no_stock_count = len(
-            results_df[results_df["Stock Available"] == 0]
-        )
+        verified_rows = results_df[results_df["Supplier Data Verified"].fillna(False).astype(bool)]
+        single_source_count = int((pd.to_numeric(verified_rows["Supplier Count"], errors="coerce") == 1).sum())
+        no_stock_count = int((pd.to_numeric(verified_rows["Stock Available"], errors="coerce") == 0).sum())
 
         unknown_lifecycle_count = len(
             results_df[
@@ -2762,12 +2812,12 @@ def run_authenticated_app() -> None:
 
         if no_stock_count > 0:
             recommended_actions.append(
-                f"📦 {no_stock_count} parts currently have no available stock. Procurement escalation recommended."
+                f"📦 Checked suppliers reported zero on-hand stock for {no_stock_count} part(s). Confirm availability and timing with the suppliers."
             )
 
         if single_source_count > 0:
             recommended_actions.append(
-                f"⚠️ {single_source_count} parts rely on a single supplier. Evaluate secondary sourcing options."
+                f"⚠️ Only one checked supplier lists {single_source_count} part(s). Evaluate secondary sourcing options."
             )
 
         if unknown_lifecycle_count > 0:
@@ -2797,7 +2847,11 @@ def run_authenticated_app() -> None:
         summary_parts = []
 
         summary_parts.append(
-            f"This BOM contains {total_parts} components with an overall health score of {health_score}/100, classified as {health_status}."
+            (
+                f"This BOM contains {total_parts} components with an overall health score of {health_score}/100, classified as {health_status}."
+                if health_score is not None
+                else f"This BOM contains {total_parts} components. Overall health is not assessed because supplier evidence is incomplete."
+            )
         )
 
         if high_risk > 0:
@@ -2835,6 +2889,8 @@ def run_authenticated_app() -> None:
             return "🟡 Medium"
         elif level == "Low":
             return "🟢 Low"
+        elif level == "Needs verification":
+            return "⚪ Needs verification"
         return "⚪ Unknown"
 
 
@@ -6575,7 +6631,7 @@ def run_authenticated_app() -> None:
         from datetime import datetime, timezone
         from src.procurement_advisor import (
             apply_sourcing_override,
-            build_procurement_advisor,
+            build_procurement_advisor as build_procurement_advisor_for_page,
             normalize_sourcing_override,
             persist_sourcing_update,
             procurement_header_html,
@@ -6609,7 +6665,7 @@ def run_authenticated_app() -> None:
             scoped_parts.append(apply_sourcing_override(part))
         pa_parts = scoped_parts
 
-        advisor = build_procurement_advisor(
+        advisor = build_procurement_advisor_for_page(
             analyses=pa_analyses,
             parts=pa_parts,
             alerts=[],
@@ -9264,7 +9320,7 @@ def run_authenticated_app() -> None:
 
             project = _report_value(analysis_row, "project_name", "name", default="Saved BOM")
             filename = _report_value(analysis_row, "filename", "uploaded_file", "file_name", default="—")
-            health = _report_int(_report_value(analysis_row, "health_score", default=0))
+            health = _report_int(_report_value(analysis_row, "health_score", default=None), default=None)
             high_risk = _report_int(_report_value(analysis_row, "high_risk_count", "high_risk_parts", default=0))
             medium_risk = _report_int(_report_value(analysis_row, "medium_risk_count", "medium_risk_parts", default=0))
             total_parts = _report_int(_report_value(analysis_row, "total_parts", "part_count", "parts_count", default=len(parts_df)))
@@ -9278,7 +9334,7 @@ def run_authenticated_app() -> None:
             summary_table = Table(
                 [
                     ["Health Score", "Total Parts", "High Risk", "Medium Risk"],
-                    [str(health), str(total_parts), str(high_risk), str(medium_risk)],
+                    [str(health) if health is not None else "Not assessed", str(total_parts), str(high_risk), str(medium_risk)],
                 ],
                 colWidths=[115, 115, 115, 115],
             )
@@ -9323,7 +9379,9 @@ def run_authenticated_app() -> None:
                 story.append(Paragraph(report_sections["supporting_evidence"].replace("\n", "<br/>"), styles["CadivorReportBody"]))
                 story.append(Spacer(1, 16))
             else:
-                if health >= 80:
+                if health is None:
+                    recommendation = "Supplier evidence is incomplete. Verify current distributor data before relying on a readiness assessment."
+                elif health >= 80:
                     recommendation = "Portfolio health is strong. Continue lifecycle and supplier monitoring."
                 elif health >= 60:
                     recommendation = "Review elevated-risk parts and validate supplier coverage before release."
@@ -9792,7 +9850,8 @@ def run_authenticated_app() -> None:
                 )
             )
             health_score = _report_int(
-                _report_value(selected_analysis, "health_score", default=0)
+                _report_value(selected_analysis, "health_score", default=None),
+                default=None,
             )
             high_risk = _report_int(
                 _report_value(
@@ -9845,35 +9904,50 @@ def run_authenticated_app() -> None:
                         return frame[name]
                 return pd.Series([default] * len(frame), index=frame.index)
 
+            def _known_report_number(value):
+                """Return a recorded numeric value, preserving missing evidence as None."""
+                try:
+                    number = pd.to_numeric(value, errors="coerce")
+                    return None if pd.isna(number) else float(number)
+                except (TypeError, ValueError):
+                    return None
+
             def _risk_action(row: pd.Series) -> str:
                 lifecycle = str(row.get("lifecycle_status", "")).lower()
-                stock = float(pd.to_numeric(row.get("stock_available", 0), errors="coerce") or 0)
-                suppliers = float(pd.to_numeric(row.get("supplier_count", 0), errors="coerce") or 0)
-                score = float(pd.to_numeric(row.get("risk_score", 0), errors="coerce") or 0)
+                risk_level = str(row.get("risk_level", "")).strip().casefold()
+                stock = _known_report_number(row.get("stock_available"))
+                suppliers = _known_report_number(row.get("supplier_count"))
+                score = _known_report_number(row.get("risk_score"))
                 if any(term in lifecycle for term in ("obsolete", "eol", "replacement", "nrnd", "not recommended")):
                     return "Qualify a replacement before production"
-                if stock <= 0:
+                if risk_level in {"unknown", "needs verification", ""}:
+                    return "Verify supplier evidence before release"
+                if stock is not None and stock <= 0:
                     return "Resolve supply gap or approve substitute"
-                if suppliers <= 1:
+                if suppliers is not None and suppliers <= 1:
                     return "Approve a second source"
-                if score >= 60:
+                if score is not None and score >= 60:
                     return "Complete engineering review before release"
-                if score >= 30:
+                if score is not None and score >= 30:
                     return "Review during current design revision"
+                if score is None or stock is None or suppliers is None:
+                    return "Verify supplier evidence before release"
                 return "Continue controlled monitoring"
 
             def _procurement_status(row: pd.Series) -> str:
-                stock = float(pd.to_numeric(row.get("stock_available", 0), errors="coerce") or 0)
-                suppliers = float(pd.to_numeric(row.get("supplier_count", 0), errors="coerce") or 0)
-                lead = float(pd.to_numeric(row.get("lead_time_weeks", 0), errors="coerce") or 0)
-                if stock <= 0:
+                stock = _known_report_number(row.get("stock_available"))
+                suppliers = _known_report_number(row.get("supplier_count"))
+                lead = _known_report_number(row.get("lead_time_weeks"))
+                if stock is not None and stock <= 0:
                     return "Immediate sourcing action"
-                if suppliers <= 1:
+                if suppliers is not None and suppliers <= 1:
                     return "Single-source exposure"
-                if lead >= 12:
+                if lead is not None and lead >= 12:
                     return "Long lead time"
-                if stock < 500:
+                if stock is not None and stock < 500:
                     return "Low stock coverage"
+                if stock is None or suppliers is None:
+                    return "Needs supplier verification"
                 return "Purchasing ready"
 
             def _lifecycle_priority(status: str) -> str:
@@ -9888,31 +9962,29 @@ def run_authenticated_app() -> None:
 
             def _risk_flag(row: pd.Series) -> str:
                 level = str(row.get("risk_level", "") or "").strip().lower()
-                score = float(
-                    pd.to_numeric(row.get("risk_score", 0), errors="coerce") or 0
-                )
-                if level in {"critical", "high"} or score >= 50:
+                score = _known_report_number(row.get("risk_score"))
+                if level in {"critical", "high"} or (score is not None and score >= 50):
                     return "High risk"
-                if level in {"medium", "moderate"} or score >= 25:
+                if level in {"medium", "moderate"} or (score is not None and score >= 25):
                     return "Medium risk"
+                if level in {"unknown", "needs verification", ""} or score is None:
+                    return "Needs verification"
                 return "—"
 
             def _sourcing_flags(row: pd.Series) -> str:
-                stock = float(
-                    pd.to_numeric(row.get("stock_available", 0), errors="coerce") or 0
-                )
-                suppliers = float(
-                    pd.to_numeric(row.get("supplier_count", 0), errors="coerce") or 0
-                )
-                lead = float(
-                    pd.to_numeric(row.get("lead_time_weeks", 0), errors="coerce") or 0
-                )
+                stock = _known_report_number(row.get("stock_available"))
+                suppliers = _known_report_number(row.get("supplier_count"))
+                lead = _known_report_number(row.get("lead_time_weeks"))
                 flags = []
-                if stock <= 0:
+                if stock is not None and stock <= 0:
                     flags.append("No stock")
-                if suppliers <= 1:
+                elif stock is None:
+                    flags.append("Inventory not verified")
+                if suppliers is not None and suppliers <= 1:
                     flags.append("Limited sources")
-                if lead >= 12:
+                elif suppliers is None:
+                    flags.append("Supplier count not verified")
+                if lead is not None and lead >= 12:
                     flags.append("Long lead")
                 return " · ".join(flags) if flags else "—"
 
@@ -9951,9 +10023,9 @@ def run_authenticated_app() -> None:
                     "Unknown",
                 )
                 role_source["risk_score"] = pd.to_numeric(
-                    _first_existing(role_source, ["risk_score", "Risk Score"], 0),
+                    _first_existing(role_source, ["risk_score", "Risk Score"], None),
                     errors="coerce",
-                ).fillna(0)
+                )
                 role_source["risk_reasons"] = _first_existing(
                     role_source,
                     ["risk_reasons", "Risk Explanation"],
@@ -9968,18 +10040,18 @@ def run_authenticated_app() -> None:
                     _first_existing(
                         role_source,
                         ["stock_available", "Stock Available", "stock"],
-                        0,
+                        None,
                     ),
                     errors="coerce",
-                ).fillna(0)
+                )
                 role_source["supplier_count"] = pd.to_numeric(
                     _first_existing(
                         role_source,
                         ["supplier_count", "Supplier Count"],
-                        0,
+                        None,
                     ),
                     errors="coerce",
-                ).fillna(0)
+                )
                 role_source["primary_supplier"] = _first_existing(
                     role_source,
                     ["supplier", "primary_supplier", "best_source", "Supplier"],
@@ -9989,30 +10061,69 @@ def run_authenticated_app() -> None:
                     _first_existing(
                         role_source,
                         ["unit_price", "Unit Price"],
-                        0,
+                        None,
                     ),
                     errors="coerce",
-                ).fillna(0)
+                )
                 role_source["lead_time_weeks"] = pd.to_numeric(
                     _first_existing(
                         role_source,
                         ["lead_time_weeks", "Lead Time Weeks", "lead_time"],
-                        0,
+                        None,
                     ),
                     errors="coerce",
-                ).fillna(0)
-
-                role_source["Engineering Priority"] = role_source["risk_score"].apply(
-                    lambda value: (
-                        "Immediate"
-                        if value >= 75
-                        else "High"
-                        if value >= 50
-                        else "Moderate"
-                        if value >= 25
-                        else "Routine"
-                    )
                 )
+
+                # Older and partial analyses can contain zero defaults. Honor
+                # the persisted provenance flags before building report claims.
+                verified_column = next(
+                    (name for name in ("supplier_data_verified", "Supplier Data Verified") if name in role_source.columns),
+                    None,
+                )
+                if verified_column:
+                    unverified = ~role_source[verified_column].fillna(False).astype(bool)
+                    role_source.loc[
+                        unverified,
+                        ["stock_available", "supplier_count", "lead_time_weeks", "unit_price"],
+                    ] = float("nan")
+                    needs_check = unverified & role_source["risk_level"].astype(str).str.casefold().isin(
+                        {"", "unknown", "low", "needs verification"}
+                    )
+                    role_source.loc[needs_check, "risk_level"] = "Needs verification"
+                    role_source.loc[needs_check, "risk_score"] = float("nan")
+
+                complete_column = next(
+                    (name for name in ("stock_data_complete", "Stock Data Complete") if name in role_source.columns),
+                    None,
+                )
+                if complete_column:
+                    incomplete_stock = ~role_source[complete_column].fillna(False).astype(bool)
+                    role_source.loc[incomplete_stock, "stock_available"] = float("nan")
+                    needs_check = incomplete_stock & role_source["risk_level"].astype(str).str.casefold().isin(
+                        {"", "unknown", "low", "needs verification"}
+                    )
+                    role_source.loc[needs_check, "risk_level"] = "Needs verification"
+                    role_source.loc[needs_check, "risk_score"] = float("nan")
+
+                needs_verification = role_source["risk_level"].astype(str).str.casefold().eq("needs verification")
+                role_source.loc[
+                    needs_verification
+                    & role_source["risk_reasons"].astype(str).str.strip().isin({"", "No specific exception recorded", "nan"}),
+                    "risk_reasons",
+                ] = "Supplier evidence is incomplete; risk could not be fully assessed"
+
+                def _engineering_priority(value):
+                    if pd.isna(value):
+                        return "Needs verification"
+                    if value >= 75:
+                        return "Immediate"
+                    if value >= 50:
+                        return "High"
+                    if value >= 25:
+                        return "Moderate"
+                    return "Routine"
+
+                role_source["Engineering Priority"] = role_source["risk_score"].apply(_engineering_priority)
                 role_source["Recommended Action"] = role_source.apply(
                     _risk_action,
                     axis=1,
@@ -10436,7 +10547,8 @@ def run_authenticated_app() -> None:
                 report_evidence_df["Stock"] = report_evidence_df["stock_available"]
                 report_evidence_df["Supplier Count"] = report_evidence_df["supplier_count"]
             report_health_score = _report_int(
-                _report_value(selected_analysis, "health_score", default=0)
+                _report_value(selected_analysis, "health_score", default=None),
+                default=None,
             )
             evidence_columns = [
                 column for column in (
@@ -20546,9 +20658,11 @@ def run_authenticated_app() -> None:
                 total_parts = len(results_df)
 
                 health_data = calculate_bom_health_score(results_df)
-                health_score = health_data["health_score"]
+                health_score = health_data.get("health_score")
 
-                if health_score >= 90:
+                if health_score is None:
+                    health_status = "⚪ Needs verification"
+                elif health_score >= 90:
                     health_status = "🟢 Excellent"
                 elif health_score >= 75:
                     health_status = "🟢 Healthy"
@@ -20625,18 +20739,19 @@ def run_authenticated_app() -> None:
                             "category": str(part_row.get("Category") or "").strip() or None,
                             "supplier_data_verified": bool(part_row.get("Supplier Data Verified", False)),
                             "sourcing_updated_at": part_row.get("Sourcing Updated At") or None,
-                            "risk_score": part_row.get("Risk Score", 0),
+                            "risk_score": _json_safe_optional_number(part_row.get("Risk Score")),
                             "risk_level": part_row.get("Risk Level", ""),
                             "risk_reasons": part_row.get("Risk Reasons", ""),
                             "lifecycle_status": part_row.get("Lifecycle Status", ""),
-                            "stock_available": _json_safe_number(
-                                part_row.get("Stock Available", 0),
-                                default=0,
-                            ),
-                            "supplier_count": _json_safe_number(
-                                part_row.get("Supplier Count", 0),
-                                default=0,
-                            ),
+                            "stock_available": _json_safe_optional_number(part_row.get("Stock Available")),
+                            "supplier_count": _json_safe_optional_number(part_row.get("Supplier Count")),
+                            "supplier_coverage": str(part_row.get("Supplier Coverage") or "").strip() or None,
+                            "stock_data_sources": part_row.get("Stock Data Sources") or [],
+                            "stock_data_complete": bool(part_row.get("Stock Data Complete", False)),
+                            "lifecycle_evidence": part_row.get("Lifecycle Evidence") or [],
+                            "lifecycle_conflict": bool(part_row.get("Lifecycle Conflict", False)),
+                            "lead_time_source": str(part_row.get("Lead Time Source") or "").strip() or None,
+                            "alternate_search_status": str(part_row.get("Alternate Search Status") or "").strip() or None,
                             "quantity": cost_fields["quantity"],
                             "unit_price": cost_fields["unit_price"],
                             "primary_supplier": cost_fields["primary_supplier"],
@@ -20867,13 +20982,16 @@ def run_authenticated_app() -> None:
                     total_parts=len(results_df),
                     high_count=_high,
                     medium_count=_medium,
-                    health_score=int(st.session_state.get("health_score", 0) or 0),
+                    health_score=st.session_state.get("health_score"),
                     analysis_id=str(st.session_state.get("analysis_id")),
+                    needs_verification_count=int(
+                        (results_df["Risk Level"] == "Needs verification").sum()
+                    ),
                 )
 
             render_first_analysis_brief(
                 results_df,
-                health_score=int(st.session_state.get("health_score", 0) or 0),
+                health_score=st.session_state.get("health_score"),
                 analysis_id=str(st.session_state.get("analysis_id") or "") or None,
                 project_name=analysis_name or "BOM analysis",
             )
@@ -20885,7 +21003,7 @@ def run_authenticated_app() -> None:
             if decision_brief is None:
                 decision_brief = build_engineering_decision_brief(
                     results_df=results_df,
-                    health_score=int(st.session_state.get("health_score", 0) or 0),
+                    health_score=st.session_state.get("health_score"),
                 )
                 cache_decision_brief(decision_cache_key, decision_brief)
             with st.expander("Engineering decisions and recommendations", expanded=False):
@@ -20902,7 +21020,7 @@ def run_authenticated_app() -> None:
 
             risk_filter = st.selectbox(
                 "Filter by risk level",
-                ["All", "High", "Medium", "Low"],
+                ["All", "High", "Medium", "Low", "Needs verification"],
                 key="bom81_detailed_risk_filter",
             )
 
@@ -20930,11 +21048,13 @@ def run_authenticated_app() -> None:
 
                 risk_reasons = []
 
-                if row["Stock Available"] == 0:
-                    risk_reasons.append("No stock available")
+                stock_value = row.get("Stock Available")
+                if bool(row.get("Supplier Data Verified", False)) and pd.notna(stock_value) and float(stock_value) == 0:
+                    risk_reasons.append("No on-hand stock was reported by the checked suppliers")
 
-                if row["Supplier Count"] <= 1:
-                    risk_reasons.append("Single-source supplier")
+                supplier_count_value = row.get("Supplier Count")
+                if pd.notna(supplier_count_value) and int(supplier_count_value) == 1:
+                    risk_reasons.append("Only one checked supplier lists this part")
 
                 lifecycle_text = str(row["Lifecycle Status"]).lower()
 
@@ -20942,13 +21062,15 @@ def run_authenticated_app() -> None:
                     risk_reasons.append("Component marked obsolete")
 
                 if "unknown" in lifecycle_text:
-                    risk_reasons.append("Unknown lifecycle status")
+                    risk_reasons.append("Lifecycle status was not reported by the matched supplier")
+                if "conflicting" in lifecycle_text:
+                    risk_reasons.append("Matched suppliers returned conflicting lifecycle statuses")
 
                 if "replacement" in lifecycle_text:
                     risk_reasons.append("Replacement suggested")
 
                 with st.expander(
-                    f"{row['MPN']} — {row['Risk Level']} Risk"
+                    f"{row['MPN']} — {row['Risk Level']}"
                 ):
 
                     if risk_reasons:
@@ -20967,8 +21089,12 @@ def run_authenticated_app() -> None:
                     with col1:
                         st.write(f"**Manufacturer:** {row.get('Manufacturer', '')}")
                         st.write(f"**Lifecycle Status:** {row.get('Lifecycle Status', '')}")
-                        st.write(f"**Stock Available:** {row.get('Stock Available', 0)}")
-                        st.write(f"**Supplier Count:** {row.get('Supplier Count', 0)}")
+                        st.write(f"**Stock Available:** {row.get('Stock Available') if pd.notna(row.get('Stock Available')) else 'Not reported'}")
+                        st.write(f"**Stock Evidence:** {row.get('Stock Evidence', 'Not reported by matched suppliers')}")
+                        st.write(f"**Supplier Count:** {row.get('Supplier Count') if pd.notna(row.get('Supplier Count')) else 'Not verified'}")
+                        st.write(f"**Supplier Coverage:** {row.get('Supplier Coverage') or 'Not reported'}")
+                        st.write(f"**Lead Time Source:** {row.get('Lead Time Source') or 'Not reported'}")
+                        st.write(f"**Lifecycle Evidence:** {row.get('Lifecycle Evidence Summary') or 'Not reported'}")
                         st.write(
                             f"**Available Suppliers:** "
                             f"{row.get('Sources Available', '') or 'Not available'}"
@@ -20979,7 +21105,7 @@ def run_authenticated_app() -> None:
                         st.write(f"**Risk Level:** {row.get('Risk Level', '')}")
                         has_alternates = row.get("Has Alternates", False)
                         st.write(
-                            f"**Has Alternates:** {'✅ Yes' if has_alternates else '❌ No'}"
+                            f"**Alternate search:** {row.get('Alternate Search Status') or ('Candidates returned' if has_alternates else 'Not checked')}"
                         )
 
                     st.write("**Risk Reasons:**")
@@ -20989,7 +21115,10 @@ def run_authenticated_app() -> None:
                         st.write("**Candidate Alternatives:**")
                         st.success(row.get("Alternative Part Numbers", ""))
                     else:
-                        st.write("**Candidate Alternatives:** None found")
+                        st.write(
+                            "**Candidate Alternatives:** No candidates were returned. "
+                            "Search coverage may be incomplete; review the part in Find a replacement."
+                        )
 
                     if row.get("Product URL", ""):
                         st.markdown(f"[🔗 Open supplier product page]({row.get('Product URL')})")
