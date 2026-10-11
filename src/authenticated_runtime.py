@@ -6384,52 +6384,6 @@ def run_authenticated_app() -> None:
             _safe_text(row.get("part_number"), "").upper() == str(impact_mpn).upper()
             for row in impact_decision_rows
         )
-        from src.ui.approved_pages import impact_map_html, render_simple_workspace
-
-        focus = next((part for part in (impact_parts or []) if isinstance(part, dict)), {})
-        focus_name = str(focus.get("mpn") or focus.get("part_number") or "Component")
-        supplier_name = str(focus.get("manufacturer") or focus.get("best_source") or "")
-        lifecycle_name = str(focus.get("lifecycle_status") or "")
-        render_simple_workspace(
-                kicker="DESIGN IMPACT",
-                title="Design impact",
-                subtitle="Understand how changes to a component affect your projects, BOMs and supply chain.",
-                kpis=[
-                    ("Affected projects", str(len(impact_analyses or []))),
-                    ("Focus part risk", str(focus.get("risk_score") or "—")),
-                    ("Available stock", str(focus.get("stock_available") or "—")),
-                    ("Supplier sources", str(focus.get("supplier_count") or "—")),
-                    ("Lifecycle status", lifecycle_name or "Unknown"),
-                ],
-                headers=["Project", "BOM", "Usage", "Design phase", "Impact"],
-                table_rows=[
-                    [
-                        str(row.get("project_name") or "Project"),
-                        str(row.get("filename") or "BOM"),
-                        str(row.get("total_parts") or "—"),
-                        "Saved",
-                        str(row.get("high_risk_count") or "—"),
-                    ]
-                    for row in (impact_analyses or [])[:6]
-                    if isinstance(row, dict)
-                ],
-                legacy_page="Design Impact Analyzer",
-                legacy_label="Start impact review",
-                lead_html=impact_map_html(
-                    part=focus_name,
-                    projects=[
-                        (
-                            str(row.get("project_name") or ""),
-                            str(row.get("filename") or ""),
-                        )
-                        for row in (impact_analyses or [])[:6]
-                        if isinstance(row, dict)
-                    ],
-                    supplier=supplier_name,
-                    supplier_count=str(focus.get("supplier_count") or ""),
-                    lifecycle=lifecycle_name,
-                ),
-            )
 
         render_design_impact(
             intelligence=impact_intelligence,
@@ -6438,6 +6392,11 @@ def run_authenticated_app() -> None:
             return_section=impact_return_section,
             has_monitoring=has_impact_monitoring,
             has_decision=has_impact_decision,
+            review_started=bool(
+                requested_impact_mpn
+                and str(requested_impact_mpn).strip().casefold()
+                == str(impact_mpn).strip().casefold()
+            ),
         )
         stop_authenticated_page()
 

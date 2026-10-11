@@ -357,6 +357,7 @@ def render_design_impact(
     return_section: str = "Components",
     has_monitoring: bool = False,
     has_decision: bool = False,
+    review_started: bool = False,
 ) -> None:
     _css()
 
@@ -364,7 +365,7 @@ def render_design_impact(
     cadivor_section_header(
         "Design Impact",
         eyebrow="Where used",
-        description="See which saved BOMs use this part before you approve a change.",
+        description="Select a part to see where it is used across saved BOMs and review its recorded risk, lifecycle, inventory, and supplier evidence.",
         icon="git-compare-arrows",
     )
 
@@ -382,20 +383,46 @@ def render_design_impact(
 
     options = intelligence["available_mpns"]
     if not options:
-        st.info("No component records are available for impact analysis.")
+        st.info("No component records are available yet. Upload and analyze a BOM to start a design impact review.")
+        internal_nav_button(
+            "Upload a BOM",
+            "BOM Analyzer",
+            key="impact_upload_bom",
+            type="primary",
+            use_container_width=True,
+            new_analysis="1",
+        )
         return
 
     current = intelligence["selected_mpn"]
-    selected = st.selectbox(
-        "Component to analyze",
-        options,
-        index=options.index(current) if current in options else 0,
-        key="design_impact_component",
-    )
+    if st.session_state.get("design_impact_component") != current:
+        st.session_state["design_impact_component"] = current
 
-    if selected != current:
+    with st.form("design_impact_review_form"):
+        selected = st.selectbox(
+            "Select a component",
+            options,
+            index=options.index(current) if current in options else 0,
+            key="design_impact_component",
+        )
+        review_submitted = st.form_submit_button(
+            "Update impact review" if review_started else "Start impact review",
+            type="primary",
+            use_container_width=True,
+        )
+
+    if review_submitted:
         st.session_state["design_impact_mpn"] = selected
         st.rerun()
+
+    if not review_started:
+        st.caption(
+            "Choose a saved BOM component, then start the review to see its cross-project impact."
+        )
+        st.caption(
+            "This review uses BOM and supply evidence. It does not inspect PCB layouts, schematics, firmware, or test plans."
+        )
+        return
 
     from src.part_images import part_image_markup
     selected_photo_markup = part_image_markup(

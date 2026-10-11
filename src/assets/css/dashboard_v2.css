@@ -956,8 +956,8 @@ section[data-testid="stMain"]:has(.cv-dashboard-page) {
 
 .cv-home-steps ol {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: clamp(10px, 1vw, 16px);
   margin: 0;
   padding: 0;
   list-style: none;
