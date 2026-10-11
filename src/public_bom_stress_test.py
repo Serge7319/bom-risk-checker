@@ -17,6 +17,7 @@ from typing import Any
 
 import pandas as pd
 
+from integrations.stock_coercion import parse_stock_total, stock_evidence_note
 from src.normalizer import normalize_part_number
 from src.secrets import get_secret
 
@@ -107,12 +108,14 @@ def parse_bom(filename: str, payload: bytes) -> list[dict[str, Any]]:
         "manufacturer part number": "mpn", "manufacturer_part_number": "mpn",
         "mfr part number": "mpn", "mfr_part_number": "mpn",
         "qty": "quantity", "quantity": "quantity",
+        "manufacturer": "manufacturer", "mfr": "manufacturer", "mfg": "manufacturer",
     }
     columns = {column: aliases.get(str(column).strip().lower().replace("_", " "), str(column).strip().lower()) for column in frame.columns}
     frame = frame.rename(columns=columns)
     if "mpn" not in frame.columns or "quantity" not in frame.columns or frame.columns.duplicated().any():
         raise StressTestError("Include one manufacturer part number (MPN) and one quantity column.")
     rows = []
+    has_manufacturer_column = "manufacturer" in frame.columns
     for _, row in frame.iterrows():
         mpn = str(row["mpn"] or "").strip()
         if (not mpn or mpn.lower() == "nan" or
@@ -125,7 +128,11 @@ def parse_bom(filename: str, payload: bytes) -> list[dict[str, Any]]:
             raise StressTestError("Every row needs a whole-number quantity.") from None
         if quantity < 1 or quantity > 1_000_000:
             raise StressTestError("Every row needs a quantity between 1 and 1,000,000.")
-        rows.append({"mpn": mpn, "quantity": quantity})
+        parsed = {"mpn": mpn, "quantity": quantity}
+        if has_manufacturer_column:
+            manufacturer = str(row.get("manufacturer", "") or "").strip()
+            parsed["manufacturer"] = "" if manufacturer.lower() == "nan" else manufacturer
+        rows.append(parsed)
     return rows
 
 
@@ -155,7 +162,6 @@ def _reserve(ip_hash: str) -> str:
 
 def _enrich_one(index: int, row: dict[str, Any]) -> tuple[int, dict[str, Any]]:
     from integrations.supplier_aggregator import get_best_part_data
-    from integrations.stock_coercion import coerce_stock_total
     from src.risk_engine import calculate_risk
 
     part = get_best_part_data(row["mpn"])
@@ -167,22 +173,50 @@ def _enrich_one(index: int, row: dict[str, Any]) -> tuple[int, dict[str, Any]]:
     except (TypeError, ValueError):
         lead_time = None
     try:
-        supplier_count = int(part.get("supplier_count") or 0) if verified else None
+        supplier_count = int(part.get("supplier_count")) if verified and part.get("supplier_count") is not None else None
     except (TypeError, ValueError):
-        supplier_count = 0 if verified else None
-    stock = coerce_stock_total(part.get("total_market_stock") or part.get("stock_total")) if verified else None
+        supplier_count = None
+    raw_stock = part.get("total_market_stock")
+    if raw_stock in (None, ""):
+        raw_stock = part.get("stock_total")
+    stock = parse_stock_total(raw_stock) if verified else None
     risk = calculate_risk({
         **part, "quantity": row["quantity"], "stock_total": stock,
         "supplier_count": supplier_count, "lead_time_weeks": lead_time,
     }) if verified else {}
     return index, {
         "mpn": row["mpn"], "quantity": row["quantity"],
+        "manufacturer": str(part.get("manufacturer") or "") if verified else "",
+        "matched_mpn": str(part.get("manufacturer_part_number") or "") if verified else "",
+        "description": str(part.get("description") or "") if verified else "",
         "lifecycle": str(part.get("lifecycle_status") or "Unknown") if verified else "Unverified",
         "stock": stock,
+        "stock_sources": list(part.get("stock_data_sources") or []) if verified else [],
+        "stock_data_complete": bool(part.get("stock_data_complete")) if verified else False,
+        "stock_evidence": stock_evidence_note(
+            stock,
+            part.get("stock_data_sources") or [],
+            complete=bool(part.get("stock_data_complete")),
+            matching_supplier_count=supplier_count,
+        ) if verified else "Not reported by matched suppliers",
         "lead_time_weeks": lead_time,
+        "lead_time_source": str(part.get("lead_time_source") or part.get("source") or "") if verified and lead_time is not None else "",
         "supplier_count": supplier_count,
         "sources": str(part.get("sources_available") or part.get("source") or "")[:100] if verified else "",
+        "supplier_coverage": str(
+            (part.get("provider_health") or {}).get("summary_message")
+            or "Supplier data could not be verified during this analysis"
+        ) if verified else "Supplier data could not be verified during this analysis",
+        "lifecycle_evidence": list(part.get("lifecycle_evidence") or []) if verified else [],
+        "lifecycle_evidence_summary": "; ".join(
+            f"{evidence.get('source')}: {evidence.get('status')}"
+            for evidence in (part.get("lifecycle_evidence") or [])
+            if isinstance(evidence, dict)
+        ) if verified else "",
+        "lifecycle_conflict": bool(part.get("lifecycle_conflict")) if verified else False,
+        "checked_at": str(part.get("retrieved_at") or "") if verified else "",
         "risk": str(risk.get("risk_level") or "Needs verification"),
+        "alternate_search_status": "Not checked in the free audit",
         "risk_reasons": [str(reason) for reason in (risk.get("risk_reasons") or [])],
         "verified": verified,
     }
@@ -206,6 +240,13 @@ def run_audit(filename: str, payload: bytes, signed_header: str) -> dict[str, An
                     "mpn": rows[index]["mpn"], "quantity": rows[index]["quantity"],
                     "lifecycle": "Unverified", "stock": None, "lead_time_weeks": None,
                     "supplier_count": None, "sources": "", "risk": "Needs verification",
+                    "stock_sources": [], "stock_data_complete": False,
+                    "stock_evidence": "Not reported by matched suppliers",
+                    "lead_time_source": "", "lifecycle_evidence": [],
+                    "lifecycle_evidence_summary": "",
+                    "supplier_coverage": "Supplier data could not be verified during this analysis",
+                    "lifecycle_conflict": False, "checked_at": "",
+                    "alternate_search_status": "Not checked in the free audit",
                     "risk_reasons": [], "verified": False,
                 }
     enriched = [row for row in results if row is not None]
@@ -333,19 +374,27 @@ def render_verified_report(access_token: str) -> None:
     if not report:
         return
     st.markdown("### Your BOM stress test")
-    st.caption("Your complete supplier and lifecycle audit is available for seven days after upload. Confirm the evidence before an engineering release decision.")
+    st.caption("Your full component report is available for seven days after upload. It includes the supplier evidence returned for this BOM; confirm it with the source before an engineering release decision.")
     st.write(str(report.get("filename") or "Uploaded BOM"))
     results = list(report.get("results") or [])
     if not results:
         st.info("This report has no verified component results yet.")
         return
     display = pd.DataFrame([{
-        "MPN": row.get("mpn"), "Qty": row.get("quantity"),
+        "MPN": row.get("mpn"), "Matched MPN": row.get("matched_mpn"),
+        "Manufacturer": row.get("manufacturer"), "Qty": row.get("quantity"),
         "Lifecycle": row.get("lifecycle"),
-        "Stock": row.get("stock"), "Lead time (weeks)": row.get("lead_time_weeks"),
-        "Suppliers": row.get("supplier_count"), "Evidence source": row.get("sources"),
+        "Lifecycle evidence": row.get("lifecycle_evidence_summary") or "Not reported",
+        "Reported stock": row.get("stock"),
+        "Stock evidence": row.get("stock_evidence") or "Not reported by matched suppliers",
+        "Lead time (weeks)": row.get("lead_time_weeks"),
+        "Lead time source": row.get("lead_time_source") or "Not reported",
+        "Matching suppliers": row.get("supplier_count"),
+        "Evidence sources": row.get("sources"),
+        "Supplier coverage": row.get("supplier_coverage"),
+        "Cadivor checked at (UTC)": row.get("checked_at"),
         "Risk": row.get("risk"),
-        "Why": "; ".join(row.get("risk_reasons") or []) or "Supplier data needs verification",
+        "Why": "; ".join(row.get("risk_reasons") or []) or "No risk score: evidence needs verification",
     } for row in results])
     st.dataframe(display, hide_index=True, use_container_width=True)
     export = display.apply(lambda column: column.map(_safe_export_cell))
