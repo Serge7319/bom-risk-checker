@@ -422,8 +422,20 @@ def _part_rows(parts: list[dict[str, Any]]) -> list[dict[str, Any]]:
                     _first(part, "description_raw", "description", "Description", "part_description", fallback="")
                 ),
                 "category_raw": str(
-                    _first(part, "category", "Category", "device_type", "architecture", fallback="") or ""
+                    _first(part, "category_raw", "category", "Category", "device_type", "architecture", fallback="") or ""
                 ),
+                "package": str(
+                    _first(
+                        part, "package", "package_type", "package type", "Package",
+                        "Package Type", "package_case", "case_package", "case",
+                        fallback="",
+                    ) or ""
+                ),
+                "mounting_type": str(
+                    _first(part, "mounting_type", "mounting type", "mount_type", "mounting", fallback="") or ""
+                ),
+                "through_hole": _first(part, "through_hole", "is_through_hole", "tht", "is_tht", fallback=""),
+                "surface_mount": _first(part, "surface_mount", "is_surface_mount", "smd", "smt", fallback=""),
                 "description": _esc(
                     _description_text(
                         _first(part, "description_raw", "description", "Description", "part_description", fallback="Component")
@@ -458,6 +470,13 @@ def _part_rows(parts: list[dict[str, Any]]) -> list[dict[str, Any]]:
                         "Image URL",
                         "image",
                         "PrimaryPhoto",
+                        "PhotoUrl",
+                        "photoUrl",
+                        "ImageURL",
+                        "ImageUrl",
+                        "product_image_url",
+                        "primary_image_url",
+                        "supplier_image_url",
                         fallback="",
                     )
                     or ""
