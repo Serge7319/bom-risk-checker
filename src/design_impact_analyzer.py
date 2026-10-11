@@ -11,6 +11,7 @@ from typing import Any, Callable, Dict, Iterable, List
 
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 
 from src.ui.cadivor_design_system import MetricCard, cadivor_engineering_dataframe, cadivor_section_header, render_kpi_row_safe
 
@@ -504,6 +505,7 @@ def _css() -> None:
           }
           .cv20-summary-title{font-size:22px;font-weight:950;color:#0f172a;letter-spacing:-.03em}
           .cv20-summary-copy{font-size:13px;font-weight:680;color:#52647a;line-height:1.55;margin-top:7px}
+          .cv20-detail-anchor{scroll-margin-top:100px}
           .cv-ap-card{background:#fff;border:1px solid #dbe3ef;border-radius:16px;padding:8px 8px 4px;margin:10px 0 16px;box-shadow:0 8px 24px rgba(15,23,42,.04)}
           .cv-ap-card h2{font-size:16px;font-weight:900;color:#0f172a;margin:4px 6px 8px}
           .cv20-section{font-size:22px;font-weight:950;color:#0f172a;letter-spacing:-.03em;margin:22px 0 5px}
@@ -548,6 +550,69 @@ def _css() -> None:
         """,
         unsafe_allow_html=True,
     )
+
+
+def _design_impact_kpis(intelligence: Dict[str, Any]) -> List[MetricCard]:
+    """Explain the saved-BOM measures and provide direct links to their evidence."""
+    return [
+        MetricCard(
+            label="Projects using this part",
+            value=str(intelligence["project_count"]),
+            detail="Unique saved project names containing this part.",
+            tone="info",
+            icon="briefcase-business",
+            href="#impact-affected-projects",
+            action_label="View projects",
+        ),
+        MetricCard(
+            label="Saved BOM analyses",
+            value=str(intelligence["affected_bom_count"]),
+            detail="Distinct saved analyses that include this part.",
+            tone="info",
+            icon="folder-open",
+            href="#impact-affected-projects",
+            action_label="View BOM usage",
+        ),
+        MetricCard(
+            label="Review priority",
+            value=f"{intelligence['impact_score']}/100",
+            detail="Triage score from saved evidence, not a failure probability.",
+            tone="warning",
+            icon="target",
+            href="#impact-score-drivers",
+            action_label="See score factors",
+        ),
+        MetricCard(
+            label="Recorded BOM quantity",
+            value=f"{intelligence['total_quantity']:,}",
+            detail="Sum of this part's quantities across the saved BOM analyses.",
+            tone="monitoring",
+            icon="package",
+            href="#impact-affected-projects",
+            action_label="View quantities",
+        ),
+    ]
+
+
+def _impact_details_scroll_script() -> str:
+    """Return the small browser-side scroll used after a component row is selected."""
+    return """
+    <script>
+    (() => {
+      const parentWindow = window.parent;
+      const doc = parentWindow.document;
+      const scrollToDetails = () => {
+        const target = doc.getElementById("design-impact-review-details");
+        if (!target) return;
+        target.scrollIntoView({ behavior: "smooth", block: "start" });
+        try { target.focus({ preventScroll: true }); } catch (error) {}
+      };
+      [0, 100, 320, 700, 1200].forEach((delay) =>
+        parentWindow.setTimeout(scrollToDetails, delay)
+      );
+    })();
+    </script>
+    """
 
 
 def render_design_impact(
@@ -648,7 +713,7 @@ def _render_design_impact_workspace(
     else:
         st.caption(
             f"Showing {len(table_rows)} of {len(matching_rows)} matching components. "
-            "Select a row, then start or update the review."
+            "Select a row to load its assessment below; the page will scroll to the results."
         )
         from src.part_images import part_image_source
 
@@ -696,46 +761,20 @@ def _render_design_impact_workspace(
         if selected_rows:
             selected_index = int(selected_rows[0])
             if 0 <= selected_index < len(table_rows):
-                st.session_state["design_impact_pending_mpn"] = table_rows[selected_index]["Part Number"]
+                selected_mpn = str(table_rows[selected_index].get("Part Number") or "").strip()
+                if selected_mpn and (
+                    not review_started
+                    or selected_mpn.casefold() != str(current or "").casefold()
+                ):
+                    st.session_state["design_impact_mpn"] = selected_mpn
+                    st.session_state.pop("design_impact_pending_mpn", None)
+                    st.session_state["design_impact_scroll_pending"] = True
+                    st.rerun()
 
-    visible_mpns = {str(row.get("Part Number") or "").casefold() for row in table_rows}
-    pending_mpn = str(st.session_state.get("design_impact_pending_mpn") or "").strip()
-    if pending_mpn.casefold() not in visible_mpns:
-        pending_mpn = current if current and current.casefold() in visible_mpns else (
-            str(table_rows[0].get("Part Number") or "") if table_rows else ""
-        )
-        st.session_state["design_impact_pending_mpn"] = pending_mpn
-
-    action_col, selection_col = st.columns([1, 2])
-    with action_col:
-        review_action = "Update impact review" if review_started else "Start impact review"
-        review_needs_update = bool(
-            pending_mpn
-            and (
-                not review_started
-                or pending_mpn.casefold() != str(current or "").casefold()
-            )
-        )
-        if st.button(
-            review_action,
-            key="design_impact_apply_component",
-            type="primary",
-            use_container_width=True,
-            disabled=not review_needs_update,
-        ):
-            st.session_state["design_impact_mpn"] = pending_mpn
-            st.rerun()
-    with selection_col:
-        if pending_mpn:
-            st.caption(f"Selected component: {pending_mpn}")
-        if review_started and not review_needs_update:
-            st.caption("This component is already under review. Select another row to update it.")
-        elif review_started and review_needs_update:
-            st.caption("The map and assessment update when you apply this component.")
-        elif not review_started:
-            st.caption(
-                "This review uses saved-BOM and supply evidence; it does not inspect PCB layouts, schematics, firmware, or test plans."
-            )
+    st.caption(
+        "Click any component row to open or update its review. "
+        "The results below use saved-BOM evidence and do not inspect PCB layouts, schematics, firmware, or test plans."
+    )
 
     if not review_started:
         return
@@ -746,6 +785,7 @@ def _render_design_impact_workspace(
     )
     st.markdown(
         f"""
+        <div id="design-impact-review-details" class="cv20-detail-anchor" tabindex="-1"></div>
         <section class="cv20-summary cv20-summary--with-photo">
           {selected_photo_markup}
           <div>
@@ -760,20 +800,12 @@ def _render_design_impact_workspace(
         unsafe_allow_html=True,
     )
 
-    render_kpi_row_safe(
-        [
-            MetricCard(label="Affected Projects", value=str(intelligence["project_count"]), tone="info", icon="briefcase-business"),
-            MetricCard(label="Saved BOMs", value=str(intelligence["affected_bom_count"]), tone="info", icon="folder-open"),
-            MetricCard(label="Impact Score", value=f"{intelligence['impact_score']}/100", tone="warning", icon="target"),
-            MetricCard(label="Recorded Quantity", value=f"{intelligence['total_quantity']:,}", tone="monitoring", icon="package"),
-        ],
-        columns=4,
-    )
+    render_kpi_row_safe(_design_impact_kpis(intelligence), columns=4)
 
     left, right = st.columns([1.35, 1])
 
     with left:
-        st.markdown('<div class="cv20-section">Affected Projects</div>', unsafe_allow_html=True)
+        st.markdown('<div id="impact-affected-projects" class="cv20-section">Affected Projects</div>', unsafe_allow_html=True)
         st.markdown(
             '<div class="cv20-subtitle">One summary per project; repeated part rows are combined across its saved BOMs.</div>',
             unsafe_allow_html=True,
@@ -814,7 +846,7 @@ def _render_design_impact_workspace(
                 )
 
     with right:
-        st.markdown('<div class="cv20-section">Impact Assessment</div>', unsafe_allow_html=True)
+        st.markdown('<div id="impact-assessment" class="cv20-section">Impact Assessment</div>', unsafe_allow_html=True)
         st.markdown(
             f"""
             <section class="cv20-card">
@@ -856,6 +888,7 @@ def _render_design_impact_workspace(
             unsafe_allow_html=True,
         )
 
+        st.markdown('<div id="impact-score-drivers" class="cv20-detail-anchor"></div>', unsafe_allow_html=True)
         with st.expander("Why this score", expanded=False):
             if intelligence.get("impact_score_capped"):
                 st.caption(
@@ -936,5 +969,8 @@ def _render_design_impact_workspace(
             key="impact_portfolio",
             use_container_width=True,
         )
+
+    if st.session_state.pop("design_impact_scroll_pending", False):
+        components.html(_impact_details_scroll_script(), height=0, width=0)
 
     st.markdown("</div>", unsafe_allow_html=True)
