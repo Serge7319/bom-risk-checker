@@ -61,6 +61,7 @@ def build_design_impact(
                 row.get("project_name") or row.get("name") or row.get("filename"),
                 "Saved BOM",
             ),
+            "BOM": _text(row.get("filename") or row.get("file_name"), "Saved BOM"),
             "Health": int(_number(row.get("health_score"), 0)),
             "Updated": _text(row.get("created_at") or row.get("updated_at"), "Not recorded"),
         }
@@ -78,8 +79,13 @@ def build_design_impact(
                     _text(row.get("project_name"), "Saved BOM"),
                 ),
                 "Project Health": analysis_lookup.get(analysis_id, {}).get("Health", 0),
+                "BOM": analysis_lookup.get(analysis_id, {}).get(
+                    "BOM", _text(_first(row, "filename", "file_name"), "Saved BOM")
+                ),
                 "Part Number": _text(_first(row, "mpn", "MPN", "part_number"), "Unknown"),
                 "Image URL": _text(_first(row, "image_url", "Image URL", "photo_url"), ""),
+                "Description": _text(_first(row, "description", "part_description", "description_raw"), ""),
+                "Category": _text(_first(row, "category", "category_raw", "device_type"), ""),
                 "Manufacturer": _text(row.get("manufacturer"), "Unknown"),
                 "Lifecycle": _text(row.get("lifecycle_status"), "Unknown"),
                 "Package": _text(row.get("package"), "Not recorded"),
@@ -99,6 +105,91 @@ def build_design_impact(
             if row["Part Number"] and row["Part Number"] != "Unknown"
         },
         key=str.upper,
+    )
+
+    catalog_by_mpn: Dict[str, Dict[str, Any]] = {}
+    for row in normalized:
+        part_number = row["Part Number"]
+        if not part_number or part_number == "Unknown":
+            continue
+        catalog_key = part_number.casefold()
+        catalog_row = catalog_by_mpn.setdefault(
+            catalog_key,
+            {
+                "Part Number": part_number,
+                "Image URL": "",
+                "Manufacturer Values": set(),
+                "Lifecycle Values": set(),
+                "Project Values": set(),
+                "BOM Values": set(),
+                "Analysis IDs": set(),
+                "Description": "",
+                "Category": "",
+                "Risk Score": 0,
+            },
+        )
+        if not catalog_row["Image URL"] and row["Image URL"]:
+            catalog_row["Image URL"] = row["Image URL"]
+        if row["Manufacturer"] and row["Manufacturer"] != "Unknown":
+            catalog_row["Manufacturer Values"].add(row["Manufacturer"])
+        if row["Lifecycle"] and row["Lifecycle"] != "Unknown":
+            catalog_row["Lifecycle Values"].add(row["Lifecycle"])
+        if row["Project"]:
+            catalog_row["Project Values"].add(row["Project"])
+        if row["BOM"]:
+            catalog_row["BOM Values"].add(row["BOM"])
+        if row["Analysis ID"]:
+            catalog_row["Analysis IDs"].add(row["Analysis ID"])
+        if not catalog_row["Description"] and row["Description"]:
+            catalog_row["Description"] = row["Description"]
+        if not catalog_row["Category"] and row["Category"]:
+            catalog_row["Category"] = row["Category"]
+        catalog_row["Risk Score"] = max(catalog_row["Risk Score"], row["Risk Score"])
+
+    component_catalog = []
+    for row in catalog_by_mpn.values():
+        manufacturer_values = sorted(row["Manufacturer Values"])
+        lifecycle_values = sorted(row["Lifecycle Values"])
+        project_values = sorted(row["Project Values"])
+        bom_count = len(row["Analysis IDs"] or row["BOM Values"])
+        risk_score = int(row["Risk Score"])
+        component_catalog.append(
+            {
+                "Part Number": row["Part Number"],
+                "Image URL": row["Image URL"],
+                "Manufacturer": (
+                    manufacturer_values[0]
+                    if len(manufacturer_values) == 1
+                    else "Multiple" if manufacturer_values else "Unknown"
+                ),
+                "Saved BOMs": bom_count,
+                "Projects": len(project_values),
+                "Project Names": project_values,
+                "BOM Names": sorted(row["BOM Values"]),
+                "Risk Score": risk_score,
+                "Risk Level": _impact_level(risk_score),
+                "Lifecycle": (
+                    lifecycle_values[0]
+                    if len(lifecycle_values) == 1
+                    else "Mixed" if lifecycle_values else "Unknown"
+                ),
+                "Description": row["Description"],
+                "Category": row["Category"],
+                "Search Text": " ".join(
+                    [
+                        row["Part Number"],
+                        *manufacturer_values,
+                        *lifecycle_values,
+                        *project_values,
+                        *sorted(row["BOM Values"]),
+                        row["Description"],
+                        row["Category"],
+                    ]
+                ).casefold(),
+            }
+        )
+    component_catalog.sort(
+        key=lambda row: (-row["Risk Score"], -row["Saved BOMs"], row["Part Number"].upper())
     )
 
     if selected_mpn and selected_mpn not in available_mpns:
@@ -278,6 +369,7 @@ def build_design_impact(
     return {
         "selected_mpn": selected_mpn,
         "available_mpns": available_mpns,
+        "component_catalog": component_catalog,
         "affected_projects": affected,
         "project_count": project_count,
         "total_quantity": total_quantity,
@@ -320,6 +412,8 @@ def _css() -> None:
           }
           .cv20-summary-title{font-size:22px;font-weight:950;color:#0f172a;letter-spacing:-.03em}
           .cv20-summary-copy{font-size:13px;font-weight:680;color:#52647a;line-height:1.55;margin-top:7px}
+          .cv-ap-card{background:#fff;border:1px solid #dbe3ef;border-radius:16px;padding:8px 8px 4px;margin:10px 0 16px;box-shadow:0 8px 24px rgba(15,23,42,.04)}
+          .cv-ap-card h2{font-size:16px;font-weight:900;color:#0f172a;margin:4px 6px 8px}
           .cv20-section{font-size:22px;font-weight:950;color:#0f172a;letter-spacing:-.03em;margin:22px 0 5px}
           .cv20-subtitle{font-size:13px;font-weight:650;color:#64748b;margin-bottom:12px}
           .cv20-card{
@@ -358,6 +452,7 @@ def render_design_impact(
     has_monitoring: bool = False,
     has_decision: bool = False,
     review_started: bool = False,
+    impact_map_markup: str = "",
 ) -> None:
     _css()
 
@@ -395,33 +490,124 @@ def render_design_impact(
         return
 
     current = intelligence["selected_mpn"]
-    if st.session_state.get("design_impact_component") != current:
-        st.session_state["design_impact_component"] = current
+    if impact_map_markup:
+        st.markdown(impact_map_markup, unsafe_allow_html=True)
+    else:
+        st.info("Select a component below to preview its saved-BOM impact.")
 
-    with st.form("design_impact_review_form"):
-        selected = st.selectbox(
-            "Select a component",
-            options,
-            index=options.index(current) if current in options else 0,
-            key="design_impact_component",
+    st.markdown(
+        '<div class="cv20-section">Components across saved BOMs</div>',
+        unsafe_allow_html=True,
+    )
+    search_query = st.text_input(
+        "Search components",
+        placeholder="Search MPN, manufacturer, project, or BOM",
+        key="design_impact_search",
+    )
+    catalog = list(intelligence.get("component_catalog") or [])
+    normalized_query = str(search_query or "").strip().casefold()
+    matching_rows = [
+        row
+        for row in catalog
+        if not normalized_query or normalized_query in str(row.get("Search Text") or "").casefold()
+    ]
+    table_rows = matching_rows[:10]
+
+    if not matching_rows:
+        st.info("No components match that search. Try another MPN, project, or BOM name.")
+    else:
+        st.caption(
+            f"Showing {len(table_rows)} of {len(matching_rows)} matching components. "
+            "Select a row, then start or update the review."
         )
-        review_submitted = st.form_submit_button(
-            "Update impact review" if review_started else "Start impact review",
+        from src.part_images import part_image_source
+
+        display_rows = [
+            {
+                "Part photo": part_image_source(
+                    row.get("Image URL"),
+                    row.get("Part Number"),
+                    size=64,
+                    category=row.get("Category"),
+                    part=row,
+                ),
+                "Part Number": row.get("Part Number", ""),
+                "Manufacturer": row.get("Manufacturer", "Unknown"),
+                "Saved BOMs": int(row.get("Saved BOMs", 0)),
+                "Projects": int(row.get("Projects", 0)),
+                "Risk": f"{row.get('Risk Level', 'Unknown')} · {int(row.get('Risk Score', 0))}/100",
+            }
+            for row in table_rows
+        ]
+        query_key = normalized_query or "all"
+        table_event = st.dataframe(
+            pd.DataFrame(display_rows),
+            column_config={
+                "Part photo": st.column_config.ImageColumn("Component", width="small"),
+                "Part Number": st.column_config.TextColumn("MPN", width="medium"),
+                "Manufacturer": st.column_config.TextColumn(width="medium"),
+                "Saved BOMs": st.column_config.NumberColumn(format="%d"),
+                "Projects": st.column_config.NumberColumn(format="%d"),
+                "Risk": st.column_config.TextColumn(width="small"),
+            },
+            hide_index=True,
+            use_container_width=True,
+            on_select="rerun",
+            selection_mode="single-row",
+            key=f"design_impact_component_table_{query_key}",
+        )
+        selection = getattr(table_event, "selection", None)
+        if selection is None and isinstance(table_event, dict):
+            selection = table_event.get("selection")
+        if isinstance(selection, dict):
+            selected_rows = selection.get("rows") or []
+        else:
+            selected_rows = getattr(selection, "rows", []) or []
+        if selected_rows:
+            selected_index = int(selected_rows[0])
+            if 0 <= selected_index < len(table_rows):
+                st.session_state["design_impact_pending_mpn"] = table_rows[selected_index]["Part Number"]
+
+    visible_mpns = {str(row.get("Part Number") or "").casefold() for row in table_rows}
+    pending_mpn = str(st.session_state.get("design_impact_pending_mpn") or "").strip()
+    if pending_mpn.casefold() not in visible_mpns:
+        pending_mpn = current if current and current.casefold() in visible_mpns else (
+            str(table_rows[0].get("Part Number") or "") if table_rows else ""
+        )
+        st.session_state["design_impact_pending_mpn"] = pending_mpn
+
+    action_col, selection_col = st.columns([1, 2])
+    with action_col:
+        review_action = "Update impact review" if review_started else "Start impact review"
+        review_needs_update = bool(
+            pending_mpn
+            and (
+                not review_started
+                or pending_mpn.casefold() != str(current or "").casefold()
+            )
+        )
+        if st.button(
+            review_action,
+            key="design_impact_apply_component",
             type="primary",
             use_container_width=True,
-        )
-
-    if review_submitted:
-        st.session_state["design_impact_mpn"] = selected
-        st.rerun()
+            disabled=not review_needs_update,
+        ):
+            st.session_state["design_impact_mpn"] = pending_mpn
+            st.rerun()
+    with selection_col:
+        if pending_mpn:
+            st.caption(f"Selected component: {pending_mpn}")
+        if review_started and not review_needs_update:
+            st.caption("This component is already under review. Select another row to update it.")
+        elif review_started and review_needs_update:
+            st.caption("The map and assessment update when you apply this component.")
+        elif not review_started:
+            st.caption(
+                "This review uses saved-BOM and supply evidence; it does not inspect PCB layouts, schematics, firmware, or test plans."
+            )
 
     if not review_started:
-        st.caption(
-            "Choose a saved BOM component, then start the review to see its cross-project impact."
-        )
-        st.caption(
-            "This review uses BOM and supply evidence. It does not inspect PCB layouts, schematics, firmware, or test plans."
-        )
         return
 
     from src.part_images import part_image_markup
