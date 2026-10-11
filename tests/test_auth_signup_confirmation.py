@@ -81,6 +81,18 @@ class SignupConfirmationSourceGuards(unittest.TestCase):
         self.assertIn("signup_confirmation_pending=signup_confirmation_pending", self.bootstrap)
         self.assertIn('"signup_confirmation_first_paint"', self.bootstrap)
         self.assertIn("if force_signed_out or signup_confirmation_pending", self.bootstrap)
+        first_paint_start = self.bootstrap.index(
+            "# FIRST paint for signed-out / restore / credential flows only."
+        )
+        first_paint_end = self.bootstrap.index(
+            'log_auth_correlation(\n        "bootstrap_entry"', first_paint_start
+        )
+        first_paint = self.bootstrap[first_paint_start:first_paint_end]
+        self.assertRegex(
+            first_paint,
+            r"if signup_confirmation_pending:[\s\S]{0,600}paint_auth_gate\(\"login\"\)",
+        )
+        self.assertNotIn("Review the confirmation and continue", first_paint)
 
     def test_sign_up_passes_email_redirect_to(self):
         self.assertIn("email_redirect_to", self.auth)
@@ -143,7 +155,7 @@ class SignupConfirmationUnitTests(unittest.TestCase):
         self.assertIn("cadivor_signup_confirm=1", url)
         self.assertTrue(url.startswith("https://"))
 
-    def test_confirmation_callback_uses_progress_state_before_cookie_restore(self):
+    def test_confirmation_callback_does_not_paint_a_blocking_progress_overlay(self):
         gate = importlib.import_module("src.auth_gate")
         self.assertEqual(
             gate.resolve_initial_gate_state(
@@ -154,13 +166,14 @@ class SignupConfirmationUnitTests(unittest.TestCase):
             "authenticating",
         )
         gate.render_full_page_gate_surface = MagicMock()
-        gate.paint_auth_gate(
-            "authenticating",
-            progress_message="Opening your secure email confirmation…",
+        self.st.markdown = MagicMock()
+        gate.paint_auth_gate("login")
+        self.assertEqual(
+            gate.render_full_page_gate_surface.call_args.kwargs["kind"],
+            "login",
         )
-        self.assertIn(
-            "Opening your secure email confirmation…",
-            gate.render_full_page_gate_surface.call_args.kwargs["message"],
+        self.assertFalse(
+            gate.render_full_page_gate_surface.call_args.kwargs["show_progress"]
         )
 
     def test_marker_token_hash_type_email_accepted(self):
