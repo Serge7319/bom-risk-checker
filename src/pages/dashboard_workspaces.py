@@ -16,6 +16,7 @@ from src.living_workspace import (
     render_subsection_header,
     render_team_workload_section,
 )
+from src.health_score import normalize_saved_health_score
 from src.ui.cadivor_design_system import MetricCard, cadivor_engineering_dataframe, render_kpi_row_safe
 from src.ui.navigation import ALTERNATIVE_FINDER_PAGE, navigate_to
 
@@ -200,6 +201,13 @@ def _fmt_date(value: Any) -> str:
         return str(value)[:10]
 
 
+def _saved_health_score(row: Mapping[str, Any] | None) -> int | None:
+    """Keep a withheld or invalid saved score distinct from a true score of 0."""
+    if not isinstance(row, Mapping):
+        return None
+    return normalize_saved_health_score(row.get("health_score"))
+
+
 def _activity_relative(value: Any) -> str:
     parsed = pd.to_datetime(value, errors="coerce", utc=True)
     if pd.isna(parsed):
@@ -273,18 +281,20 @@ def build_portfolio_dashboard_context(
 ) -> Dict[str, Any]:
     """Prepare portfolio/analytics context from already-loaded Dashboard data."""
     total_analyses = len(analysis_data)
+    scored_health = [
+        score for item in analysis_data
+        if (score := _saved_health_score(item)) is not None
+    ]
+    health_assessment_complete = bool(analysis_data) and len(scored_health) == total_analyses
     if analysis_data:
-        avg_health_score = int(
-            sum(item.get("health_score", 0) or 0 for item in analysis_data)
-            / max(1, total_analyses)
-        )
+        avg_health_score = int(sum(scored_health) / len(scored_health)) if health_assessment_complete else None
         total_high_risk = sum(item.get("high_risk_count", 0) or 0 for item in analysis_data)
         total_medium_risk = sum(item.get("medium_risk_count", 0) or 0 for item in analysis_data)
         total_low_risk = sum(item.get("low_risk_count", 0) or 0 for item in analysis_data)
         total_components = sum(item.get("total_parts", 0) or 0 for item in analysis_data)
         latest_analysis = analysis_data[0]
     else:
-        avg_health_score = 0
+        avg_health_score = None
         total_high_risk = 0
         total_medium_risk = 0
         total_low_risk = 0
@@ -294,7 +304,13 @@ def build_portfolio_dashboard_context(
     alert_count = len(alert_data)
     high_alert_count = sum(1 for item in alert_data if "high" in str(item.get("severity", "")).lower())
 
-    if avg_health_score >= 80:
+    if avg_health_score is None and analysis_data:
+        health_badge = "Needs verification"
+        health_kind = "info"
+    elif avg_health_score is None:
+        health_badge = "No Data Yet"
+        health_kind = ""
+    elif avg_health_score >= 80:
         health_badge = "Healthy Portfolio"
         health_kind = "success"
     elif avg_health_score >= 55:
@@ -304,26 +320,21 @@ def build_portfolio_dashboard_context(
         health_badge = "Critical Review"
         health_kind = "danger"
     else:
-        health_badge = "No Data Yet"
-        health_kind = ""
+        health_badge = "Critical Review"
+        health_kind = "danger"
 
     profile = get_user_profile(current_user)
     user_name = profile["full_name"].split()[0] if profile.get("full_name") else "there"
     hour = datetime.now().hour
     greeting_prefix = "Good morning" if hour < 12 else "Good afternoon" if hour < 17 else "Good evening"
 
-    prev_health = None
-    if analysis_data and len(analysis_data) >= 2:
-        try:
-            prev_health = int(analysis_data[1].get("health_score", 0) or 0)
-        except Exception:
-            prev_health = None
-    health_delta = (avg_health_score - prev_health) if prev_health is not None else 0
-    health_delta_label = f"{health_delta:+d}" if prev_health is not None else "—"
+    prev_health = _saved_health_score(analysis_data[1]) if len(analysis_data) >= 2 else None
+    health_delta = (avg_health_score - prev_health) if avg_health_score is not None and prev_health is not None else None
+    health_delta_label = f"{health_delta:+d}" if health_delta is not None else "—"
 
     latest_project = (latest_analysis or {}).get("project_name") or (latest_analysis or {}).get("filename") or "No saved BOM yet"
     latest_parts = int((latest_analysis or {}).get("total_parts", 0) or 0)
-    latest_health = int((latest_analysis or {}).get("health_score", avg_health_score) or 0)
+    latest_health = _saved_health_score(latest_analysis)
     latest_high_risk = int((latest_analysis or {}).get("high_risk_count", 0) or 0)
     latest_medium_risk = int((latest_analysis or {}).get("medium_risk_count", 0) or 0)
     latest_date = _fmt_date((latest_analysis or {}).get("created_at", ""))
@@ -332,7 +343,8 @@ def build_portfolio_dashboard_context(
     trend_records = []
     for item in analysis_data[:30]:
         created_at = pd.to_datetime(item.get("created_at"), errors="coerce", utc=True)
-        if pd.isna(created_at):
+        health = _saved_health_score(item)
+        if pd.isna(created_at) or health is None:
             continue
         trend_records.append(
             {
@@ -343,7 +355,7 @@ def build_portfolio_dashboard_context(
                     or item.get("source_filename")
                     or "Saved BOM"
                 ),
-                "health": int(item.get("health_score", 0) or 0),
+                "health": health,
                 "high_risk": int(item.get("high_risk_count", 0) or 0),
                 "medium_risk": int(item.get("medium_risk_count", 0) or 0),
             }
@@ -398,14 +410,18 @@ def build_portfolio_dashboard_context(
             or "Saved BOM analysis"
         )
         analysis_id = str(item.get("id") or "")
-        health = int(item.get("health_score", 0) or 0)
+        health = _saved_health_score(item)
         parts = int(item.get("total_parts", 0) or 0)
         recent_activity.append(
             {
                 "category": "Analyses",
                 "type": "BOM Analysis",
                 "title": str(project_name),
-                "copy": f"Analysis completed with health {health}/100 across {parts} component record(s).",
+                "copy": (
+                    f"Analysis completed with health {health}/100 across {parts} component record(s)."
+                    if health is not None
+                    else f"Analysis completed; supplier evidence is needed to assess health across {parts} component record(s)."
+                ),
                 "created_at": item.get("created_at"),
                 "nav_page": "Analysis Details" if analysis_id else "BOM Analyzer",
                 "nav_params": {"analysis_id": analysis_id} if analysis_id else {},
@@ -527,9 +543,16 @@ def build_portfolio_dashboard_context(
             "One saved analysis is available. Save another analysis to begin measuring portfolio movement."
         )
     else:
-        trend_summary = (
-            "No saved analysis history is available yet. Analyze and save a BOM to begin tracking trends."
-        )
+        if analysis_data:
+            trend_summary = (
+                "Health trends need verification because one or more saved analyses "
+                "lack complete supplier evidence."
+            )
+        else:
+            trend_summary = (
+                "No saved analysis history is available yet. Analyze and save a BOM "
+                "to begin tracking trends."
+            )
 
     return {
         "analysis_data": analysis_data,
@@ -537,6 +560,11 @@ def build_portfolio_dashboard_context(
         "alternative_history": alternative_history,
         "total_analyses": total_analyses,
         "avg_health_score": avg_health_score,
+        "avg_health_display": (
+            str(avg_health_score)
+            if avg_health_score is not None
+            else "Needs verification" if analysis_data else "—"
+        ),
         "total_high_risk": total_high_risk,
         "total_medium_risk": total_medium_risk,
         "total_low_risk": total_low_risk,
@@ -632,7 +660,7 @@ def render_portfolio_intelligence_workspace(
         [
             MetricCard(
                 label="Portfolio Health",
-                value=str(ctx.get("avg_health_score")),
+                value=str(ctx.get("avg_health_display") or "Needs verification"),
                 detail=f"{ctx.get('health_badge')} · {ctx.get('health_delta_label')} vs previous",
                 tone=portfolio_tone,
                 icon="gauge",
@@ -761,7 +789,7 @@ def render_portfolio_intelligence_workspace(
             <span>Updated {html.escape(str(ctx.get('latest_date')))}</span>
           </div>
           <div class="cv6723-bom-stats">
-            <div><span>Health</span><strong>{ctx.get('latest_health')}</strong></div>
+            <div><span>Health</span><strong>{ctx.get('latest_health') if ctx.get('latest_health') is not None else 'Needs verification'}</strong></div>
             <div><span>Components</span><strong>{ctx.get('latest_parts')}</strong></div>
             <div><span>High risk</span><strong>{ctx.get('latest_high_risk')}</strong></div>
             <div><span>Medium risk</span><strong>{ctx.get('latest_medium_risk')}</strong></div>
@@ -1055,7 +1083,7 @@ def render_dashboard_analytics_workspace(
           <ul>
             <li>Stock-related monitoring events: {ctx.get('stock_alert_count', 0)}</li>
             <li>Price-related monitoring events: {ctx.get('price_alert_count', 0)}</li>
-            <li>Average BOM health: {ctx.get('avg_health_score', 0)}/100</li>
+            <li>Average BOM health: {ctx.get('avg_health_display', 'Needs verification')}{'/100' if ctx.get('avg_health_score') is not None else ''}</li>
           </ul>
         </section>
         """,
