@@ -63,7 +63,7 @@ def build_design_impact(
             ),
             "BOM": _text(row.get("filename") or row.get("file_name"), "Saved BOM"),
             "Health": int(_number(row.get("health_score"), 0)),
-            "Updated": _text(row.get("created_at") or row.get("updated_at"), "Not recorded"),
+            "Updated": _text(row.get("updated_at") or row.get("created_at"), "Not recorded"),
         }
         for row in analyses
     }
@@ -79,6 +79,7 @@ def build_design_impact(
                     _text(row.get("project_name"), "Saved BOM"),
                 ),
                 "Project Health": analysis_lookup.get(analysis_id, {}).get("Health", 0),
+                "Updated": analysis_lookup.get(analysis_id, {}).get("Updated", "Not recorded"),
                 "BOM": analysis_lookup.get(analysis_id, {}).get(
                     "BOM", _text(_first(row, "filename", "file_name"), "Saved BOM")
                 ),
@@ -217,9 +218,93 @@ def build_design_impact(
     ] if selected_mpn else []
 
     affected.sort(key=lambda row: (row["Project Health"], -row["Risk Score"]))
-
     reference = affected[0] if affected else {}
-    project_count = len({row["Project"] for row in affected})
+
+    def _bom_key(row: Dict[str, Any]) -> tuple[str, ...]:
+        analysis_id = str(row.get("Analysis ID") or "").strip()
+        if analysis_id:
+            return ("analysis", analysis_id)
+        return (
+            "file",
+            str(row.get("Project") or "Saved BOM").strip().casefold(),
+            str(row.get("BOM") or "Saved BOM").strip().casefold(),
+        )
+
+    affected_bom_count = len({_bom_key(row) for row in affected})
+    grouped_by_project: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    for row in affected:
+        project_key = str(row.get("Project") or "Saved BOM").strip().casefold()
+        grouped_by_project[project_key].append(row)
+
+    affected_projects: List[Dict[str, Any]] = []
+    for project_rows in grouped_by_project.values():
+        project_rows.sort(
+            key=lambda row: (
+                row.get("Updated") != "Not recorded",
+                str(row.get("Updated") or ""),
+            ),
+            reverse=True,
+        )
+        latest_row = project_rows[0]
+        analysis_ids = sorted(
+            {str(row.get("Analysis ID") or "").strip() for row in project_rows if row.get("Analysis ID")}
+        )
+        bom_keys = {_bom_key(row) for row in project_rows}
+        bom_names = sorted(
+            {str(row.get("BOM") or "").strip() for row in project_rows if row.get("BOM")}
+        )
+        manufacturer_values = sorted(
+            {str(row.get("Manufacturer") or "").strip() for row in project_rows
+             if row.get("Manufacturer") and row.get("Manufacturer") != "Unknown"}
+        )
+        lifecycle_values = sorted(
+            {str(row.get("Lifecycle") or "").strip() for row in project_rows
+             if row.get("Lifecycle") and row.get("Lifecycle") != "Unknown"}
+        )
+        package_values = sorted(
+            {str(row.get("Package") or "").strip() for row in project_rows
+             if row.get("Package") and row.get("Package") not in ("Unknown", "Not recorded")}
+        )
+        project_row = dict(latest_row)
+        saved_bom_count = len(bom_keys)
+        project_row.update(
+            {
+                "Analysis ID": latest_row.get("Analysis ID", ""),
+                "Analysis IDs": analysis_ids,
+                "BOM Names": bom_names,
+                "BOM": (
+                    bom_names[0]
+                    if saved_bom_count == 1 and bom_names
+                    else f"{saved_bom_count} saved BOMs"
+                ),
+                "Saved BOMs": saved_bom_count,
+                "Project Health": min(int(row.get("Project Health") or 0) for row in project_rows),
+                "Risk Score": max(int(row.get("Risk Score") or 0) for row in project_rows),
+                "Quantity": sum(max(1, int(row.get("Quantity") or 1)) for row in project_rows),
+                "Supplier Sources": min(int(row.get("Supplier Sources") or 0) for row in project_rows),
+                "Available Stock": min(int(row.get("Available Stock") or 0) for row in project_rows),
+                "Lifecycle": (
+                    lifecycle_values[0]
+                    if len(lifecycle_values) == 1
+                    else "Mixed" if lifecycle_values else "Unknown"
+                ),
+                "Manufacturer": (
+                    manufacturer_values[0]
+                    if len(manufacturer_values) == 1
+                    else "Multiple" if manufacturer_values else "Unknown"
+                ),
+                "Package": (
+                    package_values[0]
+                    if len(package_values) == 1
+                    else "Mixed" if package_values else "Not recorded"
+                ),
+                "Pin Count": max(int(row.get("Pin Count") or 0) for row in project_rows),
+            }
+        )
+        affected_projects.append(project_row)
+
+    affected_projects.sort(key=lambda row: (row["Project Health"], -row["Risk Score"], row["Project"].casefold()))
+    project_count = len(affected_projects)
     total_quantity = sum(max(1, row["Quantity"]) for row in affected)
     minimum_stock = min((row["Available Stock"] for row in affected), default=0)
     minimum_sources = min((row["Supplier Sources"] for row in affected), default=0)
@@ -248,9 +333,7 @@ def build_design_impact(
             "label": "Cross-project exposure",
             "points": min(25, max(0, project_count - 1) * 10),
             "detail": (
-                f"Used in {project_count} saved project(s)."
-                if project_count > 1
-                else "Used in one saved project."
+                f"Used in {project_count} unique project(s) across {affected_bom_count} saved BOM(s)."
             ),
         },
         {
@@ -293,7 +376,7 @@ def build_design_impact(
     if project_count > 1:
         impact_categories.append({
             "Area": "Cross-project usage",
-            "Finding": f"Used in {project_count} saved projects.",
+            "Finding": f"Used in {project_count} unique projects across {affected_bom_count} saved BOMs.",
             "Impact": "One component decision may affect multiple designs.",
             "Severity": "High" if project_count >= 3 else "Moderate",
         })
@@ -370,7 +453,8 @@ def build_design_impact(
         "selected_mpn": selected_mpn,
         "available_mpns": available_mpns,
         "component_catalog": component_catalog,
-        "affected_projects": affected,
+        "affected_projects": affected_projects,
+        "affected_bom_count": affected_bom_count,
         "project_count": project_count,
         "total_quantity": total_quantity,
         "minimum_stock": minimum_stock,
@@ -398,6 +482,14 @@ def _css() -> None:
     st.markdown(
         """
         <style id="cadivor-design-impact-20">
+          .st-key-approved_home_page{
+            box-sizing:border-box!important;width:100%!important;max-width:1440px!important;
+            margin-left:auto!important;margin-right:auto!important;padding:48px 0 28px!important
+          }
+          .st-key-approved_home_page > [data-testid="stVerticalBlock"]{gap:22px!important}
+          @media(max-width:1600px){.st-key-approved_home_page{padding:36px 0 24px!important}}
+          @media(max-width:1250px){.st-key-approved_home_page{padding:22px 0 20px!important}}
+          @media(max-width:700px){.st-key-approved_home_page{padding:24px 0!important}}
           .cv20-hero{
             border:1px solid #bfdbfe;background:linear-gradient(135deg,#fff,#eef5ff);
             border-radius:24px;padding:25px;margin-bottom:18px;
@@ -422,6 +514,7 @@ def _css() -> None:
           }
           .cv20-card-title{font-size:16px;font-weight:950;color:#0f172a}
           .cv20-card-copy{font-size:13px;font-weight:680;color:#475569;line-height:1.52;margin-top:6px}
+          .cv20-bom-list{font-size:12px!important;font-weight:600!important;color:#64748b!important;overflow-wrap:anywhere}
           .cv20-meta{display:flex;flex-wrap:wrap;gap:7px;margin-top:11px}
           .cv20-meta span{
             font-size:10px;font-weight:850;color:#1d4ed8;background:#eff6ff;
@@ -455,7 +548,30 @@ def render_design_impact(
     impact_map_markup: str = "",
 ) -> None:
     _css()
+    with st.container(key="approved_home_page"):
+        _render_design_impact_workspace(
+            intelligence=intelligence,
+            internal_nav_button=internal_nav_button,
+            return_analysis_id=return_analysis_id,
+            return_section=return_section,
+            has_monitoring=has_monitoring,
+            has_decision=has_decision,
+            review_started=review_started,
+            impact_map_markup=impact_map_markup,
+        )
 
+
+def _render_design_impact_workspace(
+    *,
+    intelligence: Dict[str, Any],
+    internal_nav_button: Callable[..., Any],
+    return_analysis_id: str = "",
+    return_section: str = "Components",
+    has_monitoring: bool = False,
+    has_decision: bool = False,
+    review_started: bool = False,
+    impact_map_markup: str = "",
+) -> None:
     st.markdown('<div class="cv64-page-shell">', unsafe_allow_html=True)
     cadivor_section_header(
         "Design Impact",
@@ -633,10 +749,9 @@ def render_design_impact(
     render_kpi_row_safe(
         [
             MetricCard(label="Affected Projects", value=str(intelligence["project_count"]), tone="info", icon="briefcase-business"),
+            MetricCard(label="Saved BOMs", value=str(intelligence["affected_bom_count"]), tone="info", icon="folder-open"),
             MetricCard(label="Impact Score", value=f"{intelligence['impact_score']}/100", tone="warning", icon="target"),
-            MetricCard(label="Available Stock", value=f"{intelligence['minimum_stock']:,}", tone="monitoring", icon="package"),
-            MetricCard(label="Supplier Sources", value=str(intelligence["minimum_sources"]), tone="info", icon="factory"),
-            MetricCard(label="Estimated Review", value=f"{intelligence['engineering_hours']} hrs", tone="confidence", icon="clock-3"),
+            MetricCard(label="Recorded Quantity", value=f"{intelligence['total_quantity']:,}", tone="monitoring", icon="package"),
         ],
         columns=4,
     )
@@ -646,22 +761,28 @@ def render_design_impact(
     with left:
         st.markdown('<div class="cv20-section">Affected Projects</div>', unsafe_allow_html=True)
         st.markdown(
-            '<div class="cv20-subtitle">Projects are ordered by lowest health and highest component risk.</div>',
+            '<div class="cv20-subtitle">One summary per project; repeated part rows are combined across its saved BOMs.</div>',
             unsafe_allow_html=True,
         )
         for index, row in enumerate(intelligence["affected_projects"]):
+            saved_bom_count = int(row.get("Saved BOMs", 0))
+            bom_names = ", ".join(row.get("BOM Names") or [])
             st.markdown(
                 f"""
                 <section class="cv20-card">
                   <div class="cv20-card-title">{html.escape(row['Project'])}</div>
                   <div class="cv20-card-copy">
-                    This project uses {html.escape(row['Part Number'])} and should be included in any
-                    sourcing, replacement, or lifecycle review.
+                    {html.escape(row['Part Number'])} appears in {saved_bom_count} saved BOM
+                    {'analysis' if saved_bom_count == 1 else 'analyses'} for this project.
+                  </div>
+                  <div class="cv20-card-copy cv20-bom-list">
+                    BOM files: {html.escape(bom_names or 'Name not recorded')}
                   </div>
                   <div class="cv20-meta">
-                    <span>Project health {row['Project Health']}/100</span>
-                    <span>Component risk {row['Risk Score']}/100</span>
-                    <span>Quantity {row['Quantity']}</span>
+                    <span>{saved_bom_count} saved BOM(s)</span>
+                    <span>Health {row['Project Health']}/100</span>
+                    <span>Highest part risk {row['Risk Score']}/100</span>
+                    <span>Recorded quantity {row['Quantity']}</span>
                     <span>{html.escape(row['Lifecycle'])}</span>
                     <span>{row['Supplier Sources']} source(s)</span>
                   </div>
@@ -669,9 +790,9 @@ def render_design_impact(
                 """,
                 unsafe_allow_html=True,
             )
-            if row["Analysis ID"]:
+            if row.get("Analysis ID"):
                 internal_nav_button(
-                    "Open Project",
+                    "Open latest BOM",
                     "Analysis Details",
                     key=f"impact_project_{index}",
                     use_container_width=True,
@@ -683,22 +804,26 @@ def render_design_impact(
         st.markdown(
             f"""
             <section class="cv20-card">
-              <div class="cv20-card-title">{html.escape(intelligence['impact_level'])} Design Impact</div>
+              <div class="cv20-card-title">{html.escape(intelligence['impact_level'])} review priority</div>
               <div class="cv20-card-copy">
-                Cadivor calculated an impact score of {intelligence['impact_score']}/100 using
-                cross-project usage, risk, lifecycle, stock, and supplier coverage.
+                Cadivor's score is a portfolio triage measure based on recorded BOM risk and supply evidence.
+                It is not a failure probability or a simulation of PCB, schematic, or firmware impact.
               </div>
-              <div class="cv20-card-copy"><b>What this means:</b> higher scores indicate a change is more likely to affect release readiness, because more projects are exposed or the component has weaker lifecycle, inventory, or supplier evidence.</div>
+              <div class="cv20-card-copy"><b>How to read it:</b> higher scores mean this part deserves earlier engineering review across the affected projects.</div>
             </section>
             """,
             unsafe_allow_html=True,
         )
 
-        st.markdown('<div class="cv20-section">Impact score drivers</div>', unsafe_allow_html=True)
+        st.markdown('<div class="cv20-section">Why this score</div>', unsafe_allow_html=True)
         if intelligence.get("impact_score_capped"):
             st.caption(
-                f"The evidence signals total {intelligence['impact_score_raw']} points; "
-                "Cadivor caps the reported Impact Score at 100/100."
+                f"The driver points total {intelligence['impact_score_raw']}; "
+                "the displayed score is capped at 100/100."
+            )
+        else:
+            st.caption(
+                f"The driver points total {intelligence['impact_score']}/100."
             )
         for driver in intelligence["impact_score_drivers"]:
             st.markdown(
@@ -711,16 +836,29 @@ def render_design_impact(
                 unsafe_allow_html=True,
             )
 
-        for item in intelligence["impact_categories"]:
-            st.markdown(
-                f"""
-                <div class="cv20-impact">
-                  <strong>{html.escape(item['Area'])} · {html.escape(item['Severity'])}</strong>
-                  <p>{html.escape(item['Finding'])}<br>{html.escape(item['Impact'])}</p>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+        scored_areas = {
+            "Cross-project usage",
+            "Supply continuity",
+            "Supplier coverage",
+            "Lifecycle",
+            "Engineering review",
+        }
+        additional_checks = [
+            item for item in intelligence["impact_categories"]
+            if item.get("Area") not in scored_areas
+        ]
+        if additional_checks:
+            st.markdown('<div class="cv20-section">Additional engineering checks (not scored)</div>', unsafe_allow_html=True)
+            for item in additional_checks:
+                st.markdown(
+                    f"""
+                    <div class="cv20-impact">
+                      <strong>{html.escape(item['Area'])} · {html.escape(item['Severity'])}</strong>
+                      <p>{html.escape(item['Finding'])}<br>{html.escape(item['Impact'])}</p>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
 
         st.markdown('<div class="cv20-section">Recommended Change Plan</div>', unsafe_allow_html=True)
         for recommendation in intelligence["recommendations"]:
@@ -729,29 +867,10 @@ def render_design_impact(
                 unsafe_allow_html=True,
             )
 
-    st.markdown('<div class="cv20-section">Cross-Project Evidence</div>', unsafe_allow_html=True)
-    if intelligence["affected_projects"]:
-        evidence_df = pd.DataFrame(intelligence["affected_projects"])
-        cadivor_engineering_dataframe(
-            evidence_df[
-                [
-                    "Project",
-                    "Part Number",
-                    "Manufacturer",
-                    "Lifecycle",
-                    "Package",
-                    "Pin Count",
-                    "Supplier Sources",
-                    "Available Stock",
-                    "Risk Score",
-                ]
-            ],
-            column_config={
-                "Part Number": st.column_config.TextColumn(width="medium"),
-                "Available Stock": st.column_config.NumberColumn(format="%,d"),
-                "Risk Score": st.column_config.NumberColumn(format="%d"),
-            },
-        )
+    st.caption(
+        f"Coverage is summarized across {intelligence['affected_bom_count']} saved BOM(s) "
+        f"and {intelligence['project_count']} unique project(s)."
+    )
 
     st.markdown('<div class="cv20-section">Continue the Engineering Review</div>', unsafe_allow_html=True)
     actions = st.columns(4)
