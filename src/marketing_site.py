@@ -453,7 +453,7 @@ def _footer(active: str | None = None) -> None:
                 for item_id,label,route,section in links:
                     st.button(label,key=f"cv_footer_{item_id}",on_click=_set_public_destination,args=(route,section,item_id),use_container_width=True,type="primary" if active_footer_item==item_id else "secondary")
         with cols[5]:
-            st.markdown('<div class="cv-footer-heading">Data coverage</div><div class="cv-footer-coverage"><span>DigiKey</span><span>Mouser</span><span>Newark</span><span>Octopart — Coming soon</span></div>',unsafe_allow_html=True)
+            st.markdown('<div class="cv-footer-heading">Data coverage</div><div class="cv-footer-coverage"><span>DigiKey</span><span>Mouser</span><span>Newark</span></div>',unsafe_allow_html=True)
         st.markdown('<div class="cv-footer-bottom"><span>© 2026 Cadivor. All rights reserved.</span><span>Engineering decision support—not a replacement for professional validation.</span></div>',unsafe_allow_html=True)
 
 
@@ -526,7 +526,7 @@ def _home() -> None:
         </div>
       </section>
 
-      <section class="cv634-coverage"><div class="mk-wrap"><span>Authorized supplier coverage</span><b>DigiKey</b><b>Mouser</b><b>Newark</b><i></i><b>Octopart <small>Coming Soon</small></b></div></section>
+      <section class="cv634-coverage"><div class="mk-wrap"><span>Authorized supplier coverage</span><b>DigiKey</b><b>Mouser</b><b>Newark</b></div></section>
 
       <section class="cv634-section cv634-workflow" id="product-workflow"><div class="mk-wrap"><div class="cv634-heading"><span>One connected workflow</span><h2>Follow the evidence from uploaded BOM to approved action.</h2><p>The same engineering context moves through every stage. No disconnected dashboards, copied spreadsheets, or lost rationale.</p></div><div class="cv634-pipeline"><div class="cv634-flowline"><i></i></div><article><em>01</em><div>{_icon('bom')}</div><span><b>Upload BOM</b><small>motor_controller_rev_c.xlsx</small></span><strong>1,842 parts</strong></article><article><em>02</em><div>{_icon('portfolio')}</div><span><b>Analyze Risk</b><small>Lifecycle, supply, cost, alternatives</small></span><strong>4 high risk</strong></article><article><em>03</em><div>{_icon('chat')}</div><span><b>AI Copilot</b><small>Evidence-grounded release review</small></span><strong>93% confidence</strong></article><article><em>04</em><div>{_icon('decision')}</div><span><b>Engineering Decision</b><small>Owner, rationale, evidence, history</small></span><strong>DR-1048 approved</strong></article><article><em>05</em><div>{_icon('monitor')}</div><span><b>Continuous Monitoring</b><small>Lifecycle, stock, supplier, and PCN changes</small></span><strong>4,826 parts watched</strong></article></div></div></section>
 
