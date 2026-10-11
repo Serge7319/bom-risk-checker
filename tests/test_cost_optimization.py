@@ -1,3 +1,4 @@
+import base64
 import unittest
 from pathlib import Path
 
@@ -29,8 +30,12 @@ class CostOptimizationWorkspaceTests(unittest.TestCase):
         self.assertEqual(intelligence["estimated_savings"], 62.5)
         self.assertEqual(intelligence["opportunities"][0]["Description"], "Ceramic capacitor")
         self.assertEqual(intelligence["opportunities"][0]["Component Category"], "Ceramic capacitor")
+        image_source = intelligence["rows"][0]["Image URL"]
+        self.assertTrue(image_source.startswith("data:image/png;base64,"))
         self.assertTrue(
-            intelligence["rows"][0]["Image URL"].startswith("data:image/svg+xml;base64,")
+            base64.b64decode(image_source.split(",", 1)[1]).startswith(
+                bytes.fromhex("89504e470d0a1a0a")
+            )
         )
 
         markup = _opportunity_table_markup(intelligence["opportunities"])
