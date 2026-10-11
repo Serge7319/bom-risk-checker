@@ -258,7 +258,7 @@ class SupplierTimingTests(unittest.TestCase):
 
         def lookup(_part):
             return {
-                "manufacturer_part_number": "LM358",
+                "manufacturer_part_number": "LM358DR",
                 "stock_total": 1,
             }
 
