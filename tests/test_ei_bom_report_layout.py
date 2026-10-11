@@ -50,7 +50,7 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
         self.assertIn("Review these components first", html)
         self.assertIn("MPN-001", html)
         self.assertIn("72/100", html)
-        self.assertIn("cv-part-photo__placeholder", html)
+        self.assertIn("cv-part-photo__image", html)
         self.assertNotIn("Supply & Availability", html)
 
     def test_supply_and_alternatives_keep_the_same_report_family(self):
@@ -69,7 +69,7 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
         )
         self.assertIn("Supply and availability", supply)
         self.assertIn("Digi-Key", supply)
-        self.assertIn("cv-part-photo__placeholder", supply)
+        self.assertIn("cv-part-photo__image", supply)
         self.assertIn("MPN-901", alternatives)
         self.assertIn("cv-part-photo", alternatives)
         empty = engineering_intelligence_html(
@@ -99,7 +99,7 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
         )
         self.assertIn(f'src="{catalog}"', html)
         self.assertIn("Product photo for MPN-001", html)
-        self.assertIn("Image for illustration purposes only", html)
+        self.assertIn("Representative component image; actual part may vary", html)
         self.assertNotIn("Product photo for MPN-002", html)
         self.assertIn('data-illustration="ic"', html)
         self.assertNotIn("https://example.test", html)
@@ -128,13 +128,82 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
         self.assertIn("page=Alternative%20Finder", report)
         self.assertIn("original_part=MPN-001", report)
         self.assertIn("analysis_id=analysis-1", report)
+        self.assertRegex(report, r"prefill_id=[a-f0-9]{32}")
+        again = engineering_intelligence_html(
+            bom_name="Sample BOM",
+            part_count=2,
+            tab="BOM Risk",
+            parts=PARTS,
+            analysis_id="analysis-1",
+        )
+        first_token = __import__("re").search(r"prefill_id=([a-f0-9]{32})", report).group(1)
+        next_token = __import__("re").search(r"prefill_id=([a-f0-9]{32})", again).group(1)
+        self.assertNotEqual(first_token, next_token)
+
+    def test_review_alternative_handoff_prefills_the_clicked_part(self):
+        import streamlit as st
+        from src.ui.navigation import (
+            apply_alternative_finder_prefill,
+            consume_alternative_finder_context,
+        )
+
+        st.session_state.clear()
+        st.session_state["alternative_finder_nav_consumed_token"] = "analysis-1::MPN001"
+        query = {
+            "original_part": "MPN-001",
+            "analysis_id": "analysis-1",
+            "prefill_id": "fresh-click-id",
+            "manufacturer": "AlphaSemi",
+        }
+        context = consume_alternative_finder_context(
+            lambda key, default="": query.get(key, default)
+        )
+        apply_alternative_finder_prefill(context or {})
+        self.assertEqual(st.session_state["alternative_original_part"], "MPN-001")
+        self.assertEqual(st.session_state["alternative_original_manufacturer"], "AlphaSemi")
+
+    def test_detailed_risk_rows_keep_package_for_the_correct_fallback_photo(self):
+        from src.part_images import part_image_markup, part_image_source
+        from src.ui.ei_bom_report import _part_rows
+
+        row = _part_rows(
+            [{
+                "mpn": "CAP-TH",
+                "description": "Radial through-hole capacitor",
+                "category": "Capacitor",
+                "package": "Radial through-hole",
+            }]
+        )[0]
+        self.assertEqual(row["package"], "Radial through-hole")
+        expected = part_image_source(
+            "",
+            "CAP-TH",
+            category="Capacitor",
+            part={"category": "Capacitor", "package": "Radial through-hole"},
+        )
+        self.assertIn(f'src="{expected}"', part_image_markup("", "CAP-TH", part=row))
+
+    def test_new_contextual_click_is_not_blocked_by_an_old_consumed_mpn(self):
+        from src.alternative_finder_state import should_apply_alternative_finder_prefill
+
+        state = {"alternative_finder_nav_consumed_token": "analysis-1::MPN001"}
+        self.assertTrue(
+            should_apply_alternative_finder_prefill(
+                state,
+                mpn="MPN-001",
+                analysis_id="analysis-1",
+                navigation_id="new-click-identifier",
+            )
+        )
 
     def test_saved_markup_is_not_shown_as_a_component_description(self):
         markup = (
             "<p>Manufacturer AlphaSemi</p><p>Best source Digi-Key</p>"
             "<p>Lifecycle Obsolete</p>"
         )
-        for description in (markup, markup.replace("<", "&lt;").replace(">", "&gt;")):
+        escaped = markup.replace("<", "&lt;").replace(">", "&gt;")
+        double_escaped = escaped.replace("&", "&amp;")
+        for description in (markup, escaped, double_escaped):
             with self.subTest(description=description[:20]):
                 report = detailed_risk_report_html(
                     bom_name="Sample BOM",

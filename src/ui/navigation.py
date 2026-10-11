@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from typing import Any, Mapping, Optional
 import html
+from uuid import uuid4
 
 import streamlit as st
 
@@ -43,6 +44,7 @@ _ALT_NAV_KEYS = (
     "project_name",
     "bom_name",
     "intent",
+    "prefill_id",
 )
 
 
@@ -369,6 +371,7 @@ def build_alternative_finder_context(
     source_page: str = "",
     project_name: str = "",
     bom_name: str = "",
+    prefill_id: str = "",
 ) -> dict[str, str]:
     """Return one canonical Alternative Finder navigation payload."""
     trimmed_mpn = str(mpn or "").strip()
@@ -385,6 +388,7 @@ def build_alternative_finder_context(
         "source_page": str(source_page or "").strip(),
         "project_name": str(project_name or "").strip(),
         "bom_name": str(bom_name or "").strip(),
+        "prefill_id": str(prefill_id or "").strip(),
         "intent": ALT_FINDER_INTENT,
     }
 
@@ -404,6 +408,7 @@ def navigate_to_alternative_finder(
     return_mpn: str = "",
     project_name: str = "",
     bom_name: str = "",
+    prefill_id: str = "",
     _rerun: bool = True,
     arm_opening: bool = True,
 ) -> None:
@@ -419,6 +424,7 @@ def navigate_to_alternative_finder(
         source_page=source_page,
         project_name=project_name,
         bom_name=bom_name,
+        prefill_id=prefill_id or uuid4().hex,
     )
     if not context["mpn"]:
         navigate_to(ALTERNATIVE_FINDER_PAGE, _rerun=_rerun, arm_opening=arm_opening)
@@ -432,6 +438,7 @@ def navigate_to_alternative_finder(
     nav_kwargs: dict[str, str] = {
         "original_part": context["mpn"],
         "intent": ALT_FINDER_INTENT,
+        "prefill_id": context["prefill_id"],
     }
     effective_analysis_id = return_analysis_id or context["analysis_id"]
     if effective_analysis_id:
@@ -617,6 +624,9 @@ def consume_alternative_finder_context(
         f"{str(qp_value('analysis_id', '') or '').strip()}::"
         f"{normalize_part_number(original_part) or original_part.upper()}"
     )
+    prefill_id = str(qp_value("prefill_id", "") or "").strip()
+    if prefill_id:
+        nav_token = f"{nav_token}::{prefill_id}"
     from src.alternative_finder_state import alternative_finder_nav_already_consumed
 
     if alternative_finder_nav_already_consumed(st.session_state, token=nav_token):
@@ -634,6 +644,7 @@ def consume_alternative_finder_context(
         source_page=str(qp_value("source_page", "") or ""),
         project_name=str(qp_value("project_name", "") or ""),
         bom_name=str(qp_value("bom_name", "") or ""),
+        prefill_id=prefill_id,
     )
     return_analysis_id = str(qp_value("return_analysis_id", "") or context["analysis_id"]).strip()
     if return_analysis_id:
@@ -678,6 +689,8 @@ def apply_alternative_finder_prefill(context: Mapping[str, str]) -> None:
         f"{context.get('analysis_id', '')}::"
         f"{context.get('normalized_mpn') or str(context.get('mpn', '')).upper()}"
     )
+    if context.get("prefill_id"):
+        prefill_token = f"{prefill_token}::{context['prefill_id']}"
     from src.alternative_finder_state import (
         clear_alternative_finder_search,
         get_active_alternative_finder_result,
@@ -689,6 +702,7 @@ def apply_alternative_finder_prefill(context: Mapping[str, str]) -> None:
         st.session_state,
         mpn=context["mpn"],
         analysis_id=str(context.get("analysis_id") or ""),
+        navigation_id=str(context.get("prefill_id") or ""),
     )
     active_result = get_active_alternative_finder_result(st.session_state) or {}
     active_mpn = str(active_result.get("entered_mpn") or "").strip()
@@ -753,6 +767,7 @@ def alternative_finder_href(
     return_analysis_id: str = "",
     project_name: str = "",
     bom_name: str = "",
+    prefill_id: str = "",
 ) -> str:
     """Build a query-string link to Alternative Finder using the shared context."""
     context = build_alternative_finder_context(
@@ -766,10 +781,12 @@ def alternative_finder_href(
         source_page=source_page,
         project_name=project_name,
         bom_name=bom_name,
+        prefill_id=prefill_id or uuid4().hex,
     )
     params: dict[str, str] = {
         "original_part": context["mpn"],
         "intent": ALT_FINDER_INTENT,
+        "prefill_id": context["prefill_id"],
     }
     effective_analysis_id = return_analysis_id or context["analysis_id"]
     if effective_analysis_id:

@@ -20,6 +20,9 @@ _KINDS = {
     "inductor",
     "sensor",
     "switch",
+    "relay",
+    "transformer",
+    "crystal",
     "generic",
 }
 
@@ -51,13 +54,12 @@ def test_constructs_newark_photo_from_documented_image_object():
     ) == "https://www.newark.com/productimages/standard/en_US/1234567-40.jpg"
 
 
-def test_neutral_part_thumbnail_does_not_claim_to_be_a_product_photo():
+def test_neutral_part_thumbnail_uses_a_labeled_realistic_fallback():
     markup = part_image_markup("", "ABC-123")
     assert ILLUSTRATION_LABEL in markup
     assert "Product photo for ABC-123" not in markup
-    assert "<img" not in markup
+    assert "<img" in markup
     assert 'data-illustration="generic"' in markup
-
 
 def test_every_component_family_has_an_illustration_fallback():
     seen = set()
@@ -68,7 +70,7 @@ def test_every_component_family_has_an_illustration_fallback():
         assert ILLUSTRATION_LABEL in markup
         assert f'data-illustration="{kind}"' in markup
         assert "Product photo" not in markup
-        assert "<img" not in markup
+        assert "<img" in markup
         seen.add(kind)
     assert seen == _KINDS
 
@@ -86,13 +88,11 @@ def test_image_column_gets_a_real_source_even_without_a_supplier_photo():
         "LM358DT",
         part={"description": "Operational amplifier"},
     )
-    assert source.startswith("data:image/svg+xml;base64,")
+    assert source.startswith("data:image/png;base64,")
     import base64
 
-    svg = base64.b64decode(source.split(",", 1)[1]).decode("utf-8")
-    assert "<svg" in svg
-    assert "<rect" in svg
-    assert "#2563eb" in svg
+    png = base64.b64decode(source.split(",", 1)[1])
+    assert png.startswith(bytes.fromhex("89504e470d0a1a0a"))
 
 
 def test_image_column_keeps_a_trusted_supplier_photo():
@@ -126,7 +126,7 @@ def test_supplier_description_selects_the_op_amp_illustration():
     )
     assert 'data-illustration="ic"' in markup
     assert ILLUSTRATION_LABEL in markup
-    assert "<img" not in markup
+    assert "<img" in markup
 
 
 def test_missing_category_metadata_uses_the_generic_illustration():
@@ -137,7 +137,7 @@ def test_missing_category_metadata_uses_the_generic_illustration():
     )
     assert 'data-illustration="generic"' in markup
     assert ILLUSTRATION_LABEL in markup
-    assert "<img" not in markup
+    assert "<img" in markup
 
 
 def test_stored_description_selects_the_category_drawing():
@@ -147,6 +147,7 @@ def test_stored_description_selects_the_category_drawing():
     assert 'data-illustration="ic"' in ic
     assert "Product photo for GRM188" not in capacitor
     assert "Product photo for MAX32625" not in ic
+    assert "<img" in capacitor and "<img" in ic
 
 
 def test_part_thumbnail_escapes_part_number_and_only_embeds_trusted_image():
@@ -159,6 +160,29 @@ def test_part_thumbnail_escapes_part_number_and_only_embeds_trusted_image():
     assert 'src="https://media.digikey.com/photos/sample.jpg"' in markup
 
 
+
+def test_package_style_selects_a_family_specific_smd_or_through_hole_photo():
+    smd = part_image_source(
+        "",
+        "CAP-SMD",
+        category="Capacitor",
+        part={"category": "Capacitor", "package": "0603 SMD"},
+    )
+    through_hole = part_image_source(
+        "",
+        "CAP-TH",
+        category="Capacitor",
+        part={"category": "Capacitor", "package": "Radial through-hole"},
+    )
+    assert smd.startswith("data:image/png;base64,")
+    assert through_hole.startswith("data:image/png;base64,")
+    assert smd != through_hole
+
+
+def test_generated_image_labels_are_explicitly_representative():
+    markup = part_image_markup("", "GRM188", part={"description": "Ceramic capacitor, 0603 SMD"})
+    assert 'alt="Representative component image; actual part may vary"' in markup
+    assert 'data-illustration="capacitor"' in markup
 
 class SavedComponentImageTests(unittest.TestCase):
     def test_saved_component_photo_attaches_by_analysis_and_mpn(self):

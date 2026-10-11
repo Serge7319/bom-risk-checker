@@ -1105,13 +1105,33 @@ def _render_saved_bom_actions(column, analysis_id: str, *, scope: str, row_key: 
         return
     with column:
         with st.container(key=f"approved_{scope}_menu_{row_key}"):
-            with st.popover("⋯", help="More actions: open, edit, or delete this BOM."):
+            with st.popover("⋯", help="Open, view the detailed risk report, edit, or delete this BOM."):
                 if st.button(
                     "Open",
                     key=f"approved_{scope}_action_open_{row_key}",
                     use_container_width=True,
                 ):
+                    st.session_state["cadivor_show_detailed_risk"] = False
+                    st.session_state["cadivor_active_analysis_id"] = target
+                    st.session_state["analysis_id"] = target
                     navigate_to("Analysis Details", analysis_id=target, arm_opening=False)
+                if st.button(
+                    "Detailed Risk Report",
+                    key=f"approved_{scope}_action_risk_report_{row_key}",
+                    use_container_width=True,
+                ):
+                    st.session_state["cadivor_show_detailed_risk"] = True
+                    st.session_state["cadivor_active_analysis_id"] = target
+                    st.session_state["analysis_id"] = target
+                    st.session_state[f"cadivor_detailed_risk_mpn_{target}"] = ""
+                    st.session_state["cadivor_pending_analysis_section"] = "Engineering Intelligence"
+                    st.session_state["cadivor_pending_analysis_section_id"] = target
+                    navigate_to(
+                        "Analysis Details",
+                        analysis_id=target,
+                        analysis_tab="Engineering Intelligence",
+                        arm_opening=False,
+                    )
                 if st.button(
                     "Edit project and file name",
                     key=f"approved_{scope}_action_edit_{row_key}",

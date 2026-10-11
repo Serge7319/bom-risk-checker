@@ -840,9 +840,12 @@ def should_apply_alternative_finder_prefill(
     *,
     mpn: str,
     analysis_id: str = "",
+    navigation_id: str = "",
 ) -> bool:
-    """Return True when navigation prefill should replace the current workspace."""
+    """Return True when a new contextual navigation should replace the workspace."""
     token = f"{analysis_id}::{_normalize_mpn(mpn)}"
+    if navigation_id:
+        token = f"{token}::{navigation_id}"
     if alternative_finder_nav_already_consumed(session_state, token=token):
         return False
 
