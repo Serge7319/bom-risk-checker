@@ -45,8 +45,13 @@ class AlternativeFinderSearchSubmitTests(unittest.TestCase):
         self.assertEqual(resolved_from_widget, "C0603C104K5RACTU")
 
     def test_enter_and_button_share_the_same_submit_claim_path(self):
-        # Form submit (Enter or button) both funnel through claim + resolve.
-        self.assertIn("if find_alternatives_clicked:", RUNTIME_SOURCE)
+        # Form submit (Enter or button) and contextual MPN handoffs both funnel
+        # through the same claim + resolve path.
+        self.assertIn('st.session_state.pop("alternative_prefill_search_pending", False)', RUNTIME_SOURCE)
+        self.assertIn(
+            "if find_alternatives_clicked or prefilled_search_pending:",
+            RUNTIME_SOURCE,
+        )
         claim_idx = RUNTIME_SOURCE.index("claim_alternative_finder_search_submit(")
         form_idx = RUNTIME_SOURCE.index("st.form_submit_button(")
         self.assertLess(form_idx, claim_idx)
