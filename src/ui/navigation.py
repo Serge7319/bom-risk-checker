@@ -167,6 +167,8 @@ def navigate_to(page: str, *, _rerun: bool = True, arm_opening: bool = True, **p
             "alternative_original_manufacturer",
             "alternative_prefill_source_context",
             "alternative_prefill_search_pending",
+            "approved_replacement_compare_source",
+            "approved_replacement_compare_candidates",
         ):
             st.session_state.pop(context_key, None)
     # Any explicit in-app navigation supersedes a prior browser-history restore.
