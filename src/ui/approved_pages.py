@@ -2571,6 +2571,7 @@ def render_simple_workspace(
     chart_html: str = "",
     lead_html: str = "",
     control=None,
+    kpi_details: dict[str, dict[str, Any]] | None = None,
 ) -> None:
     begin_approved_page()
     kpi_html = "".join(
@@ -2603,22 +2604,132 @@ def render_simple_workspace(
     )
     if control is not None:
         control()
-    st.markdown(
-        f"""
-        <div class="cv-ap">
-          {lead_html}
-          <section class="cv-ap-kpis {columns}">{kpi_html}</section>
-          {charts}
-          <section class="cv-ap-card"><table class="cv-ap-table"><thead><tr>{head}</tr></thead><tbody>{''.join(body)}</tbody></table></section>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+
+    if kpi_details:
+        st.markdown(
+            """
+            <style id="cv-ap-clickable-kpis">
+              .st-key-approved_simple_workspace_kpis button{
+                width:100%;min-height:92px;border:1px solid #dbe3ef!important;
+                border-radius:16px!important;background:#fff!important;color:#0f172a!important;
+                padding:14px 16px!important;text-align:left!important;white-space:normal!important;
+                box-shadow:0 8px 24px rgba(15,23,42,.035)!important;transition:all .15s ease
+              }
+              .st-key-approved_simple_workspace_kpis button:hover{
+                border-color:#93c5fd!important;background:#f8fbff!important;color:#0f172a!important
+              }
+              .st-key-approved_simple_workspace_kpis button[kind="primary"]{
+                border-color:#60a5fa!important;background:#eff6ff!important;color:#0f172a!important
+              }
+              .st-key-approved_simple_workspace_kpis button p{
+                margin:0!important;white-space:normal!important;line-height:1.25!important
+              }
+              .st-key-approved_simple_workspace_kpis button p:first-child{
+                color:#64748b!important;font-size:11px!important;font-weight:800!important
+              }
+              .st-key-approved_simple_workspace_kpis button p:last-child{
+                color:#0f172a!important;font-size:25px!important;font-weight:900!important;
+                letter-spacing:-.035em!important;margin-top:7px!important
+              }
+              .st-key-approved_workspace_kpi_detail{
+                border:1px solid #dbe3ef;border-radius:16px;background:#fff;
+                padding:16px;margin:12px 0 18px;box-shadow:0 8px 24px rgba(15,23,42,.035)
+              }
+              .cv-ap-risk-disclosure summary{
+                cursor:pointer;display:inline-flex;align-items:center;gap:8px;list-style:none;
+                color:#1d4ed8;font-size:12px;font-weight:800;white-space:nowrap
+              }
+              .cv-ap-risk-disclosure summary::-webkit-details-marker{display:none}
+              .cv-ap-risk-disclosure summary::after{content:"⌄";font-size:14px;color:#64748b}
+              .cv-ap-risk-disclosure[open] summary::after{content:"⌃"}
+              .cv-ap-risk-disclosure ul{margin:8px 0 2px;padding:0 0 0 16px;min-width:190px}
+              .cv-ap-risk-disclosure li{margin:5px 0;color:#334155;font-size:11px;line-height:1.4}
+              .cv-ap-risk-zero{
+                display:inline-flex;align-items:center;justify-content:center;min-width:27px;
+                border:1px solid #bbf7d0;border-radius:999px;background:#ecfdf5;color:#047857;
+                font-size:12px;font-weight:850;padding:3px 8px
+              }
+              .cv-ap-risk-missing{max-width:220px;color:#64748b;font-size:11px;line-height:1.4;white-space:normal}
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+        selected_key = "approved_workspace_kpi_detail_selection"
+        selected_label = str(st.session_state.get(selected_key) or "")
+        with st.container(key="approved_simple_workspace_kpis"):
+            card_columns = st.columns(len(kpis), gap="small")
+            for index, (label, value) in enumerate(kpis):
+                with card_columns[index]:
+                    active = selected_label == label
+                    if st.button(
+                        f"**{label}**  \n\n{value}",
+                        key=f"approved_simple_workspace_kpi_{index}",
+                        type="primary" if active else "secondary",
+                        use_container_width=True,
+                        help=f"Show the records behind {label.lower()}",
+                    ):
+                        st.session_state[selected_key] = "" if active else label
+
+        selected_label = str(st.session_state.get(selected_key) or "")
+        detail = kpi_details.get(selected_label)
+        if detail is not None:
+            with st.container(key="approved_workspace_kpi_detail"):
+                title_col, close_col = st.columns([5, 1], vertical_alignment="center")
+                with title_col:
+                    st.markdown(
+                        f"<h3>{_esc(selected_label)}</h3><p>{_esc(str(detail.get('description') or 'Related saved records.'))}</p>",
+                        unsafe_allow_html=True,
+                    )
+                with close_col:
+                    if st.button("Close", key="approved_workspace_kpi_detail_close", type="secondary"):
+                        st.session_state.pop(selected_key, None)
+                        st.rerun()
+                rows = list(detail.get("rows") or [])
+                total = len(rows)
+                visible_rows = rows[:200]
+                if visible_rows:
+                    import pandas as pd
+
+                    columns_in_order = list(detail.get("headers") or [])
+                    frame = pd.DataFrame(visible_rows)
+                    if columns_in_order:
+                        frame = frame.reindex(columns=columns_in_order)
+                    st.dataframe(
+                        frame,
+                        hide_index=True,
+                        use_container_width=True,
+                        height=min(460, max(200, 42 + min(len(frame), 10) * 35)),
+                    )
+                    if total > len(visible_rows):
+                        st.caption(f"Showing the first {len(visible_rows)} of {total:,} records.")
+                else:
+                    st.info(str(detail.get("empty_message") or "No matching records are available."))
+        st.markdown(
+            f"""
+            <div class="cv-ap">
+              {lead_html}
+              {charts}
+              <section class="cv-ap-card"><table class="cv-ap-table"><thead><tr>{head}</tr></thead><tbody>{''.join(body)}</tbody></table></section>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown(
+            f"""
+            <div class="cv-ap">
+              {lead_html}
+              <section class="cv-ap-kpis {columns}">{kpi_html}</section>
+              {charts}
+              <section class="cv-ap-card"><table class="cv-ap-table"><thead><tr>{head}</tr></thead><tbody>{''.join(body)}</tbody></table></section>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
     if legacy_page and st.button(legacy_label, key=f"approved_legacy_{legacy_page}"):
         _open_legacy(legacy_page)
         st.rerun()
     end_approved_page()
-
 
 def part_photo(
     url: Any = "",

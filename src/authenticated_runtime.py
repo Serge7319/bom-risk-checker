@@ -6455,7 +6455,11 @@ def run_authenticated_app() -> None:
         except Exception:
             portfolio_alerts = []
 
-        from src.portfolio_intelligence import build_portfolio_intelligence, render_portfolio_intelligence
+        from src.portfolio_intelligence import (
+            build_portfolio_intelligence,
+            high_risk_components_disclosure,
+            render_portfolio_intelligence,
+        )
         portfolio_intelligence = build_portfolio_intelligence(
             portfolio_analyses,
             portfolio_parts,
@@ -6468,27 +6472,33 @@ def run_authenticated_app() -> None:
             render_simple_workspace,
         )
 
-        high_parts = 0
-        mpn_projects: dict[str, set[str]] = {}
-        single_source = 0
-        supplier_known = False
-        for part in portfolio_parts or []:
-            if not isinstance(part, dict):
+        high_parts = len(portfolio_intelligence.get("high_risk") or [])
+        shared_components = int(portfolio_intelligence.get("shared_component_count") or 0)
+        single_source_records = portfolio_intelligence.get("single_source") or []
+        supplier_data_recorded = bool(portfolio_intelligence.get("supplier_data_recorded"))
+        high_risk_by_analysis = portfolio_intelligence.get("high_risk_by_analysis") or {}
+        portfolio_table_rows = []
+        for row in (portfolio_analyses or [])[:8]:
+            if not isinstance(row, dict):
                 continue
-            if "high" in str(part.get("risk_level") or "").casefold():
-                high_parts += 1
-            mpn = str(part.get("mpn") or part.get("part_number") or "").strip()
-            analysis_id = str(part.get("analysis_id") or "")
-            if mpn:
-                mpn_projects.setdefault(mpn, set()).add(analysis_id)
-            if part.get("supplier_count") is not None and str(part.get("supplier_count")).strip() != "":
-                supplier_known = True
-                try:
-                    if int(float(part.get("supplier_count"))) <= 1:
-                        single_source += 1
-                except (TypeError, ValueError):
-                    pass
-        shared_components = sum(1 for projects in mpn_projects.values() if len(projects) > 1)
+            analysis_id = str(row.get("id") or "")
+            risk_records = high_risk_by_analysis.get(analysis_id) or []
+            try:
+                summary_risk_count = max(0, int(float(row.get("high_risk_count") or 0)))
+            except (TypeError, ValueError, OverflowError):
+                summary_risk_count = 0
+            risk_count = max(summary_risk_count, len(risk_records))
+            risk_cell = high_risk_components_disclosure(risk_count, risk_records)
+            portfolio_table_rows.append(
+                [
+                    html.escape(str(row.get("project_name") or "Project")),
+                    html.escape(str(row.get("filename") or "BOM")),
+                    html.escape(str(row.get("total_parts") or "—")),
+                    risk_cell,
+                    "High" if risk_count else "Low",
+                    html.escape(str(row.get("created_at") or "")[:10]),
+                ]
+            )
         render_simple_workspace(
                 kicker="PORTFOLIO",
                 title="Portfolio intelligence",
@@ -6497,25 +6507,15 @@ def run_authenticated_app() -> None:
                     ("Saved Projects", str(len(portfolio_analyses or []))),
                     ("Component Records", str(len(portfolio_parts or []))),
                     ("Shared Components", str(shared_components)),
-                    ("Single-Source Records", str(single_source) if supplier_known else "—"),
+                    ("Single-Source Records", str(len(single_source_records)) if supplier_data_recorded else "—"),
                     ("High-risk component records", str(high_parts)),
                 ],
                 headers=["Project", "BOM name", "Total components", "At-risk components", "Risk level", "Last updated"],
-                table_rows=[
-                    [
-                        str(row.get("project_name") or "Project"),
-                        str(row.get("filename") or "BOM"),
-                        str(row.get("total_parts") or "—"),
-                        str(row.get("high_risk_count") or "0"),
-                        "High" if int(row.get("high_risk_count") or 0) else "Low",
-                        str(row.get("created_at") or "")[:10],
-                    ]
-                    for row in (portfolio_analyses or [])[:8]
-                    if isinstance(row, dict)
-                ],
+                table_rows=portfolio_table_rows,
                 legacy_page="Portfolio Intelligence",
                 legacy_label="View all BOMs",
                 chart_html=portfolio_charts_html(portfolio_parts),
+                kpi_details=portfolio_intelligence.get("kpi_details"),
             )
 
         render_portfolio_intelligence(

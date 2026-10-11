@@ -530,6 +530,20 @@ def _css() -> None:
             border-left:4px solid #2563eb;background:#f8fbff;border-radius:0 14px 14px 0;
             padding:14px 16px;margin-bottom:10px;font-size:13px;font-weight:740;color:#334155;line-height:1.5
           }
+          .cv20-validation{
+            border:1px solid #cbdcf4;background:#f8fbff;border-radius:16px;padding:16px 18px;
+            margin:10px 0 14px
+          }
+          .cv20-validation strong{display:block;color:#0f172a;font-size:13px;margin:0 0 5px}
+          .cv20-validation p,.cv20-validation li{
+            color:#52647a;font-size:12px;line-height:1.5
+          }
+          .cv20-validation p{margin:4px 0 8px}
+          .cv20-validation ul{margin:6px 0 0;padding-left:18px}
+          .cv20-validation li{margin:4px 0}
+          .cv20-score-expander{border:1px solid #dbe3ef;border-radius:14px;padding:2px 14px;background:#fff}
+          .cv20-score-expander summary{font-weight:850;color:#1e293b}
+        
         </style>
         """,
         unsafe_allow_html=True,
@@ -806,35 +820,62 @@ def _render_design_impact_workspace(
             <section class="cv20-card">
               <div class="cv20-card-title">{html.escape(intelligence['impact_level'])} review priority</div>
               <div class="cv20-card-copy">
-                Cadivor's score is a portfolio triage measure based on recorded BOM risk and supply evidence.
-                It is not a failure probability or a simulation of PCB, schematic, or firmware impact.
+                This score is a portfolio triage measure based on saved-BOM risk, supply, lifecycle, and cross-project evidence.
+                It helps decide what to review first; it is not a failure probability or a design simulation.
               </div>
-              <div class="cv20-card-copy"><b>How to read it:</b> higher scores mean this part deserves earlier engineering review across the affected projects.</div>
+              <div class="cv20-card-copy">
+                <b>Assessment scope:</b> Cadivor can show where this part appears and summarize recorded component risk,
+                quantity, stock, supplier coverage, lifecycle, package, and pin-count data.
+              </div>
             </section>
             """,
             unsafe_allow_html=True,
         )
 
-        st.markdown('<div class="cv20-section">Why this score</div>', unsafe_allow_html=True)
-        if intelligence.get("impact_score_capped"):
-            st.caption(
-                f"The driver points total {intelligence['impact_score_raw']}; "
-                "the displayed score is capped at 100/100."
-            )
-        else:
-            st.caption(
-                f"The driver points total {intelligence['impact_score']}/100."
-            )
-        for driver in intelligence["impact_score_drivers"]:
+        st.markdown('<div class="cv20-section">Recommended Change Plan</div>', unsafe_allow_html=True)
+        for recommendation in intelligence["recommendations"]:
             st.markdown(
-                f"""
-                <div class="cv20-impact">
-                  <strong>{html.escape(driver['label'])} · +{int(driver['points'])} points</strong>
-                  <p>{html.escape(driver['detail'])}</p>
-                </div>
-                """,
+                f'<div class="cv20-recommendation">✓ {html.escape(recommendation)}</div>',
                 unsafe_allow_html=True,
             )
+
+        st.markdown('<div class="cv20-section">Design validation required</div>', unsafe_allow_html=True)
+        st.markdown(
+            """
+            <section class="cv20-validation">
+              <strong>Use this review to prioritize work, then validate the change in the source design.</strong>
+              <p>Saved BOM records do not include the schematic, PCB layout, netlist, firmware, or mechanical constraints needed to calculate redesign impact.</p>
+              <ul>
+                <li>Compare the candidate's electrical ratings and function with the original part.</li>
+                <li>Confirm package, pinout, footprint, and clearance in every affected project.</li>
+                <li>Check thermal, mechanical, firmware, test, and manufacturing effects where applicable.</li>
+                <li>Record engineering approval and update each affected BOM before release.</li>
+              </ul>
+            </section>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        with st.expander("Why this score", expanded=False):
+            if intelligence.get("impact_score_capped"):
+                st.caption(
+                    f"The driver points total {intelligence['impact_score_raw']}; "
+                    "the displayed score is capped at 100/100."
+                )
+            else:
+                st.caption(
+                    f"The driver points total {intelligence['impact_score']}/100."
+                )
+            for driver in intelligence["impact_score_drivers"]:
+                st.markdown(
+                    f"""
+                    <div class="cv20-impact">
+                      <strong>{html.escape(driver['label'])} · +{int(driver['points'])} points</strong>
+                      <p>{html.escape(driver['detail'])}</p>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
 
         scored_areas = {
             "Cross-project usage",
@@ -859,13 +900,6 @@ def _render_design_impact_workspace(
                     """,
                     unsafe_allow_html=True,
                 )
-
-        st.markdown('<div class="cv20-section">Recommended Change Plan</div>', unsafe_allow_html=True)
-        for recommendation in intelligence["recommendations"]:
-            st.markdown(
-                f'<div class="cv20-recommendation">✓ {html.escape(recommendation)}</div>',
-                unsafe_allow_html=True,
-            )
 
     st.caption(
         f"Coverage is summarized across {intelligence['affected_bom_count']} saved BOM(s) "

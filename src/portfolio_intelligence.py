@@ -41,6 +41,48 @@ def _first(row: Dict[str, Any], *keys: str, default: Any = None) -> Any:
     return default
 
 
+def high_risk_components_disclosure(
+    risk_count: int,
+    risk_records: Iterable[Dict[str, Any]],
+) -> str:
+    """Build an accessible table-cell disclosure for one saved BOM's risky parts."""
+    count = max(0, int(_number(risk_count, 0)))
+    if count == 0:
+        return (
+            "<span class='cv-ap-risk-zero' aria-label='No at-risk components'>0</span>"
+        )
+
+    items = []
+    for row in risk_records or []:
+        mpn = html.escape(_text(row.get("Part Number"), "Component"))
+        maker = _text(row.get("Manufacturer"))
+        level = html.escape(_text(row.get("Risk Level"), "High"))
+        score = int(_number(row.get("Risk Score"), 0))
+        quantity = int(_number(row.get("Quantity"), 0))
+        evidence = []
+        if maker != "Unknown":
+            evidence.append(html.escape(maker))
+        evidence.append(f"{level} · {score}/100")
+        if quantity > 0:
+            evidence.append(f"Qty {quantity:,}")
+        items.append(
+            f"<li><strong>{mpn}</strong> <span>{html.escape(' · '.join(evidence))}</span></li>"
+        )
+
+    if items:
+        detail_markup = f"<ul>{''.join(items)}</ul>"
+    else:
+        detail_markup = (
+            f"<p class='cv-ap-risk-missing'>The saved summary reports {count} at-risk "
+            "component(s), but matching part-level records are unavailable.</p>"
+        )
+    return (
+        "<details class='cv-ap-risk-disclosure'>"
+        f"<summary><span>{count}</span><span>View components</span></summary>"
+        f"{detail_markup}</details>"
+    )
+
+
 def build_portfolio_intelligence(
     analyses: Iterable[Dict[str, Any]],
     parts: Iterable[Dict[str, Any]],
@@ -53,6 +95,13 @@ def build_portfolio_intelligence(
     analysis_names = {
         _text(row.get("id")): _text(
             row.get("project_name") or row.get("name") or row.get("filename"),
+            "Saved BOM",
+        )
+        for row in analyses
+    }
+    analysis_boms = {
+        _text(row.get("id")): _text(
+            row.get("filename") or row.get("file_name"),
             "Saved BOM",
         )
         for row in analyses
@@ -70,6 +119,8 @@ def build_portfolio_intelligence(
                 "Health": int(_number(row.get("health_score"), 0)),
                 "High-Risk": int(_number(row.get("high_risk_count") or row.get("high_risk_parts"), 0)),
                 "Components": int(_number(row.get("total_parts") or row.get("part_count") or row.get("parts_count"), 0)),
+                "BOM": _text(row.get("filename") or row.get("file_name"), "Saved BOM"),
+                "Updated": _text(row.get("updated_at") or row.get("created_at"), "Not recorded"),
             }
         )
     project_health.sort(key=lambda row: (row["Health"], -row["High-Risk"]))
@@ -79,7 +130,12 @@ def build_portfolio_intelligence(
         mpn = _text(_first(row, "mpn", "MPN", "part_number"), "Unknown")
         analysis_id = _text(row.get("analysis_id"))
         lifecycle = _text(row.get("lifecycle_status"), "Unknown")
-        supplier_count = int(_number(row.get("supplier_count"), 0))
+        supplier_raw = _first(row, "supplier_count", default=None)
+        supplier_recorded = (
+            supplier_raw is not None
+            and str(supplier_raw).strip().casefold() not in {"", "nan", "none"}
+        )
+        supplier_count = int(_number(supplier_raw, 0))
         stock = int(_number(_first(row, "stock_available", "stock"), 0))
         risk_score = int(_number(row.get("risk_score"), 0))
         risk_level = _text(row.get("risk_level"), "Unknown")
@@ -88,16 +144,24 @@ def build_portfolio_intelligence(
             {
                 "Analysis ID": analysis_id,
                 "Project": analysis_names.get(analysis_id, _text(row.get("project_name"), "Saved BOM")),
+                "BOM": analysis_boms.get(
+                    analysis_id,
+                    _text(_first(row, "filename", "file_name"), "Saved BOM"),
+                ),
                 "Part Number": mpn,
+                "Description": _text(_first(row, "description", "part_description"), ""),
+                "Category": _text(_first(row, "category", "category_raw", "device_type"), ""),
                 "Image URL": normalize_supplier_image_url(
                     _first(row, "image_url", "Image URL", "photo_url")
                 ),
                 "Manufacturer": manufacturer,
                 "Lifecycle": lifecycle,
                 "Supplier Sources": supplier_count,
+                "Supplier Sources Recorded": supplier_recorded,
                 "Available Stock": stock,
                 "Risk Score": risk_score,
                 "Risk Level": risk_level,
+                "Quantity": int(_number(_first(row, "quantity", "qty", "required_quantity"), 1)),
             }
         )
 
@@ -132,7 +196,10 @@ def build_portfolio_intelligence(
         key=lambda row: (-row["Projects Using Part"], -row["Highest Risk Score"])
     )
 
-    single_source = [row for row in normalized if row["Supplier Sources"] <= 1]
+    single_source = [
+        row for row in normalized
+        if row["Supplier Sources Recorded"] and row["Supplier Sources"] <= 1
+    ]
     no_stock = [row for row in normalized if row["Available Stock"] <= 0]
     lifecycle_exposed = [
         row for row in normalized
@@ -194,6 +261,99 @@ def build_portfolio_intelligence(
             "The portfolio has no major cross-project concentration or lifecycle exception recorded."
         )
 
+    high_risk_by_analysis: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    for row in high_risk:
+        analysis_id = row["Analysis ID"]
+        if analysis_id:
+            high_risk_by_analysis[analysis_id].append(row)
+
+    component_detail_headers = [
+        "Project", "BOM", "Part Number", "Manufacturer", "Risk Level",
+        "Risk Score", "Lifecycle", "Quantity",
+    ]
+    portfolio_kpi_details = {
+        "Saved Projects": {
+            "description": "Saved BOM analyses and their current project-level health.",
+            "headers": ["Project", "BOM", "Health", "High-Risk", "Components", "Updated"],
+            "rows": [
+                {
+                    "Project": row["Project"],
+                    "BOM": row["BOM"],
+                    "Health": row["Health"],
+                    "High-Risk": row["High-Risk"],
+                    "Components": row["Components"],
+                    "Updated": row["Updated"],
+                }
+                for row in project_health
+            ],
+        },
+        "Component Records": {
+            "description": "Recorded part entries across saved BOMs.",
+            "headers": component_detail_headers,
+            "rows": [
+                {
+                    "Project": row["Project"],
+                    "BOM": row["BOM"],
+                    "Part Number": row["Part Number"],
+                    "Manufacturer": row["Manufacturer"],
+                    "Risk Level": row["Risk Level"],
+                    "Risk Score": row["Risk Score"],
+                    "Lifecycle": row["Lifecycle"],
+                    "Quantity": row["Quantity"],
+                }
+                for row in normalized
+            ],
+        },
+        "Shared Components": {
+            "description": "Parts recorded in more than one saved project.",
+            "headers": [
+                "Part Number", "Manufacturer", "Projects Using Part",
+                "Highest Risk Score", "Lowest Stock", "Minimum Supplier Sources", "Lifecycle",
+            ],
+            "rows": shared_components,
+        },
+        "Single-Source Records": {
+            "description": "Part records with a recorded supplier count of one or fewer.",
+            "headers": [
+                "Project", "BOM", "Part Number", "Manufacturer",
+                "Supplier Sources", "Available Stock", "Risk Level", "Risk Score",
+            ],
+            "rows": [
+                {
+                    "Project": row["Project"],
+                    "BOM": row["BOM"],
+                    "Part Number": row["Part Number"],
+                    "Manufacturer": row["Manufacturer"],
+                    "Supplier Sources": row["Supplier Sources"],
+                    "Available Stock": row["Available Stock"],
+                    "Risk Level": row["Risk Level"],
+                    "Risk Score": row["Risk Score"],
+                }
+                for row in single_source
+            ],
+        },
+        "High-risk component records": {
+            "description": "Component records marked high risk or scored 60/100 and above.",
+            "headers": [
+                "Project", "BOM", "Part Number", "Manufacturer",
+                "Risk Level", "Risk Score", "Lifecycle", "Quantity",
+            ],
+            "rows": [
+                {
+                    "Project": row["Project"],
+                    "BOM": row["BOM"],
+                    "Part Number": row["Part Number"],
+                    "Manufacturer": row["Manufacturer"],
+                    "Risk Level": row["Risk Level"],
+                    "Risk Score": row["Risk Score"],
+                    "Lifecycle": row["Lifecycle"],
+                    "Quantity": row["Quantity"],
+                }
+                for row in high_risk
+            ],
+        },
+    }
+
     return {
         "project_health": project_health,
         "shared_components": shared_components,
@@ -207,10 +367,13 @@ def build_portfolio_intelligence(
         "total_component_records": total_parts,
         "shared_component_count": len(shared_components),
         "single_source_count": len(single_source),
+        "supplier_data_recorded": any(row["Supplier Sources Recorded"] for row in normalized),
         "lifecycle_count": len(lifecycle_exposed),
         "manufacturer_concentration": concentration,
         "top_manufacturer": top_manufacturer,
         "portfolio_exposure": opportunity_score,
+        "kpi_details": portfolio_kpi_details,
+        "high_risk_by_analysis": dict(high_risk_by_analysis),
     }
 
 
