@@ -6385,8 +6385,32 @@ def run_authenticated_app() -> None:
             for row in impact_decision_rows
         )
 
+        from src.ui.approved_pages import impact_map_html
+
+        impact_map_projects = []
+        seen_impact_map_boms = set()
+        for row in impact_intelligence.get("affected_projects", []):
+            project_name = str(row.get("Project") or "Project")
+            bom_name = str(row.get("BOM") or row.get("Analysis ID") or "Saved BOM")
+            map_key = (project_name.casefold(), bom_name.casefold())
+            if map_key in seen_impact_map_boms:
+                continue
+            seen_impact_map_boms.add(map_key)
+            impact_map_projects.append((project_name, bom_name))
+            if len(impact_map_projects) == 4:
+                break
+
+        impact_map_markup = impact_map_html(
+            part=str(impact_mpn or "Component"),
+            projects=impact_map_projects,
+            supplier=str(impact_intelligence.get("manufacturer") or ""),
+            supplier_count=str(impact_intelligence.get("minimum_sources") or ""),
+            lifecycle=str(impact_intelligence.get("lifecycle") or ""),
+        )
+
         render_design_impact(
             intelligence=impact_intelligence,
+            impact_map_markup=impact_map_markup,
             internal_nav_button=internal_nav_button,
             return_analysis_id=impact_return_analysis_id,
             return_section=impact_return_section,
