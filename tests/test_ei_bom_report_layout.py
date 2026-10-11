@@ -35,9 +35,15 @@ PARTS = [
         "unit_price": "1.20",
     },
 ]
+REPORT_SOURCE = (Path(__file__).resolve().parents[1] / "src" / "ui" / "ei_bom_report.py").read_text(encoding="utf-8")
 
 
 class EngineeringIntelligenceLayoutTests(unittest.TestCase):
+    def test_report_sections_use_one_stateful_selection_widget(self):
+        self.assertIn("st.segmented_control(", REPORT_SOURCE)
+        self.assertIn('key=tab_state_key', REPORT_SOURCE)
+        self.assertNotIn('key=f"ei_tab_{slug}"', REPORT_SOURCE)
+
     def test_bom_risk_uses_the_approved_review_structure(self):
         html = engineering_intelligence_html(
             bom_name="Sample BOM",
@@ -238,7 +244,8 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
         source = Path("src/ui/ei_bom_report.py").read_text(encoding="utf-8")
         renderer = source.split("def render_engineering_intelligence_report", 1)[1]
         tabs = renderer.split("if st.session_state.get(\"cadivor_show_detailed_risk\"):", 1)[0]
-        self.assertIn("on_click=_select_ei_report_tab", tabs)
+        self.assertIn("st.segmented_control(", tabs)
+        self.assertIn("key=tab_state_key", tabs)
         self.assertNotIn("st.rerun()", tabs)
 
     def test_detailed_risk_rows_keep_package_for_the_correct_fallback_photo(self):

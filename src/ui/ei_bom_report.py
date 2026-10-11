@@ -1013,7 +1013,10 @@ def render_engineering_intelligence_report(
     with st.container(key="ei_report_workspace"):
         bom_name = str(analysis.get("project_name") or analysis.get("filename") or "Saved BOM")
         detailed = bool(st.session_state.get("cadivor_show_detailed_risk"))
-        tab = str(st.session_state.get("cadivor_ei_report_tab") or "BOM Risk")
+        tab_state_key = "cadivor_ei_report_tab"
+        if st.session_state.get(tab_state_key) not in EI_TABS:
+            st.session_state[tab_state_key] = "BOM Risk"
+        tab = str(st.session_state.get(tab_state_key) or "BOM Risk")
         if not detailed:
             st.markdown(
                 f"<div class='cv-ap'><p class='cv-ap-kicker'>{html.escape(bom_name)} · {len(parts or [])} components</p>"
@@ -1021,40 +1024,32 @@ def render_engineering_intelligence_report(
                 unsafe_allow_html=True,
             )
             with st.container(key="cv_ei_report_tabs"):
-                tab_buttons = st.columns(len(EI_TABS))
-                for column, name in zip(tab_buttons, EI_TABS):
-                    slug = name.casefold().replace(" ", "-").replace("&", "and")
-                    if column.button(
-                        name,
-                        key=f"ei_tab_{slug}",
-                        type="tertiary",
-                        on_click=_select_ei_report_tab,
-                        args=(name,),
-                    ):
-                        # Callback updates state before this rerun. Keep the
-                        # returned value as a fallback for simpler test stubs.
-                        st.session_state["cadivor_ei_report_tab"] = name
-                active_slug = str(tab or "BOM Risk").casefold().replace(" ", "-").replace("&", "and")
+                selected_tab = st.segmented_control(
+                    "Engineering Intelligence section",
+                    options=list(EI_TABS),
+                    default=tab,
+                    key=tab_state_key,
+                    label_visibility="collapsed",
+                )
+                tab = str(selected_tab or tab)
                 st.markdown(
                     f"""
                     <style>
-                    html body section[data-testid="stMain"] .st-key-cv_ei_report_tabs .stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton) > button{{
-                      background:transparent!important;background-color:transparent!important;
-                      border:0!important;border-radius:0!important;box-shadow:none!important;color:#64748b!important;
-                      min-height:0!important;height:auto!important;min-width:0!important;width:auto!important;
-                      margin:0!important;padding:2px 10px 4px!important;line-height:1.15!important;white-space:nowrap!important
+                    .st-key-cv_ei_report_tabs [data-testid="stSegmentedControl"]{{
+                      width:100%;background:transparent!important;border-bottom:1px solid #e2e8f0;
+                      border-radius:0!important;box-shadow:none!important
                     }}
-                    html body section[data-testid="stMain"] .st-key-cv_ei_report_tabs .stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton) > button *{{
-                      margin:0!important;padding:0!important;line-height:1.15!important;border:0!important;box-shadow:none!important
+                    .st-key-cv_ei_report_tabs [data-testid="stSegmentedControl"] button{{
+                      color:#64748b!important;background:transparent!important;border:0!important;
+                      border-bottom:2px solid transparent!important;border-radius:0!important;
+                      box-shadow:none!important;min-height:34px!important;padding:6px 10px!important;
+                      white-space:nowrap!important
                     }}
-                    html body section[data-testid="stMain"] .st-key-cv_ei_report_tabs [class*="st-key-ei_tab_{active_slug}"].stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton) > button{{
-                      color:#1d4ed8!important;background:transparent!important;background-color:transparent!important;
-                      border-bottom:2px solid #2563eb!important;box-shadow:none!important;border-radius:0!important;
-                      padding:2px 10px 4px!important
+                    .st-key-cv_ei_report_tabs [data-testid="stSegmentedControl"] button[aria-checked="true"],
+                    .st-key-cv_ei_report_tabs [data-testid="stSegmentedControl"] button[aria-pressed="true"]{{
+                      color:#1d4ed8!important;border-bottom-color:#2563eb!important;font-weight:750!important
                     }}
-                    html body section[data-testid="stMain"] .st-key-cv_ei_report_tabs [class*="st-key-ei_tab_{active_slug}"].stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton) > button *{{
-                      color:#1d4ed8!important;border:0!important;box-shadow:none!important;padding:0!important;margin:0!important
-                    }}
+                    @media(max-width:760px){{.st-key-cv_ei_report_tabs{{overflow-x:auto}}}}
                     </style>
                     """,
                     unsafe_allow_html=True,
