@@ -168,11 +168,12 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
         )
         self.assertNotEqual(widget_key, "alternative_original_part")
         self.assertEqual(initial_value, "MPN-001")
-        self.assertNotIn(widget_key, st.session_state)
+        self.assertEqual(st.session_state[widget_key], "MPN-001")
+        self.assertTrue(st.session_state["alternative_prefill_search_pending"])
         self.assertEqual(st.session_state["alternative_original_manufacturer"], "AlphaSemi")
         runtime = Path("src/authenticated_runtime.py").read_text(encoding="utf-8")
         self.assertIn("key=original_part_widget_key", runtime)
-        self.assertIn("value=original_part_initial_value", runtime)
+        self.assertIn('st.session_state.pop("alternative_prefill_search_pending", False)', runtime)
         self.assertIn("st.session_state.get(original_part_widget_key)", runtime)
 
     def test_reclicking_same_part_gets_a_fresh_prefilled_input(self):
@@ -217,8 +218,28 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
 
         self.assertNotEqual(first_key, second_key)
         self.assertEqual(second_value, "MCP2551-I/SN")
-        self.assertNotIn(second_key, state)
+        self.assertEqual(state[second_key], "MCP2551-I/SN")
         self.assertEqual(state["alternative_finder_result"]["status"], "completed")
+        self.assertNotIn("alternative_prefill_search_pending", state)
+
+    def test_bom_risk_clear_state_does_not_show_engineering_review_warning(self):
+        from src.ui.ei_bom_report import engineering_intelligence_html
+
+        html = engineering_intelligence_html(
+            bom_name="Healthy BOM",
+            part_count=1,
+            tab="BOM Risk",
+            parts=[{"mpn": "R-1", "risk_level": "Low", "risk_score": 12}],
+        )
+        self.assertIn("No high-risk components found", html)
+        self.assertNotIn("Engineering review required", html)
+
+    def test_engineering_intelligence_tabs_commit_before_the_page_rerun(self):
+        source = Path("src/ui/ei_bom_report.py").read_text(encoding="utf-8")
+        renderer = source.split("def render_engineering_intelligence_report", 1)[1]
+        tabs = renderer.split("if st.session_state.get(\"cadivor_show_detailed_risk\"):", 1)[0]
+        self.assertIn("on_click=_select_ei_report_tab", tabs)
+        self.assertNotIn("st.rerun()", tabs)
 
     def test_detailed_risk_rows_keep_package_for_the_correct_fallback_photo(self):
         from src.part_images import part_image_markup, part_image_source

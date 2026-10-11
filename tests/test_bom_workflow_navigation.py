@@ -171,7 +171,13 @@ class BomWorkflowNavigationTests(unittest.TestCase):
         )
         self.navigation.apply_alternative_finder_prefill(context)
 
-        self.assertEqual(self.streamlit.session_state["alternative_original_part"], "LM358N")
+        from src.alternative_finder_state import get_alternative_finder_original_part_input_config
+
+        widget_key, initial_value = get_alternative_finder_original_part_input_config(
+            self.streamlit.session_state
+        )
+        self.assertEqual(self.streamlit.session_state[widget_key], "LM358N")
+        self.assertEqual(initial_value, "LM358N")
         self.assertEqual(get_alternative_finder_candidates(self.streamlit.session_state)[0]["Alternative Part"], "LM358P")
 
     def test_external_context_preserves_return_after_query_cleanup(self):
@@ -189,6 +195,23 @@ class BomWorkflowNavigationTests(unittest.TestCase):
             ],
             "LM358N",
         )
+
+    def test_current_url_part_wins_over_a_stale_pending_context(self):
+        self.streamlit.session_state[self.navigation.ALT_FINDER_CONTEXT_KEY] = {
+            "mpn": "OLD-PART",
+            "analysis_id": "old-bom",
+            "prefill_id": "old-click",
+        }
+        query = {
+            "original_part": "GRM188R71C104KA01D",
+            "analysis_id": "new-bom",
+            "prefill_id": "new-click",
+        }
+        context = self.navigation.consume_alternative_finder_context(
+            lambda key, default="": query.get(key, default)
+        )
+        self.assertEqual(context["mpn"], "GRM188R71C104KA01D")
+        self.assertEqual(context["analysis_id"], "new-bom")
 
     def test_reports_use_internal_navigation_and_selected_analysis(self):
         source = (ROOT / "src/authenticated_runtime.py").read_text()

@@ -105,6 +105,18 @@ def test_every_saved_bom_section_uses_the_shared_nav():
             for item in rendered.buttons
             if item["label"] in PRIMARY_AREAS
         ), section
+        assert all(callable(item.get("on_click")) for item in rendered.buttons), section
+
+
+def test_saved_bom_navigation_uses_one_rerun_callbacks():
+    source = (ROOT / "src/pages/analysis_detail.py").read_text(encoding="utf-8")
+    section_nav = source.split("def _render_analysis_section_navigation", 1)[1].split(
+        "def _num", 1
+    )[0]
+    assert "st.rerun()" not in section_nav
+    bom_nav = (ROOT / "src/ui/bom_navigation.py").read_text(encoding="utf-8")
+    assert "on_click=_select_saved_bom_area" in bom_nav
+    assert "on_click=_select_saved_bom_more" in bom_nav
 
 
 def test_shared_nav_style_is_underline_only():

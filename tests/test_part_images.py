@@ -75,11 +75,45 @@ def test_every_component_family_has_an_illustration_fallback():
     assert seen == _KINDS
 
 
-def test_mpn_alone_does_not_select_a_category_illustration():
+def test_known_ic_mpn_without_metadata_uses_generic_until_the_family_is_confirmed():
     markup = part_image_markup("", "LM358DT", part={"manufacturer_part_number": "LM358DT"})
     assert 'data-illustration="generic"' in markup
     assert 'data-illustration="ic"' not in markup
     assert ILLUSTRATION_LABEL in markup
+
+
+def test_known_passive_mpn_prefixes_select_the_correct_family_art():
+    capacitor = part_image_markup(
+        "", "GRM188R71C104KA01D", part={"mpn": "GRM188R71C104KA01D"}
+    )
+    resistor = part_image_markup("", "RC0603FR-0710KL", part={"mpn": "RC0603FR-0710KL"})
+    assert 'data-illustration="capacitor"' in capacitor
+    assert 'data-illustration="resistor"' in resistor
+    assert 'data-illustration="ic"' not in capacitor
+
+
+def test_part_number_argument_supplies_family_when_context_has_no_mpn():
+    markup = part_image_markup(
+        "",
+        "GRM188R71C104KA01D",
+        part={"description": "Catalog candidate", "category": "Cost review"},
+    )
+    assert 'data-illustration="capacitor"' in markup
+
+
+def test_confident_capacitor_mpn_overrides_a_stale_generic_ic_category():
+    markup = part_image_markup(
+        "",
+        "GRM188R71C104KA01D",
+        part={"category": "IC"},
+    )
+    assert 'data-illustration="capacitor"' in markup
+
+
+def test_tantalum_capacitor_mpn_does_not_fall_back_to_an_ic_image():
+    markup = part_image_markup("", "T491B106K016AT", part={"category": "IC"})
+    assert 'data-illustration="capacitor"' in markup
+    assert 'data-illustration="ic"' not in markup
 
 
 def test_image_column_gets_a_real_source_even_without_a_supplier_photo():
@@ -140,7 +174,7 @@ def test_missing_category_metadata_uses_the_generic_illustration():
     assert "<img" in markup
 
 
-def test_generic_fallback_uses_neutral_ic_package_art_for_both_mounting_styles():
+def test_generic_fallback_is_neutral_and_respects_mounting_style():
     generic_smd = part_image_source("", "UNKNOWN-SMD")
     generic_th = part_image_source("", "UNKNOWN-TH", part={"package": "through-hole"})
     neutral_ic_smd = part_image_source("", "UNKNOWN-SMD", category="IC")
@@ -148,8 +182,10 @@ def test_generic_fallback_uses_neutral_ic_package_art_for_both_mounting_styles()
         "", "UNKNOWN-TH", category="IC", part={"package": "through-hole"}
     )
 
-    assert generic_smd == neutral_ic_smd
-    assert generic_th == neutral_ic_th
+    assert generic_smd.startswith("data:image/svg+xml;base64,")
+    assert generic_smd != generic_th
+    assert generic_smd != neutral_ic_smd
+    assert generic_th != neutral_ic_th
 
 
 def test_stored_description_selects_the_category_drawing():

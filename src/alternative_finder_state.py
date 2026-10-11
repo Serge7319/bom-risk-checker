@@ -319,6 +319,10 @@ def set_alternative_finder_prefill_input(
         session_state.pop(ALTERNATIVE_ORIGINAL_PART_WIDGET_KEY, None)
     session_state[ALTERNATIVE_ORIGINAL_PART_WIDGET_KEY_STATE] = widget_key
     session_state[ALTERNATIVE_ORIGINAL_PART_WIDGET_DEFAULT_KEY] = str(mpn or "").strip()
+    # The key is unique to this navigation event and is assigned before the
+    # widget is mounted. This makes the handoff reliable even when Streamlit
+    # retains a previous form value across route changes.
+    session_state[widget_key] = str(mpn or "").strip()
     return widget_key
 
 

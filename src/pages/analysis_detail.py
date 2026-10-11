@@ -307,31 +307,31 @@ def _render_analysis_section_navigation(*, analysis_id: str) -> str:
     if area_clicked:
         st.session_state[area_key] = area_clicked
         st.session_state[more_key] = "More"
-        st.rerun()
     if more_clicked:
         st.session_state[more_key] = more_clicked
         more_choice = more_clicked
-        st.rerun()
     more_choice = str(more_choice or "More")
     if more_choice == "Watch this BOM":
         navigate_to(
             "Monitoring",
             analysis_id=analysis_id,
             return_analysis_id=analysis_id,
+            _rerun=False,
             arm_opening=False,
         )
         more_choice = "More"
     elif more_choice == "Datasheet Q&A":
-        navigate_to("Datasheet Q&A", arm_opening=False)
+        navigate_to("Datasheet Q&A", _rerun=False, arm_opening=False)
         more_choice = "More"
     elif more_choice == "Compare parts":
-        navigate_to("Compare Parts", arm_opening=False)
+        navigate_to("Compare Parts", _rerun=False, arm_opening=False)
         more_choice = "More"
     elif more_choice == "Design Impact":
         navigate_to(
             "Design Impact Analyzer",
             analysis_id=analysis_id,
             return_analysis_id=analysis_id,
+            _rerun=False,
             arm_opening=False,
         )
         more_choice = "More"
