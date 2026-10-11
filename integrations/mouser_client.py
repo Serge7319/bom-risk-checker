@@ -2,10 +2,12 @@ import re
 
 import requests
 
+from integrations.stock_coercion import parse_stock_total
 from integrations.pin_count import parse_pin_count_from_text, resolve_pin_count
 from src.secrets import get_secret
 from src.part_images import normalize_supplier_image_url
 from src.saved_bom_cost import price_breaks_from_payload
+from src.normalizer import normalize_part_number
 
 
 def search_mouser_by_part_number(part_number: str) -> dict:
@@ -30,8 +32,17 @@ def search_mouser_by_part_number(part_number: str) -> dict:
 
     if not parts:
         return default_part_result()
-
-    return normalize_mouser_part(parts[0])
+    requested_key = normalize_part_number(str(part_number or "").strip())
+    exact_part = next((
+        part for part in parts
+        if isinstance(part, dict)
+        and requested_key
+        and requested_key in {
+            normalize_part_number(str(part.get("ManufacturerPartNumber") or "").strip()),
+            normalize_part_number(str(part.get("MouserPartNumber") or "").strip()),
+        }
+    ), None)
+    return normalize_mouser_part(exact_part) if exact_part else default_part_result()
 
 
 def normalize_mouser_part(part: dict) -> dict:
@@ -174,7 +185,7 @@ def normalize_mouser_part(part: dict) -> dict:
 def default_part_result() -> dict:
     return {
         "lifecycle_status": "Unknown",
-        "stock_total": 0,
+        "stock_total": None,
         "unit_price": 0.0,
         "supplier_count": 0,
         "lead_time_weeks": None,
@@ -253,16 +264,9 @@ def extract_voltage_limits(voltage_text: str):
     return None, None
 
 
-def extract_stock_number(availability: str) -> int:
-    digits = ""
-
-    for char in availability:
-        if char.isdigit():
-            digits += char
-        elif digits:
-            break
-
-    return int(digits) if digits else 0
+def extract_stock_number(availability: str) -> int | None:
+    """Return on-hand stock only when Mouser text explicitly reports it."""
+    return parse_stock_total(availability)
 
 
 def extract_mouser_price(part: dict) -> float:
@@ -305,7 +309,8 @@ def infer_lifecycle_status(part: dict) -> str:
     if suggested_replacement:
         return "Replacement Suggested"
 
-    return "Active"
+    # Product listing and on-hand stock do not establish manufacturer lifecycle.
+    return "Unknown"
 
 
 
