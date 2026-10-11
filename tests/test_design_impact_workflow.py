@@ -15,8 +15,9 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _impact_data(selected_mpn: str = "IC-100"):
     analyses = [
-        {"id": "bom-1", "project_name": "Gateway", "filename": "gateway.csv", "health_score": 72},
-        {"id": "bom-2", "project_name": "Sensor", "filename": "sensor.csv", "health_score": 88},
+        {"id": "bom-1", "project_name": "Gateway", "filename": "gateway.csv", "health_score": 72, "updated_at": "2026-10-01"},
+        {"id": "bom-2", "project_name": "Sensor", "filename": "sensor.csv", "health_score": 88, "updated_at": "2026-10-02"},
+        {"id": "bom-3", "project_name": "Gateway", "filename": "gateway.csv", "health_score": 65, "updated_at": "2026-10-03"},
     ]
     parts = [
         {
@@ -44,6 +45,32 @@ def _impact_data(selected_mpn: str = "IC-100"):
             "stock_available": 80,
         },
         {
+            "analysis_id": "bom-1",
+            "mpn": "IC-100",
+            "manufacturer": "Acme",
+            "risk_score": 62,
+            "risk_level": "High",
+            "lifecycle_status": "Active",
+            "package": "QFN",
+            "pin_count": 32,
+            "supplier_count": 2,
+            "stock_available": 120,
+            "quantity": 2,
+        },
+        {
+            "analysis_id": "bom-3",
+            "mpn": "IC-100",
+            "manufacturer": "Acme",
+            "risk_score": 50,
+            "risk_level": "Medium",
+            "lifecycle_status": "Active",
+            "package": "QFN",
+            "pin_count": 32,
+            "supplier_count": 2,
+            "stock_available": 95,
+            "quantity": 4,
+        },
+        {
             "analysis_id": "bom-2",
             "mpn": "CAP-220",
             "manufacturer": "Parts Co",
@@ -64,9 +91,15 @@ def test_catalog_aggregates_parts_across_saved_boms():
 
     assert result["selected_mpn"] == "IC-100"
     assert result["project_count"] == 2
-    assert catalog_row["Saved BOMs"] == 2
+    assert result["affected_bom_count"] == 3
+    assert len(result["affected_projects"]) == 2
+    assert catalog_row["Saved BOMs"] == 3
     assert catalog_row["Projects"] == 2
     assert {"Gateway", "Sensor"}.issubset(set(catalog_row["Project Names"]))
+
+    gateway = next(row for row in result["affected_projects"] if row["Project"] == "Gateway")
+    assert gateway["Saved BOMs"] == 2
+    assert gateway["Quantity"] == 7
 
 
 def test_component_list_is_limited_to_ten_rows(monkeypatch):
@@ -122,6 +155,9 @@ class _FakeStreamlit:
 
     def markdown(self, *args, **kwargs):
         return None
+
+    def container(self, *args, **kwargs):
+        return nullcontext()
 
     def text_input(self, *args, **kwargs):
         return self.query
@@ -247,3 +283,9 @@ def test_runtime_restores_the_component_specific_map_for_the_selected_bom_rows()
     assert "impact_map_markup=impact_map_markup" in section
     assert "review_started=bool(" in section
     assert "render_simple_workspace(" not in section
+
+    renderer = (ROOT / "src" / "design_impact_analyzer.py").read_text(encoding="utf-8")
+    assert 'st.container(key="approved_home_page")' in renderer
+    assert "max-width:1440px!important" in renderer
+    assert "columns=4" in renderer
+    assert "Estimated Review" not in renderer
