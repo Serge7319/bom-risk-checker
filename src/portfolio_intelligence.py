@@ -57,12 +57,11 @@ def high_risk_components_disclosure(
         mpn = html.escape(_text(row.get("Part Number"), "Component"))
         maker = _text(row.get("Manufacturer"))
         level = html.escape(_text(row.get("Risk Level"), "High"))
-        score = int(_number(row.get("Risk Score"), 0))
         quantity = int(_number(row.get("Quantity"), 0))
         evidence = []
         if maker != "Unknown":
             evidence.append(html.escape(maker))
-        evidence.append(f"{level} · {score}/100")
+        evidence.append(level)
         if quantity > 0:
             evidence.append(f"Qty {quantity:,}")
         items.append(
