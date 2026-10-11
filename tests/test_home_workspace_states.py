@@ -48,7 +48,9 @@ def test_new_user_with_no_saved_boms_is_first_review_only():
         "def render_activation_strip", 1
     )[0]
     assert "Upload a BOM" in first_run
-    assert "A first review in four steps" in first_run
+    assert "Your BOM review workflow" in first_run
+    for stage in ("Upload BOM", "Analyze Risk", "Ask Cadivor", "Engineering Decision", "Continuous Monitoring"):
+        assert stage in first_run
     for message in ONBOARDING_MESSAGES:
         assert message not in first_run
 
@@ -325,7 +327,7 @@ def test_home_presentation_uses_the_full_width_bom_table():
     assert 'key="home_new_bom"' in home
     assert 'open_saved_bom(card["id"], arm_opening=True, _rerun=True)' in home
     assert 'open_saved_bom(analysis_id, arm_opening=True, _rerun=True)' in home
-    assert "A first review in four steps" in first_run
+    assert "Your BOM review workflow" in first_run
     assert "cv-home-step-num" in first_run
     assert 'key="ftue_upload_first_bom"' in first_run
     for token in (
@@ -344,7 +346,7 @@ def test_home_presentation_uses_the_full_width_bom_table():
     first_run = onboarding.split("def render_first_run_dashboard", 1)[1].split(
         "def render_activation_strip", 1
     )[0]
-    assert "A first review in four steps" in first_run
+    assert "Your BOM review workflow" in first_run
     assert "Upload a BOM" in first_run
     dashboard = _dashboard_source()
     new_user = dashboard.split('if home["kind"] == HOME_NEW', 1)[1].split(
