@@ -162,6 +162,27 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
         self.assertEqual(st.session_state["alternative_original_part"], "MPN-001")
         self.assertEqual(st.session_state["alternative_original_manufacturer"], "AlphaSemi")
 
+    def test_detailed_risk_rows_keep_package_for_the_correct_fallback_photo(self):
+        from src.part_images import part_image_markup, part_image_source
+        from src.ui.ei_bom_report import _part_rows
+
+        row = _part_rows(
+            [{
+                "mpn": "CAP-TH",
+                "description": "Radial through-hole capacitor",
+                "category": "Capacitor",
+                "package": "Radial through-hole",
+            }]
+        )[0]
+        self.assertEqual(row["package"], "Radial through-hole")
+        expected = part_image_source(
+            "",
+            "CAP-TH",
+            category="Capacitor",
+            part={"category": "Capacitor", "package": "Radial through-hole"},
+        )
+        self.assertIn(f'src="{expected}"', part_image_markup("", "CAP-TH", part=row))
+
     def test_new_contextual_click_is_not_blocked_by_an_old_consumed_mpn(self):
         from src.alternative_finder_state import should_apply_alternative_finder_prefill
 
