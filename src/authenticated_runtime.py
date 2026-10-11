@@ -6455,7 +6455,11 @@ def run_authenticated_app() -> None:
         except Exception:
             portfolio_alerts = []
 
-        from src.portfolio_intelligence import build_portfolio_intelligence, high_risk_components_disclosure, render_portfolio_intelligence
+        from src.portfolio_intelligence import (
+            build_portfolio_intelligence,
+            high_risk_components_disclosure,
+            render_portfolio_intelligence,
+        )
         portfolio_intelligence = build_portfolio_intelligence(
             portfolio_analyses,
             portfolio_parts,
