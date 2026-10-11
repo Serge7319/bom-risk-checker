@@ -701,14 +701,11 @@ def _ensure_authenticated_or_stop_impl() -> None:
 
     # FIRST paint for signed-out / restore / credential flows only.
     if signup_confirmation_pending:
-        paint_auth_gate(
-            gate_state,
-            progress_message=(
-                "Review the confirmation and continue to finish signing in."
-                if signup_confirmation_link_pending
-                else "Opening your secure email confirmation…"
-            ),
-        )
+        # The callback resolves to an actionable confirmation card later in
+        # this same run. A fixed full-screen progress gate here remains above
+        # that card and prevents the visitor from pressing its confirmation
+        # button, leaving the email flow apparently stuck.
+        paint_auth_gate("login")
     else:
         paint_auth_gate(gate_state)
     log_auth_correlation(
