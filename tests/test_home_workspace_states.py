@@ -13,6 +13,7 @@ from src.pages.home_workspace import (
     SECONDARY_UPDATE_BANNER,
     apply_saved_analysis_result,
     build_home_model,
+    remember_saved_analyses_for_session,
 )
 
 
@@ -174,6 +175,36 @@ def test_timeout_without_cache_is_not_a_new_user():
     assert home["kind"] == HOME_UNKNOWN
     assert home["show_onboarding"] is False
     assert home["title"] != "Start your first BOM review"
+
+
+def test_bom_catalog_snapshot_keeps_home_available_after_a_read_timeout():
+    session = {}
+    remembered = remember_saved_analyses_for_session(
+        session,
+        user_id="user-1",
+        rows=[_bom()],
+    )
+    recovered = apply_saved_analysis_result(
+        session,
+        user_id="user-1",
+        rows=None,
+        status="timeout",
+    )
+    home = build_home_model(user_id="user-1", analyses=recovered, parts=None)
+
+    assert remembered == [_bom()]
+    assert recovered == [_bom()]
+    assert home["kind"] == HOME_ATTENTION
+    assert home["recent"][0]["name"] == "Industrial Controller BOM"
+
+    pages = (ROOT / "src/ui/approved_pages.py").read_text(encoding="utf-8")
+    catalog = pages.split("def render_bom_catalog", 1)[1].split(
+        "def render_compare_live", 1
+    )[0]
+    assert "remember_saved_analyses_for_session" in catalog
+    assert '"Retry saved BOMs"' in pages.split("def render_home", 1)[1].split(
+        "def render_bom_catalog", 1
+    )[0]
 
 
 def test_other_users_boms_do_not_make_this_user_returning():

@@ -18,6 +18,7 @@ from src.parts_compare import (
     map_status_to_assessment,
     public_part_card,
     run_compare_parts,
+    run_compare_parts_many,
     user_facing_compare_rows,
 )
 
@@ -295,6 +296,38 @@ class ComparePartsCoreTests(unittest.TestCase):
         self.assertEqual(result["status"], "completed")
         self.assertEqual(result["comparison"]["family"], "Capacitor")
 
+    def test_run_compare_parts_many_builds_a_third_column_and_retrieves_once(self):
+        with patch(
+            "src.parts_compare.lookup_part_for_compare",
+            side_effect=[
+                _cap(),
+                _cap(mpn="ALT-B"),
+                _cap(v="25V", mpn="ALT-C"),
+            ],
+        ) as lookup:
+            result = run_compare_parts_many(["C0603C104K5RACTU", "ALT-B", "ALT-C"])
+
+        comparison = result["comparison"]
+        voltage = next(row for row in comparison["rows"] if row["Attribute"] == "Rated voltage")
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(result["part_numbers"], ["C0603C104K5RACTU", "ALT-B", "ALT-C"])
+        self.assertEqual(comparison["part_c"]["mpn"], "ALT-C")
+        self.assertEqual(voltage["Part A"], "50V")
+        self.assertEqual(voltage["Part B"], "50V")
+        self.assertEqual(voltage["Part C"], "25V")
+        self.assertIn("Part C:", voltage["Assessment"])
+        self.assertEqual(lookup.call_count, 3)
+
+    def test_run_compare_parts_many_rejects_duplicates_and_more_than_three(self):
+        with patch("src.parts_compare.lookup_part_for_compare") as lookup:
+            duplicate = run_compare_parts_many(["abc", " ABC "])
+            too_many = run_compare_parts_many(["a", "b", "c", "d"])
+        self.assertEqual(duplicate["status"], "failed")
+        self.assertIn("different", duplicate["error"])
+        self.assertEqual(too_many["status"], "failed")
+        self.assertIn("up to three", too_many["error"])
+        lookup.assert_not_called()
+
     def test_map_status_helpers(self):
         self.assertEqual(map_status_to_assessment("Match"), FINDING_COMPATIBLE)
         self.assertEqual(map_status_to_assessment("Different"), FINDING_MATERIAL)
@@ -327,6 +360,25 @@ class ComparePartsUiWiringTests(unittest.TestCase):
         self.assertIn("user_may_view_comparison_diagnostics", page)
         self.assertTrue(user_may_view_comparison_diagnostics(is_admin=True))
         self.assertFalse(user_may_view_comparison_diagnostics(is_admin=False, role="engineer"))
+
+    def test_approved_compare_page_wires_the_add_part_slot(self):
+        root = Path(__file__).resolve().parents[1]
+        pages = (root / "src" / "ui" / "approved_pages.py").read_text(encoding="utf-8")
+        renderer = pages.split("def render_compare_live", 1)[1].split(
+            "def render_datasheet_live", 1
+        )[0]
+        finder = pages.split("def render_replacement_search", 1)[1].split(
+            "def render_compare_live", 1
+        )[0]
+        self.assertIn('"＋ Add part"', renderer)
+        self.assertIn('st.text_input("Part C"', renderer)
+        self.assertIn("run_compare_parts_many(requested_parts)", renderer)
+        self.assertIn('"Add to comparison"', finder)
+        self.assertIn('"Compare up to 3 parts"', finder)
+        self.assertIn('"Compare part numbers manually"', finder)
+        self.assertIn('st.session_state["approved_compare_b"] = candidate_b', finder)
+        self.assertIn('st.session_state["approved_compare_c"] = candidate_c', finder)
+        self.assertIn('st.session_state["approved_compare_auto_run_pending"] = True', finder)
 
     def test_user_facing_projection_renames_columns(self):
         rows = user_facing_compare_rows(

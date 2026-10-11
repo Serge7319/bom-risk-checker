@@ -435,6 +435,147 @@ def run_compare_parts(part_a_mpn: str, part_b_mpn: str) -> dict[str, Any]:
     }
 
 
+def run_compare_parts_many(part_mpns: list[str] | tuple[str, ...]) -> dict[str, Any]:
+    """Compare two or three parts side by side, using Part A as the baseline.
+
+    Each entered MPN is retrieved once. Part B and optional Part C are compared
+    independently with Part A, so the table never implies that one candidate was
+    validated against another candidate.
+    """
+    parts = [str(value or "").strip() for value in part_mpns or ()]
+    while parts and not parts[-1]:
+        parts.pop()
+    token = [_normalize_mpn(value) for value in parts]
+    if len(parts) < 2:
+        return {
+            "status": STATUS_FAILED,
+            "error": "Enter Part A and Part B. You can add a third part before comparing.",
+            "part_numbers": parts,
+        }
+    if len(parts) > 3:
+        return {
+            "status": STATUS_FAILED,
+            "error": "Compare up to three parts at a time.",
+            "part_numbers": parts,
+        }
+    if any(not value for value in token):
+        return {
+            "status": STATUS_FAILED,
+            "error": "Enter a manufacturer part number for each selected part.",
+            "part_numbers": parts,
+        }
+    if len(set(token)) != len(token):
+        return {
+            "status": STATUS_FAILED,
+            "error": "Each comparison slot must use a different manufacturer part number.",
+            "part_numbers": parts,
+        }
+
+    retrieved = [lookup_part_for_compare(mpn) for mpn in parts]
+    pair_comparisons = [
+        build_parts_comparison(
+            retrieved[0],
+            retrieved[index],
+            part_a_mpn=parts[0],
+            part_b_mpn=parts[index],
+        )
+        for index in range(1, len(parts))
+    ]
+    cards = [pair_comparisons[0]["part_a"]] + [
+        comparison["part_b"] for comparison in pair_comparisons
+    ]
+    if not any(card.get("found") for card in cards):
+        return {
+            "status": STATUS_FAILED,
+            "error": "Cadivor could not retrieve supplier data for these parts.",
+            "part_numbers": parts,
+        }
+
+    by_pair: list[dict[str, dict[str, Any]]] = []
+    attribute_order: list[str] = []
+    for comparison in pair_comparisons:
+        current: dict[str, dict[str, Any]] = {}
+        for row in comparison.get("rows") or []:
+            if not isinstance(row, dict):
+                continue
+            label = str(row.get("Attribute") or "").strip()
+            if not label:
+                continue
+            key = label.casefold()
+            current[key] = row
+            if key not in attribute_order:
+                attribute_order.append(key)
+        by_pair.append(current)
+
+    rows: list[dict[str, Any]] = []
+    for key in attribute_order:
+        pair_a_b = by_pair[0].get(key, {})
+        pair_a_c = by_pair[1].get(key, {}) if len(by_pair) > 1 else {}
+        label = str(pair_a_b.get("Attribute") or pair_a_c.get("Attribute") or "").strip()
+        assessments = []
+        evidence = []
+        for slot, row in (("Part B", pair_a_b), ("Part C", pair_a_c)):
+            assessment = str(row.get("Assessment") or "").strip()
+            if assessment:
+                assessments.append(f"{slot}: {assessment}")
+            evidence_text = str(row.get("Evidence") or "").strip()
+            if evidence_text and evidence_text not in evidence:
+                evidence.append(evidence_text)
+        rows.append(
+            {
+                "Attribute": label,
+                "Part A": str(pair_a_b.get("Part A") or pair_a_c.get("Part A") or ""),
+                "Part B": str(pair_a_b.get("Part B") or ""),
+                "Part C": str(pair_a_c.get("Part B") or ""),
+                "Assessment": " · ".join(assessments),
+                "Evidence": " · ".join(evidence),
+            }
+        )
+
+    counts = {
+        "compatible": sum(int(item.get("counts", {}).get("compatible") or 0) for item in pair_comparisons),
+        "material_difference": sum(int(item.get("counts", {}).get("material_difference") or 0) for item in pair_comparisons),
+        "needs_data": sum(int(item.get("counts", {}).get("needs_data") or 0) for item in pair_comparisons),
+    }
+    findings = {str(item.get("finding") or FINDING_NEEDS_DATA) for item in pair_comparisons}
+    if FINDING_MATERIAL in findings:
+        finding = FINDING_MATERIAL
+    elif FINDING_NEEDS_DATA in findings:
+        finding = FINDING_NEEDS_DATA
+    else:
+        finding = FINDING_COMPATIBLE
+
+    first = pair_comparisons[0]
+    comparison_result = {
+        "part_a": cards[0],
+        "part_b": cards[1],
+        "part_c": cards[2] if len(cards) > 2 else {},
+        "family": first.get("family", "General"),
+        "family_display_name": first.get("family_display_name", "General components"),
+        "family_mismatch": any(bool(item.get("family_mismatch")) for item in pair_comparisons),
+        "finding": finding,
+        "engineering_evidence_summary": "Part B and any added Part C are assessed independently against Part A using available evidence.",
+        "engineering_evidence_status": "pairwise",
+        "counts": counts,
+        "rows": rows,
+        "supplier_substitute_claim": False,
+        "notes": [
+            "Part B and any added Part C are each compared with Part A.",
+            "Missing attributes stay missing; Cadivor does not infer a match.",
+        ],
+    }
+    return {
+        "status": STATUS_COMPLETED,
+        "part_a": parts[0],
+        "part_b": parts[1],
+        "part_c": parts[2] if len(parts) > 2 else "",
+        "part_numbers": parts,
+        "comparison": comparison_result,
+        "error": "",
+    }
+
+
+
 def generate_parts_comparison_pdf(comparison: Mapping[str, Any]) -> bytes:
     """Build a concise downloadable PDF using the same user-facing fields as the screen."""
     from io import BytesIO

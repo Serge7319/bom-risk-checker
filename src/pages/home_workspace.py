@@ -82,6 +82,24 @@ def apply_saved_analysis_result(
     return cached_rows
 
 
+def remember_saved_analyses_for_session(
+    session_state: dict,
+    *,
+    user_id: str,
+    rows: Any,
+) -> list[dict[str, Any]] | None:
+    """Cache a successful saved-BOM read from any authenticated workspace page."""
+    if rows is None or not str(user_id or "").strip():
+        return None
+    return apply_saved_analysis_result(
+        session_state,
+        user_id=user_id,
+        rows=rows,
+        status="ok",
+    )
+
+
+
 def build_home_model(
     *,
     user_id: str,

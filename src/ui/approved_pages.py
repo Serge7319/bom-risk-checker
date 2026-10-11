@@ -1774,8 +1774,16 @@ def render_home(
     plan_notice: str = "",
     pause_new_analyses: bool = False,
     user_id: str = "",
+    saved_boms_stale: bool = False,
 ) -> None:
     begin_approved_page()
+    from src.pages.home_workspace import remember_saved_analyses_for_session
+
+    remember_saved_analyses_for_session(
+        st.session_state,
+        user_id=user_id,
+        rows=analyses,
+    )
     rows = _rows_with_project_edits(_records(analyses))
     high = sum(_num(_first(row, "high_risk_count")) for row in rows)
     review = sum(1 for row in rows if _num(_first(row, "high_risk_count")) or _num(_first(row, "health_score"), 100) < 80)
@@ -1784,6 +1792,10 @@ def render_home(
     greeting = name or "there"
     notice = f"<p class='cv-ap-sub'>{_esc(plan_notice)}</p>" if plan_notice else ""
     with st.container(key="approved_home_page"):
+        if saved_boms_stale:
+            st.info("Showing the saved BOM list from this session. Cadivor couldn’t refresh it just now.")
+            if st.button("Retry saved BOMs", key="home_retry_saved_boms"):
+                st.rerun()
         with st.container(key="approved_home_header"):
             title_col, action_col = st.columns([4.8, 1], vertical_alignment="top")
             with title_col:
@@ -1919,6 +1931,13 @@ def render_home(
 
 def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") -> None:
     begin_approved_page()
+    from src.pages.home_workspace import remember_saved_analyses_for_session
+
+    remember_saved_analyses_for_session(
+        st.session_state,
+        user_id=user_id,
+        rows=records,
+    )
     rows = _rows_with_project_edits(_records(records))
     edit_id = str(st.session_state.get(SAVED_BOM_EDIT_STATE) or "").strip()
     delete_id = str(st.session_state.get(SAVED_BOM_DELETE_STATE) or "").strip()
@@ -3370,38 +3389,149 @@ def render_replacement_search() -> None:
                 cells[6].markdown(level_html, unsafe_allow_html=True)
             if is_open:
                 st.markdown(_candidate_detail_html(row, original), unsafe_allow_html=True)
-    for index, row in enumerate(candidates[:5]):
-        candidate = _candidate_mpn(row)
-        if candidate and st.button(f"Compare {candidate}", key=f"approved_replacement_compare_{index}"):
-            st.session_state["cadivor_compare_part_a"] = str(original.get("manufacturer_part_number") or query or "")
-            st.session_state["cadivor_compare_part_b"] = candidate
+    from src.normalizer import normalize_part_number
+
+    compare_source_mpn = str(original.get("manufacturer_part_number") or query or "").strip()
+    compare_source_token = normalize_part_number(compare_source_mpn) or compare_source_mpn.upper()
+    if st.session_state.get("approved_replacement_compare_source") != compare_source_token:
+        st.session_state["approved_replacement_compare_source"] = compare_source_token
+        st.session_state["approved_replacement_compare_candidates"] = []
+    compare_candidates = [
+        str(item or "").strip()
+        for item in st.session_state.get("approved_replacement_compare_candidates", [])
+        if str(item or "").strip()
+    ][:2]
+    if shown and compare_source_mpn:
+        selected_candidate_text = " · ".join(_esc(item) for item in compare_candidates)
+        selected_candidate_line = (
+            f"<p class='cv-ap-meta'>Selected replacements: {selected_candidate_text}</p>"
+            if selected_candidate_text
+            else ""
+        )
+        st.markdown(
+            "<section class='cv-ap-card'><h3>Compare up to 3 parts</h3>"
+            f"<p class='cv-ap-sub'>Part A: {_esc(compare_source_mpn)}. Add up to two replacement candidates, then compare them with the source part.</p>"
+            f"<p class='cv-ap-meta'>{len(compare_candidates) + 1} of 3 parts selected</p>"
+            f"{selected_candidate_line}</section>",
+            unsafe_allow_html=True,
+        )
+        for index, row in enumerate(candidates[:5]):
+            candidate = _candidate_mpn(row)
+            if not candidate:
+                continue
+            candidate_token = normalize_part_number(candidate) or candidate.upper()
+            selected = any(
+                (normalize_part_number(item) or item.upper()) == candidate_token
+                for item in compare_candidates
+            )
+            toggle_cols = st.columns([2.5, 1], vertical_alignment="center")
+            with toggle_cols[0]:
+                st.caption(candidate)
+            with toggle_cols[1]:
+                if st.button(
+                    "Remove" if selected else "Add to comparison",
+                    key=f"approved_replacement_compare_toggle_{index}",
+                    disabled=not selected and len(compare_candidates) >= 2,
+                    use_container_width=True,
+                ):
+                    if selected:
+                        compare_candidates = [
+                            item for item in compare_candidates
+                            if (normalize_part_number(item) or item.upper()) != candidate_token
+                        ]
+                    elif len(compare_candidates) < 2:
+                        compare_candidates.append(candidate)
+                    st.session_state["approved_replacement_compare_candidates"] = compare_candidates[:2]
+                    st.rerun()
+        selected_compare_candidates = list(compare_candidates)
+        if selected_compare_candidates:
+            if st.button(
+                f"Compare {len(selected_compare_candidates) + 1} parts",
+                key="approved_replacement_compare_selected",
+                type="primary",
+            ):
+                source_mpn = compare_source_mpn
+                candidate_b = selected_compare_candidates[0]
+                candidate_c = selected_compare_candidates[1] if len(selected_compare_candidates) > 1 else ""
+                st.session_state["cadivor_compare_part_a"] = source_mpn
+                st.session_state["cadivor_compare_part_b"] = candidate_b
+                st.session_state["cadivor_compare_part_c"] = candidate_c
+                # Set form keys at the handoff so an older comparison cannot
+                # overwrite the parts selected in Alternative Finder.
+                st.session_state["approved_compare_a"] = source_mpn
+                st.session_state["approved_compare_b"] = candidate_b
+                st.session_state["approved_compare_c"] = candidate_c
+                st.session_state["approved_compare_show_c"] = bool(candidate_c)
+                st.session_state["approved_compare_auto_run_pending"] = True
+                st.session_state.pop("cadivor_compare_result", None)
+                navigate_to("Compare Parts")
+    elif query.strip() and isinstance(result, dict):
+        st.info(
+            "No supplier candidates were returned for this part. You can still compare manufacturer part numbers manually; missing evidence will stay visible."
+        )
+        if st.button(
+            "Compare part numbers manually",
+            key="approved_replacement_manual_compare",
+            type="secondary",
+        ):
+            source_mpn = str(original.get("manufacturer_part_number") or query).strip()
+            st.session_state["cadivor_compare_part_a"] = source_mpn
+            st.session_state["cadivor_compare_part_b"] = ""
+            st.session_state["cadivor_compare_part_c"] = ""
+            st.session_state["approved_compare_a"] = source_mpn
+            st.session_state["approved_compare_b"] = ""
+            st.session_state["approved_compare_c"] = ""
+            st.session_state["approved_compare_show_c"] = False
+            st.session_state.pop("approved_compare_auto_run_pending", None)
+            st.session_state.pop("cadivor_compare_result", None)
             navigate_to("Compare Parts")
     end_approved_page()
 
 
+
+
 def render_compare_live() -> None:
-    """Compare-parts layout wired to the live two-part comparison."""
+    """Compare up to three parts, with each candidate checked against Part A."""
     begin_approved_page()
-    from src.parts_compare import resolve_compare_parts_submitted_mpn, run_compare_parts
+    from src.parts_compare import resolve_compare_parts_submitted_mpn, run_compare_parts_many
 
     st.session_state.setdefault("approved_compare_a", str(st.session_state.get("cadivor_compare_part_a") or ""))
     st.session_state.setdefault("approved_compare_b", str(st.session_state.get("cadivor_compare_part_b") or ""))
+    st.session_state.setdefault("approved_compare_c", str(st.session_state.get("cadivor_compare_part_c") or ""))
+    st.session_state.setdefault("approved_compare_show_c", bool(st.session_state.get("approved_compare_c")))
+
+    def _show_third_part() -> None:
+        st.session_state["approved_compare_show_c"] = True
+
+    def _remove_third_part() -> None:
+        st.session_state["approved_compare_show_c"] = False
+        st.session_state["approved_compare_c"] = ""
+        st.session_state["cadivor_compare_part_c"] = ""
+        st.session_state.pop("cadivor_compare_result", None)
+
     st.markdown(
         """
         <div class="cv-ap">
           <p class="cv-ap-kicker">PARTS</p>
           <h1>Compare parts</h1>
-          <p class="cv-ap-sub">Compare key parameters, identify differences, and find the best fit for your design.</p>
+          <p class="cv-ap-sub">Compare two or three parts side by side. Part B and Part C are each checked against Part A using available supplier and datasheet evidence.</p>
         </div>
         """,
         unsafe_allow_html=True,
     )
     with st.form("approved_compare_form", clear_on_submit=False):
-        left, right = st.columns(2)
-        with left:
-            entered_a = st.text_input("Part A", key="approved_compare_a")
-        with right:
-            entered_b = st.text_input("Part B", key="approved_compare_b")
+        if st.session_state.get("approved_compare_show_c"):
+            input_cols = st.columns(3)
+        else:
+            input_cols = st.columns(2)
+        with input_cols[0]:
+            entered_a = st.text_input("Part A", key="approved_compare_a", placeholder="Manufacturer part number")
+        with input_cols[1]:
+            entered_b = st.text_input("Part B", key="approved_compare_b", placeholder="Manufacturer part number")
+        entered_c = ""
+        if st.session_state.get("approved_compare_show_c"):
+            with input_cols[2]:
+                entered_c = st.text_input("Part C", key="approved_compare_c", placeholder="Add a third manufacturer part number")
         submitted = st.form_submit_button(
             "Compare parts",
             type="primary",
@@ -3417,15 +3547,26 @@ def render_compare_live() -> None:
         st.session_state.get("approved_compare_b"),
         st.session_state.get("cadivor_compare_part_b"),
     )
-    if submitted:
-        if part_a and part_b:
+    part_c = resolve_compare_parts_submitted_mpn(
+        entered_c,
+        st.session_state.get("approved_compare_c"),
+        st.session_state.get("cadivor_compare_part_c"),
+    ) if st.session_state.get("approved_compare_show_c") else ""
+    requested_parts = [part for part in (part_a, part_b, part_c) if str(part or "").strip()]
+    auto_run = bool(st.session_state.pop("approved_compare_auto_run_pending", False))
+    if submitted or auto_run:
+        if len(requested_parts) >= 2:
             try:
-                st.session_state["cadivor_compare_result"] = run_compare_parts(part_a, part_b)
+                with st.spinner("Comparing recorded supplier and datasheet evidence…"):
+                    st.session_state["cadivor_compare_result"] = run_compare_parts_many(requested_parts)
+                st.session_state["cadivor_compare_part_c"] = part_c
             except Exception:
                 st.session_state["cadivor_compare_result"] = {
                     "status": "failed",
                     "part_a": part_a,
                     "part_b": part_b,
+                    "part_c": part_c,
+                    "part_numbers": requested_parts,
                     "error": "Cadivor could not complete this comparison right now. Please try again.",
                 }
         else:
@@ -3433,15 +3574,35 @@ def render_compare_live() -> None:
                 "status": "failed",
                 "part_a": part_a,
                 "part_b": part_b,
-                "error": "Enter both Part A and Part B manufacturer part numbers.",
+                "part_c": part_c,
+                "part_numbers": requested_parts,
+                "error": "Enter Part A and Part B manufacturer part numbers.",
             }
+    if st.session_state.get("approved_compare_show_c"):
+        st.button("Remove Part C", key="approved_compare_remove_c", on_click=_remove_third_part)
+    else:
+        st.button(
+            "＋ Add part",
+            key="approved_compare_add_c",
+            type="secondary",
+            on_click=_show_third_part,
+        )
+
     result = st.session_state.get("cadivor_compare_result")
+    if isinstance(result, dict):
+        result_parts = result.get("part_numbers")
+        if result_parts is None:
+            result_parts = [result.get("part_a"), result.get("part_b")]
+        normalize = lambda value: str(value or "").strip().casefold()
+        if [normalize(value) for value in result_parts] != [normalize(value) for value in requested_parts]:
+            result = None
     comparison = result.get("comparison") if isinstance(result, dict) else {}
     if not isinstance(comparison, dict):
         comparison = {}
     counts = comparison.get("counts") if isinstance(comparison.get("counts"), dict) else {}
     card_a = comparison.get("part_a") if isinstance(comparison.get("part_a"), dict) else {}
     card_b = comparison.get("part_b") if isinstance(comparison.get("part_b"), dict) else {}
+    card_c = comparison.get("part_c") if isinstance(comparison.get("part_c"), dict) else {}
     rows = comparison.get("rows") if isinstance(comparison.get("rows"), list) else []
     body = []
     missing = {"", "—", "-", "–", "not available", "not recorded", "n/a", "none", "nan"}
@@ -3461,15 +3622,18 @@ def render_compare_live() -> None:
             continue
         raw_a = _recorded(row, "Part A", "part_a", "a", "value_a", "Original")
         raw_b = _recorded(row, "Part B", "part_b", "b", "value_b", "Candidate")
-        if not raw_a and not raw_b:
+        raw_c = _recorded(row, "Part C", "part_c", "c", "value_c")
+        if not raw_a and not raw_b and not raw_c:
             continue
         value_a = _esc(raw_a or "Not recorded")
         value_b = _esc(raw_b or "Not recorded")
-        highlight = " style='background:#eff6ff'" if raw_a != raw_b else ""
+        value_c = _esc(raw_c or "Add a third part")
+        highlight_b = " style='background:#eff6ff'" if raw_a != raw_b else ""
+        highlight_c = " style='background:#eff6ff'" if raw_c and raw_a != raw_c else ""
         assessment = _recorded(row, "Assessment", "Result", "Status")
         note = f"<div class='cv-ap-meta'>{_esc(assessment)}</div>" if assessment else ""
         body.append(
-            f"<tr><td>{_esc(label)}{note}</td><td{highlight}>{value_a}</td><td{highlight}>{value_b}</td><td></td></tr>"
+            f"<tr><td>{_esc(label)}{note}</td><td>{value_a}</td><td{highlight_b}>{value_b}</td><td{highlight_c}>{value_c}</td></tr>"
         )
     ran = isinstance(result, dict) and str(result.get("status") or "") in {"completed", "failed"}
     error = str(result.get("error") if isinstance(result, dict) else "").strip()
@@ -3481,20 +3645,22 @@ def render_compare_live() -> None:
         elif part_a.strip() and part_b.strip():
             empty = "No comparison is available yet. Run Compare parts to load recorded attributes."
         else:
-            empty = "Enter two manufacturer part numbers. The third column stays empty until another part is added."
+            empty = "Enter two manufacturer part numbers. Add a third part whenever you need it."
     else:
         empty = ""
     submitted_a = str(result.get("part_a") or "") if isinstance(result, dict) else ""
     submitted_b = str(result.get("part_b") or "") if isinstance(result, dict) else ""
     name_a = _esc(card_a.get("mpn") or submitted_a or part_a or "Part A")
     name_b = _esc(card_b.get("mpn") or submitted_b or part_b or "Part B")
+    submitted_c = str(result.get("part_c") or "") if isinstance(result, dict) else ""
+    name_c = _esc(card_c.get("mpn") or submitted_c or part_c or "Add a part")
     notice = ""
     table = (
         f"<p class='cv-ap-sub'>{_esc(empty)}</p>"
         if empty
         else (
             "<section class='cv-ap-card'><table class='cv-ap-table'><thead><tr>"
-            f"<th>Parameter</th><th>{name_a}</th><th>{name_b}</th><th>Part C</th>"
+            f"<th>Parameter</th><th>{name_a}</th><th>{name_b}</th><th>{name_c}</th>"
             f"</tr></thead><tbody>{''.join(body)}</tbody></table></section>"
         )
     )
@@ -3502,8 +3668,8 @@ def render_compare_live() -> None:
     if comparison:
         figures = (
             "<section class='cv-ap-kpis three'>"
-            f"<article class='cv-ap-kpi'><span>Compatible fields</span><strong>{_esc(counts.get('compatible', '—'))}</strong></article>"
-            f"<article class='cv-ap-kpi'><span>Material differences</span><strong>{_esc(counts.get('material_difference', '—'))}</strong></article>"
+            f"<article class='cv-ap-kpi'><span>Compatible checks</span><strong>{_esc(counts.get('compatible', '—'))}</strong></article>"
+            f"<article class='cv-ap-kpi'><span>Differences found</span><strong>{_esc(counts.get('material_difference', '—'))}</strong></article>"
             f"<article class='cv-ap-kpi'><span>Needs validation</span><strong>{_esc(counts.get('needs_data', '—'))}</strong></article>"
             "</section>"
         )
@@ -3512,16 +3678,38 @@ def render_compare_live() -> None:
         <div class="cv-ap">
           {notice}
           {figures}
-          <section class="cv-ap-cards">
-            <article class="cv-ap-template"><div class="cv-ei-part">{part_photo(str(card_a.get('image_url') or card_a.get('photo_url') or ''), size=48, part=card_a)}<span class="cv-ei-part-copy"><h3>{name_a}</h3><p>{_esc(card_a.get('description') or card_a.get('manufacturer') or 'Not recorded')}</p></span></div></article>
-            <article class="cv-ap-template"><div class="cv-ei-part">{part_photo(str(card_b.get('image_url') or card_b.get('photo_url') or ''), size=48, part=card_b)}<span class="cv-ei-part-copy"><h3>{name_b}</h3><p>{_esc(card_b.get('description') or card_b.get('manufacturer') or 'Not recorded')}</p></span></div></article>
-            <article class="cv-ap-template"><div class="cv-ei-part">{part_photo('', size=48)}<span class="cv-ei-part-copy"><h3>Add part</h3><p>No third candidate is selected.</p></span></div></article>
-          </section>
-          {table}
         </div>
         """,
         unsafe_allow_html=True,
     )
+    card_cols = st.columns(3, gap="small")
+    for index, (col, card, title, current_mpn) in enumerate(
+        (
+            (card_cols[0], card_a, name_a, part_a),
+            (card_cols[1], card_b, name_b, part_b),
+            (card_cols[2], card_c, name_c, part_c),
+        )
+    ):
+        with col:
+            if index == 2 and not st.session_state.get("approved_compare_show_c"):
+                st.markdown(
+                    "<article class='cv-ap-template'><div class='cv-ei-part'>"
+                    f"{part_photo('', size=48)}<span class='cv-ei-part-copy'><h3>Add a part</h3>"
+                    "<p>Compare up to three parts side by side.</p></span></div></article>",
+                    unsafe_allow_html=True,
+                )
+            else:
+                part_info = card or {"manufacturer_part_number": current_mpn}
+                title = _esc(part_info.get("mpn") or title)
+                image = str(part_info.get("image_url") or part_info.get("photo_url") or "")
+                details = _esc(part_info.get("description") or part_info.get("manufacturer") or "Not recorded")
+                st.markdown(
+                    "<article class='cv-ap-template'><div class='cv-ei-part'>"
+                    f"{part_photo(image, size=48, part=part_info)}<span class='cv-ei-part-copy'>"
+                    f"<h3>{title}</h3><p>{details}</p></span></div></article>",
+                    unsafe_allow_html=True,
+                )
+    st.markdown(table, unsafe_allow_html=True)
     end_approved_page()
 
 

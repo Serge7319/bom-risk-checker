@@ -3880,6 +3880,7 @@ def run_authenticated_app() -> None:
                 plan_notice=plan_notice,
                 pause_new_analyses=pause_new,
                 user_id=str((current_user or {}).get("id") or ""),
+                saved_boms_stale=_saved_status != "ok",
             )
         elif workspace_category == "Portfolio Intelligence":
             if portfolio_cache_key not in st.session_state:
