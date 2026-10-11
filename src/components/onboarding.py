@@ -215,10 +215,11 @@ def render_first_run_dashboard(*, current_user: dict[str, Any] | None, workspace
         _go_to("BOM Analyzer", new_analysis="1")
 
     steps = (
-        ("1", "Upload", "Import a CSV or XLSX BOM."),
-        ("2", "Understand risk", "See the evidence that matters first."),
-        ("3", "Make decisions", "Review alternatives and record approvals."),
-        ("4", "Share the outcome", "Export an executive-ready report."),
+        ("1", "Upload BOM", "Add a CSV or XLSX parts list."),
+        ("2", "Analyze Risk", "Review lifecycle, supply, and component risk."),
+        ("3", "Ask Cadivor", "Explore evidence and recommendations."),
+        ("4", "Engineering Decision", "Record and qualify the next action."),
+        ("5", "Continuous Monitoring", "Track component and supply changes."),
     )
     items = "".join(
         f"""
@@ -232,8 +233,8 @@ def render_first_run_dashboard(*, current_user: dict[str, Any] | None, workspace
     )
     st.markdown(
         f"""
-        <section class="cv-home-steps" aria-label="A first review in four steps">
-          <h2>A first review in four steps</h2>
+        <section class="cv-home-steps" aria-label="Five-step BOM review workflow">
+          <h2>Your BOM review workflow</h2>
           <ol>{items}</ol>
         </section>
         """,
