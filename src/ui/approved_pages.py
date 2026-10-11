@@ -3044,36 +3044,14 @@ def impact_map_html(
     )
 
 
-def procurement_header_html(part: dict[str, Any]) -> str:
-    """Specification strip. Missing price and savings stay unavailable."""
-    mpn = html.escape(str(part.get("mpn") or part.get("part_number") or "Part"))
-    maker = html.escape(str(part.get("manufacturer") or "Not recorded"))
-    description = html.escape(str(part.get("description") or "Not recorded"))
-    lifecycle = html.escape(str(part.get("lifecycle_status") or "Not recorded"))
-    category = html.escape(str(part.get("category") or "Not recorded"))
-    price = part.get("unit_price")
-    price_label = "Not recorded" if price in (None, "") else html.escape(str(price))
-    photo = part_photo(str(part.get("image_url") or part.get("photo_url") or ""), part=part)
-    savings = "Not recorded" if price in (None, "") else "Recorded price has no savings comparison"
-    fields = (
-        ("MPN", mpn),
-        ("Manufacturer", maker),
-        ("Description", description),
-        ("Lifecycle", lifecycle),
-        ("Category", category),
-        ("Unit price", price_label),
-        ("Last updated", "Not recorded"),
-    )
-    cells = "".join(
-        f"<div><p class='cv-ap-meta'>{label}</p><strong>{value}</strong></div>"
-        for label, value in fields
-    )
-    return (
-        "<section class='cv-part-head' style='display:flex;gap:16px;align-items:center;background:#fff;border:1px solid #e6edf5;border-radius:16px;padding:16px 18px;margin-bottom:12px'>"
-        f"{photo}<div style='display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:12px;flex:1'>{cells}</div></section>"
-        "<section class='cv-ap-banner'><p class='cv-ap-meta'>Recommendation</p><h2>Review supplier coverage</h2>"
-        f"<p>Savings {savings}. No second-source price is stored for this part.</p></section>"
-    )
+def procurement_header_html(
+    part: dict[str, Any],
+    recommendation: dict[str, Any] | None = None,
+) -> str:
+    """Compatibility export for the reusable procurement workspace markup."""
+    from src.procurement_advisor import procurement_header_html as render_header
+
+    return render_header(part, recommendation)
 
 
 def portfolio_charts_html(parts: list[dict[str, Any]] | None) -> str:

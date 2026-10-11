@@ -374,7 +374,7 @@ class ComparePartsUiWiringTests(unittest.TestCase):
         self.assertIn('st.text_input("Part C"', renderer)
         self.assertIn("run_compare_parts_many(requested_parts)", renderer)
         self.assertIn('"Add to comparison"', finder)
-        self.assertIn('"Compare up to 3 parts"', finder)
+        self.assertIn("<h3>Compare up to 3 parts</h3>", finder)
         self.assertIn('"Compare part numbers manually"', finder)
         self.assertIn('st.session_state["approved_compare_b"] = candidate_b', finder)
         self.assertIn('st.session_state["approved_compare_c"] = candidate_c', finder)

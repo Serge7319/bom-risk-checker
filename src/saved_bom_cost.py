@@ -10,7 +10,15 @@ from __future__ import annotations
 import json
 from typing import Any, Mapping
 
-OPTIONAL_SAVED_PART_COLUMNS = ("image_url", "product_url", "supplier_offers")
+OPTIONAL_SAVED_PART_COLUMNS = (
+    "image_url",
+    "product_url",
+    "supplier_offers",
+    "description",
+    "category",
+    "supplier_data_verified",
+    "sourcing_updated_at",
+)
 
 _MISSING_TEXT = {"", "nan", "none", "null", "no supplier match", "unknown"}
 

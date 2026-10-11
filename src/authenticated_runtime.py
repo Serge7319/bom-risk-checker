@@ -2479,7 +2479,26 @@ def run_authenticated_app() -> None:
             "Normalized MPN": row["mpn_normalized"],
             "Manufacturer": part_data.get("manufacturer", ""),
             "Manufacturer Part Number": part_data.get("manufacturer_part_number", ""),
-            "Description": part_data.get("description", ""),
+            "Description": (
+                part_data.get("description")
+                or row.get("description")
+                or row.get("Description")
+                or row.get("part_description")
+                or ""
+            ),
+            "Category": (
+                part_data.get("category")
+                or part_data.get("architecture")
+                or row.get("category")
+                or row.get("Category")
+                or row.get("component_category")
+                or row.get("component_type")
+                or row.get("component type")
+                or row.get("device_type")
+                or row.get("device type")
+                or row.get("type")
+                or ""
+            ),
             "Quantity": row.get("quantity", 0),
             "Best Source": part_data.get("source", ""),
             "Supplier Count": part_data.get("supplier_count", 0),
@@ -2502,6 +2521,7 @@ def run_authenticated_app() -> None:
             "Alternate Count": part_data.get("alternate_count", 0),
             "Alternative Part Numbers": part_data.get("alternative_part_numbers", ""),
             "Supplier Data Verified": supplier_verified,
+            "Sourcing Updated At": part_data.get("retrieved_at") or part_data.get("updated_at") or None,
             "Risk Score": risk_result["risk_score"],
             "Risk Level": risk_result["risk_level"],
             "Risk Reasons": "; ".join(risk_reasons) or "No major risk found",
@@ -6552,6 +6572,15 @@ def run_authenticated_app() -> None:
 
     # ---------- Procurement Advisor ----------
     if app_mode == "Procurement Advisor":
+        from datetime import datetime, timezone
+        from src.procurement_advisor import (
+            apply_sourcing_override,
+            build_procurement_advisor,
+            normalize_sourcing_override,
+            persist_sourcing_update,
+            procurement_header_html,
+            sourcing_editor_values,
+        )
         try:
             pa_analyses = load_analysis_history(current_user["id"]) or []
             pa_parts_response = (
@@ -6564,58 +6593,281 @@ def run_authenticated_app() -> None:
         except Exception:
             pa_analyses, pa_parts = [], []
 
+        analysis_dates = {
+            str(row.get("id") or ""): str(row.get("created_at") or "")
+            for row in pa_analyses
+            if isinstance(row, dict) and row.get("id")
+        }
+        scoped_parts = []
+        for raw_part in pa_parts:
+            if not isinstance(raw_part, dict):
+                continue
+            part = dict(raw_part)
+            part["_analysis_created_at"] = analysis_dates.get(
+                str(part.get("analysis_id") or ""), ""
+            )
+            scoped_parts.append(apply_sourcing_override(part))
+        pa_parts = scoped_parts
+
         advisor = build_procurement_advisor(
             analyses=pa_analyses,
             parts=pa_parts,
             alerts=[],
         )
         procurement_recommendations = advisor.get("recommendations") or []
-        top_recommendation = (
-            str(procurement_recommendations[0].get("Recommendation") or "No recommendation")
-            if procurement_recommendations
-            else "No data available"
-        )
-        from src.ui.approved_pages import procurement_header_html, render_simple_workspace
-
-        focus = next((part for part in (pa_parts or []) if isinstance(part, dict)), {})
-        focus_mpn = str(focus.get("mpn") or focus.get("part_number") or "Part")
-        focus_maker = str(focus.get("manufacturer") or "Manufacturer not recorded")
-        render_simple_workspace(
-                kicker="PROCUREMENT ADVISOR",
-                title="Procurement advisor",
-                subtitle="Review supplier, inventory, lifecycle, and lead-time evidence, then prioritize sourcing actions.",
-                kpis=[
-                    ("Focus part sources", str(focus.get("supplier_count") if focus.get("supplier_count") not in (None, "") else "—")),
-                    ("Urgent components", str(advisor.get("urgent_count", 0))),
-                    ("Focus part supply risk", str(focus.get("risk_level") or "—")),
-                    ("Top recommendation", top_recommendation),
-                ],
-                headers=["Supplier", "Unit price", "Available stock", "Lead time", "Region", "Supply risk"],
-                table_rows=[
-                    [
-                        str(part.get("manufacturer") or part.get("best_source") or "Supplier"),
-                        str(part.get("unit_price") or "—"),
-                        str(part.get("stock_available") or "—"),
-                        str(part.get("lead_time_weeks") or "—"),
-                        "—",
-                        str(part.get("risk_level") or "—"),
-                    ]
-                    for part in (pa_parts or [])[:6]
-                    if isinstance(part, dict)
-                ],
-                legacy_page="Procurement Advisor",
-                legacy_label="Edit sourcing details",
-                lead_html=procurement_header_html(focus),
-            )
-
         st.markdown('<div class="cv64-page-shell">', unsafe_allow_html=True)
         cadivor_section_header(
             "Procurement Advisor",
-            eyebrow="Buy list",
-            description="Parts that need a sourcing decision.",
+            eyebrow="Sourcing workspace",
+            description="Turn saved BOM and supplier evidence into purchasing actions. Missing evidence stays unknown until it is verified.",
             icon="shopping-cart",
         )
         reveal_authenticated_page_body("Procurement Advisor")
+
+        mpn_options = []
+        for row in procurement_recommendations:
+            mpn = str(row.get("Part Number") or "").strip()
+            if mpn and mpn not in mpn_options:
+                mpn_options.append(mpn)
+        if not mpn_options:
+            for part in pa_parts:
+                mpn = str(part.get("mpn") or part.get("MPN") or part.get("part_number") or "").strip()
+                if mpn and mpn not in mpn_options:
+                    mpn_options.append(mpn)
+
+        requested_edit_mpn = str(st.session_state.pop("pa_edit_request_mpn", "") or "").strip()
+        route_focus_mpn = ""
+        if not requested_edit_mpn:
+            try:
+                route_focus_mpn = str(st.query_params.get("mpn", "") or "").strip()
+            except Exception:
+                route_focus_mpn = ""
+        selected_mpn_key = "pa_selected_mpn"
+        focus_target_mpn = requested_edit_mpn
+        if focus_target_mpn in mpn_options:
+            st.session_state[selected_mpn_key] = focus_target_mpn
+        elif (
+            route_focus_mpn in mpn_options
+            and st.session_state.get("pa_last_route_focus_mpn") != route_focus_mpn
+        ):
+            st.session_state[selected_mpn_key] = route_focus_mpn
+            st.session_state["pa_last_route_focus_mpn"] = route_focus_mpn
+        if requested_edit_mpn in mpn_options:
+            requested_editor_key = (
+                "pa_sourcing_editor_open_"
+                + __import__("hashlib").sha1(requested_edit_mpn.encode()).hexdigest()[:12]
+            )
+            st.session_state[requested_editor_key] = True
+        if mpn_options and st.session_state.get(selected_mpn_key) not in mpn_options:
+            st.session_state[selected_mpn_key] = mpn_options[0]
+
+        focus_mpn = str(st.session_state.get(selected_mpn_key) or "")
+        focus_candidates = [
+            row for row in pa_parts
+            if str(row.get("mpn") or row.get("MPN") or row.get("part_number") or "").strip() == focus_mpn
+        ]
+        focus = max(
+            focus_candidates,
+            key=lambda row: str(
+                row.get("sourcing_updated_at")
+                or row.get("updated_at")
+                or row.get("_analysis_created_at")
+                or row.get("created_at")
+                or ""
+            ),
+            default={},
+        )
+        focus = apply_sourcing_override(focus)
+        focus_edit_values = sourcing_editor_values(focus)
+        focus_recommendation = next(
+            (row for row in procurement_recommendations if row.get("Part Number") == focus_mpn),
+            None,
+        )
+
+        if mpn_options:
+            selector_col, edit_col = st.columns([0.76, 0.24], vertical_alignment="bottom")
+            with selector_col:
+                st.selectbox(
+                    "Component to review",
+                    options=mpn_options,
+                    key=selected_mpn_key,
+                    format_func=lambda value: next(
+                        (
+                            f"{value} — {str(row.get('description') or row.get('Description') or '').strip()}"
+                            for row in pa_parts
+                            if str(row.get("mpn") or row.get("MPN") or row.get("part_number") or "").strip() == value
+                            and str(row.get("description") or row.get("Description") or "").strip()
+                        ),
+                        value,
+                    ),
+                )
+            with edit_col:
+                editor_key = f"pa_sourcing_editor_open_{__import__('hashlib').sha1(focus_mpn.encode()).hexdigest()[:12]}"
+                editor_open = bool(st.session_state.get(editor_key))
+                if st.button(
+                    "Close editor" if editor_open else "Edit sourcing details",
+                    key="pa_edit_sourcing_details",
+                    type="secondary",
+                    use_container_width=True,
+                ):
+                    st.session_state[editor_key] = not editor_open
+                    editor_open = not editor_open
+
+            st.markdown(
+                procurement_header_html(focus, focus_recommendation),
+                unsafe_allow_html=True,
+            )
+
+            if editor_open:
+                st.markdown(
+                    "Enter details from a current authorized supplier quote or manufacturer record. "
+                    "Leave a field blank when it is unknown; a verified zero is different from missing data."
+                )
+                form_key = f"pa_sourcing_form_{__import__('hashlib').sha1(focus_mpn.encode()).hexdigest()[:12]}"
+                with st.form(form_key):
+                    identity_left, identity_right = st.columns(2)
+                    with identity_left:
+                        edited_description = st.text_input(
+                            "Part description",
+                            value=str(focus_edit_values["description"] or ""),
+                            key=f"pa_description_{__import__('hashlib').sha1(focus_mpn.encode()).hexdigest()[:12]}",
+                        )
+                    with identity_right:
+                        edited_category = st.text_input(
+                            "Category",
+                            value=str(focus_edit_values["category"] or ""),
+                            key=f"pa_category_{__import__('hashlib').sha1(focus_mpn.encode()).hexdigest()[:12]}",
+                        )
+                    supplier_left, supplier_right = st.columns(2)
+                    with supplier_left:
+                        edited_supplier = st.text_input(
+                            "Primary authorized supplier",
+                            value=str(focus_edit_values["primary_supplier"] or ""),
+                            key=f"pa_supplier_{__import__('hashlib').sha1(focus_mpn.encode()).hexdigest()[:12]}",
+                        )
+                        edited_price = st.text_input(
+                            "Unit price (leave blank if unknown)",
+                            value="" if focus_edit_values["unit_price"] is None else str(focus_edit_values["unit_price"]),
+                            key=f"pa_price_{__import__('hashlib').sha1(focus_mpn.encode()).hexdigest()[:12]}",
+                        )
+                        edited_currency = st.text_input(
+                            "Currency code",
+                            value=str(focus_edit_values["currency"] or ""),
+                            placeholder="USD",
+                            key=f"pa_currency_{__import__('hashlib').sha1(focus_mpn.encode()).hexdigest()[:12]}",
+                        )
+                        edited_stock = st.text_input(
+                            "Available stock",
+                            value="" if focus_edit_values["stock_available"] is None else str(focus_edit_values["stock_available"]),
+                            key=f"pa_stock_{__import__('hashlib').sha1(focus_mpn.encode()).hexdigest()[:12]}",
+                        )
+                    with supplier_right:
+                        edited_sources = st.text_input(
+                            "Authorized supplier count",
+                            value="" if focus_edit_values["supplier_count"] is None else str(focus_edit_values["supplier_count"]),
+                            key=f"pa_sources_{__import__('hashlib').sha1(focus_mpn.encode()).hexdigest()[:12]}",
+                        )
+                        edited_lead = st.text_input(
+                            "Lead time (weeks)",
+                            value="" if focus_edit_values["lead_time_weeks"] is None else str(focus_edit_values["lead_time_weeks"]),
+                            key=f"pa_lead_{__import__('hashlib').sha1(focus_mpn.encode()).hexdigest()[:12]}",
+                        )
+                        edited_lifecycle = st.text_input(
+                            "Lifecycle status",
+                            value=str(focus_edit_values["lifecycle_status"] or ""),
+                            key=f"pa_lifecycle_{__import__('hashlib').sha1(focus_mpn.encode()).hexdigest()[:12]}",
+                        )
+                    save_sourcing = st.form_submit_button("Save sourcing details", type="primary")
+                if save_sourcing:
+                    override, validation_errors = normalize_sourcing_override(
+                        {
+                            "primary_supplier": edited_supplier,
+                            "unit_price": edited_price,
+                            "currency": edited_currency,
+                            "stock_available": edited_stock,
+                            "supplier_count": edited_sources,
+                            "lead_time_weeks": edited_lead,
+                            "lifecycle_status": edited_lifecycle,
+                        }
+                    )
+                    if validation_errors:
+                        for error in validation_errors:
+                            st.error(error)
+                    else:
+                        try:
+                            saved_count = persist_sourcing_update(
+                                supabase,
+                                user_id=str(current_user.get("id") or ""),
+                                mpn=focus_mpn,
+                                workspace_id=str(active_workspace_id or ""),
+                                description=edited_description,
+                                category=edited_category,
+                                sourcing_override=override,
+                                updated_at=datetime.now(timezone.utc).isoformat(),
+                            )
+                            st.session_state["pa_sourcing_saved_notice"] = saved_count
+                            st.session_state[editor_key] = False
+                            st.rerun()
+                        except Exception:
+                            st.error(
+                                "Sourcing details could not be saved. Apply the Procurement Advisor database migration, "
+                                "then retry; your current BOM analysis data has not been overwritten."
+                            )
+
+            saved_count = st.session_state.pop("pa_sourcing_saved_notice", None)
+            if saved_count:
+                saved_count = int(saved_count)
+                st.success(f"Sourcing details saved for {saved_count} saved BOM component record(s).")
+
+            with st.expander("Recorded supplier offers", expanded=False):
+                offers = focus.get("supplier_offers") or []
+                if isinstance(offers, str):
+                    try:
+                        offers = __import__("json").loads(offers)
+                    except Exception:
+                        offers = []
+                if isinstance(offers, dict):
+                    offers = [offers]
+                if isinstance(offers, list) and offers:
+                    offer_rows = []
+                    for offer in offers:
+                        if not isinstance(offer, dict):
+                            continue
+                        offer_rows.append(
+                            {
+                                "Distributor": offer.get("distributor") or "Not recorded",
+                                "Unit price": offer.get("unit_price") or "Not recorded",
+                                "Currency": offer.get("currency") or "Not recorded",
+                                "Stock": offer.get("stock") if offer.get("stock") is not None else "Not recorded",
+                                "Retrieved": str(offer.get("retrieved_at") or "")[:10] or "Not recorded",
+                                "Product page": offer.get("product_url") or "Not recorded",
+                            }
+                        )
+                    if offer_rows:
+                        st.dataframe(
+                            pd.DataFrame(offer_rows),
+                            hide_index=True,
+                            use_container_width=True,
+                        )
+                    else:
+                        st.info("No distributor offers are saved for this component.")
+                else:
+                    st.info(
+                        "No distributor offers are saved for this component. Enter verified values with Edit sourcing details, "
+                        "or rerun the BOM analysis to refresh available supplier data."
+                    )
+        else:
+            st.info("Upload or open a saved BOM to add components to procurement review.")
+
+        incomplete_sourcing_count = sum(
+            1 for row in procurement_recommendations
+            if str(row.get("Missing Sourcing Data") or "").strip()
+        )
+        if procurement_recommendations and incomplete_sourcing_count:
+            st.info(
+                f"{incomplete_sourcing_count} of {len(procurement_recommendations)} components have incomplete sourcing evidence. "
+                "The action counts below use recorded evidence; missing values are not treated as zero stock or zero suppliers."
+            )
 
         render_kpi_row_safe(
             [
@@ -6634,15 +6886,30 @@ def run_authenticated_app() -> None:
             urgent_rows = [
                 row for row in advisor["recommendations"]
                 if row["Priority Score"] >= 75
+                and row["Recommendation"] != "Complete sourcing data"
+            ][:10]
+            incomplete_rows = [
+                row for row in advisor["recommendations"]
+                if str(row.get("Missing Sourcing Data") or "").strip()
             ][:10]
             if not urgent_rows:
-                st.success("No immediate purchasing action is required.")
+                if incomplete_rows:
+                    st.info(
+                        "No immediate purchase is supported by verified sourcing data. "
+                        f"{len(incomplete_rows)} component(s) still need evidence before a confident buy decision."
+                    )
+                else:
+                    st.success("No immediate purchasing action is required based on the recorded evidence.")
             else:
                 st.caption(
-                    f"Showing {len(urgent_rows)} component(s) with a priority score of 75 or higher."
+                    f"Showing {len(urgent_rows)} evidence-backed purchasing action(s) with a priority score of 75 or higher."
                 )
             from src.part_images import part_image_markup
             for index, row in enumerate(urgent_rows):
+                stock_value = row.get("Available Stock")
+                stock_label = f"{int(stock_value):,}" if stock_value is not None else "Not recorded"
+                supplier_value = row.get("Supplier Sources")
+                supplier_label = str(supplier_value) if supplier_value is not None else "Not recorded"
                 urgent_photo_markup = part_image_markup(
                     row.get("Image URL"), row["Part Number"], size=64, part=row
                 )
@@ -6658,15 +6925,15 @@ def run_authenticated_app() -> None:
                       </div>
                       <div class="cv151-meta">
                         <span>Priority {row['Priority Score']}/100</span>
-                        <span>Stock {row['Available Stock']:,}</span>
-                        <span>{row['Supplier Sources']} supplier(s)</span>
+                        <span>Stock {html.escape(stock_label)}</span>
+                        <span>{html.escape(supplier_label)} supplier source(s)</span>
                       </div>
                       </div>
                     </section>
                     """,
                     unsafe_allow_html=True,
                 )
-                cols = st.columns(2)
+                cols = st.columns(3)
                 with cols[0]:
                     internal_nav_button(
                         "Find Alternative",
@@ -6684,12 +6951,38 @@ def run_authenticated_app() -> None:
                         use_container_width=True,
                         mpn=row["Part Number"],
                     )
+                with cols[2]:
+                    if st.button(
+                        "Edit sourcing",
+                        key=f"pa_edit_part_{index}",
+                        use_container_width=True,
+                    ):
+                        st.session_state["pa_edit_request_mpn"] = row["Part Number"]
+                        st.rerun()
+
+            if incomplete_rows:
+                st.markdown("#### Sourcing details to confirm")
+                for index, row in enumerate(incomplete_rows):
+                    st.markdown(
+                        f"**{html.escape(str(row['Part Number']))}** · "
+                        f"{html.escape(str(row.get('Missing Sourcing Data') or 'Sourcing evidence incomplete'))}"
+                        f"<br><span class='cv-ap-meta'>{html.escape(str(row.get('Next Step') or ''))}</span>",
+                        unsafe_allow_html=True,
+                    )
+                    if st.button(
+                        "Complete sourcing details",
+                        key=f"pa_complete_data_{index}",
+                        type="secondary",
+                    ):
+                        st.session_state["pa_edit_request_mpn"] = row["Part Number"]
+                        st.rerun()
 
         with details_tab:
             if advisor["recommendation_df"].empty:
                 st.info("No component purchasing data is available.")
             else:
                 procurement_details_df = advisor["recommendation_df"].copy()
+                procurement_details_df = procurement_details_df.fillna("Not recorded")
                 if not procurement_details_df.empty and "Image URL" in procurement_details_df:
                     from src.part_images import part_image_source
 
@@ -20328,6 +20621,10 @@ def run_authenticated_app() -> None:
                             "project_name": analysis_name,
                             "mpn": part_row.get("MPN", ""),
                             "manufacturer": part_row.get("Manufacturer", ""),
+                            "description": str(part_row.get("Description") or "").strip() or None,
+                            "category": str(part_row.get("Category") or "").strip() or None,
+                            "supplier_data_verified": bool(part_row.get("Supplier Data Verified", False)),
+                            "sourcing_updated_at": part_row.get("Sourcing Updated At") or None,
                             "risk_score": part_row.get("Risk Score", 0),
                             "risk_level": part_row.get("Risk Level", ""),
                             "risk_reasons": part_row.get("Risk Reasons", ""),

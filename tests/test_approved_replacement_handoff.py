@@ -17,4 +17,3 @@ def test_approved_finder_consumes_clicked_part_before_mounting_search_input():
     assert 'st.session_state.pop("alternative_prefill_search_pending", False)' in renderer
     assert "if (run or prefilled_search_pending) and query:" in renderer
     assert 'original["manufacturer_part_number"] = context_mpn' in renderer
-
