@@ -116,6 +116,50 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
         self.assertIn("Recommended action", html)
         self.assertIn("MPN-001", html)
 
+    def test_review_alternative_parts_action_is_a_prefilled_link(self):
+        report = engineering_intelligence_html(
+            bom_name="Sample BOM",
+            part_count=2,
+            tab="BOM Risk",
+            parts=PARTS,
+            analysis_id="analysis-1",
+        )
+        self.assertIn("Review alternative parts</a>", report)
+        self.assertIn("page=Alternative%20Finder", report)
+        self.assertIn("original_part=MPN-001", report)
+        self.assertIn("analysis_id=analysis-1", report)
+
+    def test_saved_markup_is_not_shown_as_a_component_description(self):
+        markup = (
+            "<p>Manufacturer AlphaSemi</p><p>Best source Digi-Key</p>"
+            "<p>Lifecycle Obsolete</p>"
+        )
+        for description in (markup, markup.replace("<", "&lt;").replace(">", "&gt;")):
+            with self.subTest(description=description[:20]):
+                report = detailed_risk_report_html(
+                    bom_name="Sample BOM",
+                    analyzed_on="Apr 26, 2025",
+                    parts=[dict(PARTS[0], description=description)],
+                    expanded_mpn="MPN-001",
+                )
+                self.assertNotIn("<p>Manufacturer AlphaSemi</p><p>Best source Digi-Key", report)
+                self.assertNotIn("Manufacturer AlphaSemi Best source Digi-Key Lifecycle Obsolete", report)
+
+    def test_detailed_risk_starts_collapsed_until_a_part_is_selected(self):
+        report = detailed_risk_report_html(
+            bom_name="Sample BOM",
+            analyzed_on="Apr 26, 2025",
+            parts=PARTS,
+        )
+        self.assertNotIn("cv-risk-detail", report)
+        selected = detailed_risk_report_html(
+            bom_name="Sample BOM",
+            analyzed_on="Apr 26, 2025",
+            parts=PARTS,
+            expanded_mpn="MPN-001",
+        )
+        self.assertIn("cv-risk-detail", selected)
+
     def test_cost_insights_does_not_treat_a_zero_price_as_money(self):
         parts = [
             {

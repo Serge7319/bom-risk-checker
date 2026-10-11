@@ -6653,8 +6653,22 @@ def run_authenticated_app() -> None:
             if advisor["recommendation_df"].empty:
                 st.info("No component purchasing data is available.")
             else:
+                procurement_details_df = advisor["recommendation_df"].copy()
+                if not procurement_details_df.empty and "Image URL" in procurement_details_df:
+                    from src.part_images import part_image_source
+
+                    details_rows = procurement_details_df.to_dict("records")
+                    procurement_details_df["Image URL"] = [
+                        part_image_source(
+                            row.get("Image URL"),
+                            row.get("Part Number"),
+                            size=48,
+                            part=row,
+                        )
+                        for row in details_rows
+                    ]
                 cadivor_engineering_dataframe(
-                    advisor["recommendation_df"],
+                    procurement_details_df,
                     column_config={
                         "Image URL": st.column_config.ImageColumn("Part photo", width="small"),
                         "Risk Level": st.column_config.TextColumn(width="small"),

@@ -29,6 +29,9 @@ class CostOptimizationWorkspaceTests(unittest.TestCase):
         self.assertEqual(intelligence["estimated_savings"], 62.5)
         self.assertEqual(intelligence["opportunities"][0]["Description"], "Ceramic capacitor")
         self.assertEqual(intelligence["opportunities"][0]["Component Category"], "Ceramic capacitor")
+        self.assertTrue(
+            intelligence["rows"][0]["Image URL"].startswith("data:image/svg+xml;base64,")
+        )
 
         markup = _opportunity_table_markup(intelligence["opportunities"])
 
@@ -40,6 +43,9 @@ class CostOptimizationWorkspaceTests(unittest.TestCase):
         self.assertIn("Opportunity", markup)
         self.assertIn("Review status", markup)
         self.assertIn("Needs review", markup)
+        self.assertIn("Find alternatives", markup)
+        self.assertIn("page=Alternative%20Finder", markup)
+        self.assertIn("original_part=CAP-100", markup)
 
     def test_cost_route_uses_the_data_driven_workspace(self):
         source = Path("src/authenticated_runtime.py").read_text(encoding="utf-8")
@@ -50,6 +56,9 @@ class CostOptimizationWorkspaceTests(unittest.TestCase):
         self.assertNotIn("render_simple_workspace", route)
         self.assertIn("render_cost_optimization(", route)
         self.assertIn("control=_cost_build_control", route)
+        workspace = Path("src/cost_optimization.py").read_text(encoding="utf-8")
+        self.assertIn('st.container(key="cost_optimization_workspace")', workspace)
+        self.assertIn("max-width:1500px", workspace)
 
 
 if __name__ == "__main__":

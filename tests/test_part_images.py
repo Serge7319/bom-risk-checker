@@ -7,6 +7,7 @@ from src.part_images import (
     illustration_kind,
     normalize_supplier_image_url,
     part_image_markup,
+    part_image_source,
 )
 
 _KINDS = {
@@ -77,6 +78,28 @@ def test_mpn_alone_does_not_select_a_category_illustration():
     assert 'data-illustration="generic"' in markup
     assert 'data-illustration="ic"' not in markup
     assert ILLUSTRATION_LABEL in markup
+
+
+def test_image_column_gets_a_real_source_even_without_a_supplier_photo():
+    source = part_image_source(
+        "",
+        "LM358DT",
+        part={"description": "Operational amplifier"},
+    )
+    assert source.startswith("data:image/svg+xml;base64,")
+    import base64
+
+    svg = base64.b64decode(source.split(",", 1)[1]).decode("utf-8")
+    assert "<svg" in svg
+    assert "<rect" in svg
+    assert "#2563eb" in svg
+
+
+def test_image_column_keeps_a_trusted_supplier_photo():
+    assert part_image_source(
+        "https://media.digikey.com/Photos/TI/LM358.jpg",
+        "LM358DT",
+    ) == "https://media.digikey.com/Photos/TI/LM358.jpg"
 
 
 def test_supplier_photo_is_used_when_the_url_is_trusted():

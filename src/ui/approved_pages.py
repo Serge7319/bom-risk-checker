@@ -580,6 +580,7 @@ def begin_approved_page() -> None:
         .cv-part-photo img{display:block;width:100%;height:100%;padding:4px;box-sizing:border-box;object-fit:contain}
         .cv-part-photo__placeholder{display:flex;width:100%;height:100%;align-items:center;justify-content:center}
         .cv-part-photo__placeholder svg{display:block;width:62%;height:62%}
+        .cv-part-photo[data-illustration="generic"]{background:#f0f9ff;border-color:#bae6fd;color:#0369a1}
         .cv-part-photo[data-illustration="ic"]{background:#eff6ff;border-color:#dbeafe;color:#2563eb}
         .cv-part-photo[data-illustration="capacitor"]{background:#f5f3ff;border-color:#e9d5ff;color:#7c3aed}
         .cv-part-photo[data-illustration="resistor"]{background:#fff7ed;border-color:#fed7aa;color:#c2410c}

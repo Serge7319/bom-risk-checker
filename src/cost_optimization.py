@@ -14,7 +14,7 @@ import pandas as pd
 import streamlit as st
 
 from src.ui.cadivor_design_system import cadivor_engineering_dataframe
-from src.part_images import normalize_supplier_image_url, part_image_markup
+from src.part_images import part_image_markup, part_image_source
 
 
 def _text(value: Any, default: str = "") -> str:
@@ -78,6 +78,36 @@ def build_cost_optimization(
         suppliers = int(_number(row.get("supplier_count"), 0))
         stock = int(_number(_first(row, "stock_available", "stock"), 0))
         risk_score = int(_number(row.get("risk_score"), 0))
+        part_number = _text(
+            _first(row, "mpn", "MPN", "part_number"),
+            "Unknown",
+        )
+        description = _text(
+            _first(row, "description", "Description", "part_description", "product_description"),
+            "",
+        )
+        category = _text(
+            _first(
+                row,
+                "category_raw",
+                "category",
+                "part_category",
+                "component_category",
+                "device_type",
+            ),
+            "",
+        )
+        manufacturer = _text(row.get("manufacturer"), "Unknown")
+        image_url = part_image_source(
+            _first(row, "image_url", "Image URL", "photo_url"),
+            part_number,
+            size=48,
+            part={
+                "description": description,
+                "category": category,
+                "manufacturer": manufacturer,
+            },
+        )
         normalized.append(
             {
                 "Analysis ID": analysis_id,
@@ -85,29 +115,11 @@ def build_cost_optimization(
                     analysis_id,
                     _text(row.get("project_name"), "Saved BOM"),
                 ),
-                "Part Number": _text(
-                    _first(row, "mpn", "MPN", "part_number"),
-                    "Unknown",
-                ),
-                "Description": _text(
-                    _first(row, "description", "Description", "part_description", "product_description"),
-                    "",
-                ),
-                "Component Category": _text(
-                    _first(
-                        row,
-                        "category_raw",
-                        "category",
-                        "part_category",
-                        "component_category",
-                        "device_type",
-                    ),
-                    "",
-                ),
-                "Image URL": normalize_supplier_image_url(
-                    _first(row, "image_url", "Image URL", "photo_url")
-                ),
-                "Manufacturer": _text(row.get("manufacturer"), "Unknown"),
+                "Part Number": part_number,
+                "Description": description,
+                "Component Category": category,
+                "Image URL": image_url,
+                "Manufacturer": manufacturer,
                 "Supplier": _text(
                     _first(row, "primary_supplier", "supplier", "best_source"),
                     "Not recorded",
@@ -121,7 +133,6 @@ def build_cost_optimization(
                 "Risk Score": risk_score,
             }
         )
-
     priced = [row for row in normalized if row["Unit Price"] > 0]
     missing_price = [row for row in normalized if row["Unit Price"] <= 0]
 
@@ -144,6 +155,7 @@ def build_cost_optimization(
             continue
 
         project_count = len({row["Project"] for row in rows})
+        analysis_ids = {row["Analysis ID"] for row in rows if row["Analysis ID"]}
         total_qty_per_build = sum(row["Quantity per Build"] for row in rows)
         suppliers = min(row["Supplier Sources"] for row in rows)
         risk_score = max(row["Risk Score"] for row in rows)
@@ -182,6 +194,8 @@ def build_cost_optimization(
         opportunities.append(
             {
                 "Part Number": reference["Part Number"],
+                "Analysis ID": reference["Analysis ID"] if len(analysis_ids) == 1 else "",
+                "Project": reference["Project"] if len(analysis_ids) == 1 else "",
                 "Description": reference["Description"],
                 "Component Category": reference["Component Category"],
                 "Image URL": reference["Image URL"],
@@ -265,7 +279,8 @@ def _css() -> None:
     st.markdown(
         """
         <style id="cadivor-cost-optimization-22">
-          .cv21-page{width:100%;max-width:1600px;margin:0 auto;box-sizing:border-box}
+          .st-key-cost_optimization_workspace{width:100%;max-width:1500px;margin:0 auto;box-sizing:border-box}
+          .cv21-page{width:100%;max-width:1500px;margin:0 auto;box-sizing:border-box}
           .cv21-heading{display:grid;grid-template-columns:minmax(0,1fr) minmax(180px,250px);align-items:end;gap:24px;margin:0 0 20px}
           .cv21-eyebrow{margin:0 0 8px;color:#2563eb;font-size:12px;font-weight:850;letter-spacing:.08em;text-transform:uppercase}
           .cv21-title{margin:0 0 8px;color:#0f172a;font-size:34px;line-height:1.12;font-weight:900;letter-spacing:-.04em}
@@ -302,10 +317,13 @@ def _css() -> None:
           .cv21-progress{width:100%;height:7px;margin-top:7px;border-radius:999px;background:#e6eef8;overflow:hidden}
           .cv21-progress span{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#3b82f6,#2563eb)}
           .cv21-review-pill{display:inline-flex;align-items:center;justify-content:center;padding:6px 9px;border:1px solid #fde68a;border-radius:8px;background:#fffbeb;color:#a16207;font-size:10px;font-weight:800;white-space:nowrap}
+          .cv21-review-cell{display:flex;flex-direction:column;align-items:flex-start;gap:6px}
+          .cv21-row-action{color:#2563eb;font-size:11px;font-weight:750;text-decoration:none;white-space:nowrap}
+          .cv21-row-action:hover{text-decoration:underline;text-underline-offset:3px}
           .cv21-empty{margin:0;padding:24px;border:1px dashed #cbd5e1;border-radius:14px;background:#f8fafc;color:#64748b;font-size:13px;font-weight:620;line-height:1.5}
           .cv21-data-note{margin:12px 0 18px;color:#64748b;font-size:12px;font-weight:600;line-height:1.5}
           .cv21-detail-heading{margin:0 0 12px;color:#0f172a;font-size:17px;font-weight:850}
-          .st-key-cost_optimization_opportunities{width:100%;max-width:1600px;margin:0 auto 22px;padding:18px;border:1px solid #dbe3ef;border-radius:18px;background:#fff;box-shadow:0 8px 24px rgba(15,23,42,.04);box-sizing:border-box}
+          .st-key-cost_optimization_opportunities{width:100%;max-width:none;margin:0 0 22px;padding:18px;border:1px solid #dbe3ef;border-radius:18px;background:#fff;box-shadow:0 8px 24px rgba(15,23,42,.04);box-sizing:border-box}
           .st-key-cost_optimization_opportunities .cv21-table-card{border:0;border-radius:12px;box-shadow:none}
           .st-key-cost_optimization_opportunities .cv21-table-scroll{border:1px solid #e5eaf1;border-radius:12px}
           .cv21-table th:first-child{width:42px}.cv21-table th:nth-child(2){width:25%}.cv21-table th:nth-child(3){width:13%}.cv21-table th:nth-child(4){width:24%}.cv21-table th:nth-child(5){width:18%}.cv21-table th:nth-child(6){width:120px}
@@ -377,6 +395,19 @@ def _opportunity_table_markup(rows: List[Dict[str, Any]]) -> str:
             max(0, min(100, int(round(estimated_savings / maximum_savings * 100))))
             if maximum_savings > 0 else 0
         )
+        from src.ui.navigation import alternative_finder_href
+
+        alternative_url = alternative_finder_href(
+            mpn=part_number,
+            manufacturer=manufacturer,
+            description=description,
+            risk=str(row.get("Risk Score") or ""),
+            analysis_id=str(row.get("Analysis ID") or ""),
+            return_analysis_id=str(row.get("Analysis ID") or ""),
+            source_page="cost_optimization",
+            project_name=str(row.get("Project") or ""),
+            bom_name=str(row.get("Project") or ""),
+        )
         body.append(
             "<tr>"
             f"<td class='cv21-rank'>{index}</td>"
@@ -390,7 +421,9 @@ def _opportunity_table_markup(rows: List[Dict[str, Any]]) -> str:
             f"<span>{'$' + format(estimated_savings, ',.2f')}</span>"
             f"<span class='cv21-savings-rate'>{savings_rate}%</span></div>"
             f"<div class='cv21-progress' role='presentation'><span style='width:{bar_width}%'></span></div></td>"
-            "<td><span class='cv21-review-pill' title='Modeled opportunity only; confirm supplier pricing and engineering fit before action'>Needs review</span></td>"
+            "<td class='cv21-review-cell'>"
+            "<span class='cv21-review-pill' title='Modeled opportunity only; confirm supplier pricing and engineering fit before action'>Needs review</span>"
+            f"<a class='cv21-row-action' href='{html.escape(alternative_url, quote=True)}' target='_self'>Find alternatives</a></td>"
             "</tr>"
         )
     return (
@@ -423,242 +456,205 @@ def render_cost_optimization(
     begin_approved_page()
     _css()
 
-    heading_col, control_col = st.columns([4.0, 1.25], vertical_alignment="bottom")
-    with heading_col:
-        st.markdown(
-            """
-            <div class="cv-ap cv21-page">
-              <p class="cv21-eyebrow">Cost optimization</p>
-              <h1 class="cv21-title">Cost optimization</h1>
-              <p class="cv21-copy">Identify lower-cost opportunities, reduce spend, and optimize your bill of materials without compromising performance.</p>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-    with control_col:
-        if control is not None:
-            control()
-
-    component_count = int(intelligence.get("component_count", 0) or 0)
-    priced_count = len(intelligence.get("priced_rows") or [])
-    pricing_coverage = int(intelligence.get("pricing_coverage", 0) or 0)
-    has_priced_components = component_count > 0 and priced_count > 0
-    savings_text = _currency(intelligence.get("estimated_savings"), show_zero=has_priced_components)
-    spend_text = _currency(intelligence.get("production_run_cost"), show_zero=has_priced_components)
-    opportunities = list(intelligence.get("opportunities") or [])
-    opportunity_count = len(opportunities)
-    build_quantity = int(intelligence.get("build_quantity", 1) or 1)
-
-    if has_priced_components:
-        savings_note = f"Modeled for {build_quantity:,} builds from saved BOM prices"
-        spend_note = f"{priced_count} of {component_count} components have current prices"
-    else:
-        savings_note = "Saved BOM pricing is needed to model savings"
-        spend_note = "No current component prices are available"
-
-    if opportunity_count:
-        opportunity_note = "Ranked by estimated savings using saved supplier and quantity data"
-    else:
-        opportunity_note = "No eligible savings opportunities from current data"
-
-    kpis = [
-        ("Estimated savings", savings_text, savings_note, "dollar-sign"),
-        ("Addressable spend", spend_text, spend_note, "chart"),
-        ("Opportunities", f"{opportunity_count:,}", opportunity_note, "lightbulb"),
-    ]
-    kpi_markup = []
-    for label, value, note, icon_name in kpis:
-        icon = lucide(icon_name, size=24)
-        kpi_markup.append(
-            "<article class='cv21-kpi'><span class='cv21-kpi-icon' aria-hidden='true'>"
-            + icon
-            + "</span><div><div class='cv21-kpi-label'>"
-            + html.escape(label)
-            + "</div><div class='cv21-kpi-value'>"
-            + html.escape(value)
-            + "</div><div class='cv21-kpi-note'>"
-            + html.escape(note)
-            + "</div></div></article>"
-        )
-    st.markdown(
-        "<div class='cv-ap cv21-page'><section class='cv21-kpi-grid'>"
-        + "".join(kpi_markup)
-        + "</section></div>",
-        unsafe_allow_html=True,
-    )
-
-    if component_count == 0:
-        st.info("Upload and analyze a BOM to populate cost optimization with your saved component data.")
-    elif pricing_coverage < 100:
-        st.caption(
-            f"Current spend reflects components with recorded prices ({pricing_coverage}% pricing coverage). "
-            "Savings remain estimates based on the saved BOM data."
-        )
-
-    category_options = sorted(
-        {
-            _text(row.get("Category"), "Cost review")
-            for row in opportunities
-        }
-    )
-    filter_key = "cost_optimization_category_filter"
-    filter_options = ["All opportunities", *category_options]
-    if st.session_state.get(filter_key) not in filter_options:
-        st.session_state[filter_key] = filter_options[0]
-
-    with st.container(key="cost_optimization_opportunities"):
-        title_col, filter_col = st.columns([3.4, 1.15], vertical_alignment="center")
-        with title_col:
+    with st.container(key="cost_optimization_workspace"):
+        heading_col, control_col = st.columns([4.0, 1.25], vertical_alignment="bottom")
+        with heading_col:
             st.markdown(
                 """
-                <div class="cv21-section-heading">
-                  <div>
-                    <h2 class="cv21-section-title">Top cost optimization opportunities</h2>
-                    <p class="cv21-section-subtitle">Ranked by estimated savings from the current saved BOM data.</p>
-                  </div>
+                <div class="cv-ap cv21-page">
+                  <p class="cv21-eyebrow">Cost optimization</p>
+                  <h1 class="cv21-title">Cost optimization</h1>
+                  <p class="cv21-copy">Identify lower-cost opportunities, reduce spend, and optimize your bill of materials without compromising performance.</p>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
-        with filter_col:
-            selected_category = st.selectbox(
-                "Filter opportunities",
-                filter_options,
-                key=filter_key,
-                label_visibility="collapsed",
-                disabled=not category_options,
-            )
+        with control_col:
+            if control is not None:
+                control()
 
-        filtered_opportunities = (
-            opportunities
-            if selected_category == "All opportunities"
-            else [row for row in opportunities if _text(row.get("Category"), "Cost review") == selected_category]
-        )
-        visible_opportunities = filtered_opportunities[:8]
-        if visible_opportunities:
-            st.markdown(
-                _opportunity_table_markup(visible_opportunities),
-                unsafe_allow_html=True,
-            )
-            if len(filtered_opportunities) > len(visible_opportunities):
-                st.caption(
-                    f"Showing the top {len(visible_opportunities)} of {len(filtered_opportunities)} opportunities."
-                )
+        component_count = int(intelligence.get("component_count", 0) or 0)
+        priced_count = len(intelligence.get("priced_rows") or [])
+        pricing_coverage = int(intelligence.get("pricing_coverage", 0) or 0)
+        has_priced_components = component_count > 0 and priced_count > 0
+        savings_text = _currency(intelligence.get("estimated_savings"), show_zero=has_priced_components)
+        spend_text = _currency(intelligence.get("production_run_cost"), show_zero=has_priced_components)
+        opportunities = list(intelligence.get("opportunities") or [])
+        opportunity_count = len(opportunities)
+        build_quantity = int(intelligence.get("build_quantity", 1) or 1)
 
-            labels = [
-                f"{_text(row.get('Part Number'), 'Component')} · {_text(row.get('Category'), 'Cost review')}"
-                for row in visible_opportunities
-            ]
-            option_map = dict(zip(labels, visible_opportunities))
-            action_key = "cost_optimization_selected_opportunity"
-            if st.session_state.get(action_key) not in option_map:
-                st.session_state[action_key] = labels[0]
-            action_cols = st.columns([4.6, 1.2, 1.2], vertical_alignment="center")
-            with action_cols[0]:
-                selected_label = st.selectbox(
-                    "Choose an opportunity to review",
-                    labels,
-                    key=action_key,
-                    label_visibility="collapsed",
-                )
-            selected_row = option_map[selected_label]
-            with action_cols[1]:
-                internal_nav_button(
-                    "Find alternatives",
-                    "Alternative Finder",
-                    key="cost_selected_find_alternatives",
-                    original_part=selected_row["Part Number"],
-                    source_page="cost_optimization",
-                    use_container_width=True,
-                )
-            with action_cols[2]:
-                internal_nav_button(
-                    "Review sourcing",
-                    "Procurement Advisor",
-                    key="cost_selected_review_sourcing",
-                    original_part=selected_row["Part Number"],
-                    use_container_width=True,
-                )
-        elif opportunities:
-            st.markdown(
-                "<p class='cv21-empty'>No opportunities match this filter. Select another opportunity type to continue.</p>",
-                unsafe_allow_html=True,
-            )
+        if has_priced_components:
+            savings_note = f"Modeled for {build_quantity:,} builds from saved BOM prices"
+            spend_note = f"{priced_count} of {component_count} components have current prices"
         else:
-            st.markdown(
-                "<p class='cv21-empty'>No priced component currently meets the saved supplier, quantity, or shared-demand criteria for a modeled savings opportunity.</p>",
-                unsafe_allow_html=True,
+            savings_note = "Saved BOM pricing is needed to model savings"
+            spend_note = "No current component prices are available"
+
+        if opportunity_count:
+            opportunity_note = "Ranked by estimated savings using saved supplier and quantity data"
+        else:
+            opportunity_note = "No eligible savings opportunities from current data"
+
+        kpis = [
+            ("Estimated savings", savings_text, savings_note, "dollar-sign"),
+            ("Addressable spend", spend_text, spend_note, "chart"),
+            ("Opportunities", f"{opportunity_count:,}", opportunity_note, "lightbulb"),
+        ]
+        kpi_markup = []
+        for label, value, note, icon_name in kpis:
+            icon = lucide(icon_name, size=24)
+            kpi_markup.append(
+                "<article class='cv21-kpi'><span class='cv21-kpi-icon' aria-hidden='true'>"
+                + icon
+                + "</span><div><div class='cv21-kpi-label'>"
+                + html.escape(label)
+                + "</div><div class='cv21-kpi-value'>"
+                + html.escape(value)
+                + "</div><div class='cv21-kpi-note'>"
+                + html.escape(note)
+                + "</div></div></article>"
+            )
+        st.markdown(
+            "<div class='cv-ap cv21-page'><section class='cv21-kpi-grid'>"
+            + "".join(kpi_markup)
+            + "</section></div>",
+            unsafe_allow_html=True,
+        )
+
+        if component_count == 0:
+            st.info("Upload and analyze a BOM to populate cost optimization with your saved component data.")
+        elif pricing_coverage < 100:
+            st.caption(
+                f"Current spend reflects components with recorded prices ({pricing_coverage}% pricing coverage). "
+                "Savings remain estimates based on the saved BOM data."
             )
 
-    with st.expander("Cost data quality and detailed records"):
-        st.markdown('<div class="cv21-detail-heading">Cost data quality</div>', unsafe_allow_html=True)
-        quality_cols = st.columns(2)
-        with quality_cols[0]:
-            st.markdown(
-                f"<div class='cv21-kpi'><div><div class='cv21-kpi-label'>Pricing coverage</div>"
-                f"<div class='cv21-kpi-value'>{pricing_coverage}%</div>"
-                f"<div class='cv21-kpi-note'>{priced_count} of {component_count} saved component records have a positive unit price</div></div></div>",
-                unsafe_allow_html=True,
-            )
-        with quality_cols[1]:
-            st.markdown(
-                f"<div class='cv21-kpi'><div><div class='cv21-kpi-label'>Single-source or no-stock spend</div>"
-                f"<div class='cv21-kpi-value'>{html.escape(_currency(intelligence.get('sourcing_risk_cost'), show_zero=has_priced_components))}</div>"
-                f"<div class='cv21-kpi-note'>Modeled production-run spend requiring sourcing review</div></div></div>",
-                unsafe_allow_html=True,
-            )
+        category_options = sorted(
+            {
+                _text(row.get("Category"), "Cost review")
+                for row in opportunities
+            }
+        )
+        filter_key = "cost_optimization_category_filter"
+        filter_options = ["All opportunities", *category_options]
+        if st.session_state.get(filter_key) not in filter_options:
+            st.session_state[filter_key] = filter_options[0]
 
-        photo_column = st.column_config.ImageColumn("Part photo", width="small")
-        if intelligence.get("top_cost_parts"):
-            st.markdown('<div class="cv21-detail-heading">Highest recorded component costs</div>', unsafe_allow_html=True)
-            top_df = pd.DataFrame(intelligence["top_cost_parts"])
-            cadivor_engineering_dataframe(
-                top_df[
-                    [
-                        "Project",
-                        "Part Number",
-                        "Image URL",
-                        "Manufacturer",
-                        "Quantity per Build",
-                        "Unit Price",
-                        "Extended Cost per Build",
-                        "Supplier Sources",
-                        "Available Stock",
-                        "Risk Score",
-                    ]
-                ],
-                column_config={
-                    "Image URL": photo_column,
-                    "Unit Price": st.column_config.NumberColumn(format="$%.4f"),
-                    "Extended Cost per Build": st.column_config.NumberColumn(format="$%.2f"),
-                },
+        with st.container(key="cost_optimization_opportunities"):
+            title_col, filter_col = st.columns([3.4, 1.15], vertical_alignment="center")
+            with title_col:
+                st.markdown(
+                    """
+                    <div class="cv21-section-heading">
+                      <div>
+                        <h2 class="cv21-section-title">Top cost optimization opportunities</h2>
+                        <p class="cv21-section-subtitle">Ranked by estimated savings from the current saved BOM data.</p>
+                      </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+            with filter_col:
+                selected_category = st.selectbox(
+                    "Filter opportunities",
+                    filter_options,
+                    key=filter_key,
+                    label_visibility="collapsed",
+                    disabled=not category_options,
+                )
+
+            filtered_opportunities = (
+                opportunities
+                if selected_category == "All opportunities"
+                else [row for row in opportunities if _text(row.get("Category"), "Cost review") == selected_category]
             )
-        missing_tab, all_tab = st.tabs(["Missing price data", "All cost records"])
-        with missing_tab:
-            if intelligence.get("missing_price_rows"):
-                missing_df = pd.DataFrame(intelligence["missing_price_rows"])
-                cadivor_engineering_dataframe(
-                    missing_df[
-                        [
-                            "Project",
-                            "Part Number",
-                            "Image URL",
-                            "Manufacturer",
-                            "Quantity per Build",
-                            "Supplier Sources",
-                            "Available Stock",
-                            "Risk Score",
-                        ]
-                    ],
-                    column_config={"Image URL": photo_column},
+            visible_opportunities = filtered_opportunities[:8]
+            if visible_opportunities:
+                st.markdown(
+                    _opportunity_table_markup(visible_opportunities),
+                    unsafe_allow_html=True,
+                )
+                if len(filtered_opportunities) > len(visible_opportunities):
+                    st.caption(
+                        f"Showing the top {len(visible_opportunities)} of {len(filtered_opportunities)} opportunities."
+                    )
+
+                labels = [
+                    f"{_text(row.get('Part Number'), 'Component')} · {_text(row.get('Category'), 'Cost review')}"
+                    for row in visible_opportunities
+                ]
+                option_map = dict(zip(labels, visible_opportunities))
+                action_key = "cost_optimization_selected_opportunity"
+                if st.session_state.get(action_key) not in option_map:
+                    st.session_state[action_key] = labels[0]
+                action_cols = st.columns([4.6, 1.2, 1.2], vertical_alignment="center")
+                with action_cols[0]:
+                    selected_label = st.selectbox(
+                        "Choose an opportunity to review",
+                        labels,
+                        key=action_key,
+                        label_visibility="collapsed",
+                    )
+                selected_row = option_map[selected_label]
+                with action_cols[1]:
+                    internal_nav_button(
+                        "Find alternatives",
+                        "Alternative Finder",
+                        key="cost_selected_find_alternatives",
+                        original_part=selected_row["Part Number"],
+                        manufacturer=selected_row.get("Manufacturer", ""),
+                        description=selected_row.get("Description", ""),
+                        risk=str(selected_row.get("Risk Score") or ""),
+                        analysis_id=selected_row.get("Analysis ID", ""),
+                        return_analysis_id=selected_row.get("Analysis ID", ""),
+                        project_name=selected_row.get("Project", ""),
+                        bom_name=selected_row.get("Project", ""),
+                        source_page="cost_optimization",
+                        use_container_width=True,
+                    )
+                with action_cols[2]:
+                    internal_nav_button(
+                        "Review sourcing",
+                        "Procurement Advisor",
+                        key="cost_selected_review_sourcing",
+                        original_part=selected_row["Part Number"],
+                        use_container_width=True,
+                    )
+            elif opportunities:
+                st.markdown(
+                    "<p class='cv21-empty'>No opportunities match this filter. Select another opportunity type to continue.</p>",
+                    unsafe_allow_html=True,
                 )
             else:
-                st.success("Every saved component record contains pricing data.")
-        with all_tab:
-            if intelligence.get("rows"):
-                all_df = pd.DataFrame(intelligence["rows"])
+                st.markdown(
+                    "<p class='cv21-empty'>No priced component currently meets the saved supplier, quantity, or shared-demand criteria for a modeled savings opportunity.</p>",
+                    unsafe_allow_html=True,
+                )
+
+        with st.expander("Cost data quality and detailed records"):
+            st.markdown('<div class="cv21-detail-heading">Cost data quality</div>', unsafe_allow_html=True)
+            quality_cols = st.columns(2)
+            with quality_cols[0]:
+                st.markdown(
+                    f"<div class='cv21-kpi'><div><div class='cv21-kpi-label'>Pricing coverage</div>"
+                    f"<div class='cv21-kpi-value'>{pricing_coverage}%</div>"
+                    f"<div class='cv21-kpi-note'>{priced_count} of {component_count} saved component records have a positive unit price</div></div></div>",
+                    unsafe_allow_html=True,
+                )
+            with quality_cols[1]:
+                st.markdown(
+                    f"<div class='cv21-kpi'><div><div class='cv21-kpi-label'>Single-source or no-stock spend</div>"
+                    f"<div class='cv21-kpi-value'>{html.escape(_currency(intelligence.get('sourcing_risk_cost'), show_zero=has_priced_components))}</div>"
+                    f"<div class='cv21-kpi-note'>Modeled production-run spend requiring sourcing review</div></div></div>",
+                    unsafe_allow_html=True,
+                )
+
+            photo_column = st.column_config.ImageColumn("Part photo", width="small")
+            if intelligence.get("top_cost_parts"):
+                st.markdown('<div class="cv21-detail-heading">Highest recorded component costs</div>', unsafe_allow_html=True)
+                top_df = pd.DataFrame(intelligence["top_cost_parts"])
                 cadivor_engineering_dataframe(
-                    all_df[
+                    top_df[
                         [
                             "Project",
                             "Part Number",
@@ -669,7 +665,6 @@ def render_cost_optimization(
                             "Extended Cost per Build",
                             "Supplier Sources",
                             "Available Stock",
-                            "Lifecycle",
                             "Risk Score",
                         ]
                     ],
@@ -679,5 +674,52 @@ def render_cost_optimization(
                         "Extended Cost per Build": st.column_config.NumberColumn(format="$%.2f"),
                     },
                 )
-            else:
-                st.info("No saved component records are available.")
+            missing_tab, all_tab = st.tabs(["Missing price data", "All cost records"])
+            with missing_tab:
+                if intelligence.get("missing_price_rows"):
+                    missing_df = pd.DataFrame(intelligence["missing_price_rows"])
+                    cadivor_engineering_dataframe(
+                        missing_df[
+                            [
+                                "Project",
+                                "Part Number",
+                                "Image URL",
+                                "Manufacturer",
+                                "Quantity per Build",
+                                "Supplier Sources",
+                                "Available Stock",
+                                "Risk Score",
+                            ]
+                        ],
+                        column_config={"Image URL": photo_column},
+                    )
+                else:
+                    st.success("Every saved component record contains pricing data.")
+            with all_tab:
+                if intelligence.get("rows"):
+                    all_df = pd.DataFrame(intelligence["rows"])
+                    cadivor_engineering_dataframe(
+                        all_df[
+                            [
+                                "Project",
+                                "Part Number",
+                                "Image URL",
+                                "Manufacturer",
+                                "Quantity per Build",
+                                "Unit Price",
+                                "Extended Cost per Build",
+                                "Supplier Sources",
+                                "Available Stock",
+                                "Lifecycle",
+                                "Risk Score",
+                            ]
+                        ],
+                        column_config={
+                            "Image URL": photo_column,
+                            "Unit Price": st.column_config.NumberColumn(format="$%.4f"),
+                            "Extended Cost per Build": st.column_config.NumberColumn(format="$%.2f"),
+                        },
+                    )
+                else:
+                    st.info("No saved component records are available.")
+        end_approved_page()
