@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 
 from src.ui.ei_bom_report import (
     EI_TABS,
@@ -142,7 +143,9 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
 
     def test_review_alternative_handoff_prefills_the_clicked_part(self):
         import streamlit as st
-        from src.alternative_finder_state import get_alternative_finder_original_part_input_config
+        from src.alternative_finder_state import (
+            get_alternative_finder_original_part_input_config,
+        )
         from src.ui.navigation import (
             apply_alternative_finder_prefill,
             consume_alternative_finder_context,
@@ -167,7 +170,6 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
         self.assertEqual(initial_value, "MPN-001")
         self.assertNotIn(widget_key, st.session_state)
         self.assertEqual(st.session_state["alternative_original_manufacturer"], "AlphaSemi")
-        from pathlib import Path
         runtime = Path("src/authenticated_runtime.py").read_text(encoding="utf-8")
         self.assertIn("key=original_part_widget_key", runtime)
         self.assertIn("value=original_part_initial_value", runtime)
@@ -262,9 +264,14 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
         escaped = markup.replace("<", "&lt;").replace(">", "&gt;")
         deeply_escaped = markup
         for _ in range(8):
-            deeply_escaped = deeply_escaped.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            deeply_escaped = (
+                deeply_escaped.replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+            )
         self.assertEqual(_description_text(deeply_escaped), "")
-        for description in (markup, escaped, escaped.replace("&", "&amp;"), deeply_escaped):
+        descriptions = (markup, escaped, escaped.replace("&", "&amp;"), deeply_escaped)
+        for description in descriptions:
             with self.subTest(description=description[:20]):
                 report = detailed_risk_report_html(
                     bom_name="Sample BOM",

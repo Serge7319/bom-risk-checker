@@ -302,8 +302,10 @@ def set_alternative_finder_prefill_input(
     mpn: str,
     navigation_id: str = "",
 ) -> str:
-    """Stage a contextual MPN with a fresh widget identity, without mutating a widget."""
-    identity = "".join(char for char in str(navigation_id or "") if char.isalnum())[:48]
+    """Stage an MPN with a fresh widget identity, without mutating the widget."""
+    identity = "".join(
+        char for char in str(navigation_id or "") if char.isalnum()
+    )[:48]
     if not identity:
         identity = str(time.time_ns())
     widget_key = f"alternative_original_part_prefill_{identity}"
@@ -909,4 +911,3 @@ def should_apply_alternative_finder_prefill(
     if not active:
         return True
     return _normalize_mpn(active.get("entered_mpn")) != _normalize_mpn(mpn)
-
