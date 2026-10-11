@@ -3531,7 +3531,7 @@ def render_compare_live() -> None:
         entered_c = ""
         if st.session_state.get("approved_compare_show_c"):
             with input_cols[2]:
-                entered_c = st.text_input("Part C", key="approved_compare_c", placeholder="Add a third manufacturer part number")
+                entered_c = st.text_input("Part C", key="approved_compare_c", placeholder="Manufacturer part number")
         submitted = st.form_submit_button(
             "Compare parts",
             type="primary",
@@ -3552,6 +3552,7 @@ def render_compare_live() -> None:
         st.session_state.get("approved_compare_c"),
         st.session_state.get("cadivor_compare_part_c"),
     ) if st.session_state.get("approved_compare_show_c") else ""
+    has_part_c = bool(str(part_c or "").strip())
     requested_parts = [part for part in (part_a, part_b, part_c) if str(part or "").strip()]
     auto_run = bool(st.session_state.pop("approved_compare_auto_run_pending", False))
     if submitted or auto_run:
@@ -3627,14 +3628,12 @@ def render_compare_live() -> None:
             continue
         value_a = _esc(raw_a or "Not recorded")
         value_b = _esc(raw_b or "Not recorded")
-        value_c = _esc(raw_c or "Add a third part")
         highlight_b = " style='background:#eff6ff'" if raw_a != raw_b else ""
         highlight_c = " style='background:#eff6ff'" if raw_c and raw_a != raw_c else ""
-        assessment = _recorded(row, "Assessment", "Result", "Status")
-        note = f"<div class='cv-ap-meta'>{_esc(assessment)}</div>" if assessment else ""
-        body.append(
-            f"<tr><td>{_esc(label)}{note}</td><td>{value_a}</td><td{highlight_b}>{value_b}</td><td{highlight_c}>{value_c}</td></tr>"
-        )
+        cells = [f"<td>{value_a}</td>", f"<td{highlight_b}>{value_b}</td>"]
+        if has_part_c:
+            cells.append(f"<td{highlight_c}>{_esc(raw_c or 'Not recorded')}</td>")
+        body.append(f"<tr><td>{_esc(label)}</td>{''.join(cells)}</tr>")
     ran = isinstance(result, dict) and str(result.get("status") or "") in {"completed", "failed"}
     error = str(result.get("error") if isinstance(result, dict) else "").strip()
     if not body:
@@ -3645,7 +3644,7 @@ def render_compare_live() -> None:
         elif part_a.strip() and part_b.strip():
             empty = "No comparison is available yet. Run Compare parts to load recorded attributes."
         else:
-            empty = "Enter two manufacturer part numbers. Add a third part whenever you need it."
+            empty = "Enter Part A and Part B manufacturer part numbers to compare."
     else:
         empty = ""
     submitted_a = str(result.get("part_a") or "") if isinstance(result, dict) else ""
@@ -3653,14 +3652,17 @@ def render_compare_live() -> None:
     name_a = _esc(card_a.get("mpn") or submitted_a or part_a or "Part A")
     name_b = _esc(card_b.get("mpn") or submitted_b or part_b or "Part B")
     submitted_c = str(result.get("part_c") or "") if isinstance(result, dict) else ""
-    name_c = _esc(card_c.get("mpn") or submitted_c or part_c or "Add a part")
+    name_c = _esc(card_c.get("mpn") or submitted_c or part_c or "Part C")
     notice = ""
+    headers = f"<th>Parameter</th><th>{name_a}</th><th>{name_b}</th>"
+    if has_part_c:
+        headers += f"<th>{name_c}</th>"
     table = (
         f"<p class='cv-ap-sub'>{_esc(empty)}</p>"
         if empty
         else (
             "<section class='cv-ap-card'><table class='cv-ap-table'><thead><tr>"
-            f"<th>Parameter</th><th>{name_a}</th><th>{name_b}</th><th>{name_c}</th>"
+            f"{headers}"
             f"</tr></thead><tbody>{''.join(body)}</tbody></table></section>"
         )
     )
@@ -3682,33 +3684,22 @@ def render_compare_live() -> None:
         """,
         unsafe_allow_html=True,
     )
-    card_cols = st.columns(3, gap="small")
-    for index, (col, card, title, current_mpn) in enumerate(
-        (
-            (card_cols[0], card_a, name_a, part_a),
-            (card_cols[1], card_b, name_b, part_b),
-            (card_cols[2], card_c, name_c, part_c),
-        )
-    ):
+    card_specs = [(card_a, name_a, part_a), (card_b, name_b, part_b)]
+    if has_part_c:
+        card_specs.append((card_c, name_c, part_c))
+    card_cols = st.columns(len(card_specs), gap="small")
+    for col, (card, title, current_mpn) in zip(card_cols, card_specs):
         with col:
-            if index == 2 and not st.session_state.get("approved_compare_show_c"):
-                st.markdown(
-                    "<article class='cv-ap-template'><div class='cv-ei-part'>"
-                    f"{part_photo('', size=48)}<span class='cv-ei-part-copy'><h3>Add a part</h3>"
-                    "<p>Compare up to three parts side by side.</p></span></div></article>",
-                    unsafe_allow_html=True,
-                )
-            else:
-                part_info = card or {"manufacturer_part_number": current_mpn}
-                title = _esc(part_info.get("mpn") or title)
-                image = str(part_info.get("image_url") or part_info.get("photo_url") or "")
-                details = _esc(part_info.get("description") or part_info.get("manufacturer") or "Not recorded")
-                st.markdown(
-                    "<article class='cv-ap-template'><div class='cv-ei-part'>"
-                    f"{part_photo(image, size=48, part=part_info)}<span class='cv-ei-part-copy'>"
-                    f"<h3>{title}</h3><p>{details}</p></span></div></article>",
-                    unsafe_allow_html=True,
-                )
+            part_info = card or {"manufacturer_part_number": current_mpn}
+            title = _esc(part_info.get("mpn") or title)
+            image = str(part_info.get("image_url") or part_info.get("photo_url") or "")
+            details = _esc(part_info.get("description") or part_info.get("manufacturer") or "Not recorded")
+            st.markdown(
+                "<article class='cv-ap-template'><div class='cv-ei-part'>"
+                f"{part_photo(image, size=48, part=part_info)}<span class='cv-ei-part-copy'>"
+                f"<h3>{title}</h3><p>{details}</p></span></div></article>",
+                unsafe_allow_html=True,
+            )
     st.markdown(table, unsafe_allow_html=True)
     end_approved_page()
 

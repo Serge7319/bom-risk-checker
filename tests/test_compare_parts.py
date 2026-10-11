@@ -380,6 +380,20 @@ class ComparePartsUiWiringTests(unittest.TestCase):
         self.assertIn('st.session_state["approved_compare_c"] = candidate_c', finder)
         self.assertIn('st.session_state["approved_compare_auto_run_pending"] = True', finder)
 
+    def test_approved_compare_hides_unused_part_and_row_assessment_copy(self):
+        root = Path(__file__).resolve().parents[1]
+        pages = (root / "src" / "ui" / "approved_pages.py").read_text(encoding="utf-8")
+        renderer = pages.split("def render_compare_live", 1)[1].split(
+            "def render_datasheet_live", 1
+        )[0]
+        self.assertIn('has_part_c = bool(str(part_c or "").strip())', renderer)
+        self.assertIn("if has_part_c:", renderer)
+        self.assertIn('card_cols = st.columns(len(card_specs), gap="small")', renderer)
+        self.assertNotIn("Add a third part", renderer)
+        self.assertNotIn("Add a part</h3>", renderer)
+        self.assertNotIn("_esc(assessment)", renderer)
+        self.assertIn("Enter Part A and Part B manufacturer part numbers to compare.", renderer)
+
     def test_user_facing_projection_renames_columns(self):
         rows = user_facing_compare_rows(
             [
