@@ -147,6 +147,8 @@ class _FakeStreamlit:
         self.button_label = ""
         self.messages = []
         self.displayed_df = None
+        self.events = []
+        self.expander_calls = []
         self.column_config = SimpleNamespace(
             ImageColumn=lambda *args, **kwargs: object(),
             TextColumn=lambda *args, **kwargs: object(),
@@ -154,7 +156,7 @@ class _FakeStreamlit:
         )
 
     def markdown(self, *args, **kwargs):
-        return None
+        self.events.append(("markdown", args[0] if args else ""))
 
     def container(self, *args, **kwargs):
         return nullcontext()
@@ -167,7 +169,13 @@ class _FakeStreamlit:
         return SimpleNamespace(selection=SimpleNamespace(rows=self.selected_rows))
 
     def columns(self, *args, **kwargs):
-        return [nullcontext(), nullcontext()]
+        count = args[0] if args and isinstance(args[0], int) else len(args[0]) if args else 2
+        return [nullcontext() for _ in range(count)]
+
+    def expander(self, label, expanded=False):
+        self.expander_calls.append((label, expanded))
+        self.events.append(("expander", label))
+        return nullcontext()
 
     def button(self, label, **kwargs):
         self.button_label = label
@@ -271,6 +279,36 @@ def test_map_and_component_table_remain_visible_before_review(monkeypatch):
     assert fake_st.displayed_df is not None
     assert fake_st.button_label == "Start impact review"
     assert any("does not inspect PCB layouts" in message for message in fake_st.messages)
+
+
+def test_recommended_change_plan_precedes_collapsed_score_explanation(monkeypatch):
+    fake_st = _FakeStreamlit(selected_rows=[], submit=False)
+    monkeypatch.setattr(impact, "st", fake_st)
+    monkeypatch.setattr(impact, "_css", lambda: None)
+    monkeypatch.setattr(impact, "cadivor_section_header", lambda *args, **kwargs: None)
+    monkeypatch.setattr(impact, "render_kpi_row_safe", lambda *args, **kwargs: None)
+
+    from src import part_images
+
+    monkeypatch.setattr(part_images, "part_image_markup", lambda *args, **kwargs: "<span>part</span>")
+    monkeypatch.setattr(part_images, "part_image_source", lambda *args, **kwargs: "data:image/svg+xml,test")
+
+    impact.render_design_impact(
+        intelligence=_impact_data("IC-100"),
+        internal_nav_button=lambda *args, **kwargs: None,
+        review_started=True,
+        impact_map_markup="<section>Impact map</section>",
+    )
+
+    assert fake_st.expander_calls == [("Why this score", False)]
+    plan_event = next(i for i, event in enumerate(fake_st.events) if event[0] == "markdown" and "Recommended Change Plan" in event[1])
+    score_event = next(i for i, event in enumerate(fake_st.events) if event[0] == "expander" and event[1] == "Why this score")
+    assert plan_event < score_event
+    page_markup = "\n".join(
+        str(event[1]) for event in fake_st.events if event[0] == "markdown"
+    )
+    assert "Design validation required" in page_markup
+    assert "Saved BOM records do not include the schematic, PCB layout, netlist, firmware, or mechanical constraints" in page_markup
 
 
 def test_runtime_restores_the_component_specific_map_for_the_selected_bom_rows():
