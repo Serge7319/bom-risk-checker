@@ -1,6 +1,7 @@
 """Trusted product-photo URL handling and reusable Cadivor part imagery."""
 from __future__ import annotations
 
+import base64
 from html import escape
 from collections.abc import Mapping
 from urllib.parse import quote, urlsplit, urlunsplit
@@ -125,8 +126,9 @@ _ILLUSTRATION_SVG = {
     "sensor": '<circle cx="12" cy="12" r="3"/><path d="M12 5v2m0 10v2M5 12h2m10 0h2M7 7l1.5 1.5M15.5 15.5 17 17M17 7l-1.5 1.5M8.5 15.5 7 17"/>',
     "switch": '<path d="M4 16h4l8-8h4M8 16a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm12-8a2 2 0 1 1-4 0 2 2 0 0 1 4 0z"/>',
     "generic": (
-        '<rect x="4" y="6" width="16" height="12" rx="2"/>'
-        '<path d="M8 10h3m2 0h3M8 14h8"/>'
+        '<rect x="7" y="7" width="10" height="10" rx="1.5"/>'
+        '<path d="M9 3v4m6-4v4m-6 10v4m6-4v4M3 9h4m10 0h4M3 15h4m10 0h4"/>'
+        '<circle cx="12" cy="12" r="2.2"/>'
     ),
 }
 
@@ -153,6 +155,48 @@ def illustration_kind(part: object = None, category: object = None) -> str:
     if not payload:
         return "generic"
     return _KIND_BY_FAMILY.get(infer_family_id(payload), "generic")
+
+
+
+def part_image_source(
+    image_url: object,
+    part_number: object,
+    *,
+    size: int = 64,
+    category: object = None,
+    part: object = None,
+) -> str:
+    """Trusted product URL or a self-contained, family-colored SVG for image columns."""
+    image = normalize_supplier_image_url(image_url)
+    if image:
+        return image
+    try:
+        dimension = min(132, max(48, int(size)))
+    except (TypeError, ValueError):
+        dimension = 64
+    kind = illustration_kind(part, category)
+    drawing = _ILLUSTRATION_SVG.get(kind, _ILLUSTRATION_SVG["generic"])
+    palettes = {
+        "ic": ("#eff6ff", "#dbeafe", "#2563eb"),
+        "capacitor": ("#f5f3ff", "#e9d5ff", "#7c3aed"),
+        "resistor": ("#fff7ed", "#fed7aa", "#c2410c"),
+        "inductor": ("#f0fdfa", "#ccfbf1", "#0f766e"),
+        "connector": ("#ecfeff", "#cffafe", "#0e7490"),
+        "diode": ("#fff1f2", "#ffe4e6", "#be123c"),
+        "transistor": ("#f0fdf4", "#dcfce7", "#15803d"),
+        "sensor": ("#ecfeff", "#cffafe", "#0891b2"),
+        "switch": ("#fffbeb", "#fef3c7", "#b45309"),
+        "generic": ("#f0f9ff", "#bae6fd", "#0369a1"),
+    }
+    background, border, foreground = palettes.get(kind, palettes["generic"])
+    svg = (
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{dimension}" height="{dimension}" viewBox="0 0 64 64">'
+        f'<rect x="1" y="1" width="62" height="62" rx="12" fill="{background}" stroke="{border}" stroke-width="2"/>'
+        f'<g transform="translate(20 20)" fill="none" stroke="{foreground}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'
+        f'{drawing}</g></svg>'
+    )
+    encoded = base64.b64encode(svg.encode("utf-8")).decode("ascii")
+    return f"data:image/svg+xml;base64,{encoded}"
 
 
 def part_image_markup(
@@ -202,6 +246,7 @@ __all__ = [
     "illustration_kind",
     "normalize_supplier_image_url",
     "part_image_markup",
+    "part_image_source",
 ]
 def attach_saved_component_images(
     records: list[Mapping[str, object]] | None,
