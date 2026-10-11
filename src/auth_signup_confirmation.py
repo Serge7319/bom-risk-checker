@@ -14,6 +14,7 @@ import streamlit as st
 from src.auth_state import (
     APP_LOGIN,
     APP_SIGNUP,
+    APP_SIGNUP_CONFIRMATION_LINK_READY,
     APP_SIGNUP_CONFIRMATION_INVALID,
     APP_SIGNUP_CONFIRMATION_SUCCESS,
     AUTH_SIGNED_OUT,
@@ -38,10 +39,14 @@ _APPLIED_KEY = "cadivor_signup_confirm_query_applied"
 _EXCHANGE_CONSUMED_KEY = "cadivor_signup_confirm_exchange_consumed"
 _SESSION_READY_KEY = "cadivor_signup_confirm_session_ready"
 _RESULT_KIND_KEY = "cadivor_signup_confirm_result_kind"
+_PENDING_TOKEN_HASH_KEY = "cadivor_signup_confirm_pending_token_hash"
+_PENDING_STRESS_REPORT_KEY = "cadivor_signup_confirm_pending_stress_report"
+_PENDING_REPORT_PURCHASE_KEY = "cadivor_signup_confirm_pending_report_purchase"
 
 RESULT_SESSION_READY = "session_ready"
 RESULT_LOGIN_REQUIRED = "login_required"
 RESULT_INVALID = "invalid"
+RESULT_LINK_READY = "link_ready"
 
 
 def signup_confirmation_redirect_url(*, report_purchase: bool = False) -> str:
@@ -96,9 +101,19 @@ def signup_and_recovery_markers_conflict() -> bool:
 def signup_confirmation_surface_active() -> bool:
     state = str(st.session_state.get("cadivor_root_state") or "")
     return state in {
+        APP_SIGNUP_CONFIRMATION_LINK_READY,
         APP_SIGNUP_CONFIRMATION_SUCCESS,
         APP_SIGNUP_CONFIRMATION_INVALID,
     }
+
+
+def signup_confirmation_verification_pending() -> bool:
+    """True when a callback link is staged, but not yet consumed by Supabase."""
+    return bool(st.session_state.get(_PENDING_TOKEN_HASH_KEY))
+
+
+def pending_report_purchase_requested() -> bool:
+    return bool(st.session_state.get(_PENDING_REPORT_PURCHASE_KEY))
 
 
 def signup_confirmation_session_ready() -> bool:
@@ -160,6 +175,9 @@ def _exchange_already_consumed() -> bool:
 
 
 def _enter_invalid_result() -> None:
+    st.session_state.pop(_PENDING_TOKEN_HASH_KEY, None)
+    st.session_state.pop(_PENDING_STRESS_REPORT_KEY, None)
+    st.session_state.pop(_PENDING_REPORT_PURCHASE_KEY, None)
     st.session_state.pop(_SESSION_READY_KEY, None)
     st.session_state.pop(REPORT_PURCHASE_PENDING_SESSION_KEY, None)
     st.session_state[_RESULT_KIND_KEY] = RESULT_INVALID
@@ -287,7 +305,11 @@ def _activate_from_token_hash(supabase: Any, token_hash: str) -> str:
 
 
 def apply_signup_confirmation_from_query(supabase: Any) -> None:
-    """Detect and consume Cadivor-owned signup confirmation callbacks."""
+    """Stage Cadivor-owned confirmation callbacks without consuming the token.
+
+    Email clients may prefetch links for safety checks. The one-time token is
+    verified only after the visitor presses the confirmation button in Cadivor.
+    """
     if signup_and_recovery_markers_conflict():
         # Caller should prefer reject_conflicting_auth_callbacks; defensive fallback.
         reject_conflicting_auth_callbacks()
@@ -319,18 +341,46 @@ def apply_signup_confirmation_from_query(supabase: Any) -> None:
     stress_report_requested = _read_query_param("cadivor_stress_report") == "1"
     report_checkout_requested = report_purchase_requested()
     token_hash = _read_query_param("token_hash")
-    # Drop token_hash from URL before/around verification outcome handling.
-    # Verification uses the local variable only.
+    if not token_hash:
+        _enter_invalid_result()
+        _mark_exchange_consumed()
+        _clear_signup_confirm_query_params()
+        return
+
+    # Retain the one-time token only in this server-side browser session. A
+    # scanner that merely loads the URL cannot consume it; the explicit CTA does.
+    st.session_state[_PENDING_TOKEN_HASH_KEY] = token_hash
+    st.session_state[_PENDING_STRESS_REPORT_KEY] = stress_report_requested
+    st.session_state[_PENDING_REPORT_PURCHASE_KEY] = report_checkout_requested
+    st.session_state[_RESULT_KIND_KEY] = RESULT_LINK_READY
+    st.session_state["cadivor_root_state"] = APP_SIGNUP_CONFIRMATION_LINK_READY
+    st.session_state["cadivor_auth_status"] = AUTH_SIGNED_OUT
+    st.session_state["cadivor_auth_intent_applied"] = True
+    st.session_state.pop(SIGNUP_PENDING_EMAIL_KEY, None)
+    st.session_state[_APPLIED_KEY] = True
+    _clear_signup_confirm_query_params()
+
+
+def verify_pending_signup_confirmation(supabase: Any) -> str:
+    """Consume a staged one-time link after the visitor explicitly confirms."""
+    token_hash = str(st.session_state.pop(_PENDING_TOKEN_HASH_KEY, "") or "").strip()
+    stress_report_requested = bool(st.session_state.pop(_PENDING_STRESS_REPORT_KEY, False))
+    report_checkout_requested = bool(st.session_state.pop(_PENDING_REPORT_PURCHASE_KEY, False))
+    if not token_hash or _exchange_already_consumed():
+        _enter_invalid_result()
+        _mark_exchange_consumed()
+        return RESULT_INVALID
+
+    _mark_exchange_consumed()
     kind = _activate_from_token_hash(supabase, token_hash)
     if kind == RESULT_SESSION_READY and stress_report_requested:
         st.session_state["cadivor_stress_landing_pending"] = True
     if report_checkout_requested and kind in {RESULT_SESSION_READY, RESULT_LOGIN_REQUIRED}:
         st.session_state[REPORT_PURCHASE_PENDING_SESSION_KEY] = True
         st.session_state["cadivor_requested_page"] = REPORT_PURCHASE_ROUTE
-    _mark_exchange_consumed()
-    _clear_signup_confirm_query_params()
     if kind == RESULT_INVALID:
         log_auth_diagnostic("signup_confirmation_unavailable")
+    return kind
 
 
 def clear_signup_confirmation_result() -> None:
@@ -338,6 +388,9 @@ def clear_signup_confirmation_result() -> None:
     st.session_state.pop(_APPLIED_KEY, None)
     st.session_state.pop(_SESSION_READY_KEY, None)
     st.session_state.pop(_RESULT_KIND_KEY, None)
+    st.session_state.pop(_PENDING_TOKEN_HASH_KEY, None)
+    st.session_state.pop(_PENDING_STRESS_REPORT_KEY, None)
+    st.session_state.pop(_PENDING_REPORT_PURCHASE_KEY, None)
     # Keep _EXCHANGE_CONSUMED_KEY so email-link replay stays safe in-session.
 
 

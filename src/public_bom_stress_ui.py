@@ -77,7 +77,7 @@ def render_public_bom_stress_test() -> None:
         report = st.session_state.get("cv_stress_report")
         if report:
             st.markdown("## Preliminary BOM audit")
-            st.caption("First five checked components · verify your work email for the complete audit.")
+            st.caption("First five checked components · verify your email for the complete audit.")
             if st.button("Audit another BOM", key="cv_stress_new_audit"):
                 for key in ("cv_stress_report", "cv_stress_error", "cv_stress_last_digest",
                             "cv_stress_upload", "cv_stress_email_pending"):
@@ -133,21 +133,21 @@ def render_public_bom_stress_test() -> None:
             st.markdown(
                 '<div class="cv-stress-locked"><strong>'
                 f'{remaining} more components are locked · {high} verified high-risk dependencies'
-                '</strong>Verify your work email to see the full report, including lifecycle, stock, lead time, and evidence.'
+                '</strong>Verify your email to see the full report, including lifecycle, stock, lead time, and evidence.'
                 + (f' {unverified} components still need supplier verification.' if unverified else '')
                 + '</div>', unsafe_allow_html=True,
             )
         else:
-            st.info("All components fit in the free preview. Verify a work email to save and download this audit.")
+            st.info("All components fit in the free preview. Verify your email to save and download this audit.")
         pending = st.session_state.get("cv_stress_email_pending")
         if pending:
             st.success(f"Check {pending} for your Cadivor verification email. Open its link to confirm your address, then continue to Reports for the complete audit.")
             return
         with st.form("cv_stress_work_email_form", clear_on_submit=False):
-            email = st.text_input("Work email", placeholder="you@company.com", autocomplete="email")
+            email = st.text_input("Email address", placeholder="you@company.com", autocomplete="email")
             accepted = st.checkbox("I agree to the Terms of Service and Privacy Policy.")
             submit = st.form_submit_button("Email my full report", type="primary")
-            st.caption("We'll send a secure sign-in link. Verify your work email to unlock the full audit in Reports.")
+            st.caption("We'll send a secure one-time sign-in link. Verify your email to unlock the full audit in Reports.")
         st.markdown(
             "[Terms of Service](https://www.cadivor.com/#/terms) · "
             "[Privacy Policy](https://www.cadivor.com/#/privacy)"

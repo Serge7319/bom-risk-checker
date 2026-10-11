@@ -81,6 +81,7 @@ class OneTimeReportPublicEntryTests(unittest.TestCase):
 
         with patch.object(self.confirm, "_activate_from_token_hash", return_value=self.confirm.RESULT_SESSION_READY):
             self.confirm.apply_signup_confirmation_from_query(MagicMock())
+            self.confirm.verify_pending_signup_confirmation(MagicMock())
 
         self.assertTrue(self.st.session_state["cadivor_report_purchase_pending"])
         self.assertEqual(self.st.session_state["cadivor_requested_page"], "BOM Analyzer")

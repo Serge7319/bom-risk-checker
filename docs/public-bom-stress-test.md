@@ -2,7 +2,7 @@
 
 The public entry page is https://www.cadivor.com/#/analyze. Its **Analyze a BOM free** buttons lead to a Cadivor-branded page with the anonymous uploader beneath the main banner. The direct fallback is https://app.cadivor.com/?public=stress. Before sharing the link in outreach, complete the email-to-Reports check in step 7. Use the Supabase project and Railway production service already serving app.cadivor.com. Do not send API keys, the signing secret, or a live email link in chat.
 
-**Expected visitor flow:** Upload a CSV/XLSX BOM (1–30 rows, up to 1 MB, with MPN and Qty columns), see the first five rows, verify a work email, then see the complete audit in Reports. There are two anonymous uploads per IP per rolling 24 hours. The full report expires after seven days and downloads as CSV; this feature does not generate a PDF.
+**Expected visitor flow:** Upload a CSV/XLSX BOM (1–30 rows, up to 1 MB, with MPN and Qty columns), see the first five rows, verify an email address, then see the complete audit in Reports. Consumer addresses such as Gmail are accepted; email verification and the anonymous upload limit still apply. There are two anonymous uploads per IP per rolling 24 hours. The full report expires after seven days and downloads as CSV; this feature does not generate a PDF.
 
 ## 1. Supabase: run the database migration
 
@@ -47,12 +47,12 @@ https://app.cadivor.com/?cadivor_signup_confirm=1&cadivor_stress_report=1
 
 Keep all existing URLs and the existing Site URL. Cadivor sends this URL when requesting the verification email.
 
-## 4. Supabase: check both email templates
+## 4. Supabase: configure the Magic Link email
 
-New work-email addresses may receive **Confirm sign up**; existing accounts may receive **Magic Link**. The generic "Confirm your email" message is a verification email, not the full report. Both buttons need to reach Cadivor's token-hash callback so the verified visitor can continue to **Reports**.
+The public audit calls Supabase `sign_in_with_otp` with account creation enabled. Supabase uses the **Magic Link or OTP** template for this flow, including when it creates a new account. The **Confirm sign up** template is for the separate password-based account creation flow. The email verifies the address; the complete audit appears in Reports after confirmation.
 
-1. Open **Authentication → Email Templates**. Make a private backup of **Confirm sign up** and **Magic Link or OTP** before editing either. Leave the other templates alone.
-2. In each of those two templates, find the clickable link's `href`. Keep the surrounding layout and set the link to use the request-specific redirect:
+1. Open **Authentication → Email Templates → Magic Link or OTP**. Make a private backup before editing. This is the template used by the public audit's passwordless sign-in request.
+2. Set the subject to **Your secure sign-in link for Cadivor**. In the body, keep the Cadivor layout but replace the default link with:
 
 ~~~html
 href="{{ .RedirectTo }}&amp;token_hash={{ .TokenHash }}&amp;type=email"
@@ -64,8 +64,8 @@ For example, a minimal anchor is:
 <a href="{{ .RedirectTo }}&amp;token_hash={{ .TokenHash }}&amp;type=email">Confirm email and continue to Cadivor</a>
 ~~~
 
-3. Use a neutral subject/body that works for normal signup too, for example subject **Confirm your Cadivor email**, and text **Confirm your email to continue to Cadivor. If you requested a BOM audit, your full report is available in Reports after sign-in.** Save both templates. Do not hard-code `cadivor_stress_report=1` in a global template: `RedirectTo` already carries it for this request. This app supplies a redirect URL with existing query parameters, so appending `&amp;` is correct here. If other products share these templates with redirects lacking a query string, check those flows before applying this exact link globally.
-4. The confirmation email's link should begin with the exact redirect URL in section 3, then include `token_hash` and `type=email`. Do not share the full live URL; it is a one-time sign-in credential. **Click it and verify the actual Reports result**; the appearance of an email alone does not complete the test.
+3. Add a short body such as **Sign in to Cadivor to unlock your complete BOM audit. This link can be used once.** Save the Magic Link or OTP template. Do not hard-code `cadivor_stress_report=1` in a global template: `RedirectTo` already carries it for this request. The app opens a confirmation screen; the user must press **Confirm email and continue** before Supabase consumes the one-time link. This extra click protects against email link scanners that pre-open messages.
+4. The link should begin with the request redirect URL and then include `token_hash` and `type=email`. Do not share the full live URL; it is a one-time sign-in credential. **Click it, press the confirmation button, and verify the actual Reports result**; the appearance of an email alone does not complete the test. If you also want to customize password-based signup emails, edit **Confirm sign up** separately; it is not used by the public audit's OTP request.
 
 ## 5. Cloudflare: sign requests reaching the app
 
@@ -105,7 +105,7 @@ ADS1115IDGSR,2
 ~~~
 
 1. In a fresh incognito window, upload it on the direct route. Expect **five visible component rows and one locked row**. The sixth MPN must not appear in the anonymous results.
-2. Try test@gmail.com; expect a work-email error. Then use a work email you control, accept the Terms, and click **Email my full report**. Follow the one-time email link and continue to the workspace. In **Reports**, expect six components and **Download audit CSV**.
+2. Use `serge.subscription+cadivor-test@gmail.com`; Gmail delivers plus-addressed mail to the `serge.subscription@gmail.com` inbox. Accept the Terms and click **Email my full report**. Open the latest Cadivor email, click its link, then click **Confirm email and continue** on Cadivor's confirmation screen. In **Reports**, expect all six components and **Download audit CSV**. Rows without verified distributor data should be marked **Needs verification**.
 3. From the same network, a second anonymous upload should work and a third within 24 hours should show the daily-limit message. Check email confirmation for both a new and an existing account. Rows without verified distributor data must say **Needs verification**.
 4. Sign into another account and confirm it cannot view the first person's full report.
 
