@@ -140,6 +140,18 @@ def test_missing_category_metadata_uses_the_generic_illustration():
     assert "<img" in markup
 
 
+def test_generic_fallback_uses_neutral_ic_package_art_for_both_mounting_styles():
+    generic_smd = part_image_source("", "UNKNOWN-SMD")
+    generic_th = part_image_source("", "UNKNOWN-TH", part={"package": "through-hole"})
+    neutral_ic_smd = part_image_source("", "UNKNOWN-SMD", category="IC")
+    neutral_ic_th = part_image_source(
+        "", "UNKNOWN-TH", category="IC", part={"package": "through-hole"}
+    )
+
+    assert generic_smd == neutral_ic_smd
+    assert generic_th == neutral_ic_th
+
+
 def test_stored_description_selects_the_category_drawing():
     capacitor = part_image_markup("", "GRM188", part={"description": "Ceramic capacitor"})
     ic = part_image_markup("", "MAX32625", part={"description": "Low-power microcontroller"})

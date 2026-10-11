@@ -47,7 +47,7 @@ def _description_text(value: Any) -> str:
     if not raw:
         return ""
     # Records may have been HTML escaped more than once before they were saved.
-    for _ in range(3):
+    for _ in range(16):
         decoded = html.unescape(raw)
         if decoded == raw:
             break
@@ -1040,3 +1040,4 @@ def render_engineering_intelligence_report(
             st.session_state[f"cadivor_detailed_risk_mpn_{analysis_id or bom_name}"] = ""
             st.session_state["cadivor_show_detailed_risk"] = True
             st.rerun()
+

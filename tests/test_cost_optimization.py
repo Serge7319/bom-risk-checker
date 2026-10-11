@@ -3,6 +3,7 @@ import unittest
 from pathlib import Path
 
 from src.cost_optimization import _opportunity_table_markup, build_cost_optimization
+from src.part_images import part_image_source
 
 
 class CostOptimizationWorkspaceTests(unittest.TestCase):
@@ -15,6 +16,7 @@ class CostOptimizationWorkspaceTests(unittest.TestCase):
                     "mpn": "CAP-100",
                     "description": "Ceramic capacitor",
                     "category": "Ceramic capacitor",
+                    "package": "Radial through-hole",
                     "manufacturer": "Acme",
                     "quantity": 10,
                     "unit_price": 1.25,
@@ -30,6 +32,10 @@ class CostOptimizationWorkspaceTests(unittest.TestCase):
         self.assertEqual(intelligence["estimated_savings"], 62.5)
         self.assertEqual(intelligence["opportunities"][0]["Description"], "Ceramic capacitor")
         self.assertEqual(intelligence["opportunities"][0]["Component Category"], "Ceramic capacitor")
+        self.assertEqual(
+            intelligence["opportunities"][0]["Image Context"]["package"],
+            "Radial through-hole",
+        )
         image_source = intelligence["rows"][0]["Image URL"]
         self.assertTrue(image_source.startswith("data:image/png;base64,"))
         self.assertTrue(
@@ -39,8 +45,15 @@ class CostOptimizationWorkspaceTests(unittest.TestCase):
         )
 
         markup = _opportunity_table_markup(intelligence["opportunities"])
+        expected_image = part_image_source(
+            "",
+            "CAP-100",
+            category="Ceramic capacitor",
+            part=intelligence["opportunities"][0]["Image Context"],
+        )
 
         self.assertIn('data-illustration="capacitor"', markup)
+        self.assertIn(f'src="{expected_image}"', markup)
         self.assertIn("Ceramic capacitor", markup)
         self.assertIn("CAP-100", markup)
         self.assertIn("$1.2500", markup)
@@ -64,6 +77,11 @@ class CostOptimizationWorkspaceTests(unittest.TestCase):
         workspace = Path("src/cost_optimization.py").read_text(encoding="utf-8")
         self.assertIn('st.container(key="cost_optimization_workspace")', workspace)
         self.assertIn("max-width:1500px", workspace)
+        self.assertIn(
+            "from src.ui.approved_pages import begin_approved_page, end_approved_page",
+            workspace,
+        )
+        self.assertIn("end_approved_page()", workspace)
 
 
 if __name__ == "__main__":
