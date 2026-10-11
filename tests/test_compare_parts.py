@@ -388,7 +388,7 @@ class ComparePartsUiWiringTests(unittest.TestCase):
         )[0]
         self.assertIn('has_part_c = bool(str(part_c or "").strip())', renderer)
         self.assertIn("if has_part_c:", renderer)
-        self.assertIn('card_cols = st.columns(len(card_specs), gap="small")', renderer)
+        self.assertIn("card_cols = st.columns(len(card_specs), gap=\"small\")", renderer)
         self.assertNotIn("Add a third part", renderer)
         self.assertNotIn("Add a part</h3>", renderer)
         self.assertNotIn("_esc(assessment)", renderer)

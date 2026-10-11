@@ -3928,47 +3928,72 @@ def run_authenticated_app() -> None:
         stop_authenticated_page()
 
     if app_mode == "Analysis Details":
-        # Sprint 30.2: make persistence explicit on every saved-analysis page.
+        # Give the saved-BOM workspace and every section/tab the same centered
+        # 1440px canvas used by Home and the other standard workspaces.
         st.markdown(
             """
-            <style id="cadivor-save-status-302">
-            .cv302-savebar{display:flex;align-items:center;justify-content:space-between;gap:14px;
-            border:1px solid #bbf7d0;background:linear-gradient(135deg,#ffffff,#f0fdf4);
-            border-radius:13px;padding:10px 13px;margin:0 0 12px;box-shadow:0 8px 22px rgba(5,150,105,.055)}
-            .cv302-saveleft{display:flex;align-items:center;gap:9px;min-width:0}
-            .cv302-saveicon{width:26px;height:26px;border-radius:9px;background:#dcfce7;border:1px solid #bbf7d0;
-            color:#15803d!important;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:950}
-            .cv302-savetitle{font-size:11px;font-weight:900;color:#0f172a!important;line-height:1.25}
-            .cv302-savecopy{font-size:9px;font-weight:650;color:#64748b!important;margin-top:2px}
-            .cv302-savebadge{font-size:9px;font-weight:900;color:#047857!important;border:1px solid #a7f3d0;
-            background:#ecfdf5;border-radius:999px;padding:5px 8px;white-space:nowrap}
+            <style id="cadivor-analysis-workspace-canvas">
+            section[data-testid="stMain"] .st-key-approved_page_canvas_standard_analysis_detail{
+              box-sizing:border-box!important;width:100%!important;max-width:1440px!important;
+              min-width:0!important;margin-left:auto!important;margin-right:auto!important;
+              padding:36px 0 24px!important
+            }
+            section[data-testid="stMain"] .st-key-approved_page_canvas_standard_analysis_detail>[data-testid="stVerticalBlock"]{
+              box-sizing:border-box!important;width:100%!important;max-width:100%!important;min-width:0!important;
+              gap:22px!important
+            }
+            @media(max-width:1250px){
+              section[data-testid="stMain"] .st-key-approved_page_canvas_standard_analysis_detail{padding:22px 0 20px!important}
+            }
+            @media(max-width:700px){
+              section[data-testid="stMain"] .st-key-approved_page_canvas_standard_analysis_detail{padding:24px 0!important}
+            }
             </style>
-            <div class="cv302-savebar">
-              <div class="cv302-saveleft">
-                <div class="cv302-saveicon">✓</div>
-                <div><div class="cv302-savetitle">Saved to your workspace</div>
-                <div class="cv302-savecopy">This analysis and its engineering activity are preserved automatically.</div></div>
-              </div>
-              <div class="cv302-savebadge">Autosave on</div>
-            </div>
             """,
             unsafe_allow_html=True,
         )
-        from src.pages.analysis_detail import render_analysis_detail
-        render_analysis_detail(
-            current_user=current_user,
-            supabase=supabase,
-            load_analysis_history=load_analysis_history,
-            light_plotly_layout=light_plotly_layout,
-            _qp_value=_qp_value,
-            workspace_id=active_workspace_id,
-            workspace_role=active_workspace_role,
-            workspace_members=(
-                list_members(supabase, active_workspace_id)[0]
-                if active_workspace_id
-                else []
-            ),
-        )
+        with st.container(key="approved_page_canvas_standard_analysis_detail"):
+            # Sprint 30.2: make persistence explicit on every saved-analysis page.
+            st.markdown(
+                """
+                <style id="cadivor-save-status-302">
+                .cv302-savebar{display:flex;align-items:center;justify-content:space-between;gap:14px;
+                border:1px solid #bbf7d0;background:linear-gradient(135deg,#ffffff,#f0fdf4);
+                border-radius:13px;padding:10px 13px;margin:0 0 12px;box-shadow:0 8px 22px rgba(5,150,105,.055)}
+                .cv302-saveleft{display:flex;align-items:center;gap:9px;min-width:0}
+                .cv302-saveicon{width:26px;height:26px;border-radius:9px;background:#dcfce7;border:1px solid #bbf7d0;
+                color:#15803d!important;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:950}
+                .cv302-savetitle{font-size:11px;font-weight:900;color:#0f172a!important;line-height:1.25}
+                .cv302-savecopy{font-size:9px;font-weight:650;color:#64748b!important;margin-top:2px}
+                .cv302-savebadge{font-size:9px;font-weight:900;color:#047857!important;border:1px solid #a7f3d0;
+                background:#ecfdf5;border-radius:999px;padding:5px 8px;white-space:nowrap}
+                </style>
+                <div class="cv302-savebar">
+                  <div class="cv302-saveleft">
+                    <div class="cv302-saveicon">✓</div>
+                    <div><div class="cv302-savetitle">Saved to your workspace</div>
+                    <div class="cv302-savecopy">This analysis and its engineering activity are preserved automatically.</div></div>
+                  </div>
+                  <div class="cv302-savebadge">Autosave on</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            from src.pages.analysis_detail import render_analysis_detail
+            render_analysis_detail(
+                current_user=current_user,
+                supabase=supabase,
+                load_analysis_history=load_analysis_history,
+                light_plotly_layout=light_plotly_layout,
+                _qp_value=_qp_value,
+                workspace_id=active_workspace_id,
+                workspace_role=active_workspace_role,
+                workspace_members=(
+                    list_members(supabase, active_workspace_id)[0]
+                    if active_workspace_id
+                    else []
+                ),
+            )
         stop_authenticated_page()
 
     st.markdown(

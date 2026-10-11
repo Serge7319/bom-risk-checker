@@ -3445,6 +3445,13 @@ div[data-testid="stVerticalBlock"]:has(.cv672-dashboard-workspace-root) [data-te
   font-size: 10px;
 }
 
+.cv69-summary-copy {
+  margin: 10px 0 0;
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
 .cv69-workspace-body {
   display: grid;
   grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);

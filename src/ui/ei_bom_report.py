@@ -502,8 +502,27 @@ def _part_rows(parts: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def report_styles() -> str:
     return """
     <style>
-      .st-key-ei_report_workspace { width:min(100%,1500px)!important;max-width:1500px!important;margin-inline:auto!important;box-sizing:border-box }
-      .st-key-ei_report_workspace .cv-ei-report { color:#0f172a; font-family: Inter, "Segoe UI", sans-serif; width:100%;max-width:1500px;margin:0 auto;box-sizing:border-box }
+      .st-key-ei_report_workspace { width:100%!important;max-width:100%!important;margin-inline:auto!important;box-sizing:border-box;min-width:0!important }
+      .st-key-ei_report_workspace .cv-ei-report { color:#0f172a; font-family: Inter, "Segoe UI", sans-serif; width:100%;max-width:100%;margin:0 auto;box-sizing:border-box;min-width:0 }
+      .st-key-ei_report_workspace .cv-ap { color:#0f172a; font-family:Inter, "Segoe UI", sans-serif; margin:0 0 2px; }
+      .st-key-ei_report_workspace .cv-ap-kicker { margin:0 0 6px; color:#64748b; font-size:12px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; }
+      .st-key-ei_report_workspace .cv-ap h1 { margin:0 0 6px; color:#0f172a; font-size:32px; font-weight:760; line-height:1.15; letter-spacing:-.03em; }
+      .st-key-ei_report_workspace .cv-ei-title { font-size:30px; }
+      .st-key-ei_report_workspace .cv-ei-section { min-width:0; margin:0 0 18px; overflow:hidden; background:#fff; border:1px solid #cbd8e8; border-radius:16px; box-shadow:0 3px 12px rgba(15,23,42,.045); }
+      .st-key-ei_report_workspace .cv-ei-section > h3 { margin:0; padding:20px 22px 0; color:#0f172a; font-size:19px; line-height:1.25; font-weight:750; letter-spacing:-.02em; }
+      .st-key-ei_report_workspace .cv-ei-section > p { margin:0; padding:5px 22px 16px; color:#64748b; font-size:13px; line-height:1.5; }
+      .st-key-ei_report_workspace .cv-ei-table-wrap { width:100%;max-width:100%;overflow-x:auto;border-radius:0 0 15px 15px;overscroll-behavior-inline:contain; }
+      .st-key-ei_report_workspace .cv-ei-table { min-width:760px; border:0; border-radius:0; }
+      .st-key-ei_report_workspace .cv-ei-table th { color:#64748b; background:#f7f9fc; border-top:1px solid #e5ebf3; border-bottom:1px solid #dce4ef; vertical-align:middle; }
+      .st-key-ei_report_workspace .cv-ei-table td { vertical-align:middle; }
+      .st-key-cv_ei_report_tabs { width:100%;max-width:100%;margin:8px 0 18px;min-width:0; }
+      html body section[data-testid="stMain"] .st-key-cv_ei_report_tabs [data-testid="stHorizontalBlock"] {
+        flex-wrap:wrap!important;align-items:flex-end!important;justify-content:flex-start!important;gap:4px 10px!important;width:100%!important;
+        border-bottom:1px solid #e5e7eb!important;padding-bottom:0!important
+      }
+      html body section[data-testid="stMain"] .st-key-cv_ei_report_tabs [data-testid="stHorizontalBlock"]>[data-testid="column"] {
+        flex:0 0 auto!important;width:auto!important;min-width:0!important;max-width:100%!important
+      }
       .cv-part-photo[data-illustration="generic"]{background:#f0f9ff;border-color:#bae6fd;color:#0369a1}
       .cv-ei-kicker { color:#64748b; font-size:13px; font-weight:600; margin:0 0 6px; }
       .cv-ei-title { font-size:32px; line-height:1.15; font-weight:760; letter-spacing:-.03em; margin:0; }
@@ -560,9 +579,23 @@ def report_styles() -> str:
       .cv-bom-search, .cv-bom-filter { background:#fff; border:1px solid #e6edf5; border-radius:12px; padding:10px 12px; color:#64748b; font-size:14px; }
       .cv-bom-search { flex:1; }
       @media (max-width: 900px) {
-        .cv-ei-kpis, .cv-risk-row, .cv-risk-head { display:block; }
+        .st-key-ei_report_workspace .cv-ap h1 { font-size:26px; }
+        .st-key-ei_report_workspace .cv-ei-title { font-size:26px; }
+        .st-key-ei_report_workspace .cv-ei-section > h3 { padding:16px 16px 0; font-size:17px; }
+        .st-key-ei_report_workspace .cv-ei-section > p { padding:5px 16px 13px; font-size:12px; }
+        .cv-ei-kpis { grid-template-columns:repeat(2,minmax(0,1fr)); }
+        .cv-risk-row, .cv-risk-head { display:block; }
         .cv-risk-detail { grid-template-columns:1fr; padding:12px 0; }
         .cv-risk-grid-head { font-size:10px;padding:8px 5px }
+      }
+      @media (max-width: 600px) {
+        .st-key-ei_report_workspace .cv-ap h1 { font-size:23px; }
+        .st-key-ei_report_workspace .cv-ei-title { font-size:23px; }
+        .st-key-ei_report_workspace .cv-ei-kpis { grid-template-columns:1fr; }
+        .st-key-ei_report_workspace .cv-ei-section { border-radius:13px; }
+        .st-key-ei_report_workspace .cv-ei-section > h3 { padding:14px 13px 0; }
+        .st-key-ei_report_workspace .cv-ei-section > p { padding:5px 13px 12px; }
+        .st-key-cv_ei_report_tabs button { white-space:normal!important;text-align:left!important; }
       }
     </style>
     """
@@ -724,7 +757,7 @@ def _tab_body(
             )
         return _table(
             "Cost insights",
-            "Unit price, distributor, BOM quantity, and product URL are shown only when they were saved. Extended cost is calculated only when both a positive unit price and a BOM quantity were saved. Savings are shown only when two saved offers for the same part share a currency and a price break that applies to the BOM quantity. One saved offer means a distributor comparison is unavailable. The recorded offer is not a price ranking. A stored 0 is not a price or a quantity. Re-run the BOM analysis to save offers the supplier returns. The risk rating is the saved analysis rating.",
+            "Values come from the saved analysis. Extended cost needs both a recorded unit price and BOM quantity; distributor savings appear only when saved offers are comparable at that quantity. Re-run the analysis to refresh supplier data. Offers are evidence, not a ranked recommendation.",
             ["Component", "Manufacturer", "Unit price", "Recorded source", "Extended cost", "Risk"],
             body,
         )
@@ -766,7 +799,9 @@ def _table(title: str, copy: str, headers: list[str], body: str) -> str:
     <section class="cv-ei-section">
       <h3>{_esc(title)}</h3>
       <p>{_esc(copy)}</p>
-      <table class="cv-ei-table"><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table>
+      <div class="cv-ei-table-wrap" role="region" aria-label="{_esc(title)} table" tabindex="0">
+        <table class="cv-ei-table"><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table>
+      </div>
     </section>
     """
 
@@ -980,28 +1015,25 @@ def render_engineering_intelligence_report(
         detailed = bool(st.session_state.get("cadivor_show_detailed_risk"))
         tab = str(st.session_state.get("cadivor_ei_report_tab") or "BOM Risk")
         if not detailed:
-            title_col, tab_col = st.columns([0.9, 1.8], vertical_alignment="bottom")
-            with title_col:
-                st.markdown(
-                    f"<div class='cv-ap'><p class='cv-ap-kicker'>{html.escape(bom_name)} · {len(parts or [])} components</p>"
-                    "<h1>Engineering Intelligence</h1></div>",
-                    unsafe_allow_html=True,
-                )
-            with tab_col:
-                with st.container(key="cv_ei_report_tabs"):
-                    tab_buttons = st.columns(len(EI_TABS))
-                    for column, name in zip(tab_buttons, EI_TABS):
-                        slug = name.casefold().replace(" ", "-").replace("&", "and")
-                        if column.button(
-                            name,
-                            key=f"ei_tab_{slug}",
-                            type="tertiary",
-                            on_click=_select_ei_report_tab,
-                            args=(name,),
-                        ):
-                            # Callback updates state before this rerun. Keep the
-                            # returned value as a fallback for simpler test stubs.
-                            st.session_state["cadivor_ei_report_tab"] = name
+            st.markdown(
+                f"<div class='cv-ap'><p class='cv-ap-kicker'>{html.escape(bom_name)} · {len(parts or [])} components</p>"
+                "<h1>Engineering Intelligence</h1></div>",
+                unsafe_allow_html=True,
+            )
+            with st.container(key="cv_ei_report_tabs"):
+                tab_buttons = st.columns(len(EI_TABS))
+                for column, name in zip(tab_buttons, EI_TABS):
+                    slug = name.casefold().replace(" ", "-").replace("&", "and")
+                    if column.button(
+                        name,
+                        key=f"ei_tab_{slug}",
+                        type="tertiary",
+                        on_click=_select_ei_report_tab,
+                        args=(name,),
+                    ):
+                        # Callback updates state before this rerun. Keep the
+                        # returned value as a fallback for simpler test stubs.
+                        st.session_state["cadivor_ei_report_tab"] = name
                 active_slug = str(tab or "BOM Risk").casefold().replace(" ", "-").replace("&", "and")
                 st.markdown(
                     f"""

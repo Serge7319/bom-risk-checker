@@ -119,7 +119,7 @@ def recommendation_summary(
 
     return f"""
     <header class="cv69-recommendation-summary">
-      <div class="cv69-summary-kicker">Engineering Actions</div>
+      <div class="cv69-summary-kicker">Action workbench</div>
       <div class="cv69-summary-grid">
         <article class="cv69-summary-stat">
           <span>Recommendations</span>
@@ -140,9 +140,10 @@ def recommendation_summary(
         <article class="cv69-summary-stat">
           <span>Confidence</span>
           <strong>{confidence_label}</strong>
-          <small>{confidence_score}% portfolio confidence</small>
+          <small>{confidence_score}% confidence from saved BOM evidence</small>
         </article>
       </div>
+      <p class="cv69-summary-copy">Select a recommendation below to review its rationale, evidence, expected impact, and next engineering step.</p>
     </header>
     """
 

@@ -3986,7 +3986,7 @@ for _renderer_name, _width_variant in (
     ("render_saved_bom_settings", "standard"),
     ("render_home", "standard"),
     ("render_bom_catalog", "wide"),
-    ("render_decision_queue", "wide"),
+    ("render_decision_queue", "standard"),
     ("render_monitoring", "wide"),
     ("render_reports_list", "wide"),
     ("render_simple_workspace", "wide"),

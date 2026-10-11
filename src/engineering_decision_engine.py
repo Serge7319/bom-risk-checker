@@ -1606,7 +1606,7 @@ def render_engineering_workspace_actions(brief: Mapping[str, Any]) -> None:
         <section class="cv672-category">
           <h3 class="cv671-heading">{_decision_icon("list-checks", 16)} Recommended Actions</h3>
           <div class="cv68-section cv69-matrix-section">
-            <h4 class="cv672-subheading">{_decision_icon("target", 14)} Decision priority matrix</h4>
+            <h4 class="cv672-subheading">{_decision_icon("target", 14)} Action plan by timing</h4>
             {_html_priority_matrix(priority_matrix)}
           </div>
         </section>

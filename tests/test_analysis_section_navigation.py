@@ -116,6 +116,33 @@ class AnalysisSectionNavigationTests(unittest.TestCase):
         self.assertEqual(st.session_state["cadivor_active_analysis_tab"], "Engineering Intelligence")
         self.assertEqual(st.query_params["analysis_tab"], "Engineering Intelligence")
 
+    def test_engineering_intelligence_keeps_shared_saved_bom_navigation_visible(self):
+        from src.ui.bom_navigation import PRIMARY_AREAS
+
+        st, detail = self._load(
+            session_state={
+                "cadivor_active_analysis_tab": "Engineering Intelligence",
+                "cadivor_analysis_section_a-nav": "Engineering Intelligence",
+            },
+            query_params={"analysis_tab": "Engineering Intelligence"},
+        )
+        rendered_buttons = []
+        st.button = lambda label, **kwargs: rendered_buttons.append(label) or False
+
+        @contextmanager
+        def _popover(*_args, **_kwargs):
+            yield None
+
+        st.popover = _popover
+
+        active = detail._render_analysis_section_navigation(analysis_id="a-nav")
+
+        self.assertEqual(active, "Engineering Intelligence")
+        self.assertEqual(
+            [label for label in rendered_buttons if label in PRIMARY_AREAS],
+            list(PRIMARY_AREAS),
+        )
+
     def test_components_selection_commits_state_and_url(self):
         st, detail = self._load(
             session_state={"cadivor_analysis_section_a-2": "Components"},
