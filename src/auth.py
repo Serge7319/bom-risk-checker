@@ -8,6 +8,7 @@ from textwrap import dedent
 from src.auth_state import (
     APP_AUTHENTICATED, APP_LOGIN, APP_PUBLIC, APP_SIGNING_IN, APP_SIGNUP,
     APP_SIGNUP_CONFIRMATION_PENDING,
+    APP_SIGNUP_CONFIRMATION_LINK_READY,
     APP_SIGNUP_CONFIRMATION_SUCCESS,
     APP_SIGNUP_CONFIRMATION_INVALID,
     APP_PASSWORD_RECOVERY, APP_PASSWORD_RESET,
@@ -792,6 +793,44 @@ def _render_signup_confirmation_pending() -> None:
         _exit_signup_pending_to_create_account()
 
 
+def _render_signup_confirmation_link_ready(supabase, cookie_manager=None) -> None:
+    confirm = _auth_signup_confirmation()
+    report_purchase = confirm.pending_report_purchase_requested()
+    if report_purchase:
+        eyebrow = "BOM REPORT · EMAIL CONFIRMATION"
+        context = "Confirm your email to continue to report checkout."
+        heading = "Confirm your email"
+        copy = "Click below once to confirm this address and continue to your BOM report checkout."
+        button_label = "Confirm and continue to checkout"
+    else:
+        eyebrow = "CADIVOR · EMAIL CONFIRMATION"
+        context = "One more step to open your workspace."
+        heading = "Confirm your email to continue"
+        copy = (
+            "Click below once to securely sign in. If you requested a free BOM audit, "
+            "Cadivor will open the complete report in Reports."
+        )
+        button_label = "Confirm email and continue"
+
+    _render_auth_card_brand(eyebrow=eyebrow, context_sub=context)
+    _html(
+        '<div class="auth-confirm-status" role="status">Email link ready</div>'
+        f'<div class="auth-heading">{html.escape(heading)}</div>'
+        f'<p class="auth-copy">{html.escape(copy)}</p>'
+    )
+    if st.button(
+        button_label,
+        key="cadivor_signup_confirm_verify_and_continue",
+        type="primary",
+        use_container_width=True,
+    ):
+        result = confirm.verify_pending_signup_confirmation(supabase)
+        if result == confirm.RESULT_SESSION_READY:
+            confirm.continue_signup_confirmation_to_workspace(cookie_manager)
+        else:
+            st.rerun()
+
+
 def _render_signup_confirmation_success(cookie_manager=None) -> None:
     confirm = _auth_signup_confirmation()
     session_ready = confirm.signup_confirmation_session_ready()
@@ -1439,6 +1478,10 @@ def show_auth_ui(supabase, cookie_manager=None):
         # Pending confirmation must win over SIGNING_IN→LOGIN normalization.
         if state == APP_SIGNUP_CONFIRMATION_PENDING:
             _render_signup_confirmation_pending()
+            return
+
+        if state == APP_SIGNUP_CONFIRMATION_LINK_READY:
+            _render_signup_confirmation_link_ready(supabase, cookie_manager)
             return
 
         if state == APP_SIGNUP_CONFIRMATION_SUCCESS:

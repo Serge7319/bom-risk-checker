@@ -100,11 +100,16 @@ class PublicBomStressTest(unittest.TestCase):
         with self.assertRaises(funnel.StressTestError):
             funnel.visitor_hash("1.2.3.4", now=stamp, secret=secret)
 
-    def test_corporate_email_gate_and_bounded_parser(self):
-        for address in ("person@gmail.com", "person@outlook.com", "person@yahoo.co.uk", "bad-address"):
+    def test_email_validation_accepts_consumer_aliases_and_bounded_parser(self):
+        for address in ("person@gmail.com", "person+cadivor-test@gmail.com", "person@outlook.com"):
+            self.assertEqual(funnel.normalize_email_address(address), address)
+        for address in ("bad-address", "person@localhost"):
             with self.subTest(address=address), self.assertRaises(funnel.StressTestError):
-                funnel.work_email(address)
-        self.assertEqual(funnel.work_email(" Director@Acme-Systems.com "), "director@acme-systems.com")
+                funnel.normalize_email_address(address)
+        self.assertEqual(
+            funnel.normalize_email_address(" Director@Acme-Systems.com "),
+            "director@acme-systems.com",
+        )
         bom = b"Manufacturer Part Number,Qty\nMCP2551-I/SN,2\nTPS5430DDAR,5\n"
         self.assertEqual(funnel.parse_bom("board.csv", bom)[0], {"mpn": "MCP2551-I/SN", "quantity": 2})
         with self.assertRaises(funnel.StressTestError):
@@ -310,7 +315,8 @@ class PublicBomStressTest(unittest.TestCase):
             "token_hash": "one-time-hash", "type": "email",
         }
         auth_state = types.ModuleType("src.auth_state")
-        for name in ("APP_LOGIN", "APP_SIGNUP", "APP_SIGNUP_CONFIRMATION_INVALID",
+        for name in ("APP_LOGIN", "APP_SIGNUP", "APP_SIGNUP_CONFIRMATION_LINK_READY",
+                     "APP_SIGNUP_CONFIRMATION_INVALID",
                      "APP_SIGNUP_CONFIRMATION_SUCCESS", "AUTH_SIGNED_OUT",
                      "SIGNUP_PENDING_EMAIL_KEY"):
             setattr(auth_state, name, name)
@@ -320,8 +326,12 @@ class PublicBomStressTest(unittest.TestCase):
         module = importlib.util.module_from_spec(spec)
         with patch.dict(sys.modules, {"streamlit": fake_st, "src.auth_state": auth_state}):
             spec.loader.exec_module(module)
-            with patch.object(module, "_activate_from_token_hash", return_value=module.RESULT_SESSION_READY):
+            with patch.object(module, "_activate_from_token_hash", return_value=module.RESULT_SESSION_READY) as activate:
                 module.apply_signup_confirmation_from_query(object())
+                activate.assert_not_called()
+                self.assertTrue(module.signup_confirmation_verification_pending())
+                module.verify_pending_signup_confirmation(object())
+                activate.assert_called_once()
             self.assertTrue(fake_st.session_state["cadivor_stress_landing_pending"])
             self.assertNotIn("token_hash", fake_st.query_params)
             self.assertNotIn("cadivor_stress_report", fake_st.query_params)

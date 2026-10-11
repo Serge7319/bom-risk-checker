@@ -31,6 +31,7 @@ from src.auth_state import (
     APP_LOGIN,
     APP_SIGNUP,
     APP_SIGNUP_CONFIRMATION_PENDING,
+    APP_SIGNUP_CONFIRMATION_LINK_READY,
     APP_SIGNUP_CONFIRMATION_SUCCESS,
     APP_SIGNUP_CONFIRMATION_INVALID,
     AUTH_AUTHENTICATED,
@@ -249,6 +250,7 @@ def apply_auth_intent_from_query() -> None:
 
     if root_state in {
         APP_SIGNUP_CONFIRMATION_PENDING,
+        APP_SIGNUP_CONFIRMATION_LINK_READY,
         APP_SIGNUP_CONFIRMATION_SUCCESS,
         APP_SIGNUP_CONFIRMATION_INVALID,
     }:
@@ -628,9 +630,15 @@ def _ensure_authenticated_or_stop_impl() -> None:
     # Explicit Sign out still wins: it clears tokens before the redirect.
     drop_stale_logout_query_for_authenticated_page_hop()
 
-    from src.auth_signup_confirmation import signup_confirmation_callback_requested
+    from src.auth_signup_confirmation import (
+        signup_confirmation_callback_requested,
+        signup_confirmation_verification_pending,
+    )
 
-    signup_confirmation_pending = signup_confirmation_callback_requested()
+    signup_confirmation_link_pending = signup_confirmation_verification_pending()
+    signup_confirmation_pending = (
+        signup_confirmation_callback_requested() or signup_confirmation_link_pending
+    )
 
     # Durable logout marker from hard reload (?cadivor_signed_out=1) must win
     # before any cookie peek can send the gate to boot restore.
@@ -696,7 +704,9 @@ def _ensure_authenticated_or_stop_impl() -> None:
         paint_auth_gate(
             gate_state,
             progress_message=(
-                "Confirming your email… Keep this tab open while we verify your link."
+                "Review the confirmation and continue to finish signing in."
+                if signup_confirmation_link_pending
+                else "Opening your secure email confirmation…"
             ),
         )
     else:

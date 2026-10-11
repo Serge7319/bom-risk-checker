@@ -17,7 +17,7 @@ from tests.test_auth_cookie_read_bridge import _install_streamlit_stub  # noqa: 
 
 
 def main() -> int:
-    st = _install_streamlit_stub({})
+    st, _restore_streamlit = _install_streamlit_stub({})
     st.rerun = MagicMock()
     for name in list(sys.modules):
         if name.startswith("src.auth"):
@@ -27,7 +27,7 @@ def main() -> int:
     state = importlib.import_module("src.auth_state")
     report: dict = {}
 
-    # Run 1: valid callback → session-ready success + cleaned query.
+    # Run 1: opening the callback stages the token; only the explicit CTA verifies it.
     st.query_params = {
         "cadivor_signup_confirm": "1",
         "token_hash": "signup-hash",
@@ -43,10 +43,15 @@ def main() -> int:
         session=session, user=session.user
     )
     confirm.apply_signup_confirmation_from_query(supabase)
-    report["run1_verified_once"] = supabase.auth.verify_otp.call_count == 1
+    report["run1_not_verified_on_page_load"] = supabase.auth.verify_otp.call_count == 0
+    report["run1_link_ready_state"] = (
+        st.session_state.get("cadivor_root_state") == state.APP_SIGNUP_CONFIRMATION_LINK_READY
+    )
     report["run1_query_cleaned"] = "token_hash" not in st.query_params and (
         "cadivor_signup_confirm" not in st.query_params
     )
+    confirm.verify_pending_signup_confirmation(supabase)
+    report["run1_verified_once"] = supabase.auth.verify_otp.call_count == 1
     report["run1_success_state"] = (
         st.session_state.get("cadivor_root_state") == state.APP_SIGNUP_CONFIRMATION_SUCCESS
     )
@@ -98,6 +103,7 @@ def main() -> int:
         session=None, user=types.SimpleNamespace(id="u2")
     )
     confirm.apply_signup_confirmation_from_query(supabase3)
+    confirm.verify_pending_signup_confirmation(supabase3)
     report["run5_login_required"] = (
         confirm.signup_confirmation_result_kind() == confirm.RESULT_LOGIN_REQUIRED
     )

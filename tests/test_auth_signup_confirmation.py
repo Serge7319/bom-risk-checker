@@ -156,10 +156,10 @@ class SignupConfirmationUnitTests(unittest.TestCase):
         gate.render_full_page_gate_surface = MagicMock()
         gate.paint_auth_gate(
             "authenticating",
-            progress_message="Confirming your email… Keep this tab open while we verify your link.",
+            progress_message="Opening your secure email confirmation…",
         )
         self.assertIn(
-            "Confirming your email… Keep this tab open while we verify your link.",
+            "Opening your secure email confirmation…",
             gate.render_full_page_gate_surface.call_args.kwargs["message"],
         )
 
@@ -179,6 +179,14 @@ class SignupConfirmationUnitTests(unittest.TestCase):
             session=session, user=session.user
         )
         self.confirm.apply_signup_confirmation_from_query(supabase)
+        supabase.auth.verify_otp.assert_not_called()
+        self.assertEqual(
+            self.st.session_state["cadivor_root_state"],
+            self.state.APP_SIGNUP_CONFIRMATION_LINK_READY,
+        )
+        self.assertTrue(self.confirm.signup_confirmation_verification_pending())
+        self.assertIn(self.confirm._PENDING_TOKEN_HASH_KEY, self.st.session_state)
+        self.confirm.verify_pending_signup_confirmation(supabase)
         supabase.auth.verify_otp.assert_called_once_with(
             {"token_hash": "signup-hash", "type": "email"}
         )
@@ -264,6 +272,7 @@ class SignupConfirmationUnitTests(unittest.TestCase):
             session=None, user=user
         )
         self.confirm.apply_signup_confirmation_from_query(supabase)
+        self.confirm.verify_pending_signup_confirmation(supabase)
         self.assertEqual(
             self.st.session_state["cadivor_root_state"],
             self.state.APP_SIGNUP_CONFIRMATION_SUCCESS,
@@ -291,6 +300,7 @@ class SignupConfirmationUnitTests(unittest.TestCase):
             "user": session.user,
         }
         self.confirm.apply_signup_confirmation_from_query(supabase)
+        self.confirm.verify_pending_signup_confirmation(supabase)
         self.assertFalse(self.confirm.signup_confirmation_session_ready())
         self.assertEqual(
             self.confirm.signup_confirmation_result_kind(),
@@ -306,6 +316,7 @@ class SignupConfirmationUnitTests(unittest.TestCase):
         supabase = MagicMock()
         supabase.auth.verify_otp.side_effect = RuntimeError("otp failed")
         self.confirm.apply_signup_confirmation_from_query(supabase)
+        self.confirm.verify_pending_signup_confirmation(supabase)
         self.assertEqual(
             self.st.session_state["cadivor_root_state"],
             self.state.APP_SIGNUP_CONFIRMATION_INVALID,
@@ -326,6 +337,7 @@ class SignupConfirmationUnitTests(unittest.TestCase):
         }
         supabase.auth.verify_otp.return_value = {"session": session, "user": user}
         self.confirm.apply_signup_confirmation_from_query(supabase)
+        self.confirm.verify_pending_signup_confirmation(supabase)
         self.assertTrue(self.confirm.signup_confirmation_session_ready())
 
     def test_rerun_does_not_reverify(self):
@@ -344,6 +356,7 @@ class SignupConfirmationUnitTests(unittest.TestCase):
             session=session, user=session.user
         )
         self.confirm.apply_signup_confirmation_from_query(supabase)
+        self.confirm.verify_pending_signup_confirmation(supabase)
         supabase.auth.verify_otp.reset_mock()
         # Simulate cleaned URL + surviving success state.
         self.st.query_params = {}
@@ -369,7 +382,7 @@ class SignupConfirmationUnitTests(unittest.TestCase):
             self.state.APP_SIGNUP_CONFIRMATION_INVALID,
         )
 
-    def test_token_hash_not_retained_in_state(self):
+    def test_token_hash_is_staged_until_click_then_removed_from_state(self):
         self.st.query_params = {
             "cadivor_signup_confirm": "1",
             "token_hash": "signup-hash-secret",
@@ -378,6 +391,8 @@ class SignupConfirmationUnitTests(unittest.TestCase):
         supabase = MagicMock()
         supabase.auth.verify_otp.side_effect = RuntimeError("fail")
         self.confirm.apply_signup_confirmation_from_query(supabase)
+        self.assertTrue(self.confirm.signup_confirmation_verification_pending())
+        self.confirm.verify_pending_signup_confirmation(supabase)
         dumped = str(self.st.session_state)
         self.assertNotIn("signup-hash-secret", dumped)
 
@@ -432,6 +447,23 @@ class SignupConfirmationUiTests(unittest.TestCase):
         self.assertIn("Confirmation complete", joined)
         labels = [c.args[0] for c in self.st.button.call_args_list]
         self.assertIn("Continue to workspace", labels)
+
+    def test_link_is_not_verified_until_user_clicks_confirm(self):
+        self.st.session_state["cadivor_root_state"] = self.state.APP_SIGNUP_CONFIRMATION_LINK_READY
+        self.st.session_state[self.confirm._PENDING_TOKEN_HASH_KEY] = "one-time-hash"
+        supabase = MagicMock()
+        self.buttons["cadivor_signup_confirm_verify_and_continue"] = False
+        self.auth._render_signup_confirmation_link_ready(supabase, None)
+        supabase.auth.verify_otp.assert_not_called()
+        self.assertIn("Confirm your email to continue", "\n".join(self.bodies))
+
+        self.buttons["cadivor_signup_confirm_verify_and_continue"] = True
+        self.confirm.verify_pending_signup_confirmation = MagicMock(
+            return_value=self.confirm.RESULT_INVALID
+        )
+        self.auth._render_signup_confirmation_link_ready(supabase, None)
+        self.confirm.verify_pending_signup_confirmation.assert_called_once_with(supabase)
+        self.st.rerun.assert_called_once()
 
     def test_report_purchase_confirmation_auto_opens_purchase_page(self):
         self.st.session_state["cadivor_root_state"] = self.state.APP_SIGNUP_CONFIRMATION_SUCCESS

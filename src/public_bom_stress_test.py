@@ -26,14 +26,6 @@ PREVIEW_ROWS = 5
 MAX_XLSX_UNCOMPRESSED = 8_000_000
 VISITOR_HEADER = "X-Cadivor-Visitor"
 PUBLIC_BOM_LIMIT_MESSAGE = "This connection has used its two free BOM audits in the last 24 hours."
-CONSUMER_DOMAINS = frozenset({
-    "gmail.com", "googlemail.com", "yahoo.com", "yahoo.co.uk", "ymail.com",
-    "hotmail.com", "hotmail.co.uk", "outlook.com", "live.com", "msn.com",
-    "aol.com", "icloud.com", "me.com", "mail.com", "proton.me",
-    "protonmail.com", "gmx.com", "qq.com", "163.com", "126.com",
-})
-
-
 class StressTestError(ValueError):
     """An actionable validation or availability error for the public funnel."""
 
@@ -71,13 +63,10 @@ def visitor_hash(signed_header: str, *, now: int | None = None, secret: str | No
     return hmac.new(key.encode(), f"ip|{canonical_ip}".encode(), hashlib.sha256).hexdigest()
 
 
-def work_email(value: str) -> str:
+def normalize_email_address(value: str) -> str:
     email = str(value or "").strip().lower()
     if len(email) > 254 or not re.fullmatch(r"[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+", email):
-        raise StressTestError("Enter a valid work email address.")
-    domain = email.rsplit("@", 1)[1]
-    if domain in CONSUMER_DOMAINS or domain.endswith((".gmail.com", ".yahoo.com", ".outlook.com")):
-        raise StressTestError("Use a work or institutional email address to unlock the report.")
+        raise StressTestError("Enter a valid email address.")
     return email
 
 
@@ -241,7 +230,7 @@ def run_audit(filename: str, payload: bytes, signed_header: str) -> dict[str, An
 
 def capture_lead(report_id: str, address: str, *, source: str = "homepage_stress_test") -> str:
     """Validate again on server and record only minimal sales metadata."""
-    email = work_email(address)
+    email = normalize_email_address(address)
     lead_source = re.sub(r"[^A-Za-z0-9:_.-]+", "-", str(source or "")).strip("-:.")[:160]
     if not lead_source:
         lead_source = "homepage_stress_test"
@@ -277,7 +266,7 @@ def send_report_verification(address: str) -> None:
     `signup_confirmation_redirect_url()`; see the rollout document. No session
     is trusted until the existing callback verifies the token hash.
     """
-    email = work_email(address)
+    email = normalize_email_address(address)
     try:
         from supabase import create_client
         from src.auth_signup_confirmation import signup_confirmation_redirect_url
@@ -306,7 +295,7 @@ def verified_report(access_token: str, *, report_id: str | None = None) -> dict[
         user = auth.auth.get_user(access_token).user
         if not user or not getattr(user, "email_confirmed_at", None):
             return None
-        email = work_email(getattr(user, "email", ""))
+        email = normalize_email_address(getattr(user, "email", ""))
         cutoff = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
         query = (_service_client().table("cadivor_public_bom_stress_tests")
                  .select("id,filename,row_count,results,created_at")
