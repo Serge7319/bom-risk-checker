@@ -145,7 +145,7 @@ class DashboardV2Tests(unittest.TestCase):
         self.assertIn("render_first_run_dashboard", self.onboarding_source)
         self.assertIn("Start your first BOM review", self.runtime_source)
         self.assertIn("Upload a BOM", self.onboarding_source)
-        self.assertIn("A first review in four steps", self.onboarding_source)
+        self.assertIn("Your BOM review workflow", self.onboarding_source)
         self.assertNotIn("Upload my first BOM", self.onboarding_source)
         self.assertNotIn("Your first decision in four steps", self.onboarding_source)
         self.assertIn('if app_mode == "Dashboard":', self.runtime_source)
