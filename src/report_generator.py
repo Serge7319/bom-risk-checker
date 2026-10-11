@@ -19,7 +19,7 @@ def save_results_to_excel(results: list, output_path) -> None:
     executive_bullets = generate_executive_summary(df)
 
     summary_rows = [
-        ["BOM Health Score", f"{health_data['health_score']} / 100"],
+        ["BOM Health Score", f"{health_data['health_score']} / 100" if health_data['health_score'] is not None else "Not assessed"],
         ["Overall Status", health_data["health_status"]],
         ["Summary Message", health_data["summary_message"]],
         ["", ""],
