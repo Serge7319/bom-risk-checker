@@ -18477,11 +18477,33 @@ def run_authenticated_app() -> None:
             should_render_bom_analysis_body,
         )
 
+        saved_bom_rerun_handoff = bool(
+            st.session_state.pop("cadivor_saved_bom_rerun_pending", False)
+        )
+        saved_bom_rerun_active = bool(
+            st.session_state.get("cadivor_saved_bom_rerun_active")
+        )
         if st.session_state.get("bom81_high_risk_review"):
             uploaded_file = None
             project_name = ""
             bom_name = ""
             _approved_bom_submitted = False
+        elif saved_bom_rerun_handoff:
+            _approved_bom_submitted, uploaded_file, project_name, bom_name = (
+                consume_approved_bom_submission(st.session_state)
+            )
+            if _approved_bom_submitted and uploaded_file is not None:
+                st.session_state["cadivor_saved_bom_rerun_active"] = True
+                st.session_state["cadivor_bom_upload_open"] = False
+                saved_bom_rerun_active = True
+            else:
+                st.error("The updated BOM could not be loaded. Return to BOMs and open it again.")
+                stop_authenticated_page()
+        elif saved_bom_rerun_active:
+            _approved_bom_submitted = False
+            uploaded_file, project_name, bom_name = resume_approved_bom_submission(
+                st.session_state
+            )
         else:
             render_bom_catalog(
                 history_data if isinstance(history_data, list) else [],
@@ -18505,6 +18527,19 @@ def run_authenticated_app() -> None:
             st.session_state.pop("cadivor_bom_analysis_ready", None)
             if uploaded_file is not None:
                 st.session_state.pop("bom8_sample_mode", None)
+        if saved_bom_rerun_active:
+            rerun_project = html.escape(str(project_name or "General"))
+            rerun_bom = html.escape(str(bom_name or "Updated BOM"))
+            st.markdown(
+                f"""
+                <section style="margin:4px 0 18px;padding:16px 18px;border:1px solid #bfdbfe;border-radius:14px;background:#eff6ff;">
+                  <div style="color:#1d4ed8;font-size:10px;font-weight:850;letter-spacing:.09em;text-transform:uppercase;margin-bottom:5px;">BOM rerun</div>
+                  <div style="color:#0f2d57;font-size:18px;font-weight:800;line-height:1.25;">Rerunning {rerun_bom}</div>
+                  <p style="color:#52647d;font-size:12px;line-height:1.5;margin:5px 0 0;">{rerun_project} · Your updated quantities are going through the BOM analysis workflow. When it finishes, this editor will reopen with the revised rows, and you can choose when to view BOM Risk.</p>
+                </section>
+                """,
+                unsafe_allow_html=True,
+            )
         _approved_bom_pipeline_active = bool(
             st.session_state.get("cadivor_bom_pipeline_active")
             or st.session_state.get("bom8_analysis_future")
@@ -18521,6 +18556,8 @@ def run_authenticated_app() -> None:
         )
         sample_bom = pd.DataFrame()
         if uploaded_file is None and not st.session_state.get("bom81_high_risk_review"):
+            if saved_bom_rerun_active:
+                st.error("The updated BOM file is no longer available in this session. Return to BOMs and open the saved BOM again.")
             stop_authenticated_page()
 
         # The approved upload path bypasses the legacy saved-BOM controls below,
@@ -20476,12 +20513,34 @@ def run_authenticated_app() -> None:
                 st.session_state["last_saved_analysis_id"] = analysis_id
                 st.session_state["last_saved_analysis_at"] = datetime.now(timezone.utc).isoformat()
                 st.session_state.pop("bom8_analysis_in_progress", None)
-                # First-run completion must hand the engineer directly to the
-                # result they just created; never require hunting through saved BOMs.
-                st.session_state["pending_app_mode"] = "BOM Analyzer"
-                st.session_state["app_mode"] = "BOM Analyzer"
-                st.toast("Analysis complete. Opening your BOM analysis…", icon="✅")
-                if _one_time_blocked_plan:
+                saved_bom_rerun_completed = bool(
+                    st.session_state.pop("cadivor_saved_bom_rerun_active", False)
+                )
+                st.session_state["pending_app_mode"] = (
+                    "BOM Settings" if saved_bom_rerun_completed else "BOM Analyzer"
+                )
+                st.session_state["app_mode"] = st.session_state["pending_app_mode"]
+                if saved_bom_rerun_completed:
+                    st.session_state["cadivor_bom_rerun_complete_notice"] = {
+                        "analysis_id": str(analysis_id),
+                        "project_name": str(project_name or "General"),
+                        "bom_name": str(bom_name or analysis_name or "Updated BOM"),
+                    }
+                    st.session_state.pop("cadivor_bom_pipeline_active", None)
+                    st.session_state.pop("bom8_analysis_upload_file", None)
+                    st.session_state["cadivor_bom_upload_open"] = False
+                    st.toast("Updated BOM analysis is ready. You’re back in the BOM editor.", icon="✅")
+                    navigate_to(
+                        "BOM Settings",
+                        saved_bom_id=str(analysis_id),
+                        saved_bom_action="open",
+                        arm_opening=False,
+                    )
+                else:
+                    # A new upload opens its result directly. Saved-BOM reruns
+                    # return to their editor and leave report navigation explicit.
+                    st.toast("Analysis complete. Opening your BOM analysis…", icon="✅")
+                if _one_time_blocked_plan and not saved_bom_rerun_completed:
                     navigate_to("Analysis Details", analysis_id=str(analysis_id))
                 # The Saved BOM Manager was rendered earlier in this script run
                 # from pre-save history. Rebuild once after persistence so the

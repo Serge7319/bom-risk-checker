@@ -1302,6 +1302,15 @@ def _render_saved_bom_open_page(
             """,
             unsafe_allow_html=True,
         )
+        rerun_notice = st.session_state.pop("cadivor_bom_rerun_complete_notice", None)
+        if (
+            isinstance(rerun_notice, dict)
+            and str(rerun_notice.get("analysis_id") or "").strip() == analysis_id
+        ):
+            st.success(
+                "The updated analysis is saved. This editor now shows its revised BOM rows; "
+                "select View BOM Risk whenever you want to review the results."
+            )
         st.info(
             "Cadivor rebuilds these rows from the saved analyzed components. "
             "Rerunning creates a new saved analysis and keeps this report available."
@@ -1374,7 +1383,10 @@ def _render_saved_bom_open_page(
                 st.session_state["cadivor_pending_upload"] = upload
                 st.session_state["cadivor_pending_project"] = str(project_value or "").strip() or "General"
                 st.session_state["cadivor_pending_bom_name"] = str(bom_value or "").strip()
-                st.session_state["cadivor_bom_upload_open"] = True
+                # Keep the rerun in the BOM workspace. The runtime consumes this
+                # one-shot submission before drawing the new-upload form.
+                st.session_state["cadivor_saved_bom_rerun_pending"] = True
+                st.session_state["cadivor_bom_upload_open"] = False
                 navigate_to("BOM Analyzer", new_analysis="1", arm_opening=False)
 
 
@@ -3138,6 +3150,38 @@ def excel_bytes(rows: list[dict[str, Any]]) -> bytes:
 def render_replacement_search() -> None:
     """Find-a-replacement layout wired to the live alternative search."""
     begin_approved_page()
+    from src.alternative_finder_state import init_alternative_finder_state
+    from src.ui.navigation import (
+        apply_alternative_finder_prefill,
+        consume_alternative_finder_context,
+    )
+
+    init_alternative_finder_state(st.session_state)
+
+    def _query_param(key: str, default: str = "") -> str:
+        try:
+            value = st.query_params.get(key, default)
+        except Exception:
+            return default
+        if isinstance(value, (list, tuple)):
+            value = value[-1] if value else default
+        return str(value or default)
+
+    navigation_context = consume_alternative_finder_context(_query_param)
+    if navigation_context:
+        apply_alternative_finder_prefill(navigation_context)
+        source_context = dict(
+            st.session_state.get("alternative_prefill_source_context") or {}
+        )
+        if navigation_context.get("description"):
+            source_context["description"] = navigation_context["description"]
+        st.session_state["alternative_prefill_source_context"] = source_context
+        # The approved renderer owns the visible input. Populate its key before
+        # constructing the widget so the clicked MPN appears on the first render.
+        clicked_mpn = str(navigation_context.get("mpn") or "").strip()
+        if clicked_mpn:
+            st.session_state["approved_replacement_query"] = clicked_mpn
+            st.session_state["cadivor_replacement_query"] = clicked_mpn
     st.session_state.setdefault(
         "approved_replacement_query",
         str(st.session_state.get("cadivor_replacement_query") or ""),
@@ -3149,10 +3193,14 @@ def render_replacement_search() -> None:
         run = st.button("Search", key="approved_replacement_search", type="primary")
     query = str(query or st.session_state.get("approved_replacement_query") or "").strip()
     result = st.session_state.get("alternative_finder_result")
-    if run and query:
+    prefilled_search_pending = bool(
+        st.session_state.pop("alternative_prefill_search_pending", False)
+    )
+    if (run or prefilled_search_pending) and query:
         from src.alternative_finder_search import run_alternative_finder_search
 
-        run_alternative_finder_search(st.session_state, query)
+        with st.spinner(f"Searching supplier catalogs for {query}…"):
+            run_alternative_finder_search(st.session_state, query)
         result = st.session_state.get("alternative_finder_result")
     original = {}
     candidates: list[dict[str, Any]] = []
@@ -3160,6 +3208,28 @@ def render_replacement_search() -> None:
         original = result.get("original_data") if isinstance(result.get("original_data"), dict) else {}
         raw_candidates = result.get("candidates") or result.get("alternative_candidates") or []
         candidates = [row for row in raw_candidates if isinstance(row, dict)]
+    source_context = st.session_state.get("alternative_prefill_source_context")
+    if isinstance(source_context, dict) and query:
+        from src.normalizer import normalize_part_number
+
+        context_mpn = str(source_context.get("mpn") or "").strip()
+        if (
+            context_mpn
+            and (normalize_part_number(context_mpn) or context_mpn.upper())
+            == (normalize_part_number(query) or query.upper())
+        ):
+            # Keep the clicked source visible even when a supplier has no exact
+            # catalog record for it.
+            original = dict(original)
+            original["manufacturer_part_number"] = context_mpn
+            for field, context_field in (
+                ("manufacturer", "manufacturer"),
+                ("description", "description"),
+                ("lifecycle", "lifecycle"),
+                ("risk_level", "risk"),
+            ):
+                if not str(original.get(field) or "").strip():
+                    original[field] = source_context.get(context_field) or ""
     fit_filter, life_filter, stock_filter, risk_filter, sort_by = st.columns(5)
     with fit_filter:
         fit_choice = st.selectbox("Parametric fit", ["All"], key="approved_fit_filter")
