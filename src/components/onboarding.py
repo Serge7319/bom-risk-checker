@@ -215,11 +215,10 @@ def render_first_run_dashboard(*, current_user: dict[str, Any] | None, workspace
         _go_to("BOM Analyzer", new_analysis="1")
 
     steps = (
-        ("1", "Upload BOM", "Add a CSV or XLSX parts list."),
-        ("2", "Analyze Risk", "Review lifecycle, supply, and component risk."),
-        ("3", "Ask Cadivor", "Explore evidence and recommendations."),
-        ("4", "Engineering Decision", "Record and qualify the next action."),
-        ("5", "Continuous Monitoring", "Track component and supply changes."),
+        ("1", "Upload", "Import a CSV or XLSX BOM."),
+        ("2", "Understand risk", "See the evidence that matters first."),
+        ("3", "Make decisions", "Review alternatives and record approvals."),
+        ("4", "Share the outcome", "Export an executive-ready report."),
     )
     items = "".join(
         f"""
@@ -233,8 +232,8 @@ def render_first_run_dashboard(*, current_user: dict[str, Any] | None, workspace
     )
     st.markdown(
         f"""
-        <section class="cv-home-steps" aria-label="Five-step BOM review workflow">
-          <h2>Your BOM review workflow</h2>
+        <section class="cv-home-steps" aria-label="A first review in four steps">
+          <h2>A first review in four steps</h2>
           <ol>{items}</ol>
         </section>
         """,
@@ -283,15 +282,18 @@ def render_upload_detected(*, filename: str, component_count: int, deduplicated_
     )
 
 
-def render_analysis_success(*, project_name: str, total_parts: int, high_count: int, medium_count: int, health_score: int, analysis_id: str) -> None:
+def render_analysis_success(*, project_name: str, total_parts: int, high_count: int, medium_count: int, health_score: int | None, analysis_id: str, needs_verification_count: int = 0) -> None:
     """Render an outcome-focused transition after a BOM is analyzed and saved."""
     review_count = max(0, int(high_count or 0)) + max(0, int(medium_count or 0))
     estimated_minutes = max(2, min(15, review_count * 2 if review_count else 2))
     recommendation = (
+        "Verify supplier evidence before interpreting the overall BOM health."
+        if health_score is None or needs_verification_count else
         "Resolve critical components before release." if high_count else
         "Complete a focused review before release." if medium_count else
         "No elevated component risks were detected."
     )
+    health_display = f"{int(health_score)}/100" if health_score is not None else "Needs verification"
     st.markdown(
         f"""
         <style id="cadivor-analysis-success-29b">
@@ -309,7 +311,7 @@ def render_analysis_success(*, project_name: str, total_parts: int, high_count: 
         .cv29b-success-btn.secondary{{background:#FFFFFF;color:#047857!important;border-color:#A7F3D0}}
         @media(max-width:780px){{.cv29b-success-grid{{grid-template-columns:repeat(2,minmax(0,1fr))}}.cv29b-success-top{{display:block}}}}
         </style>
-        <section class="cv29b-success"><div class="cv29b-success-top"><div><div class="cv29b-success-kicker">Analysis complete</div><h2>{html.escape(str(project_name or 'BOM analysis'))}</h2><p>{html.escape(recommendation)}</p></div></div><div class="cv29b-success-grid"><div class="cv29b-success-stat"><span>Health</span><strong>{int(health_score or 0)}/100</strong></div><div class="cv29b-success-stat"><span>Components</span><strong>{int(total_parts or 0)}</strong></div><div class="cv29b-success-stat"><span>Needs review</span><strong>{review_count}</strong></div><div class="cv29b-success-stat"><span>Estimated review</span><strong>{estimated_minutes} min</strong></div></div></section>
+        <section class="cv29b-success"><div class="cv29b-success-top"><div><div class="cv29b-success-kicker">Analysis complete</div><h2>{html.escape(str(project_name or 'BOM analysis'))}</h2><p>{html.escape(recommendation)}</p></div></div><div class="cv29b-success-grid"><div class="cv29b-success-stat"><span>Health</span><strong>{html.escape(health_display)}</strong></div><div class="cv29b-success-stat"><span>Components</span><strong>{int(total_parts or 0)}</strong></div><div class="cv29b-success-stat"><span>Needs review</span><strong>{review_count}</strong></div><div class="cv29b-success-stat"><span>Needs verification</span><strong>{int(needs_verification_count or 0)}</strong></div></div></section>
         """,
         unsafe_allow_html=True,
     )
