@@ -39,6 +39,12 @@ class StockCoercionTests(unittest.TestCase):
             with self.subTest(raw=raw):
                 self.assertEqual(self.coerce.coerce_stock_total(raw), expected)
 
+    def test_parse_stock_total_preserves_unknown_and_distinguishes_confirmed_zero(self):
+        self.assertIsNone(self.coerce.parse_stock_total(None))
+        self.assertIsNone(self.coerce.parse_stock_total("On Order: 1200"))
+        self.assertEqual(self.coerce.parse_stock_total("0 In Stock"), 0)
+        self.assertEqual(self.coerce.parse_stock_total("1,234 In Stock"), 1234)
+
     def test_normalize_digikey_product_does_not_raise_on_human_readable_stock(self):
         normalized = self.digikey.normalize_digikey_product(
             {
