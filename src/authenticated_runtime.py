@@ -14103,6 +14103,7 @@ def run_authenticated_app() -> None:
             get_alternative_finder_durable_result,
             get_alternative_finder_lookup_error,
             get_alternative_finder_original_data,
+            get_alternative_finder_original_part_input_config,
             get_alternative_finder_original_risk,
             get_alternative_finder_selected_candidate,
             init_alternative_finder_state,
@@ -15370,9 +15371,13 @@ def run_authenticated_app() -> None:
             with st.form("af62_search_form", clear_on_submit=False, border=False):
                 form_cols = st.columns([4.5, 1.25], gap="medium")
                 with form_cols[0]:
+                    original_part_widget_key, original_part_initial_value = (
+                        get_alternative_finder_original_part_input_config(st.session_state)
+                    )
                     original_part = st.text_input(
                         "Manufacturer part number",
-                        key="alternative_original_part",
+                        key=original_part_widget_key,
+                        value=original_part_initial_value,
                         placeholder="Example: ATMEGA328P-PU",
                     )
                 with form_cols[1]:
@@ -15386,7 +15391,7 @@ def run_authenticated_app() -> None:
         if find_alternatives_clicked:
             searched_part = resolve_alternative_finder_submitted_mpn(
                 original_part,
-                st.session_state.get("alternative_original_part"),
+                st.session_state.get(original_part_widget_key),
             )
 
             if not searched_part:

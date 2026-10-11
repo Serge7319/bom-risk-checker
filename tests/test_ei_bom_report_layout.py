@@ -142,6 +142,7 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
 
     def test_review_alternative_handoff_prefills_the_clicked_part(self):
         import streamlit as st
+        from src.alternative_finder_state import get_alternative_finder_original_part_input_config
         from src.ui.navigation import (
             apply_alternative_finder_prefill,
             consume_alternative_finder_context,
@@ -159,8 +160,63 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
             lambda key, default="": query.get(key, default)
         )
         apply_alternative_finder_prefill(context or {})
-        self.assertEqual(st.session_state["alternative_original_part"], "MPN-001")
+        widget_key, initial_value = get_alternative_finder_original_part_input_config(
+            st.session_state
+        )
+        self.assertNotEqual(widget_key, "alternative_original_part")
+        self.assertEqual(initial_value, "MPN-001")
+        self.assertNotIn(widget_key, st.session_state)
         self.assertEqual(st.session_state["alternative_original_manufacturer"], "AlphaSemi")
+        from pathlib import Path
+        runtime = Path("src/authenticated_runtime.py").read_text(encoding="utf-8")
+        self.assertIn("key=original_part_widget_key", runtime)
+        self.assertIn("value=original_part_initial_value", runtime)
+        self.assertIn("st.session_state.get(original_part_widget_key)", runtime)
+
+    def test_reclicking_same_part_gets_a_fresh_prefilled_input(self):
+        import streamlit as st
+        from src.alternative_finder_state import (
+            get_alternative_finder_original_part_input_config,
+            init_alternative_finder_state,
+            rearm_alternative_finder_navigation,
+        )
+        from src.ui.navigation import (
+            apply_alternative_finder_prefill,
+            build_alternative_finder_context,
+        )
+
+        state = st.session_state
+        state.clear()
+        init_alternative_finder_state(state)
+        first = build_alternative_finder_context(
+            mpn="MCP2551-I/SN",
+            manufacturer="Microchip",
+            analysis_id="analysis-1",
+            prefill_id="first-click",
+        )
+        apply_alternative_finder_prefill(first)
+        first_key, first_value = get_alternative_finder_original_part_input_config(state)
+        self.assertEqual(first_value, "MCP2551-I/SN")
+        state[first_key] = "STALE-EDIT"
+        state["alternative_finder_result"] = {
+            "status": "completed",
+            "entered_mpn": "MCP2551-I/SN",
+        }
+
+        rearm_alternative_finder_navigation(state)
+        second = build_alternative_finder_context(
+            mpn="MCP2551-I/SN",
+            manufacturer="Microchip",
+            analysis_id="analysis-1",
+            prefill_id="second-click",
+        )
+        apply_alternative_finder_prefill(second)
+        second_key, second_value = get_alternative_finder_original_part_input_config(state)
+
+        self.assertNotEqual(first_key, second_key)
+        self.assertEqual(second_value, "MCP2551-I/SN")
+        self.assertNotIn(second_key, state)
+        self.assertEqual(state["alternative_finder_result"]["status"], "completed")
 
     def test_detailed_risk_rows_keep_package_for_the_correct_fallback_photo(self):
         from src.part_images import part_image_markup, part_image_source
@@ -197,13 +253,18 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
         )
 
     def test_saved_markup_is_not_shown_as_a_component_description(self):
+        from src.ui.ei_bom_report import _description_text
+
         markup = (
             "<p>Manufacturer AlphaSemi</p><p>Best source Digi-Key</p>"
             "<p>Lifecycle Obsolete</p>"
         )
         escaped = markup.replace("<", "&lt;").replace(">", "&gt;")
-        double_escaped = escaped.replace("&", "&amp;")
-        for description in (markup, escaped, double_escaped):
+        deeply_escaped = markup
+        for _ in range(8):
+            deeply_escaped = deeply_escaped.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        self.assertEqual(_description_text(deeply_escaped), "")
+        for description in (markup, escaped, escaped.replace("&", "&amp;"), deeply_escaped):
             with self.subTest(description=description[:20]):
                 report = detailed_risk_report_html(
                     bom_name="Sample BOM",

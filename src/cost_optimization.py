@@ -98,15 +98,26 @@ def build_cost_optimization(
             "",
         )
         manufacturer = _text(row.get("manufacturer"), "Unknown")
+        image_context = {
+            "description": description,
+            "category": category,
+            "manufacturer": manufacturer,
+        }
+        for key in (
+            "package", "package_type", "package type", "package_case",
+            "case_package", "case", "mounting_type", "mounting type",
+            "mount_type", "mounting", "through_hole", "is_through_hole",
+            "tht", "is_tht", "surface_mount", "is_surface_mount", "smd", "smt",
+            "architecture", "device_type",
+        ):
+            value = row.get(key)
+            if value is not None and str(value).strip():
+                image_context[key] = value
         image_url = part_image_source(
             _first(row, "image_url", "Image URL", "photo_url"),
             part_number,
             size=48,
-            part={
-                "description": description,
-                "category": category,
-                "manufacturer": manufacturer,
-            },
+            part=image_context,
         )
         normalized.append(
             {
@@ -119,6 +130,7 @@ def build_cost_optimization(
                 "Description": description,
                 "Component Category": category,
                 "Image URL": image_url,
+                "Image Context": image_context,
                 "Manufacturer": manufacturer,
                 "Supplier": _text(
                     _first(row, "primary_supplier", "supplier", "best_source"),
@@ -199,6 +211,7 @@ def build_cost_optimization(
                 "Description": reference["Description"],
                 "Component Category": reference["Component Category"],
                 "Image URL": reference["Image URL"],
+                "Image Context": reference["Image Context"],
                 "Manufacturer": reference["Manufacturer"],
                 "Category": category,
                 "Projects": project_count,
@@ -382,7 +395,7 @@ def _opportunity_table_markup(rows: List[Dict[str, Any]]) -> str:
             row.get("Image URL"),
             part_number,
             size=48,
-            part={
+            part=row.get("Image Context") or {
                 "description": description,
                 "manufacturer": manufacturer,
                 "category": row.get("Component Category"),
@@ -450,7 +463,7 @@ def render_cost_optimization(
     internal_nav_button: Callable[..., Any],
     control: Callable[[], Any] | None = None,
 ) -> None:
-    from src.ui.approved_pages import begin_approved_page
+    from src.ui.approved_pages import begin_approved_page, end_approved_page
     from src.ui.cadivor_design_system.icons import lucide
 
     begin_approved_page()

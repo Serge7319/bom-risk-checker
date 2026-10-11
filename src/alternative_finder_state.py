@@ -10,6 +10,8 @@ ALT_FINDER_RESULT_KEY = "alternative_finder_result"
 ALT_FINDER_NAV_CONSUMED_KEY = "alternative_finder_nav_consumed_token"
 # Widget-bound text input key. Never assign to this after the widget is created.
 ALTERNATIVE_ORIGINAL_PART_WIDGET_KEY = "alternative_original_part"
+ALTERNATIVE_ORIGINAL_PART_WIDGET_KEY_STATE = "alternative_original_part_widget_key"
+ALTERNATIVE_ORIGINAL_PART_WIDGET_DEFAULT_KEY = "alternative_original_part_widget_default"
 # Durable non-widget store for the MPN used by the completed/failed search.
 ALTERNATIVE_COMPLETED_ORIGINAL_PART_KEY = "alternative_completed_original_part"
 # Dedupe guard for button double-clicks / repeated Enter on the search form.
@@ -232,6 +234,11 @@ def _store_completed_original_part(
 def init_alternative_finder_state(session_state: MutableMapping[str, Any]) -> None:
     """Initialize Alternative Finder keys and migrate legacy session payloads."""
     session_state.setdefault(ALTERNATIVE_ORIGINAL_PART_WIDGET_KEY, "")
+    session_state.setdefault(
+        ALTERNATIVE_ORIGINAL_PART_WIDGET_KEY_STATE,
+        ALTERNATIVE_ORIGINAL_PART_WIDGET_KEY,
+    )
+    session_state.setdefault(ALTERNATIVE_ORIGINAL_PART_WIDGET_DEFAULT_KEY, "")
     session_state.setdefault(ALTERNATIVE_COMPLETED_ORIGINAL_PART_KEY, "")
     session_state.setdefault("alternative_candidate_shortlist", [])
     session_state.setdefault("alternative_engineering_decisions", {})
@@ -273,6 +280,44 @@ def init_alternative_finder_state(session_state: MutableMapping[str, Any]) -> No
 
     if session_state.get("alternative_search_attempted") and session_state.get("suggested_alternatives"):
         _migrate_legacy_completed_search(session_state)
+
+
+def get_alternative_finder_original_part_input_config(
+    session_state: Mapping[str, Any],
+) -> tuple[str, str]:
+    """Return the active text-input key and its one-time initialization value."""
+    widget_key = str(
+        session_state.get(ALTERNATIVE_ORIGINAL_PART_WIDGET_KEY_STATE)
+        or ALTERNATIVE_ORIGINAL_PART_WIDGET_KEY
+    )
+    initial_value = str(
+        session_state.get(ALTERNATIVE_ORIGINAL_PART_WIDGET_DEFAULT_KEY) or ""
+    )
+    return widget_key, initial_value
+
+
+def set_alternative_finder_prefill_input(
+    session_state: MutableMapping[str, Any],
+    *,
+    mpn: str,
+    navigation_id: str = "",
+) -> str:
+    """Stage a contextual MPN with a fresh widget identity, without mutating a widget."""
+    identity = "".join(char for char in str(navigation_id or "") if char.isalnum())[:48]
+    if not identity:
+        identity = str(time.time_ns())
+    widget_key = f"alternative_original_part_prefill_{identity}"
+    old_widget_key = str(
+        session_state.get(ALTERNATIVE_ORIGINAL_PART_WIDGET_KEY_STATE)
+        or ALTERNATIVE_ORIGINAL_PART_WIDGET_KEY
+    )
+    if old_widget_key != widget_key:
+        session_state.pop(old_widget_key, None)
+    if widget_key != ALTERNATIVE_ORIGINAL_PART_WIDGET_KEY:
+        session_state.pop(ALTERNATIVE_ORIGINAL_PART_WIDGET_KEY, None)
+    session_state[ALTERNATIVE_ORIGINAL_PART_WIDGET_KEY_STATE] = widget_key
+    session_state[ALTERNATIVE_ORIGINAL_PART_WIDGET_DEFAULT_KEY] = str(mpn or "").strip()
+    return widget_key
 
 
 def _migrate_legacy_completed_search(session_state: MutableMapping[str, Any]) -> None:
@@ -420,7 +465,8 @@ def get_alternative_finder_display_mpn(
     lookup = str(session_state.get("alternative_original_lookup_part") or "").strip()
     if lookup:
         return lookup
-    return str(widget_value or session_state.get(ALTERNATIVE_ORIGINAL_PART_WIDGET_KEY) or "").strip()
+    widget_key, _ = get_alternative_finder_original_part_input_config(session_state)
+    return str(widget_value or session_state.get(widget_key) or "").strip()
 
 
 def get_alternative_finder_discovery_metadata(
@@ -799,6 +845,16 @@ def clear_alternative_finder_search(
             session_state[key] = [] if key == "suggested_alternatives" else {}
     session_state[ALTERNATIVE_COMPLETED_ORIGINAL_PART_KEY] = ""
     if clear_widget:
+        active_widget_key = str(
+            session_state.get(ALTERNATIVE_ORIGINAL_PART_WIDGET_KEY_STATE)
+            or ALTERNATIVE_ORIGINAL_PART_WIDGET_KEY
+        )
+        if active_widget_key != ALTERNATIVE_ORIGINAL_PART_WIDGET_KEY:
+            session_state.pop(active_widget_key, None)
+        session_state[ALTERNATIVE_ORIGINAL_PART_WIDGET_KEY_STATE] = (
+            ALTERNATIVE_ORIGINAL_PART_WIDGET_KEY
+        )
+        session_state[ALTERNATIVE_ORIGINAL_PART_WIDGET_DEFAULT_KEY] = ""
         session_state[ALTERNATIVE_ORIGINAL_PART_WIDGET_KEY] = ""
     session_state.pop("alternative_selected_candidate_62b", None)
     session_state.pop("alternative_compare_parts", None)
@@ -853,3 +909,4 @@ def should_apply_alternative_finder_prefill(
     if not active:
         return True
     return _normalize_mpn(active.get("entered_mpn")) != _normalize_mpn(mpn)
+

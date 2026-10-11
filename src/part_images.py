@@ -130,7 +130,9 @@ _ASSET_VARIANTS = {
     "switch": ("switch_smd", "switch_th"),
     "crystal": ("crystal_smd", "crystal_th"),
     "transformer": ("transformer_smd", "transformer_th"),
-    "generic": ("generic_smd", "generic_th"),
+    # Unknown components should use a neutral IC package image. The former
+    # generic assets depicted a metal-can transistor and an axial diode.
+    "generic": ("ic_smd", "ic_th"),
 }
 _THROUGH_HOLE = re.compile(
     r"\b(?:tht|through[\s-]?hole|pth|dip|pdip|to-\d{2,3}|axial|radial|leaded|hc-49)\b",
@@ -450,5 +452,6 @@ def attach_saved_component_images(
                     row[key] = value
         enriched.append(row)
     return enriched
+
 
 

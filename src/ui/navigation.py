@@ -695,6 +695,7 @@ def apply_alternative_finder_prefill(context: Mapping[str, str]) -> None:
         clear_alternative_finder_search,
         get_active_alternative_finder_result,
         mark_alternative_finder_nav_consumed,
+        set_alternative_finder_prefill_input,
         should_apply_alternative_finder_prefill,
     )
 
@@ -725,7 +726,11 @@ def apply_alternative_finder_prefill(context: Mapping[str, str]) -> None:
 
     if not reuse_completed_result:
         clear_alternative_finder_search(st.session_state, clear_widget=False)
-    st.session_state["alternative_original_part"] = context["mpn"]
+    set_alternative_finder_prefill_input(
+        st.session_state,
+        mpn=context["mpn"],
+        navigation_id=str(context.get("prefill_id") or ""),
+    )
     st.session_state["alternative_prefill_token"] = prefill_token
     mark_alternative_finder_nav_consumed(st.session_state, token=prefill_token)
     if context.get("manufacturer"):
@@ -923,3 +928,4 @@ def render_command_nav_triggers(commands: list[dict]) -> None:
             key=f"cvcc_nav_{safe_key}",
             **params,
         )
+
