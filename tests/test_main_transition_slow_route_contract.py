@@ -24,7 +24,7 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
             SOURCE,
         )
 
-    def test_warm_analysis_details_keeps_opening_owner(self):
+    def test_warm_data_routes_keep_opening_owner(self):
         tree = ast.parse(SOURCE)
         helper = next(
             node
@@ -48,7 +48,7 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
             "MutableMapping": MutableMapping,
             "st": SimpleNamespace(session_state={}),
             "MAIN_TRANSITION_ROUTE_KEY": "cadivor_main_transition_route",
-            "SLOW_ROUTE_OPENING_TARGETS": frozenset({"Analysis Details"}),
+            "SLOW_ROUTE_OPENING_TARGETS": frozenset({"Analysis Details", "Engineering Decisions"}),
             "FAST_CACHED_NAV_OPENING_MS": 300,
             "warm_session_nav_ready": lambda _state: True,
         }
@@ -67,6 +67,13 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
             should_paint(
                 needs_transition=True,
                 target_route="Analysis Details",
+                session_state=state,
+            )
+        )
+        self.assertTrue(
+            should_paint(
+                needs_transition=True,
+                target_route="Engineering Decisions",
                 session_state=state,
             )
         )

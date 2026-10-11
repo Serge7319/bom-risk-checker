@@ -26,7 +26,7 @@ MAIN_TRANSITION_GEN_KEY = "cadivor_main_transition_gen"
 FAST_CACHED_NAV_OPENING_MS = 300
 OPENING_STARTED_AT_KEY = "cadivor_opening_started_at"
 OPENING_ROUTE_KEY = "cadivor_opening_route"
-SLOW_ROUTE_OPENING_TARGETS = frozenset({"Analysis Details"})
+SLOW_ROUTE_OPENING_TARGETS = frozenset({"Analysis Details", "Engineering Decisions"})
 
 
 def get_presented_route(session_state: MutableMapping[str, Any] | None = None) -> str:
@@ -96,9 +96,9 @@ def should_paint_opening_overlay(
     # First admit (no foundation shell yet) always needs a continuity surface.
     if not state.get("cadivor_foundation_shell_mounted"):
         return True
-    # Saved BOM details can still require database, evidence, and component
-    # rendering work after auth caches are warm. Keep the single transition
-    # owner mounted so the previous page cannot flash or duplicate underneath.
+    # Saved BOM details and the decision queue hydrate database-backed data
+    # after auth caches are warm. Keep the transition owner mounted so the old
+    # page cannot flash under the target route's navigation state.
     target = str(
         target_route or state.get(MAIN_TRANSITION_ROUTE_KEY) or ""
     ).strip()
