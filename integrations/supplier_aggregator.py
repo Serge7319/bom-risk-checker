@@ -3,7 +3,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import streamlit as st
 
 from integrations.pin_count import sanitize_stored_pin_count
-from integrations.stock_coercion import coerce_stock_total
+from integrations.stock_coercion import parse_stock_total
 from integrations.provider_health import (
     PROVIDER_AVAILABLE,
     PROVIDER_ERROR,
@@ -26,10 +26,10 @@ except ImportError:
 
     def search_digikey_catalog_candidates(part_number: str) -> list[dict]:
         return []
-from integrations.octopart_client import search_octopart_by_part_number
 from src.alternative_classification import merge_discovery_candidates, utc_now_iso
 from src.secrets import get_secret
 from src.part_images import normalize_supplier_image_url
+from src.normalizer import normalize_part_number
 
 try:
     from integrations.newark_client import search_newark_by_part_number
@@ -46,8 +46,8 @@ def _empty_supplier_result(source_name: str, *, provider_status: str, error: str
         "provider_status": provider_status,
         "error": error,
         "lifecycle_status": "Unknown",
-        "stock_total": 0,
-        "supplier_count": 0,
+        "stock_total": None,
+        "supplier_count": None,
         "lead_time_weeks": None,
         "unit_price": 0.0,
         "has_alternates": False,
@@ -71,9 +71,68 @@ def _empty_supplier_result(source_name: str, *, provider_status: str, error: str
     }
 
 
+def _supplier_result_matches_request(source_name: str, requested: str, result: dict) -> bool:
+    """Reject ranked/fuzzy results unless the returned identity matches the BOM MPN.
+
+    Supplier-specific order numbers remain valid when the user entered that
+    distributor number. A neighboring catalog result must never lend its stock
+    or lifecycle status to the requested component.
+    """
+    requested_key = normalize_part_number(str(requested or "").strip())
+    if not requested_key:
+        return False
+    returned_mpn = normalize_part_number(str(result.get("manufacturer_part_number") or "").strip())
+    if returned_mpn and returned_mpn == requested_key:
+        return True
+    distributor_fields = {
+        "DigiKey": ("digikey_part_number", "order_part_number"),
+        "Mouser": ("mouser_part_number",),
+        "Newark": ("newark_part_number", "element14_part_number"),
+    }.get(str(source_name), ())
+    return any(
+        normalize_part_number(str(result.get(field) or "").strip()) == requested_key
+        for field in distributor_fields
+        if result.get(field)
+    )
+
+
+def _canonical_lifecycle(status: object) -> str:
+    text = " ".join(str(status or "").strip().casefold().replace("_", " ").split())
+    if not text or text in {"unknown", "unverified", "n/a", "not available"}:
+        return ""
+    if any(term in text for term in ("obsolete", "end of life", "eol", "discontinued")):
+        return "Obsolete"
+    if "nrnd" in text or "not recommended" in text:
+        return "NRND"
+    if "replacement suggested" in text or "suggested replacement" in text:
+        return "Replacement Suggested"
+    if text in {"active", "in production", "production"}:
+        return "Active"
+    return str(status).strip()
+
+
+def _resolve_lifecycle(results: list[dict]) -> tuple[str, list[dict], bool]:
+    evidence = []
+    for result in results:
+        raw = str(result.get("lifecycle_status") or "").strip()
+        canonical = _canonical_lifecycle(raw)
+        if canonical:
+            evidence.append({
+                "source": str(result.get("source") or "Supplier"),
+                "status": raw,
+                "normalized_status": canonical,
+                "retrieved_at": result.get("retrieved_at"),
+            })
+    statuses = {row["normalized_status"] for row in evidence}
+    if len(statuses) > 1:
+        return "Conflicting supplier data", evidence, True
+    if statuses:
+        return next(iter(statuses)), evidence, False
+    return "Unknown", evidence, False
+
+
 def _safe_supplier_lookup(source_name, lookup_func, part_number, request_id: str = ""):
     from integrations.supplier_diagnostics import (
-        SUBREASON_ZERO_RESULTS,
         attach_supplier_diagnostic,
         resolve_supplier_diagnostic_request_id,
         log_supplier_diagnostic,
@@ -130,7 +189,6 @@ def _safe_supplier_lookup(source_name, lookup_func, part_number, request_id: str
                 stage="lookup",
                 provider_status=PROVIDER_ERROR,
                 error_message=result.get("error", ""),
-                subreason="empty_response" if str(source_name).casefold() == "octopart" else "",
             )
             attach_supplier_diagnostic(result, diagnostic)
             if started is not None:
@@ -164,7 +222,6 @@ def _safe_supplier_lookup(source_name, lookup_func, part_number, request_id: str
                 stage="lookup",
                 provider_status=PROVIDER_ERROR,
                 error_message=result.get("error", ""),
-                subreason=str(result.get("octopart_subreason") or ""),
             )
             attach_supplier_diagnostic(result, diagnostic)
             if started is not None:
@@ -177,18 +234,17 @@ def _safe_supplier_lookup(source_name, lookup_func, part_number, request_id: str
                 )
             return result
 
-        if not str(result.get("manufacturer_part_number") or "").strip():
+        if (
+            not str(result.get("manufacturer_part_number") or "").strip()
+            or not _supplier_result_matches_request(source_name, part_number, result)
+        ):
             result["provider_status"] = PROVIDER_PART_NOT_FOUND
             result.pop("error", None)
-            subreason = str(result.get("octopart_subreason") or "").strip() or (
-                SUBREASON_ZERO_RESULTS if str(source_name).casefold() == "octopart" else ""
-            )
             diagnostic = log_supplier_diagnostic(
                 request_id=resolved_request_id,
                 supplier=str(source_name),
                 stage="lookup",
                 provider_status=PROVIDER_PART_NOT_FOUND,
-                subreason=subreason,
             )
             attach_supplier_diagnostic(result, diagnostic)
             if started is not None:
@@ -203,7 +259,7 @@ def _safe_supplier_lookup(source_name, lookup_func, part_number, request_id: str
 
         result["provider_status"] = PROVIDER_AVAILABLE
         result.pop("error", None)
-        result["stock_total"] = coerce_stock_total(result.get("stock_total"))
+        result["stock_total"] = parse_stock_total(result.get("stock_total"))
         if not str(result.get("retrieved_at") or "").strip():
             result["retrieved_at"] = utc_now_iso()
         if started is not None:
@@ -247,23 +303,12 @@ def _safe_supplier_lookup(source_name, lookup_func, part_number, request_id: str
         return result
 
 
-def _octopart_lookup_configured() -> bool:
-    """Octopart requires both a client id and a client secret to be usable."""
-    from integrations.supplier_diagnostics import _octopart_credentials_configured
-
-    return _octopart_credentials_configured()
-
-
 def _supplier_lookup_callable(source_name: str):
     """Return a lookup callable only when the distributor credentials are configured."""
     configured = {
         "Mouser": ("MOUSER_API_KEY", search_mouser_by_part_number),
         "DigiKey": ("DIGIKEY_CLIENT_ID", search_digikey_by_part_number),
         "Newark": ("NEWARK_API_KEY", search_newark_by_part_number),
-        "Octopart": (
-            ("NEXAR_CLIENT_ID", "OCTOPART_CLIENT_ID"),
-            search_octopart_by_part_number,
-        ),
     }
     entry = configured.get(source_name)
     if not entry:
@@ -271,8 +316,6 @@ def _supplier_lookup_callable(source_name: str):
     secret_names, lookup_func = entry
     if isinstance(secret_names, str):
         secret_names = (secret_names,)
-    if source_name == "Octopart":
-        return lookup_func if _octopart_lookup_configured() else None
     if any(_provider_configured(name) for name in secret_names):
         return lookup_func
     return None
@@ -286,7 +329,6 @@ def get_supplier_results(part_number, request_id: str = ""):
         ("Mouser", _supplier_lookup_callable("Mouser")),
         ("DigiKey", _supplier_lookup_callable("DigiKey")),
         ("Newark", _supplier_lookup_callable("Newark")),
-        ("Octopart", _supplier_lookup_callable("Octopart")),
     ]
 
     results = []
@@ -309,7 +351,7 @@ def get_supplier_results(part_number, request_id: str = ""):
     return results
 
 
-@st.cache_data(ttl=3600, show_spinner=False)
+@st.cache_data(ttl=300, show_spinner=False)
 def get_best_part_data(part_number: str) -> dict:
     from integrations.supplier_diagnostics import resolve_supplier_diagnostic_request_id
 
@@ -322,41 +364,80 @@ def get_best_part_data(part_number: str) -> dict:
     except TypeError:
         supplier_results = get_supplier_results(part_number)
     
-    valid_results = [
+    valid_results = sorted([
         result for result in supplier_results
         if result.get("provider_status") == PROVIDER_AVAILABLE
         and result.get("manufacturer_part_number")
-    ]
+    ], key=lambda result: str(result.get("source") or ""))
 
     if not valid_results:
         aggregated = default_aggregated_result(part_number, supplier_results)
         aggregated["supplier_offers"] = []
         return aggregated
 
-    best_result = max(
-        valid_results,
-        key=lambda result: coerce_stock_total(result.get("stock_total")),
-    )
-
-    total_market_stock = sum(
-        coerce_stock_total(result.get("stock_total"))
+    stock_by_result = {
+        id(result): parse_stock_total(result.get("stock_total"))
         for result in valid_results
+    }
+    stock_known_results = [
+        result for result in valid_results if stock_by_result[id(result)] is not None
+    ]
+    selected_result = max(
+        valid_results,
+        key=lambda result: (
+            stock_by_result[id(result)] is not None,
+            stock_by_result[id(result)] if stock_by_result[id(result)] is not None else -1,
+            str(result.get("source") or ""),
+        ),
+    )
+    best_result = dict(selected_result)
+
+    total_market_stock = (
+        sum(int(stock_by_result[id(result)]) for result in stock_known_results)
+        if stock_known_results else None
     )
 
-    source_names = [
+    source_names = sorted({
         result.get("source", "")
         for result in valid_results
         if result.get("source")
-    ]
+    })
 
     best_result["supplier_count"] = len(valid_results)
     best_result["total_market_stock"] = total_market_stock
-    best_result["stock_total"] = coerce_stock_total(best_result.get("stock_total"))
+    best_result["stock_total"] = stock_by_result[id(selected_result)]
     best_result["sources_available"] = ", ".join(source_names)
     best_result["all_supplier_results"] = supplier_results
     provider_health = summarize_provider_health(supplier_results)
     best_result["provider_health"] = provider_health
     best_result["supplier_data_verified"] = provider_health["has_verified_data"]
+    best_result["stock_data_sources"] = sorted({
+        str(result.get("source") or "") for result in stock_known_results
+        if result.get("source")
+    })
+    best_result["stock_data_complete"] = len(stock_known_results) == len(valid_results)
+    lifecycle_status, lifecycle_evidence, lifecycle_conflict = _resolve_lifecycle(valid_results)
+    best_result["lifecycle_status"] = lifecycle_status
+    best_result["lifecycle_evidence"] = lifecycle_evidence
+    best_result["lifecycle_conflict"] = lifecycle_conflict
+
+    lead_time_rows = [
+        result for result in sorted(valid_results, key=lambda row: str(row.get("source") or ""))
+        if result.get("lead_time_weeks") not in (None, "")
+    ]
+    best_result["lead_time_evidence"] = [
+        {
+            "source": str(result.get("source") or "Supplier"),
+            "weeks": result.get("lead_time_weeks"),
+            "retrieved_at": result.get("retrieved_at"),
+        }
+        for result in lead_time_rows
+    ]
+    if best_result.get("lead_time_weeks") in (None, "") and lead_time_rows:
+        best_result["lead_time_weeks"] = lead_time_rows[0].get("lead_time_weeks")
+        best_result["lead_time_source"] = lead_time_rows[0].get("source")
+    elif best_result.get("lead_time_weeks") not in (None, ""):
+        best_result["lead_time_source"] = best_result.get("source")
 
     # Borrow missing package / pin-count / mounting-style data
     # from any other supplier that has it.
@@ -542,15 +623,11 @@ def _provider_discovery_status(source_name: str) -> dict:
         "DigiKey": ("DIGIKEY_CLIENT_ID",),
         "Mouser": ("MOUSER_API_KEY",),
         "Newark": ("NEWARK_API_KEY",),
-        "Octopart": ("NEXAR_CLIENT_ID", "OCTOPART_CLIENT_ID"),
     }
-    if source_name == "Octopart":
-        configured = _octopart_lookup_configured()
-    else:
-        secret_names = secret_map.get(source_name, ())
-        configured = bool(secret_names) and any(
-            _provider_configured(name) for name in secret_names
-        )
+    secret_names = secret_map.get(source_name, ())
+    configured = bool(secret_names) and any(
+        _provider_configured(name) for name in secret_names
+    )
     if not configured:
         return {
             "substitutions": "not_configured",
@@ -611,7 +688,7 @@ def discover_alternative_candidates(part_number: str) -> dict:
         discovery["has_incomplete_evidence"] = True
     discovery["providers"]["DigiKey"] = digikey_status
 
-    for source_name in ("Mouser", "Newark", "Octopart"):
+    for source_name in ("Mouser", "Newark"):
         status = _provider_discovery_status(source_name)
         discovery["providers"][source_name] = status
         if status.get("lookup") == "not_configured":
@@ -650,8 +727,8 @@ def default_aggregated_result(part_number: str, supplier_results: list) -> dict:
         "manufacturer": "",
         "description": "",
         "lifecycle_status": "Unknown",
-        "stock_total": 0,
-        "supplier_count": 0,
+        "stock_total": None,
+        "supplier_count": None,
         "lead_time_weeks": None,
         "unit_price": 0.0,
         "has_alternates": False,
@@ -659,7 +736,12 @@ def default_aggregated_result(part_number: str, supplier_results: list) -> dict:
         "package": "",
         "pin_count": 0,
         "mounting_style": "",
-        "total_market_stock": 0,
+        "total_market_stock": None,
+        "stock_data_sources": [],
+        "stock_data_complete": False,
+        "lifecycle_evidence": [],
+        "lifecycle_conflict": False,
+        "lead_time_evidence": [],
         "sources_available": "",
         "all_supplier_results": supplier_results,
         "provider_health": provider_health,

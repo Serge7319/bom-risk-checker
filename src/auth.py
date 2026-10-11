@@ -1293,7 +1293,7 @@ def _render_home_page():
         {_dashboard_mockup()}
       </section>
       <div class="trusted-label">Built for engineering and sourcing teams</div>
-      <div class="trusted-logos"><span>DigiKey</span><span>Mouser</span><span>Newark</span><span>CSV</span><span>Excel</span><span>Octopart soon</span></div>
+      <div class="trusted-logos"><span>DigiKey</span><span>Mouser</span><span>Newark</span><span>CSV</span><span>Excel</span></div>
       <section class="cadivor-section" id="overview">
         <div class="section-heading"><h2>Engineering BOM review without spreadsheet chaos</h2><p>Cadivor gives teams a cleaner way to review component health, sourcing exposure, and replacement paths before small risks become production problems.</p></div>
         <div class="feature-grid">
@@ -1405,7 +1405,7 @@ def _render_resources_page():
         <div class="faq-grid">
           <div class="faq-card"><strong>What file formats are supported?</strong><span>Cadivor supports CSV and Excel BOM files with part number and quantity columns.</span></div>
           <div class="faq-card"><strong>Does Cadivor replace engineering review?</strong><span>No. Cadivor is a decision-support tool. Engineers remain responsible for datasheet, supplier, and production validation.</span></div>
-          <div class="faq-card"><strong>Which suppliers are supported?</strong><span>Current integrations include DigiKey, Mouser, and Newark, with Octopart planned.</span></div>
+          <div class="faq-card"><strong>Which suppliers are supported?</strong><span>Current integrations include DigiKey, Mouser, and Newark.</span></div>
           <div class="faq-card"><strong>Can I export reports?</strong><span>Yes. Cadivor supports report exports for engineering and sourcing review.</span></div>
           <div class="faq-card"><strong>How are alternatives ranked?</strong><span>Cadivor considers lifecycle, sourcing availability, supplier data, and engineering compatibility signals.</span></div>
           <div class="faq-card"><strong>Is AI used?</strong><span>Cadivor uses AI-assisted analysis alongside supplier data and engineering rules, while keeping final decisions with your team.</span></div>

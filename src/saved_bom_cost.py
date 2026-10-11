@@ -18,6 +18,13 @@ OPTIONAL_SAVED_PART_COLUMNS = (
     "category",
     "supplier_data_verified",
     "sourcing_updated_at",
+    "stock_data_sources",
+    "stock_data_complete",
+    "lifecycle_evidence",
+    "lifecycle_conflict",
+    "lead_time_source",
+    "alternate_search_status",
+    "supplier_coverage",
 )
 
 _MISSING_TEXT = {"", "nan", "none", "null", "no supplier match", "unknown"}

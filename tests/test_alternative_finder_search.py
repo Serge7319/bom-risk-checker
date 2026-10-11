@@ -54,10 +54,10 @@ class AlternativeFinderSearchTests(unittest.TestCase):
     def test_sanitize_search_diagnostic_redacts_secrets(self):
         diagnostic = self.search.sanitize_search_diagnostic(
             RuntimeError("Bearer abcdefghijklmnop token=super-secret"),
-            provider="Octopart",
+            provider="DigiKey",
             operation="lookup",
         )
-        self.assertEqual(diagnostic["diagnostic_code"], "octopart_lookup_failed")
+        self.assertEqual(diagnostic["diagnostic_code"], "digikey_lookup_failed")
         self.assertNotIn("super-secret", diagnostic["diagnostic_message"])
         self.assertNotIn("abcdefghijklmnop", diagnostic["diagnostic_message"])
 
@@ -397,7 +397,7 @@ class AlternativeFinderSearchTests(unittest.TestCase):
         self.assertEqual(lookup_calls.count("C0603C104K5RACTU"), 1)
         self.assertEqual(lookup_calls.count("C0603C104K5RAC3121"), 1)
 
-    def test_malformed_stock_total_does_not_abort_supplier_aggregation(self):
+    def test_on_order_quantity_does_not_override_confirmed_on_hand_stock(self):
         self.aggregator.get_supplier_results = lambda _part: [
             {
                 "source": "Mouser",
@@ -416,8 +416,9 @@ class AlternativeFinderSearchTests(unittest.TestCase):
         ]
         data = self.aggregator.get_best_part_data("C0603C104K5RACTU")
         self.assertTrue(data["supplier_data_verified"])
-        self.assertEqual(data["stock_total"], 12345)
-        self.assertEqual(data["source"], "Mouser")
+        self.assertEqual(data["stock_total"], 50)
+        self.assertEqual(data["source"], "DigiKey")
+        self.assertFalse(data["stock_data_complete"])
 
     def test_run_alternative_finder_search_keeps_partial_results_when_one_provider_fails(self):
         session: dict = {}
@@ -593,239 +594,25 @@ class AlternativeFinderOutcomeTests(unittest.TestCase):
         self.assertFalse(self.state.should_show_terminal_search_error(session))
         self.assertGreater(len(self.state.get_alternative_finder_candidates(session)), 0)
 
-    def test_octopart_not_configured_records_configuration_category(self):
-        with self.assertLogs("integrations.supplier_diagnostics", level="WARNING") as logs:
-            results = self.aggregator.get_supplier_results("C0603C104K5RACTU")
-        octopart_rows = [row for row in results if row.get("source") == "Octopart"]
-        self.assertEqual(len(octopart_rows), 1)
-        row = octopart_rows[0]
-        self.assertEqual(row.get("provider_status"), "NOT_CONFIGURED")
-        self.assertEqual(row.get("failure_category"), self.diagnostics.CATEGORY_CONFIGURATION)
-        joined = "\n".join(logs.output)
-        self.assertIn("ALT_FINDER_SUPPLIER_DIAG", joined)
-        self.assertIn("supplier=Octopart", joined)
-        self.assertIn("category=configuration", joined)
-        self.assertNotIn("Bearer ", joined)
-        self.assertNotIn("client_secret", joined.casefold())
-
-    def test_configured_octopart_auth_failure_emits_warning_diagnostic(self):
-        """Configured Nexar auth failure must emit searchable WARNING diagnostics."""
-        import integrations.supplier_diagnostics as diagnostics
-
-        class _Response:
-            status_code = 401
-
-        class _HTTPError(Exception):
-            def __init__(self):
-                super().__init__(
-                    "401 Client Error: Unauthorized for url: "
-                    "https://identity.nexar.com/connect/token"
-                )
-                self.response = _Response()
-
-        original_creds = diagnostics._octopart_credentials_configured
-        diagnostics._octopart_credentials_configured = lambda: True
+    def test_supplier_queries_use_only_active_distributors(self):
+        queried = []
+        original_lookup = self.aggregator._supplier_lookup_callable
+        self.aggregator._supplier_lookup_callable = lambda name: queried.append(name) or None
         self.addCleanup(
-            lambda: setattr(diagnostics, "_octopart_credentials_configured", original_creds)
+            lambda: setattr(self.aggregator, "_supplier_lookup_callable", original_lookup)
         )
-        original_callable = self.aggregator._supplier_lookup_callable
 
-        def lookup_callable(source_name):
-            if source_name == "Octopart":
-                def boom(_part):
-                    raise _HTTPError()
+        results = self.aggregator.get_supplier_results("C0603C104K5RACTU")
+        self.assertEqual(set(queried), {"DigiKey", "Mouser", "Newark"})
+        self.assertNotIn("Octopart", {row.get("source") for row in results})
 
-                return boom
-            return None
-
-        self.aggregator._supplier_lookup_callable = lookup_callable
+        original_configured = self.aggregator._provider_configured
+        self.aggregator._provider_configured = lambda _name: False
         self.addCleanup(
-            lambda: setattr(self.aggregator, "_supplier_lookup_callable", original_callable)
+            lambda: setattr(self.aggregator, "_provider_configured", original_configured)
         )
-
-        with self.assertLogs("integrations.supplier_diagnostics", level="WARNING") as logs:
-            results = self.aggregator.get_supplier_results("C0603C104K5RACTU")
-
-        octopart = next(row for row in results if row.get("source") == "Octopart")
-        self.assertEqual(octopart.get("provider_status"), "PROVIDER_ERROR")
-        self.assertEqual(octopart.get("failure_category"), self.diagnostics.CATEGORY_AUTHENTICATION)
-        self.assertEqual(octopart.get("diagnostic_log_category"), "auth")
-        self.assertEqual(octopart.get("diagnostic_status_code"), "401")
-        self.assertEqual(octopart.get("diagnostic_retryable"), "false")
-
-        joined = "\n".join(logs.output)
-        octopart_diags = [
-            message
-            for message in logs.output
-            if "ALT_FINDER_SUPPLIER_DIAG" in message and "supplier=Octopart" in message
-        ]
-        self.assertEqual(len(octopart_diags), 1)
-        self.assertIn("ALT_FINDER_SUPPLIER_DIAG", joined)
-        self.assertIn("supplier=Octopart", joined)
-        self.assertIn("category=auth", joined)
-        self.assertIn("status_code=401", joined)
-        self.assertIn("retryable=false", joined)
-        self.assertNotIn("identity.nexar.com", joined)
-        self.assertNotIn("Bearer ", joined)
-        self.assertNotIn("client_secret", joined.casefold())
-        self.assertNotIn("connect/token", joined)
-
-        # Configured auth failure remains unavailable in coverage UI (not "not configured").
-        label = self.diagnostics.supplier_coverage_label(
-            "Octopart",
-            octopart.get("provider_status"),
-            failure_category=octopart.get("failure_category"),
-            error_message=str(octopart.get("error") or ""),
-        )
-        self.assertEqual(label, "Octopart: unavailable for this search")
-
-    def test_configured_octopart_http_failure_emits_warning_diagnostic(self):
-        """Configured Nexar HTTP 500 must emit searchable WARNING diagnostics."""
-        import integrations.supplier_diagnostics as diagnostics
-
-        class _Response:
-            status_code = 500
-
-        class _HTTPError(Exception):
-            def __init__(self):
-                super().__init__("500 Server Error: Internal Server Error for url: https://api.nexar.com/graphql")
-                self.response = _Response()
-
-        original_creds = diagnostics._octopart_credentials_configured
-        diagnostics._octopart_credentials_configured = lambda: True
-        self.addCleanup(
-            lambda: setattr(diagnostics, "_octopart_credentials_configured", original_creds)
-        )
-        original_callable = self.aggregator._supplier_lookup_callable
-
-        def lookup_callable(source_name):
-            if source_name == "Octopart":
-                def boom(_part):
-                    raise _HTTPError()
-
-                return boom
-            return None
-
-        self.aggregator._supplier_lookup_callable = lookup_callable
-        self.addCleanup(
-            lambda: setattr(self.aggregator, "_supplier_lookup_callable", original_callable)
-        )
-
-        with self.assertLogs("integrations.supplier_diagnostics", level="WARNING") as logs:
-            results = self.aggregator.get_supplier_results("C0603C104K5RACTU")
-
-        octopart = next(row for row in results if row.get("source") == "Octopart")
-        self.assertEqual(octopart.get("provider_status"), "PROVIDER_ERROR")
-        self.assertEqual(octopart.get("failure_category"), self.diagnostics.CATEGORY_HTTP_ERROR)
-        self.assertEqual(octopart.get("diagnostic_log_category"), "http")
-        self.assertEqual(octopart.get("diagnostic_status_code"), "500")
-        self.assertEqual(octopart.get("diagnostic_retryable"), "true")
-
-        joined = "\n".join(logs.output)
-        self.assertIn("ALT_FINDER_SUPPLIER_DIAG", joined)
-        self.assertIn("supplier=Octopart", joined)
-        self.assertIn("category=http", joined)
-        self.assertIn("status_code=500", joined)
-        self.assertIn("retryable=true", joined)
-        self.assertNotIn("api.nexar.com", joined)
-        self.assertNotIn("Bearer ", joined)
-        self.assertNotIn("graphql", joined.casefold())
-
-        # Existing PROVIDER_ERROR row still produced exactly one searchable Octopart diagnostic.
-        octopart_diags = [
-            message
-            for message in logs.output
-            if "ALT_FINDER_SUPPLIER_DIAG" in message and "supplier=Octopart" in message
-        ]
-        self.assertEqual(len(octopart_diags), 1)
-
-    def test_octopart_coverage_label_distinguishes_configuration_from_failure(self):
-        import integrations.supplier_diagnostics as diagnostics
-
-        original = diagnostics._octopart_credentials_configured
-        diagnostics._octopart_credentials_configured = lambda: True
-        self.addCleanup(
-            lambda: setattr(diagnostics, "_octopart_credentials_configured", original)
-        )
-        configured_label = self.diagnostics.supplier_coverage_label(
-            "Octopart",
-            "NOT_CONFIGURED",
-            failure_category=self.diagnostics.CATEGORY_CONFIGURATION,
-        )
-        failed_label = self.diagnostics.supplier_coverage_label(
-            "Octopart",
-            "PROVIDER_ERROR",
-            failure_category=self.diagnostics.CATEGORY_HTTP_ERROR,
-        )
-        zero_label = self.diagnostics.supplier_coverage_label(
-            "Octopart",
-            "PART_NOT_FOUND",
-            failure_category=self.diagnostics.CATEGORY_NO_RESULT,
-        )
-        self.assertEqual(configured_label, "Octopart: not configured")
-        self.assertEqual(failed_label, "Octopart: unavailable for this search")
-        self.assertEqual(zero_label, "Octopart: no exact match")
-
-    def test_configured_octopart_graphql_failure_emits_subreason_and_request_id(self):
-        import integrations.supplier_diagnostics as diagnostics
-        from integrations.octopart_client import (
-            OctopartResponseError,
-            SUBREASON_SCHEMA_MISMATCH,
-        )
-
-        original_creds = diagnostics._octopart_credentials_configured
-        diagnostics._octopart_credentials_configured = lambda: True
-        self.addCleanup(
-            lambda: setattr(diagnostics, "_octopart_credentials_configured", original_creds)
-        )
-        original_callable = self.aggregator._supplier_lookup_callable
-
-        def lookup_callable(source_name):
-            if source_name == "Octopart":
-
-                def boom(_part):
-                    raise OctopartResponseError(
-                        "Octopart supplier query could not be completed.",
-                        subreason=SUBREASON_SCHEMA_MISMATCH,
-                    )
-
-                return boom
-            return None
-
-        self.aggregator._supplier_lookup_callable = lookup_callable
-        self.addCleanup(
-            lambda: setattr(self.aggregator, "_supplier_lookup_callable", original_callable)
-        )
-
-        request_id = "searchreq42aa"
-        token = diagnostics.set_alternative_finder_request_id(request_id)
-        self.addCleanup(lambda: diagnostics.reset_alternative_finder_request_id(token))
-
-        with self.assertLogs("integrations.supplier_diagnostics", level="WARNING") as logs:
-            results = self.aggregator.get_supplier_results("C0603C104K5RACTU")
-
-        octopart = next(row for row in results if row.get("source") == "Octopart")
-        self.assertEqual(octopart.get("provider_status"), "PROVIDER_ERROR")
-        self.assertEqual(octopart.get("failure_category"), self.diagnostics.CATEGORY_MALFORMED_RESPONSE)
-        self.assertEqual(octopart.get("diagnostic_subreason"), "schema_mismatch")
-        self.assertEqual(octopart.get("diagnostic_request_id"), request_id)
-        self.assertEqual(octopart.get("diagnostic_log_category"), "provider_response")
-
-        joined = "\n".join(logs.output)
-        self.assertIn(f"request_id={request_id}", joined)
-        self.assertIn("category=provider_response", joined)
-        self.assertIn("subreason=schema_mismatch", joined)
-        self.assertNotIn("request_id=unknown", joined)
-        self.assertNotIn("Bearer ", joined)
-        self.assertNotIn("shortDescription", joined)
-
-        label = self.diagnostics.supplier_coverage_label(
-            "Octopart",
-            octopart.get("provider_status"),
-            failure_category=octopart.get("failure_category"),
-            error_message=str(octopart.get("error") or ""),
-        )
-        self.assertEqual(label, "Octopart: unavailable for this search")
+        discovery = self.aggregator.discover_alternative_candidates("C0603C104K5RACTU")
+        self.assertEqual(set(discovery["providers"]), {"DigiKey", "Mouser", "Newark"})
 
     def test_c3121_classification_follows_verified_direct_evidence(self):
         explicit = [self._verified_direct_candidate()]
@@ -864,44 +651,6 @@ class AlternativeFinderOutcomeTests(unittest.TestCase):
             ),
             1,
         )
-
-    def test_octopart_misclassified_lookup_error_does_not_use_unavailable_wording(self):
-        coverage = self.diagnostics.build_alternative_finder_coverage_notices(
-            original_data={
-                "all_supplier_results": [
-                    {"source": "Mouser", "provider_status": "AVAILABLE"},
-                    {"source": "DigiKey", "provider_status": "AVAILABLE"},
-                    {"source": "Newark", "provider_status": "AVAILABLE"},
-                    {
-                        "source": "Octopart",
-                        "provider_status": "PROVIDER_ERROR",
-                        "failure_category": self.diagnostics.CATEGORY_PROVIDER_ERROR,
-                        "error": "No response from Octopart",
-                    },
-                ]
-            },
-            discovery_metadata={
-                "has_incomplete_evidence": True,
-                "provider_failures": ["Octopart"],
-                "providers": {
-                    "Octopart": {"lookup": "not_configured", "substitutions": "not_configured"},
-                    "DigiKey": {"lookup": "available", "substitutions": "ok"},
-                },
-            },
-        )
-        joined_notices = " ".join(coverage["notices"])
-        joined_captions = " ".join(coverage["captions"])
-        self.assertEqual(
-            coverage["notices"][0],
-            "Octopart is not configured for this environment. "
-            "Results include Mouser, DigiKey, and Newark.",
-        )
-        self.assertNotIn("did not respond", joined_notices.casefold())
-        self.assertNotIn("unavailable for this search", joined_notices.casefold())
-        self.assertNotIn("unavailable for this search", joined_captions.casefold())
-        self.assertEqual(coverage["configuration_sources"], ["Octopart"])
-        self.assertFalse(coverage["runtime_failures"])
-
 
 if __name__ == "__main__":
     unittest.main()

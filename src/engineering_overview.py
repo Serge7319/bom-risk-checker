@@ -2,6 +2,7 @@
 from __future__ import annotations
 from typing import Any, Dict, Iterable
 import pandas as pd
+from src.health_score import normalize_saved_health_score
 
 def _t(v, default=""):
     if v is None:
@@ -24,7 +25,7 @@ def build_engineering_overview(*, analyses, parts, alerts, decisions, procuremen
     open_decisions = [d for d in decisions if _t(d.get("status"), "New") not in ("Closed", "Rejected")]
     projects = []
     for row in analyses:
-        health = int(_n(row.get("health_score"), 0))
+        health = normalize_saved_health_score(row.get("health_score"))
         high = int(_n(row.get("high_risk_count") or row.get("high_risk_parts"), 0))
         projects.append({
             "id": _t(row.get("id")),
@@ -32,9 +33,16 @@ def build_engineering_overview(*, analyses, parts, alerts, decisions, procuremen
             "health": health,
             "high": high,
             "parts": int(_n(row.get("total_parts") or row.get("part_count") or row.get("parts_count"), 0)),
-            "status": "Ready for Production" if health >= 90 and high == 0 else "Needs Review",
+            "status": (
+                "Needs verification" if health is None
+                else "Ready for Production" if health >= 90 and high == 0
+                else "Needs Review"
+            ),
         })
-    projects.sort(key=lambda x: (x["status"] == "Ready for Production", x["health"]))
+    projects.sort(key=lambda x: (
+        x["status"] == "Ready for Production",
+        x["health"] if x["health"] is not None else -1,
+    ))
 
     actions = []
     for d in open_decisions:

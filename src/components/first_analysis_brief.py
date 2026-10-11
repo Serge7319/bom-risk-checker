@@ -36,9 +36,13 @@ def _risk_reason(row: pd.Series) -> str:
     reasons: list[str] = []
     lifecycle = _text(row.get("Lifecycle Status"), "Unknown")
     lifecycle_lower = lifecycle.lower()
-    stock = int(_number(row.get("Stock Available"), 0))
-    suppliers = int(_number(row.get("Supplier Count"), 0))
-    lead_time = _number(row.get("Lead Time Weeks"), 0)
+    stock_value = row.get("Stock Available")
+    stock_known = pd.notna(stock_value) and bool(row.get("Supplier Data Verified", True))
+    stock = int(_number(stock_value, 0)) if stock_known else None
+    supplier_value = row.get("Supplier Count")
+    suppliers = int(_number(supplier_value, 0)) if pd.notna(supplier_value) else None
+    lead_value = row.get("Lead Time Weeks")
+    lead_time = _number(lead_value, 0) if pd.notna(lead_value) else None
     raw_reason = _text(row.get("Risk Reasons"))
 
     if "obsolete" in lifecycle_lower or "eol" in lifecycle_lower:
@@ -47,11 +51,13 @@ def _risk_reason(row: pd.Series) -> str:
         reasons.append("a replacement is already suggested")
     elif "unknown" in lifecycle_lower:
         reasons.append("lifecycle evidence is incomplete")
-    if stock <= 0:
-        reasons.append("no recorded stock is available")
-    if suppliers <= 1:
-        reasons.append("sourcing is concentrated with one or fewer suppliers")
-    if lead_time >= 12:
+    if stock == 0:
+        reasons.append("checked suppliers reported no on-hand stock")
+    elif stock is None:
+        reasons.append("on-hand stock was not reported")
+    if suppliers == 1:
+        reasons.append("only one checked supplier lists the part")
+    if lead_time is not None and lead_time >= 12:
         reasons.append(f"lead time is approximately {lead_time:g} weeks")
     if not reasons and raw_reason:
         reasons.append(raw_reason.rstrip("."))
@@ -60,15 +66,19 @@ def _risk_reason(row: pd.Series) -> str:
 
 def _recommended_action(row: pd.Series) -> str:
     lifecycle = _text(row.get("Lifecycle Status")).lower()
-    stock = int(_number(row.get("Stock Available"), 0))
-    suppliers = int(_number(row.get("Supplier Count"), 0))
+    stock_value = row.get("Stock Available")
+    stock = int(_number(stock_value, 0)) if pd.notna(stock_value) else None
+    supplier_value = row.get("Supplier Count")
+    suppliers = int(_number(supplier_value, 0)) if pd.notna(supplier_value) else None
     has_alternates = bool(row.get("Has Alternates", False))
 
     if "obsolete" in lifecycle or "eol" in lifecycle or "replacement" in lifecycle:
         return "Validate and qualify a replacement before the next release."
-    if stock <= 0:
+    if not bool(row.get("Supplier Data Verified", True)):
+        return "Verify the part match and supplier evidence before making a sourcing decision."
+    if stock == 0:
         return "Confirm availability and open an alternate-source review."
-    if suppliers <= 1:
+    if suppliers == 1:
         return "Approve a second source or document the single-source exception."
     if not has_alternates:
         return "Run Alternative Finder and record an engineering recommendation."
@@ -102,7 +112,7 @@ def _portfolio_message(*, health_score: int, high_count: int, medium_count: int)
 def render_first_analysis_brief(
     results_df: pd.DataFrame,
     *,
-    health_score: int,
+    health_score: int | None,
     analysis_id: str | None = None,
     project_name: str | None = None,
 ) -> None:
@@ -116,11 +126,14 @@ def render_first_analysis_brief(
     if "Risk Level" not in data.columns:
         data["Risk Level"] = "Low"
 
-    high_count = int((data["Risk Level"].astype(str).str.lower() == "high").sum())
-    medium_count = int((data["Risk Level"].astype(str).str.lower() == "medium").sum())
+    normalized_levels = data["Risk Level"].astype(str).str.casefold()
+    high_count = int((normalized_levels == "high").sum())
+    medium_count = int((normalized_levels == "medium").sum())
+    needs_verification_count = int((normalized_levels == "needs verification").sum())
     attention_count = high_count + medium_count
-    no_stock_count = int((pd.to_numeric(data.get("Stock Available", 0), errors="coerce").fillna(0) <= 0).sum())
-    single_source_count = int((pd.to_numeric(data.get("Supplier Count", 0), errors="coerce").fillna(0) <= 1).sum())
+    stock_values = pd.to_numeric(data.get("Stock Available", pd.Series(index=data.index, dtype=float)), errors="coerce")
+    stock_verified = data.get("Supplier Data Verified", pd.Series(True, index=data.index)).fillna(False).astype(bool)
+    no_stock_count = int((stock_values.eq(0) & stock_verified).sum())
     title, summary = _portfolio_message(
         health_score=int(health_score or 0),
         high_count=high_count,
@@ -129,6 +142,7 @@ def render_first_analysis_brief(
 
     ranked = data.sort_values(by="Risk Score", ascending=False).head(5)
     project = html.escape(_text(project_name, "BOM analysis"))
+    health_display = f"{int(health_score)}/100" if health_score is not None else "—"
 
     st.markdown(
         """
@@ -161,10 +175,10 @@ def render_first_analysis_brief(
           <h2 class="cv301-title">{html.escape(title)}</h2>
           <p class="cv301-copy">{html.escape(summary)}</p>
           <div class="cv301-grid">
-            <div class="cv301-stat"><span>Health</span><strong>{int(health_score or 0)}/100</strong></div>
+            <div class="cv301-stat"><span>Health</span><strong>{health_display}</strong></div>
             <div class="cv301-stat"><span>Needs review</span><strong>{attention_count}</strong></div>
             <div class="cv301-stat"><span>No-stock parts</span><strong>{no_stock_count}</strong></div>
-            <div class="cv301-stat"><span>Single-source</span><strong>{single_source_count}</strong></div>
+            <div class="cv301-stat"><span>Needs verification</span><strong>{needs_verification_count}</strong></div>
           </div>
         </section>
         """,
@@ -174,7 +188,12 @@ def render_first_analysis_brief(
     st.subheader("Review these components first")
     st.caption("Ranked by recorded risk score and release impact.")
 
-    if attention_count == 0:
+    if attention_count == 0 and needs_verification_count:
+        st.warning(
+            f"Risk could not be assessed for {needs_verification_count} component(s) because supplier evidence is missing. "
+            "Verify those part matches before interpreting BOM health."
+        )
+    elif attention_count == 0:
         st.success("No high- or medium-risk components are recorded. Continue monitoring lifecycle, stock, and supplier changes.")
     else:
         for index, (_, row) in enumerate(ranked.iterrows(), start=1):

@@ -6,7 +6,7 @@ import requests
 from urllib.parse import quote
 
 from integrations.pin_count import parse_pin_count_from_text, resolve_pin_count
-from integrations.stock_coercion import coerce_stock_total
+from integrations.stock_coercion import parse_stock_total
 from src.secrets import get_secret
 from src.part_images import normalize_supplier_image_url
 from src.saved_bom_cost import price_breaks_from_payload
@@ -353,7 +353,7 @@ def search_digikey_substitutions(part_number: str) -> list[dict]:
                     else str(manufacturer)
                 ),
                 "description": str(item.get("Description") or "").strip(),
-                "stock_total": coerce_stock_total(item.get("QuantityAvailable")),
+                "stock_total": parse_stock_total(item.get("QuantityAvailable")),
                 "unit_price": _as_number(item.get("UnitPrice"), 0.0),
                 "product_detail_url": product_url,
                 "image_url": normalize_supplier_image_url(
@@ -499,7 +499,7 @@ def normalize_digikey_product(product: dict) -> dict:
         else str(manufacturer)
     )
 
-    stock_total = coerce_stock_total(product.get("QuantityAvailable", 0) or 0)
+    stock_total = parse_stock_total(product.get("QuantityAvailable"))
 
     package = extract_digikey_parameter(
         product,
@@ -795,7 +795,9 @@ def infer_digikey_lifecycle(product: dict) -> str:
     if status_text:
         return status_text
 
-    return "Active"
+    # A catalog match proves the part is listed, not that the manufacturer
+    # considers it active. Only report lifecycle when DigiKey supplies a status.
+    return "Unknown"
 
 
 def default_digikey_result(part_number: str) -> dict:

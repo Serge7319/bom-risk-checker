@@ -85,7 +85,7 @@ def render_public_bom_stress_test() -> None:
                 st.rerun()
         else:
             st.markdown("## Free BOM stress test")
-            st.write("Drop your BOM (.csv / .xlsx) here for an instant risk and obsolescence audit. No account is needed to see the first five components.")
+            st.write("Drop your BOM (.csv / .xlsx) here for a supplier-backed risk and lifecycle review. Results show when a supplier could not verify a component. No account is needed to see the first five components.")
             st.caption("Up to 30 rows and 1 MB. Supplier lookups may take several minutes. Do not upload regulated or export-controlled designs.")
             uploaded = st.file_uploader(
                 "Drop your BOM here", type=["csv", "xlsx"], max_upload_size=1,
@@ -120,12 +120,24 @@ def render_public_bom_stress_test() -> None:
             return
         st.success(f"Checked {report['row_count']} components. Here are the first {len(report['preview'])} results.")
         preview = pd.DataFrame([{
-            "MPN": row["mpn"], "Qty": row["quantity"],
-            "Lifecycle": row["lifecycle"], "Stock": row["stock"],
+            "MPN": row["mpn"], "Manufacturer": row.get("manufacturer") or "Not matched",
+            "Lifecycle": row["lifecycle"],
+            "Reported stock": row["stock"],
+            "Stock evidence": row.get("stock_evidence") or "Not reported by matched suppliers",
             "Lead time (weeks)": row["lead_time_weeks"],
-            "Source": row.get("sources"), "Risk": row["risk"],
+            "Lead time source": row.get("lead_time_source") or "Not reported",
+            "Matched suppliers": row.get("supplier_count"),
+            "Source(s) checked": row.get("sources"),
+            "Supplier coverage": row.get("supplier_coverage"),
+            "Risk": row["risk"],
         } for row in report["preview"]])
         st.dataframe(preview, hide_index=True, use_container_width=True)
+        st.caption(
+            "Blank stock or lead-time values mean the supplier did not report a usable figure. "
+            "Lifecycle is shown only when a supplier provided a status; Unknown does not mean Active. "
+            "Inventory reflects the checked supplier sources and can vary by region and time."
+            " The free audit does not search for alternate parts."
+        )
         remaining = int(report["remaining_count"])
         if remaining:
             high = int(report["remaining_high_risk"])

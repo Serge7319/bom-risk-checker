@@ -459,7 +459,7 @@ class OctopartIntegrationTests(unittest.TestCase):
         self.assertEqual(caught.exception.subreason, self.client.SUBREASON_SCHEMA_MISMATCH)
         self.assertEqual(list(caught.exception.rejected_fields), ["shortDescription"])
 
-    def test_supplier_aggregator_registers_octopart(self):
+    def test_supplier_aggregator_does_not_register_octopart(self):
         from pathlib import Path
 
         source = (
@@ -467,12 +467,12 @@ class OctopartIntegrationTests(unittest.TestCase):
             / "integrations"
             / "supplier_aggregator.py"
         ).read_text()
-        self.assertIn("from integrations.octopart_client import search_octopart_by_part_number", source)
-        self.assertIn('"Octopart"', source)
-        self.assertIn("search_octopart_by_part_number", source)
+        self.assertNotIn("integrations.octopart_client", source)
+        self.assertNotIn('"Octopart"', source)
+        self.assertNotIn("search_octopart_by_part_number", source)
 
 
-class OctopartDiagnosticPropagationTests(unittest.TestCase):
+class SupplierDiagnosticSanitizationTests(unittest.TestCase):
     def setUp(self):
         # Force a cache_data-capable Streamlit stub even if an earlier test left a
         # partial streamlit module in sys.modules (setdefault would keep it).
@@ -481,293 +481,19 @@ class OctopartDiagnosticPropagationTests(unittest.TestCase):
         streamlit.secrets = {}
         sys.modules["streamlit"] = streamlit
         sys.modules.setdefault("requests", types.SimpleNamespace(get=None, post=None))
-        sys.modules.pop("integrations.supplier_aggregator", None)
-        self.aggregator = importlib.import_module("integrations.supplier_aggregator")
         self.diagnostics = importlib.import_module("integrations.supplier_diagnostics")
-        self.client = importlib.import_module("integrations.octopart_client")
-
-    def test_request_id_propagates_through_threaded_octopart_lookup(self):
-        original_creds = self.diagnostics._octopart_credentials_configured
-        self.diagnostics._octopart_credentials_configured = lambda: True
-        self.addCleanup(
-            lambda: setattr(
-                self.diagnostics, "_octopart_credentials_configured", original_creds
-            )
-        )
-        original_callable = self.aggregator._supplier_lookup_callable
-
-        def lookup_callable(source_name):
-            if source_name == "Octopart":
-
-                def boom(_part):
-                    raise self.client.OctopartResponseError(
-                        "Octopart supplier query could not be completed.",
-                        subreason=self.client.SUBREASON_GRAPHQL_ERRORS,
-                        rejected_fields=["shortDescription"],
-                    )
-
-                return boom
-            return None
-
-        self.aggregator._supplier_lookup_callable = lookup_callable
-        self.addCleanup(
-            lambda: setattr(
-                self.aggregator, "_supplier_lookup_callable", original_callable
-            )
-        )
-
-        request_id = "afreqid9abc"
-        token = self.diagnostics.set_alternative_finder_request_id(request_id)
-        self.addCleanup(
-            lambda: self.diagnostics.reset_alternative_finder_request_id(token)
-        )
-
-        with self.assertLogs("integrations.supplier_diagnostics", level="WARNING") as logs:
-            results = self.aggregator.get_supplier_results("LM358N")
-
-        octopart = next(row for row in results if row.get("source") == "Octopart")
-        self.assertEqual(octopart.get("diagnostic_request_id"), request_id)
-        self.assertEqual(octopart.get("diagnostic_subreason"), "graphql_errors")
-        self.assertEqual(octopart.get("diagnostic_log_category"), "provider_response")
-        joined = "\n".join(logs.output)
-        self.assertIn(f"request_id={request_id}", joined)
-        self.assertIn("subreason=graphql_errors", joined)
-        self.assertIn("rejected_fields=shortDescription", joined)
-
-    def test_unknown_graphql_emits_fingerprint_not_raw_message(self):
-        from pathlib import Path
-        import json
-
-        fixtures = json.loads(
-            (
-                Path(__file__).resolve().parent
-                / "fixtures"
-                / "nexar_graphql_errors.json"
-            ).read_text(encoding="utf-8")
-        )
-        errors = fixtures["unknown_opaque"]["errors"]
-        inspected = self.client.inspect_nexar_graphql_errors(errors)
-        fingerprint = inspected["error_fingerprint"]
-        self.assertTrue(fingerprint.startswith("gql_1_"))
-        self.assertEqual(inspected["error_count"], 1)
-
-        original_creds = self.diagnostics._octopart_credentials_configured
-        self.diagnostics._octopart_credentials_configured = lambda: True
-        self.addCleanup(
-            lambda: setattr(
-                self.diagnostics, "_octopart_credentials_configured", original_creds
-            )
-        )
-        original_callable = self.aggregator._supplier_lookup_callable
-
-        def lookup_callable(source_name):
-            if source_name == "Octopart":
-
-                def boom(_part):
-                    raise self.client.OctopartResponseError(
-                        "Octopart supplier query could not be completed.",
-                        subreason=self.client.SUBREASON_GRAPHQL_ERRORS,
-                        graphql_kind=self.client.GRAPHQL_KIND_OTHER,
-                        error_fingerprint=fingerprint,
-                        error_count=1,
-                    )
-
-                return boom
-            return None
-
-        self.aggregator._supplier_lookup_callable = lookup_callable
-        self.addCleanup(
-            lambda: setattr(
-                self.aggregator, "_supplier_lookup_callable", original_callable
-            )
-        )
-
-        with self.assertLogs("integrations.supplier_diagnostics", level="WARNING") as logs:
-            results = self.aggregator.get_supplier_results("LM358N")
-
-        octopart = next(row for row in results if row.get("source") == "Octopart")
-        self.assertEqual(octopart.get("diagnostic_error_fingerprint"), fingerprint)
-        self.assertEqual(octopart.get("diagnostic_error_count"), "1")
-        joined = "\n".join(logs.output)
-        self.assertIn(f"error_fingerprint={fingerprint}", joined)
-        self.assertIn("error_count=1", joined)
-        self.assertIn("graphql_kind=other", joined)
-        self.assertNotIn("policy gate", joined)
-        self.assertNotIn("7f3a9c", joined)
-        self.assertNotIn("request_id=unknown", joined)
-        self.assertNotIn("Bearer ", joined)
-        self.assertNotIn("private-token", joined)
-
-    def test_worker_diagnostics_inherit_request_id_after_contextvar_cleared(self):
-        """Fallback/worker paths must use the AF stack/last id, never unknown."""
-        original_creds = self.diagnostics._octopart_credentials_configured
-        self.diagnostics._octopart_credentials_configured = lambda: True
-        self.addCleanup(
-            lambda: setattr(
-                self.diagnostics, "_octopart_credentials_configured", original_creds
-            )
-        )
-        original_callable = self.aggregator._supplier_lookup_callable
-
-        def lookup_callable(source_name):
-            if source_name in {"Mouser", "DigiKey", "Newark", "Octopart"}:
-
-                def empty(_part):
-                    row = self.client.default_octopart_result() if source_name == "Octopart" else {
-                        "source": source_name,
-                        "manufacturer_part_number": "",
-                    }
-                    if source_name == "Octopart":
-                        row["octopart_subreason"] = self.client.SUBREASON_ZERO_RESULTS
-                    return row
-
-                return empty
-            return None
-
-        self.aggregator._supplier_lookup_callable = lookup_callable
-        self.addCleanup(
-            lambda: setattr(
-                self.aggregator, "_supplier_lookup_callable", original_callable
-            )
-        )
-
-        request_id = "stackreq99aa"
-        token = self.diagnostics.set_alternative_finder_request_id(request_id)
-        # Simulate Streamlit/cache worker frame where ContextVar is empty but the
-        # AF search stack/last id remains.
-        self.diagnostics._current_request_id.set("")
-        self.addCleanup(
-            lambda: self.diagnostics.reset_alternative_finder_request_id(token)
-        )
-
-        with self.assertLogs("integrations.supplier_diagnostics", level="WARNING") as logs:
-            # Explicitly omit request_id argument to force inheritance.
-            results = self.aggregator.get_supplier_results("NOMATCHPART", request_id="")
-
-        for row in results:
-            self.assertEqual(row.get("diagnostic_request_id"), request_id)
-            self.assertNotEqual(row.get("diagnostic_request_id"), "unknown")
-        joined = "\n".join(logs.output)
-        self.assertIn(f"request_id={request_id}", joined)
-        self.assertNotIn("request_id=unknown", joined)
-        octopart = next(row for row in results if row.get("source") == "Octopart")
-        self.assertEqual(octopart.get("diagnostic_subreason"), "zero_results")
-        self.assertEqual(octopart.get("provider_status"), "PART_NOT_FOUND")
-
-    def test_bind_helper_propagates_session_request_id_into_lookup(self):
-        original_creds = self.diagnostics._octopart_credentials_configured
-        self.diagnostics._octopart_credentials_configured = lambda: True
-        self.addCleanup(
-            lambda: setattr(
-                self.diagnostics, "_octopart_credentials_configured", original_creds
-            )
-        )
-        original_callable = self.aggregator._supplier_lookup_callable
-
-        def lookup_callable(source_name):
-            if source_name == "Octopart":
-
-                def boom(_part):
-                    raise self.client.OctopartResponseError(
-                        "Octopart supplier query could not be completed.",
-                        subreason=self.client.SUBREASON_SCHEMA_MISMATCH,
-                        rejected_fields=["currency"],
-                    )
-
-                return boom
-            return None
-
-        self.aggregator._supplier_lookup_callable = lookup_callable
-        self.addCleanup(
-            lambda: setattr(
-                self.aggregator, "_supplier_lookup_callable", original_callable
-            )
-        )
-
-        request_id = "sessionbind01"
-        with self.diagnostics.bind_alternative_finder_request_id(request_id):
-            with self.assertLogs("integrations.supplier_diagnostics", level="WARNING") as logs:
-                results = self.aggregator.get_supplier_results("LM358N", request_id="")
-
-        octopart = next(row for row in results if row.get("source") == "Octopart")
-        self.assertEqual(octopart.get("diagnostic_request_id"), request_id)
-        self.assertEqual(octopart.get("diagnostic_subreason"), "schema_mismatch")
-        self.assertEqual(octopart.get("diagnostic_rejected_fields"), "currency")
-        joined = "\n".join(logs.output)
-        self.assertIn(f"request_id={request_id}", joined)
-        self.assertIn("rejected_fields=currency", joined)
-        self.assertNotIn("request_id=unknown", joined)
-
-    def test_zero_results_is_completed_search_not_outage(self):
-        original_creds = self.diagnostics._octopart_credentials_configured
-        self.diagnostics._octopart_credentials_configured = lambda: True
-        self.addCleanup(
-            lambda: setattr(
-                self.diagnostics, "_octopart_credentials_configured", original_creds
-            )
-        )
-        original_callable = self.aggregator._supplier_lookup_callable
-
-        def lookup_callable(source_name):
-            if source_name == "Octopart":
-
-                def empty(_part):
-                    row = self.client.default_octopart_result()
-                    row["octopart_subreason"] = self.client.SUBREASON_ZERO_RESULTS
-                    return row
-
-                return empty
-            return None
-
-        self.aggregator._supplier_lookup_callable = lookup_callable
-        self.addCleanup(
-            lambda: setattr(
-                self.aggregator, "_supplier_lookup_callable", original_callable
-            )
-        )
-
-        request_id = "zeroreqid123"
-        token = self.diagnostics.set_alternative_finder_request_id(request_id)
-        self.addCleanup(
-            lambda: self.diagnostics.reset_alternative_finder_request_id(token)
-        )
-
-        with self.assertLogs("integrations.supplier_diagnostics", level="WARNING") as logs:
-            results = self.aggregator.get_supplier_results("NOMATCHPART")
-
-        octopart = next(row for row in results if row.get("source") == "Octopart")
-        self.assertEqual(octopart.get("provider_status"), "PART_NOT_FOUND")
-        self.assertEqual(octopart.get("failure_category"), self.diagnostics.CATEGORY_NO_RESULT)
-        self.assertEqual(octopart.get("diagnostic_subreason"), "zero_results")
-        self.assertEqual(octopart.get("diagnostic_request_id"), request_id)
-        self.assertEqual(octopart.get("diagnostic_log_category"), "provider_response")
-
-        resolved = self.diagnostics.resolve_supplier_coverage_status(
-            "Octopart",
-            provider_status=octopart.get("provider_status"),
-            failure_category=octopart.get("failure_category"),
-        )
-        self.assertEqual(resolved["label"], "Octopart: no exact match")
-        self.assertFalse(resolved["is_runtime_failure"])
-        self.assertNotIn("unavailable", resolved["label"].casefold())
-
-        joined = "\n".join(logs.output)
-        self.assertIn(f"request_id={request_id}", joined)
-        self.assertIn("subreason=zero_results", joined)
-        self.assertNotIn("Bearer ", joined)
-        self.assertNotIn("api.nexar.com", joined)
 
     def test_diagnostic_redaction_strips_tokens_and_urls(self):
         payload = self.diagnostics.log_supplier_diagnostic(
             request_id="redact123",
-            supplier="Octopart",
+            supplier="Mouser",
             stage="lookup",
             provider_status="PROVIDER_ERROR",
             error_message=(
                 "Authorization: Bearer super-secret-token "
-                "https://api.nexar.com/graphql?token=abc"
+                "https://supplier.example/graphql?token=abc"
             ),
-            exception_type="OctopartResponseError",
+            exception_type="RuntimeError",
             subreason="malformed_response",
         )
         self.assertEqual(payload["request_id"], "redact123")
@@ -775,7 +501,7 @@ class OctopartDiagnosticPropagationTests(unittest.TestCase):
         self.assertEqual(payload["log_category"], "provider_response")
         self.assertNotIn("super-secret-token", payload["message"])
         self.assertNotIn("Bearer ", payload["message"])
-        self.assertNotIn("api.nexar.com", payload["message"])
+        self.assertNotIn("supplier.example", payload["message"])
         self.assertNotIn("://", payload["message"])
 
     def test_http_error_url_containing_graphql_is_not_graphql_subreason(self):
@@ -786,14 +512,14 @@ class OctopartDiagnosticPropagationTests(unittest.TestCase):
             def __init__(self):
                 super().__init__(
                     "500 Server Error: Internal Server Error for url: "
-                    "https://api.nexar.com/graphql"
+                    "https://supplier.example/graphql"
                 )
                 self.response = _Response()
 
         error = _HTTPError()
         payload = self.diagnostics.log_supplier_diagnostic(
             request_id="httpreqid01",
-            supplier="Octopart",
+            supplier="Mouser",
             stage="lookup",
             provider_status="PROVIDER_ERROR",
             error_message=str(error),
@@ -804,7 +530,7 @@ class OctopartDiagnosticPropagationTests(unittest.TestCase):
         self.assertEqual(payload["log_category"], "http")
         self.assertEqual(payload["status_code"], "500")
         self.assertNotEqual(payload["subreason"], "graphql_errors")
-        self.assertNotIn("api.nexar.com", payload["message"])
+        self.assertNotIn("supplier.example", payload["message"])
 
     def test_newark_http_500_with_apikey_url_is_http_not_auth(self):
         """Element14 URLs embed apiKey; 500 must not be mislabeled as auth."""

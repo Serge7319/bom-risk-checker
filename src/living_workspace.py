@@ -370,24 +370,41 @@ def _workload(actions: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 def compute_dashboard_summary_metrics(overview: Dict[str, Any]) -> Dict[str, Any]:
     projects = overview.get("projects", [])
+    health_values = [
+        int(_number(project.get("health"), 0))
+        for project in projects
+        if project.get("health") is not None
+    ]
+    unverified_projects = sum(1 for project in projects if project.get("health") is None)
     blocked_projects = sum(
         1 for project in projects
-        if int(_number(project.get("health"), 0)) < 70 or int(_number(project.get("high"), 0)) >= 3
+        if project.get("health") is None
+        or int(_number(project.get("health"), 0)) < 70
+        or int(_number(project.get("high"), 0)) >= 3
     )
     portfolio_health = (
-        round(sum(int(_number(project.get("health"), 0)) for project in projects) / len(projects))
-        if projects else 0
+        round(sum(health_values) / len(health_values))
+        if projects and not unverified_projects and health_values else None
     )
     top_action = overview.get("top_actions", [{}])[0] if overview.get("top_actions") else {}
-    health_tone = "success" if portfolio_health >= 85 else "warning" if portfolio_health >= 70 else "danger"
-    health_status = "Excellent" if portfolio_health >= 90 else "Stable" if portfolio_health >= 75 else "Needs attention"
-    release_label = (
-        "Ready for controlled release"
-        if portfolio_health >= 85 and blocked_projects == 0
-        else "Release review required"
-        if blocked_projects
-        else "Controlled review recommended"
-    )
+    if portfolio_health is None:
+        health_tone = "info"
+        health_status = "Needs verification" if projects else "No saved projects"
+        release_label = (
+            "Verify supplier evidence before relying on portfolio health."
+            if unverified_projects
+            else "Analyze and save a BOM to assess portfolio health."
+        )
+    else:
+        health_tone = "success" if portfolio_health >= 85 else "warning" if portfolio_health >= 70 else "danger"
+        health_status = "Excellent" if portfolio_health >= 90 else "Stable" if portfolio_health >= 75 else "Needs attention"
+        release_label = (
+            "Ready for controlled release"
+            if portfolio_health >= 85 and blocked_projects == 0
+            else "Release review required"
+            if blocked_projects
+            else "Controlled review recommended"
+        )
     return {
         "projects": projects,
         "blocked_projects": blocked_projects,
@@ -416,7 +433,11 @@ def render_engineering_overview_brief_and_kpis(*, overview: Dict[str, Any], metr
         [
             MetricCard(
                 label="Portfolio Health",
-                value=f"{metrics['portfolio_health']}%",
+                value=(
+                    f"{metrics['portfolio_health']}%"
+                    if metrics["portfolio_health"] is not None
+                    else "Needs verification"
+                ),
                 status=metrics["health_status"],
                 tone=metrics["health_tone"],
                 icon="gauge",
@@ -523,13 +544,15 @@ def render_engineering_overview_workspace(
             if selected_drilldown == "ready":
                 projects = [
                     project for project in projects
-                    if int(_number(project.get("health"), 0)) >= 85
+                    if project.get("health") is not None
+                    and int(_number(project.get("health"), 0)) >= 85
                     and int(_number(project.get("high"), 0)) == 0
                 ]
             else:
                 projects = [
                     project for project in projects
-                    if int(_number(project.get("health"), 0)) < 70
+                    if project.get("health") is None
+                    or int(_number(project.get("health"), 0)) < 70
                     or int(_number(project.get("high"), 0)) >= 3
                 ]
             render_portfolio_project_summaries(projects=projects)
@@ -622,7 +645,11 @@ def render_portfolio_project_summaries(
         summary_rows.append(
             {
                 "Project": _text(project.get("name"), "Saved BOM"),
-                "Health": f"{int(_number(project.get('health'), 0))}/100",
+                "Health": (
+                    f"{int(_number(project.get('health'), 0))}/100"
+                    if project.get("health") is not None
+                    else "Needs verification"
+                ),
                 "Components": int(_number(project.get("parts"), 0)),
                 "High-Risk": int(_number(project.get("high"), 0)),
                 "Status": _text(project.get("status"), "Needs Review"),

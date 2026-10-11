@@ -21,6 +21,84 @@ from integrations.supplier_aggregator import (
 
 
 class SupplierHealthTests(unittest.TestCase):
+    def test_supplier_lookup_rejects_a_fuzzy_neighbor_mpn(self):
+        result = _safe_supplier_lookup(
+            "Mouser",
+            lambda _part: {
+                "manufacturer_part_number": "LM358",
+                "mouser_part_number": "595-LM358",
+                "stock_total": 1000,
+                "lifecycle_status": "Active",
+            },
+            "LM358N",
+        )
+        self.assertEqual(result["provider_status"], PROVIDER_PART_NOT_FOUND)
+
+    def test_matched_supplier_with_missing_stock_keeps_stock_unknown(self):
+        result = _safe_supplier_lookup(
+            "Mouser",
+            lambda _part: {
+                "manufacturer_part_number": "LM358N",
+                "lifecycle_status": "Unknown",
+            },
+            "LM358N",
+        )
+        self.assertEqual(result["provider_status"], PROVIDER_AVAILABLE)
+        self.assertIsNone(result["stock_total"])
+
+    def test_aggregated_lifecycle_reports_conflicting_supplier_status(self):
+        from integrations import supplier_aggregator
+
+        supplier_aggregator.get_supplier_results = lambda _part: [
+            {
+                "source": "DigiKey",
+                "provider_status": PROVIDER_AVAILABLE,
+                "manufacturer_part_number": "LM358N-CONFLICT",
+                "lifecycle_status": "Active",
+                "stock_total": 100,
+            },
+            {
+                "source": "Mouser",
+                "provider_status": PROVIDER_AVAILABLE,
+                "manufacturer_part_number": "LM358N-CONFLICT",
+                "lifecycle_status": "Obsolete",
+                "stock_total": 50,
+            },
+        ]
+        data = supplier_aggregator.get_best_part_data("LM358N-CONFLICT")
+        self.assertEqual(data["lifecycle_status"], "Conflicting supplier data")
+        self.assertTrue(data["lifecycle_conflict"])
+        self.assertEqual(
+            {row["source"] for row in data["lifecycle_evidence"]},
+            {"DigiKey", "Mouser"},
+        )
+
+    def test_aggregated_stock_does_not_turn_missing_sources_into_zero(self):
+        from integrations import supplier_aggregator
+
+        supplier_aggregator.get_supplier_results = lambda _part: [
+            {
+                "source": "DigiKey",
+                "provider_status": PROVIDER_AVAILABLE,
+                "manufacturer_part_number": "LM358N-STOCK",
+                "stock_total": None,
+                "lifecycle_status": "Unknown",
+            },
+        ]
+        data = supplier_aggregator.get_best_part_data("LM358N-STOCK")
+        self.assertIsNone(data["stock_total"])
+        self.assertIsNone(data["total_market_stock"])
+        self.assertFalse(data["stock_data_complete"])
+
+    def test_mouser_inference_does_not_assume_active_or_zero_stock(self):
+        from integrations.mouser_client import extract_stock_number, infer_lifecycle_status
+
+        self.assertEqual(infer_lifecycle_status({"Description": "Dual operational amplifier"}), "Unknown")
+        self.assertIsNone(extract_stock_number(""))
+        self.assertIsNone(extract_stock_number("On Order: 1200"))
+        self.assertEqual(extract_stock_number("0 In Stock"), 0)
+        self.assertEqual(extract_stock_number("1,234 In Stock"), 1234)
+
     def test_all_providers_successful(self):
         results = [
             {"source": "Mouser", "provider_status": PROVIDER_AVAILABLE},
