@@ -792,7 +792,7 @@ def _render_design_impact_workspace(
             )
             if row.get("Analysis ID"):
                 internal_nav_button(
-                    "Open latest BOM",
+                    "View BOM Risk",
                     "Analysis Details",
                     key=f"impact_project_{index}",
                     use_container_width=True,
