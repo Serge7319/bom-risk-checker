@@ -127,6 +127,14 @@ EI_TABS = (
 )
 
 
+def _select_ei_report_tab(tab: str) -> None:
+    """Set the report tab in the button callback before content is rendered."""
+    import streamlit as st
+
+    if tab in EI_TABS:
+        st.session_state["cadivor_ei_report_tab"] = tab
+
+
 def _esc(value: Any, fallback: str = "—") -> str:
     if value is None:
         return fallback
@@ -501,6 +509,7 @@ def report_styles() -> str:
       .cv-ei-title { font-size:32px; line-height:1.15; font-weight:760; letter-spacing:-.03em; margin:0; }
       .cv-ei-sub { color:#64748b; font-size:14px; margin:6px 0 18px; }
       .cv-ei-banner { display:flex; gap:16px; align-items:flex-start; background:#fff5f5; border:1px solid #fecdd3; border-radius:16px; padding:22px 24px; margin-bottom:16px; }
+      .cv-ei-banner--clear { background:#f0fdf4; border-color:#bbf7d0; }
       .cv-ei-icon { width:36px; height:36px; border-radius:999px; display:inline-flex; align-items:center; justify-content:center; flex:0 0 auto; font-size:16px; }
       .cv-ei-icon.warn { background:#ffe4e6; color:#e11d48; }
       .cv-ei-icon.health { background:#dcfce7; color:#16a34a; }
@@ -580,15 +589,32 @@ def engineering_intelligence_html(
     if active == "BOM Risk":
         # Keep these tags at column 0. Indented HTML becomes a Markdown code
         # block, which is what left the summary looking like an empty banner.
-        banner = textwrap.dedent(
+        if high:
+            banner = textwrap.dedent(
+                f"""
+                <section class="cv-ei-banner">
+                  <div class="cv-ei-icon warn">!</div>
+                  <div>
+                    <h2>Engineering review required</h2>
+                    <p>{len(high)} components with high risk may impact build timelines. Review the items below and consider approved alternatives.</p>
+                  </div>
+                </section>
+                """
+            ).strip()
+        else:
+            banner = textwrap.dedent(
+                """
+                <section class="cv-ei-banner cv-ei-banner--clear">
+                  <div class="cv-ei-icon health">✓</div>
+                  <div>
+                    <h2>No high-risk components found</h2>
+                    <p>This BOM has no components currently classified as high risk. Review the component data and monitoring signals as they change.</p>
+                  </div>
+                </section>
+                """
+            ).strip()
+        banner += textwrap.dedent(
             f"""
-            <section class="cv-ei-banner">
-              <div class="cv-ei-icon warn">!</div>
-              <div>
-                <h2>Engineering review required</h2>
-                <p>{len(high)} components with high risk may impact build timelines. Review the items below and consider approved alternatives.</p>
-              </div>
-            </section>
             <section class="cv-ei-kpis">
               <div class="cv-ei-kpi"><div class="cv-ei-icon health">♡</div><div><span>Health</span><strong>{_esc(health)}/100</strong></div></div>
               <div class="cv-ei-kpi"><div class="cv-ei-icon review">▣</div><div><span>Needs review</span><strong>{len(high)}</strong></div></div>
@@ -970,9 +996,12 @@ def render_engineering_intelligence_report(
                             name,
                             key=f"ei_tab_{slug}",
                             type="tertiary",
+                            on_click=_select_ei_report_tab,
+                            args=(name,),
                         ):
+                            # Callback updates state before this rerun. Keep the
+                            # returned value as a fallback for simpler test stubs.
                             st.session_state["cadivor_ei_report_tab"] = name
-                            st.rerun()
                 active_slug = str(tab or "BOM Risk").casefold().replace(" ", "-").replace("&", "and")
                 st.markdown(
                     f"""

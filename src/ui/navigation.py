@@ -166,6 +166,7 @@ def navigate_to(page: str, *, _rerun: bool = True, arm_opening: bool = True, **p
             ALT_FINDER_RETURN_MPN_KEY,
             "alternative_original_manufacturer",
             "alternative_prefill_source_context",
+            "alternative_prefill_search_pending",
         ):
             st.session_state.pop(context_key, None)
     # Any explicit in-app navigation supersedes a prior browser-history restore.
@@ -609,14 +610,28 @@ def consume_alternative_finder_context(
 ) -> Optional[dict[str, str]]:
     """Read Alternative Finder navigation context exactly once per navigation."""
     pending = st.session_state.pop(ALT_FINDER_CONTEXT_KEY, None)
-    if isinstance(pending, dict) and pending.get("mpn"):
-        if pending.get("analysis_id"):
-            st.session_state[ALT_FINDER_RETURN_ANALYSIS_KEY] = pending["analysis_id"]
-        _clear_consumed_alt_nav_params()
-        _clear_alt_query_params()
-        return pending
-
     original_part = str(qp_value("original_part", "") or "").strip()
+    query_prefill_id = str(qp_value("prefill_id", "") or "").strip()
+    if isinstance(pending, dict) and pending.get("mpn"):
+        pending_mpn = str(pending.get("mpn") or "").strip()
+        pending_prefill_id = str(pending.get("prefill_id") or "").strip()
+        # An address-bar navigation can arrive while an earlier in-session
+        # context is still queued. The current URL event owns the clicked part.
+        pending_matches_query = (
+            not original_part
+            or (
+                (normalize_part_number(pending_mpn) or pending_mpn.upper())
+                == (normalize_part_number(original_part) or original_part.upper())
+                and (not query_prefill_id or query_prefill_id == pending_prefill_id)
+            )
+        )
+        if pending_matches_query:
+            if pending.get("analysis_id"):
+                st.session_state[ALT_FINDER_RETURN_ANALYSIS_KEY] = pending["analysis_id"]
+            _clear_consumed_alt_nav_params()
+            _clear_alt_query_params()
+            return pending
+
     if not original_part:
         return None
 
@@ -732,6 +747,14 @@ def apply_alternative_finder_prefill(context: Mapping[str, str]) -> None:
         navigation_id=str(context.get("prefill_id") or ""),
     )
     st.session_state["alternative_prefill_token"] = prefill_token
+    if reuse_completed_result:
+        st.session_state.pop("alternative_prefill_search_pending", None)
+    else:
+        st.session_state["alternative_prefill_search_pending"] = True
+        # Each contextual click is an intentional new search request, even when
+        # it selects the same MPN as the last click.
+        st.session_state.pop("alternative_finder_last_submit_mpn", None)
+        st.session_state.pop("alternative_finder_last_submit_at", None)
     mark_alternative_finder_nav_consumed(st.session_state, token=prefill_token)
     if context.get("manufacturer"):
         st.session_state["alternative_original_manufacturer"] = context["manufacturer"]

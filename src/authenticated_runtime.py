@@ -4008,11 +4008,38 @@ def run_authenticated_app() -> None:
         except Exception:
             settings_history = []
             st.error("Saved BOM settings could not be loaded. Please return to BOMs and try again.")
+        settings_components = []
+        settings_action = _safe_text(_qp_value("saved_bom_action", ""), "").casefold()
+        settings_analysis_id = _safe_text(_qp_value("saved_bom_id", ""), "").strip()
+        settings_analysis_owned = any(
+            str(record.get("id") or "").strip() == settings_analysis_id
+            for record in settings_history
+            if isinstance(record, dict)
+        )
+        if settings_action == "open" and settings_analysis_id and settings_analysis_owned:
+            attempts = [(True, bool(active_workspace_id)), (True, False), (False, False)]
+            for include_user, include_workspace in attempts:
+                try:
+                    parts_query = (
+                        supabase.table("analysis_parts")
+                        .select("*")
+                        .eq("analysis_id", settings_analysis_id)
+                    )
+                    if include_user:
+                        parts_query = parts_query.eq("user_id", settings_user_id)
+                    if include_workspace and active_workspace_id:
+                        parts_query = parts_query.eq("workspace_id", active_workspace_id)
+                    settings_components = parts_query.limit(5000).execute().data or []
+                    if settings_components:
+                        break
+                except Exception:
+                    continue
         from src.ui.approved_pages import render_saved_bom_settings
 
         render_saved_bom_settings(
             settings_history if isinstance(settings_history, list) else [],
             user_id=settings_user_id,
+            components=settings_components,
         )
         stop_authenticated_page()
 
@@ -15371,13 +15398,12 @@ def run_authenticated_app() -> None:
             with st.form("af62_search_form", clear_on_submit=False, border=False):
                 form_cols = st.columns([4.5, 1.25], gap="medium")
                 with form_cols[0]:
-                    original_part_widget_key, original_part_initial_value = (
+                    original_part_widget_key, _ = (
                         get_alternative_finder_original_part_input_config(st.session_state)
                     )
                     original_part = st.text_input(
                         "Manufacturer part number",
                         key=original_part_widget_key,
-                        value=original_part_initial_value,
                         placeholder="Example: ATMEGA328P-PU",
                     )
                 with form_cols[1]:
@@ -15388,7 +15414,10 @@ def run_authenticated_app() -> None:
                         use_container_width=True,
                     )
 
-        if find_alternatives_clicked:
+        prefilled_search_pending = bool(
+            st.session_state.pop("alternative_prefill_search_pending", False)
+        )
+        if find_alternatives_clicked or prefilled_search_pending:
             searched_part = resolve_alternative_finder_submitted_mpn(
                 original_part,
                 st.session_state.get(original_part_widget_key),

@@ -50,6 +50,7 @@ def _install_analysis_detail_import_stubs() -> None:
     navigation.navigate_to_alternative_finder = lambda *args, **kwargs: None
     navigation.return_to_saved_bom_list = lambda *args, **kwargs: None
     navigation.alternative_finder_href = lambda *args, **kwargs: "?"
+    navigation.read_query_params = lambda: {}
     sys.modules["src.ui.navigation"] = navigation
 
     urls = types.ModuleType("src.urls")
@@ -220,7 +221,10 @@ def tearDownModule():
         "pandas",
     ):
         sys.modules.pop(name, None)
-    importlib.import_module("streamlit")
+    try:
+        importlib.import_module("streamlit")
+    except ModuleNotFoundError:
+        return
     importlib.import_module("src.ui.navigation")
     importlib.import_module("src.urls")
 

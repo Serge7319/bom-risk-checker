@@ -1111,10 +1111,29 @@ def _render_saved_bom_actions(column, analysis_id: str, *, scope: str, row_key: 
                     key=f"approved_{scope}_action_open_{row_key}",
                     use_container_width=True,
                 ):
+                    navigate_to(
+                        "BOM Settings",
+                        saved_bom_id=target,
+                        saved_bom_action="open",
+                        arm_opening=False,
+                    )
+                if st.button(
+                    "BOM Risk",
+                    key=f"approved_{scope}_action_bom_risk_{row_key}",
+                    use_container_width=True,
+                ):
                     st.session_state["cadivor_show_detailed_risk"] = False
+                    st.session_state["cadivor_ei_report_tab"] = "BOM Risk"
                     st.session_state["cadivor_active_analysis_id"] = target
                     st.session_state["analysis_id"] = target
-                    navigate_to("Analysis Details", analysis_id=target, arm_opening=False)
+                    st.session_state["cadivor_pending_analysis_section"] = "Engineering Intelligence"
+                    st.session_state["cadivor_pending_analysis_section_id"] = target
+                    navigate_to(
+                        "Analysis Details",
+                        analysis_id=target,
+                        analysis_tab="Engineering Intelligence",
+                        arm_opening=False,
+                    )
                 if st.button(
                     "Detailed Risk Report",
                     key=f"approved_{scope}_action_risk_report_{row_key}",
@@ -1253,6 +1272,112 @@ def _render_saved_bom_edit_page(row: dict[str, Any], user_id: str) -> None:
                 _queue_saved_bom_action(analysis_id, "delete")
 
 
+def _render_saved_bom_open_page(
+    row: dict[str, Any],
+    components: list[dict[str, Any]] | None,
+) -> None:
+    """Edit the saved MPN/quantity rows and rerun the normal BOM analysis."""
+    import pandas as pd
+
+    analysis_id = str(row.get("id") or "").strip()
+    project, bom_name = split_project_and_bom(row)
+    source_filename = str(_first(row, "filename", "source_filename", fallback="") or "").strip()
+    rows = []
+    for part in components or []:
+        mpn = str(_first(part, "mpn", "manufacturer_part_number", "part_number", fallback="") or "").strip()
+        if not mpn:
+            continue
+        quantity = _first(part, "quantity", "qty", "Quantity", fallback=1)
+        rows.append({"MPN": mpn, "Quantity": quantity})
+    initial = pd.DataFrame(rows, columns=["MPN", "Quantity"])
+    nonce = int(st.session_state.get(SAVED_BOM_EDIT_REVISION_STATE) or 0)
+    with st.container(key="approved_saved_bom_original_editor"):
+        st.markdown(
+            """
+            <div class="cv-ap">
+              <p class="cv-ap-kicker">BOM EDITOR</p>
+              <h1>Open original BOM</h1>
+              <p class="cv-ap-sub">Update component numbers or quantities, then rerun the analysis.</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.info(
+            "Cadivor rebuilds these rows from the saved analyzed components. "
+            "Rerunning creates a new saved analysis and keeps this report available."
+        )
+        if not rows:
+            st.warning(
+                "No saved component rows were found for this BOM. Add rows below or return to BOMs and upload the source file."
+            )
+        with st.form(key=f"approved_saved_bom_original_form_{analysis_id}_{nonce}"):
+            project_value = st.text_input(
+                "Project name",
+                value=project or "General",
+                key=f"approved_saved_bom_original_project_{analysis_id}_{nonce}",
+            )
+            bom_value = st.text_input(
+                "BOM name",
+                value=bom_name or source_filename or "Saved BOM",
+                key=f"approved_saved_bom_original_name_{analysis_id}_{nonce}",
+            )
+            edited = st.data_editor(
+                initial,
+                key=f"approved_saved_bom_original_rows_{analysis_id}_{nonce}",
+                num_rows="dynamic",
+                hide_index=True,
+                use_container_width=True,
+                column_config={
+                    "MPN": st.column_config.TextColumn("Manufacturer part number", required=True),
+                    "Quantity": st.column_config.NumberColumn(
+                        "Quantity", min_value=1, step=1, required=True,
+                    ),
+                },
+            )
+            rerun = st.form_submit_button(
+                "Rerun analysis with updates",
+                type="primary",
+                use_container_width=True,
+            )
+        back_col, risk_col = st.columns(2)
+        with back_col:
+            if st.button("Back to BOMs", key=f"approved_saved_bom_original_back_{analysis_id}"):
+                navigate_to("BOM Analyzer", show_saved_analyses="1", arm_opening=False)
+        with risk_col:
+            if st.button("View BOM Risk", key=f"approved_saved_bom_original_risk_{analysis_id}"):
+                st.session_state["cadivor_show_detailed_risk"] = False
+                st.session_state["cadivor_ei_report_tab"] = "BOM Risk"
+                st.session_state["cadivor_active_analysis_id"] = analysis_id
+                st.session_state["analysis_id"] = analysis_id
+                navigate_to(
+                    "Analysis Details",
+                    analysis_id=analysis_id,
+                    analysis_tab="Engineering Intelligence",
+                    arm_opening=False,
+                )
+        if rerun:
+            from src.saved_bom_editor import normalize_saved_bom_rows, saved_bom_csv_bytes
+
+            normalized, validation_error = normalize_saved_bom_rows(
+                edited.to_dict(orient="records")
+            )
+            if validation_error:
+                st.error(validation_error)
+            elif not str(bom_value or "").strip():
+                st.error("Enter a BOM name before rerunning this analysis.")
+            else:
+                upload = io.BytesIO(saved_bom_csv_bytes(normalized))
+                file_stem = source_filename.rsplit(".", 1)[0] if source_filename else str(bom_value).strip()
+                upload.name = f"{file_stem}_updated.csv"
+                upload.seek(0)
+                st.session_state["cadivor_bom_analysis_ready"] = True
+                st.session_state["cadivor_pending_upload"] = upload
+                st.session_state["cadivor_pending_project"] = str(project_value or "").strip() or "General"
+                st.session_state["cadivor_pending_bom_name"] = str(bom_value or "").strip()
+                st.session_state["cadivor_bom_upload_open"] = True
+                navigate_to("BOM Analyzer", new_analysis="1", arm_opening=False)
+
+
 def _render_saved_bom_delete_page(row: dict[str, Any], user_id: str) -> None:
     analysis_id = str(row.get("id") or "").strip()
     _project, bom_name = split_project_and_bom(row)
@@ -1307,7 +1432,11 @@ def _render_saved_bom_delete_page(row: dict[str, Any], user_id: str) -> None:
                         navigate_to("BOM Analyzer", show_saved_analyses="1", arm_opening=False)
 
 
-def render_saved_bom_settings(records: list[dict[str, Any]] | None, user_id: str = "") -> None:
+def render_saved_bom_settings(
+    records: list[dict[str, Any]] | None,
+    user_id: str = "",
+    components: list[dict[str, Any]] | None = None,
+) -> None:
     """Render the standalone settings page for a selected saved BOM."""
     begin_approved_page()
     rows = _rows_with_project_edits(_records(records))
@@ -1320,9 +1449,10 @@ def render_saved_bom_settings(records: list[dict[str, Any]] | None, user_id: str
         pass
     edit_id = str(st.session_state.get(SAVED_BOM_EDIT_STATE) or query_id).strip()
     delete_id = str(st.session_state.get(SAVED_BOM_DELETE_STATE) or "").strip()
+    open_id = query_id if query_action == "open" else ""
     if not delete_id and query_action == "delete":
         delete_id = query_id
-    target_id = delete_id or edit_id
+    target_id = delete_id or open_id or edit_id
     target_row = next(
         (row for row in rows if str(row.get("id") or "").strip() == target_id),
         None,
@@ -1339,6 +1469,8 @@ def render_saved_bom_settings(records: list[dict[str, Any]] | None, user_id: str
             navigate_to("BOM Analyzer", show_saved_analyses="1", arm_opening=False)
     elif delete_id:
         _render_saved_bom_delete_page(target_row, user_id)
+    elif open_id:
+        _render_saved_bom_open_page(target_row, components)
     else:
         _render_saved_bom_edit_page(target_row, user_id)
     end_approved_page()

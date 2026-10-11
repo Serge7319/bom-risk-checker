@@ -117,6 +117,27 @@ _KIND_BY_FAMILY = {
     "General electronic component": "generic",
 }
 
+# Saved analysis rows do not always retain a supplier category or description.
+# A narrow set of manufacturer prefixes can still identify common families.
+_MPN_FAMILY_PATTERNS = (
+    (
+        "Capacitor",
+        re.compile(
+            r"^(?:GRM|GRJ|GRT|CKG|CGA|CC\d{4}|CL\d{2}|C\d{4}[A-Z]|"
+            r"T49[1245]|TAJ[A-Z]|TCJ[A-Z]|293D|EEU|ECA|EEE|ECJ|EMK|KGM|KCM|VJ\d{4}|MAL\d)",
+            re.I,
+        ),
+    ),
+    ("Resistor", re.compile(r"^(?:RC\d{4}|ERJ-|CRCW\d|MCR\d|RMCF|RK73|RT\d{4})", re.I)),
+    ("Diode / protection", re.compile(r"^(?:1N\d{3,}|SS\d{2,}|BAV\d{2,}|MBR\d{2,}|PMEG\d+)", re.I)),
+    ("MOSFET", re.compile(r"^(?:IRF\w+|AO\d{3,}|BSS\d{2,}|FDN\d+|SI\d{3,})", re.I)),
+    ("Bipolar transistor", re.compile(r"^(?:2N\d{3,}|BC\d{2,}|MMBT\d+)", re.I)),
+    ("Inductor", re.compile(r"^(?:LQH|LQM|LQG|SRR|XAL|NR\d{2,})", re.I)),
+    ("MCU / processor", re.compile(r"^(?:STM32|ATMEGA|PIC\d|ESP32|RP2040)", re.I)),
+    ("Regulator", re.compile(r"^(?:TPS\d|LM(?:2596|317|1117)|LD\d|MIC\d|AP\d{3,})", re.I)),
+    ("Logic / interface IC", re.compile(r"^(?:MCP\d|MAX\d|SN\d|ADS\d|W25Q\d|PC\d{3,})", re.I)),
+)
+
 _ASSET_VARIANTS = {
     "capacitor": ("capacitor_smd", "capacitor_th"),
     "resistor": ("resistor_smd", "resistor_th"),
@@ -130,9 +151,9 @@ _ASSET_VARIANTS = {
     "switch": ("switch_smd", "switch_th"),
     "crystal": ("crystal_smd", "crystal_th"),
     "transformer": ("transformer_smd", "transformer_th"),
-    # Unknown components should use a neutral IC package image. The former
-    # generic assets depicted a metal-can transistor and an axial diode.
-    "generic": ("ic_smd", "ic_th"),
+    # The bundled generic PNGs depict specific transistor/diode packages.
+    # Unknown families use neutral vector package art instead.
+    "generic": ("", ""),
 }
 _THROUGH_HOLE = re.compile(
     r"\b(?:tht|through[\s-]?hole|pth|dip|pdip|to-\d{2,3}|axial|radial|leaded|hc-49)\b",
@@ -157,7 +178,8 @@ def _part_values(part: object) -> list[str]:
     keys = (
         "description_raw", "description", "Description", "part_description",
         "category_raw", "category", "Category", "architecture", "Architecture",
-        "device_type", "Device Type", "device type",
+        "device_type", "Device Type", "device type", "manufacturer_part_number",
+        "mpn", "MPN", "part_number", "part number",
     ) + _PACKAGE_KEYS
     return [str(part[key]).strip() for key in keys if part.get(key) not in (None, "")]
 
@@ -193,7 +215,11 @@ def _package_style(part: object) -> str:
     return "smd"
 
 
-def illustration_kind(part: object = None, category: object = None) -> str:
+def illustration_kind(
+    part: object = None,
+    category: object = None,
+    part_number: object = None,
+) -> str:
     """Map saved family/category text to a representative component image."""
     from src.component_family_profiles import infer_family_id
 
@@ -212,9 +238,27 @@ def illustration_kind(part: object = None, category: object = None) -> str:
                     break
     if category is not None and str(category).strip():
         payload.setdefault("category", str(category).strip())
-    if not payload:
-        return "generic"
-    return _KIND_BY_FAMILY.get(infer_family_id(payload), "generic")
+    family = infer_family_id(payload) if payload else "General electronic component"
+    mpn = ""
+    if isinstance(part, Mapping):
+        for key in ("manufacturer_part_number", "mpn", "MPN", "part_number", "part number"):
+            candidate = str(part.get(key) or "").strip()
+            if candidate:
+                mpn = candidate
+                break
+    if not mpn:
+        mpn = str(part_number or "").strip()
+    for candidate_family, pattern in _MPN_FAMILY_PATTERNS:
+        if pattern.search(mpn):
+            # Confident manufacturer code prefixes beat stale generic metadata
+            # such as a GRM MLCC that was stored with category "IC".
+            family = candidate_family
+            break
+    if family == "General electronic component":
+        category_text = str(payload.get("category") or "").strip().casefold()
+        if category_text in {"ic", "integrated circuit", "integrated-circuit"}:
+            family = "Logic / interface IC"
+    return _KIND_BY_FAMILY.get(family, "generic")
 
 
 @lru_cache(maxsize=32)
@@ -278,8 +322,23 @@ _ILLUSTRATION_SVG = {
     "relay": '<rect x="4" y="7" width="16" height="10" rx="2"/><path d="M7 4v3m10-3v3M7 17v3m10-3v3"/>',
     "transformer": '<path d="M6 6c4 0 4 12 0 12m12-12c-4 0-4 12 0 12M8 8h8m-8 8h8"/>',
     "crystal": '<rect x="8" y="5" width="8" height="14" rx="3"/><path d="M10 19v3m4-3v3"/>',
-    "generic": '<rect x="7" y="7" width="10" height="10" rx="1.5"/><path d="M9 3v4m6-4v4m-6 10v4m6-4v4M3 9h4m10 0h4M3 15h4m10 0h4"/><circle cx="12" cy="12" r="2.2"/>',
+    "generic": '<rect x="7" y="8" width="10" height="8" rx="2"/><path d="M2 10h5m10 0h5M2 14h5m10 0h5"/>',
 }
+
+
+def _generic_component_svg(package_style: str, dimension: int) -> str:
+    """Neutral two-terminal package art; never imply an IC for unknown parts."""
+    if package_style == "th":
+        drawing = '<rect x="8" y="8" width="8" height="8" rx="3"/><path d="M12 8V3m0 13v5"/>'
+    else:
+        drawing = '<rect x="7" y="8" width="10" height="8" rx="2"/><path d="M2 10h5m10 0h5M2 14h5m10 0h5"/>'
+    svg = (
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{dimension}" height="{dimension}" viewBox="0 0 24 24">'
+        '<rect x="1" y="1" width="22" height="22" rx="5" fill="#f0f9ff" stroke="#bae6fd" stroke-width="1"/>'
+        f'<g fill="none" stroke="#0369a1" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">{drawing}</g>'
+        '</svg>'
+    )
+    return "data:image/svg+xml;base64," + base64.b64encode(svg.encode("utf-8")).decode("ascii")
 
 
 def part_image_source(
@@ -298,8 +357,11 @@ def part_image_source(
         dimension = min(132, max(48, int(size)))
     except (TypeError, ValueError):
         dimension = 64
-    kind = illustration_kind(part, category)
-    asset = _illustration_data_uri(_asset_name(kind, part))
+    kind = illustration_kind(part, category, part_number)
+    if kind == "generic":
+        return _generic_component_svg(_package_style(part), dimension)
+    asset_name = _asset_name(kind, part)
+    asset = _illustration_data_uri(asset_name) if asset_name else ""
     return asset or _svg_data_uri(kind, dimension)
 
 
@@ -328,9 +390,13 @@ def part_image_markup(
             'style="width:100%;height:100%;object-fit:contain;vertical-align:middle">'
         )
     else:
-        kind = illustration_kind(part, category)
+        kind = illustration_kind(part, category, part_number)
         label = ILLUSTRATION_LABEL
-        source = _illustration_data_uri(_asset_name(kind, part))
+        if kind == "generic":
+            source = _generic_component_svg(_package_style(part), dimension)
+        else:
+            asset_name = _asset_name(kind, part)
+            source = _illustration_data_uri(asset_name) if asset_name else ""
         if source:
             visual = (
                 f'<img class="cv-part-photo__image" src="{source}" '

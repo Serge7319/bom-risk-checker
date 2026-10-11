@@ -292,6 +292,8 @@ def render_saved_bom_section_nav(
                             area,
                             key=f"{SAVED_BOM_TAB_KEY_PREFIX}{analysis_id}_{area}",
                             type="primary" if active else "secondary",
+                            on_click=_select_saved_bom_area,
+                            args=(analysis_id, area),
                         )
                     )
                 if clicked:
@@ -308,6 +310,8 @@ def render_saved_bom_section_nav(
                                     button(
                                         item,
                                         key=f"cadivor_bom_more_btn_{analysis_id}_{item}",
+                                        on_click=_select_saved_bom_more,
+                                        args=(analysis_id, item),
                                     )
                                 )
                             if clicked:
@@ -322,3 +326,42 @@ def render_saved_bom_section_nav(
                         label_visibility="collapsed",
                     )
     return area_clicked, more_clicked
+
+
+def _select_saved_bom_area(analysis_id: str, area: str) -> None:
+    """Commit a saved-BOM section before Streamlit reruns the page."""
+    import streamlit as st
+
+    state = st.session_state
+    state[f"cadivor_bom_area_{analysis_id}"] = area
+    state[f"cadivor_bom_more_{analysis_id}"] = "More"
+    section = section_for_choice(area)
+    state[f"cadivor_analysis_section_{analysis_id or 'default'}"] = section
+    state["cadivor_active_analysis_tab"] = section
+    state["cadivor_stack_decision_brief"] = section == "Engineering Intelligence"
+    state["cadivor_decision_focus"] = section == "Engineering Decisions"
+
+
+def _select_saved_bom_more(analysis_id: str, choice: str) -> None:
+    """Commit a More-menu section or route before the next page render."""
+    import streamlit as st
+
+    state = st.session_state
+    if choice in {"Watch this BOM", "Datasheet Q&A", "Compare parts", "Design Impact"}:
+        from src.ui.navigation import navigate_to
+
+        route = {
+            "Watch this BOM": "Monitoring",
+            "Datasheet Q&A": "Datasheet Q&A",
+            "Compare parts": "Compare Parts",
+            "Design Impact": "Design Impact Analyzer",
+        }[choice]
+        params = {"analysis_id": analysis_id, "return_analysis_id": analysis_id} if analysis_id else {}
+        navigate_to(route, _rerun=False, arm_opening=False, **params)
+        return
+    state[f"cadivor_bom_more_{analysis_id}"] = choice
+    section = section_for_choice(choice)
+    state[f"cadivor_analysis_section_{analysis_id or 'default'}"] = section
+    state["cadivor_active_analysis_tab"] = section
+    state["cadivor_stack_decision_brief"] = section == "Engineering Intelligence"
+    state["cadivor_decision_focus"] = section == "Engineering Decisions"
