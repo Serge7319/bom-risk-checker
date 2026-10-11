@@ -10,8 +10,84 @@ risk report. Mockup #2 is the BOM catalog.
 from __future__ import annotations
 
 import html
+import re
 import textwrap
 from typing import Any
+
+
+from html.parser import HTMLParser
+
+
+class _DescriptionTextParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.parts: list[str] = []
+        self._skip_depth = 0
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag.casefold() in {"script", "style"}:
+            self._skip_depth += 1
+        elif tag.casefold() in {"p", "div", "li", "br"}:
+            self.parts.append(" ")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag.casefold() in {"script", "style"} and self._skip_depth:
+            self._skip_depth -= 1
+        elif tag.casefold() in {"p", "div", "li", "br"}:
+            self.parts.append(" ")
+
+    def handle_data(self, data: str) -> None:
+        if not self._skip_depth:
+            self.parts.append(data)
+
+
+def _description_text(value: Any) -> str:
+    """Turn saved supplier markup into plain descriptive text, dropping serialized UI blocks."""
+    raw = html.unescape(str(value or "").strip())
+    if not raw:
+        return ""
+    parser = _DescriptionTextParser()
+    try:
+        parser.feed(raw)
+        text = " ".join(" ".join(parser.parts).split())
+    except Exception:
+        text = " ".join(re.sub(r"(?is)<[^>]*>", " ", raw).split())
+    structured_labels = ("manufacturer", "best source", "suppliers", "stock", "lifecycle")
+    if sum(bool(re.search(rf"\b{label}\b", text, re.IGNORECASE)) for label in structured_labels) >= 2:
+        return ""
+    return text
+
+
+def _alternative_action_link(
+    row: dict[str, Any],
+    *,
+    analysis_id: str = "",
+    bom_name: str = "",
+    source_page: str,
+) -> str:
+    label = str(row.get("action") or "")
+    if row.get("level") not in {"High", "Medium"}:
+        return label
+    from src.ui.navigation import alternative_finder_href
+
+    href = alternative_finder_href(
+        mpn=str(row.get("mpn_raw") or ""),
+        manufacturer=html.unescape(str(row.get("manufacturer") or "")),
+        description=html.unescape(str(row.get("description") or "")),
+        lifecycle=html.unescape(str(row.get("lifecycle") or "")),
+        risk=str(row.get("level") or ""),
+        analysis_id=analysis_id,
+        return_analysis_id=analysis_id,
+        source_page=source_page,
+        project_name=bom_name,
+        bom_name=bom_name,
+    )
+    return (
+        f'<a class="cv-ei-action-link" href="{html.escape(href, quote=True)}" '
+        f'target="_self">{label}</a>'
+    )
+
+
 
 
 def _part_art(mpn: str, url: str = "", part: dict[str, Any] | None = None) -> str:
@@ -334,14 +410,16 @@ def _part_rows(parts: list[dict[str, Any]]) -> list[dict[str, Any]]:
             {
                 "mpn_raw": raw_mpn,
                 "mpn": _esc(raw_mpn),
-                "description_raw": str(
-                    _first(part, "description", "Description", "part_description", fallback="") or ""
+                "description_raw": _description_text(
+                    _first(part, "description", "Description", "part_description", fallback="")
                 ),
                 "category_raw": str(
                     _first(part, "category", "Category", "device_type", "architecture", fallback="") or ""
                 ),
                 "description": _esc(
-                    _first(part, "description", "Description", "part_description", fallback="Component")
+                    _description_text(
+                        _first(part, "description", "Description", "part_description", fallback="Component")
+                    ) or "Component"
                 ),
                 "manufacturer": _esc(_first(part, "manufacturer", "Manufacturer", fallback="—")),
                 "level": level,
@@ -389,7 +467,8 @@ def _part_rows(parts: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def report_styles() -> str:
     return """
     <style>
-      .cv-ei-report { color:#0f172a; font-family: Inter, "Segoe UI", sans-serif; }
+      .cv-ei-report { color:#0f172a; font-family: Inter, "Segoe UI", sans-serif; width:100%;max-width:1500px;margin:0 auto;box-sizing:border-box }
+      .cv-part-photo[data-illustration="generic"]{background:#f0f9ff;border-color:#bae6fd;color:#0369a1}
       .cv-ei-kicker { color:#64748b; font-size:13px; font-weight:600; margin:0 0 6px; }
       .cv-ei-title { font-size:32px; line-height:1.15; font-weight:760; letter-spacing:-.03em; margin:0; }
       .cv-ei-sub { color:#64748b; font-size:14px; margin:6px 0 18px; }
@@ -424,6 +503,8 @@ def report_styles() -> str:
       .cv-ei-reasons { margin:0; padding-left:16px; color:#334155; }
       .cv-ei-reasons li { margin:2px 0; }
       .cv-ei-action { color:#2563eb; font-weight:750; }
+      .cv-ei-action-link{display:inline-flex;align-items:center;color:#2563eb;text-decoration:none;font-weight:800}
+      .cv-ei-action-link:hover{text-decoration:underline;text-underline-offset:3px}
       .cv-ei-action small { display:block; color:#64748b; font-weight:500; margin-top:3px; }
       .cv-ei-table td small, .cv-ei-offer a { display:block; margin-top:4px; color:#64748b; font-size:12px; font-weight:500; line-height:1.35; }
       .cv-ei-offer a { color:#2563eb; font-size:12px; font-weight:650; }
@@ -455,6 +536,7 @@ def engineering_intelligence_html(
     alternatives: list[dict[str, Any]] | None = None,
     health_score: int | None = None,
     include_heading: bool = True,
+    analysis_id: str = "",
 ) -> str:
     rows = _part_rows(parts)
     high = [row for row in rows if row["level"] == "High"]
@@ -483,7 +565,15 @@ def engineering_intelligence_html(
             </section>
             """
         ).strip()
-    body = textwrap.dedent(_tab_body(active, rows, alternatives or [])).strip()
+    body = textwrap.dedent(
+        _tab_body(
+            active,
+            rows,
+            alternatives or [],
+            analysis_id=analysis_id,
+            bom_name=bom_name,
+        )
+    ).strip()
     heading = ""
     if include_heading:
         heading = (
@@ -499,7 +589,14 @@ def engineering_intelligence_html(
     )
 
 
-def _tab_body(tab: str, rows: list[dict[str, Any]], alternatives: list[dict[str, Any]]) -> str:
+def _tab_body(
+    tab: str,
+    rows: list[dict[str, Any]],
+    alternatives: list[dict[str, Any]],
+    *,
+    analysis_id: str = "",
+    bom_name: str = "",
+) -> str:
     if tab == "Supply & Availability":
         body = "".join(
             "<tr>"
@@ -594,7 +691,7 @@ def _tab_body(tab: str, rows: list[dict[str, Any]], alternatives: list[dict[str,
             f"<td>{_component_cell(row)}</td>"
             f"<td><span class='cv-pill {_level_class(row['level'])}'>{row['level']}</span></td>"
             f"<td><ul class='cv-ei-reasons'>{reasons}</ul></td>"
-            f"<td><div class='cv-ei-action'>→ {row['action']}<small>{row['action_detail']}</small></div></td>"
+            f"<td><div class='cv-ei-action'>{_alternative_action_link(row, analysis_id=analysis_id, bom_name=bom_name, source_page='engineering_intelligence_review')}<small>{row['action_detail']}</small></div></td>"
             "</tr>"
         )
     return _table(
@@ -621,14 +718,16 @@ def render_detailed_risk_rows(
     bom_name: str,
     analyzed_on: str,
     parts: list[dict[str, Any]],
+    analysis_id: str = "",
 ) -> None:
     """One expanded part at a time. Each row's control is a real button."""
     import streamlit as st
 
     rows = _part_rows(parts)
-    if "cadivor_detailed_risk_mpn" not in st.session_state:
-        st.session_state["cadivor_detailed_risk_mpn"] = rows[0]["mpn_raw"] if rows else ""
-    selected = str(st.session_state.get("cadivor_detailed_risk_mpn") or "")
+    selection_key = f"cadivor_detailed_risk_mpn_{analysis_id or bom_name}"
+    if selection_key not in st.session_state:
+        st.session_state[selection_key] = ""
+    selected = str(st.session_state.get(selection_key) or "")
     st.markdown(
         f"""
         <div class="cv-ei-report">
@@ -667,7 +766,7 @@ def render_detailed_risk_rows(
                             "Press Enter or Space."
                         ),
                     ):
-                        st.session_state["cadivor_detailed_risk_mpn"] = "" if is_open else row["mpn_raw"]
+                        st.session_state[selection_key] = "" if is_open else row["mpn_raw"]
                         st.rerun()
                     if str(row.get("description_raw") or "").strip():
                         name_col.markdown(
@@ -686,6 +785,12 @@ def render_detailed_risk_rows(
             )
             if is_open:
                 reasons = "".join(f"<li>{driver}</li>" for driver in row["drivers"])
+                alternative_link = _alternative_action_link(
+                    row,
+                    analysis_id=analysis_id,
+                    bom_name=bom_name,
+                    source_page="detailed_risk_report",
+                )
                 recorded_description = (
                     f"<p>{row['description']}</p>"
                     if str(row.get("description_raw") or "").strip()
@@ -705,7 +810,7 @@ def render_detailed_risk_rows(
                       </article>
                       <div>
                         <article class="cv-risk-drivers"><h3>Risk drivers</h3><ul class="cv-ei-reasons">{reasons}</ul></article>
-                        <article class="cv-risk-action"><h3>Recommended action</h3><p>{row['action']}</p><p>{row['action_detail']}</p></article>
+                        <article class="cv-risk-action"><h3>Recommended action</h3><p>{alternative_link}</p><p>{row['action_detail']}</p></article>
                       </div>
                     </div>
                     """,
@@ -719,9 +824,10 @@ def detailed_risk_report_html(
     analyzed_on: str,
     parts: list[dict[str, Any]],
     expanded_mpn: str | None = None,
+    analysis_id: str = "",
 ) -> str:
     rows = _part_rows(parts)
-    expanded = expanded_mpn or (rows[0]["mpn"] if rows else "")
+    expanded = str(expanded_mpn or "").strip()
     body = [
         '<div class="cv-risk-head"><div>MPN</div><div>Manufacturer</div><div>Best source</div><div>Suppliers</div><div>Stock</div><div>Lifecycle</div><div>Risk score</div><div>Risk level</div></div>'
     ]
@@ -732,8 +838,14 @@ def detailed_risk_report_html(
             f"<div>{row['suppliers']}</div><div>{row['stock']:,}</div><div>{row['lifecycle']}</div><div>{row['score']}</div>"
             f"<div><span class='cv-pill {_level_class(row['level'])}'>{row['level']}</span></div></div>"
         )
-        if row["mpn"] == expanded:
+        if row["mpn_raw"] == expanded:
             drivers = "".join(f"<li>{driver}</li>" for driver in row["drivers"])
+            alternative_link = _alternative_action_link(
+                row,
+                analysis_id=analysis_id,
+                bom_name=bom_name,
+                source_page="detailed_risk_report",
+            )
             body.append(
                 f"""
                 <div class="cv-risk-detail">
@@ -747,7 +859,7 @@ def detailed_risk_report_html(
                   </article>
                   <div>
                     <article class="cv-risk-drivers"><h3>Risk drivers</h3><ul class="cv-ei-reasons">{drivers}</ul></article>
-                    <article class="cv-risk-action"><h3>Recommended action</h3><p>{row['action']}</p><p>{row['action_detail']}</p></article>
+                    <article class="cv-risk-action"><h3>Recommended action</h3><p>{alternative_link}</p><p>{row['action_detail']}</p></article>
                   </div>
                 </div>
                 """
@@ -862,6 +974,7 @@ def render_engineering_intelligence_report(
             bom_name=bom_name,
             analyzed_on=analyzed,
             parts=parts or [],
+            analysis_id=str(analysis.get("id") or ""),
         )
         try:
             from src.ui.approved_pages import excel_bytes
@@ -885,6 +998,7 @@ def render_engineering_intelligence_report(
             alternatives=alternatives or [],
             health_score=health_score,
             include_heading=False,
+            analysis_id=str(analysis.get("id") or ""),
         ),
         unsafe_allow_html=True,
     )
