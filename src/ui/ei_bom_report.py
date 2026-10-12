@@ -1110,12 +1110,12 @@ def render_engineering_intelligence_report(
                     .st-key-cv_ei_report_tabs [data-testid="stSegmentedControl"] :is(button,[role="radio"],[role="tab"])[data-selected="true"],
                     .st-key-cv_ei_report_tabs [data-testid="stSegmentedControl"] button[kind="segmented_controlActive"],
                     .st-key-cv_ei_report_tabs [data-testid="stSegmentedControl"] label:has(input:checked),
-                    .st-key-cv_ei_report_tabs [data-testid="stBaseButton-segmented_controlActive"]{{
+                    .st-key-cv_ei_report_tabs button[data-testid="stBaseButton-segmented_controlActive"]{{
                       color:#1d4ed8!important;background:transparent!important;border:0!important;
                       border-radius:0!important;box-shadow:none!important;font-weight:750!important;
                       position:relative!important
                     }}
-                    .st-key-cv_ei_report_tabs [data-testid="stBaseButton-segmented_controlActive"]::after{{
+                    .st-key-cv_ei_report_tabs button[data-testid="stBaseButton-segmented_controlActive"]::after{{
                       content:"";position:absolute;left:10px;right:10px;bottom:0;height:2px;
                       border-radius:2px;background:#2563eb
                     }}
