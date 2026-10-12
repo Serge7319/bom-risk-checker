@@ -87,13 +87,53 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
             alternatives=[],
         )
         self.assertIn(
-            "No approved alternative is stored for this BOM yet. Use Find a replacement to qualify one.",
+            "No approved alternative is recorded for this BOM yet.",
             empty,
         )
         self.assertNotIn("cv-part-photo", empty)
         self.assertIn("BOM Risk", EI_TABS)
         self.assertIn("Supply & Availability", EI_TABS)
         self.assertIn("Alternatives", EI_TABS)
+
+    def test_saved_approvals_are_visible_in_bom_risk_and_alternatives_tabs(self):
+        approved = [{
+            "original_part": "MPN-001",
+            "alternative_part": "MPN-901",
+            "decision": "Approved",
+            "project_name": "Sample BOM",
+            "engineer_name": "A. Engineer",
+            "engineering_note": "Package and pinout reviewed",
+            "source_snapshot": {
+                "selected_alternative": {
+                    "Manufacturer": "AlphaSemi",
+                    "Description": "Replacement controller",
+                }
+            },
+        }]
+        risk = engineering_intelligence_html(
+            bom_name="Sample BOM",
+            part_count=2,
+            tab="BOM Risk",
+            parts=PARTS,
+            approved_alternatives=approved,
+        )
+        self.assertIn("Approved alternative: MPN-901", risk)
+        alternatives = engineering_intelligence_html(
+            bom_name="Sample BOM",
+            part_count=2,
+            tab="Alternatives",
+            parts=PARTS,
+            approved_alternatives=approved,
+        )
+        self.assertIn("Approved alternatives", alternatives)
+        self.assertIn("MPN-901", alternatives)
+        self.assertIn("A. Engineer", alternatives)
+
+    def test_engineering_intelligence_page_explains_selected_tab_and_refresh_action(self):
+        source = (Path(__file__).resolve().parents[1] / "src" / "ui" / "ei_bom_report.py").read_text()
+        self.assertIn("cv-ei-selected-tab", source)
+        self.assertIn("Open BOM to rerun", source)
+        self.assertIn("saved_bom_action=\"open\"", source)
 
     def test_tables_use_catalog_photos_and_the_same_placeholder(self):
         catalog = "https://media.digikey.com/Photos/Texas%20Instruments/LM358.jpg"

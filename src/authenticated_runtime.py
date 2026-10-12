@@ -679,7 +679,10 @@ def save_analysis_decision(user_id, payload):
     original_part = str(payload.get("original_part", "")).strip()
     alternative_part = str(payload.get("alternative_part", "")).strip()
     analysis_id = payload.get("analysis_id")
-    context_key = _decision_context_key(analysis_id)
+    context_key = (
+        str(payload.get("context_key") or _decision_context_key(analysis_id)).strip()
+        or "standalone"
+    )
 
     if not original_part or not alternative_part:
         raise ValueError("Original and alternative part numbers are required.")
@@ -715,6 +718,7 @@ def save_analysis_decision(user_id, payload):
         "comparison_snapshot": _make_json_safe(
             payload.get("comparison_snapshot", {}) or {}
         ),
+        "archived_at": None,
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
 

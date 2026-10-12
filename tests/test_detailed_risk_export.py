@@ -89,7 +89,7 @@ def _check_excel_export_has_summary_details_and_high_risk_views_without_private_
     assert metrics["Low risk"] == 1
     assert metrics["Stock not reported"] == 1
     assert metrics["Stock coverage incomplete"] == 1
-    assert metrics["Stock coverage not recorded"] == 0
+    assert metrics["Stock coverage unavailable"] == 0
 
     details = workbook["Component Details"]
     headers = [cell.value for cell in details[1]]
@@ -101,7 +101,7 @@ def _check_excel_export_has_summary_details_and_high_risk_views_without_private_
     second = dict(zip(headers, [cell.value for cell in details[3]]))
     assert first["Stock"] == "Not reported"
     assert first["Description"] == "Dual operational amplifier"
-    assert first["Evidence source"] == "Not recorded"
+    assert first["Evidence source"] == "—"
     assert first["Recorded supplier"] == "Mouser"
     assert first["Stock coverage"] == "Incomplete"
     assert "No stock available" not in first["Why"]
@@ -126,7 +126,7 @@ def _check_csv_export_matches_stress_free_audit_columns_and_marks_unknown_stock(
     assert tuple(rows[0].keys()) == CSV_COLUMNS
     assert rows[0]["MPN"] == "LM358N"
     assert rows[0]["Stock"] == "Not reported"
-    assert rows[0]["Evidence source"] == "Not recorded"
+    assert rows[0]["Evidence source"] == "—"
     assert rows[1]["Stock"] == "0"
     assert rows[1]["Evidence source"] == "DigiKey"
     assert rows[1]["Why"].startswith("'=")
@@ -138,6 +138,39 @@ class DetailedRiskExportTests(unittest.TestCase):
 
     def test_csv_export_matches_stress_free_audit_columns(self):
         _check_csv_export_matches_stress_free_audit_columns_and_marks_unknown_stock()
+
+    def test_approved_alternatives_are_included_in_both_downloads(self):
+        approval = {
+            "original_part": "LM358N",
+            "alternative_part": "LM358DR2G",
+            "decision": "Approved",
+            "project_name": "Flight Controller Rev B",
+            "engineer_name": "Engineer",
+            "engineering_note": "Reviewed against the datasheet",
+        }
+        excel = load_workbook(
+            BytesIO(
+                detailed_risk_excel_bytes(
+                    PARTS,
+                    bom_name="Flight Controller Rev B",
+                    approved_alternatives=[approval],
+                )
+            ),
+            data_only=True,
+        )
+        details = excel["Component Details"]
+        headers = [cell.value for cell in details[1]]
+        first = dict(zip(headers, [cell.value for cell in details[2]]))
+        self.assertEqual(first["Approved alternatives"], "LM358DR2G")
+
+        rows = list(
+            csv.DictReader(
+                StringIO(
+                    detailed_risk_csv_bytes(PARTS, [approval]).decode("utf-8-sig")
+                )
+            )
+        )
+        self.assertEqual(rows[0]["Approved alternatives"], "LM358DR2G")
 
     def test_detailed_risk_page_delivers_the_customer_exports(self):
         from src.ui import ei_bom_report

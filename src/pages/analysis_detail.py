@@ -1997,11 +1997,49 @@ def render_analysis_detail(
         if active_tab == "Engineering Intelligence":
             from src.ui.ei_bom_report import render_engineering_intelligence_report
 
+            approved_alternatives: list[dict[str, Any]] = []
+            approval_load_failed = False
+            report_project_name = str(
+                analysis.get("project_name") or analysis.get("filename") or "Saved BOM"
+            ).strip()
+            try:
+                from src.approved_alternatives import (
+                    approved_records_for_bom,
+                    project_decision_context_key,
+                )
+                from src.authenticated_runtime import load_analysis_decisions
+
+                decision_records: list[dict[str, Any]] = []
+                for decision_context in dict.fromkeys(
+                    (
+                        project_decision_context_key(report_project_name, analysis_id),
+                        str(analysis_id),
+                    )
+                ):
+                    decision_records.extend(
+                        load_analysis_decisions(
+                            user_id,
+                            analysis_id=decision_context,
+                            limit=500,
+                        )
+                        or []
+                    )
+                approved_alternatives = approved_records_for_bom(
+                    decision_records,
+                    parts or [],
+                    project_name=report_project_name,
+                    analysis_id=str(analysis_id),
+                )
+            except Exception:
+                approval_load_failed = True
+
             render_engineering_intelligence_report(
                 analysis=analysis,
                 parts=parts or [],
                 alternatives=alternatives or [],
                 health_score=health,
+                approved_alternatives=approved_alternatives,
+                approval_load_failed=approval_load_failed,
             )
             return
 
