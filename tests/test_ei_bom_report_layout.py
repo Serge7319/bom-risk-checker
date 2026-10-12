@@ -6,6 +6,7 @@ from src.ui.ei_bom_report import (
     bom_catalog_html,
     detailed_risk_report_html,
     engineering_intelligence_html,
+    _ei_tab_indicator_html,
 )
 
 
@@ -131,9 +132,19 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
 
     def test_engineering_intelligence_page_explains_selected_tab_and_refresh_action(self):
         source = (Path(__file__).resolve().parents[1] / "src" / "ui" / "ei_bom_report.py").read_text()
-        self.assertIn("cv-ei-selected-tab", source)
+        self.assertIn("cv-ei-tab-indicator-track", source)
+        self.assertNotIn("cv-ei-selected-tab", source)
         self.assertIn("Open BOM to rerun", source)
         self.assertIn("saved_bom_action=\"open\"", source)
+
+    def test_each_engineering_intelligence_tab_gets_one_selected_indicator(self):
+        for tab in EI_TABS:
+            with self.subTest(tab=tab):
+                markup = _ei_tab_indicator_html(tab)
+                self.assertIn(f"aria-label='Selected tab: {tab.replace('&', '&amp;')}'", markup)
+                self.assertEqual(markup.count("is-active"), 1)
+        fallback = _ei_tab_indicator_html("unknown")
+        self.assertIn("aria-label='Selected tab: BOM Risk'", fallback)
 
     def test_tables_use_catalog_photos_and_the_same_placeholder(self):
         catalog = "https://media.digikey.com/Photos/Texas%20Instruments/LM358.jpg"
