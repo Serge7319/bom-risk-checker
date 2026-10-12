@@ -145,12 +145,16 @@ def _esc(value: Any, fallback: str = "—") -> str:
 
 
 def _ei_tab_indicator_html(tab: str) -> str:
-    """Render an explicit underline at the selected Engineering Intelligence tab."""
+    """Render a compact underline aligned to the selected tab label."""
     active = tab if tab in EI_TABS else EI_TABS[0]
     cells = "".join(
-        "<span class='cv-ei-tab-indicator-cell is-active'></span>"
+        "<span class='cv-ei-tab-indicator-cell is-active' aria-hidden='true'>"
+        f"<span class='cv-ei-tab-indicator-label'>{html.escape(name)}</span></span>"
         if name == active
-        else "<span class='cv-ei-tab-indicator-cell'></span>"
+        else (
+            "<span class='cv-ei-tab-indicator-cell' aria-hidden='true'>"
+            f"<span class='cv-ei-tab-indicator-label'>{html.escape(name)}</span></span>"
+        )
         for name in EI_TABS
     )
     return (
@@ -580,8 +584,9 @@ def report_styles() -> str:
       .cv-ei-action-link:hover{text-decoration:underline;text-underline-offset:3px}
       .cv-ei-action small { display:block; color:#64748b; font-weight:500; margin-top:3px; }
       .cv-ei-action .cv-ei-approved,.cv-ei-approved{display:inline-flex;align-items:center;width:max-content;max-width:100%;margin-top:6px;padding:4px 8px;border:1px solid #bbf7d0;border-radius:999px;background:#f0fdf4;color:#15803d;font-size:11px;font-weight:750;line-height:1.3}
-      .cv-ei-tab-indicator-track{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:0;width:100%;height:4px;margin:0 0 12px;border-bottom:1px solid #e2e8f0}
-      .cv-ei-tab-indicator-cell{display:block;height:3px}
+      .cv-ei-tab-indicator-track{display:flex;align-items:flex-end;justify-content:flex-end;gap:0;width:100%;height:4px;margin:0 0 12px;border-bottom:1px solid #e2e8f0}
+      .cv-ei-tab-indicator-cell{display:block;flex:0 0 auto;height:3px;border-radius:3px 3px 0 0}
+      .cv-ei-tab-indicator-label{display:block;width:max-content;height:0;overflow:hidden;padding:0 10px;visibility:hidden;white-space:nowrap;font-family:inherit;font-size:14px;font-weight:400;line-height:0}
       .cv-ei-tab-indicator-cell.is-active{background:#2563eb;border-radius:3px 3px 0 0}
       .cv-ei-refresh-card{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:14px 16px;margin:0 0 16px;border:1px solid #dbeafe;border-radius:14px;background:#f8fbff}
       .cv-ei-refresh-card strong{display:block;color:#1e3a8a;font-size:14px}
