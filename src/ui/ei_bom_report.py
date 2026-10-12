@@ -509,8 +509,10 @@ def report_styles() -> str:
       .st-key-ei_report_workspace .cv-ap h1 { margin:0 0 6px; color:#0f172a; font-size:32px; font-weight:760; line-height:1.15; letter-spacing:-.03em; }
       .st-key-ei_report_workspace .cv-ei-title { font-size:30px; }
       .st-key-ei_report_workspace .cv-ei-section { min-width:0; margin:0 0 18px; overflow:hidden; background:#fff; border:1px solid #cbd8e8; border-radius:16px; box-shadow:0 3px 12px rgba(15,23,42,.045); }
-      .st-key-ei_report_workspace .cv-ei-section > h3 { margin:0; padding:20px 22px 0; color:#0f172a; font-size:19px; line-height:1.25; font-weight:750; letter-spacing:-.02em; }
-      .st-key-ei_report_workspace .cv-ei-section > p { margin:0; padding:5px 22px 16px; color:#64748b; font-size:13px; line-height:1.5; }
+      .cv-ei-section-heading { box-sizing:border-box; padding:18px 22px 14px; }
+      .cv-ei-section-heading > h3 { margin:0!important; padding:0!important; color:#0f172a; font-size:19px!important; line-height:1.25; font-weight:750; letter-spacing:-.02em; }
+      .cv-ei-section-heading > p { margin:6px 0 0!important; padding:0!important; color:#64748b; font-size:13px!important; line-height:1.5; }
+      .cv-ei-section-heading > .cv-ei-data-note { margin-top:7px!important; color:#64748b; font-size:12px!important; line-height:1.4; }
       .st-key-ei_report_workspace .cv-ei-table-wrap { width:100%;max-width:100%;overflow-x:auto;border-radius:0 0 15px 15px;overscroll-behavior-inline:contain; }
       .st-key-ei_report_workspace .cv-ei-table { min-width:760px; border:0; border-radius:0; }
       .st-key-ei_report_workspace .cv-ei-table th { color:#64748b; background:#f7f9fc; border-top:1px solid #e5ebf3; border-bottom:1px solid #dce4ef; vertical-align:middle; }
@@ -581,8 +583,9 @@ def report_styles() -> str:
       @media (max-width: 900px) {
         .st-key-ei_report_workspace .cv-ap h1 { font-size:26px; }
         .st-key-ei_report_workspace .cv-ei-title { font-size:26px; }
-        .st-key-ei_report_workspace .cv-ei-section > h3 { padding:16px 16px 0; font-size:17px; }
-        .st-key-ei_report_workspace .cv-ei-section > p { padding:5px 16px 13px; font-size:12px; }
+        .cv-ei-section-heading { padding:16px; }
+        .cv-ei-section-heading > h3 { font-size:17px!important; }
+        .cv-ei-section-heading > p { font-size:12px!important; }
         .cv-ei-kpis { grid-template-columns:repeat(2,minmax(0,1fr)); }
         .cv-risk-row, .cv-risk-head { display:block; }
         .cv-risk-detail { grid-template-columns:1fr; padding:12px 0; }
@@ -593,8 +596,7 @@ def report_styles() -> str:
         .st-key-ei_report_workspace .cv-ei-title { font-size:23px; }
         .st-key-ei_report_workspace .cv-ei-kpis { grid-template-columns:1fr; }
         .st-key-ei_report_workspace .cv-ei-section { border-radius:13px; }
-        .st-key-ei_report_workspace .cv-ei-section > h3 { padding:14px 13px 0; }
-        .st-key-ei_report_workspace .cv-ei-section > p { padding:5px 13px 12px; }
+        .cv-ei-section-heading { padding:14px 13px 12px; }
         .st-key-cv_ei_report_tabs button { white-space:normal!important;text-align:left!important; }
       }
     </style>
@@ -700,7 +702,7 @@ def _tab_body(
         )
         return _table(
             "Supply and availability",
-            "Distributor coverage, stock, and lead time from the saved analysis.",
+            "Distributor coverage, stock, and lead time recorded in the saved analysis.",
             ["Component", "Best source", "Suppliers", "Stock", "Lead time (weeks)", "Lifecycle", "Risk"],
             body,
         )
@@ -757,7 +759,7 @@ def _tab_body(
             )
         return _table(
             "Cost insights",
-            "Values come from the saved analysis. Extended cost needs both a recorded unit price and BOM quantity; distributor savings appear only when saved offers are comparable at that quantity. Re-run the analysis to refresh supplier data. Offers are evidence, not a ranked recommendation.",
+            "Values come from the saved analysis. Extended cost needs both a recorded unit price and BOM quantity; distributor savings appear only when saved offers are comparable at that quantity. Offers are evidence, not a ranked recommendation.",
             ["Component", "Manufacturer", "Unit price", "Recorded source", "Extended cost", "Risk"],
             body,
         )
@@ -797,8 +799,11 @@ def _table(title: str, copy: str, headers: list[str], body: str) -> str:
     head = "".join(f"<th>{_esc(header)}</th>" for header in headers)
     return f"""
     <section class="cv-ei-section">
-      <h3>{_esc(title)}</h3>
-      <p>{_esc(copy)}</p>
+      <div class="cv-ei-section-heading">
+        <h3>{_esc(title)}</h3>
+        <p>{_esc(copy)}</p>
+        <p class="cv-ei-data-note">Saved analysis snapshot. Re-run this BOM analysis to refresh stock, lead time, and lifecycle data.</p>
+      </div>
       <div class="cv-ei-table-wrap" role="region" aria-label="{_esc(title)} table" tabindex="0">
         <table class="cv-ei-table"><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table>
       </div>
@@ -1039,16 +1044,23 @@ def render_engineering_intelligence_report(
                       width:100%;background:transparent!important;border-bottom:1px solid #e2e8f0;
                       border-radius:0!important;box-shadow:none!important
                     }}
-                    .st-key-cv_ei_report_tabs [data-testid="stSegmentedControl"] button{{
+                    .st-key-cv_ei_report_tabs [data-testid="stSegmentedControl"] :is(button,[role="radio"],[role="tab"]){{ 
                       color:#64748b!important;background:transparent!important;border:0!important;
                       border-bottom:2px solid transparent!important;border-radius:0!important;
                       box-shadow:none!important;min-height:34px!important;padding:6px 10px!important;
                       white-space:nowrap!important
                     }}
-                    .st-key-cv_ei_report_tabs [data-testid="stSegmentedControl"] button[aria-checked="true"],
-                    .st-key-cv_ei_report_tabs [data-testid="stSegmentedControl"] button[aria-pressed="true"]{{
-                      color:#1d4ed8!important;border-bottom-color:#2563eb!important;font-weight:750!important
+                    .st-key-cv_ei_report_tabs [data-testid="stSegmentedControl"] :is(button,[role="radio"],[role="tab"])[aria-checked="true"],
+                    .st-key-cv_ei_report_tabs [data-testid="stSegmentedControl"] :is(button,[role="radio"],[role="tab"])[aria-pressed="true"],
+                    .st-key-cv_ei_report_tabs [data-testid="stSegmentedControl"] :is(button,[role="radio"],[role="tab"])[aria-selected="true"],
+                    .st-key-cv_ei_report_tabs [data-testid="stSegmentedControl"] :is(button,[role="radio"],[role="tab"])[data-selected="true"],
+                    .st-key-cv_ei_report_tabs [data-testid="stSegmentedControl"] label:has(input:checked){{
+                      color:#1d4ed8!important;background:transparent!important;border:0!important;
+                      border-bottom:2px solid #2563eb!important;border-radius:0!important;
+                      box-shadow:none!important;font-weight:750!important
                     }}
+                    .st-key-cv_ei_report_tabs [data-testid="stSegmentedControl"] button:focus:not(:focus-visible){{outline:none!important}}
+                    .st-key-cv_ei_report_tabs [data-testid="stSegmentedControl"] button:focus-visible{{outline:2px solid #93c5fd!important;outline-offset:2px!important}}
                     @media(max-width:760px){{.st-key-cv_ei_report_tabs{{overflow-x:auto}}}}
                     </style>
                     """,
@@ -1066,17 +1078,40 @@ def render_engineering_intelligence_report(
                 analysis_id=str(analysis.get("id") or ""),
             )
             try:
-                from src.ui.approved_pages import excel_bytes
-
-                st.download_button(
-                    "Download Excel Report",
-                    data=excel_bytes(parts or []),
-                    file_name="detailed-risk-report.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    key="approved_detailed_risk_excel",
+                from src.ui.detailed_risk_export import (
+                    detailed_risk_csv_bytes,
+                    detailed_risk_excel_bytes,
                 )
+
+                report_source = str(
+                    _first(analysis, "filename", "file_name", "uploaded_file", fallback="") or ""
+                )
+                download_cols = st.columns(2)
+                with download_cols[0]:
+                    st.download_button(
+                        "Download Excel Report",
+                        data=detailed_risk_excel_bytes(
+                            parts or [],
+                            bom_name=bom_name,
+                            source_filename=report_source,
+                            analyzed_on=analyzed,
+                        ),
+                        file_name="cadivor-detailed-risk-report.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        key="approved_detailed_risk_excel",
+                        use_container_width=True,
+                    )
+                with download_cols[1]:
+                    st.download_button(
+                        "Download CSV Audit",
+                        data=detailed_risk_csv_bytes(parts or []),
+                        file_name="cadivor-detailed-risk-report.csv",
+                        mime="text/csv",
+                        key="approved_detailed_risk_csv",
+                        use_container_width=True,
+                    )
             except Exception:
-                st.caption("Excel export is unavailable for this analysis.")
+                st.caption("Report downloads are unavailable for this analysis.")
             return
         st.markdown(
             engineering_intelligence_html(
