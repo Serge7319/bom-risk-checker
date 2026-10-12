@@ -19,6 +19,7 @@ CSV_COLUMNS = (
     "Lead time (weeks)",
     "Suppliers",
     "Evidence source",
+    "Approved alternatives",
     "Risk",
     "Why",
 )
@@ -43,10 +44,11 @@ DETAIL_COLUMNS = (
     "Lifecycle evidence",
     "Lifecycle conflict",
     "Alternate search status",
+    "Approved alternatives",
     "Unit price",
 )
 
-_MISSING = {"", "nan", "none", "null", "nat"}
+_MISSING = {"", "nan", "none", "null", "nat", "not recorded"}
 
 
 def _first(record: dict[str, Any], *keys: str, default: Any = None) -> Any:
@@ -83,7 +85,7 @@ def _json_value(value: Any) -> Any:
         return value
 
 
-def _text(value: Any, fallback: str = "Not recorded") -> str:
+def _text(value: Any, fallback: str = "—") -> str:
     if value is None:
         return fallback
     if isinstance(value, (dict, list, tuple)):
@@ -140,11 +142,11 @@ def _flag(value: Any) -> bool | None:
 def _lifecycle_evidence(value: Any) -> str:
     value = _json_value(value)
     if value in (None, "", [], {}):
-        return "Not recorded"
+        return "—"
     if isinstance(value, (list, tuple)):
         parts = [_joined(item) for item in value]
-        return "; ".join(item for item in parts if item) or "Not recorded"
-    return _joined(value) or "Not recorded"
+        return "; ".join(item for item in parts if item) or "—"
+    return _joined(value) or "—"
 
 
 def _reasons(record: dict[str, Any]) -> str:
@@ -163,7 +165,7 @@ def _reasons(record: dict[str, Any]) -> str:
             else reason
             for reason in reasons
         ]
-    return "; ".join(reasons) or "Supplier data needs verification"
+    return "; ".join(reasons) or "No risk explanation was saved for this component."
 
 
 def _risk(record: dict[str, Any]) -> tuple[str, int | float | None]:
@@ -191,7 +193,7 @@ def _stock(record: dict[str, Any]) -> int | float | str:
         return "Not reported"
     # Before source provenance was stored, zero was also used as an empty
     # default. Only present zero when a distributor explicitly returned stock.
-    if value == 0 and _sources(record) == "Not recorded":
+    if value == 0 and _sources(record) == "—":
         return "Not reported"
     return value
 
@@ -200,16 +202,16 @@ def _lead_time(record: dict[str, Any]) -> int | float | str:
     value = _first(record, "lead_time_weeks", "Lead Time Weeks", "lead_time", "Lead time (weeks)")
     number = _number(value)
     if number is not None:
-        return number if number > 0 else "Not reported"
+        return number if number > 0 else "—"
     return _text(value)
 
 
 def _supplier_count(record: dict[str, Any]) -> int | float | str:
     value = _number(_first(record, "supplier_count", "Supplier Count", "Suppliers"))
     if value is None:
-        return "Not recorded"
+        return "—"
     if value == 0 and _text(record.get("supplier_coverage"), "") == "":
-        return "Not recorded"
+        return "—"
     return value
 
 
@@ -220,10 +222,15 @@ def _safe_cell(value: Any) -> Any:
     return value
 
 
-def component_rows(parts: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+def component_rows(
+    parts: list[dict[str, Any]] | None,
+    approved_alternatives: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
     """Convert stored component records to an explicitly whitelisted report schema."""
     from src.ui.ei_bom_report import _description_text
+    from src.approved_alternatives import approved_mpn_map, part_key
 
+    approved_by_part = approved_mpn_map(approved_alternatives)
     output = []
     for record in parts or []:
         if not isinstance(record, dict):
@@ -232,12 +239,20 @@ def component_rows(parts: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
         lifecycle = _text(_first(record, "lifecycle_status", "Lifecycle Status", "lifecycle"), "Unknown")
         stock_sources = _sources(record)
         complete = _flag(record.get("stock_data_complete"))
-        coverage = "Complete" if complete is True else "Incomplete" if complete is False else "Not recorded"
+        supplier_count_value = _number(_first(record, "supplier_count", "Supplier Count", "Suppliers"))
+        has_supplier_evidence = stock_sources != "—" or (supplier_count_value or 0) > 0
+        coverage = (
+            "Complete"
+            if complete is True
+            else "Incomplete"
+            if complete is False and has_supplier_evidence
+            else "Unavailable"
+        )
         conflict = _flag(record.get("lifecycle_conflict"))
         evidence_conflict = (
             "Conflict detected" if conflict is True
             else "No conflict recorded" if conflict is False
-            else "Not recorded"
+            else "Unavailable"
         )
         price = _number(_first(record, "unit_price", "Unit Price", "price"))
         output.append({
@@ -252,6 +267,13 @@ def component_rows(parts: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
             "Lifecycle": lifecycle,
             "Stock": _stock(record),
             "Evidence source": stock_sources,
+            "Approved alternatives": ", ".join(
+                str(item.get("alternative_part") or "").strip()
+                for item in approved_by_part.get(
+                    part_key(_first(record, "mpn", "MPN", "part_number", "manufacturer_part_number")), []
+                )
+                if str(item.get("alternative_part") or "").strip()
+            ) or "—",
             "Recorded supplier": _text(_first(record, "primary_supplier", "best_source", "supplier", "distributor")),
             "Stock coverage": coverage,
             "Lead time (weeks)": _lead_time(record),
@@ -264,12 +286,15 @@ def component_rows(parts: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
             "Lifecycle evidence": _lifecycle_evidence(record.get("lifecycle_evidence")),
             "Lifecycle conflict": evidence_conflict,
             "Alternate search status": _text(record.get("alternate_search_status")),
-            "Unit price": price if price is not None and price > 0 else "Not recorded",
+            "Unit price": price if price is not None and price > 0 else "—",
         })
     return output
 
 
-def detailed_risk_csv_bytes(parts: list[dict[str, Any]] | None) -> bytes:
+def detailed_risk_csv_bytes(
+    parts: list[dict[str, Any]] | None,
+    approved_alternatives: list[dict[str, Any]] | None = None,
+) -> bytes:
     """CSV export with the same user-facing columns as the Stress Free audit."""
     rows = [
         {
@@ -280,10 +305,11 @@ def detailed_risk_csv_bytes(parts: list[dict[str, Any]] | None) -> bytes:
             "Lead time (weeks)": row["Lead time (weeks)"],
             "Suppliers": row["Supplier count"],
             "Evidence source": row["Evidence source"],
+            "Approved alternatives": row["Approved alternatives"],
             "Risk": row["Risk"],
             "Why": row["Why"],
         }
-        for row in component_rows(parts)
+        for row in component_rows(parts, approved_alternatives)
     ]
     buffer = StringIO(newline="")
     writer = csv.DictWriter(buffer, fieldnames=CSV_COLUMNS, extrasaction="ignore")
@@ -295,7 +321,7 @@ def detailed_risk_csv_bytes(parts: list[dict[str, Any]] | None) -> bytes:
 def _report_date(value: Any) -> str:
     raw = str(value or "").strip()
     if not raw:
-        return "Not recorded"
+        return "—"
     try:
         parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
         if parsed.tzinfo is not None:
@@ -311,6 +337,7 @@ def detailed_risk_excel_bytes(
     bom_name: str,
     source_filename: str = "",
     analyzed_on: Any = "",
+    approved_alternatives: list[dict[str, Any]] | None = None,
 ) -> bytes:
     """Build a branded, evidence-aware workbook without database identifiers."""
     from openpyxl import Workbook
@@ -318,7 +345,7 @@ def detailed_risk_excel_bytes(
     from openpyxl.utils import get_column_letter
     from openpyxl.worksheet.table import Table, TableStyleInfo
 
-    rows = component_rows(parts)
+    rows = component_rows(parts, approved_alternatives)
     high_rows = [row for row in rows if row["Risk"] == "High"]
     workbook = Workbook()
     workbook.properties.title = "Cadivor BOM Risk Report"
@@ -363,7 +390,7 @@ def detailed_risk_excel_bytes(
     unreported_stock = sum(row["Stock"] == "Not reported" for row in rows)
     stock_coverage_counts = {
         state: sum(row["Stock coverage"] == state for row in rows)
-        for state in ("Complete", "Incomplete", "Not recorded")
+        for state in ("Complete", "Incomplete", "Unavailable")
     }
     metrics = [
         ("Total components", len(rows)),
@@ -376,7 +403,8 @@ def detailed_risk_excel_bytes(
         ("Stock not reported", unreported_stock),
         ("Stock coverage complete", stock_coverage_counts["Complete"]),
         ("Stock coverage incomplete", stock_coverage_counts["Incomplete"]),
-        ("Stock coverage not recorded", stock_coverage_counts["Not recorded"]),
+        ("Stock coverage unavailable", stock_coverage_counts["Unavailable"]),
+        ("Components with approved alternatives", sum(row["Approved alternatives"] != "—" for row in rows)),
     ]
     summary.merge_cells("A8:B8")
     summary["A8"] = "Analysis summary"
@@ -396,7 +424,8 @@ def detailed_risk_excel_bytes(
     summary.cell(note_row, 1).font = Font(name="Aptos", size=12, bold=True, color=navy)
     notes = (
         "Stock is shown as Not reported when the saved record has no usable count. A zero is shown only when stock-source evidence is recorded.",
-        "Stock coverage is Complete only when the saved analysis records complete distributor counts. Missing evidence is labeled instead of treated as zero.",
+        "A dash (—) means the saved analysis did not include that optional value. Re-run the analysis to refresh supplier evidence.",
+        "Approved alternatives are user-recorded decisions. They do not independently verify electrical or mechanical compatibility.",
         "Risk ratings and reasons reflect the saved analysis. Re-run the analysis to refresh distributor data.",
     )
     for offset, note in enumerate(notes, start=1):
@@ -448,7 +477,8 @@ def detailed_risk_excel_bytes(
             "Stock coverage": 18, "Lead time (weeks)": 17, "Lead-time source": 22,
             "Supplier count": 15, "Supplier coverage": 40, "Risk": 14,
             "Risk score": 13, "Why": 58, "Lifecycle evidence": 44,
-            "Lifecycle conflict": 22, "Alternate search status": 38, "Unit price": 14,
+            "Lifecycle conflict": 22, "Alternate search status": 38,
+            "Approved alternatives": 28, "Unit price": 14,
         }
         for index, label in enumerate(DETAIL_COLUMNS, start=1):
             sheet.column_dimensions[sheet.cell(1, index).column_letter].width = widths[label]

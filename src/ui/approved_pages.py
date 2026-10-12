@@ -7,6 +7,7 @@ invented when the workspace has different BOMs.
 from __future__ import annotations
 
 import html
+import hashlib
 import io
 from functools import wraps
 from datetime import datetime, timedelta, timezone
@@ -3255,6 +3256,275 @@ def excel_bytes(rows: list[dict[str, Any]]) -> bytes:
     return buffer.getvalue()
 
 
+def _render_bom_replacement_approvals(
+    *,
+    source_context: Any,
+    query: str,
+    original: dict[str, Any],
+    candidates: list[dict[str, Any]],
+) -> None:
+    """Record up to three user-approved alternates against the linked saved BOM."""
+    from src.approved_alternatives import (
+        approval_candidate_options,
+        approved_records_for_part,
+        part_key,
+        project_decision_context_key,
+    )
+    from src.normalizer import normalize_part_number
+
+    context = source_context if isinstance(source_context, dict) else {}
+    source_mpn = str(context.get("mpn") or original.get("manufacturer_part_number") or "").strip()
+    query_key = normalize_part_number(query) or str(query or "").strip().upper()
+    source_key = normalize_part_number(source_mpn) or source_mpn.upper()
+    if not query_key or not source_key or query_key != source_key:
+        if query_key:
+            st.info(
+                "To save an approval to a BOM, open Find a replacement from that BOM’s “Review alternative parts” action."
+            )
+        return
+
+    analysis_id = str(
+        context.get("analysis_id")
+        or st.session_state.get("cadivor_active_analysis_id")
+        or st.session_state.get("analysis_id")
+        or ""
+    ).strip()
+    project_name = str(
+        context.get("project_name")
+        or context.get("bom_name")
+        or st.session_state.get("project_name")
+        or analysis_id
+    ).strip()
+    if not analysis_id:
+        st.info(
+            "This search is not linked to a saved BOM. Open Find a replacement from the BOM Risk page to record an approval there."
+        )
+        return
+
+    auth_user = st.session_state.get("user")
+    user_id = (
+        auth_user.get("id")
+        if isinstance(auth_user, dict)
+        else getattr(auth_user, "id", "")
+    ) or st.session_state.get("user_id")
+    user_id = str(user_id or "").strip()
+    if not user_id:
+        st.warning("Sign in again before saving replacement approvals.")
+        return
+
+    context_key = project_decision_context_key(project_name, analysis_id)
+    try:
+        from src.authenticated_runtime import load_analysis_decisions
+
+        records: list[dict[str, Any]] = []
+        for decision_context in dict.fromkeys((context_key, analysis_id)):
+            records.extend(
+                load_analysis_decisions(
+                    user_id,
+                    analysis_id=decision_context,
+                    limit=500,
+                )
+                or []
+            )
+    except Exception as exc:
+        st.error(f"Could not load saved approvals for this BOM: {exc}")
+        return
+
+    existing_records = [
+        row
+        for row in records
+        if isinstance(row, dict)
+        and str(row.get("decision") or "").strip().casefold() == "approved"
+        and part_key(row.get("original_part")) == part_key(source_mpn)
+        and part_key(row.get("alternative_part"))
+        and part_key(row.get("alternative_part")) != part_key(source_mpn)
+    ]
+    existing = approved_records_for_part(
+        existing_records,
+        source_mpn,
+        project_name=project_name,
+        analysis_id=analysis_id,
+    )
+    flash = st.session_state.pop("cadivor_approved_alternatives_flash", "")
+    if flash:
+        st.success(str(flash))
+    approved_names = [str(row.get("alternative_part") or "").strip() for row in existing]
+    approved_names = [name for name in approved_names if name]
+    if approved_names:
+        st.success(
+            f"Approved alternatives already on file for {source_mpn}: "
+            + ", ".join(approved_names)
+        )
+    if len(approved_names) > 3:
+        st.warning("More than three alternatives are currently approved. Select up to three and save to update the active list.")
+
+    st.markdown("#### Record approved alternatives")
+    st.caption(
+        "Select up to three replacements your engineering team has reviewed. "
+        "This records your team’s decision; it does not certify electrical or mechanical compatibility."
+    )
+    candidate_by_key = {
+        part_key(_candidate_mpn(row)): row
+        for row in candidates
+        if (
+            isinstance(row, dict)
+            and _candidate_mpn(row)
+            and part_key(_candidate_mpn(row)) != part_key(source_mpn)
+        )
+    }
+    options = approval_candidate_options(candidate_by_key.keys(), existing)
+    # Keep the original candidate spelling for the dropdown and its snapshot.
+    option_values = []
+    option_seen: set[str] = set()
+    for value in [*candidate_by_key.values()]:
+        candidate_mpn = _candidate_mpn(value)
+        key = part_key(candidate_mpn)
+        if candidate_mpn and key not in option_seen:
+            option_seen.add(key)
+            option_values.append(candidate_mpn)
+    for value in options:
+        key = part_key(value)
+        if value and key not in option_seen:
+            option_seen.add(key)
+            option_values.append(value)
+    existing_keys = {part_key(name) for name in approved_names}
+    defaults = [name for name in option_values if part_key(name) in existing_keys][:3]
+    widget_suffix = hashlib.sha1(
+        f"{context_key}|{part_key(source_mpn)}".encode("utf-8")
+    ).hexdigest()[:12]
+    selected = st.multiselect(
+        "Alternatives to approve (up to 3)",
+        options=option_values,
+        default=defaults,
+        max_selections=3,
+        key=f"cadivor_approved_alternatives_{widget_suffix}",
+    )
+    note_value = st.text_area(
+        "Engineering approval note (applies to selected alternatives)",
+        placeholder="For example: reviewed datasheet and validated package, pinout, and operating range.",
+        height=72,
+        key=f"cadivor_approved_alternatives_note_{widget_suffix}",
+    )
+    st.caption(
+        "Saving replaces this component’s active approvals for this BOM. Clear the selection and save to remove them."
+    )
+    if not st.button(
+        "Save approved alternatives",
+        key=f"cadivor_approved_alternatives_save_{widget_suffix}",
+        type="primary",
+        disabled=not option_values and not existing,
+    ):
+        return
+
+    selected_keys = {part_key(value) for value in selected if part_key(value)}
+    by_approved_key = {part_key(row.get("alternative_part")): row for row in existing}
+    profile = st.session_state.get("profile")
+    profile = profile if isinstance(profile, dict) else {}
+    user_metadata = getattr(auth_user, "user_metadata", {}) or {}
+    if not isinstance(user_metadata, dict):
+        user_metadata = {}
+    engineer_name = str(
+        profile.get("full_name")
+        or profile.get("name")
+        or user_metadata.get("full_name")
+        or user_metadata.get("name")
+        or (auth_user.get("email") if isinstance(auth_user, dict) else getattr(auth_user, "email", ""))
+        or "Cadivor user"
+    ).strip()
+
+    def _number_value(row: dict[str, Any], *keys: str) -> float:
+        for key in keys:
+            value = row.get(key)
+            try:
+                number = float(value)
+            except (TypeError, ValueError):
+                continue
+            if number == number and number not in (float("inf"), float("-inf")):
+                return number
+        return 0.0
+
+    from src.authenticated_runtime import save_analysis_decision
+
+    try:
+        for alternative_mpn in selected:
+            alternative_key = part_key(alternative_mpn)
+            candidate = candidate_by_key.get(alternative_key)
+            previous = by_approved_key.get(alternative_key, {})
+            previous_snapshot = previous.get("source_snapshot")
+            if isinstance(previous_snapshot, str):
+                import json
+
+                try:
+                    previous_snapshot = json.loads(previous_snapshot)
+                except (TypeError, ValueError):
+                    previous_snapshot = {}
+            previous_snapshot = previous_snapshot if isinstance(previous_snapshot, dict) else {}
+            if candidate is None:
+                candidate = previous_snapshot.get("selected_alternative") or previous_snapshot.get("candidate") or {}
+            candidate = candidate if isinstance(candidate, dict) else {}
+            note = str(note_value or previous.get("engineering_note") or "").strip()
+            supplier = str(
+                candidate.get("Supplier")
+                or candidate.get("supplier")
+                or candidate.get("Manufacturer")
+                or candidate.get("manufacturer")
+                or ""
+            ).strip()
+            stock = _number_value(candidate, "Stock", "stock_total", "stock_available")
+            unit_price = _number_value(candidate, "Unit Price", "unit_price", "price")
+            payload = {
+                "analysis_id": analysis_id,
+                "context_key": context_key,
+                "project_name": project_name,
+                "engineer_name": engineer_name,
+                "original_part": source_mpn,
+                "alternative_part": str(alternative_mpn).strip(),
+                "decision": "Approved",
+                "engineering_note": note,
+                "recommendation_score": int(_number_value(candidate, "Recommendation Score", "recommendation_score")),
+                "recommendation_rating": "User approved",
+                "compatibility_confidence": int(_number_value(candidate, "Compatibility Confidence", "compatibility_confidence")),
+                "compatibility_rating": "User decision; compatibility not independently certified",
+                "lifecycle": str(candidate.get("Lifecycle") or candidate.get("lifecycle_status") or ""),
+                "risk": str(candidate.get("Estimated Risk") or candidate.get("risk_level") or candidate.get("risk") or ""),
+                "supplier": supplier,
+                "stock": int(stock),
+                "unit_price": unit_price,
+                "package": str(candidate.get("Package") or candidate.get("package") or ""),
+                "source_snapshot": {
+                    "original": original,
+                    "selected_alternative": candidate,
+                },
+                "comparison_snapshot": {"recorded_from": "Find a replacement"},
+            }
+            save_analysis_decision(user_id, payload)
+    except Exception as exc:
+        st.error(f"Could not save the approved alternatives: {exc}")
+        return
+
+    archive_error = ""
+    for row in existing_records:
+        row_key = part_key(row.get("alternative_part"))
+        # Move approvals made under an older per-analysis key to the stable
+        # project key so they continue to appear after the BOM is rerun.
+        if row_key in selected_keys and str(row.get("context_key") or "") == context_key:
+            continue
+        if row.get("id"):
+            try:
+                from src.authenticated_runtime import archive_analysis_decision
+
+                archive_analysis_decision(user_id, row["id"])
+            except Exception as exc:
+                archive_error = str(exc)
+                break
+    st.session_state["cadivor_approved_alternatives_flash"] = (
+        "Approved alternatives saved to this BOM."
+        if not archive_error
+        else "Approvals were saved, but an older approval could not be archived. Reopen this page to review the active list."
+    )
+    st.rerun()
+
+
 def render_replacement_search() -> None:
     """Find-a-replacement layout wired to the live alternative search."""
     begin_approved_page()
@@ -3478,6 +3748,13 @@ def render_replacement_search() -> None:
                 cells[6].markdown(level_html, unsafe_allow_html=True)
             if is_open:
                 st.markdown(_candidate_detail_html(row, original), unsafe_allow_html=True)
+    _render_bom_replacement_approvals(
+        source_context=source_context,
+        query=query,
+        original=original,
+        candidates=candidates,
+    )
+
     from src.normalizer import normalize_part_number
 
     compare_source_mpn = str(original.get("manufacturer_part_number") or query or "").strip()

@@ -764,6 +764,7 @@ def apply_alternative_finder_prefill(context: Mapping[str, str]) -> None:
         st.session_state.pop("alternative_original_manufacturer", None)
     source_context = {
         "mpn": context["mpn"],
+        "analysis_id": str(context.get("analysis_id") or ""),
         "manufacturer": context.get("manufacturer", ""),
         "lifecycle": context.get("lifecycle", ""),
         "risk": context.get("risk", ""),

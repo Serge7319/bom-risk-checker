@@ -564,6 +564,12 @@ def report_styles() -> str:
       .cv-ei-action-link{display:inline-flex;align-items:center;color:#2563eb;text-decoration:none;font-weight:800}
       .cv-ei-action-link:hover{text-decoration:underline;text-underline-offset:3px}
       .cv-ei-action small { display:block; color:#64748b; font-weight:500; margin-top:3px; }
+      .cv-ei-action .cv-ei-approved,.cv-ei-approved{display:inline-flex;align-items:center;width:max-content;max-width:100%;margin-top:6px;padding:4px 8px;border:1px solid #bbf7d0;border-radius:999px;background:#f0fdf4;color:#15803d;font-size:11px;font-weight:750;line-height:1.3}
+      .cv-ei-selected-tab{display:flex;align-items:center;gap:7px;width:max-content;max-width:100%;margin:7px 0 0;padding:5px 10px;border:1px solid #bfdbfe;border-radius:999px;background:#eff6ff;color:#1d4ed8;font-size:12px;line-height:1.2}
+      .cv-ei-selected-tab span{font-weight:600;color:#3b82f6}
+      .cv-ei-refresh-card{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:14px 16px;margin:0 0 16px;border:1px solid #dbeafe;border-radius:14px;background:#f8fbff}
+      .cv-ei-refresh-card strong{display:block;color:#1e3a8a;font-size:14px}
+      .cv-ei-refresh-card p{margin:3px 0 0;color:#475569;font-size:12px;line-height:1.45}
       .cv-ei-table td small, .cv-ei-offer a { display:block; margin-top:4px; color:#64748b; font-size:12px; font-weight:500; line-height:1.35; }
       .cv-ei-offer a { color:#2563eb; font-size:12px; font-weight:650; }
       [class*="st-key-cv_risk_expand_"] button { background:transparent !important; border:0 !important; box-shadow:none !important; color:#0f172a !important; font-weight:750 !important; padding:0 !important; min-height:0 !important; height:auto !important; justify-content:flex-start !important; text-align:left !important; }
@@ -613,6 +619,7 @@ def engineering_intelligence_html(
     health_score: int | None = None,
     include_heading: bool = True,
     analysis_id: str = "",
+    approved_alternatives: list[dict[str, Any]] | None = None,
 ) -> str:
     rows = _part_rows(parts)
     high = [row for row in rows if row["level"] == "High"]
@@ -665,6 +672,7 @@ def engineering_intelligence_html(
             alternatives or [],
             analysis_id=analysis_id,
             bom_name=bom_name,
+            approved_alternatives=approved_alternatives or [],
         )
     ).strip()
     heading = ""
@@ -689,6 +697,7 @@ def _tab_body(
     *,
     analysis_id: str = "",
     bom_name: str = "",
+    approved_alternatives: list[dict[str, Any]] | None = None,
 ) -> str:
     if tab == "Supply & Availability":
         body = "".join(
@@ -707,7 +716,33 @@ def _tab_body(
             body,
         )
     if tab == "Alternatives":
-        photos = {row["mpn"]: row for row in rows}
+        photos = {row["mpn_raw"]: row for row in rows}
+        from src.approved_alternatives import report_alternative
+
+        approved_rows = []
+        for record in approved_alternatives or []:
+            if not isinstance(record, dict):
+                continue
+            approved = report_alternative(record)
+            original_raw = str(approved.get("original_part") or "").strip()
+            replacement_raw = str(approved.get("alternative_part") or "").strip()
+            if not original_raw or not replacement_raw:
+                continue
+            original = photos.get(original_raw) or {}
+            approved_rows.append(
+                "<tr>"
+                f"<td>{_component_cell({'mpn': _esc(original_raw), 'mpn_raw': original_raw, 'image': original.get('image') or '', 'description': '', 'description_raw': '', 'category_raw': '', 'category': ''}, description=False)}</td>"
+                f"<td>{_component_cell({'mpn': _esc(replacement_raw), 'mpn_raw': replacement_raw, 'image': approved.get('image_url') or '', 'description': '', 'description_raw': '', 'category_raw': '', 'category': ''}, description=False)}</td>"
+                f"<td>{_esc(approved.get('manufacturer') or '—')}</td>"
+                f"<td><span class='cv-ei-approved'>Approved</span><small>{_esc(approved.get('reason') or '')}</small></td>"
+                "</tr>"
+            )
+        approved_section = _table(
+            "Approved alternatives",
+            "Replacement decisions recorded by your engineering team for this BOM.",
+            ["Original component", "Approved replacement", "Manufacturer", "Approval record"],
+            "".join(approved_rows) or "<tr><td colspan='4'>No approved alternative is recorded for this BOM yet.</td></tr>",
+        )
         alt_rows = []
         for alt in alternatives:
             if not isinstance(alt, dict):
@@ -720,7 +755,7 @@ def _tab_body(
             replacement = _esc(replacement_raw or "—")
             maker = _esc(_first(alt, "manufacturer", "alternative_manufacturer", fallback="—"))
             reason = _esc(_first(alt, "reason", "match_reason", "notes", fallback="Saved alternative"))
-            source = photos.get(original) if isinstance(photos.get(original), dict) else {}
+            source = photos.get(original_raw) if isinstance(photos.get(original_raw), dict) else {}
             original_photo = str(source.get("image") or "")
             replacement_photo = str(
                 _first(alt, "image_url", "photo_url", "Photo", "Image URL", "image", fallback="") or ""
@@ -733,12 +768,12 @@ def _tab_body(
             )
         if not alt_rows:
             alt_rows.append(
-                "<tr><td colspan='4'>No approved alternative is stored for this BOM yet. Use Find a replacement to qualify one.</td></tr>"
+                "<tr><td colspan='4'>No supplier alternatives were returned in the saved analysis.</td></tr>"
             )
-        return _table(
-            "Alternatives",
-            "Replacement candidates already stored for this BOM.",
-            ["Original", "Alternative", "Manufacturer", "Why it is listed"],
+        return approved_section + _table(
+            "Search candidates",
+            "Supplier candidates returned by the saved analysis. They are not approved until your team records that decision.",
+            ["Original", "Candidate", "Manufacturer", "Why it is listed"],
             "".join(alt_rows[:12]),
         )
     if tab == "Cost Insights":
@@ -774,17 +809,25 @@ def _tab_body(
             ["Component", "Lifecycle", "Manufacturer", "Risk"],
             body,
         )
+    from src.approved_alternatives import approved_mpn_map, part_key
+
+    approved_by_part = approved_mpn_map(approved_alternatives or [])
     review = [row for row in rows if row["level"] in {"High", "Medium"}][:8] or rows[:8]
     body = []
     for index, row in enumerate(review, start=1):
         reasons = "".join(f"<li>{driver}</li>" for driver in row["drivers"])
+        approvals = approved_by_part.get(part_key(row.get("mpn_raw")), [])
+        approval_note = "".join(
+            f"<small class='cv-ei-approved'>Approved alternative: {_esc(item.get('alternative_part') or '')}</small>"
+            for item in approvals
+        )
         body.append(
             "<tr>"
             f"<td>{index}</td>"
             f"<td>{_component_cell(row)}</td>"
             f"<td><span class='cv-pill {_level_class(row['level'])}'>{row['level']}</span></td>"
             f"<td><ul class='cv-ei-reasons'>{reasons}</ul></td>"
-            f"<td><div class='cv-ei-action'>{_alternative_action_link(row, analysis_id=analysis_id, bom_name=bom_name, source_page='engineering_intelligence_review')}<small>{row['action_detail']}</small></div></td>"
+            f"<td><div class='cv-ei-action'>{_alternative_action_link(row, analysis_id=analysis_id, bom_name=bom_name, source_page='engineering_intelligence_review')}<small>{row['action_detail']}</small>{approval_note}</div></td>"
             "</tr>"
         )
     return _table(
@@ -817,11 +860,15 @@ def render_detailed_risk_rows(
     analyzed_on: str,
     parts: list[dict[str, Any]],
     analysis_id: str = "",
+    approved_alternatives: list[dict[str, Any]] | None = None,
 ) -> None:
     """Render a compact risk table with user-controlled, one-row details."""
     import streamlit as st
 
     rows = _part_rows(parts)
+    from src.approved_alternatives import approved_mpn_map, part_key
+
+    approved_by_part = approved_mpn_map(approved_alternatives or [])
     selection_key = f"cadivor_detailed_risk_mpn_{analysis_id or bom_name}"
     if selection_key not in st.session_state:
         st.session_state[selection_key] = ""
@@ -866,6 +913,11 @@ def render_detailed_risk_rows(
                     if str(row.get("description_raw") or "").strip():
                         name_col.markdown(
                             f"<div class='cv-ei-meta'>{row['description']}</div>",
+                            unsafe_allow_html=True,
+                        )
+                    for approved in approved_by_part.get(part_key(row.get("mpn_raw")), []):
+                        name_col.markdown(
+                            f"<span class='cv-ei-approved'>Approved alternative: {_esc(approved.get('alternative_part') or '')}</span>",
                             unsafe_allow_html=True,
                         )
             cells[1].markdown(row["manufacturer"])
@@ -1011,6 +1063,8 @@ def render_engineering_intelligence_report(
     parts: list[dict[str, Any]],
     alternatives: list[dict[str, Any]] | None,
     health_score: int | None,
+    approved_alternatives: list[dict[str, Any]] | None = None,
+    approval_load_failed: bool = False,
 ) -> None:
     import streamlit as st
 
@@ -1066,6 +1120,13 @@ def render_engineering_intelligence_report(
                     """,
                     unsafe_allow_html=True,
                 )
+        if not detailed:
+            st.markdown(
+                f"<div class='cv-ei-selected-tab' aria-live='polite'><span>Viewing</span><strong>{_esc(tab)}</strong></div>",
+                unsafe_allow_html=True,
+            )
+        if approval_load_failed:
+            st.warning("Saved replacement approvals could not be loaded. They may be missing from this view until the connection is restored.")
         if st.session_state.get("cadivor_show_detailed_risk"):
             if st.button("Back to Engineering Intelligence", key="ei_back_from_detailed_risk"):
                 st.session_state["cadivor_show_detailed_risk"] = False
@@ -1076,6 +1137,7 @@ def render_engineering_intelligence_report(
                 analyzed_on=analyzed,
                 parts=parts or [],
                 analysis_id=str(analysis.get("id") or ""),
+                approved_alternatives=approved_alternatives or [],
             )
             try:
                 from src.ui.detailed_risk_export import (
@@ -1095,6 +1157,7 @@ def render_engineering_intelligence_report(
                             bom_name=bom_name,
                             source_filename=report_source,
                             analyzed_on=analyzed,
+                            approved_alternatives=approved_alternatives or [],
                         ),
                         file_name="cadivor-detailed-risk-report.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -1104,7 +1167,7 @@ def render_engineering_intelligence_report(
                 with download_cols[1]:
                     st.download_button(
                         "Download CSV Audit",
-                        data=detailed_risk_csv_bytes(parts or []),
+                        data=detailed_risk_csv_bytes(parts or [], approved_alternatives or []),
                         file_name="cadivor-detailed-risk-report.csv",
                         mime="text/csv",
                         key="approved_detailed_risk_csv",
@@ -1123,10 +1186,35 @@ def render_engineering_intelligence_report(
                 health_score=health_score,
                 include_heading=False,
                 analysis_id=str(analysis.get("id") or ""),
+                approved_alternatives=approved_alternatives or [],
             ),
             unsafe_allow_html=True,
         )
         analysis_id = str(analysis.get("id") or "")
+        if tab == "BOM Risk":
+            with st.container(key="ei_refresh_saved_analysis", border=True):
+                refresh_copy, refresh_action = st.columns([4, 1.35], vertical_alignment="center")
+                with refresh_copy:
+                    st.markdown(
+                        "<div class='cv-ei-refresh-card'><div><strong>Refresh supplier data</strong>"
+                        "<p>This page shows the saved analysis snapshot. Open the BOM and rerun it to check current distributor stock, lead time, and lifecycle data.</p></div></div>",
+                        unsafe_allow_html=True,
+                    )
+                with refresh_action:
+                    if st.button(
+                        "Open BOM to rerun",
+                        key=f"ei_open_bom_to_rerun_{analysis_id or 'saved'}",
+                        type="secondary",
+                        use_container_width=True,
+                    ):
+                        from src.ui.navigation import navigate_to
+
+                        navigate_to(
+                            "BOM Settings",
+                            saved_bom_id=analysis_id,
+                            saved_bom_action="open",
+                            arm_opening=False,
+                        )
         if st.button("Open detailed risk report", key="ei_open_detailed_risk"):
             st.session_state[f"cadivor_detailed_risk_mpn_{analysis_id or bom_name}"] = ""
             st.session_state["cadivor_show_detailed_risk"] = True

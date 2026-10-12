@@ -86,6 +86,7 @@ class BomWorkflowNavigationTests(unittest.TestCase):
             self.streamlit.session_state["alternative_prefill_source_context"],
             {
                 "mpn": "LM358N",
+                "analysis_id": "bom-42",
                 "manufacturer": "Texas Instruments",
                 "lifecycle": "Active",
                 "risk": "High",
