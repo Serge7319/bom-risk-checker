@@ -93,3 +93,25 @@ class ApprovedAlternativesTests(unittest.TestCase):
             [{"alternative_part": "LM358DR2G"}, {"alternative_part": "LM358M"}],
         )
         self.assertEqual(options, ["TPS5430DDAR", "LM358DR2G", "LM358M"])
+
+    def test_approved_candidate_remains_visible_after_bom_analysis_rerun(self):
+        project = "Motor Controller"
+        decision = {
+            "analysis_id": "analysis-before-rerun",
+            "context_key": project_decision_context_key(project, "analysis-before-rerun"),
+            "original_part": "LM358N",
+            "alternative_part": "LM358DR2G",
+            "decision": "Approved",
+            "project_name": project,
+            "engineer_name": "A. Engineer",
+        }
+
+        approved = approved_records_for_bom(
+            [decision],
+            [{"mpn": "LM358N"}],
+            project_name=project,
+            analysis_id="analysis-after-rerun",
+        )
+
+        self.assertEqual(len(approved), 1)
+        self.assertEqual(approved[0]["alternative_part"], "LM358DR2G")

@@ -144,6 +144,21 @@ def _esc(value: Any, fallback: str = "—") -> str:
     return html.escape(text)
 
 
+def _ei_tab_indicator_html(tab: str) -> str:
+    """Render an explicit underline at the selected Engineering Intelligence tab."""
+    active = tab if tab in EI_TABS else EI_TABS[0]
+    cells = "".join(
+        "<span class='cv-ei-tab-indicator-cell is-active'></span>"
+        if name == active
+        else "<span class='cv-ei-tab-indicator-cell'></span>"
+        for name in EI_TABS
+    )
+    return (
+        "<div class='cv-ei-tab-indicator-track' role='img' "
+        f"aria-label='Selected tab: {html.escape(active)}'>{cells}</div>"
+    )
+
+
 def _num(value: Any, default: int = 0) -> int:
     try:
         if value is None or str(value).strip() == "":
@@ -565,8 +580,9 @@ def report_styles() -> str:
       .cv-ei-action-link:hover{text-decoration:underline;text-underline-offset:3px}
       .cv-ei-action small { display:block; color:#64748b; font-weight:500; margin-top:3px; }
       .cv-ei-action .cv-ei-approved,.cv-ei-approved{display:inline-flex;align-items:center;width:max-content;max-width:100%;margin-top:6px;padding:4px 8px;border:1px solid #bbf7d0;border-radius:999px;background:#f0fdf4;color:#15803d;font-size:11px;font-weight:750;line-height:1.3}
-      .cv-ei-selected-tab{display:flex;align-items:center;gap:7px;width:max-content;max-width:100%;margin:7px 0 0;padding:5px 10px;border:1px solid #bfdbfe;border-radius:999px;background:#eff6ff;color:#1d4ed8;font-size:12px;line-height:1.2}
-      .cv-ei-selected-tab span{font-weight:600;color:#3b82f6}
+      .cv-ei-tab-indicator-track{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:0;width:100%;height:4px;margin:0 0 12px;border-bottom:1px solid #e2e8f0}
+      .cv-ei-tab-indicator-cell{display:block;height:3px}
+      .cv-ei-tab-indicator-cell.is-active{background:#2563eb;border-radius:3px 3px 0 0}
       .cv-ei-refresh-card{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:14px 16px;margin:0 0 16px;border:1px solid #dbeafe;border-radius:14px;background:#f8fbff}
       .cv-ei-refresh-card strong{display:block;color:#1e3a8a;font-size:14px}
       .cv-ei-refresh-card p{margin:3px 0 0;color:#475569;font-size:12px;line-height:1.45}
@@ -1093,8 +1109,9 @@ def render_engineering_intelligence_report(
                 st.markdown(
                     f"""
                     <style>
+                    .st-key-cv_ei_report_tabs [data-testid="stVerticalBlock"]{{gap:.25rem!important}}
                     .st-key-cv_ei_report_tabs [data-testid="stSegmentedControl"]{{
-                      width:100%;background:transparent!important;border-bottom:1px solid #e2e8f0;
+                      width:100%;background:transparent!important;border-bottom:0!important;
                       border-radius:0!important;box-shadow:none!important
                     }}
                     .st-key-cv_ei_report_tabs [data-testid="stSegmentedControl"] :is(button,[role="radio"],[role="tab"]){{ 
@@ -1119,11 +1136,7 @@ def render_engineering_intelligence_report(
                     """,
                     unsafe_allow_html=True,
                 )
-        if not detailed:
-            st.markdown(
-                f"<div class='cv-ei-selected-tab' aria-live='polite'><span>Viewing</span><strong>{_esc(tab)}</strong></div>",
-                unsafe_allow_html=True,
-            )
+                st.markdown(_ei_tab_indicator_html(tab), unsafe_allow_html=True)
         if approval_load_failed:
             st.warning("Saved replacement approvals could not be loaded. They may be missing from this view until the connection is restored.")
         if st.session_state.get("cadivor_show_detailed_risk"):
