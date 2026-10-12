@@ -133,6 +133,10 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
     def test_engineering_intelligence_page_explains_selected_tab_and_refresh_action(self):
         source = (Path(__file__).resolve().parents[1] / "src" / "ui" / "ei_bom_report.py").read_text()
         self.assertIn("cv-ei-tab-indicator-track", source)
+        self.assertIn("justify-content:flex-end", source)
+        self.assertIn("flex:0 0 auto", source)
+        self.assertIn("cv-ei-tab-indicator-label", source)
+        self.assertNotIn("grid-template-columns:repeat(5,minmax(0,1fr))", source)
         self.assertNotIn("cv-ei-selected-tab", source)
         self.assertIn("Open BOM to rerun", source)
         self.assertIn("saved_bom_action=\"open\"", source)
@@ -143,6 +147,7 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
                 markup = _ei_tab_indicator_html(tab)
                 self.assertIn(f"aria-label='Selected tab: {tab.replace('&', '&amp;')}'", markup)
                 self.assertEqual(markup.count("is-active"), 1)
+                self.assertIn(f"cv-ei-tab-indicator-label'>{tab.replace('&', '&amp;')}</span>", markup)
         fallback = _ei_tab_indicator_html("unknown")
         self.assertIn("aria-label='Selected tab: BOM Risk'", fallback)
 
