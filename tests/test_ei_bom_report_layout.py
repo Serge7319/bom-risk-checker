@@ -42,6 +42,8 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
     def test_report_sections_use_one_stateful_selection_widget(self):
         self.assertIn("st.segmented_control(", REPORT_SOURCE)
         self.assertIn('key=tab_state_key', REPORT_SOURCE)
+        self.assertIn('[data-testid="stBaseButton-segmented_controlActive"]', REPORT_SOURCE)
+        self.assertIn('button[data-testid="stBaseButton-segmented_controlActive"]::after', REPORT_SOURCE)
         self.assertNotIn('key=f"ei_tab_{slug}"', REPORT_SOURCE)
 
     def test_bom_risk_uses_the_approved_review_structure(self):
