@@ -1086,7 +1086,6 @@ def render_engineering_intelligence_report(
                 selected_tab = st.segmented_control(
                     "Engineering Intelligence section",
                     options=list(EI_TABS),
-                    default=tab,
                     key=tab_state_key,
                     label_visibility="collapsed",
                 )
