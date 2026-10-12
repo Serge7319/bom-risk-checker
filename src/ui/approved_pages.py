@@ -3261,11 +3261,10 @@ def _render_bom_replacement_approvals(
     source_context: Any,
     query: str,
     original: dict[str, Any],
-    candidates: list[dict[str, Any]],
+    candidate: dict[str, Any],
 ) -> None:
-    """Record up to three user-approved alternates against the linked saved BOM."""
+    """Show approval and saved-decision status inside one expanded candidate."""
     from src.approved_alternatives import (
-        approval_candidate_options,
         approved_records_for_part,
         part_key,
         project_decision_context_key,
@@ -3274,6 +3273,7 @@ def _render_bom_replacement_approvals(
 
     context = source_context if isinstance(source_context, dict) else {}
     source_mpn = str(context.get("mpn") or original.get("manufacturer_part_number") or "").strip()
+    candidate_mpn = _candidate_mpn(candidate)
     query_key = normalize_part_number(query) or str(query or "").strip().upper()
     source_key = normalize_part_number(source_mpn) or source_mpn.upper()
     if not query_key or not source_key or query_key != source_key:
@@ -3297,8 +3297,10 @@ def _render_bom_replacement_approvals(
     ).strip()
     if not analysis_id:
         st.info(
-            "This search is not linked to a saved BOM. Open Find a replacement from the BOM Risk page to record an approval there."
+            "This search is not linked to a saved BOM. Open Find a replacement from the BOM Risk page to record an approval."
         )
+        return
+    if not candidate_mpn:
         return
 
     auth_user = st.session_state.get("user")
@@ -3348,76 +3350,92 @@ def _render_bom_replacement_approvals(
     flash = st.session_state.pop("cadivor_approved_alternatives_flash", "")
     if flash:
         st.success(str(flash))
-    approved_names = [str(row.get("alternative_part") or "").strip() for row in existing]
-    approved_names = [name for name in approved_names if name]
+
+    candidate_key = part_key(candidate_mpn)
+    current = next(
+        (row for row in existing if part_key(row.get("alternative_part")) == candidate_key),
+        None,
+    )
+    approved_names = [
+        str(row.get("alternative_part") or "").strip()
+        for row in existing
+        if str(row.get("alternative_part") or "").strip()
+    ]
+    st.markdown("#### Engineering approval")
     if approved_names:
-        st.success(
-            f"Approved alternatives already on file for {source_mpn}: "
+        st.caption(
+            f"Approved for this BOM ({len(approved_names)}/3): "
             + ", ".join(approved_names)
         )
-    if len(approved_names) > 3:
-        st.warning("More than three alternatives are currently approved. Select up to three and save to update the active list.")
+    if current:
+        st.success(f"{candidate_mpn} is approved for {project_name}.")
+        saved_note = str(current.get("engineering_note") or "").strip()
+        if saved_note:
+            st.caption(f"Saved review note: {saved_note}")
+    else:
+        st.info(f"{candidate_mpn} has not been approved for this BOM.")
+    st.caption(
+        "This records your engineering team’s decision; it does not certify electrical or mechanical compatibility."
+    )
+    st.caption(
+        "Saved approvals stay with this BOM across analysis reruns and appear in its BOM Risk and Alternatives tabs."
+    )
 
-    st.markdown("#### Record approved alternatives")
-    st.caption(
-        "Select up to three replacements your engineering team has reviewed. "
-        "This records your team’s decision; it does not certify electrical or mechanical compatibility."
-    )
-    candidate_by_key = {
-        part_key(_candidate_mpn(row)): row
-        for row in candidates
-        if (
-            isinstance(row, dict)
-            and _candidate_mpn(row)
-            and part_key(_candidate_mpn(row)) != part_key(source_mpn)
-        )
-    }
-    options = approval_candidate_options(candidate_by_key.keys(), existing)
-    # Keep the original candidate spelling for the dropdown and its snapshot.
-    option_values = []
-    option_seen: set[str] = set()
-    for value in [*candidate_by_key.values()]:
-        candidate_mpn = _candidate_mpn(value)
-        key = part_key(candidate_mpn)
-        if candidate_mpn and key not in option_seen:
-            option_seen.add(key)
-            option_values.append(candidate_mpn)
-    for value in options:
-        key = part_key(value)
-        if value and key not in option_seen:
-            option_seen.add(key)
-            option_values.append(value)
-    existing_keys = {part_key(name) for name in approved_names}
-    defaults = [name for name in option_values if part_key(name) in existing_keys][:3]
+    previous_note = str(current.get("engineering_note") or "") if current else ""
     widget_suffix = hashlib.sha1(
-        f"{context_key}|{part_key(source_mpn)}".encode("utf-8")
+        f"{context_key}|{part_key(source_mpn)}|{candidate_key}".encode("utf-8")
     ).hexdigest()[:12]
-    selected = st.multiselect(
-        "Alternatives to approve (up to 3)",
-        options=option_values,
-        default=defaults,
-        max_selections=3,
-        key=f"cadivor_approved_alternatives_{widget_suffix}",
-    )
     note_value = st.text_area(
-        "Engineering approval note (applies to selected alternatives)",
-        placeholder="For example: reviewed datasheet and validated package, pinout, and operating range.",
+        "Engineering approval note (optional)",
+        value=previous_note,
+        placeholder="For example: datasheet, package, pinout, and operating range reviewed.",
         height=72,
-        key=f"cadivor_approved_alternatives_note_{widget_suffix}",
+        key=f"cadivor_approved_alternative_note_{widget_suffix}",
     )
-    st.caption(
-        "Saving replaces this component’s active approvals for this BOM. Clear the selection and save to remove them."
-    )
-    if not st.button(
-        "Save approved alternatives",
-        key=f"cadivor_approved_alternatives_save_{widget_suffix}",
-        type="primary",
-        disabled=not option_values and not existing,
-    ):
+    can_approve = current is not None or len(approved_names) < 3
+    if not can_approve:
+        st.warning("Three alternatives are already approved for this component. Remove one before approving another.")
+
+    action_cols = st.columns([1, 1] if current else [1])
+    with action_cols[0]:
+        save_clicked = st.button(
+            "Update approval" if current else "Approve this alternative",
+            key=f"cadivor_approved_alternative_save_{widget_suffix}",
+            type="primary",
+            disabled=not can_approve,
+            use_container_width=True,
+        )
+    remove_clicked = False
+    if current and len(action_cols) > 1:
+        with action_cols[1]:
+            remove_clicked = st.button(
+                "Remove approval",
+                key=f"cadivor_approved_alternative_remove_{widget_suffix}",
+                use_container_width=True,
+            )
+
+    if not save_clicked and not remove_clicked:
         return
 
-    selected_keys = {part_key(value) for value in selected if part_key(value)}
-    by_approved_key = {part_key(row.get("alternative_part")): row for row in existing}
+    from src.authenticated_runtime import archive_analysis_decision, save_analysis_decision
+
+    if remove_clicked:
+        try:
+            for row in existing_records:
+                if (
+                    part_key(row.get("alternative_part")) == candidate_key
+                    and row.get("id")
+                ):
+                    archive_analysis_decision(user_id, row["id"])
+        except Exception as exc:
+            st.error(f"Could not remove this approval: {exc}")
+            return
+        st.session_state["cadivor_approved_alternatives_flash"] = (
+            f"Approval for {candidate_mpn} removed from {project_name}."
+        )
+        st.rerun()
+        return
+
     profile = st.session_state.get("profile")
     profile = profile if isinstance(profile, dict) else {}
     user_metadata = getattr(auth_user, "user_metadata", {}) or {}
@@ -3434,93 +3452,62 @@ def _render_bom_replacement_approvals(
 
     def _number_value(row: dict[str, Any], *keys: str) -> float:
         for key in keys:
-            value = row.get(key)
             try:
-                number = float(value)
+                number = float(row.get(key))
             except (TypeError, ValueError):
                 continue
             if number == number and number not in (float("inf"), float("-inf")):
                 return number
         return 0.0
 
-    from src.authenticated_runtime import save_analysis_decision
-
+    supplier = str(
+        candidate.get("Supplier")
+        or candidate.get("supplier")
+        or candidate.get("Manufacturer")
+        or candidate.get("manufacturer")
+        or ""
+    ).strip()
+    payload = {
+        "analysis_id": analysis_id,
+        "context_key": context_key,
+        "project_name": project_name,
+        "engineer_name": engineer_name,
+        "original_part": source_mpn,
+        "alternative_part": candidate_mpn,
+        "decision": "Approved",
+        "engineering_note": str(note_value or "").strip(),
+        "recommendation_score": int(_number_value(candidate, "Recommendation Score", "recommendation_score")),
+        "recommendation_rating": "User approved",
+        "compatibility_confidence": int(_number_value(candidate, "Compatibility Confidence", "compatibility_confidence")),
+        "compatibility_rating": "User decision; compatibility not independently certified",
+        "lifecycle": str(candidate.get("Lifecycle") or candidate.get("lifecycle_status") or ""),
+        "risk": str(candidate.get("Estimated Risk") or candidate.get("risk_level") or candidate.get("risk") or ""),
+        "supplier": supplier,
+        "stock": int(_number_value(candidate, "Stock", "stock_total", "stock_available")),
+        "unit_price": _number_value(candidate, "Unit Price", "unit_price", "price"),
+        "package": str(candidate.get("Package") or candidate.get("package") or ""),
+        "source_snapshot": {
+            "original": original,
+            "selected_alternative": candidate,
+        },
+        "comparison_snapshot": {"recorded_from": "Find a replacement"},
+    }
     try:
-        for alternative_mpn in selected:
-            alternative_key = part_key(alternative_mpn)
-            candidate = candidate_by_key.get(alternative_key)
-            previous = by_approved_key.get(alternative_key, {})
-            previous_snapshot = previous.get("source_snapshot")
-            if isinstance(previous_snapshot, str):
-                import json
-
-                try:
-                    previous_snapshot = json.loads(previous_snapshot)
-                except (TypeError, ValueError):
-                    previous_snapshot = {}
-            previous_snapshot = previous_snapshot if isinstance(previous_snapshot, dict) else {}
-            if candidate is None:
-                candidate = previous_snapshot.get("selected_alternative") or previous_snapshot.get("candidate") or {}
-            candidate = candidate if isinstance(candidate, dict) else {}
-            note = str(note_value or previous.get("engineering_note") or "").strip()
-            supplier = str(
-                candidate.get("Supplier")
-                or candidate.get("supplier")
-                or candidate.get("Manufacturer")
-                or candidate.get("manufacturer")
-                or ""
-            ).strip()
-            stock = _number_value(candidate, "Stock", "stock_total", "stock_available")
-            unit_price = _number_value(candidate, "Unit Price", "unit_price", "price")
-            payload = {
-                "analysis_id": analysis_id,
-                "context_key": context_key,
-                "project_name": project_name,
-                "engineer_name": engineer_name,
-                "original_part": source_mpn,
-                "alternative_part": str(alternative_mpn).strip(),
-                "decision": "Approved",
-                "engineering_note": note,
-                "recommendation_score": int(_number_value(candidate, "Recommendation Score", "recommendation_score")),
-                "recommendation_rating": "User approved",
-                "compatibility_confidence": int(_number_value(candidate, "Compatibility Confidence", "compatibility_confidence")),
-                "compatibility_rating": "User decision; compatibility not independently certified",
-                "lifecycle": str(candidate.get("Lifecycle") or candidate.get("lifecycle_status") or ""),
-                "risk": str(candidate.get("Estimated Risk") or candidate.get("risk_level") or candidate.get("risk") or ""),
-                "supplier": supplier,
-                "stock": int(stock),
-                "unit_price": unit_price,
-                "package": str(candidate.get("Package") or candidate.get("package") or ""),
-                "source_snapshot": {
-                    "original": original,
-                    "selected_alternative": candidate,
-                },
-                "comparison_snapshot": {"recorded_from": "Find a replacement"},
-            }
-            save_analysis_decision(user_id, payload)
+        saved = save_analysis_decision(user_id, payload)
+        saved_id = saved.get("id") if isinstance(saved, dict) else None
+        for row in existing_records:
+            if (
+                part_key(row.get("alternative_part")) == candidate_key
+                and row.get("id")
+                and row.get("id") != saved_id
+            ):
+                archive_analysis_decision(user_id, row["id"])
     except Exception as exc:
-        st.error(f"Could not save the approved alternatives: {exc}")
+        st.error(f"Could not save the approved alternative: {exc}")
         return
 
-    archive_error = ""
-    for row in existing_records:
-        row_key = part_key(row.get("alternative_part"))
-        # Move approvals made under an older per-analysis key to the stable
-        # project key so they continue to appear after the BOM is rerun.
-        if row_key in selected_keys and str(row.get("context_key") or "") == context_key:
-            continue
-        if row.get("id"):
-            try:
-                from src.authenticated_runtime import archive_analysis_decision
-
-                archive_analysis_decision(user_id, row["id"])
-            except Exception as exc:
-                archive_error = str(exc)
-                break
     st.session_state["cadivor_approved_alternatives_flash"] = (
-        "Approved alternatives saved to this BOM."
-        if not archive_error
-        else "Approvals were saved, but an older approval could not be archived. Reopen this page to review the active list."
+        f"{candidate_mpn} approved for {project_name} and saved to this BOM."
     )
     st.rerun()
 
@@ -3677,7 +3664,7 @@ def render_replacement_search() -> None:
         f"""
         <div class="cv-ap">
           <h1>Find a replacement</h1>
-          <p class="cv-ap-sub">Search for a part to find compatible alternatives across suppliers.</p>
+          <p class="cv-ap-sub">Search for candidates, then open a part to review its evidence and record your team’s BOM decision.</p>
           {source_html}
           <section class="cv-ap-card">
             <div class="cv-ap-meta">Source part</div>
@@ -3748,12 +3735,12 @@ def render_replacement_search() -> None:
                 cells[6].markdown(level_html, unsafe_allow_html=True)
             if is_open:
                 st.markdown(_candidate_detail_html(row, original), unsafe_allow_html=True)
-    _render_bom_replacement_approvals(
-        source_context=source_context,
-        query=query,
-        original=original,
-        candidates=candidates,
-    )
+                _render_bom_replacement_approvals(
+                    source_context=source_context,
+                    query=query,
+                    original=original,
+                    candidate=row,
+                )
 
     from src.normalizer import normalize_part_number
 
