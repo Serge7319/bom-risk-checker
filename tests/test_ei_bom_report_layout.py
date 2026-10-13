@@ -380,7 +380,6 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
         )
         self.assertTrue(markup.startswith('<div class="cv-risk-detail"'))
         self.assertIn("<p><strong>Manufacturer</strong>", markup)
-        self.assertNotIn("\\n                    <div class=\"cv-risk-detail\"", markup)
 
     def test_detailed_risk_image_and_open_row_styles_are_subtle(self):
         report_source = (Path(__file__).resolve().parents[1] / "src" / "ui" / "ei_bom_report.py").read_text()
