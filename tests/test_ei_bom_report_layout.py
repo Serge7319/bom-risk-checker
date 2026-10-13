@@ -6,6 +6,8 @@ from src.ui.ei_bom_report import (
     bom_catalog_html,
     detailed_risk_report_html,
     engineering_intelligence_html,
+    _detailed_report_analyses,
+    _detailed_report_analysis_label,
 )
 
 
@@ -45,6 +47,47 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
         self.assertIn('on_change="rerun"', REPORT_SOURCE)
         self.assertNotIn("st.segmented_control(", REPORT_SOURCE)
         self.assertNotIn('key=f"ei_tab_{slug}"', REPORT_SOURCE)
+
+    def test_detailed_report_selector_lists_saved_boms_with_run_context(self):
+        saved = [
+            {
+                "id": "analysis-1",
+                "project_name": "Motor controller",
+                "filename": "controller.csv",
+                "created_at": "2026-10-13T09:30:00+00:00",
+            },
+            {
+                "id": "analysis-2",
+                "project_name": "Sensor board",
+                "filename": "sensors.csv",
+                "created_at": "2026-10-12T15:15:00+00:00",
+            },
+        ]
+        options = _detailed_report_analyses(saved[1:], saved[0])
+
+        self.assertEqual([row["id"] for row in options], ["analysis-2", "analysis-1"])
+        self.assertEqual(
+            _detailed_report_analysis_label(options[0]),
+            "Sensor board · sensors.csv — 2026-10-12 15:15",
+        )
+
+    def test_report_renderer_has_saved_bom_selector_and_route_switch(self):
+        renderer = REPORT_SOURCE.split("def render_engineering_intelligence_report", 1)[1]
+        detailed = renderer.split(
+            'if st.session_state.get("cadivor_show_detailed_risk"):',
+            1,
+        )[1]
+        self.assertIn('st.selectbox(', detailed)
+        self.assertIn('"Project / BOM"', detailed)
+        self.assertIn("on_change=_navigate_to_detailed_report_analysis", detailed)
+        page_source = (
+            Path(__file__).resolve().parents[1]
+            / "src"
+            / "pages"
+            / "analysis_detail.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn("_load_saved_analysis_report_options(", page_source)
+        self.assertIn("saved_analyses=saved_report_analyses", page_source)
 
     def test_bom_risk_uses_the_approved_review_structure(self):
         html = engineering_intelligence_html(
