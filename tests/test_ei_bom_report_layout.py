@@ -8,6 +8,8 @@ from src.ui.ei_bom_report import (
     engineering_intelligence_html,
     _detailed_report_analyses,
     _detailed_report_analysis_label,
+    _detailed_report_metadata_html,
+    _format_detailed_report_date,
 )
 
 
@@ -66,10 +68,28 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
         options = _detailed_report_analyses(saved[1:], saved[0])
 
         self.assertEqual([row["id"] for row in options], ["analysis-2", "analysis-1"])
+        self.assertEqual(_detailed_report_analysis_label(options[0]), "Sensor board")
         self.assertEqual(
-            _detailed_report_analysis_label(options[0]),
-            "Sensor board · sensors.csv — 2026-10-12 15:15",
+            _detailed_report_analysis_label({
+                "project_name": "Project_099 — Cadivor BOM Rev2",
+                "filename": "Cadivor_BOM_Stress_Test.csv",
+                "created_at": "2026-10-11T12:33:00+00:00",
+            }),
+            "Project_099 — Cadivor BOM Rev2",
         )
+        self.assertEqual(
+            _format_detailed_report_date("2026-10-11T12:33:00+00:00"),
+            "October 11, 2026",
+        )
+        context = _detailed_report_metadata_html(
+            bom_name="Project_099 — Cadivor BOM Rev2",
+            source_filename="Cadivor_BOM_Stress_Test.csv",
+            part_count=6,
+            analyzed_on="2026-10-11T12:33:00+00:00",
+        )
+        self.assertIn("Cadivor_BOM_Stress_Test.csv", context)
+        self.assertIn("October 11, 2026", context)
+        self.assertNotIn("2026-10-11T12:33", context)
 
     def test_open_detailed_risk_report_is_a_visible_primary_button(self):
         self.assertIn('key=f"ei_open_detailed_risk_{analysis_id or \'saved\'}"', REPORT_SOURCE)
@@ -83,7 +103,9 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
             1,
         )[1]
         self.assertIn('st.selectbox(', detailed)
+        self.assertIn('selector_col, _ = st.columns([1, 2]', detailed)
         self.assertIn('"Project / BOM"', detailed)
+        self.assertIn('max-width:480px!important', REPORT_SOURCE)
         self.assertIn("on_change=_navigate_to_detailed_report_analysis", detailed)
         page_source = (
             Path(__file__).resolve().parents[1]

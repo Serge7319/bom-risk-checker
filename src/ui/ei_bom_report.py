@@ -12,6 +12,7 @@ from __future__ import annotations
 import html
 import re
 import textwrap
+from datetime import datetime
 from typing import Any
 
 
@@ -151,17 +152,55 @@ def _detailed_report_analyses(
 
 
 def _detailed_report_analysis_label(analysis: dict[str, Any]) -> str:
-    """Make saved report choices recognizable when a project has several BOM runs."""
+    """Show only the saved Project/BOM name in the report selector."""
     project = str(analysis.get("project_name") or "").strip()
+    bom_name = str(analysis.get("bom_name") or "").strip()
+    if project:
+        return project
+    if bom_name:
+        return bom_name
     filename = str(analysis.get("filename") or "").strip()
-    label = project or filename or "Saved BOM"
-    if filename and filename.casefold() != label.casefold():
-        label = f"{label} · {filename}"
-    created_at = str(analysis.get("created_at") or "").strip()
-    if created_at:
-        analyzed_at = created_at.replace("T", " ").rstrip("Z")[:16]
-        label = f"{label} — {analyzed_at}"
-    return label
+    if filename:
+        basename = filename.replace("\\", "/").rsplit("/", 1)[-1]
+        return basename.rsplit(".", 1)[0] or basename
+    return "Saved BOM"
+
+
+def _format_detailed_report_date(value: Any) -> str:
+    """Format stored ISO timestamps as a human-readable calendar date."""
+    raw = str(value or "").strip()
+    if not raw or raw.casefold() in {"saved analysis", "none", "nan"}:
+        return "Date unavailable"
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return "Date unavailable"
+    months = (
+        "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December",
+    )
+    return f"{months[parsed.month - 1]} {parsed.day}, {parsed.year}"
+
+
+def _detailed_report_metadata_html(
+    *,
+    bom_name: str,
+    source_filename: str,
+    part_count: int,
+    analyzed_on: Any,
+) -> str:
+    """Display report context below its title, separate from the component table."""
+    file_detail = (
+        f"<span><strong>File</strong> {_esc(source_filename)}</span>"
+        if str(source_filename or "").strip()
+        else ""
+    )
+    return (
+        f"<p class='cv-ei-sub'>{_esc(bom_name)} · {part_count} components</p>"
+        f"<div class='cv-risk-report-meta'>{file_detail}"
+        f"<span><strong>Last analyzed</strong> {_esc(_format_detailed_report_date(analyzed_on))}</span>"
+        f"</div>"
+    )
 
 
 def _navigate_to_detailed_report_analysis(current_analysis_id: str, selector_key: str) -> None:
@@ -566,6 +605,10 @@ def report_styles() -> str:
       .st-key-ei_report_workspace .cv-ap-kicker { margin:0 0 6px; color:#64748b; font-size:12px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; }
       .st-key-ei_report_workspace .cv-ap h1 { margin:0 0 6px; color:#0f172a; font-size:32px; font-weight:760; line-height:1.15; letter-spacing:-.03em; }
       .st-key-ei_report_workspace .cv-ei-title { font-size:30px; }
+      .st-key-ei_report_workspace [class*="st-key-ei_detailed_report_bom_"] { width:100%!important;max-width:480px!important;margin:0 0 10px!important; }
+      .st-key-ei_report_workspace [class*="st-key-ei_detailed_report_bom_"] [data-testid="stSelectbox"] { width:100%!important;max-width:100%!important; }
+      .cv-risk-report-meta { display:flex;flex-wrap:wrap;gap:8px 22px;margin:-10px 0 18px;color:#64748b;font-size:12px;line-height:1.45; }
+      .cv-risk-report-meta strong { color:#475569;font-weight:700;margin-right:4px; }
       .st-key-ei_report_workspace .cv-ei-section { min-width:0; margin:0 0 18px; overflow:hidden; background:#fff; border:1px solid #cbd8e8; border-radius:16px; box-shadow:0 3px 12px rgba(15,23,42,.045); }
       .cv-ei-section-heading { box-sizing:border-box; padding:18px 22px 14px; }
       .cv-ei-section-heading > h3 { margin:0!important; padding:0!important; color:#0f172a; font-size:19px!important; line-height:1.25; font-weight:750; letter-spacing:-.02em; }
@@ -950,6 +993,7 @@ def render_detailed_risk_rows(
     bom_name: str,
     analyzed_on: str,
     parts: list[dict[str, Any]],
+    source_filename: str = "",
     analysis_id: str = "",
     approved_alternatives: list[dict[str, Any]] | None = None,
 ) -> None:
@@ -968,7 +1012,7 @@ def render_detailed_risk_rows(
         f"""
         <div class="cv-ei-report">
           <h1 class="cv-ei-title">Detailed Risk Report</h1>
-          <p class="cv-ei-sub">{_esc(bom_name)} · {len(rows)} parts · Analyzed on {_esc(analyzed_on)}</p>
+          {_detailed_report_metadata_html(bom_name=bom_name, source_filename=source_filename, part_count=len(rows), analyzed_on=analyzed_on)}
         </div>
         """,
         unsafe_allow_html=True,
@@ -1089,7 +1133,7 @@ def detailed_risk_report_html(
     return f"""
     <div class="cv-ei-report">
       <h1 class="cv-ei-title">Detailed Risk Report</h1>
-      <p class="cv-ei-sub">{_esc(bom_name)} · {len(rows)} parts · Analyzed on {_esc(analyzed_on)}</p>
+      <p class="cv-ei-sub">{_esc(bom_name)} · {len(rows)} parts · Last analyzed {_esc(_format_detailed_report_date(analyzed_on))}</p>
       <div class="cv-risk-wrap">{''.join(body)}</div>
     </div>
     """
@@ -1193,26 +1237,31 @@ def render_engineering_intelligence_report(
                     if str(row.get("id") or "")
                 }
                 selector_key = f"ei_detailed_report_bom_{current_analysis_id}"
-                st.selectbox(
-                    "Project / BOM",
-                    options=analysis_ids,
-                    index=analysis_ids.index(current_analysis_id),
-                    format_func=lambda selected_id: _detailed_report_analysis_label(
-                        analysis_by_id.get(str(selected_id), {})
-                    ),
-                    key=selector_key,
-                    help=(
-                        "Switch to another saved BOM report. Each report reflects "
-                        "the data from that analysis run."
-                    ),
-                    on_change=_navigate_to_detailed_report_analysis,
-                    args=(current_analysis_id, selector_key),
-                )
+                selector_col, _ = st.columns([1, 2], gap="medium")
+                with selector_col:
+                    st.selectbox(
+                        "Project / BOM",
+                        options=analysis_ids,
+                        index=analysis_ids.index(current_analysis_id),
+                        format_func=lambda selected_id: _detailed_report_analysis_label(
+                            analysis_by_id.get(str(selected_id), {})
+                        ),
+                        key=selector_key,
+                        help=(
+                            "Switch to another saved BOM report. Each report reflects "
+                            "the data from that analysis run."
+                        ),
+                        on_change=_navigate_to_detailed_report_analysis,
+                        args=(current_analysis_id, selector_key),
+                    )
             analyzed = str(analysis.get("created_at") or "saved analysis")
             render_detailed_risk_rows(
                 bom_name=bom_name,
                 analyzed_on=analyzed,
                 parts=parts or [],
+                source_filename=str(
+                    _first(analysis, "filename", "file_name", "uploaded_file", fallback="") or ""
+                ),
                 analysis_id=str(analysis.get("id") or ""),
                 approved_alternatives=approved_alternatives or [],
             )
