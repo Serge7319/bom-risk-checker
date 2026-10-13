@@ -71,6 +71,11 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
             "Sensor board · sensors.csv — 2026-10-12 15:15",
         )
 
+    def test_open_detailed_risk_report_is_a_visible_primary_button(self):
+        self.assertIn('key=f"ei_open_detailed_risk_{analysis_id or \'saved\'}"', REPORT_SOURCE)
+        self.assertIn('type="primary"', REPORT_SOURCE)
+        self.assertIn(".st-key-cv_ei_detailed_report_action", REPORT_SOURCE)
+
     def test_report_renderer_has_saved_bom_selector_and_route_switch(self):
         renderer = REPORT_SOURCE.split("def render_engineering_intelligence_report", 1)[1]
         detailed = renderer.split(
@@ -423,6 +428,7 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
         )
         self.assertTrue(markup.startswith('<div class="cv-risk-detail"'))
         self.assertIn("<p><strong>Manufacturer</strong>", markup)
+        self.assertNotRegex(markup, r"(?m)^ {4,}<p><strong>")
 
     def test_detailed_risk_image_and_open_row_styles_are_subtle(self):
         report_source = (Path(__file__).resolve().parents[1] / "src" / "ui" / "ei_bom_report.py").read_text()
