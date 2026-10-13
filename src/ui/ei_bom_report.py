@@ -580,6 +580,7 @@ def report_styles() -> str:
       .cv-risk-grid-head { background:#f1f5f9;border:1px solid #e2e8f0;border-radius:8px;padding:9px 10px;color:#64748b;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;min-height:34px;box-sizing:border-box }
       .st-key-ei_report_workspace [class*="st-key-cv_risk_shut_"], .st-key-ei_report_workspace [class*="st-key-cv_risk_open_"] { border-bottom:1px solid #e8edf3;padding:5px 0 }
       .cv-risk-detail { display:grid; grid-template-columns:1.1fr .9fr; gap:16px; padding:14px 0 18px; }
+      .st-key-ei_report_workspace .cv-part-photo { border-radius:8px!important; }
       .cv-risk-card, .cv-risk-drivers, .cv-risk-action { border:1px solid #e6edf5; border-radius:14px; padding:16px; background:#fff; }
       .cv-risk-drivers { background:#fff5f5; border-color:#fecdd3; }
       .cv-risk-action { background:#eff6ff; border-color:#bfdbfe; margin-top:12px; }
@@ -854,6 +855,39 @@ def _table(title: str, copy: str, headers: list[str], body: str) -> str:
     """
 
 
+def _detailed_risk_expanded_markup(
+    row: dict[str, Any],
+    *,
+    reasons: str,
+    alternative_link: str,
+) -> str:
+    recorded_description = (
+        f"<p>{row['description']}</p>"
+        if str(row.get("description_raw") or "").strip()
+        else ""
+    )
+    return textwrap.dedent(
+        f"""
+        <div class="cv-risk-detail" data-expanded-mpn="{_esc(row['mpn_raw'])}">
+          <article class="cv-risk-card">
+            <div class="cv-ei-part">{_part_art(row['mpn_raw'], row['image'], part=row)}<span class="cv-ei-part-copy"><h3>{row['mpn']}</h3></span></div>
+            {recorded_description}
+            <p><strong>Manufacturer</strong> {row['manufacturer']}</p>
+            <p><strong>Best source</strong> {row['source']}</p>
+            <p><strong>Supplier count</strong> {row['suppliers']}</p>
+            <p><strong>Stock available</strong> {row['stock']:,}</p>
+            <p><strong>Lifecycle</strong> {row['lifecycle']}</p>
+            <p><strong>Risk score</strong> {row['score']}</p>
+          </article>
+          <div>
+            <article class="cv-risk-drivers"><h3>Risk drivers</h3><ul class="cv-ei-reasons">{reasons}</ul></article>
+            <article class="cv-risk-action"><h3>Recommended action</h3><p>{alternative_link}</p><p>{row['action_detail']}</p></article>
+          </div>
+        </div>
+        """
+    ).strip()
+
+
 def render_detailed_risk_rows(
     *,
     bom_name: str,
@@ -940,32 +974,13 @@ def render_detailed_risk_rows(
                     bom_name=bom_name,
                     source_page="detailed_risk_report",
                 )
-                recorded_description = (
-                    f"<p>{row['description']}</p>"
-                    if str(row.get("description_raw") or "").strip()
-                    else ""
+                detail_markup = _detailed_risk_expanded_markup(
+                    row,
+                    reasons=reasons,
+                    alternative_link=alternative_link,
                 )
-                st.markdown(
-                    f"""
-                    <div class="cv-risk-detail" data-expanded-mpn="{_esc(row['mpn_raw'])}">
-                      <article class="cv-risk-card">
-                        <div class="cv-ei-part">{_part_art(row['mpn_raw'], row['image'], part=row)}<span class="cv-ei-part-copy"><h3>{row['mpn']}</h3></span></div>
-                        {recorded_description}
-                        <p><strong>Manufacturer</strong> {row['manufacturer']}</p>
-                        <p><strong>Best source</strong> {row['source']}</p>
-                        <p><strong>Supplier count</strong> {row['suppliers']}</p>
-                        <p><strong>Stock available</strong> {row['stock']:,}</p>
-                        <p><strong>Lifecycle</strong> {row['lifecycle']}</p>
-                        <p><strong>Risk score</strong> {row['score']}</p>
-                      </article>
-                      <div>
-                        <article class="cv-risk-drivers"><h3>Risk drivers</h3><ul class="cv-ei-reasons">{reasons}</ul></article>
-                        <article class="cv-risk-action"><h3>Recommended action</h3><p>{alternative_link}</p><p>{row['action_detail']}</p></article>
-                      </div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
+                st.markdown(detail_markup, unsafe_allow_html=True)
+
 
 
 def detailed_risk_report_html(
