@@ -559,6 +559,10 @@ def report_styles() -> str:
       .st-key-ei_report_workspace { width:100%!important;max-width:100%!important;margin-inline:auto!important;box-sizing:border-box;min-width:0!important }
       .st-key-ei_report_workspace .cv-ei-report { color:#0f172a; font-family: Inter, "Segoe UI", sans-serif; width:100%;max-width:100%;margin:0 auto;box-sizing:border-box;min-width:0 }
       .st-key-ei_report_workspace .cv-ap { color:#0f172a; font-family:Inter, "Segoe UI", sans-serif; margin:0 0 2px; }
+      .st-key-cv_ei_detailed_report_action{display:flex!important;justify-content:flex-end!important;margin:12px 0 4px}
+      .st-key-cv_ei_detailed_report_action [data-testid="stButton"]{width:auto!important;margin-left:auto!important}
+      .st-key-cv_ei_detailed_report_action [data-testid="stButton"]>button{background:#2563eb!important;color:#fff!important;border:1px solid #2563eb!important;border-radius:9px!important;min-height:40px!important;padding:8px 14px!important;font-weight:800!important;box-shadow:0 2px 4px rgba(37,99,235,.18)!important}
+      .st-key-cv_ei_detailed_report_action [data-testid="stButton"]>button:hover{background:#1d4ed8!important;border-color:#1d4ed8!important}
       .st-key-ei_report_workspace .cv-ap-kicker { margin:0 0 6px; color:#64748b; font-size:12px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; }
       .st-key-ei_report_workspace .cv-ap h1 { margin:0 0 6px; color:#0f172a; font-size:32px; font-weight:760; line-height:1.15; letter-spacing:-.03em; }
       .st-key-ei_report_workspace .cv-ei-title { font-size:30px; }
@@ -918,26 +922,27 @@ def _detailed_risk_expanded_markup(
         if str(row.get("description_raw") or "").strip()
         else ""
     )
-    return textwrap.dedent(
-        f"""
-        <div class="cv-risk-detail" data-expanded-mpn="{_esc(row['mpn_raw'])}">
-          <article class="cv-risk-card">
-            <div class="cv-ei-part">{_part_art(row['mpn_raw'], row['image'], part=row)}<span class="cv-ei-part-copy"><h3>{row['mpn']}</h3></span></div>
-            {recorded_description}
-            <p><strong>Manufacturer</strong> {row['manufacturer']}</p>
-            <p><strong>Best source</strong> {row['source']}</p>
-            <p><strong>Supplier count</strong> {row['suppliers']}</p>
-            <p><strong>Stock available</strong> {row['stock']:,}</p>
-            <p><strong>Lifecycle</strong> {row['lifecycle']}</p>
-            <p><strong>Risk score</strong> {row['score']}</p>
-          </article>
-          <div>
-            <article class="cv-risk-drivers"><h3>Risk drivers</h3><ul class="cv-ei-reasons">{reasons}</ul></article>
-            <article class="cv-risk-action"><h3>Recommended action</h3><p>{alternative_link}</p><p>{row['action_detail']}</p></article>
-          </div>
-        </div>
-        """
-    ).strip()
+    # Keep this HTML compact. Four-space-indented tags inside Markdown are
+    # rendered as a code block by Streamlit instead of as report content.
+    return (
+        f'<div class="cv-risk-detail" data-expanded-mpn="{_esc(row["mpn_raw"])}">'
+        f'<article class="cv-risk-card">'
+        f'<div class="cv-ei-part">{_part_art(row["mpn_raw"], row["image"], part=row)}'
+        f'<span class="cv-ei-part-copy"><h3>{row["mpn"]}</h3></span></div>'
+        f'{recorded_description}'
+        f'<p><strong>Manufacturer</strong> {row["manufacturer"]}</p>'
+        f'<p><strong>Best source</strong> {row["source"]}</p>'
+        f'<p><strong>Supplier count</strong> {row["suppliers"]}</p>'
+        f'<p><strong>Stock available</strong> {row["stock"]:,}</p>'
+        f'<p><strong>Lifecycle</strong> {row["lifecycle"]}</p>'
+        f'<p><strong>Risk score</strong> {row["score"]}</p>'
+        f'</article><div>'
+        f'<article class="cv-risk-drivers"><h3>Risk drivers</h3>'
+        f'<ul class="cv-ei-reasons">{reasons}</ul></article>'
+        f'<article class="cv-risk-action"><h3>Recommended action</h3>'
+        f'<p>{alternative_link}</p><p>{row["action_detail"]}</p></article>'
+        f'</div></div>'
+    )
 
 
 def render_detailed_risk_rows(
@@ -1290,7 +1295,13 @@ def render_engineering_intelligence_report(
                                 saved_bom_action="open",
                                 arm_opening=False,
                             )
-            if st.button("Open detailed risk report", key="ei_open_detailed_risk"):
-                st.session_state[f"cadivor_detailed_risk_mpn_{analysis_id or bom_name}"] = ""
-                st.session_state["cadivor_show_detailed_risk"] = True
-                st.rerun()
+            with st.container(key="cv_ei_detailed_report_action"):
+                if st.button(
+                    "Open detailed risk report",
+                    key=f"ei_open_detailed_risk_{analysis_id or 'saved'}",
+                    type="primary",
+                    use_container_width=False,
+                ):
+                    st.session_state[f"cadivor_detailed_risk_mpn_{analysis_id or bom_name}"] = ""
+                    st.session_state["cadivor_show_detailed_risk"] = True
+                    st.rerun()
