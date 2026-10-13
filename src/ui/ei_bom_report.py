@@ -1088,6 +1088,23 @@ def render_engineering_intelligence_report(
                     key=tab_state_key,
                     on_change="rerun",
                 )
+                st.markdown(
+                    """
+                    <style>
+                    .st-key-cv_ei_report_tabs [role="tablist"] {
+                      display:flex!important;
+                      width:100%!important;
+                      justify-content:flex-end!important;
+                      flex-wrap:nowrap!important;
+                    }
+                    .st-key-cv_ei_report_tabs [role="tablist"] [role="tab"] {
+                      flex:0 0 auto!important;
+                      white-space:nowrap!important;
+                    }
+                    </style>
+                    """,
+                    unsafe_allow_html=True,
+                )
             tab = str(st.session_state.get(tab_state_key) or tab)
         if st.session_state.get("cadivor_show_detailed_risk"):
             if st.button("Back to Engineering Intelligence", key="ei_back_from_detailed_risk"):
@@ -1184,5 +1201,3 @@ def render_engineering_intelligence_report(
                 st.session_state[f"cadivor_detailed_risk_mpn_{analysis_id or bom_name}"] = ""
                 st.session_state["cadivor_show_detailed_risk"] = True
                 st.rerun()
-    
-    

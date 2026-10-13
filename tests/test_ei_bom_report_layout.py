@@ -142,10 +142,12 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
         self.assertIn("Open BOM to rerun", source)
         self.assertIn("saved_bom_action=\"open\"", source)
 
-    def test_selected_tab_uses_streamlit_native_indicator(self):
+    def test_selected_tab_uses_native_indicator_and_right_aligned_tablist(self):
         source = (Path(__file__).resolve().parents[1] / "src" / "ui" / "ei_bom_report.py").read_text()
         self.assertIn("st.tabs(", source)
         self.assertIn('on_change="rerun"', source)
+        self.assertIn('[role="tablist"]', source)
+        self.assertIn("justify-content:flex-end!important", source)
         self.assertNotIn("st.segmented_control(", source)
         self.assertNotIn("cv-ei-tab-indicator-track", source)
 
