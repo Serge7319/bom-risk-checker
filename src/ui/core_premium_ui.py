@@ -409,7 +409,7 @@ def _inject_approved_visual_overrides() -> None:
           padding:8px 10px !important
         }}
         html body section[data-testid="stMain"] [class*="st-key-cv_risk_open_"] {{
-          background:#f8fafc !important;border-left:3px solid #2563eb !important;border-radius:12px !important
+          background:#f8fafc !important;border-left:0 !important;border-radius:12px !important
         }}
         html body section[data-testid="stMain"] [class*="st-key-cv_risk_expand_"] .stButton > button {{
           min-width:0 !important;width:auto !important;min-height:36px !important;height:auto !important;

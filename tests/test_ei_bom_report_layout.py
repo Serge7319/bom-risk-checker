@@ -369,6 +369,25 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
                 self.assertNotIn("<p>Manufacturer AlphaSemi</p><p>Best source Digi-Key", report)
                 self.assertNotIn("Manufacturer AlphaSemi Best source Digi-Key Lifecycle Obsolete", report)
 
+    def test_expanded_detailed_risk_markup_is_dedented_html(self):
+        from src.ui.ei_bom_report import _detailed_risk_expanded_markup, _part_rows
+
+        row = _part_rows([PARTS[0]])[0]
+        markup = _detailed_risk_expanded_markup(
+            row,
+            reasons="<li>No stock at approved suppliers</li>",
+            alternative_link="<a href=\"/alternatives\">Review alternative parts</a>",
+        )
+        self.assertTrue(markup.startswith('<div class="cv-risk-detail"'))
+        self.assertIn("<p><strong>Manufacturer</strong>", markup)
+
+    def test_detailed_risk_image_and_open_row_styles_are_subtle(self):
+        report_source = (Path(__file__).resolve().parents[1] / "src" / "ui" / "ei_bom_report.py").read_text()
+        core_source = (Path(__file__).resolve().parents[1] / "src" / "ui" / "core_premium_ui.py").read_text()
+        self.assertIn(".st-key-ei_report_workspace .cv-part-photo { border-radius:8px!important; }", report_source)
+        self.assertIn('background:#f8fafc !important;border-left:0 !important;border-radius:12px !important', core_source)
+        self.assertNotIn('border-left:3px solid #2563eb !important', core_source)
+
     def test_detailed_risk_starts_collapsed_until_a_part_is_selected(self):
         report = detailed_risk_report_html(
             bom_name="Sample BOM",
