@@ -40,10 +40,10 @@ REPORT_SOURCE = (Path(__file__).resolve().parents[1] / "src" / "ui" / "ei_bom_re
 
 class EngineeringIntelligenceLayoutTests(unittest.TestCase):
     def test_report_sections_use_one_stateful_selection_widget(self):
-        self.assertIn("st.segmented_control(", REPORT_SOURCE)
+        self.assertIn("st.tabs(", REPORT_SOURCE)
         self.assertIn('key=tab_state_key', REPORT_SOURCE)
-        self.assertIn('[data-testid="stBaseButton-segmented_controlActive"]', REPORT_SOURCE)
-        self.assertIn('button[data-testid="stBaseButton-segmented_controlActive"]::after', REPORT_SOURCE)
+        self.assertIn('on_change="rerun"', REPORT_SOURCE)
+        self.assertNotIn("st.segmented_control(", REPORT_SOURCE)
         self.assertNotIn('key=f"ei_tab_{slug}"', REPORT_SOURCE)
 
     def test_bom_risk_uses_the_approved_review_structure(self):
@@ -133,17 +133,20 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
 
     def test_engineering_intelligence_page_explains_selected_tab_and_refresh_action(self):
         source = (Path(__file__).resolve().parents[1] / "src" / "ui" / "ei_bom_report.py").read_text()
-        self.assertIn('button[kind="segmented_controlActive"]', source)
+        self.assertIn("st.tabs(", source)
+        self.assertIn('on_change="rerun"', source)
+        self.assertNotIn("st.segmented_control(", source)
         self.assertNotIn("cv-ei-tab-indicator-track", source)
         self.assertNotIn("_ei_tab_indicator_html", source)
         self.assertNotIn("cv-ei-selected-tab", source)
         self.assertIn("Open BOM to rerun", source)
         self.assertIn("saved_bom_action=\"open\"", source)
 
-    def test_selected_tab_underline_is_attached_to_the_native_control(self):
+    def test_selected_tab_uses_streamlit_native_indicator(self):
         source = (Path(__file__).resolve().parents[1] / "src" / "ui" / "ei_bom_report.py").read_text()
-        self.assertIn('button[kind="segmented_controlActive"]', source)
-        self.assertIn("border-bottom:2px solid #2563eb!important", source)
+        self.assertIn("st.tabs(", source)
+        self.assertIn('on_change="rerun"', source)
+        self.assertNotIn("st.segmented_control(", source)
         self.assertNotIn("cv-ei-tab-indicator-track", source)
 
     def test_tables_use_catalog_photos_and_the_same_placeholder(self):
@@ -295,8 +298,11 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
         source = Path("src/ui/ei_bom_report.py").read_text(encoding="utf-8")
         renderer = source.split("def render_engineering_intelligence_report", 1)[1]
         tabs = renderer.split("if st.session_state.get(\"cadivor_show_detailed_risk\"):", 1)[0]
-        self.assertIn("st.segmented_control(", tabs)
+        self.assertIn("st.tabs(", tabs)
         self.assertIn("key=tab_state_key", tabs)
+        self.assertIn('on_change="rerun"', tabs)
+        self.assertNotIn("st.segmented_control(", tabs)
+        self.assertIn("with tab_panels[EI_TABS.index(tab)]:", renderer)
         self.assertNotIn("st.rerun()", tabs)
 
     def test_detailed_risk_rows_keep_package_for_the_correct_fallback_photo(self):

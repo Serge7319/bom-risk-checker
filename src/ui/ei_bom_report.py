@@ -1083,51 +1083,12 @@ def render_engineering_intelligence_report(
                 unsafe_allow_html=True,
             )
             with st.container(key="cv_ei_report_tabs"):
-                selected_tab = st.segmented_control(
-                    "Engineering Intelligence section",
-                    options=list(EI_TABS),
+                tab_panels = st.tabs(
+                    list(EI_TABS),
                     key=tab_state_key,
-                    label_visibility="collapsed",
+                    on_change="rerun",
                 )
-                tab = str(selected_tab or tab)
-                st.markdown(
-                    f"""
-                    <style>
-                    .st-key-cv_ei_report_tabs [data-testid="stVerticalBlock"]{{gap:.25rem!important}}
-                    .st-key-cv_ei_report_tabs [data-testid="stSegmentedControl"]{{
-                      width:100%;background:transparent!important;border-bottom:0!important;
-                      border-radius:0!important;box-shadow:none!important
-                    }}
-                    .st-key-cv_ei_report_tabs [data-testid="stSegmentedControl"] :is(button,[role="radio"],[role="tab"]){{ 
-                      color:#64748b!important;background:transparent!important;border:0!important;
-                      border-bottom:2px solid transparent!important;border-radius:0!important;
-                      box-shadow:none!important;min-height:34px!important;padding:6px 10px!important;
-                      white-space:nowrap!important
-                    }}
-                    .st-key-cv_ei_report_tabs [data-testid="stSegmentedControl"] :is(button,[role="radio"],[role="tab"])[aria-checked="true"],
-                    .st-key-cv_ei_report_tabs [data-testid="stSegmentedControl"] :is(button,[role="radio"],[role="tab"])[aria-pressed="true"],
-                    .st-key-cv_ei_report_tabs [data-testid="stSegmentedControl"] :is(button,[role="radio"],[role="tab"])[aria-selected="true"],
-                    .st-key-cv_ei_report_tabs [data-testid="stSegmentedControl"] :is(button,[role="radio"],[role="tab"])[data-selected="true"],
-                    .st-key-cv_ei_report_tabs [data-testid="stSegmentedControl"] button[kind="segmented_controlActive"],
-                    .st-key-cv_ei_report_tabs [data-testid="stSegmentedControl"] label:has(input:checked),
-                    .st-key-cv_ei_report_tabs button[data-testid="stBaseButton-segmented_controlActive"]{{
-                      color:#1d4ed8!important;background:transparent!important;border:0!important;
-                      border-radius:0!important;box-shadow:none!important;font-weight:750!important;
-                      position:relative!important
-                    }}
-                    .st-key-cv_ei_report_tabs button[data-testid="stBaseButton-segmented_controlActive"]::after{{
-                      content:"";position:absolute;left:10px;right:10px;bottom:0;height:2px;
-                      border-radius:2px;background:#2563eb
-                    }}
-                    .st-key-cv_ei_report_tabs [data-testid="stSegmentedControl"] button:focus:not(:focus-visible){{outline:none!important}}
-                    .st-key-cv_ei_report_tabs [data-testid="stSegmentedControl"] button:focus-visible{{outline:2px solid #93c5fd!important;outline-offset:2px!important}}
-                    @media(max-width:760px){{.st-key-cv_ei_report_tabs{{overflow-x:auto}}}}
-                    </style>
-                    """,
-                    unsafe_allow_html=True,
-                )
-        if approval_load_failed:
-            st.warning("Saved replacement approvals could not be loaded. They may be missing from this view until the connection is restored.")
+            tab = str(st.session_state.get(tab_state_key) or tab)
         if st.session_state.get("cadivor_show_detailed_risk"):
             if st.button("Back to Engineering Intelligence", key="ei_back_from_detailed_risk"):
                 st.session_state["cadivor_show_detailed_risk"] = False
@@ -1177,47 +1138,51 @@ def render_engineering_intelligence_report(
             except Exception:
                 st.caption("Report downloads are unavailable for this analysis.")
             return
-        st.markdown(
-            engineering_intelligence_html(
-                bom_name=bom_name,
-                part_count=len(parts or []),
-                tab=str(tab or "BOM Risk"),
-                parts=parts or [],
-                alternatives=alternatives or [],
-                health_score=health_score,
-                include_heading=False,
-                analysis_id=str(analysis.get("id") or ""),
-                approved_alternatives=approved_alternatives or [],
-            ),
-            unsafe_allow_html=True,
-        )
-        analysis_id = str(analysis.get("id") or "")
-        if tab == "BOM Risk":
-            with st.container(key="ei_refresh_saved_analysis", border=True):
-                refresh_copy, refresh_action = st.columns([4, 1.35], vertical_alignment="center")
-                with refresh_copy:
-                    st.markdown(
-                        "<div class='cv-ei-refresh-card'><div><strong>Refresh supplier data</strong>"
-                        "<p>This page shows the saved analysis snapshot. Open the BOM and rerun it to check current distributor stock, lead time, and lifecycle data.</p></div></div>",
-                        unsafe_allow_html=True,
-                    )
-                with refresh_action:
-                    if st.button(
-                        "Open BOM to rerun",
-                        key=f"ei_open_bom_to_rerun_{analysis_id or 'saved'}",
-                        type="secondary",
-                        use_container_width=True,
-                    ):
-                        from src.ui.navigation import navigate_to
-
-                        navigate_to(
-                            "BOM Settings",
-                            saved_bom_id=analysis_id,
-                            saved_bom_action="open",
-                            arm_opening=False,
+        with tab_panels[EI_TABS.index(tab)]:
+            if approval_load_failed:
+                st.warning("Saved replacement approvals could not be loaded. They may be missing from this view until the connection is restored.")
+            st.markdown(
+                engineering_intelligence_html(
+                    bom_name=bom_name,
+                    part_count=len(parts or []),
+                    tab=str(tab or "BOM Risk"),
+                    parts=parts or [],
+                    alternatives=alternatives or [],
+                    health_score=health_score,
+                    include_heading=False,
+                    analysis_id=str(analysis.get("id") or ""),
+                    approved_alternatives=approved_alternatives or [],
+                ),
+                unsafe_allow_html=True,
+            )
+            analysis_id = str(analysis.get("id") or "")
+            if tab == "BOM Risk":
+                with st.container(key="ei_refresh_saved_analysis", border=True):
+                    refresh_copy, refresh_action = st.columns([4, 1.35], vertical_alignment="center")
+                    with refresh_copy:
+                        st.markdown(
+                            "<div class='cv-ei-refresh-card'><div><strong>Refresh supplier data</strong>"
+                            "<p>This page shows the saved analysis snapshot. Open the BOM and rerun it to check current distributor stock, lead time, and lifecycle data.</p></div></div>",
+                            unsafe_allow_html=True,
                         )
-        if st.button("Open detailed risk report", key="ei_open_detailed_risk"):
-            st.session_state[f"cadivor_detailed_risk_mpn_{analysis_id or bom_name}"] = ""
-            st.session_state["cadivor_show_detailed_risk"] = True
-            st.rerun()
-
+                    with refresh_action:
+                        if st.button(
+                            "Open BOM to rerun",
+                            key=f"ei_open_bom_to_rerun_{analysis_id or 'saved'}",
+                            type="secondary",
+                            use_container_width=True,
+                        ):
+                            from src.ui.navigation import navigate_to
+    
+                            navigate_to(
+                                "BOM Settings",
+                                saved_bom_id=analysis_id,
+                                saved_bom_action="open",
+                                arm_opening=False,
+                            )
+            if st.button("Open detailed risk report", key="ei_open_detailed_risk"):
+                st.session_state[f"cadivor_detailed_risk_mpn_{analysis_id or bom_name}"] = ""
+                st.session_state["cadivor_show_detailed_risk"] = True
+                st.rerun()
+    
+    
