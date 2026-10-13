@@ -135,6 +135,58 @@ def _select_ei_report_tab(tab: str) -> None:
         st.session_state["cadivor_ei_report_tab"] = tab
 
 
+def _detailed_report_analyses(
+    saved_analyses: list[dict[str, Any]] | None,
+    current_analysis: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Return unique saved reports and keep the currently open analysis available."""
+    options: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for row in list(saved_analyses or []) + [current_analysis]:
+        analysis_id = str(row.get("id") or "").strip()
+        if analysis_id and analysis_id not in seen:
+            options.append(row)
+            seen.add(analysis_id)
+    return options
+
+
+def _detailed_report_analysis_label(analysis: dict[str, Any]) -> str:
+    """Make saved report choices recognizable when a project has several BOM runs."""
+    project = str(analysis.get("project_name") or "").strip()
+    filename = str(analysis.get("filename") or "").strip()
+    label = project or filename or "Saved BOM"
+    if filename and filename.casefold() != label.casefold():
+        label = f"{label} · {filename}"
+    created_at = str(analysis.get("created_at") or "").strip()
+    if created_at:
+        analyzed_at = created_at.replace("T", " ").rstrip("Z")[:16]
+        label = f"{label} — {analyzed_at}"
+    return label
+
+
+def _navigate_to_detailed_report_analysis(current_analysis_id: str, selector_key: str) -> None:
+    """Open the selected saved analysis in the same Detailed Risk Report view."""
+    import streamlit as st
+
+    selected_id = str(st.session_state.get(selector_key) or "").strip()
+    if not selected_id or selected_id == str(current_analysis_id or ""):
+        return
+
+    # This key is scoped to the old analysis. Clear it so returning later starts
+    # with the report that is actually open instead of the previous selection.
+    st.session_state.pop(selector_key, None)
+    st.session_state["cadivor_show_detailed_risk"] = True
+    from src.ui.navigation import navigate_to
+
+    navigate_to(
+        "Analysis Details",
+        analysis_id=selected_id,
+        analysis_tab="Engineering Intelligence",
+        _rerun=False,
+        arm_opening=False,
+    )
+
+
 def _esc(value: Any, fallback: str = "—") -> str:
     if value is None:
         return fallback
@@ -1080,6 +1132,7 @@ def render_engineering_intelligence_report(
     health_score: int | None,
     approved_alternatives: list[dict[str, Any]] | None = None,
     approval_load_failed: bool = False,
+    saved_analyses: list[dict[str, Any]] | None = None,
 ) -> None:
     import streamlit as st
 
@@ -1125,6 +1178,31 @@ def render_engineering_intelligence_report(
             if st.button("Back to Engineering Intelligence", key="ei_back_from_detailed_risk"):
                 st.session_state["cadivor_show_detailed_risk"] = False
                 st.rerun()
+            report_analyses = _detailed_report_analyses(saved_analyses, analysis)
+            analysis_ids = [str(row.get("id") or "") for row in report_analyses]
+            current_analysis_id = str(analysis.get("id") or "")
+            if len(analysis_ids) > 1 and current_analysis_id in analysis_ids:
+                analysis_by_id = {
+                    str(row.get("id") or ""): row
+                    for row in report_analyses
+                    if str(row.get("id") or "")
+                }
+                selector_key = f"ei_detailed_report_bom_{current_analysis_id}"
+                st.selectbox(
+                    "Project / BOM",
+                    options=analysis_ids,
+                    index=analysis_ids.index(current_analysis_id),
+                    format_func=lambda selected_id: _detailed_report_analysis_label(
+                        analysis_by_id.get(str(selected_id), {})
+                    ),
+                    key=selector_key,
+                    help=(
+                        "Switch to another saved BOM report. Each report reflects "
+                        "the data from that analysis run."
+                    ),
+                    on_change=_navigate_to_detailed_report_analysis,
+                    args=(current_analysis_id, selector_key),
+                )
             analyzed = str(analysis.get("created_at") or "saved analysis")
             render_detailed_risk_rows(
                 bom_name=bom_name,
