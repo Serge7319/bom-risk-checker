@@ -417,6 +417,27 @@ def _lucide(name: str, size: int = 18) -> str:
     )
 
 
+def _load_saved_analysis_report_options(
+    supabase,
+    *,
+    user_id: str,
+    workspace_id: str | None = None,
+) -> list[dict[str, Any]]:
+    """List only analyses the signed-in user can already open in this workspace."""
+    try:
+        query = (
+            supabase.table("analyses")
+            .select("id,project_name,filename,created_at")
+            .eq("user_id", user_id)
+        )
+        if workspace_id:
+            query = query.eq("workspace_id", workspace_id)
+        response = query.order("created_at", desc=True).limit(500).execute()
+        return list(response.data or [])
+    except Exception:
+        return []
+
+
 def _query_table(
     supabase,
     table: str,
@@ -2033,6 +2054,14 @@ def render_analysis_detail(
             except Exception:
                 approval_load_failed = True
 
+            saved_report_analyses: list[dict[str, Any]] = []
+            if st.session_state.get("cadivor_show_detailed_risk"):
+                saved_report_analyses = _load_saved_analysis_report_options(
+                    supabase,
+                    user_id=str(user_id or ""),
+                    workspace_id=workspace_id,
+                )
+
             render_engineering_intelligence_report(
                 analysis=analysis,
                 parts=parts or [],
@@ -2040,6 +2069,7 @@ def render_analysis_detail(
                 health_score=health,
                 approved_alternatives=approved_alternatives,
                 approval_load_failed=approval_load_failed,
+                saved_analyses=saved_report_analyses,
             )
             return
 
