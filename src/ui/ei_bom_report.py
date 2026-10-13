@@ -135,6 +135,58 @@ def _select_ei_report_tab(tab: str) -> None:
         st.session_state["cadivor_ei_report_tab"] = tab
 
 
+def _detailed_report_analyses(
+    saved_analyses: list[dict[str, Any]] | None,
+    current_analysis: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Return unique saved reports and keep the currently open analysis available."""
+    options: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for row in list(saved_analyses or []) + [current_analysis]:
+        analysis_id = str(row.get("id") or "").strip()
+        if analysis_id and analysis_id not in seen:
+            options.append(row)
+            seen.add(analysis_id)
+    return options
+
+
+def _detailed_report_analysis_label(analysis: dict[str, Any]) -> str:
+    """Make saved report choices recognizable when a project has several BOM runs."""
+    project = str(analysis.get("project_name") or "").strip()
+    filename = str(analysis.get("filename") or "").strip()
+    label = project or filename or "Saved BOM"
+    if filename and filename.casefold() != label.casefold():
+        label = f"{label} · {filename}"
+    created_at = str(analysis.get("created_at") or "").strip()
+    if created_at:
+        analyzed_at = created_at.replace("T", " ").rstrip("Z")[:16]
+        label = f"{label} — {analyzed_at}"
+    return label
+
+
+def _navigate_to_detailed_report_analysis(current_analysis_id: str, selector_key: str) -> None:
+    """Open the selected saved analysis in the same Detailed Risk Report view."""
+    import streamlit as st
+
+    selected_id = str(st.session_state.get(selector_key) or "").strip()
+    if not selected_id or selected_id == str(current_analysis_id or ""):
+        return
+
+    # This key is scoped to the old analysis. Clear it so returning later starts
+    # with the report that is actually open instead of the previous selection.
+    st.session_state.pop(selector_key, None)
+    st.session_state["cadivor_show_detailed_risk"] = True
+    from src.ui.navigation import navigate_to
+
+    navigate_to(
+        "Analysis Details",
+        analysis_id=selected_id,
+        analysis_tab="Engineering Intelligence",
+        _rerun=False,
+        arm_opening=False,
+    )
+
+
 def _esc(value: Any, fallback: str = "—") -> str:
     if value is None:
         return fallback
@@ -507,6 +559,10 @@ def report_styles() -> str:
       .st-key-ei_report_workspace { width:100%!important;max-width:100%!important;margin-inline:auto!important;box-sizing:border-box;min-width:0!important }
       .st-key-ei_report_workspace .cv-ei-report { color:#0f172a; font-family: Inter, "Segoe UI", sans-serif; width:100%;max-width:100%;margin:0 auto;box-sizing:border-box;min-width:0 }
       .st-key-ei_report_workspace .cv-ap { color:#0f172a; font-family:Inter, "Segoe UI", sans-serif; margin:0 0 2px; }
+      .st-key-cv_ei_detailed_report_action{display:flex!important;justify-content:flex-end!important;margin:12px 0 4px}
+      .st-key-cv_ei_detailed_report_action [data-testid="stButton"]{width:auto!important;margin-left:auto!important}
+      .st-key-cv_ei_detailed_report_action [data-testid="stButton"]>button{background:#2563eb!important;color:#fff!important;border:1px solid #2563eb!important;border-radius:9px!important;min-height:40px!important;padding:8px 14px!important;font-weight:800!important;box-shadow:0 2px 4px rgba(37,99,235,.18)!important}
+      .st-key-cv_ei_detailed_report_action [data-testid="stButton"]>button:hover{background:#1d4ed8!important;border-color:#1d4ed8!important}
       .st-key-ei_report_workspace .cv-ap-kicker { margin:0 0 6px; color:#64748b; font-size:12px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; }
       .st-key-ei_report_workspace .cv-ap h1 { margin:0 0 6px; color:#0f172a; font-size:32px; font-weight:760; line-height:1.15; letter-spacing:-.03em; }
       .st-key-ei_report_workspace .cv-ei-title { font-size:30px; }
@@ -866,26 +922,27 @@ def _detailed_risk_expanded_markup(
         if str(row.get("description_raw") or "").strip()
         else ""
     )
-    return textwrap.dedent(
-        f"""
-        <div class="cv-risk-detail" data-expanded-mpn="{_esc(row['mpn_raw'])}">
-          <article class="cv-risk-card">
-            <div class="cv-ei-part">{_part_art(row['mpn_raw'], row['image'], part=row)}<span class="cv-ei-part-copy"><h3>{row['mpn']}</h3></span></div>
-            {recorded_description}
-            <p><strong>Manufacturer</strong> {row['manufacturer']}</p>
-            <p><strong>Best source</strong> {row['source']}</p>
-            <p><strong>Supplier count</strong> {row['suppliers']}</p>
-            <p><strong>Stock available</strong> {row['stock']:,}</p>
-            <p><strong>Lifecycle</strong> {row['lifecycle']}</p>
-            <p><strong>Risk score</strong> {row['score']}</p>
-          </article>
-          <div>
-            <article class="cv-risk-drivers"><h3>Risk drivers</h3><ul class="cv-ei-reasons">{reasons}</ul></article>
-            <article class="cv-risk-action"><h3>Recommended action</h3><p>{alternative_link}</p><p>{row['action_detail']}</p></article>
-          </div>
-        </div>
-        """
-    ).strip()
+    # Keep this HTML compact. Four-space-indented tags inside Markdown are
+    # rendered as a code block by Streamlit instead of as report content.
+    return (
+        f'<div class="cv-risk-detail" data-expanded-mpn="{_esc(row["mpn_raw"])}">'
+        f'<article class="cv-risk-card">'
+        f'<div class="cv-ei-part">{_part_art(row["mpn_raw"], row["image"], part=row)}'
+        f'<span class="cv-ei-part-copy"><h3>{row["mpn"]}</h3></span></div>'
+        f'{recorded_description}'
+        f'<p><strong>Manufacturer</strong> {row["manufacturer"]}</p>'
+        f'<p><strong>Best source</strong> {row["source"]}</p>'
+        f'<p><strong>Supplier count</strong> {row["suppliers"]}</p>'
+        f'<p><strong>Stock available</strong> {row["stock"]:,}</p>'
+        f'<p><strong>Lifecycle</strong> {row["lifecycle"]}</p>'
+        f'<p><strong>Risk score</strong> {row["score"]}</p>'
+        f'</article><div>'
+        f'<article class="cv-risk-drivers"><h3>Risk drivers</h3>'
+        f'<ul class="cv-ei-reasons">{reasons}</ul></article>'
+        f'<article class="cv-risk-action"><h3>Recommended action</h3>'
+        f'<p>{alternative_link}</p><p>{row["action_detail"]}</p></article>'
+        f'</div></div>'
+    )
 
 
 def render_detailed_risk_rows(
@@ -1080,6 +1137,7 @@ def render_engineering_intelligence_report(
     health_score: int | None,
     approved_alternatives: list[dict[str, Any]] | None = None,
     approval_load_failed: bool = False,
+    saved_analyses: list[dict[str, Any]] | None = None,
 ) -> None:
     import streamlit as st
 
@@ -1125,6 +1183,31 @@ def render_engineering_intelligence_report(
             if st.button("Back to Engineering Intelligence", key="ei_back_from_detailed_risk"):
                 st.session_state["cadivor_show_detailed_risk"] = False
                 st.rerun()
+            report_analyses = _detailed_report_analyses(saved_analyses, analysis)
+            analysis_ids = [str(row.get("id") or "") for row in report_analyses]
+            current_analysis_id = str(analysis.get("id") or "")
+            if len(analysis_ids) > 1 and current_analysis_id in analysis_ids:
+                analysis_by_id = {
+                    str(row.get("id") or ""): row
+                    for row in report_analyses
+                    if str(row.get("id") or "")
+                }
+                selector_key = f"ei_detailed_report_bom_{current_analysis_id}"
+                st.selectbox(
+                    "Project / BOM",
+                    options=analysis_ids,
+                    index=analysis_ids.index(current_analysis_id),
+                    format_func=lambda selected_id: _detailed_report_analysis_label(
+                        analysis_by_id.get(str(selected_id), {})
+                    ),
+                    key=selector_key,
+                    help=(
+                        "Switch to another saved BOM report. Each report reflects "
+                        "the data from that analysis run."
+                    ),
+                    on_change=_navigate_to_detailed_report_analysis,
+                    args=(current_analysis_id, selector_key),
+                )
             analyzed = str(analysis.get("created_at") or "saved analysis")
             render_detailed_risk_rows(
                 bom_name=bom_name,
@@ -1212,7 +1295,13 @@ def render_engineering_intelligence_report(
                                 saved_bom_action="open",
                                 arm_opening=False,
                             )
-            if st.button("Open detailed risk report", key="ei_open_detailed_risk"):
-                st.session_state[f"cadivor_detailed_risk_mpn_{analysis_id or bom_name}"] = ""
-                st.session_state["cadivor_show_detailed_risk"] = True
-                st.rerun()
+            with st.container(key="cv_ei_detailed_report_action"):
+                if st.button(
+                    "Open detailed risk report",
+                    key=f"ei_open_detailed_risk_{analysis_id or 'saved'}",
+                    type="primary",
+                    use_container_width=False,
+                ):
+                    st.session_state[f"cadivor_detailed_risk_mpn_{analysis_id or bom_name}"] = ""
+                    st.session_state["cadivor_show_detailed_risk"] = True
+                    st.rerun()
