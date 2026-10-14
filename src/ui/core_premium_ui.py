@@ -582,7 +582,9 @@ def _inject_approved_visual_overrides() -> None:
           width:max-content!important;min-width:0!important;max-width:none!important;margin:0!important;padding:0!important
         }
         html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_row_"] [class*="st-key-approved_report_open_"] button,
-        html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_row_"] [class*="st-key-approved_report_open_"].stButton > button {
+        html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_row_"] [class*="st-key-approved_report_open_"].stButton > button,
+        html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_row_"] [class*="st-key-approved_report_open_"] .stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton) > button:not([kind="primary"]):not(:disabled),
+        html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_row_"] [class*="st-key-approved_report_open_"].stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton) > button:not([kind="primary"]):not(:disabled) {
           appearance:none!important;display:inline-flex!important;align-items:center!important;justify-content:flex-start!important;
           box-sizing:border-box!important;flex:0 0 auto!important;width:max-content!important;min-width:0!important;max-width:none!important;
           height:36px!important;min-height:36px!important;margin:0!important;padding:0!important;
