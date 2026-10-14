@@ -2654,7 +2654,7 @@ def render_reports_list(records: list[dict[str, Any]] | None) -> None:
           }
           .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_open_"] button{
             display:inline-flex!important;align-items:center!important;justify-content:center!important;width:auto!important;min-width:0!important;
-            min-height:36px!important;height:36px!important;padding:0 2px!important;border:0!important;border-radius:0!important;
+            min-height:36px!important;height:36px!important;padding:0 2px!important;border:0!important;border-color:transparent!important;border-radius:0!important;outline:0!important;
             background:transparent!important;color:#2563eb!important;box-shadow:none!important;font-size:15px!important;font-weight:650!important
           }
           .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_open_"] button:hover{
@@ -2670,8 +2670,8 @@ def render_reports_list(records: list[dict[str, Any]] | None) -> None:
              surrounding container class during a rerun or responsive layout. */
           [class*="st-key-approved_report_open_"] button{
             display:inline-flex!important;align-items:center!important;justify-content:center!important;width:auto!important;
-            min-width:0!important;min-height:36px!important;height:36px!important;padding:0 2px!important;border:0!important;
-            border-radius:0!important;background:transparent!important;color:#2563eb!important;box-shadow:none!important;
+            min-width:0!important;min-height:36px!important;height:36px!important;padding:0 2px!important;border:0!important;border-color:transparent!important;
+            border-radius:0!important;outline:0!important;background:transparent!important;color:#2563eb!important;box-shadow:none!important;
             font-size:15px!important;font-weight:650!important
           }
           [class*="st-key-approved_report_open_"] button:hover{
@@ -2680,6 +2680,9 @@ def render_reports_list(records: list[dict[str, Any]] | None) -> None:
           [class*="st-key-approved_report_open_"] button p{color:inherit!important;font-size:14px!important;font-weight:650!important}
           [class*="st-key-approved_report_open_"] button::after{
             content:"›";display:inline-block;margin-left:7px;color:#2563eb;font-size:20px;line-height:12px;vertical-align:-1px
+          }
+          [class*="st-key-approved_report_open_"] button:focus-visible{
+            outline:2px solid #93c5fd!important;outline-offset:3px!important;border-radius:3px!important
           }
           @media(max-width:1050px){
             .st-key-approved_page_canvas_wide_render_reports_list .cv-ap-report-cards{grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -2790,9 +2793,31 @@ def render_reports_list(records: list[dict[str, Any]] | None) -> None:
                             "Open",
                             "Analysis Details",
                             key=f"approved_report_open_{index}",
-                            type="secondary",
+                            type="tertiary",
                             analysis_id=analysis_id,
                         )
+    # The app keeps a shared scroll container while swapping in-session routes.
+    # Scroll this page's canvas into view after it has mounted so users see the
+    # report heading, template cards, and then the recent-sources table.
+    import streamlit.components.v1 as components
+
+    components.html(
+        """
+        <script>
+        (() => {
+          const parentWindow = window.parent;
+          const doc = parentWindow.document;
+          const revealTop = () => {
+            const canvas = doc.querySelector('.st-key-approved_page_canvas_wide_render_reports_list');
+            if (canvas) canvas.scrollIntoView({block: 'start', behavior: 'auto'});
+          };
+          [0, 80, 240, 500, 850].forEach((delay) => parentWindow.setTimeout(revealTop, delay));
+        })();
+        </script>
+        """,
+        height=0,
+        width=0,
+    )
     end_approved_page()
 
 
