@@ -2547,6 +2547,7 @@ def render_reports_list(records: list[dict[str, Any]] | None) -> None:
     st.markdown(
         """
         <style>
+          .st-key-approved_page_canvas_wide_render_reports_list>[data-testid="stVerticalBlock"]{gap:0!important}
           .st-key-approved_page_canvas_wide_render_reports_list .cv-ap-report{
             color:#0f172a;font-family:Inter,"Segoe UI",sans-serif
           }
@@ -2698,15 +2699,26 @@ def render_reports_list(records: list[dict[str, Any]] | None) -> None:
             .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_row_"]{min-width:820px}
           }
         </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        """
         <div class="cv-ap-report">
           <p class="cv-ap-report-kicker">REPORTS</p>
           <h1>Engineering reports</h1>
           <p class="cv-ap-report-sub">Create tailored reports from your engineering data and analysis results.</p>
           <h2 class="cv-ap-report-section-title">Report templates</h2>
-          <section class="cv-ap-report-cards">{''.join(cards)}</section>
-          <h2 class="cv-ap-report-section-title">Recent report sources</h2>
         </div>
         """,
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        "<section class='cv-ap-report-cards'>" + "".join(cards) + "</section>",
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        "<h2 class='cv-ap-report-section-title'>Recent report sources</h2>",
         unsafe_allow_html=True,
     )
 
@@ -2796,27 +2808,32 @@ def render_reports_list(records: list[dict[str, Any]] | None) -> None:
                             type="tertiary",
                             analysis_id=analysis_id,
                         )
-    # The app keeps a shared scroll container while swapping in-session routes.
-    # Scroll this page's canvas into view after it has mounted so users see the
-    # report heading, template cards, and then the recent-sources table.
-    import streamlit.components.v1 as components
-
-    components.html(
+    # Reports sometimes returns to a remembered scroll offset after a route
+    # swap. Run the reset in the app document (not a component iframe), then
+    # align this canvas at the top so the title and template cards are visible.
+    st.html(
         """
         <script>
         (() => {
-          const parentWindow = window.parent;
-          const doc = parentWindow.document;
-          const revealTop = () => {
-            const canvas = doc.querySelector('.st-key-approved_page_canvas_wide_render_reports_list');
-            if (canvas) canvas.scrollIntoView({block: 'start', behavior: 'auto'});
+          const canvasSelector = '.st-key-approved_page_canvas_wide_render_reports_list';
+          const resetReportsScroll = () => {
+            const canvas = document.querySelector(canvasSelector);
+            if (!canvas) return;
+            for (let node = canvas; node && node !== document.documentElement; node = node.parentElement) {
+              const overflowY = getComputedStyle(node).overflowY;
+              if (node.scrollHeight > node.clientHeight || overflowY === 'auto' || overflowY === 'scroll') {
+                node.scrollTop = 0;
+                if (typeof node.scrollTo === 'function') node.scrollTo({top: 0, left: 0, behavior: 'auto'});
+              }
+            }
+            window.scrollTo({top: 0, left: 0, behavior: 'auto'});
+            canvas.scrollIntoView({block: 'start', behavior: 'auto'});
           };
-          [0, 80, 240, 500, 850].forEach((delay) => parentWindow.setTimeout(revealTop, delay));
+          [0, 80, 240, 500].forEach((delay) => window.setTimeout(resetReportsScroll, delay));
         })();
         </script>
         """,
-        height=0,
-        width=0,
+        unsafe_allow_javascript=True,
     )
     end_approved_page()
 
