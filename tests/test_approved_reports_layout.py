@@ -40,6 +40,11 @@ class ApprovedReportsLayoutTests(unittest.TestCase):
         self.assertIn('health_text = str(score) if score is not None else "—"', REPORTS)
         self.assertIn('if high_risk_raw is not None else "—"', REPORTS)
 
+    def test_report_open_action_matches_the_mockup_link(self) -> None:
+        self.assertIn('[class*="st-key-approved_report_open_"] button{', REPORTS)
+        self.assertIn('type="secondary"', REPORTS)
+        self.assertIn('content:"›"', REPORTS)
+
 
 if __name__ == "__main__":
     unittest.main()

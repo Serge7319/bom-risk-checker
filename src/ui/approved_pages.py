@@ -2666,6 +2666,21 @@ def render_reports_list(records: list[dict[str, Any]] | None) -> None:
           .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_open_"] button::after{
             content:"›";display:inline-block;margin-left:7px;color:#2563eb;font-size:20px;line-height:12px;vertical-align:-1px
           }
+          /* Keep the mockup's text-link action even if Streamlit changes a
+             surrounding container class during a rerun or responsive layout. */
+          [class*="st-key-approved_report_open_"] button{
+            display:inline-flex!important;align-items:center!important;justify-content:center!important;width:auto!important;
+            min-width:0!important;min-height:36px!important;height:36px!important;padding:0 2px!important;border:0!important;
+            border-radius:0!important;background:transparent!important;color:#2563eb!important;box-shadow:none!important;
+            font-size:15px!important;font-weight:650!important
+          }
+          [class*="st-key-approved_report_open_"] button:hover{
+            background:transparent!important;color:#1d4ed8!important;text-decoration:underline;text-underline-offset:3px
+          }
+          [class*="st-key-approved_report_open_"] button p{color:inherit!important;font-size:14px!important;font-weight:650!important}
+          [class*="st-key-approved_report_open_"] button::after{
+            content:"›";display:inline-block;margin-left:7px;color:#2563eb;font-size:20px;line-height:12px;vertical-align:-1px
+          }
           @media(max-width:1050px){
             .st-key-approved_page_canvas_wide_render_reports_list .cv-ap-report-cards{grid-template-columns:repeat(2,minmax(0,1fr))}
             .st-key-approved_page_canvas_wide_render_reports_list .st-key-approved_report_head{padding:0 12px}
@@ -2775,7 +2790,7 @@ def render_reports_list(records: list[dict[str, Any]] | None) -> None:
                             "Open",
                             "Analysis Details",
                             key=f"approved_report_open_{index}",
-                            type="primary",
+                            type="secondary",
                             analysis_id=analysis_id,
                         )
     end_approved_page()
