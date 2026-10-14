@@ -5,6 +5,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 APPROVED = (ROOT / "src" / "ui" / "approved_pages.py").read_text(encoding="utf-8")
+CORE_UI = (ROOT / "src" / "ui" / "core_premium_ui.py").read_text(encoding="utf-8")
 REPORTS = APPROVED[
     APPROVED.index("def render_reports_list("):
     APPROVED.index("\n\ndef render_simple_workspace(", APPROVED.index("def render_reports_list("))
@@ -30,10 +31,11 @@ class ApprovedReportsLayoutTests(unittest.TestCase):
 
     def test_recent_sources_have_a_shared_table_frame_and_mockup_columns(self) -> None:
         self.assertIn('key="approved_report_table"', REPORTS)
-        self.assertIn('key="approved_report_head"', REPORTS)
         for label in ("Name", "Source", "Last updated", "Health score", "High-risk parts", "Action"):
             self.assertIn(label, REPORTS)
         self.assertIn("st-key-approved_report_table{", REPORTS)
+        self.assertIn("cv-ap-report-table-head", REPORTS)
+        self.assertIn("grid-template-columns:2.05fr 1.1fr 1.1fr 1.15fr 1.1fr .65fr", REPORTS)
         self.assertIn(".cv-ap-report-dot.good", REPORTS)
         self.assertIn('internal_nav_button(', REPORTS)
         self.assertIn('"Analysis Details"', REPORTS)
@@ -43,9 +45,11 @@ class ApprovedReportsLayoutTests(unittest.TestCase):
         self.assertIn('if high_risk_raw is not None else "—"', REPORTS)
 
     def test_report_open_action_matches_the_mockup_link(self) -> None:
-        self.assertIn('[class*="st-key-approved_report_open_"] button{', REPORTS)
+        self.assertIn('"Open >"', REPORTS)
         self.assertIn('type="tertiary"', REPORTS)
-        self.assertIn('content:"›"', REPORTS)
+        self.assertIn('id="cadivor-reports-table-final"', CORE_UI)
+        self.assertIn('[class*="st-key-approved_report_open_"] button {', CORE_UI)
+        self.assertNotIn('button::after', REPORTS)
 
     def test_reports_page_opens_at_the_mockup_heading_and_cards(self) -> None:
         self.assertIn("st.html(", REPORTS)
