@@ -2557,34 +2557,34 @@ def render_reports_list(records: list[dict[str, Any]] | None) -> None:
             margin:0 0 8px;color:#64748b;font-size:12px;font-weight:750;letter-spacing:.09em
           }
           .st-key-approved_page_canvas_wide_render_reports_list .cv-ap-report-sub{
-            margin:0 0 30px;color:#64748b;font-size:15px;line-height:1.45
+            margin:0 0 38px;color:#64748b;font-size:15px;line-height:1.45
           }
           .st-key-approved_page_canvas_wide_render_reports_list .cv-ap-report-section-title{
             margin:0 0 15px;color:#17253e;font-size:21px;font-weight:750;line-height:1.25;letter-spacing:-.02em
           }
           .st-key-approved_page_canvas_wide_render_reports_list .cv-ap-report-cards{
-            display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin:0 0 30px
+            display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin:0 0 40px
           }
           .st-key-approved_page_canvas_wide_render_reports_list .cv-ap-report-template{
-            box-sizing:border-box;display:flex;flex-direction:column;justify-content:space-between;min-width:0;min-height:220px;
-            padding:20px 21px 18px;border:1px solid #dbeafe;border-radius:12px;background:#f8fbff
+            box-sizing:border-box;display:flex;flex-direction:column;justify-content:space-between;min-width:0;min-height:206px;
+            padding:22px 28px 18px;border:1px solid #dbeafe;border-radius:12px;background:#f8fbff
           }
           .st-key-approved_page_canvas_wide_render_reports_list .cv-ap-report-template-main{
-            display:flex;align-items:flex-start;gap:17px;min-width:0
+            display:flex;align-items:flex-start;gap:22px;min-width:0
           }
           .st-key-approved_page_canvas_wide_render_reports_list .cv-ap-report-template-icon{
-            box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;flex:0 0 62px;
-            width:62px;height:62px;border-radius:14px;background:#e8f1ff;color:#2563eb
+            box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;flex:0 0 72px;
+            width:72px;height:72px;border-radius:14px;background:#e8f1ff;color:#2563eb
           }
           .st-key-approved_page_canvas_wide_render_reports_list .cv-ap-report-template-icon svg{
             width:28px;height:28px;stroke:currentColor
           }
           .st-key-approved_page_canvas_wide_render_reports_list .cv-ap-report-template-copy{min-width:0}
           .st-key-approved_page_canvas_wide_render_reports_list .cv-ap-report-template h3{
-            margin:7px 0 7px;color:#14233c;font-size:18px;font-weight:750;line-height:1.3;letter-spacing:-.015em
+            margin:7px 0 7px;color:#14233c;font-size:19px;font-weight:750;line-height:1.3;letter-spacing:-.015em
           }
           .st-key-approved_page_canvas_wide_render_reports_list .cv-ap-report-template p{
-            margin:0;color:#64748b;font-size:14px;line-height:1.5
+            margin:0;color:#64748b;font-size:15px;line-height:1.5
           }
           .st-key-approved_page_canvas_wide_render_reports_list .cv-ap-report-template-footer{
             display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding-top:15px;margin-top:18px;border-top:1px solid #dce8f7
@@ -2633,21 +2633,21 @@ def render_reports_list(records: list[dict[str, Any]] | None) -> None:
           }
           .cv-ap-report-name-cell{display:flex;align-items:center;gap:13px;min-width:0}
           .cv-ap-report-row-icon{
-            box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;flex:0 0 34px;width:34px;height:34px;
-            border-radius:8px;background:#f4f7fb;color:#475569
+            box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;flex:0 0 28px;width:28px;height:28px;
+            border-radius:0;background:transparent;color:#475569
           }
-          .cv-ap-report-row-icon svg{width:21px;height:21px}
+          .cv-ap-report-row-icon svg{width:26px;height:26px}
           .cv-ap-report-name-copy{display:flex;flex-direction:column;min-width:0}
-          .cv-ap-report-name-copy strong{display:block;overflow:hidden;color:#17253e;font-size:14px;font-weight:750;line-height:1.3;text-overflow:ellipsis;white-space:nowrap}
-          .cv-ap-report-name-copy small{display:block;margin-top:3px;color:#74839a;font-size:12px;line-height:1.25}
+          .cv-ap-report-name-copy strong{display:block;overflow:hidden;color:#17253e;font-size:15px;font-weight:750;line-height:1.3;text-overflow:ellipsis;white-space:nowrap}
+          .cv-ap-report-name-copy small{display:block;margin-top:3px;color:#74839a;font-size:13px;line-height:1.25}
           .cv-ap-report-source,.cv-ap-report-date{display:block;overflow:hidden;max-width:100%;color:#52647b;font-size:13px;line-height:1.4;text-overflow:ellipsis;white-space:nowrap}
-          .cv-ap-report-health{display:inline-flex;align-items:center;justify-content:flex-start;gap:10px;color:#17253e;font-size:14px}
+          .cv-ap-report-health{display:inline-flex;align-items:center;justify-content:flex-start;gap:10px;color:#17253e;font-size:15px}
           .cv-ap-report-health strong{font-weight:700}
           .cv-ap-report-dot{display:inline-block;flex:0 0 13px;width:13px;height:13px;border-radius:50%;background:#cbd5e1}
           .cv-ap-report-dot.good{background:#22a447}
           .cv-ap-report-dot.watch{background:#f5b313}
           .cv-ap-report-dot.risk{background:#e85b59}
-          .cv-ap-report-risk{text-align:center;color:#e34f55;font-size:14px;font-weight:700}
+          .cv-ap-report-risk{text-align:center;color:#e34f55;font-size:15px;font-weight:700}
           .cv-ap-report-empty{padding:22px 18px;color:#64748b;font-size:13px}
           .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_open_"]{
             display:flex;justify-content:flex-end;width:100%
@@ -2655,7 +2655,7 @@ def render_reports_list(records: list[dict[str, Any]] | None) -> None:
           .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_open_"] button{
             display:inline-flex!important;align-items:center!important;justify-content:center!important;width:auto!important;min-width:0!important;
             min-height:36px!important;height:36px!important;padding:0 2px!important;border:0!important;border-radius:0!important;
-            background:transparent!important;color:#2563eb!important;box-shadow:none!important;font-size:14px!important;font-weight:650!important
+            background:transparent!important;color:#2563eb!important;box-shadow:none!important;font-size:15px!important;font-weight:650!important
           }
           .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_open_"] button:hover{
             background:transparent!important;color:#1d4ed8!important;text-decoration:underline;text-underline-offset:3px
