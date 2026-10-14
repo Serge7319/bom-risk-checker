@@ -676,8 +676,18 @@ def report_styles() -> str:
       .cv-risk-row, .cv-risk-head { display:grid; grid-template-columns: 1.1fr 1fr .9fr .6fr .7fr .8fr .6fr .7fr; gap:8px; padding:12px 16px; align-items:center; }
       .cv-risk-head { color:#94a3b8; font-size:12px; letter-spacing:.04em; text-transform:uppercase; background:#f8fafc; }
       .cv-risk-row { border-top:1px solid #eef2f7; font-size:14px; }
-      .cv-risk-grid-head { background:#f1f5f9;border:1px solid #e2e8f0;border-radius:8px;padding:9px 10px;color:#64748b;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;min-height:34px;box-sizing:border-box }
-      .st-key-ei_report_workspace [class*="st-key-cv_risk_shut_"], .st-key-ei_report_workspace [class*="st-key-cv_risk_open_"] { border-bottom:1px solid #e8edf3;padding:5px 0 }
+      .st-key-ei_report_workspace .st-key-cv_detailed_risk_table { box-sizing:border-box;width:100%;margin:0 0 16px;padding:0;border:1px solid #cbd8e8;border-radius:14px;background:#fff;overflow:hidden }
+      .st-key-ei_report_workspace .st-key-cv_detailed_risk_table > [data-testid="stVerticalBlock"] { gap:0!important }
+      .st-key-ei_report_workspace .st-key-cv_detailed_risk_table_header { box-sizing:border-box;width:100%;padding:0 12px;background:#f7f9fc;border-bottom:1px solid #dce4ef }
+      .st-key-ei_report_workspace .st-key-cv_detailed_risk_table_header > [data-testid="stVerticalBlock"] { gap:0!important }
+      .st-key-ei_report_workspace .st-key-cv_detailed_risk_table_header [data-testid="stHorizontalBlock"] { align-items:center!important;gap:12px!important;min-height:48px }
+      .st-key-ei_report_workspace .st-key-cv_detailed_risk_table_header [data-testid="column"] { box-sizing:border-box;min-width:0;padding:0 4px }
+      .cv-risk-grid-head { display:flex;align-items:center;box-sizing:border-box;min-height:46px;padding:0;color:#64748b;font-size:11px;font-weight:750;text-transform:uppercase;letter-spacing:.04em;line-height:1.25 }
+      .st-key-ei_report_workspace .st-key-cv_detailed_risk_table [class*="st-key-cv_risk_shut_"], .st-key-ei_report_workspace .st-key-cv_detailed_risk_table [class*="st-key-cv_risk_open_"] { box-sizing:border-box;margin:0;padding:8px 12px;border-bottom:1px solid #e8edf3 }
+      .st-key-ei_report_workspace .st-key-cv_detailed_risk_table [class*="st-key-cv_risk_shut_"] > [data-testid="stVerticalBlock"], .st-key-ei_report_workspace .st-key-cv_detailed_risk_table [class*="st-key-cv_risk_open_"] > [data-testid="stVerticalBlock"] { gap:0!important }
+      .st-key-ei_report_workspace .st-key-cv_detailed_risk_table [class*="st-key-cv_risk_"] [data-testid="stHorizontalBlock"] { align-items:center!important }
+      .st-key-ei_report_workspace .st-key-cv_detailed_risk_table [class*="st-key-cv_risk_"] [data-testid="column"] { min-width:0 }
+      .st-key-ei_report_workspace .st-key-cv_detailed_risk_table [class*="st-key-cv_risk_"]:last-child { border-bottom:0 }
       .cv-risk-detail { display:grid; grid-template-columns:1.1fr .9fr; gap:16px; padding:14px 0 18px; }
       .st-key-ei_report_workspace .cv-part-photo { border-radius:8px!important; }
       .cv-risk-card, .cv-risk-drivers, .cv-risk-action { border:1px solid #e6edf5; border-radius:14px; padding:16px; background:#fff; }
@@ -1022,65 +1032,67 @@ def render_detailed_risk_rows(
         return
 
     widths = [2.2, 1.1, 1.45, 1.15, 0.9]
-    header = st.columns(widths, vertical_alignment="center")
-    for column, label in zip(header, ("Component", "Manufacturer", "Supply", "Lifecycle", "Risk")):
-        column.markdown(f"<div class='cv-risk-grid-head'>{label}</div>", unsafe_allow_html=True)
+    with st.container(key="cv_detailed_risk_table"):
+        with st.container(key="cv_detailed_risk_table_header"):
+            header = st.columns(widths, vertical_alignment="center")
+            for column, label in zip(header, ("Component", "Manufacturer", "Supply", "Lifecycle", "Risk")):
+                column.markdown(f"<div class='cv-risk-grid-head'>{label}</div>", unsafe_allow_html=True)
 
-    for index, row in enumerate(rows[:12]):
-        is_open = row["mpn_raw"] == selected
-        state = "open" if is_open else "shut"
-        with st.container(key=f"cv_risk_{state}_{index}"):
-            cells = st.columns(widths, vertical_alignment="center")
-            with cells[0]:
-                art_col, name_col = st.columns([0.38, 1.62], vertical_alignment="center")
-                art_col.markdown(
-                    f"<div class='cv-ei-part'>{_part_art(row['mpn_raw'], row['image'], part=row)}</div>",
+        for index, row in enumerate(rows[:12]):
+            is_open = row["mpn_raw"] == selected
+            state = "open" if is_open else "shut"
+            with st.container(key=f"cv_risk_{state}_{index}"):
+                cells = st.columns(widths, vertical_alignment="center")
+                with cells[0]:
+                    art_col, name_col = st.columns([0.38, 1.62], vertical_alignment="center")
+                    art_col.markdown(
+                        f"<div class='cv-ei-part'>{_part_art(row['mpn_raw'], row['image'], part=row)}</div>",
+                        unsafe_allow_html=True,
+                    )
+                    with name_col:
+                        if st.button(
+                            row["mpn_raw"],
+                            key=f"cv_risk_expand_{index}",
+                            help=f"Show risk drivers and the recommended action for {row['mpn_raw']}.",
+                        ):
+                            st.session_state[selection_key] = "" if is_open else row["mpn_raw"]
+                            st.rerun()
+                        if str(row.get("description_raw") or "").strip():
+                            name_col.markdown(
+                                f"<div class='cv-ei-meta'>{row['description']}</div>",
+                                unsafe_allow_html=True,
+                            )
+                        for approved in approved_by_part.get(part_key(row.get("mpn_raw")), []):
+                            name_col.markdown(
+                                f"<span class='cv-ei-approved'>Approved alternative: {_esc(approved.get('alternative_part') or '')}</span>",
+                                unsafe_allow_html=True,
+                            )
+                cells[1].markdown(row["manufacturer"])
+                cells[2].markdown(
+                    f"<strong>{row['source']}</strong>"
+                    f"<div class='cv-ei-meta'>{row['suppliers']} supplier(s) · {row['stock']:,} in stock</div>",
                     unsafe_allow_html=True,
                 )
-                with name_col:
-                    if st.button(
-                        row["mpn_raw"],
-                        key=f"cv_risk_expand_{index}",
-                        help=f"Show risk drivers and the recommended action for {row['mpn_raw']}.",
-                    ):
-                        st.session_state[selection_key] = "" if is_open else row["mpn_raw"]
-                        st.rerun()
-                    if str(row.get("description_raw") or "").strip():
-                        name_col.markdown(
-                            f"<div class='cv-ei-meta'>{row['description']}</div>",
-                            unsafe_allow_html=True,
-                        )
-                    for approved in approved_by_part.get(part_key(row.get("mpn_raw")), []):
-                        name_col.markdown(
-                            f"<span class='cv-ei-approved'>Approved alternative: {_esc(approved.get('alternative_part') or '')}</span>",
-                            unsafe_allow_html=True,
-                        )
-            cells[1].markdown(row["manufacturer"])
-            cells[2].markdown(
-                f"<strong>{row['source']}</strong>"
-                f"<div class='cv-ei-meta'>{row['suppliers']} supplier(s) · {row['stock']:,} in stock</div>",
-                unsafe_allow_html=True,
-            )
-            cells[3].markdown(row["lifecycle"])
-            cells[4].markdown(
-                f"<span class='cv-pill {_level_class(row['level'])}'>{row['level']}</span>"
-                f"<div class='cv-ei-meta'>Score {row['score']}</div>",
-                unsafe_allow_html=True,
-            )
-            if is_open:
-                reasons = "".join(f"<li>{driver}</li>" for driver in row["drivers"])
-                alternative_link = _alternative_action_link(
-                    row,
-                    analysis_id=analysis_id,
-                    bom_name=bom_name,
-                    source_page="detailed_risk_report",
+                cells[3].markdown(row["lifecycle"])
+                cells[4].markdown(
+                    f"<span class='cv-pill {_level_class(row['level'])}'>{row['level']}</span>"
+                    f"<div class='cv-ei-meta'>Score {row['score']}</div>",
+                    unsafe_allow_html=True,
                 )
-                detail_markup = _detailed_risk_expanded_markup(
-                    row,
-                    reasons=reasons,
-                    alternative_link=alternative_link,
-                )
-                st.markdown(detail_markup, unsafe_allow_html=True)
+                if is_open:
+                    reasons = "".join(f"<li>{driver}</li>" for driver in row["drivers"])
+                    alternative_link = _alternative_action_link(
+                        row,
+                        analysis_id=analysis_id,
+                        bom_name=bom_name,
+                        source_page="detailed_risk_report",
+                    )
+                    detail_markup = _detailed_risk_expanded_markup(
+                        row,
+                        reasons=reasons,
+                        alternative_link=alternative_link,
+                    )
+                    st.markdown(detail_markup, unsafe_allow_html=True)
 
 
 
