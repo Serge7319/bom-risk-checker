@@ -514,38 +514,32 @@ def _inject_approved_visual_overrides() -> None:
         }}
         html body section[data-testid="stMain"] [class*="st-key-approved_home_row_"],
         html body section[data-testid="stMain"] [class*="st-key-approved_bom_row_"],
-        html body section[data-testid="stMain"] [class*="st-key-approved_report_row_"],
         html body section[data-testid="stMain"] [class*="st-key-approved_home_head"],
         html body section[data-testid="stMain"] [class*="st-key-approved_bom_head"] {{
           margin:0 !important;padding:0 !important;min-height:0 !important
         }}
         html body section[data-testid="stMain"] [class*="st-key-approved_home_row_"] [data-testid="stVerticalBlock"],
         html body section[data-testid="stMain"] [class*="st-key-approved_bom_row_"] [data-testid="stVerticalBlock"],
-        html body section[data-testid="stMain"] [class*="st-key-approved_report_row_"] [data-testid="stVerticalBlock"],
         html body section[data-testid="stMain"] [class*="st-key-approved_home_head"] [data-testid="stVerticalBlock"],
         html body section[data-testid="stMain"] [class*="st-key-approved_bom_head"] [data-testid="stVerticalBlock"],
         html body section[data-testid="stMain"] [class*="st-key-approved_home_row_"] [data-testid="stHorizontalBlock"],
         html body section[data-testid="stMain"] [class*="st-key-approved_bom_row_"] [data-testid="stHorizontalBlock"],
-        html body section[data-testid="stMain"] [class*="st-key-approved_report_row_"] [data-testid="stHorizontalBlock"],
         html body section[data-testid="stMain"] [class*="st-key-approved_home_head"] [data-testid="stHorizontalBlock"],
         html body section[data-testid="stMain"] [class*="st-key-approved_bom_head"] [data-testid="stHorizontalBlock"] {{
           gap:0 !important;min-height:0 !important
         }}
         html body section[data-testid="stMain"] [class*="st-key-approved_home_row_"] [data-testid="stElementContainer"],
         html body section[data-testid="stMain"] [class*="st-key-approved_bom_row_"] [data-testid="stElementContainer"],
-        html body section[data-testid="stMain"] [class*="st-key-approved_report_row_"] [data-testid="stElementContainer"],
         html body section[data-testid="stMain"] [class*="st-key-approved_home_head"] [data-testid="stElementContainer"],
         html body section[data-testid="stMain"] [class*="st-key-approved_bom_head"] [data-testid="stElementContainer"],
         html body section[data-testid="stMain"] [class*="st-key-approved_home_row_"] [data-testid="stColumn"],
         html body section[data-testid="stMain"] [class*="st-key-approved_bom_row_"] [data-testid="stColumn"],
-        html body section[data-testid="stMain"] [class*="st-key-approved_report_row_"] [data-testid="stColumn"],
         html body section[data-testid="stMain"] [class*="st-key-approved_home_head"] [data-testid="stColumn"],
         html body section[data-testid="stMain"] [class*="st-key-approved_bom_head"] [data-testid="stColumn"] {{
           margin:0 !important;padding:1px 8px !important;min-height:0 !important
         }}
         html body section[data-testid="stMain"] [class*="st-key-approved_home_row_"] [data-testid="stMarkdownContainer"] p,
         html body section[data-testid="stMain"] [class*="st-key-approved_bom_row_"] [data-testid="stMarkdownContainer"] p,
-        html body section[data-testid="stMain"] [class*="st-key-approved_report_row_"] [data-testid="stMarkdownContainer"] p,
         html body section[data-testid="stMain"] [class*="st-key-approved_home_head"] [data-testid="stMarkdownContainer"] p,
         html body section[data-testid="stMain"] [class*="st-key-approved_bom_head"] [data-testid="stMarkdownContainer"] p {{
           margin:0 !important;line-height:1.2 !important;font-size:13px !important
@@ -555,6 +549,67 @@ def _inject_approved_visual_overrides() -> None:
         unsafe_allow_html=True,
     )
 
+    # Engineering Reports needs its own row spacing and a real text-only
+    # action. The compact table reset above applies only to home/BOM tables;
+    # report rows keep their 84px minimum height and inset so the last row has
+    # breathing room before the table border.
+    st.markdown(
+        """
+        <style id="cadivor-approved-reports-final">
+        html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_row_"] {
+          box-sizing:border-box!important;display:block!important;min-height:84px!important;height:auto!important;
+          margin:0!important;padding:10px 18px!important;border-bottom:1px solid #e5ebf3!important;background:#fff!important
+        }
+        html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_row_"] > [data-testid="stVerticalBlock"] {
+          box-sizing:border-box!important;display:flex!important;justify-content:center!important;min-height:60px!important;gap:0!important
+        }
+        html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_row_"] [data-testid="stHorizontalBlock"] {
+          box-sizing:border-box!important;display:flex!important;align-items:center!important;min-height:60px!important;gap:12px!important
+        }
+        html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_row_"] [data-testid="column"] {
+          box-sizing:border-box!important;display:flex!important;align-items:center!important;min-width:0!important;margin:0!important;padding:4px!important
+        }
+        html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_row_"] [data-testid="column"]:nth-child(5) {
+          justify-content:flex-start!important;text-align:left!important
+        }
+        html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_row_"] [class*="st-key-approved_report_open_"] {
+          display:inline-flex!important;align-items:center!important;justify-content:flex-start!important;flex:0 0 auto!important;
+          width:max-content!important;min-width:0!important;max-width:none!important;margin:0!important;padding:0!important
+        }
+        html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_row_"] [class*="st-key-approved_report_open_"] .stButton,
+        html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_row_"] [class*="st-key-approved_report_open_"].stButton {
+          display:inline-flex!important;align-items:center!important;justify-content:flex-start!important;flex:0 0 auto!important;
+          width:max-content!important;min-width:0!important;max-width:none!important;margin:0!important;padding:0!important
+        }
+        html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_row_"] [class*="st-key-approved_report_open_"] button,
+        html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_row_"] [class*="st-key-approved_report_open_"].stButton > button {
+          appearance:none!important;display:inline-flex!important;align-items:center!important;justify-content:flex-start!important;
+          box-sizing:border-box!important;flex:0 0 auto!important;width:max-content!important;min-width:0!important;max-width:none!important;
+          height:36px!important;min-height:36px!important;margin:0!important;padding:0!important;
+          border:0!important;border-width:0!important;border-style:none!important;border-color:transparent!important;border-radius:0!important;
+          background:transparent!important;background-color:transparent!important;box-shadow:none!important;outline:none!important;
+          color:#2563eb!important;font-size:14px!important;font-weight:400!important;line-height:1.35!important;text-align:left!important;white-space:pre!important
+        }
+        html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_row_"] [class*="st-key-approved_report_open_"] button [data-testid="stMarkdownContainer"],
+        html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_row_"] [class*="st-key-approved_report_open_"] button p,
+        html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_row_"] [class*="st-key-approved_report_open_"] button span,
+        html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_row_"] [class*="st-key-approved_report_open_"] button div {
+          display:block!important;box-sizing:border-box!important;width:auto!important;height:auto!important;min-width:0!important;min-height:0!important;
+          margin:0!important;padding:0!important;border:0!important;background:transparent!important;color:#2563eb!important;
+          visibility:visible!important;opacity:1!important;font-size:14px!important;font-weight:400!important;line-height:1.35!important;white-space:pre!important
+        }
+        html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_row_"] [class*="st-key-approved_report_open_"] button:hover {
+          color:#1d4ed8!important;text-decoration:underline!important;text-underline-offset:3px!important
+        }
+        @media(max-width:1050px) {
+          html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_row_"] {
+            padding:12px!important
+          }
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
 def authenticated_surface_ready() -> bool:
     """True after the authenticated workspace shell has initialized this session."""
