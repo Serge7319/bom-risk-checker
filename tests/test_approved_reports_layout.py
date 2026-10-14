@@ -42,8 +42,13 @@ class ApprovedReportsLayoutTests(unittest.TestCase):
 
     def test_report_open_action_matches_the_mockup_link(self) -> None:
         self.assertIn('[class*="st-key-approved_report_open_"] button{', REPORTS)
-        self.assertIn('type="secondary"', REPORTS)
+        self.assertIn('type="tertiary"', REPORTS)
         self.assertIn('content:"›"', REPORTS)
+
+    def test_reports_page_opens_at_the_mockup_heading_and_cards(self) -> None:
+        self.assertIn("canvas.scrollIntoView({block: 'start', behavior: 'auto'})", REPORTS)
+        self.assertIn("Engineering reports", REPORTS)
+        self.assertIn("Report templates", REPORTS)
 
 
 if __name__ == "__main__":
