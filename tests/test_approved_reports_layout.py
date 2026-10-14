@@ -53,6 +53,7 @@ class ApprovedReportsLayoutTests(unittest.TestCase):
         self.assertIn('id="cadivor-reports-table-final"', CORE_UI)
         self.assertIn('id="cadivor-approved-reports-final"', CORE_UI)
         self.assertIn('[class*="st-key-approved_report_open_"] button,', CORE_UI)
+        self.assertIn('[class*="st-key-approved_report_open_"] .stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton)', CORE_UI)
         self.assertIn('border:0!important;border-width:0!important;border-style:none!important;border-color:transparent!important;border-radius:0!important;', CORE_UI)
         self.assertIn(':not(.st-key-approved_page_canvas_wide_render_reports_list .st-key-approved_report_table .stButton)', SHARED_BUTTON_CSS)
         self.assertIn('color:#2563eb!important;font-size:14px!important;font-weight:400!important', CORE_UI)
