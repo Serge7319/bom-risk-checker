@@ -42,3 +42,16 @@ def test_approval_controls_are_inside_candidate_details_and_persist_per_bom():
     assert '"context_key": context_key' in page_source
     assert '"analysis_id": str(context.get("analysis_id") or "")' in navigation_source
     assert "payload.get(\"context_key\")" in runtime_source
+
+
+def test_contextual_replacement_has_direct_return_to_bom_risk():
+    root = Path(__file__).resolve().parents[1]
+    page_source = (root / "src" / "ui" / "approved_pages.py").read_text(encoding="utf-8")
+    navigation_source = (root / "src" / "ui" / "navigation.py").read_text(encoding="utf-8")
+
+    assert '"engineering_intelligence_review": "← Back to BOM Risk"' in page_source
+    assert "_navigate_back_to_bom_review(source_context)" in page_source
+    assert 'st.session_state["cadivor_ei_report_tab"] = "BOM Risk"' in page_source
+    assert 'st.session_state["cadivor_approved_alternatives_flash"] =' in page_source
+    assert "Saved approvals stay with this BOM across analysis reruns" in page_source
+    assert 'for context_key in ("source_page", "project_name", "bom_name"):' in navigation_source

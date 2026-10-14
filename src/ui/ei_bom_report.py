@@ -12,7 +12,7 @@ from __future__ import annotations
 import html
 import re
 import textwrap
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 
@@ -73,8 +73,9 @@ def _alternative_action_link(
     analysis_id: str = "",
     bom_name: str = "",
     source_page: str,
+    label_override: str = "",
 ) -> str:
-    label = str(row.get("action") or "")
+    label = str(label_override or row.get("action") or "")
     if row.get("level") not in {"High", "Medium"}:
         return label
     from src.ui.navigation import alternative_finder_href
@@ -180,6 +181,28 @@ def _format_detailed_report_date(value: Any) -> str:
         "July", "August", "September", "October", "November", "December",
     )
     return f"{months[parsed.month - 1]} {parsed.day}, {parsed.year}"
+
+
+def _format_snapshot_timestamp(value: Any) -> str:
+    """Show when the saved analysis snapshot was created, with an explicit timezone."""
+    raw = str(value or "").strip()
+    if not raw or raw.casefold() in {"none", "nan", "saved analysis"}:
+        return "Date unavailable"
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return "Date unavailable"
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    parsed = parsed.astimezone(timezone.utc)
+    months = (
+        "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December",
+    )
+    hour = parsed.hour % 12 or 12
+    minute = f"{parsed.minute:02d}"
+    meridiem = "AM" if parsed.hour < 12 else "PM"
+    return f"{months[parsed.month - 1]} {parsed.day}, {parsed.year} at {hour}:{minute} {meridiem} UTC"
 
 
 def _detailed_report_metadata_html(
@@ -411,24 +434,6 @@ def _cost_cells(part: dict[str, Any]) -> dict[str, str]:
         )
     elif name or price is not None:
         link = "<small>Product URL was not saved.</small>"
-    savings = comparison["savings_per_unit"]
-    if savings is not None:
-        break_quantity = float(comparison["break_quantity"])
-        savings_note = (
-            f"<small>Savings of {_esc(_money(savings))} per unit versus "
-            f"{_esc(comparison['higher_distributor'])} "
-            f"{_esc(_money(comparison['higher_price']))} "
-            f"at quantity {_esc(f'{break_quantity:g}')} "
-            f"{_esc(comparison['currency'])}. "
-            f"The {_esc(comparison['lower_distributor'])} price is "
-            f"{_esc(_money(comparison['lower_price']))}.</small>"
-        )
-    elif offers:
-        savings_note = f"<small>{_esc(comparison['message'])}</small>"
-    elif name and price is not None:
-        savings_note = "<small>A distributor comparison is unavailable.</small>"
-    else:
-        savings_note = ""
     refresh = (
         "<small>Re-run the BOM analysis to save a missing distributor, unit price, "
         "BOM quantity, or product URL when the supplier or the BOM file returns it.</small>"
@@ -457,14 +462,12 @@ def _cost_cells(part: dict[str, Any]) -> dict[str, str]:
                     'rel="noopener noreferrer">Product page</a>'
                 )
             details.append(f"<small>{line}</small>")
-        details.append(savings_note)
         source_html = f"<strong>{_esc(name)}</strong>{''.join(details)}"
     elif name:
         source_html = (
             f"<strong>{_esc(name)}</strong>"
             "<small>Distributor was saved. Unit price was not saved, so this is not a comparable offer.</small>"
             + link
-            + savings_note
             + refresh
         )
     else:
@@ -477,7 +480,6 @@ def _cost_cells(part: dict[str, Any]) -> dict[str, str]:
             "Not recorded"
             "<small>Distributor was not saved."
             f"{html.escape(stock_note)}</small>"
-            + savings_note
             + refresh
         )
     total = extended_cost(price, quantity)
@@ -500,10 +502,57 @@ def _cost_cells(part: dict[str, Any]) -> dict[str, str]:
             "Re-run the BOM analysis to save a missing unit price or BOM quantity "
             "when the supplier or the BOM file returns it.</small>"
         )
+    if comparison.get("savings_per_unit") is not None:
+        break_quantity = comparison.get("break_quantity") or quantity
+        break_quantity_text = _esc(f"{float(break_quantity):g}")
+        break_unit = "unit" if float(break_quantity) == 1 else "units"
+        comparison_html = (
+            f"<strong>{_esc(comparison['lower_distributor'])} is "
+            f"{_esc(_money(float(comparison['savings_per_unit'])))} / unit lower</strong>"
+            f"<small>Price applies from {break_quantity_text} {break_unit}; BOM quantity "
+            f"{_esc(f'{quantity:g}' if quantity is not None else 'not recorded')}. "
+            f"Compared with "
+            f"{_esc(comparison['higher_distributor'])} at "
+            f"{_esc(_money(float(comparison['higher_price'])))} "
+            f"{_esc(comparison.get('currency') or '')}.</small>"
+        )
+        comparable = True
+    elif comparison.get("currency") and comparison.get("lower_price") is not None:
+        comparison_html = (
+            "<strong>No lower comparable price was found</strong>"
+            f"<small>{_esc(comparison.get('lower_distributor') or '')} "
+            f"{_esc(_money(float(comparison['lower_price'])))} and "
+            f"{_esc(comparison.get('higher_distributor') or '')} "
+            f"{_esc(_money(float(comparison['higher_price'])))} "
+            f"{_esc(comparison.get('currency') or '')} at the saved quantity.</small>"
+        )
+        comparable = True
+    elif len(offers) >= 2:
+        comparison_html = (
+            "<strong>Offers not comparable</strong>"
+            f"<small>{_esc(comparison.get('message') or 'Check the saved currency and price breaks.')}</small>"
+        )
+        comparable = False
+    elif offers or (name and price is not None):
+        comparison_html = (
+            "<strong>One saved offer</strong>"
+            "<small>A second distributor quote for this exact MPN and quantity is needed for a price comparison.</small>"
+        )
+        comparable = False
+    else:
+        comparison_html = (
+            "<strong>No saved price offers</strong>"
+            "<small>Re-run the BOM analysis to check current distributor prices.</small>"
+        )
+        comparable = False
     return {
         "cost_price": price_html,
         "cost_source": source_html,
         "cost_extended": extended_html,
+        "cost_quantity": _esc(f"{quantity:g}") if quantity is not None else "Not recorded",
+        "cost_comparison": comparison_html,
+        "cost_comparable": comparable,
+        "cost_has_price": price is not None,
     }
 
 
@@ -671,6 +720,8 @@ def report_styles() -> str:
       .cv-ei-refresh-card p{margin:3px 0 0;color:#475569;font-size:12px;line-height:1.45}
       .cv-ei-table td small, .cv-ei-offer a { display:block; margin-top:4px; color:#64748b; font-size:12px; font-weight:500; line-height:1.35; }
       .cv-ei-offer a { color:#2563eb; font-size:12px; font-weight:650; }
+      .cv-ei-cost-comparison strong { display:block; color:#0f172a; font-size:13px; font-weight:700; }
+      .cv-ei-cost-comparison small { display:block; margin-top:4px; color:#64748b; font-size:12px; font-weight:500; line-height:1.4; }
       [class*="st-key-cv_risk_expand_"] button { background:transparent !important; border:0 !important; box-shadow:none !important; color:#0f172a !important; font-weight:750 !important; padding:0 !important; min-height:0 !important; height:auto !important; justify-content:flex-start !important; text-align:left !important; }
       .cv-risk-wrap { background:#fff; border:1px solid #e6edf5; border-radius:16px; overflow:hidden; }
       .cv-risk-row, .cv-risk-head { display:grid; grid-template-columns: 1.1fr 1fr .9fr .6fr .7fr .8fr .6fr .7fr; gap:8px; padding:12px 16px; align-items:center; }
@@ -823,13 +874,19 @@ def _tab_body(
         )
         return _table(
             "Supply and availability",
-            "Distributor coverage, stock, and lead time recorded in the saved analysis.",
+            "Distributor coverage, stock, lead time, and lifecycle evidence captured when this BOM was analyzed.",
             ["Component", "Best source", "Suppliers", "Stock", "Lead time (weeks)", "Lifecycle", "Risk"],
             body,
         )
     if tab == "Alternatives":
         photos = {row["mpn_raw"]: row for row in rows}
-        from src.approved_alternatives import report_alternative
+        from src.approved_alternatives import approved_mpn_map, part_key, report_alternative
+
+        approved_pairs = {
+            (part_key(record.get("original_part")), part_key(record.get("alternative_part")))
+            for record in approved_alternatives or []
+            if isinstance(record, dict)
+        }
 
         approved_rows = []
         for record in approved_alternatives or []:
@@ -851,7 +908,7 @@ def _tab_body(
             )
         approved_section = _table(
             "Approved alternatives",
-            "Replacement decisions recorded by your engineering team for this BOM.",
+            "These decisions are saved to this BOM and remain available when you reopen its report.",
             ["Original component", "Approved replacement", "Manufacturer", "Approval record"],
             "".join(approved_rows) or "<tr><td colspan='4'>No approved alternative is recorded for this BOM yet.</td></tr>",
         )
@@ -862,6 +919,8 @@ def _tab_body(
             original_raw = str(_first(alt, "original_part", "original_mpn", "mpn", fallback="") or "").strip()
             replacement_raw = str(_first(alt, "alternative_part", "alternative_mpn", fallback="") or "").strip()
             if not original_raw and not replacement_raw:
+                continue
+            if (part_key(original_raw), part_key(replacement_raw)) in approved_pairs:
                 continue
             original = _esc(original_raw or "—")
             replacement = _esc(replacement_raw or "—")
@@ -880,34 +939,39 @@ def _tab_body(
             )
         if not alt_rows:
             alt_rows.append(
-                "<tr><td colspan='4'>No supplier alternatives were returned in the saved analysis.</td></tr>"
+                "<tr><td colspan='4'>No unapproved candidates were saved with this analysis. Approved Finder decisions appear in the table above.</td></tr>"
             )
         return approved_section + _table(
-            "Search candidates",
-            "Supplier candidates returned by the saved analysis. They are not approved until your team records that decision.",
+            "Other saved candidates",
+            "Candidates suggested in the analysis run. Approved Find a replacement decisions are listed above.",
             ["Original", "Candidate", "Manufacturer", "Why it is listed"],
             "".join(alt_rows[:12]),
         )
     if tab == "Cost Insights":
+        priced_count = sum(bool(row.get("cost_has_price")) for row in rows)
+        comparable_count = sum(bool(row.get("cost_comparable")) for row in rows)
+        summary = (
+            f"{priced_count} of {len(rows)} components have a saved unit price; "
+            f"{comparable_count} have comparable distributor offers at the saved BOM quantity."
+        )
         if not rows:
             body = "<tr><td colspan='6'>No saved components are available for a cost decision.</td></tr>"
         else:
             body = "".join(
                 "<tr>"
                 f"<td>{_component_cell(row, description=False)}</td>"
-                f"<td>{row['manufacturer']}</td>"
+                f"<td>{row['cost_quantity']}</td>"
                 f"<td>{row['cost_price']}</td>"
                 f"<td class='cv-ei-offer'>{row['cost_source']}</td>"
                 f"<td>{row['cost_extended']}</td>"
-                f"<td><span class='cv-pill {_level_class(row['level'])}'>{row['level']}</span>"
-                f"<small class='cv-ei-reason'>{row['risk_reason'] or 'No saved risk reason was stored for this rating.'}</small></td>"
+                f"<td class='cv-ei-cost-comparison'>{row['cost_comparison']}</td>"
                 "</tr>"
                 for row in rows[:12]
             )
         return _table(
             "Cost insights",
-            "Values come from the saved analysis. Extended cost needs both a recorded unit price and BOM quantity; distributor savings appear only when saved offers are comparable at that quantity. Offers are evidence, not a ranked recommendation.",
-            ["Component", "Manufacturer", "Unit price", "Recorded source", "Extended cost", "Risk"],
+            summary + " Extended cost is unit price × BOM quantity. Cadivor compares only the same MPN, currency, and applicable quantity; it does not estimate missing prices.",
+            ["Component", "BOM quantity", "Unit price", "Saved distributor offer(s)", "Extended cost", "Price comparison"],
             body,
         )
     if tab == "Lifecycle":
@@ -917,7 +981,7 @@ def _tab_body(
         )
         return _table(
             "Lifecycle",
-            "Lifecycle status recorded for each saved component.",
+            "Lifecycle status captured during the saved analysis, with the associated risk classification.",
             ["Component", "Lifecycle", "Manufacturer", "Risk"],
             body,
         )
@@ -929,17 +993,40 @@ def _tab_body(
     for index, row in enumerate(review, start=1):
         reasons = "".join(f"<li>{driver}</li>" for driver in row["drivers"])
         approvals = approved_by_part.get(part_key(row.get("mpn_raw")), [])
-        approval_note = "".join(
-            f"<small class='cv-ei-approved'>Approved alternative: {_esc(item.get('alternative_part') or '')}</small>"
-            for item in approvals
-        )
+        if approvals:
+            approved = approvals[0]
+            approved_at = _format_detailed_report_date(approved.get("approved_at"))
+            approved_name = _esc(approved.get("alternative_part") or "")
+            approved_by = _esc(approved.get("approved_by") or "Cadivor user")
+            approval_note = (
+                "<span class='cv-ei-approved'>Approved alternative on file</span>"
+                f"<small>{approved_name} · approved by {approved_by} · {approved_at}</small>"
+                "<small>The BOM still contains the original part. Update the BOM and rerun to apply this replacement.</small>"
+                + _alternative_action_link(
+                    row,
+                    analysis_id=analysis_id,
+                    bom_name=bom_name,
+                    source_page="engineering_intelligence_review",
+                    label_override="Find another alternative",
+                )
+            )
+        else:
+            approval_note = (
+                _alternative_action_link(
+                    row,
+                    analysis_id=analysis_id,
+                    bom_name=bom_name,
+                    source_page="engineering_intelligence_review",
+                )
+                + f"<small>{row['action_detail']}</small>"
+            )
         body.append(
             "<tr>"
             f"<td>{index}</td>"
             f"<td>{_component_cell(row)}</td>"
             f"<td><span class='cv-pill {_level_class(row['level'])}'>{row['level']}</span></td>"
             f"<td><ul class='cv-ei-reasons'>{reasons}</ul></td>"
-            f"<td><div class='cv-ei-action'>{_alternative_action_link(row, analysis_id=analysis_id, bom_name=bom_name, source_page='engineering_intelligence_review')}<small>{row['action_detail']}</small>{approval_note}</div></td>"
+            f"<td><div class='cv-ei-action'>{approval_note}</div></td>"
             "</tr>"
         )
     return _table(
@@ -957,7 +1044,6 @@ def _table(title: str, copy: str, headers: list[str], body: str) -> str:
       <div class="cv-ei-section-heading">
         <h3>{_esc(title)}</h3>
         <p>{_esc(copy)}</p>
-        <p class="cv-ei-data-note">Saved analysis snapshot. Re-run this BOM analysis to refresh stock, lead time, and lifecycle data.</p>
       </div>
       <div class="cv-ei-table-wrap" role="region" aria-label="{_esc(title)} table" tabindex="0">
         <table class="cv-ei-table"><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table>
@@ -1325,6 +1411,33 @@ def render_engineering_intelligence_report(
         with tab_panels[EI_TABS.index(tab)]:
             if approval_load_failed:
                 st.warning("Saved replacement approvals could not be loaded. They may be missing from this view until the connection is restored.")
+            analysis_id = str(analysis.get("id") or "")
+            with st.container(key="ei_refresh_saved_analysis", border=True):
+                refresh_copy, refresh_action = st.columns([4, 1.35], vertical_alignment="center")
+                with refresh_copy:
+                    st.markdown(
+                        f"**Saved data snapshot:** {_format_snapshot_timestamp(analysis.get('created_at'))}",
+                    )
+                    st.caption(
+                        "Stock, lead time, prices, and lifecycle are captured when this analysis runs so this report remains traceable. "
+                        "Cadivor does not poll suppliers while the report is open. Rerun the BOM to check current data; that creates a new saved analysis and leaves this report unchanged. "
+                        "Approved replacement decisions are saved separately and appear in BOM Risk and Alternatives."
+                    )
+                with refresh_action:
+                    if st.button(
+                        "Open BOM to rerun",
+                        key=f"ei_open_bom_to_rerun_{analysis_id or 'saved'}",
+                        type="secondary",
+                        use_container_width=True,
+                    ):
+                        from src.ui.navigation import navigate_to
+
+                        navigate_to(
+                            "BOM Settings",
+                            saved_bom_id=analysis_id,
+                            saved_bom_action="open",
+                            arm_opening=False,
+                        )
             st.markdown(
                 engineering_intelligence_html(
                     bom_name=bom_name,
@@ -1339,31 +1452,6 @@ def render_engineering_intelligence_report(
                 ),
                 unsafe_allow_html=True,
             )
-            analysis_id = str(analysis.get("id") or "")
-            if tab == "BOM Risk":
-                with st.container(key="ei_refresh_saved_analysis", border=True):
-                    refresh_copy, refresh_action = st.columns([4, 1.35], vertical_alignment="center")
-                    with refresh_copy:
-                        st.markdown(
-                            "<div class='cv-ei-refresh-card'><div><strong>Refresh supplier data</strong>"
-                            "<p>This page shows the saved analysis snapshot. Open the BOM and rerun it to check current distributor stock, lead time, and lifecycle data.</p></div></div>",
-                            unsafe_allow_html=True,
-                        )
-                    with refresh_action:
-                        if st.button(
-                            "Open BOM to rerun",
-                            key=f"ei_open_bom_to_rerun_{analysis_id or 'saved'}",
-                            type="secondary",
-                            use_container_width=True,
-                        ):
-                            from src.ui.navigation import navigate_to
-    
-                            navigate_to(
-                                "BOM Settings",
-                                saved_bom_id=analysis_id,
-                                saved_bom_action="open",
-                                arm_opening=False,
-                            )
             with st.container(key="cv_ei_detailed_report_action"):
                 if st.button(
                     "Open detailed risk report",

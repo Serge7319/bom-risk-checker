@@ -702,6 +702,18 @@ def apply_alternative_finder_prefill(context: Mapping[str, str]) -> None:
     if not context or not context.get("mpn"):
         return
 
+    source_context = {
+        "mpn": context["mpn"],
+        "analysis_id": str(context.get("analysis_id") or ""),
+        "manufacturer": context.get("manufacturer", ""),
+        "lifecycle": context.get("lifecycle", ""),
+        "risk": context.get("risk", ""),
+    }
+    for context_key in ("source_page", "project_name", "bom_name"):
+        if context.get(context_key):
+            source_context[context_key] = context[context_key]
+    st.session_state["alternative_prefill_source_context"] = source_context
+
     prefill_token = (
         f"{context.get('analysis_id', '')}::"
         f"{context.get('normalized_mpn') or str(context.get('mpn', '')).upper()}"
@@ -762,17 +774,6 @@ def apply_alternative_finder_prefill(context: Mapping[str, str]) -> None:
         st.session_state["alternative_original_manufacturer"] = context["manufacturer"]
     else:
         st.session_state.pop("alternative_original_manufacturer", None)
-    source_context = {
-        "mpn": context["mpn"],
-        "analysis_id": str(context.get("analysis_id") or ""),
-        "manufacturer": context.get("manufacturer", ""),
-        "lifecycle": context.get("lifecycle", ""),
-        "risk": context.get("risk", ""),
-    }
-    for context_key in ("project_name", "bom_name"):
-        if context.get(context_key):
-            source_context[context_key] = context[context_key]
-    st.session_state["alternative_prefill_source_context"] = source_context
     if context.get("analysis_id"):
         st.session_state["cadivor_active_analysis_id"] = context["analysis_id"]
         st.session_state["analysis_id"] = context["analysis_id"]

@@ -2045,6 +2045,14 @@ def render_analysis_detail(
                         )
                         or []
                     )
+                decision_records.extend(
+                    load_analysis_decisions(
+                        user_id,
+                        project_name=report_project_name,
+                        limit=500,
+                    )
+                    or []
+                )
                 approved_alternatives = approved_records_for_bom(
                     decision_records,
                     parts or [],

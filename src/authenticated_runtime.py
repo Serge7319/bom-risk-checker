@@ -764,6 +764,7 @@ def load_analysis_decisions(
     analysis_id=None,
     limit=25,
     include_all_contexts=False,
+    project_name=None,
 ):
     """Load active engineering decisions, with optional cross-context history."""
     context_key = _decision_context_key(analysis_id)
@@ -777,7 +778,9 @@ def load_analysis_decisions(
         .is_("archived_at", "null")
     )
 
-    if not include_all_contexts:
+    if project_name:
+        query = query.eq("project_name", str(project_name).strip())
+    elif not include_all_contexts:
         query = query.eq("context_key", context_key)
 
     if original_part:

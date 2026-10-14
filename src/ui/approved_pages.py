@@ -3499,6 +3499,38 @@ def excel_bytes(rows: list[dict[str, Any]]) -> bytes:
     return buffer.getvalue()
 
 
+def _navigate_back_to_bom_review(context: dict[str, Any]) -> bool:
+    """Restore the BOM report that launched the current replacement search."""
+    analysis_id = str(context.get("analysis_id") or "").strip()
+    if not analysis_id:
+        return False
+
+    from src.ui.navigation import navigate_to
+
+    source_page = str(context.get("source_page") or "")
+    st.session_state["cadivor_active_analysis_id"] = analysis_id
+    st.session_state["analysis_id"] = analysis_id
+    st.session_state["cadivor_pending_analysis_section"] = "Engineering Intelligence"
+    st.session_state["cadivor_pending_analysis_section_id"] = analysis_id
+    if source_page == "engineering_intelligence_review":
+        st.session_state["cadivor_show_detailed_risk"] = False
+        st.session_state["cadivor_ei_report_tab"] = "BOM Risk"
+    elif source_page == "detailed_risk_report":
+        st.session_state["cadivor_show_detailed_risk"] = True
+        source_mpn = str(context.get("mpn") or context.get("original_part") or "").strip()
+        if source_mpn:
+            st.session_state[f"cadivor_detailed_risk_mpn_{analysis_id}"] = source_mpn
+
+    navigate_to(
+        "Analysis Details",
+        analysis_id=analysis_id,
+        analysis_tab="Engineering Intelligence",
+        _rerun=False,
+        arm_opening=False,
+    )
+    return True
+
+
 def _render_bom_replacement_approvals(
     *,
     source_context: Any,
@@ -3571,6 +3603,14 @@ def _render_bom_replacement_approvals(
                 )
                 or []
             )
+        records.extend(
+            load_analysis_decisions(
+                user_id,
+                project_name=project_name,
+                limit=500,
+            )
+            or []
+        )
     except Exception as exc:
         st.error(f"Could not load saved approvals for this BOM: {exc}")
         return
@@ -3781,8 +3821,16 @@ def render_replacement_search() -> None:
         source_context = dict(
             st.session_state.get("alternative_prefill_source_context") or {}
         )
-        if navigation_context.get("description"):
-            source_context["description"] = navigation_context["description"]
+        for context_key in (
+            "description",
+            "source_page",
+            "analysis_id",
+            "project_name",
+            "bom_name",
+            "mpn",
+        ):
+            if navigation_context.get(context_key):
+                source_context[context_key] = navigation_context[context_key]
         st.session_state["alternative_prefill_source_context"] = source_context
         # The approved renderer owns the visible input. Populate its key before
         # constructing the widget so the clicked MPN appears on the first render.
@@ -3790,6 +3838,21 @@ def render_replacement_search() -> None:
         if clicked_mpn:
             st.session_state["approved_replacement_query"] = clicked_mpn
             st.session_state["cadivor_replacement_query"] = clicked_mpn
+    source_context = st.session_state.get("alternative_prefill_source_context")
+    source_context = source_context if isinstance(source_context, dict) else {}
+    return_target = str(source_context.get("source_page") or "")
+    return_analysis_id = str(source_context.get("analysis_id") or "").strip()
+    return_label = {
+        "engineering_intelligence_review": "← Back to BOM Risk",
+        "detailed_risk_report": "← Back to Detailed Risk Report",
+    }.get(return_target, "← Back to BOM")
+    if return_analysis_id and st.button(
+        return_label,
+        key=f"cadivor_replacement_return_{hashlib.sha1(return_analysis_id.encode('utf-8')).hexdigest()[:12]}",
+        type="secondary",
+    ):
+        if _navigate_back_to_bom_review(source_context):
+            st.rerun()
     st.session_state.setdefault(
         "approved_replacement_query",
         str(st.session_state.get("cadivor_replacement_query") or ""),
@@ -3816,7 +3879,6 @@ def render_replacement_search() -> None:
         original = result.get("original_data") if isinstance(result.get("original_data"), dict) else {}
         raw_candidates = result.get("candidates") or result.get("alternative_candidates") or []
         candidates = [row for row in raw_candidates if isinstance(row, dict)]
-    source_context = st.session_state.get("alternative_prefill_source_context")
     if isinstance(source_context, dict) and query:
         from src.normalizer import normalize_part_number
 
