@@ -2507,55 +2507,277 @@ def render_reports_list(records: list[dict[str, Any]] | None) -> None:
     begin_approved_page()
     rows = _records(records)[:8]
     templates = (
-        ("Executive BOM Report", "High-level summary of cost, supply risk and key insights for stakeholders.", ("PDF", "CSV")),
-        ("Engineering Risk Review", "Detailed assessment of supply, obsolescence and compliance risks across your BOM.", ("PDF", "CSV")),
-        ("Sourcing Summary", "Supplier options, cost comparison and recommended sourcing strategies.", ("PDF", "CSV")),
+        (
+            "Executive BOM Report",
+            "High-level summary of cost, supply risk and key insights for stakeholders.",
+            "file-text",
+            ("DOCX", "XLSX", "PPTX"),
+        ),
+        (
+            "Engineering Risk Review",
+            "Detailed assessment of supply, obsolescence and compliance risks across your BOM.",
+            "shield",
+            ("DOCX", "XLSX"),
+        ),
+        (
+            "Sourcing Summary",
+            "Supplier options, cost comparison and recommended sourcing strategies.",
+            "shopping-cart",
+            ("XLSX", "PPTX"),
+        ),
     )
     cards = []
-    for title, copy, formats in templates:
-        chips = "".join(f"<span class='cv-ap-chip'>{fmt}</span>" for fmt in formats)
-        cards.append(f"<article class='cv-ap-template'><h3>{title}</h3><p>{copy}</p><div>Formats {chips}</div></article>")
+    for title, copy, icon_name, formats in templates:
+        chips = "".join(
+            f"<span class='cv-ap-report-format'>{_esc(fmt)}</span>"
+            for fmt in formats
+        )
+        cards.append(
+            "<article class='cv-ap-report-template'>"
+            "<div class='cv-ap-report-template-main'>"
+            f"<span class='cv-ap-report-template-icon' aria-hidden='true'>{lucide(icon_name, 26)}</span>"
+            "<div class='cv-ap-report-template-copy'>"
+            f"<h3>{_esc(title)}</h3><p>{_esc(copy)}</p>"
+            "</div></div>"
+            "<div class='cv-ap-report-template-footer'>"
+            f"<span class='cv-ap-report-formats-label'>Formats</span>{chips}"
+            "</div></article>"
+        )
+
     st.markdown(
-        f"""
-        <div class="cv-ap">
-          <p class="cv-ap-kicker">REPORTS</p>
+        """
+        <style>
+          .st-key-approved_page_canvas_wide_render_reports_list .cv-ap-report{
+            color:#0f172a;font-family:Inter,"Segoe UI",sans-serif
+          }
+          .st-key-approved_page_canvas_wide_render_reports_list .cv-ap-report h1{
+            margin:0 0 7px;color:#14233c;font-size:34px;font-weight:760;line-height:1.15;letter-spacing:-.035em
+          }
+          .st-key-approved_page_canvas_wide_render_reports_list .cv-ap-report-kicker{
+            margin:0 0 8px;color:#64748b;font-size:12px;font-weight:750;letter-spacing:.09em
+          }
+          .st-key-approved_page_canvas_wide_render_reports_list .cv-ap-report-sub{
+            margin:0 0 38px;color:#64748b;font-size:15px;line-height:1.45
+          }
+          .st-key-approved_page_canvas_wide_render_reports_list .cv-ap-report-section-title{
+            margin:0 0 15px;color:#17253e;font-size:21px;font-weight:750;line-height:1.25;letter-spacing:-.02em
+          }
+          .st-key-approved_page_canvas_wide_render_reports_list .cv-ap-report-cards{
+            display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin:0 0 40px
+          }
+          .st-key-approved_page_canvas_wide_render_reports_list .cv-ap-report-template{
+            box-sizing:border-box;display:flex;flex-direction:column;justify-content:space-between;min-width:0;min-height:206px;
+            padding:22px 28px 18px;border:1px solid #dbeafe;border-radius:12px;background:#f8fbff
+          }
+          .st-key-approved_page_canvas_wide_render_reports_list .cv-ap-report-template-main{
+            display:flex;align-items:flex-start;gap:22px;min-width:0
+          }
+          .st-key-approved_page_canvas_wide_render_reports_list .cv-ap-report-template-icon{
+            box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;flex:0 0 72px;
+            width:72px;height:72px;border-radius:14px;background:#e8f1ff;color:#2563eb
+          }
+          .st-key-approved_page_canvas_wide_render_reports_list .cv-ap-report-template-icon svg{
+            width:28px;height:28px;stroke:currentColor
+          }
+          .st-key-approved_page_canvas_wide_render_reports_list .cv-ap-report-template-copy{min-width:0}
+          .st-key-approved_page_canvas_wide_render_reports_list .cv-ap-report-template h3{
+            margin:7px 0 7px;color:#14233c;font-size:19px;font-weight:750;line-height:1.3;letter-spacing:-.015em
+          }
+          .st-key-approved_page_canvas_wide_render_reports_list .cv-ap-report-template p{
+            margin:0;color:#64748b;font-size:15px;line-height:1.5
+          }
+          .st-key-approved_page_canvas_wide_render_reports_list .cv-ap-report-template-footer{
+            display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding-top:15px;margin-top:18px;border-top:1px solid #dce8f7
+          }
+          .st-key-approved_page_canvas_wide_render_reports_list .cv-ap-report-formats-label{
+            margin-right:8px;color:#64748b;font-size:13px;font-weight:650
+          }
+          .st-key-approved_page_canvas_wide_render_reports_list .cv-ap-report-format{
+            display:inline-flex;align-items:center;justify-content:center;min-height:32px;padding:0 12px;
+            border:1px solid #d9e7fb;border-radius:8px;background:#eaf2ff;color:#2563eb;font-size:13px;font-weight:750
+          }
+          .st-key-approved_page_canvas_wide_render_reports_list .st-key-approved_report_table{
+            box-sizing:border-box;width:100%;overflow:hidden;border:1px solid #dce5f0;border-radius:12px;background:#fff
+          }
+          .st-key-approved_page_canvas_wide_render_reports_list .st-key-approved_report_table > [data-testid="stVerticalBlock"]{
+            gap:0!important
+          }
+          .st-key-approved_page_canvas_wide_render_reports_list .st-key-approved_report_head{
+            box-sizing:border-box;width:100%;padding:0 18px;border-bottom:1px solid #dce4ef;background:#f5f7fa
+          }
+          .st-key-approved_page_canvas_wide_render_reports_list .st-key-approved_report_head > [data-testid="stVerticalBlock"]{
+            gap:0!important
+          }
+          .st-key-approved_page_canvas_wide_render_reports_list .st-key-approved_report_head [data-testid="stHorizontalBlock"]{
+            align-items:center!important;gap:12px!important;min-height:56px
+          }
+          .st-key-approved_page_canvas_wide_render_reports_list .st-key-approved_report_head [data-testid="column"]{
+            box-sizing:border-box;min-width:0;padding:0 4px
+          }
+          .cv-ap-report-header-label{
+            color:#64748b;font-size:11px;font-weight:750;line-height:1.25;letter-spacing:.045em;text-transform:uppercase
+          }
+          .cv-ap-report-header-help{margin-left:4px;color:#94a3b8;font-size:13px;font-weight:700}
+          .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_row_"]{
+            box-sizing:border-box;min-height:76px;margin:0;padding:8px 18px;border-bottom:1px solid #e5ebf3;background:#fff
+          }
+          .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_row_"]:last-child{border-bottom:0}
+          .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_row_"] > [data-testid="stVerticalBlock"]{
+            gap:0!important;min-height:58px;justify-content:center
+          }
+          .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_row_"] [data-testid="stHorizontalBlock"]{
+            align-items:center!important;gap:12px!important;min-height:58px
+          }
+          .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_row_"] [data-testid="column"]{
+            box-sizing:border-box;display:flex;align-items:center;min-width:0;padding:4px 4px
+          }
+          .cv-ap-report-name-cell{display:flex;align-items:center;gap:13px;min-width:0}
+          .cv-ap-report-row-icon{
+            box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;flex:0 0 28px;width:28px;height:28px;
+            border-radius:0;background:transparent;color:#475569
+          }
+          .cv-ap-report-row-icon svg{width:26px;height:26px}
+          .cv-ap-report-name-copy{display:flex;flex-direction:column;min-width:0}
+          .cv-ap-report-name-copy strong{display:block;overflow:hidden;color:#17253e;font-size:15px;font-weight:750;line-height:1.3;text-overflow:ellipsis;white-space:nowrap}
+          .cv-ap-report-name-copy small{display:block;margin-top:3px;color:#74839a;font-size:13px;line-height:1.25}
+          .cv-ap-report-source,.cv-ap-report-date{display:block;overflow:hidden;max-width:100%;color:#52647b;font-size:13px;line-height:1.4;text-overflow:ellipsis;white-space:nowrap}
+          .cv-ap-report-health{display:inline-flex;align-items:center;justify-content:flex-start;gap:10px;color:#17253e;font-size:15px}
+          .cv-ap-report-health strong{font-weight:700}
+          .cv-ap-report-dot{display:inline-block;flex:0 0 13px;width:13px;height:13px;border-radius:50%;background:#cbd5e1}
+          .cv-ap-report-dot.good{background:#22a447}
+          .cv-ap-report-dot.watch{background:#f5b313}
+          .cv-ap-report-dot.risk{background:#e85b59}
+          .cv-ap-report-risk{text-align:center;color:#e34f55;font-size:15px;font-weight:700}
+          .cv-ap-report-empty{padding:22px 18px;color:#64748b;font-size:13px}
+          .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_open_"]{
+            display:flex;justify-content:flex-end;width:100%
+          }
+          .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_open_"] button{
+            display:inline-flex!important;align-items:center!important;justify-content:center!important;width:auto!important;min-width:0!important;
+            min-height:36px!important;height:36px!important;padding:0 2px!important;border:0!important;border-radius:0!important;
+            background:transparent!important;color:#2563eb!important;box-shadow:none!important;font-size:15px!important;font-weight:650!important
+          }
+          .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_open_"] button:hover{
+            background:transparent!important;color:#1d4ed8!important;text-decoration:underline;text-underline-offset:3px
+          }
+          .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_open_"] button p{
+            color:inherit!important;font-size:14px!important;font-weight:650!important
+          }
+          .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_open_"] button::after{
+            content:"›";display:inline-block;margin-left:7px;color:#2563eb;font-size:20px;line-height:12px;vertical-align:-1px
+          }
+          @media(max-width:1050px){
+            .st-key-approved_page_canvas_wide_render_reports_list .cv-ap-report-cards{grid-template-columns:repeat(2,minmax(0,1fr))}
+            .st-key-approved_page_canvas_wide_render_reports_list .st-key-approved_report_head{padding:0 12px}
+            .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_row_"]{padding:8px 12px}
+          }
+          @media(max-width:760px){
+            .st-key-approved_page_canvas_wide_render_reports_list .cv-ap-report h1{font-size:28px}
+            .st-key-approved_page_canvas_wide_render_reports_list .cv-ap-report-cards{grid-template-columns:1fr;gap:12px}
+            .st-key-approved_page_canvas_wide_render_reports_list .cv-ap-report-template{min-height:0}
+            .st-key-approved_page_canvas_wide_render_reports_list .st-key-approved_report_table{overflow-x:auto}
+            .st-key-approved_page_canvas_wide_render_reports_list .st-key-approved_report_head,
+            .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_row_"]{min-width:820px}
+          }
+        </style>
+        <div class="cv-ap-report">
+          <p class="cv-ap-report-kicker">REPORTS</p>
           <h1>Engineering reports</h1>
-          <p class="cv-ap-sub">Create tailored reports from your engineering data and analysis results.</p>
-          <h2>Report templates</h2>
-          <section class="cv-ap-cards">{''.join(cards)}</section>
-          <h2>Recent report sources</h2>
+          <p class="cv-ap-report-sub">Create tailored reports from your engineering data and analysis results.</p>
+          <h2 class="cv-ap-report-section-title">Report templates</h2>
+          <section class="cv-ap-report-cards">{''.join(cards)}</section>
+          <h2 class="cv-ap-report-section-title">Recent report sources</h2>
         </div>
         """,
         unsafe_allow_html=True,
     )
-    with st.container(key="approved_report_head"):
-        header = st.columns([1.8, 1.4, 1.1, 0.9, 1, 0.6])
-        for column, label in zip(header, ("Name", "Source", "Last updated", "Health score", "High-risk parts", "Actions")):
-            column.markdown(f"<div class='cv-ap-meta'>{label}</div>", unsafe_allow_html=True)
-    if not rows:
-        st.caption("Upload a BOM analysis to populate recent report sources.")
-    for index, row in enumerate(rows):
-        score = _num(_first(row, "health_score"))
-        with st.container(key=f"approved_report_row_{index}"):
-            cells = st.columns([1.8, 1.4, 1.1, 0.9, 1, 0.6], vertical_alignment="center")
-            cells[0].markdown(
-                f"<div class='cv-ap-name'>{_esc(_first(row, 'project_name', 'name', fallback='Saved BOM'))}</div><div class='cv-ap-meta'>BOM Analysis</div>",
+
+    widths = [2.05, 1.1, 1.1, 1.15, 1.1, 0.65]
+    with st.container(key="approved_report_table"):
+        with st.container(key="approved_report_head"):
+            header = st.columns(widths, vertical_alignment="center")
+            labels = (
+                "Name",
+                "Source",
+                "Last updated",
+                "Health score <span class='cv-ap-report-header-help' title='Health score from the latest saved BOM analysis.'>ⓘ</span>",
+                "High-risk parts",
+                "Action",
+            )
+            for column, label in zip(header, labels):
+                column.markdown(
+                    f"<div class='cv-ap-report-header-label'>{label}</div>",
+                    unsafe_allow_html=True,
+                )
+        if not rows:
+            st.markdown(
+                "<div class='cv-ap-report-empty'>Upload a BOM analysis to populate recent report sources.</div>",
                 unsafe_allow_html=True,
             )
-            cells[1].markdown(_esc(_first(row, "filename", fallback="—")))
-            cells[2].markdown(_esc(str(_first(row, "created_at", fallback=""))[:10]))
-            cells[3].markdown(str(score))
-            cells[4].markdown(str(_num(_first(row, "high_risk_count"))))
+        for index, row in enumerate(rows):
+            raw_health = _first(row, "health_score")
+            has_health = raw_health is not None
+            score = _num(raw_health) if has_health else None
+            health_state = (
+                "good" if score is not None and score >= 80 else
+                "watch" if score is not None and score >= 60 else
+                "risk" if score is not None else ""
+            )
+            health_text = str(score) if score is not None else "—"
+            high_risk_raw = _first(row, "high_risk_count", "high_risk_parts")
+            high_risk_text = str(_num(high_risk_raw)) if high_risk_raw is not None else "—"
+            project_name = _first(row, "project_name", "name", fallback="Saved BOM")
+            source_name = _first(
+                row,
+                "source_reference",
+                "source_id",
+                "filename",
+                "uploaded_file",
+                "file_name",
+                fallback="—",
+            )
+            source_text = _esc(source_name)
+            source_title = _esc(source_name)
+            updated = str(
+                _first(row, "created_at", "updated_at", "analyzed_at", "date", fallback="—")
+            ).strip()
+            updated = updated.replace("T", " ")[:10] if updated not in {"", "—"} else "—"
             analysis_id = str(row.get("id") or "")
-            with cells[5]:
-                if analysis_id:
-                    internal_nav_button(
-                        "Open",
-                        "Analysis Details",
-                        key=f"approved_report_open_{index}",
-                        type="primary",
-                        analysis_id=analysis_id,
-                    )
+            with st.container(key=f"approved_report_row_{index}"):
+                cells = st.columns(widths, vertical_alignment="center")
+                cells[0].markdown(
+                    f"<div class='cv-ap-report-name-cell'>"
+                    f"<span class='cv-ap-report-row-icon' aria-hidden='true'>{lucide('package', 21)}</span>"
+                    f"<span class='cv-ap-report-name-copy'><strong>{_esc(project_name)}</strong>"
+                    "<small>BOM Analysis</small></span></div>",
+                    unsafe_allow_html=True,
+                )
+                cells[1].markdown(
+                    f"<span class='cv-ap-report-source' title='{source_title}'>{source_text}</span>",
+                    unsafe_allow_html=True,
+                )
+                cells[2].markdown(
+                    f"<span class='cv-ap-report-date'>{_esc(updated)}</span>",
+                    unsafe_allow_html=True,
+                )
+                cells[3].markdown(
+                    f"<span class='cv-ap-report-health'><i class='cv-ap-report-dot {health_state}'></i>"
+                    f"<strong>{_esc(health_text)}</strong></span>",
+                    unsafe_allow_html=True,
+                )
+                cells[4].markdown(
+                    f"<div class='cv-ap-report-risk'>{_esc(high_risk_text)}</div>",
+                    unsafe_allow_html=True,
+                )
+                with cells[5]:
+                    if analysis_id:
+                        internal_nav_button(
+                            "Open",
+                            "Analysis Details",
+                            key=f"approved_report_open_{index}",
+                            type="primary",
+                            analysis_id=analysis_id,
+                        )
     end_approved_page()
 
 

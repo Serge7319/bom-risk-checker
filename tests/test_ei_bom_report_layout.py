@@ -536,5 +536,16 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
         self.assertNotIn("Engineering review required", html)
 
 
+    def test_detailed_risk_table_header_is_attached_to_a_shared_table_frame(self):
+        source = Path("src/ui/ei_bom_report.py").read_text(encoding="utf-8")
+        self.assertIn('with st.container(key="cv_detailed_risk_table"):', source)
+        self.assertIn('with st.container(key="cv_detailed_risk_table_header"):', source)
+        self.assertIn("border:1px solid #cbd8e8", source)
+        self.assertIn("background:#f7f9fc;border-bottom:1px solid #dce4ef", source)
+        self.assertNotIn(
+            ".cv-risk-grid-head { background:#f1f5f9;border:1px solid #e2e8f0",
+            source,
+        )
+
 if __name__ == "__main__":
     unittest.main()
