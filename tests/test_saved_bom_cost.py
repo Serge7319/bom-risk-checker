@@ -220,15 +220,15 @@ class SavedBomCostPersistenceTests(unittest.TestCase):
         self.assertIn("DigiKey", html)
         self.assertIn("$12", html)
         self.assertIn("https://www.digikey.com/en/products/detail/ti/TPS54331D/1", html)
-        self.assertIn("Savings of $0.2 per unit versus DigiKey", html)
-        self.assertIn("The Mouser price is $1.", html)
+        self.assertIn("Mouser is $0.2 / unit lower", html)
+        self.assertIn("Price applies from 1 unit; BOM quantity 10", html)
+        self.assertNotIn("Savings of $0.2 per unit versus DigiKey", html)
         self.assertNotIn("best", html.casefold())
-        self.assertIn("Lifecycle and single-source exposure require a replacement review.", html)
+        self.assertNotIn("Lifecycle and single-source exposure require a replacement review.", html)
         self.assertNotIn("and a product link", html)
-        priced = html.split("TPS54331D", 1)[1]
         missing = html.split("MAX32625ITK+", 1)[1].split("TPS54331D", 1)[0]
-        self.assertNotIn("A distributor comparison is unavailable.", missing)
-        self.assertNotIn("Savings of", missing)
+        self.assertNotIn("Mouser is", missing)
+        self.assertIn("Price comparison", html)
 
 
 if __name__ == "__main__":

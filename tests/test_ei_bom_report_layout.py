@@ -10,6 +10,7 @@ from src.ui.ei_bom_report import (
     _detailed_report_analysis_label,
     _detailed_report_metadata_html,
     _format_detailed_report_date,
+    _format_snapshot_timestamp,
 )
 
 
@@ -189,17 +190,45 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
             parts=PARTS,
             approved_alternatives=approved,
         )
-        self.assertIn("Approved alternative: MPN-901", risk)
+        self.assertIn("Approved alternative on file", risk)
+        self.assertIn("MPN-901", risk)
+        self.assertIn("Update the BOM and rerun to apply this replacement.", risk)
+        self.assertNotIn("Review alternative parts", risk)
         alternatives = engineering_intelligence_html(
             bom_name="Sample BOM",
             part_count=2,
             tab="Alternatives",
             parts=PARTS,
+            alternatives=[
+                {"original_mpn": "MPN-001", "alternative_mpn": "MPN-901"},
+                {"original_mpn": "MPN-001", "alternative_mpn": "MPN-902"},
+            ],
             approved_alternatives=approved,
         )
         self.assertIn("Approved alternatives", alternatives)
         self.assertIn("MPN-901", alternatives)
+        self.assertIn("MPN-902", alternatives)
+        self.assertNotIn("MPN-901", alternatives.split("Other saved candidates", 1)[1])
         self.assertIn("A. Engineer", alternatives)
+
+    def test_saved_analysis_timestamp_is_human_readable_and_utc(self):
+        self.assertEqual(
+            _format_snapshot_timestamp("2026-10-11T12:33:00+00:00"),
+            "October 11, 2026 at 12:33 PM UTC",
+        )
+
+    def test_saved_replacement_decisions_survive_reanalysis_and_return_to_report(self):
+        root = Path(__file__).resolve().parents[1]
+        report_source = (root / "src" / "pages" / "analysis_detail.py").read_text()
+        runtime_source = (root / "src" / "authenticated_runtime.py").read_text()
+        finder_source = (root / "src" / "ui" / "approved_pages.py").read_text()
+        navigation_source = (root / "src" / "ui" / "navigation.py").read_text()
+
+        self.assertIn("project_name=report_project_name", report_source)
+        self.assertIn('query = query.eq("project_name", str(project_name).strip())', runtime_source)
+        self.assertIn("def _navigate_back_to_bom_review", finder_source)
+        self.assertIn('"cadivor_approved_alternatives_flash"', finder_source)
+        self.assertIn('"source_page", "project_name", "bom_name"', navigation_source)
 
     def test_engineering_intelligence_page_explains_selected_tab_and_refresh_action(self):
         source = (Path(__file__).resolve().parents[1] / "src" / "ui" / "ei_bom_report.py").read_text()
@@ -211,6 +240,8 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
         self.assertNotIn("cv-ei-selected-tab", source)
         self.assertIn("Open BOM to rerun", source)
         self.assertIn("saved_bom_action=\"open\"", source)
+        self.assertIn("Cadivor does not poll suppliers while the report is open", source)
+        self.assertIn("Approved replacement decisions are saved separately", source)
 
     def test_selected_tab_uses_native_indicator_and_right_aligned_tablist(self):
         source = (Path(__file__).resolve().parents[1] / "src" / "ui" / "ei_bom_report.py").read_text()
@@ -506,14 +537,14 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
         self.assertNotIn("0.0", html)
         self.assertNotIn("$0.00", html)
         self.assertNotIn(">Best source<", html)
-        self.assertIn("Recorded source", html)
+        self.assertIn("Saved distributor offer(s)", html)
         self.assertIn("DigiKey", html)
         self.assertIn("$1.2", html)
         self.assertIn("$12", html)
         self.assertIn("https://www.digikey.com/en/products/detail/ti/TPS54331D/1", html)
-        self.assertIn("A distributor comparison is unavailable.", html)
+        self.assertIn("One saved offer", html)
         self.assertNotIn("Not labeled best", html)
-        self.assertIn("Lifecycle and single-source exposure require a replacement review.", html)
+        self.assertNotIn("Lifecycle and single-source exposure require a replacement review.", html)
         self.assertIn("Not calculated", html)
         self.assertIn("Re-run the BOM analysis", html)
 
