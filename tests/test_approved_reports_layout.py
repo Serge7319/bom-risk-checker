@@ -47,15 +47,19 @@ class ApprovedReportsLayoutTests(unittest.TestCase):
         self.assertIn('if high_risk_raw is not None else "—"', REPORTS)
 
     def test_report_open_action_matches_the_mockup_link(self) -> None:
-        self.assertIn('"Open\\u2002>"', REPORTS)
+        self.assertIn('"Open\\u00a0\\u00a0>"', REPORTS)
         self.assertIn('type="tertiary"', REPORTS)
         self.assertIn('id="cadivor-reports-table-final"', CORE_UI)
-        self.assertIn('[class*="st-key-approved_report_row_"] [data-testid="column"]:last-child button {', CORE_UI)
-        self.assertIn('[data-testid="column"]:last-child {', CORE_UI)
-        self.assertIn('justify-content:flex-start!important', CORE_UI)
-        self.assertIn('font-weight:400!important', CORE_UI)
-        self.assertIn('border:0!important;border-width:0!important;border-color:transparent!important;border-radius:0!important;', CORE_UI)
+        self.assertIn('id="cadivor-approved-reports-final"', CORE_UI)
+        self.assertIn('[class*="st-key-approved_report_open_"] button,', CORE_UI)
+        self.assertIn('border:0!important;border-width:0!important;border-style:none!important;border-color:transparent!important;border-radius:0!important;', CORE_UI)
+        self.assertIn('color:#2563eb!important;font-size:14px!important;font-weight:400!important', CORE_UI)
         self.assertNotIn('button::after', REPORTS)
+
+    def test_report_rows_keep_spacing_after_shared_table_reset(self) -> None:
+        self.assertIn('min-height:84px!important;height:auto!important;', CORE_UI)
+        self.assertIn('padding:12px 18px!important;border-bottom:1px solid #e5ebf3!important', CORE_UI)
+        self.assertNotIn('[class*="st-key-approved_report_row_"] [data-testid="stColumn"],', CORE_UI)
 
     def test_reports_page_opens_at_the_mockup_heading_and_cards(self) -> None:
         self.assertIn("st.html(", REPORTS)

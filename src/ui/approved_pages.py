@@ -2618,11 +2618,11 @@ def render_reports_list(records: list[dict[str, Any]] | None) -> None:
           }
           .cv-ap-report-header-help{margin-left:4px;color:#94a3b8;font-size:13px;font-weight:700}
           .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_row_"]{
-            box-sizing:border-box;min-height:76px;margin:0;padding:8px 18px;border-bottom:1px solid #e5ebf3;background:#fff
+            box-sizing:border-box;min-height:84px;margin:0;padding:12px 18px;border-bottom:1px solid #e5ebf3;background:#fff
           }
           .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_row_"]:last-child{border-bottom:0}
           .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_row_"] > [data-testid="stVerticalBlock"]{
-            gap:0!important;min-height:58px;justify-content:center
+            gap:0!important;min-height:60px;justify-content:center
           }
           .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_row_"] [data-testid="stHorizontalBlock"]{
             align-items:center!important;gap:12px!important;min-height:58px
@@ -2766,7 +2766,7 @@ def render_reports_list(records: list[dict[str, Any]] | None) -> None:
                 with cells[5]:
                     if analysis_id:
                         internal_nav_button(
-                            "Open\u2002>",
+                            "Open\u00a0\u00a0>",
                             "Analysis Details",
                             key=f"approved_report_open_{index}",
                             type="tertiary",
