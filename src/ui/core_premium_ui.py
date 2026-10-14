@@ -138,40 +138,45 @@ def inject_workspace_geometry_final() -> None:
           margin:0!important;padding:0 22px!important;border:0!important;border-bottom:1px solid #dce4ef!important;
           border-radius:11px 11px 0 0!important;background:#f5f7fa!important
         }
-        html body section[data-testid="stMain"] [class*="st-key-approved_report_open_"] {
-          display:flex!important;justify-content:flex-end!important;align-items:center!important;
+        html body section[data-testid="stMain"] [class*="st-key-approved_report_action_"] {
+          display:flex!important;align-items:center!important;justify-content:flex-start!important;
           width:100%!important;min-width:0!important;margin:0!important;padding:0!important
         }
-        html body section[data-testid="stMain"] [class*="st-key-approved_report_open_"] .stButton,
-        html body section[data-testid="stMain"] [class*="st-key-approved_report_open_"] [data-testid="stButton"] {
-          display:flex!important;justify-content:flex-end!important;align-items:center!important;
-          width:100%!important;min-width:0!important;margin:0!important;padding:0!important
+        html body section[data-testid="stMain"] [class*="st-key-approved_report_action_"] > [data-testid="stVerticalBlock"] {
+          display:flex!important;flex-direction:row!important;align-items:center!important;justify-content:flex-start!important;
+          gap:0!important;width:100%!important;min-width:0!important;margin:0!important;padding:0!important
         }
-        html body section[data-testid="stMain"] [class*="st-key-approved_report_open_"] button {
-          display:inline-flex!important;align-items:center!important;justify-content:flex-end!important;
+        html body section[data-testid="stMain"] [class*="st-key-approved_report_action_"] [data-testid="stElementContainer"],
+        html body section[data-testid="stMain"] [class*="st-key-approved_report_action_"] .stButton,
+        html body section[data-testid="stMain"] [class*="st-key-approved_report_action_"] [data-testid="stButton"] {
+          display:flex!important;align-items:center!important;justify-content:flex-start!important;
+          flex:0 0 auto!important;width:auto!important;min-width:0!important;margin:0!important;padding:0!important
+        }
+        html body section[data-testid="stMain"] [class*="st-key-approved_report_action_"] button {
+          display:inline-flex!important;align-items:center!important;justify-content:flex-start!important;text-align:left!important;
           box-sizing:border-box!important;width:auto!important;min-width:0!important;max-width:none!important;
           min-height:32px!important;height:32px!important;margin:0!important;padding:0!important;
-          border:0!important;border-radius:3px!important;background:transparent!important;
-          color:#2563eb!important;box-shadow:none!important;font-size:14px!important;font-weight:700!important;
+          border:0!important;border-color:transparent!important;border-radius:0!important;background:transparent!important;
+          color:#2563eb!important;box-shadow:none!important;font-size:14px!important;font-weight:400!important;
           line-height:1.2!important;white-space:nowrap!important
         }
-        html body section[data-testid="stMain"] [class*="st-key-approved_report_open_"] button p,
-        html body section[data-testid="stMain"] [class*="st-key-approved_report_open_"] button span,
-        html body section[data-testid="stMain"] [class*="st-key-approved_report_open_"] button div {
+        html body section[data-testid="stMain"] [class*="st-key-approved_report_action_"] button p,
+        html body section[data-testid="stMain"] [class*="st-key-approved_report_action_"] button span,
+        html body section[data-testid="stMain"] [class*="st-key-approved_report_action_"] button div {
           box-sizing:border-box!important;min-width:0!important;width:auto!important;
           height:auto!important;margin:0!important;padding:0!important;border:0!important;background:transparent!important;
-          color:#2563eb!important;font-size:14px!important;font-weight:700!important;line-height:1.2!important;
+          color:#2563eb!important;font-size:14px!important;font-weight:400!important;line-height:1.2!important;
           visibility:visible!important;opacity:1!important;white-space:nowrap!important
         }
-        html body section[data-testid="stMain"] [class*="st-key-approved_report_open_"] button p,
-        html body section[data-testid="stMain"] [class*="st-key-approved_report_open_"] button span {
+        html body section[data-testid="stMain"] [class*="st-key-approved_report_action_"] button p,
+        html body section[data-testid="stMain"] [class*="st-key-approved_report_action_"] button span {
           display:inline!important
         }
-        html body section[data-testid="stMain"] [class*="st-key-approved_report_open_"] button:hover {
+        html body section[data-testid="stMain"] [class*="st-key-approved_report_action_"] button:hover {
           background:transparent!important;color:#1d4ed8!important;text-decoration:underline!important;
           text-underline-offset:3px!important;box-shadow:none!important
         }
-        html body section[data-testid="stMain"] [class*="st-key-approved_report_open_"] button:focus-visible {
+        html body section[data-testid="stMain"] [class*="st-key-approved_report_action_"] button:focus-visible {
           outline:2px solid #93c5fd!important;outline-offset:3px!important
         }
         </style>
