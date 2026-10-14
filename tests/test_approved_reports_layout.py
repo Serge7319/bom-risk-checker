@@ -6,6 +6,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 APPROVED = (ROOT / "src" / "ui" / "approved_pages.py").read_text(encoding="utf-8")
 CORE_UI = (ROOT / "src" / "ui" / "core_premium_ui.py").read_text(encoding="utf-8")
+SHARED_BUTTON_CSS = (ROOT / "src" / "assets" / "css" / "laptop_kpi_table_pass.css").read_text(encoding="utf-8")
 REPORTS = APPROVED[
     APPROVED.index("def render_reports_list("):
     APPROVED.index("\n\ndef render_simple_workspace(", APPROVED.index("def render_reports_list("))
@@ -53,12 +54,13 @@ class ApprovedReportsLayoutTests(unittest.TestCase):
         self.assertIn('id="cadivor-approved-reports-final"', CORE_UI)
         self.assertIn('[class*="st-key-approved_report_open_"] button,', CORE_UI)
         self.assertIn('border:0!important;border-width:0!important;border-style:none!important;border-color:transparent!important;border-radius:0!important;', CORE_UI)
+        self.assertIn(':not(.st-key-approved_page_canvas_wide_render_reports_list .st-key-approved_report_table .stButton)', SHARED_BUTTON_CSS)
         self.assertIn('color:#2563eb!important;font-size:14px!important;font-weight:400!important', CORE_UI)
         self.assertNotIn('button::after', REPORTS)
 
     def test_report_rows_keep_spacing_after_shared_table_reset(self) -> None:
         self.assertIn('min-height:84px!important;height:auto!important;', CORE_UI)
-        self.assertIn('padding:12px 18px!important;border-bottom:1px solid #e5ebf3!important', CORE_UI)
+        self.assertIn('padding:10px 18px!important;border-bottom:1px solid #e5ebf3!important', CORE_UI)
         self.assertNotIn('[class*="st-key-approved_report_row_"] [data-testid="stColumn"],', CORE_UI)
 
     def test_reports_page_opens_at_the_mockup_heading_and_cards(self) -> None:
