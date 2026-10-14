@@ -675,7 +675,7 @@ def report_styles() -> str:
       .cv-risk-wrap { background:#fff; border:1px solid #e6edf5; border-radius:16px; overflow:hidden; }
       .cv-risk-row, .cv-risk-head { display:grid; grid-template-columns: 1.1fr 1fr .9fr .6fr .7fr .8fr .6fr .7fr; gap:8px; padding:12px 16px; align-items:center; }
       .cv-risk-head { color:#94a3b8; font-size:12px; letter-spacing:.04em; text-transform:uppercase; background:#f8fafc; }
-      .cv-risk-row { border-top:1px solid #eef2f7; font-size:14px; }
+      .cv-risk-row { border-top:1px solid #b6c3d2; font-size:14px; }
       .st-key-ei_report_workspace .st-key-cv_detailed_risk_table { box-sizing:border-box;width:100%;margin:0 0 16px;padding:0;border:1px solid #cbd8e8;border-radius:14px;background:#fff;overflow:hidden }
       .st-key-ei_report_workspace .st-key-cv_detailed_risk_table > [data-testid="stVerticalBlock"] { gap:0!important }
       .st-key-ei_report_workspace .st-key-cv_detailed_risk_table_header { box-sizing:border-box;width:100%;padding:0 12px;background:#f7f9fc;border-bottom:1px solid #dce4ef }
@@ -683,7 +683,7 @@ def report_styles() -> str:
       .st-key-ei_report_workspace .st-key-cv_detailed_risk_table_header [data-testid="stHorizontalBlock"] { align-items:center!important;gap:12px!important;min-height:48px }
       .st-key-ei_report_workspace .st-key-cv_detailed_risk_table_header [data-testid="column"] { box-sizing:border-box;min-width:0;padding:0 4px }
       .cv-risk-grid-head { display:flex;align-items:center;box-sizing:border-box;min-height:46px;padding:0;color:#64748b;font-size:11px;font-weight:750;text-transform:uppercase;letter-spacing:.04em;line-height:1.25 }
-      .st-key-ei_report_workspace .st-key-cv_detailed_risk_table [class*="st-key-cv_risk_shut_"], .st-key-ei_report_workspace .st-key-cv_detailed_risk_table [class*="st-key-cv_risk_open_"] { box-sizing:border-box;margin:0;padding:8px 12px;border-bottom:1px solid #e8edf3 }
+      .st-key-ei_report_workspace .st-key-cv_detailed_risk_table [class*="st-key-cv_risk_shut_"], .st-key-ei_report_workspace .st-key-cv_detailed_risk_table [class*="st-key-cv_risk_open_"] { box-sizing:border-box;margin:0;padding:8px 12px;border-bottom:1px solid #b6c3d2!important;box-shadow:inset 0 -1px 0 #b6c3d2!important }
       .st-key-ei_report_workspace .st-key-cv_detailed_risk_table [class*="st-key-cv_risk_shut_"] > [data-testid="stVerticalBlock"], .st-key-ei_report_workspace .st-key-cv_detailed_risk_table [class*="st-key-cv_risk_open_"] > [data-testid="stVerticalBlock"] { gap:0!important }
       .st-key-ei_report_workspace .st-key-cv_detailed_risk_table [class*="st-key-cv_risk_"] [data-testid="stHorizontalBlock"] { align-items:center!important }
       .st-key-ei_report_workspace .st-key-cv_detailed_risk_table [class*="st-key-cv_risk_"] [data-testid="column"] { min-width:0 }
