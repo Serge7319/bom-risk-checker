@@ -123,60 +123,56 @@ def inject_workspace_geometry_final() -> None:
     from src.ui.sprint71_polish import inject_sprint71_polish
 
     inject_sprint71_polish()
-    # Keep the Engineering Reports table header and its text-link action intact
-    # after the shared design-system button and column resets have loaded.
+    # Keep the Engineering Reports header and action geometry aligned with the
+    # actual Streamlit columns after shared button styles have loaded.
     st.markdown(
         """
         <style id="cadivor-reports-table-final">
-        html body section[data-testid="stMain"] [class*="st-key-approved_report_table"] [data-testid="stElementContainer"]:has(.cv-ap-report-table-head) {
-          box-sizing:border-box!important;margin:0!important;padding:0!important;width:100%!important
+        html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_reports_list .st-key-approved_report_table_header {
+          box-sizing:border-box!important;min-height:58px!important;height:auto!important;margin:0!important;padding:0 18px!important;
+          border:0!important;border-bottom:1px solid #dce4ef!important;border-radius:11px 11px 0 0!important;background:#f5f7fa!important
         }
-        html body section[data-testid="stMain"] [class*="st-key-approved_report_table"] .cv-ap-report-table-head {
-          display:grid!important;grid-template-columns:2.05fr 1.1fr 1.1fr 1.15fr 1.1fr .65fr!important;
-          align-items:center!important;gap:12px!important;box-sizing:border-box!important;
-          width:100%!important;min-width:0!important;min-height:58px!important;height:auto!important;
-          margin:0!important;padding:0 22px!important;border:0!important;border-bottom:1px solid #dce4ef!important;
-          border-radius:11px 11px 0 0!important;background:#f5f7fa!important
+        html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_reports_list .st-key-approved_report_table_header [data-testid="stHorizontalBlock"] {
+          display:flex!important;align-items:center!important;gap:12px!important;width:100%!important;min-height:56px!important;margin:0!important
         }
-        html body section[data-testid="stMain"] [class*="st-key-approved_report_action_"] {
-          display:flex!important;align-items:center!important;justify-content:flex-start!important;
-          width:100%!important;min-width:0!important;margin:0!important;padding:0!important
+        html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_row_"] [data-testid="stHorizontalBlock"] {
+          gap:12px!important
         }
-        html body section[data-testid="stMain"] [class*="st-key-approved_report_action_"] > [data-testid="stVerticalBlock"] {
-          display:flex!important;flex-direction:row!important;align-items:center!important;justify-content:flex-start!important;
-          gap:0!important;width:100%!important;min-width:0!important;margin:0!important;padding:0!important
+        html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_reports_list .st-key-approved_report_table_header [data-testid="column"],
+        html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_row_"] [data-testid="column"] {
+          box-sizing:border-box!important;min-width:0!important;padding:4px!important
         }
-        html body section[data-testid="stMain"] [class*="st-key-approved_report_action_"] [data-testid="stElementContainer"],
-        html body section[data-testid="stMain"] [class*="st-key-approved_report_action_"] .stButton,
-        html body section[data-testid="stMain"] [class*="st-key-approved_report_action_"] [data-testid="stButton"] {
+        html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_row_"] [data-testid="column"]:nth-child(5) {
+          display:flex!important;align-items:center!important;justify-content:flex-start!important;text-align:left!important
+        }
+        html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_row_"] [data-testid="column"]:last-child {
+          display:flex!important;align-items:center!important;justify-content:flex-start!important;text-align:left!important
+        }
+        html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_row_"] [data-testid="column"]:last-child [data-testid="stElementContainer"],
+        html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_row_"] [data-testid="column"]:last-child .stButton {
           display:flex!important;align-items:center!important;justify-content:flex-start!important;
           flex:0 0 auto!important;width:auto!important;min-width:0!important;margin:0!important;padding:0!important
         }
-        html body section[data-testid="stMain"] [class*="st-key-approved_report_action_"] button {
+        html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_row_"] [data-testid="column"]:last-child button {
           display:inline-flex!important;align-items:center!important;justify-content:flex-start!important;text-align:left!important;
-          box-sizing:border-box!important;width:auto!important;min-width:0!important;max-width:none!important;
+          box-sizing:border-box!important;appearance:none!important;width:auto!important;min-width:0!important;max-width:none!important;
           min-height:32px!important;height:32px!important;margin:0!important;padding:0!important;
-          border:0!important;border-color:transparent!important;border-radius:0!important;background:transparent!important;
-          color:#2563eb!important;box-shadow:none!important;font-size:14px!important;font-weight:400!important;
+          border:0!important;border-width:0!important;border-color:transparent!important;border-radius:0!important;
+          background:transparent!important;color:#2563eb!important;box-shadow:none!important;font-size:14px!important;font-weight:400!important;
           line-height:1.2!important;white-space:nowrap!important
         }
-        html body section[data-testid="stMain"] [class*="st-key-approved_report_action_"] button p,
-        html body section[data-testid="stMain"] [class*="st-key-approved_report_action_"] button span,
-        html body section[data-testid="stMain"] [class*="st-key-approved_report_action_"] button div {
-          box-sizing:border-box!important;min-width:0!important;width:auto!important;
-          height:auto!important;margin:0!important;padding:0!important;border:0!important;background:transparent!important;
-          color:#2563eb!important;font-size:14px!important;font-weight:400!important;line-height:1.2!important;
-          visibility:visible!important;opacity:1!important;white-space:nowrap!important
+        html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_row_"] [data-testid="column"]:last-child button p,
+        html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_row_"] [data-testid="column"]:last-child button span,
+        html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_row_"] [data-testid="column"]:last-child button div {
+          box-sizing:border-box!important;min-width:0!important;width:auto!important;height:auto!important;margin:0!important;padding:0!important;
+          border:0!important;background:transparent!important;color:#2563eb!important;font-size:14px!important;font-weight:400!important;
+          line-height:1.2!important;visibility:visible!important;opacity:1!important;white-space:pre!important
         }
-        html body section[data-testid="stMain"] [class*="st-key-approved_report_action_"] button p,
-        html body section[data-testid="stMain"] [class*="st-key-approved_report_action_"] button span {
-          display:inline!important
-        }
-        html body section[data-testid="stMain"] [class*="st-key-approved_report_action_"] button:hover {
-          background:transparent!important;color:#1d4ed8!important;text-decoration:underline!important;
+        html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_row_"] [data-testid="column"]:last-child button:hover {
+          border:0!important;background:transparent!important;color:#1d4ed8!important;text-decoration:underline!important;
           text-underline-offset:3px!important;box-shadow:none!important
         }
-        html body section[data-testid="stMain"] [class*="st-key-approved_report_action_"] button:focus-visible {
+        html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_row_"] [data-testid="column"]:last-child button:focus-visible {
           outline:2px solid #93c5fd!important;outline-offset:3px!important
         }
         </style>

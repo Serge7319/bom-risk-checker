@@ -2603,10 +2603,15 @@ def render_reports_list(records: list[dict[str, Any]] | None) -> None:
           .st-key-approved_page_canvas_wide_render_reports_list .st-key-approved_report_table > [data-testid="stVerticalBlock"]{
             gap:0!important
           }
-          .st-key-approved_page_canvas_wide_render_reports_list .cv-ap-report-table-head{
-            box-sizing:border-box;display:grid;grid-template-columns:2.05fr 1.1fr 1.1fr 1.15fr 1.1fr .65fr;
-            align-items:center;gap:12px;width:100%;min-height:58px;padding:0 22px;
+          .st-key-approved_page_canvas_wide_render_reports_list .st-key-approved_report_table_header{
+            box-sizing:border-box;width:100%;min-height:58px;margin:0;padding:0 18px;
             border-bottom:1px solid #dce4ef;background:#f5f7fa
+          }
+          .st-key-approved_page_canvas_wide_render_reports_list .st-key-approved_report_table_header>[data-testid="stVerticalBlock"]{
+            gap:0!important;min-height:58px;justify-content:center
+          }
+          .st-key-approved_page_canvas_wide_render_reports_list .st-key-approved_report_table_header [data-testid="stHorizontalBlock"]{
+            align-items:center!important;gap:12px!important;min-height:56px
           }
           .cv-ap-report-header-label{
             color:#64748b;font-size:12px;font-weight:750;line-height:1.25;letter-spacing:.045em;text-transform:uppercase
@@ -2622,7 +2627,8 @@ def render_reports_list(records: list[dict[str, Any]] | None) -> None:
           .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_row_"] [data-testid="stHorizontalBlock"]{
             align-items:center!important;gap:12px!important;min-height:58px
           }
-          .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_row_"] [data-testid="column"]{
+          .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_row_"] [data-testid="column"],
+          .st-key-approved_page_canvas_wide_render_reports_list .st-key-approved_report_table_header [data-testid="column"]{
             box-sizing:border-box;display:flex;align-items:center;min-width:0;padding:4px 4px
           }
           .cv-ap-report-name-cell{display:flex;align-items:center;gap:13px;min-width:0}
@@ -2641,11 +2647,8 @@ def render_reports_list(records: list[dict[str, Any]] | None) -> None:
           .cv-ap-report-dot.good{background:#22a447}
           .cv-ap-report-dot.watch{background:#f5b313}
           .cv-ap-report-dot.risk{background:#e85b59}
-          .cv-ap-report-risk{text-align:center;color:#e34f55;font-size:15px;font-weight:700}
+          .cv-ap-report-risk{text-align:left;color:#e34f55;font-size:15px;font-weight:700}
           .cv-ap-report-empty{padding:22px 18px;color:#64748b;font-size:13px}
-          .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_action_"]{
-            display:flex;align-items:center;justify-content:flex-start;width:100%;min-width:0
-          }
           @media(max-width:1050px){
             .st-key-approved_page_canvas_wide_render_reports_list .cv-ap-report-cards{grid-template-columns:repeat(2,minmax(0,1fr))}
             .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_row_"]{padding:8px 12px}
@@ -2655,7 +2658,7 @@ def render_reports_list(records: list[dict[str, Any]] | None) -> None:
             .st-key-approved_page_canvas_wide_render_reports_list .cv-ap-report-cards{grid-template-columns:1fr;gap:12px}
             .st-key-approved_page_canvas_wide_render_reports_list .cv-ap-report-template{min-height:0}
             .st-key-approved_page_canvas_wide_render_reports_list .st-key-approved_report_table{overflow-x:auto}
-            .st-key-approved_page_canvas_wide_render_reports_list .cv-ap-report-table-head,
+            .st-key-approved_page_canvas_wide_render_reports_list .st-key-approved_report_table_header,
             .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_row_"]{min-width:820px}
           }
         </style>
@@ -2684,18 +2687,22 @@ def render_reports_list(records: list[dict[str, Any]] | None) -> None:
 
     widths = [2.05, 1.1, 1.1, 1.15, 1.1, 0.65]
     with st.container(key="approved_report_table"):
-        st.markdown(
-            "<div class='cv-ap-report-table-head'>"
-            "<span class='cv-ap-report-header-label'>Name</span>"
-            "<span class='cv-ap-report-header-label'>Source</span>"
-            "<span class='cv-ap-report-header-label'>Last updated</span>"
-            "<span class='cv-ap-report-header-label'>Health score "
-            "<span class='cv-ap-report-header-help' title='Health score from the latest saved BOM analysis.'>ⓘ</span></span>"
-            "<span class='cv-ap-report-header-label'>High-risk parts</span>"
-            "<span class='cv-ap-report-header-label'>Action</span>"
-            "</div>",
-            unsafe_allow_html=True,
-        )
+        with st.container(key="approved_report_table_header"):
+            header_cells = st.columns(widths, vertical_alignment="center")
+            for header_cell, label in zip(
+                header_cells,
+                ("Name", "Source", "Last updated", "", "High-risk parts", "Action"),
+            ):
+                if label:
+                    header_cell.markdown(
+                        f"<span class='cv-ap-report-header-label'>{_esc(label)}</span>",
+                        unsafe_allow_html=True,
+                    )
+            header_cells[3].markdown(
+                "<span class='cv-ap-report-header-label'>Health score "
+                "<span class='cv-ap-report-header-help' title='Health score from the latest saved BOM analysis.'>ⓘ</span></span>",
+                unsafe_allow_html=True,
+            )
         if not rows:
             st.markdown(
                 "<div class='cv-ap-report-empty'>Upload a BOM analysis to populate recent report sources.</div>",
@@ -2758,14 +2765,13 @@ def render_reports_list(records: list[dict[str, Any]] | None) -> None:
                 )
                 with cells[5]:
                     if analysis_id:
-                        with st.container(key=f"approved_report_action_{index}"):
-                            internal_nav_button(
-                                "Open >",
-                                "Analysis Details",
-                                key=f"approved_report_open_{index}",
-                                type="tertiary",
-                                analysis_id=analysis_id,
-                            )
+                        internal_nav_button(
+                            "Open\u2002>",
+                            "Analysis Details",
+                            key=f"approved_report_open_{index}",
+                            type="tertiary",
+                            analysis_id=analysis_id,
+                        )
     # Reports sometimes returns to a remembered scroll offset after a route
     # swap. Run the reset in the app document (not a component iframe), then
     # align this canvas at the top so the title and template cards are visible.
