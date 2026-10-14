@@ -47,8 +47,12 @@ class ApprovedReportsLayoutTests(unittest.TestCase):
     def test_report_open_action_matches_the_mockup_link(self) -> None:
         self.assertIn('"Open >"', REPORTS)
         self.assertIn('type="tertiary"', REPORTS)
+        self.assertIn('key=f"approved_report_action_{index}"', REPORTS)
         self.assertIn('id="cadivor-reports-table-final"', CORE_UI)
-        self.assertIn('[class*="st-key-approved_report_open_"] button {', CORE_UI)
+        self.assertIn('[class*="st-key-approved_report_action_"] button {', CORE_UI)
+        self.assertIn('justify-content:flex-start!important', CORE_UI)
+        self.assertIn('font-weight:400!important', CORE_UI)
+        self.assertIn('border:0!important;border-color:transparent!important;border-radius:0!important;background:transparent!important', CORE_UI)
         self.assertNotIn('button::after', REPORTS)
 
     def test_reports_page_opens_at_the_mockup_heading_and_cards(self) -> None:

@@ -2643,19 +2643,8 @@ def render_reports_list(records: list[dict[str, Any]] | None) -> None:
           .cv-ap-report-dot.risk{background:#e85b59}
           .cv-ap-report-risk{text-align:center;color:#e34f55;font-size:15px;font-weight:700}
           .cv-ap-report-empty{padding:22px 18px;color:#64748b;font-size:13px}
-          .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_open_"]{
-            display:flex;justify-content:flex-end;width:100%
-          }
-          .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_open_"] button{
-            display:inline-flex!important;align-items:center!important;justify-content:center!important;width:auto!important;min-width:0!important;
-            min-height:36px!important;height:36px!important;padding:0 2px!important;border:0!important;border-color:transparent!important;border-radius:0!important;outline:0!important;
-            background:transparent!important;color:#2563eb!important;box-shadow:none!important;font-size:15px!important;font-weight:650!important
-          }
-          .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_open_"] button:hover{
-            background:transparent!important;color:#1d4ed8!important;text-decoration:underline;text-underline-offset:3px
-          }
-          .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_open_"] button p{
-            color:inherit!important;font-size:14px!important;font-weight:650!important
+          .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_action_"]{
+            display:flex;align-items:center;justify-content:flex-start;width:100%;min-width:0
           }
           @media(max-width:1050px){
             .st-key-approved_page_canvas_wide_render_reports_list .cv-ap-report-cards{grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -2769,13 +2758,14 @@ def render_reports_list(records: list[dict[str, Any]] | None) -> None:
                 )
                 with cells[5]:
                     if analysis_id:
-                        internal_nav_button(
-                            "Open >",
-                            "Analysis Details",
-                            key=f"approved_report_open_{index}",
-                            type="tertiary",
-                            analysis_id=analysis_id,
-                        )
+                        with st.container(key=f"approved_report_action_{index}"):
+                            internal_nav_button(
+                                "Open >",
+                                "Analysis Details",
+                                key=f"approved_report_open_{index}",
+                                type="tertiary",
+                                analysis_id=analysis_id,
+                            )
     # Reports sometimes returns to a remembered scroll offset after a route
     # swap. Run the reset in the app document (not a component iframe), then
     # align this canvas at the top so the title and template cards are visible.
