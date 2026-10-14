@@ -550,8 +550,10 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
     def test_detailed_risk_row_separators_have_clear_contrast(self):
         source = Path("src/ui/ei_bom_report.py").read_text(encoding="utf-8")
         self.assertIn(".cv-risk-row { border-top:1px solid #e5ebf3", source)
-        self.assertIn("border-bottom:1px solid #e5ebf3!important", source)
-        self.assertIn("box-shadow:none!important", source)
+        self.assertIn("class='cv-risk-row-separator'", source)
+        self.assertIn(".cv-risk-row-separator { display:block", source)
+        self.assertIn("background:#d5dfeb!important", source)
+        self.assertIn("if index < len(visible_rows) - 1:", source)
 
 if __name__ == "__main__":
     unittest.main()

@@ -25,6 +25,8 @@ class ApprovedReportsLayoutTests(unittest.TestCase):
         ):
             self.assertIn(label, REPORTS)
         self.assertIn('lucide(icon_name, 26)', REPORTS)
+        self.assertIn('"<section class=\'cv-ap-report-cards\'>" + "".join(cards)', REPORTS)
+        self.assertNotIn("{''.join(cards)}", REPORTS)
 
     def test_recent_sources_have_a_shared_table_frame_and_mockup_columns(self) -> None:
         self.assertIn('key="approved_report_table"', REPORTS)
@@ -46,9 +48,13 @@ class ApprovedReportsLayoutTests(unittest.TestCase):
         self.assertIn('content:"›"', REPORTS)
 
     def test_reports_page_opens_at_the_mockup_heading_and_cards(self) -> None:
-        self.assertIn("canvas.scrollIntoView({block: 'start', behavior: 'auto'})", REPORTS)
+        self.assertIn("st.html(", REPORTS)
+        self.assertIn("unsafe_allow_javascript=True", REPORTS)
+        self.assertIn("resetReportsScroll", REPORTS)
+        self.assertIn("canvas.scrollIntoView({block: 'start'", REPORTS)
         self.assertIn("Engineering reports", REPORTS)
         self.assertIn("Report templates", REPORTS)
+        self.assertIn("Recent report sources", REPORTS)
 
 
 if __name__ == "__main__":

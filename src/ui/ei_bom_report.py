@@ -683,11 +683,13 @@ def report_styles() -> str:
       .st-key-ei_report_workspace .st-key-cv_detailed_risk_table_header [data-testid="stHorizontalBlock"] { align-items:center!important;gap:12px!important;min-height:48px }
       .st-key-ei_report_workspace .st-key-cv_detailed_risk_table_header [data-testid="column"] { box-sizing:border-box;min-width:0;padding:0 4px }
       .cv-risk-grid-head { display:flex;align-items:center;box-sizing:border-box;min-height:46px;padding:0;color:#64748b;font-size:11px;font-weight:750;text-transform:uppercase;letter-spacing:.04em;line-height:1.25 }
-      .st-key-ei_report_workspace .st-key-cv_detailed_risk_table [class*="st-key-cv_risk_shut_"], .st-key-ei_report_workspace .st-key-cv_detailed_risk_table [class*="st-key-cv_risk_open_"] { box-sizing:border-box;margin:0;padding:8px 12px;border-bottom:1px solid #e5ebf3!important;box-shadow:none!important }
+      .st-key-ei_report_workspace .st-key-cv_detailed_risk_table [class*="st-key-cv_risk_shut_"], .st-key-ei_report_workspace .st-key-cv_detailed_risk_table [class*="st-key-cv_risk_open_"] { box-sizing:border-box;margin:0;padding:8px 12px;border-bottom:0!important;box-shadow:none!important }
       .st-key-ei_report_workspace .st-key-cv_detailed_risk_table [class*="st-key-cv_risk_shut_"] > [data-testid="stVerticalBlock"], .st-key-ei_report_workspace .st-key-cv_detailed_risk_table [class*="st-key-cv_risk_open_"] > [data-testid="stVerticalBlock"] { gap:0!important }
       .st-key-ei_report_workspace .st-key-cv_detailed_risk_table [class*="st-key-cv_risk_"] [data-testid="stHorizontalBlock"] { align-items:center!important }
       .st-key-ei_report_workspace .st-key-cv_detailed_risk_table [class*="st-key-cv_risk_"] [data-testid="column"] { min-width:0 }
-      .st-key-ei_report_workspace .st-key-cv_detailed_risk_table [class*="st-key-cv_risk_"]:last-child { border-bottom:0!important;box-shadow:none!important }
+      .st-key-ei_report_workspace .st-key-cv_detailed_risk_table [data-testid="stElementContainer"]:has(.cv-risk-row-separator) { box-sizing:border-box;height:1px!important;min-height:1px!important;margin:0!important;padding:0!important }
+      .st-key-ei_report_workspace .st-key-cv_detailed_risk_table [data-testid="stElementContainer"]:has(.cv-risk-row-separator) [data-testid="stMarkdownContainer"] { line-height:0!important }
+      .st-key-ei_report_workspace .st-key-cv_detailed_risk_table .cv-risk-row-separator { display:block;box-sizing:border-box;width:calc(100% - 24px);height:1px!important;min-height:1px!important;margin:0 12px!important;padding:0!important;border:0!important;background:#d5dfeb!important;opacity:1!important;line-height:0!important }
       .cv-risk-detail { display:grid; grid-template-columns:1.1fr .9fr; gap:16px; padding:14px 0 18px; }
       .st-key-ei_report_workspace .cv-part-photo { border-radius:8px!important; }
       .cv-risk-card, .cv-risk-drivers, .cv-risk-action { border:1px solid #e6edf5; border-radius:14px; padding:16px; background:#fff; }
@@ -1038,7 +1040,8 @@ def render_detailed_risk_rows(
             for column, label in zip(header, ("Component", "Manufacturer", "Supply", "Lifecycle", "Risk")):
                 column.markdown(f"<div class='cv-risk-grid-head'>{label}</div>", unsafe_allow_html=True)
 
-        for index, row in enumerate(rows[:12]):
+        visible_rows = rows[:12]
+        for index, row in enumerate(visible_rows):
             is_open = row["mpn_raw"] == selected
             state = "open" if is_open else "shut"
             with st.container(key=f"cv_risk_{state}_{index}"):
@@ -1093,6 +1096,11 @@ def render_detailed_risk_rows(
                         alternative_link=alternative_link,
                     )
                     st.markdown(detail_markup, unsafe_allow_html=True)
+            if index < len(visible_rows) - 1:
+                st.markdown(
+                    "<hr class='cv-risk-row-separator' aria-hidden='true'>",
+                    unsafe_allow_html=True,
+                )
 
 
 
