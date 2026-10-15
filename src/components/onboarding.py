@@ -317,18 +317,27 @@ def render_analysis_success(*, project_name: str, total_parts: int, high_count: 
     )
     from src.ui.navigation import open_saved_bom
 
-    review_col, report_col = st.columns(2)
-    with review_col:
-        if st.button(
-            "Open engineering review →",
-            key="cv29b_open_engineering_review",
-            type="primary",
-        ):
-            open_saved_bom(str(analysis_id or ""), arm_opening=False, _rerun=True)
-    with report_col:
-        if st.button("Generate report", key="cv29b_generate_report"):
-            navigate_to(
-                "Reports",
-                analysis_id=str(analysis_id or ""),
-                arm_opening=False,
-            )
+    with st.container(key="cv29b_result_actions"):
+        spacer_col, review_col, report_col = st.columns(
+            [4.8, 1.65, 1.15],
+            vertical_alignment="center",
+        )
+        with review_col:
+            if st.button(
+                "Open Engineering Review →",
+                key="cv29b_open_engineering_review",
+                type="primary",
+                use_container_width=True,
+            ):
+                open_saved_bom(str(analysis_id or ""), arm_opening=False, _rerun=True)
+        with report_col:
+            if st.button(
+                "Generate report",
+                key="cv29b_generate_report",
+                use_container_width=True,
+            ):
+                navigate_to(
+                    "Reports",
+                    analysis_id=str(analysis_id or ""),
+                    arm_opening=False,
+                )

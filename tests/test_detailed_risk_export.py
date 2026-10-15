@@ -83,8 +83,12 @@ def _check_excel_export_has_summary_details_and_high_risk_views_without_private_
     assert summary["A4"].value == "Project / BOM"
     assert summary["B4"].value == "Flight Controller Rev B"
     assert summary["B5"].value == "flight-controller.csv"
-    metrics = {row[0]: row[1] for row in summary.iter_rows(min_row=10, max_row=20, values_only=True)}
+    metrics = {row[0]: row[1] for row in summary.iter_rows(min_row=10, max_row=30, values_only=True)}
     assert metrics["Total components"] == 2
+    assert metrics["Parts with matched supplier evidence"] == 2
+    assert metrics["Risk assessed"] == 2
+    assert metrics["Risk coverage"] == "100%"
+    assert "Risk ratings are recorded for all 2 parts" in summary["A7"].value
     assert metrics["High risk"] == 1
     assert metrics["Low risk"] == 1
     assert metrics["Stock not reported"] == 1
@@ -138,6 +142,38 @@ class DetailedRiskExportTests(unittest.TestCase):
 
     def test_csv_export_matches_stress_free_audit_columns(self):
         _check_csv_export_matches_stress_free_audit_columns_and_marks_unknown_stock()
+
+    def test_unassessed_parts_are_explained_in_summary_and_empty_high_risk_sheet(self):
+        workbook = load_workbook(
+            BytesIO(
+                detailed_risk_excel_bytes(
+                    [
+                        {
+                            "mpn": "CON-USB",
+                            "risk_level": "Needs verification",
+                            "risk_score": None,
+                            "supplier_coverage": "No configured supplier returned a matching part record.",
+                        }
+                    ],
+                    bom_name="Connector test",
+                )
+            ),
+            data_only=True,
+        )
+
+        summary = workbook["Summary"]
+        metrics = {
+            row[0]: row[1]
+            for row in summary.iter_rows(min_row=10, max_row=30, values_only=True)
+            if row[0]
+        }
+        self.assertIn("0 of 1 parts", summary["A7"].value)
+        self.assertIn("not evidence of low risk", summary["A7"].value)
+        self.assertEqual(metrics["Parts with matched supplier evidence"], 0)
+        self.assertEqual(metrics["Risk assessed"], 0)
+        self.assertEqual(metrics["Risk coverage"], "0%")
+        self.assertIn("1 of 1 part(s) were not assessed", workbook["High Risk Parts"]["A2"].value)
+        self.assertIn("not proof of low risk", workbook["High Risk Parts"]["A2"].value)
 
     def test_approved_alternatives_are_included_in_both_downloads(self):
         approval = {

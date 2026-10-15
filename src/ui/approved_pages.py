@@ -16,6 +16,7 @@ from typing import Any
 import streamlit as st
 
 from src.bom_upload_flow import (
+    prepare_new_approved_bom_analysis,
     should_render_approved_bom_upload_form,
     should_stop_approved_bom_renderer,
 )
@@ -869,7 +870,8 @@ def begin_approved_page() -> None:
         .st-key-approved_bom_toolbar [data-testid="stColumn"]:last-child [data-testid="stElementContainer"]{display:flex!important;justify-content:flex-end!important;width:100%!important}
         .st-key-approved_bom_title [data-testid="stColumn"]:last-child button{white-space:nowrap!important}
         .st-key-approved_bom_toolbar [data-testid="stColumn"]:last-child button{white-space:nowrap!important}
-        .st-key-approved_bom_upload_panel{box-sizing:border-box!important;width:100%!important;max-width:960px!important;margin:22px auto 0!important;padding:26px 30px 22px!important;border:1px solid #dce5f0!important;border-radius:18px!important;background:#fff!important;box-shadow:0 4px 18px rgba(15,23,42,.055)!important}
+        .st-key-approved_bom_upload_panel{box-sizing:border-box!important;width:100%!important;max-width:720px!important;margin:22px auto 0!important;padding:24px 26px 22px!important;border:1px solid #dce5f0!important;border-radius:18px!important;background:#fff!important;box-shadow:0 4px 18px rgba(15,23,42,.055)!important}
+        @media(max-width:720px){.st-key-approved_bom_upload_panel{padding:20px 18px 18px!important}}
         .st-key-approved_bom_upload_panel>[data-testid="stVerticalBlock"]{gap:.85rem!important}
         .cv-bom-upload-heading h2{margin:0 0 5px!important;color:#142239!important;font-size:21px!important;font-weight:750!important;letter-spacing:-.02em!important}
         .cv-bom-upload-heading p{margin:0!important;color:#64748b!important;font-size:14px!important;line-height:1.45!important}
@@ -1970,19 +1972,24 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
         or st.session_state.get("bom8_analysis_pending")
         or st.session_state.get("bom8_analysis_in_progress")
     )
+    analysis_results = st.session_state.get("results_df")
+    results_visible = bool(
+        analysis_results is not None
+        and not getattr(analysis_results, "empty", True)
+    )
     with st.container(key="approved_bom_title"):
         title_col, action_col = st.columns([5.2, 1.8], vertical_alignment="center")
         with title_col:
             st.markdown(
-                """
+                f"""
                 <div class="cv-ap">
-                  <h1>BOMs</h1>
+                  <h1>{_esc("BOM analysis results" if results_visible else "BOMs")}</h1>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
         with action_col:
-            if upload_mode:
+            if upload_mode and not results_visible:
                 if st.button(
                     "Manage saved BOMs",
                     key="approved_bom_manage",
@@ -2001,10 +2008,9 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
                     type="primary",
                     disabled=analysis_running,
                 ):
-                    st.session_state["cadivor_bom_upload_open"] = True
-                    st.session_state["cadivor_manage_saved_boms"] = False
+                    prepare_new_approved_bom_analysis(st.session_state)
                     st.rerun()
-    if upload_mode and analysis_running:
+    if upload_mode and analysis_running and not results_visible:
         with st.container(key="approved_bom_upload_progress"):
             st.info(
                 "Analysis in progress. Cadivor is processing this BOM; the upload form will return when the analysis is complete."
@@ -2012,6 +2018,7 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
     elif should_render_approved_bom_upload_form(
         upload_mode=upload_mode,
         analysis_running=analysis_running,
+        results_visible=results_visible,
     ):
         with st.container(key="approved_bom_upload_panel"):
             st.markdown(
@@ -2063,6 +2070,8 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
                     return
                 if uploaded is None:
                     st.caption("Choose a CSV or Excel file to run the existing BOM analysis.")
+    elif results_visible:
+        pass
     else:
         from datetime import date
 
@@ -2187,6 +2196,7 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
     if should_stop_approved_bom_renderer(
         st.session_state,
         upload_mode=upload_mode,
+        results_visible=results_visible,
     ):
         end_approved_page()
 
