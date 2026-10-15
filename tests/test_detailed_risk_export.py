@@ -12,6 +12,7 @@ from openpyxl import load_workbook
 
 from src.ui.detailed_risk_export import (
     CSV_COLUMNS,
+    component_rows,
     detailed_risk_csv_bytes,
     detailed_risk_excel_bytes,
 )
@@ -151,7 +152,7 @@ class DetailedRiskExportTests(unittest.TestCase):
                         {
                             "mpn": "CON-USB",
                             "risk_level": "Needs verification",
-                            "risk_score": None,
+                            "risk_score": 0,
                             "supplier_coverage": "No configured supplier returned a matching part record.",
                         }
                     ],
@@ -172,8 +173,27 @@ class DetailedRiskExportTests(unittest.TestCase):
         self.assertEqual(metrics["Parts with matched supplier evidence"], 0)
         self.assertEqual(metrics["Risk assessed"], 0)
         self.assertEqual(metrics["Risk coverage"], "0%")
+        detail = workbook["Component Details"]
+        self.assertEqual(detail["N2"].value, "Not assessed")
+        self.assertEqual(detail["O2"].value, "Not assessed")
+        self.assertIn("Verify the full manufacturer part number and rerun", detail["P2"].value)
+        self.assertEqual(detail["N2"].fill.fgColor.rgb[-6:], "E2E8F0")
         self.assertIn("1 of 1 part(s) were not assessed", workbook["High Risk Parts"]["A2"].value)
         self.assertIn("not proof of low risk", workbook["High Risk Parts"]["A2"].value)
+
+    def test_zero_score_without_supplier_match_is_not_a_low_risk_rating(self):
+        row = component_rows(
+            [{
+                "mpn": "CON-USB",
+                "risk_level": "Needs verification",
+                "risk_score": 0,
+                "supplier_count": 0,
+                "supplier_coverage": "No configured supplier returned a matching part record.",
+            }]
+        )[0]
+        self.assertEqual(row["Risk"], "Not assessed")
+        self.assertEqual(row["Risk score"], "Not assessed")
+        self.assertIn("stock, lifecycle, and lead-time risk remain unknown", row["Why"])
 
     def test_approved_alternatives_are_included_in_both_downloads(self):
         approval = {

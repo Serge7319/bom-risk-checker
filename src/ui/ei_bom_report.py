@@ -341,6 +341,50 @@ def _risk_reason(part: dict[str, Any]) -> str:
     ).strip()
 
 
+def _supplier_evidence(part: dict[str, Any]) -> bool:
+    """Whether the saved part has a distributor match, not just a coverage note."""
+    count = _recorded_number(_first(part, "supplier_count", "Supplier Count"))
+    if count is not None and count > 0:
+        return True
+    for key in ("stock_data_sources", "sources"):
+        value = _first(part, key, fallback=None)
+        if _source_payload_present(value):
+            return True
+    offers = _first(part, "supplier_offers", "Supplier Offers", fallback=None)
+    return isinstance(offers, (list, tuple)) and bool(offers)
+
+
+def _source_payload_present(value: Any) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, dict):
+        return any(_source_payload_present(item) for item in value.values())
+    if isinstance(value, (list, tuple, set)):
+        return any(_source_payload_present(item) for item in value)
+    text = str(value).strip().casefold()
+    if text in {"", "[]", "{}", "—", "-", "not reported", "unavailable", "none", "null", "nan"}:
+        return False
+    return "no configured supplier returned" not in text and "no supplier match" not in text
+
+
+def _stock_value(part: dict[str, Any]) -> float | None:
+    value = _recorded_number(_first(part, "stock_available", "Stock Available", "stock"))
+    if value == 0:
+        # Legacy rows often serialized absent stock as zero. A zero is
+        # reportable only when a distributor explicitly supplied it.
+        sources = _first(part, "stock_data_sources", "sources", fallback=None)
+        return value if _supplier_evidence(part) and _source_payload_present(sources) else None
+    return value
+
+
+def _display_count(value: float | None) -> str:
+    return f"{value:,.0f}" if value is not None else "Not reported"
+
+
+def _display_score(value: float | None) -> str:
+    return f"{value:g}" if value is not None else "Not assessed"
+
+
 def _first(row: dict[str, Any], *keys: str, fallback: Any = None) -> Any:
     for key in keys:
         value = row.get(key)
@@ -350,7 +394,7 @@ def _first(row: dict[str, Any], *keys: str, fallback: Any = None) -> Any:
 
 
 def _level(part: dict[str, Any]) -> str:
-    label = str(_first(part, "risk_level", "Risk Level", fallback="Low") or "Low")
+    label = str(_first(part, "risk_level", "Risk Level", fallback="") or "").strip()
     folded = label.casefold()
     if "high" in folded or "critical" in folded:
         return "High"
@@ -358,7 +402,12 @@ def _level(part: dict[str, Any]) -> str:
         return "Medium"
     if "low" in folded:
         return "Low"
-    score = _num(_first(part, "risk_score", "Risk Score"))
+    if any(token in folded for token in ("verif", "unassess", "not assess", "not rated", "unknown", "unrated")):
+        return "Needs verification"
+    raw_score = _recorded_number(_first(part, "risk_score", "Risk Score"))
+    if raw_score is None or (raw_score == 0 and not _supplier_evidence(part)):
+        return "Needs verification"
+    score = raw_score
     if score >= 70:
         return "High"
     if score >= 40:
@@ -367,29 +416,37 @@ def _level(part: dict[str, Any]) -> str:
 
 
 def _level_class(level: str) -> str:
-    return {"High": "high", "Medium": "medium", "Low": "low"}.get(level, "low")
+    return {
+        "High": "high",
+        "Medium": "medium",
+        "Low": "low",
+        "Needs verification": "verification",
+    }.get(level, "verification")
 
 
 def _drivers(part: dict[str, Any]) -> list[str]:
     notes: list[str] = []
-    stock = _num(_first(part, "stock_available", "Stock Available", "stock"), -1)
-    suppliers = _num(_first(part, "supplier_count", "Supplier Count"), -1)
+    stock = _stock_value(part)
+    suppliers = _recorded_number(_first(part, "supplier_count", "Supplier Count"))
     lifecycle = str(_first(part, "lifecycle_status", "Lifecycle Status", fallback="") or "")
     lead = _first(part, "lead_time_weeks", "Lead Time Weeks")
+    if not _supplier_evidence(part):
+        notes.append("No configured distributor returned a matching record for this MPN")
+        notes.append("Verify the full manufacturer part number and rerun the analysis")
     if any(token in lifecycle.casefold() for token in ("obsolete", "eol", "end of life", "nrnd")):
         notes.append("Product lifecycle status: " + lifecycle)
     if stock == 0:
         notes.append("No stock at approved suppliers")
-    elif 0 < stock < 100:
+    elif stock is not None and 0 < stock < 100:
         notes.append("Limited stock at approved suppliers")
     if suppliers == 1:
         notes.append("Single-source manufacturer")
-    elif 0 <= suppliers < 3:
+    elif suppliers is not None and 1 < suppliers < 3:
         notes.append("Fewer than 3 active suppliers")
     if lead is not None and _num(lead, 0) >= 26:
         notes.append(f"Long lead time ({_num(lead)}+ weeks)")
     if not notes:
-        notes.append("No material supply or lifecycle exception in the saved analysis")
+        notes.append("No material exception is recorded in the saved analysis")
     return notes[:3]
 
 
@@ -403,6 +460,11 @@ def _action(level: str) -> tuple[str, str]:
         return (
             "Monitor and consider alternates",
             "Keep under review and qualify a secondary supplier.",
+        )
+    if level == "Needs verification":
+        return (
+            "Verify component data",
+            "Confirm the full manufacturer part number and rerun to retrieve supplier evidence.",
         )
     return (
         "No immediate action",
@@ -593,9 +655,12 @@ def _part_rows(parts: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 ),
                 "manufacturer": _esc(_first(part, "manufacturer", "Manufacturer", fallback="—")),
                 "level": level,
-                "score": _num(_first(part, "risk_score", "Risk Score")),
-                "stock": _num(_first(part, "stock_available", "Stock Available", "stock"), 0),
-                "suppliers": _num(_first(part, "supplier_count", "Supplier Count"), 0),
+                "score": _recorded_number(_first(part, "risk_score", "Risk Score")),
+                "score_display": _display_score(_recorded_number(_first(part, "risk_score", "Risk Score"))),
+                "stock": _stock_value(part),
+                "stock_display": _display_count(_stock_value(part)),
+                "suppliers": _recorded_number(_first(part, "supplier_count", "Supplier Count")),
+                "suppliers_display": _display_count(_recorded_number(_first(part, "supplier_count", "Supplier Count"))),
                 "lifecycle": _esc(_first(part, "lifecycle_status", "Lifecycle Status", fallback="Unknown")),
                 "lead": _esc(_first(part, "lead_time_weeks", "Lead Time Weeks", fallback="—")),
                 "source": _esc(
@@ -636,8 +701,8 @@ def _part_rows(parts: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "action_detail": _esc(detail),
             }
         )
-    order = {"High": 0, "Medium": 1, "Low": 2}
-    ranked.sort(key=lambda row: (order.get(row["level"], 3), -row["score"]))
+    order = {"High": 0, "Medium": 1, "Needs verification": 2, "Low": 3}
+    ranked.sort(key=lambda row: (order.get(row["level"], 4), -(row["score"] or 0)))
     return ranked
 
 
@@ -705,6 +770,7 @@ def report_styles() -> str:
       .cv-pill.high { background:#ffe4e6; color:#be123c; }
       .cv-pill.medium { background:#fef3c7; color:#b45309; }
       .cv-pill.low { background:#dcfce7; color:#15803d; }
+      .cv-pill.verification { background:#f1f5f9; color:#475569; }
       .cv-pill.review { background:#fef3c7; color:#b45309; }
       .cv-pill.healthy { background:#dcfce7; color:#15803d; }
       .cv-pill.risk { background:#ffe4e6; color:#be123c; }
@@ -783,9 +849,11 @@ def engineering_intelligence_html(
 ) -> str:
     rows = _part_rows(parts)
     high = [row for row in rows if row["level"] == "High"]
-    no_stock = [row for row in rows if row["stock"] <= 0]
-    single = [row for row in rows if row["suppliers"] <= 1]
-    health = health_score if health_score is not None else max(0, 100 - len(high) * 8)
+    medium = [row for row in rows if row["level"] == "Medium"]
+    unassessed = [row for row in rows if row["level"] == "Needs verification"]
+    no_stock = [row for row in rows if row["stock"] == 0]
+    single = [row for row in rows if row["suppliers"] == 1]
+    health_display = f"{_esc(health_score)}/100" if health_score is not None else "Not calculated"
     active = tab if tab in EI_TABS else "BOM Risk"
     banner = ""
     if active == "BOM Risk":
@@ -798,7 +866,19 @@ def engineering_intelligence_html(
                   <div class="cv-ei-icon warn">!</div>
                   <div>
                     <h2>Engineering review required</h2>
-                    <p>{len(high)} components with high risk may impact build timelines. Review the items below and consider approved alternatives.</p>
+                    <p>{len(high)} components with high risk may impact build timelines. {f'{len(unassessed)} additional components could not be risk-rated; verify their manufacturer part numbers and rerun.' if unassessed else 'Review the items below and consider approved alternatives.'}</p>
+                  </div>
+                </section>
+                """
+            ).strip()
+        elif unassessed:
+            banner = textwrap.dedent(
+                f"""
+                <section class="cv-ei-banner">
+                  <div class="cv-ei-icon warn">!</div>
+                  <div>
+                    <h2>Supplier evidence incomplete</h2>
+                    <p>{len(unassessed)} of {len(rows)} components could not be risk-rated. Verify the manufacturer part numbers and rerun before treating this BOM as low risk.</p>
                   </div>
                 </section>
                 """
@@ -818,8 +898,8 @@ def engineering_intelligence_html(
         banner += textwrap.dedent(
             f"""
             <section class="cv-ei-kpis">
-              <div class="cv-ei-kpi"><div class="cv-ei-icon health">♡</div><div><span>Health</span><strong>{_esc(health)}/100</strong></div></div>
-              <div class="cv-ei-kpi"><div class="cv-ei-icon review">▣</div><div><span>Needs review</span><strong>{len(high)}</strong></div></div>
+              <div class="cv-ei-kpi"><div class="cv-ei-icon health">♡</div><div><span>{'Risk coverage' if unassessed else 'Health'}</span><strong>{f'{len(rows) - len(unassessed)}/{len(rows)}' if unassessed else health_display}</strong></div></div>
+              <div class="cv-ei-kpi"><div class="cv-ei-icon review">▣</div><div><span>Needs review</span><strong>{len(high) + len(medium) + len(unassessed)}</strong></div></div>
               <div class="cv-ei-kpi"><div class="cv-ei-icon stock">▢</div><div><span>No-stock parts</span><strong>{len(no_stock)}</strong></div></div>
               <div class="cv-ei-kpi"><div class="cv-ei-icon source">⚭</div><div><span>Single-source</span><strong>{len(single)}</strong></div></div>
             </section>
@@ -863,7 +943,7 @@ def _tab_body(
         body = "".join(
             "<tr>"
             f"<td>{_component_cell(row)}</td>"
-            f"<td>{row['source']}</td><td>{row['suppliers']}</td><td>{row['stock']:,}</td>"
+            f"<td>{row['source']}</td><td>{row['suppliers_display']}</td><td>{row['stock_display']}</td>"
             f"<td>{row['lead']}</td><td>{row['lifecycle']}</td>"
             f"<td><span class='cv-pill { _level_class(row['level']) }'>{row['level']}</span></td>"
             "</tr>"
@@ -985,7 +1065,17 @@ def _tab_body(
     from src.approved_alternatives import approved_mpn_map, part_key
 
     approved_by_part = approved_mpn_map(approved_alternatives or [])
-    review = [row for row in rows if row["level"] in {"High", "Medium"}][:8] or rows[:8]
+    review = [
+        row for row in rows
+        if row["level"] in {"High", "Medium", "Needs verification"}
+    ][:12]
+    if not review:
+        return _table(
+            "Review these components first",
+            "No components need follow-up based on the saved risk and supplier evidence.",
+            ["#", "Component", "Risk", "Key reason(s)", "Recommended action"],
+            "<tr><td colspan='5'>No components need review in this saved analysis.</td></tr>",
+        )
     body = []
     for index, row in enumerate(review, start=1):
         reasons = "".join(f"<li>{driver}</li>" for driver in row["drivers"])
@@ -1028,7 +1118,7 @@ def _tab_body(
         )
     return _table(
         "Review these components first",
-        "These components have the highest risk based on availability, supply chain, and lifecycle factors.",
+        "The highest known risks and components that need supplier data verification appear first.",
         ["#", "Component", "Risk", "Key reason(s)", "Recommended action"],
         "".join(body) or "<tr><td colspan='5'>This BOM has no saved components to review.</td></tr>",
     )
@@ -1070,10 +1160,10 @@ def _detailed_risk_expanded_markup(
         f'{recorded_description}'
         f'<p><strong>Manufacturer</strong> {row["manufacturer"]}</p>'
         f'<p><strong>Best source</strong> {row["source"]}</p>'
-        f'<p><strong>Supplier count</strong> {row["suppliers"]}</p>'
-        f'<p><strong>Stock available</strong> {row["stock"]:,}</p>'
+        f'<p><strong>Supplier count</strong> {row["suppliers_display"]}</p>'
+        f'<p><strong>Stock available</strong> {row["stock_display"]}</p>'
         f'<p><strong>Lifecycle</strong> {row["lifecycle"]}</p>'
-        f'<p><strong>Risk score</strong> {row["score"]}</p>'
+        f'<p><strong>Risk score</strong> {row["score_display"]}</p>'
         f'</article><div>'
         f'<article class="cv-risk-drivers"><h3>Risk drivers</h3>'
         f'<ul class="cv-ei-reasons">{reasons}</ul></article>'
@@ -1156,13 +1246,13 @@ def render_detailed_risk_rows(
                 cells[1].markdown(row["manufacturer"])
                 cells[2].markdown(
                     f"<strong>{row['source']}</strong>"
-                    f"<div class='cv-ei-meta'>{row['suppliers']} supplier(s) · {row['stock']:,} in stock</div>",
+                    f"<div class='cv-ei-meta'>{row['suppliers_display']} supplier(s) · {row['stock_display']} stock</div>",
                     unsafe_allow_html=True,
                 )
                 cells[3].markdown(row["lifecycle"])
                 cells[4].markdown(
                     f"<span class='cv-pill {_level_class(row['level'])}'>{row['level']}</span>"
-                    f"<div class='cv-ei-meta'>Score {row['score']}</div>",
+                    f"<div class='cv-ei-meta'>Score {row['score_display']}</div>",
                     unsafe_allow_html=True,
                 )
                 if is_open:
@@ -1204,7 +1294,7 @@ def detailed_risk_report_html(
         body.append(
             "<div class='cv-risk-row'>"
             f"<div>{_component_cell(row, description=False)}</div><div>{row['manufacturer']}</div><div>{row['source']}</div>"
-            f"<div>{row['suppliers']}</div><div>{row['stock']:,}</div><div>{row['lifecycle']}</div><div>{row['score']}</div>"
+            f"<div>{row['suppliers_display']}</div><div>{row['stock_display']}</div><div>{row['lifecycle']}</div><div>{row['score_display']}</div>"
             f"<div><span class='cv-pill {_level_class(row['level'])}'>{row['level']}</span></div></div>"
         )
         if row["mpn_raw"] == expanded:
@@ -1222,8 +1312,8 @@ def detailed_risk_report_html(
                     <div class="cv-ei-part">{_part_art(row['mpn_raw'], row['image'], part=row)}<span class="cv-ei-part-copy"><h3>{row['mpn']}</h3>{f"<span class='cv-ei-meta'>{row['description']}</span>" if str(row.get('description_raw') or '').strip() else ""}</span></div>
                     <p>Manufacturer {_esc(row['manufacturer'])}</p>
                     <p>Best source {_esc(row['source'])}</p>
-                    <p>Suppliers {row['suppliers']}</p>
-                    <p>Stock (total) {row['stock']:,}</p>
+                    <p>Suppliers {row['suppliers_display']}</p>
+                    <p>Stock (total) {row['stock_display']}</p>
                     <p>Lifecycle {row['lifecycle']}</p>
                   </article>
                   <div>

@@ -396,6 +396,45 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
         )
         self.assertIn("No high-risk components found", html)
         self.assertNotIn("Engineering review required", html)
+        self.assertIn("Not calculated", html)
+
+    def test_unmatched_parts_are_not_reported_as_low_or_zero_stock(self):
+        parts = [
+            {
+                "mpn": "RES-10K",
+                "risk_level": "Medium",
+                "risk_score": 50,
+                "supplier_count": 3,
+                "stock_available": 0,
+                "stock_data_sources": ["Newark"],
+                "sources": ["Newark"],
+            },
+            {
+                "mpn": "CAP-10U",
+                "risk_level": "Needs verification",
+                "risk_score": 0,
+                "supplier_count": 0,
+                "stock_available": 0,
+                "supplier_coverage": "No configured supplier returned a matching part record.",
+            },
+        ]
+        html = engineering_intelligence_html(
+            bom_name="Sample BOM",
+            part_count=2,
+            tab="BOM Risk",
+            parts=parts,
+            health_score=0,
+        )
+
+        self.assertIn("Supplier evidence incomplete", html)
+        self.assertIn("1/2", html)
+        self.assertIn("Needs review</span><strong>2</strong>", html)
+        self.assertIn("No-stock parts</span><strong>1</strong>", html)
+        self.assertIn("Single-source</span><strong>0</strong>", html)
+        self.assertNotIn("No high-risk components found", html)
+        self.assertIn("Verify component data", html)
+        self.assertIn("No configured distributor returned a matching record", html)
+        self.assertIn("data-illustration=\"capacitor\"", html)
 
     def test_engineering_intelligence_tabs_commit_before_the_page_rerun(self):
         source = Path("src/ui/ei_bom_report.py").read_text(encoding="utf-8")

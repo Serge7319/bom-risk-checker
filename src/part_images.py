@@ -136,6 +136,16 @@ _MPN_FAMILY_PATTERNS = (
     ("MCU / processor", re.compile(r"^(?:STM32|ATMEGA|PIC\d|ESP32|RP2040)", re.I)),
     ("Regulator", re.compile(r"^(?:TPS\d|LM(?:2596|317|1117)|LD\d|MIC\d|AP\d{3,})", re.I)),
     ("Logic / interface IC", re.compile(r"^(?:MCP\d|MAX\d|SN\d|ADS\d|W25Q\d|PC\d{3,})", re.I)),
+    # Generic MPN labels used in customer BOMs and demo files. These select
+    # family illustrations only; they are not claims of exact product photos.
+    ("Capacitor", re.compile(r"^CAP(?:[-_]|$)", re.I)),
+    ("Resistor", re.compile(r"^RES(?:[-_]|$)", re.I)),
+    ("Diode / protection", re.compile(r"^(?:DIO|LED)(?:[-_]|$)", re.I)),
+    ("Connector / electromechanical", re.compile(r"^CON(?:[-_]|$)", re.I)),
+    ("Logic / interface IC", re.compile(r"^IC(?:[-_]|$)", re.I)),
+    ("MCU / processor", re.compile(r"^MCU(?:[-_]|$)", re.I)),
+    ("Oscillator / crystal", re.compile(r"^OSC(?:[-_]|$)", re.I)),
+    ("Regulator", re.compile(r"^REG(?:[-_]|$)", re.I)),
 )
 
 _ASSET_VARIANTS = {
