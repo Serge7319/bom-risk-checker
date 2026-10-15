@@ -340,8 +340,8 @@ def _inject_approved_visual_overrides() -> None:
           box-shadow:none !important;color:#64748b !important
         }}
         html body section[data-testid="stMain"] [class*="st-key-approved_decision_review_"] .stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton) > button[kind="primary"] {{
-          min-width:0 !important;width:auto !important;min-height:32px !important;height:32px !important;
-          padding:0 12px !important;border-radius:8px !important;font-size:13px !important
+          min-width:0 !important;width:100% !important;min-height:32px !important;height:32px !important;
+          padding:0 8px !important;border-radius:8px !important;font-size:12px !important;white-space:nowrap !important
         }}
         html body section[data-testid="stMain"] [class*="st-key-approved_home_open_"] .stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton) > button[kind="secondary"]:not(:disabled),
         html body section[data-testid="stMain"] [class*="st-key-approved_bom_row_open_"] .stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton) > button[kind="secondary"]:not(:disabled),
@@ -367,9 +367,9 @@ def _inject_approved_visual_overrides() -> None:
           background:#fff !important;background-color:#fff !important;color:#2563eb !important;
           border:1px solid #bfdbfe !important;border-radius:8px !important;box-shadow:none !important;
           outline:none !important;
-          min-width:0 !important;width:auto !important;white-space:nowrap !important;
+          min-width:0 !important;width:100% !important;white-space:nowrap !important;
           min-height:32px !important;height:32px !important;
-          padding:0 12px !important;font-size:13px !important;font-weight:700 !important
+          padding:0 8px !important;font-size:12px !important;font-weight:700 !important
         }}
         html body section[data-testid="stMain"] [class*="st-key-approved_decision_record_"].stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton) > button:not([kind="primary"]):not(:disabled) *,
         html body section[data-testid="stMain"] [class*="st-key-approved_decision_record_"] .stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton) > button:not([kind="primary"]):not(:disabled) * {{
@@ -391,6 +391,7 @@ def _inject_approved_visual_overrides() -> None:
           padding:0 !important;overflow:hidden !important
         }}
         html body section[data-testid="stMain"] [class*="st-key-approved_decision_cardwrap_"] .cv-ed-card {{
+          position:relative !important;z-index:3 !important;pointer-events:none !important;
           height:100% !important;min-height:0 !important;box-sizing:border-box !important;
           padding:16px 18px !important;gap:14px !important
         }}
@@ -408,11 +409,11 @@ def _inject_approved_visual_overrides() -> None:
           width:18px !important;height:18px !important;flex:0 0 18px !important;display:block !important
         }}
         html body section[data-testid="stMain"] [class*="st-key-approved_decision_cardwrap_"] [data-testid="stElementContainer"]:has([class*="st-key-approved_decision_drill_"]) {{
-          position:absolute !important;inset:0 !important;z-index:2 !important;
+          position:absolute !important;inset:0 !important;z-index:1 !important;
           margin:0 !important;padding:0 !important;height:100% !important;min-height:0 !important
         }}
         html body section[data-testid="stMain"] [class*="st-key-approved_decision_drill_"] {{
-          position:absolute !important;inset:0 !important;z-index:2 !important;margin:0 !important;
+          position:absolute !important;inset:0 !important;z-index:1 !important;margin:0 !important;
           width:100% !important;height:100% !important
         }}
         html body section[data-testid="stMain"] [class*="st-key-approved_decision_drill_"].stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton) > button:not([kind="primary"]):not(:disabled),

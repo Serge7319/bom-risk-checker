@@ -15,7 +15,10 @@ from typing import Any
 
 import streamlit as st
 
-from src.bom_upload_flow import should_stop_approved_bom_renderer
+from src.bom_upload_flow import (
+    should_render_approved_bom_upload_form,
+    should_stop_approved_bom_renderer,
+)
 from src.saved_bom_project import (
     NEW_PROJECT_CHOICE,
     analysis_title_for_upload,
@@ -25,7 +28,11 @@ from src.saved_bom_project import (
     split_project_and_bom,
 )
 from src.ui.cadivor_design_system.icons import lucide
-from src.ui.navigation import internal_nav_button, navigate_to
+from src.ui.navigation import (
+    internal_nav_button,
+    navigate_to,
+    navigate_to_alternative_finder,
+)
 
 
 PROJECT_ICON = (
@@ -1997,7 +2004,15 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
                     st.session_state["cadivor_bom_upload_open"] = True
                     st.session_state["cadivor_manage_saved_boms"] = False
                     st.rerun()
-    if upload_mode:
+    if upload_mode and analysis_running:
+        with st.container(key="approved_bom_upload_progress"):
+            st.info(
+                "Analysis in progress. Cadivor is processing this BOM; the upload form will return when the analysis is complete."
+            )
+    elif should_render_approved_bom_upload_form(
+        upload_mode=upload_mode,
+        analysis_running=analysis_running,
+    ):
         with st.container(key="approved_bom_upload_panel"):
             st.markdown(
                 """
@@ -2272,7 +2287,7 @@ def render_decision_queue(records: list[dict[str, Any]] | None) -> None:
         )
         with heading:
             st.markdown(f"<h2>Decision queue ({len(view['rows'])})</h2>", unsafe_allow_html=True)
-        widths = [1.6, 1.7, 0.8, 1.0, 0.9, 0.9, 1.1]
+        widths = [1.55, 1.55, 0.75, 1.0, 0.8, 0.85, 1.5]
         with st.container(key="approved_decision_table_head"):
             header = st.columns(widths, vertical_alignment="center")
             for column, label in zip(header, ("Component", "Title", "Risk level", "Decision status", "Owner", "Due date", "Actions")):
@@ -2339,28 +2354,130 @@ def render_decision_queue(records: list[dict[str, Any]] | None) -> None:
                 analysis_id = str(row.get("analysis_id") or "")
                 action = decision_action_label(row, status)
                 with cells[6]:
+                    action_col, overflow_col = st.columns(
+                        [1, 0.28],
+                        gap="small",
+                        vertical_alignment="center",
+                    )
                     button_type = "primary" if action == "Review" else "secondary"
                     button_key = (
                         f"approved_decision_review_{index}"
                         if action == "Review"
                         else f"approved_decision_record_{index}"
                     )
-                    if st.button(action, key=button_key, type=button_type):
-                        st.session_state["cadivor_decision_focus_mpn"] = mpn
-                        if analysis_id:
-                            st.session_state["cadivor_active_analysis_id"] = analysis_id
-                            st.session_state["analysis_id"] = analysis_id
-                            if action == "Record decision":
-                                st.session_state["cadivor_pending_analysis_section"] = "Engineering Decisions"
-                                st.session_state["cadivor_pending_analysis_section_id"] = analysis_id
-                                navigate_to(
-                                    "Analysis Details",
-                                    analysis_id=analysis_id,
-                                    analysis_tab="Engineering Decisions",
-                                    component=mpn,
-                                )
-                            else:
-                                navigate_to("Analysis Details", analysis_id=analysis_id)
+                    with action_col:
+                        if st.button(
+                            action,
+                            key=button_key,
+                            type=button_type,
+                            use_container_width=True,
+                        ):
+                            st.session_state["cadivor_decision_focus_mpn"] = mpn
+                            if analysis_id:
+                                st.session_state["cadivor_active_analysis_id"] = analysis_id
+                                st.session_state["analysis_id"] = analysis_id
+                                if action == "Record decision":
+                                    st.session_state["cadivor_pending_analysis_section"] = "Engineering Decisions"
+                                    st.session_state["cadivor_pending_analysis_section_id"] = analysis_id
+                                    navigate_to(
+                                        "Analysis Details",
+                                        analysis_id=analysis_id,
+                                        analysis_tab="Engineering Decisions",
+                                        component=mpn,
+                                    )
+                                else:
+                                    navigate_to("Analysis Details", analysis_id=analysis_id)
+                    with overflow_col:
+                        with st.container(key=f"approved_decision_menu_{index}"):
+                            with st.popover(
+                                "⋯",
+                                help="Open the original BOM, BOM Risk, the detailed report, or find a replacement.",
+                            ):
+                                if analysis_id:
+                                    if st.button(
+                                        "Open original BOM",
+                                        key=f"approved_decision_action_open_{index}",
+                                        use_container_width=True,
+                                    ):
+                                        navigate_to(
+                                            "BOM Settings",
+                                            saved_bom_id=analysis_id,
+                                            saved_bom_action="open",
+                                            arm_opening=False,
+                                        )
+                                    if st.button(
+                                        "BOM Risk",
+                                        key=f"approved_decision_action_risk_{index}",
+                                        use_container_width=True,
+                                    ):
+                                        st.session_state["cadivor_show_detailed_risk"] = False
+                                        st.session_state["cadivor_ei_report_tab"] = "BOM Risk"
+                                        st.session_state["cadivor_active_analysis_id"] = analysis_id
+                                        st.session_state["analysis_id"] = analysis_id
+                                        st.session_state["cadivor_pending_analysis_section"] = "Engineering Intelligence"
+                                        st.session_state["cadivor_pending_analysis_section_id"] = analysis_id
+                                        navigate_to(
+                                            "Analysis Details",
+                                            analysis_id=analysis_id,
+                                            analysis_tab="Engineering Intelligence",
+                                            arm_opening=False,
+                                        )
+                                    if st.button(
+                                        "Detailed Risk Report",
+                                        key=f"approved_decision_action_report_{index}",
+                                        use_container_width=True,
+                                    ):
+                                        st.session_state["cadivor_show_detailed_risk"] = True
+                                        st.session_state["cadivor_active_analysis_id"] = analysis_id
+                                        st.session_state["analysis_id"] = analysis_id
+                                        st.session_state[f"cadivor_detailed_risk_mpn_{analysis_id}"] = ""
+                                        st.session_state["cadivor_pending_analysis_section"] = "Engineering Intelligence"
+                                        st.session_state["cadivor_pending_analysis_section_id"] = analysis_id
+                                        navigate_to(
+                                            "Analysis Details",
+                                            analysis_id=analysis_id,
+                                            analysis_tab="Engineering Intelligence",
+                                            arm_opening=False,
+                                        )
+                                if mpn and mpn != "Not recorded":
+                                    if st.button(
+                                        "Find replacement",
+                                        key=f"approved_decision_action_alternative_{index}",
+                                        use_container_width=True,
+                                    ):
+                                        project_name = str(
+                                            _first(row, "project_name", "project", fallback="") or ""
+                                        )
+                                        bom_name = str(
+                                            _first(row, "bom_name", "filename", fallback="") or ""
+                                        )
+                                        navigate_to_alternative_finder(
+                                            mpn=mpn,
+                                            manufacturer=str(
+                                                _first(row, "manufacturer", "manufacturer_name", fallback="") or ""
+                                            ),
+                                            description=str(detail or ""),
+                                            lifecycle=str(
+                                                _first(row, "lifecycle_status", "lifecycle", fallback="") or ""
+                                            ),
+                                            risk=str(level or ""),
+                                            analysis_id=analysis_id,
+                                            part_id=str(
+                                                _first(row, "part_id", "analysis_part_id", fallback="") or ""
+                                            ),
+                                            source_page=(
+                                                "engineering_intelligence_review"
+                                                if analysis_id
+                                                else ""
+                                            ),
+                                            return_analysis_id=analysis_id,
+                                            project_name=project_name,
+                                            bom_name=bom_name,
+                                        )
+                                if not analysis_id:
+                                    st.caption(
+                                        "No saved BOM is linked to this decision, so BOM-specific actions are unavailable."
+                                    )
     end_approved_page()
 
 
