@@ -19014,6 +19014,7 @@ def run_authenticated_app() -> None:
         from src.ui.approved_pages import render_bom_catalog
         from src.bom_upload_flow import (
             consume_approved_bom_submission,
+            finish_approved_bom_submission,
             resume_approved_bom_submission,
             should_render_legacy_bom_workspace,
             should_render_bom_analysis_body,
@@ -19057,6 +19058,11 @@ def run_authenticated_app() -> None:
             _approved_bom_submitted, uploaded_file, project_name, bom_name = (
                 consume_approved_bom_submission(st.session_state)
             )
+            if _approved_bom_submitted and uploaded_file is not None:
+                # Let the upload form disappear before parsing and starting the
+                # long-running analysis. Otherwise its submitted state is
+                # painted alongside the progress/results transition.
+                st.rerun()
             if not _approved_bom_submitted and st.session_state.get("cadivor_bom_pipeline_active"):
                 resumed_upload, resumed_project, resumed_bom_name = (
                     resume_approved_bom_submission(st.session_state)
@@ -20462,11 +20468,12 @@ def run_authenticated_app() -> None:
             st.error("Quantity values must be greater than zero.")
             stop_authenticated_page()
 
-        render_upload_detected(
-            filename=source_filename,
-            component_count=original_row_count,
-            deduplicated_count=deduped_row_count,
-        )
+        if not analysis_in_progress:
+            render_upload_detected(
+                filename=source_filename,
+                component_count=original_row_count,
+                deduplicated_count=deduped_row_count,
+            )
 
         _one_time_preflight_price = ""
         if _one_time_blocked_plan and not (_one_time_reserved or _one_time_available):
@@ -20559,6 +20566,7 @@ def run_authenticated_app() -> None:
                     st.session_state.pop("bom8_analysis_progress_queue", None)
                     st.session_state.pop("bom8_analysis_cancel_event", None)
                     st.session_state.pop("bom8_analysis_progress", None)
+                    finish_approved_bom_submission(st.session_state, reopen_upload=True)
                     st.session_state["bom8_analysis_cancelled_notice"] = True
                     st.rerun()
 
@@ -20578,12 +20586,15 @@ def run_authenticated_app() -> None:
                         if release_one_time_credit(_one_time_user_id, _one_time_order_id):
                             st.session_state.pop("cadivor_one_time_bom_order_id", None)
                     st.session_state.pop("bom8_analysis_future", None)
-                    st.session_state.pop("bom8_analysis_executor", None)
+                    failed_executor = st.session_state.pop("bom8_analysis_executor", None)
+                    if failed_executor is not None:
+                        failed_executor.shutdown(wait=False, cancel_futures=True)
                     st.session_state.pop("bom8_analysis_progress_queue", None)
                     st.session_state.pop("bom8_analysis_cancel_event", None)
                     st.session_state.pop("bom8_analysis_progress", None)
-                    st.error(f"BOM analysis failed unexpectedly: {e}")
-                    return
+                    finish_approved_bom_submission(st.session_state, reopen_upload=True)
+                    st.session_state["cadivor_bom_analysis_error"] = True
+                    st.rerun()
 
                 st.session_state.pop("bom8_analysis_future", None)
                 executor = st.session_state.pop("bom8_analysis_executor", None)
@@ -20597,6 +20608,7 @@ def run_authenticated_app() -> None:
                     if _one_time_reserved:
                         if release_one_time_credit(_one_time_user_id, _one_time_order_id):
                             st.session_state.pop("cadivor_one_time_bom_order_id", None)
+                    finish_approved_bom_submission(st.session_state, reopen_upload=True)
                     st.session_state["bom8_analysis_cancelled_notice"] = True
                     st.rerun()
 
@@ -20617,20 +20629,19 @@ def run_authenticated_app() -> None:
                 _render_active_bom_analysis()
             st.stop()
 
-        with st.container(key="bom8_analysis_preview"):
-            st.subheader("Sample BOM Preview" if sample_mode else "Uploaded BOM Preview")
-            if _resume_pending_one_time_analysis and uploaded_file is None:
-                st.info(
-                    "Resuming the completed analysis from this session. Cadivor will save this result "
-                    "without repeating supplier lookups."
+        has_completed_results = bool(
+            st.session_state.get("results_df") is not None
+            and not getattr(st.session_state.get("results_df"), "empty", True)
+        )
+        if _resume_pending_one_time_analysis and uploaded_file is None:
+            with st.expander("Review uploaded components", expanded=False):
+                st.caption(
+                    "The completed analysis is being saved without repeating supplier lookups."
                 )
                 st.dataframe(bom_df, use_container_width=True, hide_index=True)
-            else:
-                st.data_editor(
-                    bom_df,
-                    use_container_width=True,
-                    hide_index=True,
-                )
+        elif not analysis_in_progress and not has_completed_results:
+            with st.expander("Review uploaded components", expanded=False):
+                st.dataframe(bom_df, use_container_width=True, hide_index=True)
         analyze_requested = False
         if not _resume_pending_one_time_analysis:
             analyze_requested = _approved_analysis_requested or bool(
@@ -21198,6 +21209,7 @@ def run_authenticated_app() -> None:
                 ):
                     st.session_state.pop(_pending_key, None)
                 st.session_state.pop("bom8_analysis_in_progress", None)
+                finish_approved_bom_submission(st.session_state)
                 saved_bom_rerun_completed = bool(
                     st.session_state.pop("cadivor_saved_bom_rerun_active", False)
                 )

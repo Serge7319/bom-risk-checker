@@ -75,6 +75,23 @@ def test_every_component_family_has_an_illustration_fallback():
     assert seen == _KINDS
 
 
+def test_generic_demo_mpn_prefixes_use_their_component_family_art():
+    expected = {
+        "CAP-10U": "capacitor",
+        "RES-10K": "resistor",
+        "DIO-002": "diode",
+        "LED-GRN": "diode",
+        "CON-USB": "connector",
+        "IC-EEPROM": "ic",
+        "MCU-001": "ic",
+        "OSC-16M": "crystal",
+        "REG-005": "ic",
+        "PCB-010": "generic",
+    }
+    for mpn, kind in expected.items():
+        assert illustration_kind(part_number=mpn) == kind
+
+
 def test_known_ic_mpn_without_metadata_uses_generic_until_the_family_is_confirmed():
     markup = part_image_markup("", "LM358DT", part={"manufacturer_part_number": "LM358DT"})
     assert 'data-illustration="generic"' in markup

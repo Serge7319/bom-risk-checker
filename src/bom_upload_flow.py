@@ -20,8 +20,20 @@ def consume_approved_bom_submission(
         state["bom8_project_name"] = project_name
         state["bom8_bom_name"] = bom_name
         if uploaded_file is not None:
-            # The first run starts the pipeline, while later reruns need the
-            # same UploadedFile to rebuild the preview and render progress.
+            for key in (
+                "results_df",
+                "analysis_saved",
+                "analysis_id",
+                "health_score",
+                "health_status",
+                "show_analysis_success_29b",
+                "cadivor_active_analysis_id",
+                "cadivor_active_analysis_tab",
+                "cadivor_show_detailed_risk",
+            ):
+                state.pop(key, None)
+            # Keep the file available across reruns while the analysis runtime
+            # parses it and renders the progress state.
             state["bom8_analysis_upload_file"] = uploaded_file
             state["cadivor_bom_pipeline_active"] = True
             state["bom8_analysis_pending"] = True
@@ -46,9 +58,30 @@ def resume_approved_bom_submission(
     )
 
 
+def finish_approved_bom_submission(
+    state: MutableMapping[str, Any], *, reopen_upload: bool = False
+) -> None:
+    """Clear an interrupted pipeline so the user can retry or leave the page."""
+    for key in (
+        "cadivor_bom_pipeline_active",
+        "bom8_analysis_upload_file",
+        "bom8_analysis_pending",
+        "bom8_analysis_in_progress",
+        "bom8_analysis_future",
+        "bom8_analysis_executor",
+        "bom8_analysis_progress_queue",
+        "bom8_analysis_cancel_event",
+        "bom8_analysis_progress",
+    ):
+        state.pop(key, None)
+    if reopen_upload:
+        state["cadivor_bom_upload_open"] = True
+
+
 __all__ = [
     "consume_approved_bom_submission",
     "resume_approved_bom_submission",
+    "finish_approved_bom_submission",
     "should_render_approved_bom_upload_form",
     "should_render_legacy_bom_workspace",
     "should_render_bom_analysis_body",

@@ -1941,6 +1941,9 @@ def render_home(
 
 def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") -> None:
     begin_approved_page()
+    analysis_error = st.session_state.pop("cadivor_bom_analysis_error", "")
+    if analysis_error:
+        st.error("The BOM analysis could not complete. Your upload is still here; review it and try again.")
     from src.pages.home_workspace import remember_saved_analyses_for_session
 
     remember_saved_analyses_for_session(
@@ -1971,6 +1974,7 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
         st.session_state.get("bom8_analysis_future")
         or st.session_state.get("bom8_analysis_pending")
         or st.session_state.get("bom8_analysis_in_progress")
+        or st.session_state.get("cadivor_bom_pipeline_active")
     )
     analysis_results = st.session_state.get("results_df")
     results_visible = bool(
@@ -1983,13 +1987,15 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
             st.markdown(
                 f"""
                 <div class="cv-ap">
-                  <h1>{_esc("BOM analysis results" if results_visible else "BOMs")}</h1>
+                  <h1>{_esc("Analyzing BOM" if analysis_running else ("BOM analysis results" if results_visible else "BOMs"))}</h1>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
         with action_col:
-            if upload_mode and not results_visible:
+            if analysis_running:
+                pass
+            elif upload_mode and not results_visible:
                 if st.button(
                     "Manage saved BOMs",
                     key="approved_bom_manage",
@@ -2012,8 +2018,9 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
                     st.rerun()
     if upload_mode and analysis_running and not results_visible:
         with st.container(key="approved_bom_upload_progress"):
-            st.info(
-                "Analysis in progress. Cadivor is processing this BOM; the upload form will return when the analysis is complete."
+            active_name = str(st.session_state.get("bom8_bom_name") or "this BOM").strip()
+            st.caption(
+                f"Supplier checks are running for {active_name}. Your report will open when the analysis is complete."
             )
     elif should_render_approved_bom_upload_form(
         upload_mode=upload_mode,

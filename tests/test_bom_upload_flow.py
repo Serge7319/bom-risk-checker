@@ -5,6 +5,7 @@ from pathlib import Path
 from src.saved_bom_cost import analysis_part_cost_fields, json_safe_value
 from src.bom_upload_flow import (
     consume_approved_bom_submission,
+    finish_approved_bom_submission,
     resume_approved_bom_submission,
     should_render_approved_bom_upload_form,
     should_render_legacy_bom_workspace,
@@ -72,6 +73,40 @@ class ApprovedBOMSubmissionTests(unittest.TestCase):
         self.assertNotIn("cadivor_pending_upload", state)
         self.assertNotIn("cadivor_bom_analysis_ready", state)
 
+    def test_new_upload_clears_previous_report_before_the_progress_transition(self):
+        state = {
+            "cadivor_bom_analysis_ready": True,
+            "cadivor_pending_upload": object(),
+            "cadivor_pending_project": "New project",
+            "cadivor_pending_bom_name": "New BOM",
+            "results_df": "stale report",
+            "analysis_saved": True,
+            "analysis_id": "old-analysis",
+            "health_score": 12,
+            "cadivor_active_analysis_id": "old-analysis",
+        }
+
+        consume_approved_bom_submission(state)
+
+        self.assertNotIn("results_df", state)
+        self.assertNotIn("analysis_saved", state)
+        self.assertNotIn("analysis_id", state)
+        self.assertNotIn("cadivor_active_analysis_id", state)
+        self.assertTrue(state["cadivor_bom_pipeline_active"])
+
+    def test_interrupted_pipeline_can_reopen_upload_form(self):
+        state = {
+            "cadivor_bom_pipeline_active": True,
+            "bom8_analysis_upload_file": object(),
+            "bom8_analysis_pending": True,
+            "bom8_analysis_in_progress": True,
+        }
+        finish_approved_bom_submission(state, reopen_upload=True)
+        self.assertTrue(state["cadivor_bom_upload_open"])
+        self.assertFalse(state.get("cadivor_bom_pipeline_active", False))
+        self.assertNotIn("bom8_analysis_upload_file", state)
+        self.assertNotIn("bom8_analysis_pending", state)
+
     def test_approved_upload_replaces_stale_names_even_when_fields_are_blank(self):
         state = {
             "cadivor_bom_analysis_ready": True,
@@ -112,6 +147,16 @@ class ApprovedBOMSubmissionTests(unittest.TestCase):
         self.assertIn("approved_bom_upload_panel", transition)
         self.assertIn("elif results_visible:", transition)
         self.assertIn("results_visible=results_visible", source)
+
+    def test_submitted_form_reruns_before_rendering_the_analysis_transition(self):
+        source = Path("src/authenticated_runtime.py").read_text(encoding="utf-8")
+        render = source.index("            render_bom_catalog(", source.index("saved_bom_rerun_handoff"))
+        consume = source.index("consume_approved_bom_submission(st.session_state)", render)
+        transition = source[consume : consume + 700]
+        self.assertIn("if _approved_bom_submitted and uploaded_file is not None:", transition)
+        self.assertIn("st.rerun()", transition)
+        self.assertIn("if not analysis_in_progress:\n            render_upload_detected(", source)
+        self.assertNotIn("st.data_editor(\n                    bom_df", source)
 
     def test_upload_form_is_hidden_while_analysis_progress_is_active(self):
         self.assertTrue(

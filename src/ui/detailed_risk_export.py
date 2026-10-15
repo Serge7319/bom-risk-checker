@@ -150,6 +150,12 @@ def _lifecycle_evidence(value: Any) -> str:
 
 
 def _reasons(record: dict[str, Any]) -> str:
+    if _risk(record)[0] == "Not assessed" and not _has_supplier_match(record):
+        return (
+            "No configured distributor returned a matching record for this MPN. "
+            "Verify the full manufacturer part number and rerun; stock, lifecycle, "
+            "and lead-time risk remain unknown."
+        )
     value = _first(record, "risk_reasons", "Risk Reasons", "risk_reason", "Why", default="")
     value = _json_value(value)
     if isinstance(value, (list, tuple, set)):
@@ -168,10 +174,27 @@ def _reasons(record: dict[str, Any]) -> str:
     return "; ".join(reasons) or "No risk explanation was saved for this component."
 
 
+def _has_supplier_match(record: dict[str, Any]) -> bool:
+    supplier_count = _number(_first(record, "supplier_count", "Supplier count", "Suppliers"))
+    if supplier_count is not None and supplier_count > 0:
+        return True
+    return any(
+        value not in {"—", "Unavailable", ""}
+        for value in (
+            _sources(record),
+            _text(_first(record, "primary_supplier", "best_source", "supplier", "distributor"), ""),
+            _text(record.get("lead_time_source"), ""),
+            _lifecycle_evidence(record.get("lifecycle_evidence")),
+        )
+    )
+
+
 def _risk(record: dict[str, Any]) -> tuple[str, int | float | None]:
     score = _number(_first(record, "risk_score", "Risk Score", "score"))
     raw = str(_first(record, "risk_level", "Risk Level", "risk", "Risk", default="") or "").strip()
     folded = raw.casefold()
+    if any(token in folded for token in ("verif", "unassess", "not assess", "not rated", "unknown", "unrated")):
+        return "Not assessed", None
     if "critical" in folded or "high" in folded:
         return "High", score
     if "medium" in folded or folded == "med":
@@ -179,6 +202,8 @@ def _risk(record: dict[str, Any]) -> tuple[str, int | float | None]:
     if "low" in folded:
         return "Low", score
     if score is None:
+        return "Not assessed", None
+    if score == 0 and not _has_supplier_match(record):
         return "Not assessed", None
     if score >= 70:
         return "High", score
@@ -357,7 +382,12 @@ def detailed_risk_excel_bytes(
     pale_blue = "EFF6FF"
     grid = "D9E2EC"
     white = "FFFFFF"
-    risk_fills = {"High": "FEE2E2", "Medium": "FEF3C7", "Low": "DCFCE7"}
+    risk_fills = {
+        "High": "FEE2E2",
+        "Medium": "FEF3C7",
+        "Low": "DCFCE7",
+        "Not assessed": "E2E8F0",
+    }
     border = Border(bottom=Side(style="thin", color=grid))
 
     summary = workbook.active
@@ -394,14 +424,7 @@ def detailed_risk_excel_bytes(
     }
     risk_assessed_count = counts["High"] + counts["Medium"] + counts["Low"]
     risk_coverage = risk_assessed_count / len(rows) if rows else 0
-    supplier_match_count = sum(
-        (_number(row["Supplier count"]) or 0) > 0
-        or row["Evidence source"] != "—"
-        or row["Recorded supplier"] != "—"
-        or row["Lead-time source"] != "—"
-        or row["Lifecycle evidence"] not in {"—", "Unavailable"}
-        for row in rows
-    )
+    supplier_match_count = sum(_has_supplier_match(part) for part in parts or [] if isinstance(part, dict))
     metrics = [
         ("Total components", len(rows)),
         ("Parts with matched supplier evidence", supplier_match_count),
