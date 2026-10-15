@@ -20041,7 +20041,7 @@ def run_authenticated_app() -> None:
                     """,
                     unsafe_allow_html=True,
                 )
-                if _one_time_blocked_plan:
+            if _one_time_blocked_plan:
                 # A purchased report must never be spent on Cadivor's example BOM.
                 st.session_state.pop("bom8_sample_mode", None)
                 st.session_state.pop("bom8_sample_auto_analyze", None)
