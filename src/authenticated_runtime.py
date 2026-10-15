@@ -6635,7 +6635,6 @@ def run_authenticated_app() -> None:
 
     # ---------- Procurement Advisor ----------
     if app_mode == "Procurement Advisor":
-        from datetime import datetime, timezone
         from src.procurement_advisor import (
             apply_sourcing_override,
             build_procurement_advisor as build_procurement_advisor_for_page,
@@ -11142,9 +11141,15 @@ def run_authenticated_app() -> None:
     if app_mode == "Single BOM Report":
         from src.one_time_bom import (
             MAX_PARTS as _SINGLE_BOM_MAX_PARTS,
+            OneTimeBOMError as _SingleBOMError,
             available_credit as _single_bom_available_credit,
+            begin_checkout as _single_bom_begin_checkout,
             enabled as _single_bom_offer_enabled,
+            has_pending_analysis_result as _has_pending_one_time_analysis,
             in_progress_credit as _single_bom_in_progress,
+            pending_checkout as _get_single_bom_pending_checkout,
+            price_label as _single_bom_price_label,
+            purchase_history as _single_bom_purchase_history,
         )
 
         reveal_authenticated_page_body("Single BOM Report")
@@ -11162,9 +11167,9 @@ def run_authenticated_app() -> None:
             <section class="cv-single-report-hero">
               <small>One-time purchase</small>
               <h1>One full BOM report</h1>
-              <p>Run your BOM first. Cadivor shows the exact unique-component count and active price
-              before checkout. Payment unlocks the full report and PDF/CSV downloads for up to
-              100 unique components; no subscription is included.</p>
+              <p>Choose either path: buy one report before uploading, or analyze your BOM first and
+              pay only if you want the full report. One purchase covers one saved analysis and its
+              PDF/CSV downloads for up to 100 unique components. No subscription is included.</p>
             </section>
             """,
             unsafe_allow_html=True,
@@ -11177,37 +11182,137 @@ def run_authenticated_app() -> None:
             )
         else:
             _single_bom_user_id = str(current_user["id"])
+            _single_bom_checkout_key = (
+                f"cadivor_single_bom_checkout_{_single_bom_user_id}"
+            )
             _single_bom_credit_ready = _single_bom_available_credit(_single_bom_user_id)
             _single_bom_analysis_open = _single_bom_in_progress(_single_bom_user_id)
+            _single_bom_pending_analysis = _has_pending_one_time_analysis(st.session_state)
+            _single_bom_orders = []
+            try:
+                _single_bom_orders = _single_bom_purchase_history(_single_bom_user_id)
+            except _SingleBOMError:
+                pass
+            _single_bom_completed_order = next(
+                (
+                    order for order in _single_bom_orders
+                    if order.get("status") == "consumed" and order.get("analysis_id")
+                ),
+                None,
+            )
             with st.container(border=True):
-                st.markdown("#### Analyze your BOM before you pay")
+                st.markdown("#### Choose how to start")
                 st.caption(
-                    "Upload and run your BOM first. Cadivor confirms the unique-component count "
-                    "and shows the active price before checkout. The one-time report covers up to "
-                    f"{_SINGLE_BOM_MAX_PARTS} unique components; the full report and standard "
-                    "PDF/CSV downloads unlock only after payment. No subscription or ongoing "
-                    "monitoring is included."
+                    f"A one-time report covers one analysis of up to {_SINGLE_BOM_MAX_PARTS} unique "
+                    "components. You can pay first and upload afterward, or analyze first and pay "
+                    "from the results screen."
                 )
-                if _single_bom_credit_ready:
+
+                if _single_bom_pending_analysis:
+                    st.info(
+                        "Your BOM analysis is already waiting in this session. Return to it to "
+                        "finish payment or save the paid report; you do not need to upload or run it again."
+                    )
+                    internal_nav_button(
+                        "Continue this BOM analysis", "BOM Analyzer",
+                        key="single_bom_resume_analysis", type="primary",
+                    )
+                else:
+                    if _single_bom_completed_order:
+                        st.success("A previously purchased report is ready.")
+                        internal_nav_button(
+                            "Open your report", "Reports",
+                            key=f"single_bom_open_paid_report_{_single_bom_completed_order['id']}",
+                            analysis_id=str(_single_bom_completed_order["analysis_id"]),
+                        )
+
+                if not _single_bom_pending_analysis and _single_bom_credit_ready:
                     st.success("Your full report is paid for and ready for your BOM.")
                     internal_nav_button(
-                        "Upload your BOM for the paid report", "BOM Analyzer",
-                        key="single_bom_paid_upload", new_analysis="1",
+                        "Upload a BOM and create the report", "BOM Analyzer",
+                        key="single_bom_paid_upload",
+                        **(
+                            {}
+                            if st.session_state.get("bom_file_uploader") is not None
+                            else {"new_analysis": "1"}
+                        ),
                     )
-                elif _single_bom_analysis_open:
+                elif not _single_bom_pending_analysis and _single_bom_analysis_open:
                     st.info(
                         "A paid BOM analysis is already in progress. Return to its open tab "
                         "or wait for an interrupted reservation to become available again."
                     )
-                elif not _single_bom_offer_enabled():
+                elif not _single_bom_pending_analysis and not _single_bom_credit_ready and not _single_bom_analysis_open and not _single_bom_offer_enabled():
                     st.info("New one-time purchases are temporarily unavailable.")
-                else:
-                    internal_nav_button(
-                        "Upload and analyze your BOM first", "BOM Analyzer",
-                        key="single_bom_start_analysis", new_analysis="1",
+                elif not _single_bom_pending_analysis and not _single_bom_credit_ready and not _single_bom_analysis_open:
+                    try:
+                        _single_bom_price = _single_bom_price_label(
+                            str(get_secret("STRIPE_ONE_TIME_BOM_REPORT_PRICE_ID", required=True))
+                        )
+                    except _SingleBOMError as exc:
+                        st.error(str(exc))
+                        _single_bom_price = ""
+
+                    _pending_single_bom_checkout = _get_single_bom_pending_checkout(
+                        _single_bom_user_id
                     )
+                    if _pending_single_bom_checkout:
+                        if _pending_single_bom_checkout[0] == "open":
+                            st.link_button(
+                                "Continue secure checkout →",
+                                _pending_single_bom_checkout[1],
+                                type="primary",
+                            )
+                            st.session_state.pop(_single_bom_checkout_key, None)
+                        else:
+                            st.info(
+                                "Stripe is confirming your payment. Keep this page open; "
+                                "Cadivor will unlock your report when confirmation arrives."
+                            )
+                            st.session_state.pop(_single_bom_checkout_key, None)
+                    elif _single_bom_price and st.button(
+                        f"Buy one report now · {_single_bom_price}",
+                        key="single_bom_buy_first",
+                        type="primary",
+                    ):
+                        try:
+                            st.session_state[_single_bom_checkout_key] = _single_bom_begin_checkout(
+                                _single_bom_user_id,
+                                str(current_user.get("email") or ""),
+                                app_checkout_url(
+                                    page="Single BOM Report", checkout="single_bom_success"
+                                ),
+                                app_checkout_url(
+                                    page="Single BOM Report", checkout="single_bom_cancel"
+                                ),
+                            )
+                        except _SingleBOMError as exc:
+                            st.error(str(exc))
+
+                    _single_bom_checkout_url = str(
+                        st.session_state.get(_single_bom_checkout_key) or ""
+                    ).strip()
+                    if _single_bom_checkout_url and not _pending_single_bom_checkout:
+                        st.link_button(
+                            "Continue to secure checkout →",
+                            _single_bom_checkout_url,
+                            type="primary",
+                        )
+                    st.caption("Prefer to check your BOM first?")
+                    internal_nav_button(
+                        "Analyze first, then decide", "BOM Analyzer",
+                        key="single_bom_start_analysis", new_analysis="1",
+                        type="secondary",
+                    )
+
                 _single_bom_checkout_state = _safe_text(_qp_value("checkout", ""))
-                if _single_bom_checkout_state == "single_bom_success" and not _single_bom_credit_ready:
+                if _single_bom_checkout_state == "single_bom_success" and _single_bom_credit_ready:
+                    st.session_state.pop(_single_bom_checkout_key, None)
+                    try:
+                        del st.query_params["checkout"]
+                    except Exception:
+                        pass
+                elif _single_bom_checkout_state == "single_bom_success" and not _single_bom_credit_ready:
                     @st.fragment(run_every="5s")
                     def _poll_single_bom_checkout_confirmation():
                         # The return URL is only a status hint. Paid access is
@@ -17970,6 +18075,7 @@ def run_authenticated_app() -> None:
             begin_checkout as begin_one_time_checkout,
             consume_credit as consume_one_time_credit,
             enabled as one_time_bom_enabled,
+            has_pending_analysis_result as has_pending_one_time_analysis,
             in_progress_credit as one_time_credit_in_progress,
             pending_checkout as pending_one_time_checkout,
             price_label as one_time_report_price_label,
@@ -18904,6 +19010,9 @@ def run_authenticated_app() -> None:
         saved_bom_rerun_active = bool(
             st.session_state.get("cadivor_saved_bom_rerun_active")
         )
+        _resume_pending_one_time_analysis = has_pending_one_time_analysis(
+            st.session_state
+        )
         if st.session_state.get("bom81_high_risk_review"):
             uploaded_file = None
             project_name = ""
@@ -18976,7 +19085,11 @@ def run_authenticated_app() -> None:
             or st.session_state.get("bom8_analysis_in_progress")
         )
         sample_bom = pd.DataFrame()
-        if uploaded_file is None and not st.session_state.get("bom81_high_risk_review"):
+        if (
+            uploaded_file is None
+            and not st.session_state.get("bom81_high_risk_review")
+            and not _resume_pending_one_time_analysis
+        ):
             if saved_bom_rerun_active:
                 st.error("The updated BOM file is no longer available in this session. Return to BOMs and open the saved BOM again.")
             stop_authenticated_page()
@@ -19934,12 +20047,13 @@ def run_authenticated_app() -> None:
                 else:
                     if _one_time_feature_enabled:
                         st.warning(
-                            "Saved BOMs and reports remain available. A new full analysis requires "
-                            "a plan or one one-time BOM report purchase."
+                            "Saved BOMs and reports remain available. Choose a plan or buy a one-time "
+                            "report to save a new full analysis."
                         )
                         st.caption(
-                            f"One purchase covers one full analysis of up to {ONE_TIME_BOM_MAX_PARTS} unique components "
-                            "and its standard PDF and CSV reports. No subscription is required."
+                            f"One report covers up to {ONE_TIME_BOM_MAX_PARTS} unique components and includes "
+                            "the standard PDF and CSV. You can analyze first to preview the results; "
+                            "Cadivor will ask for payment before saving the full report. No subscription is required."
                         )
                         _checkout_key = f"cadivor_one_time_checkout_{_one_time_user_id}"
                         _pending_checkout = pending_one_time_checkout(_one_time_user_id)
@@ -19990,7 +20104,8 @@ def run_authenticated_app() -> None:
                         type="secondary" if _one_time_feature_enabled else "primary",
                     ):
                         navigate_to("Pricing")
-                    stop_authenticated_page()
+                    if not _one_time_feature_enabled:
+                        stop_authenticated_page()
 
             analysis_in_progress = bool(
                 st.session_state.get("bom8_analysis_future")
@@ -20161,13 +20276,66 @@ def run_authenticated_app() -> None:
         source_filename = "cadivor_10_part_sample_bom.csv" if sample_mode else (
             uploaded_file.name if uploaded_file is not None else ""
         )
+        if _resume_pending_one_time_analysis and uploaded_file is None:
+            source_filename = str(
+                st.session_state.get("cadivor_one_time_pending_source_filename")
+                or st.session_state.get("uploaded_filename")
+                or "paid_bom_analysis.csv"
+            )
+            project_name = str(
+                st.session_state.get("cadivor_one_time_pending_project_name")
+                or st.session_state.get("bom8_project_name")
+                or project_name
+                or ""
+            )
+            bom_name = str(
+                st.session_state.get("cadivor_one_time_pending_bom_name")
+                or st.session_state.get("bom8_bom_name")
+                or bom_name
+                or "Paid BOM report"
+            )
 
-        if uploaded_file is None and not sample_mode:
+        if uploaded_file is None and not sample_mode and not _resume_pending_one_time_analysis:
             st.markdown("</div>", unsafe_allow_html=True)
             stop_authenticated_page()
 
         try:
-            if sample_mode:
+            if _resume_pending_one_time_analysis and uploaded_file is None:
+                _pending_results_df = st.session_state["results_df"]
+                _mpn_column = next(
+                    (
+                        column for column in _pending_results_df.columns
+                        if str(column).strip().casefold().replace("_", " ")
+                        in {"mpn", "manufacturer part number"}
+                    ),
+                    None,
+                )
+                _quantity_column = next(
+                    (
+                        column for column in _pending_results_df.columns
+                        if str(column).strip().casefold() in {"quantity", "qty"}
+                    ),
+                    None,
+                )
+                if _mpn_column is None:
+                    st.error(
+                        "The analyzed BOM could not be restored. Please contact support; "
+                        "do not purchase another report."
+                    )
+                    stop_authenticated_page()
+                bom_df = pd.DataFrame(
+                    {
+                        "mpn": _pending_results_df[_mpn_column].astype(str).str.strip(),
+                        "quantity": (
+                            pd.to_numeric(
+                                _pending_results_df[_quantity_column], errors="coerce"
+                            ).fillna(1)
+                            if _quantity_column is not None
+                            else 1
+                        ),
+                    }
+                )
+            elif sample_mode:
                 bom_df = sample_bom.copy()
             elif uploaded_file.name.endswith(".csv"):
                 uploaded_file.seek(0)
@@ -20231,10 +20399,15 @@ def run_authenticated_app() -> None:
     
 
 
-        if st.session_state.get("uploaded_filename") != source_filename:
+        if (
+            not _resume_pending_one_time_analysis
+            and st.session_state.get("uploaded_filename") != source_filename
+        ):
             st.session_state.pop("results_df", None)
             st.session_state.pop("analysis_saved", None)
             st.session_state.pop("cadivor_one_time_pending_component_count", None)
+            st.session_state["uploaded_filename"] = source_filename
+        elif _resume_pending_one_time_analysis and not st.session_state.get("uploaded_filename"):
             st.session_state["uploaded_filename"] = source_filename
     
         original_row_count = len(bom_df)
@@ -20313,7 +20486,7 @@ def run_authenticated_app() -> None:
             )
         )
         analyze_clicked = False
-        if not _approved_bom_pipeline_active:
+        if not _approved_bom_pipeline_active and not _resume_pending_one_time_analysis:
             analyze_clicked = st.button(
                 "Analyzing BOM…" if analysis_in_progress else ("Analyze Sample BOM" if sample_mode else "Analyze BOM"),
                 type="primary",
@@ -20408,6 +20581,9 @@ def run_authenticated_app() -> None:
 
                 results_df, degraded = analysis_result
                 st.session_state["results_df"] = results_df
+                st.session_state["cadivor_one_time_pending_source_filename"] = source_filename
+                st.session_state["cadivor_one_time_pending_project_name"] = str(project_name or "")
+                st.session_state["cadivor_one_time_pending_bom_name"] = str(bom_name or "")
                 st.session_state["cadivor_supplier_degraded"] = degraded
                 st.session_state["cadivor_supplier_degraded_message"] = (
                     "Some supplier data could not be verified during this analysis."
@@ -20420,16 +20596,25 @@ def run_authenticated_app() -> None:
             st.stop()
 
         st.subheader("Sample BOM Preview" if sample_mode else "Uploaded BOM Preview")
-        st.data_editor(
-            bom_df,
-            use_container_width=True,
-            hide_index=True,
-        )
-        analyze_requested = _approved_analysis_requested or bool(
-            st.session_state.pop("bom8_analysis_pending", False)
-        )
-        if st.session_state.pop("bom8_sample_auto_analyze", False):
-            analyze_requested = True
+        if _resume_pending_one_time_analysis and uploaded_file is None:
+            st.info(
+                "Resuming the completed analysis from this session. Cadivor will save this result "
+                "without repeating supplier lookups."
+            )
+            st.dataframe(bom_df, use_container_width=True, hide_index=True)
+        else:
+            st.data_editor(
+                bom_df,
+                use_container_width=True,
+                hide_index=True,
+            )
+        analyze_requested = False
+        if not _resume_pending_one_time_analysis:
+            analyze_requested = _approved_analysis_requested or bool(
+                st.session_state.pop("bom8_analysis_pending", False)
+            )
+            if st.session_state.pop("bom8_sample_auto_analyze", False):
+                analyze_requested = True
 
         if analyze_requested:
             # A new analysis should be saved as a new database record.
@@ -20940,6 +21125,12 @@ def run_authenticated_app() -> None:
                 st.session_state["show_analysis_success_29b"] = True
                 st.session_state["last_saved_analysis_id"] = analysis_id
                 st.session_state["last_saved_analysis_at"] = datetime.now(timezone.utc).isoformat()
+                for _pending_key in (
+                    "cadivor_one_time_pending_source_filename",
+                    "cadivor_one_time_pending_project_name",
+                    "cadivor_one_time_pending_bom_name",
+                ):
+                    st.session_state.pop(_pending_key, None)
                 st.session_state.pop("bom8_analysis_in_progress", None)
                 saved_bom_rerun_completed = bool(
                     st.session_state.pop("cadivor_saved_bom_rerun_active", False)
