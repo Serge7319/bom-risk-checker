@@ -866,7 +866,7 @@ def begin_approved_page() -> None:
         .st-key-approved_bom_upload_panel>[data-testid="stVerticalBlock"]{gap:.85rem!important}
         .cv-bom-upload-heading h2{margin:0 0 5px!important;color:#142239!important;font-size:21px!important;font-weight:750!important;letter-spacing:-.02em!important}
         .cv-bom-upload-heading p{margin:0!important;color:#64748b!important;font-size:14px!important;line-height:1.45!important}
-        [class*="st-key-approved_bom_analyze"] button{width:100%!important;min-height:44px!important}
+        [class*="st-key-approved_bom_analyze"] button{width:auto!important;min-width:148px!important;max-width:100%!important;min-height:44px!important}
         /* Engineering decision cards and controls follow the approved light-tint dashboard style. */
         .st-key-approved_decision_cardwrap_open{background:#f2f7ff!important;border-color:#dbeafe!important}
         .st-key-approved_decision_cardwrap_overdue{background:#fff4f5!important;border-color:#ffe0e6!important}
@@ -2008,42 +2008,46 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
                 """,
                 unsafe_allow_html=True,
             )
-            typed_project = st.text_input(
-                "Project name",
-                key="approved_bom_project_name",
-                placeholder="Example: Motor Controller",
-                help="Enter a new name or reuse an existing project name. Leave blank to use General.",
-                disabled=analysis_running,
-            )
-            bom_name = st.text_input(
-                "BOM name",
-                key="approved_bom_name",
-                disabled=analysis_running,
-            )
-            uploaded = st.file_uploader(
-                "Upload your BOM file",
-                type=["csv", "xlsx"],
-                key="bom_file_uploader",
-                help="CSV or Excel with MPN and Quantity columns.",
-                disabled=analysis_running,
-            )
-            if st.button(
-                "Analyzing BOM…" if analysis_running else "Analyze BOM",
-                key="approved_bom_analyze",
-                type="primary",
-                disabled=analysis_running,
-            ) and uploaded is not None:
-                st.session_state["cadivor_bom_analysis_ready"] = True
-                st.session_state["cadivor_pending_upload"] = uploaded
-                st.session_state["cadivor_pending_project"] = resolve_project_choice(
-                    NEW_PROJECT_CHOICE,
-                    typed_project,
-                    blank_uses_general=True,
+            with st.form(key="approved_bom_upload_form", clear_on_submit=False):
+                typed_project = st.text_input(
+                    "Project name",
+                    key="approved_bom_project_name",
+                    placeholder="Example: Motor Controller",
+                    help="Enter a new name or reuse an existing project name. Leave blank to use General.",
+                    autocomplete="off",
+                    disabled=analysis_running,
                 )
-                st.session_state["cadivor_pending_bom_name"] = bom_name
-                return
-            if uploaded is None:
-                st.caption("Choose a CSV or Excel file to run the existing BOM analysis.")
+                bom_name = st.text_input(
+                    "BOM name",
+                    key="approved_bom_name",
+                    autocomplete="off",
+                    disabled=analysis_running,
+                )
+                uploaded = st.file_uploader(
+                    "Upload your BOM file",
+                    type=["csv", "xlsx"],
+                    key="bom_file_uploader",
+                    help="CSV or Excel with MPN and Quantity columns.",
+                    disabled=analysis_running,
+                )
+                submitted = st.form_submit_button(
+                    "Analyzing BOM…" if analysis_running else "Analyze BOM",
+                    key="approved_bom_analyze",
+                    type="primary",
+                    disabled=analysis_running,
+                )
+                if submitted and uploaded is not None:
+                    st.session_state["cadivor_bom_analysis_ready"] = True
+                    st.session_state["cadivor_pending_upload"] = uploaded
+                    st.session_state["cadivor_pending_project"] = resolve_project_choice(
+                        NEW_PROJECT_CHOICE,
+                        typed_project,
+                        blank_uses_general=True,
+                    )
+                    st.session_state["cadivor_pending_bom_name"] = bom_name
+                    return
+                if uploaded is None:
+                    st.caption("Choose a CSV or Excel file to run the existing BOM analysis.")
     else:
         from datetime import date
 

@@ -586,5 +586,24 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
         self.assertIn("background:#d5dfeb!important", source)
         self.assertIn("if index < len(visible_rows) - 1:", source)
 
+
+    def test_refresh_copy_and_action_share_one_card_without_overflowing_columns(self):
+        refresh_start = REPORT_SOURCE.index(
+            'with st.container(key="ei_refresh_saved_analysis", border=True):'
+        )
+        report_start = REPORT_SOURCE.index(
+            'with st.container(key="cv_ei_detailed_report_action"):',
+            refresh_start,
+        )
+        refresh_card = REPORT_SOURCE[refresh_start:report_start]
+
+        self.assertIn("Refresh supplier data", refresh_card)
+        self.assertIn("st.caption(", refresh_card)
+        self.assertIn("Open BOM to rerun", refresh_card)
+        self.assertIn("use_container_width=False", refresh_card)
+        self.assertNotIn("st.columns(", refresh_card)
+        self.assertNotIn("cv-ei-refresh-card", refresh_card)
+
+
 if __name__ == "__main__":
     unittest.main()

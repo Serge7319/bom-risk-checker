@@ -18945,6 +18945,21 @@ def run_authenticated_app() -> None:
                 .bom8-hero{padding:22px 20px;}
                 .bom8-hero h1{font-size:28px;}
             }
+            .st-key-bom8_analysis_preview,
+            .st-key-bom8_analysis_progress_card,
+            .st-key-bom8_one_time_payment_action{
+                box-sizing:border-box!important;
+                width:100%!important;
+                margin-left:auto!important;
+                margin-right:auto!important;
+            }
+            .st-key-bom8_analysis_preview{max-width:1440px!important;}
+            .st-key-bom8_analysis_progress_card{max-width:960px!important;margin-bottom:16px!important;}
+            .st-key-bom8_one_time_payment_action{max-width:760px!important;margin-top:12px!important;}
+            .st-key-bom8_analysis_progress_card .stButton>button{width:auto!important;min-width:0!important;}
+            .st-key-bom8_one_time_payment_action .stLinkButton>a{
+                width:auto!important;min-width:0!important;max-width:100%!important;
+            }
             </style>
             """,
             unsafe_allow_html=True,
@@ -20015,28 +20030,31 @@ def run_authenticated_app() -> None:
             # occupy the reserved top slot; saved analyses remain below it.
             _bom_new_analysis_context = bom_new_analysis_slot.container()
             _bom_new_analysis_context.__enter__()
-            st.markdown(
-                f"""
-                <section class="bom9-workspace-hero">
-                  <div class="bom9-workspace-eyebrow">BOM workspace</div>
-                  <h1>Build or reopen an engineering BOM</h1>
-                  <p>Start a new analysis, or continue saved work with health, component scope, and the next engineering action already in view.</p>
-                </section>
-                """,
-                unsafe_allow_html=True,
-            )
-            if _one_time_blocked_plan:
+            if should_render_legacy_bom_workspace(st.session_state):
+                st.markdown(
+                    f"""
+                    <section class="bom9-workspace-hero">
+                      <div class="bom9-workspace-eyebrow">BOM workspace</div>
+                      <h1>Build or reopen an engineering BOM</h1>
+                      <p>Start a new analysis, or continue saved work with health, component scope, and the next engineering action already in view.</p>
+                    </section>
+                    """,
+                    unsafe_allow_html=True,
+                )
+                if _one_time_blocked_plan:
                 # A purchased report must never be spent on Cadivor's example BOM.
                 st.session_state.pop("bom8_sample_mode", None)
                 st.session_state.pop("bom8_sample_auto_analyze", None)
             if _one_time_blocked_plan:
                 if _one_time_reserved:
-                    st.success("Your one-time BOM report is in progress. Finish this analysis to access its reports.")
+                    if uploaded_file is None:
+                        st.success("Your one-time BOM report is in progress. Finish this analysis to access its reports.")
                 elif _one_time_available:
-                    st.success(
-                        f"Your one-time BOM report is ready. Upload up to {ONE_TIME_BOM_MAX_PARTS} unique components; "
-                        "the saved BOM and its report package will remain in your workspace."
-                    )
+                    if uploaded_file is None:
+                        st.success(
+                            f"Your one-time BOM report is ready. Upload up to {ONE_TIME_BOM_MAX_PARTS} unique components; "
+                            "the saved BOM and its report package will remain in your workspace."
+                        )
                 elif _one_time_in_progress:
                     st.info(
                         "A paid BOM analysis is already in progress for this account. "
@@ -20045,7 +20063,7 @@ def run_authenticated_app() -> None:
                     )
                     stop_authenticated_page()
                 else:
-                    if _one_time_feature_enabled:
+                    if _one_time_feature_enabled and uploaded_file is None:
                         st.warning(
                             "Saved BOMs and reports remain available. Choose a plan or buy a one-time "
                             "report to save a new full analysis."
@@ -20098,12 +20116,13 @@ def run_authenticated_app() -> None:
                             "Your trial has ended. Saved analyses above remain available to open and download. "
                             "Choose a paid plan to create a new analysis."
                         )
-                    if st.button(
-                        "Compare plans" if _one_time_feature_enabled else "Choose a paid plan",
-                        key="bom_trial_expired_choose_plan",
-                        type="secondary" if _one_time_feature_enabled else "primary",
-                    ):
-                        navigate_to("Pricing")
+                    if not _one_time_feature_enabled or uploaded_file is None:
+                        if st.button(
+                            "Compare plans" if _one_time_feature_enabled else "Choose a paid plan",
+                            key="bom_trial_expired_choose_plan",
+                            type="secondary" if _one_time_feature_enabled else "primary",
+                        ):
+                            navigate_to("Pricing")
                     if not _one_time_feature_enabled:
                         stop_authenticated_page()
 
@@ -20153,6 +20172,7 @@ def run_authenticated_app() -> None:
                             "Project Name (optional)",
                             placeholder="Example: Motor Controller",
                             key="bom8_project_name",
+                            autocomplete="off",
                             disabled=analysis_in_progress,
                             help="Use a project to group multiple BOM revisions or assemblies.",
                         )
@@ -20161,6 +20181,7 @@ def run_authenticated_app() -> None:
                             "BOM Name",
                             placeholder="Example: Motor Controller Rev A",
                             key="bom8_bom_name",
+                            autocomplete="off",
                             disabled=analysis_in_progress,
                             help="Required. Name this specific BOM, revision, or assembly.",
                         )
@@ -20491,7 +20512,7 @@ def run_authenticated_app() -> None:
                 "Analyzing BOM…" if analysis_in_progress else ("Analyze Sample BOM" if sample_mode else "Analyze BOM"),
                 type="primary",
                 disabled=bom_name_missing or analysis_in_progress or _one_time_analysis_blocked,
-                use_container_width=True,
+                use_container_width=False,
             )
         if analyze_clicked:
             # Render the busy state before the long-running supplier and risk analysis.
@@ -20592,22 +20613,24 @@ def run_authenticated_app() -> None:
                 )
                 st.rerun()
 
-            _render_active_bom_analysis()
+            with st.container(key="bom8_analysis_progress_card", border=True):
+                _render_active_bom_analysis()
             st.stop()
 
-        st.subheader("Sample BOM Preview" if sample_mode else "Uploaded BOM Preview")
-        if _resume_pending_one_time_analysis and uploaded_file is None:
-            st.info(
-                "Resuming the completed analysis from this session. Cadivor will save this result "
-                "without repeating supplier lookups."
-            )
-            st.dataframe(bom_df, use_container_width=True, hide_index=True)
-        else:
-            st.data_editor(
-                bom_df,
-                use_container_width=True,
-                hide_index=True,
-            )
+        with st.container(key="bom8_analysis_preview"):
+            st.subheader("Sample BOM Preview" if sample_mode else "Uploaded BOM Preview")
+            if _resume_pending_one_time_analysis and uploaded_file is None:
+                st.info(
+                    "Resuming the completed analysis from this session. Cadivor will save this result "
+                    "without repeating supplier lookups."
+                )
+                st.dataframe(bom_df, use_container_width=True, hide_index=True)
+            else:
+                st.data_editor(
+                    bom_df,
+                    use_container_width=True,
+                    hide_index=True,
+                )
         analyze_requested = False
         if not _resume_pending_one_time_analysis:
             analyze_requested = _approved_analysis_requested or bool(
@@ -20816,16 +20839,20 @@ def run_authenticated_app() -> None:
                                     app_checkout_url(page="BOM Analyzer", checkout="single_bom_cancel"),
                                 )
                             if _one_time_checkout_url:
-                                st.link_button(
-                                    f"Pay {_one_time_final_price} and unlock report",
-                                    _one_time_checkout_url,
-                                    type="primary",
-                                    use_container_width=True,
-                                )
-                                st.caption(
-                                    "Keep this tab open. After payment, the report appears here "
-                                    "and in Analysis Details."
-                                )
+                                with st.container(
+                                    key="bom8_one_time_payment_action",
+                                    border=True,
+                                ):
+                                    st.link_button(
+                                        f"Pay {_one_time_final_price} and unlock report",
+                                        _one_time_checkout_url,
+                                        type="primary",
+                                        use_container_width=False,
+                                    )
+                                    st.caption(
+                                        "Keep this tab open. After payment, the report appears here "
+                                        "and in Analysis Details."
+                                    )
                         except OneTimeBOMError as exc:
                             st.error(str(exc))
 
