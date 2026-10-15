@@ -11,6 +11,19 @@ class AuthenticatedRuntimeSyntaxTests(unittest.TestCase):
         source_path = ROOT / "src" / "authenticated_runtime.py"
         compile(source_path.read_text(encoding="utf-8"), str(source_path), "exec")
 
+    def test_datetime_is_not_shadowed_in_authenticated_runtime(self) -> None:
+        source = (ROOT / "src" / "authenticated_runtime.py").read_text(encoding="utf-8")
+        self.assertNotIn("        from datetime import datetime, timezone\n", source)
+
+    def test_one_time_report_offers_buy_first_and_analyze_first_paths(self) -> None:
+        source = (ROOT / "src" / "authenticated_runtime.py").read_text(encoding="utf-8")
+        self.assertIn("Buy one report now", source)
+        self.assertIn("Analyze first, then decide", source)
+        self.assertIn("Continue this BOM analysis", source)
+        self.assertIn("Resuming the completed analysis from this session", source)
+        self.assertIn("Cadivor will ask for payment before saving the full report", source)
+        self.assertIn("if not _one_time_feature_enabled:", source)
+
     def test_bom_workspace_keeps_only_primary_analysis_and_saved_manager(self) -> None:
         source = (ROOT / "src" / "authenticated_runtime.py").read_text(encoding="utf-8")
 

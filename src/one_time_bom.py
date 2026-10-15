@@ -18,6 +18,18 @@ MAX_PARTS = 100
 _LOGGER = logging.getLogger(__name__)
 
 
+def has_pending_analysis_result(session_state) -> bool:
+    """Whether this session holds an analyzed BOM that has not been saved yet."""
+    if not session_state or session_state.get("analysis_saved"):
+        return False
+    result = session_state.get("results_df")
+    return bool(
+        result is not None
+        and hasattr(result, "columns")
+        and not bool(getattr(result, "empty", False))
+    )
+
+
 class OneTimeBOMError(RuntimeError):
     pass
 

@@ -24,6 +24,21 @@ class OneTimeBOMTests(unittest.TestCase):
     def setUp(self):
         self.price_id = "price_test_single_bom"
 
+    def test_pending_analysis_is_resumable_until_saved(self):
+        pending_result = types.SimpleNamespace(columns=["MPN"], empty=False)
+        self.assertFalse(one_time_bom.has_pending_analysis_result({}))
+        self.assertTrue(one_time_bom.has_pending_analysis_result({
+            "results_df": pending_result,
+            "analysis_saved": False,
+        }))
+        self.assertFalse(one_time_bom.has_pending_analysis_result({
+            "results_df": pending_result,
+            "analysis_saved": True,
+        }))
+        self.assertFalse(one_time_bom.has_pending_analysis_result({
+            "results_df": types.SimpleNamespace(columns=["MPN"], empty=True),
+        }))
+
     def test_feature_stays_off_without_price_and_service_key(self):
         with patch.object(one_time_bom, "get_secret_bool", return_value=True), \
              patch.object(one_time_bom, "get_secret", side_effect=lambda key: {
