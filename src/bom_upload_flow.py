@@ -49,10 +49,20 @@ def resume_approved_bom_submission(
 __all__ = [
     "consume_approved_bom_submission",
     "resume_approved_bom_submission",
+    "should_render_approved_bom_upload_form",
     "should_render_legacy_bom_workspace",
     "should_render_bom_analysis_body",
     "should_stop_approved_bom_renderer",
 ]
+
+
+def should_render_approved_bom_upload_form(
+    *,
+    upload_mode: bool,
+    analysis_running: bool,
+) -> bool:
+    """Hide the upload form while its progress view owns the active page."""
+    return bool(upload_mode) and not bool(analysis_running)
 
 
 def should_stop_approved_bom_renderer(

@@ -6,6 +6,7 @@ from src.saved_bom_cost import analysis_part_cost_fields, json_safe_value
 from src.bom_upload_flow import (
     consume_approved_bom_submission,
     resume_approved_bom_submission,
+    should_render_approved_bom_upload_form,
     should_render_legacy_bom_workspace,
     should_render_bom_analysis_body,
     should_stop_approved_bom_renderer,
@@ -87,6 +88,36 @@ class ApprovedBOMSubmissionTests(unittest.TestCase):
 
         self.assertIs(resumed_upload, upload)
         self.assertEqual((project, name), ("Motor project", "Rev B"))
+
+    def test_upload_form_hides_during_the_runtime_progress_view(self):
+        source = Path("src/ui/approved_pages.py").read_text(encoding="utf-8")
+        start = source.index("if upload_mode and analysis_running:")
+        end = source.index('    else:\n        from datetime import date', start)
+        transition = source[start:end]
+
+        self.assertIn("approved_bom_upload_progress", transition)
+        self.assertIn("should_render_approved_bom_upload_form(", transition)
+        self.assertIn("approved_bom_upload_panel", transition)
+
+    def test_upload_form_is_hidden_while_analysis_progress_is_active(self):
+        self.assertTrue(
+            should_render_approved_bom_upload_form(
+                upload_mode=True,
+                analysis_running=False,
+            )
+        )
+        self.assertFalse(
+            should_render_approved_bom_upload_form(
+                upload_mode=True,
+                analysis_running=True,
+            )
+        )
+        self.assertFalse(
+            should_render_approved_bom_upload_form(
+                upload_mode=False,
+                analysis_running=False,
+            )
+        )
 
     def test_upload_form_allows_runtime_to_resume_active_pipeline(self):
         active = {"cadivor_bom_pipeline_active": True}
