@@ -715,9 +715,6 @@ def report_styles() -> str:
       .cv-ei-action-link:hover{text-decoration:underline;text-underline-offset:3px}
       .cv-ei-action small { display:block; color:#64748b; font-weight:500; margin-top:3px; }
       .cv-ei-action .cv-ei-approved,.cv-ei-approved{display:inline-flex;align-items:center;width:max-content;max-width:100%;margin-top:6px;padding:4px 8px;border:1px solid #bbf7d0;border-radius:999px;background:#f0fdf4;color:#15803d;font-size:11px;font-weight:750;line-height:1.3}
-      .cv-ei-refresh-card{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:14px 16px;margin:0 0 16px;border:1px solid #dbeafe;border-radius:14px;background:#f8fbff}
-      .cv-ei-refresh-card strong{display:block;color:#1e3a8a;font-size:14px}
-      .cv-ei-refresh-card p{margin:3px 0 0;color:#475569;font-size:12px;line-height:1.45}
       .cv-ei-table td small, .cv-ei-offer a { display:block; margin-top:4px; color:#64748b; font-size:12px; font-weight:500; line-height:1.35; }
       .cv-ei-offer a { color:#2563eb; font-size:12px; font-weight:650; }
       .cv-ei-cost-comparison strong { display:block; color:#0f172a; font-size:13px; font-weight:700; }
@@ -1413,31 +1410,29 @@ def render_engineering_intelligence_report(
                 st.warning("Saved replacement approvals could not be loaded. They may be missing from this view until the connection is restored.")
             analysis_id = str(analysis.get("id") or "")
             with st.container(key="ei_refresh_saved_analysis", border=True):
-                refresh_copy, refresh_action = st.columns([4, 1.35], vertical_alignment="center")
-                with refresh_copy:
-                    st.markdown(
-                        f"**Saved data snapshot:** {_format_snapshot_timestamp(analysis.get('created_at'))}",
-                    )
-                    st.caption(
-                        "Stock, lead time, prices, and lifecycle are captured when this analysis runs so this report remains traceable. "
-                        "Cadivor does not poll suppliers while the report is open. Rerun the BOM to check current data; that creates a new saved analysis and leaves this report unchanged. "
-                        "Approved replacement decisions are saved separately and appear in BOM Risk and Alternatives."
-                    )
-                with refresh_action:
-                    if st.button(
-                        "Open BOM to rerun",
-                        key=f"ei_open_bom_to_rerun_{analysis_id or 'saved'}",
-                        type="secondary",
-                        use_container_width=True,
-                    ):
-                        from src.ui.navigation import navigate_to
+                st.markdown("#### Refresh supplier data")
+                st.caption(
+                    f"Saved data snapshot: {_format_snapshot_timestamp(analysis.get('created_at'))}"
+                )
+                st.caption(
+                    "Stock, lead time, prices, and lifecycle are captured when this analysis runs so this report remains traceable. "
+                    "Cadivor does not poll suppliers while the report is open. Rerun the BOM to check current data; that creates a new saved analysis and leaves this report unchanged. "
+                    "Approved replacement decisions are saved separately and appear in BOM Risk and Alternatives."
+                )
+                if st.button(
+                    "Open BOM to rerun",
+                    key=f"ei_open_bom_to_rerun_{analysis_id or 'saved'}",
+                    type="secondary",
+                    use_container_width=False,
+                ):
+                    from src.ui.navigation import navigate_to
 
-                        navigate_to(
-                            "BOM Settings",
-                            saved_bom_id=analysis_id,
-                            saved_bom_action="open",
-                            arm_opening=False,
-                        )
+                    navigate_to(
+                        "BOM Settings",
+                        saved_bom_id=analysis_id,
+                        saved_bom_action="open",
+                        arm_opening=False,
+                    )
             st.markdown(
                 engineering_intelligence_html(
                     bom_name=bom_name,

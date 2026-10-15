@@ -73,3 +73,30 @@ def test_new_bom_project_name_is_free_text():
     assert 'selected_project = st.selectbox(' not in upload_form
     assert 'resolve_project_choice(' in upload_form
     assert 'NEW_PROJECT_CHOICE' in upload_form
+
+
+def test_new_bom_upload_submits_names_and_file_together():
+    start = APPROVED_SOURCE.index('with st.container(key="approved_bom_upload_panel")')
+    end = APPROVED_SOURCE.index('    else:\\n        from datetime import date', start)
+    upload_form = APPROVED_SOURCE[start:end]
+
+    assert 'with st.form(key="approved_bom_upload_form", clear_on_submit=False)' in upload_form
+    assert 'st.form_submit_button(' in upload_form
+    assert 'autocomplete="off"' in upload_form
+    assert 'st.session_state["cadivor_pending_project"]' in upload_form
+    assert 'st.session_state["cadivor_pending_bom_name"] = bom_name' in upload_form
+    assert '[class*="st-key-approved_bom_analyze"] button{width:auto!important' in APPROVED_SOURCE
+
+
+def test_analysis_workspace_hides_duplicate_legacy_hero_and_caps_actions():
+    hero_start = RUNTIME_SOURCE.index('class="bom9-workspace-hero"')
+    guard_start = RUNTIME_SOURCE.rfind('if should_render_legacy_bom_workspace(st.session_state):', 0, hero_start)
+    assert guard_start >= 0
+    assert 'st-key-bom8_analysis_progress_card{max-width:960px!important' in RUNTIME_SOURCE
+    assert 'st-key-bom8_analysis_preview{max-width:1440px!important' in RUNTIME_SOURCE
+    assert 'st-key-bom8_one_time_payment_action{max-width:760px!important' in RUNTIME_SOURCE
+    payment_start = RUNTIME_SOURCE.index('key="bom8_one_time_payment_action"')
+    payment_end = RUNTIME_SOURCE.index('except OneTimeBOMError as exc:', payment_start)
+    payment_action = RUNTIME_SOURCE[payment_start:payment_end]
+    assert 'use_container_width=False' in payment_action
+    assert 'use_container_width=True' not in payment_action
