@@ -20817,6 +20817,34 @@ def run_authenticated_app() -> None:
                         if not one_time_bom_enabled():
                             st.warning("One-time checkout is temporarily unavailable. Your report has not been saved.")
                             stop_authenticated_page()
+                        _one_time_unassessed_count = int(
+                            results_df.get(
+                                "Risk Level",
+                                pd.Series("", index=results_df.index),
+                            ).astype(str).str.casefold().eq("needs verification").sum()
+                        )
+                        _one_time_evidence_acknowledged = True
+                        if _one_time_unassessed_count:
+                            _one_time_mpn_values = (
+                                results_df.get("MPN", pd.Series(dtype=str))
+                                .astype(str)
+                                .tolist()
+                            )
+                            _one_time_evidence_key = hashlib.sha256(
+                                "\n".join(sorted(_one_time_mpn_values)).encode("utf-8")
+                            ).hexdigest()[:12]
+                            st.warning(
+                                f"{_one_time_unassessed_count} of {len(results_df)} components "
+                                "could not be risk-rated because the saved analysis lacks a verified "
+                                "supplier match. If these are placeholders, replace them with "
+                                "manufacturer part numbers and rerun before purchasing. Payment "
+                                "does not add missing supplier coverage."
+                            )
+                            _one_time_evidence_acknowledged = st.checkbox(
+                                "I understand this report will include unassessed components.",
+                                key=f"bom8_report_evidence_ack_{_one_time_evidence_key}",
+                            )
+
                         try:
                             _one_time_final_price = one_time_report_price_label(
                                 str(get_secret("STRIPE_ONE_TIME_BOM_REPORT_PRICE_ID", required=True))
@@ -20827,16 +20855,26 @@ def run_authenticated_app() -> None:
                             )
                             _one_time_pending = pending_one_time_checkout(_one_time_user_id)
                             if _one_time_pending and _one_time_pending[0] == "open":
-                                _one_time_checkout_url = _one_time_pending[1]
+                                _one_time_checkout_url = (
+                                    _one_time_pending[1]
+                                    if _one_time_evidence_acknowledged
+                                    else ""
+                                )
                             elif _one_time_pending:
                                 _one_time_checkout_url = ""
                                 st.info("Stripe is confirming your payment. Your report will unlock here automatically.")
-                            else:
+                            elif _one_time_evidence_acknowledged:
                                 _one_time_checkout_url = begin_one_time_checkout(
                                     _one_time_user_id,
                                     str(current_user.get("email") or ""),
                                     app_checkout_url(page="BOM Analyzer", checkout="single_bom_success"),
                                     app_checkout_url(page="BOM Analyzer", checkout="single_bom_cancel"),
+                                )
+                            else:
+                                _one_time_checkout_url = ""
+                                st.info(
+                                    "Correct the part numbers and rerun, or acknowledge the coverage "
+                                    "limit to continue to payment."
                                 )
                             if _one_time_checkout_url:
                                 with st.container(
@@ -21215,7 +21253,7 @@ def run_authenticated_app() -> None:
                     ),
                 )
 
-            render_first_analysis_brief(
+            reviewed_component_keys = render_first_analysis_brief(
                 results_df,
                 health_score=st.session_state.get("health_score"),
                 analysis_id=str(st.session_state.get("analysis_id") or "") or None,
@@ -21268,86 +21306,107 @@ def run_authenticated_app() -> None:
             from src.ui.approved_pages import render_bom_component_table
             render_bom_component_table(filtered_df)
 
-            st.subheader("Part Details")
+            def _reviewed_part_key(value) -> str:
+                if value is None:
+                    return ""
+                try:
+                    if pd.isna(value):
+                        return ""
+                except (TypeError, ValueError):
+                    pass
+                return "".join(str(value).casefold().split())
 
-            for _, row in filtered_df.iterrows():
+            def _is_reviewed_component(row) -> bool:
+                for column in ("MPN", "Normalized MPN"):
+                    key = _reviewed_part_key(row.get(column))
+                    if key and key in reviewed_component_keys:
+                        return True
+                return False
 
-                risk_reasons = []
+            detail_df = filtered_df[
+                ~filtered_df.apply(_is_reviewed_component, axis=1)
+            ]
+            if not detail_df.empty:
+                st.subheader("Part Details")
+                st.caption("Detailed records for components not already summarized in the priority cards.")
+                for _, row in detail_df.iterrows():
 
-                stock_value = row.get("Stock Available")
-                if bool(row.get("Supplier Data Verified", False)) and pd.notna(stock_value) and float(stock_value) == 0:
-                    risk_reasons.append("No on-hand stock was reported by the checked suppliers")
+                    risk_reasons = []
 
-                supplier_count_value = row.get("Supplier Count")
-                if pd.notna(supplier_count_value) and int(supplier_count_value) == 1:
-                    risk_reasons.append("Only one checked supplier lists this part")
+                    stock_value = row.get("Stock Available")
+                    if bool(row.get("Supplier Data Verified", False)) and pd.notna(stock_value) and float(stock_value) == 0:
+                        risk_reasons.append("No on-hand stock was reported by the checked suppliers")
 
-                lifecycle_text = str(row["Lifecycle Status"]).lower()
+                    supplier_count_value = row.get("Supplier Count")
+                    if pd.notna(supplier_count_value) and int(supplier_count_value) == 1:
+                        risk_reasons.append("Only one checked supplier lists this part")
 
-                if "obsolete" in lifecycle_text:
-                    risk_reasons.append("Component marked obsolete")
+                    lifecycle_text = str(row["Lifecycle Status"]).lower()
 
-                if "unknown" in lifecycle_text:
-                    risk_reasons.append("Lifecycle status was not reported by the matched supplier")
-                if "conflicting" in lifecycle_text:
-                    risk_reasons.append("Matched suppliers returned conflicting lifecycle statuses")
+                    if "obsolete" in lifecycle_text:
+                        risk_reasons.append("Component marked obsolete")
 
-                if "replacement" in lifecycle_text:
-                    risk_reasons.append("Replacement suggested")
+                    if "unknown" in lifecycle_text:
+                        risk_reasons.append("Lifecycle status was not reported by the matched supplier")
+                    if "conflicting" in lifecycle_text:
+                        risk_reasons.append("Matched suppliers returned conflicting lifecycle statuses")
 
-                with st.expander(
-                    f"{row['MPN']} — {row['Risk Level']}"
-                ):
+                    if "replacement" in lifecycle_text:
+                        risk_reasons.append("Replacement suggested")
 
-                    if risk_reasons:
-                        st.markdown("### ⚠️ Risk Drivers")
+                    with st.expander(
+                        f"{row['MPN']} — {row['Risk Level']}"
+                    ):
 
-                        st.markdown(
-                            '<div class="cv-action-list">'
-                            + "".join(f'<div class="cv-action-row">{html.escape(str(reason))}</div>' for reason in risk_reasons)
-                            + '</div>',
-                            unsafe_allow_html=True,
-                        )
+                        if risk_reasons:
+                            st.markdown("### ⚠️ Risk Drivers")
+
+                            st.markdown(
+                                '<div class="cv-action-list">'
+                                + "".join(f'<div class="cv-action-row">{html.escape(str(reason))}</div>' for reason in risk_reasons)
+                                + '</div>',
+                                unsafe_allow_html=True,
+                            )
 
 
-                    col1, col2 = st.columns(2)
+                        col1, col2 = st.columns(2)
 
-                    with col1:
-                        st.write(f"**Manufacturer:** {row.get('Manufacturer', '')}")
-                        st.write(f"**Lifecycle Status:** {row.get('Lifecycle Status', '')}")
-                        st.write(f"**Stock Available:** {row.get('Stock Available') if pd.notna(row.get('Stock Available')) else 'Not reported'}")
-                        st.write(f"**Stock Evidence:** {row.get('Stock Evidence', 'Not reported by matched suppliers')}")
-                        st.write(f"**Supplier Count:** {row.get('Supplier Count') if pd.notna(row.get('Supplier Count')) else 'Not verified'}")
-                        st.write(f"**Supplier Coverage:** {row.get('Supplier Coverage') or 'Not reported'}")
-                        st.write(f"**Lead Time Source:** {row.get('Lead Time Source') or 'Not reported'}")
-                        st.write(f"**Lifecycle Evidence:** {row.get('Lifecycle Evidence Summary') or 'Not reported'}")
-                        st.write(
-                            f"**Available Suppliers:** "
-                            f"{row.get('Sources Available', '') or 'Not available'}"
-                        )
+                        with col1:
+                            st.write(f"**Manufacturer:** {row.get('Manufacturer', '')}")
+                            st.write(f"**Lifecycle Status:** {row.get('Lifecycle Status', '')}")
+                            st.write(f"**Stock Available:** {row.get('Stock Available') if pd.notna(row.get('Stock Available')) else 'Not reported'}")
+                            st.write(f"**Stock Evidence:** {row.get('Stock Evidence', 'Not reported by matched suppliers')}")
+                            st.write(f"**Supplier Count:** {row.get('Supplier Count') if pd.notna(row.get('Supplier Count')) else 'Not verified'}")
+                            st.write(f"**Supplier Coverage:** {row.get('Supplier Coverage') or 'Not reported'}")
+                            st.write(f"**Lead Time Source:** {row.get('Lead Time Source') or 'Not reported'}")
+                            st.write(f"**Lifecycle Evidence:** {row.get('Lifecycle Evidence Summary') or 'Not reported'}")
+                            st.write(
+                                f"**Available Suppliers:** "
+                                f"{row.get('Sources Available', '') or 'Not available'}"
+                            )
 
-                    with col2:
-                        st.write(f"**Risk Score:** {row.get('Risk Score', 0)}")
-                        st.write(f"**Risk Level:** {row.get('Risk Level', '')}")
-                        has_alternates = row.get("Has Alternates", False)
-                        st.write(
-                            f"**Alternate search:** {row.get('Alternate Search Status') or ('Candidates returned' if has_alternates else 'Not checked')}"
-                        )
+                        with col2:
+                            st.write(f"**Risk Score:** {row.get('Risk Score', 0)}")
+                            st.write(f"**Risk Level:** {row.get('Risk Level', '')}")
+                            has_alternates = row.get("Has Alternates", False)
+                            st.write(
+                                f"**Alternate search:** {row.get('Alternate Search Status') or ('Candidates returned' if has_alternates else 'Not checked')}"
+                            )
 
-                    st.write("**Risk Reasons:**")
-                    st.info(row.get("Risk Reasons", ""))
+                        st.write("**Risk Reasons:**")
+                        st.info(row.get("Risk Reasons", ""))
 
-                    if row.get("Has Alternates", False):
-                        st.write("**Candidate Alternatives:**")
-                        st.success(row.get("Alternative Part Numbers", ""))
-                    else:
-                        st.write(
-                            "**Candidate Alternatives:** No candidates were returned. "
-                            "Search coverage may be incomplete; review the part in Find a replacement."
-                        )
+                        if row.get("Has Alternates", False):
+                            st.write("**Candidate Alternatives:**")
+                            st.success(row.get("Alternative Part Numbers", ""))
+                        else:
+                            st.write(
+                                "**Candidate Alternatives:** No candidates were returned. "
+                                "Search coverage may be incomplete; review the part in Find a replacement."
+                            )
 
-                    if row.get("Product URL", ""):
-                        st.markdown(f"[🔗 Open supplier product page]({row.get('Product URL')})")
+                        if row.get("Product URL", ""):
+                            st.markdown(f"[🔗 Open supplier product page]({row.get('Product URL')})")
 
 
             from io import BytesIO

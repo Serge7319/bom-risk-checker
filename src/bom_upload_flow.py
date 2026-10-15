@@ -53,6 +53,7 @@ __all__ = [
     "should_render_legacy_bom_workspace",
     "should_render_bom_analysis_body",
     "should_stop_approved_bom_renderer",
+    "prepare_new_approved_bom_analysis",
 ]
 
 
@@ -60,18 +61,59 @@ def should_render_approved_bom_upload_form(
     *,
     upload_mode: bool,
     analysis_running: bool,
+    results_visible: bool = False,
 ) -> bool:
-    """Hide the upload form while its progress view owns the active page."""
-    return bool(upload_mode) and not bool(analysis_running)
+    """Hide upload controls while progress or completed results own the page."""
+    return (
+        bool(upload_mode)
+        and not bool(analysis_running)
+        and not bool(results_visible)
+    )
 
 
 def should_stop_approved_bom_renderer(
     state: MutableMapping[str, Any],
     *,
     upload_mode: bool,
+    results_visible: bool = False,
 ) -> bool:
-    """Keep the authenticated BOM pipeline running after its upload form reruns."""
-    return not (bool(upload_mode) and bool(state.get("cadivor_bom_pipeline_active")))
+    """Keep the analysis pipeline running while it renders progress or results."""
+    return not (
+        bool(results_visible)
+        or (bool(upload_mode) and bool(state.get("cadivor_bom_pipeline_active")))
+    )
+
+
+def prepare_new_approved_bom_analysis(state: MutableMapping[str, Any]) -> None:
+    """Clear the finished analysis context before showing a fresh upload form."""
+    for key in (
+        "results_df",
+        "analysis_saved",
+        "analysis_id",
+        "health_score",
+        "health_status",
+        "show_analysis_success_29b",
+        "cadivor_active_analysis_id",
+        "cadivor_active_analysis_tab",
+        "cadivor_show_detailed_risk",
+        "cadivor_bom_pipeline_active",
+        "bom8_analysis_future",
+        "bom8_analysis_pending",
+        "bom8_analysis_in_progress",
+        "bom8_analysis_upload_file",
+        "bom8_project_name",
+        "bom8_bom_name",
+        "cadivor_bom_analysis_ready",
+        "cadivor_pending_upload",
+        "cadivor_pending_project",
+        "cadivor_pending_bom_name",
+        "approved_bom_project_name",
+        "approved_bom_name",
+        "bom_file_uploader",
+    ):
+        state.pop(key, None)
+    state["cadivor_bom_upload_open"] = True
+    state["cadivor_manage_saved_boms"] = False
 
 
 def should_render_legacy_bom_workspace(state: MutableMapping[str, Any]) -> bool:

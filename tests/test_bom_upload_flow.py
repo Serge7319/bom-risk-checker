@@ -10,6 +10,7 @@ from src.bom_upload_flow import (
     should_render_legacy_bom_workspace,
     should_render_bom_analysis_body,
     should_stop_approved_bom_renderer,
+    prepare_new_approved_bom_analysis,
 )
 
 
@@ -30,6 +31,17 @@ class ApprovedBOMPageContractTests(unittest.TestCase):
         self.assertIn('"Project name"', upload_form)
         self.assertNotIn('selected_project = st.selectbox(', upload_form)
         self.assertIn('resolve_project_choice(', upload_form)
+
+    def test_one_time_checkout_discloses_unassessed_components(self):
+        source = Path("src/authenticated_runtime.py").read_text(encoding="utf-8")
+        start = source.index('if not one_time_credit_available(_one_time_user_id):')
+        end = source.index('high_count = len(results_df[results_df["Risk Level"] == "High"])', start)
+        checkout = source[start:end]
+
+        self.assertIn("could not be risk-rated", checkout)
+        self.assertIn("does not add missing supplier coverage.", checkout)
+        self.assertIn("st.checkbox(", checkout)
+        self.assertIn("if _one_time_evidence_acknowledged:", checkout)
 
 
 class ApprovedBOMSubmissionTests(unittest.TestCase):
@@ -91,13 +103,15 @@ class ApprovedBOMSubmissionTests(unittest.TestCase):
 
     def test_upload_form_hides_during_the_runtime_progress_view(self):
         source = Path("src/ui/approved_pages.py").read_text(encoding="utf-8")
-        start = source.index("if upload_mode and analysis_running:")
+        start = source.index("if upload_mode and analysis_running and not results_visible:")
         end = source.index('    else:\n        from datetime import date', start)
         transition = source[start:end]
 
         self.assertIn("approved_bom_upload_progress", transition)
         self.assertIn("should_render_approved_bom_upload_form(", transition)
         self.assertIn("approved_bom_upload_panel", transition)
+        self.assertIn("elif results_visible:", transition)
+        self.assertIn("results_visible=results_visible", source)
 
     def test_upload_form_is_hidden_while_analysis_progress_is_active(self):
         self.assertTrue(
@@ -118,6 +132,13 @@ class ApprovedBOMSubmissionTests(unittest.TestCase):
                 analysis_running=False,
             )
         )
+        self.assertFalse(
+            should_render_approved_bom_upload_form(
+                upload_mode=True,
+                analysis_running=False,
+                results_visible=True,
+            )
+        )
 
     def test_upload_form_allows_runtime_to_resume_active_pipeline(self):
         active = {"cadivor_bom_pipeline_active": True}
@@ -131,7 +152,31 @@ class ApprovedBOMSubmissionTests(unittest.TestCase):
         self.assertTrue(
             should_stop_approved_bom_renderer(active, upload_mode=False)
         )
+        self.assertFalse(
+            should_stop_approved_bom_renderer(
+                active,
+                upload_mode=True,
+                results_visible=True,
+            )
+        )
 
+    def test_starting_new_analysis_clears_completed_result_state(self):
+        state = {
+            "results_df": object(),
+            "analysis_id": "old-analysis",
+            "analysis_saved": True,
+            "show_analysis_success_29b": True,
+            "approved_bom_project_name": "Old project",
+            "cadivor_bom_pipeline_active": True,
+        }
+
+        prepare_new_approved_bom_analysis(state)
+
+        self.assertNotIn("results_df", state)
+        self.assertNotIn("analysis_id", state)
+        self.assertNotIn("approved_bom_project_name", state)
+        self.assertNotIn("cadivor_bom_pipeline_active", state)
+        self.assertTrue(state["cadivor_bom_upload_open"])
 
     def test_analysis_body_renders_on_bom_analyzer_without_review_flag(self):
         self.assertTrue(should_render_bom_analysis_body("BOM Analyzer"))

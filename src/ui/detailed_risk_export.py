@@ -392,8 +392,21 @@ def detailed_risk_excel_bytes(
         state: sum(row["Stock coverage"] == state for row in rows)
         for state in ("Complete", "Incomplete", "Unavailable")
     }
+    risk_assessed_count = counts["High"] + counts["Medium"] + counts["Low"]
+    risk_coverage = risk_assessed_count / len(rows) if rows else 0
+    supplier_match_count = sum(
+        (_number(row["Supplier count"]) or 0) > 0
+        or row["Evidence source"] != "—"
+        or row["Recorded supplier"] != "—"
+        or row["Lead-time source"] != "—"
+        or row["Lifecycle evidence"] not in {"—", "Unavailable"}
+        for row in rows
+    )
     metrics = [
         ("Total components", len(rows)),
+        ("Parts with matched supplier evidence", supplier_match_count),
+        ("Risk assessed", risk_assessed_count),
+        ("Risk coverage", f"{risk_coverage:.0%}"),
         ("High risk", counts["High"]),
         ("Medium risk", counts["Medium"]),
         ("Low risk", counts["Low"]),
@@ -406,6 +419,29 @@ def detailed_risk_excel_bytes(
         ("Stock coverage unavailable", stock_coverage_counts["Unavailable"]),
         ("Components with approved alternatives", sum(row["Approved alternatives"] != "—" for row in rows)),
     ]
+    unassessed_count = counts["Not assessed"]
+    if not rows:
+        coverage_note = "No component records were available to assess in this report."
+    elif unassessed_count or supplier_match_count < len(rows):
+        unmatched_count = len(rows) - supplier_match_count
+        coverage_note = (
+            f"Risk was assessed for {risk_assessed_count} of {len(rows)} parts "
+            f"({risk_coverage:.0%}). {unassessed_count} were not risk-rated and "
+            f"{unmatched_count} had no matched supplier evidence. Unassessed parts "
+            "are not evidence of low risk; verify manufacturer part numbers and rerun."
+        )
+    else:
+        coverage_note = (
+            f"Risk ratings are recorded for all {len(rows)} parts, with matched "
+            "supplier evidence present. Values reflect the analysis date shown above."
+        )
+    summary.merge_cells("A7:B7")
+    summary["A7"] = _safe_cell(coverage_note)
+    summary["A7"].font = Font(name="Aptos", size=10, bold=True, color="7C2D12")
+    summary["A7"].fill = PatternFill("solid", fgColor="FFF7ED")
+    summary["A7"].alignment = Alignment(wrap_text=True, vertical="center")
+    summary.row_dimensions[7].height = 42
+
     summary.merge_cells("A8:B8")
     summary["A8"] = "Analysis summary"
     summary["A8"].font = Font(name="Aptos", size=12, bold=True, color=white)
@@ -489,6 +525,29 @@ def detailed_risk_excel_bytes(
 
     add_table("Component Details", rows, "CadivorComponentDetails")
     add_table("High Risk Parts", high_rows, "CadivorHighRiskParts")
+    if not high_rows:
+        high_sheet = workbook["High Risk Parts"]
+        last_column = get_column_letter(len(DETAIL_COLUMNS))
+        high_sheet.merge_cells(
+            start_row=2,
+            start_column=1,
+            end_row=2,
+            end_column=len(DETAIL_COLUMNS),
+        )
+        note = high_sheet.cell(
+            2,
+            1,
+            _safe_cell(
+                "No parts were classified High risk. "
+                f"{unassessed_count} of {len(rows)} part(s) were not assessed; "
+                "an unassessed part is not proof of low risk."
+            ),
+        )
+        note.font = Font(name="Aptos", size=10, bold=True, color="7C2D12")
+        note.fill = PatternFill("solid", fgColor="FFF7ED")
+        note.alignment = Alignment(wrap_text=True, vertical="center")
+        high_sheet.row_dimensions[2].height = 42
+        high_sheet.auto_filter.ref = f"A1:{last_column}1"
 
     buffer = BytesIO()
     workbook.save(buffer)
