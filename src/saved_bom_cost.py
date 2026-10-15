@@ -8,6 +8,9 @@ matches and whose price break applies to the BOM quantity.
 from __future__ import annotations
 
 import json
+import math
+from decimal import Decimal
+from numbers import Integral, Real
 from typing import Any, Mapping
 
 OPTIONAL_SAVED_PART_COLUMNS = (
@@ -28,6 +31,46 @@ OPTIONAL_SAVED_PART_COLUMNS = (
 )
 
 _MISSING_TEXT = {"", "nan", "none", "null", "no supplier match", "unknown"}
+
+def json_safe_value(value: Any) -> Any:
+    """Recursively convert supplier and analysis values to strict JSON values."""
+    if value is None or isinstance(value, (str, bool)):
+        return value
+    if type(value).__name__ in {"NAType", "NaTType"}:
+        return None
+    if isinstance(value, Mapping):
+        return {str(key): json_safe_value(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [json_safe_value(item) for item in value]
+    if hasattr(value, "tolist") and not isinstance(value, (str, bytes, dict)):
+        try:
+            listed = value.tolist()
+        except (TypeError, ValueError):
+            listed = value
+        if listed is not value:
+            return json_safe_value(listed)
+    if hasattr(value, "item") and not isinstance(value, (str, bytes, dict)):
+        try:
+            scalar = value.item()
+        except (TypeError, ValueError):
+            scalar = value
+        if scalar is not value:
+            return json_safe_value(scalar)
+    if isinstance(value, Integral):
+        return int(value)
+    if isinstance(value, (Real, Decimal)):
+        try:
+            number = float(value)
+        except (TypeError, ValueError, OverflowError):
+            return None
+        return number if math.isfinite(number) else None
+    if hasattr(value, "isoformat"):
+        try:
+            return value.isoformat()
+        except (TypeError, ValueError):
+            return str(value)
+    return str(value)
+
 
 
 def _blank(value: Any) -> bool:
@@ -56,7 +99,7 @@ def positive_number(value: Any) -> float | None:
         number = float(str(value).strip())
     except (TypeError, ValueError):
         return None
-    if number != number or number <= 0:
+    if not math.isfinite(number) or number <= 0:
         return None
     return number
 
@@ -114,7 +157,7 @@ def _recorded_stock(value: Any) -> int | None:
         number = float(text)
     except (TypeError, ValueError):
         return None
-    if number != number or number < 0:
+    if not math.isfinite(number) or number < 0:
         return None
     return int(number)
 
@@ -158,7 +201,7 @@ def _break_quantity(value: Any) -> float | None:
         number = float(str(value).strip())
     except (TypeError, ValueError):
         return None
-    if number != number or number <= 0:
+    if not math.isfinite(number) or number <= 0:
         return None
     return number
 
