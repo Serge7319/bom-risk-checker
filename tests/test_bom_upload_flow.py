@@ -1,6 +1,8 @@
+import json
 import unittest
 from pathlib import Path
 
+from src.saved_bom_cost import analysis_part_cost_fields, json_safe_value
 from src.bom_upload_flow import (
     consume_approved_bom_submission,
     resume_approved_bom_submission,
@@ -129,6 +131,75 @@ class ApprovedBOMSubmissionTests(unittest.TestCase):
             should_render_legacy_bom_workspace({"cadivor_bom_pipeline_active": True})
         )
         self.assertTrue(should_render_legacy_bom_workspace({}))
+
+
+class BOMPartPayloadJsonSafetyTests(unittest.TestCase):
+    def test_non_finite_cost_and_quantity_values_are_treated_as_missing(self):
+        fields = analysis_part_cost_fields(
+            {
+                "MPN": "CAP-10U",
+                "Unit Price": float("inf"),
+                "Quantity": float("inf"),
+                "Supplier Offers": [
+                    {"distributor": "DigiKey", "unit_price": float("inf")}
+                ],
+            }
+        )
+
+        self.assertEqual(fields["unit_price"], 0)
+        self.assertEqual(fields["quantity"], 0)
+        self.assertEqual(fields["supplier_offers"], [])
+
+        finite_price_fields = analysis_part_cost_fields(
+            {
+                "MPN": "CAP-10U",
+                "Unit Price": 0.25,
+                "Quantity": 4,
+                "Supplier Offers": [
+                    {
+                        "distributor": "DigiKey",
+                        "unit_price": 0.25,
+                        "price_break_quantity": float("inf"),
+                        "stock": float("inf"),
+                    }
+                ],
+            }
+        )
+        self.assertEqual(
+            finite_price_fields["supplier_offers"][0]["price_break_quantity"],
+            None,
+        )
+        self.assertEqual(finite_price_fields["supplier_offers"][0]["stock"], None)
+
+    def test_nested_non_finite_supplier_values_become_strict_json(self):
+        payload = {
+            "risk_score": 72,
+            "supplier_evidence": [
+                {"stock": float("inf"), "lead_time": float("-inf")},
+                {"price": float("nan")},
+            ],
+        }
+
+        cleaned = json_safe_value(payload)
+
+        self.assertEqual(
+            cleaned,
+            {
+                "risk_score": 72,
+                "supplier_evidence": [
+                    {"stock": None, "lead_time": None},
+                    {"price": None},
+                ],
+            },
+        )
+        json.dumps(cleaned, allow_nan=False)
+
+    def test_analysis_part_insert_sanitizes_nested_supplier_payload(self):
+        source = Path("src/authenticated_runtime.py").read_text(encoding="utf-8")
+        self.assertIn(
+            "pending_records = [json_safe_value(record) for record in part_records]",
+            source,
+        )
 
 
 if __name__ == "__main__":

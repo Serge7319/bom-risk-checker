@@ -20935,6 +20935,7 @@ def run_authenticated_app() -> None:
                 from src.saved_bom_cost import (
                     OPTIONAL_SAVED_PART_COLUMNS,
                     analysis_part_cost_fields,
+                    json_safe_value,
                     omitted_optional_column,
                     without_column,
                 )
@@ -20984,7 +20985,7 @@ def run_authenticated_app() -> None:
 
                 if part_records:
                     try:
-                        pending_records = part_records
+                        pending_records = [json_safe_value(record) for record in part_records]
                         for _attempt in range(len(OPTIONAL_SAVED_PART_COLUMNS) + 1):
                             try:
                                 supabase.table("analysis_parts").insert(pending_records).execute()
