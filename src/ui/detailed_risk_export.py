@@ -22,6 +22,10 @@ CSV_COLUMNS = (
     "Approved alternatives",
     "Risk",
     "Why",
+    "Unit price",
+    "Unit price currency",
+    "Extended cost",
+    "Description-mentioned alternatives",
 )
 
 DETAIL_COLUMNS = (
@@ -46,6 +50,9 @@ DETAIL_COLUMNS = (
     "Alternate search status",
     "Approved alternatives",
     "Unit price",
+    "Unit price currency",
+    "Extended cost",
+    "Description-mentioned alternatives",
 )
 
 _MISSING = {"", "nan", "none", "null", "nat", "not recorded"}
@@ -240,6 +247,113 @@ def _supplier_count(record: dict[str, Any]) -> int | float | str:
     return value
 
 
+def _price_currency(record: dict[str, Any], *, mpn: str, supplier: str, price: int | float | None) -> str:
+    explicit = _text(_first(record, "unit_price_currency", "currency", "Currency"), "")
+    if explicit:
+        return explicit.upper()
+    if price is None or not supplier:
+        return ""
+    offers = _json_value(record.get("supplier_offers"))
+    if isinstance(offers, dict):
+        offers = [offers]
+    if not isinstance(offers, list):
+        return ""
+    wanted_mpn = re.sub(r"[^A-Z0-9]", "", mpn.upper())
+    wanted_supplier = supplier.strip().casefold()
+    currencies = set()
+    for offer in offers:
+        if not isinstance(offer, dict):
+            continue
+        offer_mpn = str(offer.get("mpn") or "").strip()
+        normalized_offer_mpn = re.sub(r"[^A-Z0-9]", "", offer_mpn.upper())
+        offer_supplier = str(
+            offer.get("distributor") or offer.get("supplier") or offer.get("source") or ""
+        ).strip().casefold()
+        offer_price = _number(offer.get("unit_price"))
+        currency = _text(offer.get("currency"), "").upper()
+        if (
+            normalized_offer_mpn == wanted_mpn
+            and offer_supplier == wanted_supplier
+            and offer_price is not None
+            and math.isclose(float(offer_price), float(price), rel_tol=1e-8, abs_tol=1e-8)
+            and currency
+        ):
+            currencies.add(currency)
+    return next(iter(currencies)) if len(currencies) == 1 else ""
+
+
+def _currency_totals(rows: list[dict[str, Any]], *, predicate=None) -> str:
+    totals: dict[str, float] = {}
+    for row in rows:
+        if predicate is not None and not predicate(row):
+            continue
+        amount = row.get("Extended cost")
+        currency = str(row.get("Unit price currency") or "").strip()
+        if (
+            not isinstance(amount, (int, float))
+            or not currency
+            or currency.casefold() in {"—", "not reported", "unknown"}
+        ):
+            continue
+        totals[currency] = totals.get(currency, 0.0) + float(amount)
+    return "; ".join(
+        f"{currency} {amount:,.2f}" for currency, amount in sorted(totals.items())
+    ) or "Not available from recorded currency data"
+
+
+def _longest_reported_lead(rows: list[dict[str, Any]]) -> str:
+    candidates = [
+        row for row in rows
+        if isinstance(row.get("Lead time (weeks)"), (int, float))
+        and row["Lead time (weeks)"] > 0
+    ]
+    if not candidates:
+        return "Not reported"
+    row = max(candidates, key=lambda item: float(item["Lead time (weeks)"]))
+    source = row.get("Lead-time source")
+    source_note = f" ({source})" if source and source != "—" else ""
+    return f"{row['Lead time (weeks)']:g} weeks — {row['MPN']}{source_note}"
+
+
+def _is_high_or_lifecycle_risk(row: dict[str, Any]) -> bool:
+    lifecycle = str(row.get("Lifecycle") or "").casefold()
+    return row.get("Risk") == "High" or any(
+        token in lifecycle for token in ("obsolete", "eol", "end of life", "nrnd")
+    )
+
+
+def report_exposure_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Summarize quoted BOM cost and lead-time evidence without projecting spend or delay."""
+    high_rows = [row for row in rows if _is_high_or_lifecycle_risk(row)]
+    return {
+        "priced_component_count": sum(
+            isinstance(row.get("Extended cost"), (int, float)) for row in rows
+        ),
+        "priced_missing_currency_count": sum(
+            isinstance(row.get("Extended cost"), (int, float))
+            and row.get("Unit price currency") == "Not reported"
+            for row in rows
+        ),
+        "extended_amount_by_currency": _currency_totals(rows),
+        "high_risk_amount_by_currency": _currency_totals(
+            rows, predicate=_is_high_or_lifecycle_risk
+        ),
+        "high_risk_without_extended_cost_count": sum(
+            not isinstance(row.get("Extended cost"), (int, float))
+            for row in high_rows
+        ),
+        "high_risk_missing_currency_count": sum(
+            isinstance(row.get("Extended cost"), (int, float))
+            and row.get("Unit price currency") == "Not reported"
+            for row in high_rows
+        ),
+        "longest_reported_lead_time": _longest_reported_lead(rows),
+        "components_with_lead_time_count": sum(
+            isinstance(row.get("Lead time (weeks)"), (int, float)) for row in rows
+        ),
+    }
+
+
 def _safe_cell(value: Any) -> Any:
     """Prevent user or supplier text from becoming an Excel/CSV formula."""
     if isinstance(value, str) and value.lstrip().startswith(("=", "+", "-", "@")):
@@ -254,6 +368,8 @@ def component_rows(
     """Convert stored component records to an explicitly whitelisted report schema."""
     from src.ui.ei_bom_report import _description_text
     from src.approved_alternatives import approved_mpn_map, part_key
+    from src.alternate_reference_parser import extract_description_alternates
+    from src.saved_bom_cost import extended_cost
 
     approved_by_part = approved_mpn_map(approved_alternatives)
     output = []
@@ -280,14 +396,23 @@ def component_rows(
             else "Unavailable"
         )
         price = _number(_first(record, "unit_price", "Unit Price", "price"))
+        mpn = _text(_first(record, "mpn", "MPN", "part_number", "manufacturer_part_number"))
+        supplier = _text(_first(record, "primary_supplier", "best_source", "supplier", "distributor"), "")
+        quantity = _number(_first(record, "quantity", "Quantity", "qty"))
+        extended = extended_cost(price, quantity)
+        price_currency = _price_currency(
+            record, mpn=mpn, supplier=supplier, price=price
+        )
+        description = _first(record, "description", "Description", "part_description")
+        description_alternates = extract_description_alternates(description)
         output.append({
-            "MPN": _text(_first(record, "mpn", "MPN", "part_number", "manufacturer_part_number")),
+            "MPN": mpn,
             "Description": _text(
-                _description_text(_first(record, "description", "Description", "part_description"))
+                _description_text(description)
             ),
             "Manufacturer": _text(_first(record, "manufacturer", "Manufacturer")),
-            "Qty": _number(_first(record, "quantity", "Quantity", "qty"))
-            if _number(_first(record, "quantity", "Quantity", "qty")) is not None
+            "Qty": quantity
+            if quantity is not None
             else _text(_first(record, "quantity", "Quantity", "qty")),
             "Lifecycle": lifecycle,
             "Stock": _stock(record),
@@ -299,19 +424,22 @@ def component_rows(
                 )
                 if str(item.get("alternative_part") or "").strip()
             ) or "—",
-            "Recorded supplier": _text(_first(record, "primary_supplier", "best_source", "supplier", "distributor")),
+            "Recorded supplier": supplier or "—",
             "Stock coverage": coverage,
             "Lead time (weeks)": _lead_time(record),
             "Lead-time source": _text(record.get("lead_time_source")),
             "Supplier count": _supplier_count(record),
             "Supplier coverage": _text(record.get("supplier_coverage")),
             "Risk": risk,
-            "Risk score": score if score is not None else "Not assessed",
+            "Risk score": score if score is not None else ("Not assessed" if risk == "Not assessed" else "Not recorded"),
             "Why": _reasons(record),
             "Lifecycle evidence": _lifecycle_evidence(record.get("lifecycle_evidence")),
             "Lifecycle conflict": evidence_conflict,
             "Alternate search status": _text(record.get("alternate_search_status")),
             "Unit price": price if price is not None and price > 0 else "—",
+            "Unit price currency": price_currency or "Not reported",
+            "Extended cost": extended if extended is not None else "—",
+            "Description-mentioned alternatives": ", ".join(description_alternates) or "—",
         })
     return output
 
@@ -333,6 +461,10 @@ def detailed_risk_csv_bytes(
             "Approved alternatives": row["Approved alternatives"],
             "Risk": row["Risk"],
             "Why": row["Why"],
+            "Unit price": row["Unit price"],
+            "Unit price currency": row["Unit price currency"],
+            "Extended cost": row["Extended cost"],
+            "Description-mentioned alternatives": row["Description-mentioned alternatives"],
         }
         for row in component_rows(parts, approved_alternatives)
     ]
@@ -422,6 +554,7 @@ def detailed_risk_excel_bytes(
         state: sum(row["Stock coverage"] == state for row in rows)
         for state in ("Complete", "Incomplete", "Unavailable")
     }
+    exposure = report_exposure_summary(rows)
     risk_assessed_count = counts["High"] + counts["Medium"] + counts["Low"]
     risk_coverage = risk_assessed_count / len(rows) if rows else 0
     supplier_match_count = sum(_has_supplier_match(part) for part in parts or [] if isinstance(part, dict))
@@ -441,6 +574,15 @@ def detailed_risk_excel_bytes(
         ("Stock coverage incomplete", stock_coverage_counts["Incomplete"]),
         ("Stock coverage unavailable", stock_coverage_counts["Unavailable"]),
         ("Components with approved alternatives", sum(row["Approved alternatives"] != "—" for row in rows)),
+        ("Priced components with BOM quantity", exposure["priced_component_count"]),
+        ("Priced components missing currency", exposure["priced_missing_currency_count"]),
+        ("Extended BOM amount by recorded currency", exposure["extended_amount_by_currency"]),
+        ("High-risk / lifecycle amount by currency", exposure["high_risk_amount_by_currency"]),
+        ("High-risk / lifecycle rows without extended cost", exposure["high_risk_without_extended_cost_count"]),
+        ("Priced high-risk rows missing currency", exposure["high_risk_missing_currency_count"]),
+        ("Longest reported part lead time", exposure["longest_reported_lead_time"]),
+        ("Components with lead-time data", exposure["components_with_lead_time_count"]),
+        ("Description-mentioned replacement candidates", sum(row["Description-mentioned alternatives"] != "—" for row in rows)),
     ]
     unassessed_count = counts["Not assessed"]
     if not rows:
@@ -449,9 +591,10 @@ def detailed_risk_excel_bytes(
         unmatched_count = len(rows) - supplier_match_count
         coverage_note = (
             f"Risk was assessed for {risk_assessed_count} of {len(rows)} parts "
-            f"({risk_coverage:.0%}). {unassessed_count} were not risk-rated and "
-            f"{unmatched_count} had no matched supplier evidence. Unassessed parts "
-            "are not evidence of low risk; verify manufacturer part numbers and rerun."
+            f"({risk_coverage:.0%}). {unassessed_count} part(s) remain unassessed; "
+            f"{unmatched_count} part(s) have no matched supplier evidence. These counts "
+            "can refer to the same part. An unassessed result is not evidence of low risk; "
+            "verify the manufacturer part number and rerun."
         )
     else:
         coverage_note = (
@@ -485,6 +628,9 @@ def detailed_risk_excel_bytes(
         "Stock is shown as Not reported when the saved record has no usable count. A zero is shown only when stock-source evidence is recorded.",
         "A dash (—) means the saved analysis did not include that optional value. Re-run the analysis to refresh supplier evidence.",
         "Approved alternatives are user-recorded decisions. They do not independently verify electrical or mechanical compatibility.",
+        "A replacement mentioned in a supplier description is an unverified search lead, not a confirmed or approved cross.",
+        "Extended cost is recorded unit price × BOM quantity. Totals include only rows with an explicitly recorded currency and are grouped by currency. They are not inventory valuation or committed spend.",
+        "The longest reported component lead time is a possible sourcing bottleneck, not a forecast of project delay.",
         "Risk ratings and reasons reflect the saved analysis. Re-run the analysis to refresh distributor data.",
     )
     for offset, note in enumerate(notes, start=1):
@@ -524,8 +670,8 @@ def detailed_risk_excel_bytes(
                     if fill:
                         cell.fill = PatternFill("solid", fgColor=fill)
                         cell.font = Font(name="Aptos", size=10, bold=True, color=navy)
-                if label in {"Qty", "Stock", "Lead time (weeks)", "Supplier count", "Risk score", "Unit price"} and isinstance(value, (int, float)):
-                    cell.number_format = "$0.0000" if label == "Unit price" else "#,##0.##"
+                if label in {"Qty", "Stock", "Lead time (weeks)", "Supplier count", "Risk score", "Unit price", "Extended cost"} and isinstance(value, (int, float)):
+                    cell.number_format = "#,##0.0000" if label == "Unit price" else "#,##0.00" if label == "Extended cost" else "#,##0.##"
         sheet.freeze_panes = "A2"
         last_column = get_column_letter(len(DETAIL_COLUMNS))
         sheet.auto_filter.ref = f"A1:{last_column}{max(1, len(data) + 1)}"
@@ -538,6 +684,8 @@ def detailed_risk_excel_bytes(
             "Risk score": 13, "Why": 58, "Lifecycle evidence": 44,
             "Lifecycle conflict": 22, "Alternate search status": 38,
             "Approved alternatives": 28, "Unit price": 14,
+            "Unit price currency": 19, "Extended cost": 16,
+            "Description-mentioned alternatives": 38,
         }
         for index, label in enumerate(DETAIL_COLUMNS, start=1):
             sheet.column_dimensions[sheet.cell(1, index).column_letter].width = widths[label]

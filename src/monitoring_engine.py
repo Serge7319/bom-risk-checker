@@ -1,20 +1,49 @@
+import logging
+import math
+
+from src.saved_bom_cost import json_safe_value
+
+
+_logger = logging.getLogger(__name__)
+
+
+def _optional_number(value):
+    """Convert a numeric snapshot value to a finite float or None."""
+    value = json_safe_value(value)
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return number if math.isfinite(number) else None
+
+
+def _display_text(value, default=""):
+    value = json_safe_value(value)
+    if value is None:
+        return default
+    text = str(value).strip()
+    return default if text.casefold() in {"", "nan", "none", "nat", "null"} else text
+
+
 def build_monitor_record(
     user_id,
     analysis_id,
     part_data,
     workspace_id=None,
 ):
-    return {
+    return json_safe_value({
         "user_id": user_id,
         "workspace_id": workspace_id,
         "analysis_id": analysis_id,
-        "part_number": part_data.get("MPN", ""),
-        "supplier": part_data.get("Best Source", ""),
-        "lifecycle_status": part_data.get("Lifecycle Status", ""),
-        "stock": part_data.get("Stock Available", 0),
-        "unit_price": part_data.get("Unit Price", 0.0),
-        "risk_level": part_data.get("Risk Level", ""),
-    }
+        "part_number": _display_text(part_data.get("MPN", "")),
+        "supplier": _display_text(part_data.get("Best Source", "")),
+        "lifecycle_status": _display_text(part_data.get("Lifecycle Status", "")),
+        "stock": _optional_number(part_data.get("Stock Available")),
+        "unit_price": _optional_number(part_data.get("Unit Price")),
+        "risk_level": _display_text(part_data.get("Risk Level", "")),
+    })
 
 def build_alert_record(
     user_id,
@@ -50,11 +79,11 @@ def detect_monitor_alerts(
     alerts = []
     messages = []
 
-    previous_stock = previous_snapshot.get("stock", 0) or 0
-    current_stock = current_snapshot.get("stock", 0) or 0
+    previous_stock = _optional_number(previous_snapshot.get("stock"))
+    current_stock = _optional_number(current_snapshot.get("stock"))
 
-    previous_price = float(previous_snapshot.get("unit_price", 0) or 0)
-    current_price = float(current_snapshot.get("unit_price", 0) or 0)
+    previous_price = _optional_number(previous_snapshot.get("unit_price"))
+    current_price = _optional_number(current_snapshot.get("unit_price"))
 
     previous_lifecycle = str(previous_snapshot.get("lifecycle_status", "") or "Unknown").lower()
     current_lifecycle = str(current_snapshot.get("lifecycle_status", "") or "Unknown").lower()
@@ -62,7 +91,12 @@ def detect_monitor_alerts(
     if current_lifecycle in ["", "unknown", "none", "nan"]:
         current_lifecycle = "unknown"
 
-    if previous_stock > 0 and current_stock < previous_stock * 0.5:
+    if (
+        previous_stock is not None
+        and current_stock is not None
+        and previous_stock > 0
+        and current_stock < previous_stock * 0.5
+    ):
         alert_message = f"Stock dropped from {previous_stock} to {current_stock}"
         messages.append(f"⚠ {alert_message}")
         alerts.append(
@@ -79,7 +113,12 @@ def detect_monitor_alerts(
             )
         )
 
-    if previous_price > 0 and current_price > previous_price * 1.5:
+    if (
+        previous_price is not None
+        and current_price is not None
+        and previous_price > 0
+        and current_price > previous_price * 1.5
+    ):
         alert_message = f"Unit price increased from ${previous_price:.2f} to ${current_price:.2f}"
         messages.append(f"⚠ {alert_message}")
         alerts.append(
@@ -131,17 +170,32 @@ def build_updated_monitor_snapshot(
     """Build a fresh provider snapshot while retaining its saved BOM scope."""
     previous_snapshot = previous_snapshot or {}
     fresh_data = fresh_data or {}
-    return {
+    snapshot = {
         "user_id": user_id,
         "workspace_id": previous_snapshot.get("workspace_id"),
         "analysis_id": previous_snapshot.get("analysis_id"),
         "part_number": part_number,
-        "supplier": fresh_data.get("source", ""),
-        "lifecycle_status": fresh_data.get("lifecycle_status", ""),
-        "stock": fresh_data.get("stock_total", 0),
-        "unit_price": fresh_data.get("unit_price", 0.0),
-        "risk_level": previous_snapshot.get("risk_level", ""),
+        "supplier": _display_text(fresh_data.get("source", "")),
+        "lifecycle_status": _display_text(fresh_data.get("lifecycle_status", "")),
+        "stock": _optional_number(fresh_data.get("stock_total")),
+        "unit_price": _optional_number(fresh_data.get("unit_price")),
+        "risk_level": _display_text(previous_snapshot.get("risk_level", "")),
     }
+    return json_safe_value(snapshot)
+
+
+def save_monitor_history(supabase, records) -> bool:
+    """Persist monitoring snapshots without letting bad telemetry block analysis."""
+    if not records:
+        return True
+    try:
+        supabase.table("part_monitor_history").insert(
+            json_safe_value(records)
+        ).execute()
+        return True
+    except Exception as exc:
+        _logger.warning("Could not save monitoring history (%s)", type(exc).__name__)
+        return False
 
 
 def detect_monitored_part_changes(
