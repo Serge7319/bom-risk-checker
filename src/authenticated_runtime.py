@@ -19942,9 +19942,9 @@ def run_authenticated_app() -> None:
                             "and its standard PDF and CSV reports. No subscription is required."
                         )
                         _checkout_key = f"cadivor_one_time_checkout_{_one_time_user_id}"
-                        _pending_checkout = one_time_pending_checkout(_one_time_user_id)
+                        _pending_checkout = pending_one_time_checkout(_one_time_user_id)
                         try:
-                            _one_time_price = one_time_price_label(
+                            _one_time_price = one_time_report_price_label(
                                 str(get_secret("STRIPE_ONE_TIME_BOM_REPORT_PRICE_ID", required=True))
                             )
                         except OneTimeBOMError as exc:
