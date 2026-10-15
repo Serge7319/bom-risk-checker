@@ -24,6 +24,13 @@ class AuthenticatedRuntimeSyntaxTests(unittest.TestCase):
         self.assertIn("Cadivor will ask for payment before saving the full report", source)
         self.assertIn("if not _one_time_feature_enabled:", source)
 
+    def test_one_time_and_subscription_reports_share_the_saved_detailed_export(self) -> None:
+        runtime = (ROOT / "src" / "authenticated_runtime.py").read_text(encoding="utf-8")
+        report = (ROOT / "src" / "ui" / "ei_bom_report.py").read_text(encoding="utf-8")
+        self.assertIn('navigate_to("Analysis Details", analysis_id=str(analysis_id))', runtime)
+        self.assertIn("detailed_risk_excel_bytes(", report)
+        self.assertIn("detailed_risk_csv_bytes(", report)
+
     def test_bom_workspace_keeps_only_primary_analysis_and_saved_manager(self) -> None:
         source = (ROOT / "src" / "authenticated_runtime.py").read_text(encoding="utf-8")
 

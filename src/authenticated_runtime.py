@@ -18057,7 +18057,12 @@ def run_authenticated_app() -> None:
 
         from integrations.supplier_aggregator import get_best_part_data
         from src.health_score import calculate_bom_health_score, generate_executive_summary
-        from src.monitoring_engine import build_monitor_record, build_alert_record, detect_monitor_alerts
+        from src.monitoring_engine import (
+            build_monitor_record,
+            build_alert_record,
+            detect_monitor_alerts,
+            save_monitor_history,
+        )
         from src.engineering_decision_engine import (
             build_engineering_decision_brief,
             render_engineering_decision_brief,
@@ -21165,13 +21170,11 @@ def run_authenticated_app() -> None:
 
                     monitor_records.append(current_snapshot)
 
-                if monitor_records:
-                    try:
-                        supabase.table("part_monitor_history").insert(
-                            monitor_records
-                        ).execute()
-                    except Exception as e:
-                        st.error(f"Could not save monitoring history: {e}")
+                if monitor_records and not save_monitor_history(supabase, monitor_records):
+                    st.warning(
+                        "Your BOM analysis was saved, but monitoring history could not be updated. "
+                        "You can still open and download the report."
+                    )
 
                 if alert_records:
                     try:
@@ -21341,6 +21344,7 @@ def run_authenticated_app() -> None:
             if not detail_df.empty:
                 st.subheader("Part Details")
                 st.caption("Detailed records for components not already summarized in the priority cards.")
+                from src.alternate_reference_parser import extract_description_alternates
                 for _, row in detail_df.iterrows():
 
                     risk_reasons = []
@@ -21400,6 +21404,15 @@ def run_authenticated_app() -> None:
                         with col2:
                             st.write(f"**Risk Score:** {row.get('Risk Score', 0)}")
                             st.write(f"**Risk Level:** {row.get('Risk Level', '')}")
+                            description_candidates = extract_description_alternates(
+                                row.get("Description", "")
+                            )
+                            if description_candidates:
+                                st.info(
+                                    "Supplier description mentions possible replacement(s): "
+                                    + ", ".join(description_candidates)
+                                    + ". Treat these as unverified search leads, not approved or form-fit-function matches."
+                                )
                             has_alternates = row.get("Has Alternates", False)
                             st.write(
                                 f"**Alternate search:** {row.get('Alternate Search Status') or ('Candidates returned' if has_alternates else 'Not checked')}"

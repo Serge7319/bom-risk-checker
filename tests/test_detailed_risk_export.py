@@ -84,7 +84,7 @@ def _check_excel_export_has_summary_details_and_high_risk_views_without_private_
     assert summary["A4"].value == "Project / BOM"
     assert summary["B4"].value == "Flight Controller Rev B"
     assert summary["B5"].value == "flight-controller.csv"
-    metrics = {row[0]: row[1] for row in summary.iter_rows(min_row=10, max_row=30, values_only=True)}
+    metrics = {row[0]: row[1] for row in summary.iter_rows(min_row=10, max_row=50, values_only=True)}
     assert metrics["Total components"] == 2
     assert metrics["Parts with matched supplier evidence"] == 2
     assert metrics["Risk assessed"] == 2
@@ -165,11 +165,13 @@ class DetailedRiskExportTests(unittest.TestCase):
         summary = workbook["Summary"]
         metrics = {
             row[0]: row[1]
-            for row in summary.iter_rows(min_row=10, max_row=30, values_only=True)
+            for row in summary.iter_rows(min_row=10, max_row=50, values_only=True)
             if row[0]
         }
         self.assertIn("0 of 1 parts", summary["A7"].value)
         self.assertIn("not evidence of low risk", summary["A7"].value)
+        self.assertIn("These counts can refer to the same part", summary["A7"].value)
+        self.assertNotIn("1 were not risk-rated and 1", summary["A7"].value)
         self.assertEqual(metrics["Parts with matched supplier evidence"], 0)
         self.assertEqual(metrics["Risk assessed"], 0)
         self.assertEqual(metrics["Risk coverage"], "0%")
@@ -194,6 +196,60 @@ class DetailedRiskExportTests(unittest.TestCase):
         self.assertEqual(row["Risk"], "Not assessed")
         self.assertEqual(row["Risk score"], "Not assessed")
         self.assertIn("stock, lifecycle, and lead-time risk remain unknown", row["Why"])
+
+    def test_cost_exposure_and_longest_lead_time_use_recorded_evidence_only(self):
+        parts = [
+            {
+                "mpn": "LM358N", "description": "Recommended Alt LM358DR2G",
+                "quantity": 10, "unit_price": 2.0, "primary_supplier": "Mouser",
+                "supplier_offers": [{
+                    "mpn": "LM358N", "distributor": "Mouser", "unit_price": 2.0,
+                    "currency": "USD",
+                }],
+                "risk_level": "High", "lifecycle_status": "Obsolete",
+                "lead_time_weeks": 3, "lead_time_source": "Mouser",
+            },
+            {
+                "mpn": "1N4148", "quantity": 50, "unit_price": 0.5,
+                "primary_supplier": "DigiKey", "supplier_offers": [{
+                    "mpn": "1N4148", "distributor": "DigiKey", "unit_price": 0.5,
+                    "currency": "EUR",
+                }],
+                "risk_level": "Low", "lifecycle_status": "Active",
+                "lead_time_weeks": 62, "lead_time_source": "DigiKey",
+            },
+            {
+                "mpn": "UNPRICED-CURRENCY", "quantity": 4, "unit_price": 1.25,
+                "primary_supplier": "Newark", "risk_level": "High",
+                "lifecycle_status": "Active",
+            },
+        ]
+        rows = component_rows(parts)
+
+        self.assertEqual(rows[0]["Extended cost"], 20)
+        self.assertEqual(rows[0]["Unit price currency"], "USD")
+        self.assertEqual(rows[0]["Description-mentioned alternatives"], "LM358DR2G")
+        self.assertEqual(rows[2]["Extended cost"], 5)
+        self.assertEqual(rows[2]["Unit price currency"], "Not reported")
+
+        workbook = load_workbook(
+            BytesIO(detailed_risk_excel_bytes(parts, bom_name="Exposure test")),
+            data_only=True,
+        )
+        metrics = {
+            row[0]: row[1]
+            for row in workbook["Summary"].iter_rows(min_row=10, max_row=50, values_only=True)
+            if row[0]
+        }
+        self.assertEqual(metrics["Extended BOM amount by recorded currency"], "EUR 25.00; USD 20.00")
+        self.assertEqual(metrics["High-risk / lifecycle amount by currency"], "USD 20.00")
+        self.assertEqual(metrics["High-risk / lifecycle rows without extended cost"], 0)
+        self.assertEqual(metrics["Priced high-risk rows missing currency"], 1)
+        self.assertEqual(metrics["Longest reported part lead time"], "62 weeks — 1N4148 (DigiKey)")
+        self.assertEqual(metrics["Components with lead-time data"], 2)
+        summary_text = " ".join(str(cell.value) for row in workbook["Summary"] for cell in row if cell.value)
+        self.assertIn("not a forecast of project delay", summary_text)
+        self.assertIn("not a confirmed or approved cross", summary_text)
 
     def test_approved_alternatives_are_included_in_both_downloads(self):
         approval = {

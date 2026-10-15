@@ -6,6 +6,7 @@ from src.ui.ei_bom_report import (
     bom_catalog_html,
     detailed_risk_report_html,
     engineering_intelligence_html,
+    _risk_exposure_markup,
     _detailed_report_analyses,
     _detailed_report_analysis_label,
     _detailed_report_metadata_html,
@@ -44,6 +45,19 @@ REPORT_SOURCE = (Path(__file__).resolve().parents[1] / "src" / "ui" / "ei_bom_re
 
 
 class EngineeringIntelligenceLayoutTests(unittest.TestCase):
+    def test_detailed_risk_exposure_summary_uses_recorded_cost_and_lead_time(self):
+        markup = _risk_exposure_markup([
+            {
+                "mpn": "LM358N", "quantity": 10, "unit_price": 2.0,
+                "currency": "USD", "risk_level": "High", "lifecycle_status": "Obsolete",
+                "lead_time_weeks": 62, "lead_time_source": "Mouser",
+            }
+        ])
+        self.assertIn("USD 20.00", markup)
+        self.assertIn("62 weeks — LM358N (Mouser)", markup)
+        self.assertIn("not a project-delay forecast", markup)
+        self.assertIn("not inventory value or committed spend", markup)
+
     def test_report_sections_use_one_stateful_selection_widget(self):
         self.assertIn("st.tabs(", REPORT_SOURCE)
         self.assertIn('key=tab_state_key', REPORT_SOURCE)

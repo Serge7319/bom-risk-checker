@@ -787,6 +787,11 @@ def report_styles() -> str:
       .cv-ei-cost-comparison small { display:block; margin-top:4px; color:#64748b; font-size:12px; font-weight:500; line-height:1.4; }
       [class*="st-key-cv_risk_expand_"] button { background:transparent !important; border:0 !important; box-shadow:none !important; color:#0f172a !important; font-weight:750 !important; padding:0 !important; min-height:0 !important; height:auto !important; justify-content:flex-start !important; text-align:left !important; }
       .cv-risk-wrap { background:#fff; border:1px solid #e6edf5; border-radius:16px; overflow:hidden; }
+      .cv-risk-exposure { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:0 0 14px; }
+      .cv-risk-exposure article { min-width:0;padding:13px 15px;border:1px solid #dce5ef;border-radius:12px;background:#fff; }
+      .cv-risk-exposure span { display:block;margin-bottom:6px;color:#64748b;font-size:11px;font-weight:750;letter-spacing:.04em;text-transform:uppercase; }
+      .cv-risk-exposure strong { display:block;color:#0f172a;font-size:17px;font-weight:760;line-height:1.3;overflow-wrap:anywhere; }
+      .cv-risk-exposure small { display:block;margin-top:5px;color:#64748b;font-size:11px;line-height:1.4; }
       .cv-risk-row, .cv-risk-head { display:grid; grid-template-columns: 1.1fr 1fr .9fr .6fr .7fr .8fr .6fr .7fr; gap:8px; padding:12px 16px; align-items:center; }
       .cv-risk-head { color:#94a3b8; font-size:12px; letter-spacing:.04em; text-transform:uppercase; background:#f8fafc; }
       .cv-risk-row { border-top:1px solid #e5ebf3; font-size:14px; }
@@ -821,6 +826,7 @@ def report_styles() -> str:
         .cv-ei-kpis { grid-template-columns:repeat(2,minmax(0,1fr)); }
         .cv-risk-row, .cv-risk-head { display:block; }
         .cv-risk-detail { grid-template-columns:1fr; padding:12px 0; }
+        .cv-risk-exposure { grid-template-columns:repeat(2,minmax(0,1fr)); }
         .cv-risk-grid-head { font-size:10px;padding:8px 5px }
       }
       @media (max-width: 600px) {
@@ -828,6 +834,7 @@ def report_styles() -> str:
         .st-key-ei_report_workspace .cv-ei-title { font-size:23px; }
         .st-key-ei_report_workspace .cv-ei-kpis { grid-template-columns:1fr; }
         .st-key-ei_report_workspace .cv-ei-section { border-radius:13px; }
+        .cv-risk-exposure { grid-template-columns:1fr; }
         .cv-ei-section-heading { padding:14px 13px 12px; }
         .st-key-cv_ei_report_tabs button { white-space:normal!important;text-align:left!important; }
       }
@@ -1173,6 +1180,27 @@ def _detailed_risk_expanded_markup(
     )
 
 
+def _risk_exposure_markup(parts: list[dict[str, Any]]) -> str:
+    from src.ui.detailed_risk_export import component_rows, report_exposure_summary
+
+    exposure = report_exposure_summary(component_rows(parts))
+    priced_note = (
+        f"{exposure['priced_component_count']} priced line(s); "
+        f"{exposure['priced_missing_currency_count']} omitted from totals because currency is not recorded."
+    )
+    high_exposure_note = (
+        f"{exposure['high_risk_without_extended_cost_count']} line(s) need price or quantity; "
+        f"{exposure['high_risk_missing_currency_count']} priced line(s) lack currency."
+    )
+    return f"""
+    <section class="cv-risk-exposure" aria-label="Cost and lead-time exposure">
+      <article><span>Extended BOM amount by currency</span><strong>{_esc(exposure['extended_amount_by_currency'])}</strong><small>{_esc(priced_note)} Price × BOM quantity; not inventory value or committed spend.</small></article>
+      <article><span>High-risk / lifecycle amount</span><strong>{_esc(exposure['high_risk_amount_by_currency'])}</strong><small>{_esc(high_exposure_note)} Only recorded currencies are included.</small></article>
+      <article><span>Longest reported part lead time</span><strong>{_esc(exposure['longest_reported_lead_time'])}</strong><small>{exposure['components_with_lead_time_count']} component(s) have lead-time data. Possible sourcing bottleneck, not a project-delay forecast.</small></article>
+    </section>
+    """
+
+
 def render_detailed_risk_rows(
     *,
     bom_name: str,
@@ -1205,6 +1233,7 @@ def render_detailed_risk_rows(
     if not rows:
         st.caption("This BOM has no saved components.")
         return
+    st.markdown(_risk_exposure_markup(parts), unsafe_allow_html=True)
 
     widths = [2.2, 1.1, 1.45, 1.15, 0.9]
     with st.container(key="cv_detailed_risk_table"):
@@ -1286,6 +1315,7 @@ def detailed_risk_report_html(
     analysis_id: str = "",
 ) -> str:
     rows = _part_rows(parts)
+    exposure_html = _risk_exposure_markup(parts)
     expanded = str(expanded_mpn or "").strip()
     body = [
         '<div class="cv-risk-head"><div>MPN</div><div>Manufacturer</div><div>Best source</div><div>Suppliers</div><div>Stock</div><div>Lifecycle</div><div>Risk score</div><div>Risk level</div></div>'
@@ -1327,6 +1357,7 @@ def detailed_risk_report_html(
     <div class="cv-ei-report">
       <h1 class="cv-ei-title">Detailed Risk Report</h1>
       <p class="cv-ei-sub">{_esc(bom_name)} · {len(rows)} parts · Last analyzed {_esc(_format_detailed_report_date(analyzed_on))}</p>
+      {exposure_html}
       <div class="cv-risk-wrap">{''.join(body)}</div>
     </div>
     """
