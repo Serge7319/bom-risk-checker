@@ -210,6 +210,21 @@ class DigiKeySubstitutionTests(unittest.TestCase):
         self.assertEqual(result["tolerance"], "±10%")
         self.assertEqual(result["pin_count"], 0)
 
+    def test_explicit_usd_request_locale_is_retained_when_product_omits_currency(self):
+        product = {
+            "Manufacturer": {"Name": "onsemi"},
+            "ManufacturerProductNumber": "BC547B",
+            "UnitPrice": [{"BreakQuantity": 1, "UnitPrice": "$0.13"}],
+        }
+        result = self.client.normalize_digikey_product(product)
+        self.assertEqual(result["unit_price"], 0.13)
+        self.assertEqual(result["unit_price_currency"], "USD")
+        self.assertEqual(result["price_breaks"][0]["currency"], "USD")
+
+        headers = self.client._digikey_headers("client-id", "token")
+        self.assertEqual(headers["X-DIGIKEY-Locale-Site"], "US")
+        self.assertEqual(headers["X-DIGIKEY-Locale-Currency"], "USD")
+
     def test_digikey_distributor_number_resolves_to_manufacturer_mpn(self):
         distributor_number = "399-C0603C104K5RAC3121DKR-ND"
 

@@ -97,7 +97,7 @@ class NewarkIntegrationTests(unittest.TestCase):
             "brandName": "Texas Instruments",
             "displayName": "Operational amplifier DIP-8",
             "stock": {"level": 125, "leastLeadTime": 14},
-            "prices": [{"cost": 0.42}],
+            "prices": [{"cost": "$0.42", "from": 1}],
             "productStatus": "Active",
             "productUrl": "https://www.newark.com/example",
         }
@@ -119,6 +119,8 @@ class NewarkIntegrationTests(unittest.TestCase):
         self.assertEqual(result["manufacturer_part_number"], "LM358N")
         self.assertEqual(result["stock_total"], 125)
         self.assertEqual(result["unit_price"], 0.42)
+        self.assertEqual(result["unit_price_currency"], "USD")
+        self.assertEqual(result["price_breaks"][0]["currency"], "USD")
         self.assertEqual(result["lead_time_weeks"], 2.0)
 
     def test_part_match_is_case_insensitive_and_trims_outer_whitespace(self):
@@ -139,6 +141,22 @@ class NewarkIntegrationTests(unittest.TestCase):
         self._response([self._product("LM358P")])
         with patch.object(self.newark, "get_secret", return_value="private-api-key"):
             result = self.newark.search_newark_by_part_number("LM358N")
+
+        self.assertEqual(result["manufacturer_part_number"], "")
+        self.assertEqual(result["supplier_count"], 0)
+
+    def test_separator_only_mpn_formatting_difference_is_accepted(self):
+        self._response([self._product("IRF-540N")])
+        with patch.object(self.newark, "get_secret", return_value="private-api-key"):
+            result = self.newark.search_newark_by_part_number("IRF540N")
+
+        self.assertEqual(result["manufacturer_part_number"], "IRF-540N")
+        self.assertEqual(result["unit_price"], 0.42)
+
+    def test_suffix_variant_is_not_accepted_as_exact_mpn(self):
+        self._response([self._product("IRF540NPBF")])
+        with patch.object(self.newark, "get_secret", return_value="private-api-key"):
+            result = self.newark.search_newark_by_part_number("IRF540N")
 
         self.assertEqual(result["manufacturer_part_number"], "")
         self.assertEqual(result["supplier_count"], 0)

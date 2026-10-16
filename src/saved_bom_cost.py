@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from decimal import Decimal
 from numbers import Integral, Real
 from typing import Any, Mapping
@@ -17,6 +18,7 @@ OPTIONAL_SAVED_PART_COLUMNS = (
     "image_url",
     "product_url",
     "supplier_offers",
+    "unit_price_currency",
     "description",
     "category",
     "supplier_data_verified",
@@ -104,6 +106,27 @@ def positive_number(value: Any) -> float | None:
     return number
 
 
+def price_number(value: Any) -> float | None:
+    """Parse a supplier price amount while keeping currency identity separate.
+
+    A bare ``$`` is not interpreted as USD because several currencies use it.
+    """
+    if isinstance(value, (Real, Decimal)) and not isinstance(value, bool):
+        return positive_number(value)
+    if _blank(value):
+        return None
+    text = str(value).strip().replace("\u00a0", " ").upper()
+    match = re.fullmatch(
+        r"\s*(?:[A-Z]{3}\s*)?[$€£¥₹₩¢]?\s*"
+        r"(?P<amount>(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?|\.\d+)"
+        r"\s*(?:[A-Z]{3})?\s*",
+        text,
+    )
+    if not match:
+        return None
+    return positive_number(match.group("amount").replace(",", ""))
+
+
 def http_url(value: Any) -> str:
     text = "" if _blank(value) else str(value).strip()
     if text.startswith("https://") or text.startswith("http://"):
@@ -118,21 +141,43 @@ def analysis_part_cost_fields(row: Mapping[str, Any]) -> dict[str, Any]:
     Zero is the stored missing-number default. It is not a price or a quantity.
     """
     supplier = _first(row, "Best Source", "primary_supplier", "source", "supplier")
-    price = positive_number(_first(row, "Unit Price", "unit_price", "price", "best_price"))
+    price = price_number(_first(row, "Unit Price", "unit_price", "price", "best_price"))
     quantity = positive_number(_first(row, "Quantity", "quantity", "qty"))
     product = http_url(
         _first(row, "Product URL", "product_url", "product_detail_url", "source_url")
     )
     mpn = str(_first(row, "MPN", "mpn", "manufacturer_part_number") or "").strip()
+    saved_offers = normalize_saved_offers(
+        _offer_list(row.get("Supplier Offers", row.get("supplier_offers"))),
+        mpn=mpn,
+    )
+    raw_price = _first(row, "Unit Price", "unit_price", "price", "best_price")
+    price_currency = _currency(
+        _first(row, "Unit Price Currency", "unit_price_currency", "currency")
+    ) or _currency_from_price_text(raw_price)
+    if not price_currency and price is not None and supplier:
+        wanted_mpn = _mpn_key(mpn)
+        wanted_supplier = str(supplier).strip().casefold()
+        matching_currencies = {
+            _currency(offer.get("currency"))
+            for offer in saved_offers
+            if _mpn_key(offer.get("mpn")) == wanted_mpn
+            and str(offer.get("distributor") or "").strip().casefold() == wanted_supplier
+            and price_number(offer.get("unit_price")) is not None
+            and math.isclose(
+                float(offer["unit_price"]), price, rel_tol=1e-8, abs_tol=1e-8
+            )
+            and _currency(offer.get("currency"))
+        }
+        if len(matching_currencies) == 1:
+            price_currency = next(iter(matching_currencies))
     return {
         "primary_supplier": "" if supplier is None else str(supplier).strip(),
         "unit_price": 0 if price is None else price,
+        "unit_price_currency": price_currency or None,
         "quantity": 0 if quantity is None else quantity,
         "product_url": product,
-        "supplier_offers": normalize_saved_offers(
-            _offer_list(row.get("Supplier Offers", row.get("supplier_offers"))),
-            mpn=mpn,
-        ),
+        "supplier_offers": saved_offers,
     }
 
 
@@ -191,7 +236,24 @@ def _mpn_key(value: Any) -> str:
 def _currency(value: Any) -> str:
     if _blank(value):
         return ""
-    return str(value).strip().upper()
+    text = str(value).strip().upper()
+    return text if re.fullmatch(r"[A-Z]{3}", text) else ""
+
+
+def normalize_currency_code(value: Any) -> str:
+    """Return an ISO-style three-letter currency code, or blank if unverified."""
+    return _currency(value)
+
+
+def _currency_from_price_text(value: Any) -> str:
+    if not isinstance(value, str):
+        return ""
+    text = value.strip().upper()
+    symbol = r"[$€£¥₹₩¢]?"
+    prefix = re.search(rf"^\s*([A-Z]{{3}})(?=\s*{symbol}\s*\d)", text)
+    suffix = re.search(r"(?<=\d)\s*([A-Z]{3})\s*$", text)
+    match = prefix or suffix
+    return _currency(match.group(1)) if match else ""
 
 
 def _break_quantity(value: Any) -> float | None:
@@ -216,7 +278,7 @@ def price_breaks_from_payload(payload: Any, *, currency: str = "") -> list[dict[
             price = None
             for key in ("UnitPrice", "unit_price", "Price", "price", "cost"):
                 if key in item:
-                    price = positive_number(item.get(key))
+                    price = price_number(item.get(key))
                     if price is not None:
                         break
             if price is None:
@@ -231,6 +293,16 @@ def price_breaks_from_payload(payload: Any, *, currency: str = "") -> list[dict[
                 if key in item:
                     row_currency = _currency(item.get(key))
                     break
+            if not row_currency:
+                raw_price = next(
+                    (
+                        item.get(key)
+                        for key in ("UnitPrice", "unit_price", "Price", "price", "cost")
+                        if item.get(key) not in (None, "")
+                    ),
+                    None,
+                )
+                row_currency = _currency_from_price_text(raw_price)
             breaks.append(
                 {
                     "unit_price": price,
@@ -239,7 +311,7 @@ def price_breaks_from_payload(payload: Any, *, currency: str = "") -> list[dict[
                 }
             )
             continue
-        price = positive_number(item)
+        price = price_number(item)
         if price is None:
             continue
         breaks.append(
@@ -266,7 +338,7 @@ def _offer(
     name = "" if _blank(distributor) else str(distributor).strip()
     if name.casefold() in _MISSING_TEXT:
         return None
-    price = positive_number(unit_price)
+    price = price_number(unit_price)
     if price is None:
         return None
     retrieved = "" if _blank(retrieved_at) else str(retrieved_at).strip()
@@ -326,14 +398,18 @@ def collect_supplier_offers(results: Any, *, mpn: str) -> list[dict[str, Any]]:
         product_url = result.get("product_detail_url") or result.get("source_url")
         breaks = result.get("price_breaks")
         if not isinstance(breaks, list) or not breaks:
-            unit_price = positive_number(result.get("unit_price"))
+            unit_price = price_number(result.get("unit_price"))
             if unit_price is None:
                 continue
             breaks = [
                 {
                     "unit_price": unit_price,
                     "price_break_quantity": result.get("price_break_quantity"),
-                    "currency": result.get("currency") or "",
+                    "currency": (
+                        result.get("unit_price_currency")
+                        or result.get("currency")
+                        or ""
+                    ),
                 }
             ]
         for item in breaks:
@@ -343,7 +419,11 @@ def collect_supplier_offers(results: Any, *, mpn: str) -> list[dict[str, Any]]:
                 mpn=mpn,
                 distributor=distributor,
                 unit_price=item.get("unit_price"),
-                currency=item.get("currency") or result.get("currency"),
+                currency=(
+                    item.get("currency")
+                    or result.get("unit_price_currency")
+                    or result.get("currency")
+                ),
                 price_break_quantity=item.get("price_break_quantity"),
                 stock=stock,
                 product_url=product_url,

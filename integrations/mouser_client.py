@@ -6,7 +6,7 @@ from integrations.stock_coercion import parse_stock_total
 from integrations.pin_count import parse_pin_count_from_text, resolve_pin_count
 from src.secrets import get_secret
 from src.part_images import normalize_supplier_image_url
-from src.saved_bom_cost import price_breaks_from_payload
+from src.saved_bom_cost import price_breaks_from_payload, price_number
 from src.normalizer import normalize_part_number
 
 
@@ -149,6 +149,8 @@ def normalize_mouser_part(part: dict) -> dict:
         "lifecycle_status": infer_lifecycle_status(part),
         "stock_total": stock_total,
         "unit_price": extract_mouser_price(part),
+        "currency": _mouser_recorded_currency(part),
+        "unit_price_currency": _mouser_recorded_currency(part),
         "price_breaks": price_breaks_from_payload(part.get("PriceBreaks")),
         "supplier_count": 1,
         "lead_time_weeks": None,
@@ -277,17 +279,18 @@ def extract_mouser_price(part: dict) -> float:
 
     first_break = price_breaks[0]
 
-    price = (
-        str(first_break.get("Price", ""))
-        .replace("$", "")
-        .replace(",", "")
-        .strip()
-    )
+    return price_number(first_break.get("Price", "")) or 0.0
 
-    try:
-        return float(price)
-    except ValueError:
-        return 0.0
+
+def _mouser_recorded_currency(part: dict) -> str:
+    """Return the currency attached to the selected (first) Mouser price break."""
+    price_breaks = part.get("PriceBreaks") or []
+    if not isinstance(price_breaks, list) or not price_breaks:
+        return ""
+    first_break = price_breaks[0]
+    if not isinstance(first_break, dict):
+        return ""
+    return str(first_break.get("Currency") or first_break.get("currency") or "").strip()
 
 
 def infer_lifecycle_status(part: dict) -> str:

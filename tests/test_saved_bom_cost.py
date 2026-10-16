@@ -5,6 +5,7 @@ from src.saved_bom_cost import (
     collect_supplier_offers,
     distributor_comparison,
     extended_cost,
+    price_breaks_from_payload,
     omitted_optional_column,
     without_column,
 )
@@ -52,6 +53,47 @@ class SavedBomCostPersistenceTests(unittest.TestCase):
         self.assertIsNone(extended_cost(saved["unit_price"], saved["quantity"]))
         comparison = distributor_comparison([], mpn="TPS54331D", bom_quantity=10)
         self.assertIsNone(comparison["savings_per_unit"])
+
+    def test_price_strings_parse_without_guessing_currency(self):
+        breaks = price_breaks_from_payload([
+            {"Quantity": 1, "Price": "$1,234.50", "Currency": "USD"},
+            {"Quantity": 10, "Price": "EUR 0.95"},
+            {"Quantity": 20, "Price": "0,95"},
+        ])
+        self.assertEqual(breaks, [
+            {"unit_price": 1234.5, "price_break_quantity": 1.0, "currency": "USD"},
+            {"unit_price": 0.95, "price_break_quantity": 10.0, "currency": "EUR"},
+        ])
+
+    def test_selected_price_currency_is_recovered_only_from_exact_matching_offer(self):
+        offers = [
+            {"mpn": "TPS54331D", "distributor": "DigiKey", "unit_price": 1.2, "currency": "USD"},
+            {"mpn": "TPS54331D", "distributor": "Mouser", "unit_price": 1.0, "currency": "EUR"},
+        ]
+        saved = analysis_part_cost_fields({
+            "MPN": "TPS54331D", "Best Source": "DigiKey", "Unit Price": 1.2,
+            "Quantity": 5, "Supplier Offers": offers,
+        })
+        self.assertEqual(saved["unit_price_currency"], "USD")
+
+        wrong_part = analysis_part_cost_fields({
+            "MPN": "TPS54331D", "Best Source": "DigiKey", "Unit Price": 1.2,
+            "Quantity": 5, "Supplier Offers": [dict(offers[0], mpn="TPS54331DT")],
+        })
+        self.assertIsNone(wrong_part["unit_price_currency"])
+
+        wrong_price = analysis_part_cost_fields({
+            "MPN": "TPS54331D", "Best Source": "DigiKey", "Unit Price": 1.25,
+            "Quantity": 5, "Supplier Offers": offers,
+        })
+        self.assertIsNone(wrong_price["unit_price_currency"])
+
+    def test_invalid_currency_labels_are_not_saved_as_currency_codes(self):
+        saved = analysis_part_cost_fields({
+            "MPN": "TPS54331D", "Best Source": "DigiKey", "Unit Price": 1.2,
+            "Unit Price Currency": "Not reported", "Quantity": 5,
+        })
+        self.assertIsNone(saved["unit_price_currency"])
 
     def test_extended_cost_requires_price_and_bom_quantity(self):
         self.assertIsNone(extended_cost(1.2, None))
@@ -183,6 +225,10 @@ class SavedBomCostPersistenceTests(unittest.TestCase):
             offers_column,
         )
         self.assertEqual(kept, [{"unit_price": 1.2}])
+        currency_column = omitted_optional_column(
+            "Could not find the 'unit_price_currency' column of 'analysis_parts' in the schema cache"
+        )
+        self.assertEqual(currency_column, "unit_price_currency")
 
     def test_cost_table_does_not_calculate_cost_or_savings_without_inputs(self):
         html = engineering_intelligence_html(
