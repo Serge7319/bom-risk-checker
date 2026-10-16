@@ -22,13 +22,8 @@ DELAY_ROUTE_BODY_REVEAL_KEY = "cadivor_delay_route_body_reveal"
 MAIN_TRANSITION_ACTIVE_KEY = "cadivor_main_transition_active"
 MAIN_TRANSITION_ROUTE_KEY = "cadivor_main_transition_route"
 MAIN_TRANSITION_GEN_KEY = "cadivor_main_transition_gen"
-# Opening is skipped when warm session caches make nav cheaper than this budget.
-FAST_CACHED_NAV_OPENING_MS = 300
 OPENING_STARTED_AT_KEY = "cadivor_opening_started_at"
 OPENING_ROUTE_KEY = "cadivor_opening_route"
-SLOW_ROUTE_OPENING_TARGETS = frozenset(
-    {"Analysis Details", "Engineering Decisions", "BOM Settings"}
-)
 BOM_ANALYSIS_TRANSITION_KEY = "cadivor_bom_analysis_transition"
 
 
@@ -91,63 +86,20 @@ def route_needs_main_transition(target_route: str, presented_route: str = "") ->
     return (not presented) or (presented != target)
 
 
-def warm_session_nav_ready(session_state: MutableMapping[str, Any] | None = None) -> bool:
-    """True when ordinary nav can skip Opening (profile + admit already warm)."""
-    state = session_state if session_state is not None else st.session_state
-    user = state.get("user")
-    user_id = getattr(user, "id", None) or (user.get("id") if isinstance(user, dict) else None)
-    if not user_id:
-        return False
-    try:
-        from src.services.authenticated_profile_cache import recent_verified_profile
-        from src.services.workspace_admit_cache import warm_workspace_admit_ready
-
-        if recent_verified_profile(state, user_id) is None:
-            return False
-        return warm_workspace_admit_ready(state, user_id)
-    except Exception:
-        return False
-
-
 def should_paint_opening_overlay(
     *,
     needs_transition: bool,
     target_route: str = "",
     session_state: MutableMapping[str, Any] | None = None,
 ) -> bool:
-    """Paint Opening only for slow/cold work — not routine warm cached nav."""
-    if not needs_transition:
-        return False
-    state = session_state if session_state is not None else st.session_state
-    # First admit (no foundation shell yet) always needs a continuity surface.
-    if not state.get("cadivor_foundation_shell_mounted"):
-        return True
-    # A first authenticated route can have warm profile caches while the
-    # page-specific workspace reads are still cold. Without an existing
-    # transition owner, render Opening so retiring the auth gate never exposes
-    # an empty main panel between shell paint and route content.
-    if not state.get(MAIN_TRANSITION_ACTIVE_KEY) and not state.get(PRESENTED_ROUTE_KEY):
-        return True
-    # Saved BOM details and the decision queue hydrate database-backed data
-    # after auth caches are warm. Keep the transition owner mounted so the old
-    # page cannot flash under the target route's navigation state.
-    target = str(
-        target_route or state.get(MAIN_TRANSITION_ROUTE_KEY) or ""
-    ).strip()
-    if (
-        target == "BOM Analyzer"
-        and str(state.get(BOM_ANALYSIS_TRANSITION_KEY) or "").strip().casefold()
-        in {"start", "rerun"}
-    ):
-        return True
-    if target in SLOW_ROUTE_OPENING_TARGETS:
-        return True
-    if warm_session_nav_ready(state):
-        # Warm handoffs must not retain an Opening layer: that layer can outlive
-        # the auth gate and trap a valid sign-in on its progress screen.
-        state["cadivor_last_nav_opening_skipped_ms"] = FAST_CACHED_NAV_OPENING_MS
-        return False
-    return True
+    """Cover route changes while Streamlit replaces its stale page DOM.
+
+    Even a warm route can spend a frame showing the previous page with
+    Streamlit's stale-content fade applied. Keep one transition owner during
+    every route change so the outgoing page never flashes through.
+    """
+    del target_route, session_state
+    return bool(needs_transition)
 
 
 def _next_transition_gen() -> int:

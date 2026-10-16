@@ -1,6 +1,7 @@
 """Helpers for durable, project-scoped alternative approvals."""
 from __future__ import annotations
 
+import re
 from typing import Any, Iterable
 
 from src.normalizer import normalize_part_number
@@ -9,6 +10,78 @@ from src.normalizer import normalize_part_number
 def part_key(value: Any) -> str:
     text = str(value or "").strip()
     return normalize_part_number(text) or text.upper()
+
+
+def candidate_lifecycle_is_blocked(candidate: Any) -> bool:
+    """True when recorded lifecycle evidence says a candidate is not orderable.
+
+    Unknown status remains reviewable. Explicit obsolete, discontinued, or
+    end-of-life records are never presented as replacement-ready or approved.
+    """
+    if not isinstance(candidate, dict):
+        return False
+    status_values = [
+        str(candidate.get(key) or "").strip().casefold()
+        for key in (
+            "Lifecycle",
+            "Lifecycle Status",
+            "lifecycle_status",
+            "lifecycle",
+            "product_status",
+        )
+        if str(candidate.get(key) or "").strip()
+    ]
+    discovery = candidate.get("_discovery_row")
+    if isinstance(discovery, dict):
+        status_values.extend(
+            str(discovery.get(key) or "").strip().casefold()
+            for key in (
+                "Lifecycle",
+                "Lifecycle Status",
+                "lifecycle_status",
+                "lifecycle",
+                "product_status",
+            )
+            if str(discovery.get(key) or "").strip()
+        )
+    for status in status_values:
+        if re.search(
+            r"\b(?:not\s+(?:eol|obsolete|discontinued|end\s+of\s+life)"
+            r"|non[\s-]?(?:eol|obsolete|discontinued))\b",
+            status,
+        ):
+            continue
+        if re.search(r"\beol\b", status) or any(
+            term in status for term in ("obsolete", "discontinued", "end of life")
+        ):
+            return True
+    return False
+
+
+def toggle_comparison_candidate(
+    selected: Iterable[Any] | None,
+    candidate: Any,
+    *,
+    limit: int = 2,
+) -> list[str]:
+    """Toggle one unique replacement in the bounded compare selection."""
+    value = str(candidate or "").strip()
+    token = part_key(value)
+    if not value or not token:
+        return [str(item).strip() for item in (selected or []) if str(item or "").strip()][:limit]
+    output: list[str] = []
+    seen: set[str] = set()
+    for item in selected or []:
+        text = str(item or "").strip()
+        item_token = part_key(text)
+        if not text or not item_token or item_token == token or item_token in seen:
+            continue
+        seen.add(item_token)
+        output.append(text)
+    if not any(part_key(str(item or "").strip()) == token for item in selected or []):
+        if len(output) < max(int(limit), 0):
+            output.append(value)
+    return output
 
 
 def project_decision_context_key(project_name: Any, analysis_id: Any = "") -> str:

@@ -236,8 +236,8 @@ class MainTransitionMarkerTests(unittest.TestCase):
 
 
 
-class OpeningSkipTests(unittest.TestCase):
-    def test_warm_nav_skips_opening_when_caches_ready(self):
+class OpeningCoverageTests(unittest.TestCase):
+    def test_warm_nav_still_uses_cover_during_dom_replacement(self):
         source = (
             Path(__file__).resolve().parents[1] / "src" / "ui" / "main_transition.py"
         ).read_text(encoding="utf-8")
@@ -253,11 +253,6 @@ class OpeningSkipTests(unittest.TestCase):
             "MAIN_TRANSITION_ROUTE_KEY": "cadivor_main_transition_route",
             "PRESENTED_ROUTE_KEY": "cadivor_presented_route",
             "BOM_ANALYSIS_TRANSITION_KEY": "cadivor_bom_analysis_transition",
-            "SLOW_ROUTE_OPENING_TARGETS": frozenset(
-                {"Analysis Details", "Engineering Decisions", "BOM Settings"}
-            ),
-            "FAST_CACHED_NAV_OPENING_MS": 300,
-            "warm_session_nav_ready": lambda state: bool(state.get("warm")),
         }
         exec(compile(ast.fix_missing_locations(ast.Module(body=[function], type_ignores=[])),
                      "<opening-skip-test>", "exec"), namespace)
@@ -270,7 +265,7 @@ class OpeningSkipTests(unittest.TestCase):
             "cadivor_presented_route": "Reports",
             "warm": True,
         }
-        self.assertFalse(
+        self.assertTrue(
             should_paint_opening_overlay(
                 needs_transition=True,
                 target_route="Dashboard",

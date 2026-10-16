@@ -139,6 +139,23 @@ def _approved_shell_css() -> str:
           top:0!important;height:100vh!important;background:#f8fafc!important;
           border-right:1px solid #e6edf5!important;padding:18px 12px 24px!important
         }
+        /* Keep the current page steady while Streamlit handles a same-page
+           interaction. Route changes have their own opaque Opening cover. */
+        body [data-stale="true"]{
+          opacity:1!important;filter:none!important;backdrop-filter:none!important;
+          -webkit-backdrop-filter:none!important
+        }
+        /* Retired Streamlit shell containers can sit above or around the old
+           rail, depending on which block was replaced. Hide every stale wrapper
+           containing a navigation rail, not only stElementContainer wrappers. */
+        body:has([class*="st-key-cv_foundation_navigation"]:not([data-stale="true"]))
+          [data-stale="true"]:has([class*="st-key-cv_foundation_navigation"]),
+        body:has([class*="st-key-cv_foundation_navigation"]:not([data-stale="true"]))
+          [data-stale="true"] [class*="st-key-cv_foundation_navigation"]{
+          display:none!important;visibility:hidden!important;pointer-events:none!important;
+          opacity:0!important;height:0!important;min-height:0!important;max-height:0!important;
+          margin:0!important;padding:0!important;overflow:hidden!important
+        }
         .cv-approved-brand,.cv-foundation-sidebar-brand{display:flex;align-items:center;gap:10px;padding:4px 8px 14px}
         .cv-approved-brand strong,.cv-foundation-sidebar-brand strong{display:block;color:#0f172a;font-size:16px;letter-spacing:-.02em}
         .cv-approved-brand small,.cv-foundation-sidebar-brand small{display:block;color:#94a3b8;font-size:9px;letter-spacing:.08em;font-weight:700}
