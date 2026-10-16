@@ -36,7 +36,8 @@ class ApprovedBOMPageContractTests(unittest.TestCase):
 
     def test_completed_saved_results_render_without_reopening_the_upload(self):
         source = Path("src/authenticated_runtime.py").read_text(encoding="utf-8")
-        self.assertIn("has_completed_saved_bom_results(st.session_state)", source)
+        self.assertIn("has_completed_saved_bom_results(", source)
+        self.assertIn("st.session_state\n        )", source)
         self.assertIn("and not _has_completed_saved_results", source)
         self.assertIn("if _has_completed_saved_results and uploaded_file is None:", source)
         self.assertIn("cadivor_bom_catalog_requested", source)
