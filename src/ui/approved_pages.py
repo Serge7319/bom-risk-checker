@@ -1969,17 +1969,17 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
             _render_saved_bom_edit_page(target_row, user_id)
         end_approved_page()
         return
-    catalog_requested = bool(
-        st.session_state.get("cadivor_bom_catalog_requested")
-        or st.session_state.get("cadivor_show_saved_boms")
-    )
-    upload_mode = bool(st.session_state.get("cadivor_bom_upload_open")) and not catalog_requested
     analysis_running = bool(
         st.session_state.get("bom8_analysis_future")
         or st.session_state.get("bom8_analysis_pending")
         or st.session_state.get("bom8_analysis_in_progress")
         or st.session_state.get("cadivor_bom_pipeline_active")
     )
+    catalog_requested = bool(
+        st.session_state.get("cadivor_bom_catalog_requested")
+        or st.session_state.get("cadivor_show_saved_boms")
+    ) and not analysis_running
+    upload_mode = bool(st.session_state.get("cadivor_bom_upload_open")) and not catalog_requested
     analysis_results = st.session_state.get("results_df")
     results_visible = bool(
         not catalog_requested
