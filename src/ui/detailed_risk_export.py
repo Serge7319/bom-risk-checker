@@ -248,9 +248,13 @@ def _supplier_count(record: dict[str, Any]) -> int | float | str:
 
 
 def _price_currency(record: dict[str, Any], *, mpn: str, supplier: str, price: int | float | None) -> str:
-    explicit = _text(_first(record, "unit_price_currency", "currency", "Currency"), "")
+    from src.saved_bom_cost import normalize_currency_code
+
+    explicit = normalize_currency_code(
+        _first(record, "unit_price_currency", "currency", "Currency")
+    )
     if explicit:
-        return explicit.upper()
+        return explicit
     if price is None or not supplier:
         return ""
     offers = _json_value(record.get("supplier_offers"))
@@ -270,7 +274,7 @@ def _price_currency(record: dict[str, Any], *, mpn: str, supplier: str, price: i
             offer.get("distributor") or offer.get("supplier") or offer.get("source") or ""
         ).strip().casefold()
         offer_price = _number(offer.get("unit_price"))
-        currency = _text(offer.get("currency"), "").upper()
+        currency = normalize_currency_code(offer.get("currency"))
         if (
             normalized_offer_mpn == wanted_mpn
             and offer_supplier == wanted_supplier

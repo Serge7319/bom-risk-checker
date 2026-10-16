@@ -2548,6 +2548,11 @@ def run_authenticated_app() -> None:
                 or part_data.get("minimum_price")
                 or 0
             ),
+            "Unit Price Currency": (
+                part_data.get("unit_price_currency")
+                or part_data.get("currency")
+                or ""
+            ),
             "Lead Time Weeks": part_data.get("lead_time_weeks", None),
             "Lead Time Source": part_data.get("lead_time_source", ""),
             "Lifecycle Status": part_data.get("lifecycle_status", "Unknown"),
@@ -21105,6 +21110,7 @@ def run_authenticated_app() -> None:
                             "alternate_search_status": str(part_row.get("Alternate Search Status") or "").strip() or None,
                             "quantity": cost_fields["quantity"],
                             "unit_price": cost_fields["unit_price"],
+                            "unit_price_currency": cost_fields["unit_price_currency"],
                             "primary_supplier": cost_fields["primary_supplier"],
                             "product_url": cost_fields["product_url"],
                             "supplier_offers": cost_fields["supplier_offers"],

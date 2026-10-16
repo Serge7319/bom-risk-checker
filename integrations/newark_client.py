@@ -12,9 +12,13 @@ from dotenv import load_dotenv
 from integrations.pin_count import parse_pin_count_from_text, resolve_pin_count
 from src.secrets import get_secret
 from src.part_images import normalize_supplier_image_url
-from src.saved_bom_cost import price_breaks_from_payload
+from src.saved_bom_cost import price_breaks_from_payload, price_number
+from src.normalizer import normalize_part_number
 
 load_dotenv()
+
+NEWARK_STORE_ID = "www.newark.com"
+NEWARK_STORE_CURRENCY = {NEWARK_STORE_ID: "USD"}
 
 
 def search_newark_by_part_number(part_number: str) -> dict:
@@ -29,7 +33,7 @@ def search_newark_by_part_number(part_number: str) -> dict:
     params = {
         "callInfo.apiKey": api_key,
         "callInfo.responseDataFormat": "json",
-        "storeInfo.id": "www.newark.com",
+        "storeInfo.id": NEWARK_STORE_ID,
         "resultsSettings.offset": 0,
         "resultsSettings.numberOfResults": 5,
         "resultsSettings.responseGroup": "large",
@@ -46,7 +50,7 @@ def search_newark_by_part_number(part_number: str) -> dict:
     if not products:
         products = data.get("keywordSearchReturn", {}).get("products", [])
 
-    requested_match = requested_part_number.casefold()
+    requested_match = normalize_part_number(requested_part_number)
     for product in products:
         if not isinstance(product, dict):
             continue
@@ -58,7 +62,7 @@ def search_newark_by_part_number(part_number: str) -> dict:
             (
                 str(candidate).strip()
                 for candidate in candidate_part_numbers
-                if str(candidate or "").strip().casefold() == requested_match
+                if normalize_part_number(str(candidate or "").strip()) == requested_match
             ),
             None,
         )
@@ -91,13 +95,18 @@ def normalize_newark_product(product: dict) -> dict:
     input_bias_na = extract_input_bias_na_from_text(description)
     gbw_mhz = extract_gbw_mhz_from_text(description)
 
+    currency = NEWARK_STORE_CURRENCY.get(NEWARK_STORE_ID, "")
     return {
         "lifecycle_status": infer_newark_lifecycle(product),
         "stock_total": stock_total,
         "supplier_count": 1,
         "lead_time_weeks": extract_newark_lead_time_weeks(product),
         "unit_price": extract_newark_price(product),
-        "price_breaks": price_breaks_from_payload(product.get("prices")),
+        "currency": currency,
+        "unit_price_currency": currency,
+        "price_breaks": price_breaks_from_payload(
+            product.get("prices"), currency=currency
+        ),
         "has_alternates": False,
         "source": "Newark",
         "manufacturer": manufacturer,
@@ -135,7 +144,7 @@ def extract_newark_price(product: dict) -> float:
         return 0.0
 
     try:
-        return float(prices[0].get("cost", 0))
+        return price_number(prices[0].get("cost", 0)) or 0.0
     except (ValueError, TypeError, AttributeError):
         return 0.0
 

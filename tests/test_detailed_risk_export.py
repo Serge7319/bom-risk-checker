@@ -251,6 +251,32 @@ class DetailedRiskExportTests(unittest.TestCase):
         self.assertIn("not a forecast of project delay", summary_text)
         self.assertIn("not a confirmed or approved cross", summary_text)
 
+    def test_saved_unit_price_currency_drives_financial_rollup(self):
+        parts = [{
+            "mpn": "BC547B",
+            "quantity": 150,
+            "unit_price": 0.13,
+            "unit_price_currency": "USD",
+            "primary_supplier": "DigiKey",
+            "risk_level": "Low",
+            "lifecycle_status": "Active",
+        }]
+        rows = component_rows(parts)
+        self.assertEqual(rows[0]["Unit price currency"], "USD")
+        self.assertEqual(rows[0]["Extended cost"], 19.5)
+
+        workbook = load_workbook(
+            BytesIO(detailed_risk_excel_bytes(parts, bom_name="Currency rollup test")),
+            data_only=True,
+        )
+        metrics = {
+            row[0]: row[1]
+            for row in workbook["Summary"].iter_rows(min_row=10, max_row=50, values_only=True)
+            if row[0]
+        }
+        self.assertEqual(metrics["Extended BOM amount by recorded currency"], "USD 19.50")
+        self.assertEqual(metrics["Priced components missing currency"], 0)
+
     def test_approved_alternatives_are_included_in_both_downloads(self):
         approval = {
             "original_part": "LM358N",

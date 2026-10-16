@@ -18,6 +18,16 @@ from src.datasheet_comparison import build_datasheet_comparison
 
 
 class PinCountParsingTests(unittest.TestCase):
+    def test_mouser_preserves_currency_from_selected_price_break(self):
+        result = normalize_mouser_part({
+            "Manufacturer": "Texas Instruments",
+            "ManufacturerPartNumber": "LM358N",
+            "PriceBreaks": [{"Quantity": 1, "Price": "$0.42", "Currency": "USD"}],
+        })
+        self.assertEqual(result["unit_price"], 0.42)
+        self.assertEqual(result["unit_price_currency"], "USD")
+        self.assertEqual(result["price_breaks"][0]["currency"], "USD")
+
     def test_mmbt3904_package_string_never_yields_236(self):
         package = "TO-236-3, SC-59, SOT-23-3"
         self.assertEqual(parse_pin_count_from_text(package), 3)

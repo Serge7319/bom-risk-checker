@@ -9,7 +9,7 @@ from integrations.pin_count import parse_pin_count_from_text, resolve_pin_count
 from integrations.stock_coercion import parse_stock_total
 from src.secrets import get_secret
 from src.part_images import normalize_supplier_image_url
-from src.saved_bom_cost import price_breaks_from_payload
+from src.saved_bom_cost import price_breaks_from_payload, price_number
 from src.parsing.electrical_extractors import (
     extract_frequency_mhz,
     extract_slew_rate_v_us,
@@ -37,13 +37,17 @@ def get_digikey_access_token() -> str:
     return response.json()["access_token"]
 
 
+_DIGIKEY_SITE = "US"
+_DIGIKEY_CURRENCY = "USD"
+
+
 def _digikey_headers(client_id: str, access_token: str) -> dict:
     return {
         "Authorization": f"Bearer {access_token}",
         "X-DIGIKEY-Client-Id": client_id,
-        "X-DIGIKEY-Locale-Site": "US",
+        "X-DIGIKEY-Locale-Site": _DIGIKEY_SITE,
         "X-DIGIKEY-Locale-Language": "en",
-        "X-DIGIKEY-Locale-Currency": "USD",
+        "X-DIGIKEY-Locale-Currency": _DIGIKEY_CURRENCY,
     }
 
 
@@ -628,13 +632,16 @@ def normalize_digikey_product(product: dict) -> dict:
     if temperature_range:
         parametric.setdefault("temperature_range", temperature_range)
 
+    unit_price_currency = _digikey_recorded_currency(product)
     return {
         "lifecycle_status": infer_digikey_lifecycle(product),
         "stock_total": stock_total,
         "unit_price": extract_digikey_price(product),
+        "currency": unit_price_currency,
+        "unit_price_currency": unit_price_currency,
         "price_breaks": price_breaks_from_payload(
             _digikey_price_break_payload(product),
-            currency=_digikey_recorded_currency(product),
+            currency=unit_price_currency,
         ),
         "supplier_count": 1,
         "lead_time_weeks": _digikey_lead_time_weeks(product),
@@ -725,7 +732,7 @@ def _digikey_lead_time_weeks(product: dict):
 
 
 def _digikey_recorded_currency(product: dict) -> str:
-    """Currency only when the product payload includes it."""
+    """Currency from the product, or the explicit request locale as fallback."""
     for key in ("Currency", "currency"):
         text = str(product.get(key) or "").strip()
         if text:
@@ -736,7 +743,10 @@ def _digikey_recorded_currency(product: dict) -> str:
             text = str(locale.get("Currency") or locale.get("currency") or "").strip()
             if text:
                 return text
-    return ""
+    # DigiKey's request explicitly asks for US locale and USD prices. The API
+    # may omit locale metadata from a product row, so preserve that request
+    # context instead of discarding the known currency.
+    return _DIGIKEY_CURRENCY
 
 
 def _digikey_price_break_payload(product: dict):
@@ -759,28 +769,16 @@ def extract_digikey_price(product: dict) -> float:
     price_breaks = product.get("UnitPrice") or product.get("StandardPricing") or []
 
     if isinstance(price_breaks, (int, float)):
-        return float(price_breaks)
+        return price_number(price_breaks) or 0.0
 
     if isinstance(price_breaks, str):
-        try:
-            return float(price_breaks.replace("$", "").replace(",", "").strip())
-        except ValueError:
-            return 0.0
+        return price_number(price_breaks) or 0.0
 
     if isinstance(price_breaks, list) and price_breaks:
         first_break = price_breaks[0]
 
-        price = (
-            str(first_break.get("UnitPrice", first_break.get("Price", "")))
-            .replace("$", "")
-            .replace(",", "")
-            .strip()
-        )
-
-        try:
-            return float(price)
-        except ValueError:
-            return 0.0
+        price = first_break.get("UnitPrice", first_break.get("Price", ""))
+        return price_number(price) or 0.0
 
     return 0.0
 
