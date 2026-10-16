@@ -13,9 +13,13 @@ from src.boot_read_budget import (
 from src.ui.main_transition import (
     DELAY_ROUTE_BODY_REVEAL_KEY,
     MAIN_TRANSITION_ACTIVE_KEY,
+    MAIN_TRANSITION_GEN_KEY,
     MAIN_TRANSITION_ROUTE_KEY,
     OPENING_ROUTE_KEY,
     OPENING_STARTED_AT_KEY,
+    PRESENTED_ROUTE_KEY,
+    arm_main_transition,
+    prepare_main_transition,
 )
 from src.ui.navigation import reveal_authenticated_page_body
 from src.pages.home_workspace import (
@@ -38,6 +42,69 @@ from src.services.account_scope import (
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_active_route_transition_keeps_one_generation_across_reruns(monkeypatch):
+    state = {
+        MAIN_TRANSITION_ACTIVE_KEY: True,
+        MAIN_TRANSITION_ROUTE_KEY: "BOM Analyzer",
+        MAIN_TRANSITION_GEN_KEY: 41,
+        OPENING_ROUTE_KEY: "BOM Analyzer",
+        OPENING_STARTED_AT_KEY: 123.0,
+        DELAY_ROUTE_BODY_REVEAL_KEY: True,
+    }
+    injected = []
+    monkeypatch.setattr("src.ui.main_transition.st.session_state", state)
+    monkeypatch.setattr(
+        "src.ui.main_transition.inject_main_transition_css",
+        lambda generation: injected.append(generation),
+    )
+
+    generation = prepare_main_transition("BOM Analyzer")
+
+    assert generation == 41
+    assert injected == [41]
+    assert state[OPENING_STARTED_AT_KEY] == 123.0
+    assert state[MAIN_TRANSITION_ACTIVE_KEY] is True
+
+
+def test_rearming_same_active_route_does_not_clear_its_presented_marker():
+    state = {
+        MAIN_TRANSITION_ACTIVE_KEY: True,
+        MAIN_TRANSITION_ROUTE_KEY: "BOM Analyzer",
+        PRESENTED_ROUTE_KEY: "BOM Analyzer",
+    }
+
+    arm_main_transition(state, "BOM Analyzer")
+
+    assert state[PRESENTED_ROUTE_KEY] == "BOM Analyzer"
+    assert state[DELAY_ROUTE_BODY_REVEAL_KEY] is True
+
+
+def test_painting_prepared_transition_does_not_inject_stylesheet_again(monkeypatch):
+    state = {
+        MAIN_TRANSITION_ACTIVE_KEY: True,
+        MAIN_TRANSITION_ROUTE_KEY: "BOM Analyzer",
+        MAIN_TRANSITION_GEN_KEY: 41,
+    }
+    injected = []
+    painted = []
+    monkeypatch.setattr("src.ui.main_transition.st.session_state", state)
+    monkeypatch.setattr(
+        "src.ui.main_transition.inject_main_transition_css",
+        lambda generation: injected.append(generation),
+    )
+    monkeypatch.setattr(
+        "src.ui.main_transition._paint_main_transition_markup",
+        lambda route, generation: painted.append((route, generation)),
+    )
+
+    from src.ui.main_transition import paint_prepared_main_transition
+
+    paint_prepared_main_transition("BOM Analyzer")
+
+    assert injected == []
+    assert painted == [("BOM Analyzer", 41)]
 
 
 def _source(relative: str) -> str:

@@ -151,6 +151,13 @@ def calculate_risk(part_data: dict) -> dict:
     else:
         risk_level = "Low"
 
+    # Preserve qualified-variant provenance in the same risk explanation used
+    # by authenticated, one-time, and public BOM reports. This note is
+    # informative only; it does not add evidence or change the score.
+    assessment_basis_note = str(part_data.get("assessment_basis_note") or "").strip()
+    if assessment_basis_note and assessment_basis_note not in reasons:
+        reasons.append(assessment_basis_note)
+
     return {
         "risk_score": score if evidence_count else None,
         "risk_level": risk_level,

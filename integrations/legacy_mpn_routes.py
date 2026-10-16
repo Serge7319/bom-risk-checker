@@ -1,7 +1,8 @@
-"""Conservative, review-only routes for a few known legacy ordering codes.
+"""Conservative legacy-MPN routes with explicit evidence qualification.
 
-These routes expand discovery. They never promote a related MPN's price, stock,
-or lifecycle into evidence for the BOM's original MPN.
+These routes expand discovery. A related MPN is never scored unless the exact
+order code is documented by the manufacturer as the same device/orderable form.
+Family-level searches remain review-only.
 """
 from __future__ import annotations
 
@@ -12,16 +13,33 @@ _ROUTES = {
     normalize_part_number("AM29F010B-70EC"): {
         "lineage": ("AMD", "Spansion", "Cypress", "Infineon"),
         "query_mpns": ("AM29F010B",),
+        "assessment_order_codes": (),
         "review_note": "family-level search; speed, temperature, and package must be verified",
     },
     normalize_part_number("IRF540N"): {
         "lineage": ("International Rectifier", "Infineon"),
         "query_mpns": ("IRF540NPBF",),
+        "assessment_order_codes": (
+            {
+                "mpn": "IRF540NPBF",
+                "manufacturer": "Infineon",
+                "basis": "Infineon lists IRF540NPBF as an active IRF540N TO-220 order code.",
+                "source_url": "https://www.infineon.com/part/IRF540N",
+            },
+        ),
         "review_note": "lead-free ordering-code variant; verify the exact device requirements",
     },
     normalize_part_number("PCF8574P"): {
         "lineage": ("Philips Semiconductors", "NXP"),
         "query_mpns": ("PCF8574P,112",),
+        "assessment_order_codes": (
+            {
+                "mpn": "PCF8574P,112",
+                "manufacturer": "NXP",
+                "basis": "NXP lists PCF8574P,112 as the PCF8574P DIP16 tube order code.",
+                "source_url": "https://www.nxp.com/docs/en/data-sheet/PCF8574_PCF8574A.pdf",
+            },
+        ),
         "review_note": "orderable package variant; verify the package and ordering suffix",
     },
 }
@@ -45,7 +63,7 @@ def legacy_route_status(
     *,
     searched: bool = True,
 ) -> str:
-    """Explain the route without implying that related catalog hits are exact evidence."""
+    """Explain whether the route returned exact, qualified, or no evidence."""
     route = legacy_mpn_route(mpn)
     if route is None:
         return ""
@@ -70,10 +88,21 @@ def legacy_route_status(
             f"was available to check its related catalog leads. Verify the full MPN; risk for "
             f"{requested} remains unassessed without a matching supplier record."
         )
+    order_codes = [
+        str(item.get("mpn") or "").strip()
+        for item in route.get("assessment_order_codes") or ()
+        if isinstance(item, dict) and str(item.get("mpn") or "").strip()
+    ]
+    if order_codes:
+        return (
+            f"No exact supplier record was returned for {requested} or its manufacturer-listed "
+            f"order code(s) {', '.join(order_codes)}. No related data was assigned; confirm the "
+            "full device and ordering suffix before rerunning. Risk remains unassessed."
+        )
     return (
         f"No exact supplier match. Legacy manufacturer route {lineage} was checked, but no "
         f"reviewable catalog lead was returned. Verify the full MPN; suffix variants were "
-        f"not treated as exact evidence for {requested}."
+        f"not treated as exact evidence for {requested}; risk remains unassessed."
     )
 
 

@@ -66,36 +66,101 @@ class SupplierHealthTests(unittest.TestCase):
         self.assertEqual(result["lifecycle_status"], "Unknown")
         self.assertEqual(result["unit_price"], 0.0)
 
-    def test_legacy_related_catalog_hit_is_only_a_review_lead(self):
+    def test_manufacturer_documented_order_code_metrics_feed_bom_risk(self):
         from integrations import supplier_aggregator
+        from src.risk_engine import calculate_risk
 
-        exact_lookup = lambda query: {
-            "manufacturer_part_number": query,
-            "manufacturer": "Infineon",
-            "product_detail_url": "https://example.test/irf540npbf",
-            "stock_total": 300,
-            "unit_price": 0.55,
-            "lifecycle_status": "Active",
-        }
-        supplier_results = [
+        original_failures = [
             {"source": "DigiKey", "provider_status": PROVIDER_PART_NOT_FOUND},
             {"source": "Mouser", "provider_status": PROVIDER_NOT_CONFIGURED},
             {"source": "Newark", "provider_status": PROVIDER_NOT_CONFIGURED},
         ]
-        with patch.object(supplier_aggregator, "get_supplier_results", return_value=supplier_results), patch.object(
-            supplier_aggregator,
-            "_supplier_lookup_callable",
-            side_effect=lambda source: exact_lookup if source == "DigiKey" else None,
-        ):
-            data = supplier_aggregator.get_best_part_data("IRF540N")
+        cases = (
+            ("IRF540N", "IRF540NPBF", "Infineon", "Active", "https://www.infineon.com/part/IRF540N"),
+            (
+                "PCF8574P",
+                "PCF8574P,112",
+                "NXP",
+                "Obsolete",
+                "https://www.nxp.com/docs/en/data-sheet/PCF8574_PCF8574A.pdf",
+            ),
+        )
+
+        for requested, variant, manufacturer, lifecycle, source_url in cases:
+            with self.subTest(requested=requested):
+                def supplier_results(part_number, request_id=""):
+                    if part_number == requested:
+                        return original_failures
+                    return [
+                        {
+                            "source": "DigiKey",
+                            "provider_status": PROVIDER_AVAILABLE,
+                            "manufacturer_part_number": variant,
+                            "manufacturer": manufacturer,
+                            "product_detail_url": f"https://example.test/{variant}",
+                            "stock_total": 300,
+                            "unit_price": 0.55,
+                            "unit_price_currency": "USD",
+                            "lifecycle_status": lifecycle,
+                            "lead_time_weeks": 8,
+                        },
+                        {"source": "Mouser", "provider_status": PROVIDER_NOT_CONFIGURED},
+                        {"source": "Newark", "provider_status": PROVIDER_NOT_CONFIGURED},
+                    ]
+
+                supplier_aggregator.get_best_part_data.clear()
+                try:
+                    with patch.object(
+                        supplier_aggregator,
+                        "get_supplier_results",
+                        side_effect=supplier_results,
+                    ):
+                        data = supplier_aggregator.get_best_part_data(requested)
+                finally:
+                    supplier_aggregator.get_best_part_data.clear()
+
+                self.assertEqual(data["mpn"], requested)
+                self.assertEqual(data["assessment_basis"], "manufacturer_documented_order_code")
+                self.assertEqual(data["assessment_evidence_mpn"], variant)
+                self.assertEqual(data["manufacturer_part_number"], variant)
+                self.assertEqual(data["lifecycle_status"], lifecycle)
+                self.assertEqual(data["stock_total"], 300)
+                self.assertEqual(data["unit_price_currency"], "USD")
+                self.assertTrue(data["supplier_data_verified"])
+                self.assertIn(variant, data["alternate_search_status"])
+                self.assertIn(source_url, data["alternate_search_status"])
+                self.assertIn(variant, data["assessment_basis_note"])
+
+                risk = calculate_risk({**data, "quantity": 75})
+                self.assertIsNotNone(risk["risk_score"])
+                self.assertNotEqual(risk["risk_level"], "Needs verification")
+
+    def test_family_only_legacy_route_remains_unassessed_without_an_exact_record(self):
+        from integrations import supplier_aggregator
+
+        supplier_aggregator.get_best_part_data.clear()
+        try:
+            with patch.object(
+                supplier_aggregator,
+                "get_supplier_results",
+                return_value=[
+                    {"source": "DigiKey", "provider_status": PROVIDER_PART_NOT_FOUND},
+                    {"source": "Mouser", "provider_status": PROVIDER_NOT_CONFIGURED},
+                    {"source": "Newark", "provider_status": PROVIDER_NOT_CONFIGURED},
+                ],
+            ), patch.object(
+                supplier_aggregator,
+                "_supplier_lookup_callable",
+                return_value=None,
+            ):
+                data = supplier_aggregator.get_best_part_data("AM29F010B-70EC")
+        finally:
+            supplier_aggregator.get_best_part_data.clear()
 
         self.assertEqual(data["lifecycle_status"], "Unknown")
+        self.assertFalse(data["supplier_data_verified"])
         self.assertIsNone(data["stock_total"])
-        self.assertIn("IRF540NPBF", data["alternate_search_status"])
-        self.assertIn("review only", data["alternate_search_status"])
-        self.assertEqual(data["legacy_mpn_review_leads"][0]["evidence_scope"], "review_only_related_mpn")
-        self.assertNotIn("stock_total", data["legacy_mpn_review_leads"][0])
-        self.assertNotIn("unit_price", data["legacy_mpn_review_leads"][0])
+        self.assertIn("remains unassessed", data["alternate_search_status"])
 
     def test_supplier_lookup_rejects_a_fuzzy_neighbor_mpn(self):
         result = _safe_supplier_lookup(

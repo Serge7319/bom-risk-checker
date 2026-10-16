@@ -49,6 +49,17 @@ def arm_main_transition(
     route = str(target_route or "").strip()
     if not route:
         return
+    # Analysis handoffs can arm the same destination more than once while
+    # Streamlit consumes an upload, submits the worker, and paints progress.
+    # Keep that transition intact instead of resetting its body marker on each
+    # intermediate rerun.
+    already_armed = (
+        bool(session_state.get(MAIN_TRANSITION_ACTIVE_KEY))
+        and str(session_state.get(MAIN_TRANSITION_ROUTE_KEY) or "").strip() == route
+    )
+    if already_armed:
+        session_state[DELAY_ROUTE_BODY_REVEAL_KEY] = True
+        return
     session_state.pop(PRESENTED_ROUTE_KEY, None)
     session_state[MAIN_TRANSITION_ACTIVE_KEY] = True
     session_state[MAIN_TRANSITION_ROUTE_KEY] = route
@@ -415,16 +426,38 @@ def mark_opening_started(route: str) -> None:
 
 
 def prepare_main_transition(target_route: str) -> int:
-    """Arm session keys + stylesheet; return the transition generation."""
+    """Arm session keys + stylesheet; reuse an active transition generation."""
     route = str(target_route or "").strip()
     if not route:
         return int(st.session_state.get(MAIN_TRANSITION_GEN_KEY) or 0)
+    state = st.session_state
+    try:
+        current_gen = int(state.get(MAIN_TRANSITION_GEN_KEY) or 0)
+    except (TypeError, ValueError):
+        current_gen = 0
+    same_open_transition = (
+        bool(state.get(MAIN_TRANSITION_ACTIVE_KEY))
+        and str(state.get(MAIN_TRANSITION_ROUTE_KEY) or "").strip() == route
+        and str(state.get(OPENING_ROUTE_KEY) or "").strip() == route
+        and state.get(OPENING_STARTED_AT_KEY) is not None
+        and current_gen > 0
+    )
+    if same_open_transition:
+        # The shell runs again during upload parsing and worker setup. Replacing
+        # the CSS generation before its successor paints briefly exposes the
+        # stale route body; one generation must own the entire handoff.
+        inject_main_transition_css(current_gen)
+        state[MAIN_TRANSITION_ACTIVE_KEY] = True
+        state[MAIN_TRANSITION_ROUTE_KEY] = route
+        state[DELAY_ROUTE_BODY_REVEAL_KEY] = True
+        return current_gen
+
     mark_opening_started(route)
     gen = _next_transition_gen()
     inject_main_transition_css(gen)
-    st.session_state[MAIN_TRANSITION_ACTIVE_KEY] = True
-    st.session_state[MAIN_TRANSITION_ROUTE_KEY] = route
-    st.session_state[DELAY_ROUTE_BODY_REVEAL_KEY] = True
+    state[MAIN_TRANSITION_ACTIVE_KEY] = True
+    state[MAIN_TRANSITION_ROUTE_KEY] = route
+    state[DELAY_ROUTE_BODY_REVEAL_KEY] = True
     return gen
 
 
@@ -456,7 +489,10 @@ def paint_prepared_main_transition(target_route: str) -> None:
     if gen <= 0:
         gen = prepare_main_transition(route)
     else:
-        inject_main_transition_css(gen)
+        # The application shell prepares this stylesheet before rendering the
+        # unified shell. Re-injecting it here (and in the shell itself) creates
+        # duplicate style hosts on every Streamlit rerun, which can briefly
+        # expose the outgoing page while the browser replaces those hosts.
         st.session_state[MAIN_TRANSITION_ACTIVE_KEY] = True
         st.session_state[MAIN_TRANSITION_ROUTE_KEY] = route
         st.session_state[DELAY_ROUTE_BODY_REVEAL_KEY] = True
