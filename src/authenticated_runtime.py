@@ -2401,7 +2401,8 @@ def run_authenticated_app() -> None:
     def get_part_data(row):
         from integrations.supplier_aggregator import get_best_part_data
         from src.alternative_engine import suggest_alternatives_v2
-        part_number = row["mpn_normalized"]
+        part_number = str(row.get("mpn") or row.get("mpn_normalized") or "").strip()
+        normalized_part_number = str(row.get("mpn_normalized") or part_number).strip()
 
         try:
             part_data = get_best_part_data(part_number)
@@ -2423,16 +2424,20 @@ def run_authenticated_app() -> None:
         part_data["quantity"] = row.get("quantity", 0)
 
         try:
-           alternative_part_numbers = suggest_alternatives_v2(part_number)
+           alternative_part_numbers = suggest_alternatives_v2(normalized_part_number)
 
         except Exception:
             alternative_part_numbers = []
-            part_data["alternate_search_status"] = "Search unavailable"
+            search_status = "Search unavailable"
         else:
-            part_data["alternate_search_status"] = (
+            search_status = (
                 "Candidates returned" if alternative_part_numbers
                 else "No candidate returned; search coverage is not confirmed"
             )
+        existing_search_status = str(part_data.get("alternate_search_status") or "").strip()
+        part_data["alternate_search_status"] = "; ".join(
+            item for item in (existing_search_status, search_status) if item
+        )
 
         part_data["has_alternates"] = len(alternative_part_numbers) > 0
         part_data["alternate_count"] = len(alternative_part_numbers)
@@ -19040,10 +19045,6 @@ def run_authenticated_app() -> None:
             """,
             unsafe_allow_html=True,
         )
-        # Collapse in-shell loading only after distinctive BOM content has painted.
-        # Revealing after imports (before this header) left BOM chrome with neither
-        # "Opening BOM Analyzer…" nor page copy during the CSS/setup gap.
-        reveal_authenticated_page_body("BOM Analyzer")
         from src.ui.approved_pages import render_bom_catalog
         from src.bom_upload_flow import (
             consume_approved_bom_submission,
@@ -19077,6 +19078,7 @@ def run_authenticated_app() -> None:
                 saved_bom_rerun_active = True
             else:
                 st.error("The updated BOM could not be loaded. Return to BOMs and open it again.")
+                reveal_authenticated_page_body("BOM Analyzer")
                 stop_authenticated_page()
         elif saved_bom_rerun_active:
             _approved_bom_submitted = False
@@ -19088,6 +19090,10 @@ def run_authenticated_app() -> None:
                 history_data if isinstance(history_data, list) else [],
                 user_id=str((current_user or {}).get("id") or ""),
             )
+            # Keep the transition owner over a submitted upload until the next
+            # run paints its single analysis-progress surface.
+            if not st.session_state.get("cadivor_bom_analysis_ready"):
+                reveal_authenticated_page_body("BOM Analyzer")
             _approved_bom_submitted, uploaded_file, project_name, bom_name = (
                 consume_approved_bom_submission(st.session_state)
             )
@@ -19095,6 +19101,9 @@ def run_authenticated_app() -> None:
                 # Let the upload form disappear before parsing and starting the
                 # long-running analysis. Otherwise its submitted state is
                 # painted alongside the progress/results transition.
+                from src.ui.main_transition import arm_bom_analysis_transition
+
+                arm_bom_analysis_transition(st.session_state, "start")
                 st.rerun()
             if not _approved_bom_submitted and st.session_state.get("cadivor_bom_pipeline_active"):
                 resumed_upload, resumed_project, resumed_bom_name = (
@@ -19132,6 +19141,7 @@ def run_authenticated_app() -> None:
                 """,
                 unsafe_allow_html=True,
             )
+            reveal_authenticated_page_body("BOM Analyzer")
         _approved_bom_pipeline_active = bool(
             st.session_state.get("cadivor_bom_pipeline_active")
             or st.session_state.get("bom8_analysis_future")
@@ -19155,6 +19165,7 @@ def run_authenticated_app() -> None:
         ):
             if saved_bom_rerun_active:
                 st.error("The updated BOM file is no longer available in this session. Return to BOMs and open the saved BOM again.")
+                reveal_authenticated_page_body("BOM Analyzer")
             stop_authenticated_page()
 
         # The approved upload path bypasses the legacy saved-BOM controls below,
@@ -19224,6 +19235,7 @@ def run_authenticated_app() -> None:
                 }
                 if not high_risk_rows:
                     st.info("No saved high-risk component records are currently available to review.")
+                    reveal_authenticated_page_body("BOM Analyzer")
                 else:
                     st.markdown(
                         """
@@ -19244,6 +19256,7 @@ def run_authenticated_app() -> None:
                         """,
                         unsafe_allow_html=True,
                     )
+                    reveal_authenticated_page_body("BOM Analyzer")
                     for row_start in range(0, len(high_risk_rows), 2):
                         card_columns = st.columns(2, gap="large")
                         for column, (index, part) in zip(
@@ -20610,8 +20623,11 @@ def run_authenticated_app() -> None:
             )
         if analyze_clicked:
             # Render the busy state before the long-running supplier and risk analysis.
+            from src.ui.main_transition import arm_bom_analysis_transition
+
             st.session_state["bom8_analysis_in_progress"] = True
             st.session_state["bom8_analysis_pending"] = True
+            arm_bom_analysis_transition(st.session_state, "start")
             st.rerun()
 
         analysis_future = st.session_state.get("bom8_analysis_future")
@@ -20816,6 +20832,14 @@ def run_authenticated_app() -> None:
             progress_queue = queue.Queue()
             cancel_event = threading.Event()
             executor = ThreadPoolExecutor(max_workers=1)
+            from src.ui.main_transition import arm_bom_analysis_transition
+
+            run_mode = (
+                "rerun"
+                if st.session_state.get("cadivor_saved_bom_rerun_active")
+                else "start"
+            )
+            arm_bom_analysis_transition(st.session_state, run_mode)
             st.session_state["bom8_analysis_progress_queue"] = progress_queue
             st.session_state["bom8_analysis_cancel_event"] = cancel_event
             st.session_state["bom8_analysis_executor"] = executor
@@ -20826,7 +20850,6 @@ def run_authenticated_app() -> None:
                 cancel_event,
             )
             st.session_state["bom8_analysis_progress"] = (0, len(bom_df), "")
-            st.success(message)
             st.rerun()
 
         if st.session_state.get("show_upgrade_checkout") and not is_admin:

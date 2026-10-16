@@ -210,11 +210,12 @@ class ApprovedBOMSubmissionTests(unittest.TestCase):
 
     def test_upload_form_hides_during_the_runtime_progress_view(self):
         source = Path("src/ui/approved_pages.py").read_text(encoding="utf-8")
-        start = source.index("if upload_mode and analysis_running and not results_visible:")
+        start = source.index("if analysis_running and not results_visible:")
         end = source.index('    else:\n        from datetime import date', start)
         transition = source[start:end]
 
         self.assertIn("approved_bom_upload_progress", transition)
+        self.assertIn("Preparing or checking supplier data", transition)
         self.assertIn("should_render_approved_bom_upload_form(", transition)
         self.assertIn("approved_bom_upload_panel", transition)
         self.assertIn("elif results_visible:", transition)
@@ -322,6 +323,15 @@ class ApprovedBOMSubmissionTests(unittest.TestCase):
         )
         self.assertFalse(
             should_render_legacy_bom_workspace({"cadivor_bom_pipeline_active": True})
+        )
+        self.assertFalse(
+            should_render_legacy_bom_workspace({"bom8_analysis_pending": True})
+        )
+        self.assertFalse(
+            should_render_legacy_bom_workspace({"bom8_analysis_in_progress": True})
+        )
+        self.assertFalse(
+            should_render_legacy_bom_workspace({"bom8_analysis_future": object()})
         )
         self.assertFalse(
             should_render_legacy_bom_workspace({"cadivor_bom_catalog_requested": True})

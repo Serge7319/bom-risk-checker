@@ -242,7 +242,10 @@ class DetailedRiskExportTests(unittest.TestCase):
             if row[0]
         }
         self.assertEqual(metrics["Extended BOM amount by recorded currency"], "EUR 25.00; USD 20.00")
-        self.assertEqual(metrics["High-risk / lifecycle amount by currency"], "USD 20.00")
+        self.assertEqual(
+            metrics["Priced high-risk / lifecycle extended cost by currency"],
+            "USD 20.00",
+        )
         self.assertEqual(metrics["High-risk / lifecycle rows without extended cost"], 0)
         self.assertEqual(metrics["Priced high-risk rows missing currency"], 1)
         self.assertEqual(metrics["Longest reported part lead time"], "62 weeks — 1N4148 (DigiKey)")
@@ -250,6 +253,7 @@ class DetailedRiskExportTests(unittest.TestCase):
         summary_text = " ".join(str(cell.value) for row in workbook["Summary"] for cell in row if cell.value)
         self.assertIn("not a forecast of project delay", summary_text)
         self.assertIn("not a confirmed or approved cross", summary_text)
+        self.assertIn("not total exposure", summary_text)
 
     def test_saved_unit_price_currency_drives_financial_rollup(self):
         parts = [{

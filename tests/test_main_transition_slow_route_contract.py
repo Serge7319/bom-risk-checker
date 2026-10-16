@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import ast
+import html
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -48,6 +49,7 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
             "MutableMapping": MutableMapping,
             "st": SimpleNamespace(session_state={}),
             "MAIN_TRANSITION_ROUTE_KEY": "cadivor_main_transition_route",
+            "BOM_ANALYSIS_TRANSITION_KEY": "cadivor_bom_analysis_transition",
             "SLOW_ROUTE_OPENING_TARGETS": frozenset({"Analysis Details", "Engineering Decisions"}),
             "FAST_CACHED_NAV_OPENING_MS": 300,
             "warm_session_nav_ready": lambda _state: True,
@@ -77,6 +79,54 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
                 session_state=state,
             )
         )
+
+        analysis_state = {
+            "cadivor_foundation_shell_mounted": True,
+            "cadivor_bom_analysis_transition": "start",
+        }
+        self.assertTrue(
+            should_paint(
+                needs_transition=True,
+                target_route="BOM Analyzer",
+                session_state=analysis_state,
+            )
+        )
+
+    def test_analysis_start_and_rerun_have_specific_loading_copy(self):
+        tree = ast.parse(SOURCE)
+        helper = next(
+            node
+            for node in tree.body
+            if isinstance(node, ast.FunctionDef)
+            and node.name == "route_loading_markup"
+        )
+        module = ast.Module(
+            body=[
+                ast.ImportFrom(
+                    module="__future__",
+                    names=[ast.alias(name="annotations")],
+                    level=0,
+                ),
+                helper,
+            ],
+            type_ignores=[],
+        )
+        namespace = {
+            "html": html,
+            "BOM_ANALYSIS_TRANSITION_KEY": "cadivor_bom_analysis_transition",
+            "st": SimpleNamespace(session_state={}),
+        }
+        exec(compile(ast.fix_missing_locations(module), "<transition-copy>", "exec"), namespace)
+        render = namespace["route_loading_markup"]
+
+        namespace["st"].session_state["cadivor_bom_analysis_transition"] = "start"
+        start = render("BOM Analyzer", 1)
+        self.assertIn("Starting BOM analysis…", start)
+
+        namespace["st"].session_state["cadivor_bom_analysis_transition"] = "rerun"
+        rerun = render("BOM Analyzer", 2)
+        self.assertIn("Rerunning BOM analysis…", rerun)
+        self.assertIn("Refreshing supplier, lifecycle, lead-time, and pricing evidence", rerun)
 
 
 if __name__ == "__main__":

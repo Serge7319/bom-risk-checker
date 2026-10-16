@@ -96,6 +96,17 @@ def _supplier_result_matches_request(source_name: str, requested: str, result: d
     )
 
 
+def _supplier_query_variants(part_number: object) -> tuple[str, ...]:
+    """Try only case and separator formatting; never strip MPN suffixes."""
+    raw = str(part_number or "").strip()
+    variants = []
+    for value in (raw, raw.upper(), normalize_part_number(raw)):
+        candidate = str(value or "").strip()
+        if candidate and candidate not in variants:
+            variants.append(candidate)
+    return tuple(variants)
+
+
 def _canonical_lifecycle(status: object) -> str:
     text = " ".join(str(status or "").strip().casefold().replace("_", " ").split())
     if not text or text in {"unknown", "unverified", "n/a", "not available"}:
@@ -175,7 +186,23 @@ def _safe_supplier_lookup(source_name, lookup_func, part_number, request_id: str
                 )
             return result
 
-        result = lookup_func(part_number)
+        result = None
+        last_nonmatching_result = None
+        for query_variant in _supplier_query_variants(part_number):
+            candidate_result = lookup_func(query_variant)
+            if not candidate_result:
+                continue
+            if candidate_result.get("error"):
+                result = candidate_result
+                break
+            if _supplier_result_matches_request(
+                source_name, part_number, candidate_result
+            ):
+                result = candidate_result
+                break
+            last_nonmatching_result = candidate_result
+        if result is None:
+            result = last_nonmatching_result
 
         if not result:
             result = _empty_supplier_result(
@@ -238,7 +265,10 @@ def _safe_supplier_lookup(source_name, lookup_func, part_number, request_id: str
             not str(result.get("manufacturer_part_number") or "").strip()
             or not _supplier_result_matches_request(source_name, part_number, result)
         ):
-            result["provider_status"] = PROVIDER_PART_NOT_FOUND
+            result = _empty_supplier_result(
+                source_name,
+                provider_status=PROVIDER_PART_NOT_FOUND,
+            )
             result.pop("error", None)
             diagnostic = log_supplier_diagnostic(
                 request_id=resolved_request_id,
@@ -321,6 +351,75 @@ def _supplier_lookup_callable(source_name: str):
     return None
 
 
+def _legacy_mpn_review_leads(
+    part_number: str,
+    supplier_results: list[dict],
+) -> list[dict]:
+    """Search curated related order codes as leads, never as original-part evidence."""
+    from integrations.legacy_mpn_routes import legacy_mpn_route
+
+    route = legacy_mpn_route(part_number)
+    if route is None:
+        return []
+    source_status = {
+        str(row.get("source") or ""): str(row.get("provider_status") or "")
+        for row in supplier_results
+        if isinstance(row, dict)
+    }
+    tasks = []
+    for candidate_mpn in route.get("query_mpns") or ():
+        for source_name in ("Mouser", "DigiKey", "Newark"):
+            if source_status.get(source_name) != PROVIDER_PART_NOT_FOUND:
+                continue
+            lookup = _supplier_lookup_callable(source_name)
+            if lookup is not None:
+                tasks.append((source_name, lookup, str(candidate_mpn)))
+    if not tasks:
+        return []
+
+    def search_review_candidate(source_name, lookup, query_mpn):
+        try:
+            result = lookup(query_mpn)
+        except Exception:
+            return None
+        if not isinstance(result, dict) or result.get("error"):
+            return None
+        returned_mpn = str(result.get("manufacturer_part_number") or "").strip()
+        if not returned_mpn:
+            return None
+        if normalize_part_number(returned_mpn) != normalize_part_number(query_mpn):
+            return None
+        if normalize_part_number(returned_mpn) == normalize_part_number(part_number):
+            return None
+        return {
+            "mpn": returned_mpn,
+            "supplier": source_name,
+            "manufacturer": str(result.get("manufacturer") or "").strip(),
+            "product_url": str(result.get("product_detail_url") or "").strip(),
+            "evidence_scope": "review_only_related_mpn",
+            "retrieved_at": str(result.get("retrieved_at") or utc_now_iso()),
+        }
+
+    leads = []
+    with ThreadPoolExecutor(max_workers=min(3, len(tasks))) as executor:
+        futures = [
+            executor.submit(search_review_candidate, source_name, lookup, query_mpn)
+            for source_name, lookup, query_mpn in tasks
+        ]
+        for future in as_completed(futures):
+            lead = future.result()
+            if lead is not None:
+                leads.append(lead)
+    deduped = {}
+    for lead in leads:
+        key = (
+            normalize_part_number(lead.get("mpn")),
+            str(lead.get("supplier") or "").casefold(),
+        )
+        deduped[key] = lead
+    return sorted(deduped.values(), key=lambda row: (row["mpn"], row["supplier"]))
+
+
 def get_supplier_results(part_number, request_id: str = ""):
     from integrations.supplier_diagnostics import resolve_supplier_diagnostic_request_id
 
@@ -373,6 +472,25 @@ def get_best_part_data(part_number: str) -> dict:
     if not valid_results:
         aggregated = default_aggregated_result(part_number, supplier_results)
         aggregated["supplier_offers"] = []
+        from integrations.legacy_mpn_routes import legacy_mpn_route, legacy_route_status
+
+        if legacy_mpn_route(part_number) is not None:
+            searched = any(
+                str(row.get("provider_status") or "") == PROVIDER_PART_NOT_FOUND
+                for row in supplier_results
+                if isinstance(row, dict)
+            )
+            leads = (
+                _legacy_mpn_review_leads(part_number, supplier_results)
+                if searched
+                else []
+            )
+            aggregated["legacy_mpn_review_leads"] = leads
+            aggregated["alternate_search_status"] = legacy_route_status(
+                part_number,
+                leads,
+                searched=searched,
+            )
         return aggregated
 
     stock_by_result = {

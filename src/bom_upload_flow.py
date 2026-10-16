@@ -72,6 +72,7 @@ def finish_approved_bom_submission(
         "bom8_analysis_progress_queue",
         "bom8_analysis_cancel_event",
         "bom8_analysis_progress",
+        "cadivor_bom_analysis_transition",
     ):
         state.pop(key, None)
     if reopen_upload:
@@ -150,6 +151,7 @@ def prepare_new_approved_bom_analysis(state: MutableMapping[str, Any]) -> None:
         "bom8_analysis_pending",
         "bom8_analysis_in_progress",
         "bom8_analysis_upload_file",
+        "cadivor_bom_analysis_transition",
         "bom8_project_name",
         "bom8_bom_name",
         "cadivor_bom_analysis_ready",
@@ -170,6 +172,9 @@ def should_render_legacy_bom_workspace(state: MutableMapping[str, Any]) -> bool:
     return not (
         bool(state.get("cadivor_bom_upload_open"))
         or bool(state.get("cadivor_bom_pipeline_active"))
+        or bool(state.get("bom8_analysis_pending"))
+        or bool(state.get("bom8_analysis_in_progress"))
+        or bool(state.get("bom8_analysis_future"))
         or bool(state.get("cadivor_bom_catalog_requested"))
         or bool(state.get("cadivor_show_saved_boms"))
         or has_completed_saved_bom_results(state)

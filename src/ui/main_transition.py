@@ -27,6 +27,7 @@ FAST_CACHED_NAV_OPENING_MS = 300
 OPENING_STARTED_AT_KEY = "cadivor_opening_started_at"
 OPENING_ROUTE_KEY = "cadivor_opening_route"
 SLOW_ROUTE_OPENING_TARGETS = frozenset({"Analysis Details", "Engineering Decisions"})
+BOM_ANALYSIS_TRANSITION_KEY = "cadivor_bom_analysis_transition"
 
 
 def get_presented_route(session_state: MutableMapping[str, Any] | None = None) -> str:
@@ -50,6 +51,18 @@ def arm_main_transition(
     session_state[MAIN_TRANSITION_ACTIVE_KEY] = True
     session_state[MAIN_TRANSITION_ROUTE_KEY] = route
     session_state[DELAY_ROUTE_BODY_REVEAL_KEY] = True
+
+
+def arm_bom_analysis_transition(
+    session_state: MutableMapping[str, Any],
+    mode: str = "start",
+) -> None:
+    """Keep one stable loading surface while a new BOM run is being prepared."""
+    normalized_mode = str(mode or "start").strip().casefold()
+    if normalized_mode not in {"start", "rerun"}:
+        normalized_mode = "start"
+    arm_main_transition(session_state, "BOM Analyzer")
+    session_state[BOM_ANALYSIS_TRANSITION_KEY] = normalized_mode
 
 
 def route_needs_main_transition(target_route: str, presented_route: str = "") -> bool:
@@ -102,6 +115,12 @@ def should_paint_opening_overlay(
     target = str(
         target_route or state.get(MAIN_TRANSITION_ROUTE_KEY) or ""
     ).strip()
+    if (
+        target == "BOM Analyzer"
+        and str(state.get(BOM_ANALYSIS_TRANSITION_KEY) or "").strip().casefold()
+        in {"start", "rerun"}
+    ):
+        return True
     if target in SLOW_ROUTE_OPENING_TARGETS:
         return True
     if warm_session_nav_ready(state):
@@ -344,6 +363,16 @@ def route_loading_markup(target_route: str, transition_gen: int) -> str:
     """Return the in-main target-route loading HTML (no nested <style>)."""
     safe_route = html.escape(str(target_route or "").strip() or "workspace")
     gen = int(transition_gen)
+    mode = str(st.session_state.get(BOM_ANALYSIS_TRANSITION_KEY) or "").strip().casefold()
+    if safe_route == "BOM Analyzer" and mode == "rerun":
+        title = "Rerunning BOM analysis…"
+        description = "Refreshing supplier, lifecycle, lead-time, and pricing evidence."
+    elif safe_route == "BOM Analyzer" and mode == "start":
+        title = "Starting BOM analysis…"
+        description = "Preparing your components and checking configured supplier sources."
+    else:
+        title = f"Opening {safe_route}…"
+        description = "Preparing this page in your Cadivor workspace."
     return f"""
         <div data-cadivor-transition-host="cadivor-main-transition"
              data-cadivor-transition-gen="{gen}"
@@ -356,8 +385,8 @@ def route_loading_markup(target_route: str, transition_gen: int) -> str:
              role="status" aria-live="polite">
           <div class="cv-main-transition-card">
             <div class="cv-main-transition-mark" aria-hidden="true">C</div>
-            <strong>Opening {safe_route}…</strong>
-            <p>Preparing this page in your Cadivor workspace.</p>
+            <strong>{title}</strong>
+            <p>{description}</p>
             <div class="cv-main-transition-progress" aria-hidden="true"><i></i></div>
           </div>
         </div>
@@ -443,6 +472,7 @@ def reveal_main_transition(route: str = "") -> None:
         st.session_state[PRESENTED_ROUTE_KEY] = safe_route
     st.session_state[MAIN_TRANSITION_ACTIVE_KEY] = False
     st.session_state.pop(DELAY_ROUTE_BODY_REVEAL_KEY, None)
+    st.session_state.pop(BOM_ANALYSIS_TRANSITION_KEY, None)
     try:
         started = st.session_state.pop(OPENING_STARTED_AT_KEY, None)
         logged_route = st.session_state.pop(OPENING_ROUTE_KEY, None) or safe_route
