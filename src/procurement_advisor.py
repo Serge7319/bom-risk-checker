@@ -321,9 +321,9 @@ def procurement_header_html(
         ".cv-pa-evidence-gap{color:#92400e!important}.cv-pa-evidence-ok{color:#166534!important}"
         "@media(max-width:700px){.cv-pa-part-head{align-items:flex-start}.cv-pa-meta-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}"
         "</style>"
-        f"<section class='cv-pa-part-head'>{photo}<div class='cv-pa-meta-grid'>{cells}</div></section>"
-        f"<section class='cv-pa-recommendation'><span class='cv-ap-meta'>Recommended next step</span><h2>{action}</h2>"
-        f"<p>{next_step}</p>{evidence_note}</section>"
+        f"<div class='cv-pa-part-head'>{photo}<div class='cv-pa-meta-grid'>{cells}</div></div>"
+        f"<div class='cv-pa-recommendation'><span class='cv-ap-meta'>Recommended next step</span><h2>{action}</h2>"
+        f"<p>{next_step}</p>{evidence_note}</div>"
     )
 
 
@@ -336,10 +336,10 @@ def procurement_page_header_html() -> str:
         ".cv-pa-page-head p{margin:8px 0 0;color:#64748b;font-size:15px;line-height:1.5}"
         "@media(max-width:700px){.cv-pa-page-head h1{font-size:29px}.cv-pa-page-head p{font-size:13px}}"
         "</style>"
-        "<header class='cv-pa-page-head'><div class='cv-pa-breadcrumb'>Procurement Advisor"
+        "<div class='cv-pa-page-head'><div class='cv-pa-breadcrumb'>Procurement Advisor"
         "<span aria-hidden='true'>›</span>Sourcing Recommendation</div>"
-        "<h1>Procurement advisor</h1>"
-        "<p>AI-powered supplier insights and sourcing recommendations to reduce risk, ensure supply continuity, and optimize total cost.</p></header>"
+        "<h1>Sourcing Recommendation</h1>"
+        "<p>Supplier recommendations and sourcing evidence for a selected BOM component.</p></div>"
     )
 
 
@@ -432,12 +432,12 @@ def procurement_part_summary_html(
         "@media(max-width:1100px){.cv-pa-summary{grid-template-columns:70px minmax(200px,1fr) repeat(2,minmax(130px,1fr))}.cv-pa-summary-fact{padding:8px 0 0;border:0;border-top:1px solid #e2e8f0}}"
         "@media(max-width:650px){.cv-pa-summary{grid-template-columns:60px 1fr;gap:10px;padding:14px}.cv-pa-summary-image{width:60px;height:60px}.cv-pa-summary-identity h2{font-size:16px}.cv-pa-summary-fact{grid-column:span 1}.cv-pa-summary-fact:nth-last-child(2){grid-column:span 2}}"
         "</style>"
-        f"<section class='cv-pa-summary'><div class='cv-pa-summary-image'>{image}</div>"
+        f"<div class='cv-pa-summary'><div class='cv-pa-summary-image'>{image}</div>"
         f"<div class='cv-pa-summary-identity'><div class='cv-pa-summary-mpn'>{html_escape(part_number)} · {html_escape(manufacturer)}</div>"
         f"<h2>{html_escape(description if description != 'Not recorded' else part_number)}</h2>"
         f"<p>{html_escape(first('component_type','category','device_type','part_type'))}</p>"
         f"<span class='cv-pa-chip cv-pa-chip--{lifecycle_tone}'>{html_escape(lifecycle)}</span>"
-        f"<span class='cv-pa-chip'>{html_escape(bom_value)}</span></div>{cells}</section>"
+        f"<span class='cv-pa-chip'>{html_escape(bom_value)}</span></div>{cells}</div>"
     )
 
 
@@ -692,7 +692,7 @@ def procurement_recommendation_html(
         "@media(max-width:850px){.cv-pa-recommendation-v2{grid-template-columns:1fr}.cv-pa-reco-callouts{grid-template-columns:repeat(3,minmax(0,1fr));padding:16px 0 0;border-left:0;border-top:1px solid #cfe0f7}}"
         "@media(max-width:600px){.cv-pa-recommendation-v2{padding:18px}.cv-pa-reco-main{grid-template-columns:42px 1fr;gap:12px}.cv-pa-reco-star{width:42px;height:42px;font-size:21px}.cv-pa-reco-main h2{font-size:18px}.cv-pa-reco-callouts{grid-template-columns:1fr}}"
         "</style>"
-        "<section class='cv-pa-recommendation-v2'><div class='cv-pa-reco-main'>"
+        "<div class='cv-pa-recommendation-v2'><div class='cv-pa-reco-main'>"
         "<div class='cv-pa-reco-star' aria-hidden='true'>★</div><div>"
         f"<div class='cv-pa-reco-eyebrow'>RECOMMENDATION</div><h2>{html_escape(action_title)}</h2>"
         f"<p>{html_escape(next_step)}</p></div></div><div class='cv-pa-reco-callouts'>"
@@ -701,7 +701,7 @@ def procurement_recommendation_html(
             f"<div><strong>{html_escape(value)}</strong><small>{html_escape(detail)}</small></div></div>"
             for _label, value, detail, icon in callouts
         )
-        + "</div></section>"
+        + "</div></div>"
     )
 
 
@@ -759,13 +759,13 @@ def procurement_summary_cards_html(
         "<style>"
         ".cv-pa-metric-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:0 0 16px}.cv-pa-metric{min-height:105px;padding:16px 18px;border:1px solid #e2e8f0;border-radius:12px;background:#fff;box-shadow:0 2px 8px rgba(15,23,42,.025)}.cv-pa-metric--action{background:#f0fdf4;border-color:#d1fae5}.cv-pa-metric-label{font-size:11px;color:#64748b;font-weight:700;margin:0 0 9px}.cv-pa-metric-value{font-size:20px;color:#0f172a;font-weight:800;line-height:1.2;overflow-wrap:anywhere}.cv-pa-metric--action .cv-pa-metric-value{font-size:16px;color:#166534}.cv-pa-metric-detail{font-size:10px;color:#64748b;line-height:1.4;margin-top:7px}"
         "@media(max-width:900px){.cv-pa-metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:520px){.cv-pa-metric-grid{grid-template-columns:1fr}.cv-pa-metric{min-height:0}}"
-        "</style><section class='cv-pa-metric-grid'>"
+        "</style><div class='cv-pa-metric-grid'>"
         + "".join(
-            f"<article class='cv-pa-metric cv-pa-metric--{tone}'><div class='cv-pa-metric-label'>{html_escape(label)}</div>"
-            f"<div class='cv-pa-metric-value'>{html_escape(value)}</div><div class='cv-pa-metric-detail'>{html_escape(detail)}</div></article>"
+            f"<div class='cv-pa-metric cv-pa-metric--{tone}'><div class='cv-pa-metric-label'>{html_escape(label)}</div>"
+            f"<div class='cv-pa-metric-value'>{html_escape(value)}</div><div class='cv-pa-metric-detail'>{html_escape(detail)}</div></div>"
             for label, value, detail, tone in cards
         )
-        + "</section>"
+        + "</div>"
     )
 
 

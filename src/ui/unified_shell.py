@@ -172,7 +172,11 @@ def _approved_shell_css() -> str:
           background:#e8eefc!important;color:#1d4ed8!important;border-color:transparent!important;box-shadow:none!important
         }
         section[data-testid="stMain"] .st-key-cv_foundation_navigation .stButton>button[kind="primary"] p{color:#1d4ed8!important}
-        .cv-foundation-nav-group{color:#94a3b8!important;letter-spacing:.12em!important}
+        .cv-foundation-nav-group{
+          color:#475569!important;font-size:11px!important;font-weight:800!important;
+          letter-spacing:.08em!important;text-transform:uppercase!important;
+          margin:8px 0 3px!important;padding:6px 10px 4px!important
+        }
         .st-key-cv_foundation_top_navigation{
           display:block!important;visibility:visible!important;position:relative!important;
           top:auto!important;left:auto!important;right:auto!important;bottom:auto!important;

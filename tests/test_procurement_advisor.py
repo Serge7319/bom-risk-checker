@@ -9,7 +9,9 @@ from src.procurement_advisor import (
     persist_sourcing_update,
     procurement_details_display_frame,
     procurement_header_html,
+    procurement_page_header_html,
     procurement_part_summary_html,
+    procurement_recommendation_html,
     procurement_summary_cards_html,
     sourcing_editor_values,
     supplier_comparison_dataframe,
@@ -18,6 +20,41 @@ from src.procurement_advisor import (
 
 
 class ProcurementAdvisorTests(unittest.TestCase):
+    def test_sourcing_recommendation_markup_uses_visible_streamlit_containers(self):
+        part = {"mpn": "TPS54331D", "description": "Power controller"}
+        recommendation = {
+            "Recommendation": "Complete sourcing data",
+            "Next Step": "Confirm the current supplier quote.",
+            "Supplier Sources": None,
+        }
+        self.assertIn("<h1>Sourcing Recommendation</h1>", procurement_page_header_html())
+        self.assertIn("<div class='cv-pa-page-head'>", procurement_page_header_html())
+        self.assertNotIn("<header", procurement_page_header_html())
+
+        part_html = procurement_part_summary_html(part, recommendation)
+        self.assertIn("<div class='cv-pa-summary'>", part_html)
+        self.assertNotIn("<section", part_html)
+
+        recommendation_html = procurement_recommendation_html(part, recommendation)
+        self.assertIn("<div class='cv-pa-recommendation-v2'>", recommendation_html)
+        self.assertNotIn("<section", recommendation_html)
+
+        cards_html = procurement_summary_cards_html(part, recommendation)
+        self.assertIn("<div class='cv-pa-metric-grid'>", cards_html)
+        self.assertIn("<div class='cv-pa-metric cv-pa-metric--", cards_html)
+        self.assertNotIn("<article", cards_html)
+
+    def test_sidebar_names_procurement_destination_sourcing_recommendation(self):
+        from src.ui.approved_shell_nav import shared_nav_groups
+
+        decision_tools = next(
+            rows for group, rows in shared_nav_groups() if group == "Decision Tools"
+        )
+        self.assertIn(
+            ("Sourcing Recommendation", "procurement", "Procurement Advisor"),
+            decision_tools,
+        )
+
     def test_missing_supplier_defaults_are_not_presented_as_a_stockout(self):
         advisor = build_procurement_advisor(
             analyses=[],
