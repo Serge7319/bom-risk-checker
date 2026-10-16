@@ -272,13 +272,65 @@ class OneTimeBOMTests(unittest.TestCase):
 
     def test_full_bom_excel_is_generated_in_memory_per_request(self):
         report = BytesIO()
-        save_results_to_excel([{
-            "MPN": "MCP2551-I/SN", "Risk Score": 90, "Risk Level": "High",
-            "Lifecycle Status": "Obsolete", "Stock Available": 0,
-        }], report)
+        save_results_to_excel(
+            [
+                {
+                    "MPN": "BC547B",
+                    "Risk Score": 90,
+                    "Risk Level": "High",
+                    "Lifecycle Status": "Active",
+                    "Stock Available": 800,
+                    "Stock Data Sources": ["Mouser"],
+                    "Stock Data Complete": True,
+                    "Supplier Count": 1,
+                    "Best Source": "Mouser",
+                    "Unit Price": 0.13,
+                    "Unit Price Currency": "USD",
+                    "Quantity": 150,
+                },
+                {
+                    "MPN": "PCF8574P",
+                    "Risk Score": None,
+                    "Risk Level": "Needs verification",
+                    "Lifecycle Status": "Unknown",
+                    "Stock Available": None,
+                    "Stock Data Sources": [],
+                    "Stock Data Complete": False,
+                    "Supplier Count": 0,
+                    "Alternate Search Status": (
+                        "No exact supplier match. Legacy route Philips Semiconductors → NXP "
+                        "found related catalog lead(s) for review only: PCF8574P,112 (DigiKey); "
+                        "verify the package and ordering suffix."
+                    ),
+                },
+            ],
+            report,
+            bom_name="Test project / BOM",
+            source_filename="test-bom.csv",
+        )
         workbook = load_workbook(BytesIO(report.getvalue()))
-        self.assertEqual(workbook["Detailed Results"]["A2"].value, "MCP2551-I/SN")
+        details = workbook["Component Details"]
+        self.assertEqual(details["A2"].value, "BC547B")
+        self.assertEqual(details["A3"].value, "PCF8574P")
         self.assertIn("High Risk Parts", workbook.sheetnames)
+        detail_headers = {cell.value: cell.column for cell in details[1]}
+        self.assertEqual(
+            details.cell(3, detail_headers["Risk"]).value,
+            "Not assessed",
+        )
+        self.assertIn(
+            "PCF8574P,112 (DigiKey)",
+            details.cell(3, detail_headers["Why"]).value,
+        )
+        summary = workbook["Summary"]
+        self.assertEqual(summary["B4"].value, "Test project / BOM")
+        self.assertEqual(summary["B5"].value, "test-bom.csv")
+        summary_metrics = {
+            summary.cell(row, 1).value: summary.cell(row, 2).value
+            for row in range(10, summary.max_row + 1)
+        }
+        self.assertEqual(summary_metrics["Risk coverage"], "50%")
+        self.assertEqual(summary_metrics["Extended BOM amount by recorded currency"], "USD 19.50")
 
 
 if __name__ == "__main__":

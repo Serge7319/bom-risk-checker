@@ -197,6 +197,25 @@ class DetailedRiskExportTests(unittest.TestCase):
         self.assertEqual(row["Risk score"], "Not assessed")
         self.assertIn("stock, lifecycle, and lead-time risk remain unknown", row["Why"])
 
+    def test_related_legacy_catalog_lead_is_explained_without_rating_original(self):
+        row = component_rows([{
+            "mpn": "PCF8574P",
+            "risk_level": "Needs verification",
+            "risk_score": 0,
+            "supplier_count": 0,
+            "alternate_search_status": (
+                "No exact supplier match. Legacy route Philips Semiconductors → NXP "
+                "found related catalog lead(s) for review only: PCF8574P,112 (DigiKey). "
+                "orderable package variant; verify the package and ordering suffix; "
+                "no candidate stock, price, or lifecycle is attributed to PCF8574P.; "
+                "Candidates returned"
+            ),
+        }])[0]
+
+        self.assertEqual(row["Risk"], "Not assessed")
+        self.assertIn("PCF8574P,112 (DigiKey)", row["Why"])
+        self.assertIn("this BOM part remains unassessed", row["Why"])
+
     def test_cost_exposure_and_longest_lead_time_use_recorded_evidence_only(self):
         parts = [
             {

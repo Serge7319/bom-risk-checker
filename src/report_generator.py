@@ -2,7 +2,6 @@ import pandas as pd
 from openpyxl import load_workbook
 from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
 from openpyxl.utils import get_column_letter
-from src.health_score import calculate_bom_health_score, generate_executive_summary
 
 
 def save_results_to_csv(results: list, output_path: str) -> None:
@@ -10,41 +9,41 @@ def save_results_to_csv(results: list, output_path: str) -> None:
     df.to_csv(output_path, index=False)
 
 
-def save_results_to_excel(results: list, output_path) -> None:
-    df = pd.DataFrame(results)
+def save_results_to_excel(
+    results: list,
+    output_path,
+    *,
+    bom_name: str = "",
+    source_filename: str = "",
+    analyzed_on: str = "",
+) -> None:
+    """Write the same evidence-aware workbook for one-time and saved reports."""
+    from src.ui.detailed_risk_export import detailed_risk_excel_bytes
 
-    high_risk_df = df[df["Risk Level"] == "High"]
-
-    health_data = calculate_bom_health_score(df)
-    executive_bullets = generate_executive_summary(df)
-
-    summary_rows = [
-        ["BOM Health Score", f"{health_data['health_score']} / 100" if health_data['health_score'] is not None else "Not assessed"],
-        ["Overall Status", health_data["health_status"]],
-        ["Summary Message", health_data["summary_message"]],
-        ["", ""],
-        ["Metric", "Value"],
-        ["Total Parts", len(df)],
-        ["High Risk Parts", len(df[df["Risk Level"] == "High"])],
-        ["Medium Risk Parts", len(df[df["Risk Level"] == "Medium"])],
-        ["Low Risk Parts", len(df[df["Risk Level"] == "Low"])],
-        ["Obsolete / EOL Parts", len(df[df["Lifecycle Status"].isin(["Obsolete", "EOL"])] )],
-        ["Unknown Lifecycle Parts", len(df[df["Lifecycle Status"] == "Unknown"])],
-        ["", ""],
-        ["Executive Summary", ""],
-    ]
-
-    for bullet in executive_bullets:
-        summary_rows.append([bullet, ""])
-
-    summary_df = pd.DataFrame(summary_rows, columns=["Category", "Result"])
-
-    with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
-        summary_df.to_excel(writer, sheet_name="Summary", index=False)
-        df.to_excel(writer, sheet_name="Detailed Results", index=False)
-        high_risk_df.to_excel(writer, sheet_name="High Risk Parts", index=False)
-
-    format_excel_report(output_path)
+    records = [record for record in results if isinstance(record, dict)]
+    first = records[0] if records else {}
+    report_bom_name = str(bom_name or "").strip() or next(
+        (
+            str(first.get(key)).strip()
+            for key in ("project_name", "Project Name", "BOM Name", "filename", "Filename")
+            if first.get(key) not in (None, "")
+        ),
+        "BOM analysis",
+    )
+    report = detailed_risk_excel_bytes(
+        records,
+        bom_name=report_bom_name,
+        source_filename=source_filename,
+        analyzed_on=analyzed_on,
+    )
+    if hasattr(output_path, "write"):
+        output_path.seek(0)
+        output_path.truncate(0)
+        output_path.write(report)
+        output_path.seek(0)
+        return
+    with open(output_path, "wb") as target:
+        target.write(report)
 
 
 def format_excel_report(output_path: str) -> None:

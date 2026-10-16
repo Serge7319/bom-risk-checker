@@ -109,6 +109,11 @@ def test_switched_account_sign_in_cannot_reuse_prior_pending_state():
         "cadivor_shell_cache": {"full_name": "Prior User", "plan_name": "Professional"},
         "cadivor_resolved_plan_name": "Professional",
         "active_workspace_id": "ws-a",
+        "cadivor_presented_route": "Analysis Details",
+        "cadivor_main_transition_active": True,
+        "cadivor_main_transition_gen": 1,
+        "cadivor_opening_started_at": 123.0,
+        "cadivor_bom_analysis_transition": "rerun",
     }
     assert bind_authenticated_account(session, "user-b") is True
     assert session["cadivor_route"] == "Dashboard"
@@ -118,6 +123,11 @@ def test_switched_account_sign_in_cannot_reuse_prior_pending_state():
     assert "cadivor_secondary_data_delayed" not in session
     assert "cadivor_shell_cache" not in session
     assert "cadivor_resolved_plan_name" not in session
+    assert "cadivor_presented_route" not in session
+    assert "cadivor_main_transition_active" not in session
+    assert "cadivor_main_transition_gen" not in session
+    assert "cadivor_opening_started_at" not in session
+    assert "cadivor_bom_analysis_transition" not in session
     kept = apply_saved_analysis_result(
         session, user_id="user-b", rows=[{"id": "old-bom", "user_id": "user-a"}], status="timeout"
     )
