@@ -4137,7 +4137,6 @@ def run_authenticated_app() -> None:
     )
 
     if app_mode == "BOM Settings":
-        reveal_authenticated_page_body("BOM Settings")
         settings_user_id = str((current_user or {}).get("id") or "")
         try:
             settings_history = load_analysis_history(settings_user_id) or []
@@ -4177,6 +4176,7 @@ def run_authenticated_app() -> None:
             user_id=settings_user_id,
             components=settings_components,
         )
+        reveal_authenticated_page_body("BOM Settings")
         stop_authenticated_page()
 
     if app_mode == "Monitoring":
@@ -21541,14 +21541,38 @@ def run_authenticated_app() -> None:
 
 
             from io import BytesIO
-            excel_report = BytesIO()
-            save_results_to_excel(
-                results_df.drop(columns=["Risk Level Display"]).to_dict("records"),
-                excel_report,
+            report_records = results_df.drop(
+                columns=["Risk Level Display"], errors="ignore"
+            ).to_dict("records")
+            report_identity = json.dumps(
+                {
+                    "analysis_id": str(st.session_state.get("analysis_id") or ""),
+                    "bom_name": analysis_name or "BOM analysis",
+                    "source_filename": source_filename,
+                    "parts": report_records,
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+                default=str,
             )
+            report_cache_key = hashlib.sha256(report_identity.encode("utf-8")).hexdigest()
+            cached_report = st.session_state.get("cadivor_bom_report_excel_cache") or {}
+            if cached_report.get("key") != report_cache_key:
+                excel_report = BytesIO()
+                save_results_to_excel(
+                    report_records,
+                    excel_report,
+                    bom_name=analysis_name or "BOM analysis",
+                    source_filename=source_filename,
+                )
+                cached_report = {
+                    "key": report_cache_key,
+                    "bytes": excel_report.getvalue(),
+                }
+                st.session_state["cadivor_bom_report_excel_cache"] = cached_report
             st.download_button(
                 label="Download Excel Report",
-                data=excel_report.getvalue(),
+                data=cached_report.get("bytes", b""),
                 file_name="bom_risk_report.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             )

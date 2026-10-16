@@ -4,7 +4,11 @@ from __future__ import annotations
 import sys
 import types
 import unittest
+import ast
+import html
 from datetime import datetime, timezone
+from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 
@@ -182,33 +186,89 @@ class WorkspaceAdmitCacheTests(unittest.TestCase):
 
 class MainTransitionMarkerTests(unittest.TestCase):
     def test_route_loading_markup_has_stable_host_marker(self):
-        from src.ui.main_transition import route_loading_markup
+        source = (
+            Path(__file__).resolve().parents[1] / "src" / "ui" / "main_transition.py"
+        ).read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        function = next(
+            node for node in tree.body
+            if isinstance(node, ast.FunctionDef) and node.name == "route_loading_markup"
+        )
+        namespace = {
+            "html": html,
+            "st": SimpleNamespace(session_state={}),
+            "BOM_ANALYSIS_TRANSITION_KEY": "cadivor_bom_analysis_transition",
+        }
+        exec(compile(ast.fix_missing_locations(ast.Module(body=[function], type_ignores=[])),
+                     "<transition-markup-test>", "exec"), namespace)
 
-        html = route_loading_markup("BOM Analyzer", 7)
-        self.assertIn('data-cadivor-transition-host="cadivor-main-transition"', html)
-        self.assertIn('data-testid="cadivor-main-transition-host"', html)
-        self.assertIn('data-cadivor-transition-gen="7"', html)
-        self.assertIn("Opening BOM Analyzer", html)
+        rendered = namespace["route_loading_markup"]("BOM Analyzer", 7)
+        self.assertIn('data-cadivor-transition-host="cadivor-main-transition"', rendered)
+        self.assertIn('data-testid="cadivor-main-transition-host"', rendered)
+        self.assertIn('data-cadivor-transition-gen="7"', rendered)
+        self.assertIn("Opening BOM Analyzer", rendered)
+
+    def test_transition_generation_does_not_reuse_ids_after_session_reset(self):
+        state = {}
+        clock_values = iter((100, 101))
+        source = (
+            Path(__file__).resolve().parents[1] / "src" / "ui" / "main_transition.py"
+        ).read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        function = next(
+            node for node in tree.body
+            if isinstance(node, ast.FunctionDef) and node.name == "_next_transition_gen"
+        )
+        namespace = {
+            "st": SimpleNamespace(session_state=state),
+            "MAIN_TRANSITION_GEN_KEY": "cadivor_main_transition_gen",
+            "time": SimpleNamespace(time_ns=lambda: next(clock_values)),
+        }
+        exec(compile(ast.fix_missing_locations(ast.Module(body=[function], type_ignores=[])),
+                     "<transition-generation-test>", "exec"), namespace)
+
+        first = namespace["_next_transition_gen"]()
+        state.clear()  # logout clears session state while old DOM may remain
+        second = namespace["_next_transition_gen"]()
+
+        self.assertEqual(first, 100)
+        self.assertEqual(second, 101)
 
 
 
 class OpeningSkipTests(unittest.TestCase):
     def test_warm_nav_skips_opening_when_caches_ready(self):
-        from src.ui.main_transition import should_paint_opening_overlay
+        source = (
+            Path(__file__).resolve().parents[1] / "src" / "ui" / "main_transition.py"
+        ).read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        function = next(
+            node for node in tree.body
+            if isinstance(node, ast.FunctionDef)
+            and node.name == "should_paint_opening_overlay"
+        )
+        namespace = {
+            "st": SimpleNamespace(session_state={}),
+            "MAIN_TRANSITION_ACTIVE_KEY": "cadivor_main_transition_active",
+            "MAIN_TRANSITION_ROUTE_KEY": "cadivor_main_transition_route",
+            "PRESENTED_ROUTE_KEY": "cadivor_presented_route",
+            "BOM_ANALYSIS_TRANSITION_KEY": "cadivor_bom_analysis_transition",
+            "SLOW_ROUTE_OPENING_TARGETS": frozenset(
+                {"Analysis Details", "Engineering Decisions", "BOM Settings"}
+            ),
+            "FAST_CACHED_NAV_OPENING_MS": 300,
+            "warm_session_nav_ready": lambda state: bool(state.get("warm")),
+        }
+        exec(compile(ast.fix_missing_locations(ast.Module(body=[function], type_ignores=[])),
+                     "<opening-skip-test>", "exec"), namespace)
+        should_paint_opening_overlay = namespace["should_paint_opening_overlay"]
 
         state = {
             "cadivor_foundation_shell_mounted": True,
-            "user": {"id": "u1"},
-            "cadivor_verified_profile": {
-                "user_id": "u1",
-                "profile": {"id": "u1", "email": "a@b.c"},
-                "verified_at": __import__("time").time(),
-            },
-            "cadivor_workspace_admit_cache": {
-                "user_id": "u1",
-                "payload": {"saved_bom_count": 1},
-                "verified_at": __import__("time").time(),
-            },
+            "cadivor_main_transition_active": True,
+            "cadivor_main_transition_route": "Dashboard",
+            "cadivor_presented_route": "Reports",
+            "warm": True,
         }
         self.assertFalse(
             should_paint_opening_overlay(
@@ -220,7 +280,25 @@ class OpeningSkipTests(unittest.TestCase):
         self.assertTrue(
             should_paint_opening_overlay(
                 needs_transition=True,
+                target_route="Dashboard",
+                session_state={
+                    **state,
+                    "cadivor_main_transition_active": False,
+                    "cadivor_presented_route": "",
+                },
+            )
+        )
+        self.assertTrue(
+            should_paint_opening_overlay(
+                needs_transition=True,
                 target_route="Analysis Details",
+                session_state=state,
+            )
+        )
+        self.assertTrue(
+            should_paint_opening_overlay(
+                needs_transition=True,
+                target_route="BOM Settings",
                 session_state=state,
             )
         )

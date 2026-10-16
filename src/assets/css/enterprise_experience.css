@@ -4,11 +4,9 @@
   --cv58-blue:#2563EB;--cv58-radius:14px;--cv58-radius-lg:18px;
 }
 
-/* Keep page transitions visually inside one product canvas. */
+/* Keep the product canvas stable between Streamlit reruns. */
 .stApp,[data-testid="stAppViewContainer"],[data-testid="stMain"]{background:#F4F7FB!important;}
 [data-testid="stMainBlockContainer"]{min-height:calc(100vh - 64px)!important;}
-[data-testid="stMainBlockContainer"] > div:first-child{animation:cv58-enter .14s ease-out both;}
-@keyframes cv58-enter{from{opacity:.72;transform:translateY(2px)}to{opacity:1;transform:none}}
 
 /* Authenticated operation state; intentionally not fixed or full-screen. */
 .cv58-operation{display:flex;align-items:center;gap:12px;margin:10px 0 14px;padding:13px 15px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:13px;color:#1E3A8A;}
@@ -53,4 +51,4 @@ div[data-testid="stPlotlyChart"]{background:#fff!important;border:1px solid var(
 
 /* Responsive content density. */
 @media(max-width:1024px){[data-testid="stMainBlockContainer"]{padding-right:16px!important}.cv58-operation{align-items:flex-start}}
-@media(prefers-reduced-motion:reduce){[data-testid="stMainBlockContainer"] > div:first-child,.cv58-operation-spinner{animation:none!important}}
+@media(prefers-reduced-motion:reduce){.cv58-operation-spinner{animation:none!important}}

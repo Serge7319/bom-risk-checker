@@ -26,7 +26,9 @@ MAIN_TRANSITION_GEN_KEY = "cadivor_main_transition_gen"
 FAST_CACHED_NAV_OPENING_MS = 300
 OPENING_STARTED_AT_KEY = "cadivor_opening_started_at"
 OPENING_ROUTE_KEY = "cadivor_opening_route"
-SLOW_ROUTE_OPENING_TARGETS = frozenset({"Analysis Details", "Engineering Decisions"})
+SLOW_ROUTE_OPENING_TARGETS = frozenset(
+    {"Analysis Details", "Engineering Decisions", "BOM Settings"}
+)
 BOM_ANALYSIS_TRANSITION_KEY = "cadivor_bom_analysis_transition"
 
 
@@ -109,6 +111,12 @@ def should_paint_opening_overlay(
     # First admit (no foundation shell yet) always needs a continuity surface.
     if not state.get("cadivor_foundation_shell_mounted"):
         return True
+    # A first authenticated route can have warm profile caches while the
+    # page-specific workspace reads are still cold. Without an existing
+    # transition owner, render Opening so retiring the auth gate never exposes
+    # an empty main panel between shell paint and route content.
+    if not state.get(MAIN_TRANSITION_ACTIVE_KEY) and not state.get(PRESENTED_ROUTE_KEY):
+        return True
     # Saved BOM details and the decision queue hydrate database-backed data
     # after auth caches are warm. Keep the transition owner mounted so the old
     # page cannot flash under the target route's navigation state.
@@ -136,7 +144,13 @@ def _next_transition_gen() -> int:
         current = int(st.session_state.get(MAIN_TRANSITION_GEN_KEY) or 0)
     except (TypeError, ValueError):
         current = 0
-    nxt = current + 1
+    # Session state is cleared at logout, but Streamlit may retain the old
+    # page-body marker in the browser DOM until the next auth surface replaces
+    # it. A small counter would restart at 1 and could collide with that stale
+    # marker, causing the fresh Opening layer to hide itself immediately.
+    # Wall-clock nanoseconds provide a browser-DOM-unique generation even after
+    # logout, session reset, or a user switch; retain monotonicity within a run.
+    nxt = max(current + 1, time.time_ns())
     st.session_state[MAIN_TRANSITION_GEN_KEY] = nxt
     return nxt
 

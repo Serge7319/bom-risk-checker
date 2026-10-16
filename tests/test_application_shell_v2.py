@@ -10,6 +10,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 APP_SHELL_CSS = REPO_ROOT / "src" / "assets" / "css" / "app_shell.css"
 NAV_RECOVERY_CSS = REPO_ROOT / "src" / "assets" / "css" / "navigation_recovery.css"
+ENTERPRISE_EXPERIENCE_CSS = REPO_ROOT / "src" / "assets" / "css" / "enterprise_experience.css"
 UNIFIED_SHELL = REPO_ROOT / "src" / "ui" / "unified_shell.py"
 NAVIGATION_PY = REPO_ROOT / "src" / "ui" / "navigation.py"
 AUTHENTICATED_RUNTIME = REPO_ROOT / "src" / "authenticated_runtime.py"
@@ -99,6 +100,11 @@ class ApplicationShellV2Tests(unittest.TestCase):
     def test_navigation_recovery_uses_ds_v2_tokens(self) -> None:
         for token in ("--cv-primary", "--cv-foundation-rail-active-bg", "--cv-font-sm", "--cv-weight-semibold"):
             self.assertIn(token, self.nav_recovery_css, f"navigation_recovery.css should reference {token}")
+
+    def test_authenticated_workspace_does_not_fade_its_root_on_rerun(self) -> None:
+        css = ENTERPRISE_EXPERIENCE_CSS.read_text(encoding="utf-8")
+        self.assertNotIn("first-child{animation:cv58-enter", css)
+        self.assertNotIn("cv58-enter", css)
 
     def test_foundation_vars_bridge_to_ds_v2(self) -> None:
         self.assertIn("--cv-foundation-bg:var(--cv-bg", self.app_shell_css)
