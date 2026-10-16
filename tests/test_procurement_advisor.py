@@ -9,6 +9,7 @@ from src.procurement_advisor import (
     persist_sourcing_update,
     procurement_details_display_frame,
     procurement_header_html,
+    procurement_part_summary_html,
     procurement_summary_cards_html,
     sourcing_editor_values,
     supplier_comparison_dataframe,
@@ -263,6 +264,39 @@ class ProcurementAdvisorTests(unittest.TestCase):
         self.assertIn("Annual demand and applicable comparable quotes are required", html)
         self.assertIn("Supply risk (blended)", html)
         self.assertIn("Not assessed", html)
+
+    def test_sourcing_recommendation_header_uses_annual_demand_and_target_fields(self):
+        html = procurement_part_summary_html(
+            {
+                "mpn": "TPS54331D",
+                "description": "Power management IC",
+                "manufacturer": "Texas Instruments",
+                "annual_demand": 50000,
+                "quantity": 100,
+                "target_unit_price": 2.1,
+                "target_currency": "USD",
+                "required_by": "Q3 2025",
+            },
+            {
+                "Recommendation": "Add a second source",
+                "Supplier Sources": 1,
+                "Lifecycle Status": "Active",
+            },
+        )
+        self.assertIn("Annual demand", html)
+        self.assertIn("50,000 units", html)
+        self.assertIn("2.1 USD", html)
+        self.assertIn("Q3 2025", html)
+        self.assertIn("Single source", html)
+        self.assertNotIn("BOM quantity", html)
+
+    def test_sourcing_header_does_not_substitute_bom_quantity_for_annual_demand(self):
+        html = procurement_part_summary_html(
+            {"mpn": "TPS54331D", "quantity": 100},
+            {"Recommendation": "Complete sourcing data", "Supplier Sources": None},
+        )
+        self.assertIn("Annual demand</span><strong>Not recorded", html)
+        self.assertNotIn("100 units", html)
 
     def test_sourcing_updates_are_scoped_to_user_and_active_workspace(self):
         class Query:

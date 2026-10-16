@@ -370,8 +370,12 @@ def procurement_part_summary_html(
     description = first("description", "Description", "part_description", "product_description")
     manufacturer = first("manufacturer", "Manufacturer")
     lifecycle = _t(recommendation.get("Lifecycle Status"), "Not recorded")
-    quantity = number_label(_first(part, "quantity", "qty"), " units")
-    currency = _part_currency(part)
+    annual_demand = number_label(
+        _first(part, "annual_demand", "annual_quantity", "yearly_demand"), " units"
+    )
+    currency = _t(
+        _first(part, "target_currency", "target_price_currency", default="")
+    ).upper() or _part_currency(part)
     target_price = _maybe_n(_first(part, "target_unit_price", "target_price"))
     target_price_label = (
         f"{target_price:,.4g} {currency}".strip()
@@ -397,11 +401,21 @@ def procurement_part_summary_html(
         size=76,
         part=dict(part),
     )
+    supplier_count = _maybe_n(recommendation.get("Supplier Sources"))
+    if supplier_count is None:
+        offers = normalize_supplier_offer_records(part)
+        supplier_count = float(len({row["supplier"].casefold() for row in offers})) if offers else None
+    if supplier_count is None:
+        sourcing_status = "Not recorded"
+    elif supplier_count <= 1:
+        sourcing_status = "Single source"
+    else:
+        sourcing_status = f"{int(supplier_count)} sources"
     fields = (
-        ("BOM quantity", quantity),
+        ("Annual demand", annual_demand),
         ("Target unit price", target_price_label),
         ("Required by", required_by),
-        ("Sourcing status", action),
+        ("Sourcing status", sourcing_status),
     )
     cells = "".join(
         f"<div class='cv-pa-summary-fact'><span>{html_escape(label)}</span><strong>{html_escape(value)}</strong>"
