@@ -327,6 +327,454 @@ def procurement_header_html(
     )
 
 
+def procurement_page_header_html() -> str:
+    """Render the page heading used by the sourcing recommendation workspace."""
+    return (
+        "<style>"
+        ".cv-pa-page-head{margin:0 0 18px}.cv-pa-breadcrumb{color:#64748b;font-size:12px;font-weight:650;margin:0 0 12px}"
+        ".cv-pa-breadcrumb span{padding:0 9px;color:#94a3b8}.cv-pa-page-head h1{margin:0;color:#111827;font-size:36px;line-height:1.1;letter-spacing:-.035em;font-weight:820}"
+        ".cv-pa-page-head p{margin:8px 0 0;color:#64748b;font-size:15px;line-height:1.5}"
+        "@media(max-width:700px){.cv-pa-page-head h1{font-size:29px}.cv-pa-page-head p{font-size:13px}}"
+        "</style>"
+        "<header class='cv-pa-page-head'><div class='cv-pa-breadcrumb'>Procurement Advisor"
+        "<span aria-hidden='true'>›</span>Sourcing Recommendation</div>"
+        "<h1>Procurement advisor</h1>"
+        "<p>AI-powered supplier insights and sourcing recommendations to reduce risk, ensure supply continuity, and optimize total cost.</p></header>"
+    )
+
+
+def procurement_part_summary_html(
+    part: Mapping[str, Any],
+    recommendation: Mapping[str, Any] | None = None,
+    analysis: Mapping[str, Any] | None = None,
+) -> str:
+    """Render the selected part facts without inferring missing commercial data."""
+    part = apply_sourcing_override(part or {})
+    recommendation = recommendation or _recommend(dict(part))
+    analysis = analysis or {}
+
+    def first(*keys: str, default: str = "Not recorded") -> str:
+        value = _first(part, *keys)
+        if value is None:
+            value = _first(analysis, *keys)
+        return _t(value, default) if value is not None else default
+
+    def number_label(value: Any, suffix: str = "") -> str:
+        number = _maybe_n(value)
+        if number is None:
+            return "Not recorded"
+        text = f"{number:,.0f}" if number.is_integer() else f"{number:,.2f}".rstrip("0").rstrip(".")
+        return text + suffix
+
+    part_number = first("mpn", "MPN", "part_number", default="Component")
+    description = first("description", "Description", "part_description", "product_description")
+    manufacturer = first("manufacturer", "Manufacturer")
+    lifecycle = _t(recommendation.get("Lifecycle Status"), "Not recorded")
+    quantity = number_label(_first(part, "quantity", "qty"), " units")
+    currency = _part_currency(part)
+    target_price = _maybe_n(_first(part, "target_unit_price", "target_price"))
+    target_price_label = (
+        f"{target_price:,.4g} {currency}".strip()
+        if target_price is not None
+        else "Not recorded"
+    )
+    required_by = first("required_by", "required_date", "need_by_date", "required_at")
+    bom_label = first("bom_name", "filename", "project_name", default="Not recorded")
+    revision = first("bom_revision", "revision", "rev", default="")
+    bom_value = bom_label + (f" · Rev {revision}" if revision and revision != "Not recorded" else "")
+    action = _t(recommendation.get("Recommendation"), "Complete sourcing data")
+    lifecycle_key = lifecycle.casefold()
+    lifecycle_tone = (
+        "good"
+        if any(token in lifecycle_key for token in ("active", "production", "preferred"))
+        else "warn"
+        if any(token in lifecycle_key for token in ("obsolete", "eol", "end of life", "nrnd"))
+        else ""
+    )
+    image = part_image_markup(
+        _first(part, "image_url", "Image URL", "photo_url", default=""),
+        part_number,
+        size=76,
+        part=dict(part),
+    )
+    fields = (
+        ("BOM quantity", quantity),
+        ("Target unit price", target_price_label),
+        ("Required by", required_by),
+        ("Sourcing status", action),
+    )
+    cells = "".join(
+        f"<div class='cv-pa-summary-fact'><span>{html_escape(label)}</span><strong>{html_escape(value)}</strong>"
+        f"{'<small>Action recommended</small>' if label == 'Sourcing status' and action != 'No immediate action' else ''}</div>"
+        for label, value in fields
+    )
+    return (
+        "<style>"
+        ".cv-pa-summary{display:grid;grid-template-columns:76px minmax(230px,1.6fr) repeat(4,minmax(115px,1fr));gap:16px;align-items:center;padding:18px 20px;margin:0 0 16px;background:#fff;border:1px solid #e2e8f0;border-radius:14px;box-shadow:0 3px 10px rgba(15,23,42,.035)}"
+        ".cv-pa-summary-image{width:76px;height:76px;display:flex;align-items:center;justify-content:center;border-radius:10px;background:#f1f5f9;overflow:hidden}.cv-pa-summary-image img{max-width:100%;max-height:100%;object-fit:contain}"
+        ".cv-pa-summary-identity{min-width:0}.cv-pa-summary-mpn{font-size:11px;color:#64748b;font-weight:750;letter-spacing:.045em;margin-bottom:4px}.cv-pa-summary-identity h2{font-size:18px;line-height:1.2;color:#0f172a;margin:0 0 4px;font-weight:780}.cv-pa-summary-identity p{font-size:12px;line-height:1.4;color:#64748b;margin:0 0 8px;overflow-wrap:anywhere}"
+        ".cv-pa-chip{display:inline-flex;align-items:center;border-radius:999px;background:#eff6ff;color:#475569;padding:4px 9px;margin:0 5px 2px 0;font-size:10px;font-weight:700}.cv-pa-chip--good{background:#dcfce7;color:#15803d}.cv-pa-chip--warn{background:#fef3c7;color:#92400e}"
+        ".cv-pa-summary-fact{min-height:48px;padding-left:14px;border-left:1px solid #e2e8f0;min-width:0}.cv-pa-summary-fact span{display:block;color:#64748b;font-size:10px;font-weight:700;margin-bottom:5px}.cv-pa-summary-fact strong{display:block;color:#0f172a;font-size:13px;line-height:1.3;overflow-wrap:anywhere}.cv-pa-summary-fact small{display:block;color:#64748b;font-size:10px;margin-top:3px}"
+        "@media(max-width:1100px){.cv-pa-summary{grid-template-columns:70px minmax(200px,1fr) repeat(2,minmax(130px,1fr))}.cv-pa-summary-fact{padding:8px 0 0;border:0;border-top:1px solid #e2e8f0}}"
+        "@media(max-width:650px){.cv-pa-summary{grid-template-columns:60px 1fr;gap:10px;padding:14px}.cv-pa-summary-image{width:60px;height:60px}.cv-pa-summary-identity h2{font-size:16px}.cv-pa-summary-fact{grid-column:span 1}.cv-pa-summary-fact:nth-last-child(2){grid-column:span 2}}"
+        "</style>"
+        f"<section class='cv-pa-summary'><div class='cv-pa-summary-image'>{image}</div>"
+        f"<div class='cv-pa-summary-identity'><div class='cv-pa-summary-mpn'>{html_escape(part_number)} · {html_escape(manufacturer)}</div>"
+        f"<h2>{html_escape(description if description != 'Not recorded' else part_number)}</h2>"
+        f"<p>{html_escape(first('component_type','category','device_type','part_type'))}</p>"
+        f"<span class='cv-pa-chip cv-pa-chip--{lifecycle_tone}'>{html_escape(lifecycle)}</span>"
+        f"<span class='cv-pa-chip'>{html_escape(bom_value)}</span></div>{cells}</section>"
+    )
+
+
+def _trusted_sourcing_values(part: Mapping[str, Any]) -> dict[str, Any]:
+    """Return only fields supported by a verified row or an explicit override."""
+    raw_part = dict(part or {})
+    override = _parse_override(raw_part.get("sourcing_override"))
+    raw_verified = raw_part.get("supplier_data_verified")
+    if _truthy(raw_verified) or (raw_verified is None and not override):
+        normalized = _recommend(apply_sourcing_override(raw_part))
+        return {
+            "primary_supplier": _t(_first(raw_part, "primary_supplier", "best_source", "supplier", default="")) or None,
+            "unit_price": normalized.get("Unit Price"),
+            "currency": _part_currency(raw_part) or None,
+            "stock_available": normalized.get("Available Stock"),
+            "supplier_count": normalized.get("Supplier Sources"),
+            "lead_time_weeks": normalized.get("Lead Time (Weeks)"),
+            "lifecycle_status": (
+                normalized.get("Lifecycle Status")
+                if str(normalized.get("Lifecycle Status") or "").casefold() not in {"unknown", "not recorded"}
+                else None
+            ),
+        }
+    return {field: override.get(field) for field in SOURCING_OVERRIDE_FIELDS}
+
+
+def normalize_supplier_offer_records(part: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Read saved distributor quotes and the current source as comparison rows."""
+    raw_part = dict(part or {})
+    trusted_values = _trusted_sourcing_values(raw_part)
+    part = apply_sourcing_override(raw_part)
+    offers = part.get("supplier_offers") or []
+    if isinstance(offers, str):
+        try:
+            offers = json.loads(offers)
+        except (TypeError, ValueError):
+            offers = []
+    if isinstance(offers, Mapping):
+        offers = [offers]
+    if not isinstance(offers, (list, tuple)):
+        offers = []
+
+    rows: list[dict[str, Any]] = []
+    seen: set[tuple[str, float | None, str, float | None]] = set()
+    for raw in offers:
+        if not isinstance(raw, Mapping):
+            continue
+        supplier = _t(_first(raw, "distributor", "source", "supplier", default=""))
+        if not supplier or supplier.casefold() in {"unknown", "not recorded", "no supplier match", "—", "-"}:
+            continue
+        price = _maybe_n(_first(raw, "unit_price", "price"))
+        currency = _t(_first(raw, "currency", "unit_price_currency", default="")).upper()
+        stock = _maybe_n(_first(raw, "stock", "stock_total", "available_stock"))
+        lead = _maybe_n(_first(raw, "lead_time_weeks", "lead_time"))
+        break_quantity = _maybe_n(_first(raw, "price_break_quantity", "quantity"))
+        key = (supplier.casefold(), price, currency, break_quantity)
+        if key in seen:
+            continue
+        seen.add(key)
+        rows.append({
+            "supplier": supplier,
+            "unit_price": price,
+            "currency": currency,
+            "stock": int(stock) if stock is not None and stock.is_integer() else stock,
+            "lead_time_weeks": lead,
+            "price_break_quantity": break_quantity,
+            "region": _t(_first(raw, "region", "ship_from", "country", default="")),
+            "supply_risk": _t(_first(raw, "supply_risk", "risk_level", default="")),
+            "product_url": _t(_first(raw, "product_url", "product_detail_url", "source_url", default="")),
+            "retrieved_at": _t(_first(raw, "retrieved_at", "updated_at", default="")),
+            "is_current": False,
+        })
+
+    current_supplier = _t(trusted_values.get("primary_supplier"))
+    if current_supplier.casefold() in {"unknown", "not recorded", "no supplier match", "—", "-"}:
+        current_supplier = ""
+    current_price = _maybe_n(trusted_values.get("unit_price"))
+    current_currency = _t(trusted_values.get("currency")).upper()
+    current_stock = _maybe_n(trusted_values.get("stock_available"))
+    current_lead = _maybe_n(trusted_values.get("lead_time_weeks"))
+    if current_supplier:
+        match = next((row for row in rows if row["supplier"].casefold() == current_supplier.casefold()), None)
+        if match is None:
+            rows.append({
+                "supplier": current_supplier,
+                "unit_price": current_price,
+                "currency": current_currency,
+                "stock": int(current_stock) if current_stock is not None and current_stock.is_integer() else current_stock,
+                "lead_time_weeks": current_lead,
+                "price_break_quantity": None,
+                "region": "",
+                "supply_risk": "",
+                "product_url": _t(_first(part, "product_url", "source_url", default="")),
+                "retrieved_at": _updated_at(part),
+                "is_current": True,
+            })
+        else:
+            match["is_current"] = True
+            if match.get("unit_price") is None:
+                match["unit_price"] = current_price
+            if not match.get("currency"):
+                match["currency"] = current_currency
+            if match.get("stock") is None:
+                match["stock"] = int(current_stock) if current_stock is not None and current_stock.is_integer() else current_stock
+            if match.get("lead_time_weeks") is None:
+                match["lead_time_weeks"] = current_lead
+    return rows
+
+
+def supplier_comparison_dataframe(
+    part: Mapping[str, Any], *, selected_supplier: str = "", view: str = "Key comparison"
+) -> pd.DataFrame:
+    """Create a string-only quote table so mixed supplier values never reach Arrow."""
+    offers = normalize_supplier_offer_records(part)
+    trusted_values = _trusted_sourcing_values(part or {})
+    currency = _t(trusted_values.get("currency")).upper()
+    current_price = _maybe_n(trusted_values.get("unit_price"))
+    prices = [
+        row["unit_price"] for row in offers
+        if row.get("unit_price") is not None and currency and row.get("currency") == currency
+    ]
+    best_price = min(prices) if prices else None
+    columns = ["Selected", "Supplier", "Unit price", "Price vs current", "Available stock", "Lead time", "Region", "Supply risk", "Unit price index"]
+    if view == "All evidence":
+        columns.extend(["Price break", "Retrieved", "Product page"])
+    display_rows = []
+    for row in offers:
+        price = row.get("unit_price")
+        row_currency = row.get("currency")
+        same_currency = bool(currency and row_currency == currency)
+        if price is not None and row_currency:
+            price_label = f"{price:,.4g} {row_currency}"
+        else:
+            price_label = "Not recorded"
+        delta = "—"
+        if price is not None and current_price is not None and same_currency and current_price > 0:
+            pct = (price / current_price - 1) * 100
+            delta = f"{pct:+.1f}%" if abs(pct) >= .05 else "Current price"
+        stock = row.get("stock")
+        lead = row.get("lead_time_weeks")
+        price_break = row.get("price_break_quantity")
+        index = "—"
+        if best_price and price and same_currency:
+            # A unit-price index is explicitly normalized to the cheapest quote.
+            index = f"{round(best_price / price * 100):d}"
+        item = {
+            "Selected": "● Selected" if row["supplier"].casefold() == str(selected_supplier).casefold() else "○ Select row",
+            "Supplier": row["supplier"] + (" · Current source" if row.get("is_current") else " · Offer recorded"),
+            "Unit price": price_label,
+            "Price vs current": delta,
+            "Available stock": f"{stock:,}" if isinstance(stock, (int, float)) else "Not recorded",
+            "Lead time": f"{lead:g} weeks" if lead is not None else "Not recorded",
+            "Region": row.get("region") or "Not recorded",
+            "Supply risk": row.get("supply_risk") or "Not recorded",
+            "Unit price index": index,
+            "Price break": f"{price_break:,.0f} units" if price_break is not None else "Not recorded",
+            "Retrieved": (row.get("retrieved_at") or "Not recorded")[:10],
+            "Product page": "Saved link" if row.get("product_url", "").startswith(("https://", "http://")) else "Not recorded",
+        }
+        # Retain row identity in the frame; it is hidden in the UI and supports stable selection.
+        item["_supplier_key"] = row["supplier"]
+        display_rows.append(item)
+    return pd.DataFrame(display_rows, columns=columns + ["_supplier_key"])
+
+
+def supplier_offer_override(part: Mapping[str, Any], supplier: str) -> dict[str, Any]:
+    """Merge the selected recorded quote into a sourcing override without clearing unknowns."""
+    part = dict(part or {})
+    existing = _parse_override(part.get("sourcing_override"))
+    selected = next(
+        (row for row in normalize_supplier_offer_records(part) if row["supplier"].casefold() == str(supplier or "").casefold()),
+        None,
+    )
+    if selected is None:
+        raise ValueError("Choose a saved supplier offer before applying it.")
+
+    # A partial manual override must not make unrelated legacy defaults appear
+    # verified simply because one quote is being applied.
+    values = _trusted_sourcing_values(part)
+    current_supplier = _t(values.get("primary_supplier"))
+    if current_supplier.casefold() != selected["supplier"].casefold():
+        # Price, stock, and lead time belong to the selected source. Do not
+        # carry another supplier's numbers across when the quote omits them.
+        for field in ("unit_price", "currency", "stock_available", "lead_time_weeks"):
+            values[field] = None
+    existing = values
+    updates = {"primary_supplier": selected["supplier"]}
+    if selected.get("unit_price") is not None and selected.get("currency"):
+        updates.update(unit_price=selected["unit_price"], currency=selected["currency"])
+    if selected.get("stock") is not None:
+        updates["stock_available"] = selected["stock"]
+    if selected.get("lead_time_weeks") is not None:
+        updates["lead_time_weeks"] = selected["lead_time_weeks"]
+    existing.update(updates)
+    return existing
+
+
+def procurement_recommendation_html(
+    part: Mapping[str, Any],
+    recommendation: Mapping[str, Any] | None,
+    price_comparison: Mapping[str, Any] | None = None,
+) -> str:
+    """Render a recommendation and three evidence callouts from recorded values."""
+    part = apply_sourcing_override(part or {})
+    recommendation = recommendation or _recommend(dict(part))
+    price_comparison = price_comparison or {}
+    offers = normalize_supplier_offer_records(part)
+    supplier_count = _maybe_n(recommendation.get("Supplier Sources"))
+    if supplier_count is not None:
+        coverage_value = f"{int(supplier_count)} recorded source{'s' if supplier_count != 1 else ''}"
+        coverage_detail = "Supplier count in the saved sourcing record"
+    elif offers:
+        coverage_value = f"{len({row['supplier'].casefold() for row in offers})} offer source{'s' if len(offers) != 1 else ''}"
+        coverage_detail = "Recorded offers; qualification is not recorded"
+    else:
+        coverage_value = "Not recorded"
+        coverage_detail = "Add verified supplier coverage"
+
+    savings = price_comparison.get("savings_per_unit")
+    if savings is not None:
+        price_value = f"{savings:,.4g} {price_comparison.get('currency') or ''} / unit".strip()
+        price_detail = f"Lower quote from {price_comparison.get('lower_distributor') or 'saved offers'}"
+    else:
+        price_value = "No comparable quotes"
+        price_detail = "Same currency and applicable price breaks are required"
+
+    lead = _maybe_n(recommendation.get("Lead Time (Weeks)"))
+    lead_value = f"{lead:g} weeks" if lead is not None else "Not recorded"
+    lead_detail = "Current sourcing record" if lead is not None else "Confirm with an authorized supplier"
+    callouts = (
+        ("Supply coverage", coverage_value, coverage_detail, "◈"),
+        ("Price comparison", price_value, price_detail, "▥"),
+        ("Lead time", lead_value, lead_detail, "◷"),
+    )
+    action = _t(recommendation.get("Recommendation"), "Complete sourcing data")
+    action_title = {
+        "Add a second source": "Add a second source to improve supply coverage",
+        "Qualify a replacement": "Qualify a replacement for lifecycle continuity",
+        "Resolve supply gap": "Resolve the verified supply gap",
+        "Buy now": "Secure the units needed for the next build",
+        "Order earlier": "Move procurement ahead of the long lead time",
+        "Monitor closely": "Monitor supply before the next build",
+        "Complete sourcing data": "Complete current sourcing evidence",
+        "No immediate action": "Continue routine supplier monitoring",
+    }.get(action, action)
+    next_step = _t(recommendation.get("Next Step"), "Confirm current sourcing evidence before ordering.")
+    return (
+        "<style>"
+        ".cv-pa-recommendation-v2{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,.45fr);gap:26px;align-items:center;padding:25px 28px;margin:0 0 16px;border:1px solid #dbeafe;border-radius:14px;background:linear-gradient(115deg,#eff6ff 0%,#f8fbff 100%)}"
+        ".cv-pa-reco-main{display:grid;grid-template-columns:56px minmax(0,1fr);gap:18px;align-items:start}.cv-pa-reco-star{width:56px;height:56px;display:flex;align-items:center;justify-content:center;border-radius:50%;background:#dbeafe;color:#2563eb;font-size:27px}.cv-pa-reco-eyebrow{font-size:10px;color:#2563eb;letter-spacing:.11em;font-weight:850;margin:0 0 7px}.cv-pa-reco-main h2{font-size:22px;line-height:1.2;letter-spacing:-.02em;margin:0 0 9px;color:#102341;font-weight:800}.cv-pa-reco-main p{font-size:13px;line-height:1.6;color:#475569;margin:0;max-width:820px}"
+        ".cv-pa-reco-callouts{display:grid;gap:12px;padding-left:22px;border-left:1px solid #cfe0f7}.cv-pa-reco-callout{display:grid;grid-template-columns:30px 1fr;gap:10px;align-items:start}.cv-pa-reco-icon{color:#2563eb;font-size:20px;line-height:1.2}.cv-pa-reco-callout strong{display:block;color:#172b4d;font-size:12px;font-weight:780}.cv-pa-reco-callout small{display:block;color:#64748b;font-size:10px;line-height:1.4;margin-top:2px}"
+        "@media(max-width:850px){.cv-pa-recommendation-v2{grid-template-columns:1fr}.cv-pa-reco-callouts{grid-template-columns:repeat(3,minmax(0,1fr));padding:16px 0 0;border-left:0;border-top:1px solid #cfe0f7}}"
+        "@media(max-width:600px){.cv-pa-recommendation-v2{padding:18px}.cv-pa-reco-main{grid-template-columns:42px 1fr;gap:12px}.cv-pa-reco-star{width:42px;height:42px;font-size:21px}.cv-pa-reco-main h2{font-size:18px}.cv-pa-reco-callouts{grid-template-columns:1fr}}"
+        "</style>"
+        "<section class='cv-pa-recommendation-v2'><div class='cv-pa-reco-main'>"
+        "<div class='cv-pa-reco-star' aria-hidden='true'>★</div><div>"
+        f"<div class='cv-pa-reco-eyebrow'>RECOMMENDATION</div><h2>{html_escape(action_title)}</h2>"
+        f"<p>{html_escape(next_step)}</p></div></div><div class='cv-pa-reco-callouts'>"
+        + "".join(
+            f"<div class='cv-pa-reco-callout'><span class='cv-pa-reco-icon' aria-hidden='true'>{icon}</span>"
+            f"<div><strong>{html_escape(value)}</strong><small>{html_escape(detail)}</small></div></div>"
+            for _label, value, detail, icon in callouts
+        )
+        + "</div></section>"
+    )
+
+
+def procurement_summary_cards_html(
+    part: Mapping[str, Any],
+    recommendation: Mapping[str, Any] | None,
+    price_comparison: Mapping[str, Any] | None = None,
+) -> str:
+    """Render four mockup-style cards, showing unavailable evidence as unknown."""
+    part = apply_sourcing_override(part or {})
+    recommendation = recommendation or _recommend(dict(part))
+    price_comparison = price_comparison or {}
+    offers = normalize_supplier_offer_records(part)
+    supplier_count = _maybe_n(recommendation.get("Supplier Sources"))
+    if supplier_count is None and offers:
+        quote_count = len({row["supplier"].casefold() for row in offers})
+        coverage_value = f"{quote_count} quote source{'s' if quote_count != 1 else ''}"
+        coverage_detail = "Saved offers; qualification is not recorded"
+    elif supplier_count is None:
+        coverage_value, coverage_detail = "Not recorded", "Confirm authorized supplier coverage"
+    elif supplier_count <= 1:
+        coverage_value, coverage_detail = f"{int(supplier_count)} → 2", "If a second source is qualified"
+    else:
+        coverage_value, coverage_detail = f"{int(supplier_count)} sources", "Recorded in current sourcing data"
+
+    annual_demand = _maybe_n(_first(part, "annual_demand", "annual_quantity", "yearly_demand"))
+    annual_comparison = {}
+    if annual_demand is not None:
+        from src.saved_bom_cost import distributor_comparison
+
+        annual_comparison = distributor_comparison(
+            part.get("supplier_offers"),
+            mpn=_t(_first(part, "mpn", "MPN", "part_number", default="")),
+            bom_quantity=annual_demand,
+        )
+    savings = annual_comparison.get("savings_per_unit")
+    if annual_demand is not None and savings is not None:
+        annual_savings_value = f"{savings * annual_demand:,.2f} {annual_comparison.get('currency') or ''}".strip()
+        annual_savings_detail = f"At {annual_demand:,.0f} units/year; quote is indicative"
+    else:
+        annual_savings_value = "Not recorded"
+        annual_savings_detail = "Annual demand and applicable comparable quotes are required"
+
+    risk = _t(_first(part, "blended_supply_risk", "supply_risk", default=""))
+    risk_value = risk if risk else "Not assessed"
+    risk_detail = "Recorded supply-risk assessment" if risk else "No blended supplier-risk evidence"
+    action = _t(recommendation.get("Recommendation"), "Complete sourcing data")
+    cards = (
+        ("Sourcing coverage", coverage_value, coverage_detail, "coverage"),
+        ("Estimated annual savings", annual_savings_value, annual_savings_detail, "cost"),
+        ("Supply risk (blended)", risk_value, risk_detail, "risk"),
+        ("Recommendation", action, _t(recommendation.get("Next Step"), "Review saved sourcing data"), "action"),
+    )
+    return (
+        "<style>"
+        ".cv-pa-metric-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:0 0 16px}.cv-pa-metric{min-height:105px;padding:16px 18px;border:1px solid #e2e8f0;border-radius:12px;background:#fff;box-shadow:0 2px 8px rgba(15,23,42,.025)}.cv-pa-metric--action{background:#f0fdf4;border-color:#d1fae5}.cv-pa-metric-label{font-size:11px;color:#64748b;font-weight:700;margin:0 0 9px}.cv-pa-metric-value{font-size:20px;color:#0f172a;font-weight:800;line-height:1.2;overflow-wrap:anywhere}.cv-pa-metric--action .cv-pa-metric-value{font-size:16px;color:#166534}.cv-pa-metric-detail{font-size:10px;color:#64748b;line-height:1.4;margin-top:7px}"
+        "@media(max-width:900px){.cv-pa-metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:520px){.cv-pa-metric-grid{grid-template-columns:1fr}.cv-pa-metric{min-height:0}}"
+        "</style><section class='cv-pa-metric-grid'>"
+        + "".join(
+            f"<article class='cv-pa-metric cv-pa-metric--{tone}'><div class='cv-pa-metric-label'>{html_escape(label)}</div>"
+            f"<div class='cv-pa-metric-value'>{html_escape(value)}</div><div class='cv-pa-metric-detail'>{html_escape(detail)}</div></article>"
+            for label, value, detail, tone in cards
+        )
+        + "</section>"
+    )
+
+
+def procurement_details_display_frame(recommendation_df: pd.DataFrame) -> pd.DataFrame:
+    """Prepare the all-components table without mixing text into numeric Arrow columns."""
+    frame = recommendation_df.copy()
+    integer_columns = ("Available Stock", "Required Quantity", "Supplier Sources", "Priority Score")
+    decimal_columns = ("Unit Price", "Lead Time (Weeks)")
+    for column in integer_columns:
+        if column in frame.columns:
+            frame[column] = pd.to_numeric(frame[column], errors="coerce").astype("Int64")
+    for column in decimal_columns:
+        if column in frame.columns:
+            frame[column] = pd.to_numeric(frame[column], errors="coerce").astype("Float64")
+    numeric = set(integer_columns + decimal_columns)
+    for column in frame.columns:
+        if column in numeric:
+            continue
+        values = frame[column].astype("object")
+        frame[column] = values.where(pd.notna(values), "Not recorded").astype("string")
+    return frame
+
+
 def html_escape(value: Any) -> str:
     import html
 
