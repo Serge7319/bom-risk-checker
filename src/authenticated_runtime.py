@@ -18105,9 +18105,14 @@ def run_authenticated_app() -> None:
             reserve_credit as reserve_one_time_credit,
             reserved_credit as one_time_credit_reserved,
         )
-        # Sprint 50.1.2 — returning through navigation resumes the active engineering
-        # analysis instead of reopening the Saved BOM selector. A deliberate New
-        # Analysis request clears this context above and continues to the selector.
+        from src.bom_upload_flow import has_completed_saved_bom_results
+
+        _has_completed_saved_results = has_completed_saved_bom_results(
+            st.session_state
+        )
+        # Keep completed results on the BOM Analyzer so they can be rendered
+        # after the upload file is discarded. Resume an engineering view only
+        # when no completed result is available in this session.
         _resume_analysis_id = _safe_text(
             st.session_state.get("cadivor_active_analysis_id")
             or st.session_state.get("analysis_id"),
@@ -18118,6 +18123,7 @@ def run_authenticated_app() -> None:
         } or bool(st.session_state.get("cadivor_show_saved_boms"))
         if (
             _resume_analysis_id
+            and not _has_completed_saved_results
             and not _new_analysis_requested
             and not _show_saved_analyses
             and not st.session_state.get("bom81_high_risk_review")
@@ -19093,6 +19099,14 @@ def run_authenticated_app() -> None:
                 uploaded_file = widget_upload or resumed_upload
                 project_name = resumed_project
                 bom_name = resumed_bom_name
+            if (
+                st.session_state.get("cadivor_bom_catalog_requested")
+                and not _approved_bom_submitted
+                and not st.session_state.get("cadivor_bom_pipeline_active")
+            ):
+                # The BOM Analyzer menu should show the saved-BOM catalog, not
+                # continue into a stale result or the upload parser underneath it.
+                stop_authenticated_page()
             if project_name and "bom8_project_name" not in st.session_state:
                 st.session_state["bom8_project_name"] = project_name
             if bom_name and "bom8_bom_name" not in st.session_state:
@@ -19132,6 +19146,7 @@ def run_authenticated_app() -> None:
             uploaded_file is None
             and not st.session_state.get("bom81_high_risk_review")
             and not _resume_pending_one_time_analysis
+            and not _has_completed_saved_results
         ):
             if saved_bom_rerun_active:
                 st.error("The updated BOM file is no longer available in this session. Return to BOMs and open the saved BOM again.")
@@ -20073,7 +20088,7 @@ def run_authenticated_app() -> None:
                 # A purchased report must never be spent on Cadivor's example BOM.
                 st.session_state.pop("bom8_sample_mode", None)
                 st.session_state.pop("bom8_sample_auto_analyze", None)
-            if _one_time_blocked_plan:
+            if _one_time_blocked_plan and not _has_completed_saved_results:
                 if _one_time_reserved:
                     if uploaded_file is None:
                         st.success("Your one-time BOM report is in progress. Finish this analysis to access its reports.")
@@ -20325,6 +20340,12 @@ def run_authenticated_app() -> None:
         source_filename = "cadivor_10_part_sample_bom.csv" if sample_mode else (
             uploaded_file.name if uploaded_file is not None else ""
         )
+        if _has_completed_saved_results and uploaded_file is None:
+            source_filename = str(
+                st.session_state.get("uploaded_filename") or "saved_bom_analysis.csv"
+            )
+            project_name = str(st.session_state.get("bom8_project_name") or "")
+            bom_name = str(st.session_state.get("bom8_bom_name") or "")
         if _resume_pending_one_time_analysis and uploaded_file is None:
             source_filename = str(
                 st.session_state.get("cadivor_one_time_pending_source_filename")
@@ -20344,12 +20365,51 @@ def run_authenticated_app() -> None:
                 or "Paid BOM report"
             )
 
-        if uploaded_file is None and not sample_mode and not _resume_pending_one_time_analysis:
+        if (
+            uploaded_file is None
+            and not sample_mode
+            and not _resume_pending_one_time_analysis
+            and not _has_completed_saved_results
+        ):
             st.markdown("</div>", unsafe_allow_html=True)
             stop_authenticated_page()
 
         try:
-            if _resume_pending_one_time_analysis and uploaded_file is None:
+            if _has_completed_saved_results and uploaded_file is None:
+                _completed_results_df = st.session_state["results_df"]
+                _mpn_column = next(
+                    (
+                        column for column in _completed_results_df.columns
+                        if str(column).strip().casefold().replace("_", " ")
+                        in {"mpn", "manufacturer part number"}
+                    ),
+                    None,
+                )
+                _quantity_column = next(
+                    (
+                        column for column in _completed_results_df.columns
+                        if str(column).strip().casefold() in {"quantity", "qty"}
+                    ),
+                    None,
+                )
+                if _mpn_column is None:
+                    st.error(
+                        "The saved BOM result could not be reopened because it has no part-number column."
+                    )
+                    stop_authenticated_page()
+                bom_df = pd.DataFrame(
+                    {
+                        "mpn": _completed_results_df[_mpn_column].astype(str).str.strip(),
+                        "quantity": (
+                            pd.to_numeric(
+                                _completed_results_df[_quantity_column], errors="coerce"
+                            ).fillna(1)
+                            if _quantity_column is not None
+                            else 1
+                        ),
+                    }
+                )
+            elif _resume_pending_one_time_analysis and uploaded_file is None:
                 _pending_results_df = st.session_state["results_df"]
                 _mpn_column = next(
                     (

@@ -87,7 +87,21 @@ __all__ = [
     "should_render_bom_analysis_body",
     "should_stop_approved_bom_renderer",
     "prepare_new_approved_bom_analysis",
+    "has_completed_saved_bom_results",
 ]
+
+
+def has_completed_saved_bom_results(state: MutableMapping[str, Any]) -> bool:
+    """True when this session has a saved result that can render without its upload file."""
+    results = state.get("results_df")
+    return bool(
+        results is not None
+        and not getattr(results, "empty", True)
+        and state.get("analysis_saved")
+        and str(
+            state.get("analysis_id") or state.get("cadivor_active_analysis_id") or ""
+        ).strip()
+    )
 
 
 def should_render_approved_bom_upload_form(
@@ -130,6 +144,8 @@ def prepare_new_approved_bom_analysis(state: MutableMapping[str, Any]) -> None:
         "cadivor_active_analysis_tab",
         "cadivor_show_detailed_risk",
         "cadivor_bom_pipeline_active",
+        "cadivor_bom_catalog_requested",
+        "cadivor_show_saved_boms",
         "bom8_analysis_future",
         "bom8_analysis_pending",
         "bom8_analysis_in_progress",
@@ -154,6 +170,9 @@ def should_render_legacy_bom_workspace(state: MutableMapping[str, Any]) -> bool:
     return not (
         bool(state.get("cadivor_bom_upload_open"))
         or bool(state.get("cadivor_bom_pipeline_active"))
+        or bool(state.get("cadivor_bom_catalog_requested"))
+        or bool(state.get("cadivor_show_saved_boms"))
+        or has_completed_saved_bom_results(state)
     )
 
 

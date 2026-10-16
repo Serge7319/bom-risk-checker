@@ -12,6 +12,7 @@ from src.bom_upload_flow import (
     should_render_bom_analysis_body,
     should_stop_approved_bom_renderer,
     prepare_new_approved_bom_analysis,
+    has_completed_saved_bom_results,
 )
 
 
@@ -21,6 +22,33 @@ class ApprovedBOMPageContractTests(unittest.TestCase):
         self.assertIn("render_bom_component_table(filtered_df)", source)
         self.assertIn("if _bom_new_analysis_context is not None:", source)
         self.assertIn("should_render_bom_analysis_body(", source)
+
+    def test_home_new_analysis_clears_old_context_before_navigation(self):
+        source = Path("src/ui/approved_pages.py").read_text(encoding="utf-8")
+        action_start = source.index('key="approved_home_new_bom"')
+        home_action = source[action_start : action_start + 600]
+        self.assertIn("prepare_new_approved_bom_analysis(st.session_state)", home_action)
+        self.assertIn('navigate_to("BOM Analyzer", new_analysis="1")', home_action)
+        workspace_source = Path("src/pages/home_workspace.py").read_text(encoding="utf-8")
+        workspace_action = workspace_source[workspace_source.index('key="home_new_bom"') :]
+        self.assertIn("prepare_new_approved_bom_analysis(st.session_state)", workspace_action)
+        self.assertIn('navigate_to("BOM Analyzer", new_analysis="1", arm_opening=False)', workspace_action)
+
+    def test_completed_saved_results_render_without_reopening_the_upload(self):
+        source = Path("src/authenticated_runtime.py").read_text(encoding="utf-8")
+        self.assertIn("has_completed_saved_bom_results(", source)
+        self.assertIn("st.session_state\n        )", source)
+        self.assertIn("and not _has_completed_saved_results", source)
+        self.assertIn("if _has_completed_saved_results and uploaded_file is None:", source)
+        self.assertIn("cadivor_bom_catalog_requested", source)
+
+    def test_bom_analyzer_menu_returns_to_the_saved_catalog(self):
+        page_source = Path("src/ui/approved_pages.py").read_text(encoding="utf-8")
+        runtime_source = Path("src/authenticated_runtime.py").read_text(encoding="utf-8")
+        self.assertIn("catalog_requested = bool(", page_source)
+        self.assertIn("not catalog_requested", page_source)
+        self.assertIn("st.session_state.get(\"cadivor_bom_catalog_requested\")", runtime_source)
+        self.assertIn("# The BOM Analyzer menu should show the saved-BOM catalog", runtime_source)
 
     def test_project_name_is_an_always_editable_text_field(self):
         source = Path("src/ui/approved_pages.py").read_text(encoding="utf-8")
@@ -43,6 +71,50 @@ class ApprovedBOMPageContractTests(unittest.TestCase):
         self.assertIn("does not add missing supplier coverage.", checkout)
         self.assertIn("st.checkbox(", checkout)
         self.assertIn("if _one_time_evidence_acknowledged:", checkout)
+
+
+    def test_completed_saved_results_are_reusable_without_the_upload_file(self):
+        saved_results = type("Results", (), {"empty": False})()
+        self.assertTrue(
+            has_completed_saved_bom_results(
+                {
+                    "results_df": saved_results,
+                    "analysis_saved": True,
+                    "analysis_id": "saved-analysis",
+                }
+            )
+        )
+        self.assertFalse(
+            has_completed_saved_bom_results(
+                {
+                    "results_df": saved_results,
+                    "analysis_saved": False,
+                    "analysis_id": "preview-only",
+                }
+            )
+        )
+        self.assertFalse(
+            has_completed_saved_bom_results(
+                {"results_df": saved_results, "analysis_saved": True}
+            )
+        )
+
+    def test_explicit_new_analysis_clears_saved_catalog_context(self):
+        state = {
+            "results_df": object(),
+            "analysis_saved": True,
+            "analysis_id": "old-analysis",
+            "cadivor_active_analysis_id": "old-analysis",
+            "cadivor_bom_catalog_requested": True,
+            "cadivor_show_saved_boms": True,
+        }
+        prepare_new_approved_bom_analysis(state)
+        self.assertTrue(state["cadivor_bom_upload_open"])
+        self.assertNotIn("analysis_id", state)
+        self.assertNotIn("cadivor_active_analysis_id", state)
+        self.assertNotIn("results_df", state)
+        self.assertNotIn("cadivor_bom_catalog_requested", state)
+        self.assertNotIn("cadivor_show_saved_boms", state)
 
 
 class ApprovedBOMSubmissionTests(unittest.TestCase):
@@ -250,6 +322,21 @@ class ApprovedBOMSubmissionTests(unittest.TestCase):
         )
         self.assertFalse(
             should_render_legacy_bom_workspace({"cadivor_bom_pipeline_active": True})
+        )
+        self.assertFalse(
+            should_render_legacy_bom_workspace({"cadivor_bom_catalog_requested": True})
+        )
+        self.assertFalse(
+            should_render_legacy_bom_workspace({"cadivor_show_saved_boms": True})
+        )
+        self.assertFalse(
+            should_render_legacy_bom_workspace(
+                {
+                    "results_df": type("Results", (), {"empty": False})(),
+                    "analysis_saved": True,
+                    "analysis_id": "saved-analysis",
+                }
+            )
         )
         self.assertTrue(should_render_legacy_bom_workspace({}))
 
