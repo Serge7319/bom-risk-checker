@@ -77,6 +77,7 @@ from src.auth_state import (
     begin_logout,
     finalize_logout_cookie,
 )
+import logging
 import time
 import html
 import re
@@ -86,6 +87,8 @@ import hashlib
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
+
+logger = logging.getLogger(__name__)
 
 start_time = time.time()
 from src.ui.milestone10a import apply_milestone10a_design_system
@@ -3764,21 +3767,35 @@ def run_authenticated_app() -> None:
             return query
 
         def _load_saved_analyses():
-            analyses_response = execute_supabase_read(
-                _scoped_saved_query(
-                    supabase.table("analyses").select(
-                        "id,user_id,filename,project_name,total_parts,health_score,created_at,high_risk_count,medium_risk_count,low_risk_count"
-                    ),
-                    _saved_workspace_id,
+            try:
+                analyses_response = execute_supabase_read(
+                    _scoped_saved_query(
+                        supabase.table("analyses").select(
+                            "id,user_id,filename,project_name,total_parts,health_score,created_at,high_risk_count,medium_risk_count,low_risk_count"
+                        ),
+                        _saved_workspace_id,
+                    )
+                    .eq("user_id", _saved_user_id)
+                    .order("created_at", desc=True)
+                    .limit(40),
+                    operation="dashboard_saved_analyses",
                 )
-                .eq("user_id", _saved_user_id)
-                .order("created_at", desc=True)
-                .limit(40),
-                operation="dashboard_saved_analyses",
-            )
-            return analyses_response.data or []
+                return analyses_response.data or []
+            except Exception as exc:
+                # Keep diagnostics useful without logging query contents or account data.
+                logger.warning(
+                    "dashboard_saved_analyses_read_error error_type=%s",
+                    type(exc).__name__,
+                )
+                raise
 
-        _saved_rows, _saved_status = run_with_read_budget(_load_saved_analyses)
+        _saved_rows, _saved_status = run_with_read_budget(
+            _load_saved_analyses,
+            budget_seconds=8.0,
+            respect_first_page=False,
+        )
+        if _saved_status != "ok":
+            logger.warning("dashboard_saved_analyses_unavailable status=%s", _saved_status)
         overview_analyses = apply_saved_analysis_result(
             st.session_state,
             user_id=current_user["id"],
