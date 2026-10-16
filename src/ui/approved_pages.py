@@ -1397,6 +1397,9 @@ def _render_saved_bom_open_page(
                 # one-shot submission before drawing the new-upload form.
                 st.session_state["cadivor_saved_bom_rerun_pending"] = True
                 st.session_state["cadivor_bom_upload_open"] = False
+                from src.ui.main_transition import arm_bom_analysis_transition
+
+                arm_bom_analysis_transition(st.session_state, "rerun")
                 navigate_to("BOM Analyzer", new_analysis="1", arm_opening=False)
 
 
@@ -2021,11 +2024,11 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
                 ):
                     prepare_new_approved_bom_analysis(st.session_state)
                     st.rerun()
-    if upload_mode and analysis_running and not results_visible:
+    if analysis_running and not results_visible:
         with st.container(key="approved_bom_upload_progress"):
             active_name = str(st.session_state.get("bom8_bom_name") or "this BOM").strip()
             st.caption(
-                f"Supplier checks are running for {active_name}. Your report will open when the analysis is complete."
+                f"Preparing or checking supplier data for {active_name}. Your report will open when the analysis is complete."
             )
     elif should_render_approved_bom_upload_form(
         upload_mode=upload_mode,

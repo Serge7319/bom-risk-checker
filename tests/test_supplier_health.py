@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 from integrations.provider_health import (
     PROVIDER_AVAILABLE,
@@ -16,11 +17,86 @@ from integrations.provider_health import (
 )
 from integrations.supplier_aggregator import (
     _safe_supplier_lookup,
+    _supplier_query_variants,
     default_aggregated_result,
 )
 
 
 class SupplierHealthTests(unittest.TestCase):
+    def test_query_variants_keep_speed_and_package_suffixes(self):
+        variants = _supplier_query_variants("AM29F010B-70EC")
+        self.assertEqual(variants, ("AM29F010B-70EC", "AM29F010B70EC"))
+        self.assertTrue(all("70EC" in variant for variant in variants))
+
+    def test_separator_retry_accepts_only_the_same_mpn(self):
+        calls = []
+
+        def lookup(query):
+            calls.append(query)
+            if query == "IRF-540N":
+                return {
+                    "manufacturer_part_number": "IRF540NPBF",
+                    "stock_total": 300,
+                }
+            return {
+                "manufacturer_part_number": "IRF540N",
+                "stock_total": 25,
+            }
+
+        result = _safe_supplier_lookup("DigiKey", lookup, "IRF-540N")
+        self.assertEqual(calls, ["IRF-540N", "IRF540N"])
+        self.assertEqual(result["provider_status"], PROVIDER_AVAILABLE)
+        self.assertEqual(result["manufacturer_part_number"], "IRF540N")
+        self.assertEqual(result["stock_total"], 25)
+
+    def test_related_order_code_never_lends_stock_or_lifecycle_to_requested_mpn(self):
+        result = _safe_supplier_lookup(
+            "DigiKey",
+            lambda _query: {
+                "manufacturer_part_number": "IRF540NPBF",
+                "stock_total": 300,
+                "unit_price": 0.55,
+                "lifecycle_status": "Active",
+            },
+            "IRF540N",
+        )
+        self.assertEqual(result["provider_status"], PROVIDER_PART_NOT_FOUND)
+        self.assertEqual(result["manufacturer_part_number"], "")
+        self.assertIsNone(result["stock_total"])
+        self.assertEqual(result["lifecycle_status"], "Unknown")
+        self.assertEqual(result["unit_price"], 0.0)
+
+    def test_legacy_related_catalog_hit_is_only_a_review_lead(self):
+        from integrations import supplier_aggregator
+
+        exact_lookup = lambda query: {
+            "manufacturer_part_number": query,
+            "manufacturer": "Infineon",
+            "product_detail_url": "https://example.test/irf540npbf",
+            "stock_total": 300,
+            "unit_price": 0.55,
+            "lifecycle_status": "Active",
+        }
+        supplier_results = [
+            {"source": "DigiKey", "provider_status": PROVIDER_PART_NOT_FOUND},
+            {"source": "Mouser", "provider_status": PROVIDER_NOT_CONFIGURED},
+            {"source": "Newark", "provider_status": PROVIDER_NOT_CONFIGURED},
+        ]
+        with patch.object(supplier_aggregator, "get_supplier_results", return_value=supplier_results), patch.object(
+            supplier_aggregator,
+            "_supplier_lookup_callable",
+            side_effect=lambda source: exact_lookup if source == "DigiKey" else None,
+        ):
+            data = supplier_aggregator.get_best_part_data("IRF540N")
+
+        self.assertEqual(data["lifecycle_status"], "Unknown")
+        self.assertIsNone(data["stock_total"])
+        self.assertIn("IRF540NPBF", data["alternate_search_status"])
+        self.assertIn("review only", data["alternate_search_status"])
+        self.assertEqual(data["legacy_mpn_review_leads"][0]["evidence_scope"], "review_only_related_mpn")
+        self.assertNotIn("stock_total", data["legacy_mpn_review_leads"][0])
+        self.assertNotIn("unit_price", data["legacy_mpn_review_leads"][0])
+
     def test_supplier_lookup_rejects_a_fuzzy_neighbor_mpn(self):
         result = _safe_supplier_lookup(
             "Mouser",

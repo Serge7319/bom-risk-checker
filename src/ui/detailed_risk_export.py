@@ -581,7 +581,7 @@ def detailed_risk_excel_bytes(
         ("Priced components with BOM quantity", exposure["priced_component_count"]),
         ("Priced components missing currency", exposure["priced_missing_currency_count"]),
         ("Extended BOM amount by recorded currency", exposure["extended_amount_by_currency"]),
-        ("High-risk / lifecycle amount by currency", exposure["high_risk_amount_by_currency"]),
+        ("Priced high-risk / lifecycle extended cost by currency", exposure["high_risk_amount_by_currency"]),
         ("High-risk / lifecycle rows without extended cost", exposure["high_risk_without_extended_cost_count"]),
         ("Priced high-risk rows missing currency", exposure["high_risk_missing_currency_count"]),
         ("Longest reported part lead time", exposure["longest_reported_lead_time"]),
@@ -634,6 +634,7 @@ def detailed_risk_excel_bytes(
         "Approved alternatives are user-recorded decisions. They do not independently verify electrical or mechanical compatibility.",
         "A replacement mentioned in a supplier description is an unverified search lead, not a confirmed or approved cross.",
         "Extended cost is recorded unit price × BOM quantity. Totals include only rows with an explicitly recorded currency and are grouped by currency. They are not inventory valuation or committed spend.",
+        "The priced high-risk / lifecycle amount is only the subset with a usable unit price, BOM quantity, and currency. Rows without extended cost or currency are counted separately; this amount is not total exposure.",
         "The longest reported component lead time is a possible sourcing bottleneck, not a forecast of project delay.",
         "Risk ratings and reasons reflect the saved analysis. Re-run the analysis to refresh distributor data.",
     )
@@ -642,7 +643,9 @@ def detailed_risk_excel_bytes(
         summary.merge_cells(start_row=note_row + offset, start_column=1, end_row=note_row + offset, end_column=2)
         cell.alignment = Alignment(wrap_text=True, vertical="top")
         cell.font = Font(name="Aptos", size=10, color="52647A")
-        summary.row_dimensions[note_row + offset].height = 30
+        summary.row_dimensions[note_row + offset].height = (
+            42 if "priced high-risk / lifecycle amount" in note else 30
+        )
     for row in summary.iter_rows(min_row=4, max_row=9 + len(metrics), min_col=1, max_col=2):
         for cell in row:
             cell.border = border
