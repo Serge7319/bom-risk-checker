@@ -20,7 +20,7 @@ SHARED_NAV_GROUPS = (
     ("Decision Tools", (
         ("Compare Parts", "compare-parts", "Compare Parts"),
         ("Datasheet Q&A", "datasheet-qa", "Datasheet Q&A"),
-        ("Procurement Advisor", "procurement", "Procurement Advisor"),
+        ("Sourcing Recommendation", "procurement", "Procurement Advisor"),
         ("Design Impact Analyzer", "design-impact", "Design Impact Analyzer"),
         ("Cost Optimization", "cost", "Cost Optimization"),
         ("Supply Risk Scenario", "supply-scenario", "Supply Risk Scenario"),
@@ -74,7 +74,7 @@ _ACTIVE = {
     "Compare Parts": "Compare parts",
     "Datasheet Q&A": "Datasheet Q&A",
     "Design Impact Analyzer": "Design Impact",
-    "Procurement Advisor": "Procurement Advisor",
+    "Procurement Advisor": "Sourcing Recommendation",
     "Cost Optimization": "Cost Optimization",
     "Supply Risk Scenario": "Supply Scenario",
     "Portfolio Intelligence": "Portfolio Intelligence",
