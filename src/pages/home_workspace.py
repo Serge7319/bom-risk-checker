@@ -8,6 +8,7 @@ from typing import Any, Mapping
 
 import streamlit as st
 
+from src.bom_upload_flow import prepare_new_approved_bom_analysis
 from src.ui.navigation import navigate_to, open_saved_bom
 
 HOME_NEW = "new"
@@ -285,6 +286,7 @@ def render_returning_home(
                     if st.button("Open reports", key="home_open_reports", use_container_width=True):
                         navigate_to("Reports", arm_opening=False)
                 elif st.button("＋  New BOM analysis", key="home_new_bom", use_container_width=True):
+                    prepare_new_approved_bom_analysis(st.session_state)
                     navigate_to("BOM Analyzer", new_analysis="1", arm_opening=False)
 
         metrics = [

@@ -1830,8 +1830,8 @@ def render_home(
                     type="primary",
                     width="stretch",
                 ):
-                    st.session_state["cadivor_bom_upload_open"] = True
-                    navigate_to("BOM Analyzer")
+                    prepare_new_approved_bom_analysis(st.session_state)
+                    navigate_to("BOM Analyzer", new_analysis="1")
 
         saved_delta = _home_weekly_delta(rows, "saved_boms")
         review_delta = _home_weekly_delta(rows, "needs_review")
@@ -1969,7 +1969,11 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
             _render_saved_bom_edit_page(target_row, user_id)
         end_approved_page()
         return
-    upload_mode = bool(st.session_state.get("cadivor_bom_upload_open"))
+    catalog_requested = bool(
+        st.session_state.get("cadivor_bom_catalog_requested")
+        or st.session_state.get("cadivor_show_saved_boms")
+    )
+    upload_mode = bool(st.session_state.get("cadivor_bom_upload_open")) and not catalog_requested
     analysis_running = bool(
         st.session_state.get("bom8_analysis_future")
         or st.session_state.get("bom8_analysis_pending")
@@ -1978,7 +1982,8 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
     )
     analysis_results = st.session_state.get("results_df")
     results_visible = bool(
-        analysis_results is not None
+        not catalog_requested
+        and analysis_results is not None
         and not getattr(analysis_results, "empty", True)
     )
     with st.container(key="approved_bom_title"):
