@@ -1,13 +1,18 @@
 import unittest
 from types import SimpleNamespace
+import pandas as pd
 
 from src.procurement_advisor import (
     apply_sourcing_override,
     build_procurement_advisor,
     normalize_sourcing_override,
     persist_sourcing_update,
+    procurement_details_display_frame,
     procurement_header_html,
+    procurement_summary_cards_html,
     sourcing_editor_values,
+    supplier_comparison_dataframe,
+    supplier_offer_override,
 )
 
 
@@ -136,6 +141,128 @@ class ProcurementAdvisorTests(unittest.TestCase):
         self.assertIn("Oct 11, 2026", html)
         self.assertIn("BOM analysis", html)
         self.assertNotIn("Last updated</span><strong>Not recorded", html)
+
+    def test_supplier_comparison_keeps_unknown_stock_as_text_and_marks_current_offer(self):
+        frame = supplier_comparison_dataframe(
+            {
+                "mpn": "TPS54331D",
+                "primary_supplier": "DigiKey",
+                "unit_price": 2.0,
+                "currency": "USD",
+                "supplier_data_verified": True,
+                "supplier_offers": [
+                    {
+                        "mpn": "TPS54331D",
+                        "distributor": "DigiKey",
+                        "unit_price": 2.0,
+                        "currency": "USD",
+                        "price_break_quantity": 10,
+                        "stock": None,
+                    },
+                    {
+                        "mpn": "TPS54331D",
+                        "distributor": "Mouser",
+                        "unit_price": 1.8,
+                        "currency": "USD",
+                        "price_break_quantity": 10,
+                        "stock": "25000",
+                    },
+                ],
+            },
+            selected_supplier="DigiKey",
+        )
+        self.assertEqual(frame.loc[0, "Selected"], "● Selected")
+        self.assertEqual(frame.loc[0, "Available stock"], "Not recorded")
+        self.assertEqual(frame.loc[1, "Available stock"], "25,000")
+        self.assertEqual(frame.loc[1, "Price vs current"], "-10.0%")
+        self.assertTrue(all(str(dtype) == "object" for dtype in frame.dtypes))
+
+    def test_selected_supplier_offer_override_preserves_other_verified_values(self):
+        override = supplier_offer_override(
+            {
+                "mpn": "TPS54331D",
+                "sourcing_override": {
+                    "primary_supplier": "DigiKey",
+                    "supplier_count": 2,
+                    "lead_time_weeks": 8,
+                    "lifecycle_status": "Active",
+                },
+                "supplier_offers": [
+                    {
+                        "distributor": "Mouser",
+                        "unit_price": 1.8,
+                        "currency": "USD",
+                        "stock": 125,
+                        "lead_time_weeks": 6,
+                    }
+                ],
+            },
+            "Mouser",
+        )
+        self.assertEqual(override["primary_supplier"], "Mouser")
+        self.assertEqual(override["unit_price"], 1.8)
+        self.assertEqual(override["currency"], "USD")
+        self.assertEqual(override["stock_available"], 125)
+        self.assertEqual(override["supplier_count"], 2)
+        self.assertEqual(override["lead_time_weeks"], 6)
+        self.assertEqual(override["lifecycle_status"], "Active")
+
+    def test_procurement_details_keeps_nullable_numeric_columns_arrow_safe(self):
+        frame = procurement_details_display_frame(
+            pd.DataFrame(
+                {
+                    "Part Number": ["A", "B"],
+                    "Available Stock": [150, None],
+                    "Supplier Sources": [2, None],
+                    "Unit Price": [1.25, None],
+                    "Recommendation": ["Buy now", None],
+                }
+            )
+        )
+        self.assertEqual(str(frame["Available Stock"].dtype), "Int64")
+        self.assertEqual(str(frame["Unit Price"].dtype), "Float64")
+        self.assertEqual(frame.loc[1, "Recommendation"], "Not recorded")
+        self.assertTrue(pd.isna(frame.loc[1, "Available Stock"]))
+        self.assertTrue(pd.isna(frame.loc[1, "Unit Price"]))
+
+    def test_unverified_legacy_source_fields_do_not_leak_into_offer_comparison(self):
+        rows = supplier_comparison_dataframe(
+            {
+                "mpn": "TPS54331D",
+                "primary_supplier": "Legacy supplier",
+                "supplier_data_verified": False,
+                "stock_available": 9999,
+                "unit_price": 9.99,
+                "supplier_count": 4,
+                "lead_time_weeks": 1,
+                "supplier_offers": [
+                    {
+                        "mpn": "TPS54331D",
+                        "distributor": "Mouser",
+                        "unit_price": 1.8,
+                        "currency": "USD",
+                        "stock": 25,
+                    }
+                ],
+            }
+        )
+        self.assertEqual(len(rows), 1)
+        self.assertIn("Mouser", rows.loc[0, "Supplier"])
+        self.assertNotIn("Legacy supplier", rows.loc[0, "Supplier"])
+
+    def test_summary_cards_do_not_invent_annual_savings_or_blended_risk(self):
+        html = procurement_summary_cards_html(
+            {"mpn": "TPS54331D"},
+            {
+                "Recommendation": "Complete sourcing data",
+                "Next Step": "Confirm the current quote.",
+                "Supplier Sources": None,
+            },
+        )
+        self.assertIn("Estimated annual savings", html)
+        self.assertIn("Annual demand and applicable comparable quotes are required", html)
+        self.assertIn("Supply risk (blended)", html)
+        self.assertIn("Not assessed", html)
 
     def test_sourcing_updates_are_scoped_to_user_and_active_workspace(self):
         class Query:
