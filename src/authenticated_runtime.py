@@ -6797,7 +6797,7 @@ def run_authenticated_app() -> None:
                 selector_col, edit_col = st.columns([0.76, 0.24], vertical_alignment="bottom")
                 with selector_col:
                     st.selectbox(
-                        "Component to review",
+                        "Select a component for its sourcing recommendation",
                         options=mpn_options,
                         key=selected_mpn_key,
                         format_func=lambda value: next(
@@ -6814,7 +6814,7 @@ def run_authenticated_app() -> None:
                     editor_key = f"pa_sourcing_editor_open_{__import__('hashlib').sha1(focus_mpn.encode()).hexdigest()[:12]}"
                     editor_open = bool(st.session_state.get(editor_key))
                     if st.button(
-                        "Close editor" if editor_open else "Edit sourcing details",
+                        "Close editor" if editor_open else "Edit details",
                         key="pa_edit_sourcing_details",
                         type="secondary",
                         use_container_width=True,
@@ -7090,17 +7090,18 @@ def run_authenticated_app() -> None:
             else:
                 st.info("Upload or open a saved BOM to add components to procurement review.")
 
-            incomplete_sourcing_count = sum(
-                1 for row in procurement_recommendations
-                if str(row.get("Missing Sourcing Data") or "").strip()
-            )
-            if procurement_recommendations and incomplete_sourcing_count:
-                st.info(
-                    f"{incomplete_sourcing_count} of {len(procurement_recommendations)} components have incomplete sourcing evidence. "
-                    "The action counts below use recorded evidence; missing values are not treated as zero stock or zero suppliers."
+            with st.expander("More procurement actions and all components", expanded=False):
+                incomplete_sourcing_count = sum(
+                    1 for row in procurement_recommendations
+                    if str(row.get("Missing Sourcing Data") or "").strip()
                 )
+                if procurement_recommendations and incomplete_sourcing_count:
+                    st.info(
+                        f"{incomplete_sourcing_count} of {len(procurement_recommendations)} components have incomplete sourcing evidence. "
+                        "The action counts below use recorded evidence; missing values are not treated as zero stock or zero suppliers."
+                    )
 
-            with st.expander("Procurement action counts", expanded=False):
+                st.markdown("#### Procurement action counts")
                 render_kpi_row_safe(
                     [
                         MetricCard(label="Action Needed", value=str(advisor["urgent_count"]), tone="danger", icon="shopping-cart"),
@@ -7111,141 +7112,141 @@ def run_authenticated_app() -> None:
                     columns=4,
                 )
 
-            priority_tab, details_tab = st.tabs(
-                ["Action Needed", "All Components"]
-            )
-            with priority_tab:
-                urgent_rows = [
-                    row for row in advisor["recommendations"]
-                    if row["Priority Score"] >= 75
-                    and row["Recommendation"] != "Complete sourcing data"
-                ][:10]
-                incomplete_rows = [
-                    row for row in advisor["recommendations"]
-                    if str(row.get("Missing Sourcing Data") or "").strip()
-                ][:10]
-                if not urgent_rows:
-                    if incomplete_rows:
-                        st.info(
-                            "No immediate purchase is supported by verified sourcing data. "
-                            f"{len(incomplete_rows)} component(s) still need evidence before a confident buy decision."
-                        )
+                priority_tab, details_tab = st.tabs(
+                    ["Action Needed", "All Components"]
+                )
+                with priority_tab:
+                    urgent_rows = [
+                        row for row in advisor["recommendations"]
+                        if row["Priority Score"] >= 75
+                        and row["Recommendation"] != "Complete sourcing data"
+                    ][:10]
+                    incomplete_rows = [
+                        row for row in advisor["recommendations"]
+                        if str(row.get("Missing Sourcing Data") or "").strip()
+                    ][:10]
+                    if not urgent_rows:
+                        if incomplete_rows:
+                            st.info(
+                                "No immediate purchase is supported by verified sourcing data. "
+                                f"{len(incomplete_rows)} component(s) still need evidence before a confident buy decision."
+                            )
+                        else:
+                            st.success("No immediate purchasing action is required based on the recorded evidence.")
                     else:
-                        st.success("No immediate purchasing action is required based on the recorded evidence.")
-                else:
-                    st.caption(
-                        f"Showing {len(urgent_rows)} evidence-backed purchasing action(s) with a priority score of 75 or higher."
-                    )
-                from src.part_images import part_image_markup
-                for index, row in enumerate(urgent_rows):
-                    stock_value = row.get("Available Stock")
-                    stock_label = f"{int(stock_value):,}" if stock_value is not None else "Not recorded"
-                    supplier_value = row.get("Supplier Sources")
-                    supplier_label = str(supplier_value) if supplier_value is not None else "Not recorded"
-                    urgent_photo_markup = part_image_markup(
-                        row.get("Image URL"), row["Part Number"], size=64, part=row
-                    )
-                    st.markdown(
-                        f"""
-                        <section class="cv151-card cv151-card-layout">
-                          {urgent_photo_markup}
-                          <div>
-                          <div class="cv151-card-title">{html.escape(row['Part Number'])}</div>
-                          <div class="cv151-card-copy">
-                            <b>Recommended action: {html.escape(row['Recommendation'])}</b><br>
-                            {html.escape(row['Next Step'])}
-                          </div>
-                          <div class="cv151-meta">
-                            <span>Priority {row['Priority Score']}/100</span>
-                            <span>Stock {html.escape(stock_label)}</span>
-                            <span>{html.escape(supplier_label)} supplier source(s)</span>
-                          </div>
-                          </div>
-                        </section>
-                        """,
-                        unsafe_allow_html=True,
-                    )
-                    cols = st.columns(3)
-                    with cols[0]:
-                        internal_nav_button(
-                            "Find Alternative",
-                            "Alternative Finder",
-                            key=f"pa_alt_{index}",
-                            use_container_width=True,
-                            original_part=row["Part Number"],
-                            source_page="procurement_advisor",
+                        st.caption(
+                            f"Showing {len(urgent_rows)} evidence-backed purchasing action(s) with a priority score of 75 or higher."
                         )
-                    with cols[1]:
-                        internal_nav_button(
-                            "Open Monitoring",
-                            "Monitoring",
-                            key=f"pa_monitor_{index}",
-                            use_container_width=True,
-                            mpn=row["Part Number"],
+                    from src.part_images import part_image_markup
+                    for index, row in enumerate(urgent_rows):
+                        stock_value = row.get("Available Stock")
+                        stock_label = f"{int(stock_value):,}" if stock_value is not None else "Not recorded"
+                        supplier_value = row.get("Supplier Sources")
+                        supplier_label = str(supplier_value) if supplier_value is not None else "Not recorded"
+                        urgent_photo_markup = part_image_markup(
+                            row.get("Image URL"), row["Part Number"], size=64, part=row
                         )
-                    with cols[2]:
-                        if st.button(
-                            "Edit sourcing",
-                            key=f"pa_edit_part_{index}",
-                            use_container_width=True,
-                        ):
-                            st.session_state["pa_edit_request_mpn"] = row["Part Number"]
-                            st.rerun()
-
-                if incomplete_rows:
-                    st.markdown("#### Sourcing details to confirm")
-                    for index, row in enumerate(incomplete_rows):
                         st.markdown(
-                            f"**{html.escape(str(row['Part Number']))}** · "
-                            f"{html.escape(str(row.get('Missing Sourcing Data') or 'Sourcing evidence incomplete'))}"
-                            f"<br><span class='cv-ap-meta'>{html.escape(str(row.get('Next Step') or ''))}</span>",
+                            f"""
+                            <section class="cv151-card cv151-card-layout">
+                              {urgent_photo_markup}
+                              <div>
+                              <div class="cv151-card-title">{html.escape(row['Part Number'])}</div>
+                              <div class="cv151-card-copy">
+                                <b>Recommended action: {html.escape(row['Recommendation'])}</b><br>
+                                {html.escape(row['Next Step'])}
+                              </div>
+                              <div class="cv151-meta">
+                                <span>Priority {row['Priority Score']}/100</span>
+                                <span>Stock {html.escape(stock_label)}</span>
+                                <span>{html.escape(supplier_label)} supplier source(s)</span>
+                              </div>
+                              </div>
+                            </section>
+                            """,
                             unsafe_allow_html=True,
                         )
-                        if st.button(
-                            "Complete sourcing details",
-                            key=f"pa_complete_data_{index}",
-                            type="secondary",
-                        ):
-                            st.session_state["pa_edit_request_mpn"] = row["Part Number"]
-                            st.rerun()
-
-            with details_tab:
-                if advisor["recommendation_df"].empty:
-                    st.info("No component purchasing data is available.")
-                else:
-                    procurement_details_df = procurement_details_display_frame(
-                        advisor["recommendation_df"]
-                    )
-                    if not procurement_details_df.empty and "Image URL" in procurement_details_df:
-                        from src.part_images import part_image_source
-
-                        details_rows = procurement_details_df.to_dict("records")
-                        procurement_details_df["Image URL"] = [
-                            part_image_source(
-                                row.get("Image URL"),
-                                row.get("Part Number"),
-                                size=48,
-                                part=row,
+                        cols = st.columns(3)
+                        with cols[0]:
+                            internal_nav_button(
+                                "Find Alternative",
+                                "Alternative Finder",
+                                key=f"pa_alt_{index}",
+                                use_container_width=True,
+                                original_part=row["Part Number"],
+                                source_page="procurement_advisor",
                             )
-                            for row in details_rows
-                        ]
-                    cadivor_engineering_dataframe(
-                        procurement_details_df,
-                        column_config={
-                            "Image URL": st.column_config.ImageColumn("Part photo", width="small"),
-                            "Risk Level": st.column_config.TextColumn(width="small"),
-                            "Recommended Action": st.column_config.TextColumn(width="medium"),
-                        },
-                    )
-                    cadivor_button_wrap("secondary")
-                    st.download_button(
-                        "Download Procurement Details",
-                        advisor["recommendation_df"].to_csv(index=False).encode("utf-8"),
-                        file_name="cadivor_procurement_details.csv",
-                        mime="text/csv",
-                        key="pa_export",
-                    )
-                    cadivor_button_wrap_end()
+                        with cols[1]:
+                            internal_nav_button(
+                                "Open Monitoring",
+                                "Monitoring",
+                                key=f"pa_monitor_{index}",
+                                use_container_width=True,
+                                mpn=row["Part Number"],
+                            )
+                        with cols[2]:
+                            if st.button(
+                                "Edit sourcing",
+                                key=f"pa_edit_part_{index}",
+                                use_container_width=True,
+                            ):
+                                st.session_state["pa_edit_request_mpn"] = row["Part Number"]
+                                st.rerun()
+
+                    if incomplete_rows:
+                        st.markdown("#### Sourcing details to confirm")
+                        for index, row in enumerate(incomplete_rows):
+                            st.markdown(
+                                f"**{html.escape(str(row['Part Number']))}** · "
+                                f"{html.escape(str(row.get('Missing Sourcing Data') or 'Sourcing evidence incomplete'))}"
+                                f"<br><span class='cv-ap-meta'>{html.escape(str(row.get('Next Step') or ''))}</span>",
+                                unsafe_allow_html=True,
+                            )
+                            if st.button(
+                                "Complete sourcing details",
+                                key=f"pa_complete_data_{index}",
+                                type="secondary",
+                            ):
+                                st.session_state["pa_edit_request_mpn"] = row["Part Number"]
+                                st.rerun()
+
+                with details_tab:
+                    if advisor["recommendation_df"].empty:
+                        st.info("No component purchasing data is available.")
+                    else:
+                        procurement_details_df = procurement_details_display_frame(
+                            advisor["recommendation_df"]
+                        )
+                        if not procurement_details_df.empty and "Image URL" in procurement_details_df:
+                            from src.part_images import part_image_source
+
+                            details_rows = procurement_details_df.to_dict("records")
+                            procurement_details_df["Image URL"] = [
+                                part_image_source(
+                                    row.get("Image URL"),
+                                    row.get("Part Number"),
+                                    size=48,
+                                    part=row,
+                                )
+                                for row in details_rows
+                            ]
+                        cadivor_engineering_dataframe(
+                            procurement_details_df,
+                            column_config={
+                                "Image URL": st.column_config.ImageColumn("Part photo", width="small"),
+                                "Risk Level": st.column_config.TextColumn(width="small"),
+                                "Recommended Action": st.column_config.TextColumn(width="medium"),
+                            },
+                        )
+                        cadivor_button_wrap("secondary")
+                        st.download_button(
+                            "Download Procurement Details",
+                            advisor["recommendation_df"].to_csv(index=False).encode("utf-8"),
+                            file_name="cadivor_procurement_details.csv",
+                            mime="text/csv",
+                            key="pa_export",
+                        )
+                        cadivor_button_wrap_end()
 
             stop_authenticated_page()
 
