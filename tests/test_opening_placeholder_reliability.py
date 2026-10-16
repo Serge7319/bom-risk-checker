@@ -275,6 +275,22 @@ def test_fresh_sign_in_timeout_fail_opens_without_persisting_plan():
     )
 
 
+def test_dashboard_saved_analyses_read_has_independent_budget_and_safe_diagnostics():
+    dashboard = _dashboard_source()
+    loader = dashboard.split("def _load_saved_analyses()", 1)[1].split(
+        "def _load_dashboard_secondary()", 1
+    )[0]
+    saved_read = dashboard.split("_saved_rows, _saved_status =", 1)[1].split(
+        "overview_analyses =", 1
+    )[0]
+
+    assert "dashboard_saved_analyses_read_error error_type=%s" in loader
+    assert "type(exc).__name__" in loader
+    assert "budget_seconds=8.0" in saved_read
+    assert "respect_first_page=False" in saved_read
+    assert "dashboard_saved_analyses_unavailable status=%s" in saved_read
+
+
 def test_retry_updates_replays_leave_one_banner(monkeypatch):
     notices: list[str] = []
     buttons: list[str] = []
