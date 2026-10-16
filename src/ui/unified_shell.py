@@ -459,7 +459,6 @@ def render_unified_shell(
     if loading_route:
         from src.ui.main_transition import (
             MAIN_TRANSITION_GEN_KEY,
-            inject_main_transition_css,
             prepare_main_transition,
         )
 
@@ -469,8 +468,6 @@ def render_unified_shell(
             gen = 0
         if gen <= 0:
             prepare_main_transition(loading_route)
-        else:
-            inject_main_transition_css(gen)
 
     if loading_route:
         from src.ui.main_transition import paint_prepared_main_transition

@@ -474,22 +474,92 @@ def get_best_part_data(part_number: str) -> dict:
         aggregated["supplier_offers"] = []
         from integrations.legacy_mpn_routes import legacy_mpn_route, legacy_route_status
 
-        if legacy_mpn_route(part_number) is not None:
+        route = legacy_mpn_route(part_number)
+        if route is not None:
+            # Only attribute distributor metrics through a narrow list of
+            # manufacturer-documented orderable codes. Family-level searches
+            # and unverified near matches remain review leads, never scored
+            # evidence. The candidate lookup itself enforces an exact MPN
+            # match before returning any supplier metrics.
+            order_code_search_attempted = False
+            for order_code in route.get("assessment_order_codes") or ():
+                if not isinstance(order_code, dict):
+                    continue
+                candidate_mpn = str(order_code.get("mpn") or "").strip()
+                if not candidate_mpn:
+                    continue
+                try:
+                    candidate_data = get_best_part_data(candidate_mpn)
+                except Exception:
+                    candidate_data = {}
+                if not isinstance(candidate_data, dict):
+                    candidate_data = {}
+                candidate_health = candidate_data.get("provider_health") or {}
+                if not isinstance(candidate_health, dict):
+                    candidate_health = {}
+                try:
+                    order_code_search_attempted = order_code_search_attempted or int(
+                        candidate_health.get("configured_count") or 0
+                    ) > 0
+                except (TypeError, ValueError):
+                    pass
+                returned_mpn = str(
+                    candidate_data.get("manufacturer_part_number") or ""
+                ).strip()
+                if (
+                    not candidate_data.get("supplier_data_verified")
+                    or normalize_part_number(returned_mpn)
+                    != normalize_part_number(candidate_mpn)
+                ):
+                    continue
+
+                mapped = dict(candidate_data)
+                mapped["mpn"] = str(part_number or "").strip()
+                mapped["searched_part_number"] = str(part_number or "").strip()
+                mapped["requested_mpn"] = str(part_number or "").strip()
+                mapped["assessment_basis"] = "manufacturer_documented_order_code"
+                mapped["assessment_evidence_mpn"] = returned_mpn
+                mapped["assessment_basis_note"] = (
+                    f"Risk evidence is from manufacturer-listed order code {returned_mpn} "
+                    f"for BOM part {str(part_number or '').strip()}. Verify the installed "
+                    "device/package and ordering code before procurement release."
+                )
+                identity_source = str(order_code.get("source_url") or "").strip()
+                mapped["alternate_search_status"] = (
+                    f"Manufacturer-listed order code matched: {returned_mpn}. "
+                    f"{str(order_code.get('basis') or '').strip()} Live distributor values "
+                    "are for this exact order code; confirm the BOM package and ordering "
+                    "suffix before release."
+                    + (f" Manufacturer reference: {identity_source}" if identity_source else "")
+                )
+                mapped["legacy_mpn_review_leads"] = [{
+                    "mpn": returned_mpn,
+                    "supplier": str(mapped.get("source") or ""),
+                    "manufacturer": str(order_code.get("manufacturer") or ""),
+                    "product_url": str(mapped.get("product_detail_url") or ""),
+                    "evidence_scope": "manufacturer_documented_order_code",
+                    "retrieved_at": str(mapped.get("retrieved_at") or utc_now_iso()),
+                }]
+                return mapped
+
             searched = any(
                 str(row.get("provider_status") or "") == PROVIDER_PART_NOT_FOUND
                 for row in supplier_results
                 if isinstance(row, dict)
             )
+            # A family-level route is still discovery-only. For recognized
+            # order-code mappings, the exact candidate lookup above already
+            # queried the listed codes; avoid a duplicate second API request.
             leads = (
                 _legacy_mpn_review_leads(part_number, supplier_results)
-                if searched
+                if searched and not route.get("assessment_order_codes")
                 else []
             )
             aggregated["legacy_mpn_review_leads"] = leads
             aggregated["alternate_search_status"] = legacy_route_status(
                 part_number,
                 leads,
-                searched=searched,
+                searched=searched or order_code_search_attempted,
             )
         return aggregated
 

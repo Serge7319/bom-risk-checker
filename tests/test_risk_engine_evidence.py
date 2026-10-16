@@ -79,6 +79,19 @@ class RiskEngineEvidenceTests(unittest.TestCase):
         self.assertTrue(any("conflict" in reason.lower() for reason in result["risk_reasons"]))
         self.assertFalse(any("obsolete" in reason.lower() for reason in result["risk_reasons"]))
 
+    def test_qualified_variant_note_is_visible_without_changing_the_score(self):
+        note = "Evidence uses manufacturer-listed order code PCF8574P,112."
+        baseline = calculate_risk({"lifecycle_status": "Active", "stock_total": 300})
+        with_note = calculate_risk({
+            "lifecycle_status": "Active",
+            "stock_total": 300,
+            "assessment_basis_note": note,
+        })
+
+        self.assertEqual(with_note["risk_score"], baseline["risk_score"])
+        self.assertEqual(with_note["risk_level"], baseline["risk_level"])
+        self.assertIn(note, with_note["risk_reasons"])
+
     def test_long_lead_time_is_not_double_counted(self):
         result = calculate_risk({"lifecycle_status": "Active", "lead_time_weeks": 20})
         self.assertEqual(result["risk_score"], 15)
