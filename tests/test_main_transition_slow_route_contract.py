@@ -49,14 +49,20 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
             "MutableMapping": MutableMapping,
             "st": SimpleNamespace(session_state={}),
             "MAIN_TRANSITION_ROUTE_KEY": "cadivor_main_transition_route",
+            "MAIN_TRANSITION_ACTIVE_KEY": "cadivor_main_transition_active",
+            "PRESENTED_ROUTE_KEY": "cadivor_presented_route",
             "BOM_ANALYSIS_TRANSITION_KEY": "cadivor_bom_analysis_transition",
-            "SLOW_ROUTE_OPENING_TARGETS": frozenset({"Analysis Details", "Engineering Decisions"}),
+            "SLOW_ROUTE_OPENING_TARGETS": frozenset({"Analysis Details", "Engineering Decisions", "BOM Settings"}),
             "FAST_CACHED_NAV_OPENING_MS": 300,
             "warm_session_nav_ready": lambda _state: True,
         }
         exec(compile(ast.fix_missing_locations(module), "<transition>", "exec"), namespace)
         should_paint = namespace["should_paint_opening_overlay"]
-        state = {"cadivor_foundation_shell_mounted": True}
+        state = {
+            "cadivor_foundation_shell_mounted": True,
+            "cadivor_main_transition_active": True,
+            "cadivor_presented_route": "Reports",
+        }
 
         self.assertFalse(
             should_paint(
@@ -77,6 +83,21 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
                 needs_transition=True,
                 target_route="Engineering Decisions",
                 session_state=state,
+            )
+        )
+        self.assertTrue(
+            should_paint(
+                needs_transition=True,
+                target_route="BOM Settings",
+                session_state=state,
+            )
+        )
+
+        self.assertTrue(
+            should_paint(
+                needs_transition=True,
+                target_route="Dashboard",
+                session_state={"cadivor_foundation_shell_mounted": True},
             )
         )
 

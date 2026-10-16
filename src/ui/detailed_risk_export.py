@@ -1,4 +1,4 @@
-"""Customer-facing CSV and Excel exports for an authenticated BOM risk report."""
+"""Customer-facing evidence-aware exports for Cadivor BOM risk reports."""
 
 from __future__ import annotations
 
@@ -121,14 +121,14 @@ def _joined(value: Any) -> str:
 
 
 def _sources(record: dict[str, Any]) -> str:
-    value = record.get("stock_data_sources")
+    value = _first(record, "stock_data_sources", "Stock Data Sources")
     names = _joined(value) if value not in (None, "", []) else ""
     if names:
         return names
     # Older/public analysis records may store the evidence-source list under
     # the public stress-test field name. Do not substitute the preferred price
     # supplier: it does not prove that supplier returned an inventory count.
-    return _text(record.get("sources"))
+    return _text(_first(record, "sources", "Sources Available"))
 
 
 def _flag(value: Any) -> bool | None:
@@ -158,6 +158,20 @@ def _lifecycle_evidence(value: Any) -> str:
 
 def _reasons(record: dict[str, Any]) -> str:
     if _risk(record)[0] == "Not assessed" and not _has_supplier_match(record):
+        alternate_status = _text(
+            _first(record, "alternate_search_status", "Alternate Search Status"),
+            fallback="",
+        )
+        if "found related catalog lead(s)" in alternate_status.casefold():
+            # Preserve the distinction between the requested BOM identity and
+            # a related orderable variant. The lead is useful for review, but
+            # its stock, price, and lifecycle cannot safely rate the original.
+            route_status = alternate_status.split(";", 1)[0].strip()
+            return (
+                f"{route_status} Confirm that the package, electrical device, "
+                "and ordering suffix meet the design requirements before using "
+                "candidate evidence; this BOM part remains unassessed."
+            )
         return (
             "No configured distributor returned a matching record for this MPN. "
             "Verify the full manufacturer part number and rerun; stock, lifecycle, "
@@ -189,9 +203,21 @@ def _has_supplier_match(record: dict[str, Any]) -> bool:
         value not in {"—", "Unavailable", ""}
         for value in (
             _sources(record),
-            _text(_first(record, "primary_supplier", "best_source", "supplier", "distributor"), ""),
-            _text(record.get("lead_time_source"), ""),
-            _lifecycle_evidence(record.get("lifecycle_evidence")),
+            _text(
+                _first(
+                    record,
+                    "primary_supplier",
+                    "best_source",
+                    "Best Source",
+                    "supplier",
+                    "distributor",
+                ),
+                "",
+            ),
+            _text(_first(record, "lead_time_source", "Lead Time Source"), ""),
+            _lifecycle_evidence(
+                _first(record, "lifecycle_evidence", "Lifecycle Evidence")
+            ),
         )
     )
 
@@ -251,13 +277,13 @@ def _price_currency(record: dict[str, Any], *, mpn: str, supplier: str, price: i
     from src.saved_bom_cost import normalize_currency_code
 
     explicit = normalize_currency_code(
-        _first(record, "unit_price_currency", "currency", "Currency")
+        _first(record, "unit_price_currency", "Unit Price Currency", "currency", "Currency")
     )
     if explicit:
         return explicit
     if price is None or not supplier:
         return ""
-    offers = _json_value(record.get("supplier_offers"))
+    offers = _json_value(_first(record, "supplier_offers", "Supplier Offers"))
     if isinstance(offers, dict):
         offers = [offers]
     if not isinstance(offers, list):
@@ -383,7 +409,7 @@ def component_rows(
         risk, score = _risk(record)
         lifecycle = _text(_first(record, "lifecycle_status", "Lifecycle Status", "lifecycle"), "Unknown")
         stock_sources = _sources(record)
-        complete = _flag(record.get("stock_data_complete"))
+        complete = _flag(_first(record, "stock_data_complete", "Stock Data Complete"))
         supplier_count_value = _number(_first(record, "supplier_count", "Supplier Count", "Suppliers"))
         has_supplier_evidence = stock_sources != "—" or (supplier_count_value or 0) > 0
         coverage = (
@@ -393,7 +419,7 @@ def component_rows(
             if complete is False and has_supplier_evidence
             else "Unavailable"
         )
-        conflict = _flag(record.get("lifecycle_conflict"))
+        conflict = _flag(_first(record, "lifecycle_conflict", "Lifecycle Conflict"))
         evidence_conflict = (
             "Conflict detected" if conflict is True
             else "No conflict recorded" if conflict is False
@@ -401,7 +427,10 @@ def component_rows(
         )
         price = _number(_first(record, "unit_price", "Unit Price", "price"))
         mpn = _text(_first(record, "mpn", "MPN", "part_number", "manufacturer_part_number"))
-        supplier = _text(_first(record, "primary_supplier", "best_source", "supplier", "distributor"), "")
+        supplier = _text(
+            _first(record, "primary_supplier", "best_source", "Best Source", "supplier", "distributor"),
+            "",
+        )
         quantity = _number(_first(record, "quantity", "Quantity", "qty"))
         extended = extended_cost(price, quantity)
         price_currency = _price_currency(
@@ -431,15 +460,21 @@ def component_rows(
             "Recorded supplier": supplier or "—",
             "Stock coverage": coverage,
             "Lead time (weeks)": _lead_time(record),
-            "Lead-time source": _text(record.get("lead_time_source")),
+            "Lead-time source": _text(_first(record, "lead_time_source", "Lead Time Source")),
             "Supplier count": _supplier_count(record),
-            "Supplier coverage": _text(record.get("supplier_coverage")),
+            "Supplier coverage": _text(
+                _first(record, "supplier_coverage", "Supplier Coverage")
+            ),
             "Risk": risk,
             "Risk score": score if score is not None else ("Not assessed" if risk == "Not assessed" else "Not recorded"),
             "Why": _reasons(record),
-            "Lifecycle evidence": _lifecycle_evidence(record.get("lifecycle_evidence")),
+            "Lifecycle evidence": _lifecycle_evidence(
+                _first(record, "lifecycle_evidence", "Lifecycle Evidence")
+            ),
             "Lifecycle conflict": evidence_conflict,
-            "Alternate search status": _text(record.get("alternate_search_status")),
+            "Alternate search status": _text(
+                _first(record, "alternate_search_status", "Alternate Search Status")
+            ),
             "Unit price": price if price is not None and price > 0 else "—",
             "Unit price currency": price_currency or "Not reported",
             "Extended cost": extended if extended is not None else "—",
