@@ -2,8 +2,10 @@ from src.approved_alternatives import (
     approval_candidate_options,
     approved_records_for_bom,
     approved_records_for_part,
+    candidate_lifecycle_is_blocked,
     project_decision_context_key,
     report_alternative,
+    toggle_comparison_candidate,
 )
 
 
@@ -11,6 +13,28 @@ import unittest
 
 
 class ApprovedAlternativesTests(unittest.TestCase):
+    def test_obsolete_candidates_cannot_be_treated_as_replacement_ready(self):
+        self.assertTrue(candidate_lifecycle_is_blocked({"Lifecycle": "Obsolete"}))
+        self.assertTrue(candidate_lifecycle_is_blocked({"Lifecycle Status": "Discontinued"}))
+        self.assertTrue(candidate_lifecycle_is_blocked({"lifecycle_status": "End of Life"}))
+        self.assertFalse(candidate_lifecycle_is_blocked({"Lifecycle": "Active"}))
+        self.assertFalse(candidate_lifecycle_is_blocked({"Lifecycle": "Unknown"}))
+        self.assertFalse(candidate_lifecycle_is_blocked({"Lifecycle": "Not obsolete"}))
+        self.assertFalse(candidate_lifecycle_is_blocked({"Lifecycle": "Not EOL"}))
+        self.assertFalse(candidate_lifecycle_is_blocked({"_discovery_row": {"Lifecycle": "Active"}, "Lifecycle": "Unknown"}))
+        self.assertTrue(candidate_lifecycle_is_blocked({"Lifecycle": "Unknown", "_discovery_row": {"Lifecycle": "Obsolete"}}))
+
+    def test_compare_candidate_toggle_is_single_click_and_limited_to_two(self):
+        selected = toggle_comparison_candidate([], "ABC-1")
+        self.assertEqual(selected, ["ABC-1"])
+        self.assertEqual(toggle_comparison_candidate(selected, "abc1"), [])
+        selected = toggle_comparison_candidate(selected, "DEF-2")
+        self.assertEqual(toggle_comparison_candidate(selected, "GHI-3"), selected)
+        self.assertEqual(
+            toggle_comparison_candidate(["ABC-1", "abc1"], "DEF-2"),
+            ["ABC-1", "DEF-2"],
+        )
+
     def test_project_context_key_survives_analysis_reruns(self):
         self.assertEqual(
             project_decision_context_key("Flight Controller", "analysis-old"),

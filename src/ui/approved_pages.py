@@ -3683,10 +3683,12 @@ def _render_bom_replacement_approvals(
     query: str,
     original: dict[str, Any],
     candidate: dict[str, Any],
+    recorded_from: str = "Find a replacement",
 ) -> None:
     """Show approval and saved-decision status inside one expanded candidate."""
     from src.approved_alternatives import (
         approved_records_for_part,
+        candidate_lifecycle_is_blocked,
         part_key,
         project_decision_context_key,
     )
@@ -3785,6 +3787,7 @@ def _render_bom_replacement_approvals(
         (row for row in existing if part_key(row.get("alternative_part")) == candidate_key),
         None,
     )
+    lifecycle_blocked = candidate_lifecycle_is_blocked(candidate)
     approved_names = [
         str(row.get("alternative_part") or "").strip()
         for row in existing
@@ -3806,6 +3809,11 @@ def _render_bom_replacement_approvals(
     st.caption(
         "This records your engineering team’s decision; it does not certify electrical or mechanical compatibility."
     )
+    if lifecycle_blocked:
+        st.warning(
+            "This supplier record is marked obsolete, discontinued, or end of life. "
+            "Cadivor will not allow it to be approved as a replacement."
+        )
     st.caption(
         "Saved approvals stay with this BOM across analysis reruns and appear in its BOM Risk and Alternatives tabs."
     )
@@ -3821,7 +3829,7 @@ def _render_bom_replacement_approvals(
         height=72,
         key=f"cadivor_approved_alternative_note_{widget_suffix}",
     )
-    can_approve = current is not None or len(approved_names) < 3
+    can_approve = not lifecycle_blocked and (current is not None or len(approved_names) < 3)
     if not can_approve:
         st.warning("Three alternatives are already approved for this component. Remove one before approving another.")
 
@@ -3919,7 +3927,7 @@ def _render_bom_replacement_approvals(
             "original": original,
             "selected_alternative": candidate,
         },
-        "comparison_snapshot": {"recorded_from": "Find a replacement"},
+        "comparison_snapshot": {"recorded_from": str(recorded_from or "Find a replacement")},
     }
     try:
         saved = save_analysis_decision(user_id, payload)
@@ -3944,10 +3952,16 @@ def _render_bom_replacement_approvals(
 def render_replacement_search() -> None:
     """Find-a-replacement layout wired to the live alternative search."""
     begin_approved_page()
+    from src.approved_alternatives import (
+        candidate_lifecycle_is_blocked,
+        part_key,
+        toggle_comparison_candidate,
+    )
     from src.alternative_finder_state import init_alternative_finder_state
     from src.ui.navigation import (
         apply_alternative_finder_prefill,
         consume_alternative_finder_context,
+        reveal_authenticated_page_body,
     )
 
     init_alternative_finder_state(st.session_state)
@@ -4003,11 +4017,20 @@ def render_replacement_search() -> None:
         "approved_replacement_query",
         str(st.session_state.get("cadivor_replacement_query") or ""),
     )
+    st.markdown(
+        "<div class='cv-ap'><h1>Find a replacement</h1>"
+        "<p class='cv-ap-sub'>Search the source part, review current supplier evidence, "
+        "then compare and record the replacements your team approves.</p></div>",
+        unsafe_allow_html=True,
+    )
     search_col, button_col = st.columns([4, 1], vertical_alignment="bottom")
     with search_col:
         query = st.text_input("Search MPN", key="approved_replacement_query")
     with button_col:
         run = st.button("Search", key="approved_replacement_search", type="primary")
+    # Reveal the real Finder content before the blocking supplier lookup. The
+    # opaque route cover should not sit over the active page while results load.
+    reveal_authenticated_page_body("Alternative Finder")
     query = str(query or st.session_state.get("approved_replacement_query") or "").strip()
     result = st.session_state.get("alternative_finder_result")
     prefilled_search_pending = bool(
@@ -4077,7 +4100,14 @@ def render_replacement_search() -> None:
         filtered.sort(key=lambda row: str(row.get("Estimated Risk") or row.get("risk_level") or ""))
     named = [row for row in filtered if _candidate_mpn(row)]
     dropped = len(filtered) - len(named)
-    candidates = named
+    excluded_obsolete = [row for row in named if candidate_lifecycle_is_blocked(row)]
+    # Explicit obsolete/EOL records can be inspected, but must never appear as
+    # replacement-ready choices or enter comparison/approval selection.
+    candidates = (
+        []
+        if life_choice.casefold() == "obsolete"
+        else [row for row in named if not candidate_lifecycle_is_blocked(row)]
+    )
     del fit_choice
     mpn = _esc(original.get("manufacturer_part_number") or original.get("mpn") or (query or "Search an MPN"))
     manufacturer = _esc(original.get("manufacturer") or original.get("Manufacturer") or original.get("manufacturer_name") or "—")
@@ -4094,12 +4124,22 @@ def render_replacement_search() -> None:
             candidate_status = str(discovery.get("candidate_status") or "").strip()
     source_notice = lookup_error
     candidate_notice = ""
-    if query.strip() and isinstance(result, dict) and not candidates:
+    if query.strip() and isinstance(result, dict) and not candidates and excluded_obsolete:
+        candidate_notice = (
+            f"{len(excluded_obsolete)} supplier match{'es' if len(excluded_obsolete) != 1 else ''} "
+            "marked obsolete or end of life. Cadivor excluded these from replacement selection."
+        )
+    elif query.strip() and isinstance(result, dict) and not candidates:
         candidate_notice = search_error or candidate_status or "No replacement candidates were returned for this part."
     elif dropped:
         candidate_notice = (
             f"{dropped} supplier row{'s' if dropped != 1 else ''} had no part number "
             f"and {'were' if dropped != 1 else 'was'} left out."
+        )
+    elif excluded_obsolete:
+        candidate_notice = (
+            f"{len(excluded_obsolete)} obsolete or end-of-life supplier match"
+            f"{'es' if len(excluded_obsolete) != 1 else ''} excluded from replacement selection."
         )
     notice = candidate_notice
     shown = candidates[:25]
@@ -4114,8 +4154,7 @@ def render_replacement_search() -> None:
     st.markdown(
         f"""
         <div class="cv-ap">
-          <h1>Find a replacement</h1>
-          <p class="cv-ap-sub">Search for candidates, then open a part to review its evidence and record your team’s BOM decision.</p>
+          <h2>Source component</h2>
           {source_html}
           <section class="cv-ap-card">
             <div class="cv-ap-meta">Source part</div>
@@ -4128,6 +4167,20 @@ def render_replacement_search() -> None:
         """,
         unsafe_allow_html=True,
     )
+    if excluded_obsolete:
+        with st.expander(
+            f"View {len(excluded_obsolete)} excluded obsolete / end-of-life record"
+            f"{'s' if len(excluded_obsolete) != 1 else ''}",
+            expanded=False,
+        ):
+            st.caption("These supplier records are shown for context only; they cannot be compared or approved as replacements.")
+            for row in excluded_obsolete:
+                st.markdown(
+                    f"- **{_esc(_candidate_mpn(row))}** · "
+                    f"{_esc(_candidate_field(row, 'Manufacturer', 'manufacturer'))} · "
+                    f"{_esc(_candidate_field(row, 'Lifecycle', 'Lifecycle Status', 'lifecycle_status', 'lifecycle'))}",
+                    unsafe_allow_html=False,
+                )
     from src.part_images import part_image_markup
 
     header = st.columns([2.4, 1.3, 1.8, 0.9, 0.8, 0.9, 0.7])
@@ -4204,7 +4257,18 @@ def render_replacement_search() -> None:
         str(item or "").strip()
         for item in st.session_state.get("approved_replacement_compare_candidates", [])
         if str(item or "").strip()
+    ]
+    eligible_compare_keys = {part_key(_candidate_mpn(row)) for row in candidates[:5]}
+    compare_candidates = [
+        item for item in compare_candidates if part_key(item) in eligible_compare_keys
     ][:2]
+    st.session_state["approved_replacement_compare_candidates"] = compare_candidates
+
+    def _toggle_compare_candidate(candidate_mpn: str) -> None:
+        current = st.session_state.get("approved_replacement_compare_candidates") or []
+        st.session_state["approved_replacement_compare_candidates"] = (
+            toggle_comparison_candidate(current, candidate_mpn, limit=2)
+        )
     if shown and compare_source_mpn:
         selected_candidate_text = " · ".join(_esc(item) for item in compare_candidates)
         selected_candidate_line = (
@@ -4223,30 +4287,26 @@ def render_replacement_search() -> None:
             candidate = _candidate_mpn(row)
             if not candidate:
                 continue
-            candidate_token = normalize_part_number(candidate) or candidate.upper()
+            candidate_token = part_key(candidate)
             selected = any(
-                (normalize_part_number(item) or item.upper()) == candidate_token
+                part_key(item) == candidate_token
                 for item in compare_candidates
             )
             toggle_cols = st.columns([2.5, 1], vertical_alignment="center")
             with toggle_cols[0]:
                 st.caption(candidate)
             with toggle_cols[1]:
-                if st.button(
+                st.button(
                     "Remove" if selected else "Add to comparison",
-                    key=f"approved_replacement_compare_toggle_{index}",
+                    key=(
+                        "approved_replacement_compare_toggle_"
+                        + hashlib.sha1(candidate_token.encode("utf-8")).hexdigest()[:12]
+                    ),
                     disabled=not selected and len(compare_candidates) >= 2,
                     use_container_width=True,
-                ):
-                    if selected:
-                        compare_candidates = [
-                            item for item in compare_candidates
-                            if (normalize_part_number(item) or item.upper()) != candidate_token
-                        ]
-                    elif len(compare_candidates) < 2:
-                        compare_candidates.append(candidate)
-                    st.session_state["approved_replacement_compare_candidates"] = compare_candidates[:2]
-                    st.rerun()
+                    on_click=_toggle_compare_candidate,
+                    args=(candidate,),
+                )
         selected_compare_candidates = list(compare_candidates)
         if selected_compare_candidates:
             if st.button(
@@ -4260,13 +4320,28 @@ def render_replacement_search() -> None:
                 st.session_state["cadivor_compare_part_a"] = source_mpn
                 st.session_state["cadivor_compare_part_b"] = candidate_b
                 st.session_state["cadivor_compare_part_c"] = candidate_c
-                # Set form keys at the handoff so an older comparison cannot
-                # overwrite the parts selected in Alternative Finder.
-                st.session_state["approved_compare_a"] = source_mpn
-                st.session_state["approved_compare_b"] = candidate_b
-                st.session_state["approved_compare_c"] = candidate_c
-                st.session_state["approved_compare_show_c"] = bool(candidate_c)
-                st.session_state["approved_compare_auto_run_pending"] = True
+                selected_keys = {part_key(candidate_b), part_key(candidate_c)}
+                candidate_snapshots = [
+                    dict(row)
+                    for row in candidates
+                    if part_key(_candidate_mpn(row)) in selected_keys
+                ]
+                # Widget state is cleaned up at the end of this Finder run.
+                # Stage values under non-widget keys and apply them on the
+                # Compare page before its text inputs are created.
+                st.session_state["cadivor_compare_pending_handoff"] = {
+                    "part_numbers": [
+                        source_mpn,
+                        candidate_b,
+                        *([candidate_c] if candidate_c else []),
+                    ],
+                    "auto_run": True,
+                    "decision_context": {
+                        "source_context": dict(source_context),
+                        "original": dict(original),
+                        "candidates": candidate_snapshots,
+                    },
+                }
                 st.session_state.pop("cadivor_compare_result", None)
                 navigate_to("Compare Parts")
     elif query.strip() and isinstance(result, dict):
@@ -4282,11 +4357,11 @@ def render_replacement_search() -> None:
             st.session_state["cadivor_compare_part_a"] = source_mpn
             st.session_state["cadivor_compare_part_b"] = ""
             st.session_state["cadivor_compare_part_c"] = ""
-            st.session_state["approved_compare_a"] = source_mpn
-            st.session_state["approved_compare_b"] = ""
-            st.session_state["approved_compare_c"] = ""
-            st.session_state["approved_compare_show_c"] = False
-            st.session_state.pop("approved_compare_auto_run_pending", None)
+            st.session_state["cadivor_compare_pending_handoff"] = {
+                "part_numbers": [source_mpn],
+                "auto_run": False,
+                "decision_context": None,
+            }
             st.session_state.pop("cadivor_compare_result", None)
             navigate_to("Compare Parts")
     end_approved_page()
@@ -4297,7 +4372,36 @@ def render_replacement_search() -> None:
 def render_compare_live() -> None:
     """Compare up to three parts, with each candidate checked against Part A."""
     begin_approved_page()
+    from src.approved_alternatives import part_key
     from src.parts_compare import resolve_compare_parts_submitted_mpn, run_compare_parts_many
+    from src.ui.navigation import reveal_authenticated_page_body
+
+    pending_handoff = st.session_state.pop("cadivor_compare_pending_handoff", None)
+    if isinstance(pending_handoff, dict):
+        pending_parts = [
+            str(value or "").strip()
+            for value in pending_handoff.get("part_numbers", [])
+            if str(value or "").strip()
+        ][:3]
+        st.session_state["approved_compare_a"] = pending_parts[0] if pending_parts else ""
+        st.session_state["approved_compare_b"] = pending_parts[1] if len(pending_parts) > 1 else ""
+        st.session_state["approved_compare_c"] = pending_parts[2] if len(pending_parts) > 2 else ""
+        st.session_state["approved_compare_show_c"] = len(pending_parts) > 2
+        st.session_state["cadivor_compare_part_a"] = pending_parts[0] if pending_parts else ""
+        st.session_state["cadivor_compare_part_b"] = pending_parts[1] if len(pending_parts) > 1 else ""
+        st.session_state["cadivor_compare_part_c"] = pending_parts[2] if len(pending_parts) > 2 else ""
+        decision_context = pending_handoff.get("decision_context")
+        if isinstance(decision_context, dict):
+            decision_context = dict(decision_context)
+            decision_context["part_numbers"] = pending_parts
+            st.session_state["cadivor_compare_decision_context"] = decision_context
+        else:
+            st.session_state.pop("cadivor_compare_decision_context", None)
+        if pending_handoff.get("auto_run") and len(pending_parts) >= 2:
+            st.session_state["approved_compare_auto_run_pending"] = True
+        else:
+            st.session_state.pop("approved_compare_auto_run_pending", None)
+        st.session_state.pop("cadivor_compare_result", None)
 
     st.session_state.setdefault("approved_compare_a", str(st.session_state.get("cadivor_compare_part_a") or ""))
     st.session_state.setdefault("approved_compare_b", str(st.session_state.get("cadivor_compare_part_b") or ""))
@@ -4341,6 +4445,9 @@ def render_compare_live() -> None:
             type="primary",
             key="approved_compare_run",
         )
+    # The compare form is now visibly mounted. Close the navigation cover before
+    # supplier lookups begin so progress does not dim the full page.
+    reveal_authenticated_page_body("Compare Parts")
     part_a = resolve_compare_parts_submitted_mpn(
         entered_a,
         st.session_state.get("approved_compare_a"),
@@ -4505,6 +4612,47 @@ def render_compare_live() -> None:
                 unsafe_allow_html=True,
             )
     st.markdown(table, unsafe_allow_html=True)
+    handoff_context = st.session_state.get("cadivor_compare_decision_context")
+    if (
+        isinstance(handoff_context, dict)
+        and isinstance(result, dict)
+        and str(result.get("status") or "") == "completed"
+    ):
+        handoff_parts = [
+            str(value or "").strip().casefold()
+            for value in handoff_context.get("part_numbers", [])
+            if str(value or "").strip()
+        ]
+        current_parts = [str(value or "").strip().casefold() for value in requested_parts]
+        if handoff_parts == current_parts:
+            decision_source = handoff_context.get("source_context")
+            decision_source = decision_source if isinstance(decision_source, dict) else {}
+            decision_original = handoff_context.get("original")
+            decision_original = decision_original if isinstance(decision_original, dict) else {}
+            candidate_rows = handoff_context.get("candidates")
+            candidate_rows = candidate_rows if isinstance(candidate_rows, list) else []
+            expected_candidate_keys = {part_key(value) for value in requested_parts[1:]}
+            approved_candidates = [
+                row
+                for row in candidate_rows
+                if isinstance(row, dict)
+                and part_key(_candidate_mpn(row)) in expected_candidate_keys
+            ]
+            if approved_candidates:
+                st.markdown("### Choose a replacement for this BOM")
+                st.caption(
+                    "Review the comparison, then approve the replacement you want to keep. "
+                    "Saved approvals appear in this BOM’s Alternatives and BOM Risk views."
+                )
+                for candidate in approved_candidates:
+                    st.markdown(f"#### {_esc(_candidate_mpn(candidate))}")
+                    _render_bom_replacement_approvals(
+                        source_context=decision_source,
+                        query=part_a,
+                        original=decision_original,
+                        candidate=candidate,
+                        recorded_from="Compare parts",
+                    )
     end_approved_page()
 
 

@@ -1,14 +1,15 @@
 """Single main-body host so route changes replace prior widgets in place.
 
 Streamlit marks widgets from a previous route ``data-stale`` when a later
-``app_mode`` branch paints at a different script position. Warm in-session
-navigation skips Opening, so those stale controls stay visible (for example
-disabled ``Back to BOMs`` rows on Alerts & Monitoring).
+``app_mode`` branch paints at a different script position. A route change keeps
+the Opening cover up until the destination body paints; same-page reruns keep
+the existing content at normal opacity while Streamlit refreshes it.
 
 Claim the shared ``st.empty()`` host once per run, enter its container so every
 page paints into the same slot, then clear it on the next route. Calling
 ``empty()`` retires the previous route's widgets without CSS hiding and without
-re-indenting every page branch.
+re-indenting every page branch. Route transitions keep the Opening cover until
+the target route paints, including when session caches are warm.
 """
 from __future__ import annotations
 

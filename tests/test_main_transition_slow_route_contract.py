@@ -25,7 +25,7 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
             SOURCE,
         )
 
-    def test_warm_data_routes_keep_opening_owner(self):
+    def test_every_real_route_change_keeps_opening_owner_even_with_warm_cache(self):
         tree = ast.parse(SOURCE)
         helper = next(
             node
@@ -52,9 +52,6 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
             "MAIN_TRANSITION_ACTIVE_KEY": "cadivor_main_transition_active",
             "PRESENTED_ROUTE_KEY": "cadivor_presented_route",
             "BOM_ANALYSIS_TRANSITION_KEY": "cadivor_bom_analysis_transition",
-            "SLOW_ROUTE_OPENING_TARGETS": frozenset({"Analysis Details", "Engineering Decisions", "BOM Settings"}),
-            "FAST_CACHED_NAV_OPENING_MS": 300,
-            "warm_session_nav_ready": lambda _state: True,
         }
         exec(compile(ast.fix_missing_locations(module), "<transition>", "exec"), namespace)
         should_paint = namespace["should_paint_opening_overlay"]
@@ -64,7 +61,7 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
             "cadivor_presented_route": "Reports",
         }
 
-        self.assertFalse(
+        self.assertTrue(
             should_paint(
                 needs_transition=True,
                 target_route="Dashboard",
@@ -110,6 +107,13 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
                 needs_transition=True,
                 target_route="BOM Analyzer",
                 session_state=analysis_state,
+            )
+        )
+        self.assertFalse(
+            should_paint(
+                needs_transition=False,
+                target_route="Dashboard",
+                session_state=state,
             )
         )
 

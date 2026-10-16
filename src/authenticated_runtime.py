@@ -2194,8 +2194,8 @@ def run_authenticated_app() -> None:
 
         begin_first_page_budget()
     # Prepare transition CSS/state, then let the shell emit Opening… as a
-    # dedicated host after the topbar (never co-located). Warm cached nav skips
-    # Opening when profile + admit caches make the path sub-300ms.
+    # dedicated host after the topbar (never co-located). Every route change
+    # keeps this cover until the destination body is visibly mounted.
     if _paint_opening:
         mount_main_transition_loading(_shell_route, paint_markup=False)
     # Verified public.users.role BEFORE first shell paint — never trust a stale
@@ -14650,6 +14650,8 @@ def run_authenticated_app() -> None:
         from src.ui.approved_pages import render_replacement_search
 
         render_replacement_search()
+        reveal_authenticated_page_body("Alternative Finder")
+        stop_authenticated_page()
 
         from integrations.supplier_aggregator import get_best_part_data
         from src.alternative_engine import (
