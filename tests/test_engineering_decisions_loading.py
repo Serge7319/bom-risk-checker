@@ -40,6 +40,12 @@ class EngineeringDecisionsLoadingContractTests(unittest.TestCase):
         self.assertGreater(reveal_at, branch.find("ed_body_ready = True"))
         self.assertGreater(reveal_at, hydrate_arm_at)
         self.assertGreater(reveal_at, queue_render_at)
+        timeout_at = branch.find("if st.session_state.get(decision_timeout_key):")
+        timeout_error_at = branch.find('data-testid="ed-load-timeout"', timeout_at)
+        timeout_reveal_at = branch.find(
+            'reveal_authenticated_page_body("Engineering Decisions")', timeout_at
+        )
+        self.assertGreater(timeout_reveal_at, timeout_error_at)
         self.assertGreater(stop_at, hydrate_arm_at)
         self.assertIn("ed-inline-loading", branch)
         self.assertIn("Do not use cv56-skeleton-page", branch)

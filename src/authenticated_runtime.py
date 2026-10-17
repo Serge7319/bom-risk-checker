@@ -7884,7 +7884,6 @@ def run_authenticated_app() -> None:
         ed_body_ready = False
 
         if st.session_state.get(decision_timeout_key):
-            reveal_authenticated_page_body("Engineering Decisions")
             st.markdown(
                 """
                 <div class="cv-ed-load-timeout" data-testid="ed-load-timeout"
