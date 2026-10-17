@@ -164,8 +164,11 @@ class DecisionPacketWorkflowTests(unittest.TestCase):
         self.assertIn('"Record mitigation and close alert"', packet)
         self.assertIn('"Review saved comparison and datasheet evidence"', packet)
         self.assertIn('"Search current supplier evidence"', packet)
+        self.assertIn('"Search public datasheets"', packet)
+        self.assertIn("public_datasheet_search_url(decision_mpn)", packet)
         self.assertIn("exact_supplier_evidence", packet)
         self.assertIn("get_first_exact_supplier_result", packet)
+        self.assertIn("on_click=_refresh_decision_packet_supplier_evidence", packet)
         self.assertIn("manufacturer datasheet is available.", packet)
         self.assertIn("Exact part verified at", packet)
         self.assertIn("Refresh supplier evidence", packet)
@@ -175,6 +178,10 @@ class DecisionPacketWorkflowTests(unittest.TestCase):
         self.assertNotIn('"Decision Summary", "Evidence", "Engineering Notes"', packet)
         self.assertNotIn('label="Confidence"', packet)
         self.assertNotIn('label="Estimated Effort"', packet)
+        refresh = packet.split(
+            "def _refresh_decision_packet_supplier_evidence", 1
+        )[1].split("if selected_decision_context_id:", 1)[0]
+        self.assertNotIn("st.rerun()", refresh)
         self.assertIn("max-width: 1440px !important", NAV_RECOVERY)
         self.assertIn(".st-key-cadivor_decision_packet_shell", NAV_RECOVERY)
         self.assertIn("width: 100% !important", NAV_RECOVERY)

@@ -11,23 +11,21 @@ from src.normalizer import normalize_part_number
 
 
 def search_mouser_by_part_number(part_number: str) -> dict:
-    api_key = get_secret("MOUSER_API_KEY", required=True)
-
     requested_key = normalize_part_number(str(part_number or "").strip())
     if not requested_key:
         return default_part_result()
+    api_key = get_secret("MOUSER_API_KEY", required=True)
 
-    part_number_url = f"https://api.mouser.com/api/v1/search/partnumber?apiKey={api_key}"
     part_number_payload = {
         "SearchByPartRequest": {
-            "mouserPartNumber": part_number,
-            "partSearchOptions": "string",
+            "mouserPartNumber": str(part_number or "").strip(),
+            "partSearchOptions": "Exact",
         }
     }
-
-    response = requests.post(part_number_url, json=part_number_payload, timeout=15)
-    response.raise_for_status()
-    exact_part = _exact_mouser_part(_mouser_parts(response.json()), requested_key)
+    parts, exact_errors = _mouser_search_parts(
+        "partnumber", part_number_payload, api_key
+    )
+    exact_part = _exact_mouser_part(parts, requested_key)
     if exact_part:
         return normalize_mouser_part(exact_part)
 
@@ -35,7 +33,6 @@ def search_mouser_by_part_number(part_number: str) -> dict:
     # but some MPNs (including DHT11) are indexed only by the keyword endpoint.
     # Keep the same strict MPN validation after this broader search so a family
     # neighbor can never lend its stock, lifecycle, or datasheet to this part.
-    keyword_url = f"https://api.mouser.com/api/v1/search/keyword?apiKey={api_key}"
     keyword_payload = {
         "SearchByKeywordRequest": {
             "keyword": str(part_number or "").strip(),
@@ -43,32 +40,56 @@ def search_mouser_by_part_number(part_number: str) -> dict:
             "startingRecord": 0,
         }
     }
-    keyword_response = requests.post(keyword_url, json=keyword_payload, timeout=15)
-    keyword_response.raise_for_status()
-    exact_part = _exact_mouser_part(
-        _mouser_parts(keyword_response.json()), requested_key
+    keyword_parts, keyword_errors = _mouser_search_parts(
+        "keyword", keyword_payload, api_key
     )
-    return normalize_mouser_part(exact_part) if exact_part else default_part_result()
+    exact_part = _exact_mouser_part(keyword_parts, requested_key)
+    if exact_part:
+        return normalize_mouser_part(exact_part)
+
+    if exact_errors or keyword_errors:
+        raise RuntimeError("Mouser did not return a usable search response.")
+    return default_part_result()
 
 
-def _mouser_parts(payload: object) -> list[dict]:
-    if not isinstance(payload, dict):
-        return []
-    search_results = payload.get("SearchResults") or {}
+def _mouser_search_parts(
+    endpoint: str,
+    payload: dict,
+    api_key: str,
+) -> tuple[list[dict], bool]:
+    """Return catalog rows and whether the distributor request failed."""
+    url = f"https://api.mouser.com/api/v1/search/{endpoint}?apiKey={api_key}"
+    try:
+        response = requests.post(url, json=payload, timeout=15)
+        response.raise_for_status()
+        data = response.json()
+    except Exception:
+        # A rejected part-number mode should not prevent the keyword lookup.
+        return [], True
+
+    if not isinstance(data, dict):
+        return [], True
+    search_results = data.get("SearchResults") or {}
     if not isinstance(search_results, dict):
-        return []
-    return [row for row in (search_results.get("Parts") or []) if isinstance(row, dict)]
+        return [], True
+    parts = [
+        row for row in (search_results.get("Parts") or [])
+        if isinstance(row, dict)
+    ]
+    errors = data.get("Errors") or []
+    return parts, bool(errors and not parts)
 
 
 def _exact_mouser_part(parts: list[dict], requested_key: str) -> dict | None:
     if not requested_key:
         return None
-    for part in parts:
-        if requested_key in {
-            normalize_part_number(str(part.get("ManufacturerPartNumber") or "").strip()),
-            normalize_part_number(str(part.get("MouserPartNumber") or "").strip()),
-        }:
-            return part
+    for field in ("ManufacturerPartNumber", "MouserPartNumber"):
+        for part in parts:
+            returned_key = normalize_part_number(
+                str(part.get(field) or "").strip()
+            )
+            if returned_key and returned_key == requested_key:
+                return part
     return None
 
 
