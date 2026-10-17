@@ -129,6 +129,13 @@ class DecisionPacketWorkflowTests(unittest.TestCase):
         steps_css = NAV_RECOVERY.split(".st-key-cadivor_decision_packet_shell .cv-dp-steps {", 1)[1].split("}", 1)[0]
         self.assertIn("width: 100% !important", steps_css)
         self.assertIn("max-width: 100% !important", steps_css)
+        self.assertIn("margin: 0 0 18px !important", steps_css)
+        self.assertIn("left: 32px", NAV_RECOVERY.split(
+            ".st-key-cadivor_decision_packet_shell .cv-dp-steps li:not(:last-child)::after {", 1
+        )[1].split("}", 1)[0])
+        self.assertIn("right: -14px", NAV_RECOVERY.split(
+            ".st-key-cadivor_decision_packet_shell .cv-dp-steps li:not(:last-child)::after {", 1
+        )[1].split("}", 1)[0])
         self.assertIn('"Datasheet URL": (', RUNTIME)
         self.assertIn('part_data.get("datasheet_url")', RUNTIME)
         self.assertIn('"datasheet_url": cost_fields["datasheet_url"]', RUNTIME)

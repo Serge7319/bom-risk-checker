@@ -24,12 +24,23 @@ ROUTE_BODY_CM_STATE_KEY = "_cadivor_route_body_cm"
 
 
 def claim_authenticated_route_body(route: str = "") -> Any:
-    """Claim the shared main-body slot and clear any prior-route widgets."""
+    """Claim the shared body slot, clearing only when the route changes."""
     exit_authenticated_route_body()
-    host = st.empty()
-    host.empty()
+    route_key = str(route or "").strip()
+    host = st.session_state.get(ROUTE_BODY_HOST_STATE_KEY)
+    previous_route = str(
+        st.session_state.get(ROUTE_BODY_ROUTE_STATE_KEY) or ""
+    ).strip()
+    if host is None:
+        # A new placeholder is empty already. Avoid emitting an extra empty
+        # delta before the first page widgets are painted.
+        host = st.empty()
+    elif previous_route != route_key:
+        # Keep the mounted page visible while it refreshes. A real route hop
+        # still retires the old widgets inside the transition-covered slot.
+        host.empty()
     st.session_state[ROUTE_BODY_HOST_STATE_KEY] = host
-    st.session_state[ROUTE_BODY_ROUTE_STATE_KEY] = str(route or "").strip()
+    st.session_state[ROUTE_BODY_ROUTE_STATE_KEY] = route_key
     return host
 
 

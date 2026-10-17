@@ -233,12 +233,12 @@ def navigate_to(page: str, *, _rerun: bool = True, arm_opening: bool = True, **p
     except Exception:
         pass
     st.session_state.pop(NAV_ERROR_KEY, None)
-    # Clear prior body ownership and arm the main-content transition owner before
-    # chrome/URL commit on the following run — prevents target chrome + stale body.
-    # In-session Pricing hops pass arm_opening=False so they do not pin Opening.
+    # Arm the main-content transition only for a real route change. Re-selecting
+    # the active menu item used to clear the presented-route marker and flash an
+    # unnecessary full-page Opening cover over the same page.
     from src.ui.main_transition import arm_main_transition
 
-    if arm_opening:
+    if arm_opening and current_page != page:
         arm_main_transition(st.session_state, page)
     # One intentional route change → one history entry. from_dict replaces the
     # full query, so auth/source marketing keys cannot survive this write.
