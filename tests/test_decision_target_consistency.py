@@ -12,6 +12,7 @@ from src.decision_engine import (
     decision_target_context,
     decision_target_label,
     decision_target_type,
+    monitoring_decision_id,
     partition_decision_queue,
 )
 
@@ -110,6 +111,38 @@ class DecisionTargetConsistencyTests(unittest.TestCase):
         )
         self.assertEqual(decision_target_cell(decision), "LM358N")
         self.assertEqual(decision.get("mpn"), "LM358N")
+
+    def test_saved_alert_mitigation_round_trips_to_the_queue_decision(self):
+        alert = {
+            "analysis_id": "analysis-1",
+            "part_number": "LM358N",
+            "alert_type": "Lifecycle change",
+            "alert_message": "Lifecycle changed to NRND",
+            "severity": "High",
+            "created_at": "2026-09-01T00:00:00Z",
+        }
+        decision_id = monitoring_decision_id(alert)
+        center = build_decision_center(
+            alert_df=pd.DataFrame([alert]),
+            analyses=[{"id": "analysis-1", "project_name": "Control Board"}],
+            saved_state={
+                decision_id: {
+                    "status": "Closed",
+                    "owner": "Engineering",
+                    "decision_payload": {
+                        "resolution": "Mitigated by approved alternate LM358DR2G.",
+                        "approved_alternative_mpn": "LM358DR2G",
+                        "approved_alternative_record_id": "approval-1",
+                    },
+                }
+            },
+        )
+        decision = next(row for row in center["decisions"] if row["source"] == "Monitoring")
+
+        self.assertEqual(decision["decision_id"], decision_id)
+        self.assertEqual(decision["status"], "Closed")
+        self.assertEqual(decision["resolution"], "Mitigated by approved alternate LM358DR2G.")
+        self.assertEqual(decision["approved_alternative_mpn"], "LM358DR2G")
 
     def test_legacy_records_are_classified_without_breaking_display(self):
         bom = {

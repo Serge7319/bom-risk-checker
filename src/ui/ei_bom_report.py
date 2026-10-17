@@ -842,6 +842,17 @@ def report_styles() -> str:
     """
 
 
+def _fragment_render(function):
+    """Keep report-only interactions from rerunning the full saved-BOM page."""
+    try:
+        import streamlit as st
+
+        fragment = getattr(st, "fragment", None)
+        return fragment(function) if callable(fragment) else function
+    except Exception:
+        return function
+
+
 def engineering_intelligence_html(
     *,
     bom_name: str,
@@ -1545,6 +1556,7 @@ def bom_catalog_html(records: list[dict[str, Any]]) -> str:
     """
 
 
+@_fragment_render
 def render_engineering_intelligence_report(
     *,
     analysis: dict[str, Any],
@@ -1557,7 +1569,7 @@ def render_engineering_intelligence_report(
 ) -> None:
     import streamlit as st
 
-    st.markdown(report_styles(), unsafe_allow_html=True)
+    st.html(report_styles())
     with st.container(key="ei_report_workspace"):
         approval_flash = st.session_state.pop("cadivor_approved_alternatives_flash", "")
         if approval_flash:
@@ -1580,7 +1592,7 @@ def render_engineering_intelligence_report(
                     key=tab_state_key,
                     on_change="rerun",
                 )
-                st.markdown(
+                st.html(
                     """
                     <style data-cadivor-layout-style="true">
                     .st-key-cv_ei_report_tabs [role="tablist"] {
@@ -1594,8 +1606,7 @@ def render_engineering_intelligence_report(
                       white-space:nowrap!important;
                     }
                     </style>
-                    """,
-                    unsafe_allow_html=True,
+                    """
                 )
             tab = str(st.session_state.get(tab_state_key) or tab)
         if st.session_state.get("cadivor_show_detailed_risk"):
@@ -1664,6 +1675,7 @@ def render_engineering_intelligence_report(
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         key="approved_detailed_risk_excel",
                         use_container_width=True,
+                        on_click="ignore",
                     )
                 with download_cols[1]:
                     st.download_button(
@@ -1673,6 +1685,7 @@ def render_engineering_intelligence_report(
                         mime="text/csv",
                         key="approved_detailed_risk_csv",
                         use_container_width=True,
+                        on_click="ignore",
                     )
             except Exception:
                 st.caption("Report downloads are unavailable for this analysis.")

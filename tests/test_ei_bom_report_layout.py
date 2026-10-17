@@ -65,6 +65,11 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
         self.assertNotIn("st.segmented_control(", REPORT_SOURCE)
         self.assertNotIn('key=f"ei_tab_{slug}"', REPORT_SOURCE)
 
+    def test_report_styles_and_downloads_do_not_add_blank_space_or_full_reruns(self):
+        self.assertIn("st.html(report_styles())", REPORT_SOURCE)
+        self.assertIn("@_fragment_render\ndef render_engineering_intelligence_report", REPORT_SOURCE)
+        self.assertEqual(REPORT_SOURCE.count('on_click="ignore"'), 2)
+
     def test_detailed_report_selector_lists_saved_boms_with_run_context(self):
         saved = [
             {

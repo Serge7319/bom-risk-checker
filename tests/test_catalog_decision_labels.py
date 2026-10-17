@@ -134,6 +134,26 @@ class DecisionQueueTests(unittest.TestCase):
         affected = decision_queue_view(rows, scope="boms", today=today)
         self.assertEqual([row["mpn"] for row, _status in affected["rows"]], ["MMM"])
 
+    def test_monitoring_workflow_status_is_not_a_resolution_without_closing_event(self):
+        today = date(2026, 10, 9)
+        self.assertEqual(
+            decision_status_label(
+                {"source": "Monitoring", "status": "Production Approved"}, today
+            ),
+            "In review",
+        )
+        self.assertEqual(
+            decision_status_label(
+                {
+                    "source": "Monitoring",
+                    "status": "Closed",
+                    "resolution": "Mitigated by approved alternate MC7805ACTG.",
+                },
+                today,
+            ),
+            "Resolved",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

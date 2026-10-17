@@ -400,6 +400,11 @@ def _alert_decision(alert: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def monitoring_decision_id(alert: Dict[str, Any]) -> str:
+    """Return the same stable key used by the decision center for an alert."""
+    return _alert_decision(alert)["decision_id"]
+
+
 def _analysis_decisions(analysis: Dict[str, Any]) -> List[Dict[str, Any]]:
     analysis_id = _text(analysis.get("id"))
     project = _text(
@@ -585,6 +590,17 @@ def build_decision_center(
         decision["assigned_owner"] = _text(saved.get("owner"), decision["owner"])
         decision["updated_at"] = _text(saved.get("updated_at"), decision["detected_at"])
         decision["notes"] = list(saved.get("notes") or [])
+        saved_payload = saved.get("decision_payload")
+        if isinstance(saved_payload, dict):
+            for key in (
+                "resolution",
+                "approved_alternative_mpn",
+                "approved_alternative_record_id",
+                "approved_alternative_analysis_id",
+                "context_analysis_id",
+            ):
+                if saved_payload.get(key):
+                    decision[key] = saved_payload[key]
         final.append(enrich_decision(decision))
 
     final.sort(

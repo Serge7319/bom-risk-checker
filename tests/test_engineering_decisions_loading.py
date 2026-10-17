@@ -26,7 +26,10 @@ class EngineeringDecisionsLoadingContractTests(unittest.TestCase):
         hero_at = branch.find('test_id="ed-page-hero"')
         reveal_at = branch.find('reveal_authenticated_page_body("Engineering Decisions")')
         pass2_io_at = branch.find('decision_hydrate_key) == "loading"')
-        hydrate_arm_at = branch.find('decision_hydrate_key] = "loading"')
+        hydrate_arm_at = branch.find(
+            'decision_hydrate_key] = "loading"',
+            reveal_at,
+        )
         stop_at = branch.rfind("stop_authenticated_page()")
 
         self.assertGreater(pass2_io_at, 0)
@@ -73,6 +76,15 @@ class EngineeringDecisionsLoadingContractTests(unittest.TestCase):
         self.assertIn("active_workspace_id or \"personal\"", branch)
         self.assertIn("engineering_decision_state_", branch)
         self.assertIn("workspace_id=active_workspace_id or None", branch)
+
+    def test_opened_alert_shows_its_packet_and_explicit_mitigation_action(self):
+        branch = RUNTIME.split('if app_mode == "Engineering Decisions":', 1)[1]
+        branch = branch.split('if app_mode == "Reports":', 1)[0]
+        self.assertIn('requested_decision_id = _qp_value("decision_id")', branch)
+        self.assertIn("if not requested_decision_id:", branch)
+        self.assertIn('key="decision_packet_back"', branch)
+        self.assertIn('"Record mitigation and close alert"', branch)
+        self.assertIn('"decision_payload": mitigation_decision', branch)
 
 
 if __name__ == "__main__":
