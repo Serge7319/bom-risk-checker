@@ -671,6 +671,21 @@ section[data-testid="stMain"] div[data-testid="stElementContainer"][class*="st-k
   overflow: visible !important;
 }
 
+/*
+  The authenticated shell injects several fixed chrome and CSS hosts before
+  the shared route-body container. Even when each host has zero height,
+  Streamlit's default root VerticalBlock gap still inserts a row gap between
+  every sibling. Keep the root shell stack flush; the route body is a nested
+  VerticalBlock and retains its normal page spacing.
+*/
+section[data-testid="stMain"] > [data-testid="stMainBlockContainer"] > [data-testid="stVerticalBlock"],
+section[data-testid="stMain"] > [data-testid="stMainBlockContainer"] > [data-testid="stVerticalBlockBorderWrapper"] > [data-testid="stVerticalBlock"] {
+  gap: 0 !important;
+  row-gap: 0 !important;
+  align-content: flex-start !important;
+  justify-content: flex-start !important;
+}
+
 section[data-testid="stMain"] .cv-dashboard-shell,
 section[data-testid="stMain"] .cv-living-workspace,
 section[data-testid="stMain"] .cv-portfolio-dashboard,
