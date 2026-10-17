@@ -3903,7 +3903,7 @@ def _render_datasheet_evidence_review(
     candidate_mpn: str,
     key_suffix: str,
 ) -> dict[str, Any]:
-    """Review linked or uploaded manufacturer PDFs and collect reviewer citations."""
+    """Automatically analyze linked manufacturer PDFs and collect reviewer citations."""
     source_url = _datasheet_url(original)
     candidate_url = _datasheet_url(candidate)
     source_upload = None
@@ -3923,7 +3923,7 @@ def _render_datasheet_evidence_review(
     review_request_key = f"cadivor_alt_datasheet_review_request_{key_suffix}"
     with st.expander("Datasheet & documentation review", expanded=True):
         st.caption(
-            "Cadivor checks supplier-linked PDFs and any PDFs you upload, then shows page-cited text for relevant fields and package dimensions. Review the drawings and pinout in the documents before approving."
+            "Cadivor automatically retrieves and analyzes available supplier/manufacturer PDFs, then shows page-cited findings. Review the linked documents and package drawings before approving; an upload is only a fallback when no working link is available."
         )
         link_cols = st.columns(2)
         for column, label, url in (
@@ -3936,21 +3936,25 @@ def _render_datasheet_evidence_review(
                 else:
                     st.caption(label.replace("Open ", "") + " not supplied by the catalog.")
 
-        upload_cols = st.columns(2)
-        with upload_cols[0]:
-            uploaded_source = st.file_uploader(
-                "Add source manufacturer PDF",
-                type=["pdf"],
-                key=f"cadivor_alt_source_pdf_{key_suffix}",
-                help="Use the manufacturer revision you verified if the catalog link is missing or outdated.",
+        with st.expander("Optional: upload or replace a datasheet", expanded=False):
+            st.caption(
+                "You do not need to upload a file when Cadivor has a working supplier/manufacturer PDF link. Use this only when a link is missing, outdated, or points to the wrong document."
             )
-        with upload_cols[1]:
-            uploaded_candidate = st.file_uploader(
-                "Add candidate manufacturer PDF",
-                type=["pdf"],
-                key=f"cadivor_alt_candidate_pdf_{key_suffix}",
-                help="Use the manufacturer revision you verified if the catalog link is missing or outdated.",
-            )
+            upload_cols = st.columns(2)
+            with upload_cols[0]:
+                uploaded_source = st.file_uploader(
+                    "Optional source PDF",
+                    type=["pdf"],
+                    key=f"cadivor_alt_source_pdf_{key_suffix}",
+                    help="Fallback for a missing or outdated source datasheet link.",
+                )
+            with upload_cols[1]:
+                uploaded_candidate = st.file_uploader(
+                    "Optional candidate PDF",
+                    type=["pdf"],
+                    key=f"cadivor_alt_candidate_pdf_{key_suffix}",
+                    help="Fallback for a missing or outdated candidate datasheet link.",
+                )
 
         source_upload_bytes = uploaded_source.getvalue() if uploaded_source is not None else b""
         candidate_upload_bytes = uploaded_candidate.getvalue() if uploaded_candidate is not None else b""
@@ -3988,23 +3992,32 @@ def _render_datasheet_evidence_review(
         )
         if not has_documents:
             st.info(
-                "No datasheet links were returned. Upload the manufacturer PDFs here, or cite the controlled documents and page references you reviewed."
+                "No supplier/manufacturer PDF link was returned for this comparison. Cadivor cannot analyze an unlinked document automatically. You may optionally upload a PDF or cite the controlled documents you reviewed."
             )
 
+        review_state = review_state if isinstance(review_state, dict) else {}
         review_requested = bool(st.session_state.pop(review_request_key, False))
-        review_clicked = has_documents and st.button(
-            "Analyze available datasheets",
-            key=f"cadivor_alt_datasheet_extract_{key_suffix}",
-            type="secondary",
-            help="Extract page-cited text from linked or uploaded PDFs. You must still inspect package drawings and pinout yourself.",
+        review_clicked = False
+        if has_documents and review_state.get("review_completed"):
+            review_clicked = st.button(
+                "Refresh datasheet analysis",
+                key=f"cadivor_alt_datasheet_extract_{key_suffix}",
+                type="secondary",
+                help="Re-fetch linked PDFs and refresh page-cited text. You must still inspect package drawings and pinout yourself.",
+            )
+        auto_review_requested = bool(
+            has_documents and not review_state.get("review_completed")
         )
-        if has_documents and (review_requested or review_clicked):
+        if has_documents and (
+            auto_review_requested or review_requested or review_clicked
+        ):
             from src.datasheet_comparison import (
                 build_datasheet_review_evidence,
                 extract_datasheet_text,
                 infer_component_family,
             )
             from src.datasheet_qa import extract_uploaded_datasheet
+            from concurrent.futures import ThreadPoolExecutor
 
             def extract_documents(url: str, uploaded: Any, upload_bytes: bytes, side: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
                 documents: list[dict[str, Any]] = []
@@ -4043,13 +4056,24 @@ def _render_datasheet_evidence_review(
                 }
                 return combined, documents
 
-            with st.spinner("Reviewing available PDFs and extracting page-cited evidence…"):
-                source_pdf, source_documents = extract_documents(
-                    source_url, uploaded_source, source_upload_bytes, "Source"
-                )
-                candidate_pdf, candidate_documents = extract_documents(
-                    candidate_url, uploaded_candidate, candidate_upload_bytes, "Candidate"
-                )
+            with st.spinner("Cadivor is fetching linked datasheets and extracting page-cited evidence…"):
+                with ThreadPoolExecutor(max_workers=2) as pool:
+                    source_future = pool.submit(
+                        extract_documents,
+                        source_url,
+                        uploaded_source,
+                        source_upload_bytes,
+                        "Source",
+                    )
+                    candidate_future = pool.submit(
+                        extract_documents,
+                        candidate_url,
+                        uploaded_candidate,
+                        candidate_upload_bytes,
+                        "Candidate",
+                    )
+                    source_pdf, source_documents = source_future.result()
+                    candidate_pdf, candidate_documents = candidate_future.result()
             evidence = build_datasheet_review_evidence(
                 source_pdf,
                 candidate_pdf,

@@ -180,9 +180,9 @@ def test_datasheet_review_is_connected_to_finder_and_compare_approval():
     )[0]
 
     assert "_render_datasheet_evidence_review(" in approvals
-    assert '"Analyze available datasheets"' in source
-    assert "Add source manufacturer PDF" in source
-    assert "Add candidate manufacturer PDF" in source
+    assert '"Refresh datasheet analysis"' in source
+    assert "Optional source PDF" in source
+    assert "Optional candidate PDF" in source
     assert "review_references_complete" in approvals
     assert "linked_documents_reviewed" in approvals
     assert "comparison_evidence={\"comparison\": comparison, \"slot\": candidate_slot}" in compare
@@ -206,6 +206,21 @@ def test_approval_explains_missing_citations_and_offers_pdf_review_at_the_gate()
     assert "on_click=_request_datasheet_review" in approvals
     assert "review_request_key = f\"cadivor_alt_datasheet_review_request_{key_suffix}\"" in datasheet_review
     assert "review_requested or review_clicked" in datasheet_review
+
+
+def test_linked_datasheets_are_analyzed_automatically_and_upload_is_optional():
+    source = (
+        Path(__file__).resolve().parents[1] / "src" / "ui" / "approved_pages.py"
+    ).read_text(encoding="utf-8")
+    datasheet_review = source.split("def _render_datasheet_evidence_review", 1)[1].split(
+        "def _approval_evidence_for_comparison", 1
+    )[0]
+
+    assert "automatically retrieves and analyzes available supplier/manufacturer PDFs" in datasheet_review
+    assert 'with st.expander("Optional: upload or replace a datasheet", expanded=False)' in datasheet_review
+    assert "auto_review_requested = bool(" in datasheet_review
+    assert "auto_review_requested or review_requested or review_clicked" in datasheet_review
+    assert "Refresh datasheet analysis" in datasheet_review
 
 
 def test_saved_approval_exposes_datasheet_citations_and_report_links():
