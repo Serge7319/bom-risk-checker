@@ -11,6 +11,7 @@ ENGINEERING_ASSISTANT_PY = REPO_ROOT / "src/components/engineering_assistant.py"
 DESIGN_SYSTEM_V2_PY = REPO_ROOT / "src/ui/design_system_v2.py"
 ASK_CADIVOR_V2_CSS = REPO_ROOT / "src/assets/css/ask_cadivor_v2.css"
 PREMIUM_CSS = REPO_ROOT / "src/assets/css/premium.css"
+ACTIVE_PREMIUM_CSS = REPO_ROOT / "src/css/premium.css"
 ENGINEERING_AI_PY = REPO_ROOT / "src/services/engineering_ai.py"
 
 from tests.ask_cadivor_streamlit_stub import install_ask_cadivor_streamlit_stub
@@ -28,6 +29,7 @@ class AskCadivorCssBindingTests(unittest.TestCase):
         cls.ds_v2_source = DESIGN_SYSTEM_V2_PY.read_text(encoding="utf-8")
         cls.v2_css = ASK_CADIVOR_V2_CSS.read_text(encoding="utf-8")
         cls.premium_css = PREMIUM_CSS.read_text(encoding="utf-8")
+        cls.active_premium_css = ACTIVE_PREMIUM_CSS.read_text(encoding="utf-8")
         cls.engineering_ai_source = ENGINEERING_AI_PY.read_text(encoding="utf-8")
 
     def test_global_stylesheet_injected_via_st_markdown_not_st_html(self) -> None:
@@ -40,9 +42,14 @@ class AskCadivorCssBindingTests(unittest.TestCase):
         self.assertTrue(stylesheet_markdown[0].startswith("<style id='cadivor-ask-cadivor-v2-css'>"))
         self.assertTrue(all("cadivor-ask-cadivor-v2-css" not in call for call in st.html_calls))
 
-    def test_premium_css_hides_style_containers_without_invalidating_markdown_styles(self) -> None:
-        self.assertIn('div[data-testid="stElementContainer"]:has(style)', self.premium_css)
-        self.assertIn('div[data-testid="stMarkdownContainer"]:has(style:only-child)', self.premium_css)
+    def test_premium_css_hides_only_style_only_blocks(self) -> None:
+        for stylesheet in (self.premium_css, self.active_premium_css):
+            self.assertNotIn('div[data-testid="stElementContainer"]:has(style)', stylesheet)
+            self.assertIn(
+                'div[data-testid="stElementContainer"]:has(> div.stMarkdown > div[data-testid="stMarkdownContainer"] > style:only-child)',
+                stylesheet,
+            )
+            self.assertIn('div[data-testid="stMarkdownContainer"]:has(> style:only-child)', stylesheet)
 
     def test_response_renderer_does_not_inject_stylesheet(self) -> None:
         st = install_ask_cadivor_streamlit_stub()

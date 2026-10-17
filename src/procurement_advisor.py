@@ -338,8 +338,8 @@ def procurement_page_header_html() -> str:
         "</style>"
         "<div class='cv-pa-page-head'><div class='cv-pa-breadcrumb'>Procurement Advisor"
         "<span aria-hidden='true'>›</span>Sourcing Recommendation</div>"
-        "<h1>Sourcing Recommendation</h1>"
-        "<p>Supplier recommendations and sourcing evidence for a selected BOM component.</p></div>"
+        "<h1>Procurement advisor</h1>"
+        "<p>AI-powered supplier insights and sourcing recommendations to reduce risk, ensure supply continuity, and optimize total cost.</p></div>"
     )
 
 

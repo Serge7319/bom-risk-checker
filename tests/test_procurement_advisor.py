@@ -29,7 +29,7 @@ class ProcurementAdvisorTests(unittest.TestCase):
             "Next Step": "Confirm the current supplier quote.",
             "Supplier Sources": None,
         }
-        self.assertIn("<h1>Sourcing Recommendation</h1>", procurement_page_header_html())
+        self.assertIn("<h1>Procurement advisor</h1>", procurement_page_header_html())
         self.assertIn("<div class='cv-pa-page-head'>", procurement_page_header_html())
         self.assertNotIn("<header", procurement_page_header_html())
 
@@ -79,7 +79,7 @@ class ProcurementAdvisorTests(unittest.TestCase):
         branch = runtime.split('if app_mode == "Procurement Advisor":', 1)[1].split(
             'if app_mode == "Engineering Decisions":', 1
         )[0]
-        self.assertIn("max-width:1540px", branch)
+        self.assertIn("max-width:1440px", branch)
         self.assertLess(
             branch.index("procurement_workspace_panels_html("),
             branch.index("<h2>Supplier options</h2>"),
