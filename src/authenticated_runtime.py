@@ -46,6 +46,7 @@ from src.decision_repository import (
     DEFAULT_DECISION_LOAD_BUDGET_SECONDS,
     load_decision_state,
     save_decision_workflow,
+    save_decision_source_evidence,
     add_decision_note,
 )
 from src.procurement_advisor import build_procurement_advisor
@@ -2571,7 +2572,19 @@ def run_authenticated_app() -> None:
                 if isinstance(evidence, dict)
             ),
             "Lifecycle Conflict": bool(part_data.get("lifecycle_conflict")),
-            "Product URL": part_data.get("product_detail_url", ""),
+            "Product URL": (
+                part_data.get("product_detail_url")
+                or part_data.get("product_url")
+                or part_data.get("source_url")
+                or part_data.get("supplier_url")
+                or ""
+            ),
+            "Datasheet URL": (
+                part_data.get("datasheet_url")
+                or part_data.get("datasheet")
+                or part_data.get("datasheet_link")
+                or ""
+            ),
             "Supplier Offers": part_data.get("supplier_offers") or [],
             "Photo": part_data.get("image_url", ""),
             "Has Alternates": part_data.get("has_alternates", False),
@@ -2641,6 +2654,7 @@ def run_authenticated_app() -> None:
                             "Lifecycle Evidence Summary": "",
                             "Lifecycle Conflict": False,
                             "Product URL": "",
+                            "Datasheet URL": "",
                             "Has Alternates": False,
                             "Alternate Count": 0,
                             "Alternative Part Numbers": "",
@@ -8116,6 +8130,8 @@ def run_authenticated_app() -> None:
                     f"_ed_review_source_evidence_{decision_scope_key}_{decision_id}"
                 )
                 live_evidence = st.session_state.get(live_evidence_key)
+                if not isinstance(live_evidence, dict):
+                    live_evidence = saved_payload.get("source_evidence")
                 live_evidence = live_evidence if isinstance(live_evidence, dict) else {}
                 if live_evidence.get("identity_verified"):
                     supplier_name = str(
@@ -8328,7 +8344,8 @@ def run_authenticated_app() -> None:
                                     )
                                 else:
                                     st.caption(
-                                        "Missing links can be checked against configured supplier sources by exact part number."
+                                        "This saved BOM and alert contain no source or datasheet links yet. "
+                                        "Search configured suppliers by exact part number; verified results are saved to this review."
                                     )
                                 if st.button(
                                     "Search current supplier evidence",
@@ -8360,7 +8377,7 @@ def run_authenticated_app() -> None:
                                             lookup_summary = (
                                                 "Supplier sources could not be checked right now."
                                             )
-                                    st.session_state[live_evidence_key] = (
+                                    evidence_snapshot = (
                                         {
                                             **exact_evidence,
                                             "lookup_attempted": True,
@@ -8373,6 +8390,33 @@ def run_authenticated_app() -> None:
                                             "lookup_summary": lookup_summary or "No exact supplier listing was returned.",
                                         }
                                     )
+                                    st.session_state[live_evidence_key] = evidence_snapshot
+                                    if exact_evidence:
+                                        evidence_error = save_decision_source_evidence(
+                                            supabase,
+                                            user_id=current_user["id"],
+                                            workspace_id=active_workspace_id or None,
+                                            decision={**saved_payload, **selected_decision},
+                                            evidence=evidence_snapshot,
+                                            actor_name=(
+                                                profile_for_shell.get("full_name")
+                                                or shell_name
+                                            ),
+                                        )
+                                        if evidence_error:
+                                            st.session_state[live_evidence_key]["save_error"] = True
+                                            st.error(
+                                                "Exact supplier links were found for this visit but could not be saved to the decision record."
+                                            )
+                                        else:
+                                            persisted_payload = {
+                                                **saved_payload,
+                                                "source_evidence": evidence_snapshot,
+                                            }
+                                            state_record["decision_payload"] = persisted_payload
+                                            cached_state = dict(decision_state)
+                                            cached_state[decision_id] = state_record
+                                            st.session_state[decision_cache_key] = cached_state
                                     st.rerun()
                             if selected_decision_context_id:
                                 internal_nav_button(
@@ -19811,6 +19855,7 @@ def run_authenticated_app() -> None:
             build_alert_record,
             detect_monitor_alerts,
             save_monitor_history,
+            save_monitor_alerts,
         )
         from src.engineering_decision_engine import (
             build_engineering_decision_brief,
@@ -22858,6 +22903,7 @@ def run_authenticated_app() -> None:
                             "unit_price_currency": cost_fields["unit_price_currency"],
                             "primary_supplier": cost_fields["primary_supplier"],
                             "product_url": cost_fields["product_url"],
+                            "datasheet_url": cost_fields["datasheet_url"],
                             "supplier_offers": cost_fields["supplier_offers"],
                             "lead_time_weeks": _json_safe_optional_number(
                                 part_row.get("Lead Time Weeks", None)
@@ -23005,12 +23051,8 @@ def run_authenticated_app() -> None:
                     )
 
                 if alert_records:
-                    try:
-                        supabase.table("monitor_alerts").insert(
-                            alert_records
-                        ).execute()
-                    except Exception as e:
-                        st.error(f"Could not save monitor alerts: {e}")
+                    if not save_monitor_alerts(supabase, alert_records):
+                        st.error("Could not save monitor alerts. Your BOM analysis was saved.")
 
                 new_upload_count = monthly_upload_count + (0 if _one_time_blocked_plan else 1)
 

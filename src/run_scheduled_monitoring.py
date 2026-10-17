@@ -14,6 +14,8 @@ from src.email_routing import DEFAULT_ALERT_FROM
 from src.monitoring_engine import (
     build_updated_monitor_snapshot,
     detect_monitored_part_changes,
+    save_monitor_alerts,
+    save_monitor_history,
 )
 from src.monitoring_email_preferences import monitoring_email_enabled
 
@@ -145,43 +147,39 @@ for user in users:
         new_alert_records = filtered_alert_records
 
         if new_alert_records:
-            supabase.table("monitor_alerts").insert(
-                new_alert_records
-            ).execute()
+            alerts_saved = save_monitor_alerts(supabase, new_alert_records)
+            if not alerts_saved:
+                print(f"Could not save monitoring alerts for {part_number}")
+            else:
+                print(f"Saved {len(new_alert_records)} alerts for {part_number}")
+                for alert in new_alert_records:
+                    if (
+                        alert.get("severity") == "High"
+                        and email_allowed
+                        and user_email
+                    ):
+                        try:
+                            send_transactional_email(
+                                from_email=ALERT_FROM_EMAIL,
+                                to_email=user_email,
+                                subject="High Severity BOM Monitoring Alert",
+                                html_body=(
+                                    f"<p><strong>Part:</strong> {html.escape(str(part_number))}</p>"
+                                    f"<p><strong>Alert:</strong> {html.escape(str(alert.get('alert_message') or ''))}</p>"
+                                    f"<p><strong>Severity:</strong> {html.escape(str(alert.get('severity') or ''))}</p>"
+                                ),
+                            )
 
-            print(f"Saved {len(new_alert_records)} alerts for {part_number}")
+                            print(f"Sent alert email for monitored part {part_number}")
 
-            for alert in new_alert_records:
-                if (
-                    alert.get("severity") == "High"
-                    and email_allowed
-                    and user_email
-                ):
-                    try:
-                        send_transactional_email(
-                            from_email=ALERT_FROM_EMAIL,
-                            to_email=user_email,
-                            subject="High Severity BOM Monitoring Alert",
-                            html_body=(
-                                f"<p><strong>Part:</strong> {html.escape(str(part_number))}</p>"
-                                f"<p><strong>Alert:</strong> {html.escape(str(alert.get('alert_message') or ''))}</p>"
-                                f"<p><strong>Severity:</strong> {html.escape(str(alert.get('severity') or ''))}</p>"
-                            ),
-                        )
-
-                        print(f"Sent alert email for monitored part {part_number}")
-
-                    except EmailDeliveryError:
-                        print(f"Could not send alert email for {part_number}")
+                        except EmailDeliveryError:
+                            print(f"Could not send alert email for {part_number}")
 
         for message in alert_messages:
             print(f"{part_number}: {message}")
 
-        supabase.table("part_monitor_history").insert(
-            current_snapshot
-        ).execute()
-
-        print(f"Saved monitoring snapshot for {part_number}")
+        if save_monitor_history(supabase, [current_snapshot]):
+            print(f"Saved monitoring snapshot for {part_number}")
 
         print(
             f"{part_number}: stock={current_snapshot['stock']}, "

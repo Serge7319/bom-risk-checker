@@ -283,7 +283,6 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
         self.assertIn('query = query.eq("project_name", str(project_name).strip())', runtime_source)
         self.assertIn("def _navigate_back_to_bom_review", finder_source)
         self.assertIn('"cadivor_approved_alternatives_flash"', finder_source)
-        self.assertIn('"source_page", "project_name", "bom_name"', navigation_source)
 
     def test_engineering_intelligence_page_explains_selected_tab_and_refresh_action(self):
         source = (Path(__file__).resolve().parents[1] / "src" / "ui" / "ei_bom_report.py").read_text()

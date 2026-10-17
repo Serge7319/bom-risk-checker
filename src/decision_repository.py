@@ -259,6 +259,83 @@ def save_decision_workflow(
         return str(exc)
 
 
+def save_decision_source_evidence(
+    supabase: Any,
+    *,
+    user_id: str,
+    workspace_id: str | None,
+    decision: Dict[str, Any],
+    evidence: Dict[str, Any],
+    actor_name: str,
+) -> str | None:
+    """Persist an exact-MPN supplier evidence snapshot without changing status."""
+    scope = _scope_key(workspace_id)
+    decision_key = str(decision.get("decision_id") or "").strip()
+    requested_mpn = str(decision.get("mpn") or decision.get("part_number") or "").strip()
+    returned_mpn = str(evidence.get("manufacturer_part_number") or "").strip()
+    if not decision_key:
+        return "Decision key is missing."
+    if not evidence.get("identity_verified") or not requested_mpn or not returned_mpn:
+        return "Only verified exact-MPN evidence can be saved."
+
+    from src.normalizer import normalize_part_number
+
+    if normalize_part_number(requested_mpn) != normalize_part_number(returned_mpn):
+        return "Supplier evidence part number does not match this decision."
+
+    payload = {**decision, "source_evidence": dict(evidence)}
+    status = str(decision.get("status") or "New")
+    owner = str(
+        decision.get("assigned_owner") or decision.get("owner") or "Engineering"
+    )
+    try:
+        supabase.table("engineering_decisions").upsert(
+            {
+                "user_id": user_id,
+                "scope_key": scope,
+                "workspace_id": workspace_id or None,
+                "decision_key": decision_key,
+                "analysis_id": str(
+                    decision.get("analysis_id")
+                    or decision.get("context_analysis_id")
+                    or ""
+                ) or None,
+                "part_number": requested_mpn,
+                "decision_type": str(decision.get("decision_type") or "") or None,
+                "title": str(decision.get("title") or "") or None,
+                "status": status,
+                "assigned_owner": owner,
+                "due_date": decision.get("due_date") or None,
+                "priority_score": int(decision.get("priority_score") or 0),
+                "confidence": int(decision.get("confidence") or 0),
+                "decision_payload": payload,
+                "updated_by": user_id,
+            },
+            on_conflict="user_id,scope_key,decision_key",
+        ).execute()
+        supabase.table("engineering_decision_events").insert(
+            {
+                "user_id": user_id,
+                "scope_key": scope,
+                "workspace_id": workspace_id or None,
+                "decision_key": decision_key,
+                "event_type": "supplier_evidence_saved",
+                "event_label": f"Exact-MPN supplier evidence saved for {requested_mpn}",
+                "actor_name": actor_name or "Engineer",
+                "event_payload": {
+                    "manufacturer_part_number": returned_mpn,
+                    "source": str(evidence.get("source") or ""),
+                    "retrieved_at": str(evidence.get("retrieved_at") or ""),
+                    "product_detail_url": str(evidence.get("product_detail_url") or ""),
+                    "datasheet_url": str(evidence.get("datasheet_url") or ""),
+                },
+            }
+        ).execute()
+        return None
+    except Exception as exc:
+        return str(exc)
+
+
 def add_decision_note(
     supabase: Any,
     *,

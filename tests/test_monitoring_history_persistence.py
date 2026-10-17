@@ -1,9 +1,12 @@
 from pathlib import Path
 import unittest
 
+import pandas as pd
+
 from src.monitoring_engine import (
     build_monitor_record,
     detect_monitor_alerts,
+    save_monitor_alerts,
     save_monitor_history,
 )
 
@@ -40,6 +43,26 @@ class _Supabase:
         return _Table(self)
 
 
+class _OptionalColumnSupabase:
+    def __init__(self, missing_column):
+        self.missing_column = missing_column
+        self.attempts = []
+
+    def table(self, name):
+        return self
+
+    def insert(self, records):
+        self.attempts.append(records)
+        if any(self.missing_column in row for row in records):
+            raise ValueError(
+                f"Could not find the '{self.missing_column}' column in the schema cache"
+            )
+        return self
+
+    def execute(self):
+        return None
+
+
 class MonitoringHistoryPersistenceTests(unittest.TestCase):
     def test_monitor_snapshot_converts_nan_to_null_and_does_not_trigger_false_change(self):
         current = build_monitor_record(
@@ -50,10 +73,15 @@ class MonitoringHistoryPersistenceTests(unittest.TestCase):
                 "Stock Available": float("nan"),
                 "Unit Price": float("inf"),
                 "Lifecycle Status": "Active",
+                "Manufacturer Part Number": "ABC123",
+                "Product URL": "https://example.test/parts/ABC123",
+                "Datasheet URL": "https://example.test/docs/ABC123.pdf",
             },
         )
         self.assertIsNone(current["stock"])
         self.assertIsNone(current["unit_price"])
+        self.assertEqual(current["product_url"], "https://example.test/parts/ABC123")
+        self.assertEqual(current["datasheet_url"], "https://example.test/docs/ABC123.pdf")
 
         alerts, _ = detect_monitor_alerts(
             "user-1",
@@ -75,11 +103,38 @@ class MonitoringHistoryPersistenceTests(unittest.TestCase):
         with self.assertLogs("src.monitoring_engine", level="WARNING"):
             self.assertFalse(save_monitor_history(failing_client, [record]))
 
+    def test_dataframe_part_rows_keep_only_exact_mpn_urls(self):
+        record = build_monitor_record(
+            "user-1",
+            "analysis-1",
+            pd.Series({
+                "MPN": "DHT11",
+                "Manufacturer Part Number": "DHT11",
+                "Product URL": "https://example.test/dht11",
+                "Datasheet URL": "https://example.test/dht11.pdf",
+            }),
+        )
+        self.assertEqual(record["product_url"], "https://example.test/dht11")
+        self.assertEqual(record["datasheet_url"], "https://example.test/dht11.pdf")
+
     def test_analysis_flow_keeps_monitoring_history_failure_nonblocking(self):
         source = (Path(__file__).resolve().parents[1] / "src" / "authenticated_runtime.py").read_text()
         self.assertIn("if monitor_records and not save_monitor_history(supabase, monitor_records):", source)
         self.assertIn("Your BOM analysis was saved, but monitoring history could not be updated.", source)
         self.assertNotIn("Could not save monitoring history: {e}", source)
+
+    def test_missing_optional_url_columns_do_not_break_monitor_writes(self):
+        history_db = _OptionalColumnSupabase("datasheet_url")
+        snapshot = {"part_number": "ABC123", "datasheet_url": "https://example.test/a.pdf"}
+        self.assertTrue(save_monitor_history(history_db, [snapshot]))
+        self.assertEqual(len(history_db.attempts), 2)
+        self.assertNotIn("datasheet_url", history_db.attempts[-1][0])
+
+        alerts_db = _OptionalColumnSupabase("supplier")
+        alert = {"part_number": "ABC123", "supplier": "Mouser", "product_url": "https://example.test/part"}
+        self.assertTrue(save_monitor_alerts(alerts_db, [alert]))
+        self.assertEqual(len(alerts_db.attempts), 2)
+        self.assertNotIn("supplier", alerts_db.attempts[-1][0])
 
 
 if __name__ == "__main__":

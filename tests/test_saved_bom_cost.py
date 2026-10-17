@@ -18,6 +18,7 @@ SUPPLIER_ROW = {
     "Unit Price": 1.2,
     "Quantity": 10,
     "Product URL": "https://www.digikey.com/en/products/detail/ti/TPS54331D/1",
+    "Datasheet URL": "https://www.ti.com/lit/ds/symlink/tps54331.pdf",
     "Risk Level": "Medium",
     "Risk Reasons": "Lead time is longer than the release window.",
 }
@@ -35,6 +36,27 @@ class SavedBomCostPersistenceTests(unittest.TestCase):
             first_save["product_url"],
             "https://www.digikey.com/en/products/detail/ti/TPS54331D/1",
         )
+        self.assertEqual(
+            first_save["datasheet_url"],
+            "https://www.ti.com/lit/ds/symlink/tps54331.pdf",
+        )
+
+    def test_datasheet_link_accepts_supported_names_and_rejects_non_http_urls(self):
+        saved = analysis_part_cost_fields({
+            "Datasheet URL": "",
+            "datasheet_url": "https://example.test/dht11.pdf",
+        })
+        self.assertEqual(saved["datasheet_url"], "https://example.test/dht11.pdf")
+        rejected = analysis_part_cost_fields({"Datasheet URL": "javascript:alert(1)"})
+        self.assertEqual(rejected["datasheet_url"], "")
+
+    def test_datasheet_url_is_treated_as_optional_until_database_migration_runs(self):
+        self.assertEqual(
+            omitted_optional_column("column datasheet_url does not exist in schema cache"),
+            "datasheet_url",
+        )
+        records = [{"mpn": "DHT11", "datasheet_url": "https://example.test/dht11.pdf"}]
+        self.assertEqual(without_column(records, "datasheet_url"), [{"mpn": "DHT11"}])
 
     def test_missing_inputs_are_not_invented(self):
         saved = analysis_part_cost_fields(
@@ -50,6 +72,7 @@ class SavedBomCostPersistenceTests(unittest.TestCase):
         self.assertEqual(saved["quantity"], 0)
         self.assertEqual(saved["product_url"], "")
         self.assertEqual(saved["supplier_offers"], [])
+        self.assertEqual(saved["datasheet_url"], "")
         self.assertIsNone(extended_cost(saved["unit_price"], saved["quantity"]))
         comparison = distributor_comparison([], mpn="TPS54331D", bom_quantity=10)
         self.assertIsNone(comparison["savings_per_unit"])

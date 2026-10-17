@@ -105,6 +105,7 @@ class BomWorkflowNavigationTests(unittest.TestCase):
             return_mpn="DHT11",
             return_decision_id="decision-17",
             project_name="Control Board",
+            bom_name="Controller Rev A",
             _rerun=False,
         )
 
@@ -129,6 +130,8 @@ class BomWorkflowNavigationTests(unittest.TestCase):
         self.assertEqual(source_context["return_page"], "Engineering Decisions")
         self.assertEqual(source_context["return_decision_id"], "decision-17")
         self.assertEqual(source_context["return_mpn"], "DHT11")
+        self.assertEqual(source_context["project_name"], "Control Board")
+        self.assertEqual(source_context["bom_name"], "Controller Rev A")
 
     def test_standalone_alternative_navigation_clears_previous_return(self):
         self.streamlit.session_state[self.navigation.ALT_FINDER_RETURN_ANALYSIS_KEY] = "old-bom"
