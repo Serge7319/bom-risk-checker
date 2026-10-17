@@ -15,8 +15,8 @@ def part_key(value: Any) -> str:
 def candidate_lifecycle_is_blocked(candidate: Any) -> bool:
     """True when recorded lifecycle evidence says a candidate is not orderable.
 
-    Unknown status remains reviewable. Explicit obsolete, discontinued, or
-    end-of-life records are never presented as replacement-ready or approved.
+    Unknown status can be researched during review, but explicit obsolete,
+    discontinued, or end-of-life records can never be approved as replacements.
     """
     if not isinstance(candidate, dict):
         return False
@@ -46,13 +46,14 @@ def candidate_lifecycle_is_blocked(candidate: Any) -> bool:
         )
     for status in status_values:
         if re.search(
-            r"\b(?:not\s+(?:eol|obsolete|discontinued|end\s+of\s+life)"
+            r"\b(?:not\s+(?:eol|obsolete|discontinued|end[\s_-]+of[\s_-]+life)"
             r"|non[\s-]?(?:eol|obsolete|discontinued))\b",
             status,
         ):
             continue
         if re.search(r"\beol\b", status) or any(
-            term in status for term in ("obsolete", "discontinued", "end of life")
+            term in status
+            for term in ("obsolete", "discontinued", "end of life", "end-of-life", "end_of_life")
         ):
             return True
     return False
@@ -225,6 +226,8 @@ def report_alternative(record: dict[str, Any]) -> dict[str, Any]:
     candidate = candidate if isinstance(candidate, dict) else {}
     compatibility = comparison.get("compatibility_review") or {}
     compatibility = compatibility if isinstance(compatibility, dict) else {}
+    datasheet_review = comparison.get("datasheet_review") or {}
+    datasheet_review = datasheet_review if isinstance(datasheet_review, dict) else {}
 
     def _candidate_value(*keys: str, fallback: Any = "") -> Any:
         for key in keys:
@@ -260,6 +263,7 @@ def report_alternative(record: dict[str, Any]) -> dict[str, Any]:
             or "Engineering approval recorded; review the comparison evidence before applying the replacement."
         ),
         "compatibility_warnings": list(compatibility.get("warnings") or []),
+        "datasheet_review": datasheet_review,
         "recorded_from": str(comparison.get("recorded_from") or "Find a replacement"),
         "decision": "Approved",
         "is_persisted_approval": True,

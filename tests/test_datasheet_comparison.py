@@ -8,7 +8,11 @@ sys.modules.setdefault("requests", types.SimpleNamespace())
 from src.datasheet_comparison import (
     build_recommendation_score_breakdown,
     build_datasheet_comparison,
+    build_datasheet_review_evidence,
     build_pdf_field_evidence,
+    compare_datasheet_dimension_evidence,
+    extract_datasheet_text,
+    extract_datasheet_dimension_evidence,
     infer_component_family,
     normalize_mounting_style,
 )
@@ -58,6 +62,60 @@ class DatasheetComparisonTests(unittest.TestCase):
         self.assertEqual(values["Capacitance"]["Status"], "Match")
         self.assertEqual(values["Rated voltage"]["Status"], "Different")
         self.assertEqual(values["Rated voltage"]["Source pages"], "p. 2 / p. 4")
+
+    def test_pdf_headers_without_values_are_not_mistaken_for_matches(self):
+        pdf = {"available": True, "pages": [{"page": 3, "text": "Package\nPin count\nSupply voltage (V)"}]}
+        rows = build_pdf_field_evidence(pdf, pdf, "Integrated Circuit")
+        values = {row["Key"]: row for row in rows}
+        self.assertEqual(values["package"]["Status"], "Needs data")
+        self.assertEqual(values["pin_count"]["Status"], "Needs data")
+        self.assertEqual(values["voltage_range"]["Status"], "Needs data")
+
+    def test_dimension_excerpts_keep_document_and_page_citations(self):
+        pdf = {
+            "available": True,
+            "pages": [{
+                "page": 12,
+                "document": "MCU datasheet Rev D",
+                "text": "Package outline dimensions\nBody length 10.0 mm\nBody width 10.0 mm\nLead pitch 0.8 mm",
+            }],
+        }
+        excerpts = extract_datasheet_dimension_evidence(pdf)
+        self.assertTrue(excerpts)
+        self.assertEqual(excerpts[0]["document"], "MCU datasheet Rev D")
+        self.assertEqual(excerpts[0]["page"], 12)
+        self.assertIn("10.0 mm", excerpts[0]["excerpt"])
+
+    def test_matching_dimension_labels_with_different_values_flag_a_conflict(self):
+        findings = compare_datasheet_dimension_evidence(
+            [{"excerpt": "Package outline · Body length 10.0 mm · Lead pitch 0.8 mm"}],
+            [{"excerpt": "Package outline · Body length 12.0 mm · Lead pitch 0.8 mm"}],
+        )
+        self.assertEqual(len(findings), 1)
+        self.assertIn("body length", findings[0])
+        self.assertIn("10 mm vs 12 mm", findings[0])
+
+    def test_review_evidence_marks_unavailable_pdfs_as_unavailable(self):
+        result = build_datasheet_review_evidence(
+            {"available": False, "reason": "No text", "pages": []},
+            {"available": False, "reason": "No text", "pages": []},
+            "Integrated Circuit",
+        )
+        self.assertFalse(result["source"]["available"])
+        self.assertFalse(result["candidate"]["available"])
+        self.assertTrue(all(row["Status"] == "Needs data" for row in result["field_evidence"]))
+
+    def test_datasheet_fetcher_rejects_local_and_insecure_urls(self):
+        for url in (
+            "http://8.8.8.8/example.pdf",
+            "https://127.0.0.1/example.pdf",
+            "https://localhost/example.pdf",
+            "file:///etc/passwd",
+        ):
+            with self.subTest(url=url):
+                result = extract_datasheet_text(url)
+                self.assertFalse(result["available"])
+                self.assertEqual(result["pages"], [])
 
     def test_pdf_evidence_is_a_professional_entitlement(self):
         self.assertFalse(get_plan("Starter")["datasheet_comparison"])

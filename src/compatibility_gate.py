@@ -278,5 +278,7 @@ def comparison_row_part_values(rows: list[dict[str, Any]], slot: str) -> dict[st
             result["pin_count"] = value
         elif "architecture" in label or label in {"device family", "core"}:
             result["architecture"] = value
+        elif "lifecycle" in label or "product status" in label:
+            result["lifecycle_status"] = value
     return result
 
