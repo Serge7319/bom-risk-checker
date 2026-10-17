@@ -482,7 +482,7 @@ def build_design_impact(
 def _css() -> None:
     st.markdown(
         """
-        <style id="cadivor-design-impact-20">
+        <style id="cadivor-design-impact-20" data-cadivor-layout-style="true">
           .st-key-approved_home_page{
             box-sizing:border-box!important;width:100%!important;max-width:1440px!important;
             margin-left:auto!important;margin-right:auto!important;padding:48px 0 28px!important

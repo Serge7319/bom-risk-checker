@@ -15,7 +15,7 @@ import streamlit as st
 def apply_milestone10a_design_system() -> None:
     st.markdown(
         r"""
-<style id="cadivor-milestone-10a2-hotfix">
+<style id="cadivor-milestone-10a2-hotfix" data-cadivor-layout-style="true">
 :root {
   --cv10-border: #E2E8F0;
   --cv10-border-strong: #CBD5E1;

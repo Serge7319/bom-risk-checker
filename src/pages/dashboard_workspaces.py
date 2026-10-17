@@ -167,7 +167,7 @@ def _inject_dashboard_v2_styles() -> None:
         return
     if css.strip():
         st.markdown(
-            f"<style id='cadivor-dashboard-v2-css'>{css}</style>",
+            f"<style id='cadivor-dashboard-v2-css' data-cadivor-layout-style='true'>{css}</style>",
             unsafe_allow_html=True,
         )
 

@@ -2,7 +2,7 @@
 
 def readability_css() -> str:
     return """
-    <style id="cadivor-readability-16-0">
+    <style id="cadivor-readability-16-0" data-cadivor-layout-style="true">
       html,body,[class*="css"]{font-size:16px}
       .stApp p,.stApp li,.stApp label{font-size:14px!important;line-height:1.58!important}
 

@@ -43,7 +43,7 @@ def inject_executive_workspace_css() -> None:
         css = path.read_text(encoding="utf-8")
     except OSError:
         return
-    st.markdown(f'<style id="cadivor-sprint-56">{css}</style>', unsafe_allow_html=True)
+    st.markdown(f'<style id="cadivor-sprint-56" data-cadivor-layout-style="true">{css}</style>', unsafe_allow_html=True)
 
 
 def render_page_context(page: str) -> None:

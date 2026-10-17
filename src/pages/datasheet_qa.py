@@ -56,7 +56,7 @@ def _inject_datasheet_qa_styles() -> None:
     # Re-inject every run so navigation/reruns cannot drop page-local CSS.
     st.markdown(
         """
-        <style id="cadivor-datasheet-qa-css-v7">
+        <style id="cadivor-datasheet-qa-css-v7" data-cadivor-layout-style="true">
         /* Narrow the conversation canvas without touching global shell CSS files. */
         section[data-testid="stMain"] [data-testid="stMainBlockContainer"] > div:has(.dq-marker){
           max-width:1120px!important;

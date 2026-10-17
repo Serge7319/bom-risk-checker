@@ -50,7 +50,9 @@ def inject_cadivor_design_system() -> None:
         css = css_path.read_text(encoding="utf-8")
     except OSError:
         return
-    _render_html(f"<style id='cadivor-design-system-s64'>{css}</style>")
+    _render_html(
+        f'<style id="cadivor-design-system-s64" data-cadivor-layout-style="true">{css}</style>'
+    )
 
 
 def render_part_image(

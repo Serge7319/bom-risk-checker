@@ -379,7 +379,7 @@ def build_portfolio_intelligence(
 def _css() -> None:
     st.markdown(
         """
-        <style id="cadivor-portfolio-intelligence-19">
+        <style id="cadivor-portfolio-intelligence-19" data-cadivor-layout-style="true">
           .cv19-hero{
             border:1px solid #bfdbfe;background:linear-gradient(135deg,#fff,#eef5ff);
             border-radius:24px;padding:25px;margin-bottom:18px;

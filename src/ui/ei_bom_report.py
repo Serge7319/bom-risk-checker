@@ -708,7 +708,7 @@ def _part_rows(parts: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def report_styles() -> str:
     return """
-    <style>
+    <style data-cadivor-layout-style="true">
       .st-key-ei_report_workspace { width:100%!important;max-width:100%!important;margin-inline:auto!important;box-sizing:border-box;min-width:0!important }
       .st-key-ei_report_workspace .cv-ei-report { color:#0f172a; font-family: Inter, "Segoe UI", sans-serif; width:100%;max-width:100%;margin:0 auto;box-sizing:border-box;min-width:0 }
       .st-key-ei_report_workspace .cv-ap { color:#0f172a; font-family:Inter, "Segoe UI", sans-serif; margin:0 0 2px; }
@@ -1431,7 +1431,7 @@ def render_engineering_intelligence_report(
                 )
                 st.markdown(
                     """
-                    <style>
+                    <style data-cadivor-layout-style="true">
                     .st-key-cv_ei_report_tabs [role="tablist"] {
                       display:flex!important;
                       width:100%!important;

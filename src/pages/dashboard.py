@@ -30,7 +30,7 @@ def inject_dashboard_page_styles() -> None:
 def _inject_dashboard_page_styles_body() -> None:
     st.markdown(
         """
-        <style>
+        <style data-cadivor-layout-style="true">
 
         /* Dashboard-specific styling only. Layout shell is defined globally above. */
         .cv-side-brand { display:flex; align-items:center; gap:12px; margin-bottom:22px; }
@@ -155,7 +155,7 @@ def _inject_dashboard_page_styles_body() -> None:
     # Cadivor v3.0 dashboard polish overrides: shell rhythm, KPI hierarchy, and table finish.
     st.markdown(
         """
-        <style>
+        <style data-cadivor-layout-style="true">
         :root { --cv-topbar-height: 64px!important; --cv-sidebar-width: 284px!important; }
 
         /* Keep Streamlit chrome suppressed without showing native navigation during reruns. */
@@ -231,7 +231,7 @@ def _inject_dashboard_page_styles_body() -> None:
     # Does not alter the fixed shell, sidebar, or topbar.
     st.markdown(
         """
-        <style>
+        <style data-cadivor-layout-style="true">
         /* M4.14 Dashboard Polish — content layer only */
         .cv-command-hero {
             border-radius:22px!important;
@@ -537,7 +537,7 @@ def _inject_dashboard_page_styles_body() -> None:
 
     st.markdown(
             """
-            <style id="cadivor-dashboard-v4-command-center">
+            <style id="cadivor-dashboard-v4-command-center" data-cadivor-layout-style="true">
             .cv-v4-eyebrow{display:flex;align-items:center;gap:8px;color:#64748B!important;font-size:11px;font-weight:950;text-transform:uppercase;letter-spacing:.11em;margin:0 0 12px 0;}
             .cv-v4-eyebrow svg{color:#2563EB;}
             .cv-v4-command{background:linear-gradient(135deg,#FFFFFF 0%,#F8FBFF 54%,#EEF6FF 100%);border:1px solid #BFDBFE;border-radius:24px;padding:22px 26px 24px;box-shadow:0 28px 70px rgba(15,23,42,.075);margin-bottom:16px;position:relative;overflow:hidden;}

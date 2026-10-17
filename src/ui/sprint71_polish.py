@@ -24,7 +24,7 @@ def inject_sprint71_polish() -> None:
     except OSError:
         css = ""
     if css.strip():
-        st.markdown(f'<style id="cadivor-sprint71-polish">{css}</style>', unsafe_allow_html=True)
+        st.markdown(f'<style id="cadivor-sprint71-polish" data-cadivor-layout-style="true">{css}</style>', unsafe_allow_html=True)
     st.session_state[_POLISH_INJECTED] = True
 
 

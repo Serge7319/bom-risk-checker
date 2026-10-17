@@ -88,7 +88,7 @@ def render_reports_center(current_user, supabase, load_analysis_history, _qp_val
 
     st.markdown(
         """
-        <style id="cadivor-reports-center-v543">
+        <style id="cadivor-reports-center-v543" data-cadivor-layout-style="true">
         .cv-report-shell{max-width:1680px;margin:0 auto 64px auto;}
         .cv-report-hero{border:1px solid #BFDBFE;border-radius:26px;background:linear-gradient(135deg,#FFFFFF 0%,#F8FBFF 58%,#EAF3FF 100%);box-shadow:0 28px 70px rgba(15,23,42,.075);padding:34px 36px;margin-bottom:20px;display:grid;grid-template-columns:minmax(0,1.2fr) minmax(420px,.8fr);gap:28px;align-items:center;}
         .cv-report-pill{display:inline-flex;align-items:center;gap:8px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:999px;color:#2563EB;font-size:11px;font-weight:950;letter-spacing:.12em;text-transform:uppercase;padding:8px 13px;margin-bottom:20px;}

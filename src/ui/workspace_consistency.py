@@ -9,4 +9,7 @@ def inject_workspace_consistency_css() -> None:
         css = path.read_text(encoding="utf-8")
     except OSError:
         return
-    st.markdown(f"<style id='cadivor-workspace-consistency'>{css}</style>", unsafe_allow_html=True)
+    st.markdown(
+        f'<style id="cadivor-workspace-consistency" data-cadivor-layout-style="true">{css}</style>',
+        unsafe_allow_html=True,
+    )

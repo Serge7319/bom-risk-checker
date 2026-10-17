@@ -21,7 +21,7 @@ from src.public_bom_stress_test import (
 def render_public_bom_stress_test() -> None:
     """Render only the five public rows; the full result remains on the server."""
     embedded = str(st.query_params.get("embed", "") or "").strip().lower() in {"1", "true"}
-    st.markdown("""<style>
+    st.markdown("""<style data-cadivor-layout-style="true">
       header[data-testid="stHeader"], [data-testid="stToolbar"] {display:none!important}
       .block-container {padding:18px 22px 32px!important;max-width:1080px!important}
       .stApp {background:#f4f8ff!important;color:#10284b}
@@ -48,7 +48,7 @@ def render_public_bom_stress_test() -> None:
         .st-key-cv_public_stress_test {padding:16px}}
     </style>""", unsafe_allow_html=True)
     if embedded:
-        st.markdown("""<style>
+        st.markdown("""<style data-cadivor-layout-style="true">
           .block-container {padding:0!important;max-width:none!important}
           .stApp {background:#fff!important}
           .st-key-cv_public_stress_test {

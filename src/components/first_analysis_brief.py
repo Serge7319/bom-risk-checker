@@ -177,7 +177,7 @@ def render_first_analysis_brief(
 
     st.markdown(
         """
-        <style id="cadivor-first-brief-301">
+        <style id="cadivor-first-brief-301" data-cadivor-layout-style="true">
         .cv301-shell{border:1px solid #bfdbfe;background:linear-gradient(135deg,#fff 0%,#f8fbff 62%,#eef6ff 100%);border-radius:24px;padding:22px;margin:12px 0 18px;box-shadow:0 18px 45px rgba(15,23,42,.065)}
         .cv301-kicker{font-size:10px;font-weight:950;letter-spacing:.1em;text-transform:uppercase;color:#2563eb!important;margin-bottom:7px}
         .cv301-title{font-size:28px;line-height:1.08;font-weight:950;letter-spacing:-.035em;color:#0f172a!important;margin:0 0 8px}

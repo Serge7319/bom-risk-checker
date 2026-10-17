@@ -39,17 +39,17 @@ class AskCadivorCssBindingTests(unittest.TestCase):
             content for content, _kwargs, _side in st.markdown_calls if "cadivor-ask-cadivor-v2-css" in content
         ]
         self.assertEqual(len(stylesheet_markdown), 1)
-        self.assertTrue(stylesheet_markdown[0].startswith("<style id='cadivor-ask-cadivor-v2-css'>"))
+        self.assertTrue(stylesheet_markdown[0].startswith('<style id="cadivor-ask-cadivor-v2-css"'))
+        self.assertIn('data-cadivor-layout-style="true"', stylesheet_markdown[0])
         self.assertTrue(all("cadivor-ask-cadivor-v2-css" not in call for call in st.html_calls))
 
-    def test_premium_css_hides_only_style_only_blocks(self) -> None:
+    def test_premium_css_hides_explicit_global_style_hosts_only(self) -> None:
         for stylesheet in (self.premium_css, self.active_premium_css):
-            self.assertNotIn('div[data-testid="stElementContainer"]:has(style)', stylesheet)
             self.assertIn(
-                'div[data-testid="stElementContainer"]:has(> div.stMarkdown > div[data-testid="stMarkdownContainer"] > style:only-child)',
+                'div[data-testid="stElementContainer"]:has(style[data-cadivor-layout-style="true"])',
                 stylesheet,
             )
-            self.assertIn('div[data-testid="stMarkdownContainer"]:has(> style:only-child)', stylesheet)
+            self.assertNotIn('div[data-testid="stElementContainer"]:has(style),', stylesheet)
 
     def test_response_renderer_does_not_inject_stylesheet(self) -> None:
         st = install_ask_cadivor_streamlit_stub()
