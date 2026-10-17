@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import time
+import threading
 from pathlib import Path
 
 from src.boot_read_budget import (
@@ -125,6 +126,28 @@ def _analysis_source() -> str:
     )[0]
 
 
+def test_onboarding_budget_worker_uses_only_script_thread_state_snapshot():
+    runtime = _source("src/authenticated_runtime.py")
+    onboarding = runtime.split("def _sync_onboarding():", 1)[1].split(
+        "return progress, error", 1
+    )[0]
+    assert 'reports_session_history = bool(' in runtime
+    assert '"first_report_completed": reports_session_history' in onboarding
+    assert "st.session_state" not in onboarding
+
+
+def test_same_page_reruns_reuse_onboarding_and_command_palette_reads():
+    runtime = _source("src/authenticated_runtime.py")
+    command_block = runtime.split(
+        'with timed_phase("runtime.workspace_commands", operation="workspace_commands")', 1
+    )[1].split("render_command_nav_triggers", 1)[0]
+
+    assert "recent_onboarding_progress(" in runtime
+    assert "remember_onboarding_progress(" in runtime
+    assert "_cached_command_route == app_mode" in command_block
+    assert 'st.session_state["cadivor_workspace_command_cache_route"] = app_mode' in command_block
+
+
 def test_nonessential_hang_does_not_consume_first_page_budget():
     begin_first_page_budget(0.6)
 
@@ -160,6 +183,31 @@ def test_shared_first_page_budget_does_not_stack_hangs():
     assert first is None and first_status == "timeout"
     assert second is None and second_status == "timeout"
     assert elapsed < 1.5
+
+
+def test_detached_read_contains_streamlit_control_exceptions(monkeypatch):
+    thread_errors = []
+    monkeypatch.setattr(
+        threading,
+        "excepthook",
+        lambda args: thread_errors.append(args.exc_value),
+    )
+
+    class ScriptStop(BaseException):
+        pass
+
+    def stop_like_streamlit():
+        raise ScriptStop()
+
+    value, status = run_with_read_budget(
+        stop_like_streamlit,
+        budget_seconds=1,
+        respect_first_page=False,
+    )
+
+    assert value is None
+    assert status == "error"
+    assert thread_errors == []
 
 
 def test_switched_account_sign_in_cannot_reuse_prior_pending_state():

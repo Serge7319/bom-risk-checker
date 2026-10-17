@@ -19,9 +19,25 @@ def test_approved_finder_consumes_clicked_part_before_mounting_search_input():
     assert "if (run or prefilled_search_pending) and query:" in renderer
     guard = renderer.index("if not has_durable_search_for_mpn(st.session_state, query):")
     assert guard < renderer.index('fit_filter, life_filter, stock_filter, risk_filter, sort_by = st.columns(5)')
-    assert guard < renderer.index("Replacement options ({len(candidates)})")
-    assert "        return\n    fit_filter, life_filter" in renderer[guard:]
+    assert guard < renderer.index("Replacement candidates</h2>")
+    assert "        return\n    supplier_candidate_count = len(candidates)" in renderer[guard:]
     assert 'original["manufacturer_part_number"] = context_mpn' in renderer
+
+
+def test_completed_empty_supplier_search_shows_guidance_without_zero_count_table():
+    source = (
+        Path(__file__).resolve().parents[1] / "src" / "ui" / "approved_pages.py"
+    ).read_text(encoding="utf-8")
+    renderer = source.split("def render_replacement_search", 1)[1].split(
+        "def render_compare_live", 1
+    )[0]
+
+    assert '"No supplier alternatives found"' in renderer
+    assert '"No replacement-ready candidates"' in renderer
+    assert "This does not confirm that no replacement exists." in renderer
+    assert 'if supplier_candidate_count:' in renderer
+    assert 'st.session_state["approved_replacement_compare_candidates"] = []' in renderer
+    assert '"Replacement options ({len(candidates)})"' not in renderer
 
 
 def test_approval_controls_are_inside_candidate_details_and_persist_per_bom():

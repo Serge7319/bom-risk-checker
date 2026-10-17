@@ -46,31 +46,33 @@ class _Query(dict):
         self.update(mapping)
 
 
-class _Empty:
-    def __init__(self):
-        self.cleared = 0
-        self.containers = []
+class _Container:
+    def __init__(self, key):
+        self.key = key
         self.entered = 0
         self.exited = 0
 
-    def empty(self):
-        self.cleared += 1
+    def __enter__(self):
+        self.entered += 1
+        return self
 
-    def container(self):
-        host = self
+    def __exit__(self, *_exc):
+        self.exited += 1
+        return False
 
-        class _CM:
-            def __enter__(self_inner):
-                host.entered += 1
-                return self_inner
 
-            def __exit__(self_inner, *_exc):
-                host.exited += 1
-                return False
+class _RouteBodyStreamlit:
+    def __init__(self, session):
+        self.session_state = session
+        self.container_keys = []
+        self.containers = []
+        self.run_id = "run-1"
 
-        cm = _CM()
-        self.containers.append(cm)
-        return cm
+    def container(self, *, key):
+        self.container_keys.append(key)
+        container = _Container(key)
+        self.containers.append(container)
+        return container
 
 
 def _source(relative: str) -> str:
@@ -110,42 +112,49 @@ def test_runtime_owns_shared_route_body_host_without_rewriting_pages():
     assert 'st.button("Back to BOMs"' not in reports
 
 
-def test_route_body_host_clears_and_enters_without_stacking(monkeypatch):
-    host = _Empty()
+def test_route_body_uses_one_keyed_container_and_does_not_leak_rerun_context(monkeypatch):
     session = _Session()
-    empty_calls = []
-
-    def empty():
-        empty_calls.append(True)
-        return host
-
-    fake_st = types.SimpleNamespace(empty=empty, session_state=session)
+    fake_st = _RouteBodyStreamlit(session)
     monkeypatch.setattr("src.ui.route_body.st", fake_st)
+    monkeypatch.setattr(
+        "src.ui.route_body._current_script_run_id",
+        lambda: fake_st.run_id,
+    )
 
     claimed = claim_authenticated_route_body("Monitoring")
-    assert claimed is host
-    assert host.cleared == 0
-    assert len(empty_calls) == 1
+    first = claimed
+    assert first.key == "cadivor_authenticated_route_body"
+    assert fake_st.container_keys == ["cadivor_authenticated_route_body"]
     enter_authenticated_route_body("Monitoring")
-    assert host.entered == 1
-    assert session[ROUTE_BODY_HOST_STATE_KEY] is host
+    assert first.entered == 1
+    assert session[ROUTE_BODY_HOST_STATE_KEY] is first
     assert session[ROUTE_BODY_CM_STATE_KEY] is not None
 
+    # A Streamlit rerun abandons its old context. Do not let the next run pop
+    # that old container from the new run's context stack.
+    fake_st.run_id = "run-2"
     enter_authenticated_route_body("Monitoring")
-    assert host.entered == 1
+    assert first.entered == 1
+    assert first.exited == 0
 
-    # A same-page rerun reuses the mounted placeholder without emptying it.
+    # A fresh keyed container is recreated at the same stable browser identity.
     claim_authenticated_route_body("Monitoring")
-    assert host.cleared == 0
-    assert len(empty_calls) == 1
+    second = session[ROUTE_BODY_HOST_STATE_KEY]
+    assert second is not first
+    assert second.key == first.key
+    assert fake_st.container_keys == [first.key, second.key]
+    enter_authenticated_route_body("Monitoring")
+    assert second.entered == 1
 
     exit_authenticated_route_body()
-    assert host.exited == 1
+    assert second.exited == 1
     assert ROUTE_BODY_CM_STATE_KEY not in session
 
+    fake_st.run_id = "run-3"
     claim_authenticated_route_body("Reports")
-    assert host.cleared == 1
-    assert len(empty_calls) == 1
+    third = session[ROUTE_BODY_HOST_STATE_KEY]
+    assert third.key == first.key
+    assert len(fake_st.containers) == 3
 
 
 def test_home_to_alerts_one_push_then_back_and_forward_zero_restore_pushes(monkeypatch):
@@ -439,9 +448,9 @@ def test_repeated_route_ownership_does_not_stack_back_controls():
     assert detail.count('key="analysis_back_to_boms"') == 1
     assert 'st.container(key="cv_analysis_hero_actions")' in detail
     body = _source("src/ui/route_body.py")
-    assert "host.empty()" in body
-    assert "without CSS hiding" in body
-    assert "previous_route != route_key" in body
+    assert 'st.container(key=ROUTE_BODY_CONTAINER_KEY)' in body
+    assert "stable keyed container" in body
+    assert "ROUTE_BODY_CM_RUN_STATE_KEY" in body
     nav = _source("src/ui/navigation.py")
     assert "commit_navigation_query_params" in nav
     assert "LAST_HISTORY_PUSH_PAGE_KEY" in nav

@@ -5,11 +5,10 @@ Streamlit marks widgets from a previous route ``data-stale`` when a later
 the Opening cover up until the destination body paints; same-page reruns keep
 the existing content at normal opacity while Streamlit refreshes it.
 
-Claim the shared ``st.empty()`` host once per run, enter its container so every
-page paints into the same slot, then clear it on the next route. Calling
-``empty()`` retires the previous route's widgets without CSS hiding and without
-re-indenting every page branch. Route transitions keep the Opening cover until
-the target route paints, including when session caches are warm.
+Use one keyed ``st.container`` as the stable body slot. Its children are
+replaced by the next script run without blanking the workspace or stacking a
+new child container. Route transitions keep the Opening cover until the target
+route paints, including when session caches are warm.
 """
 from __future__ import annotations
 
@@ -21,24 +20,40 @@ import streamlit as st
 ROUTE_BODY_HOST_STATE_KEY = "_cadivor_route_body_host"
 ROUTE_BODY_ROUTE_STATE_KEY = "_cadivor_route_body_route"
 ROUTE_BODY_CM_STATE_KEY = "_cadivor_route_body_cm"
+ROUTE_BODY_CM_RUN_STATE_KEY = "_cadivor_route_body_cm_run_id"
+ROUTE_BODY_CONTAINER_KEY = "cadivor_authenticated_route_body"
+
+
+def _current_script_run_id() -> str | None:
+    """Return Streamlit's run id without requiring an active app context."""
+    try:
+        from streamlit.runtime.scriptrunner_utils.script_run_context import (
+            get_script_run_ctx,
+        )
+
+        ctx = get_script_run_ctx()
+    except Exception:
+        return None
+    if ctx is None:
+        return None
+    run_id = getattr(ctx, "script_run_id", None)
+    return str(run_id) if run_id else None
 
 
 def claim_authenticated_route_body(route: str = "") -> Any:
-    """Claim the shared body slot, clearing only when the route changes."""
+    """Claim one stable keyed container for the current script run.
+
+    ``st.empty().container()`` allocates a new child block whenever a rerun
+    calls ``container()``. Keeping that placeholder across reruns can leave the
+    previous child mounted beside the new one, which duplicates page content.
+    A keyed container has one stable Streamlit identity, so the new run replaces
+    its children in place without first blanking the workspace.
+    """
     exit_authenticated_route_body()
     route_key = str(route or "").strip()
-    host = st.session_state.get(ROUTE_BODY_HOST_STATE_KEY)
-    previous_route = str(
-        st.session_state.get(ROUTE_BODY_ROUTE_STATE_KEY) or ""
-    ).strip()
-    if host is None:
-        # A new placeholder is empty already. Avoid emitting an extra empty
-        # delta before the first page widgets are painted.
-        host = st.empty()
-    elif previous_route != route_key:
-        # Keep the mounted page visible while it refreshes. A real route hop
-        # still retires the old widgets inside the transition-covered slot.
-        host.empty()
+    # Recreate the DeltaGenerator on this run; the key keeps its browser block
+    # identity stable while avoiding a stale cursor from a prior run.
+    host = st.container(key=ROUTE_BODY_CONTAINER_KEY)
     st.session_state[ROUTE_BODY_HOST_STATE_KEY] = host
     st.session_state[ROUTE_BODY_ROUTE_STATE_KEY] = route_key
     return host
@@ -53,15 +68,25 @@ def enter_authenticated_route_body(route: str = "") -> None:
         st.session_state[ROUTE_BODY_ROUTE_STATE_KEY] = str(route).strip()
     if st.session_state.get(ROUTE_BODY_CM_STATE_KEY) is not None:
         return
-    cm = host.container()
+    # Enter the keyed block itself; nesting a new container here would create
+    # another child block on each rerun and reintroduce duplicate content.
+    cm = host
     cm.__enter__()
     st.session_state[ROUTE_BODY_CM_STATE_KEY] = cm
+    st.session_state[ROUTE_BODY_CM_RUN_STATE_KEY] = _current_script_run_id()
 
 
 def exit_authenticated_route_body() -> None:
     """Pop the shared body container if it is active."""
     cm = st.session_state.pop(ROUTE_BODY_CM_STATE_KEY, None)
+    cm_run_id = st.session_state.pop(ROUTE_BODY_CM_RUN_STATE_KEY, None)
     if cm is None:
+        return
+    current_run_id = _current_script_run_id()
+    # A callback that calls st.rerun() skips normal unwinding. The prior run's
+    # container context does not belong to the next script execution; discard
+    # it instead of popping the new run's Streamlit container stack.
+    if cm_run_id and current_run_id and cm_run_id != current_run_id:
         return
     try:
         cm.__exit__(None, None, None)
@@ -77,5 +102,5 @@ def authenticated_route_body(route: str = "") -> Iterator[Any]:
         host = claim_authenticated_route_body(route)
     elif route:
         st.session_state[ROUTE_BODY_ROUTE_STATE_KEY] = str(route).strip()
-    with host.container():
+    with host:
         yield host

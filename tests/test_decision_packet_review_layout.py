@@ -68,6 +68,27 @@ class DecisionPacketHeaderTests(unittest.TestCase):
 
 
 class DecisionPacketWorkflowTests(unittest.TestCase):
+    def test_saved_packet_actions_update_local_state_without_three_read_reload(self):
+        packet = RUNTIME.split(
+            "if selected_decision and monitoring_component_decision:", 1
+        )[1].split("if selected_decision:", 1)[0]
+        inventory_save = packet.split("if save_inventory:", 1)[1].split(
+            "with packet_right:", 1
+        )[0]
+        mitigation_save = packet.split(
+            '"Record mitigation and close alert"', 1
+        )[1].split('st.caption(\n                                "The alert stays open', 1)[0]
+        note_save = packet.split('"Save note"', 1)[1].split(
+            'note_flash = st.session_state.pop("cadivor_ed_note_flash"', 1
+        )[0]
+
+        for action in (inventory_save, mitigation_save, note_save):
+            self.assertNotIn("load_decision_state(", action)
+            self.assertIn("fallback_state[decision_id]", action)
+        self.assertIn('"history": inventory_history', inventory_save)
+        self.assertIn('"history": resolution_history', mitigation_save)
+        self.assertIn('"notes": note_rows', note_save)
+
     def test_inventory_verification_survives_decision_center_rebuild(self):
         alert = {
             "part_number": "MPU6050",
@@ -126,16 +147,18 @@ class DecisionPacketWorkflowTests(unittest.TestCase):
         self.assertIn("max-width: 1440px !important", NAV_RECOVERY)
         self.assertIn(".st-key-cadivor_decision_packet_shell", NAV_RECOVERY)
         self.assertIn("width: 100% !important", NAV_RECOVERY)
+        self.assertIn('class="cv-dp-layout-spacer"', packet)
         steps_css = NAV_RECOVERY.split(".st-key-cadivor_decision_packet_shell .cv-dp-steps {", 1)[1].split("}", 1)[0]
         self.assertIn("width: 100% !important", steps_css)
         self.assertIn("max-width: 100% !important", steps_css)
-        self.assertIn("margin: 0 0 18px !important", steps_css)
-        self.assertIn("left: 32px", NAV_RECOVERY.split(
-            ".st-key-cadivor_decision_packet_shell .cv-dp-steps li:not(:last-child)::after {", 1
-        )[1].split("}", 1)[0])
-        self.assertIn("right: -14px", NAV_RECOVERY.split(
-            ".st-key-cadivor_decision_packet_shell .cv-dp-steps li:not(:last-child)::after {", 1
-        )[1].split("}", 1)[0])
+        self.assertIn(".cv-dp-layout-spacer", NAV_RECOVERY)
+        self.assertIn("height: 20px !important", NAV_RECOVERY)
+        step_connector_css = NAV_RECOVERY.split(
+            ".st-key-cadivor_decision_packet_shell .cv-dp-steps li::after {", 1
+        )[1].split("}", 1)[0]
+        self.assertIn("display: none !important", step_connector_css)
+        self.assertIn("content: none !important", step_connector_css)
+        self.assertNotIn("right: -14px", NAV_RECOVERY)
         self.assertIn('"Datasheet URL": (', RUNTIME)
         self.assertIn('part_data.get("datasheet_url")', RUNTIME)
         self.assertIn('"datasheet_url": cost_fields["datasheet_url"]', RUNTIME)
