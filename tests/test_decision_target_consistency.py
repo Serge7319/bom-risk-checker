@@ -112,6 +112,30 @@ class DecisionTargetConsistencyTests(unittest.TestCase):
         self.assertEqual(decision_target_cell(decision), "LM358N")
         self.assertEqual(decision.get("mpn"), "LM358N")
 
+    def test_legacy_alert_links_to_saved_bom_when_mpn_format_differs(self):
+        alert_df = pd.DataFrame([{
+            "part_number": "ATMEGA328P-PU",
+            "alert_type": "Lifecycle change",
+            "alert_message": "Lifecycle changed to NRND",
+            "severity": "High",
+            "created_at": "2026-09-01T00:00:00Z",
+        }])
+        center = build_decision_center(
+            alert_df=alert_df,
+            analyses=[{"id": "analysis-1", "project_name": "Controller BOM"}],
+            part_links=[{
+                "analysis_id": "analysis-1",
+                "mpn": "atmega328ppu",
+            }],
+        )
+
+        decision = center["decisions"][0]
+        self.assertEqual(decision.get("context_analysis_id"), "analysis-1")
+        self.assertEqual(
+            decision.get("related_boms"),
+            [{"id": "analysis-1", "name": "Controller BOM"}],
+        )
+
     def test_saved_alert_mitigation_round_trips_to_the_queue_decision(self):
         alert = {
             "analysis_id": "analysis-1",
