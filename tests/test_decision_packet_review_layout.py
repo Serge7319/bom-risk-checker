@@ -89,6 +89,20 @@ class DecisionPacketWorkflowTests(unittest.TestCase):
         self.assertIn('"history": resolution_history', mitigation_save)
         self.assertIn('"notes": note_rows', note_save)
 
+    def test_packet_releases_route_cover_after_review_content_is_mounted(self):
+        packet = RUNTIME.split(
+            "if selected_decision and monitoring_component_decision:", 1
+        )[1].split("if selected_decision:", 1)[0]
+        panel_at = packet.find('key="cadivor_decision_packet_shell"')
+        reveal_at = packet.rfind(
+            'reveal_authenticated_page_body("Engineering Decisions")'
+        )
+        stop_at = packet.rfind("stop_authenticated_page()")
+
+        self.assertGreater(panel_at, 0)
+        self.assertGreater(reveal_at, panel_at)
+        self.assertGreater(stop_at, reveal_at)
+
     def test_inventory_verification_survives_decision_center_rebuild(self):
         alert = {
             "part_number": "MPU6050",
@@ -153,11 +167,13 @@ class DecisionPacketWorkflowTests(unittest.TestCase):
         self.assertIn("max-width: 100% !important", steps_css)
         self.assertIn(".cv-dp-layout-spacer", NAV_RECOVERY)
         self.assertIn("height: 20px !important", NAV_RECOVERY)
+        self.assertIn("margin: 0 0 14px !important", steps_css)
         step_connector_css = NAV_RECOVERY.split(
             ".st-key-cadivor_decision_packet_shell .cv-dp-steps li::after {", 1
         )[1].split("}", 1)[0]
         self.assertIn("display: none !important", step_connector_css)
         self.assertIn("content: none !important", step_connector_css)
+        self.assertIn(".cv-dp-steps li::before", NAV_RECOVERY)
         self.assertNotIn("right: -14px", NAV_RECOVERY)
         self.assertIn('"Datasheet URL": (', RUNTIME)
         self.assertIn('part_data.get("datasheet_url")', RUNTIME)

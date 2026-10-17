@@ -181,14 +181,20 @@ def test_detached_workspace_reads_use_script_thread_scope_snapshots():
     part_links = runtime.split("def _load_decision_part_links():", 1)[1].split(
         "from src.boot_read_budget import run_with_read_budget", 1
     )[0]
+    saved_bom_count = runtime.split("def _count_saved_boms():", 1)[1].split(
+        "_counted = _bounded_boot_read(_count_saved_boms", 1
+    )[0]
 
-    for worker_source in (alerts, analyses, part_links):
+    for worker_source in (alerts, analyses, part_links, saved_bom_count):
         assert "_workspace_query(" not in worker_source.replace(
             "_decision_workspace_query(", ""
         )
         assert "st.session_state" not in worker_source
     assert "_decision_workspace_query(" in alerts
     assert "_decision_workspace_query(" in part_links
+    assert '"workspace_id", _saved_bom_workspace_id' in saved_bom_count
+    assert '"user_id", _saved_bom_user_id' in saved_bom_count
+    assert '_saved_bom_workspace_id = str(active_workspace_id or "")' in runtime
 
 
 def test_nonessential_hang_does_not_consume_first_page_budget():

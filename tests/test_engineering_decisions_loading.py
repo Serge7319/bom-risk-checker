@@ -12,7 +12,7 @@ REPO = (ROOT / "src" / "decision_repository.py").read_text(encoding="utf-8")
 
 
 class EngineeringDecisionsLoadingContractTests(unittest.TestCase):
-    def test_shell_reveals_before_hydrate_and_stops(self):
+    def test_shell_reveals_only_after_hydration_and_stops(self):
         branch = RUNTIME.split('if app_mode == "Engineering Decisions":', 1)[1]
         branch = branch.split('if app_mode == "Reports":', 1)[0]
         # Exactly one primary ED hero mount in source.
@@ -24,18 +24,28 @@ class EngineeringDecisionsLoadingContractTests(unittest.TestCase):
         self.assertIn('data-testid="ed-page-shell"', branch)
 
         hero_at = branch.find('test_id="ed-page-hero"')
-        reveal_at = branch.find('reveal_authenticated_page_body("Engineering Decisions")')
-        pass2_io_at = branch.find('decision_hydrate_key) == "loading"')
-        hydrate_arm_at = branch.find(
-            'decision_hydrate_key] = "loading"',
-            reveal_at,
+        queue_render_at = branch.find("render_decision_queue(decision_rows)")
+        reveal_at = branch.find(
+            'reveal_authenticated_page_body("Engineering Decisions")',
+            queue_render_at,
         )
+        pass2_io_at = branch.find('decision_hydrate_key) == "loading"')
+        hydrate_arm_at = branch.find('decision_hydrate_key] = "loading"')
         stop_at = branch.rfind("stop_authenticated_page()")
 
         self.assertGreater(pass2_io_at, 0)
         self.assertGreater(hero_at, pass2_io_at)
         self.assertGreater(reveal_at, hero_at)
-        self.assertGreater(hydrate_arm_at, reveal_at)
+        self.assertGreater(reveal_at, pass2_io_at)
+        self.assertGreater(reveal_at, branch.find("ed_body_ready = True"))
+        self.assertGreater(reveal_at, hydrate_arm_at)
+        self.assertGreater(reveal_at, queue_render_at)
+        timeout_at = branch.find("if st.session_state.get(decision_timeout_key):")
+        timeout_error_at = branch.find('data-testid="ed-load-timeout"', timeout_at)
+        timeout_reveal_at = branch.find(
+            'reveal_authenticated_page_body("Engineering Decisions")', timeout_at
+        )
+        self.assertGreater(timeout_reveal_at, timeout_error_at)
         self.assertGreater(stop_at, hydrate_arm_at)
         self.assertIn("ed-inline-loading", branch)
         self.assertIn("Do not use cv56-skeleton-page", branch)
@@ -81,7 +91,7 @@ class EngineeringDecisionsLoadingContractTests(unittest.TestCase):
         branch = RUNTIME.split('if app_mode == "Engineering Decisions":', 1)[1]
         branch = branch.split('if app_mode == "Reports":', 1)[0]
         self.assertIn('requested_decision_id = _qp_value("decision_id")', branch)
-        self.assertIn("if not requested_decision_id:", branch)
+        self.assertIn("if ed_body_ready and not requested_decision_id:", branch)
         self.assertIn('key="decision_packet_back"', branch)
         self.assertIn('"Record mitigation and close alert"', branch)
         self.assertIn('"decision_payload": mitigation_decision', branch)
