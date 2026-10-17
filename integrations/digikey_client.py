@@ -839,7 +839,8 @@ def _digikey_category_text(value: object) -> str:
         for key, item in value.items():
             if str(key).casefold() in {
                 "name", "categoryname", "primarycategory", "productcategory",
-                "subcategory", "subcategories", "parentcategory", "description",
+                "productcategoryname", "subcategory", "subcategories",
+                "parentcategory", "description", "displayname", "label", "value", "text",
             }:
                 text = _digikey_category_text(item)
                 if text:

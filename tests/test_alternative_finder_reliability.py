@@ -231,6 +231,17 @@ class AlternativeFinderReliabilityTests(unittest.TestCase):
                     "PrimaryCategory": {"Name": "RF/IF and RFID Modules"},
                 },
                 {
+                    "manufacturer_part_number": "CANADUINO-BOARD-1",
+                    "primary_category": {
+                        "CategoryId": 42,
+                        "Value": "Development Boards, Kits, Programmers",
+                    },
+                },
+                {
+                    "manufacturer_part_number": "SNS-DHT11",
+                    "description": "DHT11 temperature and humidity sensor module",
+                },
+                {
                     "manufacturer_part_number": "BREAKOUT-1",
                     "description": "16-channel breakout board",
                 },

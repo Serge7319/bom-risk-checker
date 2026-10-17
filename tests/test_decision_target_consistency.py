@@ -237,6 +237,51 @@ class DecisionTargetConsistencyTests(unittest.TestCase):
         self.assertNotIn("related_boms", component)
         self.assertEqual(decision_target_context(component), "Component · Control Board · Rev A")
 
+    def test_stale_direct_analysis_link_falls_back_to_accessible_matching_bom(self):
+        center = build_decision_center(
+            alert_df=self._legacy_alert("deleted-or-other-workspace"),
+            analyses=self._saved_boms(),
+            part_links=[{"analysis_id": "a2", "mpn": "LM358N"}],
+        )
+        component = next(d for d in center["decisions"] if d["source"] == "Monitoring")
+
+        self.assertEqual(component["analysis_id"], "")
+        self.assertEqual(component["context_analysis_id"], "a2")
+        self.assertEqual(component["related_boms"][0]["id"], "a2")
+
+    def test_stale_saved_context_is_removed_instead_of_rendering_dead_bom_link(self):
+        alert = self._legacy_alert().iloc[0].to_dict()
+        decision_id = monitoring_decision_id(alert)
+        center = build_decision_center(
+            alert_df=pd.DataFrame([alert]),
+            analyses=self._saved_boms(),
+            part_links=[{"analysis_id": "a1", "mpn": "LM358N"}],
+            saved_state={
+                decision_id: {
+                    "decision_payload": {
+                        "context_analysis_id": "deleted-or-other-workspace",
+                    }
+                }
+            },
+        )
+        component = next(d for d in center["decisions"] if d["source"] == "Monitoring")
+
+        self.assertEqual(component["context_analysis_id"], "a1")
+        self.assertEqual(component["related_boms"][0]["id"], "a1")
+
+    def test_stale_direct_link_without_component_match_is_not_claimed_as_linked(self):
+        center = build_decision_center(
+            alert_df=self._legacy_alert("deleted-or-other-workspace"),
+            analyses=self._saved_boms(),
+            part_links=[],
+        )
+        component = next(d for d in center["decisions"] if d["source"] == "Monitoring")
+
+        self.assertEqual(component["analysis_id"], "")
+        self.assertNotIn("context_analysis_id", component)
+        self.assertNotIn("related_boms", component)
+        self.assertEqual(decision_target_context(component), "Component · No saved BOM linked")
+
     def test_missing_part_match_does_not_guess_saved_bom(self):
         center = build_decision_center(
             alert_df=self._legacy_alert(float("nan")),

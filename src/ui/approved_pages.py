@@ -5238,6 +5238,9 @@ def render_replacement_search() -> None:
         init_alternative_finder_state,
     )
     from src.ui.navigation import (
+        ALT_FINDER_RETURN_DECISION_ID_KEY,
+        ALT_FINDER_RETURN_MPN_KEY,
+        ALT_FINDER_RETURN_PAGE_KEY,
         apply_alternative_finder_prefill,
         consume_alternative_finder_context,
         reveal_authenticated_page_body,
@@ -5267,6 +5270,11 @@ def render_replacement_search() -> None:
             "project_name",
             "bom_name",
             "mpn",
+            "prefill_id",
+            "return_analysis_id",
+            "return_page",
+            "return_mpn",
+            "return_decision_id",
         ):
             if navigation_context.get(context_key):
                 source_context[context_key] = navigation_context[context_key]
@@ -5280,12 +5288,33 @@ def render_replacement_search() -> None:
     source_context = st.session_state.get("alternative_prefill_source_context")
     source_context = source_context if isinstance(source_context, dict) else {}
     return_target = str(source_context.get("source_page") or "")
-    return_analysis_id = str(source_context.get("analysis_id") or "").strip()
+    return_page = str(source_context.get("return_page") or "").strip()
+    return_decision_id = str(source_context.get("return_decision_id") or "").strip()
+    return_analysis_id = str(
+        source_context.get("return_analysis_id") or source_context.get("analysis_id") or ""
+    ).strip()
     return_label = {
         "engineering_intelligence_review": "← Back to BOM Risk",
         "detailed_risk_report": "← Back to Detailed Risk Report",
     }.get(return_target, "← Back to BOM")
-    if return_analysis_id and st.button(
+    if return_page == "Engineering Decisions" and return_decision_id:
+        if st.button(
+            "← Back to decision review",
+            key=(
+                "cadivor_replacement_return_decision_"
+                f"{hashlib.sha1(return_decision_id.encode('utf-8')).hexdigest()[:12]}"
+            ),
+            type="secondary",
+        ):
+            for state_key in (
+                ALT_FINDER_RETURN_PAGE_KEY,
+                ALT_FINDER_RETURN_MPN_KEY,
+                ALT_FINDER_RETURN_DECISION_ID_KEY,
+            ):
+                st.session_state.pop(state_key, None)
+            navigate_to("Engineering Decisions", decision_id=return_decision_id)
+            st.rerun()
+    elif return_analysis_id and st.button(
         return_label,
         key=f"cadivor_replacement_return_{hashlib.sha1(return_analysis_id.encode('utf-8')).hexdigest()[:12]}",
         type="secondary",
@@ -5683,7 +5712,11 @@ def render_replacement_search() -> None:
             st.session_state["cadivor_compare_pending_handoff"] = {
                 "part_numbers": [source_mpn],
                 "auto_run": False,
-                "decision_context": None,
+                "decision_context": {
+                    "source_context": dict(source_context),
+                    "original": dict(original),
+                    "candidates": [],
+                },
             }
             st.session_state.pop("cadivor_compare_result", None)
             navigate_to("Compare Parts")
@@ -5739,6 +5772,44 @@ def render_compare_live() -> None:
         st.session_state["approved_compare_c"] = ""
         st.session_state["cadivor_compare_part_c"] = ""
         st.session_state.pop("cadivor_compare_result", None)
+
+    compare_handoff = st.session_state.get("cadivor_compare_decision_context")
+    if isinstance(compare_handoff, dict):
+        source_context = compare_handoff.get("source_context")
+        source_context = source_context if isinstance(source_context, dict) else {}
+        if source_context.get("mpn"):
+            return_params = {
+                key: source_context.get(key)
+                for key in (
+                    "analysis_id",
+                    "part_id",
+                    "source_page",
+                    "return_analysis_id",
+                    "return_page",
+                    "return_mpn",
+                    "return_decision_id",
+                    "project_name",
+                    "bom_name",
+                    "prefill_id",
+                    "manufacturer",
+                    "description",
+                    "lifecycle",
+                    "risk",
+                )
+                if source_context.get(key)
+            }
+            return_params.update(
+                {
+                    "original_part": str(source_context.get("mpn") or ""),
+                    "intent": "find_alternatives",
+                }
+            )
+            if st.button(
+                "← Back to replacement search",
+                key="approved_compare_back_to_replacement_search",
+                type="secondary",
+            ):
+                navigate_to("Alternative Finder", **return_params)
 
     st.markdown(
         """

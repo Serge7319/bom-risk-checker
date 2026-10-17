@@ -82,16 +82,53 @@ class BomWorkflowNavigationTests(unittest.TestCase):
         )
 
         self.navigation.apply_alternative_finder_prefill(context)
+        source_context = self.streamlit.session_state["alternative_prefill_source_context"]
         self.assertEqual(
-            self.streamlit.session_state["alternative_prefill_source_context"],
+            {key: value for key, value in source_context.items() if key != "prefill_id"},
             {
                 "mpn": "LM358N",
                 "analysis_id": "bom-42",
                 "manufacturer": "Texas Instruments",
                 "lifecycle": "Active",
                 "risk": "High",
+                "source_page": "analysis_detail_parts_risk",
             },
         )
+        self.assertTrue(source_context["prefill_id"])
+
+    def test_decision_packet_handoff_preserves_return_target_through_prefill(self):
+        self.navigation.navigate_to_alternative_finder(
+            mpn="DHT11",
+            analysis_id="bom-42",
+            source_page="engineering_decisions",
+            return_page="Engineering Decisions",
+            return_mpn="DHT11",
+            return_decision_id="decision-17",
+            project_name="Control Board",
+            _rerun=False,
+        )
+
+        context = self.navigation.consume_alternative_finder_context(
+            lambda key, default="": default
+        )
+        self.assertEqual(context["return_page"], "Engineering Decisions")
+        self.assertEqual(context["return_decision_id"], "decision-17")
+        self.assertEqual(
+            self.streamlit.session_state[self.navigation.ALT_FINDER_RETURN_PAGE_KEY],
+            "Engineering Decisions",
+        )
+        self.assertEqual(
+            self.streamlit.session_state[
+                self.navigation.ALT_FINDER_RETURN_DECISION_ID_KEY
+            ],
+            "decision-17",
+        )
+
+        self.navigation.apply_alternative_finder_prefill(context)
+        source_context = self.streamlit.session_state["alternative_prefill_source_context"]
+        self.assertEqual(source_context["return_page"], "Engineering Decisions")
+        self.assertEqual(source_context["return_decision_id"], "decision-17")
+        self.assertEqual(source_context["return_mpn"], "DHT11")
 
     def test_standalone_alternative_navigation_clears_previous_return(self):
         self.streamlit.session_state[self.navigation.ALT_FINDER_RETURN_ANALYSIS_KEY] = "old-bom"
