@@ -82,11 +82,12 @@ section[data-testid="stMain"] .main .block-container .block-container {
   margin: 0 !important;
 }
 
-/* Fixed shell chrome must not reserve vertical space in the main column. */
+/* Fixed shell chrome must not reserve vertical space in the main column.
+   Collapse only the chrome's own Streamlit element wrapper. A broad
+   stVerticalBlock:has(...) selector also matches the main route block, which
+   owns Home and every page body; setting that ancestor to height:0 makes the
+   route content overflow below the top of the workspace. */
 section[data-testid="stMain"] .stMarkdown:has(.cv-foundation-topbar),
-section[data-testid="stMain"] div[data-testid="stVerticalBlock"]:has(.st-key-cv_foundation_navigation),
-section[data-testid="stMain"] div[data-testid="stVerticalBlock"]:has(.st-key-cv_foundation_profile_trigger),
-section[data-testid="stMain"] div[data-testid="stVerticalBlock"]:has(.st-key-cv_foundation_profile_panel),
 section[data-testid="stMain"] div[data-testid="stElementContainer"]:has(.st-key-cv_foundation_navigation),
 section[data-testid="stMain"] div[data-testid="stElementContainer"]:has(.st-key-cv_foundation_profile_trigger),
 section[data-testid="stMain"] div[data-testid="stElementContainer"]:has(.st-key-cv_foundation_profile_panel) {

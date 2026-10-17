@@ -135,6 +135,25 @@ class LayoutStyleHostTests(unittest.TestCase):
             source,
         )
 
+    def test_shell_chrome_never_collapses_the_main_route_vertical_block(self):
+        """A :has(nav) rule on stVerticalBlock also matches the page root."""
+        css = (ROOT / "src/assets/css/core_premium_ui.css").read_text(encoding="utf-8")
+        self.assertNotRegex(
+            css,
+            r'div\[data-testid="stVerticalBlock"\]\s*:has\(\s*\.st-key-cv_foundation_(?:navigation|profile_trigger|profile_panel)',
+        )
+        self.assertIn(
+            'div[data-testid="stElementContainer"]:has(.st-key-cv_foundation_navigation)',
+            css,
+        )
+        final_css = (ROOT / "src/assets/css/core_premium_ui_final.css").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn(
+            '[data-testid="stVerticalBlock"] > [data-testid="stLayoutWrapper"]:has(> [class*="st-key-cv_foundation_navigation"])',
+            final_css,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
