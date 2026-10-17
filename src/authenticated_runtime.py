@@ -3244,11 +3244,19 @@ def run_authenticated_app() -> None:
                 st.session_state["active_workspace_name"] = active_workspace_name
                 st.session_state["active_workspace_role"] = active_workspace_role
 
+            _saved_bom_workspace_id = str(active_workspace_id or "")
+            _saved_bom_user_id = _context_user_id
+
             def _count_saved_boms():
+                saved_bom_query = supabase.table("analyses").select(
+                    "id", count="exact"
+                )
+                if _saved_bom_workspace_id:
+                    saved_bom_query = saved_bom_query.eq(
+                        "workspace_id", _saved_bom_workspace_id
+                    )
                 saved_bom_count_response = execute_supabase_read(
-                    _workspace_query(supabase.table("analyses").select("id", count="exact")).eq(
-                        "user_id", current_user["id"]
-                    ),
+                    saved_bom_query.eq("user_id", _saved_bom_user_id),
                     operation="saved_bom_count",
                 )
                 return saved_bom_count_response.count or 0
@@ -7871,30 +7879,12 @@ def run_authenticated_app() -> None:
         from src.ui.approved_pages import render_decision_queue
 
         requested_decision_id = _qp_value("decision_id")
-        if not requested_decision_id:
-            render_decision_queue(decision_rows)
-            # Queue route uses its established page shell. A focused review has
-            # its own page heading and Home-width canvas below; mounting this
-            # generic hero there produced duplicate titles and stale shell DOM.
-            st.markdown(
-                '<div class="cv64-page-shell" data-testid="ed-page-shell"><div class="cv64-section"></div></div>',
-                unsafe_allow_html=True,
-            )
-            cadivor_section_header(
-                "Engineering Decisions",
-                eyebrow="Decisions",
-                description="Open reviews waiting on you.",
-                icon="clipboard-check",
-                test_id="ed-page-hero",
-            )
-        # Queue chrome is already distinctive, so reveal it at the existing
-        # shell-first point. A focused packet waits for stop_authenticated_page()
-        # to release the route cover after its new review layout has mounted.
-        if not requested_decision_id:
-            reveal_authenticated_page_body("Engineering Decisions")
+        # Keep the route cover up until the queue data has hydrated. A focused
+        # packet releases it after its complete review layout has mounted.
         ed_body_ready = False
 
         if st.session_state.get(decision_timeout_key):
+            reveal_authenticated_page_body("Engineering Decisions")
             st.markdown(
                 """
                 <div class="cv-ed-load-timeout" data-testid="ed-load-timeout"
@@ -7915,6 +7905,7 @@ def run_authenticated_app() -> None:
                 _clear_engineering_decision_caches()
                 st.rerun()
             cadivor_button_wrap_end()
+            reveal_authenticated_page_body("Engineering Decisions")
             stop_authenticated_page()
         elif needs_decision_hydrate:
             # Pass 1: paint shell + in-page loader, then defer IO to the next run.
@@ -7928,6 +7919,24 @@ def run_authenticated_app() -> None:
             st.rerun()
         else:
             ed_body_ready = True
+
+        if ed_body_ready and not requested_decision_id:
+            render_decision_queue(decision_rows)
+            # Queue route uses its established page shell. A focused review has
+            # its own page heading and Home-width canvas below; mounting this
+            # generic hero there produced duplicate titles and stale shell DOM.
+            st.markdown(
+                '<div class="cv64-page-shell" data-testid="ed-page-shell"><div class="cv64-section"></div></div>',
+                unsafe_allow_html=True,
+            )
+            cadivor_section_header(
+                "Engineering Decisions",
+                eyebrow="Decisions",
+                description="Open reviews waiting on you.",
+                icon="clipboard-check",
+                test_id="ed-page-hero",
+            )
+            reveal_authenticated_page_body("Engineering Decisions")
 
         if ed_body_ready:
             decision_alert_df = st.session_state.get(decision_alerts_key)
@@ -8001,6 +8010,7 @@ def run_authenticated_app() -> None:
                         type="secondary",
                     ):
                         navigate_to("Engineering Decisions")
+                    reveal_authenticated_page_body("Engineering Decisions")
             elif focus_part:
                 selected_decision = next(
                     (
@@ -9258,6 +9268,7 @@ def run_authenticated_app() -> None:
                             else:
                                 st.caption("No saved BOM is linked to this alert.")
 
+                reveal_authenticated_page_body("Engineering Decisions")
                 stop_authenticated_page()
 
             if selected_decision:
