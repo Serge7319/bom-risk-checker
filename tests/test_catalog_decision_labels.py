@@ -134,6 +134,38 @@ class DecisionQueueTests(unittest.TestCase):
         affected = decision_queue_view(rows, scope="boms", today=today)
         self.assertEqual([row["mpn"] for row, _status in affected["rows"]], ["MMM"])
 
+    def test_affected_bom_scope_groups_component_alerts_by_saved_bom(self):
+        today = date(2026, 10, 9)
+        rows = [
+            {
+                "mpn": "U1",
+                "status": "Open",
+                "decision_id": "alert-1",
+                "related_boms": [
+                    {"id": "bom-a", "name": "Controller · Rev A"},
+                    {"id": "bom-b", "name": "Power Board · Rev B"},
+                ],
+            },
+            {
+                "mpn": "U2",
+                "status": "Resolved",
+                "decision_id": "alert-2",
+                "related_boms": [{"id": "bom-a", "name": "Controller · Rev A"}],
+            },
+        ]
+
+        view = decision_queue_view(rows, scope="boms", today=today)
+
+        self.assertEqual(view["affected"], 2)
+        self.assertEqual(
+            [(bom["id"], bom["name"], bom["affected_components"], bom["open_decisions"])
+             for bom in view["boms"]],
+            [
+                ("bom-a", "Controller · Rev A", 2, 1),
+                ("bom-b", "Power Board · Rev B", 1, 1),
+            ],
+        )
+
     def test_monitoring_workflow_status_is_not_a_resolution_without_closing_event(self):
         today = date(2026, 10, 9)
         self.assertEqual(

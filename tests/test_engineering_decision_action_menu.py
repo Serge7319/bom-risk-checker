@@ -8,6 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 APPROVED = (ROOT / "src" / "ui" / "approved_pages.py").read_text(encoding="utf-8")
 CORE_UI = (ROOT / "src" / "ui" / "core_premium_ui.py").read_text(encoding="utf-8")
+NAV_RECOVERY = (ROOT / "src" / "assets" / "css" / "navigation_recovery.css").read_text(encoding="utf-8")
 
 
 class EngineeringDecisionQueueActionTests(unittest.TestCase):
@@ -50,6 +51,14 @@ class EngineeringDecisionQueueActionTests(unittest.TestCase):
         self.assertIn("z-index:3", card)
         self.assertIn("pointer-events:none", card)
         self.assertIn("z-index:1", click_target)
+
+    def test_navigation_icons_and_decision_packet_keep_distinct_workspace_geometry(self):
+        self.assertIn("padding-left: 54px !important", NAV_RECOVERY)
+        self.assertIn("left: 12px !important", NAV_RECOVERY)
+        self.assertIn("max-width: 1440px !important", NAV_RECOVERY)
+        self.assertIn("cv-decision-table-heading.owner", NAV_RECOVERY)
+        self.assertIn("cv-decision-table-heading.due-date", NAV_RECOVERY)
+        self.assertIn("cv-decision-table-heading.actions", NAV_RECOVERY)
 
 
 if __name__ == "__main__":
