@@ -317,12 +317,7 @@ def search_digikey_substitutions(part_number: str) -> list[dict]:
             if not mpn or mpn_key == _mpn_key(requested):
                 continue
             manufacturer = item.get("Manufacturer") or {}
-            product_status = item.get("ProductStatus")
-            lifecycle_status = (
-                infer_digikey_lifecycle(item)
-                if product_status not in (None, "", {})
-                else "Unknown"
-            )
+            lifecycle_status = infer_digikey_lifecycle(item)
             substitute_type = normalize_substitute_type(item.get("SubstituteType"))
             digikey_part_number = str(item.get("DigiKeyProductNumber") or "").strip()
             product_url = str(item.get("ProductUrl") or "").strip()
@@ -357,6 +352,11 @@ def search_digikey_substitutions(part_number: str) -> list[dict]:
                     else str(manufacturer)
                 ),
                 "description": str(item.get("Description") or "").strip(),
+                "primary_category": _digikey_category_text(
+                    item.get("PrimaryCategory")
+                    or item.get("ProductCategory")
+                    or item.get("Category")
+                ),
                 "stock_total": parse_stock_total(item.get("QuantityAvailable")),
                 "unit_price": _as_number(item.get("UnitPrice"), 0.0),
                 "product_detail_url": product_url,
@@ -439,6 +439,7 @@ def search_digikey_catalog_candidates(part_number: str, *, limit: int = 12) -> l
                 "manufacturer_part_number": mpn,
                 "manufacturer": normalized.get("manufacturer", ""),
                 "description": normalized.get("description", ""),
+                "primary_category": normalized.get("primary_category", ""),
                 "image_url": normalized.get("image_url", ""),
                 "architecture": normalized.get("architecture", ""),
                 "stock_total": normalized.get("stock_total", 0),
@@ -539,6 +540,11 @@ def normalize_digikey_product(product: dict) -> dict:
         if isinstance(product.get("Description"), dict)
         else str(product.get("Description", ""))
     )
+    primary_category = _digikey_category_text(
+        product.get("PrimaryCategory")
+        or product.get("ProductCategory")
+        or product.get("Category")
+    )
 
     architecture = infer_architecture_from_description(description)
     channel_count = infer_channel_count_from_description(description)
@@ -635,6 +641,7 @@ def normalize_digikey_product(product: dict) -> dict:
     unit_price_currency = _digikey_recorded_currency(product)
     return {
         "lifecycle_status": infer_digikey_lifecycle(product),
+        "primary_category": primary_category,
         "stock_total": stock_total,
         "unit_price": extract_digikey_price(product),
         "currency": unit_price_currency,
@@ -683,6 +690,7 @@ def normalize_digikey_product(product: dict) -> dict:
 def _digikey_evidence_fields(normalized: dict) -> dict:
     """Keep supplier parametric values on a catalog candidate."""
     keys = (
+        "primary_category",
         "package",
         "pin_count",
         "mounting_style",
@@ -783,12 +791,38 @@ def extract_digikey_price(product: dict) -> float:
     return 0.0
 
 def infer_digikey_lifecycle(product: dict) -> str:
-    status = product.get("ProductStatus", "")
+    """Extract DigiKey lifecycle enum labels from scalar or enum-object payloads."""
+    status = (
+        product.get("ProductStatus")
+        or product.get("LifecycleStatus")
+        or product.get("ProductLifecycleStatus")
+        or ""
+    )
 
-    if isinstance(status, dict):
-        status = status.get("Status", "")
+    def _enum_label(value: object) -> str:
+        if isinstance(value, dict):
+            for key in (
+                "Status", "StatusName", "Name", "Value", "Label", "Description", "Text",
+            ):
+                nested = value.get(key)
+                if isinstance(nested, str) and nested.strip():
+                    return nested.strip()
+                if isinstance(nested, dict):
+                    text = _enum_label(nested)
+                    if text:
+                        return text
+            return ""
+        if isinstance(value, (list, tuple)):
+            for item in value:
+                text = _enum_label(item)
+                if text:
+                    return text
+            return ""
+        if isinstance(value, str):
+            return value.strip()
+        return ""
 
-    status_text = str(status).strip()
+    status_text = _enum_label(status)
 
     if status_text:
         return status_text
@@ -796,6 +830,32 @@ def infer_digikey_lifecycle(product: dict) -> str:
     # A catalog match proves the part is listed, not that the manufacturer
     # considers it active. Only report lifecycle when DigiKey supplies a status.
     return "Unknown"
+
+
+def _digikey_category_text(value: object) -> str:
+    """Extract human-readable category labels from DigiKey category objects."""
+    if isinstance(value, dict):
+        labels = []
+        for key, item in value.items():
+            if str(key).casefold() in {
+                "name", "categoryname", "primarycategory", "productcategory",
+                "subcategory", "subcategories", "parentcategory", "description",
+            }:
+                text = _digikey_category_text(item)
+                if text:
+                    labels.append(text)
+        if not labels:
+            for item in value.values():
+                if isinstance(item, (dict, list, tuple)):
+                    text = _digikey_category_text(item)
+                    if text:
+                        labels.append(text)
+        return " ".join(dict.fromkeys(labels))
+    if isinstance(value, (list, tuple)):
+        return " ".join(filter(None, (_digikey_category_text(item) for item in value)))
+    if isinstance(value, str):
+        return value.strip()
+    return ""
 
 
 def default_digikey_result(part_number: str) -> dict:

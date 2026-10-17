@@ -189,6 +189,33 @@ class DigiKeySubstitutionTests(unittest.TestCase):
         self.assertEqual(results[0]["evidence_type"], "Distributor catalog match")
         self.assertEqual(results[0]["substitute_type"], "Similar")
 
+    def test_lifecycle_parser_reads_common_digikey_enum_object_shapes(self):
+        cases = (
+            ({"ProductStatus": {"Id": 0, "Status": "Active"}}, "Active"),
+            ({"ProductStatus": {"Name": "NRND"}}, "NRND"),
+            ({"LifecycleStatus": {"Value": "EOL"}}, "EOL"),
+        )
+        for product, expected in cases:
+            with self.subTest(product=product):
+                self.assertEqual(self.client.infer_digikey_lifecycle(product), expected)
+
+    def test_catalog_candidate_preserves_lifecycle_and_primary_category(self):
+        self.client.requests.post = lambda *_args, **_kwargs: _Response({"Products": [{
+            "ManufacturerProductNumber": "LM7805ACTG",
+            "DigiKeyProductNumber": "516-LM7805ACTG-ND",
+            "Manufacturer": {"Name": "onsemi"},
+            "ProductStatus": {"Id": 0, "Name": "Active"},
+            "PrimaryCategory": {"CategoryId": 32, "Name": "Integrated Circuits (ICs)"},
+            "Description": {"ProductDescription": "IC REG LINEAR 5V 1A TO220"},
+            "QuantityAvailable": 12140,
+        }]})
+
+        result = self.client.search_digikey_catalog_candidates("LM7805ACT")[0]
+
+        self.assertEqual(result["lifecycle_status"], "Active")
+        self.assertEqual(result["primary_category"], "Integrated Circuits (ICs)")
+        self.assertEqual(result["stock_total"], 12140)
+
 
     def test_normalizes_capacitor_parametric_evidence(self):
         product = {
