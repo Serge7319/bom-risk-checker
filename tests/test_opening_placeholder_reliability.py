@@ -148,6 +148,24 @@ def test_same_page_reruns_reuse_onboarding_and_command_palette_reads():
     assert 'st.session_state["cadivor_workspace_command_cache_route"] = app_mode' in command_block
 
 
+def test_opening_profile_read_does_not_run_session_aware_loader_in_worker():
+    runtime = _source("src/authenticated_runtime.py")
+    profile_branch = runtime.split(
+        'with timed_phase("runtime.load_user_data", operation="load_user_data")', 1
+    )[1].split("clear_login_handoff()", 1)[0]
+    profile_method = runtime.split("def get_user_profile(", 1)[1].split(
+        "def update_user_profile_fields(", 1
+    )[0]
+    helper = _source("src/services/opening_profile_read.py")
+    worker = helper.split("def _read()", 1)[1].split("profile, status = run_with_budget", 1)[0]
+
+    assert "run_with_read_budget(load_user_data)" not in profile_branch
+    assert "load_profile_for_opening(" in profile_branch
+    assert "auth_user is _AUTH_USER_PROFILE_UNSET" in profile_method
+    assert "st.session_state" not in worker
+    assert "run_with_budget(_read)" in helper
+
+
 def test_nonessential_hang_does_not_consume_first_page_budget():
     begin_first_page_budget(0.6)
 
