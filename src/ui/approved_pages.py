@@ -1305,7 +1305,7 @@ def _render_saved_bom_actions(column, analysis_id: str, *, scope: str, row_key: 
                         arm_opening=False,
                     )
                 if st.button(
-                    "BOM Risk",
+                    "Engineering Intelligence",
                     key=f"approved_{scope}_action_bom_risk_{row_key}",
                     use_container_width=True,
                 ):
@@ -2627,7 +2627,7 @@ def render_decision_queue(records: list[dict[str, Any]] | None) -> None:
                         with st.container(key=f"approved_decision_menu_{index}"):
                             with st.popover(
                                 "⋯",
-                                help="Open the original BOM, BOM Risk, the detailed report, or find a replacement.",
+                                help="Open the original BOM, Engineering Intelligence, the detailed report, or find a replacement.",
                             ):
                                 if analysis_id:
                                     if st.button(
@@ -2642,7 +2642,7 @@ def render_decision_queue(records: list[dict[str, Any]] | None) -> None:
                                             arm_opening=False,
                                         )
                                     if st.button(
-                                        "BOM Risk",
+                                        "Engineering Intelligence",
                                         key=f"approved_decision_action_risk_{index}",
                                         use_container_width=True,
                                     ):
@@ -5074,7 +5074,10 @@ def render_replacement_search() -> None:
         part_key,
         toggle_comparison_candidate,
     )
-    from src.alternative_finder_state import init_alternative_finder_state
+    from src.alternative_finder_state import (
+        has_durable_search_for_mpn,
+        init_alternative_finder_state,
+    )
     from src.ui.navigation import (
         apply_alternative_finder_prefill,
         consume_alternative_finder_context,
@@ -5186,6 +5189,12 @@ def render_replacement_search() -> None:
             ):
                 if not str(original.get(field) or "").strip():
                     original[field] = source_context.get(context_field) or ""
+    if not has_durable_search_for_mpn(st.session_state, query):
+        # The initial Finder view is only a search form. Keep a stale prior
+        # result hidden while the user edits a new query; show results and
+        # filters only after that exact MPN has finished searching.
+        st.session_state["approved_replacement_compare_candidates"] = []
+        return
     fit_filter, life_filter, stock_filter, risk_filter, sort_by = st.columns(5)
     with fit_filter:
         fit_choice = st.selectbox("Parametric fit", ["All"], key="approved_fit_filter")

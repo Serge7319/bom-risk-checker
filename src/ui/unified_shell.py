@@ -124,29 +124,47 @@ def inject_unified_shell_css() -> None:
         [class*="st-key-cv_foundation_nav_"] button[data-testid="baseButton-primary"]{
           background:#173c81!important;color:#fff!important
         }
-        /* Streamlit centers the button's inner label wrapper by default. Keep
-           the rail labels on one left edge beside their icons. */
-        .st-key-cv_foundation_navigation .stButton>button{
-          justify-content:flex-start!important;text-align:left!important;gap:10px!important
+        /* Keep the icon in its established left column and give the label its
+           own left-aligned column. The label layout cannot move the icon. */
+        section[data-testid="stMain"] .st-key-cv_foundation_navigation
+          .stButton>button[kind="secondary"]{
+          position:relative!important;justify-content:flex-start!important;
+          padding-left:46px!important
         }
-        .st-key-cv_foundation_navigation .stButton>button>div{
-          display:flex!important;flex:1 1 auto!important;width:100%!important;min-width:0!important;
+        section[data-testid="stMain"] .st-key-cv_foundation_navigation
+          .stButton>button[kind="secondary"]::before{
+          position:absolute!important;left:12px!important;top:50%!important;
+          transform:translateY(-50%)!important;margin:0!important
+        }
+        section[data-testid="stMain"] .st-key-cv_foundation_navigation
+          .stButton>button[kind="secondary"]>div{
+          display:flex!important;flex:1 1 auto!important;width:auto!important;min-width:0!important;
           justify-content:flex-start!important;align-items:center!important;margin:0!important
         }
-        .st-key-cv_foundation_navigation .stButton>button p,
-        .st-key-cv_foundation_navigation .stButton>button span{
-          width:100%!important;text-align:left!important;margin-left:0!important
+        section[data-testid="stMain"] .st-key-cv_foundation_navigation
+          .stButton>button[kind="secondary"] p,
+        section[data-testid="stMain"] .st-key-cv_foundation_navigation
+          .stButton>button[kind="secondary"] span{
+          text-align:left!important
         }
         /* Route-specific parent keys make the selected row independent of a
            stale Streamlit button kind during a fast session rerun. */
-        .st-key-cv_foundation_navigation [class*="st-key-cv_foundation_nav_active_"] .stButton>button,
-        .st-key-cv_foundation_navigation [class*="st-key-cv_foundation_nav_active_"] .stButton>button:hover{
+        section[data-testid="stMain"] .st-key-cv_foundation_navigation
+          [class*="st-key-cv_foundation_nav_active_"] .stButton>button,
+        section[data-testid="stMain"] .st-key-cv_foundation_navigation
+          [class*="st-key-cv_foundation_nav_active_"] .stButton>button:hover{
           background:#f8fbff!important;border:1px solid #bfdbfe!important;
           box-shadow:inset 2px 0 0 #2563eb!important;color:#1d4ed8!important;font-weight:760!important
         }
-        .st-key-cv_foundation_navigation [class*="st-key-cv_foundation_nav_active_"] .stButton>button p,
-        .st-key-cv_foundation_navigation [class*="st-key-cv_foundation_nav_active_"] .stButton>button span{
+        section[data-testid="stMain"] .st-key-cv_foundation_navigation
+          [class*="st-key-cv_foundation_nav_active_"] .stButton>button p,
+        section[data-testid="stMain"] .st-key-cv_foundation_navigation
+          [class*="st-key-cv_foundation_nav_active_"] .stButton>button span{
           color:#1d4ed8!important;text-align:left!important
+        }
+        section[data-testid="stMain"] .st-key-cv_foundation_navigation
+          [class*="st-key-cv_foundation_nav_active_"] .stButton>button::before{
+          opacity:1!important;filter:brightness(0) saturate(100%) invert(27%) sepia(98%) saturate(1800%) hue-rotate(213deg) brightness(95%) contrast(95%)!important
         }
         </style>
         """ + _approved_shell_css(),
@@ -568,9 +586,22 @@ def render_unified_shell(
                 on_click=_commit_signout,
             )
 
-    active_route = str(current_page or st.session_state.get("cadivor_route") or "").strip()
+    active_route = str(
+        st.session_state.get("cadivor_route")
+        or st.session_state.get("app_mode")
+        or current_page
+        or ""
+    ).strip()
     detailed_risk = bool(st.session_state.get("cadivor_show_detailed_risk"))
     active_label = active_nav_label(active_route, detailed_risk=detailed_risk)
+    nav_params = st.session_state.get("cadivor_nav_params")
+    nav_params = nav_params if isinstance(nav_params, dict) else {}
+    active_analysis_id = str(
+        st.session_state.get("cadivor_active_analysis_id")
+        or st.session_state.get("analysis_id")
+        or nav_params.get("analysis_id")
+        or ""
+    ).strip()
 
     with st.container(key="cv_foundation_navigation"):
         st.markdown(
@@ -609,7 +640,9 @@ def render_unified_shell(
                 offer_enabled=one_time_report_enabled(),
             )
 
-        source_groups = shared_nav_groups()
+        source_groups = shared_nav_groups(
+            include_analysis_reports=bool(active_analysis_id)
+        )
         for group_name, configured_rows in source_groups:
             rows = configured_rows
             if group_name == "Workspace" and active_route == "BOM Settings":
@@ -638,16 +671,17 @@ def render_unified_shell(
                 else:
                     mode = ""
                 is_active = label == active_label
-                # Give active and inactive rows distinct Streamlit container
-                # identities. This forces the highlight to follow the route
-                # immediately instead of preserving Home's old button styling.
+                # Give active and inactive rows distinct container identities.
+                # The parent class controls visual state; all button widgets use
+                # the same kind so Streamlit cannot leave Home's old primary
+                # styling behind when the route changes.
                 item_state = "active" if is_active else "idle"
                 with st.container(key=f"cv_foundation_nav_{item_state}_{slug}"):
                     st.button(
                         label,
                         key=f"cv_foundation_nav_{slug}",
                         use_container_width=True,
-                        type="primary" if is_active else "secondary",
+                        type="secondary",
                         on_click=_open_rail_item,
                         args=(destination, mode),
                     )
