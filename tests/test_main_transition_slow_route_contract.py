@@ -20,10 +20,29 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
             SOURCE,
         )
         self.assertIn("clip-path:inset(0)!important", SOURCE)
+        self.assertIn("z-index:2147483000!important", SOURCE)
+        self.assertIn("pointer-events:auto!important", SOURCE)
         self.assertIn(
             '> [data-testid="stElementContainer"][data-stale="true"]:not(',
             SOURCE,
         )
+
+    def test_route_cover_is_painted_before_shell_role_lookup(self):
+        runtime = (ROOT / "src" / "authenticated_runtime.py").read_text(encoding="utf-8")
+        cover = runtime.index(
+            'mount_main_transition_loading(_shell_route, paint_markup=True)'
+        )
+        role_lookup = runtime.index("def _read_users_role_for_shell")
+        self.assertLess(cover, role_lookup)
+
+    def test_dashboard_cover_is_released_after_dashboard_render(self):
+        runtime = (ROOT / "src" / "authenticated_runtime.py").read_text(encoding="utf-8")
+        start = runtime.index("# ---------- Dashboard ----------")
+        end = runtime.index('if app_mode == "Analysis Details":', start)
+        dashboard = runtime[start:end]
+        self.assertNotIn('reveal_authenticated_page_body("Dashboard")', dashboard)
+        self.assertIn("render_home(", dashboard)
+        self.assertIn("stop_authenticated_page()", dashboard)
 
     def test_every_real_route_change_keeps_opening_owner_even_with_warm_cache(self):
         tree = ast.parse(SOURCE)
