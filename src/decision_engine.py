@@ -538,10 +538,15 @@ def build_decision_center(
     if isinstance(alert_df, pd.DataFrame) and not alert_df.empty:
         for row in alert_df.to_dict("records"):
             decision = _alert_decision(row)
-            related_analysis = analyses_by_id.get(
-                _text(decision.get("analysis_id"))
-            )
-            if not related_analysis and not _text(decision.get("analysis_id")):
+            requested_analysis_id = _text(decision.get("analysis_id"))
+            related_analysis = analyses_by_id.get(requested_analysis_id)
+            # Monitoring rows can outlive their saved BOM (or its workspace
+            # membership). Do not expose a deep link unless that analysis is
+            # available to the current decision workspace; infer a fresh,
+            # scoped link from the component rows below when possible.
+            if requested_analysis_id and related_analysis is None:
+                decision["analysis_id"] = ""
+            if not related_analysis:
                 related_ids = part_analysis_ids.get(
                     _text(decision.get("mpn")).casefold(), set()
                 )
@@ -602,6 +607,47 @@ def build_decision_center(
             ):
                 if saved_payload.get(key):
                     decision[key] = saved_payload[key]
+        if (
+            str(decision.get("source") or "").casefold() == "monitoring"
+            and decision_target_type(decision) == "component"
+        ):
+            # Decision payloads are durable and may refer to a BOM that was
+            # later deleted or moved out of the active workspace. Validate
+            # both direct and saved context IDs after applying persisted state.
+            direct_analysis_id = _text(decision.get("analysis_id"))
+            if direct_analysis_id not in analyses_by_id:
+                decision["analysis_id"] = ""
+                direct_analysis_id = ""
+            if direct_analysis_id:
+                decision.pop("context_analysis_id", None)
+            else:
+                related_ids = part_analysis_ids.get(
+                    _text(decision.get("mpn")).casefold(), set()
+                )
+                related_boms = [
+                    {
+                        "id": analysis_id,
+                        "name": _analysis_context_title(analyses_by_id[analysis_id]),
+                    }
+                    for analysis_id in related_ids
+                    if analysis_id in analyses_by_id
+                ]
+                related_boms.sort(key=lambda bom: (bom["name"].casefold(), bom["id"]))
+                if related_boms:
+                    decision["related_boms"] = related_boms
+                    valid_context_ids = {bom["id"] for bom in related_boms}
+                    saved_context_id = _text(decision.get("context_analysis_id"))
+                    if saved_context_id not in valid_context_ids:
+                        saved_context_id = ""
+                    if len(related_boms) == 1:
+                        decision["context_analysis_id"] = related_boms[0]["id"]
+                    elif saved_context_id:
+                        decision["context_analysis_id"] = saved_context_id
+                    else:
+                        decision.pop("context_analysis_id", None)
+                else:
+                    decision.pop("related_boms", None)
+                    decision.pop("context_analysis_id", None)
         final.append(enrich_decision(decision))
 
     final.sort(

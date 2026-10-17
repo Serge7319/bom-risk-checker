@@ -72,6 +72,52 @@ class AlternativeFinderSearchTests(unittest.TestCase):
         self.assertIn("candidate_engine", breakdown["stages_ms"])
         self.assertGreaterEqual(breakdown["elapsed_ms"], breakdown["total_ms"])
 
+    def test_unverified_source_identity_does_not_surface_keyword_catalog_hits(self):
+        session: dict = {}
+        self.state.init_alternative_finder_state(session)
+        self.aggregator.get_best_part_data = lambda _part: {
+            "manufacturer_part_number": "DHT11",
+            "manufacturer": "",
+            "supplier_data_verified": False,
+            "all_supplier_results": [],
+        }
+        self.engine.suggest_alternatives_v2 = lambda _part: self.fail(
+            "catalog search must not run without an exact supplier match for the source"
+        )
+
+        outcome = self.search.run_alternative_finder_search(session, "DHT11")
+        result = session[self.state.ALT_FINDER_RESULT_KEY]
+
+        self.assertEqual(outcome["candidate_count"], 0)
+        self.assertEqual(result["candidates"], [])
+        self.assertIn("No exact supplier match", result["lookup_error"])
+        self.assertEqual(result["discovery_metadata"]["catalog_count"], 0)
+        self.assertEqual(result["discovery_metadata"]["candidate_status"], result["lookup_error"])
+
+    def test_verified_distributor_order_code_still_allows_alternative_search(self):
+        session: dict = {}
+        self.state.init_alternative_finder_state(session)
+        self.aggregator.get_best_part_data = lambda _part: {
+            "manufacturer_part_number": "LM7805ACTG",
+            "digikey_part_number": "LM7805ACTG-ND",
+            "supplier_data_verified": True,
+            "all_supplier_results": [],
+        }
+        self.engine.suggest_alternatives_v2 = lambda _part: [
+            {"Alternative Part": "MC7805ACTG", "Manufacturer": "onsemi"}
+        ]
+        self.engine.get_alternative_discovery_metadata = lambda: {
+            "providers": {"DigiKey": {"substitutions": "ok"}},
+            "has_incomplete_evidence": False,
+        }
+
+        outcome = self.search.run_alternative_finder_search(session, "LM7805ACTG-ND")
+        result = session[self.state.ALT_FINDER_RESULT_KEY]
+
+        self.assertEqual(outcome["candidate_count"], 1)
+        self.assertEqual(result["candidates"][0]["Alternative Part"], "MC7805ACTG")
+        self.assertEqual(result["lookup_error"], "")
+
     def test_fail_alternative_finder_search_records_safe_diagnostics(self):
         session: dict = {}
         self.state.fail_alternative_finder_search(

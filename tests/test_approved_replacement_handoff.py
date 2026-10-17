@@ -59,7 +59,33 @@ def test_contextual_replacement_has_direct_return_to_bom_risk():
     assert 'st.session_state["cadivor_ei_report_tab"] = "BOM Risk"' in page_source
     assert 'st.session_state["cadivor_approved_alternatives_flash"] =' in page_source
     assert "Saved approvals stay with this BOM across analysis reruns" in page_source
-    assert 'for context_key in ("source_page", "project_name", "bom_name"):' in navigation_source
+    assert '"return_decision_id"' in navigation_source
+
+
+def test_decision_packet_replacement_handoff_returns_to_the_same_review_packet():
+    root = Path(__file__).resolve().parents[1]
+    page_source = (root / "src" / "ui" / "approved_pages.py").read_text(encoding="utf-8")
+    renderer = page_source.split("def render_replacement_search", 1)[1].split(
+        "def render_compare_live", 1
+    )[0]
+
+    assert 'return_page == "Engineering Decisions" and return_decision_id' in renderer
+    assert '"← Back to decision review"' in renderer
+    assert 'navigate_to("Engineering Decisions", decision_id=return_decision_id)' in renderer
+    assert "_navigate_back_to_bom_review(source_context)" in renderer
+
+
+def test_compare_page_has_context_preserving_return_to_finder():
+    source = (
+        Path(__file__).resolve().parents[1] / "src" / "ui" / "approved_pages.py"
+    ).read_text(encoding="utf-8")
+    compare = source.split("def render_compare_live", 1)[1].split(
+        "def render_datasheet_live", 1
+    )[0]
+
+    assert '"← Back to replacement search"' in compare
+    assert 'navigate_to("Alternative Finder", **return_params)' in compare
+    assert '"return_decision_id"' in compare
 
 
 def test_approving_from_a_bom_returns_to_the_updated_engineering_report():

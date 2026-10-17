@@ -69,7 +69,7 @@ _NON_COMPONENT_CATEGORY_RE = re.compile(
     re.IGNORECASE,
 )
 _NON_COMPONENT_DESCRIPTION_RE = re.compile(
-    r"\b(?:evaluation|development|breakout)\s+boards?\b"
+    r"\bmodules?\b|\b(?:evaluation|development|breakout)\s+boards?\b"
     r"|\b(?:development|evaluation|starter|hobbyist)\s+kits?\b",
     re.IGNORECASE,
 )
@@ -93,7 +93,8 @@ def _category_text(value: object) -> str:
         for key, item in value.items():
             if str(key).casefold() in {
                 "name", "categoryname", "productcategory", "primarycategory",
-                "subcategory", "subcategories", "parentcategory", "description",
+                "productcategoryname", "subcategory", "subcategories",
+                "parentcategory", "description", "displayname", "label", "value", "text",
             }:
                 text = _category_text(item)
                 if text:

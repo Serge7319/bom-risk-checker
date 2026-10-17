@@ -216,6 +216,16 @@ class DigiKeySubstitutionTests(unittest.TestCase):
         self.assertEqual(result["primary_category"], "Integrated Circuits (ICs)")
         self.assertEqual(result["stock_total"], 12140)
 
+    def test_category_parser_reads_nested_supplier_value_and_product_category_name(self):
+        cases = (
+            ({"CategoryId": 42, "Value": "Development Boards, Kits, Programmers"},
+             "Development Boards, Kits, Programmers"),
+            ({"ProductCategoryId": 7, "ProductCategoryName": "Sensors"}, "Sensors"),
+        )
+        for payload, expected in cases:
+            with self.subTest(payload=payload):
+                self.assertEqual(self.client._digikey_category_text(payload), expected)
+
 
     def test_normalizes_capacitor_parametric_evidence(self):
         product = {

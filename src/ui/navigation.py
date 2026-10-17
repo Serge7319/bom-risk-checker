@@ -378,6 +378,10 @@ def build_alternative_finder_context(
     analysis_id: str = "",
     part_id: str = "",
     source_page: str = "",
+    return_analysis_id: str = "",
+    return_page: str = "",
+    return_mpn: str = "",
+    return_decision_id: str = "",
     project_name: str = "",
     bom_name: str = "",
     prefill_id: str = "",
@@ -385,7 +389,7 @@ def build_alternative_finder_context(
     """Return one canonical Alternative Finder navigation payload."""
     trimmed_mpn = str(mpn or "").strip()
     normalized_mpn = normalize_part_number(trimmed_mpn) or trimmed_mpn.upper()
-    return {
+    context = {
         "mpn": trimmed_mpn,
         "normalized_mpn": normalized_mpn,
         "manufacturer": str(manufacturer or "").strip(),
@@ -400,6 +404,16 @@ def build_alternative_finder_context(
         "prefill_id": str(prefill_id or "").strip(),
         "intent": ALT_FINDER_INTENT,
     }
+    for key, value in (
+        ("return_analysis_id", return_analysis_id),
+        ("return_page", return_page),
+        ("return_mpn", return_mpn),
+        ("return_decision_id", return_decision_id),
+    ):
+        normalized = str(value or "").strip()
+        if normalized:
+            context[key] = normalized
+    return context
 
 
 def navigate_to_alternative_finder(
@@ -432,6 +446,10 @@ def navigate_to_alternative_finder(
         analysis_id=analysis_id,
         part_id=part_id,
         source_page=source_page,
+        return_analysis_id=return_analysis_id,
+        return_page=return_page,
+        return_mpn=return_mpn,
+        return_decision_id=return_decision_id,
         project_name=project_name,
         bom_name=bom_name,
         prefill_id=prefill_id or uuid4().hex,
@@ -672,6 +690,10 @@ def consume_alternative_finder_context(
         analysis_id=str(qp_value("analysis_id", "") or ""),
         part_id=str(qp_value("part_id", "") or ""),
         source_page=str(qp_value("source_page", "") or ""),
+        return_analysis_id=str(qp_value("return_analysis_id", "") or ""),
+        return_page=str(qp_value("return_page", "") or ""),
+        return_mpn=str(qp_value("return_mpn", "") or ""),
+        return_decision_id=str(qp_value("return_decision_id", "") or ""),
         project_name=str(qp_value("project_name", "") or ""),
         bom_name=str(qp_value("bom_name", "") or ""),
         prefill_id=prefill_id,
@@ -679,6 +701,13 @@ def consume_alternative_finder_context(
     return_analysis_id = str(qp_value("return_analysis_id", "") or context["analysis_id"]).strip()
     if return_analysis_id:
         st.session_state[ALT_FINDER_RETURN_ANALYSIS_KEY] = return_analysis_id
+    for context_key, state_key in (
+        ("return_page", ALT_FINDER_RETURN_PAGE_KEY),
+        ("return_mpn", ALT_FINDER_RETURN_MPN_KEY),
+        ("return_decision_id", ALT_FINDER_RETURN_DECISION_ID_KEY),
+    ):
+        if context.get(context_key):
+            st.session_state[state_key] = context[context_key]
     return_component = str(qp_value("return_component", "") or "").strip()
     if return_component:
         st.session_state[ALT_FINDER_RETURN_COMPONENT_KEY] = return_component
@@ -722,7 +751,16 @@ def apply_alternative_finder_prefill(context: Mapping[str, str]) -> None:
         "lifecycle": context.get("lifecycle", ""),
         "risk": context.get("risk", ""),
     }
-    for context_key in ("source_page", "project_name", "bom_name"):
+    for context_key in (
+        "source_page",
+        "project_name",
+        "bom_name",
+        "prefill_id",
+        "return_analysis_id",
+        "return_page",
+        "return_mpn",
+        "return_decision_id",
+    ):
         if context.get(context_key):
             source_context[context_key] = context[context_key]
     st.session_state["alternative_prefill_source_context"] = source_context

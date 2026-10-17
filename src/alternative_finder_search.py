@@ -406,25 +406,6 @@ def run_alternative_finder_search(
                     safe_risk = calculate_risk(safe_original) or {}
                 except Exception:
                     safe_risk = {}
-                returned_mpn = str(safe_original.get("manufacturer_part_number") or "").strip()
-                entered_key = re.sub(r"[^A-Za-z0-9]", "", entered_mpn).casefold()
-                returned_key = re.sub(r"[^A-Za-z0-9]", "", returned_mpn).casefold()
-                exact_source_match = bool(
-                    safe_original.get("supplier_data_verified")
-                    and entered_key
-                    and returned_key == entered_key
-                )
-                if not exact_source_match:
-                    if returned_mpn and returned_key != entered_key:
-                        safe_lookup_error = (
-                            f'No exact supplier match was found for "{entered_mpn}". '
-                            f'Supplier records returned "{returned_mpn}" instead.'
-                        )
-                    else:
-                        safe_lookup_error = (
-                            f'No exact supplier match was found for "{entered_mpn}". '
-                            "Enter the complete manufacturer part number, including package or suffix where applicable."
-                        )
             except Exception as original_exc:
                 if _is_streamlit_control_flow(original_exc):
                     raise
@@ -436,16 +417,65 @@ def run_alternative_finder_search(
                 )
                 search_run.log_stage_warning(original_exc, stage=STAGE_ORIGINAL_LOOKUP)
 
+        returned_mpn = str(safe_original.get("manufacturer_part_number") or "").strip()
+        entered_key = re.sub(r"[^A-Za-z0-9]", "", entered_mpn).casefold()
+        verified_source_keys = {
+            re.sub(r"[^A-Za-z0-9]", "", str(safe_original.get(field) or "")).casefold()
+            for field in (
+                "manufacturer_part_number",
+                "digikey_part_number",
+                "order_part_number",
+                "mouser_part_number",
+                "newark_part_number",
+                "element14_part_number",
+            )
+            if str(safe_original.get(field) or "").strip()
+        }
+        exact_source_match = bool(
+            safe_original.get("supplier_data_verified")
+            and entered_key
+            and entered_key in verified_source_keys
+        )
+        if not exact_source_match and not safe_lookup_error:
+            returned_key = re.sub(r"[^A-Za-z0-9]", "", returned_mpn).casefold()
+            if returned_mpn and returned_key != entered_key:
+                safe_lookup_error = (
+                    f'No exact supplier match was found for "{entered_mpn}". '
+                    f'Supplier records returned "{returned_mpn}" instead.'
+                )
+            else:
+                safe_lookup_error = (
+                    f'No exact supplier match was found for "{entered_mpn}". '
+                    "Enter the complete manufacturer part number, including package or suffix where applicable."
+                )
+
         safe_original = _supplement_resolved_part_evidence(safe_original)
         candidates: list = []
         discovery: dict = {}
-        with search_run.stage(STAGE_CANDIDATE_ENGINE):
-            search_run.operation = "suggest_alternatives_v2"
-            search_run.provider = "digikey"
-            candidates = suggest_alternatives_v2(entered_mpn) or []
-        discovery = get_alternative_discovery_metadata() or {}
+        if exact_source_match:
+            with search_run.stage(STAGE_CANDIDATE_ENGINE):
+                search_run.operation = "suggest_alternatives_v2"
+                search_run.provider = "digikey"
+                candidates = suggest_alternatives_v2(entered_mpn) or []
+            discovery = get_alternative_discovery_metadata() or {}
+        else:
+            # A keyword-like or unmatched source can return unrelated catalog
+            # hits (e.g. products whose MPN merely contains the query). Do not
+            # present those as replacement choices until the source identity
+            # itself is verified by a supplier.
+            discovery = {
+                "original_mpn": entered_mpn,
+                "retrieved_at": "",
+                "providers": {},
+                "explicit_count": 0,
+                "catalog_count": 0,
+                "provider_failures": [],
+                "candidates": [],
+                "has_incomplete_evidence": True,
+                "candidate_status": safe_lookup_error,
+            }
         discovery = merge_supplier_failures_into_discovery(discovery, safe_original)
-        if not candidates:
+        if not candidates and exact_source_match:
             discovery["candidate_status"] = _replacement_candidate_cause(discovery)
         with search_run.stage(STAGE_PERSIST):
             canonical_mpn = str(
