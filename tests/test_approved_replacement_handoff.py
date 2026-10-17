@@ -180,13 +180,32 @@ def test_datasheet_review_is_connected_to_finder_and_compare_approval():
     )[0]
 
     assert "_render_datasheet_evidence_review(" in approvals
-    assert '"Review available datasheets"' in source
+    assert '"Analyze available datasheets"' in source
     assert "Add source manufacturer PDF" in source
     assert "Add candidate manufacturer PDF" in source
     assert "review_references_complete" in approvals
     assert "linked_documents_reviewed" in approvals
     assert "comparison_evidence={\"comparison\": comparison, \"slot\": candidate_slot}" in compare
     assert "_render_bom_replacement_approvals(" in finder
+
+
+def test_approval_explains_missing_citations_and_offers_pdf_review_at_the_gate():
+    source = (
+        Path(__file__).resolve().parents[1] / "src" / "ui" / "approved_pages.py"
+    ).read_text(encoding="utf-8")
+    approvals = source.split("def _render_bom_replacement_approvals", 1)[1].split(
+        "def render_replacement_search", 1
+    )[0]
+    datasheet_review = source.split("def _render_datasheet_evidence_review", 1)[1].split(
+        "def _approval_evidence_for_comparison", 1
+    )[0]
+
+    assert "The checkmark records your engineering attestation" in approvals
+    assert "only a placeholder" in approvals
+    assert '"Analyze available datasheets now"' in approvals
+    assert "on_click=_request_datasheet_review" in approvals
+    assert "review_request_key = f\"cadivor_alt_datasheet_review_request_{key_suffix}\"" in datasheet_review
+    assert "review_requested or review_clicked" in datasheet_review
 
 
 def test_saved_approval_exposes_datasheet_citations_and_report_links():
