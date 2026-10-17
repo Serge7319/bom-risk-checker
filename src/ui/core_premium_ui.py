@@ -73,6 +73,16 @@ def inject_core_premium_ui() -> None:
             f'<style id="cadivor-core-premium-ui" data-cadivor-layout-style="true">{css}</style>',
             unsafe_allow_html=True,
         )
+    route = str(
+        st.session_state.get("cadivor_route")
+        or st.session_state.get("app_mode")
+        or ""
+    ).strip()
+    if route == "Engineering Decisions":
+        # The review packet uses these rules for its workspace width and cards.
+        # Load them before its first paint; the final geometry pass reapplies
+        # this stylesheet later to preserve cascade precedence.
+        inject_navigation_recovery_css(prepaint=True)
 
 
 def inject_core_premium_ui_auth() -> None:
@@ -87,12 +97,17 @@ def stop_authenticated_page() -> None:
     st.stop()
 
 
-def inject_navigation_recovery_css() -> None:
+def inject_navigation_recovery_css(*, prepaint: bool = False) -> None:
     """Restore foundation navigation after late global button/KPI styles."""
     css = _load_css("navigation_recovery.css")
     if css.strip():
+        style_id = (
+            "cadivor-navigation-recovery-prepaint"
+            if prepaint
+            else "cadivor-navigation-recovery"
+        )
         st.markdown(
-            f'<style id="cadivor-navigation-recovery" data-cadivor-layout-style="true">{css}</style>',
+            f'<style id="{style_id}" data-cadivor-layout-style="true">{css}</style>',
             unsafe_allow_html=True,
         )
 
