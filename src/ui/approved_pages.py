@@ -2781,7 +2781,6 @@ def render_decision_queue(records: list[dict[str, Any]] | None) -> None:
                             navigate_to(
                                 "Engineering Decisions",
                                 decision_id=decision_id,
-                                arm_opening=False,
                             )
                     with overflow_col:
                         with st.container(key=f"approved_decision_menu_{index}"):

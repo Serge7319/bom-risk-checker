@@ -118,6 +118,9 @@ from src.monitoring_email_preferences import monitoring_email_enabled
 from src.ui.navigation import (
     ALTERNATIVE_FINDER_PAGE,
     ALT_FINDER_RETURN_COMPONENT_KEY,
+    ALT_FINDER_RETURN_DECISION_ID_KEY,
+    ALT_FINDER_RETURN_MPN_KEY,
+    ALT_FINDER_RETURN_PAGE_KEY,
     alternative_finder_href,
     apply_alternative_finder_prefill,
     begin_authenticated_page,
@@ -7684,19 +7687,25 @@ def run_authenticated_app() -> None:
         requested_decision_id = _qp_value("decision_id")
         if not requested_decision_id:
             render_decision_queue(decision_rows)
-        # Single paint path: one hero, then loading / timeout / ready body below it.
-        st.markdown(
-            '<div class="cv64-page-shell" data-testid="ed-page-shell">',
-            unsafe_allow_html=True,
-        )
-        cadivor_section_header(
-            "Engineering Decisions",
-            eyebrow="Decisions",
-            description="Open reviews waiting on you.",
-            icon="clipboard-check",
-            test_id="ed-page-hero",
-        )
-        reveal_authenticated_page_body("Engineering Decisions")
+            # Queue route uses its established page shell. A focused review has
+            # its own page heading and Home-width canvas below; mounting this
+            # generic hero there produced duplicate titles and stale shell DOM.
+            st.markdown(
+                '<div class="cv64-page-shell" data-testid="ed-page-shell"><div class="cv64-section"></div></div>',
+                unsafe_allow_html=True,
+            )
+            cadivor_section_header(
+                "Engineering Decisions",
+                eyebrow="Decisions",
+                description="Open reviews waiting on you.",
+                icon="clipboard-check",
+                test_id="ed-page-hero",
+            )
+        # Queue chrome is already distinctive, so reveal it at the existing
+        # shell-first point. A focused packet waits for stop_authenticated_page()
+        # to release the route cover after its new review layout has mounted.
+        if not requested_decision_id:
+            reveal_authenticated_page_body("Engineering Decisions")
         ed_body_ready = False
 
         if st.session_state.get(decision_timeout_key):
@@ -7720,7 +7729,6 @@ def run_authenticated_app() -> None:
                 _clear_engineering_decision_caches()
                 st.rerun()
             cadivor_button_wrap_end()
-            st.markdown("</div>", unsafe_allow_html=True)
             stop_authenticated_page()
         elif needs_decision_hydrate:
             # Pass 1: paint shell + in-page loader, then defer IO to the next run.
@@ -7728,7 +7736,6 @@ def run_authenticated_app() -> None:
             _render_ed_inline_loading(
                 detail="Preparing decision data for this workspace. Sidebar and account menu remain available."
             )
-            st.markdown("</div>", unsafe_allow_html=True)
             # st.stop() never returns — call st.rerun() directly so Pass 2 can hydrate.
             if st.session_state.get("_cadivor_authenticated_surface_ready"):
                 inject_workspace_geometry_final()
@@ -7807,7 +7814,7 @@ def run_authenticated_app() -> None:
                         key="decision_packet_missing_back",
                         type="secondary",
                     ):
-                        navigate_to("Engineering Decisions", arm_opening=False)
+                        navigate_to("Engineering Decisions")
             elif focus_part:
                 selected_decision = next(
                     (
@@ -7821,6 +7828,7 @@ def run_authenticated_app() -> None:
                 )
 
             selected_decision_context_id = ""
+            decision_bom_options = {}
             approved_alternative_records = []
             approved_alternative_load_error = False
             monitoring_component_decision = bool(
@@ -7844,12 +7852,26 @@ def run_authenticated_app() -> None:
                         if bom.get("id")
                     }
                     if bom_by_id:
-                        selected_decision_context_id = st.selectbox(
-                            "Saved BOM context for this monitoring alert",
-                            options=list(bom_by_id),
-                            format_func=lambda analysis_key: bom_by_id[analysis_key],
-                            key=f"decision_bom_context_{selected_decision['decision_id']}",
+                        decision_bom_options = bom_by_id
+                        context_widget_key = (
+                            f"decision_bom_context_{selected_decision['decision_id']}"
                         )
+                        if monitoring_component_decision:
+                            selected_decision_context_id = str(
+                                st.session_state.get(context_widget_key)
+                                or next(iter(bom_by_id), "")
+                            )
+                            if selected_decision_context_id not in bom_by_id:
+                                selected_decision_context_id = next(
+                                    iter(bom_by_id), ""
+                                )
+                        else:
+                            selected_decision_context_id = st.selectbox(
+                                "Saved BOM context for this monitoring alert",
+                                options=list(bom_by_id),
+                                format_func=lambda analysis_key: bom_by_id[analysis_key],
+                                key=context_widget_key,
+                            )
 
                 if selected_decision_context_id:
                     decision_mpn = str(
@@ -7892,15 +7914,969 @@ def run_authenticated_app() -> None:
                             approved_alternative_load_error = True
 
             decision_load_error = st.session_state.get(decision_load_error_key)
-            if decision_load_error:
+            if decision_load_error and not monitoring_component_decision:
                 st.warning(
                     "Persistent decision storage is not available yet. "
                     "Run the Milestone 13.2 SQL, then refresh this page."
                 )
-            else:
+            elif not monitoring_component_decision:
                 st.caption(
                     "Decision workflow, notes, and history are saved to your Cadivor account."
                 )
+
+            if selected_decision and monitoring_component_decision:
+                decision_id = str(selected_decision["decision_id"])
+                state_record = decision_state.setdefault(
+                    decision_id,
+                    {
+                        "status": (
+                            "New"
+                            if selected_decision.get("status") == "Open"
+                            else selected_decision.get("status", "New")
+                        ),
+                        "owner": selected_decision.get("assigned_owner") or "Engineering",
+                        "notes": selected_decision.get("notes", []),
+                        "history": [],
+                    },
+                )
+                saved_payload = state_record.get("decision_payload")
+                saved_payload = saved_payload if isinstance(saved_payload, dict) else {}
+                inventory_evidence = saved_payload.get("inventory_evidence")
+                inventory_evidence = (
+                    inventory_evidence if isinstance(inventory_evidence, dict) else {}
+                )
+
+                from src.decision_engine import monitoring_decision_id as _monitoring_decision_id
+
+                alert_records = (
+                    decision_alert_df.to_dict("records")
+                    if isinstance(decision_alert_df, pd.DataFrame)
+                    else []
+                )
+                monitor_alert = next(
+                    (
+                        row for row in alert_records
+                        if _monitoring_decision_id(row) == decision_id
+                    ),
+                    {},
+                )
+                decision_mpn = str(
+                    selected_decision.get("mpn")
+                    or selected_decision.get("part_number")
+                    or "Component"
+                ).strip()
+                related_boms = selected_decision.get("related_boms") or []
+                if selected_decision_context_id:
+                    saved_bom_label = decision_bom_options.get(
+                        selected_decision_context_id, ""
+                    )
+                    if not saved_bom_label:
+                        matching_analysis = next(
+                            (
+                                analysis for analysis in decision_analyses
+                                if str(analysis.get("id") or "")
+                                == selected_decision_context_id
+                            ),
+                            {},
+                        )
+                        saved_bom_label = str(
+                            matching_analysis.get("bom_name")
+                            or matching_analysis.get("project_name")
+                            or matching_analysis.get("name")
+                            or "Saved BOM"
+                        )
+                elif len(related_boms) == 1:
+                    saved_bom_label = str(related_boms[0].get("name") or "Saved BOM")
+                elif len(related_boms) > 1:
+                    saved_bom_label = "Select a BOM"
+                else:
+                    saved_bom_label = "Not linked"
+                bom_is_linked = bool(
+                    selected_decision_context_id or related_boms
+                )
+
+                def _decision_packet_url(record: dict, keys: tuple[str, ...]) -> str:
+                    for field in keys:
+                        value = str(record.get(field) or "").strip()
+                        if value.startswith(("https://", "http://")):
+                            return value
+                    return ""
+
+                def _decision_packet_text(
+                    value: object,
+                    fallback: str = "",
+                ) -> str:
+                    text = "" if value is None else str(value).strip()
+                    return (
+                        fallback
+                        if text.casefold() in {"", "nan", "none", "<na>"}
+                        else text
+                    )
+
+                matching_part_rows = [
+                    row for row in decision_part_links
+                    if str(
+                        row.get("mpn") or row.get("MPN") or row.get("part_number") or ""
+                    ).strip().casefold() == decision_mpn.casefold()
+                ]
+                if selected_decision_context_id:
+                    context_part_rows = [
+                        row for row in matching_part_rows
+                        if str(row.get("analysis_id") or "")
+                        == selected_decision_context_id
+                    ]
+                    if context_part_rows:
+                        matching_part_rows = context_part_rows
+                source_part = next(
+                    (
+                        row for row in matching_part_rows
+                        if _decision_packet_url(
+                            row,
+                            (
+                                "datasheet_url",
+                                "datasheet",
+                                "Datasheet URL",
+                                "datasheet_link",
+                                "product_url",
+                                "product_detail_url",
+                                "source_url",
+                                "supplier_url",
+                            ),
+                        )
+                        or _decision_packet_text(row.get("supplier"))
+                        or _decision_packet_text(row.get("manufacturer"))
+                    ),
+                    matching_part_rows[0] if len(matching_part_rows) == 1 else {},
+                )
+
+                supplier_name = str(
+                    _decision_packet_text(source_part.get("supplier"))
+                    or _decision_packet_text(source_part.get("manufacturer"))
+                    or _decision_packet_text(monitor_alert.get("supplier"))
+                    or "Supplier record"
+                )
+                supplier_url = _decision_packet_url(
+                    {**source_part, **monitor_alert},
+                    ("product_url", "product_detail_url", "source_url", "supplier_url"),
+                )
+                datasheet_url = _decision_packet_url(
+                    {**source_part, **monitor_alert},
+                    ("datasheet_url", "datasheet", "Datasheet URL", "datasheet_link"),
+                )
+
+                def _packet_evidence_row(
+                    number: int,
+                    title: str,
+                    detail: str,
+                    action: str = "",
+                    url: str = "",
+                ) -> str:
+                    valid_url = url if str(url or "").startswith(("https://", "http://")) else ""
+                    action_html = (
+                        f'<a class="cv-dp-evidence-action" href="{html.escape(valid_url, quote=True)}" '
+                        f'target="_blank" rel="noopener noreferrer">{html.escape(action)} ↗</a>'
+                        if valid_url and action
+                        else '<span class="cv-dp-evidence-action muted">Not available</span>'
+                    )
+                    return (
+                        '<div class="cv-dp-evidence-row">'
+                        f'<span class="cv-dp-evidence-number">{number}</span>'
+                        '<div class="cv-dp-evidence-copy">'
+                        f'<strong>{html.escape(title)}</strong>'
+                        f'<small>{html.escape(detail)}</small>'
+                        f"</div>{action_html}</div>"
+                    )
+
+                previous_value = _decision_packet_text(
+                    monitor_alert.get("previous_value")
+                )
+                current_value = _decision_packet_text(
+                    monitor_alert.get("current_value")
+                )
+                alert_message = (
+                    _decision_packet_text(monitor_alert.get("alert_message"))
+                    or _decision_packet_text(selected_decision.get("reason"))
+                    or "Monitoring change recorded."
+                )
+                severity = (
+                    _decision_packet_text(monitor_alert.get("severity"))
+                    or _decision_packet_text(selected_decision.get("priority"))
+                    or "Unclassified"
+                )
+                supplier_detail = (
+                    f"{supplier_name} · {alert_message}"
+                    if supplier_url
+                    else f"{alert_message} · Source link not available in the saved record."
+                )
+                datasheet_detail = (
+                    "Manufacturer documentation is available for review."
+                    if datasheet_url
+                    else "No datasheet link is available in the saved component record."
+                )
+                bom_detail = (
+                    f"Linked context: {saved_bom_label}."
+                    if bom_is_linked and selected_decision_context_id
+                    else "Choose a saved BOM to review its analysis context."
+                    if len(related_boms) > 1 and not selected_decision_context_id
+                    else "This alert is not attached to a saved BOM."
+                )
+                evidence_rows_html = "".join(
+                    (
+                        _packet_evidence_row(
+                            1,
+                            "Supplier lifecycle record",
+                            supplier_detail,
+                            f"View {supplier_name} source" if supplier_url else "",
+                            supplier_url,
+                        ),
+                        _packet_evidence_row(
+                            2,
+                            "Manufacturer datasheet",
+                            datasheet_detail,
+                            "Open datasheet" if datasheet_url else "",
+                            datasheet_url,
+                        ),
+                        _packet_evidence_row(
+                            3,
+                            "Saved analysis context",
+                            bom_detail,
+                            "",
+                            "",
+                        ),
+                    )
+                )
+
+                resolution_flash = st.session_state.pop(
+                    "cadivor_ed_resolution_flash", ""
+                )
+                inventory_flash = st.session_state.pop(
+                    "cadivor_ed_inventory_flash", ""
+                )
+                if resolution_flash:
+                    st.toast(str(resolution_flash), icon="✅")
+                if inventory_flash:
+                    st.toast(str(inventory_flash), icon="✅")
+
+                with st.container(key="cadivor_decision_packet_shell"):
+                    if st.button(
+                        "‹  Engineering Decisions",
+                        key="decision_packet_back",
+                        type="secondary",
+                    ):
+                        navigate_to("Engineering Decisions")
+
+                    if decision_load_error:
+                        st.warning(
+                            "Decision notes and outcomes are not saving yet. "
+                            "Run the Engineering Decisions storage migration, then refresh."
+                        )
+
+                    st.markdown(
+                        packet_header_html(
+                            selected_decision,
+                            alert=monitor_alert,
+                            saved_bom_label=saved_bom_label,
+                            saved_bom_linked=bom_is_linked,
+                        ),
+                        unsafe_allow_html=True,
+                    )
+                    if decision_bom_options:
+                        st.selectbox(
+                            "Saved BOM context",
+                            options=list(decision_bom_options),
+                            format_func=lambda analysis_key: decision_bom_options[
+                                analysis_key
+                            ],
+                            key=f"decision_bom_context_{decision_id}",
+                            help="Choose the saved BOM whose approved alternative can address this alert.",
+                        )
+
+                    packet_left, packet_right = st.columns(
+                        [1.72, 1], gap="medium", vertical_alignment="top"
+                    )
+                    with packet_left:
+                        with st.container(
+                            key=f"decision_packet_evidence_{decision_id}"
+                        ):
+                            st.markdown(
+                                '<div class="cv-dp-panel-title">Review the alert evidence</div>'
+                                '<div class="cv-dp-panel-subtitle">Check the source record and available manufacturer documentation before deciding.</div>'
+                                f'<div class="cv-dp-evidence-meta"><span>Severity: {html.escape(severity)}</span>'
+                                f'<span>Detected: {html.escape(_decision_packet_text(monitor_alert.get("created_at")) or _decision_packet_text(selected_decision.get("detected_at")) or "Not recorded")}</span></div>'
+                                f"{evidence_rows_html}",
+                                unsafe_allow_html=True,
+                            )
+                            if previous_value or current_value:
+                                st.caption(
+                                    f"Recorded change: {previous_value or 'Not recorded'} → "
+                                    f"{current_value or 'Not recorded'}"
+                                )
+                            if selected_decision_context_id:
+                                internal_nav_button(
+                                    "Open linked saved BOM",
+                                    "Analysis Details",
+                                    key=f"decision_packet_open_bom_{decision_id}",
+                                    use_container_width=True,
+                                    analysis_id=selected_decision_context_id,
+                                )
+
+                        with st.container(
+                            key=f"decision_packet_mitigation_{decision_id}"
+                        ):
+                            st.markdown(
+                                '<div class="cv-dp-panel-title">Choose a mitigation</div>'
+                                '<div class="cv-dp-panel-subtitle">Use an approved alternate or record inventory that has been confirmed with its supplier.</div>',
+                                unsafe_allow_html=True,
+                            )
+                            approved_record = None
+                            approved_mpn = ""
+                            if approved_alternative_records:
+                                approved_options = {
+                                    (
+                                        f"{record.get('alternative_part')} · "
+                                        f"{record.get('recommendation_rating') or record.get('compatibility_rating') or 'Approved'}"
+                                    ): record
+                                    for record in approved_alternative_records
+                                }
+                                if len(approved_options) > 1:
+                                    approved_label = st.selectbox(
+                                        "Approved alternative for this BOM",
+                                        options=list(approved_options),
+                                        key=(
+                                            f"decision_approved_alt_{decision_id}_"
+                                            f"{selected_decision_context_id or 'no_bom'}"
+                                        ),
+                                    )
+                                    approved_record = approved_options[approved_label]
+                                else:
+                                    approved_record = next(iter(approved_options.values()))
+                                approved_mpn = str(
+                                    approved_record.get("alternative_part") or ""
+                                ).strip()
+                                st.markdown(
+                                    '<div class="cv-dp-alt-summary">'
+                                    f'<strong>Approved alternative: {html.escape(approved_mpn)}</strong>'
+                                    f'<small>Compatibility: {html.escape(str(approved_record.get("compatibility_rating") or "Not recorded"))} · '
+                                    f'Supplier: {html.escape(str(approved_record.get("supplier") or "Not recorded"))} · '
+                                    f'Lifecycle: {html.escape(str(approved_record.get("lifecycle") or "Not recorded"))}</small>'
+                                    "</div>",
+                                    unsafe_allow_html=True,
+                                )
+                                if approved_record.get("engineering_note"):
+                                    st.caption(
+                                        "Approval note: "
+                                        + str(approved_record.get("engineering_note"))
+                                    )
+                                comparison_snapshot = approved_record.get(
+                                    "comparison_snapshot"
+                                )
+                                comparison_rows = (
+                                    comparison_snapshot.get("comparison_table")
+                                    if isinstance(comparison_snapshot, dict)
+                                    else None
+                                )
+                                source_snapshot = approved_record.get("source_snapshot")
+                                source_snapshot = (
+                                    source_snapshot
+                                    if isinstance(source_snapshot, dict)
+                                    else {}
+                                )
+                                saved_datasheet_links = []
+                                for label, source_part in (
+                                    ("Original part", source_snapshot.get("original")),
+                                    (
+                                        "Approved alternate",
+                                        source_snapshot.get("selected_alternative"),
+                                    ),
+                                ):
+                                    if not isinstance(source_part, dict):
+                                        continue
+                                    link = _decision_packet_url(
+                                        source_part,
+                                        (
+                                            "datasheet_url",
+                                            "datasheet",
+                                            "Datasheet URL",
+                                            "Datasheet",
+                                            "datasheet_link",
+                                        ),
+                                    )
+                                    if link:
+                                        saved_datasheet_links.append((label, link))
+                                if comparison_rows or saved_datasheet_links:
+                                    with st.expander(
+                                        "Review saved comparison and datasheet evidence"
+                                    ):
+                                        if saved_datasheet_links:
+                                            link_columns = st.columns(
+                                                len(saved_datasheet_links)
+                                            )
+                                            for column, (label, link) in zip(
+                                                link_columns, saved_datasheet_links
+                                            ):
+                                                column.link_button(
+                                                    f"Open {label} datasheet ↗",
+                                                    link,
+                                                    use_container_width=True,
+                                                )
+                                        if comparison_rows:
+                                            cadivor_engineering_dataframe(
+                                                pd.DataFrame(comparison_rows)
+                                            )
+                            elif approved_alternative_load_error:
+                                st.warning(
+                                    "Cadivor could not load approved alternatives for this BOM. "
+                                    "The alert remains open until its mitigation can be verified."
+                                )
+                            else:
+                                st.markdown(
+                                    '<div class="cv-dp-mitigation-empty">'
+                                    '<strong>No approved alternative is linked yet.</strong>'
+                                    '<p>Find and qualify a replacement, or verify available inventory, then return here to record the result.</p>'
+                                    "</div>",
+                                    unsafe_allow_html=True,
+                                )
+
+                            internal_nav_button(
+                                "Find and compare an alternative",
+                                "Alternative Finder",
+                                key=f"decision_find_alt_{decision_id}",
+                                use_container_width=True,
+                                original_part=decision_mpn,
+                                analysis_id=selected_decision_context_id,
+                                project_name=str(selected_decision.get("project_name") or ""),
+                                bom_name=str(selected_decision.get("bom_name") or ""),
+                                source_page="engineering_decisions",
+                                return_page="Engineering Decisions",
+                                return_mpn=decision_mpn,
+                                return_decision_id=decision_id,
+                            )
+
+                            existing_quantity = 0
+                            try:
+                                existing_quantity = int(
+                                    float(inventory_evidence.get("quantity") or 0)
+                                )
+                            except (TypeError, ValueError):
+                                existing_quantity = 0
+                            with st.expander(
+                                "Record verified inventory",
+                                expanded=False,
+                            ):
+                                if inventory_evidence:
+                                    st.caption(
+                                        "Saved verification: "
+                                        f"{inventory_evidence.get('quantity')} units from "
+                                        f"{inventory_evidence.get('supplier')} · "
+                                        f"Reference {inventory_evidence.get('source_reference')} · "
+                                        f"verified {inventory_evidence.get('verified_at')}"
+                                    )
+                                with st.form(
+                                    key=f"decision_inventory_form_{decision_id}"
+                                ):
+                                    inventory_supplier = st.text_input(
+                                        "Supplier",
+                                        value=str(inventory_evidence.get("supplier") or ""),
+                                        placeholder="Authorized distributor or supplier",
+                                    )
+                                    inventory_quantity = st.number_input(
+                                        "Available quantity",
+                                        min_value=0,
+                                        step=1,
+                                        value=max(0, existing_quantity),
+                                    )
+                                    inventory_reference = st.text_input(
+                                        "Source reference",
+                                        value=str(
+                                            inventory_evidence.get("source_reference") or ""
+                                        ),
+                                        placeholder="Quote, inventory page, or supplier confirmation ID",
+                                    )
+                                    save_inventory = st.form_submit_button(
+                                        "Save inventory verification",
+                                        use_container_width=True,
+                                    )
+                                st.caption(
+                                    "Cadivor records your verification and source reference; it does not independently reserve or audit stock."
+                                )
+                                if save_inventory:
+                                    if (
+                                        not inventory_supplier.strip()
+                                        or int(inventory_quantity or 0) <= 0
+                                        or not inventory_reference.strip()
+                                    ):
+                                        st.error(
+                                            "Enter a supplier, a quantity above zero, and a source reference."
+                                        )
+                                    else:
+                                        saved_inventory = {
+                                            "supplier": inventory_supplier.strip(),
+                                            "quantity": int(inventory_quantity),
+                                            "source_reference": inventory_reference.strip(),
+                                            "verified_by": (
+                                                profile_for_shell.get("full_name")
+                                                or shell_name
+                                            ),
+                                            "verified_at": datetime.now(
+                                                timezone.utc
+                                            ).isoformat(),
+                                        }
+                                        current_status = str(
+                                            state_record.get("status") or "New"
+                                        )
+                                        if current_status == "Open":
+                                            current_status = "New"
+                                        inventory_decision = {
+                                            **selected_decision,
+                                            "inventory_evidence": saved_inventory,
+                                        }
+                                        save_owner = str(
+                                            state_record.get("owner")
+                                            or selected_decision.get("assigned_owner")
+                                            or "Engineering"
+                                        )
+                                        inventory_error = save_decision_workflow(
+                                            supabase,
+                                            user_id=current_user["id"],
+                                            workspace_id=active_workspace_id or None,
+                                            decision=inventory_decision,
+                                            status=current_status,
+                                            assigned_owner=save_owner,
+                                            due_date=selected_decision.get("due_date"),
+                                            actor_name=(
+                                                profile_for_shell.get("full_name")
+                                                or shell_name
+                                            ),
+                                            previous_status=str(
+                                                state_record.get("status") or "New"
+                                            ),
+                                        )
+                                        if inventory_error:
+                                            st.error(
+                                                "Inventory evidence could not be saved. "
+                                                "Confirm the Engineering Decisions storage migration is applied."
+                                            )
+                                        else:
+                                            fallback_state = dict(decision_state)
+                                            fallback_state[decision_id] = {
+                                                **state_record,
+                                                "status": current_status,
+                                                "owner": save_owner,
+                                                "decision_payload": inventory_decision,
+                                            }
+                                            st.session_state[decision_cache_key] = fallback_state
+                                            refreshed_state, refresh_error = load_decision_state(
+                                                supabase,
+                                                user_id=current_user["id"],
+                                                workspace_id=active_workspace_id or None,
+                                            )
+                                            if not refresh_error:
+                                                st.session_state[decision_cache_key] = refreshed_state
+                                            st.session_state[
+                                                "cadivor_ed_inventory_flash"
+                                            ] = "Inventory verification saved to this alert."
+                                            st.rerun()
+
+                    with packet_right:
+                        with st.container(
+                            key=f"decision_packet_gate_{decision_id}"
+                        ):
+                            is_resolved = str(
+                                state_record.get("status") or "New"
+                            ).casefold() in {"closed", "resolved"}
+                            st.markdown(
+                                '<div class="cv-dp-gate-head">'
+                                '<div class="cv-dp-panel-title">Record decision</div>'
+                                f'<span class="cv-dp-waiting">{"RESOLVED" if is_resolved else "REVIEW REQUIRED"}</span></div>'
+                                '<div class="cv-dp-panel-subtitle">Close this alert only after evidence for a mitigation is saved.</div>',
+                                unsafe_allow_html=True,
+                            )
+                            if is_resolved:
+                                st.success(
+                                    str(
+                                        saved_payload.get("resolution")
+                                        or selected_decision.get("resolution")
+                                        or "This alert has been resolved."
+                                    )
+                                )
+                            else:
+                                inventory_is_valid = bool(
+                                    str(inventory_evidence.get("supplier") or "").strip()
+                                    and str(
+                                        inventory_evidence.get("source_reference") or ""
+                                    ).strip()
+                                    and int(existing_quantity) > 0
+                                )
+                                inventory_summary = (
+                                    f"{existing_quantity:,} units · "
+                                    f"{inventory_evidence.get('supplier')} · reference "
+                                    f"{inventory_evidence.get('source_reference')}"
+                                    if inventory_is_valid
+                                    else "Supplier, quantity, and source reference required"
+                                )
+                                checklist_html = (
+                                    '<div class="cv-dp-checklist">'
+                                    '<div class="cv-dp-checklist-item"><i>'
+                                    f'{"✓" if approved_record else "1"}</i><div><strong>Approve an alternative</strong>'
+                                    f'<small>{html.escape("Comparison and validation evidence saved" if approved_record else "No approved alternative is linked to this BOM")}</small></div></div>'
+                                    '<div class="cv-dp-checklist-item"><i>'
+                                    f'{"✓" if inventory_is_valid else "2"}</i><div><strong>Verify inventory</strong>'
+                                    f'<small>{html.escape(inventory_summary)}</small></div></div>'
+                                    "</div>"
+                                )
+                                st.markdown(
+                                    "<strong>To enable closure, complete one:</strong>"
+                                    + checklist_html,
+                                    unsafe_allow_html=True,
+                                )
+                                mitigation_choices = []
+                                if approved_record:
+                                    mitigation_choices.append(
+                                        f"Approved alternative · {approved_mpn}"
+                                    )
+                                if inventory_is_valid:
+                                    mitigation_choices.append(
+                                        f"Verified inventory · {existing_quantity:,} units"
+                                    )
+                                mitigation_method = ""
+                                if len(mitigation_choices) > 1:
+                                    mitigation_method = st.radio(
+                                        "Mitigation to record",
+                                        mitigation_choices,
+                                        key=(
+                                            f"decision_mitigation_method_{decision_id}_"
+                                            f"{selected_decision_context_id or 'no_bom'}"
+                                        ),
+                                        label_visibility="collapsed",
+                                    )
+                                elif mitigation_choices:
+                                    mitigation_method = mitigation_choices[0]
+                                mitigation_confirmed = False
+                                if mitigation_method.startswith("Approved alternative"):
+                                    alternative_fingerprint = hashlib.sha1(
+                                        approved_mpn.encode("utf-8")
+                                    ).hexdigest()[:10]
+                                    mitigation_confirmed = st.checkbox(
+                                        f"I confirm {approved_mpn} addresses this alert for the selected BOM.",
+                                        key=(
+                                            f"decision_mitigation_confirm_{decision_id}_"
+                                            f"{alternative_fingerprint}"
+                                        ),
+                                    )
+                                elif mitigation_method.startswith("Verified inventory"):
+                                    evidence_fingerprint = hashlib.sha1(
+                                        str(inventory_evidence).encode("utf-8")
+                                    ).hexdigest()[:10]
+                                    mitigation_confirmed = st.checkbox(
+                                        "I confirm this supplier and quantity are current and sufficient to address the alert.",
+                                        key=(
+                                            f"decision_inventory_confirm_{decision_id}_"
+                                            f"{evidence_fingerprint}"
+                                        ),
+                                    )
+                                if not mitigation_choices:
+                                    st.info(
+                                        "No mitigation is linked yet. Find and qualify an alternative or save verified inventory evidence."
+                                    )
+                                if st.button(
+                                    "Record mitigation and close alert",
+                                    key=f"decision_mitigate_close_{decision_id}",
+                                    type="primary",
+                                    use_container_width=True,
+                                    disabled=not (
+                                        mitigation_method and mitigation_confirmed
+                                    ),
+                                ):
+                                    if mitigation_method.startswith(
+                                        "Approved alternative"
+                                    ) and approved_record:
+                                        mitigation_decision = {
+                                            **selected_decision,
+                                            "resolution": (
+                                                f"Mitigated by approved alternate {approved_mpn}."
+                                            ),
+                                            "approved_alternative_mpn": approved_mpn,
+                                            "approved_alternative_record_id": approved_record.get(
+                                                "id"
+                                            ),
+                                            "approved_alternative_analysis_id": selected_decision_context_id,
+                                            "context_analysis_id": selected_decision_context_id,
+                                            "inventory_evidence": inventory_evidence or None,
+                                        }
+                                    else:
+                                        mitigation_decision = {
+                                            **selected_decision,
+                                            "resolution": (
+                                                "Mitigated by verified inventory: "
+                                                f"{existing_quantity:,} units from "
+                                                f"{inventory_evidence.get('supplier')}."
+                                            ),
+                                            "inventory_evidence": inventory_evidence,
+                                        }
+                                    saved_owner = str(
+                                        state_record.get("owner")
+                                        or selected_decision.get("assigned_owner")
+                                        or selected_decision.get("owner")
+                                        or "Engineering"
+                                    )
+                                    resolution_error = save_decision_workflow(
+                                        supabase,
+                                        user_id=current_user["id"],
+                                        workspace_id=active_workspace_id or None,
+                                        decision=mitigation_decision,
+                                        status="Closed",
+                                        assigned_owner=saved_owner,
+                                        due_date=selected_decision.get("due_date"),
+                                        actor_name=(
+                                            profile_for_shell.get("full_name")
+                                            or shell_name
+                                        ),
+                                        previous_status=str(
+                                            state_record.get("status") or "New"
+                                        ),
+                                    )
+                                    if resolution_error:
+                                        st.error(
+                                            "The mitigation could not be recorded. "
+                                            "Confirm the Engineering Decisions storage migration is applied."
+                                        )
+                                    else:
+                                        fallback_state = dict(decision_state)
+                                        fallback_state[decision_id] = {
+                                            **state_record,
+                                            "status": "Closed",
+                                            "owner": saved_owner,
+                                            "decision_payload": mitigation_decision,
+                                        }
+                                        st.session_state[decision_cache_key] = fallback_state
+                                        refreshed_state, refresh_error = load_decision_state(
+                                            supabase,
+                                            user_id=current_user["id"],
+                                            workspace_id=active_workspace_id or None,
+                                        )
+                                        if not refresh_error:
+                                            st.session_state[decision_cache_key] = refreshed_state
+                                        st.session_state[
+                                            "cadivor_ed_resolution_flash"
+                                        ] = (
+                                            "Alert resolved with approved alternate "
+                                            f"{approved_mpn}."
+                                            if mitigation_method.startswith(
+                                                "Approved alternative"
+                                            )
+                                            else "Alert resolved with verified inventory evidence."
+                                        )
+                                        st.rerun()
+                            st.caption(
+                                "The alert stays open until mitigation evidence is linked and the outcome is recorded."
+                            )
+
+                        with st.container(
+                            key=f"decision_packet_note_{decision_id}"
+                        ):
+                            st.markdown(
+                                '<div class="cv-dp-panel-title">Review note</div>'
+                                '<div class="cv-dp-panel-subtitle">Add context for the next approver.</div>',
+                                unsafe_allow_html=True,
+                            )
+                            note = st.text_area(
+                                "Engineering note",
+                                placeholder="Add a short review note…",
+                                key=f"decision_note_{decision_id}",
+                                label_visibility="collapsed",
+                            )
+                            if st.button(
+                                "Save note",
+                                key=f"decision_add_note_{decision_id}",
+                                type="secondary",
+                                use_container_width=True,
+                            ):
+                                if not note.strip():
+                                    st.warning("Enter a note before saving.")
+                                else:
+                                    note_author = (
+                                        profile_for_shell.get("full_name")
+                                        or shell_name
+                                    )
+                                    note_error = add_decision_note(
+                                        supabase,
+                                        user_id=current_user["id"],
+                                        workspace_id=active_workspace_id or None,
+                                        decision={
+                                            **selected_decision,
+                                            "status": state_record.get("status", "New"),
+                                            "assigned_owner": state_record.get(
+                                                "owner",
+                                                selected_decision.get("owner", "Engineering"),
+                                            ),
+                                        },
+                                        author_name=note_author,
+                                        note_text=note.strip(),
+                                    )
+                                    if note_error:
+                                        st.error(
+                                            "The note could not be saved. "
+                                            "Confirm the Engineering Decisions storage migration is applied."
+                                        )
+                                    else:
+                                        refreshed_state, refresh_error = load_decision_state(
+                                            supabase,
+                                            user_id=current_user["id"],
+                                            workspace_id=active_workspace_id or None,
+                                        )
+                                        if not refresh_error:
+                                            st.session_state[decision_cache_key] = refreshed_state
+                                        st.session_state[
+                                            "cadivor_ed_note_flash"
+                                        ] = "Engineering note saved."
+                                        st.rerun()
+
+                    note_flash = st.session_state.pop("cadivor_ed_note_flash", "")
+                    if note_flash:
+                        st.toast(str(note_flash), icon="✅")
+                    saved_notes = state_record.get("notes", [])
+                    if saved_notes:
+                        with st.expander(
+                            f"Saved notes ({len(saved_notes)})",
+                            expanded=False,
+                        ):
+                            for item in reversed(saved_notes):
+                                with st.container(border=True):
+                                    st.markdown(
+                                        f"**{html.escape(str(item.get('author') or 'Engineer'))}**"
+                                    )
+                                    st.caption(str(item.get("time") or ""))
+                                    st.write(str(item.get("text") or ""))
+
+                    with st.expander("Workflow details", expanded=False):
+                        workflow_cols = st.columns(3)
+                        current_workflow_status = str(
+                            state_record.get("status") or "New"
+                        )
+                        if current_workflow_status == "Open":
+                            current_workflow_status = "New"
+                        workflow_statuses = STATUSES
+                        if current_workflow_status not in {"Closed", "Rejected"}:
+                            workflow_statuses = [
+                                value for value in STATUSES
+                                if value not in {"Closed", "Rejected"}
+                            ]
+                        if current_workflow_status not in workflow_statuses:
+                            current_workflow_status = "New"
+                        with workflow_cols[0]:
+                            new_status = st.selectbox(
+                                "Decision status",
+                                workflow_statuses,
+                                index=workflow_statuses.index(current_workflow_status),
+                                key=f"decision_status_{decision_id}",
+                            )
+                        with workflow_cols[1]:
+                            new_owner = st.text_input(
+                                "Assigned owner",
+                                value=str(
+                                    state_record.get("owner")
+                                    or selected_decision.get("assigned_owner")
+                                    or "Engineering"
+                                ),
+                                key=f"decision_owner_{decision_id}",
+                            )
+                        with workflow_cols[2]:
+                            st.text_input(
+                                "Target date",
+                                value=str(selected_decision.get("due_date") or "This week"),
+                                key=f"decision_due_{decision_id}",
+                                disabled=True,
+                            )
+                        if st.button(
+                            "Save workflow details",
+                            key=f"save_decision_{decision_id}",
+                            type="secondary",
+                        ):
+                            saved_owner = new_owner.strip() or "Engineering"
+                            save_error = save_decision_workflow(
+                                supabase,
+                                user_id=current_user["id"],
+                                workspace_id=active_workspace_id or None,
+                                decision=selected_decision,
+                                status=new_status,
+                                assigned_owner=saved_owner,
+                                due_date=selected_decision.get("due_date"),
+                                actor_name=(
+                                    profile_for_shell.get("full_name") or shell_name
+                                ),
+                                previous_status=str(
+                                    state_record.get("status") or "New"
+                                ),
+                            )
+                            if save_error:
+                                st.error(
+                                    "The workflow could not be saved. "
+                                    "Confirm the Engineering Decisions storage migration is applied."
+                                )
+                            else:
+                                refreshed_state, refresh_error = load_decision_state(
+                                    supabase,
+                                    user_id=current_user["id"],
+                                    workspace_id=active_workspace_id or None,
+                                )
+                                if not refresh_error:
+                                    st.session_state[decision_cache_key] = refreshed_state
+                                st.session_state[
+                                    "cadivor_ed_workflow_flash"
+                                ] = "Decision workflow saved."
+                                st.rerun()
+
+                    workflow_flash = st.session_state.pop(
+                        "cadivor_ed_workflow_flash", ""
+                    )
+                    if workflow_flash:
+                        st.toast(str(workflow_flash), icon="✅")
+                    history = state_record.get("history", [])
+                    if history:
+                        with st.expander(
+                            f"Decision history ({len(history)})",
+                            expanded=False,
+                        ):
+                            history_df = pd.DataFrame(history).rename(
+                                columns={"event": "Event", "time": "Time"}
+                            )
+                            cadivor_table(
+                                history_df.iloc[::-1],
+                                caption="Decision history",
+                            )
+
+                    with st.expander("Related tools", expanded=False):
+                        tool_cols = st.columns(3)
+                        with tool_cols[0]:
+                            internal_nav_button(
+                                "Open Monitoring",
+                                "Monitoring",
+                                key=f"decision_monitor_{decision_id}",
+                                use_container_width=True,
+                                mpn=decision_mpn,
+                                return_analysis_id=selected_decision_context_id,
+                            )
+                        with tool_cols[1]:
+                            internal_nav_button(
+                                "Generate Report",
+                                "Reports",
+                                key=f"decision_report_{decision_id}",
+                                use_container_width=True,
+                                analysis_id=selected_decision_context_id,
+                            )
+                        with tool_cols[2]:
+                            if selected_decision_context_id:
+                                internal_nav_button(
+                                    "Open Saved BOM",
+                                    "Analysis Details",
+                                    key=f"decision_analysis_{decision_id}",
+                                    use_container_width=True,
+                                    analysis_id=selected_decision_context_id,
+                                )
+                            else:
+                                st.caption("No saved BOM is linked to this alert.")
+
+                stop_authenticated_page()
 
             if selected_decision:
                 decision_resolution_flash = st.session_state.pop(
@@ -7913,7 +8889,7 @@ def run_authenticated_app() -> None:
                     key="decision_packet_back",
                     type="secondary",
                 ):
-                    navigate_to("Engineering Decisions", arm_opening=False)
+                    navigate_to("Engineering Decisions")
 
                 st.markdown(
                     packet_header_html(selected_decision),
@@ -9769,7 +10745,6 @@ def run_authenticated_app() -> None:
                             action_label="View approved decisions",
                             focus="approved",
                         )
-            st.markdown("</div>", unsafe_allow_html=True)
             stop_authenticated_page()
 
 
@@ -15260,12 +16235,44 @@ def run_authenticated_app() -> None:
             or st.session_state.get("cadivor_alt_finder_return_mpn", "")
             or ""
         ).strip()
+        return_decision_id = str(
+            _qp_value("return_decision_id")
+            or st.session_state.get(ALT_FINDER_RETURN_DECISION_ID_KEY, "")
+            or ""
+        ).strip()
         return_component = str(
             _qp_value("return_component")
             or st.session_state.get(ALT_FINDER_RETURN_COMPONENT_KEY, "")
             or ""
         ).strip()
-        if return_page == "Design Impact Analyzer":
+        if return_page == "Engineering Decisions":
+            def _return_to_decision_packet() -> None:
+                decision_packet_id = str(
+                    st.session_state.get(ALT_FINDER_RETURN_DECISION_ID_KEY)
+                    or return_decision_id
+                    or ""
+                ).strip()
+                st.session_state.pop(ALT_FINDER_RETURN_PAGE_KEY, None)
+                st.session_state.pop(ALT_FINDER_RETURN_MPN_KEY, None)
+                st.session_state.pop(ALT_FINDER_RETURN_DECISION_ID_KEY, None)
+                st.session_state.pop("cadivor_alt_finder_return_analysis_id", None)
+                st.session_state.pop("cadivor_alt_finder_return_analysis_section", None)
+                st.session_state.pop(ALT_FINDER_RETURN_COMPONENT_KEY, None)
+                if decision_packet_id:
+                    navigate_to(
+                        "Engineering Decisions",
+                        decision_id=decision_packet_id,
+                    )
+                else:
+                    navigate_to("Engineering Decisions")
+
+            st.button(
+                "← Back to decision review",
+                key="alternative_back_to_decision_packet",
+                type="secondary",
+                on_click=_return_to_decision_packet,
+            )
+        elif return_page == "Design Impact Analyzer":
             def _return_to_design_impact() -> None:
                 st.session_state["design_impact_mpn"] = return_mpn
                 st.session_state.pop("cadivor_alt_finder_return_page", None)

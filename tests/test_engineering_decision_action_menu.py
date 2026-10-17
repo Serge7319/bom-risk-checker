@@ -36,6 +36,7 @@ class EngineeringDecisionQueueActionTests(unittest.TestCase):
         self.assertIn('"Engineering Decisions"', primary_action)
         self.assertIn("decision_id=decision_id", primary_action)
         self.assertIn("monitoring_decision_id(row)", primary_action)
+        self.assertNotIn("arm_opening=False", primary_action)
         self.assertNotIn('navigate_to(\n                                        "Analysis Details"', primary_action)
 
     def test_clickable_kpi_target_cannot_cover_card_content(self):

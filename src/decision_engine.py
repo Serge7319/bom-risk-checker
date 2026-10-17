@@ -598,6 +598,7 @@ def build_decision_center(
                 "approved_alternative_record_id",
                 "approved_alternative_analysis_id",
                 "context_analysis_id",
+                "inventory_evidence",
             ):
                 if saved_payload.get(key):
                     decision[key] = saved_payload[key]

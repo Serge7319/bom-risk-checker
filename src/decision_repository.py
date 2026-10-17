@@ -218,6 +218,14 @@ def save_decision_workflow(
         if decision.get("resolution"):
             event_label = str(decision.get("resolution"))
             event_type = "mitigation_recorded"
+        elif isinstance(decision.get("inventory_evidence"), dict):
+            inventory = decision["inventory_evidence"]
+            event_label = (
+                "Verified inventory evidence recorded: "
+                f"{inventory.get('quantity', 'unknown')} units from "
+                f"{inventory.get('supplier', 'supplier')}"
+            )
+            event_type = "inventory_evidence_recorded"
         elif previous_status and previous_status != status:
             event_label = f"Status changed from {previous_status} to {status}"
             event_type = "workflow_updated"
@@ -242,6 +250,7 @@ def save_decision_workflow(
                     "approved_alternative_mpn": decision.get(
                         "approved_alternative_mpn"
                     ),
+                    "inventory_evidence": decision.get("inventory_evidence"),
                 },
             }
         ).execute()
