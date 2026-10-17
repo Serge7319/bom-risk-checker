@@ -12,7 +12,6 @@ sidebar must stay fully sharp and normal-opacity for the entire transition.
 from __future__ import annotations
 
 import html
-import json
 import time
 from typing import Any, MutableMapping
 
@@ -286,7 +285,21 @@ def inject_main_transition_css(transition_gen: int) -> None:
         ){{
           height:0!important;min-height:0!important;max-height:0!important;
           margin:0!important;padding:0!important;border:0!important;
-          overflow:visible!important;transform:none!important;filter:none!important
+          overflow:visible!important;transform:none!important;filter:none!important;
+          perspective:none!important;contain:none!important
+        }}
+        /* st.html paints directly into the app DOM. Keep its ancestry from
+           becoming a containing block for the fixed, viewport-sized cover. */
+        body:has([data-cadivor-transition-host="cadivor-main-transition"])
+          section[data-testid="stMain"],
+        body:has([data-cadivor-transition-host="cadivor-main-transition"])
+          section[data-testid="stMain"] [data-testid="stMainBlockContainer"],
+        body:has([data-cadivor-transition-host="cadivor-main-transition"])
+          section[data-testid="stMain"] [data-testid="stVerticalBlock"]:has(
+            [data-cadivor-transition-host="cadivor-main-transition"]
+          ){{
+          transform:none!important;filter:none!important;perspective:none!important;
+          contain:none!important
         }}
         /* Style inject ElementContainer only — keep <style> active. */
         div[data-testid="stElementContainer"]:has(
@@ -422,81 +435,15 @@ def prepare_main_transition(target_route: str) -> int:
 
 
 def _paint_main_transition_markup(route: str, gen: int) -> None:
-    markup = route_loading_markup(route, gen)
-    # A markdown block inside Streamlit's main-column wrapper can become a
-    # containing block for `position: fixed`. On some reruns that wrapper is
-    # only a few pixels wide, making the loader copy wrap vertically at the
-    # rail edge. Portal it to the parent document body so it always uses the
-    # actual viewport and never inherits a page column's geometry.
-    script_markup = json.dumps(markup)
-    portal_script = f"""
-    <script>
-    (function() {{
-      try {{
-        const parentWindow = window.parent;
-        const doc = parentWindow && parentWindow.document;
-        if (!doc || !doc.body) return;
-        const portalId = "cadivor-main-transition-portal";
-        const generation = {int(gen)};
-        const existing = doc.getElementById(portalId);
-        const existingGeneration = Number(existing && existing.dataset.cadivorTransitionGen || 0);
-        if (existingGeneration > generation) return;
-        const revealed = doc.querySelector(
-          '[data-cadivor-page-body][data-cadivor-transition-gen="' + generation + '"]'
-        );
-        if (revealed) {{
-          if (existing && existingGeneration <= generation) existing.remove();
-          return;
-        }}
-        const portal = existing || doc.createElement("div");
-        portal.id = portalId;
-        portal.dataset.cadivorTransitionGen = String(generation);
-        portal.style.cssText = "position:fixed;inset:0;z-index:2147483000;pointer-events:none;overflow:hidden";
-        portal.innerHTML = {script_markup};
-        doc.body.appendChild(portal);
-        // The reveal marker and this zero-height iframe can mount in either
-        // browser order. Watch for the matching marker so a late loader frame
-        // can never reappear after the page has rendered.
-        const observer = new parentWindow.MutationObserver(() => {{
-          const marker = doc.querySelector(
-            '[data-cadivor-page-body][data-cadivor-transition-gen="' + generation + '"]'
-          );
-          const current = doc.getElementById(portalId);
-          const currentGeneration = Number(current && current.dataset.cadivorTransitionGen || 0);
-          if (marker && current && currentGeneration <= generation) {{
-            current.remove();
-            observer.disconnect();
-          }}
-        }});
-        observer.observe(doc.body, {{childList:true,subtree:true}});
-        parentWindow.setTimeout(() => observer.disconnect(), 30000);
-      }} catch (error) {{}}
-    }})();
-    </script>
+    """Paint the route cover in the app DOM without an asynchronous iframe.
+
+    ``components.html`` mounts an iframe and runs its script only after the
+    iframe handshake. During that delay Streamlit can mark the outgoing route
+    stale and begin replacing its widgets before the cover exists. ``st.html``
+    inserts this static HTML directly into the app DOM, so the cover and its
+    inline fallback styles arrive in the same Streamlit delta.
     """
-    import streamlit.components.v1 as components
-
-    components.html(portal_script, height=0, width=0)
-
-
-def _remove_transition_portal(gen: int) -> None:
-    """Remove the finished route cover from the parent document immediately."""
-    script = f"""
-    <script>
-    (function() {{
-      try {{
-        const doc = window.parent && window.parent.document;
-        const portal = doc && doc.getElementById("cadivor-main-transition-portal");
-        if (portal && Number(portal.dataset.cadivorTransitionGen || 0) <= {int(gen)}) {{
-          portal.remove();
-        }}
-      }} catch (error) {{}}
-    }})();
-    </script>
-    """
-    import streamlit.components.v1 as components
-
-    components.html(script, height=0, width=0)
+    st.html(route_loading_markup(route, gen))
 
 
 def paint_prepared_main_transition(target_route: str) -> None:
@@ -570,9 +517,5 @@ def reveal_main_transition(route: str = "") -> None:
             'padding:0;overflow:hidden;clip:rect(0,0,0,0)"></div>',
             unsafe_allow_html=True,
         )
-    except Exception:
-        pass
-    try:
-        _remove_transition_portal(gen)
     except Exception:
         pass

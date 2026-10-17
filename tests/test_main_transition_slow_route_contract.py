@@ -35,19 +35,19 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
         role_lookup = runtime.index("def _read_users_role_for_shell")
         self.assertLess(cover, role_lookup)
 
-    def test_transition_content_is_portaled_out_of_streamlit_column_wrappers(self):
+    def test_transition_cover_uses_synchronous_non_iframe_html(self):
         paint = SOURCE.split("def _paint_main_transition_markup", 1)[1].split(
-            "def _remove_transition_portal", 1
+            "def paint_prepared_main_transition", 1
         )[0]
-        self.assertIn("window.parent", paint)
-        self.assertIn('portalId = "cadivor-main-transition-portal"', paint)
-        self.assertIn("components.html(portal_script, height=0, width=0)", paint)
-        self.assertIn("new parentWindow.MutationObserver", paint)
+        self.assertIn("st.html(route_loading_markup(route, gen))", paint)
+        self.assertNotIn("components.html(", paint)
+        self.assertNotIn("window.parent", paint)
         self.assertNotIn("with container(key=owner_key)", paint)
 
-    def test_revealed_route_removes_its_transition_portal(self):
+    def test_reveal_marker_hides_the_matching_transition_generation(self):
         reveal = SOURCE.split("def reveal_main_transition", 1)[1]
-        self.assertIn("_remove_transition_portal(gen)", reveal)
+        self.assertIn("data-cadivor-page-body", reveal)
+        self.assertNotIn("_remove_transition_portal", reveal)
 
     def test_dashboard_cover_is_released_after_dashboard_render(self):
         runtime = (ROOT / "src" / "authenticated_runtime.py").read_text(encoding="utf-8")
