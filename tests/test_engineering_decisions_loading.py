@@ -90,9 +90,13 @@ class EngineeringDecisionsLoadingContractTests(unittest.TestCase):
     def test_opened_alert_shows_its_packet_and_explicit_mitigation_action(self):
         branch = RUNTIME.split('if app_mode == "Engineering Decisions":', 1)[1]
         branch = branch.split('if app_mode == "Reports":', 1)[0]
-        self.assertIn('requested_decision_id = _qp_value("decision_id")', branch)
+        self.assertIn('else _qp_value("decision_id")', branch)
         self.assertIn("if ed_body_ready and not requested_decision_id:", branch)
         self.assertIn('key="decision_packet_back"', branch)
+        self.assertIn('st.session_state[return_to_queue_pending_key] = True', branch)
+        self.assertIn('arm_main_transition(st.session_state, "Engineering Decisions")', branch)
+        self.assertIn('_return_to_engineering_decisions_queue()', branch)
+        self.assertIn('focus_decision_id = requested_decision_id', branch)
         self.assertIn('"Record mitigation and close alert"', branch)
         self.assertIn('"decision_payload": mitigation_decision', branch)
 
