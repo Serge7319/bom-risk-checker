@@ -1,6 +1,7 @@
 """Sprint 74 — supplier health and degraded-data tests."""
 from __future__ import annotations
 
+import threading
 import unittest
 from unittest.mock import patch
 
@@ -23,6 +24,66 @@ from integrations.supplier_aggregator import (
 
 
 class SupplierHealthTests(unittest.TestCase):
+    def test_review_lookup_returns_datasheet_before_slowest_supplier_finishes(self):
+        from integrations import supplier_aggregator
+
+        release_slow_provider = threading.Event()
+        slow_provider_started = threading.Event()
+        slow_provider_finished = threading.Event()
+
+        def slow_lookup(_query):
+            slow_provider_started.set()
+            release_slow_provider.wait(timeout=2)
+            slow_provider_finished.set()
+            return {"manufacturer_part_number": "LM7805ACT"}
+
+        def fast_lookup(_query):
+            return {
+                "manufacturer_part_number": "LM7805ACT",
+                "datasheet_url": "https://example.test/lm7805act.pdf",
+                "product_detail_url": "https://example.test/lm7805act",
+            }
+
+        lookups = {
+            "Mouser": slow_lookup,
+            "DigiKey": fast_lookup,
+            "Newark": lambda _query: {},
+        }
+        try:
+            with patch.object(
+                supplier_aggregator,
+                "_supplier_lookup_callable",
+                side_effect=lambda source: lookups[source],
+            ):
+                result = supplier_aggregator.get_first_exact_supplier_result(
+                    "LM7805ACT"
+                )
+
+            self.assertEqual(
+                result.get("datasheet_url"),
+                "https://example.test/lm7805act.pdf",
+            )
+            self.assertTrue(slow_provider_started.wait(timeout=1))
+            self.assertFalse(slow_provider_finished.is_set())
+        finally:
+            release_slow_provider.set()
+
+    def test_review_lookup_does_not_accept_neighboring_mpn_datasheets(self):
+        from integrations import supplier_aggregator
+
+        wrong_part = {
+            "manufacturer_part_number": "LM7805ACTG",
+            "datasheet_url": "https://example.test/wrong-part.pdf",
+        }
+        with patch.object(
+            supplier_aggregator,
+            "_supplier_lookup_callable",
+            return_value=lambda _query: wrong_part,
+        ):
+            result = supplier_aggregator.get_first_exact_supplier_result("LM7805ACT")
+
+        self.assertEqual(result, {})
+
     def test_query_variants_keep_speed_and_package_suffixes(self):
         variants = _supplier_query_variants("AM29F010B-70EC")
         self.assertEqual(variants, ("AM29F010B-70EC", "AM29F010B70EC"))

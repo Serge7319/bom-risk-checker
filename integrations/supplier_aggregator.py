@@ -450,6 +450,80 @@ def get_supplier_results(part_number, request_id: str = ""):
     return results
 
 
+def get_first_exact_supplier_result(part_number: str, request_id: str = "") -> dict:
+    """Return the first exact-MPN supplier record that includes a datasheet.
+
+    Review packets need only identity-safe source evidence. Waiting for every
+    configured distributor made the review action wait for the slowest API,
+    even after one supplier had already returned the requested part and its
+    datasheet. Prefer that complete exact result as soon as it arrives. If no
+    supplier provides a datasheet, return the best exact-MPN record after all
+    suppliers finish so the caller can report that documentation is missing.
+    """
+    from integrations.supplier_diagnostics import (
+        resolve_supplier_diagnostic_request_id,
+    )
+
+    requested = normalize_part_number(str(part_number or "").strip())
+    if not requested:
+        return {}
+
+    resolved_request_id = resolve_supplier_diagnostic_request_id(request_id)
+    suppliers = [
+        ("Mouser", _supplier_lookup_callable("Mouser")),
+        ("DigiKey", _supplier_lookup_callable("DigiKey")),
+        ("Newark", _supplier_lookup_callable("Newark")),
+    ]
+    executor = ThreadPoolExecutor(max_workers=len(suppliers))
+    futures = {
+        executor.submit(
+            _safe_supplier_lookup,
+            source_name,
+            lookup_func,
+            part_number,
+            resolved_request_id,
+        ): source_name
+        for source_name, lookup_func in suppliers
+    }
+    exact_results = []
+    returned_early = False
+    try:
+        for future in as_completed(futures):
+            try:
+                result = future.result()
+            except Exception:
+                continue
+            if not isinstance(result, dict):
+                continue
+            if result.get("provider_status") != PROVIDER_AVAILABLE:
+                continue
+            returned_mpn = normalize_part_number(
+                str(result.get("manufacturer_part_number") or "").strip()
+            )
+            if returned_mpn != requested:
+                continue
+            exact_results.append(result)
+            datasheet_url = str(result.get("datasheet_url") or "").strip()
+            if datasheet_url.startswith(("https://", "http://")):
+                returned_early = True
+                return result
+
+        if exact_results:
+            return max(
+                exact_results,
+                key=lambda result: bool(
+                    str(result.get("product_detail_url") or "").startswith(
+                        ("https://", "http://")
+                    )
+                ),
+            )
+        return {}
+    finally:
+        # Running distributor requests have bounded HTTP timeouts. Do not keep
+        # the Streamlit interaction blocked after an exact datasheet is ready.
+        executor.shutdown(wait=not returned_early, cancel_futures=returned_early)
+
+
 @st.cache_data(ttl=300, show_spinner=False)
 def get_best_part_data(part_number: str) -> dict:
     from integrations.supplier_diagnostics import resolve_supplier_diagnostic_request_id

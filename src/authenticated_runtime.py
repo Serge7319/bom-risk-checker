@@ -8475,33 +8475,61 @@ def run_authenticated_app() -> None:
                                     f"{current_value or 'Not recorded'}"
                                 )
                             if (not supplier_url or not datasheet_url):
-                                if live_evidence.get("lookup_attempted") and not live_evidence.get("identity_verified"):
-                                    st.caption(
-                                        _decision_packet_text(
-                                            live_evidence.get("lookup_summary"),
-                                            "No exact supplier record was found on the last check.",
+                                if live_evidence.get("lookup_attempted"):
+                                    if live_evidence.get("save_error"):
+                                        st.warning(
+                                            "Exact supplier evidence was found for this visit, but could not be saved. "
+                                            "Any returned link remains visible for this visit; refresh to retry saving."
                                         )
-                                        + " You can retry the lookup."
-                                    )
+                                    elif live_evidence.get("identity_verified") and datasheet_url:
+                                        st.success(
+                                            f"Exact part verified at {supplier_name}. "
+                                            "The manufacturer datasheet is available in the evidence row above."
+                                        )
+                                    elif live_evidence.get("identity_verified"):
+                                        st.warning(
+                                            _decision_packet_text(
+                                                live_evidence.get("lookup_summary"),
+                                                f"Exact part verified at {supplier_name}, but no datasheet link was returned.",
+                                            )
+                                        )
+                                    else:
+                                        st.caption(
+                                            _decision_packet_text(
+                                                live_evidence.get("lookup_summary"),
+                                                "No exact supplier record was found on the last check.",
+                                            )
+                                            + " You can retry the lookup."
+                                        )
                                 else:
                                     st.caption(
                                         "This saved BOM and alert contain no source or datasheet links yet. "
                                         "Search configured suppliers by exact part number; verified results are saved to this review."
                                     )
                                 if st.button(
-                                    "Search current supplier evidence",
+                                    "Refresh supplier evidence"
+                                    if live_evidence.get("lookup_attempted")
+                                    else "Search current supplier evidence",
                                     key=f"decision_packet_source_lookup_{decision_id}",
                                     type="secondary",
                                 ):
                                     exact_evidence = None
                                     with st.spinner(
-                                        f"Checking supplier sources for {decision_mpn}…"
+                                        f"Searching configured suppliers for {decision_mpn}; "
+                                        "an exact-MPN datasheet will appear here as soon as one is found…"
                                     ):
                                         try:
-                                            from integrations.supplier_aggregator import get_best_part_data
-                                            from src.decision_packet_evidence import exact_supplier_evidence
+                                            from integrations.supplier_aggregator import (
+                                                get_first_exact_supplier_result,
+                                            )
+                                            from src.decision_packet_evidence import (
+                                                exact_supplier_evidence,
+                                            )
 
-                                            supplier_result = get_best_part_data(decision_mpn) or {}
+                                            supplier_result = (
+                                                get_first_exact_supplier_result(decision_mpn)
+                                                or {}
+                                            )
                                             exact_evidence = exact_supplier_evidence(
                                                 decision_mpn,
                                                 supplier_result,
@@ -8511,6 +8539,19 @@ def run_authenticated_app() -> None:
                                             lookup_summary = str(
                                                 health.get("summary_message") or ""
                                             ).strip()
+                                            if (
+                                                exact_evidence
+                                                and exact_evidence.get("datasheet_url")
+                                            ):
+                                                lookup_summary = (
+                                                    f"Exact MPN matched at {exact_evidence.get('source') or 'a supplier'}; "
+                                                    "manufacturer datasheet is available."
+                                                )
+                                            elif exact_evidence:
+                                                lookup_summary = (
+                                                    f"Exact MPN matched at {exact_evidence.get('source') or 'a supplier'}, "
+                                                    "but the supplier did not return a datasheet URL."
+                                                )
                                         except Exception:
                                             # Keep provider errors out of the UI; the
                                             # saved alert remains reviewable either way.
