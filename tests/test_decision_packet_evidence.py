@@ -3,7 +3,10 @@ from __future__ import annotations
 
 import unittest
 
-from src.decision_packet_evidence import exact_supplier_evidence
+from src.decision_packet_evidence import (
+    exact_supplier_evidence,
+    public_datasheet_search_url,
+)
 
 
 class ExactSupplierEvidenceTests(unittest.TestCase):
@@ -49,6 +52,33 @@ class ExactSupplierEvidenceTests(unittest.TestCase):
         )
 
         self.assertEqual(result["datasheet_url"], "")
+
+    def test_rejects_synthetic_or_unavailable_supplier_records(self):
+        for source, provider_status in (
+            ("No supplier match", "PART_NOT_FOUND"),
+            ("Supplier lookup unavailable", "ERROR"),
+            ("", ""),
+        ):
+            with self.subTest(source=source, provider_status=provider_status):
+                result = exact_supplier_evidence(
+                    "DHT11",
+                    {
+                        "manufacturer_part_number": "DHT11",
+                        "source": source,
+                        "provider_status": provider_status,
+                        "datasheet_url": "https://example.test/not-verified.pdf",
+                    },
+                )
+                self.assertIsNone(result)
+
+    def test_public_datasheet_link_is_a_search_lead_not_a_document_url(self):
+        url = public_datasheet_search_url(" DHT11 ")
+
+        self.assertEqual(
+            url,
+            "https://www.google.com/search?q=%22DHT11%22+datasheet+PDF",
+        )
+        self.assertEqual(public_datasheet_search_url(" "), "")
 
 
 if __name__ == "__main__":

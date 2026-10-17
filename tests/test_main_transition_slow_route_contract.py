@@ -185,6 +185,9 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
         rerun = render("BOM Analyzer", 2)
         self.assertIn("Rerunning BOM analysis…", rerun)
         self.assertIn("Refreshing supplier, lifecycle, lead-time, and pricing evidence", rerun)
+        self.assertIn("position:fixed;left:var(--cv-foundation-rail,0px)", rerun)
+        self.assertIn("display:flex;align-items:center;justify-content:center", rerun)
+        self.assertIn("width:min(420px,calc(100% - 48px))", rerun)
 
 
 if __name__ == "__main__":

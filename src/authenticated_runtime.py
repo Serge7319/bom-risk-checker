@@ -8380,7 +8380,7 @@ def run_authenticated_app() -> None:
                     )
                 elif live_evidence.get("identity_verified"):
                     datasheet_detail = (
-                        f"Exact MPN matched at {supplier_name}, but the listing did not return a datasheet URL."
+                        f"Exact MPN matched at {supplier_name}, but the listing did not return a datasheet URL. Search public documents for a possible part-family reference."
                     )
                 elif live_evidence.get("lookup_attempted"):
                     datasheet_detail = (
@@ -8388,10 +8388,11 @@ def run_authenticated_app() -> None:
                             live_evidence.get("lookup_summary"),
                             "No datasheet URL was returned by the exact-MPN supplier lookup.",
                         )
+                        + " Search public documents for a possible part-family reference."
                     )
                 else:
                     datasheet_detail = (
-                        "No datasheet URL is saved for this component. Check configured supplier sources below."
+                        "No direct datasheet URL is available. Search public documents for a possible reference; verify its exact part number and revision before relying on it."
                     )
                 bom_detail = (
                     f"Linked context: {saved_bom_label}."
@@ -8400,6 +8401,8 @@ def run_authenticated_app() -> None:
                     if len(related_boms) > 1 and not selected_decision_context_id
                     else "No saved BOM is currently linked to this alert."
                 )
+                from src.decision_packet_evidence import public_datasheet_search_url
+
                 evidence_rows_html = "".join(
                     (
                         _packet_evidence_row(
@@ -8413,8 +8416,9 @@ def run_authenticated_app() -> None:
                             2,
                             "Manufacturer datasheet",
                             datasheet_detail,
-                            "Open datasheet" if datasheet_url else "",
-                            datasheet_url,
+                            "Open datasheet" if datasheet_url else "Search public datasheets",
+                            datasheet_url
+                            or public_datasheet_search_url(decision_mpn),
                         ),
                         _packet_evidence_row(
                             3,
@@ -8527,59 +8531,51 @@ def run_authenticated_app() -> None:
                                         "This saved BOM and alert contain no source or datasheet links yet. "
                                         "Search configured suppliers by exact part number; verified results are saved to this review."
                                     )
-                                if st.button(
-                                    "Refresh supplier evidence"
-                                    if live_evidence.get("lookup_attempted")
-                                    else "Search current supplier evidence",
-                                    key=f"decision_packet_source_lookup_{decision_id}",
-                                    type="secondary",
-                                ):
+                                def _refresh_decision_packet_supplier_evidence() -> None:
                                     exact_evidence = None
-                                    with st.spinner(
-                                        f"Searching configured suppliers for {decision_mpn}; "
-                                        "an exact-MPN datasheet will appear here as soon as one is found…"
-                                    ):
-                                        try:
-                                            from integrations.supplier_aggregator import (
-                                                get_first_exact_supplier_result,
-                                            )
-                                            from src.decision_packet_evidence import (
-                                                exact_supplier_evidence,
-                                            )
+                                    lookup_summary = ""
+                                    try:
+                                        from integrations.supplier_aggregator import (
+                                            get_first_exact_supplier_result,
+                                        )
+                                        from src.decision_packet_evidence import (
+                                            exact_supplier_evidence,
+                                        )
 
-                                            supplier_result = (
-                                                get_first_exact_supplier_result(decision_mpn)
-                                                or {}
-                                            )
-                                            exact_evidence = exact_supplier_evidence(
-                                                decision_mpn,
-                                                supplier_result,
-                                            )
-                                            health = supplier_result.get("provider_health")
-                                            health = health if isinstance(health, dict) else {}
-                                            lookup_summary = str(
-                                                health.get("summary_message") or ""
-                                            ).strip()
-                                            if (
-                                                exact_evidence
-                                                and exact_evidence.get("datasheet_url")
-                                            ):
-                                                lookup_summary = (
-                                                    f"Exact MPN matched at {exact_evidence.get('source') or 'a supplier'}; "
-                                                    "manufacturer datasheet is available."
-                                                )
-                                            elif exact_evidence:
-                                                lookup_summary = (
-                                                    f"Exact MPN matched at {exact_evidence.get('source') or 'a supplier'}, "
-                                                    "but the supplier did not return a datasheet URL."
-                                                )
-                                        except Exception:
-                                            # Keep provider errors out of the UI; the
-                                            # saved alert remains reviewable either way.
-                                            exact_evidence = None
+                                        supplier_result = (
+                                            get_first_exact_supplier_result(decision_mpn)
+                                            or {}
+                                        )
+                                        exact_evidence = exact_supplier_evidence(
+                                            decision_mpn,
+                                            supplier_result,
+                                        )
+                                        health = supplier_result.get("provider_health")
+                                        health = health if isinstance(health, dict) else {}
+                                        lookup_summary = str(
+                                            health.get("summary_message") or ""
+                                        ).strip()
+                                        if (
+                                            exact_evidence
+                                            and exact_evidence.get("datasheet_url")
+                                        ):
                                             lookup_summary = (
-                                                "Supplier sources could not be checked right now."
+                                                f"Exact MPN matched at {exact_evidence.get('source') or 'a supplier'}; "
+                                                "manufacturer datasheet is available."
                                             )
+                                        elif exact_evidence:
+                                            lookup_summary = (
+                                                f"Exact MPN matched at {exact_evidence.get('source') or 'a supplier'}, "
+                                                "but the supplier did not return a datasheet URL."
+                                            )
+                                    except Exception:
+                                        # Keep provider errors out of the UI; the
+                                        # saved alert remains reviewable either way.
+                                        exact_evidence = None
+                                        lookup_summary = (
+                                            "Supplier sources could not be checked right now."
+                                        )
+
                                     evidence_snapshot = (
                                         {
                                             **exact_evidence,
@@ -8608,9 +8604,6 @@ def run_authenticated_app() -> None:
                                         )
                                         if evidence_error:
                                             st.session_state[live_evidence_key]["save_error"] = True
-                                            st.error(
-                                                "Exact supplier links were found for this visit but could not be saved to the decision record."
-                                            )
                                         else:
                                             persisted_payload = {
                                                 **saved_payload,
@@ -8620,7 +8613,16 @@ def run_authenticated_app() -> None:
                                             cached_state = dict(decision_state)
                                             cached_state[decision_id] = state_record
                                             st.session_state[decision_cache_key] = cached_state
-                                    st.rerun()
+
+                                st.button(
+                                    "Refresh supplier evidence"
+                                    if live_evidence.get("lookup_attempted")
+                                    else "Search current supplier evidence",
+                                    key=f"decision_packet_source_lookup_{decision_id}",
+                                    type="secondary",
+                                    on_click=_refresh_decision_packet_supplier_evidence,
+                                    help="Recheck configured distributors; exact-MPN documents appear in the evidence list above.",
+                                )
                             if selected_decision_context_id:
                                 internal_nav_button(
                                     "Open linked saved BOM",

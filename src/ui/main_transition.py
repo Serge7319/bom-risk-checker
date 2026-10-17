@@ -363,12 +363,16 @@ def route_loading_markup(target_route: str, transition_gen: int) -> str:
              data-cadivor-route-loading="{safe_route}"
              data-cadivor-transition-gen="{gen}"
              data-testid="cadivor-route-loading"
+             style="box-sizing:border-box;position:fixed;left:var(--cv-foundation-rail,0px);right:0;top:var(--cv-foundation-top,64px);bottom:0;width:calc(100vw - var(--cv-foundation-rail,0px));height:calc(100dvh - var(--cv-foundation-top,64px));min-height:calc(100vh - var(--cv-foundation-top,64px));z-index:2147483000;display:flex;align-items:center;justify-content:center;margin:0;padding:0;background:#F5F7FB;overflow:hidden;font-family:Inter,system-ui,sans-serif"
              role="status" aria-live="polite">
-          <div class="cv-main-transition-card">
-            <div class="cv-main-transition-mark" aria-hidden="true">C</div>
-            <strong>{title}</strong>
-            <p>{description}</p>
-            <div class="cv-main-transition-progress" aria-hidden="true"><i></i></div>
+          <div class="cv-main-transition-card"
+               style="box-sizing:border-box;width:min(420px,calc(100% - 48px));padding:28px 28px 24px;border:1px solid #D6E3F5;border-radius:18px;background:#FFFFFF;box-shadow:0 12px 28px rgba(15,23,42,.06);text-align:center">
+            <div class="cv-main-transition-mark" aria-hidden="true"
+                 style="width:40px;height:40px;margin:0 auto 14px;border-radius:12px;display:grid;place-items:center;background:#2563EB;color:#FFFFFF;font-size:18px;font-weight:850;letter-spacing:-.02em">C</div>
+            <strong style="display:block;color:#0F172A;font-size:18px;font-weight:850;letter-spacing:-.02em;margin:0 0 6px">{title}</strong>
+            <p style="margin:0 0 16px;color:#64748B;font-size:13px;line-height:1.45;font-weight:650">{description}</p>
+            <div class="cv-main-transition-progress" aria-hidden="true"
+                 style="height:4px;border-radius:999px;background:#E8EEF7;overflow:hidden"><i style="display:block;height:100%;width:42%;border-radius:999px;background:#2563EB"></i></div>
           </div>
         </div>
         </div>
