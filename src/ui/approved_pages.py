@@ -1761,6 +1761,88 @@ def decision_status_label(row: dict[str, Any], today) -> str:
     return "Open"
 
 
+def _decision_affected_bom_rows(rows: list[tuple[dict[str, Any], str]]) -> list[dict[str, Any]]:
+    """Collapse component alerts into one actionable row per saved BOM."""
+    grouped: dict[str, dict[str, Any]] = {}
+    for row, status in rows:
+        related_boms = row.get("related_boms") or []
+        candidates: dict[str, dict[str, Any]] = {}
+        for related in related_boms:
+            if not isinstance(related, dict):
+                continue
+            analysis_id = str(related.get("id") or "").strip()
+            if analysis_id:
+                candidates[analysis_id] = dict(related)
+
+        direct_id = str(
+            _first(row, "analysis_id", "context_analysis_id", fallback="") or ""
+        ).strip()
+        if direct_id:
+            candidate = candidates.setdefault(direct_id, {})
+            candidate.setdefault("id", direct_id)
+            for key, value in (
+                ("project_name", _first(row, "project_name", "project", fallback="")),
+                ("bom_name", _first(row, "bom_name", "bom", fallback="")),
+                ("filename", _first(row, "filename", "source_filename", fallback="")),
+            ):
+                if value and not candidate.get(key):
+                    candidate[key] = value
+
+        for analysis_id, candidate in candidates.items():
+            project = str(candidate.get("project_name") or candidate.get("project") or "").strip()
+            bom_name = str(candidate.get("bom_name") or candidate.get("bom") or "").strip()
+            name = str(candidate.get("name") or "").strip()
+            if not name:
+                if project and bom_name and not project.casefold().endswith(bom_name.casefold()):
+                    name = f"{project} · {bom_name}"
+                else:
+                    name = bom_name or project or str(candidate.get("filename") or "Saved BOM")
+
+            record = grouped.setdefault(
+                analysis_id,
+                {
+                    "id": analysis_id,
+                    "name": name,
+                    "component_keys": set(),
+                    "event_keys": set(),
+                    "open_decisions": 0,
+                },
+            )
+            if record["name"] == "Saved BOM" and name != "Saved BOM":
+                record["name"] = name
+
+            mpn = str(_first(row, "mpn", "part_number", "component", fallback="") or "").strip()
+            part_id = str(_first(row, "part_id", "analysis_part_id", fallback="") or "").strip()
+            if mpn or part_id:
+                record["component_keys"].add((mpn or part_id).casefold())
+            event_key = str(_first(row, "decision_id", "id", fallback="") or "").strip()
+            if not event_key:
+                event_values = [
+                    str(_first(row, key, fallback="") or "").strip()
+                    for key in ("mpn", "part_number", "alert_message", "title", "created_at")
+                ]
+                event_key = "|".join(value for value in event_values if value)
+                if not event_key:
+                    event_key = f"unidentified-event-{len(record['event_keys'])}"
+            if event_key not in record["event_keys"]:
+                record["event_keys"].add(event_key)
+                if status != "Resolved":
+                    record["open_decisions"] += 1
+
+    result = []
+    for record in grouped.values():
+        result.append(
+            {
+                "id": record["id"],
+                "name": record["name"],
+                "affected_components": len(record["component_keys"]),
+                "open_decisions": record["open_decisions"],
+                "status": "Needs review" if record["open_decisions"] else "Resolved",
+            }
+        )
+    return sorted(result, key=lambda item: (item["name"].casefold(), item["id"]))
+
+
 def decision_queue_view(
     records: list[dict[str, Any]] | None,
     *,
@@ -1818,13 +1900,21 @@ def decision_queue_view(
                 continue
         if status_filter != "All statuses" and status_filter.casefold() != status.casefold():
             continue
-        blob = " ".join(
+        search_values = [
             str(_first(row, key, fallback="") or "")
-                for key in (
-                    "mpn", "part_number", "title", "summary", "alert_message",
-                    "owner", "assigned_owner", "assignee", "resolution",
-                )
-        ).casefold()
+            for key in (
+                "mpn", "part_number", "title", "summary", "alert_message",
+                "owner", "assigned_owner", "assignee", "resolution", "project_name",
+                "bom_name", "filename",
+            )
+        ]
+        search_values.extend(
+            str(bom.get(key) or "")
+            for bom in (row.get("related_boms") or [])
+            if isinstance(bom, dict)
+            for key in ("name", "project_name", "bom_name", "filename")
+        )
+        blob = " ".join(search_values).casefold()
         if needle and needle not in blob:
             continue
         visible.append((row, status))
@@ -1849,6 +1939,7 @@ def decision_queue_view(
         "resolved_month": resolved_month,
         "affected": affected,
         "rows": visible,
+        "boms": _decision_affected_bom_rows(visible) if scope == "boms" else [],
     }
 
 
@@ -1857,6 +1948,64 @@ def decision_action_label(row: dict[str, Any], status: str) -> str:
     if status in {"In review", "Resolved"} or recorded:
         return "Review"
     return "Record decision"
+
+
+def _render_decision_affected_boms(rows: list[dict[str, Any]]) -> None:
+    """Show BOM-level impact when the affected-BOM KPI is selected."""
+    st.markdown(
+        f"<h2 class='cv-decision-bom-title'>Affected saved BOMs ({len(rows)})</h2>"
+        "<p class='cv-decision-bom-subtitle'>Each saved BOM appears once, with its affected components and open decisions.</p>",
+        unsafe_allow_html=True,
+    )
+    widths = [2.2, 0.9, 0.9, 1.0, 0.8]
+    with st.container(key="approved_decision_bom_table"):
+        with st.container(key="approved_decision_bom_table_head"):
+            header = st.columns(widths, vertical_alignment="center")
+            for column, label in zip(
+                header,
+                ("Saved BOM", "Affected components", "Open decisions", "Status", "Action"),
+            ):
+                column.markdown(
+                    f"<div class='cv-decision-table-heading' role='columnheader'>{_esc(label)}</div>",
+                    unsafe_allow_html=True,
+                )
+        if not rows:
+            st.caption("No saved BOMs match the current search and status filters.")
+            return
+        for index, row in enumerate(rows):
+            with st.container(key=f"approved_decision_bom_row_{index}"):
+                cells = st.columns(widths, vertical_alignment="center")
+                cells[0].markdown(
+                    f"<div class='cv-decision-bom-name'>{_esc(row.get('name') or 'Saved BOM')}</div>",
+                    unsafe_allow_html=True,
+                )
+                affected_components = int(row.get("affected_components") or 0)
+                open_decisions = int(row.get("open_decisions") or 0)
+                cells[1].markdown(
+                    f"{affected_components} component{'s' if affected_components != 1 else ''}"
+                )
+                cells[2].markdown(
+                    f"{open_decisions} open" if open_decisions else "None"
+                )
+                status_kind = "open" if open_decisions else "low"
+                cells[3].markdown(
+                    f"<span class='cv-pill {status_kind}'>{_esc(row.get('status') or 'Resolved')}</span>",
+                    unsafe_allow_html=True,
+                )
+                with cells[4]:
+                    analysis_id = str(row.get("id") or "").strip()
+                    if st.button(
+                        "Open BOM",
+                        key=f"approved_decision_bom_open_{index}",
+                        use_container_width=True,
+                        disabled=not analysis_id,
+                    ):
+                        navigate_to(
+                            "BOM Settings",
+                            saved_bom_id=analysis_id,
+                            saved_bom_action="open",
+                            arm_opening=False,
+                        )
 
 
 def _records(rows: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
@@ -2464,6 +2613,8 @@ def render_decision_queue(records: list[dict[str, Any]] | None) -> None:
                     if st.button(label, key=f"approved_decision_drill_{key}"):
                         st.session_state["approved_decision_filter"] = status
                         st.session_state["approved_decision_scope"] = scope
+                        if scope == "boms":
+                            st.session_state["approved_decision_search"] = ""
                         st.rerun()
     with st.container(key="approved_decision_queue"):
         with st.container(key="approved_decision_toolbar"):
@@ -2511,14 +2662,23 @@ def render_decision_queue(records: list[dict[str, Any]] | None) -> None:
             scope=str(st.session_state.get("approved_decision_scope") or ""),
             today=date.today(),
         )
+        if str(st.session_state.get("approved_decision_scope") or "") == "boms":
+            _render_decision_affected_boms(view["boms"])
+            end_approved_page()
+            return
         with heading:
             st.markdown(f"<h2>Decision queue ({len(view['rows'])})</h2>", unsafe_allow_html=True)
         widths = [1.55, 1.55, 0.75, 1.0, 0.8, 0.85, 1.5]
         with st.container(key="approved_decision_table_head"):
             header = st.columns(widths, vertical_alignment="center")
             for column, label in zip(header, ("Component", "Title", "Risk level", "Decision status", "Owner", "Due date", "Actions")):
+                heading_modifier = {
+                    "Owner": " owner",
+                    "Due date": " due-date",
+                    "Actions": " actions",
+                }.get(label, "")
                 column.markdown(
-                    f"<div class='cv-decision-table-heading' role='columnheader'>{_esc(label)}</div>",
+                    f"<div class='cv-decision-table-heading{heading_modifier}' role='columnheader'>{_esc(label)}</div>",
                     unsafe_allow_html=True,
                 )
         if not view["rows"]:

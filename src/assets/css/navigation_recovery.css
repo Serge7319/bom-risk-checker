@@ -86,3 +86,117 @@ section[data-testid="stMain"] .st-key-cv_foundation_navigation .stButton > butto
 section[data-testid="stMain"] .st-key-cv_foundation_navigation .stButton > button[kind="primary"]::before {
   opacity: 1 !important;
 }
+
+/* Keep the rail icon in its own fixed slot. This rule is deliberately last:
+   earlier shell padding was being reset by this recovery stylesheet, causing
+   labels to start beneath the icons. */
+section[data-testid="stMain"] .st-key-cv_foundation_navigation .stButton > button,
+section[data-testid="stMain"] .st-key-cv_foundation_navigation .stButton > button[kind="secondary"] {
+  position: relative !important;
+  justify-content: flex-start !important;
+  padding-left: 54px !important;
+}
+
+section[data-testid="stMain"] .st-key-cv_foundation_navigation .stButton > button::before {
+  position: absolute !important;
+  left: 12px !important;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+  flex: none !important;
+  margin: 0 !important;
+}
+
+/* Align the Engineering Decisions headings with their inset row content. */
+section[data-testid="stMain"] .st-key-approved_decision_table_head .cv-decision-table-heading.owner {
+  padding-left: 14px !important;
+}
+section[data-testid="stMain"] .st-key-approved_decision_table_head .cv-decision-table-heading.due-date {
+  padding-left: 20px !important;
+}
+section[data-testid="stMain"] .st-key-approved_decision_table_head .cv-decision-table-heading.actions {
+  padding-left: 52px !important;
+}
+
+/* The Record decision packet uses the same centered canvas as Home. */
+section[data-testid="stMain"] [data-testid="stMainBlockContainer"]:has(.st-key-decision_packet_back),
+section[data-testid="stMain"] .main .block-container:has(.st-key-decision_packet_back) {
+  box-sizing: border-box !important;
+  width: 100% !important;
+  max-width: 1440px !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
+section[data-testid="stMain"] .cv130-packet {
+  box-sizing: border-box !important;
+  padding: 22px 24px !important;
+  border-radius: 16px !important;
+  box-shadow: 0 5px 18px rgba(15, 35, 65, .055) !important;
+}
+section[data-testid="stMain"] .cv130-packet .cv130-eyebrow {
+  color: #2563eb !important;
+  font-size: 11px !important;
+  font-weight: 800 !important;
+  letter-spacing: .08em !important;
+}
+section[data-testid="stMain"] .cv130-packet .cv130-packet-title {
+  font-size: 22px !important;
+  line-height: 1.28 !important;
+}
+section[data-testid="stMain"] .cv130-packet .cv130-reason,
+section[data-testid="stMain"] .cv130-packet .cv131-target-context {
+  font-size: 13px !important;
+  line-height: 1.45 !important;
+}
+section[data-testid="stMain"] .cv130-packet .cv131-next {
+  font-size: 12px !important;
+  line-height: 1.45 !important;
+}
+
+/* BOM impact is a BOM-level list, with a stable and readable table rhythm. */
+section[data-testid="stMain"] .cv-decision-bom-title {
+  margin: 10px 0 4px !important;
+  color: #142239 !important;
+  font-size: 19px !important;
+  font-weight: 760 !important;
+}
+section[data-testid="stMain"] .cv-decision-bom-subtitle {
+  margin: 0 0 10px !important;
+  color: #64748b !important;
+  font-size: 13px !important;
+}
+section[data-testid="stMain"] .st-key-approved_decision_bom_table {
+  margin: 0 -12px !important;
+  padding: 0 12px !important;
+}
+section[data-testid="stMain"] .st-key-approved_decision_bom_table_head {
+  margin: 7px 0 0 !important;
+  padding: 0 10px !important;
+  border-top: 1px solid #e5ebf3 !important;
+  border-bottom: 1px solid #e5ebf3 !important;
+  background: #f5f7fa !important;
+}
+section[data-testid="stMain"] .st-key-approved_decision_bom_table_head [data-testid="stHorizontalBlock"] {
+  min-height: 46px !important;
+  align-items: center !important;
+}
+section[data-testid="stMain"] [class*="st-key-approved_decision_bom_row_"] {
+  margin: 0 !important;
+  padding: 10px 10px !important;
+  border-bottom: 1px solid #e8edf3 !important;
+}
+section[data-testid="stMain"] [class*="st-key-approved_decision_bom_row_"] [data-testid="stHorizontalBlock"] {
+  align-items: center !important;
+}
+.cv-decision-bom-name {
+  color: #17253e;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 900px) {
+  section[data-testid="stMain"] .st-key-approved_decision_table_head .cv-decision-table-heading.actions {
+    padding-left: 12px !important;
+  }
+}
