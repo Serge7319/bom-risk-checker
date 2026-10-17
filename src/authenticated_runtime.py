@@ -223,6 +223,10 @@ from src.onboarding_service import (
     required_setup_missing,
     should_show_setup_continuation,
 )
+from src.services.onboarding_progress_cache import (
+    recent_onboarding_progress,
+    remember_onboarding_progress,
+)
 from src.customer_profile_service import (
     ensure_customer_profile,
     update_customer_profile,
@@ -3304,62 +3308,81 @@ def run_authenticated_app() -> None:
     onboarding_progress = {}
     onboarding_error = None
     if onboarding_user_id and not st.session_state.get(PROFILE_UNRESOLVED_KEY):
-        def _sync_onboarding():
-            progress, error = ensure_onboarding_progress(supabase, onboarding_user_id)
-            progress = progress or {}
-            inferred_profile_complete = bool(
-                profile_for_shell.get("full_name")
-                and (
-                    profile_for_shell.get("company")
-                    or profile_for_shell.get("company_name")
-                    or profile_for_shell.get("role_title")
-                )
+        _cached_onboarding_progress = recent_onboarding_progress(
+            st.session_state,
+            onboarding_user_id,
+        )
+        if _cached_onboarding_progress is not None:
+            onboarding_progress = _cached_onboarding_progress
+        else:
+            # Snapshot Streamlit state on the script thread. The read-budget
+            # worker runs detached and must never access st.session_state.
+            reports_session_history = bool(
+                st.session_state.get("reports_session_history")
             )
-            inferred_workspace_complete = False
-            try:
-                inferred_workspace_complete = bool(
-                    supabase.table("workspace_members")
-                    .select("workspace_id")
-                    .eq("user_id", onboarding_user_id)
-                    .limit(1)
-                    .execute()
-                    .data
-                )
-            except Exception:
-                pass
-            inferred_alternative_complete = False
-            try:
-                inferred_alternative_complete = bool(
-                    _workspace_query(supabase.table("analysis_decisions").select("id"))
-                    .eq("user_id", onboarding_user_id)
-                    .limit(1)
-                    .execute()
-                    .data
-                )
-            except Exception:
-                pass
-            sync_inferred = {
-                "profile_completed": inferred_profile_complete,
-                "workspace_completed": inferred_workspace_complete,
-                "first_bom_completed": saved_bom_count > 0,
-                "first_alternative_completed": inferred_alternative_complete,
-                "first_report_completed": bool(st.session_state.get("reports_session_history")),
-            }
-            sync_updates = monotonic_progress_updates(progress, sync_inferred)
-            if sync_updates:
-                synced, sync_error = update_onboarding_progress(
-                    supabase,
-                    onboarding_user_id,
-                    sync_updates,
-                )
-                if synced and not sync_error:
-                    progress = synced
-            return progress, error
 
-        _onboarding = _quick_boot_read(_sync_onboarding, default=None)
-        if isinstance(_onboarding, tuple):
-            onboarding_progress, onboarding_error = _onboarding
-            onboarding_progress = onboarding_progress or {}
+            def _sync_onboarding():
+                progress, error = ensure_onboarding_progress(supabase, onboarding_user_id)
+                progress = progress or {}
+                inferred_profile_complete = bool(
+                    profile_for_shell.get("full_name")
+                    and (
+                        profile_for_shell.get("company")
+                        or profile_for_shell.get("company_name")
+                        or profile_for_shell.get("role_title")
+                    )
+                )
+                inferred_workspace_complete = False
+                try:
+                    inferred_workspace_complete = bool(
+                        supabase.table("workspace_members")
+                        .select("workspace_id")
+                        .eq("user_id", onboarding_user_id)
+                        .limit(1)
+                        .execute()
+                        .data
+                    )
+                except Exception:
+                    pass
+                inferred_alternative_complete = False
+                try:
+                    inferred_alternative_complete = bool(
+                        _workspace_query(supabase.table("analysis_decisions").select("id"))
+                        .eq("user_id", onboarding_user_id)
+                        .limit(1)
+                        .execute()
+                        .data
+                    )
+                except Exception:
+                    pass
+                sync_inferred = {
+                    "profile_completed": inferred_profile_complete,
+                    "workspace_completed": inferred_workspace_complete,
+                    "first_bom_completed": saved_bom_count > 0,
+                    "first_alternative_completed": inferred_alternative_complete,
+                    "first_report_completed": reports_session_history,
+                }
+                sync_updates = monotonic_progress_updates(progress, sync_inferred)
+                if sync_updates:
+                    synced, sync_error = update_onboarding_progress(
+                        supabase,
+                        onboarding_user_id,
+                        sync_updates,
+                    )
+                    if synced and not sync_error:
+                        progress = synced
+                return progress, error
+
+            _onboarding = _quick_boot_read(_sync_onboarding, default=None)
+            if isinstance(_onboarding, tuple):
+                onboarding_progress, onboarding_error = _onboarding
+                onboarding_progress = onboarding_progress or {}
+                if not onboarding_error:
+                    remember_onboarding_progress(
+                        st.session_state,
+                        onboarding_user_id,
+                        onboarding_progress,
+                    )
     shell_name = profile_for_shell.get("full_name") or profile_for_shell.get("email", "Cadivor User").split("@")[0].title()
     shell_company = profile_for_shell.get("company_name") or profile_for_shell.get("company") or selected_plan_name
     shell_email = profile_for_shell.get("email") or current_user.get("email", "")
@@ -3446,10 +3469,22 @@ def run_authenticated_app() -> None:
                     st.session_state.get("cadivor_workspace_command_cache") or []
                 )
             else:
-                _workspace_command_records = build_workspace_commands(
-                    supabase, current_user["id"], limit_per_source=60,
+                _cached_commands = st.session_state.get(
+                    "cadivor_workspace_command_cache"
                 )
-                st.session_state["cadivor_workspace_command_cache"] = _workspace_command_records
+                _cached_command_route = str(
+                    st.session_state.get("cadivor_workspace_command_cache_route") or ""
+                )
+                if isinstance(_cached_commands, list) and _cached_command_route == app_mode:
+                    # Button/form reruns on one page do not need to reload the
+                    # command palette's several database-backed data sources.
+                    _workspace_command_records = list(_cached_commands)
+                else:
+                    _workspace_command_records = build_workspace_commands(
+                        supabase, current_user["id"], limit_per_source=60,
+                    )
+                    st.session_state["cadivor_workspace_command_cache"] = _workspace_command_records
+                    st.session_state["cadivor_workspace_command_cache_route"] = app_mode
             cmd_meta["row_count"] = len(_workspace_command_records or [])
         except Exception:
             _workspace_command_records = []
@@ -3709,7 +3744,7 @@ def run_authenticated_app() -> None:
                 disabled=completed_steps < total_steps,
                 key="onboarding_complete",
             ):
-                update_onboarding_progress(
+                updated_progress, progress_error = update_onboarding_progress(
                     supabase,
                     onboarding_user_id,
                     {
@@ -3718,6 +3753,12 @@ def run_authenticated_app() -> None:
                         "completed_at": pd.Timestamp.utcnow().isoformat(),
                     },
                 )
+                if updated_progress and not progress_error:
+                    remember_onboarding_progress(
+                        st.session_state,
+                        onboarding_user_id,
+                        updated_progress,
+                    )
                 st.success("Cadivor setup completed.")
                 navigate_to("Dashboard")
 
@@ -3728,7 +3769,7 @@ def run_authenticated_app() -> None:
                 use_container_width=True,
                 key="onboarding_skip",
             ):
-                update_onboarding_progress(
+                updated_progress, progress_error = update_onboarding_progress(
                     supabase,
                     onboarding_user_id,
                     {
@@ -3736,6 +3777,12 @@ def run_authenticated_app() -> None:
                         "dismissed": True,
                     },
                 )
+                if updated_progress and not progress_error:
+                    remember_onboarding_progress(
+                        st.session_state,
+                        onboarding_user_id,
+                        updated_progress,
+                    )
                 navigate_to("Dashboard")
 
         stop_authenticated_page()
@@ -3749,7 +3796,12 @@ def run_authenticated_app() -> None:
         inject_dashboard_workspace_styles()
         render_dashboard_page_heading()
         try:
-            if not st.session_state.get("cadivor_workspace_command_cache"):
+            _command_cache = st.session_state.get("cadivor_workspace_command_cache")
+            if (
+                not isinstance(_command_cache, list)
+                or st.session_state.get("cadivor_workspace_command_cache_route")
+                != "Dashboard"
+            ):
                 from src.boot_read_budget import run_with_read_budget as _budget_commands
 
                 _commands, _command_status = _budget_commands(
@@ -3761,6 +3813,7 @@ def run_authenticated_app() -> None:
                 )
                 if _command_status == "ok" and _commands is not None:
                     st.session_state["cadivor_workspace_command_cache"] = _commands
+                st.session_state["cadivor_workspace_command_cache_route"] = "Dashboard"
         except Exception:
             pass
 
@@ -8312,6 +8365,10 @@ def run_authenticated_app() -> None:
                             key=f"decision_bom_context_{decision_id}",
                             help="Choose the saved BOM whose approved alternative can address this alert.",
                         )
+                    st.markdown(
+                        '<div class="cv-dp-layout-spacer" aria-hidden="true"></div>',
+                        unsafe_allow_html=True,
+                    )
 
                     packet_left, packet_right = st.columns(
                         [1.72, 1], gap="medium", vertical_alignment="top"
@@ -8664,21 +8721,30 @@ def run_authenticated_app() -> None:
                                                 "Confirm the Engineering Decisions storage migration is applied."
                                             )
                                         else:
+                                            verified_at = saved_inventory["verified_at"]
+                                            inventory_history = list(
+                                                state_record.get("history") or []
+                                            )
+                                            inventory_history.append(
+                                                {
+                                                    "event": (
+                                                        "Verified inventory evidence recorded: "
+                                                        f"{saved_inventory['quantity']:,} units from "
+                                                        f"{saved_inventory['supplier']}"
+                                                    ),
+                                                    "time": verified_at,
+                                                    "actor": saved_inventory["verified_by"],
+                                                }
+                                            )
                                             fallback_state = dict(decision_state)
                                             fallback_state[decision_id] = {
                                                 **state_record,
                                                 "status": current_status,
                                                 "owner": save_owner,
                                                 "decision_payload": inventory_decision,
+                                                "history": inventory_history,
                                             }
                                             st.session_state[decision_cache_key] = fallback_state
-                                            refreshed_state, refresh_error = load_decision_state(
-                                                supabase,
-                                                user_id=current_user["id"],
-                                                workspace_id=active_workspace_id or None,
-                                            )
-                                            if not refresh_error:
-                                                st.session_state[decision_cache_key] = refreshed_state
                                             st.session_state[
                                                 "cadivor_ed_inventory_flash"
                                             ] = "Inventory verification saved to this alert."
@@ -8848,21 +8914,31 @@ def run_authenticated_app() -> None:
                                             "Confirm the Engineering Decisions storage migration is applied."
                                         )
                                     else:
+                                        resolved_at = datetime.now(
+                                            timezone.utc
+                                        ).isoformat()
+                                        resolution_history = list(
+                                            state_record.get("history") or []
+                                        )
+                                        resolution_history.append(
+                                            {
+                                                "event": mitigation_decision["resolution"],
+                                                "time": resolved_at,
+                                                "actor": (
+                                                    profile_for_shell.get("full_name")
+                                                    or shell_name
+                                                ),
+                                            }
+                                        )
                                         fallback_state = dict(decision_state)
                                         fallback_state[decision_id] = {
                                             **state_record,
                                             "status": "Closed",
                                             "owner": saved_owner,
                                             "decision_payload": mitigation_decision,
+                                            "history": resolution_history,
                                         }
                                         st.session_state[decision_cache_key] = fallback_state
-                                        refreshed_state, refresh_error = load_decision_state(
-                                            supabase,
-                                            user_id=current_user["id"],
-                                            workspace_id=active_workspace_id or None,
-                                        )
-                                        if not refresh_error:
-                                            st.session_state[decision_cache_key] = refreshed_state
                                         st.session_state[
                                             "cadivor_ed_resolution_flash"
                                         ] = (
@@ -8926,13 +9002,37 @@ def run_authenticated_app() -> None:
                                             "Confirm the Engineering Decisions storage migration is applied."
                                         )
                                     else:
-                                        refreshed_state, refresh_error = load_decision_state(
-                                            supabase,
-                                            user_id=current_user["id"],
-                                            workspace_id=active_workspace_id or None,
+                                        note_time = datetime.now(
+                                            timezone.utc
+                                        ).isoformat()
+                                        note_text = note.strip()
+                                        note_rows = list(
+                                            state_record.get("notes") or []
                                         )
-                                        if not refresh_error:
-                                            st.session_state[decision_cache_key] = refreshed_state
+                                        note_rows.append(
+                                            {
+                                                "author": note_author,
+                                                "text": note_text,
+                                                "time": note_time,
+                                            }
+                                        )
+                                        note_history = list(
+                                            state_record.get("history") or []
+                                        )
+                                        note_history.append(
+                                            {
+                                                "event": "Engineering note added",
+                                                "time": note_time,
+                                                "actor": note_author,
+                                            }
+                                        )
+                                        fallback_state = dict(decision_state)
+                                        fallback_state[decision_id] = {
+                                            **state_record,
+                                            "notes": note_rows,
+                                            "history": note_history,
+                                        }
+                                        st.session_state[decision_cache_key] = fallback_state
                                         st.session_state[
                                             "cadivor_ed_note_flash"
                                         ] = "Engineering note saved."
@@ -10966,6 +11066,11 @@ def run_authenticated_app() -> None:
         )
         if updated and not error:
             st.session_state["onboarding_report_completed"] = True
+            remember_onboarding_progress(
+                st.session_state,
+                onboarding_user_id,
+                updated,
+            )
 
 
     # ---------- Reports ----------
@@ -13239,7 +13344,12 @@ def run_authenticated_app() -> None:
                         key="pricing_single_bom_report",
                     )
         try:
-            if not st.session_state.get("cadivor_workspace_command_cache"):
+            _command_cache = st.session_state.get("cadivor_workspace_command_cache")
+            if (
+                not isinstance(_command_cache, list)
+                or st.session_state.get("cadivor_workspace_command_cache_route")
+                != "Pricing"
+            ):
                 from src.boot_read_budget import run_with_read_budget as _budget_pricing_commands
 
                 _pricing_commands, _pricing_command_status = _budget_pricing_commands(
@@ -13249,6 +13359,7 @@ def run_authenticated_app() -> None:
                 )
                 if _pricing_command_status == "ok" and _pricing_commands is not None:
                     st.session_state["cadivor_workspace_command_cache"] = _pricing_commands
+                st.session_state["cadivor_workspace_command_cache_route"] = "Pricing"
         except Exception:
             pass
 
@@ -14391,11 +14502,17 @@ def run_authenticated_app() -> None:
                     type="secondary",
                 ):
                     if onboarding_user_id:
-                        update_onboarding_progress(
+                        updated_progress, progress_error = update_onboarding_progress(
                             supabase,
                             onboarding_user_id,
                             {"welcome_seen": True, "dismissed": True},
                         )
+                        if updated_progress and not progress_error:
+                            remember_onboarding_progress(
+                                st.session_state,
+                                onboarding_user_id,
+                                updated_progress,
+                            )
                     st.rerun()
 
 

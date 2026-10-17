@@ -297,10 +297,11 @@ section[data-testid="stMain"] .main .block-container:has(.st-key-decision_packet
   grid-template-columns: 1fr 1.5fr 1fr;
   width: 100% !important;
   max-width: 100% !important;
+  overflow: hidden;
   justify-self: stretch;
   gap: 22px;
   box-sizing: border-box;
-  margin: 0 0 18px !important;
+  margin: 0 !important;
   padding: 16px 18px;
   border: 1px solid #d8e2ef;
   border-radius: 14px;
@@ -314,14 +315,15 @@ section[data-testid="stMain"] .main .block-container:has(.st-key-decision_packet
   gap: 11px;
   min-width: 0;
 }
-.st-key-cadivor_decision_packet_shell .cv-dp-steps li:not(:last-child)::after {
-  position: absolute;
-  top: 16px;
-  left: 32px;
-  right: -14px;
-  height: 2px;
-  background: #d6e0ed;
-  content: "";
+.st-key-cadivor_decision_packet_shell .cv-dp-steps li::after {
+  display: none !important;
+  content: none !important;
+}
+.st-key-cadivor_decision_packet_shell .cv-dp-layout-spacer {
+  display: block !important;
+  width: 100% !important;
+  height: 20px !important;
+  min-height: 20px !important;
 }
 .st-key-cadivor_decision_packet_shell .cv-dp-steps li > span {
   display: grid;
@@ -414,7 +416,7 @@ section[data-testid="stMain"] .main .block-container:has(.st-key-decision_packet
   .st-key-cadivor_decision_packet_shell .cv-dp-bom { padding-right: 0; }
   .st-key-cadivor_decision_packet_shell .cv-dp-risk { position: static; justify-self: start; }
   .st-key-cadivor_decision_packet_shell .cv-dp-steps { grid-template-columns: 1fr; gap: 12px; }
-  .st-key-cadivor_decision_packet_shell .cv-dp-steps li:not(:last-child)::after { display: none; }
+  .st-key-cadivor_decision_packet_shell .cv-dp-layout-spacer { height: 14px !important; min-height: 14px !important; }
 }
 @media(max-width:620px) {
   .st-key-cadivor_decision_packet_shell .cv-dp-heading { display: block; }

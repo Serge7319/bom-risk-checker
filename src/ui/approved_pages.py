@@ -5383,21 +5383,27 @@ def render_replacement_search() -> None:
         # filters only after that exact MPN has finished searching.
         st.session_state["approved_replacement_compare_candidates"] = []
         return
-    fit_filter, life_filter, stock_filter, risk_filter, sort_by = st.columns(5)
-    with fit_filter:
-        fit_choice = st.selectbox("Parametric fit", ["All"], key="approved_fit_filter")
-    with life_filter:
-        life_choice = st.selectbox("Lifecycle", ["All", "Active", "NRND", "Obsolete"], key="approved_life_filter")
-    with stock_filter:
-        stock_choice = st.selectbox("Stock", ["All", "In stock", "No stock"], key="approved_stock_filter")
-    with risk_filter:
-        risk_choice = st.selectbox(
-            "Risk",
-            ["All", "High", "Medium", "Low", "Needs verification"],
-            key="approved_risk_filter",
-        )
-    with sort_by:
-        sort_choice = st.selectbox("Sort by", ["Overall match", "Stock", "Risk"], key="approved_replacement_sort")
+    supplier_candidate_count = len(candidates)
+    if supplier_candidate_count:
+        fit_filter, life_filter, stock_filter, risk_filter, sort_by = st.columns(5)
+        with fit_filter:
+            fit_choice = st.selectbox("Parametric fit", ["All"], key="approved_fit_filter")
+        with life_filter:
+            life_choice = st.selectbox("Lifecycle", ["All", "Active", "NRND", "Obsolete"], key="approved_life_filter")
+        with stock_filter:
+            stock_choice = st.selectbox("Stock", ["All", "In stock", "No stock"], key="approved_stock_filter")
+        with risk_filter:
+            risk_choice = st.selectbox(
+                "Risk",
+                ["All", "High", "Medium", "Low", "Needs verification"],
+                key="approved_risk_filter",
+            )
+        with sort_by:
+            sort_choice = st.selectbox("Sort by", ["Overall match", "Stock", "Risk"], key="approved_replacement_sort")
+    else:
+        # Don't show inert filter controls when the supplier search returned no
+        # component rows. The empty state below explains what the user can do.
+        fit_choice = life_choice = stock_choice = risk_choice = sort_choice = "All"
     filtered = []
     for row in candidates:
         level = str(row.get("Estimated Risk") or row.get("risk_level") or row.get("risk") or "")
@@ -5447,7 +5453,7 @@ def render_replacement_search() -> None:
             f"{len(excluded_obsolete)} supplier match{'es' if len(excluded_obsolete) != 1 else ''} "
             "marked obsolete or end of life. Cadivor excluded these from replacement selection."
         )
-    elif query.strip() and isinstance(result, dict) and not candidates:
+    elif query.strip() and isinstance(result, dict) and not supplier_candidate_count:
         candidate_notice = search_error or candidate_status or "No replacement candidates were returned for this part."
     elif dropped:
         candidate_notice = (
@@ -5464,10 +5470,6 @@ def render_replacement_search() -> None:
     if len(candidates) > len(shown) and not notice:
         notice = f"Showing {len(shown)} of {len(candidates)} supplier alternatives."
     notice_html = f"<p class='cv-ap-sub'>{_esc(notice)}</p>" if notice and shown else ""
-    if not shown and not notice:
-        notice_html = "<p class='cv-ap-sub'>Search a manufacturer part number. Results come from the live supplier search.</p>"
-    elif not shown and notice:
-        notice_html = f"<p class='cv-ap-sub'>{_esc(notice)}</p>"
     source_html = f"<p class='cv-ap-sub'>{_esc(source_notice)}</p>" if source_notice else ""
     st.markdown(
         f"""
@@ -5480,7 +5482,7 @@ def render_replacement_search() -> None:
             <p>Manufacturer {manufacturer}</p>
           </section>
           {notice_html}
-          <h2>Replacement options ({len(candidates)})</h2>
+          <h2>Replacement candidates</h2>
         </div>
         """,
         unsafe_allow_html=True,
@@ -5499,6 +5501,30 @@ def render_replacement_search() -> None:
                     f"{_esc(_candidate_field(row, 'Lifecycle', 'Lifecycle Status', 'lifecycle_status', 'lifecycle'))}",
                     unsafe_allow_html=False,
                 )
+    if not shown:
+        st.session_state["approved_replacement_compare_candidates"] = []
+        st.session_state.pop("cadivor_replacement_open_mpn", None)
+        if excluded_obsolete:
+            empty_title = "No replacement-ready candidates"
+            empty_detail = candidate_notice
+        elif dropped:
+            empty_title = "Supplier results need part-number verification"
+            empty_detail = candidate_notice
+        elif supplier_candidate_count:
+            empty_title = "No candidates match the selected filters"
+            empty_detail = "Broaden the filters above or search this part again."
+        else:
+            empty_title = "No supplier alternatives found"
+            empty_detail = candidate_notice or (
+                "The configured supplier catalogs returned no alternatives for this part. "
+                "This does not confirm that no replacement exists. Try another MPN or review supplier catalogs directly."
+            )
+        st.markdown(
+            f"<section class='cv-ap-card cv-ap-empty-state'>"
+            f"<h3>{_esc(empty_title)}</h3><p>{_esc(empty_detail)}</p></section>",
+            unsafe_allow_html=True,
+        )
+        return
     from src.part_images import part_image_markup
 
     header = st.columns([2.4, 1.3, 1.8, 0.9, 0.8, 0.9, 0.7])

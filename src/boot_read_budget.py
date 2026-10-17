@@ -98,20 +98,15 @@ def run_with_read_budget(
         try:
             box["value"] = fn()
             box["status"] = "ok"
-        except Exception:
+        except BaseException:
+            # The worker is deliberately detached from Streamlit's script
+            # context. Treat even framework control exceptions as a failed
+            # optional read instead of leaking a daemon-thread traceback.
             box["status"] = "error"
         finally:
             done.set()
 
     thread = threading.Thread(target=_worker, name="cadivor-boot-read", daemon=True)
-    try:
-        from streamlit.runtime.scriptrunner_utils.script_run_context import (
-            add_script_run_ctx,
-        )
-
-        add_script_run_ctx(thread)
-    except Exception:
-        pass
     thread.start()
     if not done.wait(budget):
         return None, "timeout"
