@@ -327,8 +327,9 @@ def _comparison_table(
         )
         if critical:
             kind = "critical"
+        row_class = " class='cv-compat-critical-row'" if critical else ""
         body.append(
-            f"<tr{' class=\'cv-compat-critical-row\'' if critical else ''}>"
+            f"<tr{row_class}>"
             f"<td>{_esc(label)}</td>"
             f"<td>{_value_cell(original, original_source, note)}</td>"
             f"<td>{_value_cell(candidate, candidate_source)}</td>"
