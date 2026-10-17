@@ -17,6 +17,7 @@ ALT_FINDER_RETURN_SECTION_KEY = "cadivor_alt_finder_return_analysis_section"
 ALT_FINDER_RETURN_COMPONENT_KEY = "cadivor_alt_finder_return_component_mpn"
 ALT_FINDER_RETURN_PAGE_KEY = "cadivor_alt_finder_return_page"
 ALT_FINDER_RETURN_MPN_KEY = "cadivor_alt_finder_return_mpn"
+ALT_FINDER_RETURN_DECISION_ID_KEY = "cadivor_alt_finder_return_decision_id"
 ALT_FINDER_INTENT = "find_alternatives"
 NAV_SCROLL_RESET_PENDING_KEY = "cadivor_nav_scroll_reset_pending"
 NAV_SCROLL_RESET_TOKEN_KEY = "cadivor_nav_scroll_reset_token"
@@ -41,6 +42,7 @@ _ALT_NAV_KEYS = (
     "source_page",
     "return_page",
     "return_mpn",
+    "return_decision_id",
     "project_name",
     "bom_name",
     "intent",
@@ -164,6 +166,7 @@ def navigate_to(page: str, *, _rerun: bool = True, arm_opening: bool = True, **p
             ALT_FINDER_RETURN_COMPONENT_KEY,
             ALT_FINDER_RETURN_PAGE_KEY,
             ALT_FINDER_RETURN_MPN_KEY,
+            ALT_FINDER_RETURN_DECISION_ID_KEY,
             "alternative_original_manufacturer",
             "alternative_prefill_source_context",
             "alternative_prefill_search_pending",
@@ -412,6 +415,7 @@ def navigate_to_alternative_finder(
     return_analysis_id: str = "",
     return_page: str = "",
     return_mpn: str = "",
+    return_decision_id: str = "",
     project_name: str = "",
     bom_name: str = "",
     prefill_id: str = "",
@@ -470,9 +474,15 @@ def navigate_to_alternative_finder(
         st.session_state[ALT_FINDER_RETURN_MPN_KEY] = return_mpn or context["mpn"]
         nav_kwargs["return_page"] = return_page
         nav_kwargs["return_mpn"] = return_mpn or context["mpn"]
+        if return_decision_id:
+            st.session_state[ALT_FINDER_RETURN_DECISION_ID_KEY] = return_decision_id
+            nav_kwargs["return_decision_id"] = return_decision_id
+        else:
+            st.session_state.pop(ALT_FINDER_RETURN_DECISION_ID_KEY, None)
     else:
         st.session_state.pop(ALT_FINDER_RETURN_PAGE_KEY, None)
         st.session_state.pop(ALT_FINDER_RETURN_MPN_KEY, None)
+        st.session_state.pop(ALT_FINDER_RETURN_DECISION_ID_KEY, None)
     if context["manufacturer"]:
         nav_kwargs["manufacturer"] = context["manufacturer"]
     if context["description"]:
@@ -868,6 +878,7 @@ def _commit_internal_nav(page: str, params: dict[str, Any]) -> None:
                 return_analysis_id=str(params.get("return_analysis_id") or ""),
                 return_page=str(params.get("return_page") or ""),
                 return_mpn=str(params.get("return_mpn") or ""),
+                return_decision_id=str(params.get("return_decision_id") or ""),
                 project_name=str(params.get("project_name") or ""),
                 bom_name=str(params.get("bom_name") or ""),
                 _rerun=False,
