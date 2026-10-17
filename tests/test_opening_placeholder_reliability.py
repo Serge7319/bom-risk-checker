@@ -134,6 +134,10 @@ def test_onboarding_budget_worker_uses_only_script_thread_state_snapshot():
     assert 'reports_session_history = bool(' in runtime
     assert '"first_report_completed": reports_session_history' in onboarding
     assert "st.session_state" not in onboarding
+    assert "_workspace_query(" not in onboarding.replace(
+        "_onboarding_workspace_query(", ""
+    )
+    assert "_onboarding_workspace_query(" in onboarding
 
 
 def test_same_page_reruns_reuse_onboarding_and_command_palette_reads():
@@ -164,6 +168,27 @@ def test_opening_profile_read_does_not_run_session_aware_loader_in_worker():
     assert "auth_user is _AUTH_USER_PROFILE_UNSET" in profile_method
     assert "st.session_state" not in worker
     assert "run_with_budget(_read)" in helper
+
+
+def test_detached_workspace_reads_use_script_thread_scope_snapshots():
+    runtime = _source("src/authenticated_runtime.py")
+    alerts = runtime.split("def _load_alerts():", 1)[1].split(
+        "alert_result, alert_status = run_with_read_budget", 1
+    )[0]
+    analyses = runtime.split(
+        "analyses_result, analyses_status = run_with_read_budget", 1
+    )[1].split("if analyses_status", 1)[0]
+    part_links = runtime.split("def _load_decision_part_links():", 1)[1].split(
+        "from src.boot_read_budget import run_with_read_budget", 1
+    )[0]
+
+    for worker_source in (alerts, analyses, part_links):
+        assert "_workspace_query(" not in worker_source.replace(
+            "_decision_workspace_query(", ""
+        )
+        assert "st.session_state" not in worker_source
+    assert "_decision_workspace_query(" in alerts
+    assert "_decision_workspace_query(" in part_links
 
 
 def test_nonessential_hang_does_not_consume_first_page_budget():

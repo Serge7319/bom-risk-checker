@@ -3373,6 +3373,12 @@ def run_authenticated_app() -> None:
             reports_session_history = bool(
                 st.session_state.get("reports_session_history")
             )
+            onboarding_workspace_id = str(active_workspace_id or "")
+
+            def _onboarding_workspace_query(query):
+                if onboarding_workspace_id:
+                    return query.eq("workspace_id", onboarding_workspace_id)
+                return query
 
             def _sync_onboarding():
                 progress, error = ensure_onboarding_progress(supabase, onboarding_user_id)
@@ -3400,7 +3406,9 @@ def run_authenticated_app() -> None:
                 inferred_alternative_complete = False
                 try:
                     inferred_alternative_complete = bool(
-                        _workspace_query(supabase.table("analysis_decisions").select("id"))
+                        _onboarding_workspace_query(
+                            supabase.table("analysis_decisions").select("id")
+                        )
                         .eq("user_id", onboarding_user_id)
                         .limit(1)
                         .execute()
@@ -7459,6 +7467,13 @@ def run_authenticated_app() -> None:
         # Opening immediately, then hydrate decision data behind an in-page loader
         # so sidebar + Sign out stay usable between Streamlit runs.
         decision_scope_key = active_workspace_id or "personal"
+        _decision_workspace_id = str(active_workspace_id or "")
+
+        def _decision_workspace_query(query):
+            if _decision_workspace_id:
+                return query.eq("workspace_id", _decision_workspace_id)
+            return query
+
         decision_cache_key = (
             f"engineering_decision_state_{current_user['id']}_{decision_scope_key}"
         )
@@ -7576,7 +7591,7 @@ def run_authenticated_app() -> None:
 
                         def _load_alerts():
                             decision_alert_response = execute_supabase_read(
-                                _workspace_query(
+                                _decision_workspace_query(
                                     supabase.table("monitor_alerts").select("*")
                                 )
                                 .eq("user_id", current_user["id"])
@@ -7605,7 +7620,14 @@ def run_authenticated_app() -> None:
                     try:
                         remaining = max(0.05, load_deadline - time.monotonic())
                         analyses_result, analyses_status = run_with_read_budget(
-                            lambda: load_analysis_history(current_user["id"]),
+                            lambda: execute_supabase_read(
+                                _decision_workspace_query(
+                                    supabase.table("analyses").select("*")
+                                )
+                                .eq("user_id", current_user["id"])
+                                .order("created_at", desc=True),
+                                operation="engineering_decisions.analyses",
+                            ).data or [],
                             budget_seconds=remaining,
                             respect_first_page=False,
                         )
@@ -7687,7 +7709,7 @@ def run_authenticated_app() -> None:
                                 if load_deadline - time.monotonic() < 0.3:
                                     break
                                 response = execute_supabase_read(
-                                    _workspace_query(
+                                    _decision_workspace_query(
                                         supabase.table("analysis_parts").select("*")
                                     )
                                     .eq("user_id", current_user["id"])
