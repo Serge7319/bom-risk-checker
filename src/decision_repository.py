@@ -114,6 +114,11 @@ def load_decision_state(
             "owner": row.get("assigned_owner") or "Engineering",
             "due_date": row.get("due_date"),
             "updated_at": row.get("updated_at"),
+            "decision_payload": (
+                row.get("decision_payload")
+                if isinstance(row.get("decision_payload"), dict)
+                else {}
+            ),
             "notes": [],
             "history": [],
             "record_id": row.get("id"),
@@ -189,7 +194,9 @@ def save_decision_workflow(
         "scope_key": scope,
         "workspace_id": workspace_id or None,
         "decision_key": decision_key,
-        "analysis_id": str(decision.get("analysis_id") or "") or None,
+        "analysis_id": str(
+            decision.get("analysis_id") or decision.get("context_analysis_id") or ""
+        ) or None,
         "part_number": str(decision.get("part_number") or "") or None,
         "decision_type": str(decision.get("decision_type") or "") or None,
         "title": str(decision.get("title") or "") or None,
@@ -208,10 +215,15 @@ def save_decision_workflow(
             on_conflict="user_id,scope_key,decision_key",
         ).execute()
 
-        if previous_status and previous_status != status:
+        if decision.get("resolution"):
+            event_label = str(decision.get("resolution"))
+            event_type = "mitigation_recorded"
+        elif previous_status and previous_status != status:
             event_label = f"Status changed from {previous_status} to {status}"
+            event_type = "workflow_updated"
         else:
             event_label = "Decision workflow updated"
+            event_type = "workflow_updated"
 
         supabase.table("engineering_decision_events").insert(
             {
@@ -219,13 +231,17 @@ def save_decision_workflow(
                 "scope_key": scope,
                 "workspace_id": workspace_id or None,
                 "decision_key": decision_key,
-                "event_type": "workflow_updated",
+                "event_type": event_type,
                 "event_label": event_label,
                 "actor_name": actor_name,
                 "event_payload": {
                     "status": status,
                     "assigned_owner": assigned_owner,
                     "due_date": due_date,
+                    "resolution": decision.get("resolution"),
+                    "approved_alternative_mpn": decision.get(
+                        "approved_alternative_mpn"
+                    ),
                 },
             }
         ).execute()

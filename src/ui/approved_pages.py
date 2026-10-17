@@ -1744,8 +1744,13 @@ def reset_catalog_filters(state: dict[str, Any]) -> None:
 def decision_status_label(row: dict[str, Any], today) -> str:
     status = str(_first(row, "status", "decision_status", fallback="Open") or "Open")
     folded = status.casefold()
-    if any(token in folded for token in ("resolv", "closed", "approved", "accepted")):
+    if any(token in folded for token in ("resolv", "closed", "accepted")):
         return "Resolved"
+    if str(row.get("source") or "").casefold() == "monitoring":
+        if folded not in {"new", "open", "overdue"}:
+            # An engineering workflow can be progressing or a candidate can be
+            # rejected while the underlying supply alert is still active.
+            return "In review"
     if "review" in folded:
         return "In review"
     if "over" in folded:
@@ -1785,21 +1790,40 @@ def decision_queue_view(
         )
         if stamp is not None and stamp.year == today.year and stamp.month == today.month:
             resolved_month += 1
-    affected = len({
-        str(_first(row, "analysis_id", fallback="") or "")
-        for row, _status in prepared
-        if str(_first(row, "analysis_id", fallback="") or "").strip()
-    })
+    affected_analysis_ids: set[str] = set()
+    for row, _status in prepared:
+        direct_id = str(
+            _first(row, "analysis_id", "context_analysis_id", fallback="") or ""
+        ).strip()
+        if direct_id:
+            affected_analysis_ids.add(direct_id)
+        for related_bom in row.get("related_boms") or []:
+            if isinstance(related_bom, dict):
+                related_id = str(related_bom.get("id") or "").strip()
+                if related_id:
+                    affected_analysis_ids.add(related_id)
+    affected = len(affected_analysis_ids)
     needle = query.strip().casefold()
     visible = []
     for row, status in prepared:
-        if scope == "boms" and not str(_first(row, "analysis_id", fallback="") or "").strip():
-            continue
+        if scope == "boms":
+            direct_id = str(
+                _first(row, "analysis_id", "context_analysis_id", fallback="") or ""
+            ).strip()
+            has_related = any(
+                isinstance(bom, dict) and str(bom.get("id") or "").strip()
+                for bom in (row.get("related_boms") or [])
+            )
+            if not direct_id and not has_related:
+                continue
         if status_filter != "All statuses" and status_filter.casefold() != status.casefold():
             continue
         blob = " ".join(
             str(_first(row, key, fallback="") or "")
-            for key in ("mpn", "part_number", "title", "summary", "alert_message", "owner", "assignee")
+                for key in (
+                    "mpn", "part_number", "title", "summary", "alert_message",
+                    "owner", "assigned_owner", "assignee", "resolution",
+                )
         ).casefold()
         if needle and needle not in blob:
             continue
@@ -2403,7 +2427,7 @@ def render_decision_queue(records: list[dict[str, Any]] | None) -> None:
         <div class="cv-ap">
           <p class="cv-ap-kicker">ENGINEERING</p>
           <h1>Engineering decisions</h1>
-          <p class="cv-ap-sub">Track and resolve key engineering decisions that impact your products, BOMs and supply chain.</p>
+          <p class="cv-ap-sub">This queue tracks individual monitoring alerts and BOM reviews. An approved alternate stays linked here until you explicitly record how it resolves the alert.</p>
         </div>
         """,
         unsafe_allow_html=True,
@@ -2508,18 +2532,27 @@ def render_decision_queue(records: list[dict[str, Any]] | None) -> None:
                 kind = "high" if "high" in folded else ("low" if "low" in folded else "medium")
                 level_html = f"<span class='cv-pill {kind}'>{_esc(level)}</span>"
             status_kind = {"Open": "open", "Overdue": "high", "In review": "review", "Resolved": "low"}.get(status, "open")
-            owner = _first(row, "owner", "assignee", fallback=None)
+            owner = _first(row, "assigned_owner", "owner", "assignee", fallback=None)
             owner_label = "Unassigned" if owner is None else _esc(owner)
             mpn = str(_first(row, "mpn", "part_number", "component", fallback="Not recorded"))
             detail = _first(row, "description", "part_description", fallback=None)
-            subtitle = f"<div class='cv-ap-meta'>{_esc(detail)}</div>" if detail else ""
+            resolution = _first(row, "resolution", fallback=None)
+            subtitle_parts = []
+            if detail:
+                subtitle_parts.append(f"<div class='cv-ap-meta'>{_esc(detail)}</div>")
+            if resolution:
+                subtitle_parts.append(
+                    f"<div class='cv-ap-meta' style='color:#047857;font-weight:750'>"
+                    f"{_esc(resolution)}</div>"
+                )
+            subtitle = "".join(subtitle_parts)
             due = _first(row, "due_date", "due_at", fallback=None)
             if not due:
                 due_label = "Not recorded"
             else:
                 due_text = analyzed_label(due).split("<br>", 1)[0]
                 due_label = f"<span class='cv-due-late'>{due_text}</span>" if status == "Overdue" else due_text
-            title = _first(row, "title", "summary", "alert_message", fallback=None)
+            title = _first(row, "alert_message", "title", "summary", fallback=None)
             title_label = "Not recorded" if title is None else _esc(title)
             image_source = _first(
                 row,
@@ -2553,7 +2586,11 @@ def render_decision_queue(records: list[dict[str, Any]] | None) -> None:
                 cells[3].markdown(f"<span class='cv-pill {status_kind}'>{_esc(status)}</span>", unsafe_allow_html=True)
                 cells[4].markdown(owner_label)
                 cells[5].markdown(due_label, unsafe_allow_html=True)
-                analysis_id = str(row.get("analysis_id") or "")
+                analysis_id = str(
+                    row.get("analysis_id")
+                    or row.get("context_analysis_id")
+                    or ""
+                )
                 action = decision_action_label(row, status)
                 with cells[6]:
                     action_col, overflow_col = st.columns(
@@ -2573,22 +2610,19 @@ def render_decision_queue(records: list[dict[str, Any]] | None) -> None:
                             key=button_key,
                             type=button_type,
                             use_container_width=True,
+                            help="Open this exact monitoring event to review its evidence and record the outcome.",
                         ):
                             st.session_state["cadivor_decision_focus_mpn"] = mpn
-                            if analysis_id:
-                                st.session_state["cadivor_active_analysis_id"] = analysis_id
-                                st.session_state["analysis_id"] = analysis_id
-                                if action == "Record decision":
-                                    st.session_state["cadivor_pending_analysis_section"] = "Engineering Decisions"
-                                    st.session_state["cadivor_pending_analysis_section_id"] = analysis_id
-                                    navigate_to(
-                                        "Analysis Details",
-                                        analysis_id=analysis_id,
-                                        analysis_tab="Engineering Decisions",
-                                        component=mpn,
-                                    )
-                                else:
-                                    navigate_to("Analysis Details", analysis_id=analysis_id)
+                            from src.decision_engine import monitoring_decision_id
+
+                            decision_id = str(
+                                row.get("decision_id") or monitoring_decision_id(row)
+                            )
+                            navigate_to(
+                                "Engineering Decisions",
+                                decision_id=decision_id,
+                                arm_opening=False,
+                            )
                     with overflow_col:
                         with st.container(key=f"approved_decision_menu_{index}"):
                             with st.popover(
@@ -2678,7 +2712,7 @@ def render_decision_queue(records: list[dict[str, Any]] | None) -> None:
                                         )
                                 if not analysis_id:
                                     st.caption(
-                                        "No saved BOM is linked to this decision, so BOM-specific actions are unavailable."
+                                "No single saved BOM is linked to this alert. Open Record decision to review the event and choose a BOM context when available."
                                     )
     end_approved_page()
 

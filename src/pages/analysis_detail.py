@@ -518,9 +518,8 @@ def _inject_analysis_detail_v2_styles(*, force: bool = False) -> bool:
     if not css.strip():
         return False
 
-    st.markdown(
-        f"<style id='cadivor-analysis-detail-v2-css' data-cadivor-layout-style='true'>{css}</style>",
-        unsafe_allow_html=True,
+    st.html(
+        f"<style id='cadivor-analysis-detail-v2-css' data-cadivor-layout-style='true'>{css}</style>"
     )
     st.session_state[run_key] = run_id
     return True
@@ -1277,7 +1276,7 @@ def render_analysis_detail(
         unsafe_allow_html=True,
     )
 
-    st.markdown(
+    st.html(
         """
         <style id="cadivor-analysis-tabs-v82" data-cadivor-layout-style="true">
         .cv-analysis-back{display:inline-flex;align-items:center;gap:8px;color:#2563EB!important;text-decoration:none!important;font-size:12px;font-weight:950;margin-bottom:10px}
@@ -1694,9 +1693,8 @@ def render_analysis_detail(
         @media(max-width:1100px){.cv28-review-head{grid-template-columns:repeat(2,minmax(0,1fr))}.cv28-review-main{grid-column:1/-1}.cv28-evidence-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
         @media(max-width:700px){.cv28-review-head,.cv28-evidence-grid{grid-template-columns:1fr}}
 
-</style>
-        """,
-        unsafe_allow_html=True,
+        </style>
+        """
     )
     _inject_analysis_detail_v2_styles()
 

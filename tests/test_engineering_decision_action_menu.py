@@ -26,6 +26,17 @@ class EngineeringDecisionQueueActionTests(unittest.TestCase):
         self.assertIn("navigate_to_alternative_finder(", queue)
         self.assertIn('saved_bom_action="open"', queue)
 
+    def test_record_decision_opens_the_exact_engineering_decision_packet(self):
+        queue = APPROVED.split("def render_decision_queue", 1)[1]
+        primary_action = queue.split("if st.button(\n                            action,", 1)[1]
+        primary_action = primary_action.split("with overflow_col:", 1)[0]
+
+        self.assertIn('navigate_to(\n', primary_action)
+        self.assertIn('"Engineering Decisions"', primary_action)
+        self.assertIn("decision_id=decision_id", primary_action)
+        self.assertIn("monitoring_decision_id(row)", primary_action)
+        self.assertNotIn('navigate_to(\n                                        "Analysis Details"', primary_action)
+
     def test_clickable_kpi_target_cannot_cover_card_content(self):
         card = CORE_UI.split(
             '[class*="st-key-approved_decision_cardwrap_"] .cv-ed-card {{',

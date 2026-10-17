@@ -4040,7 +4040,7 @@ def run_authenticated_app() -> None:
     if app_mode == "Analysis Details":
         # Give the saved-BOM workspace and every section/tab the same centered
         # 1440px canvas used by Home and the other standard workspaces.
-        st.markdown(
+        st.html(
             """
             <style id="cadivor-analysis-workspace-canvas" data-cadivor-layout-style="true">
             section[data-testid="stMain"] .st-key-approved_page_canvas_standard_analysis_detail{
@@ -4059,36 +4059,9 @@ def run_authenticated_app() -> None:
               section[data-testid="stMain"] .st-key-approved_page_canvas_standard_analysis_detail{padding:24px 0!important}
             }
             </style>
-            """,
-            unsafe_allow_html=True,
+            """
         )
         with st.container(key="approved_page_canvas_standard_analysis_detail"):
-            # Sprint 30.2: make persistence explicit on every saved-analysis page.
-            st.markdown(
-                """
-                <style id="cadivor-save-status-302">
-                .cv302-savebar{display:flex;align-items:center;justify-content:space-between;gap:14px;
-                border:1px solid #bbf7d0;background:linear-gradient(135deg,#ffffff,#f0fdf4);
-                border-radius:13px;padding:10px 13px;margin:0 0 12px;box-shadow:0 8px 22px rgba(5,150,105,.055)}
-                .cv302-saveleft{display:flex;align-items:center;gap:9px;min-width:0}
-                .cv302-saveicon{width:26px;height:26px;border-radius:9px;background:#dcfce7;border:1px solid #bbf7d0;
-                color:#15803d!important;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:950}
-                .cv302-savetitle{font-size:11px;font-weight:900;color:#0f172a!important;line-height:1.25}
-                .cv302-savecopy{font-size:9px;font-weight:650;color:#64748b!important;margin-top:2px}
-                .cv302-savebadge{font-size:9px;font-weight:900;color:#047857!important;border:1px solid #a7f3d0;
-                background:#ecfdf5;border-radius:999px;padding:5px 8px;white-space:nowrap}
-                </style>
-                <div class="cv302-savebar">
-                  <div class="cv302-saveleft">
-                    <div class="cv302-saveicon">✓</div>
-                    <div><div class="cv302-savetitle">Saved to your workspace</div>
-                    <div class="cv302-savecopy">This analysis and its engineering activity are preserved automatically.</div></div>
-                  </div>
-                  <div class="cv302-savebadge">Autosave on</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
             from src.pages.analysis_detail import render_analysis_detail
             render_analysis_detail(
                 current_user=current_user,
@@ -7659,8 +7632,50 @@ def run_authenticated_app() -> None:
 
         cached_decisions = st.session_state.get(decision_cache_key)
         alert_frame = st.session_state.get(decision_alerts_key)
+        decision_state = cached_decisions if isinstance(cached_decisions, dict) else {}
+        queue_decision_center = None
         decision_rows = []
-        if isinstance(cached_decisions, dict):
+        if (
+            not needs_decision_hydrate
+            and not st.session_state.get(decision_timeout_key)
+            and isinstance(alert_frame, pd.DataFrame)
+        ):
+            decision_analyses = st.session_state.get(decision_analyses_key) or []
+            decision_part_links = st.session_state.get(decision_part_links_key) or []
+            queue_decision_center = build_decision_center(
+                alert_df=alert_frame,
+                analyses=decision_analyses,
+                saved_state=decision_state,
+                part_links=decision_part_links,
+            )
+            by_alert_id = {
+                str(decision.get("decision_id") or ""): decision
+                for decision in queue_decision_center["decisions"]
+                if decision.get("source") == "Monitoring"
+            }
+            from src.decision_engine import monitoring_decision_id
+
+            for alert in alert_frame.to_dict("records"):
+                decision_id = monitoring_decision_id(alert)
+                decision = by_alert_id.get(decision_id, {})
+                merged = dict(alert)
+                merged["decision_id"] = decision_id
+                for key in (
+                    "status",
+                    "assigned_owner",
+                    "updated_at",
+                    "resolution",
+                    "approved_alternative_mpn",
+                    "approved_alternative_record_id",
+                    "context_analysis_id",
+                    "related_boms",
+                    "project_name",
+                    "bom_name",
+                ):
+                    if decision.get(key) not in (None, "", []):
+                        merged[key] = decision[key]
+                decision_rows.append(merged)
+        elif isinstance(cached_decisions, dict):
             decision_rows = [row for row in cached_decisions.values() if isinstance(row, dict)]
         elif isinstance(cached_decisions, list):
             decision_rows = [row for row in cached_decisions if isinstance(row, dict)]
@@ -7673,7 +7688,9 @@ def run_authenticated_app() -> None:
         )
         from src.ui.approved_pages import render_decision_queue
 
-        render_decision_queue(decision_rows)
+        requested_decision_id = _qp_value("decision_id")
+        if not requested_decision_id:
+            render_decision_queue(decision_rows)
         # Single paint path: one hero, then loading / timeout / ready body below it.
         st.markdown(
             '<div class="cv64-page-shell" data-testid="ed-page-shell">',
@@ -7733,8 +7750,7 @@ def run_authenticated_app() -> None:
             decision_analyses = st.session_state.get(decision_analyses_key) or []
             decision_part_links = st.session_state.get(decision_part_links_key) or []
             decision_state = st.session_state.get(decision_cache_key) or {}
-
-            decision_center = build_decision_center(
+            decision_center = queue_decision_center or build_decision_center(
                 alert_df=decision_alert_df,
                 analyses=decision_analyses,
                 saved_state=decision_state,
@@ -7789,6 +7805,16 @@ def run_authenticated_app() -> None:
                     ),
                     None,
                 )
+                if selected_decision is None:
+                    st.warning(
+                        "That monitoring decision is no longer in the active queue."
+                    )
+                    if st.button(
+                        "Return to Engineering Decisions",
+                        key="decision_packet_missing_back",
+                        type="secondary",
+                    ):
+                        navigate_to("Engineering Decisions", arm_opening=False)
             elif focus_part:
                 selected_decision = next(
                     (
@@ -7800,6 +7826,77 @@ def run_authenticated_app() -> None:
                     ),
                     None,
                 )
+
+            selected_decision_context_id = ""
+            approved_alternative_records = []
+            approved_alternative_load_error = False
+            monitoring_component_decision = bool(
+                selected_decision
+                and decision_target_type(selected_decision) == "component"
+                and str(selected_decision.get("source") or "").casefold() == "monitoring"
+            )
+            if monitoring_component_decision:
+                selected_decision_context_id = str(
+                    selected_decision.get("analysis_id")
+                    or selected_decision.get("context_analysis_id")
+                    or ""
+                )
+                related_boms = selected_decision.get("related_boms") or []
+                if not selected_decision_context_id and len(related_boms) == 1:
+                    selected_decision_context_id = str(related_boms[0].get("id") or "")
+                elif not selected_decision_context_id and len(related_boms) > 1:
+                    bom_by_id = {
+                        str(bom.get("id") or ""): str(bom.get("name") or "Saved BOM")
+                        for bom in related_boms
+                        if bom.get("id")
+                    }
+                    if bom_by_id:
+                        selected_decision_context_id = st.selectbox(
+                            "Saved BOM context for this monitoring alert",
+                            options=list(bom_by_id),
+                            format_func=lambda analysis_key: bom_by_id[analysis_key],
+                            key=f"decision_bom_context_{selected_decision['decision_id']}",
+                        )
+
+                if selected_decision_context_id:
+                    decision_mpn = str(
+                        selected_decision.get("mpn")
+                        or selected_decision.get("part_number")
+                        or ""
+                    ).strip()
+                    alt_cache_key = (
+                        f"_ed_approved_alts_{selected_decision_context_id}_"
+                        f"{decision_mpn.casefold()}"
+                    )
+                    cached_alternatives = st.session_state.get(alt_cache_key)
+                    if (
+                        isinstance(cached_alternatives, tuple)
+                        and len(cached_alternatives) == 2
+                        and time.monotonic() - cached_alternatives[0] < 30
+                    ):
+                        approved_alternative_records = cached_alternatives[1]
+                    else:
+                        try:
+                            candidate_records = load_analysis_decisions(
+                                current_user["id"],
+                                original_part=decision_mpn,
+                                analysis_id=selected_decision_context_id,
+                                limit=100,
+                            )
+                            approved_alternative_records = [
+                                record
+                                for record in candidate_records
+                                if str(record.get("decision") or "").casefold() == "approved"
+                                and str(record.get("original_part") or "").casefold()
+                                == decision_mpn.casefold()
+                                and str(record.get("alternative_part") or "").strip()
+                            ]
+                            st.session_state[alt_cache_key] = (
+                                time.monotonic(),
+                                approved_alternative_records,
+                            )
+                        except Exception:
+                            approved_alternative_load_error = True
 
             decision_load_error = st.session_state.get(decision_load_error_key)
             if decision_load_error:
@@ -7813,12 +7910,17 @@ def run_authenticated_app() -> None:
                 )
 
             if selected_decision:
+                decision_resolution_flash = st.session_state.pop(
+                    "cadivor_ed_resolution_flash", ""
+                )
+                if decision_resolution_flash:
+                    st.toast(str(decision_resolution_flash), icon="✅")
                 if st.button(
                     "← Back to Engineering Decisions",
                     key="decision_packet_back",
                     type="secondary",
                 ):
-                    navigate_to("Engineering Decisions")
+                    navigate_to("Engineering Decisions", arm_opening=False)
 
                 st.markdown(
                     packet_header_html(selected_decision),
@@ -7896,6 +7998,185 @@ def run_authenticated_app() -> None:
                     st.info(selected_decision["recommended_action"])
                     st.caption(selected_decision["expected_impact"])
 
+                    if monitoring_component_decision:
+                        st.markdown("### Approved alternative and alert resolution")
+                        if selected_decision.get("resolution"):
+                            st.success(str(selected_decision["resolution"]))
+                        elif approved_alternative_records:
+                            approved_options = {
+                                (
+                                    f"{record.get('alternative_part')} · "
+                                    f"{record.get('recommendation_rating') or record.get('compatibility_rating') or 'Approved'}"
+                                ): record
+                                for record in approved_alternative_records
+                            }
+                            approved_label = st.selectbox(
+                                "Approved alternate for this BOM",
+                                options=list(approved_options),
+                                key=f"decision_approved_alt_{decision_id}",
+                            )
+                            approved_record = approved_options[approved_label]
+                            approved_mpn = str(
+                                approved_record.get("alternative_part") or ""
+                            ).strip()
+                            approved_details = st.columns(3)
+                            approved_details[0].caption(
+                                f"Compatibility: {approved_record.get('compatibility_rating') or 'Not recorded'}"
+                            )
+                            approved_details[1].caption(
+                                f"Supplier: {approved_record.get('supplier') or 'Not recorded'}"
+                            )
+                            approved_details[2].caption(
+                                f"Lifecycle: {approved_record.get('lifecycle') or 'Not recorded'}"
+                            )
+                            if approved_record.get("engineering_note"):
+                                st.caption(
+                                    "Approval note: "
+                                    + str(approved_record.get("engineering_note"))
+                                )
+                            comparison_snapshot = approved_record.get("comparison_snapshot")
+                            comparison_rows = (
+                                comparison_snapshot.get("comparison_table")
+                                if isinstance(comparison_snapshot, dict)
+                                else None
+                            )
+                            source_snapshot = approved_record.get("source_snapshot")
+                            source_snapshot = (
+                                source_snapshot if isinstance(source_snapshot, dict) else {}
+                            )
+                            original_snapshot = source_snapshot.get("original")
+                            candidate_snapshot = source_snapshot.get("selected_alternative")
+                            if not isinstance(original_snapshot, dict):
+                                original_snapshot = {}
+                            if not isinstance(candidate_snapshot, dict):
+                                candidate_snapshot = {}
+                            saved_datasheet_links = []
+                            for label, source_part in (
+                                ("Original part", original_snapshot),
+                                ("Approved alternate", candidate_snapshot),
+                            ):
+                                datasheet_url = next(
+                                    (
+                                        str(source_part.get(key) or "").strip()
+                                        for key in (
+                                            "datasheet_url",
+                                            "datasheet",
+                                            "Datasheet URL",
+                                            "Datasheet",
+                                            "datasheet_link",
+                                        )
+                                        if str(source_part.get(key) or "").strip().startswith(
+                                            ("https://", "http://")
+                                        )
+                                    ),
+                                    "",
+                                )
+                                if datasheet_url:
+                                    saved_datasheet_links.append((label, datasheet_url))
+                            if comparison_rows or saved_datasheet_links:
+                                with st.expander("Review saved comparison and datasheet evidence"):
+                                    if saved_datasheet_links:
+                                        datasheet_cols = st.columns(len(saved_datasheet_links))
+                                        for column, (label, url) in zip(
+                                            datasheet_cols, saved_datasheet_links
+                                        ):
+                                            column.link_button(
+                                                f"Open {label} datasheet ↗",
+                                                url,
+                                                use_container_width=True,
+                                            )
+                                    if comparison_rows:
+                                        cadivor_engineering_dataframe(
+                                            pd.DataFrame(comparison_rows)
+                                        )
+                            st.info(
+                                "The alternate approval and this monitoring alert are separate records. "
+                                "Confirm the alternate addresses this specific alert, then record the mitigation below."
+                            )
+                            mitigation_confirmed = st.checkbox(
+                                f"I confirm {approved_mpn} mitigates this monitoring event for this BOM.",
+                                key=f"decision_mitigation_confirm_{decision_id}",
+                            )
+                            if st.button(
+                                "Record mitigation and close alert",
+                                key=f"decision_mitigate_close_{decision_id}",
+                                type="primary",
+                                disabled=not mitigation_confirmed,
+                            ):
+                                mitigation_decision = {
+                                    **selected_decision,
+                                    "resolution": f"Mitigated by approved alternate {approved_mpn}.",
+                                    "approved_alternative_mpn": approved_mpn,
+                                    "approved_alternative_record_id": approved_record.get("id"),
+                                    "approved_alternative_analysis_id": selected_decision_context_id,
+                                    "context_analysis_id": selected_decision_context_id,
+                                }
+                                saved_owner = str(
+                                    state_record.get("owner")
+                                    or selected_decision.get("assigned_owner")
+                                    or selected_decision.get("owner")
+                                    or "Engineering"
+                                )
+                                resolution_error = save_decision_workflow(
+                                    supabase,
+                                    user_id=current_user["id"],
+                                    workspace_id=active_workspace_id or None,
+                                    decision=mitigation_decision,
+                                    status="Closed",
+                                    assigned_owner=saved_owner,
+                                    due_date=selected_decision.get("due_date"),
+                                    actor_name=(
+                                        profile_for_shell.get("full_name")
+                                        or shell_name
+                                    ),
+                                    previous_status=str(
+                                        state_record.get("status") or "New"
+                                    ),
+                                )
+                                if resolution_error:
+                                    st.error(
+                                        "The mitigation could not be recorded. "
+                                        "Confirm the Engineering Decision storage migration is applied."
+                                    )
+                                else:
+                                    fallback_state = dict(decision_state)
+                                    fallback_state[decision_id] = {
+                                        **state_record,
+                                        "status": "Closed",
+                                        "owner": saved_owner,
+                                        "decision_payload": mitigation_decision,
+                                    }
+                                    st.session_state[decision_cache_key] = fallback_state
+                                    refreshed_state, refresh_error = load_decision_state(
+                                        supabase,
+                                        user_id=current_user["id"],
+                                        workspace_id=active_workspace_id or None,
+                                    )
+                                    if not refresh_error:
+                                        st.session_state[decision_cache_key] = refreshed_state
+                                    st.session_state["cadivor_ed_resolution_flash"] = (
+                                        f"Alert resolved with approved alternate {approved_mpn}."
+                                    )
+                                    st.rerun()
+                        elif approved_alternative_load_error:
+                            st.warning(
+                                "Cadivor could not load approved alternatives for this BOM. "
+                                "The alert remains open until its mitigation can be verified."
+                            )
+                        elif not selected_decision_context_id:
+                            st.info(
+                                "No single saved BOM is linked to this alert. Select a BOM context above "
+                                "before using an approved alternate to close it."
+                            )
+                        else:
+                            st.info(
+                                "No approved alternate is recorded for this component in this BOM. "
+                                "Use Find Alternative or secure inventory, then return here to record the outcome."
+                            )
+                        st.caption(
+                            "The alert stays open until its outcome is explicitly recorded."
+                        )
+
                     st.markdown("### Decision Priority Matrix")
                     priority_breakdown = selected_decision.get("priority_breakdown", {})
                     st.markdown(
@@ -7943,14 +8224,31 @@ def run_authenticated_app() -> None:
                             current_workflow_status = "Manager Approval"
                         elif current_workflow_status in ("Approved", "Production Ready"):
                             current_workflow_status = "Production Approved"
+                        is_monitoring_component = (
+                            decision_target_type(selected_decision) == "component"
+                            and str(selected_decision.get("source") or "").casefold()
+                            == "monitoring"
+                        )
+                        workflow_statuses = STATUSES
+                        if is_monitoring_component and state_record.get("status") not in {
+                            "Closed", "Rejected"
+                        }:
+                            workflow_statuses = [
+                                status
+                                for status in STATUSES
+                                if status not in {"Closed", "Rejected"}
+                            ]
+                            status_widget_key = f"decision_status_{decision_id}"
+                            if st.session_state.get(status_widget_key) not in workflow_statuses:
+                                st.session_state.pop(status_widget_key, None)
                         status_index = (
-                            STATUSES.index(current_workflow_status)
-                            if current_workflow_status in STATUSES
+                            workflow_statuses.index(current_workflow_status)
+                            if current_workflow_status in workflow_statuses
                             else 0
                         )
                         new_status = st.selectbox(
                             "Decision status",
-                            STATUSES,
+                            workflow_statuses,
                             index=status_index,
                             key=f"decision_status_{decision_id}",
                         )
@@ -17890,6 +18188,9 @@ def run_authenticated_app() -> None:
                         current_user["id"],
                         persistent_payload,
                     )
+                    for cache_key in list(st.session_state.keys()):
+                        if str(cache_key).startswith("_ed_approved_alts_"):
+                            st.session_state.pop(cache_key, None)
                     st.session_state["alternative_engineering_decisions"][
                         candidate_key
                     ] = decision_value

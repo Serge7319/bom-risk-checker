@@ -59,9 +59,22 @@ DS_V2_TOKENS = (
 
 def _install_streamlit_stub(session_state: dict | None = None, *, script_run_id: str = "run-a"):
     st = types.ModuleType("streamlit")
+    st.__path__ = []
     st.session_state = session_state if session_state is not None else {}
     markdown_calls = []
     st.markdown = lambda content, **kwargs: markdown_calls.append((content, kwargs))
+    st.html = lambda content, **kwargs: markdown_calls.append(
+        (content, {**kwargs, "rendered_with_st_html": True})
+    )
+    st.cache_data = lambda *args, **kwargs: (lambda function: function)
+    st.cache_resource = lambda *args, **kwargs: (lambda function: function)
+
+    streamlit_components = types.ModuleType("streamlit.components")
+    streamlit_components.__path__ = []
+    streamlit_components_v1 = types.ModuleType("streamlit.components.v1")
+    streamlit_components_v1.html = lambda *args, **kwargs: None
+    streamlit_components.v1 = streamlit_components_v1
+    st.components = streamlit_components
 
     @contextmanager
     def _container(**kwargs):
@@ -84,6 +97,8 @@ def _install_streamlit_stub(session_state: dict | None = None, *, script_run_id:
     runtime.scriptrunner = scriptrunner
 
     sys.modules["streamlit"] = st
+    sys.modules["streamlit.components"] = streamlit_components
+    sys.modules["streamlit.components.v1"] = streamlit_components_v1
     sys.modules["streamlit.runtime"] = runtime
     sys.modules["streamlit.runtime.scriptrunner"] = scriptrunner
     return st, markdown_calls, _ctx
@@ -93,7 +108,13 @@ class AnalysisDetailsV2Tests(unittest.TestCase):
     def setUp(self):
         self._saved_modules = {
             name: sys.modules.get(name)
-            for name in ("streamlit", "streamlit.runtime", "streamlit.runtime.scriptrunner")
+            for name in (
+                "streamlit",
+                "streamlit.runtime",
+                "streamlit.runtime.scriptrunner",
+                "streamlit.components",
+                "streamlit.components.v1",
+            )
         }
         sys.modules.pop("src.pages.analysis_detail", None)
 
@@ -115,6 +136,8 @@ class AnalysisDetailsV2Tests(unittest.TestCase):
     def test_production_render_path_exists(self) -> None:
         self.assertIn('if app_mode == "Analysis Details":', self.runtime_source)
         self.assertIn("render_analysis_detail(", self.runtime_source)
+        self.assertNotIn("Saved to your workspace", self.runtime_source)
+        self.assertNotIn("cv302-savebar", self.runtime_source)
 
     def test_all_nine_sections_defined(self) -> None:
         from src.pages import analysis_detail
@@ -179,6 +202,10 @@ class AnalysisDetailsV2Tests(unittest.TestCase):
         ]
         self.assertEqual(len(style_calls), 1)
         self.assertIn("cadivor-analysis-detail-v2-css", style_calls[0])
+        self.assertTrue(
+            any(kwargs.get("rendered_with_st_html") for content, kwargs in markdown_calls
+                if "cadivor-analysis-detail-v2-css" in str(content))
+        )
         self.assertEqual(st.session_state.get("_cadivor_analysis_detail_v2_run_id"), "run-a")
 
     def test_loader_reinjects_on_new_script_run(self) -> None:
@@ -211,7 +238,7 @@ class AnalysisDetailsV2Tests(unittest.TestCase):
         self.assertIn("cv-analysis-workspace", self.detail_source)
         self.assertIn("cv-analysis-detail-page", self.detail_source)
         self.assertIn("cv-analysis-header", self.detail_source)
-        self.assertIn("cv-analysis-header-kpis", self.detail_source)
+        self.assertIn("cv-analysis-header-main", self.detail_source)
         self.assertIn("cv-analysis-mini", self.detail_source)
         self.assertIn("cv-badge", self.detail_source)
         self.assertNotIn("cv-page-header cv-analysis-header", self.detail_source)
