@@ -117,7 +117,30 @@ def test_obsolete_candidates_are_excluded_and_add_controls_use_stable_callbacks(
     assert "on_click=_toggle_compare_candidate" in renderer
     assert '"approved_replacement_compare_toggle_"' in renderer
     assert "lifecycle_blocked = candidate_lifecycle_is_blocked(candidate)" in approvals
-    assert "can_approve = not lifecycle_blocked" in approvals
+    assert "not lifecycle_blocked" in approvals
+    assert "not compatibility_blocked" in approvals
+
+
+def test_physical_and_isa_mismatches_are_prominent_and_block_bom_approval():
+    source = (
+        Path(__file__).resolve().parents[1] / "src" / "ui" / "approved_pages.py"
+    ).read_text(encoding="utf-8")
+    approvals = source.split("def _render_bom_replacement_approvals", 1)[1].split(
+        "def render_replacement_search", 1
+    )[0]
+    compare = source.split("def render_compare_live", 1)[1].split(
+        "def render_datasheet_live", 1
+    )[0]
+
+    assert "CRITICAL_PHYSICAL_WARNING" in source
+    assert "CRITICAL_FIRMWARE_WARNING" in source
+    assert "blocked_from_drop_in_approval" in approvals
+    assert "requires_acknowledgement" in approvals
+    assert "not compatibility_blocked" in approvals
+    assert "disabled=not can_approve" in approvals
+    assert "cv-compat-banner critical" in source
+    assert "cv-compare-compat-critical" in compare
+    assert 'compatibility_by_slot["Part B"] = assess_part_compatibility(' in compare
 
 
 def test_streamlit_stale_refresh_does_not_dim_current_page_or_duplicate_nav():

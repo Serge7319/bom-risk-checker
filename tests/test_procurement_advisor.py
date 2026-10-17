@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 import pandas as pd
 
@@ -13,6 +14,7 @@ from src.procurement_advisor import (
     procurement_part_summary_html,
     procurement_recommendation_html,
     procurement_summary_cards_html,
+    procurement_workspace_panels_html,
     sourcing_editor_values,
     supplier_comparison_dataframe,
     supplier_offer_override,
@@ -53,6 +55,38 @@ class ProcurementAdvisorTests(unittest.TestCase):
         self.assertIn(
             ("Sourcing Recommendation", "procurement", "Procurement Advisor"),
             decision_tools,
+        )
+
+    def test_sourcing_workspace_panels_share_one_render_block_and_keep_mockup_sections(self):
+        markup = procurement_workspace_panels_html(
+            {"mpn": "TPS54331D", "description": "Power controller"},
+            {
+                "Recommendation": "Complete sourcing data",
+                "Next Step": "Confirm the current supplier quote.",
+                "Supplier Sources": None,
+            },
+        )
+
+        self.assertEqual(markup.count("<style>"), 1)
+        self.assertEqual(markup.count("</style>"), 1)
+        self.assertIn("<div class='cv-pa-summary'>", markup)
+        self.assertIn("<div class='cv-pa-recommendation-v2'>", markup)
+        self.assertIn("<div class='cv-pa-metric-grid'>", markup)
+
+        runtime = (
+            Path(__file__).resolve().parents[1] / "src" / "authenticated_runtime.py"
+        ).read_text(encoding="utf-8")
+        branch = runtime.split('if app_mode == "Procurement Advisor":', 1)[1].split(
+            'if app_mode == "Engineering Decisions":', 1
+        )[0]
+        self.assertIn("max-width:1540px", branch)
+        self.assertLess(
+            branch.index("procurement_workspace_panels_html("),
+            branch.index("<h2>Supplier options</h2>"),
+        )
+        self.assertLess(
+            branch.index("procurement_workspace_panels_html("),
+            branch.index('reveal_authenticated_page_body("Procurement Advisor")'),
         )
 
     def test_missing_supplier_defaults_are_not_presented_as_a_stockout(self):
