@@ -154,6 +154,33 @@ class LayoutStyleHostTests(unittest.TestCase):
             final_css,
         )
 
+    def test_root_shell_stack_does_not_accumulate_zero_height_host_gaps(self):
+        """Only the workspace root is flush; nested page content keeps its rhythm."""
+        final_css = (ROOT / "src/assets/css/core_premium_ui_final.css").read_text(
+            encoding="utf-8"
+        )
+        root_rule = re.search(
+            r'section\[data-testid="stMain"\]\s*>\s*'
+            r'\[data-testid="stMainBlockContainer"\]\s*>\s*'
+            r'\[data-testid="stVerticalBlock"\],\s*'
+            r'section\[data-testid="stMain"\]\s*>\s*'
+            r'\[data-testid="stMainBlockContainer"\]\s*>\s*'
+            r'\[data-testid="stVerticalBlockBorderWrapper"\]\s*>\s*'
+            r'\[data-testid="stVerticalBlock"\]\s*\{([^}]+)\}',
+            final_css,
+        )
+        self.assertIsNotNone(root_rule, "expected a direct root-workspace spacing rule")
+        declarations = re.sub(r"\s+", "", root_rule.group(1))
+        self.assertIn("gap:0!important", declarations)
+        self.assertIn("row-gap:0!important", declarations)
+        self.assertIn("align-content:flex-start!important", declarations)
+        self.assertIn("justify-content:flex-start!important", declarations)
+        self.assertNotRegex(
+            final_css,
+            r'section\[data-testid="stMain"\]\s+\[data-testid="stVerticalBlock"\]'
+            r'\s*\{[^}]*gap:\s*0',
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
