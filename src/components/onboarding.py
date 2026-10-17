@@ -119,7 +119,7 @@ def _render_setup_checklist(*, analyses_count: int = 0, has_review: bool = False
 
     st.markdown(
         """
-        <style id="cadivor-activation-checklist-30c">
+        <style id="cadivor-activation-checklist-30c" data-cadivor-layout-style="true">
         .cv30c-header{margin:0 0 10px}
         .cv30c-title{font-size:18px;font-weight:950;color:#0f172a!important;line-height:1.15;margin:0 0 4px}
         .cv30c-subtitle{font-size:11px;font-weight:650;color:#64748b!important;line-height:1.45;margin:0 0 10px}

@@ -14,9 +14,14 @@ from src.procurement_advisor import (
     procurement_part_summary_html,
     procurement_recommendation_html,
     procurement_summary_cards_html,
+    procurement_supplier_insight_context,
     procurement_workspace_panels_html,
+    generate_procurement_supplier_insight,
+    normalize_supplier_offer_records,
+    supplier_comparison_table_html,
     sourcing_editor_values,
     supplier_comparison_dataframe,
+    supplier_landed_cost_override,
     supplier_offer_override,
 )
 
@@ -191,6 +196,55 @@ class ProcurementAdvisorTests(unittest.TestCase):
         self.assertEqual(payload["unit_price"], 1.25)
         self.assertTrue(any("Currency code" in error for error in errors))
 
+    def test_sourcing_context_fields_can_be_saved_without_verifying_supplier_fields(self):
+        override, errors = normalize_sourcing_override(
+            {
+                "annual_demand": "50000",
+                "target_unit_price": "2.10",
+                "target_currency": "usd",
+                "required_by": "Q3 2026",
+            }
+        )
+        self.assertEqual(errors, [])
+        self.assertEqual(override["annual_demand"], 50000)
+        self.assertEqual(override["target_unit_price"], 2.1)
+        self.assertEqual(override["target_currency"], "USD")
+        self.assertEqual(override["required_by"], "Q3 2026")
+
+        part = apply_sourcing_override(
+            {"mpn": "TPS54331D", "supplier_data_verified": False, "sourcing_override": {
+                "annual_demand": 50000,
+                "target_unit_price": 2.1,
+                "target_currency": "USD",
+                "required_by": "Q3 2026",
+            }}
+        )
+        self.assertFalse(part["supplier_data_verified"])
+        self.assertEqual(sourcing_editor_values(part)["annual_demand"], 50000)
+        self.assertEqual(sourcing_editor_values(part)["required_by"], "Q3 2026")
+
+    def test_context_only_override_does_not_hide_legacy_supplier_evidence(self):
+        part = apply_sourcing_override(
+            {
+                "mpn": "TPS54331D",
+                "primary_supplier": "Mouser",
+                "unit_price": 1.25,
+                "currency": "USD",
+                "supplier_data_verified": None,
+                "sourcing_override": {"annual_demand": 50000},
+            }
+        )
+        current = normalize_supplier_offer_records(part)[0]
+        self.assertTrue(current["is_current"])
+        self.assertEqual(current["unit_price"], 1.25)
+
+    def test_target_price_requires_its_own_currency(self):
+        payload, errors = normalize_sourcing_override(
+            {"target_unit_price": "2.1", "target_currency": ""}
+        )
+        self.assertEqual(payload["target_unit_price"], 2.1)
+        self.assertTrue(any("Target currency" in error for error in errors))
+
     def test_saved_part_header_uses_component_metadata_and_analysis_date(self):
         html = procurement_header_html(
             {
@@ -249,6 +303,149 @@ class ProcurementAdvisorTests(unittest.TestCase):
         self.assertEqual(frame.loc[1, "Price vs current"], "-10.0%")
         self.assertTrue(all(str(dtype) == "object" for dtype in frame.dtypes))
 
+    def test_supplier_comparison_mockup_table_highlights_selection_and_escapes_supplier_text(self):
+        markup = supplier_comparison_table_html(
+            {
+                "mpn": "TPS54331D",
+                "quantity": 100,
+                "supplier_offers": [
+                    {
+                        "distributor": "Mouser <script>",
+                        "unit_price": 1.8,
+                        "currency": "USD",
+                        "stock": 75,
+                        "lead_time_weeks": 12,
+                        "region": "US",
+                        "supply_risk": "Medium",
+                        "retrieved_at": "2026-10-16T09:00:00Z",
+                    },
+                    {
+                        "distributor": "DigiKey",
+                        "unit_price": 2.0,
+                        "currency": "USD",
+                        "stock": 120,
+                        "lead_time_weeks": 8,
+                    },
+                ],
+            },
+            selected_supplier="Mouser <script>",
+            required_quantity=100,
+        )
+        self.assertIn("cv-pa-supplier-table", markup)
+        self.assertIn("is-selected", markup)
+        self.assertIn("&lt;script&gt;", markup)
+        self.assertNotIn("<script>", markup)
+        self.assertIn("Short by 25 for BOM", markup)
+        self.assertIn("Lowest quote", markup)
+        self.assertIn("Not assessed", markup)
+        self.assertIn("Total cost index", markup)
+
+    def test_supplier_table_ranks_only_comparable_entered_landed_costs(self):
+        part = {
+            "mpn": "TPS54331D",
+            "supplier_offers": [
+                {"distributor": "Mouser", "unit_price": 1.80, "currency": "USD"},
+                {"distributor": "DigiKey", "unit_price": 2.00, "currency": "USD"},
+                {"distributor": "Newark", "unit_price": 1.75, "currency": "EUR"},
+            ],
+            "sourcing_override": {
+                "supplier_landed_costs": {
+                    "mouser": {"supplier": "Mouser", "unit_cost": 1.95, "currency": "USD"},
+                    "digikey": {"supplier": "DigiKey", "unit_cost": 2.05, "currency": "USD"},
+                    "newark": {"supplier": "Newark", "unit_cost": 1.80, "currency": "EUR"},
+                },
+            },
+        }
+        markup = supplier_comparison_table_html(part, view="All evidence")
+        self.assertIn("<th>Total cost index</th>", markup)
+        self.assertIn("<th>Landed unit cost</th>", markup)
+        self.assertIn("<strong>100</strong>", markup)
+        self.assertIn("<strong>95</strong>", markup)
+        # The EUR quote is not ranked against the USD landed costs.
+        self.assertIn("Need comparable quote", markup)
+
+        one_cost = supplier_comparison_table_html(
+            {
+                "mpn": "TPS54331D",
+                "supplier_offers": part["supplier_offers"][:2],
+                "sourcing_override": {
+                    "supplier_landed_costs": {
+                        "mouser": {"supplier": "Mouser", "unit_cost": 1.95, "currency": "USD"},
+                    },
+                },
+            }
+        )
+        self.assertIn("Need comparable quote", one_cost)
+        self.assertIn("Add landed cost", one_cost)
+
+    def test_landed_cost_save_merges_with_existing_procurement_override(self):
+        override = supplier_landed_cost_override(
+            {
+                "sourcing_override": {
+                    "annual_demand": 50000,
+                    "required_by": "Q4 2026",
+                    "primary_supplier": "Mouser",
+                    "supplier_count": 2,
+                }
+            },
+            "DigiKey",
+            "2.15",
+            "usd",
+        )
+        self.assertEqual(override["annual_demand"], 50000)
+        self.assertEqual(override["required_by"], "Q4 2026")
+        self.assertEqual(override["supplier_landed_costs"]["digikey"]["unit_cost"], 2.15)
+        self.assertEqual(override["supplier_landed_costs"]["digikey"]["currency"], "USD")
+        with self.assertRaisesRegex(ValueError, "three-letter currency"):
+            supplier_landed_cost_override({}, "Mouser", "2.10", "US")
+
+    def test_supplier_insight_uses_saved_evidence_and_explicit_fallback(self):
+        part = {
+            "mpn": "TPS54331D",
+            "supplier_offers": [
+                {"distributor": "Mouser", "unit_price": 1.8, "currency": "USD", "stock": 250, "product_url": "https://supplier.example/part"}
+            ],
+        }
+        recommendation = {
+            "Recommendation": "Add a second source",
+            "Next Step": "Qualify another source.",
+            "Missing Sourcing Data": "supplier coverage, lead time",
+        }
+        context = procurement_supplier_insight_context(part, recommendation)
+        self.assertEqual(context["sourcing_evidence"]["quotes"][0]["supplier"], "Mouser")
+        self.assertNotIn("product_url", context["sourcing_evidence"]["quotes"][0])
+
+        class AIStub:
+            configured = True
+
+            def ask(self, *, question, context, history):
+                self.question = question
+                self.context = context
+                self.history = history
+                return SimpleNamespace(
+                    answer="### Supplier insights\n- Saved quote evidence only.",
+                    provider="anthropic",
+                    model="test-model",
+                    grounded=True,
+                )
+
+        stub = AIStub()
+        result = generate_procurement_supplier_insight(
+            part, recommendation, ai_client=stub
+        )
+        self.assertEqual(result["provider"], "anthropic")
+        self.assertTrue(result["ai_assisted"])
+        self.assertIn("Never invent prices", stub.question)
+        self.assertEqual(stub.history, [])
+
+        fallback = generate_procurement_supplier_insight(
+            part, recommendation, ai_client=SimpleNamespace(configured=False)
+        )
+        self.assertEqual(fallback["provider"], "cadivor-grounded")
+        self.assertFalse(fallback["ai_assisted"])
+        self.assertIn("quote does not establish authorization", fallback["answer"])
+        self.assertIn("Total cost is not rankable yet", fallback["answer"])
+
     def test_selected_supplier_offer_override_preserves_other_verified_values(self):
         override = supplier_offer_override(
             {
@@ -258,6 +455,10 @@ class ProcurementAdvisorTests(unittest.TestCase):
                     "supplier_count": 2,
                     "lead_time_weeks": 8,
                     "lifecycle_status": "Active",
+                    "annual_demand": 50000,
+                    "supplier_landed_costs": {
+                        "digikey": {"supplier": "DigiKey", "unit_cost": 2.1, "currency": "USD"},
+                    },
                 },
                 "supplier_offers": [
                     {
@@ -278,6 +479,8 @@ class ProcurementAdvisorTests(unittest.TestCase):
         self.assertEqual(override["supplier_count"], 2)
         self.assertEqual(override["lead_time_weeks"], 6)
         self.assertEqual(override["lifecycle_status"], "Active")
+        self.assertEqual(override["annual_demand"], 50000)
+        self.assertEqual(override["supplier_landed_costs"]["digikey"]["unit_cost"], 2.1)
 
     def test_procurement_details_keeps_nullable_numeric_columns_arrow_safe(self):
         frame = procurement_details_display_frame(
@@ -332,9 +535,34 @@ class ProcurementAdvisorTests(unittest.TestCase):
             },
         )
         self.assertIn("Estimated annual savings", html)
-        self.assertIn("Annual demand and applicable comparable quotes are required", html)
+        self.assertIn("Annual demand and comparable same-currency supplier quotes are required", html)
         self.assertIn("Supply risk (blended)", html)
         self.assertIn("Not assessed", html)
+
+    def test_annual_savings_uses_landed_cost_when_comparable_costs_exist(self):
+        html = procurement_summary_cards_html(
+            {
+                "mpn": "TPS54331D",
+                "annual_demand": 50000,
+                "primary_supplier": "Mouser",
+                "unit_price": 2.0,
+                "currency": "USD",
+                "supplier_data_verified": True,
+                "supplier_offers": [
+                    {"distributor": "Mouser", "unit_price": 2.0, "currency": "USD"},
+                    {"distributor": "DigiKey", "unit_price": 1.8, "currency": "USD"},
+                ],
+                "sourcing_override": {
+                    "supplier_landed_costs": {
+                        "mouser": {"supplier": "Mouser", "unit_cost": 2.10, "currency": "USD"},
+                        "digikey": {"supplier": "DigiKey", "unit_cost": 1.90, "currency": "USD"},
+                    },
+                },
+            },
+            {"Recommendation": "Add a second source", "Next Step": "Qualify DigiKey."},
+        )
+        self.assertIn("10,000.00 USD", html)
+        self.assertIn("Entered landed costs vs current source", html)
 
     def test_sourcing_recommendation_header_uses_annual_demand_and_target_fields(self):
         html = procurement_part_summary_html(

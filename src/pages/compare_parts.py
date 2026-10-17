@@ -53,7 +53,7 @@ def _inject_compare_parts_styles() -> None:
     st.session_state["_cadivor_compare_parts_styles_v2"] = True
     st.markdown(
         """
-        <style id="cadivor-compare-parts-css-v2">
+        <style id="cadivor-compare-parts-css-v2" data-cadivor-layout-style="true">
         .cp-workspace{max-width:min(1080px,var(--cv-canvas,1420px));margin:0 auto 28px;padding:0 4px}
         .cp-reading{max-width:var(--cv-reading-max,62ch);color:var(--cv64-text-secondary,#475569);font-size:13px;line-height:1.5;margin:0 0 16px}
         .cp-finding-title{margin:6px 0 8px;font-size:22px;font-weight:900;letter-spacing:-.02em;color:var(--cv64-text,#0F172A)}

@@ -124,6 +124,7 @@ def inject_main_transition_css(transition_gen: int) -> None:
     st.markdown(
         f"""
         <style id="cadivor-main-transition-css"
+               data-cadivor-layout-style="true"
                data-cadivor-transition-style-host="cadivor-main-transition-style"
                data-cadivor-transition-gen="{gen}">
         /*

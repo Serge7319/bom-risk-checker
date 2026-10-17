@@ -26,7 +26,10 @@ def inject_premium_css():
         except Exception:
             continue
     if css.strip():
-        st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
+        st.markdown(
+            f'<style id="cadivor-premium-css" data-cadivor-layout-style="true">{css}</style>',
+            unsafe_allow_html=True,
+        )
 
 
 def _safe_text(value, fallback=""):
@@ -269,7 +272,7 @@ def inject_v32_ux_css():
     """Final Milestone 2 UX layer: design tokens, tables, animations, empty states."""
     st.markdown(
         """
-        <style>
+        <style data-cadivor-layout-style="true">
         :root {
             --cv-color-bg: #F6F8FB;
             --cv-color-surface: #FFFFFF;

@@ -284,7 +284,7 @@ def build_supply_scenario(
 def _css() -> None:
     st.markdown(
         """
-        <style id="cadivor-scenario-planner-22">
+        <style id="cadivor-scenario-planner-22" data-cadivor-layout-style="true">
           .cv22-hero{
             border:1px solid #bfdbfe;background:linear-gradient(135deg,#fff,#eef5ff);
             border-radius:24px;padding:25px;margin-bottom:18px;

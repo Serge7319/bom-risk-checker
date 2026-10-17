@@ -2101,7 +2101,7 @@ def run_authenticated_app() -> None:
 
     st.markdown(
         """
-        <style id="cadivor-root-surface">
+        <style id="cadivor-root-surface" data-cadivor-layout-style="true">
         html, body, .stApp, [data-testid="stAppViewContainer"] {
             background: #F5F7FB !important;
         }
@@ -2936,7 +2936,7 @@ def run_authenticated_app() -> None:
 
     st.markdown(
         """
-        <style>
+        <style data-cadivor-layout-style="true">
         :root {
             --brc-bg:#F5F7FB; --brc-surface:#FFFFFF; --brc-navy:#0F172A; --brc-muted:#64748B;
             --brc-border:#E2E8F0; --brc-blue:#2563EB; --brc-blue-soft:#EFF6FF;
@@ -3515,7 +3515,7 @@ def run_authenticated_app() -> None:
 
         st.markdown(
             """
-            <style id="cadivor-onboarding-v11a2">
+            <style id="cadivor-onboarding-v11a2" data-cadivor-layout-style="true">
             .cv-onboard-hero{
                 border:1px solid #BFDBFE;
                 border-radius:26px;
@@ -4042,7 +4042,7 @@ def run_authenticated_app() -> None:
         # 1440px canvas used by Home and the other standard workspaces.
         st.markdown(
             """
-            <style id="cadivor-analysis-workspace-canvas">
+            <style id="cadivor-analysis-workspace-canvas" data-cadivor-layout-style="true">
             section[data-testid="stMain"] .st-key-approved_page_canvas_standard_analysis_detail{
               box-sizing:border-box!important;width:100%!important;max-width:1440px!important;
               min-width:0!important;margin-left:auto!important;margin-right:auto!important;
@@ -4108,7 +4108,7 @@ def run_authenticated_app() -> None:
 
     st.markdown(
         """
-        <style>
+        <style data-cadivor-layout-style="true">
           .cv130-hero{border:1px solid #bfdbfe;background:linear-gradient(135deg,#fff,#eef5ff);border-radius:24px;padding:21px;margin-bottom:14px;box-shadow:0 16px 42px rgba(37,99,235,.07)}
           .cv130-eyebrow{font-size:9px;font-weight:950;letter-spacing:.09em;text-transform:uppercase;color:#2563eb;margin-bottom:7px}.cv130-title{font-size:27px;font-weight:950;color:#0f172a;letter-spacing:-.04em;margin-bottom:7px}.cv130-copy{font-size:11px;font-weight:720;color:#52647a;line-height:1.6;max-width:920px}
           .cv130-decision-card,.cv130-packet{border:1px solid #dbe3ef;background:#fff;border-radius:20px;padding:16px;margin-bottom:11px;box-shadow:0 12px 30px rgba(15,23,42,.05)}.cv130-decision-head{display:flex;justify-content:space-between;gap:14px;align-items:flex-start}.cv130-decision-title{font-size:16px;font-weight:950;color:#0f172a;letter-spacing:-.02em}.cv130-packet-title{font-size:23px;font-weight:950;color:#0f172a;letter-spacing:-.035em}.cv130-reason{font-size:10px;font-weight:720;color:#52647a;line-height:1.5;margin-top:5px}
@@ -4125,7 +4125,7 @@ def run_authenticated_app() -> None:
 
     st.markdown(
         """
-        <style>
+        <style data-cadivor-layout-style="true">
           .cv123-monitor-hero{border:1px solid #bfdbfe;background:linear-gradient(135deg,#fff,#eef5ff);border-radius:24px;padding:20px;margin-bottom:14px;box-shadow:0 16px 42px rgba(37,99,235,.07)}
           .cv123-monitor-top{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.cv123-monitor-eyebrow{font-size:9px;font-weight:950;letter-spacing:.09em;text-transform:uppercase;color:#2563eb;margin-bottom:7px}.cv123-monitor-title{font-size:25px;font-weight:950;color:#0f172a;letter-spacing:-.035em;margin-bottom:6px}.cv123-monitor-copy{font-size:11px;font-weight:720;color:#52647a;line-height:1.55;max-width:900px}
           .cv123-monitor-badge{border:1px solid #bfdbfe;border-radius:999px;padding:7px 10px;font-size:9px;font-weight:950;white-space:nowrap;background:#eff6ff;color:#1d4ed8}.cv123-monitor-badge.good{border-color:#a7f3d0;background:#ecfdf5;color:#047857}.cv123-monitor-badge.warn{border-color:#fde68a;background:#fffbeb;color:#b45309}.cv123-monitor-badge.bad{border-color:#fecaca;background:#fef2f2;color:#b91c1c}
@@ -4267,7 +4267,7 @@ def run_authenticated_app() -> None:
 
         st.markdown(
             """
-            <style id="cadivor-monitoring-layout-css">
+            <style id="cadivor-monitoring-layout-css" data-cadivor-layout-style="true">
             .cv320-card{--accent:#2563eb;border:1px solid #dbe3ef;border-left:5px solid var(--accent);background:#fff;border-radius:18px;padding:17px 18px;margin:11px 0;box-shadow:0 10px 28px rgba(15,23,42,.05);transition:transform .18s ease,box-shadow .18s ease}.cv320-card:hover{transform:translateY(-1px);box-shadow:0 16px 36px rgba(15,23,42,.075)}.cv320-card.critical{--accent:#dc2626}.cv320-card.high{--accent:#f97316}.cv320-card.medium{--accent:#eab308}.cv320-card.low{--accent:#16a34a}.cv320-cardhead{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.cv320-part{font-size:18px;font-weight:950;color:#0f172a!important}.cv320-type{font-size:10px;font-weight:950;letter-spacing:.07em;text-transform:uppercase;color:var(--accent)!important;margin-bottom:5px}.cv320-change{font-size:13px;font-weight:700;color:#475569!important;line-height:1.55;margin:10px 0}.cv320-pills{display:flex;flex-wrap:wrap;gap:7px}.cv320-pill{border:1px solid #dbeafe;background:#eff6ff;border-radius:999px;padding:6px 9px;font-size:10px;font-weight:850;color:#1d4ed8!important}.cv320-recommendation{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:start;border:1px solid #bfdbfe;background:linear-gradient(135deg,#eff6ff,#f8fbff);border-radius:14px;margin-top:13px;padding:13px 14px}.cv320-recicon{width:31px;height:31px;border-radius:10px;background:#dbeafe;color:#1d4ed8!important;display:flex;align-items:center;justify-content:center;font-weight:950}.cv320-rectitle{font-size:10px;font-weight:950;letter-spacing:.06em;text-transform:uppercase;color:#1d4ed8!important}.cv320-reccopy{font-size:12px;font-weight:850;color:#0f172a!important;line-height:1.45;margin-top:3px}.cv320-impact{font-size:10px;font-weight:760;color:#52647a!important;line-height:1.4;margin-top:5px}.cv320-confidence{border-left:1px solid #bfdbfe;padding-left:12px;text-align:right;white-space:nowrap}.cv320-confidence span{display:block;font-size:8px;font-weight:900;text-transform:uppercase;color:#64748b!important}.cv320-confidence strong{font-size:15px;font-weight:950;color:#1d4ed8!important}.cv320-score{border-radius:999px;padding:8px 11px;font-size:10px;font-weight:950;white-space:nowrap}.cv320-score.bad{background:#fef2f2;border:1px solid #fecaca;color:#b91c1c!important}.cv320-score.warn{background:#fffbeb;border:1px solid #fde68a;color:#a16207!important}.cv320-score.good{background:#ecfdf5;border:1px solid #a7f3d0;color:#047857!important}
             .cv320-evidence{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin:5px 0 13px}.cv320-evidence div{border:1px solid #e2e8f0;background:#f8fafc;border-radius:12px;padding:10px}.cv320-evidence span{display:block;font-size:8px;font-weight:950;text-transform:uppercase;letter-spacing:.06em;color:#64748b!important}.cv320-evidence strong{display:block;font-size:11px;font-weight:900;color:#0f172a!important;margin-top:4px}.cv320-section-title{font-size:12px;font-weight:950;color:#0f172a!important;margin:4px 0 10px}.cv320-limit{border:1px solid #dbeafe;background:#f8fbff;border-radius:15px;padding:13px 15px;margin:10px 0 18px}.cv320-limitrow{display:flex;justify-content:space-between;font-size:11px;font-weight:850;color:#475569!important;margin-bottom:8px}.cv320-bar{height:8px;border-radius:999px;background:#e2e8f0;overflow:hidden}.cv320-bar i{display:block;height:100%;background:linear-gradient(90deg,#2563eb,#60a5fa);border-radius:999px}.cv321-timeline{position:relative;margin:8px 0 10px;padding-left:22px}.cv321-timeline:before{content:"";position:absolute;left:7px;top:5px;bottom:5px;width:2px;background:#dbeafe}.cv321-event{position:relative;border:1px solid #e2e8f0;background:#fff;border-radius:14px;padding:12px 14px;margin:0 0 10px;box-shadow:0 8px 22px rgba(15,23,42,.04)}.cv321-event:before{content:"";position:absolute;left:-20px;top:17px;width:10px;height:10px;border-radius:50%;background:#2563eb;border:3px solid #eff6ff}.cv321-eventtime{font-size:9px;font-weight:850;color:#64748b!important}.cv321-eventtitle{font-size:13px;font-weight:950;color:#0f172a!important;margin-top:3px}.cv321-eventcopy{font-size:11px;font-weight:700;color:#52647a!important;margin-top:4px;line-height:1.45}
             .cv-monitor-workspace-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin:2px 0 14px}.cv-monitor-workspace-eyebrow{display:block;margin-bottom:5px;color:#2563eb;font-size:9.5px;font-weight:800;letter-spacing:.12em;text-transform:uppercase}.cv-monitor-workspace-title{display:block;color:#0f2d57;font-size:20px;font-weight:780;letter-spacing:-.025em;line-height:1.2}.cv-monitor-workspace-head p{margin:5px 0 0;color:#64748b;font-size:12.5px;line-height:1.45}.cv-monitor-active-badge{flex:0 0 auto;border:1px solid #fecaca;border-radius:999px;background:#fef2f2;color:#b91c1c!important;padding:6px 9px;font-size:10px;font-weight:800;white-space:nowrap}
@@ -6665,14 +6665,18 @@ def run_authenticated_app() -> None:
         from src.procurement_advisor import (
             apply_sourcing_override,
             build_procurement_advisor as build_procurement_advisor_for_page,
+            generate_procurement_supplier_insight,
             normalize_sourcing_override,
             normalize_supplier_offer_records,
             persist_sourcing_update,
             procurement_page_header_html,
             procurement_workspace_panels_html,
+            procurement_insight_fingerprint,
             procurement_details_display_frame,
-            supplier_comparison_dataframe,
+            supplier_comparison_table_html,
             supplier_offer_override,
+            supplier_landed_cost_override,
+            normalize_supplier_landed_costs,
             sourcing_editor_values,
         )
         from src.saved_bom_cost import distributor_comparison
@@ -6717,7 +6721,7 @@ def run_authenticated_app() -> None:
         procurement_recommendations = advisor.get("recommendations") or []
         with st.container(key="cv_procurement_workspace"):
             st.markdown(
-                """<style>
+                """<style data-cadivor-layout-style="true">
                 .st-key-cv_procurement_workspace{display:flex!important;flex-direction:column!important;gap:12px!important;width:100%!important;max-width:1440px!important;margin:0 auto!important;box-sizing:border-box!important}
                 .st-key-cv_procurement_workspace>[data-testid="stVerticalBlock"]{gap:12px!important}
                 .cv-pa-section-head{display:flex;justify-content:space-between;align-items:flex-end;gap:18px;margin:10px 0 8px}
@@ -6840,6 +6844,54 @@ def run_authenticated_app() -> None:
                 )
                 reveal_authenticated_page_body("Procurement Advisor")
 
+                insight_state_key = (
+                    "pa_ai_supplier_insight_"
+                    + __import__('hashlib').sha1(focus_mpn.encode()).hexdigest()[:12]
+                )
+                insight_fingerprint = procurement_insight_fingerprint(
+                    focus, focus_recommendation, comparison
+                )
+                insight_cols = st.columns([0.34, 0.66], vertical_alignment="center")
+                with insight_cols[0]:
+                    generate_insight = st.button(
+                        "Generate AI supplier insights",
+                        key="pa_generate_supplier_insight",
+                        type="secondary",
+                        use_container_width=True,
+                    )
+                with insight_cols[1]:
+                    st.caption(
+                        "Reviews saved prices, availability, lead times, lifecycle, and missing evidence. "
+                        "It ranks total cost only when comparable landed unit costs are entered; unknown supplier facts stay unknown."
+                    )
+                if generate_insight:
+                    try:
+                        with st.spinner("Reviewing supplier and sourcing evidence…"):
+                            insight_result = generate_procurement_supplier_insight(
+                                focus, focus_recommendation, comparison
+                            )
+                        if not insight_result.get("answer"):
+                            st.error("Cadivor could not produce a supplier insight from the saved evidence. Try again.")
+                        else:
+                            st.session_state[insight_state_key] = {
+                                "fingerprint": insight_fingerprint,
+                                **insight_result,
+                            }
+                    except Exception as exc:
+                        st.error(
+                            "Supplier insight generation is unavailable. Review the recorded sourcing evidence below."
+                        )
+                saved_insight = st.session_state.get(insight_state_key) or {}
+                if saved_insight.get("fingerprint") == insight_fingerprint and saved_insight.get("answer"):
+                    with st.container(border=True):
+                        provider_label = (
+                            "AI-assisted review"
+                            if bool(saved_insight.get("ai_assisted"))
+                            else "Grounded evidence summary · AI provider not configured"
+                        )
+                        st.caption(provider_label)
+                        st.markdown(saved_insight["answer"])
+
                 if editor_open:
                     st.markdown(
                         "Enter details from a current authorized supplier quote or manufacturer record. "
@@ -6860,6 +6912,32 @@ def run_authenticated_app() -> None:
                                 value=str(focus_edit_values["category"] or ""),
                                 key=f"pa_category_{__import__('hashlib').sha1(focus_mpn.encode()).hexdigest()[:12]}",
                             )
+                        demand_col, target_price_col, target_currency_col = st.columns(3)
+                        with demand_col:
+                            edited_annual_demand = st.text_input(
+                                "Annual demand (units/year)",
+                                value="" if focus_edit_values["annual_demand"] is None else str(focus_edit_values["annual_demand"]),
+                                key=f"pa_annual_demand_{__import__('hashlib').sha1(focus_mpn.encode()).hexdigest()[:12]}",
+                            )
+                        with target_price_col:
+                            edited_target_price = st.text_input(
+                                "Target unit price",
+                                value="" if focus_edit_values["target_unit_price"] is None else str(focus_edit_values["target_unit_price"]),
+                                key=f"pa_target_price_{__import__('hashlib').sha1(focus_mpn.encode()).hexdigest()[:12]}",
+                            )
+                        with target_currency_col:
+                            edited_target_currency = st.text_input(
+                                "Target currency",
+                                value=str(focus_edit_values["target_currency"] or ""),
+                                placeholder="USD",
+                                key=f"pa_target_currency_{__import__('hashlib').sha1(focus_mpn.encode()).hexdigest()[:12]}",
+                            )
+                        edited_required_by = st.text_input(
+                            "Required by (date or quarter)",
+                            value=str(focus_edit_values["required_by"] or ""),
+                            placeholder="2026-12-15 or Q4 2026",
+                            key=f"pa_required_by_{__import__('hashlib').sha1(focus_mpn.encode()).hexdigest()[:12]}",
+                        )
                         supplier_left, supplier_right = st.columns(2)
                         with supplier_left:
                             edited_supplier = st.text_input(
@@ -6910,6 +6988,11 @@ def run_authenticated_app() -> None:
                                 "supplier_count": edited_sources,
                                 "lead_time_weeks": edited_lead,
                                 "lifecycle_status": edited_lifecycle,
+                                "annual_demand": edited_annual_demand,
+                                "target_unit_price": edited_target_price,
+                                "target_currency": edited_target_currency,
+                                "required_by": edited_required_by,
+                                "supplier_landed_costs": focus_edit_values["supplier_landed_costs"],
                             }
                         )
                         if validation_errors:
@@ -6943,7 +7026,7 @@ def run_authenticated_app() -> None:
 
                 st.markdown(
                     "<div class='cv-pa-section-head'><div><h2>Supplier options</h2>"
-                    "<p>Compare saved quotes and current sourcing evidence for this part.</p></div></div>",
+                    "<p>Compare price, availability, lead time, risk, and total landed cost for this part.</p></div></div>",
                     unsafe_allow_html=True,
                 )
                 offers = normalize_supplier_offer_records(focus)
@@ -6960,67 +7043,107 @@ def run_authenticated_app() -> None:
                         )
                         selected_supplier = next(
                             (name for name in offer_suppliers if name.casefold() == current_supplier.casefold()),
-                            "",
+                            offer_suppliers[0],
                         )
                         st.session_state[offer_selection_key] = selected_supplier
 
-                    view_col, _spacer_col = st.columns([0.3, 0.7])
+                    view_col, supplier_col = st.columns([0.34, 0.66])
                     with view_col:
                         comparison_view = st.selectbox(
                             "View",
                             ["Key comparison", "All evidence"],
                             key="pa_supplier_comparison_view",
                         )
-                    supplier_frame = supplier_comparison_dataframe(
-                        focus,
-                        selected_supplier=selected_supplier,
-                        view=comparison_view,
-                    )
-                    display_supplier_frame = supplier_frame.drop(
-                        columns=["_supplier_key"], errors="ignore"
-                    )
-                    column_config = {
-                        name: st.column_config.TextColumn(width="small")
-                        for name in display_supplier_frame.columns
-                    }
-                    table_event = st.dataframe(
-                        display_supplier_frame,
-                        column_config=column_config,
-                        hide_index=True,
-                        use_container_width=True,
-                        height=min(330, 50 + 46 * max(1, len(display_supplier_frame))),
-                        on_select="rerun",
-                        selection_mode="single-row",
-                        key=(
-                            "pa_supplier_comparison_"
-                            + __import__("hashlib").sha1(focus_mpn.encode()).hexdigest()[:12]
+                    with supplier_col:
+                        selected_supplier = st.selectbox(
+                            "Selected supplier",
+                            offer_suppliers,
+                            index=offer_suppliers.index(selected_supplier),
+                            key=offer_selection_key,
+                        )
+                    st.markdown(
+                        supplier_comparison_table_html(
+                            focus,
+                            selected_supplier=selected_supplier,
+                            view=comparison_view,
+                            required_quantity=(focus_recommendation or {}).get("Required Quantity"),
                         ),
+                        unsafe_allow_html=True,
                     )
-                    selection = getattr(table_event, "selection", None)
-                    if selection is None and isinstance(table_event, dict):
-                        selection = table_event.get("selection")
-                    selected_rows = (
-                        selection.get("rows", [])
-                        if isinstance(selection, dict)
-                        else getattr(selection, "rows", []) or []
-                    )
-                    if selected_rows:
-                        selected_index = int(selected_rows[0])
-                        if 0 <= selected_index < len(supplier_frame):
-                            chosen_supplier = str(
-                                supplier_frame.iloc[selected_index].get("_supplier_key") or ""
-                            )
-                            if chosen_supplier and chosen_supplier != selected_supplier:
-                                st.session_state[offer_selection_key] = chosen_supplier
-                                st.rerun()
                     selected_offer = next(
                         (row for row in offers if row["supplier"].casefold() == selected_supplier.casefold()),
                         None,
                     )
                     st.caption(
                         "Saved distributor offers are quote evidence; they do not by themselves confirm authorization or engineering qualification. "
-                        "Price index compares unit prices only and excludes shipping, tax, and MOQ costs."
+                        "Total cost index uses entered landed unit costs in the same currency and needs at least two comparable suppliers."
                     )
+                    landed_entry = normalize_supplier_landed_costs(
+                        focus.get("supplier_landed_costs")
+                    ).get(selected_supplier.casefold(), {})
+                    landed_form_key = (
+                        "pa_landed_cost_form_"
+                        + __import__("hashlib").sha1(
+                            f"{focus_mpn}:{selected_supplier}".encode()
+                        ).hexdigest()[:12]
+                    )
+                    with st.form(landed_form_key):
+                        landed_cost_col, landed_currency_col = st.columns([0.72, 0.28])
+                        with landed_cost_col:
+                            edited_landed_cost = st.text_input(
+                                "Total landed unit cost",
+                                value=(
+                                    "" if landed_entry.get("unit_cost") is None
+                                    else str(landed_entry["unit_cost"])
+                                ),
+                                placeholder="Unit price + allocated freight, tax/duty, and MOQ",
+                                help="Use a supplier-confirmed delivered cost per unit. The table compares only costs entered in the same currency.",
+                            )
+                        with landed_currency_col:
+                            edited_landed_currency = st.text_input(
+                                "Currency",
+                                value=(
+                                    str(landed_entry.get("currency") or selected_offer.get("currency") or "")
+                                    if selected_offer else str(landed_entry.get("currency") or "")
+                                ),
+                                placeholder="USD",
+                            )
+                        save_landed_cost = st.form_submit_button(
+                            "Save landed cost", type="secondary"
+                        )
+                    if save_landed_cost:
+                        try:
+                            landed_override = supplier_landed_cost_override(
+                                focus,
+                                selected_supplier,
+                                edited_landed_cost,
+                                edited_landed_currency,
+                            )
+                            saved_count = persist_sourcing_update(
+                                supabase,
+                                user_id=str(current_user.get("id") or ""),
+                                mpn=focus_mpn,
+                                workspace_id=str(active_workspace_id or ""),
+                                description=str(focus.get("description") or ""),
+                                category=str(focus.get("category") or ""),
+                                sourcing_override=landed_override,
+                                updated_at=datetime.now(timezone.utc).isoformat(),
+                            )
+                            st.session_state["pa_landed_cost_saved_notice"] = saved_count
+                            st.rerun()
+                        except ValueError as exc:
+                            st.error(str(exc))
+                        except Exception:
+                            st.error(
+                                "Landed cost could not be saved. Apply the Procurement Advisor database migration, "
+                                "then retry; the existing supplier quotes were not overwritten."
+                            )
+                    landed_saved_count = st.session_state.pop("pa_landed_cost_saved_notice", None)
+                    if landed_saved_count:
+                        st.success(
+                            f"Landed cost saved for {int(landed_saved_count)} component record(s). "
+                            "The index updates when a second same-currency cost is recorded."
+                        )
                     action_cols = st.columns([1.25, 1.1, 2.1])
                     with action_cols[0]:
                         if st.button(
@@ -9066,7 +9189,7 @@ def run_authenticated_app() -> None:
                     # context.
                     st.markdown(
                         """
-                        <style id="cadivor-ed-snapshot-card-css">
+                        <style id="cadivor-ed-snapshot-card-css" data-cadivor-layout-style="true">
                           .st-key-ed_decision_snapshot {
                             padding: 14px;
                             border: 1px solid #d4deeb;
@@ -9617,7 +9740,7 @@ def run_authenticated_app() -> None:
 
         st.markdown(
             """
-            <style id="cadivor-reports-decision-workspace-v11">
+            <style id="cadivor-reports-decision-workspace-v11" data-cadivor-layout-style="true">
             .st-key-reports_workspace > [data-testid="stVerticalBlock"]{
                 gap:12px;
             }
@@ -12366,7 +12489,7 @@ def run_authenticated_app() -> None:
 
         st.markdown(
             """
-            <style id="cadivor-customer-settings-v11a1">
+            <style id="cadivor-customer-settings-v11a1" data-cadivor-layout-style="true">
             .cv-customer-hero{
                 border:1px solid #BFDBFE;
                 border-radius:24px;
@@ -13549,7 +13672,7 @@ def run_authenticated_app() -> None:
 
         st.markdown(
             """
-            <style>
+            <style data-cadivor-layout-style="true">
             .cv-ws-hero{border:1px solid #BFDBFE;border-radius:24px;padding:26px 28px;background:linear-gradient(135deg,#FFFFFF 0%,#EFF6FF 100%);box-shadow:0 18px 45px rgba(15,23,42,.06);margin-bottom:18px}
             .cv-ws-kicker{font-size:11px;font-weight:800;letter-spacing:.13em;text-transform:uppercase;color:#2563EB;margin-bottom:9px}
             .cv-ws-hero h1{font-size:34px;line-height:1.05;margin:0 0 9px;color:#0F172A}
@@ -14456,7 +14579,7 @@ def run_authenticated_app() -> None:
         cadivor_section_header("Cadivor Resources", eyebrow="Training library", description="Choose a topic to open a practical, step-by-step Cadivor guide.", icon="clipboard")
         st.markdown(
             """
-            <style>
+            <style data-cadivor-layout-style="true">
               .cv-resource-category{margin:22px 0 10px;color:#3B5880;font-size:12px;font-weight:900;letter-spacing:.09em;text-transform:uppercase}.cv-resource-detail-head{padding:22px;border:1px solid #D9E5F5;border-radius:18px;background:linear-gradient(135deg,#F7FAFF,#FFF);margin:8px 0 18px}.cv-resource-detail-head h2{margin:5px 0;color:#11284B}.cv-resource-detail-head p{margin:0;color:#58708F;line-height:1.55}.cv-resource-steps{border:1px solid #D9E5F5;border-radius:16px;background:#fff;padding:20px}.cv-resource-steps h3{margin:0 0 12px;color:#11284B}.cv-resource-step{display:flex;gap:12px;margin:14px 0;color:#395574;line-height:1.55}.cv-resource-step b{display:inline-flex;align-items:center;justify-content:center;min-width:28px;height:28px;border-radius:50%;background:#2865EB;color:#fff;font-size:12px}.cv-resource-screen-caption{border:1px solid #D8EADF;background:#F6FFFA;border-radius:12px;padding:12px 14px;color:#276047;line-height:1.55;margin-top:10px}.cv-resource-note{border:1px solid #D8EADF;background:#F6FFFA;border-radius:14px;padding:14px 16px;color:#276047;line-height:1.55;margin:16px 0}
             </style>
             """,
@@ -14904,7 +15027,7 @@ def run_authenticated_app() -> None:
 
         st.markdown(
             """
-            <style id="cadivor-alternative-finder-62a1">
+            <style id="cadivor-alternative-finder-62a1" data-cadivor-layout-style="true">
             /* Milestone 6.2C.3 — safe Supabase snapshot serialization */
             .st-key-af62_hero,
             .st-key-af62_search,
@@ -18278,7 +18401,7 @@ def run_authenticated_app() -> None:
 
         st.markdown(
             """
-            <style id="cadivor-bom-intelligence-v1">
+            <style id="cadivor-bom-intelligence-v1" data-cadivor-layout-style="true">
             .bom8-hero{
                 border:1px solid #b9d4ff;
                 border-radius:24px;
@@ -19374,7 +19497,7 @@ def run_authenticated_app() -> None:
                 else:
                     st.markdown(
                         """
-                        <style>
+                        <style data-cadivor-layout-style="true">
                         .bom81-review-hero{
                             margin:0 0 18px;padding:22px 24px;border:1px solid #dbe3ef;border-radius:18px;
                             background:linear-gradient(135deg,#ffffff 0%,#fffaf7 100%);box-shadow:0 8px 24px rgba(15,23,42,.04)

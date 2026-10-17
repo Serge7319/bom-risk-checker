@@ -670,7 +670,7 @@ def _detail_links(original: dict[str, Any], row: dict[str, Any]) -> str:
 def begin_approved_page() -> None:
     st.markdown(
         """
-        <style>
+        <style data-cadivor-layout-style="true">
         .cv-ap{color:#0f172a;font-family:Inter,"Segoe UI",sans-serif}
         .cv-ap-kicker{margin:0 0 6px;color:#64748b;font-size:12px;font-weight:700;letter-spacing:.08em}
         .cv-ap h1{margin:0 0 6px;font-size:32px;line-height:1.15;letter-spacing:-.03em}
@@ -2856,7 +2856,7 @@ def render_reports_list(records: list[dict[str, Any]] | None) -> None:
 
     st.markdown(
         """
-        <style>
+        <style data-cadivor-layout-style="true">
           .st-key-approved_page_canvas_wide_render_reports_list>[data-testid="stVerticalBlock"]{gap:0!important}
           .st-key-approved_page_canvas_wide_render_reports_list .cv-ap-report{
             color:#0f172a;font-family:Inter,"Segoe UI",sans-serif
@@ -3162,7 +3162,7 @@ def render_simple_workspace(
     if kpi_details:
         st.markdown(
             """
-            <style id="cv-ap-clickable-kpis">
+            <style id="cv-ap-clickable-kpis" data-cadivor-layout-style="true">
               .st-key-approved_simple_workspace_kpis button{
                 width:100%;min-height:92px;border:1px solid #dbe3ef!important;
                 border-radius:16px!important;background:#fff!important;color:#0f172a!important;

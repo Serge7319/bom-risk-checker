@@ -147,7 +147,7 @@ def _sync_root_state_from_auth_mode(auth_mode: str) -> None:
 def _auth_css():
     st.markdown(
         """
-        <style>
+        <style data-cadivor-layout-style="true">
         :root{
             --cadivor-blue:#2563EB;
             --cadivor-blue-2:#1D4ED8;

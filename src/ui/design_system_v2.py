@@ -59,7 +59,7 @@ def inject_cadivor_design_system_v2(*, force: bool = False) -> bool:
         return False
 
     st.markdown(
-        f"<style id='{_DS_V2_STYLE_ID}'>{css}</style>",
+        f'<style id="{_DS_V2_STYLE_ID}" data-cadivor-layout-style="true">{css}</style>',
         unsafe_allow_html=True,
     )
     st.session_state[_DS_V2_RUN_KEY] = run_id
@@ -89,7 +89,7 @@ def inject_ask_cadivor_v2_css(*, force: bool = False) -> bool:
         return False
 
     st.markdown(
-        f"<style id='{_ASK_CADIVOR_V2_STYLE_ID}'>{css}</style>",
+        f'<style id="{_ASK_CADIVOR_V2_STYLE_ID}" data-cadivor-layout-style="true">{css}</style>',
         unsafe_allow_html=True,
     )
     st.session_state[_ASK_CADIVOR_V2_RUN_KEY] = run_id

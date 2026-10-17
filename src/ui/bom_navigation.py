@@ -249,7 +249,7 @@ def inject_saved_bom_nav_css() -> None:
     css = saved_bom_nav_css()
     if css.strip():
         st.markdown(
-            f"<style id='cadivor-saved-bom-nav'>{css}</style>",
+            f'<style id="cadivor-saved-bom-nav" data-cadivor-layout-style="true">{css}</style>',
             unsafe_allow_html=True,
         )
 

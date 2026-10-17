@@ -49,7 +49,7 @@ def apply_cadivor_design_system() -> None:
     """Inject the Milestone 4 global premium design system."""
     st.markdown(
         f"""
-        <style>
+        <style data-cadivor-layout-style="true">
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
 
         :root {{

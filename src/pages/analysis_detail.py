@@ -519,7 +519,7 @@ def _inject_analysis_detail_v2_styles(*, force: bool = False) -> bool:
         return False
 
     st.markdown(
-        f"<style id='cadivor-analysis-detail-v2-css'>{css}</style>",
+        f"<style id='cadivor-analysis-detail-v2-css' data-cadivor-layout-style='true'>{css}</style>",
         unsafe_allow_html=True,
     )
     st.session_state[run_key] = run_id
@@ -1279,7 +1279,7 @@ def render_analysis_detail(
 
     st.markdown(
         """
-        <style id="cadivor-analysis-tabs-v82">
+        <style id="cadivor-analysis-tabs-v82" data-cadivor-layout-style="true">
         .cv-analysis-back{display:inline-flex;align-items:center;gap:8px;color:#2563EB!important;text-decoration:none!important;font-size:12px;font-weight:950;margin-bottom:10px}
         .cv-analysis-hero{background:linear-gradient(135deg,#fff 0%,#f8fbff 58%,#eaf2ff 100%);border:1px solid #bfdbfe;border-radius:26px;padding:26px 28px;box-shadow:0 24px 70px rgba(15,23,42,.075);display:grid;grid-template-columns:minmax(0,1.35fr) minmax(360px,.9fr);gap:22px;align-items:center;margin-bottom:14px}
         .cv-analysis-eyebrow{display:inline-flex;align-items:center;gap:8px;border:1px solid #bfdbfe;background:#eff6ff;color:#2563eb!important;border-radius:999px;padding:8px 12px;font-size:11px;font-weight:950;letter-spacing:.08em;text-transform:uppercase;margin-bottom:14px}

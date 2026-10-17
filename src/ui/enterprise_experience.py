@@ -17,7 +17,7 @@ def inject_enterprise_experience_css() -> None:
         css = path.read_text(encoding="utf-8")
     except OSError:
         return
-    st.markdown(f'<style id="cadivor-sprint-58">{css}</style>', unsafe_allow_html=True)
+    st.markdown(f'<style id="cadivor-sprint-58" data-cadivor-layout-style="true">{css}</style>', unsafe_allow_html=True)
 
 
 def operation_status(title: str, detail: str) -> None:

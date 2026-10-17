@@ -26,7 +26,10 @@ def inject_design_system_v1() -> None:
         css = css_path.read_text(encoding="utf-8")
     except OSError:
         return
-    st.markdown(f"<style id=\"cadivor-design-system-v1\">{css}</style>", unsafe_allow_html=True)
+    st.markdown(
+        f'<style id="cadivor-design-system-v1" data-cadivor-layout-style="true">{css}</style>',
+        unsafe_allow_html=True,
+    )
 
 
 def badge_html(label: str, tone: Tone = "neutral") -> str:

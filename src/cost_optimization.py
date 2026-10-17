@@ -291,7 +291,7 @@ def build_cost_optimization(
 def _css() -> None:
     st.markdown(
         """
-        <style id="cadivor-cost-optimization-22">
+        <style id="cadivor-cost-optimization-22" data-cadivor-layout-style="true">
           .st-key-cost_optimization_workspace{width:100%;max-width:1500px;margin:0 auto;box-sizing:border-box}
           .cv21-page{width:100%;max-width:1500px;margin:0 auto;box-sizing:border-box}
           .cv21-heading{display:grid;grid-template-columns:minmax(0,1fr) minmax(180px,250px);align-items:end;gap:24px;margin:0 0 20px}

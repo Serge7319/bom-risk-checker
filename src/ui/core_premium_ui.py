@@ -70,7 +70,7 @@ def inject_core_premium_ui() -> None:
     css = _load_css()
     if css:
         st.markdown(
-            f"<style id='cadivor-core-premium-ui'>{css}</style>",
+            f'<style id="cadivor-core-premium-ui" data-cadivor-layout-style="true">{css}</style>',
             unsafe_allow_html=True,
         )
 
@@ -92,7 +92,7 @@ def inject_navigation_recovery_css() -> None:
     css = _load_css("navigation_recovery.css")
     if css.strip():
         st.markdown(
-            f"<style id='cadivor-navigation-recovery'>{css}</style>",
+            f'<style id="cadivor-navigation-recovery" data-cadivor-layout-style="true">{css}</style>',
             unsafe_allow_html=True,
         )
 
@@ -115,7 +115,7 @@ def inject_workspace_geometry_final() -> None:
     combined = "\n".join(chunk for chunk in css_chunks if chunk.strip())
     if combined.strip():
         st.markdown(
-            f"<style id='cadivor-core-premium-ui-final'>{combined}</style>",
+            f'<style id="cadivor-core-premium-ui-final" data-cadivor-layout-style="true">{combined}</style>',
             unsafe_allow_html=True,
         )
     inject_cadivor_design_system()
@@ -127,7 +127,7 @@ def inject_workspace_geometry_final() -> None:
     # actual Streamlit columns after shared button styles have loaded.
     st.markdown(
         """
-        <style id="cadivor-reports-table-final">
+        <style id="cadivor-reports-table-final" data-cadivor-layout-style="true">
         html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_reports_list .st-key-approved_report_table_header {
           box-sizing:border-box!important;min-height:58px!important;height:auto!important;margin:0!important;padding:0 18px!important;
           border:0!important;border-bottom:1px solid #dce4ef!important;border-radius:11px 11px 0 0!important;background:#f5f7fa!important
@@ -182,7 +182,7 @@ def inject_workspace_geometry_final() -> None:
     # Re-assert compact inset + flex-gap chrome collapse after late polish CSS.
     st.markdown(
         """
-        <style id="cadivor-compact-content-inset">
+        <style id="cadivor-compact-content-inset" data-cadivor-layout-style="true">
         section[data-testid="stMain"] [data-testid="stMainBlockContainer"],
         section[data-testid="stMain"] .main .block-container {
           padding-top: calc(var(--cv-foundation-top, 64px) + 24px) !important;
@@ -257,7 +257,7 @@ def inject_workspace_geometry_final() -> None:
     visual_refresh_css = _load_css("dashboard_visual_refresh.css")
     if visual_refresh_css.strip():
         st.markdown(
-            f"<style id='cadivor-dashboard-visual-refresh'>{visual_refresh_css}</style>",
+            f'<style id="cadivor-dashboard-visual-refresh" data-cadivor-layout-style="true">{visual_refresh_css}</style>',
             unsafe_allow_html=True,
         )
     _inject_approved_visual_overrides()
@@ -277,7 +277,7 @@ def _inject_approved_visual_overrides() -> None:
     )
     st.markdown(
         f"""
-        <style id="cadivor-approved-visual-overrides">
+        <style id="cadivor-approved-visual-overrides" data-cadivor-layout-style="true">
         html body section[data-testid="stMain"] .st-key-cv_foundation_top_navigation .stButton{beat},
         html body section[data-testid="stMain"] .st-key-cv_foundation_top_navigation .stButton{beat} * {{
           background:transparent !important;background-color:transparent !important;
@@ -556,7 +556,7 @@ def _inject_approved_visual_overrides() -> None:
     # breathing room before the table border.
     st.markdown(
         """
-        <style id="cadivor-approved-reports-final">
+        <style id="cadivor-approved-reports-final" data-cadivor-layout-style="true">
         html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_row_"] {
           box-sizing:border-box!important;display:block!important;min-height:84px!important;height:auto!important;
           margin:0!important;padding:10px 18px!important;border-bottom:1px solid #e5ebf3!important;background:#fff!important

@@ -199,12 +199,13 @@ header[data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stDecor
 }
 
 
-/* Collapse only style-only markdown blocks. A markdown block can contain both
-   a stylesheet and visible HTML (for example Procurement Advisor panels), so
-   matching any ancestor that merely contains a style tag hides real content. */
-div[data-testid="stElementContainer"]:has(> div.stMarkdown > div[data-testid="stMarkdownContainer"] > style:only-child),
-div.element-container:has(> div.stMarkdown > div[data-testid="stMarkdownContainer"] > style:only-child),
-div[data-testid="stMarkdownContainer"]:has(> style:only-child) {
+/* Collapse explicitly marked global stylesheet hosts wherever Streamlit nests
+   the markdown wrapper. Never infer that a block is CSS-only just because it
+   contains a <style>; Procurement Advisor panels combine both. */
+div[data-testid="stLayoutWrapper"]:has(> div[data-testid="stElementContainer"]:has(style[data-cadivor-layout-style="true"])),
+div[data-testid="stElementContainer"]:has(style[data-cadivor-layout-style="true"]),
+div.element-container:has(style[data-cadivor-layout-style="true"]),
+div[data-testid="stMarkdownContainer"]:has(style[data-cadivor-layout-style="true"]) {
     display: none !important;
     height: 0 !important;
     min-height: 0 !important;

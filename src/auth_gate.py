@@ -117,7 +117,7 @@ def _inject_gate_css(*, interactive: bool, show_progress: bool) -> None:
     if interactive:
         st.markdown(
             """
-            <style id="cadivor-auth-gate-css">
+            <style id="cadivor-auth-gate-css" data-cadivor-layout-style="true">
             header[data-testid="stHeader"],[data-testid="stToolbar"],[data-testid="stDecoration"],
             section[data-testid="stSidebar"],[data-testid="collapsedControl"]{
               display:none!important;visibility:hidden!important;height:0!important
@@ -155,7 +155,7 @@ def _inject_gate_css(*, interactive: bool, show_progress: bool) -> None:
         """
     st.markdown(
         f"""
-        <style id="cadivor-auth-gate-css">
+        <style id="cadivor-auth-gate-css" data-cadivor-layout-style="true">
         header[data-testid="stHeader"],[data-testid="stToolbar"],[data-testid="stDecoration"],
         section[data-testid="stSidebar"],[data-testid="collapsedControl"]{{
           display:none!important;visibility:hidden!important;height:0!important
@@ -369,7 +369,7 @@ def retire_auth_gate_overlays() -> None:
     """
     st.markdown(
         """
-        <style id="cadivor-auth-gate-retire">
+        <style id="cadivor-auth-gate-retire" data-cadivor-layout-style="true">
         /* Inner gate surfaces (legacy). */
         body:has(.cv-foundation-topbar):has([data-cadivor-page-content]) div.cv-auth-gate,
         body:has(.cv-foundation-topbar):has([data-cadivor-page-content]) [data-testid="cadivor-auth-gate"],

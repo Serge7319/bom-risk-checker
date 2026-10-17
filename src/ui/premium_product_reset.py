@@ -13,4 +13,4 @@ def inject_premium_product_reset() -> None:
         css = path.read_text(encoding="utf-8")
     except Exception:
         return
-    st.markdown(f"<style id='cadivor-premium-product-reset'>{css}</style>", unsafe_allow_html=True)
+    st.markdown(f"<style id='cadivor-premium-product-reset' data-cadivor-layout-style='true'>{css}</style>", unsafe_allow_html=True)

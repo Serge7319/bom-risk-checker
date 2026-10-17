@@ -931,7 +931,7 @@ def render_command_nav_triggers(commands: list[dict]) -> None:
 
     st.markdown(
         """
-        <style id="cadivor-command-nav-triggers">
+        <style id="cadivor-command-nav-triggers" data-cadivor-layout-style="true">
         [class*="st-key-cvcc_nav_"] {
           position: absolute !important;
           left: -10000px !important;

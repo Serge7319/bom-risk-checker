@@ -146,7 +146,7 @@ def _icon(name: str) -> str:
 def _marketing_css() -> None:
     st.markdown(
         """
-        <style>
+        <style data-cadivor-layout-style="true">
         :root{--mk-navy:#06142c;--mk-navy-2:#0b2248;--mk-blue:#2f6df6;--mk-blue-2:#1f56d8;--mk-sky:#78a9ff;--mk-ink:#0b1730;--mk-copy:#53657b;--mk-muted:#73839a;--mk-border:#dce5f0;--mk-soft:#f5f8fc;--mk-green:#18a865;--mk-amber:#e09a22;--mk-red:#e0474c;--mk-shadow:0 24px 70px rgba(10,28,59,.12)}
         html,body,.stApp,[data-testid="stAppViewContainer"]{background:#fff!important;color:var(--mk-ink)!important;font-family:Manrope,Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif!important;scroll-behavior:smooth}
         [data-testid="stHeader"],[data-testid="stToolbar"],[data-testid="stDecoration"],section[data-testid="stSidebar"],[data-testid="collapsedControl"]{display:none!important}
@@ -420,7 +420,7 @@ def _footer(active: str | None = None) -> None:
 
     st.markdown(
         """
-        <style>
+        <style data-cadivor-layout-style="true">
         .st-key-cv_native_footer{position:relative;margin-top:0;padding:52px max(24px,calc((100vw - 1180px)/2)) 24px;background:#06142c;color:#fff}
         .st-key-cv_native_footer::before{content:"";position:absolute;inset:0 calc(50% - 50vw);z-index:-1;background:#06142c}
         .st-key-cv_native_footer [data-testid="stHorizontalBlock"]{gap:34px;align-items:flex-start!important}
@@ -737,7 +737,7 @@ def _sprint63_marketing_polish() -> None:
     """Apply the final public-site design system without changing routing or auth."""
     st.markdown(
         """
-        <style id="cadivor-sprint-63-marketing-polish">
+        <style id="cadivor-sprint-63-marketing-polish" data-cadivor-layout-style="true">
         :root{
           --mk-space-1:8px;--mk-space-2:12px;--mk-space-3:16px;--mk-space-4:24px;
           --mk-space-5:32px;--mk-space-6:48px;--mk-space-7:72px;--mk-space-8:96px;
@@ -814,7 +814,7 @@ def _sprint63_marketing_polish() -> None:
 
 def _sprint_63_4_product_led_css() -> None:
     st.markdown("""
-    <style>
+    <style data-cadivor-layout-style="true">
     .cv634-story{--c634-navy:#07162f;--c634-blue:#2f6df6;--c634-line:#dce5f0;--c634-soft:#f5f8fc;--c634-green:#169b62;--c634-red:#dc4048;--c634-amber:#d98916}
     .cv634-story *{box-sizing:border-box}.cv634-hero{position:relative;padding:74px 0 82px;background:radial-gradient(circle at 83% 8%,rgba(65,126,245,.19),transparent 31%),linear-gradient(145deg,#06142c 0%,#091b39 60%,#0d2853 100%);color:#fff;overflow:hidden}.cv634-hero-grid{display:grid;grid-template-columns:minmax(520px,.92fr) minmax(680px,1.28fr);gap:44px;align-items:center}.cv634-copy h1{max-width:760px;margin:22px 0 22px;color:#fff!important;font-size:clamp(44px,4.15vw,64px);line-height:1.01;letter-spacing:-.052em}.cv634-title-line{display:block;white-space:nowrap}.cv634-title-main{color:#fff}.cv634-title-accent{color:#78a9ff}.cv634-copy>p{max-width:650px;margin:0;color:#c9d7eb!important;font-size:18px;line-height:1.7}.cv634-copy .mk-actions{margin:31px 0 20px}.cv634-copy .mk-btn-ghost{border-color:rgba(255,255,255,.28)!important;color:#fff!important}.cv634-proof{display:flex;flex-wrap:wrap;gap:9px 18px;color:#aebed4;font-size:12px;font-weight:700}.cv634-product{position:relative;min-width:0;border:1px solid rgba(143,180,242,.32);border-radius:20px;background:#fff;box-shadow:0 40px 100px rgba(0,0,0,.36);overflow:hidden;transform:perspective(1500px) rotateY(-1.6deg)}.cv634-windowbar{height:48px;padding:0 16px;display:flex;align-items:center;gap:14px;background:#edf2f8;border-bottom:1px solid #d7e0eb;color:#526379;font-size:10px}.cv634-windowbar>b{flex:1}.cv634-windowbar em{display:flex;align-items:center;gap:7px;color:#2463d4;font-style:normal;font-weight:850}.cv634-windowbar em i{width:7px;height:7px;border-radius:50%;background:#1dad6b;animation:cv634-pulse 1.8s infinite}.cv634-dots{display:flex;gap:5px}.cv634-dots i{width:8px;height:8px;border-radius:50%;background:#c8d2df}.cv634-dots i:first-child{background:#f06b68}.cv634-dots i:nth-child(2){background:#efbc53}.cv634-dots i:nth-child(3){background:#59bf7b}.cv634-app{display:grid;grid-template-columns:88px 1fr;min-height:550px}.cv634-app aside{padding:16px 9px;background:#081a37;color:#9fb0c8;display:flex;flex-direction:column;gap:8px}.cv634-app aside strong{width:32px;height:32px;margin:0 auto 9px;border-radius:9px;background:#2f6df6;display:grid;place-items:center;color:#fff;font-size:17px}.cv634-app aside span{padding:8px 5px;border-radius:7px;text-align:center;font-size:8px;font-weight:750}.cv634-app aside span.active{background:#173867;color:#fff}.cv634-canvas{padding:19px;background:#f6f8fb;min-width:0}.cv634-stage-label{display:flex;align-items:center;gap:12px}.cv634-stage-label>span{font-size:8px;letter-spacing:.1em;color:#7a899c;font-weight:850;text-transform:uppercase}.cv634-stage-label>b{flex:1;color:#10213d;font-size:15px}.cv634-stage-label em{padding:6px 9px;border-radius:999px;background:#fff3db;color:#b26a08;font-size:8px;font-style:normal;font-weight:900}.cv634-progress{position:relative;display:grid;grid-template-columns:repeat(5,1fr);gap:0;margin:16px 0 13px;padding-top:9px}.cv634-progress::before{content:"";position:absolute;left:7%;right:7%;top:2px;height:3px;border-radius:999px;background:#dce4ee}.cv634-progress i{position:absolute;left:7%;top:2px;height:3px;width:0;border-radius:999px;background:#2f6df6;animation:cv634-progress 12s ease-in-out infinite}.cv634-progress span{text-align:center;color:#7a899c;font-size:7px;font-weight:800}.cv634-file{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid #dae3ee;border-radius:10px;background:#fff}.cv634-file>div{width:29px;height:29px;border-radius:8px;background:#e8f0ff;display:grid;place-items:center;color:#2f6df6}.cv634-file svg,.cv634-copilot-head svg,.cv634-insight header svg,.cv634-pipeline svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8}.cv634-file span{display:flex;flex:1;flex-direction:column}.cv634-file b{font-size:9px;color:#172a47}.cv634-file small{font-size:7px;color:#7a899c}.cv634-file em{font-size:7px;font-style:normal;font-weight:850;color:#169b62}.cv634-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:10px 0}.cv634-kpis article{padding:10px;border:1px solid #dce4ee;border-radius:9px;background:#fff}.cv634-kpis small{display:block;color:#718096;font-size:7px}.cv634-kpis strong{display:block;margin:2px 0;color:#0b1c37;font-size:18px}.cv634-health,.cv634-blockers,.cv634-alerts,.cv634-alts{font-size:0!important}.cv634-health::after,.cv634-blockers::after,.cv634-alerts::after,.cv634-alts::after{font-size:18px}.cv634-health::after{content:"—";animation:cv634-health 12s infinite}.cv634-blockers::after{content:"—";animation:cv634-blockers 12s infinite}.cv634-alerts::after{content:"—";animation:cv634-alerts 12s infinite}.cv634-alts::after{content:"—";animation:cv634-alts 12s infinite}.cv634-posture{animation:cv634-posture 12s infinite}.cv634-kpis span{font-size:7px;color:#8190a3}.cv634-workarea{display:grid;grid-template-columns:1.08fr .92fr;gap:10px}.cv634-risks,.cv634-insight{border:1px solid #dce4ee;border-radius:10px;background:#fff;overflow:hidden}.cv634-risks header,.cv634-insight header{padding:10px 11px;border-bottom:1px solid #e4eaf1;display:flex;justify-content:space-between;align-items:center}.cv634-risks header b,.cv634-insight header span{color:#17304f;font-size:9px;font-weight:850}.cv634-risks header span,.cv634-insight header em{font-size:7px;color:#78879a;font-style:normal}.cv634-risk{display:grid;grid-template-columns:22px 1fr auto;gap:8px;align-items:center;padding:9px 11px;border-bottom:1px solid #edf1f5;opacity:.2;transform:translateX(-8px)}.cv634-risk i{width:20px;height:20px;border-radius:6px;display:grid;place-items:center;background:#f2f5f9;color:#53657a;font-size:7px;font-style:normal;font-weight:900}.cv634-risk span{display:flex;flex-direction:column}.cv634-risk b{font-size:8px;color:#162942}.cv634-risk small{font-size:7px;color:#77869a}.cv634-risk em{font-size:7px;font-style:normal;font-weight:850;color:#c13a41}.cv634-risk.r1{animation:cv634-risk-in 12s 2.1s infinite}.cv634-risk.r2{animation:cv634-risk-in 12s 2.7s infinite}.cv634-risk.r3{animation:cv634-risk-in 12s 3.3s infinite}.cv634-question{margin:10px!important;padding:8px 9px;border-radius:8px;background:#edf3fc;color:#294769!important;font-size:8px!important}.cv634-answer{margin:8px 10px;padding:10px;border-radius:8px;background:#0d2447;color:#fff;opacity:0;animation:cv634-answer 12s 4.8s infinite}.cv634-answer b,.cv634-answer span,.cv634-answer small{display:block}.cv634-answer b{font-size:9px}.cv634-answer span{margin:4px 0;color:#dbe8f8;font-size:7px;line-height:1.45}.cv634-answer small{color:#8fb5ee;font-size:6px}.cv634-decision{margin:8px 10px;padding:9px;border:1px solid #cce8da;border-radius:8px;background:#effaf5;display:flex;flex-direction:column;opacity:0;animation:cv634-decision-in 12s 7.7s infinite}.cv634-decision span{font-size:6px;color:#678175}.cv634-decision b{font-size:8px;color:#11643f}.cv634-decision em{font-size:6px;color:#169b62;font-style:normal}.cv634-live-events{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:9px}.cv634-live-events span{padding:7px 8px;border:1px solid #dce4ee;border-radius:8px;background:#fff;color:#718096;font-size:6px;opacity:.28;transform:translateY(4px)}.cv634-live-events b{display:block;margin-bottom:2px;color:#18304d;font-size:7px}.cv634-live-events .e1{animation:cv634-event 12s 3.4s infinite}.cv634-live-events .e2{animation:cv634-event 12s 6.2s infinite}.cv634-live-events .e3{animation:cv634-event 12s 8.6s infinite}.cv634-demo-caption{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);min-width:225px;height:26px;padding:0 12px;border:1px solid rgba(133,174,239,.22);border-radius:999px;background:rgba(6,20,44,.93);color:#d8e6fa;overflow:hidden}.cv634-demo-caption span{position:absolute;inset:0;display:grid;place-items:center;font-size:8px;font-weight:800;opacity:0}.cv634-demo-caption .s1{animation:cv634-caption 12s 0s infinite}.cv634-demo-caption .s2{animation:cv634-caption 12s 1.8s infinite}.cv634-demo-caption .s3{animation:cv634-caption 12s 3.6s infinite}.cv634-demo-caption .s4{animation:cv634-caption 12s 5.4s infinite}.cv634-demo-caption .s5{animation:cv634-caption 12s 7.2s infinite}.cv634-demo-caption .s6{animation:cv634-caption 12s 9s infinite}
     .cv634-coverage{border-bottom:1px solid #e0e7f0;background:#fff}.cv634-coverage .mk-wrap{min-height:74px;display:flex;align-items:center;justify-content:center;gap:38px;color:#738299}.cv634-coverage span{font-size:10px;font-weight:850;text-transform:uppercase;letter-spacing:.1em}.cv634-coverage b{color:#42536b;font-size:16px}.cv634-coverage small{color:#2f6df6;font-size:7px}.cv634-coverage i{width:1px;height:24px;background:#dbe3ed}
@@ -835,7 +835,7 @@ def _sprint_63_4_product_led_css() -> None:
 def _sprint_63_5_design_excellence_css() -> None:
     """Design excellence and explanatory micro-interactions for Sprint 63.5."""
     st.markdown("""
-    <style id="cadivor-sprint-63-5-design-excellence">
+    <style id="cadivor-sprint-63-5-design-excellence" data-cadivor-layout-style="true">
     /* Rhythm and hierarchy */
     .cv634-story{--cv635-ease:cubic-bezier(.22,.8,.24,1)}
     .cv634-section{padding:88px 0!important}
@@ -928,7 +928,7 @@ def _sprint_63_5_design_excellence_css() -> None:
 def _sprint_63_5_1_motion_and_hero_fixes_css() -> None:
     """Fix hero clipping and add explanatory motion to Ask Cadivor."""
     st.markdown("""
-    <style id="cadivor-sprint-63-5-1-motion-and-hero-fixes">
+    <style id="cadivor-sprint-63-5-1-motion-and-hero-fixes" data-cadivor-layout-style="true">
     /* Hero: preserve the two-line message without clipping at wide desktop sizes. */
     .cv634-hero .mk-wide{width:min(100% - 40px,1500px)!important}
     .cv634-hero-grid{grid-template-columns:minmax(680px,.98fr) minmax(680px,1.02fr)!important;gap:34px!important}
@@ -975,7 +975,7 @@ def _sprint_63_5_1_motion_and_hero_fixes_css() -> None:
 def _sprint_63_5_2_interactive_polish_css() -> None:
     """Reduce secondary hero scale and keep animated product stories continuously populated."""
     st.markdown(r"""
-    <style id="cadivor-sprint-63-5-2-interactive-polish">
+    <style id="cadivor-sprint-63-5-2-interactive-polish" data-cadivor-layout-style="true">
     /* Secondary-page heroes: confident, readable, and never oversized. */
     .mk-page-hero{padding:68px 0 64px!important}
     .mk-page-hero-grid{grid-template-columns:minmax(500px,.92fr) minmax(500px,1.08fr)!important;gap:54px!important}
@@ -1084,7 +1084,7 @@ def render_marketing_site(*, forced_page: str | None = None) -> None:
     _sprint_63_5_1_motion_and_hero_fixes_css()
     _sprint_63_5_2_interactive_polish_css()
     _install_internal_link_bridge()
-    st.markdown("""<style id="cadivor-static-public-runtime">
+    st.markdown("""<style id="cadivor-static-public-runtime" data-cadivor-layout-style="true">
     html,body,.stApp,[data-testid="stAppViewContainer"],[data-testid="stMain"],section.main{background:#ffffff!important;color:#0b1730!important}
     [data-testid="stAppViewContainer"]{transition:none!important}
     [data-testid="stSkeleton"],[data-testid="stSkeleton"]>div,
