@@ -34,6 +34,7 @@ from src.compatibility_gate import (
     CRITICAL_PHYSICAL_WARNING,
     assess_part_compatibility,
     comparison_row_part_values,
+    package_document_conflicts,
 )
 from src.ui.navigation import (
     internal_nav_button,
@@ -4149,7 +4150,7 @@ def _render_datasheet_evidence_review(
                 excerpts = document_evidence.get("dimension_evidence") or []
                 with st.expander(
                     f"{label} package / dimension excerpts ({len(excerpts)})",
-                    expanded=bool(excerpts),
+                    expanded=False,
                 ):
                     if excerpts:
                         for excerpt in excerpts:
@@ -4249,21 +4250,22 @@ def _render_datasheet_evidence_review(
         citation_cols = st.columns(2)
         with citation_cols[0]:
             source_reference = st.text_input(
-                "Source document revision and pages checked",
-                placeholder="Manufacturer, Rev, pp. 18–19",
+                "Source citation · document / revision / pages",
+                placeholder="Manufacturer datasheet, Rev, package and pinout pages",
                 key=f"cadivor_alt_source_reference_{key_suffix}",
+                help="Cite the pages where you reviewed the package outline, dimensions, pinout, and applicable requirements. Use the linked source PDF above.",
             )
         with citation_cols[1]:
             candidate_reference = st.text_input(
-                "Candidate document revision and pages checked",
-                placeholder="Manufacturer, Rev, pp. 20–21",
+                "Candidate citation · document / revision / pages",
+                placeholder="Manufacturer datasheet, Rev, package and pinout pages",
                 key=f"cadivor_alt_candidate_reference_{key_suffix}",
+                help="Cite the pages where you reviewed the package outline, dimensions, pinout, and applicable requirements. Use the linked candidate PDF above.",
             )
-        attested = st.checkbox(
-            "I checked both document identities, package-outline dimensions / pin pitch, pinout, and applicable electrical or firmware requirements for this BOM.",
-            key=f"cadivor_alt_document_attestation_{key_suffix}",
-        )
 
+    attested = bool(
+        st.session_state.get(f"cadivor_alt_document_attestation_{key_suffix}", False)
+    )
     review_state = dict(review_state or {})
     review_state["verified_values"] = {
         "source_package": source_package,
@@ -4496,6 +4498,11 @@ def _render_bom_replacement_approvals(
     widget_suffix = hashlib.sha1(
         f"{project_decision_context_key(project_name, analysis_id)}|{part_key(source_mpn)}|{candidate_key}".encode("utf-8")
     ).hexdigest()[:12]
+    approval_anchor = f"cadivor-approval-checklist-{widget_suffix}"
+    st.markdown(
+        f"<a class='cv-approval-jump' href='#{approval_anchor}'>Skip the evidence details and go to review &amp; approval ↓</a>",
+        unsafe_allow_html=True,
+    )
     approval_original, approval_candidate, comparison_conflicts = _approval_evidence_for_comparison(
         original,
         candidate,
@@ -4564,7 +4571,7 @@ def _render_bom_replacement_approvals(
             probe[field] = extracted_value
             discrepancy = assess_part_compatibility(recorded_payload, probe)
             mismatch = (
-                discrepancy.get("package_mismatch")
+                package_document_conflicts(recorded_value, extracted_value)
                 if field == "package"
                 else discrepancy.get("pin_count_mismatch")
                 if field == "pin_count"
@@ -4616,6 +4623,27 @@ def _render_bom_replacement_approvals(
         or compatibility.get("requires_acknowledgement")
         or comparison_conflicts
         or datasheet_conflicts
+    )
+    st.markdown(f"<div id='{approval_anchor}'></div>", unsafe_allow_html=True)
+    st.markdown("#### Engineering approval")
+    st.caption(
+        "Review the checks below, cite the pages you inspected, then confirm your review. The confirmation does not save the decision; use the approval button at the end."
+    )
+    attested = st.checkbox(
+        "I reviewed both documents, including package dimensions, pinout, and applicable electrical or firmware requirements.",
+        key=f"cadivor_alt_document_attestation_{widget_suffix}",
+    )
+    st.caption("This checkbox records your review. It does not approve the part by itself.")
+    reviewer_attestation = dict(datasheet_review.get("reviewer_attestation") or {})
+    reviewer_attestation["confirmed"] = bool(attested)
+    reviewer_attestation["recorded_at"] = (
+        datetime.now(timezone.utc).isoformat() if attested else ""
+    )
+    datasheet_review["reviewer_attestation"] = reviewer_attestation
+    datasheet_review["review_complete"] = bool(
+        attested
+        and str(reviewer_attestation.get("source_reference") or "").strip()
+        and str(reviewer_attestation.get("candidate_reference") or "").strip()
     )
     review_references_complete = bool(datasheet_review.get("review_complete"))
     linked_documents_reviewed = bool(
@@ -4699,7 +4727,6 @@ def _render_bom_replacement_approvals(
         for row in existing
         if str(row.get("alternative_part") or "").strip()
     ]
-    st.markdown("#### Engineering approval")
     if approved_names:
         st.caption(
             f"Approved for this BOM ({len(approved_names)}/3): "
@@ -4716,33 +4743,11 @@ def _render_bom_replacement_approvals(
         saved_note = str(current.get("engineering_note") or "").strip()
         if saved_note:
             st.caption(f"Saved review note: {saved_note}")
-    else:
-        st.info(f"{candidate_mpn} has not been approved for this BOM.")
     st.caption(
-        "This records your engineering team’s decision; it does not certify electrical or mechanical compatibility."
+        "This records your team’s decision; it does not certify electrical or mechanical compatibility."
     )
     st.caption(
-        "This Finder / Compare panel is the review and approval step. Direct approval requires package and pin-count evidence, processor family / ISA for processor parts, a manufacturer-confirmed Active or NRND lifecycle, cited source and candidate documents, and your review attestation."
-    )
-    if lifecycle_blocked:
-        st.warning(
-            "The supplier record or candidate datasheet marks this part obsolete, discontinued, or end of life. "
-            "Cadivor will not allow it to be approved as a replacement."
-        )
-    elif not lifecycle_verified:
-        st.warning(
-            "Candidate lifecycle is unknown or unverified. Record an Active or NRND status from the manufacturer lifecycle source and cite its revision/page before approval."
-        )
-    elif lifecycle_nrnd:
-        st.warning(
-            "Candidate lifecycle is NRND. Review the manufacturer’s lifecycle notice and record the supply-continuity plan in the approval note."
-        )
-    if compatibility.get("critical_warnings") or compatibility.get("review_warnings"):
-        st.markdown(_compatibility_banner_html(compatibility), unsafe_allow_html=True)
-    for conflict in comparison_conflicts + datasheet_conflicts:
-        st.error(conflict)
-    st.caption(
-        "Saved approvals stay with this BOM across analysis reruns and appear in its BOM Risk and Alternatives tabs."
+        "Saved approvals stay with this BOM across analysis reruns and appear in its Risk and Alternatives views."
     )
 
     previous_note = str(current.get("engineering_note") or "") if current else ""
@@ -4766,66 +4771,108 @@ def _render_bom_replacement_approvals(
         and linked_documents_reviewed
         and (current is not None or len(approved_names) < 3)
     )
-    if compatibility_blocked:
-        if compatibility.get("blocked_from_drop_in_approval"):
-            st.warning("This candidate is not a drop-in replacement. Choose another candidate or handle the redesign through your separate engineering change-control process; Cadivor will not approve this candidate as a direct replacement.")
-        elif comparison_conflicts or datasheet_conflicts:
-            st.warning("Approval is disabled because the supplier, comparison, or datasheet evidence conflicts. Resolve the source-data discrepancy first.")
-        else:
-            st.warning("Approval is disabled until package, pin count, and any required processor architecture are verified for both parts. Enter missing values from the cited documents in this panel.")
     reviewer_attestation = datasheet_review.get("reviewer_attestation") or {}
     reviewer_attestation = reviewer_attestation if isinstance(reviewer_attestation, dict) else {}
     missing_review_steps = []
     if not str(reviewer_attestation.get("source_reference") or "").strip():
-        missing_review_steps.append("enter the source document revision and page numbers")
+        missing_review_steps.append("add the source document revision and pages you checked")
     if not str(reviewer_attestation.get("candidate_reference") or "").strip():
-        missing_review_steps.append("enter the candidate document revision and page numbers")
+        missing_review_steps.append("add the candidate document revision and pages you checked")
     if not reviewer_attestation.get("confirmed"):
-        missing_review_steps.append("check the engineering review attestation")
-    if missing_review_steps:
-        st.warning(
-            "Approval is still locked. The checkmark records your engineering attestation; "
-            "it does not replace the required citations. Please "
-            + "; ".join(missing_review_steps)
-            + ". The example text in the citation fields is only a placeholder."
-        )
+        missing_review_steps.append("confirm your review in this approval section")
     if lifecycle_nrnd and not str(note_value or "").strip():
-        st.warning("Approval is disabled for an NRND candidate until the supply-continuity plan is recorded.")
-    if not linked_documents_reviewed:
-        st.warning(
-            "A supplier-linked or uploaded PDF has not been analyzed in Cadivor yet. "
-            "Run the PDF review, then inspect the cited findings and the original package drawings."
-        )
-        review_request_key = str(datasheet_review.get("review_request_key") or "")
-        if review_request_key:
-            st.button(
-                "Analyze available datasheets now",
-                key=f"cadivor_alt_datasheet_review_bottom_{widget_suffix}",
-                type="secondary",
-                on_click=_request_datasheet_review,
-                args=(review_request_key,),
-                help="Load the supplier PDF evidence without scrolling back to the documentation panel.",
-            )
+        missing_review_steps.append("record the NRND supply-continuity plan")
     if current is None and len(approved_names) >= 3:
-        st.warning("Three alternatives are already approved for this component. Remove one before approving another.")
+        missing_review_steps.append("remove one approved alternative; this BOM is at the three-part limit")
 
-    action_cols = st.columns([1, 1] if current else [1])
-    with action_cols[0]:
+    blockers: list[str] = []
+    if lifecycle_blocked:
+        blockers.append(
+            "This candidate is obsolete, discontinued, or end of life. Choose a different candidate."
+        )
+    elif not lifecycle_verified:
+        blockers.append(
+            "Candidate lifecycle is not verified as Active or NRND. Confirm it from a manufacturer source."
+        )
+    if compatibility.get("blocked_from_drop_in_approval"):
+        blockers.extend(compatibility.get("critical_warnings") or [
+            "The physical package or processor architecture is incompatible. Choose another candidate."
+        ])
+    elif comparison_conflicts or datasheet_conflicts:
+        blockers.extend(comparison_conflicts + datasheet_conflicts)
+    elif compatibility.get("requires_acknowledgement"):
+        blockers.extend(compatibility.get("review_warnings") or [
+            "Package, pin count, or processor architecture still needs verification."
+        ])
+    if not linked_documents_reviewed:
+        blockers.append("Wait for the linked datasheet analysis, then inspect both documents.")
+    blockers.extend(missing_review_steps)
+
+    with st.container(key=f"cadivor_approval_actions_{widget_suffix}"):
+        st.markdown("**Approval status**")
+        if can_approve:
+            next_action = "Update approval" if current else "Approve this alternative"
+            st.success(
+                f"Review complete. Click “{next_action}” below to save the decision to this BOM."
+            )
+        elif compatibility.get("blocked_from_drop_in_approval") or lifecycle_blocked:
+            st.error("This candidate cannot be approved as a direct replacement.")
+        else:
+            st.warning("Approval is locked. Complete the items below; the button will enable when they pass.")
+        if blockers:
+            st.markdown("\n".join(f"- {item}" for item in dict.fromkeys(blockers)))
+        if not linked_documents_reviewed:
+            review_request_key = str(datasheet_review.get("review_request_key") or "")
+            if review_request_key:
+                st.button(
+                    "Analyze linked datasheets",
+                    key=f"cadivor_alt_datasheet_review_bottom_{widget_suffix}",
+                    type="secondary",
+                    on_click=_request_datasheet_review,
+                    args=(review_request_key,),
+                    help="Analyze the available supplier PDFs before continuing.",
+                )
+        st.caption(
+            "Your checkbox confirms the review; it does not save the BOM decision. Saved approvals appear in this BOM’s Risk and Alternatives views."
+        )
+
+        st.markdown(
+            f"""
+            <style>
+            html body section[data-testid="stMain"] .st-key-cadivor_approval_actions_{widget_suffix} .stButton > button[kind="primary"]:disabled {{
+              background:#e2e8f0 !important; background-color:#e2e8f0 !important;
+              border:1px solid #cbd5e1 !important; color:#64748b !important;
+              box-shadow:none !important; opacity:1 !important; cursor:not-allowed !important;
+              transform:none !important;
+            }}
+            html body section[data-testid="stMain"] .st-key-cadivor_approval_actions_{widget_suffix} .stButton > button[kind="primary"]:disabled * {{
+              color:#64748b !important; background:transparent !important;
+            }}
+            .cv-approval-jump {{
+              display:inline-block; margin:4px 0 12px; padding:8px 12px;
+              color:#1d4ed8; background:#eff6ff; border:1px solid #bfdbfe;
+              border-radius:8px; font-size:13px; font-weight:700; text-decoration:none;
+            }}
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
         save_clicked = st.button(
-            "Update approval" if current else "Approve this alternative",
+            (
+                "Update approval" if current else "Approve this alternative"
+            ) if can_approve else "Approval locked — resolve the items above",
             key=f"cadivor_approved_alternative_save_{widget_suffix}",
             type="primary",
             disabled=not can_approve,
             use_container_width=True,
         )
     remove_clicked = False
-    if current and len(action_cols) > 1:
-        with action_cols[1]:
-            remove_clicked = st.button(
-                "Remove approval",
-                key=f"cadivor_approved_alternative_remove_{widget_suffix}",
-                use_container_width=True,
-            )
+    if current:
+        remove_clicked = st.button(
+            "Remove approval",
+            key=f"cadivor_approved_alternative_remove_{widget_suffix}",
+            use_container_width=True,
+        )
 
     if save_clicked and (
         lifecycle_blocked

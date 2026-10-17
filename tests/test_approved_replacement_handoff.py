@@ -159,7 +159,7 @@ def test_physical_and_isa_mismatches_are_prominent_and_block_bom_approval():
     assert "not compatibility_blocked" in approvals
     assert "disabled=not can_approve" in approvals
     assert "and lifecycle_verified" in approvals
-    assert "candidate lifecycle is unknown or unverified" in approvals.casefold()
+    assert "Candidate lifecycle is not verified as Active or NRND" in approvals
     assert "cv-compat-banner critical" in source
     assert "cv-compare-compat-critical" in compare
     assert 'compatibility_by_slot["Part B"] = assess_part_compatibility(' in compare
@@ -200,12 +200,35 @@ def test_approval_explains_missing_citations_and_offers_pdf_review_at_the_gate()
         "def _approval_evidence_for_comparison", 1
     )[0]
 
-    assert "The checkmark records your engineering attestation" in approvals
-    assert "only a placeholder" in approvals
-    assert '"Analyze available datasheets now"' in approvals
+    assert "This checkbox records your review" in approvals
+    assert "does not approve the part by itself" in approvals
+    assert '"Analyze linked datasheets"' in approvals
     assert "on_click=_request_datasheet_review" in approvals
     assert "review_request_key = f\"cadivor_alt_datasheet_review_request_{key_suffix}\"" in datasheet_review
     assert "review_requested or review_clicked" in datasheet_review
+
+
+def test_approval_review_is_easy_to_reach_and_disabled_action_looks_disabled():
+    source = (
+        Path(__file__).resolve().parents[1] / "src" / "ui" / "approved_pages.py"
+    ).read_text(encoding="utf-8")
+    approvals = source.split("def _render_bom_replacement_approvals", 1)[1].split(
+        "def render_replacement_search", 1
+    )[0]
+    datasheet_review = source.split("def _render_datasheet_evidence_review", 1)[1].split(
+        "def _approval_evidence_for_comparison", 1
+    )[0]
+
+    assert "Skip the evidence details and go to review &amp; approval" in approvals
+    assert "cadivor-approval-checklist-" in approvals
+    assert approvals.index('st.markdown("#### Engineering approval")') < approvals.index(
+        "st.checkbox("
+    )
+    assert "This checkbox records your review. It does not approve the part by itself." in approvals
+    assert 'expanded=False' in datasheet_review
+    assert 'button[kind="primary"]:disabled' in approvals
+    assert '"Approval locked — resolve the items above"' in approvals
+    assert "package_document_conflicts(recorded_value, extracted_value)" in approvals
 
 
 def test_linked_datasheets_are_analyzed_automatically_and_upload_is_optional():

@@ -745,10 +745,33 @@ def _pdf_value_after_label(line: str, labels: tuple[str, ...]) -> str:
     return value[:280]
 
 
+_PACKAGE_FAMILY_RE = re.compile(
+    r"\b(?:power\s*soic|hsoic|soic|tssop|ssop|msop|qfn|dfn|lqfp|tqfp|qfp|"
+    r"dip|pdip|plcc|lcc|bga|csp|vson|wson|sot|to)\s*[- ]?\s*\d{1,3}\b"
+    r"|\b\d{1,3}\s*[- ]?\s*(?:pins?\s*[- ]?\s*)?(?:power\s*soic|hsoic|soic|tssop|ssop|msop|qfn|"
+    r"dfn|lqfp|tqfp|qfp|dip|pdip|plcc|lcc|bga|csp|vson|wson|sot|to)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_specific_package_designation(value: str) -> bool:
+    """Return whether extracted package text names a recognizable footprint.
+
+    Datasheets often contain broad marketing phrases such as "PowerPAD
+    integrated circuit package". Those phrases are useful context, but they
+    are not package codes or geometry and must not be compared as if they
+    contradict a distributor's explicit package field.
+    """
+    return bool(_PACKAGE_FAMILY_RE.search(" ".join(str(value or "").split())))
+
+
 def _find_pdf_evidence(
     pdf_result: dict,
     labels: tuple[str, ...],
+    *,
+    require_specific_package: bool = False,
 ) -> tuple[str, str, str]:
+    generic_package_fallback: tuple[str, str, str] | None = None
     for page in pdf_result.get("pages") or []:
         for line in str(page.get("text") or "").splitlines():
             compact = " ".join(line.split())
@@ -767,7 +790,13 @@ def _find_pdf_evidence(
             page_number = str(page.get("page", "?") or "?")
             document = str(page.get("document") or "").strip()
             citation = f"{document} p. {page_number}" if document else f"p. {page_number}"
+            if require_specific_package and not _is_specific_package_designation(value):
+                if generic_package_fallback is None:
+                    generic_package_fallback = (value, citation, compact[:280])
+                continue
             return value, citation, compact[:280]
+    if generic_package_fallback is not None:
+        return generic_package_fallback
     return "", "", ""
 
 
@@ -779,9 +808,31 @@ def build_pdf_field_evidence(original_pdf: dict, candidate_pdf: dict, family: st
     rows = []
     for spec in fields:
         aliases = tuple(alias.casefold() for alias in (spec.pdf_aliases or (spec.label.casefold(),)))
-        original_value, original_page, original_excerpt = _find_pdf_evidence(original_pdf, aliases)
-        candidate_value, candidate_page, candidate_excerpt = _find_pdf_evidence(candidate_pdf, aliases)
+        original_value, original_page, original_excerpt = _find_pdf_evidence(
+            original_pdf, aliases, require_specific_package=spec.key == "package"
+        )
+        candidate_value, candidate_page, candidate_excerpt = _find_pdf_evidence(
+            candidate_pdf, aliases, require_specific_package=spec.key == "package"
+        )
+        original_package_specific = (
+            spec.key != "package" or _is_specific_package_designation(original_value)
+        )
+        candidate_package_specific = (
+            spec.key != "package" or _is_specific_package_designation(candidate_value)
+        )
+        if spec.key == "package":
+            # Keep broad wording visible in the cited excerpt, but don't
+            # present it as an exact package value or an automatic match.
+            if not original_package_specific:
+                original_value = ""
+            if not candidate_package_specific:
+                candidate_value = ""
         status, note = compare_field_values(original_value, candidate_value, spec)
+        if spec.key == "package" and (not original_package_specific or not candidate_package_specific):
+            note = (
+                "No exact package designation was found in the extracted text. "
+                "Inspect the manufacturer package-outline drawing and confirm dimensions and pin pitch."
+            )
         rows.append({
             "Attribute": spec.label,
             "Key": spec.key,

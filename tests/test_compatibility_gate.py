@@ -5,10 +5,28 @@ from src.compatibility_gate import (
     CRITICAL_PHYSICAL_WARNING,
     assess_part_compatibility,
     comparison_row_part_values,
+    package_document_conflicts,
 )
 
 
 class CompatibilityGateTests(unittest.TestCase):
+    def test_manufacturer_package_alias_with_same_family_and_pins_is_reviewed_not_false_blocked(self):
+        self.assertFalse(
+            package_document_conflicts(
+                '8-PowerSOIC (0.154", 3.90mm Width)',
+                "8-Pin HSOIC With Thermal Pad (Top View)",
+            )
+        )
+
+    def test_manufacturer_package_family_or_explicit_dimension_mismatch_blocks(self):
+        self.assertTrue(package_document_conflicts("SOIC-8", "TSSOP-8"))
+        self.assertTrue(
+            package_document_conflicts(
+                '8-PowerSOIC (3.90mm Width)',
+                "8-Pin HSOIC, body width 4.9 mm",
+            )
+        )
+
     def test_mc68hc11_vs_w77ic32a25pl_is_blocked_as_physical_and_isa_mismatch(self):
         original = {
             "manufacturer_part_number": "MC68HC11E1CFNE2",
