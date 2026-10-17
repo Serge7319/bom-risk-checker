@@ -42,6 +42,7 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
         self.assertIn("window.parent", paint)
         self.assertIn('portalId = "cadivor-main-transition-portal"', paint)
         self.assertIn("components.html(portal_script, height=0, width=0)", paint)
+        self.assertIn("new parentWindow.MutationObserver", paint)
         self.assertNotIn("with container(key=owner_key)", paint)
 
     def test_revealed_route_removes_its_transition_portal(self):

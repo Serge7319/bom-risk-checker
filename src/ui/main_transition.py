@@ -450,6 +450,22 @@ def _paint_main_transition_markup(route: str, gen: int) -> None:
         portal.style.cssText = "position:fixed;inset:0;z-index:2147483000;pointer-events:none;overflow:hidden";
         portal.innerHTML = {script_markup};
         doc.body.appendChild(portal);
+        // The reveal marker and this zero-height iframe can mount in either
+        // browser order. Watch for the matching marker so a late loader frame
+        // can never reappear after the page has rendered.
+        const observer = new parentWindow.MutationObserver(() => {{
+          const marker = doc.querySelector(
+            '[data-cadivor-page-body][data-cadivor-transition-gen="' + generation + '"]'
+          );
+          const current = doc.getElementById(portalId);
+          const currentGeneration = Number(current && current.dataset.cadivorTransitionGen || 0);
+          if (marker && current && currentGeneration <= generation) {{
+            current.remove();
+            observer.disconnect();
+          }}
+        }});
+        observer.observe(doc.body, {{childList:true,subtree:true}});
+        parentWindow.setTimeout(() => observer.disconnect(), 30000);
       }} catch (error) {{}}
     }})();
     </script>
