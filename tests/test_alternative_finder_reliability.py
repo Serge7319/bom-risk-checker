@@ -190,6 +190,108 @@ class AlternativeFinderReliabilityTests(unittest.TestCase):
         self.assertNotEqual(result["Classification"], self.classification.CLASS_VERIFIED_DIRECT)
         self.assertEqual(result["Substitute Type"], "Similar")
 
+    def test_catalog_metadata_fills_lifecycle_without_weakening_direct_evidence(self):
+        explicit = [_digikey_direct_pair(
+            "MC7805ACTG",
+            lifecycle_status="Unknown",
+            stock_total=0,
+        )]
+        catalog = [{
+            "manufacturer_part_number": "MC7805ACTG",
+            "source": "DigiKey",
+            "substitute_type": "Similar",
+            "evidence_type": "Distributor catalog match",
+            "lifecycle_status": "Active",
+            "stock_total": 8349,
+            "primary_category": "Integrated Circuits (ICs) > Power Management",
+        }]
+
+        merged = self.classification.merge_discovery_candidates(
+            explicit, catalog, original_mpn="LM7805ACT"
+        )
+
+        self.assertEqual(len(merged), 1)
+        self.assertEqual(merged[0]["lifecycle_status"], "Active")
+        self.assertEqual(merged[0]["stock_total"], 8349)
+        self.assertEqual(merged[0]["substitute_type"], "Direct")
+        self.assertEqual(len(merged[0]["supplier_relationship_evidence"]), 1)
+
+    def test_consumer_kits_modules_and_breakout_boards_are_filtered(self):
+        rows = self.classification.merge_discovery_candidates(
+            [],
+            [
+                {
+                    "manufacturer_part_number": "26001",
+                    "primary_category": {
+                        "Name": "Development Boards, Kits, Programmers",
+                    },
+                },
+                {
+                    "manufacturer_part_number": "RADIO-MOD-01",
+                    "PrimaryCategory": {"Name": "RF/IF and RFID Modules"},
+                },
+                {
+                    "manufacturer_part_number": "BREAKOUT-1",
+                    "description": "16-channel breakout board",
+                },
+                {
+                    "manufacturer_part_number": "ATMEGA328-PU",
+                    "primary_category": "Integrated Circuits (ICs) > Embedded",
+                },
+            ],
+            original_mpn="ATMEGA328P-PU",
+        )
+
+        self.assertEqual(
+            [row["manufacturer_part_number"] for row in rows],
+            ["ATMEGA328-PU"],
+        )
+
+    def test_candidate_lifecycle_and_risk_are_derived_from_supplier_evidence(self):
+        candidate = _digikey_direct_pair(
+            "MC7805ACTG",
+            lifecycle_status="Active",
+            stock_total=10000,
+            lead_time_weeks=4,
+        )
+        self._mock_discovery([candidate], [])
+
+        row = self.engine.suggest_alternatives_v2("LM7805ACT")[0]
+
+        self.assertEqual(row["Lifecycle"], "Active")
+        self.assertEqual(row["Estimated Risk"], "Low")
+        self.assertEqual(row["Estimated Risk Score"], 0)
+
+    def test_stock_does_not_mask_missing_lifecycle_verification(self):
+        candidate = _digikey_direct_pair(
+            "MC7805ACTG",
+            lifecycle_status="Unknown",
+            stock_total=10000,
+        )
+        self._mock_discovery([candidate], [])
+
+        row = self.engine.suggest_alternatives_v2("LM7805ACT")[0]
+
+        self.assertEqual(row["Lifecycle"], "Unknown")
+        self.assertEqual(row["Estimated Risk"], "Needs verification")
+
+    def test_salvage_candidates_preserve_supplier_lifecycle_and_risk(self):
+        candidates = self.engine.build_salvage_candidates_from_discovery(
+            {"candidates": [{
+                "manufacturer_part_number": "ATMEGA328-PU",
+                "source": "DigiKey",
+                "substitute_type": "Direct",
+                "evidence_type": "Distributor-listed substitute",
+                "lifecycle_status": "NRND",
+                "stock_total": 8349,
+            }]},
+            canonical_mpn="ATMEGA328P-PU",
+            original_part_number="ATMEGA328P-PU",
+        )
+
+        self.assertEqual(candidates[0]["Lifecycle"], "NRND")
+        self.assertEqual(candidates[0]["Estimated Risk"], "Medium")
+
     def test_missing_capacitor_rated_voltage_is_needs_data_not_match(self):
         original = {
             "description": "Capacitor Ceramic 0.1uF",

@@ -959,6 +959,7 @@ def begin_approved_page() -> None:
         .cv-pill.high{background:#ffe4e6;color:#be123c}
         .cv-pill.medium{background:#fef3c7;color:#b45309}
         .cv-pill.low{background:#dcfce7;color:#15803d}
+        .cv-pill.verify{background:#e2e8f0;color:#475569}
         .cv-pill.open{background:#dbeafe;color:#1d4ed8}
         .cv-ap-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-bottom:22px}
         .cv-ap-template{background:#f8fafc;border:1px solid #e6edf5;border-radius:16px;padding:18px}
@@ -4270,7 +4271,11 @@ def render_replacement_search() -> None:
     with stock_filter:
         stock_choice = st.selectbox("Stock", ["All", "In stock", "No stock"], key="approved_stock_filter")
     with risk_filter:
-        risk_choice = st.selectbox("Risk", ["All", "High", "Medium", "Low"], key="approved_risk_filter")
+        risk_choice = st.selectbox(
+            "Risk",
+            ["All", "High", "Medium", "Low", "Needs verification"],
+            key="approved_risk_filter",
+        )
     with sort_by:
         sort_choice = st.selectbox("Sort by", ["Overall match", "Stock", "Risk"], key="approved_replacement_sort")
     filtered = []
@@ -4426,6 +4431,8 @@ def render_replacement_search() -> None:
             pill = "low"
         elif "medium" in level.casefold():
             pill = "medium"
+        elif "verification" in level.casefold():
+            pill = "verify"
         level_html = f"<span class='cv-pill {pill}'>{level}</span>" if pill else level
         discovery = row.get("_discovery_row") if isinstance(row.get("_discovery_row"), dict) else {}
         image = str(

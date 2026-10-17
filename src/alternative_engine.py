@@ -5,7 +5,7 @@ from typing import Any, Mapping, Optional
 import pandas as pd
 
 from integrations.pin_count import effective_pin_count
-from integrations.stock_coercion import coerce_stock_total
+from integrations.stock_coercion import coerce_stock_total, parse_stock_total
 from integrations.supplier_aggregator import get_best_part_data
 from src.risk_engine import calculate_risk
 from integrations.supplier_aggregator import (
@@ -36,6 +36,7 @@ from src.alternative_classification import (
     classification_sort_key,
     classify_from_supplier_evidence,
     classify_recommendation_suitability,
+    is_non_component_catalog_candidate,
     refine_classification_after_comparison,
 )
 import streamlit as st
@@ -95,6 +96,8 @@ def build_salvage_candidates_from_discovery(
     for result in (discovery or {}).get("candidates") or []:
         if not isinstance(result, dict):
             continue
+        if is_non_component_catalog_candidate(result):
+            continue
         candidate_part = str(result.get("manufacturer_part_number") or "").strip()
         if not candidate_part:
             continue
@@ -128,14 +131,19 @@ def build_salvage_candidates_from_discovery(
                 "product_detail_url": result.get("product_detail_url") or "",
                 "field_sources": dict(result.get("field_sources") or {}),
                 "image_url": str(result.get("image_url") or result.get("photo_url") or "").strip(),
+                "Primary Category": str(
+                    result.get("primary_category") or result.get("PrimaryCategory") or ""
+                ).strip(),
                 "Category": classification,
                 "Classification": classification,
                 "Supplier": str(result.get("source") or "DigiKey"),
                 "Manufacturer": str(result.get("manufacturer") or ""),
                 "Stock": coerce_stock_total(result.get("stock_total", 0)),
                 "Unit Price": result.get("unit_price", 0.0),
-                "Lifecycle": "Unknown",
-                "Estimated Risk": "Unknown",
+                "Lifecycle": str(
+                    result.get("lifecycle_status") or result.get("Lifecycle") or "Unknown"
+                ).strip() or "Unknown",
+                **_candidate_risk_metadata(result),
                 "Evidence Type": str(result.get("evidence_type") or "Supplier candidate"),
                 "Substitute Type": substitute_type,
                 "Evidence Source": str(result.get("source") or "DigiKey"),
@@ -157,6 +165,47 @@ def build_salvage_candidates_from_discovery(
 def assert_candidates_cache_serializable(candidates: list[dict[str, Any]]) -> None:
     """Raise when candidate payloads cannot be cached by Streamlit."""
     pickle.dumps(prepare_candidates_for_session_and_cache(candidates))
+
+
+def _candidate_risk_metadata(candidate: Mapping[str, Any]) -> dict[str, Any]:
+    """Score candidate lifecycle and distributor availability from recorded evidence."""
+    lifecycle = str(
+        candidate.get("lifecycle_status")
+        or candidate.get("Lifecycle")
+        or candidate.get("Lifecycle Status")
+        or "Unknown"
+    ).strip() or "Unknown"
+    risk_inputs: dict[str, Any] = {
+        "lifecycle_status": lifecycle,
+        "lifecycle_conflict": bool(candidate.get("lifecycle_conflict")),
+        "lead_time_weeks": candidate.get("lead_time_weeks"),
+    }
+    stock = parse_stock_total(candidate.get("stock_total", candidate.get("Stock")))
+    if stock is not None:
+        risk_inputs["stock_total"] = stock
+        risk_inputs["stock_data_complete"] = bool(
+            candidate.get("stock_data_complete", True)
+        )
+    risk = calculate_risk(risk_inputs)
+    reasons = list(risk.get("risk_reasons") or [])
+    lifecycle_unknown = lifecycle.casefold() in {
+        "", "unknown", "unverified", "n/a", "not available", "unavailable",
+    }
+    risk_level = risk.get("risk_level") or "Needs verification"
+    if lifecycle_unknown:
+        note = "Manufacturer lifecycle status is not confirmed by the retrieved supplier record."
+        if note not in reasons:
+            reasons.append(note)
+        # A healthy distributor stock snapshot cannot substitute for lifecycle
+        # evidence. Preserve a concrete medium/high supply warning when present;
+        # otherwise require verification instead of presenting a reassuring Low.
+        if risk_level == "Low":
+            risk_level = "Needs verification"
+    return {
+        "Estimated Risk": risk_level,
+        "Estimated Risk Score": risk.get("risk_score"),
+        "Risk Reasons": reasons,
+    }
 
 ELECTRICAL_FIELDS = {
     "bandwidth_mhz": {
@@ -625,6 +674,9 @@ def _discovery_row_to_part_data(row: dict) -> dict:
         "product_detail_url": str(row.get("product_detail_url") or "").strip(),
         "field_sources": dict(row.get("field_sources") or {}),
         "lifecycle_status": str(row.get("lifecycle_status") or row.get("Lifecycle") or "").strip(),
+        "primary_category": str(
+            row.get("primary_category") or row.get("PrimaryCategory") or ""
+        ).strip(),
         "source": str(row.get("source") or "DigiKey"),
         "image_url": str(row.get("image_url") or row.get("photo_url") or "").strip(),
         "supplier_data_verified": bool(mpn),
@@ -1590,6 +1642,8 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
 
     supplier_candidates = []
     for result in supplier_results:
+        if is_non_component_catalog_candidate(result):
+            continue
         candidate_part = str(result.get("manufacturer_part_number") or "").strip()
         if not candidate_part:
             continue
@@ -1631,6 +1685,9 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
                 "product_detail_url": result.get("product_detail_url") or "",
                 "field_sources": dict(result.get("field_sources") or {}),
                 "image_url": str(result.get("image_url") or result.get("photo_url") or "").strip(),
+                "Primary Category": str(
+                    result.get("primary_category") or result.get("PrimaryCategory") or ""
+                ).strip(),
                 "Category": classification,
                 "Classification": classification,
                 "Supplier": str(result.get("source") or "DigiKey"),
@@ -1638,7 +1695,7 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
                 "Stock": coerce_stock_total(result.get("stock_total", 0)),
                 "Unit Price": result.get("unit_price", 0.0),
                 "Lifecycle": lifecycle,
-                "Estimated Risk": "Unknown",
+                **_candidate_risk_metadata(result),
                 "Evidence Type": evidence_type,
                 "Substitute Type": substitute_type,
                 "Evidence Source": str(result.get("source") or "DigiKey"),
@@ -1730,7 +1787,8 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
     filtered_candidates = [
         candidate
         for candidate in candidates
-        if candidate.get("Alternative Part", "").strip().lower()
+        if not is_non_component_catalog_candidate(candidate)
+        and candidate.get("Alternative Part", "").strip().lower()
         != canonical_part_number.strip().lower()
         and candidate.get("Alternative Part", "").strip().lower()
         != original_part_number.strip().lower()

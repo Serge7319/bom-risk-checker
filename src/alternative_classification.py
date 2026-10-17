@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime, timezone
+from collections.abc import Mapping
 
 CLASS_VERIFIED_DIRECT = "Verified direct substitute"
 CLASS_SUPPLIER_UPGRADE = "Supplier-listed upgrade"
@@ -62,6 +63,66 @@ SUITABILITY_SCORE_PENALTY = {
 }
 
 _PACKAGING_SUFFIXES = ("CT", "TR", "TU", "DKR", "AUTO")
+
+_NON_COMPONENT_CATEGORY_RE = re.compile(
+    r"\b(?:kits?|modules?|evaluation\s+boards?|breakouts?)\b",
+    re.IGNORECASE,
+)
+_NON_COMPONENT_DESCRIPTION_RE = re.compile(
+    r"\b(?:evaluation|development|breakout)\s+boards?\b"
+    r"|\b(?:development|evaluation|starter|hobbyist)\s+kits?\b",
+    re.IGNORECASE,
+)
+_CATEGORY_FIELDS = (
+    "primary_category",
+    "PrimaryCategory",
+    "Primary Category",
+    "category_name",
+    "CategoryName",
+    "product_category",
+    "ProductCategory",
+    "Category",
+    "category",
+)
+
+
+def _category_text(value: object) -> str:
+    """Flatten common distributor category objects without stringifying IDs."""
+    if isinstance(value, Mapping):
+        labels = []
+        for key, item in value.items():
+            if str(key).casefold() in {
+                "name", "categoryname", "productcategory", "primarycategory",
+                "subcategory", "subcategories", "parentcategory", "description",
+            }:
+                text = _category_text(item)
+                if text:
+                    labels.append(text)
+        if not labels:
+            for item in value.values():
+                if isinstance(item, (Mapping, list, tuple)):
+                    text = _category_text(item)
+                    if text:
+                        labels.append(text)
+        return " ".join(dict.fromkeys(labels))
+    if isinstance(value, (list, tuple, set)):
+        return " ".join(filter(None, (_category_text(item) for item in value)))
+    if isinstance(value, str):
+        return value.strip()
+    return ""
+
+
+def is_non_component_catalog_candidate(candidate: Mapping[str, object]) -> bool:
+    """Reject kits, modules, and evaluation/breakout boards from part choices."""
+    category = " ".join(
+        _category_text(candidate.get(key))
+        for key in _CATEGORY_FIELDS
+        if candidate.get(key) not in (None, "")
+    )
+    if _NON_COMPONENT_CATEGORY_RE.search(category):
+        return True
+    description = str(candidate.get("description") or candidate.get("Description") or "")
+    return bool(_NON_COMPONENT_DESCRIPTION_RE.search(description))
 
 
 def utc_now_iso() -> str:
@@ -687,6 +748,70 @@ def _attach_or_merge_relationship_evidence(target: dict, source: dict) -> None:
             target["substitute_type"] = conservative_substitute_type([current, conservative])
 
 
+_CATALOG_METADATA_FIELDS = (
+    "manufacturer",
+    "description",
+    "primary_category",
+    "package",
+    "pin_count",
+    "mounting_style",
+    "voltage_range",
+    "temperature_range",
+    "architecture",
+    "channel_count",
+    "lead_time_weeks",
+    "bandwidth_mhz",
+    "slew_rate_v_us",
+    "input_offset_mv",
+    "input_bias_na",
+    "quiescent_current_ma",
+    "gbw_mhz",
+    "datasheet_url",
+    "product_detail_url",
+    "image_url",
+)
+
+
+def _fill_explicit_candidate_metadata(explicit_row: dict, catalog_row: dict) -> None:
+    """Use an exact-MPN catalog row to fill gaps without changing its relationship."""
+    lifecycle = str(explicit_row.get("lifecycle_status") or "").strip()
+    catalog_lifecycle = str(catalog_row.get("lifecycle_status") or "").strip()
+    lifecycle_unknown = lifecycle.casefold() in {
+        "", "unknown", "unverified", "n/a", "not available", "unavailable",
+    }
+    catalog_lifecycle_known = catalog_lifecycle.casefold() not in {
+        "", "unknown", "unverified", "n/a", "not available", "unavailable",
+    }
+    if lifecycle_unknown and catalog_lifecycle_known:
+        explicit_row["lifecycle_status"] = catalog_lifecycle
+
+    for field in _CATALOG_METADATA_FIELDS:
+        value = catalog_row.get(field)
+        if value in (None, "", 0):
+            continue
+        if explicit_row.get(field) in (None, "", 0):
+            explicit_row[field] = value
+
+    # A zero in the relationship response can be an empty availability field.
+    # Keep the strongest exact-MPN distributor stock reading without changing
+    # the explicit substitute relationship or its evidence rows.
+    catalog_stock = catalog_row.get("stock_total")
+    if catalog_stock not in (None, ""):
+        try:
+            catalog_stock_value = int(float(str(catalog_stock).replace(",", "")))
+            explicit_stock_value = int(float(str(explicit_row.get("stock_total") or 0).replace(",", "")))
+        except (TypeError, ValueError):
+            catalog_stock_value = explicit_stock_value = 0
+        if catalog_stock_value > explicit_stock_value:
+            explicit_row["stock_total"] = catalog_stock_value
+
+    sources = dict(explicit_row.get("field_sources") or {})
+    for key, value in dict(catalog_row.get("field_sources") or {}).items():
+        sources.setdefault(key, value)
+    if sources:
+        explicit_row["field_sources"] = sources
+
+
 def merge_discovery_candidates(
     explicit: list[dict],
     catalog: list[dict],
@@ -745,6 +870,7 @@ def merge_discovery_candidates(
             continue
         if key in explicit_keys:
             # Catalog must not overwrite or inherit explicit Direct evidence.
+            _fill_explicit_candidate_metadata(by_key[key], row)
             continue
         if key in by_key:
             continue
@@ -755,7 +881,7 @@ def merge_discovery_candidates(
         by_key[key] = payload
         merged.append(payload)
 
-    return merged
+    return [row for row in merged if not is_non_component_catalog_candidate(row)]
 
 
 def build_classification_recommendation(
