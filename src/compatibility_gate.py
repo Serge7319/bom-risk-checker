@@ -93,6 +93,105 @@ def _package_geometry(value: str) -> tuple[str, ...]:
     return tuple(sorted(tokens))
 
 
+def package_document_conflicts(recorded_package: Any, documented_package: Any) -> bool:
+    """Check a catalog package against a manufacturer package designation.
+
+    Package-family aliases such as PowerSOIC and HSOIC are common across
+    distributor and manufacturer descriptions. Treat the same recognized
+    family and pin count as wording requiring drawing review, not as a proven
+    conflict. Different families or explicit pin counts remain blockers.
+    """
+    recorded = _clean(recorded_package)
+    documented = _clean(documented_package)
+    if not recorded or not documented:
+        return False
+    if _package_geometry(recorded) == _package_geometry(documented):
+        return False
+
+    unit_factors = {
+        "mm": 1.0,
+        "cm": 10.0,
+        "in": 25.4,
+        "inch": 25.4,
+        "inches": 25.4,
+        '"': 25.4,
+        "mil": 0.0254,
+        "mils": 0.0254,
+    }
+    dimension_pattern = re.compile(
+        r"(?:(?P<label_before>body\s*)?(?P<name_before>length|width|height|pitch|spacing|span|diameter)"
+        r"\s*[:=]?\s*(?P<number_before>\d+(?:\.\d+)?)\s*(?P<unit_before>inches|inch|mm|cm|mils?|in|\"))"
+        r"|(?:(?P<number_after>\d+(?:\.\d+)?)\s*(?P<unit_after>inches|inch|mm|cm|mils?|in|\")\s*"
+        r"(?P<label_after>body\s*)?(?P<name_after>length|width|height|pitch|spacing|span|diameter)\b)",
+        re.IGNORECASE,
+    )
+
+    def dimensions(value: str) -> dict[str, float]:
+        output: dict[str, float] = {}
+        for match in dimension_pattern.finditer(value):
+            name = match.group("name_before") or match.group("name_after") or ""
+            number = match.group("number_before") or match.group("number_after") or ""
+            unit = (match.group("unit_before") or match.group("unit_after") or "").casefold()
+            if name and number and unit in unit_factors:
+                output[name.casefold()] = float(number) * unit_factors[unit]
+        return output
+
+    recorded_dimensions = dimensions(recorded)
+    documented_dimensions = dimensions(documented)
+    for name in set(recorded_dimensions) & set(documented_dimensions):
+        left, right = recorded_dimensions[name], documented_dimensions[name]
+        tolerance = max(0.01, max(abs(left), abs(right)) * 0.01)
+        if abs(left - right) > tolerance:
+            return True
+
+    family_patterns = (
+        ("SOIC", r"\b(?:power\s*soic|hsoic|hsop|soic)\b"),
+        ("TSSOP", r"\btssop\b"),
+        ("SSOP", r"\bssop\b"),
+        ("MSOP", r"\bmsop\b"),
+        ("QFN", r"\bqfn\b"),
+        ("DFN", r"\bdfn\b"),
+        ("QFP", r"\b(?:lqfp|tqfp|qfp)\b"),
+        ("DIP", r"\b(?:pdip|dip)\b"),
+        ("LCC", r"\b(?:plcc|lcc)\b"),
+        ("BGA", r"\b(?:bga|csp)\b"),
+        ("SOT", r"\bsot\b"),
+        ("TO", r"\bto\s*[- ]?\s*\d+\b"),
+    )
+
+    def identity(value: str) -> tuple[str, int | None]:
+        family = next(
+            (name for name, pattern in family_patterns if re.search(pattern, value, re.IGNORECASE)),
+            "",
+        )
+        pin_match = re.search(r"\b(\d{1,3})\s*[- ]?\s*pins?\b", value, re.IGNORECASE)
+        if not pin_match:
+            pin_match = re.search(
+                r"\b(\d{1,3})\s*[- ]?\s*(?:power\s*soic|hsoic|hsop|soic|tssop|ssop|msop|qfn|dfn|lqfp|tqfp|qfp|pdip|dip|plcc|lcc|bga|csp)\b",
+                value,
+                re.IGNORECASE,
+            )
+        if not pin_match:
+            pin_match = re.search(
+                r"\b(?:power\s*soic|hsoic|hsop|soic|tssop|ssop|msop|qfn|dfn|lqfp|tqfp|qfp|pdip|dip|plcc|lcc|bga|csp)\s*[- ]?\s*(\d{1,3})\b",
+                value,
+                re.IGNORECASE,
+            )
+        return family, int(pin_match.group(1)) if pin_match else None
+
+    recorded_family, recorded_pins = identity(recorded)
+    documented_family, documented_pins = identity(documented)
+    if recorded_family and documented_family:
+        if recorded_family != documented_family:
+            return True
+        return bool(
+            recorded_pins is not None
+            and documented_pins is not None
+            and recorded_pins != documented_pins
+        )
+    return True
+
+
 def _isa_identity(value: str) -> str:
     text = value.casefold()
     patterns = (

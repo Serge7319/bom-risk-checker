@@ -71,6 +71,63 @@ class DatasheetComparisonTests(unittest.TestCase):
         self.assertEqual(values["pin_count"]["Status"], "Needs data")
         self.assertEqual(values["voltage_range"]["Status"], "Needs data")
 
+    def test_generic_powerpad_phrase_is_not_a_package_conflict_or_match(self):
+        pdf = {
+            "available": True,
+            "pages": [{
+                "page": 1,
+                "document": "TI datasheet Rev L",
+                "text": "PowerPAD integrated circuit package",
+            }],
+        }
+
+        row = next(
+            row for row in build_pdf_field_evidence(pdf, pdf, "Regulator")
+            if row["Key"] == "package"
+        )
+
+        self.assertEqual(row["Status"], "Needs data")
+        self.assertEqual(row["Original PDF value"], "Not found")
+        self.assertIn("PowerPAD", row["Original PDF evidence"])
+        self.assertIn("package-outline drawing", row["Evidence"])
+
+    def test_explicit_hsoic_package_designation_is_preserved(self):
+        pdf = {
+            "available": True,
+            "pages": [{
+                "page": 3,
+                "document": "TI datasheet Rev L",
+                "text": "DDA Package 8-Pin HSOIC With Thermal Pad (Top View)",
+            }],
+        }
+
+        row = next(
+            row for row in build_pdf_field_evidence(pdf, pdf, "Regulator")
+            if row["Key"] == "package"
+        )
+
+        self.assertEqual(row["Status"], "Match")
+        self.assertIn("8-Pin HSOIC", row["Original PDF value"])
+        self.assertIn("p. 3", row["Original PDF page"])
+
+    def test_specific_package_page_is_preferred_over_generic_powerpad_phrase(self):
+        pdf = {
+            "available": True,
+            "pages": [
+                {"page": 1, "text": "PowerPAD integrated circuit package"},
+                {"page": 3, "text": "Figure 4-1. DDA Package 8-Pin HSOIC With Thermal Pad (Top View)"},
+            ],
+        }
+
+        row = next(
+            row for row in build_pdf_field_evidence(pdf, pdf, "Regulator")
+            if row["Key"] == "package"
+        )
+
+        self.assertIn("8-Pin HSOIC", row["Original PDF value"])
+        self.assertIn("p. 3", row["Original PDF page"])
+        self.assertEqual(row["Status"], "Match")
+
     def test_dimension_excerpts_keep_document_and_page_citations(self):
         pdf = {
             "available": True,
