@@ -16,6 +16,7 @@ NAV_RECOVERY = (
     ROOT / "src" / "assets" / "css" / "navigation_recovery.css"
 ).read_text(encoding="utf-8")
 NAVIGATION = (ROOT / "src" / "ui" / "navigation.py").read_text(encoding="utf-8")
+CORE_PREMIUM = (ROOT / "src" / "ui" / "core_premium_ui.py").read_text(encoding="utf-8")
 
 
 class DecisionPacketHeaderTests(unittest.TestCase):
@@ -68,6 +69,18 @@ class DecisionPacketHeaderTests(unittest.TestCase):
 
 
 class DecisionPacketWorkflowTests(unittest.TestCase):
+    def test_decision_packet_styles_are_loaded_before_route_body_paints(self):
+        css_loader = CORE_PREMIUM.split("def inject_core_premium_ui()", 1)[1].split(
+            "def inject_core_premium_ui_auth", 1
+        )[0]
+        route_body_at = RUNTIME.find("claim_authenticated_route_body(app_mode)")
+        shell_css_at = RUNTIME.find("inject_core_premium_ui()")
+
+        self.assertIn('st.session_state.get("cadivor_route")', css_loader)
+        self.assertIn('route == "Engineering Decisions"', css_loader)
+        self.assertIn("inject_navigation_recovery_css(prepaint=True)", css_loader)
+        self.assertGreater(route_body_at, shell_css_at)
+
     def test_saved_packet_actions_update_local_state_without_three_read_reload(self):
         packet = RUNTIME.split(
             "if selected_decision and monitoring_component_decision:", 1
