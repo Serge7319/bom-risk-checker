@@ -6718,7 +6718,7 @@ def run_authenticated_app() -> None:
         with st.container(key="cv_procurement_workspace"):
             st.markdown(
                 """<style>
-                .st-key-cv_procurement_workspace{display:flex!important;flex-direction:column!important;gap:12px!important;width:100%!important;max-width:1540px!important;margin:0 auto!important;box-sizing:border-box!important}
+                .st-key-cv_procurement_workspace{display:flex!important;flex-direction:column!important;gap:12px!important;width:100%!important;max-width:1440px!important;margin:0 auto!important;box-sizing:border-box!important}
                 .st-key-cv_procurement_workspace>[data-testid="stVerticalBlock"]{gap:12px!important}
                 .cv-pa-section-head{display:flex;justify-content:space-between;align-items:flex-end;gap:18px;margin:10px 0 8px}
                 .cv-pa-section-head h2{font-size:20px;line-height:1.25;color:#102341;font-weight:800;margin:0 0 4px;letter-spacing:-.02em}

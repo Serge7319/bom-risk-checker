@@ -199,12 +199,12 @@ header[data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stDecor
 }
 
 
-/* Cadivor M4.19 top-gap fine tune.
-   Collapse Streamlit rows that contain style-only markdown blocks. These blocks were
-   visually empty but still participated in the vertical layout in Chrome. */
-div[data-testid="stElementContainer"]:has(style),
-div.element-container:has(style),
-div[data-testid="stMarkdownContainer"]:has(style:only-child) {
+/* Collapse only style-only markdown blocks. A markdown block can contain both
+   a stylesheet and visible HTML (for example Procurement Advisor panels), so
+   matching any ancestor that merely contains a style tag hides real content. */
+div[data-testid="stElementContainer"]:has(> div.stMarkdown > div[data-testid="stMarkdownContainer"] > style:only-child),
+div.element-container:has(> div.stMarkdown > div[data-testid="stMarkdownContainer"] > style:only-child),
+div[data-testid="stMarkdownContainer"]:has(> style:only-child) {
     display: none !important;
     height: 0 !important;
     min-height: 0 !important;
