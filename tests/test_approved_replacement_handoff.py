@@ -17,6 +17,10 @@ def test_approved_finder_consumes_clicked_part_before_mounting_search_input():
     )
     assert 'st.session_state.pop("alternative_prefill_search_pending", False)' in renderer
     assert "if (run or prefilled_search_pending) and query:" in renderer
+    guard = renderer.index("if not has_durable_search_for_mpn(st.session_state, query):")
+    assert guard < renderer.index('fit_filter, life_filter, stock_filter, risk_filter, sort_by = st.columns(5)')
+    assert guard < renderer.index("Replacement options ({len(candidates)})")
+    assert "        return\n    fit_filter, life_filter" in renderer[guard:]
     assert 'original["manufacturer_part_number"] = context_mpn' in renderer
 
 

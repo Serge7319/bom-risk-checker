@@ -13,6 +13,7 @@ from src.alternative_finder_state import (
     clear_alternative_finder_search,
     complete_alternative_finder_search,
     get_active_alternative_finder_result,
+    has_durable_search_for_mpn,
     get_alternative_finder_candidates,
     get_alternative_finder_display_mpn,
     get_alternative_finder_original_data,
@@ -64,6 +65,25 @@ def _sample_candidates(count: int = 35) -> list[dict]:
 class AlternativeFinderResultPersistenceTests(unittest.TestCase):
     def setUp(self):
         self.session: dict = {}
+
+    def test_results_are_visible_only_for_the_completed_query(self):
+        self.assertFalse(has_durable_search_for_mpn(self.session, "LM7805ACT"))
+        self.session[ALT_FINDER_RESULT_KEY] = {
+            "status": "running",
+            "entered_mpn": "LM7805ACT",
+        }
+        self.assertFalse(has_durable_search_for_mpn(self.session, "LM7805ACT"))
+        self.session[ALT_FINDER_RESULT_KEY] = {
+            "status": STATUS_COMPLETED,
+            "entered_mpn": "LM7805ACT",
+        }
+        self.assertTrue(has_durable_search_for_mpn(self.session, "lm7805act"))
+        self.assertFalse(has_durable_search_for_mpn(self.session, "ATMEGA328P-PU"))
+        self.session[ALT_FINDER_RESULT_KEY] = {
+            "status": "failed",
+            "entered_mpn": "LM7805ACT",
+        }
+        self.assertTrue(has_durable_search_for_mpn(self.session, "LM7805ACT"))
 
     def test_completed_search_survives_blank_widget_rerun(self):
         complete_alternative_finder_search(

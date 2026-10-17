@@ -241,6 +241,13 @@ class ApplicationShellV2Tests(unittest.TestCase):
         }
         self.assertIn("Engineering Intelligence", labels)
         self.assertIn("Detailed Risk Report", labels)
+        without_analysis = {
+            label
+            for _group, rows in shared_nav_groups(include_analysis_reports=False)
+            for label, _slug, _destination in rows
+        }
+        self.assertNotIn("Engineering Intelligence", without_analysis)
+        self.assertNotIn("Detailed Risk Report", without_analysis)
 
     def test_sidebar_highlight_uses_route_specific_container_and_left_alignment(self) -> None:
         source = self.unified_shell_source
@@ -248,8 +255,24 @@ class ApplicationShellV2Tests(unittest.TestCase):
             'key=f"cv_foundation_nav_{item_state}_{slug}"',
             source,
         )
-        self.assertIn('justify-content:flex-start!important;text-align:left!important', source)
+        self.assertIn('padding-left:46px!important', source)
+        self.assertIn('position:absolute!important;left:12px!important', source)
+        self.assertIn('button[kind="secondary"] p,', source)
+        self.assertIn('text-align:left!important', source)
         self.assertIn('st-key-cv_foundation_nav_active_', source)
+        nav_render = source.split("for label, slug, destination in rows:", 1)[1].split(
+            "# After chrome paints", 1
+        )[0]
+        self.assertIn('type="secondary"', nav_render)
+        self.assertNotIn('type="primary" if is_active', nav_render)
+        self.assertIn('st.session_state.get("cadivor_route")', source)
+        self.assertIn("include_analysis_reports=bool(active_analysis_id)", source)
+
+    def test_saved_bom_menu_names_engineering_intelligence(self) -> None:
+        source = Path(__file__).resolve().parents[1] / "src" / "ui" / "approved_pages.py"
+        page_source = source.read_text(encoding="utf-8")
+        self.assertIn('"Engineering Intelligence",\n                    key=f"approved_{scope}_action_bom_risk_', page_source)
+        self.assertIn('"Engineering Intelligence",\n                                        key=f"approved_decision_action_risk_', page_source)
 
     def test_report_navigation_without_selected_analysis_returns_to_saved_boms(self) -> None:
         source = self.unified_shell_source.split("def _commit_navigation", 1)[1].split(

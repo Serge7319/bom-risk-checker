@@ -1,7 +1,7 @@
-"""One authenticated navigation rail. NAV_GROUPS stays the stable product map for tests.
+"""One authenticated navigation rail with analysis-context report shortcuts.
 
-Every signed-in route renders the same groups, order, and destinations.
-Only the active item changes. Engineering Intelligence report tabs stay on that page.
+The shared product destinations stay stable. The two saved-analysis report
+shortcuts appear only while a saved analysis is selected.
 """
 
 from __future__ import annotations
@@ -34,9 +34,24 @@ SHARED_NAV_GROUPS = (
 )
 
 
-def shared_nav_groups() -> tuple:
-    """Return the single rail used by every authenticated route."""
-    return SHARED_NAV_GROUPS
+_ANALYSIS_REPORT_NAV_SLUGS = frozenset({"detailed-risk", "engineering-intelligence"})
+
+
+def shared_nav_groups(*, include_analysis_reports: bool = True) -> tuple:
+    """Return the shared rail, optionally including saved-analysis shortcuts."""
+    if include_analysis_reports:
+        return SHARED_NAV_GROUPS
+    return tuple(
+        (
+            group_name,
+            tuple(
+                row
+                for row in rows
+                if row[1] not in _ANALYSIS_REPORT_NAV_SLUGS
+            ),
+        )
+        for group_name, rows in SHARED_NAV_GROUPS
+    )
 
 
 def nav_groups_for_page(page: str) -> tuple | None:

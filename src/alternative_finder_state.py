@@ -384,6 +384,25 @@ def get_alternative_finder_durable_result(
     return None
 
 
+def has_durable_search_for_mpn(
+    session_state: Mapping[str, Any],
+    mpn: Any,
+) -> bool:
+    """Whether the visible query has a completed or failed search result.
+
+    A durable result for a previous query must not appear under a newly typed
+    MPN, and the initial idle state must not render an empty results table.
+    """
+    submitted = _normalize_mpn(mpn)
+    if not submitted:
+        return False
+    result = get_alternative_finder_durable_result(session_state)
+    if not result:
+        return False
+    entered = _normalize_mpn(result.get("entered_mpn"))
+    return bool(entered and entered == submitted)
+
+
 def get_alternative_finder_outcome(session_state: Mapping[str, Any]) -> str:
     result = get_alternative_finder_durable_result(session_state)
     if not result:
