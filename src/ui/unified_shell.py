@@ -7,7 +7,7 @@ from typing import Callable
 
 import streamlit as st
 
-from src.ui.approved_shell_nav import shared_nav_groups
+from src.ui.approved_shell_nav import active_nav_label, shared_nav_groups
 from src.ui.navigation import (
     inject_nav_scroll_reset_if_needed,
     navigate_to,
@@ -123,6 +123,30 @@ def inject_unified_shell_css() -> None:
         [class*="st-key-cv_foundation_nav_"] button[kind="primary"],
         [class*="st-key-cv_foundation_nav_"] button[data-testid="baseButton-primary"]{
           background:#173c81!important;color:#fff!important
+        }
+        /* Streamlit centers the button's inner label wrapper by default. Keep
+           the rail labels on one left edge beside their icons. */
+        .st-key-cv_foundation_navigation .stButton>button{
+          justify-content:flex-start!important;text-align:left!important;gap:10px!important
+        }
+        .st-key-cv_foundation_navigation .stButton>button>div{
+          display:flex!important;flex:1 1 auto!important;width:100%!important;min-width:0!important;
+          justify-content:flex-start!important;align-items:center!important;margin:0!important
+        }
+        .st-key-cv_foundation_navigation .stButton>button p,
+        .st-key-cv_foundation_navigation .stButton>button span{
+          width:100%!important;text-align:left!important;margin-left:0!important
+        }
+        /* Route-specific parent keys make the selected row independent of a
+           stale Streamlit button kind during a fast session rerun. */
+        .st-key-cv_foundation_navigation [class*="st-key-cv_foundation_nav_active_"] .stButton>button,
+        .st-key-cv_foundation_navigation [class*="st-key-cv_foundation_nav_active_"] .stButton>button:hover{
+          background:#f8fbff!important;border:1px solid #bfdbfe!important;
+          box-shadow:inset 2px 0 0 #2563eb!important;color:#1d4ed8!important;font-weight:760!important
+        }
+        .st-key-cv_foundation_navigation [class*="st-key-cv_foundation_nav_active_"] .stButton>button p,
+        .st-key-cv_foundation_navigation [class*="st-key-cv_foundation_nav_active_"] .stButton>button span{
+          color:#1d4ed8!important;text-align:left!important
         }
         </style>
         """ + _approved_shell_css(),
@@ -388,6 +412,7 @@ def _open_rail_item(destination: str, mode: str = "") -> None:
     elif mode == "intelligence":
         st.session_state["cadivor_show_detailed_risk"] = False
         st.session_state["cadivor_active_analysis_tab"] = "Engineering Intelligence"
+        st.session_state["cadivor_ei_report_tab"] = "BOM Risk"
     else:
         st.session_state["cadivor_show_detailed_risk"] = False
     _commit_navigation(destination)
@@ -419,6 +444,11 @@ def _commit_navigation(page: str, *, arm_opening: bool = True) -> None:
                 st.session_state.pop("cadivor_route_transition", None)
                 st.session_state["cadivor_profile_menu_open"] = False
                 return
+            # Both report destinations require a saved BOM. Put the reviewer
+            # directly in its manager so they can choose a row and open its
+            # BOM Risk or Detailed Risk Report action with the right context.
+            return_to_saved_bom_list(_rerun=False, arm_opening=arm_opening)
+            return
         navigate_to(page, _rerun=False, arm_opening=arm_opening)
     st.session_state.pop("cadivor_route_transition", None)
     st.session_state["cadivor_profile_menu_open"] = False
@@ -538,7 +568,9 @@ def render_unified_shell(
                 on_click=_commit_signout,
             )
 
+    active_route = str(current_page or st.session_state.get("cadivor_route") or "").strip()
     detailed_risk = bool(st.session_state.get("cadivor_show_detailed_risk"))
+    active_label = active_nav_label(active_route, detailed_risk=detailed_risk)
 
     with st.container(key="cv_foundation_navigation"):
         st.markdown(
@@ -580,7 +612,7 @@ def render_unified_shell(
         source_groups = shared_nav_groups()
         for group_name, configured_rows in source_groups:
             rows = configured_rows
-            if group_name == "Workspace" and current_page == "BOM Settings":
+            if group_name == "Workspace" and active_route == "BOM Settings":
                 rows = tuple(
                     ("BOM Settings", "bom-settings", "BOM Settings")
                     if destination == "BOM Analyzer"
@@ -600,22 +632,25 @@ def render_unified_shell(
                 # Session navigation only — raw ?page= hrefs hard-reload the app and
                 # briefly clear the authenticated shell (blank white/black frames).
                 if label == "Detailed Risk Report":
-                    is_active = current_page == "Analysis Details" and detailed_risk
                     mode = "detailed"
                 elif label == "Engineering Intelligence":
-                    is_active = current_page == "Analysis Details" and not detailed_risk
                     mode = "intelligence"
                 else:
-                    is_active = destination == current_page
                     mode = ""
-                st.button(
-                    label,
-                    key=f"cv_foundation_nav_{slug}",
-                    use_container_width=True,
-                    type="primary" if is_active else "secondary",
-                    on_click=_open_rail_item,
-                    args=(destination, mode),
-                )
+                is_active = label == active_label
+                # Give active and inactive rows distinct Streamlit container
+                # identities. This forces the highlight to follow the route
+                # immediately instead of preserving Home's old button styling.
+                item_state = "active" if is_active else "idle"
+                with st.container(key=f"cv_foundation_nav_{item_state}_{slug}"):
+                    st.button(
+                        label,
+                        key=f"cv_foundation_nav_{slug}",
+                        use_container_width=True,
+                        type="primary" if is_active else "secondary",
+                        on_click=_open_rail_item,
+                        args=(destination, mode),
+                    )
 
     # After chrome paints: reset scroll only when sidebar navigation changed pages.
     inject_nav_scroll_reset_if_needed()

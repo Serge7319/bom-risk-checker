@@ -18,6 +18,7 @@ AUTHENTICATED_RUNTIME = REPO_ROOT / "src" / "authenticated_runtime.py"
 EXPECTED_NAV_OPTIONS = [
     "Dashboard",
     "BOM Analyzer",
+    "BOM Settings",
     "Alternative Finder",
     "Compare Parts",
     "Datasheet Q&A",
@@ -204,6 +205,65 @@ class ApplicationShellV2Tests(unittest.TestCase):
         self.assertIn("--cv-foundation-rail-active-bg", self.app_shell_css)
         self.assertIn("--cv-foundation-rail-active-accent", self.app_shell_css)
         self.assertIn(":focus-visible", self.app_shell_css)
+
+    def test_sidebar_active_label_tracks_each_route_and_report_mode(self) -> None:
+        from src.ui.approved_shell_nav import active_nav_label, shared_nav_groups
+
+        expected = {
+            "Dashboard": "Home",
+            "BOM Analyzer": "BOM Analyzer",
+            "Engineering Decisions": "Engineering Decisions",
+            "Monitoring": "Monitoring",
+            "Alternative Finder": "Find a replacement",
+            "Reports": "Reports",
+            "Compare Parts": "Compare Parts",
+            "Datasheet Q&A": "Datasheet Q&A",
+            "Procurement Advisor": "Sourcing Recommendation",
+            "Design Impact Analyzer": "Design Impact Analyzer",
+            "Cost Optimization": "Cost Optimization",
+            "Supply Risk Scenario": "Supply Risk Scenario",
+            "Settings": "Settings",
+            "Portfolio Intelligence": "Portfolio Intelligence",
+        }
+        for route, label in expected.items():
+            with self.subTest(route=route):
+                self.assertEqual(active_nav_label(route), label)
+        self.assertEqual(active_nav_label("Analysis Details"), "Engineering Intelligence")
+        self.assertEqual(
+            active_nav_label("Analysis Details", detailed_risk=True),
+            "Detailed Risk Report",
+        )
+        self.assertEqual(active_nav_label("BOM Settings"), "BOM Settings")
+        labels = {
+            label
+            for _group, rows in shared_nav_groups()
+            for label, _slug, _destination in rows
+        }
+        self.assertIn("Engineering Intelligence", labels)
+        self.assertIn("Detailed Risk Report", labels)
+
+    def test_sidebar_highlight_uses_route_specific_container_and_left_alignment(self) -> None:
+        source = self.unified_shell_source
+        self.assertIn(
+            'key=f"cv_foundation_nav_{item_state}_{slug}"',
+            source,
+        )
+        self.assertIn('justify-content:flex-start!important;text-align:left!important', source)
+        self.assertIn('st-key-cv_foundation_nav_active_', source)
+
+    def test_report_navigation_without_selected_analysis_returns_to_saved_boms(self) -> None:
+        source = self.unified_shell_source.split("def _commit_navigation", 1)[1].split(
+            "def _open_plan_and_billing", 1
+        )[0]
+        self.assertIn('if page == "Analysis Details":', source)
+        self.assertIn("if analysis_id:", source)
+        self.assertIn("return_to_saved_bom_list(_rerun=False, arm_opening=arm_opening)", source)
+
+    def test_bom_risk_sidebar_action_resets_engineering_intelligence_tab(self) -> None:
+        source = self.unified_shell_source.split("def _open_rail_item", 1)[1].split(
+            "def _commit_navigation", 1
+        )[0]
+        self.assertIn('st.session_state["cadivor_ei_report_tab"] = "BOM Risk"', source)
 
     def test_navigation_uses_a_light_rail_and_outline_active_state(self) -> None:
         self.assertIn("Release navigation: light, quiet, and scannable.", self.app_shell_css)

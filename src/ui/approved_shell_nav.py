@@ -47,6 +47,16 @@ def nav_groups_for_page(page: str) -> tuple | None:
 def active_nav_label(page: str, *, detailed_risk: bool = False) -> str:
     if page == "Analysis Details":
         return "Detailed Risk Report" if detailed_risk else "Engineering Intelligence"
+    if page == "BOM Settings":
+        return "BOM Settings"
+    if page == "High Risk Review":
+        return "BOM Analyzer"
+    if page == "Admin Console":
+        return "Admin Console"
+    if page == "Single BOM Report":
+        return "One-time report"
+    if page in {"Workspace", "Notifications", "About", "Admin"}:
+        return "Settings"
     for _group, rows in SHARED_NAV_GROUPS:
         for label, _slug, destination in rows:
             if destination == page:

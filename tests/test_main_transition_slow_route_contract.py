@@ -35,6 +35,19 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
         role_lookup = runtime.index("def _read_users_role_for_shell")
         self.assertLess(cover, role_lookup)
 
+    def test_transition_content_is_portaled_out_of_streamlit_column_wrappers(self):
+        paint = SOURCE.split("def _paint_main_transition_markup", 1)[1].split(
+            "def _remove_transition_portal", 1
+        )[0]
+        self.assertIn("window.parent", paint)
+        self.assertIn('portalId = "cadivor-main-transition-portal"', paint)
+        self.assertIn("components.html(portal_script, height=0, width=0)", paint)
+        self.assertNotIn("with container(key=owner_key)", paint)
+
+    def test_revealed_route_removes_its_transition_portal(self):
+        reveal = SOURCE.split("def reveal_main_transition", 1)[1]
+        self.assertIn("_remove_transition_portal(gen)", reveal)
+
     def test_dashboard_cover_is_released_after_dashboard_render(self):
         runtime = (ROOT / "src" / "authenticated_runtime.py").read_text(encoding="utf-8")
         start = runtime.index("# ---------- Dashboard ----------")
