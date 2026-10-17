@@ -468,11 +468,15 @@ def render_maintenance_mode_surface(message):
     )
 
 
-def get_user_profile(current_user):
+_AUTH_USER_PROFILE_UNSET = object()
+
+
+def get_user_profile(current_user, *, auth_user=_AUTH_USER_PROFILE_UNSET):
     """Return user-facing profile fields without assuming optional DB columns exist."""
     if not isinstance(current_user, dict):
         current_user = {}
-    auth_user = st.session_state.get("user")
+    if auth_user is _AUTH_USER_PROFILE_UNSET:
+        auth_user = st.session_state.get("user")
     metadata = getattr(auth_user, "user_metadata", {}) or {}
 
     email = _safe_text(current_user.get("email"), _safe_text(getattr(auth_user, "email", "")))
@@ -2296,7 +2300,52 @@ def run_authenticated_app() -> None:
 
     with timed_phase("runtime.load_user_data", operation="load_user_data"):
         if _paint_opening:
-            _loaded_user, _profile_status = run_with_read_budget(load_user_data)
+            from src.auth_idle_recovery import access_token_is_fresh
+
+            _opening_access_token = str(
+                st.session_state.get("access_token") or ""
+            )
+            if not access_token_is_fresh(_opening_access_token):
+                # Expired credentials need auth refresh and recovery on the
+                # script thread. Never run load_workspace_profile in a worker.
+                _loaded_user = load_user_data()
+                _profile_status = "ok" if isinstance(_loaded_user, dict) else "error"
+            else:
+                from src.services.authenticated_profile_cache import (
+                    recent_verified_profile,
+                    remember_verified_profile,
+                )
+                from src.services.opening_profile_read import load_profile_for_opening
+                from src.services.user_provisioning import ensure_user_profile
+
+                def _read_opening_profile(user_id):
+                    return execute_supabase_read(
+                        supabase.table("users").select("*").eq("id", user_id),
+                        operation="load_user_data",
+                    )
+
+                _loaded_user, _profile_status = load_profile_for_opening(
+                    session_state=st.session_state,
+                    user=_auth_user_early,
+                    access_token_fresh=True,
+                    supabase=supabase,
+                    read_profile=_read_opening_profile,
+                    ensure_profile=lambda client, auth_user: ensure_user_profile(
+                        client,
+                        auth_user,
+                        operation="load_user_data",
+                    ),
+                    recent_profile=recent_verified_profile,
+                    remember_profile=remember_verified_profile,
+                    run_with_budget=run_with_read_budget,
+                )
+                if _profile_status == "error":
+                    # Preserve the established auth-expiry and retryable error
+                    # handling, but invoke it safely on Streamlit's script thread.
+                    _loaded_user = load_user_data()
+                    _profile_status = (
+                        "ok" if isinstance(_loaded_user, dict) else "error"
+                    )
             if (
                 _profile_status != "ok"
                 or not isinstance(_loaded_user, dict)
@@ -3294,7 +3343,11 @@ def run_authenticated_app() -> None:
         consume_new_analysis_navigation()
 
     def _profile_for_shell():
-        return get_user_profile(current_user) if "get_user_profile" in globals() else current_user
+        return (
+            get_user_profile(current_user, auth_user=_auth_user_early)
+            if "get_user_profile" in globals()
+            else current_user
+        )
 
     profile_for_shell = _quick_boot_read(_profile_for_shell, default=None)
     if not isinstance(profile_for_shell, dict):
