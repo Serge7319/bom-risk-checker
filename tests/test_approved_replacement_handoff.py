@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 
 
 def test_approved_finder_consumes_clicked_part_before_mounting_search_input():
@@ -134,7 +135,8 @@ def test_obsolete_candidates_are_excluded_and_add_controls_use_stable_callbacks(
     assert "row for row in named if not candidate_lifecycle_is_blocked(row)" in renderer
     assert "on_click=_toggle_compare_candidate" in renderer
     assert '"approved_replacement_compare_toggle_"' in renderer
-    assert "lifecycle_blocked = candidate_lifecycle_is_blocked(candidate)" in approvals
+    assert "candidate_lifecycle_is_blocked(approval_candidate)" in approvals
+    assert "datasheet_lifecycle_blocked" in approvals
     assert "not lifecycle_blocked" in approvals
     assert "not compatibility_blocked" in approvals
 
@@ -156,9 +158,89 @@ def test_physical_and_isa_mismatches_are_prominent_and_block_bom_approval():
     assert "requires_acknowledgement" in approvals
     assert "not compatibility_blocked" in approvals
     assert "disabled=not can_approve" in approvals
+    assert "and lifecycle_verified" in approvals
+    assert "candidate lifecycle is unknown or unverified" in approvals.casefold()
     assert "cv-compat-banner critical" in source
     assert "cv-compare-compat-critical" in compare
     assert 'compatibility_by_slot["Part B"] = assess_part_compatibility(' in compare
+
+
+def test_datasheet_review_is_connected_to_finder_and_compare_approval():
+    source = (
+        Path(__file__).resolve().parents[1] / "src" / "ui" / "approved_pages.py"
+    ).read_text(encoding="utf-8")
+    finder = source.split("def render_replacement_search", 1)[1].split(
+        "def render_compare_live", 1
+    )[0]
+    compare = source.split("def render_compare_live", 1)[1].split(
+        "def render_datasheet_live", 1
+    )[0]
+    approvals = source.split("def _render_bom_replacement_approvals", 1)[1].split(
+        "def render_replacement_search", 1
+    )[0]
+
+    assert "_render_datasheet_evidence_review(" in approvals
+    assert '"Review available datasheets"' in source
+    assert "Add source manufacturer PDF" in source
+    assert "Add candidate manufacturer PDF" in source
+    assert "review_references_complete" in approvals
+    assert "linked_documents_reviewed" in approvals
+    assert "comparison_evidence={\"comparison\": comparison, \"slot\": candidate_slot}" in compare
+    assert "_render_bom_replacement_approvals(" in finder
+
+
+def test_saved_approval_exposes_datasheet_citations_and_report_links():
+    from src.approved_alternatives import report_alternative
+    from src.ui.ei_bom_report import _tab_body
+
+    review = {
+        "source_url": "https://manufacturer.example/source.pdf",
+        "candidate_url": "https://manufacturer.example/candidate.pdf",
+        "review_complete": True,
+        "reviewer_attestation": {
+            "confirmed": True,
+            "source_reference": "Manufacturer A Rev C pp. 10-11",
+            "candidate_reference": "Manufacturer B Rev D pp. 12-13",
+        },
+        "source_dimensions": [
+            {"document": "Manufacturer A Rev C", "page": "10", "excerpt": "Body length 10.0 mm"}
+        ],
+        "field_evidence": [{"attribute": "Package", "source_excerpt": "SOIC-16", "candidate_excerpt": "SOIC-16"}],
+    }
+    row = report_alternative(
+        {
+            "original_part": "SOURCE-1",
+            "alternative_part": "CANDIDATE-1",
+            "comparison_snapshot": json.dumps({"datasheet_review": review}),
+        }
+    )
+    assert row["datasheet_review"]["review_complete"] is True
+    assert row["datasheet_review"]["reviewer_attestation"]["candidate_reference"].endswith("pp. 12-13")
+
+    report_source = (
+        Path(__file__).resolve().parents[1] / "src" / "ui" / "ei_bom_report.py"
+    ).read_text(encoding="utf-8")
+    assert '"source_url"' in report_source
+    assert '"candidate_url"' in report_source
+    assert 'rel="noopener noreferrer"' in report_source
+
+    rendered = _tab_body(
+        "Alternatives",
+        [],
+        [],
+        approved_alternatives=[
+            {
+                "original_part": "SOURCE-1",
+                "alternative_part": "CANDIDATE-1",
+                "comparison_snapshot": json.dumps({"datasheet_review": review}),
+            }
+        ],
+    )
+    assert "Manufacturer A Rev C pp. 10-11" in rendered
+    assert "Manufacturer B Rev D pp. 12-13" in rendered
+    assert "Body length 10.0 mm" in rendered
+    assert "manufacturer.example/source.pdf" in rendered
+    assert "manufacturer.example/candidate.pdf" in rendered
 
 
 def test_streamlit_stale_refresh_does_not_dim_current_page_or_duplicate_nav():

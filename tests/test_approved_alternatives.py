@@ -17,6 +17,7 @@ class ApprovedAlternativesTests(unittest.TestCase):
         self.assertTrue(candidate_lifecycle_is_blocked({"Lifecycle": "Obsolete"}))
         self.assertTrue(candidate_lifecycle_is_blocked({"Lifecycle Status": "Discontinued"}))
         self.assertTrue(candidate_lifecycle_is_blocked({"lifecycle_status": "End of Life"}))
+        self.assertTrue(candidate_lifecycle_is_blocked({"lifecycle_status": "End-of-life"}))
         self.assertFalse(candidate_lifecycle_is_blocked({"Lifecycle": "Active"}))
         self.assertFalse(candidate_lifecycle_is_blocked({"Lifecycle": "Unknown"}))
         self.assertFalse(candidate_lifecycle_is_blocked({"Lifecycle": "Not obsolete"}))

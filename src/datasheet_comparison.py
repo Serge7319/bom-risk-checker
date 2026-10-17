@@ -1,20 +1,23 @@
 """Evidence-led datasheet comparison for Alternative Finder.
 
 The module is deliberately conservative: a matching catalog field is useful
-evidence, but is never an automatic approval.  Datasheet PDFs are fetched only
-from supplier-provided HTTPS/HTTP links, parsed on demand, and the UI shows
+evidence, but is never an automatic approval. Datasheet PDFs are fetched from
+validated public HTTPS links or uploaded by the reviewer, parsed on demand, and the UI shows
 when a value is unavailable rather than inventing a comparison.
 
 Family field matrices, DigiKey aliases, and comparison modes come from
 ``src.component_family_profiles`` so every family shares one declarative
-registry across normalization, scoring, UI, and PDF output.
+registry across normalization, scoring, UI, and PDF output. User-provided PDF
+uploads are parsed in the reviewer session.
 """
 from __future__ import annotations
 
 from io import BytesIO
+import ipaddress
 import re
+import socket
 from typing import Any, Mapping
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import requests
 
@@ -35,6 +38,7 @@ from src.parametric_compare import (
 
 MAX_DATASHEET_BYTES = 8 * 1024 * 1024
 MAX_DATASHEET_PAGES = 40
+MAX_DATASHEET_REDIRECTS = 5
 
 USER_FACING_COMPARISON_COLUMNS = (
     "Attribute",
@@ -445,45 +449,326 @@ def build_recommendation_score_breakdown(
 
 
 def extract_datasheet_text(url: str) -> dict:
-    """Retrieve an official PDF and return page-addressable text evidence.
+    """Retrieve a supplier-linked public HTTPS PDF and return cited text evidence.
 
-    This returns a safe failure state for non-PDF links or inaccessible files;
-    callers must present it as unavailable evidence, never as a successful
-    comparison.
+    Redirects are followed one hop at a time and every destination is checked.
+    Private, loopback, link-local, and local-network hosts are rejected. This
+    returns an unavailable state for non-PDF links or inaccessible files;
+    callers must never present that as successful evidence.
     """
-    parsed = urlparse(str(url or "").strip())
-    if parsed.scheme not in {"https", "http"} or not parsed.netloc:
-        return {"available": False, "reason": "No valid datasheet URL was provided.", "pages": []}
+    current_url = str(url or "").strip()
+    if not _public_datasheet_url(current_url):
+        return {
+            "available": False,
+            "reason": "Only public HTTPS datasheet links can be reviewed.",
+            "pages": [],
+        }
     try:
         from pypdf import PdfReader
 
-        response = requests.get(url, timeout=20, headers={"Accept": "application/pdf"}, stream=True)
+        response = None
+        for _ in range(MAX_DATASHEET_REDIRECTS + 1):
+            response = requests.get(
+                current_url,
+                timeout=(5, 20),
+                headers={"Accept": "application/pdf"},
+                stream=True,
+                allow_redirects=False,
+            )
+            if int(getattr(response, "status_code", 200) or 200) not in {301, 302, 303, 307, 308}:
+                break
+            location = str((getattr(response, "headers", {}) or {}).get("Location") or "").strip()
+            close = getattr(response, "close", None)
+            if callable(close):
+                close()
+            if not location:
+                return {
+                    "available": False,
+                    "reason": "The datasheet link redirected without a destination.",
+                    "pages": [],
+                }
+            current_url = urljoin(current_url, location)
+            if not _public_datasheet_url(current_url):
+                return {
+                    "available": False,
+                    "reason": "The datasheet redirected to a non-public or insecure URL.",
+                    "pages": [],
+                }
+        else:
+            return {
+                "available": False,
+                "reason": "The datasheet link redirected too many times.",
+                "pages": [],
+            }
+        if response is None:
+            return {"available": False, "reason": "No datasheet response was received.", "pages": []}
         response.raise_for_status()
-        payload = b""
-        for block in response.iter_content(65536):
-            payload += block
-            if len(payload) > MAX_DATASHEET_BYTES:
-                return {"available": False, "reason": "Datasheet exceeds the safe analysis size limit.", "pages": []}
+        payload = bytearray()
+        try:
+            for block in response.iter_content(65536):
+                if not block:
+                    continue
+                payload.extend(block)
+                if len(payload) > MAX_DATASHEET_BYTES:
+                    return {"available": False, "reason": "Datasheet exceeds the safe analysis size limit.", "pages": []}
+        finally:
+            close = getattr(response, "close", None)
+            if callable(close):
+                close()
         if not payload.startswith(b"%PDF"):
             return {"available": False, "reason": "The supplier link did not return a PDF datasheet.", "pages": []}
-        reader = PdfReader(BytesIO(payload))
+        reader = PdfReader(BytesIO(bytes(payload)))
         pages = []
         for page_number, page in enumerate(reader.pages[:MAX_DATASHEET_PAGES], start=1):
             text = (page.extract_text() or "").strip()
             if text:
                 pages.append({"page": page_number, "text": text[:5000]})
-        return {"available": bool(pages), "reason": "" if pages else "No readable text was extracted from the datasheet.", "pages": pages}
+        return {
+            "available": bool(pages),
+            "reason": "" if pages else "No readable text was extracted from the datasheet.",
+            "pages": pages,
+            "page_count": len(pages),
+            "final_url": current_url,
+        }
     except Exception:
         return {"available": False, "reason": "Cadivor could not retrieve a readable official datasheet right now.", "pages": []}
 
 
-def _find_pdf_evidence(pdf_result: dict, labels: tuple[str, ...]) -> tuple[str, str]:
+def _public_datasheet_url(url: str) -> bool:
+    """Reject insecure and non-public destinations before making PDF requests."""
+    parsed = urlparse(str(url or "").strip())
+    hostname = str(parsed.hostname or "").rstrip(".").casefold()
+    if (
+        parsed.scheme.casefold() != "https"
+        or not hostname
+        or parsed.username
+        or parsed.password
+        or parsed.port not in (None, 443)
+        or hostname == "localhost"
+        or hostname.endswith((".localhost", ".local", ".internal", ".test"))
+    ):
+        return False
+    try:
+        addresses = [ipaddress.ip_address(hostname)]
+    except ValueError:
+        try:
+            addresses = [
+                ipaddress.ip_address(item[4][0].split("%", 1)[0])
+                for item in socket.getaddrinfo(hostname, 443, type=socket.SOCK_STREAM)
+            ]
+        except (OSError, ValueError):
+            return False
+    return bool(addresses) and all(address.is_global for address in addresses)
+
+
+_DATASHEET_DIMENSION_TOPIC_RE = re.compile(
+    r"\b(?:dimension|outline|mechanical|package|footprint|land pattern|"
+    r"body size|lead pitch|pin pitch|terminal pitch|package drawing)\b",
+    re.IGNORECASE,
+)
+_DATASHEET_DIMENSION_VALUE_RE = re.compile(
+    r"\d+(?:\.\d+)?\s*(?:mm|millimet(?:er|re)s?|cm|in(?:ch(?:es)?)?|mil|µm|um)\b",
+    re.IGNORECASE,
+)
+
+
+def extract_datasheet_dimension_evidence(pdf_result: Mapping[str, Any] | None) -> list[dict[str, Any]]:
+    """Return page-cited text around package and mechanical-dimension labels.
+
+    This intentionally does not infer a footprint match from snippets. Many
+    datasheets put the actual outline in a drawing or raster image, which needs
+    direct human inspection in the linked PDF.
+    """
+    output: list[dict[str, Any]] = []
+    document = pdf_result if isinstance(pdf_result, Mapping) else {}
+    for page in document.get("pages") or []:
+        if not isinstance(page, Mapping):
+            continue
+        lines = [" ".join(str(line).split()) for line in str(page.get("text") or "").splitlines()]
+        lines = [line for line in lines if line]
+        seen: set[str] = set()
+        for index, line in enumerate(lines):
+            if not _DATASHEET_DIMENSION_TOPIC_RE.search(line):
+                continue
+            excerpt_lines = [line]
+            for following in lines[index + 1:index + 4]:
+                if _DATASHEET_DIMENSION_TOPIC_RE.search(following) and not _DATASHEET_DIMENSION_VALUE_RE.search(following):
+                    break
+                if _DATASHEET_DIMENSION_VALUE_RE.search(following) or re.search(r"\d", following):
+                    excerpt_lines.append(following)
+            excerpt = " · ".join(excerpt_lines)[:420]
+            if excerpt and excerpt.casefold() not in seen:
+                seen.add(excerpt.casefold())
+            output.append({
+                "document": str(page.get("document") or "").strip(),
+                "page": page.get("page", "?"),
+                "excerpt": excerpt,
+            })
+            if len(output) >= 12:
+                return output
+    return output
+
+
+_DIMENSION_MEASURE_RE = re.compile(
+    r"(?P<value>\d+(?:\.\d+)?)\s*(?P<unit>millimeters?|millimetres?|mm|cm|inches|inch|in|mils?|µm|um)\b",
+    re.IGNORECASE,
+)
+_PHYSICAL_DIMENSION_LABELS = frozenset(
+    {"length", "width", "height", "pitch", "spacing", "diameter", "thickness", "span"}
+)
+
+
+def compare_datasheet_dimension_evidence(
+    source_excerpts: list[Mapping[str, Any]] | None,
+    candidate_excerpts: list[Mapping[str, Any]] | None,
+) -> list[str]:
+    """Flag clear text-extracted dimension conflicts with matching labels.
+
+    This is a conservative cross-check. It does not treat absent labels or
+    image-only drawings as a match; the reviewer still inspects the PDF.
+    """
+    unit_to_mm = {
+        "mm": 1.0,
+        "millimeter": 1.0,
+        "millimeters": 1.0,
+        "millimetre": 1.0,
+        "millimetres": 1.0,
+        "cm": 10.0,
+        "in": 25.4,
+        "inch": 25.4,
+        "inches": 25.4,
+        "mil": 0.0254,
+        "mils": 0.0254,
+        "um": 0.001,
+        "µm": 0.001,
+    }
+
+    def measurements(excerpts: list[Mapping[str, Any]] | None) -> dict[str, float]:
+        result: dict[str, float] = {}
+        for item in excerpts or []:
+            if not isinstance(item, Mapping):
+                continue
+            for segment in str(item.get("excerpt") or "").split("·"):
+                match = _DIMENSION_MEASURE_RE.search(segment)
+                if not match:
+                    continue
+                label_tokens = re.findall(r"[a-z]+", segment[:match.start()].casefold())
+                meaningful = [
+                    token
+                    for token in label_tokens
+                    if token in _PHYSICAL_DIMENSION_LABELS
+                    or token in {"body", "lead", "terminal", "overall", "package", "centerline"}
+                ]
+                if not meaningful:
+                    continue
+                key = " ".join(meaningful)
+                unit = match.group("unit").casefold()
+                number = float(match.group("value")) * unit_to_mm[unit]
+                # Keep the first occurrence for a repeated label within a PDF;
+                # later repeated headings can come from a different package option.
+                result.setdefault(key, number)
+        return result
+
+    source = measurements(source_excerpts)
+    candidate = measurements(candidate_excerpts)
+    findings = []
+    for key in sorted(set(source) & set(candidate)):
+        source_value, candidate_value = source[key], candidate[key]
+        tolerance = max(0.005, max(abs(source_value), abs(candidate_value)) * 0.001)
+        if abs(source_value - candidate_value) > tolerance:
+            findings.append(
+                f"The source and candidate datasheets report different {key} dimensions "
+                f"({source_value:g} mm vs {candidate_value:g} mm)."
+            )
+    return findings
+
+
+def build_datasheet_review_evidence(
+    original_pdf: Mapping[str, Any] | None,
+    candidate_pdf: Mapping[str, Any] | None,
+    family: str,
+) -> dict[str, Any]:
+    """Build a compact, cited evidence record without converting excerpts to facts."""
+    original = dict(original_pdf or {})
+    candidate = dict(candidate_pdf or {})
+    rows = build_pdf_field_evidence(original, candidate, family)
+    return {
+        "source": {
+            "available": bool(original.get("available")),
+            "page_count": int(original.get("page_count") or len(original.get("pages") or [])),
+            "reason": str(original.get("reason") or ""),
+            "dimension_evidence": extract_datasheet_dimension_evidence(original),
+        },
+        "candidate": {
+            "available": bool(candidate.get("available")),
+            "page_count": int(candidate.get("page_count") or len(candidate.get("pages") or [])),
+            "reason": str(candidate.get("reason") or ""),
+            "dimension_evidence": extract_datasheet_dimension_evidence(candidate),
+        },
+        "field_evidence": rows,
+        "interpretation": (
+            "Page-cited PDF text is supporting evidence. Confirm package-outline drawings, "
+            "pinout, and application limits in the original datasheets; extracted text alone "
+            "does not establish drop-in compatibility."
+        ),
+    }
+
+
+def _pdf_value_after_label(line: str, labels: tuple[str, ...]) -> str:
+    """Extract a value beside a field label without treating the label as data."""
+    compact = " ".join(str(line or "").split())
+    matches = []
+    for label in sorted((str(value).strip() for value in labels if str(value).strip()), key=len, reverse=True):
+        pattern = r"(?<![A-Za-z0-9])" + re.escape(label) + r"(?![A-Za-z0-9])"
+        match = re.search(pattern, compact, re.IGNORECASE)
+        if match:
+            matches.append(match)
+    if not matches:
+        return ""
+    match = min(matches, key=lambda item: item.start())
+    after = compact[match.end():].strip(" \t:;=|–—-()[]")
+    before = compact[:match.start()].strip(" \t:;=|–—-()[]")
+    value = after or before
+    # A heading such as "Package dimensions (mm)" is not a measured value.
+    normalized = re.sub(r"[^a-z0-9]", "", value.casefold())
+    if normalized in {
+        "", "mm", "cm", "um", "micron", "microns", "mil", "mils",
+        "in", "inch", "inches", "dimensions", "dimension", "outline",
+        "dimensionsmm", "dimensionmm", "dimensionscm", "dimensioncm",
+        "dimensionsin", "dimensionin", "mechanicaldimensions", "packagedimensions",
+        "packagedrawing", "outline drawing", "outlinemm", "outlinein",
+        "v", "mv", "kv", "a", "ma", "ua", "w", "mw", "ohm", "kohm",
+        "mohm", "f", "uf", "nf", "pf", "h", "uh", "mh", "hz", "khz",
+        "mhz", "ghz", "s", "ms", "us", "c", "degc", "degf",
+    }:
+        return ""
+    return value[:280]
+
+
+def _find_pdf_evidence(
+    pdf_result: dict,
+    labels: tuple[str, ...],
+) -> tuple[str, str, str]:
     for page in pdf_result.get("pages") or []:
         for line in str(page.get("text") or "").splitlines():
             compact = " ".join(line.split())
-            if any(label in compact.casefold() for label in labels):
-                return compact[:280], f"p. {page.get('page', '?')}"
-    return "", ""
+            if not compact or not any(
+                re.search(
+                    r"(?<![A-Za-z0-9])" + re.escape(label) + r"(?![A-Za-z0-9])",
+                    compact,
+                    re.IGNORECASE,
+                )
+                for label in labels
+            ):
+                continue
+            value = _pdf_value_after_label(compact, labels)
+            if not value:
+                continue
+            page_number = str(page.get("page", "?") or "?")
+            document = str(page.get("document") or "").strip()
+            citation = f"{document} p. {page_number}" if document else f"p. {page_number}"
+            return value, citation, compact[:280]
+    return "", "", ""
 
 
 
@@ -494,15 +779,19 @@ def build_pdf_field_evidence(original_pdf: dict, candidate_pdf: dict, family: st
     rows = []
     for spec in fields:
         aliases = tuple(alias.casefold() for alias in (spec.pdf_aliases or (spec.label.casefold(),)))
-        original_value, original_page = _find_pdf_evidence(original_pdf, aliases)
-        candidate_value, candidate_page = _find_pdf_evidence(candidate_pdf, aliases)
+        original_value, original_page, original_excerpt = _find_pdf_evidence(original_pdf, aliases)
+        candidate_value, candidate_page, candidate_excerpt = _find_pdf_evidence(candidate_pdf, aliases)
         status, note = compare_field_values(original_value, candidate_value, spec)
         rows.append({
             "Attribute": spec.label,
             "Key": spec.key,
             "Required": bool(spec.required),
-            "Original PDF evidence": original_value or "Not found",
-            "Candidate PDF evidence": candidate_value or "Not found",
+            "Original PDF evidence": original_excerpt or "Not found",
+            "Candidate PDF evidence": candidate_excerpt or "Not found",
+            "Original PDF value": original_value or "Not found",
+            "Candidate PDF value": candidate_value or "Not found",
+            "Original PDF page": original_page or "Not available",
+            "Candidate PDF page": candidate_page or "Not available",
             "Source pages": " / ".join(value for value in (original_page, candidate_page) if value) or "Not available",
             "Status": status,
             "Evidence": note,

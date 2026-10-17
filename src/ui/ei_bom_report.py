@@ -1032,18 +1032,83 @@ def _tab_body(
                         value = f"{approved.get('unit_price_currency')} {value}"
                     saved_details.append(f"{label}: {value}")
             saved_details.append(str(approved.get("compatibility_summary") or "Engineering approval recorded."))
+            datasheet_review = approved.get("datasheet_review") or {}
+            if isinstance(datasheet_review, dict):
+                if datasheet_review.get("review_complete"):
+                    saved_details.append("Document review: completed with reviewer attestation")
+                else:
+                    saved_details.append("Document review: no saved reviewer attestation")
+                for label, key in (
+                    ("Source PDF", "source_documents"),
+                    ("Candidate PDF", "candidate_documents"),
+                ):
+                    for document in (datasheet_review.get(key) or [])[:2]:
+                        if isinstance(document, dict):
+                            availability = "readable text extracted" if document.get("available") else "not text-readable"
+                            saved_details.append(
+                                f"{label}: {document.get('name') or 'PDF'} "
+                                f"({document.get('page_count') or 0} pages; {availability})"
+                            )
+                reviewer = datasheet_review.get("reviewer_attestation") or {}
+                if isinstance(reviewer, dict):
+                    for label, key in (
+                        ("Source document citation", "source_reference"),
+                        ("Candidate document citation", "candidate_reference"),
+                    ):
+                        reference = str(reviewer.get(key) or "").strip()
+                        if reference:
+                            saved_details.append(f"{label}: {reference}")
+                for label, key in (
+                    ("Source datasheet", "source_dimensions"),
+                    ("Candidate datasheet", "candidate_dimensions"),
+                ):
+                    for excerpt in (datasheet_review.get(key) or [])[:2]:
+                        if not isinstance(excerpt, dict):
+                            continue
+                        evidence_text = str(excerpt.get("excerpt") or "").strip()
+                        if evidence_text:
+                            citation = f"{excerpt.get('document') or label} p. {excerpt.get('page') or '?'}"
+                            saved_details.append(f"{label} dimensions ({citation}): {evidence_text}")
+                for evidence_row in datasheet_review.get("field_evidence") or []:
+                    if not isinstance(evidence_row, dict):
+                        continue
+                    if evidence_row.get("key") not in {
+                        "package", "pin_count", "architecture", "voltage_range", "temperature_range"
+                    }:
+                        continue
+                    source_excerpt = str(evidence_row.get("source_excerpt") or "").strip()
+                    candidate_excerpt = str(evidence_row.get("candidate_excerpt") or "").strip()
+                    if source_excerpt != "Not found" or candidate_excerpt != "Not found":
+                        saved_details.append(
+                            f"Datasheet {evidence_row.get('attribute') or evidence_row.get('key')}: "
+                            f"source {source_excerpt or 'not found'}; candidate {candidate_excerpt or 'not found'}; "
+                            f"pages {evidence_row.get('pages') or 'not available'}"
+                        )
+                    if len(saved_details) >= 20:
+                        break
+            saved_detail_markup = [f"{_esc(item)}" for item in saved_details]
+            if isinstance(datasheet_review, dict):
+                for label, key in (
+                    ("Open source datasheet", "source_url"),
+                    ("Open candidate datasheet", "candidate_url"),
+                ):
+                    url = str(datasheet_review.get(key) or "").strip()
+                    if url.startswith(("https://", "http://")):
+                        saved_detail_markup.append(
+                            f'<a href="{html.escape(url, quote=True)}" target="_blank" rel="noopener noreferrer">{_esc(label)} ↗</a>'
+                        )
             approved_rows.append(
                 "<tr>"
                 f"<td>{_component_cell({'mpn': _esc(original_raw), 'mpn_raw': original_raw, 'image': original.get('image') or '', 'description': '', 'description_raw': '', 'category_raw': '', 'category': ''}, description=False)}</td>"
                 f"<td>{_component_cell({'mpn': _esc(replacement_raw), 'mpn_raw': replacement_raw, 'image': approved.get('image_url') or '', 'description': '', 'description_raw': '', 'category_raw': '', 'category': ''}, description=False)}</td>"
                 f"<td>{_esc(approved.get('manufacturer') or '—')}</td>"
-                f"<td>{'<br>'.join(_esc(item) for item in saved_details)}</td>"
+                f"<td>{'<br>'.join(saved_detail_markup)}</td>"
                 f"<td><span class='cv-ei-approved'>Approved</span><small>{_esc(approved.get('reason') or '')}</small></td>"
                 "</tr>"
             )
         approved_section = _table(
             "Approved alternatives",
-            "Saved supplier, lifecycle, package, and compatibility details travel with each approval. The original BOM row remains unchanged until a revised BOM is uploaded.",
+            "Saved supplier, lifecycle, compatibility, datasheet citations, and page excerpts travel with each approval. The original BOM row remains unchanged until a revised BOM is uploaded.",
             ["Original component", "Approved replacement", "Manufacturer", "Saved replacement details", "Approval record"],
             "".join(approved_rows) or "<tr><td colspan='5'>No approved alternative is recorded for this BOM yet.</td></tr>",
         )
