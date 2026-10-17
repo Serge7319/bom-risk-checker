@@ -2193,11 +2193,12 @@ def run_authenticated_app() -> None:
         from src.boot_read_budget import begin_first_page_budget
 
         begin_first_page_budget()
-    # Prepare transition CSS/state, then let the shell emit Opening… as a
-    # dedicated host after the topbar (never co-located). Every route change
-    # keeps this cover until the destination body is visibly mounted.
+    # Paint the route cover before the shell's role lookup and other workspace
+    # reads. Waiting to emit the markup until after those reads left a blank
+    # main pane during slow route changes. The shell and persistent navigation
+    # mount beneath the cover; the page-body marker releases it after content.
     if _paint_opening:
-        mount_main_transition_loading(_shell_route, paint_markup=False)
+        mount_main_transition_loading(_shell_route, paint_markup=True)
     # Verified public.users.role BEFORE first shell paint — never trust a stale
     # cadivor_shell_cache is_admin=False for Admin Console entitlement.
     _auth_user_id = getattr(_auth_user_early, "id", None)
@@ -2240,7 +2241,6 @@ def run_authenticated_app() -> None:
         navigate=navigate_to,
         clear_analysis=_early_shell_clear_analysis,
         request_logout=_early_shell_logout,
-        route_loading=_shell_route if _paint_opening else "",
     )
     mark_authenticated_surface_ready()
     st.session_state["cadivor_foundation_shell_mounted"] = True
@@ -3731,7 +3731,6 @@ def run_authenticated_app() -> None:
         release_saved_analysis_placeholder()
         inject_dashboard_workspace_styles()
         render_dashboard_page_heading()
-        reveal_authenticated_page_body("Dashboard")
         try:
             if not st.session_state.get("cadivor_workspace_command_cache"):
                 from src.boot_read_budget import run_with_read_budget as _budget_commands
@@ -3926,14 +3925,12 @@ def run_authenticated_app() -> None:
         real_overview_analyses = list(overview_analyses)
 
         if home["kind"] == "unknown":
-            reveal_authenticated_page_body("Dashboard")
             render_saved_boms_unavailable()
             stop_authenticated_page()
 
         if home["kind"] == HOME_NEW:
             # New-user copy only. A secondary timeout must not reach this branch
             # when saved analyses or a user-scoped cache already exist.
-            reveal_authenticated_page_body("Dashboard")
             render_dashboard_page_heading(
                 "Start your first BOM review",
                 "Upload a BOM to identify component risk, review evidence, and document the next engineering action.",
@@ -3954,7 +3951,6 @@ def run_authenticated_app() -> None:
         portfolio_cache_key = f"dashboard_portfolio_ctx_{current_user['id']}_{active_workspace_id or 'none'}"
 
         if workspace_category == "Engineering Overview":
-            reveal_authenticated_page_body("Dashboard")
             pause_new = (
                 not is_admin
                 and not st.session_state.get(PROFILE_UNRESOLVED_KEY)
@@ -4002,7 +3998,6 @@ def run_authenticated_app() -> None:
                     preloaded_alerts=overview_alerts,
                     fallback_analyses=real_overview_analyses,
                 )
-            reveal_authenticated_page_body("Dashboard")
             render_portfolio_intelligence_workspace(
                 ctx=st.session_state[portfolio_cache_key],
                 overview=overview,
@@ -4017,7 +4012,6 @@ def run_authenticated_app() -> None:
                     preloaded_alerts=overview_alerts,
                     fallback_analyses=real_overview_analyses,
                 )
-            reveal_authenticated_page_body("Dashboard")
             if st.button("Back to what needs attention", key="dashboard_hide_analytics"):
                 st.session_state["cadivor_home_show_analytics"] = False
                 st.rerun()
@@ -4026,7 +4020,6 @@ def run_authenticated_app() -> None:
                 light_plotly_layout=light_plotly_layout,
             )
         elif workspace_category == "Monitoring":
-            reveal_authenticated_page_body("Dashboard")
             render_dashboard_monitoring_workspace(
                 overview=overview,
                 parts=overview_parts,

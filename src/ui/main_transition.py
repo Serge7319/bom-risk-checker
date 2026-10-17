@@ -144,8 +144,10 @@ def inject_main_transition_css(transition_gen: int) -> None:
           min-height:calc(100vh - var(--cv-foundation-top,64px))!important;
           min-height:calc(100dvh - var(--cv-foundation-top,64px))!important;
           height:auto!important;
-          /* Below foundation chrome; profile menu stays above at 1000010. */
-          z-index:999990!important;
+          /* Above in-page menus/popovers so outgoing controls cannot flash
+             over the destination loader. Persistent rail and topbar sit outside
+             this main-panel surface and remain available. */
+          z-index:2147483000!important;
           margin:0!important;border-radius:0!important;border:0!important;
           padding:0!important;
           background:#F5F7FB!important;
@@ -154,7 +156,7 @@ def inject_main_transition_css(transition_gen: int) -> None:
           overflow:hidden!important;
           opacity:1!important;
           visibility:visible!important;
-          pointer-events:none!important;
+          pointer-events:auto!important;
           display:flex!important;
           align-items:center!important;
           justify-content:center!important;

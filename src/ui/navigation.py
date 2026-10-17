@@ -186,6 +186,9 @@ def navigate_to(page: str, *, _rerun: bool = True, arm_opening: bool = True, **p
         st.session_state.pop("bom81_pending_delete_ids", None)
 
     if current_page != page:
+        # A route change replaces the active page body. Never carry an open
+        # account panel into the destination shell while the route is mounting.
+        st.session_state["cadivor_profile_menu_open"] = False
         # Reset main scroll only on real page changes — never on in-page reruns.
         try:
             token = int(st.session_state.get(NAV_SCROLL_RESET_TOKEN_KEY) or 0) + 1
