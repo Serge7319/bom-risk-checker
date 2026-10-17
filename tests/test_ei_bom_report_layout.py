@@ -194,6 +194,19 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
                 "selected_alternative": {
                     "Manufacturer": "AlphaSemi",
                     "Description": "Replacement controller",
+                    "Package": "52-LCC",
+                    "Lifecycle": "Active",
+                    "Stock": 1200,
+                    "Unit Price": 1.25,
+                }
+            },
+            "comparison_snapshot": {
+                "compatibility_review": {
+                    "summary": "Package and pin count match; electrical review still required",
+                    "source_package": "52-LCC",
+                    "candidate_package": "52-LCC",
+                    "source_pin_count": 52,
+                    "candidate_pin_count": 52,
                 }
             },
         }]
@@ -204,10 +217,12 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
             parts=PARTS,
             approved_alternatives=approved,
         )
-        self.assertIn("Approved alternative on file", risk)
+        self.assertIn("Alternative approved: MPN-901", risk)
+        self.assertIn("Mitigated", risk)
+        self.assertIn("Original BOM risk: High", risk)
+        self.assertIn("score 92/100", risk)
         self.assertIn("MPN-901", risk)
-        self.assertIn("Update the BOM and rerun to apply this replacement.", risk)
-        self.assertNotIn("Review alternative parts", risk)
+        self.assertIn("Approved alternatives</span><strong>1</strong>", risk)
         alternatives = engineering_intelligence_html(
             bom_name="Sample BOM",
             part_count=2,
@@ -224,6 +239,27 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
         self.assertIn("MPN-902", alternatives)
         self.assertNotIn("MPN-901", alternatives.split("Other saved candidates", 1)[1])
         self.assertIn("A. Engineer", alternatives)
+        self.assertIn("Package: 52-LCC", alternatives)
+        self.assertIn("Lifecycle: Active", alternatives)
+        self.assertIn("Pin count: 52", alternatives)
+        self.assertIn("Saved replacement details", alternatives)
+
+    def test_report_banner_and_open_review_count_drop_after_approval(self):
+        approved = [{
+            "original_part": "MPN-001",
+            "alternative_part": "MPN-901",
+            "decision": "Approved",
+            "project_name": "Sample BOM",
+        }]
+        report = engineering_intelligence_html(
+            bom_name="Sample BOM",
+            part_count=2,
+            tab="BOM Risk",
+            parts=[PARTS[0]],
+            approved_alternatives=approved,
+        )
+        self.assertIn("Approved mitigation recorded", report)
+        self.assertIn("Needs review</span><strong>0</strong>", report)
 
     def test_saved_analysis_timestamp_is_human_readable_and_utc(self):
         self.assertEqual(

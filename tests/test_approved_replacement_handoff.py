@@ -57,6 +57,24 @@ def test_contextual_replacement_has_direct_return_to_bom_risk():
     assert 'for context_key in ("source_page", "project_name", "bom_name"):' in navigation_source
 
 
+def test_approving_from_a_bom_returns_to_the_updated_engineering_report():
+    source = (
+        Path(__file__).resolve().parents[1] / "src" / "ui" / "approved_pages.py"
+    ).read_text(encoding="utf-8")
+    renderer = source.split("def _render_bom_replacement_approvals", 1)[1].split(
+        "def render_replacement_search", 1
+    )[0]
+    saved_notice = renderer.index('st.session_state["cadivor_approved_alternatives_flash"] = (')
+    return_to_report = renderer.index("if _navigate_back_to_bom_review(context):", saved_notice)
+    rerun = renderer.index("st.rerun()", return_to_report)
+    assert saved_notice < return_to_report < rerun
+
+    report_source = (Path(__file__).resolve().parents[1] / "src" / "ui" / "ei_bom_report.py").read_text(encoding="utf-8")
+    assert 'st.session_state.pop("cadivor_approved_alternatives_flash", "")' in report_source
+    assert 'f"View approved alternatives ({approved_count})"' in report_source
+    assert 'st.session_state[tab_state_key] = "Alternatives"' in report_source
+
+
 def test_finder_route_stops_after_the_approved_renderer_and_reveals_before_search():
     root = Path(__file__).resolve().parents[1]
     runtime = (root / "src" / "authenticated_runtime.py").read_text(encoding="utf-8")

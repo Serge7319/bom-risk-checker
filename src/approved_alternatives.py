@@ -119,6 +119,8 @@ def approved_records_for_part(
     for row in records or []:
         if not isinstance(row, dict) or str(row.get("decision") or "").strip().casefold() != "approved":
             continue
+        if row.get("archived_at"):
+            continue
         if part_key(row.get("original_part")) != original_key:
             continue
         if not _same_project(row, project_name=project_name, analysis_id=analysis_id):
@@ -152,8 +154,13 @@ def approval_candidate_options(
         if value and key and key not in seen:
             seen.add(key)
             values.append(value)
-    for row in records or []:
-        if not isinstance(row, dict):
+    ordered_records = sorted(
+        (row for row in records or [] if isinstance(row, dict)),
+        key=lambda row: str(row.get("updated_at") or row.get("created_at") or ""),
+        reverse=True,
+    )
+    for row in ordered_records:
+        if not isinstance(row, dict) or row.get("archived_at"):
             continue
         value = str(row.get("alternative_part") or "").strip()
         key = part_key(value)
@@ -178,9 +185,12 @@ def approved_records_for_bom(
     }
     selected: list[dict[str, Any]] = []
     seen: set[tuple[str, str]] = set()
-    for row in records or []:
-        if not isinstance(row, dict):
-            continue
+    ordered_records = sorted(
+        (row for row in records or [] if isinstance(row, dict)),
+        key=lambda row: str(row.get("updated_at") or row.get("created_at") or ""),
+        reverse=True,
+    )
+    for row in ordered_records:
         original = part_key(row.get("original_part"))
         if original not in component_keys:
             continue
@@ -199,17 +209,30 @@ def approved_records_for_bom(
 
 def report_alternative(record: dict[str, Any]) -> dict[str, Any]:
     """Convert a saved decision into an explicitly approved report row."""
-    snapshot = record.get("source_snapshot")
-    if isinstance(snapshot, str):
-        import json
+    import json
 
-        try:
-            snapshot = json.loads(snapshot)
-        except (TypeError, ValueError):
-            snapshot = {}
-    snapshot = snapshot if isinstance(snapshot, dict) else {}
+    def _snapshot(value: Any) -> dict[str, Any]:
+        if isinstance(value, str):
+            try:
+                value = json.loads(value)
+            except (TypeError, ValueError):
+                value = {}
+        return value if isinstance(value, dict) else {}
+
+    snapshot = _snapshot(record.get("source_snapshot"))
+    comparison = _snapshot(record.get("comparison_snapshot"))
     candidate = snapshot.get("candidate") or snapshot.get("selected_alternative") or {}
     candidate = candidate if isinstance(candidate, dict) else {}
+    compatibility = comparison.get("compatibility_review") or {}
+    compatibility = compatibility if isinstance(compatibility, dict) else {}
+
+    def _candidate_value(*keys: str, fallback: Any = "") -> Any:
+        for key in keys:
+            value = candidate.get(key)
+            if value is not None and str(value).strip() not in {"", "nan", "None"}:
+                return value
+        return fallback
+
     engineer = str(record.get("engineer_name") or "Cadivor user").strip()
     note = str(record.get("engineering_note") or "").strip()
     reason = f"Approved by {engineer}"
@@ -218,9 +241,26 @@ def report_alternative(record: dict[str, Any]) -> dict[str, Any]:
     return {
         "original_part": str(record.get("original_part") or "").strip(),
         "alternative_part": str(record.get("alternative_part") or "").strip(),
-        "manufacturer": candidate.get("Manufacturer") or candidate.get("manufacturer") or "",
-        "description": candidate.get("Description") or candidate.get("description") or "",
-        "image_url": candidate.get("Image URL") or candidate.get("image_url") or "",
+        "manufacturer": _candidate_value("Manufacturer", "manufacturer", fallback=record.get("supplier") or ""),
+        "description": _candidate_value("Description", "description"),
+        "image_url": _candidate_value("Image URL", "image_url", "Photo", "photo_url"),
+        "package": _candidate_value("Package", "package", "Package Type", "package_type", fallback=record.get("package") or ""),
+        "lifecycle": _candidate_value("Lifecycle", "Lifecycle Status", "lifecycle_status", "lifecycle", fallback=record.get("lifecycle") or ""),
+        "stock": _candidate_value("Stock", "stock_total", "stock_available", "stock", fallback=record.get("stock")),
+        "unit_price": _candidate_value("Unit Price", "unit_price", "price", fallback=record.get("unit_price")),
+        "unit_price_currency": _candidate_value("Unit Price Currency", "currency", "Currency"),
+        "source_package": compatibility.get("source_package") or "",
+        "candidate_package": compatibility.get("candidate_package") or "",
+        "source_pin_count": compatibility.get("source_pin_count"),
+        "candidate_pin_count": compatibility.get("candidate_pin_count"),
+        "source_architecture": compatibility.get("source_architecture") or "",
+        "candidate_architecture": compatibility.get("candidate_architecture") or "",
+        "compatibility_summary": str(
+            compatibility.get("summary")
+            or "Engineering approval recorded; review the comparison evidence before applying the replacement."
+        ),
+        "compatibility_warnings": list(compatibility.get("warnings") or []),
+        "recorded_from": str(comparison.get("recorded_from") or "Find a replacement"),
         "decision": "Approved",
         "is_persisted_approval": True,
         "approved_by": engineer,
@@ -235,6 +275,8 @@ def approved_mpn_map(records: Iterable[dict[str, Any]] | None) -> dict[str, list
     output: dict[str, list[dict[str, Any]]] = {}
     for row in records or []:
         if not isinstance(row, dict) or str(row.get("decision") or "").strip().casefold() != "approved":
+            continue
+        if row.get("archived_at"):
             continue
         original = part_key(row.get("original_part"))
         alternative = str(row.get("alternative_part") or "").strip()

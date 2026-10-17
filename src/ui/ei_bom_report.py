@@ -729,7 +729,7 @@ def report_styles() -> str:
       .cv-ei-section-heading > p { margin:6px 0 0!important; padding:0!important; color:#64748b; font-size:13px!important; line-height:1.5; }
       .cv-ei-section-heading > .cv-ei-data-note { margin-top:7px!important; color:#64748b; font-size:12px!important; line-height:1.4; }
       .st-key-ei_report_workspace .cv-ei-table-wrap { width:100%;max-width:100%;overflow-x:auto;border-radius:0 0 15px 15px;overscroll-behavior-inline:contain; }
-      .st-key-ei_report_workspace .cv-ei-table { min-width:760px; border:0; border-radius:0; }
+      .st-key-ei_report_workspace .cv-ei-table { min-width:920px; border:0; border-radius:0; }
       .st-key-ei_report_workspace .cv-ei-table th { color:#64748b; background:#f7f9fc; border-top:1px solid #e5ebf3; border-bottom:1px solid #dce4ef; vertical-align:middle; }
       .st-key-ei_report_workspace .cv-ei-table td { vertical-align:middle; }
       .st-key-cv_ei_report_tabs { width:100%;max-width:100%;margin:8px 0 18px;min-width:0; }
@@ -754,7 +754,7 @@ def report_styles() -> str:
       .cv-ei-icon.source { background:#ede9fe; color:#7c3aed; }
       .cv-ei-banner h2 { margin:0 0 6px; font-size:28px; letter-spacing:-.03em; }
       .cv-ei-banner p { margin:0; color:#475569; font-size:15px; }
-      .cv-ei-kpis { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin:0 0 22px; }
+      .cv-ei-kpis { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:12px; margin:0 0 22px; }
       .cv-ei-kpi { background:#fff; border:1px solid #e6edf5; border-radius:14px; padding:16px 18px; display:flex; gap:12px; align-items:center; }
       .cv-ei-kpi strong { display:block; font-size:22px; letter-spacing:-.03em; }
       .cv-ei-kpi span { color:#64748b; font-size:13px; font-weight:650; }
@@ -787,7 +787,7 @@ def report_styles() -> str:
       .cv-ei-cost-comparison small { display:block; margin-top:4px; color:#64748b; font-size:12px; font-weight:500; line-height:1.4; }
       [class*="st-key-cv_risk_expand_"] button { background:transparent !important; border:0 !important; box-shadow:none !important; color:#0f172a !important; font-weight:750 !important; padding:0 !important; min-height:0 !important; height:auto !important; justify-content:flex-start !important; text-align:left !important; }
       .cv-risk-wrap { background:#fff; border:1px solid #e6edf5; border-radius:16px; overflow:hidden; }
-      .cv-risk-exposure { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:0 0 14px; }
+      .cv-risk-exposure { display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:0 0 14px; }
       .cv-risk-exposure article { min-width:0;padding:13px 15px;border:1px solid #dce5ef;border-radius:12px;background:#fff; }
       .cv-risk-exposure span { display:block;margin-bottom:6px;color:#64748b;font-size:11px;font-weight:750;letter-spacing:.04em;text-transform:uppercase; }
       .cv-risk-exposure strong { display:block;color:#0f172a;font-size:17px;font-weight:760;line-height:1.3;overflow-wrap:anywhere; }
@@ -855,9 +855,29 @@ def engineering_intelligence_html(
     approved_alternatives: list[dict[str, Any]] | None = None,
 ) -> str:
     rows = _part_rows(parts)
+    from src.approved_alternatives import approved_mpn_map, part_key
+
+    approved_by_part = approved_mpn_map(approved_alternatives or [])
+    approved_component_keys = {
+        part_key(row.get("mpn_raw"))
+        for row in rows
+        if approved_by_part.get(part_key(row.get("mpn_raw")))
+    }
     high = [row for row in rows if row["level"] == "High"]
     medium = [row for row in rows if row["level"] == "Medium"]
     unassessed = [row for row in rows if row["level"] == "Needs verification"]
+    open_high = [
+        row for row in high
+        if not approved_by_part.get(part_key(row.get("mpn_raw")))
+    ]
+    open_medium = [
+        row for row in medium
+        if not approved_by_part.get(part_key(row.get("mpn_raw")))
+    ]
+    open_unassessed = [
+        row for row in unassessed
+        if not approved_by_part.get(part_key(row.get("mpn_raw")))
+    ]
     no_stock = [row for row in rows if row["stock"] == 0]
     single = [row for row in rows if row["suppliers"] == 1]
     health_display = f"{_esc(health_score)}/100" if health_score is not None else "Not calculated"
@@ -866,14 +886,14 @@ def engineering_intelligence_html(
     if active == "BOM Risk":
         # Keep these tags at column 0. Indented HTML becomes a Markdown code
         # block, which is what left the summary looking like an empty banner.
-        if high:
+        if open_high:
             banner = textwrap.dedent(
                 f"""
                 <section class="cv-ei-banner">
                   <div class="cv-ei-icon warn">!</div>
                   <div>
                     <h2>Engineering review required</h2>
-                    <p>{len(high)} components with high risk may impact build timelines. {f'{len(unassessed)} additional components could not be risk-rated; verify their manufacturer part numbers and rerun.' if unassessed else 'Review the items below and consider approved alternatives.'}</p>
+                    <p>{len(open_high)} components with high source risk still need a mitigation decision. Approved replacements are tracked separately; the original BOM rating remains in the report until the BOM is revised. {f'{len(unassessed)} additional components could not be risk-rated; verify their manufacturer part numbers and rerun.' if unassessed else ''}</p>
                   </div>
                 </section>
                 """
@@ -886,6 +906,18 @@ def engineering_intelligence_html(
                   <div>
                     <h2>Supplier evidence incomplete</h2>
                     <p>{len(unassessed)} of {len(rows)} components could not be risk-rated. Verify the manufacturer part numbers and rerun before treating this BOM as low risk.</p>
+                  </div>
+                </section>
+                """
+            ).strip()
+        elif approved_component_keys:
+            banner = textwrap.dedent(
+                f"""
+                <section class="cv-ei-banner cv-ei-banner--clear">
+                  <div class="cv-ei-icon health">✓</div>
+                  <div>
+                    <h2>Approved mitigation recorded</h2>
+                    <p>{len(approved_component_keys)} component(s) have an approved replacement. Source BOM risk scores and original part numbers stay visible for audit; upload a revised BOM to record the physical substitution.</p>
                   </div>
                 </section>
                 """
@@ -906,9 +938,10 @@ def engineering_intelligence_html(
             f"""
             <section class="cv-ei-kpis">
               <div class="cv-ei-kpi"><div class="cv-ei-icon health">♡</div><div><span>{'Risk coverage' if unassessed else 'Health'}</span><strong>{f'{len(rows) - len(unassessed)}/{len(rows)}' if unassessed else health_display}</strong></div></div>
-              <div class="cv-ei-kpi"><div class="cv-ei-icon review">▣</div><div><span>Needs review</span><strong>{len(high) + len(medium) + len(unassessed)}</strong></div></div>
+              <div class="cv-ei-kpi"><div class="cv-ei-icon review">▣</div><div><span>Needs review</span><strong>{len(open_high) + len(open_medium) + len(open_unassessed)}</strong></div></div>
               <div class="cv-ei-kpi"><div class="cv-ei-icon stock">▢</div><div><span>No-stock parts</span><strong>{len(no_stock)}</strong></div></div>
               <div class="cv-ei-kpi"><div class="cv-ei-icon source">⚭</div><div><span>Single-source</span><strong>{len(single)}</strong></div></div>
+              <div class="cv-ei-kpi"><div class="cv-ei-icon health">✓</div><div><span>Approved alternatives</span><strong>{len(approved_component_keys)}</strong></div></div>
             </section>
             """
         ).strip()
@@ -982,19 +1015,37 @@ def _tab_body(
             if not original_raw or not replacement_raw:
                 continue
             original = photos.get(original_raw) or {}
+            saved_details = []
+            for label, key in (
+                ("Package", "package"),
+                ("Lifecycle", "lifecycle"),
+                ("Stock", "stock"),
+                ("Unit price", "unit_price"),
+                ("Source package", "source_package"),
+                ("Pin count", "candidate_pin_count"),
+                ("Source pin count", "source_pin_count"),
+                ("Device family", "candidate_architecture"),
+            ):
+                value = approved.get(key)
+                if value is not None and str(value).strip() not in {"", "nan", "None"}:
+                    if key == "unit_price" and approved.get("unit_price_currency"):
+                        value = f"{approved.get('unit_price_currency')} {value}"
+                    saved_details.append(f"{label}: {value}")
+            saved_details.append(str(approved.get("compatibility_summary") or "Engineering approval recorded."))
             approved_rows.append(
                 "<tr>"
                 f"<td>{_component_cell({'mpn': _esc(original_raw), 'mpn_raw': original_raw, 'image': original.get('image') or '', 'description': '', 'description_raw': '', 'category_raw': '', 'category': ''}, description=False)}</td>"
                 f"<td>{_component_cell({'mpn': _esc(replacement_raw), 'mpn_raw': replacement_raw, 'image': approved.get('image_url') or '', 'description': '', 'description_raw': '', 'category_raw': '', 'category': ''}, description=False)}</td>"
                 f"<td>{_esc(approved.get('manufacturer') or '—')}</td>"
+                f"<td>{'<br>'.join(_esc(item) for item in saved_details)}</td>"
                 f"<td><span class='cv-ei-approved'>Approved</span><small>{_esc(approved.get('reason') or '')}</small></td>"
                 "</tr>"
             )
         approved_section = _table(
             "Approved alternatives",
-            "These decisions are saved to this BOM and remain available when you reopen its report.",
-            ["Original component", "Approved replacement", "Manufacturer", "Approval record"],
-            "".join(approved_rows) or "<tr><td colspan='4'>No approved alternative is recorded for this BOM yet.</td></tr>",
+            "Saved supplier, lifecycle, package, and compatibility details travel with each approval. The original BOM row remains unchanged until a revised BOM is uploaded.",
+            ["Original component", "Approved replacement", "Manufacturer", "Saved replacement details", "Approval record"],
+            "".join(approved_rows) or "<tr><td colspan='5'>No approved alternative is recorded for this BOM yet.</td></tr>",
         )
         alt_rows = []
         for alt in alternatives:
@@ -1075,6 +1126,7 @@ def _tab_body(
     review = [
         row for row in rows
         if row["level"] in {"High", "Medium", "Needs verification"}
+        or approved_by_part.get(part_key(row.get("mpn_raw")))
     ][:12]
     if not review:
         return _table(
@@ -1093,16 +1145,9 @@ def _tab_body(
             approved_name = _esc(approved.get("alternative_part") or "")
             approved_by = _esc(approved.get("approved_by") or "Cadivor user")
             approval_note = (
-                "<span class='cv-ei-approved'>Approved alternative on file</span>"
-                f"<small>{approved_name} · approved by {approved_by} · {approved_at}</small>"
-                "<small>The BOM still contains the original part. Update the BOM and rerun to apply this replacement.</small>"
-                + _alternative_action_link(
-                    row,
-                    analysis_id=analysis_id,
-                    bom_name=bom_name,
-                    source_page="engineering_intelligence_review",
-                    label_override="Find another alternative",
-                )
+                f"<span class='cv-ei-approved'>Alternative approved: {approved_name}</span>"
+                f"<small>Approved by {approved_by} · {approved_at}</small>"
+                "<small>Open the Alternatives tab for saved replacement details. Upload a revised BOM after the physical substitution.</small>"
             )
         else:
             approval_note = (
@@ -1114,11 +1159,27 @@ def _tab_body(
                 )
                 + f"<small>{row['action_detail']}</small>"
             )
+        if approvals:
+            original_risk = row["level"]
+            score_note = (
+                f" · score {row['score_display']}/100"
+                if row["score"] is not None
+                else ""
+            )
+            risk_cell = (
+                "<span class='cv-pill low'>Mitigated</span>"
+                f"<small>Original BOM risk: {original_risk}{score_note}</small>"
+            )
+        else:
+            risk_cell = (
+                f"<span class='cv-pill {_level_class(row['level'])}'>{row['level']}</span>"
+                "<small>Source BOM assessment</small>"
+            )
         body.append(
             "<tr>"
             f"<td>{index}</td>"
             f"<td>{_component_cell(row)}</td>"
-            f"<td><span class='cv-pill {_level_class(row['level'])}'>{row['level']}</span></td>"
+            f"<td>{risk_cell}</td>"
             f"<td><ul class='cv-ei-reasons'>{reasons}</ul></td>"
             f"<td><div class='cv-ei-action'>{approval_note}</div></td>"
             "</tr>"
@@ -1180,10 +1241,13 @@ def _detailed_risk_expanded_markup(
     )
 
 
-def _risk_exposure_markup(parts: list[dict[str, Any]]) -> str:
+def _risk_exposure_markup(
+    parts: list[dict[str, Any]],
+    approved_alternatives: list[dict[str, Any]] | None = None,
+) -> str:
     from src.ui.detailed_risk_export import component_rows, report_exposure_summary
 
-    exposure = report_exposure_summary(component_rows(parts))
+    exposure = report_exposure_summary(component_rows(parts, approved_alternatives))
     priced_note = (
         f"{exposure['priced_component_count']} priced line(s); "
         f"{exposure['priced_missing_currency_count']} omitted from totals because currency is not recorded."
@@ -1192,10 +1256,16 @@ def _risk_exposure_markup(parts: list[dict[str, Any]]) -> str:
         f"{exposure['high_risk_without_extended_cost_count']} line(s) need price or quantity; "
         f"{exposure['high_risk_missing_currency_count']} priced line(s) lack currency."
     )
+    mitigation_note = (
+        f"Gross original-BOM amount: {exposure['gross_high_risk_amount_by_currency']}. "
+        f"{exposure['approved_high_risk_component_count']} high-risk line(s) have an approved alternative; "
+        "the source BOM remains unchanged until a revised BOM is uploaded."
+    )
     return f"""
     <section class="cv-risk-exposure" aria-label="Cost and lead-time exposure">
       <article><span>Extended BOM amount by currency</span><strong>{_esc(exposure['extended_amount_by_currency'])}</strong><small>{_esc(priced_note)} Price × BOM quantity; not inventory value or committed spend.</small></article>
-      <article><span>High-risk / lifecycle amount</span><strong>{_esc(exposure['high_risk_amount_by_currency'])}</strong><small>{_esc(high_exposure_note)} Only recorded currencies are included.</small></article>
+      <article><span>Open high-risk / lifecycle amount</span><strong>{_esc(exposure['high_risk_amount_by_currency'])}</strong><small>{_esc(high_exposure_note)} Lines with approved alternatives are excluded from this open-action amount.</small></article>
+      <article><span>Gross high-risk / lifecycle amount</span><strong>{_esc(exposure['gross_high_risk_amount_by_currency'])}</strong><small>{_esc(mitigation_note)} Both totals include only recorded currencies.</small></article>
       <article><span>Longest reported part lead time</span><strong>{_esc(exposure['longest_reported_lead_time'])}</strong><small>{exposure['components_with_lead_time_count']} component(s) have lead-time data. Possible sourcing bottleneck, not a project-delay forecast.</small></article>
     </section>
     """
@@ -1233,7 +1303,10 @@ def render_detailed_risk_rows(
     if not rows:
         st.caption("This BOM has no saved components.")
         return
-    st.markdown(_risk_exposure_markup(parts), unsafe_allow_html=True)
+    st.markdown(
+        _risk_exposure_markup(parts, approved_alternatives),
+        unsafe_allow_html=True,
+    )
 
     widths = [2.2, 1.1, 1.45, 1.15, 0.9]
     with st.container(key="cv_detailed_risk_table"):
@@ -1279,9 +1352,19 @@ def render_detailed_risk_rows(
                     unsafe_allow_html=True,
                 )
                 cells[3].markdown(row["lifecycle"])
+                row_approvals = approved_by_part.get(part_key(row.get("mpn_raw")), [])
+                if row_approvals:
+                    risk_markup = (
+                        "<span class='cv-pill low'>Mitigated</span>"
+                        f"<div class='cv-ei-meta'>Original BOM risk: {row['level']} · score {row['score_display']}</div>"
+                    )
+                else:
+                    risk_markup = (
+                        f"<span class='cv-pill {_level_class(row['level'])}'>{row['level']}</span>"
+                        f"<div class='cv-ei-meta'>Score {row['score_display']}</div>"
+                    )
                 cells[4].markdown(
-                    f"<span class='cv-pill {_level_class(row['level'])}'>{row['level']}</span>"
-                    f"<div class='cv-ei-meta'>Score {row['score_display']}</div>",
+                    risk_markup,
                     unsafe_allow_html=True,
                 )
                 if is_open:
@@ -1411,6 +1494,9 @@ def render_engineering_intelligence_report(
 
     st.markdown(report_styles(), unsafe_allow_html=True)
     with st.container(key="ei_report_workspace"):
+        approval_flash = st.session_state.pop("cadivor_approved_alternatives_flash", "")
+        if approval_flash:
+            st.success(str(approval_flash))
         bom_name = str(analysis.get("project_name") or analysis.get("filename") or "Saved BOM")
         detailed = bool(st.session_state.get("cadivor_show_detailed_risk"))
         tab_state_key = "cadivor_ei_report_tab"
@@ -1530,6 +1616,24 @@ def render_engineering_intelligence_report(
             if approval_load_failed:
                 st.warning("Saved replacement approvals could not be loaded. They may be missing from this view until the connection is restored.")
             analysis_id = str(analysis.get("id") or "")
+            if tab == "BOM Risk" and approved_alternatives:
+                from src.approved_alternatives import approved_mpn_map, part_key
+
+                approved_by_part = approved_mpn_map(approved_alternatives)
+                approved_count = sum(
+                    bool(approved_by_part.get(part_key(
+                        _first(part, "mpn", "MPN", "part_number", fallback="")
+                    )))
+                    for part in parts or []
+                    if isinstance(part, dict)
+                )
+                if approved_count and st.button(
+                    f"View approved alternatives ({approved_count})",
+                    key=f"ei_view_approved_alternatives_{analysis_id or 'saved'}",
+                    type="secondary",
+                ):
+                    st.session_state[tab_state_key] = "Alternatives"
+                    st.rerun()
             with st.container(key="ei_refresh_saved_analysis", border=True):
                 st.markdown("#### Refresh supplier data")
                 st.caption(

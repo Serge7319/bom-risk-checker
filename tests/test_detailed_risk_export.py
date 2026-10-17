@@ -15,6 +15,7 @@ from src.ui.detailed_risk_export import (
     component_rows,
     detailed_risk_csv_bytes,
     detailed_risk_excel_bytes,
+    report_exposure_summary,
 )
 
 
@@ -332,6 +333,60 @@ class DetailedRiskExportTests(unittest.TestCase):
             )
         )
         self.assertEqual(rows[0]["Approved alternatives"], "LM358DR2G")
+
+    def test_approved_alternative_updates_mitigation_and_open_cost_without_erasing_source_risk(self):
+        parts = [{
+            "mpn": "MC68HC11E1CFNE2",
+            "quantity": 4,
+            "unit_price": 3.5,
+            "unit_price_currency": "USD",
+            "risk_level": "High",
+            "risk_score": 88,
+            "lifecycle_status": "Obsolete",
+        }]
+        approval = {
+            "original_part": "MC68HC11E1CFNE2",
+            "alternative_part": "MC68HC11E1CFNE3",
+            "decision": "Approved",
+            "engineer_name": "Engineer",
+            "project_name": "Controller",
+        }
+
+        row = component_rows(parts, [approval])[0]
+        self.assertEqual(row["Risk"], "High")
+        self.assertEqual(row["Risk score"], 88)
+        self.assertEqual(row["Mitigation status"], "Approved alternative (BOM update pending)")
+        self.assertEqual(row["Approved alternatives"], "MC68HC11E1CFNE3")
+
+        exposure = report_exposure_summary([row])
+        self.assertEqual(exposure["gross_high_risk_amount_by_currency"], "USD 14.00")
+        self.assertEqual(exposure["approved_high_risk_amount_by_currency"], "USD 14.00")
+        self.assertEqual(exposure["high_risk_amount_by_currency"], "Not available from recorded currency data")
+
+        exported = list(csv.DictReader(StringIO(
+            detailed_risk_csv_bytes(parts, [approval]).decode("utf-8-sig")
+        )))[0]
+        self.assertEqual(exported["Mitigation status"], "Approved alternative (BOM update pending)")
+        self.assertEqual(exported["Approved alternatives"], "MC68HC11E1CFNE3")
+
+        workbook = load_workbook(BytesIO(detailed_risk_excel_bytes(
+            parts,
+            bom_name="Controller",
+            approved_alternatives=[approval],
+        )), data_only=True)
+        summary = {
+            values[0]: values[1]
+            for values in workbook["Summary"].iter_rows(min_row=10, max_row=60, values_only=True)
+            if values[0]
+        }
+        details = workbook["Component Details"]
+        headers = [cell.value for cell in details[1]]
+        saved = dict(zip(headers, [cell.value for cell in details[2]]))
+        self.assertEqual(summary["Priced high-risk / lifecycle extended cost by currency"], "Not available from recorded currency data")
+        self.assertEqual(summary["Gross priced high-risk / lifecycle extended cost by currency"], "USD 14.00")
+        self.assertEqual(saved["Risk"], "High")
+        self.assertEqual(saved["Mitigation status"], "Approved alternative (BOM update pending)")
+        self.assertEqual(saved["Approved alternatives"], "MC68HC11E1CFNE3")
 
     def test_detailed_risk_page_delivers_the_customer_exports(self):
         from src.ui import ei_bom_report
