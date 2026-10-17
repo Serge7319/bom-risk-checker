@@ -126,6 +126,18 @@ class DecisionPacketWorkflowTests(unittest.TestCase):
         self.assertIn("max-width: 1440px !important", NAV_RECOVERY)
         self.assertIn(".st-key-cadivor_decision_packet_shell", NAV_RECOVERY)
         self.assertIn("width: 100% !important", NAV_RECOVERY)
+        steps_css = NAV_RECOVERY.split(".st-key-cadivor_decision_packet_shell .cv-dp-steps {", 1)[1].split("}", 1)[0]
+        self.assertIn("width: 100% !important", steps_css)
+        self.assertIn("max-width: 100% !important", steps_css)
+        self.assertIn('"Datasheet URL": (', RUNTIME)
+        self.assertIn('part_data.get("datasheet_url")', RUNTIME)
+        self.assertIn('"datasheet_url": cost_fields["datasheet_url"]', RUNTIME)
+        self.assertIn("save_decision_source_evidence", RUNTIME)
+        migration = ROOT / "supabase" / "migrations" / "20261017_analysis_part_datasheet_url.sql"
+        self.assertTrue(migration.exists())
+        self.assertIn("add column if not exists datasheet_url text", migration.read_text(encoding="utf-8"))
+        self.assertIn("alter table if exists public.monitor_alerts", migration.read_text(encoding="utf-8"))
+        self.assertIn("alter table if exists public.part_monitor_history", migration.read_text(encoding="utf-8"))
 
     def test_alternative_finder_returns_to_the_exact_open_decision(self):
         self.assertIn("ALT_FINDER_RETURN_DECISION_ID_KEY", NAVIGATION)

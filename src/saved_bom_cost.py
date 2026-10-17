@@ -17,6 +17,7 @@ from typing import Any, Mapping
 OPTIONAL_SAVED_PART_COLUMNS = (
     "image_url",
     "product_url",
+    "datasheet_url",
     "supplier_offers",
     "unit_price_currency",
     "description",
@@ -146,6 +147,9 @@ def analysis_part_cost_fields(row: Mapping[str, Any]) -> dict[str, Any]:
     product = http_url(
         _first(row, "Product URL", "product_url", "product_detail_url", "source_url")
     )
+    datasheet = http_url(
+        _first(row, "Datasheet URL", "datasheet_url", "datasheet", "datasheet_link")
+    )
     mpn = str(_first(row, "MPN", "mpn", "manufacturer_part_number") or "").strip()
     saved_offers = normalize_saved_offers(
         _offer_list(row.get("Supplier Offers", row.get("supplier_offers"))),
@@ -177,6 +181,7 @@ def analysis_part_cost_fields(row: Mapping[str, Any]) -> dict[str, Any]:
         "unit_price_currency": price_currency or None,
         "quantity": 0 if quantity is None else quantity,
         "product_url": product,
+        "datasheet_url": datasheet,
         "supplier_offers": saved_offers,
     }
 

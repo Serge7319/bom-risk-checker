@@ -27,18 +27,55 @@ def _display_text(value, default=""):
     return default if text.casefold() in {"", "nan", "none", "nat", "null"} else text
 
 
+def _exact_part_urls(requested_mpn, record):
+    """Keep supplier/document links only when the returned MPN is exact."""
+    if not isinstance(record, dict) and not callable(getattr(record, "get", None)):
+        return "", ""
+    returned_mpn = _display_text(
+        record.get("Manufacturer Part Number")
+        or record.get("manufacturer_part_number")
+    )
+    requested_mpn = _display_text(requested_mpn)
+    if not returned_mpn or not requested_mpn:
+        return "", ""
+    from src.normalizer import normalize_part_number
+
+    if normalize_part_number(returned_mpn) != normalize_part_number(requested_mpn):
+        return "", ""
+
+    from src.saved_bom_cost import http_url
+
+    product_url = http_url(
+        record.get("Product URL")
+        or record.get("product_url")
+        or record.get("product_detail_url")
+        or record.get("source_url")
+    )
+    datasheet_url = http_url(
+        record.get("Datasheet URL")
+        or record.get("datasheet_url")
+        or record.get("datasheet")
+        or record.get("datasheet_link")
+    )
+    return product_url, datasheet_url
+
+
 def build_monitor_record(
     user_id,
     analysis_id,
     part_data,
     workspace_id=None,
 ):
+    part_number = _display_text(part_data.get("MPN", ""))
+    product_url, datasheet_url = _exact_part_urls(part_number, part_data)
     return json_safe_value({
         "user_id": user_id,
         "workspace_id": workspace_id,
         "analysis_id": analysis_id,
-        "part_number": _display_text(part_data.get("MPN", "")),
+        "part_number": part_number,
         "supplier": _display_text(part_data.get("Best Source", "")),
+        "product_url": product_url,
+        "datasheet_url": datasheet_url,
         "lifecycle_status": _display_text(part_data.get("Lifecycle Status", "")),
         "stock": _optional_number(part_data.get("Stock Available")),
         "unit_price": _optional_number(part_data.get("Unit Price")),
@@ -55,6 +92,9 @@ def build_alert_record(
     previous_value,
     current_value,
     workspace_id=None,
+    supplier=None,
+    product_url=None,
+    datasheet_url=None,
 ):
     return {
         "user_id": user_id,
@@ -66,6 +106,9 @@ def build_alert_record(
         "severity": severity,
         "previous_value": str(previous_value),
         "current_value": str(current_value),
+        "supplier": _display_text(supplier),
+        "product_url": _display_text(product_url),
+        "datasheet_url": _display_text(datasheet_url),
     }
 
 def detect_monitor_alerts(
@@ -81,6 +124,12 @@ def detect_monitor_alerts(
 
     previous_stock = _optional_number(previous_snapshot.get("stock"))
     current_stock = _optional_number(current_snapshot.get("stock"))
+
+    evidence_fields = {
+        "supplier": current_snapshot.get("supplier"),
+        "product_url": current_snapshot.get("product_url"),
+        "datasheet_url": current_snapshot.get("datasheet_url"),
+    }
 
     previous_price = _optional_number(previous_snapshot.get("unit_price"))
     current_price = _optional_number(current_snapshot.get("unit_price"))
@@ -110,6 +159,7 @@ def detect_monitor_alerts(
                 previous_stock,
                 current_stock,
                 workspace_id=workspace_id,
+                **evidence_fields,
             )
         )
 
@@ -132,6 +182,7 @@ def detect_monitor_alerts(
                 f"{previous_price:.2f}",
                 f"{current_price:.2f}",
                 workspace_id=workspace_id,
+                **evidence_fields,
             )
         )
 
@@ -155,6 +206,7 @@ def detect_monitor_alerts(
                 previous_lifecycle,
                 current_lifecycle,
                 workspace_id=workspace_id,
+                **evidence_fields,
             )
         )
 
@@ -170,12 +222,15 @@ def build_updated_monitor_snapshot(
     """Build a fresh provider snapshot while retaining its saved BOM scope."""
     previous_snapshot = previous_snapshot or {}
     fresh_data = fresh_data or {}
+    product_url, datasheet_url = _exact_part_urls(part_number, fresh_data)
     snapshot = {
         "user_id": user_id,
         "workspace_id": previous_snapshot.get("workspace_id"),
         "analysis_id": previous_snapshot.get("analysis_id"),
         "part_number": part_number,
         "supplier": _display_text(fresh_data.get("source", "")),
+        "product_url": product_url,
+        "datasheet_url": datasheet_url,
         "lifecycle_status": _display_text(fresh_data.get("lifecycle_status", "")),
         "stock": _optional_number(fresh_data.get("stock_total")),
         "unit_price": _optional_number(fresh_data.get("unit_price")),
@@ -188,14 +243,56 @@ def save_monitor_history(supabase, records) -> bool:
     """Persist monitoring snapshots without letting bad telemetry block analysis."""
     if not records:
         return True
-    try:
-        supabase.table("part_monitor_history").insert(
-            json_safe_value(records)
-        ).execute()
+    return _insert_monitor_rows(
+        supabase,
+        "part_monitor_history",
+        records,
+        optional_columns=("product_url", "datasheet_url"),
+    )
+
+
+def save_monitor_alerts(supabase, records) -> bool:
+    """Persist alert evidence while tolerating a not-yet-applied URL migration."""
+    if not records:
         return True
-    except Exception as exc:
-        _logger.warning("Could not save monitoring history (%s)", type(exc).__name__)
-        return False
+    return _insert_monitor_rows(
+        supabase,
+        "monitor_alerts",
+        records,
+        optional_columns=("supplier", "product_url", "datasheet_url"),
+    )
+
+
+def _insert_monitor_rows(supabase, table_name, records, *, optional_columns):
+    pending = json_safe_value(records)
+    while True:
+        try:
+            supabase.table(table_name).insert(pending).execute()
+            return True
+        except Exception as exc:
+            folded = str(exc).casefold()
+            missing_column = next(
+                (
+                    column
+                    for column in optional_columns
+                    if column in folded
+                    and ("column" in folded or "schema cache" in folded)
+                    and any(column in row for row in pending)
+                ),
+                "",
+            )
+            if missing_column:
+                pending = [
+                    {key: value for key, value in row.items() if key != missing_column}
+                    for row in pending
+                ]
+                continue
+            _logger.warning(
+                "Could not save %s monitoring data (%s)",
+                table_name,
+                type(exc).__name__,
+            )
+            return False
 
 
 def detect_monitored_part_changes(
