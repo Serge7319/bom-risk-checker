@@ -4064,6 +4064,9 @@ def _render_bom_replacement_approvals(
         st.session_state["cadivor_approved_alternatives_flash"] = (
             f"Approval for {candidate_mpn} removed from {project_name}."
         )
+        if _navigate_back_to_bom_review(context):
+            st.rerun()
+            return
         st.rerun()
         return
 
@@ -4121,7 +4124,23 @@ def _render_bom_replacement_approvals(
             "original": original,
             "selected_alternative": candidate,
         },
-        "comparison_snapshot": {"recorded_from": str(recorded_from or "Find a replacement")},
+        "comparison_snapshot": {
+            "recorded_from": str(recorded_from or "Find a replacement"),
+            "compatibility_review": {
+                "summary": str(compatibility.get("drop_in_status") or ""),
+                "warnings": list(
+                    compatibility.get("critical_warnings")
+                    or compatibility.get("review_warnings")
+                    or []
+                ),
+                "source_package": compatibility.get("source_package"),
+                "candidate_package": compatibility.get("candidate_package"),
+                "source_pin_count": compatibility.get("source_pin_count"),
+                "candidate_pin_count": compatibility.get("candidate_pin_count"),
+                "source_architecture": compatibility.get("source_architecture"),
+                "candidate_architecture": compatibility.get("candidate_architecture"),
+            },
+        },
     }
     try:
         saved = save_analysis_decision(user_id, payload)
@@ -4140,6 +4159,9 @@ def _render_bom_replacement_approvals(
     st.session_state["cadivor_approved_alternatives_flash"] = (
         f"{candidate_mpn} approved for {project_name} and saved to this BOM."
     )
+    if _navigate_back_to_bom_review(context):
+        st.rerun()
+        return
     st.rerun()
 
 

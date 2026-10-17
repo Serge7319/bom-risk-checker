@@ -19,6 +19,7 @@ CSV_COLUMNS = (
     "Lead time (weeks)",
     "Suppliers",
     "Evidence source",
+    "Mitigation status",
     "Approved alternatives",
     "Risk",
     "Why",
@@ -48,6 +49,7 @@ DETAIL_COLUMNS = (
     "Lifecycle evidence",
     "Lifecycle conflict",
     "Alternate search status",
+    "Mitigation status",
     "Approved alternatives",
     "Unit price",
     "Unit price currency",
@@ -354,7 +356,11 @@ def _is_high_or_lifecycle_risk(row: dict[str, Any]) -> bool:
 
 def report_exposure_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
     """Summarize quoted BOM cost and lead-time evidence without projecting spend or delay."""
-    high_rows = [row for row in rows if _is_high_or_lifecycle_risk(row)]
+    gross_high_rows = [row for row in rows if _is_high_or_lifecycle_risk(row)]
+    open_high_rows = [
+        row for row in gross_high_rows
+        if not str(row.get("Mitigation status") or "").casefold().startswith("approved alternative")
+    ]
     return {
         "priced_component_count": sum(
             isinstance(row.get("Extended cost"), (int, float)) for row in rows
@@ -366,16 +372,28 @@ def report_exposure_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
         ),
         "extended_amount_by_currency": _currency_totals(rows),
         "high_risk_amount_by_currency": _currency_totals(
-            rows, predicate=_is_high_or_lifecycle_risk
+            open_high_rows
+        ),
+        "gross_high_risk_amount_by_currency": _currency_totals(
+            gross_high_rows
+        ),
+        "approved_high_risk_component_count": sum(
+            str(row.get("Mitigation status") or "").casefold().startswith("approved alternative")
+            for row in gross_high_rows
+        ),
+        "open_high_risk_component_count": len(open_high_rows),
+        "approved_high_risk_amount_by_currency": _currency_totals(
+            gross_high_rows,
+            predicate=lambda row: str(row.get("Mitigation status") or "").casefold().startswith("approved alternative"),
         ),
         "high_risk_without_extended_cost_count": sum(
             not isinstance(row.get("Extended cost"), (int, float))
-            for row in high_rows
+            for row in open_high_rows
         ),
         "high_risk_missing_currency_count": sum(
             isinstance(row.get("Extended cost"), (int, float))
             and row.get("Unit price currency") == "Not reported"
-            for row in high_rows
+            for row in open_high_rows
         ),
         "longest_reported_lead_time": _longest_reported_lead(rows),
         "components_with_lead_time_count": sum(
@@ -438,6 +456,15 @@ def component_rows(
         )
         description = _first(record, "description", "Description", "part_description")
         description_alternates = extract_description_alternates(description)
+        approvals = approved_by_part.get(
+            part_key(_first(record, "mpn", "MPN", "part_number", "manufacturer_part_number")),
+            [],
+        )
+        approved_names = [
+            str(item.get("alternative_part") or "").strip()
+            for item in approvals
+            if str(item.get("alternative_part") or "").strip()
+        ]
         output.append({
             "MPN": mpn,
             "Description": _text(
@@ -450,13 +477,12 @@ def component_rows(
             "Lifecycle": lifecycle,
             "Stock": _stock(record),
             "Evidence source": stock_sources,
-            "Approved alternatives": ", ".join(
-                str(item.get("alternative_part") or "").strip()
-                for item in approved_by_part.get(
-                    part_key(_first(record, "mpn", "MPN", "part_number", "manufacturer_part_number")), []
-                )
-                if str(item.get("alternative_part") or "").strip()
-            ) or "—",
+            "Mitigation status": (
+                "Approved alternative (BOM update pending)"
+                if approved_names
+                else "No approved alternative"
+            ),
+            "Approved alternatives": ", ".join(approved_names) or "—",
             "Recorded supplier": supplier or "—",
             "Stock coverage": coverage,
             "Lead time (weeks)": _lead_time(record),
@@ -497,6 +523,7 @@ def detailed_risk_csv_bytes(
             "Lead time (weeks)": row["Lead time (weeks)"],
             "Suppliers": row["Supplier count"],
             "Evidence source": row["Evidence source"],
+            "Mitigation status": row["Mitigation status"],
             "Approved alternatives": row["Approved alternatives"],
             "Risk": row["Risk"],
             "Why": row["Why"],
@@ -617,6 +644,9 @@ def detailed_risk_excel_bytes(
         ("Priced components missing currency", exposure["priced_missing_currency_count"]),
         ("Extended BOM amount by recorded currency", exposure["extended_amount_by_currency"]),
         ("Priced high-risk / lifecycle extended cost by currency", exposure["high_risk_amount_by_currency"]),
+        ("Gross priced high-risk / lifecycle extended cost by currency", exposure["gross_high_risk_amount_by_currency"]),
+        ("High-risk components with approved alternatives", exposure["approved_high_risk_component_count"]),
+        ("Open high-risk / lifecycle components", exposure["open_high_risk_component_count"]),
         ("High-risk / lifecycle rows without extended cost", exposure["high_risk_without_extended_cost_count"]),
         ("Priced high-risk rows missing currency", exposure["high_risk_missing_currency_count"]),
         ("Longest reported part lead time", exposure["longest_reported_lead_time"]),
@@ -666,10 +696,10 @@ def detailed_risk_excel_bytes(
     notes = (
         "Stock is shown as Not reported when the saved record has no usable count. A zero is shown only when stock-source evidence is recorded.",
         "A dash (—) means the saved analysis did not include that optional value. Re-run the analysis to refresh supplier evidence.",
-        "Approved alternatives are user-recorded decisions. They do not independently verify electrical or mechanical compatibility.",
+        "Approved alternatives are user-recorded engineering decisions. They do not independently certify electrical or mechanical compatibility, and the source BOM is unchanged until a revised BOM is uploaded.",
         "A replacement mentioned in a supplier description is an unverified search lead, not a confirmed or approved cross.",
         "Extended cost is recorded unit price × BOM quantity. Totals include only rows with an explicitly recorded currency and are grouped by currency. They are not inventory valuation or committed spend.",
-        "The priced high-risk / lifecycle amount is only the subset with a usable unit price, BOM quantity, and currency. Rows without extended cost or currency are counted separately; this amount is not total exposure.",
+        "Open priced high-risk / lifecycle cost excludes line items with a saved approved alternative; gross cost still includes those original BOM lines. Both figures use only rows with a usable unit price, BOM quantity, and currency. Rows without extended cost or currency are counted separately; these amounts are not total exposure.",
         "The longest reported component lead time is a possible sourcing bottleneck, not a forecast of project delay.",
         "Risk ratings and reasons reflect the saved analysis. Re-run the analysis to refresh distributor data.",
     )
@@ -679,7 +709,7 @@ def detailed_risk_excel_bytes(
         cell.alignment = Alignment(wrap_text=True, vertical="top")
         cell.font = Font(name="Aptos", size=10, color="52647A")
         summary.row_dimensions[note_row + offset].height = (
-            42 if "priced high-risk / lifecycle amount" in note else 30
+            52 if "open priced high-risk / lifecycle cost" in note else 30
         )
     for row in summary.iter_rows(min_row=4, max_row=9 + len(metrics), min_col=1, max_col=2):
         for cell in row:
@@ -723,7 +753,7 @@ def detailed_risk_excel_bytes(
             "Lifecycle": 18, "Stock": 14, "Evidence source": 24, "Recorded supplier": 22,
             "Stock coverage": 18, "Lead time (weeks)": 17, "Lead-time source": 22,
             "Supplier count": 15, "Supplier coverage": 40, "Risk": 14,
-            "Risk score": 13, "Why": 58, "Lifecycle evidence": 44,
+            "Risk score": 13, "Mitigation status": 34, "Why": 58, "Lifecycle evidence": 44,
             "Lifecycle conflict": 22, "Alternate search status": 38,
             "Approved alternatives": 28, "Unit price": 14,
             "Unit price currency": 19, "Extended cost": 16,
