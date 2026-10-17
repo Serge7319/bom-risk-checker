@@ -7878,7 +7878,25 @@ def run_authenticated_app() -> None:
         )
         from src.ui.approved_pages import render_decision_queue
 
-        requested_decision_id = _qp_value("decision_id")
+        return_to_queue_pending_key = "cadivor_ed_return_to_queue_pending"
+
+        def _return_to_engineering_decisions_queue() -> None:
+            # A focused packet and the queue share one route, so explicitly
+            # cover this page-state change and consume its stale alert focus.
+            # Otherwise Streamlit can paint one frame with the queue and the
+            # old packet together, and the previous decision can steal the
+            # first click while the query snapshot catches up.
+            st.session_state[return_to_queue_pending_key] = True
+            from src.ui.main_transition import arm_main_transition
+
+            arm_main_transition(st.session_state, "Engineering Decisions")
+            navigate_to("Engineering Decisions")
+
+        requested_decision_id = (
+            ""
+            if st.session_state.pop(return_to_queue_pending_key, False)
+            else _qp_value("decision_id")
+        )
         # Keep the route cover up until the queue data has hydrated. A focused
         # packet releases it after its complete review layout has mounted.
         ed_body_ready = False
@@ -7986,7 +8004,10 @@ def run_authenticated_app() -> None:
                     snapshots[analysis_id] = (time.monotonic(), loaded)
                 return loaded
 
-            focus_decision_id = _qp_value("decision_id")
+            # Use the same route snapshot as the queue gate above. The URL
+            # query may still contain the previous decision for one Streamlit
+            # rerun after the in-app Back action clears it.
+            focus_decision_id = requested_decision_id
             focus_part = _qp_value("focus_part")
             selected_decision = None
 
@@ -8008,7 +8029,7 @@ def run_authenticated_app() -> None:
                         key="decision_packet_missing_back",
                         type="secondary",
                     ):
-                        navigate_to("Engineering Decisions")
+                        _return_to_engineering_decisions_queue()
                     reveal_authenticated_page_body("Engineering Decisions")
             elif focus_part:
                 selected_decision = next(
@@ -8422,7 +8443,7 @@ def run_authenticated_app() -> None:
                         key="decision_packet_back",
                         type="secondary",
                     ):
-                        navigate_to("Engineering Decisions")
+                        _return_to_engineering_decisions_queue()
 
                     if decision_load_error:
                         st.warning(
