@@ -3890,6 +3890,11 @@ def _datasheet_evidence_key(
     return "cadivor_alt_datasheet_review_" + hashlib.sha256(material.encode("utf-8")).hexdigest()[:16]
 
 
+def _request_datasheet_review(session_state_key: str) -> None:
+    """Queue PDF extraction from the approval panel's direct review action."""
+    st.session_state[session_state_key] = True
+
+
 def _render_datasheet_evidence_review(
     *,
     original: dict[str, Any],
@@ -3915,6 +3920,7 @@ def _render_datasheet_evidence_review(
         source_url,
         candidate_url,
     )
+    review_request_key = f"cadivor_alt_datasheet_review_request_{key_suffix}"
     with st.expander("Datasheet & documentation review", expanded=True):
         st.caption(
             "Cadivor checks supplier-linked PDFs and any PDFs you upload, then shows page-cited text for relevant fields and package dimensions. Review the drawings and pinout in the documents before approving."
@@ -3985,11 +3991,14 @@ def _render_datasheet_evidence_review(
                 "No datasheet links were returned. Upload the manufacturer PDFs here, or cite the controlled documents and page references you reviewed."
             )
 
-        if has_documents and st.button(
-            "Review available datasheets",
+        review_requested = bool(st.session_state.pop(review_request_key, False))
+        review_clicked = has_documents and st.button(
+            "Analyze available datasheets",
             key=f"cadivor_alt_datasheet_extract_{key_suffix}",
             type="secondary",
-        ):
+            help="Extract page-cited text from linked or uploaded PDFs. You must still inspect package drawings and pinout yourself.",
+        )
+        if has_documents and (review_requested or review_clicked):
             from src.datasheet_comparison import (
                 build_datasheet_review_evidence,
                 extract_datasheet_text,
@@ -4254,6 +4263,7 @@ def _render_datasheet_evidence_review(
     review_state["datasheet_review_required"] = has_documents
     review_state["source_url"] = source_url
     review_state["candidate_url"] = candidate_url
+    review_state["review_request_key"] = review_request_key
     return review_state
 
 
@@ -4739,12 +4749,39 @@ def _render_bom_replacement_approvals(
             st.warning("Approval is disabled because the supplier, comparison, or datasheet evidence conflicts. Resolve the source-data discrepancy first.")
         else:
             st.warning("Approval is disabled until package, pin count, and any required processor architecture are verified for both parts. Enter missing values from the cited documents in this panel.")
-    if not review_references_complete:
-        st.warning("Approval is disabled until you cite the source and candidate document revisions/pages and confirm the engineering review.")
+    reviewer_attestation = datasheet_review.get("reviewer_attestation") or {}
+    reviewer_attestation = reviewer_attestation if isinstance(reviewer_attestation, dict) else {}
+    missing_review_steps = []
+    if not str(reviewer_attestation.get("source_reference") or "").strip():
+        missing_review_steps.append("enter the source document revision and page numbers")
+    if not str(reviewer_attestation.get("candidate_reference") or "").strip():
+        missing_review_steps.append("enter the candidate document revision and page numbers")
+    if not reviewer_attestation.get("confirmed"):
+        missing_review_steps.append("check the engineering review attestation")
+    if missing_review_steps:
+        st.warning(
+            "Approval is still locked. The checkmark records your engineering attestation; "
+            "it does not replace the required citations. Please "
+            + "; ".join(missing_review_steps)
+            + ". The example text in the citation fields is only a placeholder."
+        )
     if lifecycle_nrnd and not str(note_value or "").strip():
         st.warning("Approval is disabled for an NRND candidate until the supply-continuity plan is recorded.")
     if not linked_documents_reviewed:
-        st.warning("Supplier-linked or uploaded PDFs are available. Select “Review available datasheets” before approving.")
+        st.warning(
+            "A supplier-linked or uploaded PDF has not been analyzed in Cadivor yet. "
+            "Run the PDF review, then inspect the cited findings and the original package drawings."
+        )
+        review_request_key = str(datasheet_review.get("review_request_key") or "")
+        if review_request_key:
+            st.button(
+                "Analyze available datasheets now",
+                key=f"cadivor_alt_datasheet_review_bottom_{widget_suffix}",
+                type="secondary",
+                on_click=_request_datasheet_review,
+                args=(review_request_key,),
+                help="Load the supplier PDF evidence without scrolling back to the documentation panel.",
+            )
     if current is None and len(approved_names) >= 3:
         st.warning("Three alternatives are already approved for this component. Remove one before approving another.")
 
