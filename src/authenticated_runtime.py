@@ -7556,25 +7556,69 @@ def run_authenticated_app() -> None:
                 })
                 if decision_mpns and load_deadline - time.monotonic() > 0.7:
                     def _load_decision_part_links():
+                        from src.normalizer import normalize_part_number
+
                         links = []
-                        for start in range(0, len(decision_mpns), 50):
-                            if load_deadline - time.monotonic() < 0.3:
-                                break
-                            response = execute_supabase_read(
-                                _workspace_query(
-                                    supabase.table("analysis_parts").select("*")
+                        seen_link_keys = set()
+
+                        def _load_mpn_values(values, *, operation):
+                            loaded = []
+                            for start in range(0, len(values), 50):
+                                if load_deadline - time.monotonic() < 0.3:
+                                    break
+                                response = execute_supabase_read(
+                                    _workspace_query(
+                                        supabase.table("analysis_parts").select("*")
+                                    )
+                                    .eq("user_id", current_user["id"])
+                                    .in_("mpn", values[start:start + 50])
+                                    .limit(1000),
+                                    operation=operation,
+                                    attempts=1,
                                 )
-                                .eq("user_id", current_user["id"])
-                                .in_("mpn", decision_mpns[start:start + 50])
-                                .limit(1000),
+                                rows = getattr(response, "data", None) or []
+                                # A truncated result could falsely attribute one BOM's
+                                # component image to another; skip that whole chunk.
+                                if len(rows) < 1000:
+                                    for row in rows:
+                                        link_key = (
+                                            str(row.get("analysis_id") or ""),
+                                            str(row.get("mpn") or ""),
+                                        )
+                                        if link_key not in seen_link_keys:
+                                            seen_link_keys.add(link_key)
+                                            loaded.append(row)
+                            return loaded
+
+                        links.extend(
+                            _load_mpn_values(
+                                decision_mpns,
                                 operation="engineering_decisions.part_images",
-                                attempts=1,
                             )
-                            rows = getattr(response, "data", None) or []
-                            # A truncated result could falsely attribute one BOM's
-                            # component image to another; skip that whole chunk.
-                            if len(rows) < 1000:
-                                links.extend(rows)
+                        )
+                        # Saved BOMs may have removed separators or used a
+                        # different case from the monitoring record. Retry only
+                        # those normalized variants, keeping the common exact
+                        # lookup fast and within the same read budget.
+                        exact_normalized = {
+                            normalize_part_number(str(row.get("mpn") or ""))
+                            for row in links
+                        }
+                        fallback_values = sorted({
+                            variant
+                            for mpn in decision_mpns
+                            for normalized in (normalize_part_number(mpn),)
+                            if normalized and normalized != mpn
+                            and normalized not in exact_normalized
+                            for variant in (normalized, normalized.lower())
+                        })
+                        if fallback_values and load_deadline - time.monotonic() > 0.3:
+                            links.extend(
+                                _load_mpn_values(
+                                    fallback_values,
+                                    operation="engineering_decisions.part_images_normalized",
+                                )
+                            )
                         return links
 
                     try:
@@ -8013,11 +8057,16 @@ def run_authenticated_app() -> None:
                         else text
                     )
 
+                from src.normalizer import normalize_part_number as _normalize_decision_mpn
+
                 matching_part_rows = [
                     row for row in decision_part_links
-                    if str(
-                        row.get("mpn") or row.get("MPN") or row.get("part_number") or ""
-                    ).strip().casefold() == decision_mpn.casefold()
+                    if _normalize_decision_mpn(
+                        str(
+                            row.get("mpn") or row.get("MPN") or row.get("part_number") or ""
+                        ).strip()
+                    )
+                    == _normalize_decision_mpn(decision_mpn)
                 ]
                 if selected_decision_context_id:
                     context_part_rows = [
@@ -8063,6 +8112,21 @@ def run_authenticated_app() -> None:
                     {**source_part, **monitor_alert},
                     ("datasheet_url", "datasheet", "Datasheet URL", "datasheet_link"),
                 )
+                live_evidence_key = (
+                    f"_ed_review_source_evidence_{decision_scope_key}_{decision_id}"
+                )
+                live_evidence = st.session_state.get(live_evidence_key)
+                live_evidence = live_evidence if isinstance(live_evidence, dict) else {}
+                if live_evidence.get("identity_verified"):
+                    supplier_name = str(
+                        live_evidence.get("source") or supplier_name
+                    )
+                    supplier_url = supplier_url or str(
+                        live_evidence.get("product_detail_url") or ""
+                    )
+                    datasheet_url = datasheet_url or str(
+                        live_evidence.get("datasheet_url") or ""
+                    )
 
                 def _packet_evidence_row(
                     number: int,
@@ -8103,22 +8167,64 @@ def run_authenticated_app() -> None:
                     or _decision_packet_text(selected_decision.get("priority"))
                     or "Unclassified"
                 )
-                supplier_detail = (
-                    f"{supplier_name} · {alert_message}"
-                    if supplier_url
-                    else f"{alert_message} · Source link not available in the saved record."
+                live_lifecycle = _decision_packet_text(
+                    live_evidence.get("lifecycle_status")
                 )
-                datasheet_detail = (
-                    "Manufacturer documentation is available for review."
-                    if datasheet_url
-                    else "No datasheet link is available in the saved component record."
+                live_supplier_note = (
+                    f" · Exact-MPN source lookup: {supplier_name}"
+                    + (f" · Lifecycle: {live_lifecycle}" if live_lifecycle else "")
+                    if live_evidence.get("identity_verified")
+                    else ""
                 )
+                if supplier_url:
+                    supplier_detail = (
+                        f"{supplier_name} · {alert_message}{live_supplier_note}"
+                    )
+                elif live_evidence.get("identity_verified"):
+                    supplier_detail = (
+                        f"Exact MPN matched at {supplier_name} · {alert_message}"
+                        + (f" · Lifecycle: {live_lifecycle}" if live_lifecycle else "")
+                        + " · Direct product link was not returned."
+                    )
+                elif live_evidence.get("lookup_attempted"):
+                    supplier_detail = (
+                        f"{alert_message} · "
+                        + _decision_packet_text(
+                            live_evidence.get("lookup_summary"),
+                            "No exact supplier listing was returned.",
+                        )
+                    )
+                else:
+                    supplier_detail = (
+                        f"{alert_message} · No source link is saved. You can check configured supplier sources below."
+                    )
+                if datasheet_url:
+                    datasheet_detail = (
+                        f"An exact-MPN listing at {supplier_name} returned manufacturer documentation."
+                        if live_evidence.get("identity_verified")
+                        else "Manufacturer documentation is available for review."
+                    )
+                elif live_evidence.get("identity_verified"):
+                    datasheet_detail = (
+                        f"Exact MPN matched at {supplier_name}, but the listing did not return a datasheet URL."
+                    )
+                elif live_evidence.get("lookup_attempted"):
+                    datasheet_detail = (
+                        _decision_packet_text(
+                            live_evidence.get("lookup_summary"),
+                            "No datasheet URL was returned by the exact-MPN supplier lookup.",
+                        )
+                    )
+                else:
+                    datasheet_detail = (
+                        "No datasheet URL is saved for this component. Check configured supplier sources below."
+                    )
                 bom_detail = (
                     f"Linked context: {saved_bom_label}."
                     if bom_is_linked and selected_decision_context_id
                     else "Choose a saved BOM to review its analysis context."
                     if len(related_boms) > 1 and not selected_decision_context_id
-                    else "This alert is not attached to a saved BOM."
+                    else "No saved BOM is currently linked to this alert."
                 )
                 evidence_rows_html = "".join(
                     (
@@ -8211,6 +8317,63 @@ def run_authenticated_app() -> None:
                                     f"Recorded change: {previous_value or 'Not recorded'} → "
                                     f"{current_value or 'Not recorded'}"
                                 )
+                            if (not supplier_url or not datasheet_url):
+                                if live_evidence.get("lookup_attempted") and not live_evidence.get("identity_verified"):
+                                    st.caption(
+                                        _decision_packet_text(
+                                            live_evidence.get("lookup_summary"),
+                                            "No exact supplier record was found on the last check.",
+                                        )
+                                        + " You can retry the lookup."
+                                    )
+                                else:
+                                    st.caption(
+                                        "Missing links can be checked against configured supplier sources by exact part number."
+                                    )
+                                if st.button(
+                                    "Search current supplier evidence",
+                                    key=f"decision_packet_source_lookup_{decision_id}",
+                                    type="secondary",
+                                ):
+                                    exact_evidence = None
+                                    with st.spinner(
+                                        f"Checking supplier sources for {decision_mpn}…"
+                                    ):
+                                        try:
+                                            from integrations.supplier_aggregator import get_best_part_data
+                                            from src.decision_packet_evidence import exact_supplier_evidence
+
+                                            supplier_result = get_best_part_data(decision_mpn) or {}
+                                            exact_evidence = exact_supplier_evidence(
+                                                decision_mpn,
+                                                supplier_result,
+                                            )
+                                            health = supplier_result.get("provider_health")
+                                            health = health if isinstance(health, dict) else {}
+                                            lookup_summary = str(
+                                                health.get("summary_message") or ""
+                                            ).strip()
+                                        except Exception:
+                                            # Keep provider errors out of the UI; the
+                                            # saved alert remains reviewable either way.
+                                            exact_evidence = None
+                                            lookup_summary = (
+                                                "Supplier sources could not be checked right now."
+                                            )
+                                    st.session_state[live_evidence_key] = (
+                                        {
+                                            **exact_evidence,
+                                            "lookup_attempted": True,
+                                            "lookup_summary": lookup_summary,
+                                        }
+                                        if exact_evidence
+                                        else {
+                                            "lookup_attempted": True,
+                                            "identity_verified": False,
+                                            "lookup_summary": lookup_summary or "No exact supplier listing was returned.",
+                                        }
+                                    )
+                                    st.rerun()
                             if selected_decision_context_id:
                                 internal_nav_button(
                                     "Open linked saved BOM",

@@ -4,6 +4,8 @@ from __future__ import annotations
 from hashlib import sha1
 from typing import Any, Dict, Iterable, List
 
+from src.normalizer import normalize_part_number
+
 import pandas as pd
 
 
@@ -530,7 +532,7 @@ def build_decision_center(
     # saved BOM parts, but never claim one BOM owns an alert when several do.
     part_analysis_ids: Dict[str, set[str]] = {}
     for link in part_links or []:
-        mpn = _text(link.get("mpn")).casefold()
+        mpn = normalize_part_number(_text(link.get("mpn")))
         analysis_id = _text(link.get("analysis_id"))
         if mpn and analysis_id in analyses_by_id:
             part_analysis_ids.setdefault(mpn, set()).add(analysis_id)
@@ -548,7 +550,7 @@ def build_decision_center(
                 decision["analysis_id"] = ""
             if not related_analysis:
                 related_ids = part_analysis_ids.get(
-                    _text(decision.get("mpn")).casefold(), set()
+                    normalize_part_number(_text(decision.get("mpn"))), set()
                 )
                 related_boms = [
                     {
@@ -622,7 +624,7 @@ def build_decision_center(
                 decision.pop("context_analysis_id", None)
             else:
                 related_ids = part_analysis_ids.get(
-                    _text(decision.get("mpn")).casefold(), set()
+                    normalize_part_number(_text(decision.get("mpn"))), set()
                 )
                 related_boms = [
                     {

@@ -115,6 +115,9 @@ class DecisionPacketWorkflowTests(unittest.TestCase):
         self.assertIn('"Record verified inventory"', packet)
         self.assertIn('"Record mitigation and close alert"', packet)
         self.assertIn('"Review saved comparison and datasheet evidence"', packet)
+        self.assertIn('"Search current supplier evidence"', packet)
+        self.assertIn("exact_supplier_evidence", packet)
+        self.assertIn("No saved BOM is currently linked to this alert.", packet)
         self.assertIn('return_page="Engineering Decisions"', packet)
         self.assertIn("return_decision_id=decision_id", packet)
         self.assertNotIn('"Decision Summary", "Evidence", "Engineering Notes"', packet)
@@ -122,6 +125,7 @@ class DecisionPacketWorkflowTests(unittest.TestCase):
         self.assertNotIn('label="Estimated Effort"', packet)
         self.assertIn("max-width: 1440px !important", NAV_RECOVERY)
         self.assertIn(".st-key-cadivor_decision_packet_shell", NAV_RECOVERY)
+        self.assertIn("width: 100% !important", NAV_RECOVERY)
 
     def test_alternative_finder_returns_to_the_exact_open_decision(self):
         self.assertIn("ALT_FINDER_RETURN_DECISION_ID_KEY", NAVIGATION)
