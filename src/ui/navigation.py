@@ -932,6 +932,25 @@ def render_command_nav_triggers(commands: list[dict]) -> None:
     st.markdown(
         """
         <style id="cadivor-command-nav-triggers" data-cadivor-layout-style="true">
+        /* A saved BOM can add one command per record. Keep all hidden command
+           buttons inside a single zero-flow host so their Streamlit wrappers
+           never reserve a stack of blank rows above the active page. */
+        section[data-testid="stMain"] [data-testid="stVerticalBlock"] > [data-testid="stLayoutWrapper"]:has([class*="st-key-cvcc_nav_triggers_host"]),
+        section[data-testid="stMain"] [data-testid="stVerticalBlock"] > div[data-testid="stElementContainer"]:has([class*="st-key-cvcc_nav_triggers_host"]),
+        [class*="st-key-cvcc_nav_triggers_host"] {
+          position:absolute!important;
+          left:0!important;
+          top:0!important;
+          width:0!important;
+          height:0!important;
+          min-height:0!important;
+          max-height:0!important;
+          margin:0!important;
+          padding:0!important;
+          overflow:hidden!important;
+          flex:0 0 0!important;
+          pointer-events:none!important;
+        }
         [class*="st-key-cvcc_nav_"] {
           position: absolute !important;
           left: -10000px !important;
@@ -945,14 +964,15 @@ def render_command_nav_triggers(commands: list[dict]) -> None:
         """,
         unsafe_allow_html=True,
     )
-    for command in triggers[:60]:
-        safe_key = str(command.get("id") or "").replace("-", "_")
-        page = str(command.get("nav_page") or command.get("page") or "")
-        params = dict(command.get("nav_params") or {})
-        internal_nav_button(
-            "Open",
-            page,
-            key=f"cvcc_nav_{safe_key}",
-            **params,
-        )
+    with st.container(key="cvcc_nav_triggers_host"):
+        for command in triggers[:60]:
+            safe_key = str(command.get("id") or "").replace("-", "_")
+            page = str(command.get("nav_page") or command.get("page") or "")
+            params = dict(command.get("nav_params") or {})
+            internal_nav_button(
+                "Open",
+                page,
+                key=f"cvcc_nav_{safe_key}",
+                **params,
+            )
 

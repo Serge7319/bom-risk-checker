@@ -95,6 +95,46 @@ class LayoutStyleHostTests(unittest.TestCase):
         self.assertIn("<div class='cv-pa-recommendation-v2'>", markup)
         self.assertNotIn('data-cadivor-layout-style="true"', markup)
 
+    def test_command_palette_buttons_share_one_non_flow_host(self):
+        source = (ROOT / "src/ui/navigation.py").read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        function = next(
+            node for node in tree.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name == "render_command_nav_triggers"
+        )
+        host_with = next(
+            node for node in ast.walk(function)
+            if isinstance(node, ast.With)
+            and any(
+                isinstance(item.context_expr, ast.Call)
+                and isinstance(item.context_expr.func, ast.Attribute)
+                and isinstance(item.context_expr.func.value, ast.Name)
+                and item.context_expr.func.value.id == "st"
+                and item.context_expr.func.attr == "container"
+                and any(
+                    keyword.arg == "key"
+                    and isinstance(keyword.value, ast.Constant)
+                    and keyword.value.value == "cvcc_nav_triggers_host"
+                    for keyword in item.context_expr.keywords
+                )
+                for item in node.items
+            )
+        )
+        self.assertTrue(
+            any(
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id == "internal_nav_button"
+                for node in ast.walk(host_with)
+            ),
+            "Hidden palette buttons must stay inside the shared host.",
+        )
+        self.assertIn(
+            'stVerticalBlock"] > [data-testid="stLayoutWrapper"]:has([class*="st-key-cvcc_nav_triggers_host"])',
+            source,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
