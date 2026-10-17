@@ -113,12 +113,19 @@ def test_runtime_owns_shared_route_body_host_without_rewriting_pages():
 def test_route_body_host_clears_and_enters_without_stacking(monkeypatch):
     host = _Empty()
     session = _Session()
-    fake_st = types.SimpleNamespace(empty=lambda: host, session_state=session)
+    empty_calls = []
+
+    def empty():
+        empty_calls.append(True)
+        return host
+
+    fake_st = types.SimpleNamespace(empty=empty, session_state=session)
     monkeypatch.setattr("src.ui.route_body.st", fake_st)
 
     claimed = claim_authenticated_route_body("Monitoring")
     assert claimed is host
-    assert host.cleared == 1
+    assert host.cleared == 0
+    assert len(empty_calls) == 1
     enter_authenticated_route_body("Monitoring")
     assert host.entered == 1
     assert session[ROUTE_BODY_HOST_STATE_KEY] is host
@@ -127,12 +134,18 @@ def test_route_body_host_clears_and_enters_without_stacking(monkeypatch):
     enter_authenticated_route_body("Monitoring")
     assert host.entered == 1
 
+    # A same-page rerun reuses the mounted placeholder without emptying it.
+    claim_authenticated_route_body("Monitoring")
+    assert host.cleared == 0
+    assert len(empty_calls) == 1
+
     exit_authenticated_route_body()
     assert host.exited == 1
     assert ROUTE_BODY_CM_STATE_KEY not in session
 
     claim_authenticated_route_body("Reports")
-    assert host.cleared == 2
+    assert host.cleared == 1
+    assert len(empty_calls) == 1
 
 
 def test_home_to_alerts_one_push_then_back_and_forward_zero_restore_pushes(monkeypatch):
@@ -428,6 +441,7 @@ def test_repeated_route_ownership_does_not_stack_back_controls():
     body = _source("src/ui/route_body.py")
     assert "host.empty()" in body
     assert "without CSS hiding" in body
+    assert "previous_route != route_key" in body
     nav = _source("src/ui/navigation.py")
     assert "commit_navigation_query_params" in nav
     assert "LAST_HISTORY_PUSH_PAGE_KEY" in nav
@@ -443,3 +457,11 @@ def test_repeated_route_ownership_does_not_stack_back_controls():
     assert "left:-10000px!important" in auth_gate
     assert "Keep the Back/Forward bridge mounted" in auth_gate
     assert "display:none can" in auth_gate
+
+
+def test_same_page_menu_selection_does_not_arm_opening_cover():
+    navigation_src = _source("src/ui/navigation.py")
+    nav = navigation_src.split("def navigate_to", 1)[1].split(
+        "def inject_nav_scroll_reset", 1
+    )[0]
+    assert "if arm_opening and current_page != page:" in nav

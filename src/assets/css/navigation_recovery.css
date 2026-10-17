@@ -300,7 +300,7 @@ section[data-testid="stMain"] .main .block-container:has(.st-key-decision_packet
   justify-self: stretch;
   gap: 22px;
   box-sizing: border-box;
-  margin: 0 0 2px;
+  margin: 0 0 18px !important;
   padding: 16px 18px;
   border: 1px solid #d8e2ef;
   border-radius: 14px;
@@ -317,8 +317,8 @@ section[data-testid="stMain"] .main .block-container:has(.st-key-decision_packet
 .st-key-cadivor_decision_packet_shell .cv-dp-steps li:not(:last-child)::after {
   position: absolute;
   top: 16px;
-  left: calc(100% + 8px);
-  width: calc(100% - 28px);
+  left: 32px;
+  right: -14px;
   height: 2px;
   background: #d6e0ed;
   content: "";

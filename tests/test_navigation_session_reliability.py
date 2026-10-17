@@ -39,3 +39,11 @@ def test_page_hop_calls_the_authenticated_session_guard():
     hop = _source("src/ui/navigation.py").split("def navigate_to", 1)[1]
     assert "authenticated_in_app_session" in hop
     assert "cadivor_explicit_logout" not in hop.split("def inject_nav_scroll_reset", 1)[0]
+
+
+def test_reselecting_current_route_does_not_arm_opening_transition():
+    navigation = _source("src/ui/navigation.py")
+    navigate = navigation.split("def navigate_to", 1)[1].split(
+        "def inject_nav_scroll_reset", 1
+    )[0]
+    assert "if arm_opening and current_page != page:" in navigate
