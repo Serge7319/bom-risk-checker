@@ -6669,9 +6669,7 @@ def run_authenticated_app() -> None:
             normalize_supplier_offer_records,
             persist_sourcing_update,
             procurement_page_header_html,
-            procurement_part_summary_html,
-            procurement_recommendation_html,
-            procurement_summary_cards_html,
+            procurement_workspace_panels_html,
             procurement_details_display_frame,
             supplier_comparison_dataframe,
             supplier_offer_override,
@@ -6730,7 +6728,6 @@ def run_authenticated_app() -> None:
                 unsafe_allow_html=True,
             )
             st.markdown(procurement_page_header_html(), unsafe_allow_html=True)
-            reveal_authenticated_page_body("Procurement Advisor")
 
             mpn_options = []
             for row in procurement_recommendations:
@@ -6792,6 +6789,16 @@ def run_authenticated_app() -> None:
                 (row for row in procurement_recommendations if row.get("Part Number") == focus_mpn),
                 None,
             )
+            if focus_recommendation is None:
+                generated_recommendations = build_procurement_advisor_for_page(
+                    analyses=[], parts=[focus]
+                )["recommendations"]
+                focus_recommendation = generated_recommendations[0] if generated_recommendations else None
+            comparison = distributor_comparison(
+                focus.get("supplier_offers"),
+                mpn=focus_mpn,
+                bom_quantity=(focus_recommendation or {}).get("Required Quantity") or focus.get("quantity"),
+            )
 
             if mpn_options:
                 selector_col, edit_col = st.columns([0.76, 0.24], vertical_alignment="bottom")
@@ -6823,11 +6830,15 @@ def run_authenticated_app() -> None:
                         editor_open = not editor_open
 
                 st.markdown(
-                    procurement_part_summary_html(
-                        focus, focus_recommendation, focus_analysis
+                    procurement_workspace_panels_html(
+                        focus,
+                        focus_recommendation,
+                        focus_analysis,
+                        comparison,
                     ),
                     unsafe_allow_html=True,
                 )
+                reveal_authenticated_page_body("Procurement Advisor")
 
                 if editor_open:
                     st.markdown(
@@ -6929,29 +6940,6 @@ def run_authenticated_app() -> None:
                 if saved_count:
                     saved_count = int(saved_count)
                     st.success(f"Sourcing details saved for {saved_count} saved BOM component record(s).")
-
-                if focus_recommendation is None:
-                    focus_recommendation = build_procurement_advisor_for_page(
-                        analyses=[], parts=[focus]
-                    )["recommendations"]
-                    focus_recommendation = focus_recommendation[0] if focus_recommendation else None
-                comparison = distributor_comparison(
-                    focus.get("supplier_offers"),
-                    mpn=focus_mpn,
-                    bom_quantity=(focus_recommendation or {}).get("Required Quantity") or focus.get("quantity"),
-                )
-                st.markdown(
-                    procurement_recommendation_html(
-                        focus, focus_recommendation, comparison
-                    ),
-                    unsafe_allow_html=True,
-                )
-                st.markdown(
-                    procurement_summary_cards_html(
-                        focus, focus_recommendation, comparison
-                    ),
-                    unsafe_allow_html=True,
-                )
 
                 st.markdown(
                     "<div class='cv-pa-section-head'><div><h2>Supplier options</h2>"
@@ -7088,6 +7076,7 @@ def run_authenticated_app() -> None:
                         "No supplier quotes are saved for this part yet. Add verified sourcing details or rerun the BOM analysis to refresh supplier offers."
                     )
             else:
+                reveal_authenticated_page_body("Procurement Advisor")
                 st.info("Upload or open a saved BOM to add components to procurement review.")
 
             with st.expander("More procurement actions and all components", expanded=False):

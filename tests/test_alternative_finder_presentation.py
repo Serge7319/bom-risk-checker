@@ -340,6 +340,40 @@ class ReplacementCandidateDecisionTests(unittest.TestCase):
         self.assertIn("https://www.digikey.com/en/products/detail/onsemi/LM358DR2G/123", html_text)
         self.assertNotIn("qualified", html_text.casefold())
 
+    def test_mcu_pin_package_and_isa_mismatches_are_critical_and_red(self):
+        from src.ui.approved_pages import _candidate_detail_html
+
+        original = {
+            "manufacturer_part_number": "MC68HC11E1CFNE2",
+            "description": "8-bit HC11 microcontroller",
+            "architecture": "HC11",
+            "package": "52-LCC (J-Lead)",
+            "pin_count": 52,
+        }
+        row = {
+            "Alternative Part": "W77IC32A25PL",
+            "description": "Turbo-51 microcontroller",
+            "architecture": "8051 Turbo-51 Core",
+            "package": "44-LCC (J-Lead)",
+            "Classification": "Supplier-listed similar",
+            "Lifecycle": "Active",
+        }
+
+        html_text = _candidate_detail_html(row, original)
+
+        self.assertIn("CRITICAL: Physical footprint change required.", html_text)
+        self.assertIn(
+            "CRITICAL: Software/Firmware binary incompatible. Firmware rewrite required.",
+            html_text,
+        )
+        self.assertIn("NOT A DROP-IN REPLACEMENT", html_text)
+        self.assertGreaterEqual(html_text.count("cv-compat-critical-row"), 3)
+        pin_count_row = html_text.split("<td>Pin count</td>", 1)[1].split(
+            "</tr>", 1
+        )[0]
+        self.assertIn("52", pin_count_row)
+        self.assertIn("44", pin_count_row)
+
 
 class TechnicalFindingLabelTests(unittest.TestCase):
     def test_wider_supply_range_covers_the_original_span(self):

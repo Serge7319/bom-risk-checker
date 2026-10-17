@@ -769,6 +769,34 @@ def procurement_summary_cards_html(
     )
 
 
+def procurement_workspace_panels_html(
+    part: Mapping[str, Any],
+    recommendation: Mapping[str, Any] | None,
+    analysis: Mapping[str, Any] | None = None,
+    price_comparison: Mapping[str, Any] | None = None,
+) -> str:
+    """Return the mockup's selected-part, recommendation, and KPI panels together.
+
+    Keeping these related blocks in one Streamlit HTML host prevents a page
+    rerun from leaving the selector and supplier table mounted while dropping
+    the intervening custom-markup elements.
+    """
+    import re
+
+    fragments = (
+        procurement_part_summary_html(part, recommendation, analysis),
+        procurement_recommendation_html(part, recommendation, price_comparison),
+        procurement_summary_cards_html(part, recommendation, price_comparison),
+    )
+    styles: list[str] = []
+    body: list[str] = []
+    style_pattern = re.compile(r"<style\b[^>]*>(.*?)</style\s*>", re.IGNORECASE | re.DOTALL)
+    for fragment in fragments:
+        styles.extend(style_pattern.findall(fragment))
+        body.append(style_pattern.sub("", fragment))
+    return "<style>" + "\n".join(styles) + "</style>" + "".join(body)
+
+
 def procurement_details_display_frame(recommendation_df: pd.DataFrame) -> pd.DataFrame:
     """Prepare the all-components table without mixing text into numeric Arrow columns."""
     frame = recommendation_df.copy()

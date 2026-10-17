@@ -29,6 +29,12 @@ from src.saved_bom_project import (
     split_project_and_bom,
 )
 from src.ui.cadivor_design_system.icons import lucide
+from src.compatibility_gate import (
+    CRITICAL_FIRMWARE_WARNING,
+    CRITICAL_PHYSICAL_WARNING,
+    assess_part_compatibility,
+    comparison_row_part_values,
+)
 from src.ui.navigation import (
     internal_nav_button,
     navigate_to,
@@ -236,13 +242,30 @@ def _candidate_part_payload(row: dict[str, Any]) -> dict[str, Any]:
     return {
         "description": _part_field(row, "description", "Description"),
         "manufacturer": _part_field(row, "Manufacturer", "manufacturer"),
-        "package": _part_field(row, "package", "Package"),
-        "pin_count": row.get("pin_count") or row.get("Pin Count") or 0,
+        "package": _part_field(row, "package", "Package", "Package / Case", "package_case"),
+        "pin_count": _first(
+            row,
+            "pin_count",
+            "Pin Count",
+            "Number of Pins",
+            "number_of_pins",
+            "pins",
+            fallback=0,
+        ),
         "mounting_style": _part_field(row, "mounting_style", "Mounting Style"),
         "voltage_range": _part_field(row, "voltage_range", "Voltage Range"),
         "temperature_range": _part_field(row, "temperature_range", "Temperature Range"),
         "channel_count": row.get("channel_count") or row.get("Channel Count") or 0,
-        "architecture": _part_field(row, "architecture", "Architecture"),
+        "architecture": _part_field(
+            row,
+            "architecture",
+            "Architecture",
+            "Device family / architecture",
+            "device_family_architecture",
+            "device_family",
+            "core",
+            "ISA",
+        ),
         "lifecycle_status": _part_field(row, "Lifecycle", "lifecycle_status"),
         "stock_total": row.get("Stock", row.get("stock_total")),
         "unit_price": row.get("unit_price", row.get("Unit Price")),
@@ -259,7 +282,17 @@ def _candidate_part_payload(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _comparison_table(rows: list[tuple]) -> str:
+def _comparison_table(
+    rows: list[tuple], compatibility: dict[str, Any] | None = None
+) -> str:
+    compatibility = compatibility if isinstance(compatibility, dict) else {}
+    critical_keys = set()
+    if compatibility.get("package_mismatch"):
+        critical_keys.add("package")
+    if compatibility.get("pin_count_mismatch"):
+        critical_keys.add("pin count")
+    if compatibility.get("architecture_mismatch"):
+        critical_keys.add("architecture")
     body = []
     for row in rows:
         label, original, original_source, candidate, candidate_source, status = row[:6]
@@ -276,8 +309,26 @@ def _comparison_table(rows: list[tuple]) -> str:
             "Needs review": "review",
             "Known conflict": "conflict",
         }.get(finding, "unknown")
+        normalized_label = str(label or "").casefold()
+        critical = (
+            ("package" in critical_keys and "package" in normalized_label)
+            or (
+                "pin count" in critical_keys
+                and normalized_label in {"pin count", "number of pins", "pins"}
+            )
+            or (
+                "architecture" in critical_keys
+                and (
+                    "architecture" in normalized_label
+                    or "device family" in normalized_label
+                    or normalized_label in {"core", "instruction set"}
+                )
+            )
+        )
+        if critical:
+            kind = "critical"
         body.append(
-            "<tr>"
+            f"<tr{' class=\'cv-compat-critical-row\'' if critical else ''}>"
             f"<td>{_esc(label)}</td>"
             f"<td>{_value_cell(original, original_source, note)}</td>"
             f"<td>{_value_cell(candidate, candidate_source)}</td>"
@@ -298,6 +349,7 @@ def _candidate_detail_html(row: dict[str, Any], original: dict[str, Any] | None 
 
     original = original if isinstance(original, dict) else {}
     candidate = _candidate_part_payload(row)
+    compatibility = assess_part_compatibility(original, candidate)
     mpn = _candidate_mpn(row)
     original_mpn = _part_field(original, "manufacturer_part_number", "mpn") or "Original"
     classification = _part_field(row, "Classification", "Category")
@@ -317,9 +369,27 @@ def _candidate_detail_html(row: dict[str, Any], original: dict[str, Any] | None 
             candidate_value = ""
         status = str(item.get("Status") or "")
         evidence = str(item.get("Evidence") or "")
+        if key == "package" and compatibility.get("package_mismatch"):
+            original_value = str(compatibility.get("source_package") or original_value)
+            candidate_value = str(compatibility.get("candidate_package") or candidate_value)
+        if key == "pin_count" and compatibility.get("pin_count_mismatch"):
+            original_value = str(compatibility.get("source_pin_count") or original_value)
+            candidate_value = str(compatibility.get("candidate_pin_count") or candidate_value)
+        if key == "architecture" and compatibility.get("architecture_mismatch"):
+            original_value = str(compatibility.get("source_architecture") or original_value)
+            candidate_value = str(compatibility.get("candidate_architecture") or candidate_value)
         if key == "architecture" and status == "Different" and original_value and candidate_value:
-            status = "Needs review"
-            evidence = "The supplier category labels differ. This is not a verified functional conflict."
+            if compatibility.get("architecture_mismatch"):
+                evidence = CRITICAL_FIRMWARE_WARNING
+            else:
+                status = "Needs review"
+                evidence = "The supplier category labels differ. This is not a verified functional conflict."
+        if key == "package" and compatibility.get("package_mismatch"):
+            status = "Different"
+            evidence = CRITICAL_PHYSICAL_WARNING
+        if key == "pin_count" and compatibility.get("pin_count_mismatch"):
+            status = "Different"
+            evidence = CRITICAL_PHYSICAL_WARNING
         if key == "voltage_range" and original_value and candidate_value:
             from src.parametric_compare import supply_range_finding
 
@@ -358,11 +428,60 @@ def _candidate_detail_html(row: dict[str, Any], original: dict[str, Any] | None 
             str(notes.get(key) or ""),
             evidence,
         ))
-        conflicts = [
-            item[0]
-            for item in technical
-            if _finding_label(item[5], item[1], item[3], item[7] if len(item) > 7 else "")[0] == "Known conflict"
-        ]
+    # Some supplier matrices omit identity fields even when the returned part
+    # records contain them. Keep a critical mismatch visible in the detail table.
+    present_labels = {str(item[0] or "").casefold() for item in technical}
+    present_keys = set(present_labels)
+    if any("package" in item for item in present_labels):
+        present_keys.add("package")
+    if any("pin count" in item or "number of pins" in item for item in present_labels):
+        present_keys.add("pin count")
+    if any("architecture" in item or "device family" in item for item in present_labels):
+        present_keys.add("architecture")
+    for key, label, left, right, mismatch, evidence in (
+        (
+            "package",
+            "Package",
+            compatibility.get("source_package"),
+            compatibility.get("candidate_package"),
+            compatibility.get("package_mismatch"),
+            CRITICAL_PHYSICAL_WARNING,
+        ),
+        (
+            "pin count",
+            "Pin count",
+            compatibility.get("source_pin_count"),
+            compatibility.get("candidate_pin_count"),
+            compatibility.get("pin_count_mismatch"),
+            CRITICAL_PHYSICAL_WARNING,
+        ),
+        (
+            "architecture",
+            "Device family / architecture",
+            compatibility.get("source_architecture"),
+            compatibility.get("candidate_architecture"),
+            compatibility.get("architecture_mismatch"),
+            CRITICAL_FIRMWARE_WARNING,
+        ),
+    ):
+        if mismatch and key not in present_keys:
+            technical.append(
+                (
+                    label,
+                    str(left or ""),
+                    _field_source(original, key),
+                    str(right or ""),
+                    _field_source(candidate, key, candidate.get("source") or "Supplier record"),
+                    "Different",
+                    "",
+                    evidence,
+                )
+            )
+    conflicts = [
+        item[0]
+        for item in technical
+        if _finding_label(item[5], item[1], item[3], item[7] if len(item) > 7 else "")[0] == "Known conflict"
+    ]
     if conflicts:
         fit = (
             "Technical fit is not established. Known conflicts: "
@@ -473,13 +592,42 @@ def _candidate_detail_html(row: dict[str, Any], original: dict[str, Any] | None 
         f'<div class="cv-candidate-detail" data-candidate-mpn="{_esc(mpn)}">'
         f'<p class="cv-candidate-title">{_esc(mpn)} compared with {_esc(original_mpn)}</p>'
         f"<p class='cv-candidate-unverified'>{_esc(relationship)} {_esc(fit)}</p>"
+        f"{_compatibility_banner_html(compatibility)}"
         "<p class='cv-candidate-section'>Does it technically fit?</p>"
-        f"{_comparison_table(technical)}"
+        f"{_comparison_table(technical, compatibility)}"
         "<p class='cv-candidate-section'>Supply and lifecycle risk</p>"
         f"{_comparison_table(supply_rows)}"
         f"{risk_html}"
         f"<p><strong>Next step.</strong> {_esc(next_step)}</p>"
         f"<p class='cv-candidate-links'>{links}</p>"
+        "</div>"
+    )
+
+
+def _compatibility_banner_html(compatibility: dict[str, Any] | None) -> str:
+    """Render prominent compatibility blockers and missing-evidence gates."""
+    compatibility = compatibility if isinstance(compatibility, dict) else {}
+    critical = list(compatibility.get("critical_warnings") or [])
+    review = list(compatibility.get("review_warnings") or [])
+    if critical:
+        return (
+            "<div class='cv-compat-banner critical' role='alert'>"
+            "<strong>CRITICAL COMPATIBILITY BLOCK — NOT A DROP-IN REPLACEMENT</strong>"
+            f"<ul>{''.join(f'<li>{_esc(item)}</li>' for item in critical)}</ul>"
+            "<span>Do not approve this candidate as a drop-in replacement. A physical redesign and/or firmware rewrite may be required.</span>"
+            "</div>"
+        )
+    if review:
+        return (
+            "<div class='cv-compat-banner review' role='status'>"
+            "<strong>DROP-IN COMPATIBILITY NOT VERIFIED</strong>"
+            f"<ul>{''.join(f'<li>{_esc(item)}</li>' for item in review)}</ul>"
+            "</div>"
+        )
+    return (
+        "<div class='cv-compat-banner review' role='status'>"
+        "<strong>Engineering review required</strong>"
+        f"<span>{_esc(compatibility.get('drop_in_status') or 'Electrical fit and pinout still require engineering review.')}</span>"
         "</div>"
     )
 
@@ -585,6 +733,8 @@ def begin_approved_page() -> None:
         .cv-ap-table{width:100%;border-collapse:separate;border-spacing:0}
         .cv-ap-table th{text-align:left;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#94a3b8;padding:8px 10px}
         .cv-ap-table td{padding:8px 10px;border-top:1px solid #eef2f7;font-size:13px;vertical-align:middle}
+        .cv-ap-table td.cv-compare-compat-critical{background:#fff1f2!important;color:#991b1b!important;font-weight:800;border-top-color:#fecdd3!important}
+        .cv-ap-table td.cv-compare-diff{background:#eff6ff;color:#1d4ed8}
         .cv-part-photo{box-sizing:border-box;flex:0 0 var(--cv-part-photo-size,72px);width:var(--cv-part-photo-size,72px);height:var(--cv-part-photo-size,72px);border-radius:12px;background:#f1f5f9;border:1px solid #e2e8f0;display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;overflow:hidden;margin-right:10px;color:#64748b}
         .cv-part-photo img{display:block;width:100%;height:100%;padding:4px;box-sizing:border-box;object-fit:contain}
         .cv-part-photo__placeholder{display:flex;width:100%;height:100%;align-items:center;justify-content:center}
@@ -834,7 +984,20 @@ def begin_approved_page() -> None:
         .cv-finding.compatible{background:#dcfce7;color:#166534}
         .cv-finding.review{background:#fef3c7;color:#92400e}
         .cv-finding.conflict{background:#ffe4e6;color:#9f1239}
+        .cv-finding.critical{background:#991b1b;color:#fff}
         .cv-finding.unknown{background:#f1f5f9;color:#475569}
+        .cv-candidate-compare tr.cv-compat-critical-row td{background:#fff1f2!important;color:#9f1239;border-top-color:#fecdd3;font-weight:700}
+        .cv-candidate-compare tr.cv-compat-critical-row small{color:#9f1239}
+        .cv-compat-banner{margin:10px 0 14px;padding:12px 14px;border-radius:10px;font-size:13px;line-height:1.45}
+        .cv-compat-banner strong{display:block;margin-bottom:5px;font-size:13px;letter-spacing:.015em}
+        .cv-compat-banner ul{margin:4px 0 6px;padding-left:20px}
+        .cv-compat-banner.critical{color:#7f1d1d;background:#fff1f2;border:2px solid #dc2626;box-shadow:0 0 0 2px rgba(220,38,38,.08)}
+        .cv-compat-banner.critical li{color:#991b1b;font-weight:750}
+        .cv-compat-banner.review{color:#854d0e;background:#fffbeb;border:1px solid #f59e0b}
+        .cv-compat-pill{display:inline-flex;align-items:center;border-radius:999px;padding:3px 8px;font-size:10px;font-weight:850;letter-spacing:.02em}
+        .cv-compat-pill.critical{color:#fff;background:#b91c1c}
+        .cv-compat-pill.review{color:#854d0e;background:#fef3c7}
+        .cv-compat-inline-critical{margin-top:4px;color:#991b1b;font-size:11px;font-weight:750;line-height:1.35}
         .cv-candidate-unverified{margin:0 0 10px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:8px 10px;font-size:13px}
         .cv-candidate-verified{margin:0 0 10px;color:#1e3a8a;background:#eff6ff;border:1px solid #dbeafe;border-radius:10px;padding:8px 10px;font-size:13px}
         .cv-candidate-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 18px;margin:0}
@@ -3725,6 +3888,14 @@ def _render_bom_replacement_approvals(
         return
     if not candidate_mpn:
         return
+    compatibility = assess_part_compatibility(
+        original,
+        _candidate_part_payload(candidate),
+    )
+    compatibility_blocked = bool(
+        compatibility.get("blocked_from_drop_in_approval")
+        or compatibility.get("requires_acknowledgement")
+    )
 
     auth_user = st.session_state.get("user")
     user_id = (
@@ -3800,7 +3971,13 @@ def _render_bom_replacement_approvals(
             + ", ".join(approved_names)
         )
     if current:
-        st.success(f"{candidate_mpn} is approved for {project_name}.")
+        if compatibility_blocked:
+            st.error(
+                f"A saved approval for {candidate_mpn} is blocked by the current compatibility gate. "
+                "Review the mismatch and remove the saved approval if it is no longer valid."
+            )
+        else:
+            st.success(f"{candidate_mpn} is approved for {project_name}.")
         saved_note = str(current.get("engineering_note") or "").strip()
         if saved_note:
             st.caption(f"Saved review note: {saved_note}")
@@ -3814,6 +3991,8 @@ def _render_bom_replacement_approvals(
             "This supplier record is marked obsolete, discontinued, or end of life. "
             "Cadivor will not allow it to be approved as a replacement."
         )
+    if compatibility.get("critical_warnings") or compatibility.get("review_warnings"):
+        st.markdown(_compatibility_banner_html(compatibility), unsafe_allow_html=True)
     st.caption(
         "Saved approvals stay with this BOM across analysis reruns and appear in its BOM Risk and Alternatives tabs."
     )
@@ -3829,8 +4008,18 @@ def _render_bom_replacement_approvals(
         height=72,
         key=f"cadivor_approved_alternative_note_{widget_suffix}",
     )
-    can_approve = not lifecycle_blocked and (current is not None or len(approved_names) < 3)
-    if not can_approve:
+    can_approve = (
+        not lifecycle_blocked
+        and not compatibility_blocked
+        and (current is not None or len(approved_names) < 3)
+    )
+    if compatibility_blocked:
+        st.warning(
+            "Approval is disabled until package geometry, pin count, and any required processor architecture are verified with matching evidence."
+        )
+    elif lifecycle_blocked:
+        pass
+    elif current is None and len(approved_names) >= 3:
         st.warning("Three alternatives are already approved for this component. Remove one before approving another.")
 
     action_cols = st.columns([1, 1] if current else [1])
@@ -3851,6 +4040,9 @@ def _render_bom_replacement_approvals(
                 use_container_width=True,
             )
 
+    if save_clicked and (lifecycle_blocked or compatibility_blocked):
+        st.error("Cadivor blocked this approval because the candidate failed compatibility or lifecycle checks.")
+        return
     if not save_clicked and not remove_clicked:
         return
 
@@ -4186,13 +4378,45 @@ def render_replacement_search() -> None:
     header = st.columns([2.4, 1.3, 1.8, 0.9, 0.8, 0.9, 0.7])
     for column, label in zip(
         header,
-        ("Candidate MPN", "Manufacturer", "Parametric fit", "Lifecycle", "Stock", "Suppliers", "Risk"),
+        ("Candidate MPN", "Manufacturer", "Supplier relationship", "Lifecycle", "Stock", "Suppliers", "Risk"),
     ):
         column.markdown(f"<div class='cv-ap-meta'>{label}</div>", unsafe_allow_html=True)
     selected = str(st.session_state.get("cadivor_replacement_open_mpn") or "")
     for index, row in enumerate(shown):
         candidate_mpn = _candidate_mpn(row)
         is_open = candidate_mpn == selected
+        compatibility = assess_part_compatibility(
+            original,
+            _candidate_part_payload(row),
+        )
+        if compatibility.get("critical_warnings"):
+            compatibility_label = (
+                "<span class='cv-compat-pill critical'>NOT DROP-IN</span>"
+                "<div class='cv-compat-inline-critical'>"
+                + "<br>".join(_esc(item) for item in compatibility["critical_warnings"])
+                + "</div>"
+            )
+        elif compatibility.get("review_warnings"):
+            compatibility_label = (
+                "<span class='cv-compat-pill review'>NOT VERIFIED</span>"
+            )
+        else:
+            compatibility_label = (
+                "<span class='cv-compat-pill review'>ENGINEERING REVIEW</span>"
+            )
+        relationship_label = _candidate_field(
+            row,
+            "Classification",
+            "Category",
+            "fit",
+            "parametric_fit",
+            fallback="Supplier catalog result",
+        )
+        relationship_html = (
+            f"{compatibility_label}<small>{relationship_label}</small>"
+            if compatibility.get("critical_warnings") or compatibility.get("review_warnings")
+            else relationship_label
+        )
         level = _candidate_field(row, "Estimated Risk", "risk_level", "risk", fallback="Unknown")
         pill = ""
         if "high" in level.casefold():
@@ -4232,7 +4456,7 @@ def render_replacement_search() -> None:
                         st.session_state["cadivor_replacement_open_mpn"] = "" if is_open else candidate_mpn
                         st.rerun()
                 cells[1].markdown(_candidate_field(row, "Manufacturer", "manufacturer"))
-                cells[2].markdown(_candidate_field(row, "Classification", "Category", "fit", "parametric_fit"))
+                cells[2].markdown(relationship_html, unsafe_allow_html=True)
                 cells[3].markdown(_candidate_field(row, "Lifecycle", "lifecycle_status", "lifecycle"))
                 cells[4].markdown(_candidate_field(row, "Stock", "stock_total", "stock_available"))
                 cells[5].markdown(_candidate_field(row, "Supplier", "supplier_count", "supplier"))
@@ -4517,6 +4741,7 @@ def render_compare_live() -> None:
     card_c = comparison.get("part_c") if isinstance(comparison.get("part_c"), dict) else {}
     rows = comparison.get("rows") if isinstance(comparison.get("rows"), list) else []
     body = []
+    rendered_compatibility_labels: set[str] = set()
     missing = {"", "—", "-", "–", "not available", "not recorded", "n/a", "none", "nan"}
 
     def _recorded(row: dict[str, Any], *keys: str) -> str:
@@ -4525,6 +4750,56 @@ def render_compare_live() -> None:
             if text and text.casefold() not in missing:
                 return text
         return ""
+
+    def _compare_part_evidence(card: dict[str, Any], slot: str) -> dict[str, Any]:
+        part = {
+            "manufacturer_part_number": card.get("mpn") or "",
+            "manufacturer": card.get("manufacturer") or "",
+            "description": card.get("description") or "",
+            "package": card.get("package") or "",
+        }
+        part.update(
+            {
+                key: value
+                for key, value in comparison_row_part_values(rows, slot).items()
+                if value
+            }
+        )
+        return part
+
+    compatibility_by_slot: dict[str, dict[str, Any]] = {}
+    if comparison and card_a and card_b:
+        compare_original = _compare_part_evidence(card_a, "Part A")
+        compatibility_by_slot["Part B"] = assess_part_compatibility(
+            compare_original,
+            _compare_part_evidence(card_b, "Part B"),
+        )
+        if has_part_c and card_c:
+            compatibility_by_slot["Part C"] = assess_part_compatibility(
+                compare_original,
+                _compare_part_evidence(card_c, "Part C"),
+            )
+    compatibility_notices = []
+    for slot, card in (("Part B", card_b), ("Part C", card_c)):
+        assessment = compatibility_by_slot.get(slot, {})
+        if not assessment:
+            continue
+        mpn_label = _esc(card.get("mpn") or slot)
+        if assessment.get("critical_warnings"):
+            compatibility_notices.append(
+                "<div class='cv-compat-banner critical' role='alert'>"
+                f"<strong>{slot} · {mpn_label} — NOT A DROP-IN REPLACEMENT</strong>"
+                f"<ul>{''.join(f'<li>{_esc(item)}</li>' for item in assessment['critical_warnings'])}</ul>"
+                "Do not approve this as a drop-in replacement. A physical redesign and/or firmware rewrite may be required."
+                "</div>"
+            )
+        elif assessment.get("review_warnings"):
+            compatibility_notices.append(
+                "<div class='cv-compat-banner review' role='status'>"
+                f"<strong>{slot} · {mpn_label} — DROP-IN FIT NOT VERIFIED</strong>"
+                f"<ul>{''.join(f'<li>{_esc(item)}</li>' for item in assessment['review_warnings'])}</ul>"
+                "</div>"
+            )
 
     for row in rows[:24]:
         if not isinstance(row, dict):
@@ -4537,13 +4812,81 @@ def render_compare_live() -> None:
         raw_c = _recorded(row, "Part C", "part_c", "c", "value_c")
         if not raw_a and not raw_b and not raw_c:
             continue
-        value_a = _esc(raw_a or "Not recorded")
-        value_b = _esc(raw_b or "Not recorded")
-        highlight_b = " style='background:#eff6ff'" if raw_a != raw_b else ""
-        highlight_c = " style='background:#eff6ff'" if raw_c and raw_a != raw_c else ""
-        cells = [f"<td>{value_a}</td>", f"<td{highlight_b}>{value_b}</td>"]
+        label_key = label.casefold()
+
+        def critical_for(slot: str) -> bool:
+            assessment = compatibility_by_slot.get(slot, {})
+            if "package" in label_key:
+                return bool(assessment.get("package_mismatch"))
+            if label_key in {"pin count", "number of pins", "pins"}:
+                return bool(assessment.get("pin_count_mismatch"))
+            if "architecture" in label_key or label_key in {"device family", "core", "instruction set"}:
+                return bool(assessment.get("architecture_mismatch"))
+            return False
+
+        def compare_cell(value: str, slot: str, base_value: str) -> str:
+            critical = critical_for(slot)
+            if critical:
+                return f"<td class='cv-compare-compat-critical'>{_esc(value or 'Not recorded')}</td>"
+            if value and base_value != value:
+                return f"<td class='cv-compare-diff'>{_esc(value)}</td>"
+            return f"<td>{_esc(value or 'Not recorded')}</td>"
+
+        cells = [
+            f"<td>{_esc(raw_a or 'Not recorded')}</td>",
+            compare_cell(raw_b, "Part B", raw_a),
+        ]
         if has_part_c:
-            cells.append(f"<td{highlight_c}>{_esc(raw_c or 'Not recorded')}</td>")
+            cells.append(compare_cell(raw_c, "Part C", raw_a))
+        body.append(f"<tr><td>{_esc(label)}</td>{''.join(cells)}</tr>")
+        rendered_compatibility_labels.add(label_key)
+    compatibility_fields = (
+        ("package", "Package", "package_mismatch", "source_package", "candidate_package"),
+        ("pin count", "Pin count", "pin_count_mismatch", "source_pin_count", "candidate_pin_count"),
+        (
+            "architecture",
+            "Device family / architecture",
+            "architecture_mismatch",
+            "source_architecture",
+            "candidate_architecture",
+        ),
+    )
+    for normalized, label, mismatch_key, source_key, candidate_key in compatibility_fields:
+        already_rendered = any(
+            normalized in value
+            or (normalized == "pin count" and "number of pins" in value)
+            or (normalized == "architecture" and "device family" in value)
+            for value in rendered_compatibility_labels
+        )
+        if already_rendered or not any(
+            row.get(mismatch_key) for row in compatibility_by_slot.values()
+        ):
+            continue
+        source_assessment = compatibility_by_slot.get("Part B", {})
+        source_value = source_assessment.get(source_key)
+        part_b_assessment = compatibility_by_slot.get("Part B", {})
+        part_b_value = part_b_assessment.get(candidate_key)
+        if source_value in (None, ""):
+            source_value = "Not recorded"
+        if part_b_value in (None, ""):
+            part_b_value = "Not recorded"
+        part_b_cell = (
+            f"<td class='cv-compare-compat-critical'>{_esc(part_b_value)}</td>"
+            if part_b_assessment.get(mismatch_key)
+            else f"<td>{_esc(part_b_value)}</td>"
+        )
+        cells = [f"<td>{_esc(source_value)}</td>", part_b_cell]
+        if has_part_c:
+            part_c_assessment = compatibility_by_slot.get("Part C", {})
+            part_c_value = part_c_assessment.get(candidate_key)
+            if part_c_value in (None, ""):
+                part_c_value = "Not recorded"
+            part_c_cell = (
+                f"<td class='cv-compare-compat-critical'>{_esc(part_c_value)}</td>"
+                if part_c_assessment.get(mismatch_key)
+                else f"<td>{_esc(part_c_value)}</td>"
+            )
+            cells.append(part_c_cell)
         body.append(f"<tr><td>{_esc(label)}</td>{''.join(cells)}</tr>")
     ran = isinstance(result, dict) and str(result.get("status") or "") in {"completed", "failed"}
     error = str(result.get("error") if isinstance(result, dict) else "").strip()
@@ -4564,7 +4907,7 @@ def render_compare_live() -> None:
     name_b = _esc(card_b.get("mpn") or submitted_b or part_b or "Part B")
     submitted_c = str(result.get("part_c") or "") if isinstance(result, dict) else ""
     name_c = _esc(card_c.get("mpn") or submitted_c or part_c or "Part C")
-    notice = ""
+    notice = "".join(compatibility_notices)
     headers = f"<th>Parameter</th><th>{name_a}</th><th>{name_b}</th>"
     if has_part_c:
         headers += f"<th>{name_c}</th>"
