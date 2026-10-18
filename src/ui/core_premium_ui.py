@@ -139,6 +139,14 @@ def inject_workspace_geometry_final() -> None:
     from src.ui.sprint71_polish import inject_sprint71_polish
 
     inject_sprint71_polish()
+    # Monitoring action buttons and the alert row need the last word after
+    # shared polish reasserts Streamlit's secondary-button defaults.
+    monitoring_final_css = _load_css("monitoring_table_final.css")
+    if monitoring_final_css.strip():
+        st.markdown(
+            f'<style id="cadivor-monitoring-table-final" data-cadivor-layout-style="true">{monitoring_final_css}</style>',
+            unsafe_allow_html=True,
+        )
     # Keep the Engineering Reports header and action geometry aligned with the
     # actual Streamlit columns after shared button styles have loaded.
     st.markdown(
