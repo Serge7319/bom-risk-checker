@@ -282,3 +282,54 @@ html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_re
   border-color: #4f8df5 !important;
   background: #f4f8ff !important;
 }
+
+
+/* Keep Show filter pills inside their own area, with enough room for every
+   label. If the row gets narrow, wrap the controls before the period picker. */
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_filters .st-key-approved_monitoring_category_row > [data-testid="stVerticalBlock"] {
+  box-sizing: border-box !important;
+  width: 100% !important;
+  min-width: 0 !important;
+}
+
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_filters .st-key-approved_monitoring_category_row [data-testid="stHorizontalBlock"] {
+  display: flex !important;
+  flex-flow: row wrap !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: 8px !important;
+  width: 100% !important;
+  min-width: 0 !important;
+}
+
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_filters .st-key-approved_monitoring_category_row [data-testid="stHorizontalBlock"] > [data-testid="stColumn"],
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_filters .st-key-approved_monitoring_category_row [data-testid="stHorizontalBlock"] > [data-testid="column"] {
+  box-sizing: border-box !important;
+  display: flex !important;
+  flex: 0 0 auto !important;
+  width: max-content !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  padding: 0 !important;
+}
+
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_filters .st-key-approved_monitoring_category_row [class*="st-key-approved_monitoring_filter_"],
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_filters .st-key-approved_monitoring_category_row [class*="st-key-approved_monitoring_filter_"] [data-testid="stVerticalBlock"],
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_filters .st-key-approved_monitoring_category_row [class*="st-key-approved_monitoring_filter_"] [data-testid="stElementContainer"],
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_filters .st-key-approved_monitoring_category_row [class*="st-key-approved_monitoring_filter_"] .stButton {
+  box-sizing: border-box !important;
+  flex: 0 0 auto !important;
+  width: max-content !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+}
+
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_filters .st-key-approved_monitoring_category_row [class*="st-key-approved_monitoring_filter_"] .stButton > button {
+  box-sizing: border-box !important;
+  width: max-content !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  padding-right: 12px !important;
+  padding-left: 12px !important;
+  white-space: nowrap !important;
+}
