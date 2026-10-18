@@ -1,7 +1,7 @@
 /* Loaded after the shared button theme so the alert table keeps its mockup styling. */
 @media (min-width: 1101px) {
-  html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_monitoring .st-key-approved_monitoring_alert_card .cv-ap-monitoring-table-head,
-  html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_monitoring .st-key-approved_monitoring_alert_card [class*="st-key-approved_monitoring_alert_row_"] {
+  html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_alert_card .cv-ap-monitoring-table-head,
+  html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_alert_card [class*="st-key-approved_monitoring_alert_row_"] {
     box-sizing: border-box !important;
     width: calc(100% - 44px) !important;
     max-width: calc(100% - 44px) !important;
@@ -12,8 +12,8 @@
 }
 
 @media (min-width: 761px) and (max-width: 1100px) {
-  html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_monitoring .st-key-approved_monitoring_alert_card .cv-ap-monitoring-table-head,
-  html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_monitoring .st-key-approved_monitoring_alert_card [class*="st-key-approved_monitoring_alert_row_"] {
+  html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_alert_card .cv-ap-monitoring-table-head,
+  html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_alert_card [class*="st-key-approved_monitoring_alert_row_"] {
     box-sizing: border-box !important;
     width: calc(100% - 28px) !important;
     max-width: calc(100% - 28px) !important;
@@ -25,8 +25,8 @@
 
 /* Keep the existing small-screen table width and align header and rows. */
 @media (max-width: 760px) {
-  html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_monitoring .st-key-approved_monitoring_alert_card .cv-ap-monitoring-table-head,
-  html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_monitoring .st-key-approved_monitoring_alert_card [class*="st-key-approved_monitoring_alert_row_"] {
+  html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_alert_card .cv-ap-monitoring-table-head,
+  html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_alert_card [class*="st-key-approved_monitoring_alert_row_"] {
     box-sizing: border-box !important;
     width: 790px !important;
     min-width: 790px !important;
@@ -38,7 +38,7 @@
 
 /* The alert-row button is a secondary Streamlit button, so reassert both its
    outline and label color after the global secondary-button treatment. */
-html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_monitoring .st-key-approved_monitoring_alert_card [class*="st-key-approved_alert_action_"] button {
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_alert_card [class*="st-key-approved_alert_action_"] button {
   box-sizing: border-box !important;
   min-height: 42px !important;
   height: auto !important;
@@ -53,19 +53,19 @@ html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render
   white-space: normal !important;
 }
 
-html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_monitoring .st-key-approved_monitoring_alert_card [class*="st-key-approved_alert_action_"] button * {
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_alert_card [class*="st-key-approved_alert_action_"] button * {
   color: #2563eb !important;
   background: transparent !important;
   border: 0 !important;
   box-shadow: none !important;
 }
 
-html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_monitoring .st-key-approved_monitoring_alert_card [class*="st-key-approved_alert_action_"] button:hover {
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_alert_card [class*="st-key-approved_alert_action_"] button:hover {
   border-color: #4f8df5 !important;
   background: #f4f8ff !important;
 }
 
-html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_monitoring .st-key-approved_monitoring_alert_card [class*="st-key-approved_alert_action_"] button:focus-visible {
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_alert_card [class*="st-key-approved_alert_action_"] button:focus-visible {
   outline: 3px solid #93c5fd !important;
   outline-offset: 2px !important;
 }

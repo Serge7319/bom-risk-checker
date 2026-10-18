@@ -345,7 +345,7 @@ def _nav(active: str = "home") -> None:
     navigation inside the active application session.
     """
     with st.container(key="cv_public_nav"):
-        cols = st.columns([1.65, .78, .82, .72, .86, .76, .34, .74, 1.02, .94], gap="small")
+        cols = st.columns([1.65, .78, .82, .72, .86, .76, .34, .74, 1.2, .94], gap="small")
         with cols[0]:
             with st.container(key="cv_public_brand"):
                 st.markdown(
@@ -373,7 +373,7 @@ def _nav(active: str = "home") -> None:
         with cols[7]:
             st.button("Sign In", key="cv_public_login", on_click=_open_auth_surface, args=("login",), use_container_width=True)
         with cols[8]:
-            st.button("Start Free Trial", key="cv_public_signup", on_click=_open_auth_surface, args=("signup",), use_container_width=True)
+            st.button("Start 14-Day Trial", key="cv_public_signup", on_click=_open_auth_surface, args=("signup",), use_container_width=True)
         with cols[9]:
             st.button("Book a Demo", key="cv_public_contact", on_click=_set_public_route, args=("contact",), use_container_width=True)
     st.markdown(f'<div class="cv-public-active-route" data-route="{escape(active)}"></div>', unsafe_allow_html=True)
