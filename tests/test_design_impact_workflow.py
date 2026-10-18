@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from contextlib import nullcontext
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
@@ -127,7 +126,7 @@ def test_recorded_zero_stock_and_sources_are_scored_as_real_values():
 
 
 def test_component_list_is_limited_to_ten_rows(monkeypatch):
-    fake_st = _FakeStreamlit(selected_rows=[], submit=False)
+    fake_st = _FakeStreamlit(submit=False)
     monkeypatch.setattr(impact, "st", fake_st)
     monkeypatch.setattr(impact, "_css", lambda: None)
     monkeypatch.setattr(impact, "cadivor_section_header", lambda *args, **kwargs: None)
@@ -154,8 +153,11 @@ def test_component_list_is_limited_to_ten_rows(monkeypatch):
         impact_map_markup="<section>Impact map</section>",
     )
 
-    assert len(fake_st.displayed_df) == 10
-    assert "PART-11" not in set(fake_st.displayed_df["MPN"])
+    assert len(fake_st.row_button_keys) == 10
+    rendered = "\n".join(str(event[1]) for event in fake_st.events if event[0] == "markdown")
+    assert "PART-09" in rendered
+    assert "PART-10" not in rendered
+    assert "PART-11" not in rendered
 
 
 class _Rerun(Exception):
@@ -163,22 +165,19 @@ class _Rerun(Exception):
 
 
 class _FakeStreamlit:
-    def __init__(self, *, selected_rows, submit: bool, query: str = "", submit_label: str = "Start impact review"):
+    def __init__(self, *, submit: bool, query: str = "", submit_label: str = "Start impact review", clicked_key: str = "", filters=None):
         self.session_state = {}
-        self.selected_rows = selected_rows
         self.submit = submit
         self.submit_label = submit_label
         self.query = query
+        self.clicked_key = clicked_key
+        self.filters = filters or {}
         self.button_label = ""
         self.messages = []
-        self.displayed_df = None
         self.events = []
+        self.row_button_keys = []
+        self.selectbox_options = {}
         self.expander_calls = []
-        self.column_config = SimpleNamespace(
-            ImageColumn=lambda *args, **kwargs: object(),
-            TextColumn=lambda *args, **kwargs: object(),
-            NumberColumn=lambda *args, **kwargs: object(),
-        )
 
     def markdown(self, *args, **kwargs):
         self.events.append(("markdown", args[0] if args else ""))
@@ -189,9 +188,13 @@ class _FakeStreamlit:
     def text_input(self, *args, **kwargs):
         return self.query
 
-    def dataframe(self, frame, **kwargs):
-        self.displayed_df = frame
-        return SimpleNamespace(selection=SimpleNamespace(rows=self.selected_rows))
+    def selectbox(self, label, options, **kwargs):
+        key = kwargs.get("key", label)
+        self.selectbox_options[key] = list(options)
+        return self.filters.get(key, options[0])
+
+    def dataframe(self, *args, **kwargs):
+        self.events.append(("dataframe", kwargs.get("key", "")))
 
     def columns(self, *args, **kwargs):
         count = args[0] if args and isinstance(args[0], int) else len(args[0]) if args else 2
@@ -204,8 +207,11 @@ class _FakeStreamlit:
 
     def button(self, label, **kwargs):
         self.button_label = label
-        self.events.append(("button", label))
-        return self.submit and label == self.submit_label
+        key = kwargs.get("key", "")
+        self.events.append(("button", label, key))
+        if key.startswith("design_impact_select_row_"):
+            self.row_button_keys.append(key)
+        return (self.submit and label == self.submit_label) or bool(key and key == self.clicked_key)
 
     def caption(self, message):
         self.messages.append(message)
@@ -257,7 +263,7 @@ def _component_intelligence():
 
 
 def test_search_selects_a_component_before_starting_review(monkeypatch):
-    fake_st = _FakeStreamlit(selected_rows=[1], submit=False, query="sensor")
+    fake_st = _FakeStreamlit(submit=False, query="sensor", clicked_key="design_impact_select_row_1")
     monkeypatch.setattr(impact, "st", fake_st)
     monkeypatch.setattr(impact, "_css", lambda: None)
     monkeypatch.setattr(impact, "cadivor_section_header", lambda *args, **kwargs: None)
@@ -274,7 +280,7 @@ def test_search_selects_a_component_before_starting_review(monkeypatch):
             impact_map_markup="<section>Impact map</section>",
         )
 
-    assert list(fake_st.displayed_df["MPN"]) == ["CAP-220", "IC-100"]
+    assert len(fake_st.row_button_keys) == 2
     assert "Start impact review" in [event[1] for event in fake_st.events if event[0] == "button"]
     assert fake_st.session_state["design_impact_pending_mpn"] == "IC-100"
     assert fake_st.session_state["design_impact_mpn"] == "IC-100"
@@ -282,7 +288,7 @@ def test_search_selects_a_component_before_starting_review(monkeypatch):
 
 
 def test_start_impact_review_sets_the_selected_part_and_explicit_state(monkeypatch):
-    fake_st = _FakeStreamlit(selected_rows=[], submit=True, submit_label="Start impact review")
+    fake_st = _FakeStreamlit(submit=True, submit_label="Start impact review")
     monkeypatch.setattr(impact, "st", fake_st)
     monkeypatch.setattr(impact, "_css", lambda: None)
     monkeypatch.setattr(impact, "cadivor_section_header", lambda *args, **kwargs: None)
@@ -304,8 +310,8 @@ def test_start_impact_review_sets_the_selected_part_and_explicit_state(monkeypat
     assert fake_st.session_state["design_impact_review_started_mpn"] == "CAP-220"
 
 
-def test_map_and_component_table_remain_visible_before_review(monkeypatch):
-    fake_st = _FakeStreamlit(selected_rows=[], submit=False)
+def test_component_list_is_the_first_step_and_details_wait_for_review(monkeypatch):
+    fake_st = _FakeStreamlit(submit=False)
     monkeypatch.setattr(impact, "st", fake_st)
     monkeypatch.setattr(impact, "_css", lambda: None)
     monkeypatch.setattr(impact, "cadivor_section_header", lambda *args, **kwargs: None)
@@ -326,13 +332,82 @@ def test_map_and_component_table_remain_visible_before_review(monkeypatch):
         impact_map_markup="<section>Impact map</section>",
     )
 
-    assert fake_st.displayed_df is not None
-    assert fake_st.button_label == "Start impact review"
+    assert len(fake_st.row_button_keys) == 2
+    assert "Start impact review" in [event[1] for event in fake_st.events if event[0] == "button"]
+    markup = "\n".join(str(event[1]) for event in fake_st.events if event[0] == "markdown")
+    assert "Components across saved BOMs" in markup
+    assert "Choose a component" in markup
+    assert "Record decision" in markup
+    assert "Impact map" not in markup
+    assert "cv20-selected-part" not in markup
     assert any("does not inspect PCB layouts" in message for message in fake_st.messages)
+    assert "design_impact_select_row_0" in [event[2] for event in fake_st.events if event[0] == "button"]
+
+
+def test_lifecycle_impact_and_project_filters_narrow_the_component_list(monkeypatch):
+    fake_st = _FakeStreamlit(
+        submit=False,
+        filters={
+            "design_impact_lifecycle_filter": "Active",
+            "design_impact_risk_filter": "Low",
+            "design_impact_project_filter": "Sensor",
+        },
+    )
+    monkeypatch.setattr(impact, "st", fake_st)
+    monkeypatch.setattr(impact, "_css", lambda: None)
+    monkeypatch.setattr(impact, "cadivor_section_header", lambda *args, **kwargs: None)
+
+    from src import part_images
+
+    monkeypatch.setattr(part_images, "part_image_source", lambda *args, **kwargs: "data:image/svg+xml,test")
+
+    impact.render_design_impact(
+        intelligence=_component_intelligence(),
+        internal_nav_button=lambda *args, **kwargs: None,
+        review_started=False,
+    )
+
+    assert fake_st.row_button_keys == ["design_impact_select_row_0"]
+    assert fake_st.selectbox_options["design_impact_lifecycle_filter"][0] == "All lifecycle"
+    assert fake_st.selectbox_options["design_impact_risk_filter"][0] == "All impact levels"
+    assert fake_st.selectbox_options["design_impact_project_filter"][0] == "All projects"
+
+
+def test_initial_design_impact_has_no_implicit_component_selection():
+    result = impact.build_design_impact(
+        [{"id": "bom-1", "project_name": "Gateway", "filename": "gateway.csv"}],
+        [{"analysis_id": "bom-1", "mpn": "IC-100", "risk_score": 72}],
+        select_recommended_when_empty=False,
+    )
+
+    assert result["selected_mpn"] == ""
+    assert result["available_mpns"] == ["IC-100"]
+    assert result["component_catalog"][0]["Part Number"] == "IC-100"
+
+
+def test_component_evidence_carries_document_and_lead_time_fields():
+    result = impact.build_design_impact(
+        [{"id": "bom-1", "project_name": "Gateway", "filename": "gateway.csv"}],
+        [{
+            "analysis_id": "bom-1", "mpn": "IC-100", "risk_score": 72,
+            "device_type": "MCU", "design_phase": "Production", "lead_time_weeks": 18,
+            "datasheet_url": "https://vendor.example/ds.pdf",
+            "source_url": "https://vendor.example/item/IC-100",
+        }],
+        "IC-100",
+    )
+
+    assert result["device_subtype"] == "MCU"
+    assert result["design_phase"] == "Production"
+    assert result["maximum_lead_time_weeks"] == 18
+    assert result["risk_level"] == "High"
+    assert result["datasheet_url"] == "https://vendor.example/ds.pdf"
+    assert result["source_url"] == "https://vendor.example/item/IC-100"
 
 
 def test_review_details_are_collapsed_and_validation_scope_is_clear(monkeypatch):
-    fake_st = _FakeStreamlit(selected_rows=[], submit=False)
+    fake_st = _FakeStreamlit(submit=False)
+    navigation_calls = []
     monkeypatch.setattr(impact, "st", fake_st)
     monkeypatch.setattr(impact, "_css", lambda: None)
     monkeypatch.setattr(impact, "cadivor_section_header", lambda *args, **kwargs: None)
@@ -345,7 +420,7 @@ def test_review_details_are_collapsed_and_validation_scope_is_clear(monkeypatch)
 
     impact.render_design_impact(
         intelligence=_impact_data("IC-100"),
-        internal_nav_button=lambda *args, **kwargs: None,
+        internal_nav_button=lambda *args, **kwargs: navigation_calls.append((args, kwargs)),
         review_started=True,
         impact_map_markup="<section>Impact map</section>",
     )
@@ -355,6 +430,9 @@ def test_review_details_are_collapsed_and_validation_scope_is_clear(monkeypatch)
         str(event[1]) for event in fake_st.events if event[0] == "markdown"
     )
     assert "Confirm electrical function, package, footprint, pinout, and design constraints" in " ".join(fake_st.messages) + page_markup
+    assert "Price trend" in page_markup
+    assert "Alternatives" in page_markup
+    assert any(args[0] == "Open replacement comparison" for args, _ in navigation_calls)
 
 
 def test_runtime_restores_the_component_specific_map_for_the_selected_bom_rows():
@@ -375,3 +453,14 @@ def test_runtime_restores_the_component_specific_map_for_the_selected_bom_rows()
     assert "design_impact_review_started_mpn" in section
     assert "columns=5" in renderer
     assert "Estimated review" in renderer
+    assert "select_recommended_when_empty=False" in section
+
+
+def test_authenticated_route_canvases_share_one_top_start_line():
+    source = (ROOT / "src" / "ui" / "core_premium_ui.py").read_text(encoding="utf-8")
+    rule = source.split('id="cadivor-route-start-alignment"', 1)[1].split("</style>", 1)[0]
+
+    assert "st-key-approved_page_canvas_standard_" in rule
+    assert "st-key-approved_page_canvas_wide_" in rule
+    assert "st-key-cadivor_decision_packet_shell" in rule
+    assert "padding-top: 0 !important" in rule

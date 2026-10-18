@@ -3798,12 +3798,23 @@ def impact_map_html(
                 f'<path d="M370 {node_y+22} H {x}" fill="none" stroke="{stroke}" stroke-width="2"/>'
             )
         boxes.append(
+            f'<g><title>{html.escape(label)}</title>'
             f'<rect x="{x}" y="{node_y}" width="180" height="44" rx="10" fill="{fill}" stroke="{stroke}"/>'
-            f'<text x="{x+12}" y="{node_y+27}" font-size="12" fill="#0f172a">{html.escape(label)[:26]}</text>'
+            f'<text x="{x+12}" y="{node_y+27}" font-size="12" fill="#0f172a">{html.escape(label[:26])}</text></g>'
         )
+    legend = "".join(
+        f'<span class="cv20-map-legend__item"><i style="--legend-color:{color}"></i>{label}</span>'
+        for label, color in (
+            ("Project", "#2563eb"), ("BOM", "#7c3aed"),
+            ("Supply chain", "#059669"), ("Lifecycle", "#ea580c"),
+        )
+    )
     return (
-        "<section class='cv-ap-card'><h2>Impact map</h2>"
-        f'<svg viewBox="0 0 680 {height}" width="100%" height="{height}" role="img" aria-label="Impact map">'
+        "<section class='cv-ap-card cv20-impact-map'>"
+        '<header class="cv20-impact-map__header"><div><h2>Impact map</h2>'
+        f'<p>Saved-BOM usage and recorded supply evidence for {html.escape(part or "this component")}.</p>'
+        f'</div><div class="cv20-map-legend" aria-label="Impact map legend">{legend}</div></header>'
+        f'<svg viewBox="0 0 680 {height}" width="100%" height="{height}" role="img" aria-label="Impact map for {html.escape(part or "component", quote=True)}">'
         f'{"".join(paths)}{"".join(boxes)}</svg></section>'
     )
 

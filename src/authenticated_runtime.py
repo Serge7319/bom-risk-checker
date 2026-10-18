@@ -6475,6 +6475,7 @@ def run_authenticated_app() -> None:
             impact_analyses,
             impact_parts,
             requested_impact_mpn,
+            select_recommended_when_empty=False,
         )
         impact_mpn = impact_intelligence.get("selected_mpn", "")
         impact_monitoring_rows = []
