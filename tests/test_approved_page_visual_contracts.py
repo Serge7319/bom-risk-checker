@@ -7,14 +7,16 @@ ROOT = Path(__file__).resolve().parents[1]
 APPROVED_PAGES = (ROOT / "src" / "ui" / "approved_pages.py").read_text(
     encoding="utf-8"
 )
+MONITORING_HOME_CSS = (
+    ROOT / "src" / "assets" / "css" / "monitoring_home_alignment.css"
+).read_text(encoding="utf-8")
 
 
 class ApprovedPageVisualContractTests(unittest.TestCase):
     def test_home_analysis_button_tracks_average_health_card_edge(self):
-        self.assertIn(
-            'left:-5px!important',
-            APPROVED_PAGES.split("Align the Home CTA with the left edge", 1)[1].split(".cv-ap-home-kpi", 1)[0],
-        )
+        self.assertNotIn('left:-5px!important', APPROVED_PAGES)
+        self.assertIn('justify-content: flex-end !important;', MONITORING_HOME_CSS)
+        self.assertIn('st-key-approved_home_new_bom"] button', MONITORING_HOME_CSS)
 
     def test_monitoring_kpis_override_streamlit_column_sizing(self):
         self.assertIn(
@@ -43,13 +45,21 @@ class ApprovedPageVisualContractTests(unittest.TestCase):
 
     def test_selected_monitoring_filter_uses_mockup_pill_treatment(self):
         self.assertIn(
-            'section[data-testid="stMain"] .st-key-approved_monitoring_filters .stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton)>button[data-testid="stBaseButton-primary"]:not(:disabled){border:1px solid #6ea2ff!important;border-radius:999px!important;background:#edf5ff!important;color:#2563eb!important;',
-            APPROVED_PAGES,
+            'st-key-approved_monitoring_filter_selected_',
+            MONITORING_HOME_CSS,
         )
+        monitoring_renderer = APPROVED_PAGES.split("def render_monitoring(", 1)[1]
+        self.assertIn('selected_key = "selected_" if selected == category else ""', monitoring_renderer)
+        self.assertIn('type="secondary"', monitoring_renderer)
+        self.assertNotIn('type="primary" if selected == category', monitoring_renderer)
+
+    def test_monitoring_uses_wide_canvas_and_card_shell(self):
         self.assertIn(
-            'section[data-testid="stMain"] .st-key-approved_monitoring_filters .stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton)>button[data-testid="stBaseButton-secondary"]:not(:disabled){border:1px solid #dce4ef!important;border-radius:999px!important;background:#fff!important;color:#52647b!important;',
-            APPROVED_PAGES,
+            '[data-testid="stMainBlockContainer"]:has(.st-key-approved_page_canvas_wide_render_monitoring)',
+            MONITORING_HOME_CSS,
         )
+        self.assertIn('max-width: 1760px !important;', MONITORING_HOME_CSS)
+        self.assertIn('.st-key-approved_monitoring_alert_card {', MONITORING_HOME_CSS)
 
 
 if __name__ == "__main__":
