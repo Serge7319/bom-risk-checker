@@ -46,6 +46,14 @@ class _Query(dict):
         self.update(mapping)
 
 
+class _DelayedQuery(_Query):
+    """Keep the server snapshot old to model Streamlit's callback timing."""
+
+    def from_dict(self, mapping):
+        self.writes += 1
+        self.from_dict_calls += 1
+
+
 class _Container:
     def __init__(self, key):
         self.key = key
@@ -475,6 +483,71 @@ def test_same_page_url_change_restores_query_state_when_polling_fallback_fires(m
     assert "cadivor_history_restore_snapshot" not in session
     assert session["cadivor_nav_params"]["analysis_tab"] == "Components"
     assert query.writes == 0
+
+
+def test_same_page_project_bom_selection_beats_a_stale_query_snapshot(monkeypatch):
+    session = _Session(
+        {
+            "cadivor_route": "Analysis Details",
+            "app_mode": "Analysis Details",
+            "cadivor_nav_params": {
+                "page": "Analysis Details",
+                "analysis_id": "bom-1",
+                "analysis_tab": "Engineering Intelligence",
+            },
+            "cadivor_active_analysis_id": "bom-1",
+            "user": types.SimpleNamespace(id="user-1"),
+            "access_token": "live-a",
+            "refresh_token": "live-r",
+            "cadivor_auth_status": "authenticated",
+        }
+    )
+    query = _DelayedQuery(
+        {
+            "page": "Analysis Details",
+            "analysis_id": "bom-1",
+            "analysis_tab": "Engineering Intelligence",
+        }
+    )
+    _patch_runtime(monkeypatch, session, query)
+
+    navigation.navigate_to(
+        "Analysis Details",
+        analysis_id="bom-2",
+        analysis_tab="Engineering Intelligence",
+        _rerun=False,
+        arm_opening=False,
+    )
+
+    assert query.get("analysis_id") == "bom-1"
+    assert session[navigation.PENDING_NAVIGATION_CONTEXT_KEY]["analysis_id"] == "bom-2"
+    assert runtime.resolve_canonical_app_route() == "Analysis Details"
+    assert session["cadivor_nav_params"]["analysis_id"] == "bom-2"
+    assert session["cadivor_active_analysis_id"] == "bom-2"
+    assert navigation.current_navigation_query_value(
+        "analysis_id", route="Analysis Details"
+    ) == "bom-2"
+
+    # A real browser Back event supersedes the pending callback target.
+    query.clear()
+    query.update(
+        {
+            "page": "Analysis Details",
+            "analysis_id": "bom-1",
+            "analysis_tab": "Engineering Intelligence",
+        }
+    )
+    events = [
+        {
+            "href": "http://127.0.0.1:8581/?page=Analysis+Details&analysis_id=bom-1&analysis_tab=Engineering+Intelligence",
+            "reason": "popstate",
+            "event_id": "project-bom-back-1",
+        }
+    ]
+    _patch_runtime(monkeypatch, session, query, consume=lambda: events.pop(0) if events else None)
+    assert runtime.resolve_canonical_app_route() == "Analysis Details"
+    assert session["cadivor_active_analysis_id"] == "bom-1"
+    assert navigation.PENDING_NAVIGATION_CONTEXT_KEY not in session
 
 
 def test_divergent_query_beats_stale_session_without_weakening_auth(monkeypatch):

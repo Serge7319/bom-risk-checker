@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import csv
 import hashlib
 import hmac
 import io
@@ -358,6 +359,250 @@ def _safe_export_cell(value: Any) -> Any:
     return value
 
 
+AUDIT_EXPORT_COLUMNS = (
+    "MPN", "Matched MPN", "Manufacturer", "Qty", "Lifecycle",
+    "Lifecycle evidence", "Reported stock", "Stock evidence",
+    "Lead time (weeks)", "Lead time source", "Matching suppliers",
+    "Evidence sources", "Supplier coverage", "Cadivor checked at (UTC)",
+    "Risk", "Why",
+)
+
+
+def _report_integer(value: Any) -> int | None:
+    """Return whole-number report values without pandas' nullable-float suffix."""
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return None
+    try:
+        if pd.isna(value):
+            return None
+        number = float(value)
+        return int(number) if math.isfinite(number) and number.is_integer() else None
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
+def _report_records(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Build the stable full-evidence schema used by both download formats."""
+    records = []
+    for row in results:
+        records.append({
+            "MPN": str(row.get("mpn") or ""),
+            "Matched MPN": str(row.get("matched_mpn") or ""),
+            "Manufacturer": str(row.get("manufacturer") or ""),
+            "Qty": _report_integer(row.get("quantity")),
+            "Lifecycle": str(row.get("lifecycle") or "Unverified"),
+            "Lifecycle evidence": str(row.get("lifecycle_evidence_summary") or "Not reported"),
+            "Reported stock": _report_integer(row.get("stock")),
+            "Stock evidence": str(row.get("stock_evidence") or "Not reported by matched suppliers"),
+            "Lead time (weeks)": row.get("lead_time_weeks"),
+            "Lead time source": str(row.get("lead_time_source") or "Not reported"),
+            "Matching suppliers": _report_integer(row.get("supplier_count")),
+            "Evidence sources": str(row.get("sources") or ""),
+            "Supplier coverage": str(row.get("supplier_coverage") or "Not reported"),
+            "Cadivor checked at (UTC)": str(row.get("checked_at") or ""),
+            "Risk": str(row.get("risk") or "Needs verification"),
+            "Why": _risk_reason_text(row.get("risk_reasons"))
+            or "No risk score: evidence needs verification",
+        })
+    return records
+
+
+def _risk_reason_text(value: Any) -> str:
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, (list, tuple, set)):
+        return "; ".join(str(reason).strip() for reason in value if str(reason).strip())
+    return ""
+
+
+def build_audit_csv(results: list[dict[str, Any]]) -> bytes:
+    """Create a spreadsheet-friendly CSV with stable integer and blank fields."""
+    output = io.StringIO(newline="")
+    writer = csv.DictWriter(output, fieldnames=AUDIT_EXPORT_COLUMNS, lineterminator="\r\n")
+    writer.writeheader()
+    for record in _report_records(results):
+        writer.writerow({key: _safe_export_cell(record.get(key)) for key in AUDIT_EXPORT_COLUMNS})
+    return ("\ufeff" + output.getvalue()).encode("utf-8")
+
+
+def build_audit_xlsx(report: dict[str, Any]) -> bytes:
+    """Create a readable workbook with an overview and complete evidence sheet."""
+    from datetime import datetime
+    from io import BytesIO
+
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.worksheet.table import Table, TableStyleInfo
+    from openpyxl.utils import get_column_letter
+
+    records = _report_records(list(report.get("results") or []))
+    navy, blue, pale_blue = "10284B", "255FF2", "EDF4FF"
+    light_border = Side(style="thin", color="D9E4F3")
+    workbook = Workbook()
+    summary = workbook.active
+    summary.title = "Summary"
+    summary.sheet_view.showGridLines = False
+    summary.merge_cells("A1:J1")
+    summary["A1"] = "Cadivor | BOM Stress Test"
+    summary["A1"].font = Font(name="Aptos Display", size=20, bold=True, color="FFFFFF")
+    summary["A1"].fill = PatternFill("solid", fgColor=navy)
+    summary["A1"].alignment = Alignment(vertical="center")
+    summary.row_dimensions[1].height = 36
+    summary.merge_cells("A2:J2")
+    summary["A2"] = _safe_export_cell(f"File: {report.get('filename') or 'Uploaded BOM'}")
+    summary["A2"].font = Font(name="Aptos", size=11, color=navy, bold=True)
+
+    generated = str(report.get("created_at") or "").strip()
+    summary.merge_cells("A3:J3")
+    summary["A3"] = f"Audit created (UTC): {generated or 'timestamp not available'}"
+    summary["A3"].font = Font(name="Aptos", size=10, color="526783")
+
+    risks = [str(row.get("Risk") or "Needs verification").strip().lower() for row in records]
+    metrics = [
+        ("Components", len(records)),
+        ("High risk", sum(value == "high" for value in risks)),
+        ("Medium risk", sum(value == "medium" for value in risks)),
+        ("Low risk", sum(value == "low" for value in risks)),
+        ("Needs verification", sum(value == "needs verification" for value in risks)),
+    ]
+    for index, (label, value) in enumerate(metrics):
+        start_col = 1 + index * 2
+        end_col = start_col + 1
+        summary.merge_cells(start_row=5, start_column=start_col, end_row=5, end_column=end_col)
+        summary.merge_cells(start_row=6, start_column=start_col, end_row=6, end_column=end_col)
+        label_cell = summary.cell(5, start_col, label)
+        value_cell = summary.cell(6, start_col, value)
+        label_cell.font = Font(name="Aptos", size=10, bold=True, color="526783")
+        value_cell.font = Font(name="Aptos Display", size=18, bold=True, color=navy)
+        for row_index in (5, 6):
+            for col_index in range(start_col, end_col + 1):
+                cell = summary.cell(row_index, col_index)
+                cell.fill = PatternFill("solid", fgColor=pale_blue)
+                cell.border = Border(bottom=light_border)
+                cell.alignment = Alignment(horizontal="center", vertical="center")
+
+    summary.merge_cells("A8:J8")
+    summary["A8"] = (
+        "This report reflects supplier data returned at the time shown. Blank inventory or lead-time values "
+        "mean no usable value was reported. Verify current availability and engineering fit with the source before release."
+    )
+    summary["A8"].font = Font(name="Aptos", size=10, color="526783", italic=True)
+    summary["A8"].alignment = Alignment(wrap_text=True, vertical="center")
+    summary.row_dimensions[8].height = 34
+    summary.merge_cells("A10:D10")
+    summary["A10"] = "Component overview"
+    summary["A10"].font = Font(name="Aptos Display", size=13, bold=True, color=navy)
+    overview_headers = ["BOM MPN", "Qty", "Lifecycle", "Risk"]
+    for col_index, label in enumerate(overview_headers, start=1):
+        cell = summary.cell(11, col_index, label)
+        cell.font = Font(name="Aptos", bold=True, color="FFFFFF")
+        cell.fill = PatternFill("solid", fgColor=blue)
+        cell.alignment = Alignment(vertical="center")
+    risk_fills = {
+        "high": "FDECEC", "medium": "FFF4DC", "low": "EAF7EF",
+        "needs verification": "EEF1F5",
+    }
+    for row_index, record in enumerate(records, start=12):
+        values = [record["MPN"], record["Qty"], record["Lifecycle"], record["Risk"]]
+        for col_index, value in enumerate(values, start=1):
+            cell = summary.cell(row_index, col_index, _safe_export_cell(value))
+            cell.font = Font(name="Aptos", size=10, color=navy)
+            cell.alignment = Alignment(vertical="top")
+            cell.border = Border(bottom=light_border)
+        risk_cell = summary.cell(row_index, 4)
+        risk_cell.fill = PatternFill("solid", fgColor=risk_fills.get(str(record["Risk"]).lower(), "FFFFFF"))
+        risk_cell.font = Font(name="Aptos", size=10, bold=True, color=navy)
+    if records:
+        table = Table(displayName="BOMComponentOverview", ref=f"A11:D{11 + len(records)}")
+        table.tableStyleInfo = TableStyleInfo(name="TableStyleMedium2", showRowStripes=True,
+                                               showColumnStripes=False, showFirstColumn=False,
+                                               showLastColumn=False)
+        summary.add_table(table)
+    for column, width in {"A": 28, "B": 12, "C": 30, "D": 24}.items():
+        summary.column_dimensions[column].width = width
+    summary.freeze_panes = "A12"
+
+    detail = workbook.create_sheet("Component evidence")
+    detail.sheet_view.showGridLines = False
+    detail.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(AUDIT_EXPORT_COLUMNS))
+    detail.cell(1, 1, "Complete supplier and lifecycle evidence")
+    detail.cell(1, 1).font = Font(name="Aptos Display", size=16, bold=True, color="FFFFFF")
+    detail.cell(1, 1).fill = PatternFill("solid", fgColor=navy)
+    detail.cell(1, 1).alignment = Alignment(vertical="center")
+    detail.row_dimensions[1].height = 30
+    detail.merge_cells(start_row=2, start_column=1, end_row=2, end_column=len(AUDIT_EXPORT_COLUMNS))
+    detail.cell(2, 1, "Blank values indicate the supplier did not report a usable value; they do not mean zero or active.")
+    detail.cell(2, 1).font = Font(name="Aptos", size=10, color="526783", italic=True)
+    header_row = 4
+    for col_index, label in enumerate(AUDIT_EXPORT_COLUMNS, start=1):
+        cell = detail.cell(header_row, col_index, label)
+        cell.font = Font(name="Aptos", bold=True, color="FFFFFF")
+        cell.fill = PatternFill("solid", fgColor=blue)
+        cell.alignment = Alignment(wrap_text=True, vertical="center")
+    detail.row_dimensions[header_row].height = 30
+    for row_index, record in enumerate(records, start=header_row + 1):
+        for col_index, label in enumerate(AUDIT_EXPORT_COLUMNS, start=1):
+            value = record.get(label)
+            if label == "Cadivor checked at (UTC)" and value:
+                try:
+                    value = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+                    value = value.astimezone(timezone.utc).replace(tzinfo=None)
+                except (ValueError, OverflowError):
+                    pass
+            cell = detail.cell(row_index, col_index, _safe_export_cell(value))
+            cell.font = Font(name="Aptos", size=10, color=navy)
+            cell.alignment = Alignment(vertical="top", wrap_text=label in {
+                "Lifecycle evidence", "Stock evidence", "Supplier coverage", "Why"
+            })
+            cell.border = Border(bottom=light_border)
+            if label == "Cadivor checked at (UTC)" and isinstance(value, datetime):
+                cell.number_format = "yyyy-mm-dd hh:mm:ss"
+            if label in {"Qty", "Reported stock", "Matching suppliers"} and value is not None:
+                cell.number_format = "#,##0"
+            if label == "Lead time (weeks)" and value is not None:
+                cell.number_format = "0.0"
+            if label == "Risk":
+                cell.fill = PatternFill("solid", fgColor=risk_fills.get(str(value).lower(), "FFFFFF"))
+                cell.font = Font(name="Aptos", size=10, bold=True, color=navy)
+    if records:
+        table = Table(displayName="BOMComponentEvidence",
+                      ref=f"A{header_row}:{get_column_letter(len(AUDIT_EXPORT_COLUMNS))}{header_row + len(records)}")
+        table.tableStyleInfo = TableStyleInfo(name="TableStyleMedium2", showRowStripes=True,
+                                               showColumnStripes=False, showFirstColumn=False,
+                                               showLastColumn=False)
+        detail.add_table(table)
+    widths = [22, 22, 30, 12, 24, 52, 18, 48, 18, 24, 18, 32, 60, 28, 22, 72]
+    for index, width in enumerate(widths, start=1):
+        detail.column_dimensions[get_column_letter(index)].width = width
+    detail.freeze_panes = "A5"
+    for row_index in range(header_row + 1, header_row + 1 + len(records)):
+        detail.row_dimensions[row_index].height = 32
+
+    output = BytesIO()
+    workbook.save(output)
+    return output.getvalue()
+
+
+def build_audit_preview(results: list[dict[str, Any]]) -> pd.DataFrame:
+    """Keep the on-screen table focused; detailed evidence remains available per part."""
+    frame = pd.DataFrame([{
+        "BOM MPN": str(row.get("mpn") or ""),
+        "Manufacturer": str(row.get("manufacturer") or "Not matched"),
+        "Qty": _report_integer(row.get("quantity")),
+        "Lifecycle": str(row.get("lifecycle") or "Unverified"),
+        "Reported stock": _report_integer(row.get("stock")),
+        "Lead time (weeks)": row.get("lead_time_weeks"),
+        "Matching suppliers": _report_integer(row.get("supplier_count")),
+        "Risk": str(row.get("risk") or "Needs verification"),
+    } for row in results], columns=[
+        "BOM MPN", "Manufacturer", "Qty", "Lifecycle", "Reported stock",
+        "Lead time (weeks)", "Matching suppliers", "Risk",
+    ])
+    for column in ("Qty", "Reported stock", "Matching suppliers"):
+        frame[column] = pd.array(frame[column], dtype="Int64")
+    return frame
+
+
 def render_verified_report(access_token: str) -> None:
     """Shown inside authenticated Reports, after rechecking the verified JWT."""
     import streamlit as st
@@ -374,30 +619,89 @@ def render_verified_report(access_token: str) -> None:
     if not report:
         return
     st.markdown("### Your BOM stress test")
-    st.caption("Your full component report is available for seven days after upload. It includes the supplier evidence returned for this BOM; confirm it with the source before an engineering release decision.")
-    st.write(str(report.get("filename") or "Uploaded BOM"))
+    st.caption("Full supplier and lifecycle results · available for seven days after upload")
+    st.text(f"File: {str(report.get('filename') or 'Uploaded BOM')}")
     results = list(report.get("results") or [])
     if not results:
         st.info("This report has no verified component results yet.")
         return
-    display = pd.DataFrame([{
-        "MPN": row.get("mpn"), "Matched MPN": row.get("matched_mpn"),
-        "Manufacturer": row.get("manufacturer"), "Qty": row.get("quantity"),
-        "Lifecycle": row.get("lifecycle"),
-        "Lifecycle evidence": row.get("lifecycle_evidence_summary") or "Not reported",
-        "Reported stock": row.get("stock"),
-        "Stock evidence": row.get("stock_evidence") or "Not reported by matched suppliers",
-        "Lead time (weeks)": row.get("lead_time_weeks"),
-        "Lead time source": row.get("lead_time_source") or "Not reported",
-        "Matching suppliers": row.get("supplier_count"),
-        "Evidence sources": row.get("sources"),
-        "Supplier coverage": row.get("supplier_coverage"),
-        "Cadivor checked at (UTC)": row.get("checked_at"),
-        "Risk": row.get("risk"),
-        "Why": "; ".join(row.get("risk_reasons") or []) or "No risk score: evidence needs verification",
-    } for row in results])
-    st.dataframe(display, hide_index=True, use_container_width=True)
-    export = display.apply(lambda column: column.map(_safe_export_cell))
-    st.download_button("Download audit CSV", export.to_csv(index=False).encode("utf-8-sig"),
-                       file_name="cadivor_bom_stress_test.csv", mime="text/csv",
-                       key="cadivor_stress_report_csv")
+    high_risk = sum(str(row.get("risk") or "").strip().lower() == "high" for row in results)
+    needs_verification = sum(
+        str(row.get("risk") or "").strip().lower() == "needs verification" for row in results
+    )
+    st.caption(
+        f"{len(results)} components · {high_risk} high risk · "
+        f"{needs_verification} need supplier verification"
+    )
+    preview = build_audit_preview(results)
+    st.dataframe(
+        preview,
+        column_config={
+            "BOM MPN": st.column_config.TextColumn("BOM MPN", width="medium"),
+            "Manufacturer": st.column_config.TextColumn("Manufacturer", width="medium"),
+            "Qty": st.column_config.NumberColumn("Qty", width="small", format="%d"),
+            "Lifecycle": st.column_config.TextColumn("Lifecycle", width="medium"),
+            "Reported stock": st.column_config.NumberColumn("Reported stock", width="medium", format="%d"),
+            "Lead time (weeks)": st.column_config.NumberColumn("Lead time (weeks)", width="small", format="%.1f"),
+            "Matching suppliers": st.column_config.NumberColumn("Suppliers", width="small", format="%d"),
+            "Risk": st.column_config.TextColumn("Risk", width="small"),
+        },
+        hide_index=True,
+        use_container_width=True,
+        height=min(580, 38 * min(len(results), 14) + 42),
+    )
+    st.caption(
+        "Stock, lifecycle, and lead time reflect the supplier sources checked at the recorded time. "
+        "A blank value means no usable value was reported; it does not mean zero or active."
+    )
+    with st.expander("Review component evidence and risk rationale"):
+        selected_index = st.selectbox(
+            "Component",
+            options=list(range(len(results))),
+            format_func=lambda index: (
+                f"{results[index].get('mpn') or 'Unknown MPN'} · "
+                f"{results[index].get('risk') or 'Needs verification'}"
+            ),
+            key="cadivor_stress_evidence_component",
+        )
+        selected = results[selected_index]
+        evidence_columns = st.columns(2)
+        evidence_fields = [
+            ("Matched MPN", selected.get("matched_mpn") or "Not matched"),
+            ("Manufacturer", selected.get("manufacturer") or "Not reported"),
+            ("Lifecycle evidence", selected.get("lifecycle_evidence_summary") or "Not reported"),
+            ("Stock evidence", selected.get("stock_evidence") or "Not reported by matched suppliers"),
+            ("Lead-time source", selected.get("lead_time_source") or "Not reported"),
+            ("Evidence sources", selected.get("sources") or "Not reported"),
+            ("Supplier coverage", selected.get("supplier_coverage") or "Not reported"),
+            ("Checked at (UTC)", selected.get("checked_at") or "Not reported"),
+            ("Why this risk was assigned", _risk_reason_text(selected.get("risk_reasons"))
+             or "No risk score: evidence needs verification"),
+        ]
+        for index, (label, value) in enumerate(evidence_fields):
+            with evidence_columns[index % 2]:
+                st.markdown(f"**{label}**")
+                st.text(str(value))
+    with st.container(border=True):
+        st.markdown("**Download the complete report**")
+        download_columns = st.columns([1, 1, 2])
+        with download_columns[0]:
+            st.download_button(
+                "Download Excel report",
+                data=build_audit_xlsx(report),
+                file_name="cadivor_bom_stress_test.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                type="primary",
+                key="cadivor_stress_report_xlsx",
+                use_container_width=True,
+            )
+        with download_columns[1]:
+            st.download_button(
+                "Download CSV data",
+                data=build_audit_csv(results),
+                file_name="cadivor_bom_stress_test.csv",
+                mime="text/csv",
+                key="cadivor_stress_report_csv",
+                use_container_width=True,
+            )
+        st.caption("Excel includes a summary and complete component evidence. CSV contains the same evidence fields for reuse.")

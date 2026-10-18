@@ -371,6 +371,118 @@ class PublicBomStressTest(unittest.TestCase):
         self.assertEqual(fake_st.session_state["cadivor_route"], "Reports")
         self.assertEqual(fake_st.query_params["page"], "Reports")
 
+    def test_audit_downloads_keep_evidence_and_use_readable_numeric_values(self):
+        from io import BytesIO, StringIO
+
+        from openpyxl import load_workbook
+
+        row = {
+            "mpn": "ATMEGA328P-PU", "matched_mpn": "ATMEGA328P-PU",
+            "manufacturer": "Microchip Technology", "quantity": 50,
+            "lifecycle": "Conflicting supplier data",
+            "lifecycle_evidence_summary": "DigiKey: Active; Mouser: Not Recommended for New Designs",
+            "stock": 41842, "stock_evidence": "Reported by DigiKey, Mouser",
+            "lead_time_weeks": 27.0, "lead_time_source": "DigiKey",
+            "supplier_count": 3, "sources": "DigiKey, Mouser, Newark",
+            "supplier_coverage": "3 of 3 configured supplier sources responded successfully.",
+            "checked_at": "2026-10-18T23:14:27+00:00", "risk": "High",
+            "risk_reasons": ["Supplier lifecycle records conflict"],
+        }
+        csv_bytes = funnel.build_audit_csv([row])
+        self.assertTrue(csv_bytes.startswith(b"\xef\xbb\xbf"))
+        self.assertNotIn(b"41842.0", csv_bytes)
+        csv_rows = list(__import__("csv").DictReader(StringIO(csv_bytes.decode("utf-8-sig"))))
+        self.assertEqual(csv_rows[0]["Reported stock"], "41842")
+        self.assertEqual(csv_rows[0]["Matching suppliers"], "3")
+        self.assertEqual(csv_rows[0]["Why"], "Supplier lifecycle records conflict")
+        self.assertEqual(len(csv_rows[0]), 16)
+
+        preview = funnel.build_audit_preview([row])
+        self.assertEqual(list(preview.columns), [
+            "BOM MPN", "Manufacturer", "Qty", "Lifecycle", "Reported stock",
+            "Lead time (weeks)", "Matching suppliers", "Risk",
+        ])
+        report = {
+            "filename": "enterprise_test_bom_25.csv",
+            "created_at": "2026-10-18T23:20:00+00:00",
+            "results": [row],
+        }
+        workbook = load_workbook(BytesIO(funnel.build_audit_xlsx(report)), data_only=False)
+        self.assertEqual(workbook.sheetnames, ["Summary", "Component evidence"])
+        self.assertEqual(workbook["Summary"]["A1"].value, "Cadivor | BOM Stress Test")
+        self.assertEqual(workbook["Summary"]["A6"].value, 1)
+        details = workbook["Component evidence"]
+        self.assertEqual(details.freeze_panes, "A5")
+        self.assertEqual(details.tables["BOMComponentEvidence"].ref, "A4:P5")
+        self.assertEqual(details["G5"].value, 41842)
+        self.assertEqual(details["K5"].value, 3)
+        self.assertEqual(details["P5"].value, "Supplier lifecycle records conflict")
+
+    def test_audit_workbook_escapes_formula_like_supplier_evidence(self):
+        from io import BytesIO
+
+        from openpyxl import load_workbook
+
+        row = {
+            "mpn": "PART-1", "quantity": 1, "lifecycle": "Active", "risk": "Low",
+            "risk_reasons": ['=HYPERLINK("https://example.com")'],
+        }
+        workbook = load_workbook(BytesIO(funnel.build_audit_xlsx({"results": [row]})))
+        cell = workbook["Component evidence"]["P5"]
+        self.assertEqual(cell.data_type, "s")
+        self.assertTrue(cell.value.startswith("'=HYPERLINK"))
+
+    def test_verified_report_shows_compact_table_and_both_download_formats(self):
+        import time
+
+        captured = {"buttons": [], "frames": []}
+        fake_st = types.ModuleType("streamlit")
+        fake_st.session_state = {
+            "user": {"id": "user-1"},
+            "cadivor_stress_verified_report_cache": {
+                "user_id": "user-1", "at": time.time(),
+                "report": {
+                    "filename": "sample.csv", "created_at": "2026-10-18T23:20:00+00:00",
+                    "results": [{
+                        "mpn": "ATMEGA328P-PU", "matched_mpn": "ATMEGA328P-PU",
+                        "manufacturer": "Microchip Technology", "quantity": 50,
+                        "lifecycle": "Active", "stock": 41842, "stock_evidence": "DigiKey",
+                        "lead_time_weeks": 2.0, "lead_time_source": "DigiKey", "supplier_count": 3,
+                        "sources": "DigiKey, Mouser, Newark", "supplier_coverage": "3 of 3 sources",
+                        "checked_at": "2026-10-18T23:14:27+00:00", "risk": "Low",
+                        "risk_reasons": [],
+                    }],
+                },
+            },
+        }
+        fake_st.markdown = lambda *_args, **_kwargs: None
+        fake_st.text = lambda *_args, **_kwargs: None
+        fake_st.caption = lambda *_args, **_kwargs: None
+        fake_st.info = lambda *_args, **_kwargs: None
+        fake_st.dataframe = lambda frame, **_kwargs: captured["frames"].append(frame)
+        fake_st.expander = lambda *_args, **_kwargs: nullcontext()
+        fake_st.container = lambda *_args, **_kwargs: nullcontext()
+        fake_st.selectbox = lambda _label, options, **_kwargs: options[0]
+        fake_st.columns = lambda spec, **_kwargs: [nullcontext() for _ in range(spec if isinstance(spec, int) else len(spec))]
+        fake_st.write = lambda *_args, **_kwargs: None
+        fake_st.download_button = lambda label, **kwargs: captured["buttons"].append((label, kwargs["data"]))
+        fake_st.column_config = types.SimpleNamespace(
+            TextColumn=lambda *args, **kwargs: (args, kwargs),
+            NumberColumn=lambda *args, **kwargs: (args, kwargs),
+        )
+        with patch.dict(sys.modules, {"streamlit": fake_st}), patch.object(funnel, "enabled", return_value=True):
+            funnel.render_verified_report("verified-token")
+
+        self.assertEqual(list(captured["frames"][0].columns), [
+            "BOM MPN", "Manufacturer", "Qty", "Lifecycle", "Reported stock",
+            "Lead time (weeks)", "Matching suppliers", "Risk",
+        ])
+        self.assertEqual([label for label, _ in captured["buttons"]], [
+            "Download Excel report", "Download CSV data",
+        ])
+        self.assertTrue(captured["buttons"][0][1].startswith(b"PK"))
+        self.assertTrue(captured["buttons"][1][1].startswith(b"\xef\xbb\xbf"))
+
 
 if __name__ == "__main__":
     unittest.main()
