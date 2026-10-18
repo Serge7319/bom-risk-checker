@@ -39,6 +39,48 @@ def migration_missing(exc: Exception) -> bool:
     return any(signal in text for signal in signals)
 
 
+_NOTIFICATION_PREFERENCE_DEFAULTS = {
+    "project_activity": True,
+    "simulation_results": True,
+    "team_activity": True,
+    "product_updates": True,
+    "marketing_emails": False,
+}
+
+
+def _as_bool(value: Any, default: bool = False) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, str):
+        normalized = value.strip().casefold()
+        if normalized in {"", "0", "false", "no", "off"}:
+            return False
+        if normalized in {"1", "true", "yes", "on"}:
+            return True
+    return bool(value)
+
+
+def notification_preferences_from_record(
+    preferences: Dict[str, Any] | None,
+) -> Dict[str, bool]:
+    """Return the five independent notification choices with legacy fallbacks."""
+    row = preferences if isinstance(preferences, dict) else {}
+    legacy_fallbacks = {
+        "project_activity": row.get("workspace_notifications", True),
+        "simulation_results": row.get("report_notifications", True),
+        "team_activity": row.get("workspace_notifications", True),
+        "product_updates": row.get("email_notifications", True),
+        "marketing_emails": False,
+    }
+    saved = row.get("notification_preferences")
+    saved = saved if isinstance(saved, dict) else {}
+    result = {}
+    for key, default in _NOTIFICATION_PREFERENCE_DEFAULTS.items():
+        value = saved.get(key, legacy_fallbacks.get(key, default))
+        result[key] = _as_bool(value, default)
+    return result
+
+
 def ensure_customer_profile(
     supabase: Any,
     user_id: str,
@@ -179,12 +221,22 @@ def update_user_preferences(
         "workspace_notifications",
         "monitoring_notifications",
         "report_notifications",
+        "notification_preferences",
     }
     payload = {
         key: value
         for key, value in updates.items()
         if key in allowed_fields
     }
+    if "notification_preferences" in payload:
+        raw_preferences = payload["notification_preferences"]
+        raw_preferences = raw_preferences if isinstance(raw_preferences, dict) else {}
+        payload["notification_preferences"] = {
+            key: _as_bool(
+                raw_preferences.get(key), _NOTIFICATION_PREFERENCE_DEFAULTS[key]
+            )
+            for key in _NOTIFICATION_PREFERENCE_DEFAULTS
+        }
     payload["updated_at"] = _now_iso()
 
     try:

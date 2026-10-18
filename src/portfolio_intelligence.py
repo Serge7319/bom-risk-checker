@@ -7,6 +7,7 @@ contain a trusted distributor image URL.
 from __future__ import annotations
 
 from collections import Counter, defaultdict
+from datetime import datetime, timedelta, timezone
 import html
 from typing import Any, Callable, Dict, Iterable, List
 
@@ -39,6 +40,104 @@ def _first(row: Dict[str, Any], *keys: str, default: Any = None) -> Any:
         if value is not None and str(value).strip() != "":
             return value
     return default
+
+
+def _optional_number(value: Any) -> float | None:
+    if value is None or str(value).strip().casefold() in {"", "nan", "none", "<na>"}:
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return number if pd.notna(number) else None
+
+
+def _risk_bucket(score: float | None, raw_level: Any) -> str:
+    level = _text(raw_level).casefold()
+    if score is not None and score >= 60:
+        return "High"
+    if score is not None and score >= 30:
+        return "Medium"
+    if level in {"high", "critical", "severe"}:
+        return "High"
+    if level in {"medium", "moderate", "watch"}:
+        return "Medium"
+    if level in {"low", "minimal"} or (score is not None and score > 0):
+        return "Low"
+    return "Unknown"
+
+
+def _recorded_date(row: Dict[str, Any]) -> datetime | None:
+    raw = _first(row, "updated_at", "created_at", "analyzed_at", "date", default=None)
+    if raw is None:
+        return None
+    try:
+        parsed = pd.to_datetime(raw, errors="coerce", utc=True)
+    except Exception:
+        return None
+    if pd.isna(parsed):
+        return None
+    return parsed.to_pydatetime()
+
+
+def filter_portfolio_window(
+    analyses: Iterable[Dict[str, Any]],
+    parts: Iterable[Dict[str, Any]],
+    alerts: Iterable[Dict[str, Any]],
+    window: str,
+    *,
+    now: datetime | None = None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], str]:
+    """Filter live records using analysis timestamps and explain missing dates."""
+    analysis_rows = [row for row in (analyses or []) if isinstance(row, dict)]
+    part_rows = [row for row in (parts or []) if isinstance(row, dict)]
+    alert_rows = [row for row in (alerts or []) if isinstance(row, dict)]
+    normalized_window = _text(window, "All time")
+    days = {
+        "Last 30 days": 30,
+        "Last 90 days": 90,
+        "Last 12 months": 365,
+    }.get(normalized_window)
+    if days is None:
+        return (
+            analysis_rows,
+            part_rows,
+            alert_rows,
+            "All saved records are included. The trend uses analyses with a recorded date.",
+        )
+
+    current = now or datetime.now(timezone.utc)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=timezone.utc)
+    cutoff = current - timedelta(days=days)
+    selected_ids = set()
+    dated_count = 0
+    undated_count = 0
+    filtered_analyses = []
+    for row in analysis_rows:
+        updated = _recorded_date(row)
+        if updated is None:
+            undated_count += 1
+            continue
+        dated_count += 1
+        if cutoff <= updated <= current:
+            filtered_analyses.append(row)
+            selected_ids.add(_text(row.get("id")))
+    filtered_parts = [
+        row for row in part_rows
+        if _text(row.get("analysis_id")) in selected_ids
+    ]
+    filtered_alerts = []
+    for row in alert_rows:
+        created = _recorded_date(row)
+        if created is not None and cutoff <= created <= current:
+            filtered_alerts.append(row)
+    note = f"Showing records from the last {days} days."
+    if undated_count:
+        note += f" {undated_count:,} undated BOM(s) are excluded from this time range."
+    if not dated_count:
+        note = "No dated BOM analyses are available for the selected time range."
+    return filtered_analyses, filtered_parts, filtered_alerts, note
 
 
 def high_risk_components_disclosure(
@@ -130,14 +229,18 @@ def build_portfolio_intelligence(
         analysis_id = _text(row.get("analysis_id"))
         lifecycle = _text(row.get("lifecycle_status"), "Unknown")
         supplier_raw = _first(row, "supplier_count", default=None)
-        supplier_recorded = (
-            supplier_raw is not None
-            and str(supplier_raw).strip().casefold() not in {"", "nan", "none"}
-        )
-        supplier_count = int(_number(supplier_raw, 0))
-        stock = int(_number(_first(row, "stock_available", "stock"), 0))
-        risk_score = int(_number(row.get("risk_score"), 0))
-        risk_level = _text(row.get("risk_level"), "Unknown")
+        supplier_value = _optional_number(supplier_raw)
+        supplier_recorded = supplier_value is not None
+        supplier_count = int(supplier_value) if supplier_value is not None else None
+        raw_stock = _first(row, "stock_available", "stock", default=None)
+        stock_value = _optional_number(raw_stock)
+        stock_recorded = stock_value is not None
+        stock = int(stock_value) if stock_value is not None else None
+        raw_score = _first(row, "risk_score", "Risk Score", default=None)
+        risk_score_value = _optional_number(raw_score)
+        risk_score = int(risk_score_value) if risk_score_value is not None else None
+        raw_risk_level = _first(row, "risk_level", "Risk Level", default=None)
+        risk_level = _risk_bucket(risk_score_value, raw_risk_level)
         manufacturer = _text(row.get("manufacturer"), "Unknown")
         normalized.append(
             {
@@ -158,7 +261,9 @@ def build_portfolio_intelligence(
                 "Supplier Sources": supplier_count,
                 "Supplier Sources Recorded": supplier_recorded,
                 "Available Stock": stock,
+                "Stock Recorded": stock_recorded,
                 "Risk Score": risk_score,
+                "Risk Score Recorded": risk_score_value is not None,
                 "Risk Level": risk_level,
                 "Quantity": int(_number(_first(row, "quantity", "qty", "required_quantity"), 1)),
             }
@@ -169,6 +274,8 @@ def build_portfolio_intelligence(
     manufacturer_counts = Counter()
     for row in normalized:
         key = row["Part Number"].upper()
+        if key.strip() in {"", "UNKNOWN", "N/A", "NAN"}:
+            continue
         mpn_projects[key].add(row["Project"])
         mpn_rows[key].append(row)
         manufacturer_counts[row["Manufacturer"]] += 1
@@ -178,15 +285,24 @@ def build_portfolio_intelligence(
         rows = mpn_rows[key]
         if len(projects) < 2:
             continue
-        worst = max(rows, key=lambda row: row["Risk Score"])
+        scored_rows = [row for row in rows if row["Risk Score"] is not None]
+        stock_rows = [row for row in rows if row["Stock Recorded"]]
+        source_rows = [row for row in rows if row["Supplier Sources Recorded"]]
+        worst = max(scored_rows or rows, key=lambda row: row["Risk Score"] or 0)
         shared_components.append(
             {
                 "Part Number": worst["Part Number"],
                 "Manufacturer": worst["Manufacturer"],
                 "Projects Using Part": len(projects),
-                "Highest Risk Score": max(row["Risk Score"] for row in rows),
-                "Lowest Stock": min(row["Available Stock"] for row in rows),
-                "Minimum Supplier Sources": min(row["Supplier Sources"] for row in rows),
+                "Highest Risk Score": max(
+                    (row["Risk Score"] for row in scored_rows), default=None
+                ),
+                "Lowest Stock": min(
+                    (row["Available Stock"] for row in stock_rows), default=None
+                ),
+                "Minimum Supplier Sources": min(
+                    (row["Supplier Sources"] for row in source_rows), default=None
+                ),
                 "Lifecycle": worst["Lifecycle"],
                 "Image URL": worst["Image URL"],
             }
@@ -199,7 +315,10 @@ def build_portfolio_intelligence(
         row for row in normalized
         if row["Supplier Sources Recorded"] and row["Supplier Sources"] <= 1
     ]
-    no_stock = [row for row in normalized if row["Available Stock"] <= 0]
+    no_stock = [
+        row for row in normalized
+        if row["Stock Recorded"] and (row["Available Stock"] or 0) <= 0
+    ]
     lifecycle_exposed = [
         row for row in normalized
         if any(
@@ -209,15 +328,22 @@ def build_portfolio_intelligence(
     ]
     high_risk = [
         row for row in normalized
-        if row["Risk Score"] >= 60 or row["Risk Level"].lower() == "high"
+        if row["Risk Level"] == "High"
     ]
+    medium_risk = [row for row in normalized if row["Risk Level"] == "Medium"]
+    low_risk = [row for row in normalized if row["Risk Level"] == "Low"]
+    unassessed = [row for row in normalized if row["Risk Level"] == "Unknown"]
 
     total_parts = len(normalized)
     concentration = 0
     top_manufacturer = "No data"
-    if manufacturer_counts:
-        top_manufacturer, top_count = manufacturer_counts.most_common(1)[0]
-        concentration = round((top_count / max(1, total_parts)) * 100)
+    known_manufacturer_counts = Counter(
+        row["Manufacturer"] for row in normalized
+        if row["Manufacturer"].casefold() not in {"unknown", "not recorded", ""}
+    )
+    if known_manufacturer_counts:
+        top_manufacturer, top_count = known_manufacturer_counts.most_common(1)[0]
+        concentration = round((top_count / max(1, sum(known_manufacturer_counts.values()))) * 100)
 
     alert_counts = Counter(
         _text(row.get("part_number") or row.get("mpn"), "Unknown")
@@ -231,9 +357,12 @@ def build_portfolio_intelligence(
 
     opportunity_score = 0
     if total_parts:
-        exposure = (
-            len(single_source) + len(no_stock) + len(lifecycle_exposed) + len(high_risk)
-        )
+        exposure_keys = {
+            (row["Analysis ID"], row["Part Number"])
+            for group in (single_source, no_stock, lifecycle_exposed, high_risk, medium_risk)
+            for row in group
+        }
+        exposure = len(exposure_keys)
         opportunity_score = min(100, round((exposure / total_parts) * 100))
 
     recommendations = []
@@ -265,6 +394,135 @@ def build_portfolio_intelligence(
         analysis_id = row["Analysis ID"]
         if analysis_id:
             high_risk_by_analysis[analysis_id].append(row)
+
+    parts_by_analysis: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    for row in normalized:
+        if row["Analysis ID"]:
+            parts_by_analysis[row["Analysis ID"]].append(row)
+
+    at_risk_boms = []
+    monthly_counts: Dict[str, Counter] = defaultdict(Counter)
+    for analysis in analyses:
+        analysis_id = _text(analysis.get("id"))
+        detail_rows = parts_by_analysis.get(analysis_id, [])
+        summary_high_raw = _first(analysis, "high_risk_count", "high_risk_parts", default=None)
+        summary_medium_raw = _first(analysis, "medium_risk_count", "medium_risk_parts", default=None)
+        summary_low_raw = _first(analysis, "low_risk_count", "low_risk_parts", default=None)
+        summary_high = max(0, int(_number(summary_high_raw, 0)))
+        summary_medium = max(0, int(_number(summary_medium_raw, 0)))
+        summary_low = max(0, int(_number(summary_low_raw, 0)))
+        high_rows = [row for row in detail_rows if row["Risk Level"] == "High"]
+        medium_rows = [row for row in detail_rows if row["Risk Level"] == "Medium"]
+        low_rows = [row for row in detail_rows if row["Risk Level"] == "Low"]
+        risky_rows = [
+            row for row in detail_rows
+            if row["Risk Level"] in {"High", "Medium"}
+            or row in single_source
+            or row in lifecycle_exposed
+            or row in no_stock
+        ]
+        high_count = max(summary_high, len(high_rows))
+        medium_count = max(summary_medium, len(medium_rows))
+        low_count = max(summary_low, len(low_rows))
+        recorded_risk_count = high_count + medium_count
+        at_risk_count = max(recorded_risk_count, len(risky_rows))
+        if at_risk_count:
+            if high_count:
+                overall_level = "High"
+            elif medium_count or risky_rows:
+                overall_level = "Medium"
+            else:
+                overall_level = "Unknown"
+            driver_counts = []
+            if high_count:
+                driver_counts.append((high_count, "High risk"))
+            if len([row for row in detail_rows if row in single_source]):
+                driver_counts.append((len([row for row in detail_rows if row in single_source]), "Single-source"))
+            if len([row for row in detail_rows if row in lifecycle_exposed]):
+                driver_counts.append((len([row for row in detail_rows if row in lifecycle_exposed]), "End-of-life"))
+            if len([row for row in detail_rows if row in no_stock]):
+                driver_counts.append((len([row for row in detail_rows if row in no_stock]), "Out-of-stock"))
+            if medium_count:
+                driver_counts.append((medium_count, "Medium risk"))
+            primary_driver = (
+                f"{max(driver_counts)[1]} ({max(driver_counts)[0]})"
+                if driver_counts else f"Risk flagged in BOM summary ({at_risk_count})"
+            )
+            analysis_name = analysis_names.get(analysis_id, _text(analysis.get("project_name"), "Saved BOM"))
+            at_risk_boms.append({
+                "Analysis ID": analysis_id,
+                "Project": analysis_name,
+                "BOM": analysis_boms.get(analysis_id, _text(_first(analysis, "filename", "file_name"), "Saved BOM")),
+                "Total Components": int(_number(_first(analysis, "total_parts", "part_count", "parts_count"), len(detail_rows))),
+                "At-Risk Components": at_risk_count,
+                "Risk Level": overall_level,
+                "Primary Risk Driver": primary_driver,
+                "Last Updated": _text(_first(analysis, "updated_at", "created_at"), "Not recorded"),
+                "Health": _optional_number(analysis.get("health_score")),
+            })
+        recorded_date = _recorded_date(analysis)
+        if recorded_date:
+            month_label = recorded_date.strftime("%Y-%m")
+            monthly_counts[month_label]["High risk"] += max(summary_high, len(high_rows))
+            monthly_counts[month_label]["Medium risk"] += max(summary_medium, len(medium_rows))
+            monthly_counts[month_label]["Low risk"] += max(summary_low, len(low_rows))
+    at_risk_boms.sort(
+        key=lambda row: (
+            -row["At-Risk Components"],
+            0 if row["Risk Level"] == "High" else 1,
+            row["Project"].casefold(),
+        )
+    )
+
+    monthly_risk_trend = [
+        {"Month": month, **{label: counts.get(label, 0) for label in ("High risk", "Medium risk", "Low risk")}}
+        for month, counts in sorted(monthly_counts.items())
+    ]
+    distribution_counts = Counter()
+    analyses_by_id = {_text(row.get("id")): row for row in analyses}
+    for analysis_id, analysis in analyses_by_id.items():
+        detail_rows = parts_by_analysis.get(analysis_id, [])
+        actual = Counter(row["Risk Level"] for row in detail_rows)
+        expected_total = max(
+            len(detail_rows),
+            max(
+                0,
+                int(
+                    _number(
+                        _first(analysis, "total_parts", "part_count", "parts_count"),
+                        0,
+                    )
+                ),
+            ),
+        )
+        summary_values = {
+            "High": max(0, int(_number(_first(analysis, "high_risk_count", "high_risk_parts"), 0))),
+            "Medium": max(0, int(_number(_first(analysis, "medium_risk_count", "medium_risk_parts"), 0))),
+            "Low": max(0, int(_number(_first(analysis, "low_risk_count", "low_risk_parts"), 0))),
+        }
+        classified_counts = {
+            level: max(actual.get(level, 0), summary_values[level])
+            for level in ("High", "Medium", "Low")
+        }
+        for level, count in classified_counts.items():
+            distribution_counts[level] += count
+        # Preserve explicitly unknown detail rows and fill any remaining BOM
+        # total as unassessed. This makes the chart reconcile even when only
+        # summary-level risk counts were saved for an analysis.
+        unassessed_count = max(
+            actual.get("Unknown", 0),
+            expected_total - sum(classified_counts.values()),
+        )
+        distribution_counts["Unknown"] += max(0, unassessed_count)
+    for row in normalized:
+        if not row["Analysis ID"]:
+            distribution_counts[row["Risk Level"]] += 1
+    risk_distribution = {
+        "High risk": distribution_counts["High"],
+        "Medium risk": distribution_counts["Medium"],
+        "Low risk": distribution_counts["Low"],
+        "Unassessed": distribution_counts["Unknown"],
+    }
 
     component_detail_headers = [
         "Project", "BOM", "Part Number", "Manufacturer", "Risk Level",
@@ -364,6 +622,10 @@ def build_portfolio_intelligence(
         "recommendations": recommendations[:4],
         "total_projects": len(analyses),
         "total_component_records": total_parts,
+        "assessed_component_records": sum(
+            risk_distribution[key] for key in ("High risk", "Medium risk", "Low risk")
+        ),
+        "unassessed_component_records": risk_distribution["Unassessed"],
         "shared_component_count": len(shared_components),
         "single_source_count": len(single_source),
         "supplier_data_recorded": any(row["Supplier Sources Recorded"] for row in normalized),
@@ -371,6 +633,9 @@ def build_portfolio_intelligence(
         "manufacturer_concentration": concentration,
         "top_manufacturer": top_manufacturer,
         "portfolio_exposure": opportunity_score,
+        "risk_distribution": risk_distribution,
+        "at_risk_boms": at_risk_boms,
+        "monthly_risk_trend": monthly_risk_trend,
         "kpi_details": portfolio_kpi_details,
         "high_risk_by_analysis": dict(high_risk_by_analysis),
     }
@@ -608,3 +873,240 @@ def render_portfolio_intelligence(
         internal_nav_button("Procurement Advisor", "Procurement Advisor", key="portfolio_procurement", use_container_width=True)
     with shortcuts[6]:
         internal_nav_button("Reports", "Reports", key="portfolio_reports", use_container_width=True)
+
+
+def render_portfolio_intelligence_dashboard(
+    *,
+    intelligence: Dict[str, Any],
+    internal_nav_button: Callable[..., Any],
+) -> None:
+    """Render a live portfolio dashboard without synthetic trend deltas."""
+    st.markdown(
+        """
+        <style id="cadivor-portfolio-mockup-v1" data-cadivor-layout-style="true">
+          .st-key-approved_page_canvas_standard_portfolio_intelligence{
+            box-sizing:border-box!important;width:100%!important;max-width:1440px!important;
+            margin:0 auto!important;padding:28px 0 36px!important
+          }
+          .cv-pi-head{display:flex;align-items:flex-end;justify-content:space-between;gap:22px;margin:0 0 18px}
+          .cv-pi-kicker{margin:0 0 5px;color:#64748b;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
+          .cv-pi-title{margin:0 0 5px;color:#0f172a;font-size:32px;font-weight:820;line-height:1.12;letter-spacing:-.035em}
+          .cv-pi-subtitle{margin:0;color:#64748b;font-size:14px;line-height:1.5}
+          .cv-pi-kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin:0 0 16px}
+          .cv-pi-kpi{box-sizing:border-box;min-width:0;min-height:140px;padding:17px 17px 14px;border:1px solid #dce7f5;border-radius:15px;background:#f7faff}
+          .cv-pi-kpi-icon{display:block;margin:0 0 12px;color:#2670e8;font-size:21px;line-height:1}
+          .cv-pi-kpi-label{color:#52647b;font-size:12px;font-weight:700;line-height:1.3}
+          .cv-pi-kpi-value{margin-top:8px;color:#0f172a;font-size:27px;font-weight:850;line-height:1.05;letter-spacing:-.035em}
+          .cv-pi-kpi-note{margin-top:8px;color:#74839a;font-size:11px;line-height:1.35}
+          .cv-pi-chart-grid{display:grid;grid-template-columns:minmax(0,1.58fr) minmax(360px,.95fr);gap:14px;margin:0 0 15px}
+          .cv-pi-panel{box-sizing:border-box;min-width:0;border:1px solid #dce5f0;border-radius:15px;background:#fff;padding:17px 18px;box-shadow:0 3px 10px rgba(15,23,42,.025)}
+          .cv-pi-panel h2{margin:0;color:#17243d;font-size:17px;font-weight:780;letter-spacing:-.02em}
+          .cv-pi-panel-sub{margin:4px 0 10px;color:#74839a;font-size:12px;line-height:1.45}
+          .st-key-portfolio_risk_trend_panel,.st-key-portfolio_risk_distribution_panel{box-sizing:border-box!important;min-width:0!important;border:1px solid #dce5f0!important;border-radius:15px!important;background:#fff!important;padding:14px 16px!important;box-shadow:0 3px 10px rgba(15,23,42,.025)!important}
+          .st-key-portfolio_risk_trend_panel>[data-testid="stVerticalBlock"],.st-key-portfolio_risk_distribution_panel>[data-testid="stVerticalBlock"]{gap:.15rem!important}
+          .st-key-portfolio_risk_trend_panel .cv-pi-panel,.st-key-portfolio_risk_distribution_panel .cv-pi-panel{border:0!important;border-radius:0!important;background:transparent!important;padding:0!important;box-shadow:none!important}
+          .cv-pi-table-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin:7px 0 11px}
+          .cv-pi-table-head h2{margin:0;color:#17243d;font-size:19px;font-weight:800;letter-spacing:-.025em}
+          .cv-pi-table-head p{margin:4px 0 0;color:#74839a;font-size:12px}
+          @media(max-width:1200px){.cv-pi-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}.cv-pi-chart-grid{grid-template-columns:1fr}}
+          @media(max-width:720px){.cv-pi-head{display:block}.cv-pi-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.cv-pi-title{font-size:27px}}
+          @media(max-width:480px){.cv-pi-kpis{grid-template-columns:1fr}}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    top_left, top_right = st.columns([4.2, 1.15], vertical_alignment="bottom")
+    with top_left:
+        st.markdown(
+            '<div class="cv-pi-head"><div><p class="cv-pi-kicker">Portfolio</p>'
+            '<h1 class="cv-pi-title">Portfolio intelligence</h1>'
+            '<p class="cv-pi-subtitle">A cross-project view of engineering data, supply-chain risk, and lifecycle exposure.</p></div></div>',
+            unsafe_allow_html=True,
+        )
+    with top_right:
+        st.selectbox(
+            "Date range",
+            ["Last 30 days", "Last 90 days", "Last 12 months", "All time"],
+            index=["Last 30 days", "Last 90 days", "Last 12 months", "All time"].index(
+                intelligence.get("time_window", "Last 12 months")
+            ),
+            key="portfolio_time_window",
+            label_visibility="collapsed",
+        )
+
+    window = str(intelligence.get("time_window") or "Last 12 months")
+    current_period = window.casefold()
+    note_map = {
+        "Saved Projects": f"Saved BOMs in {current_period}",
+        "Component Records": f"Component entries in {current_period}",
+        "Shared Components": "Recorded on multiple saved BOMs",
+        "Single-Source Records": "Only where supplier count is recorded",
+        "Lifecycle Exposure": "Obsolete, NRND, or EOL status recorded",
+    }
+    metrics = [
+        ("▱", "Saved Projects", intelligence["total_projects"], note_map["Saved Projects"]),
+        ("◇", "Component Records", intelligence["total_component_records"], note_map["Component Records"]),
+        ("⌘", "Shared Components", intelligence["shared_component_count"], note_map["Shared Components"]),
+        ("⚠", "Single-Source Records", intelligence["single_source_count"], note_map["Single-Source Records"]),
+        ("◷", "Lifecycle Exposure", intelligence["lifecycle_count"], note_map["Lifecycle Exposure"]),
+    ]
+    cards = "".join(
+        f'<article class="cv-pi-kpi"><span class="cv-pi-kpi-icon">{icon}</span>'
+        f'<div class="cv-pi-kpi-label">{html.escape(label)}</div>'
+        f'<div class="cv-pi-kpi-value">{int(value):,}</div>'
+        f'<div class="cv-pi-kpi-note">{html.escape(note)}</div></article>'
+        for icon, label, value, note in metrics
+    )
+    st.markdown(f'<section class="cv-pi-kpis">{cards}</section>', unsafe_allow_html=True)
+
+    if intelligence.get("time_window_note"):
+        st.caption(str(intelligence["time_window_note"]))
+
+    chart_left, chart_right = st.columns([1.58, .95], gap="small")
+    with chart_left:
+        with st.container(key="portfolio_risk_trend_panel"):
+            st.markdown(
+                '<div class="cv-pi-panel"><h2>Portfolio risk trend</h2>'
+                '<p class="cv-pi-panel-sub">Recorded component risk grouped by the saved BOM analysis date.</p></div>',
+                unsafe_allow_html=True,
+            )
+            trend_rows = intelligence.get("monthly_risk_trend") or []
+            if trend_rows:
+                try:
+                    import plotly.graph_objects as go
+
+                    figure = go.Figure()
+                    palette = {
+                        "Low risk": ("#2670e8", "rgba(38,112,232,.55)"),
+                        "Medium risk": ("#f59e0b", "rgba(245,158,11,.48)"),
+                        "High risk": ("#e34f55", "rgba(227,79,85,.45)"),
+                    }
+                    for risk_label in ("Low risk", "Medium risk", "High risk"):
+                        line, fill = palette[risk_label]
+                        figure.add_trace(go.Scatter(
+                            x=[row["Month"] for row in trend_rows],
+                            y=[row.get(risk_label, 0) for row in trend_rows],
+                            name=risk_label,
+                            mode="lines",
+                            stackgroup="risk",
+                            line={"color": line, "width": 1.5},
+                            fillcolor=fill,
+                            hovertemplate=f"%{{x}} · {risk_label}: %{{y}}<extra></extra>",
+                        ))
+                    figure.update_layout(
+                        height=275,
+                        margin={"l": 12, "r": 10, "t": 12, "b": 12},
+                        paper_bgcolor="white",
+                        plot_bgcolor="white",
+                        legend={"orientation": "h", "y": -0.16, "x": .5, "xanchor": "center"},
+                        hovermode="x unified",
+                        font={"family": "Inter, system-ui, sans-serif", "size": 11, "color": "#64748b"},
+                        xaxis={"title": None, "gridcolor": "#edf1f6", "showline": False},
+                        yaxis={"title": None, "gridcolor": "#edf1f6", "rangemode": "tozero", "zeroline": False},
+                    )
+                    st.plotly_chart(figure, use_container_width=True, config={"displayModeBar": False})
+                except Exception:
+                    st.dataframe(pd.DataFrame(trend_rows), hide_index=True, use_container_width=True)
+            else:
+                st.info("No dated risk snapshots are available in this range yet. As saved BOM analyses are added, the trend will populate.")
+    with chart_right:
+        with st.container(key="portfolio_risk_distribution_panel"):
+            st.markdown(
+                '<div class="cv-pi-panel"><h2>Risk distribution</h2>'
+                '<p class="cv-pi-panel-sub">Assessed component records by current risk classification.</p></div>',
+                unsafe_allow_html=True,
+            )
+            distribution = intelligence.get("risk_distribution") or {}
+            values = [
+                int(distribution.get(label) or 0)
+                for label in ("High risk", "Medium risk", "Low risk", "Unassessed")
+            ]
+            if sum(values):
+                try:
+                    import plotly.graph_objects as go
+
+                    figure = go.Figure(data=[go.Pie(
+                        labels=["High risk", "Medium risk", "Low risk", "Unassessed"],
+                        values=values,
+                        hole=.63,
+                        sort=False,
+                        marker={"colors": ["#e34f55", "#f59e0b", "#2670e8", "#cbd5e1"], "line": {"color": "#ffffff", "width": 2}},
+                        textinfo="percent",
+                        textposition="inside",
+                        hovertemplate="%{label}: %{value:,} (%{percent})<extra></extra>",
+                    )])
+                    assessed = int(intelligence.get("assessed_component_records") or 0)
+                    figure.update_layout(
+                        height=275,
+                        margin={"l": 8, "r": 8, "t": 8, "b": 8},
+                        paper_bgcolor="white",
+                        showlegend=True,
+                        legend={"x": 1.02, "y": .5, "font": {"size": 11}},
+                        annotations=[{"text": f"{assessed:,}<br><span style='font-size:11px'>assessed</span>", "x": .36, "y": .5, "showarrow": False, "font": {"size": 21, "color": "#17243d"}}],
+                    )
+                    st.plotly_chart(figure, use_container_width=True, config={"displayModeBar": False})
+                except Exception:
+                    st.dataframe(pd.DataFrame([{"Risk level": label, "Components": value} for label, value in distribution.items()]), hide_index=True, use_container_width=True)
+            else:
+                st.info("No component risk classifications are recorded in this period.")
+
+    table_left, table_right = st.columns([5, 1], vertical_alignment="center")
+    with table_left:
+        st.markdown(
+            '<div class="cv-pi-table-head"><div><h2>At-risk BOMs</h2>'
+            '<p>BOMs with the highest concentration of recorded component exposure.</p></div></div>',
+            unsafe_allow_html=True,
+        )
+    with table_right:
+        if st.button("View all BOMs  ›", key="portfolio_view_all_boms", use_container_width=True):
+            navigate = intelligence.get("navigate")
+            if callable(navigate):
+                navigate("BOM Analyzer", show_saved_analyses="1")
+    bom_rows = intelligence.get("at_risk_boms") or []
+    if not bom_rows:
+        st.success("No at-risk BOMs are recorded in this time range.")
+    else:
+        visible = bom_rows[:8]
+        table_data = pd.DataFrame([
+            {
+                "Project": row["Project"],
+                "BOM name": row["BOM"],
+                "Total components": row["Total Components"],
+                "At-risk components": row["At-Risk Components"],
+                "Risk level": row["Risk Level"],
+                "Primary risk driver": row["Primary Risk Driver"],
+                "Last updated": str(row["Last Updated"])[:10] if row["Last Updated"] != "Not recorded" else "—",
+            }
+            for row in visible
+        ])
+        selection_key = "portfolio_at_risk_bom_table_" + "_".join(
+            token.lower() for token in window.split()
+        )
+        selected = st.dataframe(
+            table_data,
+            hide_index=True,
+            use_container_width=True,
+            height=min(360, max(118, 38 + 36 * len(table_data))),
+            on_select="rerun",
+            selection_mode="single-row",
+            key=selection_key,
+            column_config={
+                "Total components": st.column_config.NumberColumn(format="%d"),
+                "At-risk components": st.column_config.NumberColumn(format="%d"),
+            },
+        )
+        selected_rows = []
+        try:
+            selected_rows = list(selected.selection.rows)
+        except Exception:
+            pass
+        if selected_rows:
+            selected_index = int(selected_rows[0])
+            if 0 <= selected_index < len(visible):
+                chosen = visible[selected_index]
+                if st.button("Open selected BOM", key="portfolio_open_selected_bom", type="primary"):
+                    opener = intelligence.get("open_saved_bom")
+                    if callable(opener):
+                        opener(str(chosen["Analysis ID"]), _rerun=True)
+        if len(bom_rows) > len(visible):
+            st.caption(f"Showing {len(visible)} of {len(bom_rows):,} at-risk BOMs. Use View all BOMs to open the complete saved analysis list.")

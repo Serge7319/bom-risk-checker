@@ -239,7 +239,12 @@ def navigate_to(page: str, *, _rerun: bool = True, arm_opening: bool = True, **p
     from src.ui.main_transition import arm_main_transition
 
     if arm_opening and current_page != page:
-        arm_main_transition(st.session_state, page)
+        arm_main_transition(
+            st.session_state,
+            page,
+            kind="navigation",
+            previous_route=current_page,
+        )
     # One intentional route change → one history entry. from_dict replaces the
     # full query, so auth/source marketing keys cannot survive this write.
     commit_navigation_query_params(nav_params, push=True)

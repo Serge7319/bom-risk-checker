@@ -231,6 +231,7 @@ from src.customer_profile_service import (
     ensure_customer_profile,
     update_customer_profile,
     ensure_user_preferences,
+    notification_preferences_from_record,
     update_user_preferences,
 )
 from src.event_labels import (
@@ -2016,7 +2017,12 @@ def resolve_canonical_app_route(*, allow_admin: bool = True) -> str:
         try:
             from src.ui.main_transition import arm_main_transition
 
-            arm_main_transition(st.session_state, route)
+            arm_main_transition(
+                st.session_state,
+                route,
+                kind="navigation",
+                previous_route=previous_route,
+            )
         except Exception:
             st.session_state.pop("cadivor_presented_route", None)
         st.session_state[HISTORY_RESTORE_EVENT_KEY] = {
@@ -6363,10 +6369,6 @@ def run_authenticated_app() -> None:
 
     # ---------- Supply Risk Scenario ----------
     if app_mode == "Supply Risk Scenario":
-        from src.supply_risk_scenario import (
-            build_supply_scenario,
-            render_supply_scenario,
-        )
         try:
             scenario_analyses = load_analysis_history(current_user["id"]) or []
         except Exception:
@@ -6383,130 +6385,14 @@ def run_authenticated_app() -> None:
         except Exception:
             scenario_parts = []
 
-        from src.supply_risk_scenario import build_supply_scenario
-        from src.ui.approved_pages import render_simple_workspace, supply_scenario_chart
+        from src.supply_risk_scenario import render_supply_scenario_dashboard
 
-        scenario_choice = str(
-            st.session_state.get("approved_supply_scenario") or "Primary supplier disruption"
-        )
-
-        def _supply_controls() -> None:
-            choice_col, horizon_col = st.columns(2)
-            with choice_col:
-                st.selectbox(
-                    "Scenario",
-                    ["Primary supplier disruption", "No disruption"],
-                    key="approved_supply_scenario",
-                )
-            with horizon_col:
-                st.selectbox("Time horizon", ["90 days"], key="approved_supply_horizon")
-
-        stock_cut = 0
-        demand_growth = 0
-        scenario = build_supply_scenario(
-            scenario_analyses,
-            scenario_parts,
-            stock_reduction_percent=stock_cut,
-            demand_growth_percent=demand_growth,
-        )
-        exposed = int(scenario.get("component_count") or 0)
-        stock_points = []
-        for part in scenario_parts or []:
-            if not isinstance(part, dict):
-                continue
-            label = str(part.get("mpn") or part.get("part_number") or "").strip()
-            if not label:
-                continue
-            try:
-                stock_points.append((label, float(part.get("stock_available") or 0)))
-            except (TypeError, ValueError):
-                continue
-        render_simple_workspace(
-                kicker="SUPPLY CHAIN",
-                title="Supply scenario",
-                subtitle="Model supplier, component, and demand disruptions to understand impact and evaluate mitigation options.",
-                kpis=[
-                    ("Exposed components", str(exposed)),
-                    ("Shortage components", str(scenario.get("shortage_components") or 0)),
-                    ("Single-source", str(scenario.get("single_source_components") or 0)),
-                    ("BOMs affected", str(scenario.get("affected_projects") or 0)),
-                ],
-                headers=["Component", "Scenario stock", "Required units", "Shortage"],
-                table_rows=[
-                    [
-                        str(row.get("Part Number") or "Component"),
-                        str(row.get("Scenario Stock") or "—"),
-                        str(row.get("Required Units") or "—"),
-                        str(row.get("Shortage Units") or "—"),
-                    ]
-                    for row in (scenario.get("impacted") or scenario.get("rows") or [])[:8]
-                    if isinstance(row, dict)
-                ],
-                chart_html=supply_scenario_chart(scenario_parts, scenario, scenario_choice),
-                control=_supply_controls,
+        with st.container(key="approved_page_canvas_standard_supply_risk_scenario"):
+            render_supply_scenario_dashboard(
+                analyses=scenario_analyses,
+                parts=scenario_parts,
+                internal_nav_button=internal_nav_button,
             )
-
-        st.markdown("### Scenario assumptions")
-        s1, s2, s3, s4 = st.columns(4)
-        with s1:
-            scenario_build_quantity = st.number_input(
-                "Planned builds",
-                min_value=1,
-                max_value=1_000_000,
-                value=int(st.session_state.get("scenario_build_quantity", 100)),
-                step=10,
-                key="scenario_build_quantity",
-            )
-        with s2:
-            stock_reduction_percent = st.slider(
-                "Stock reduction",
-                min_value=0,
-                max_value=100,
-                value=int(st.session_state.get("scenario_stock_reduction", 0)),
-                step=5,
-                key="scenario_stock_reduction",
-                help="Models a percentage loss of currently recorded market stock.",
-            )
-        with s3:
-            supplier_loss = st.number_input(
-                "Suppliers lost",
-                min_value=0,
-                max_value=10,
-                value=int(st.session_state.get("scenario_supplier_loss", 0)),
-                step=1,
-                key="scenario_supplier_loss",
-            )
-        with s4:
-            demand_growth_percent = st.slider(
-                "Demand growth",
-                min_value=0,
-                max_value=300,
-                value=int(st.session_state.get("scenario_demand_growth", 0)),
-                step=10,
-                key="scenario_demand_growth",
-            )
-
-        include_lifecycle_event = st.checkbox(
-            "Model a lifecycle disruption for components already showing moderate or higher risk",
-            value=bool(st.session_state.get("scenario_lifecycle_event", False)),
-            key="scenario_lifecycle_event",
-        )
-
-        scenario_intelligence = build_supply_scenario(
-            scenario_analyses,
-            scenario_parts,
-            build_quantity=int(scenario_build_quantity),
-            stock_reduction_percent=int(stock_reduction_percent),
-            supplier_loss=int(supplier_loss),
-            demand_growth_percent=int(demand_growth_percent),
-            include_lifecycle_event=bool(include_lifecycle_event),
-        )
-
-        render_supply_scenario(
-            intelligence=scenario_intelligence,
-            internal_nav_button=internal_nav_button,
-            show_header=False,
-        )
         stop_authenticated_page()
 
 
@@ -6697,71 +6583,37 @@ def run_authenticated_app() -> None:
 
         from src.portfolio_intelligence import (
             build_portfolio_intelligence,
-            high_risk_components_disclosure,
-            render_portfolio_intelligence,
+            filter_portfolio_window,
+            render_portfolio_intelligence_dashboard,
+        )
+
+        from src.ui.navigation import open_saved_bom
+        from src.ui.navigation import navigate_to as _portfolio_navigate_to
+
+        portfolio_window = str(st.session_state.get("portfolio_time_window") or "Last 12 months")
+        if portfolio_window not in {"Last 30 days", "Last 90 days", "Last 12 months", "All time"}:
+            portfolio_window = "Last 12 months"
+        portfolio_analyses, portfolio_parts, portfolio_alerts, portfolio_window_note = filter_portfolio_window(
+            portfolio_analyses,
+            portfolio_parts,
+            portfolio_alerts,
+            portfolio_window,
         )
         portfolio_intelligence = build_portfolio_intelligence(
             portfolio_analyses,
             portfolio_parts,
             portfolio_alerts,
         )
-        from src.ui.approved_pages import (
-            legacy_tools_open,
-            portfolio_charts_html,
-            render_legacy_back,
-            render_simple_workspace,
-        )
+        portfolio_intelligence["time_window"] = portfolio_window
+        portfolio_intelligence["time_window_note"] = portfolio_window_note
+        portfolio_intelligence["open_saved_bom"] = open_saved_bom
+        portfolio_intelligence["navigate"] = _portfolio_navigate_to
 
-        high_parts = len(portfolio_intelligence.get("high_risk") or [])
-        shared_components = int(portfolio_intelligence.get("shared_component_count") or 0)
-        single_source_records = portfolio_intelligence.get("single_source") or []
-        supplier_data_recorded = bool(portfolio_intelligence.get("supplier_data_recorded"))
-        high_risk_by_analysis = portfolio_intelligence.get("high_risk_by_analysis") or {}
-        portfolio_table_rows = []
-        for row in (portfolio_analyses or [])[:8]:
-            if not isinstance(row, dict):
-                continue
-            analysis_id = str(row.get("id") or "")
-            risk_records = high_risk_by_analysis.get(analysis_id) or []
-            try:
-                summary_risk_count = max(0, int(float(row.get("high_risk_count") or 0)))
-            except (TypeError, ValueError, OverflowError):
-                summary_risk_count = 0
-            risk_count = max(summary_risk_count, len(risk_records))
-            risk_cell = high_risk_components_disclosure(risk_count, risk_records)
-            portfolio_table_rows.append(
-                [
-                    html.escape(str(row.get("project_name") or "Project")),
-                    html.escape(str(row.get("filename") or "BOM")),
-                    html.escape(str(row.get("total_parts") or "—")),
-                    risk_cell,
-                    "High" if risk_count else "Low",
-                    html.escape(str(row.get("created_at") or "")[:10]),
-                ]
+        with st.container(key="approved_page_canvas_standard_portfolio_intelligence"):
+            render_portfolio_intelligence_dashboard(
+                intelligence=portfolio_intelligence,
+                internal_nav_button=internal_nav_button,
             )
-        render_simple_workspace(
-                kicker="PORTFOLIO",
-                title="Portfolio intelligence",
-                subtitle="A cross-project view of your engineering data, supply chain risk, and lifecycle exposure.",
-                kpis=[
-                    ("Saved Projects", str(len(portfolio_analyses or []))),
-                    ("Component Records", str(len(portfolio_parts or []))),
-                    ("Shared Components", str(shared_components)),
-                    ("Single-Source Records", str(len(single_source_records)) if supplier_data_recorded else "—"),
-                    ("High-risk component records", str(high_parts)),
-                ],
-                headers=["Project", "BOM name", "Total components", "At-risk components", "Risk level", "Last updated"],
-                table_rows=portfolio_table_rows,
-                legacy_page="Portfolio Intelligence",
-                legacy_label="View all BOMs",
-                chart_html=portfolio_charts_html(portfolio_parts),
-                kpi_details=portfolio_intelligence.get("kpi_details"),
-            )
-
-        render_portfolio_intelligence(
-            intelligence=portfolio_intelligence,
-            internal_nav_button=internal_nav_button,
-        )
         stop_authenticated_page()
 
 
@@ -7889,7 +7741,12 @@ def run_authenticated_app() -> None:
             st.session_state[return_to_queue_pending_key] = True
             from src.ui.main_transition import arm_main_transition
 
-            arm_main_transition(st.session_state, "Engineering Decisions")
+            arm_main_transition(
+                st.session_state,
+                "Engineering Decisions",
+                kind="navigation",
+                previous_route="Engineering Decisions",
+            )
             navigate_to("Engineering Decisions")
 
         requested_decision_id = (
@@ -14173,19 +14030,7 @@ def run_authenticated_app() -> None:
 
     # ---------- Settings ----------
     if app_mode == "Settings":
-        from src.ui.approved_pages import begin_approved_page, end_approved_page, legacy_tools_open, render_legacy_back
-
-        if False:
-            render_legacy_back("Settings")
-        else:
-            from src.ui.approved_pages import render_settings_workspace
-
-            profile_preview = get_user_profile(current_user)
-            if not isinstance(profile_preview, dict):
-                profile_preview = current_user if isinstance(current_user, dict) else {}
-            if isinstance(current_user, dict):
-                profile_preview = {**profile_preview, "id": current_user.get("id")}
-            render_settings_workspace(profile_preview, str(selected_plan_name or ""))
+        st.markdown('<div data-cadivor-settings-layout-marker="1"></div>', unsafe_allow_html=True)
         _incoming_settings_tab = str(_qp_value("settings_tab", "") or "").strip()
         if _incoming_settings_tab in {
             "Profile",
@@ -14219,11 +14064,62 @@ def run_authenticated_app() -> None:
 
         customer_profile = customer_profile or {}
         preferences = preferences or {}
+        notification_preferences = notification_preferences_from_record(preferences)
+        notification_settings = [
+            ("customer_pref_project_activity", "Project activity", "Updates on your projects and components", "project_activity"),
+            ("customer_pref_simulation_results", "Simulation results", "When a simulation completes", "simulation_results"),
+            ("customer_pref_team_activity", "Team activity", "Mentions and collaboration updates", "team_activity"),
+            ("customer_pref_product_updates", "Product updates", "New features and improvements", "product_updates"),
+            ("customer_pref_marketing_emails", "Marketing emails", "Tips, resources, and industry insights", "marketing_emails"),
+        ]
+
+        def _notification_values_from_state() -> dict[str, bool]:
+            return {
+                preference_key: bool(
+                    st.session_state.get(widget_key, notification_preferences[preference_key])
+                )
+                for widget_key, _label, _description, preference_key in notification_settings
+            }
+
+        def _save_notification_values(
+            values: dict[str, bool],
+            *,
+            monitoring_notifications: bool | None = None,
+        ) -> tuple[str | None, bool]:
+            legacy_values = {
+                "email_notifications": bool(
+                    values.get("product_updates", True) or values.get("marketing_emails", False)
+                ),
+                "workspace_notifications": bool(
+                    values.get("project_activity", True) or values.get("team_activity", True)
+                ),
+                "monitoring_notifications": (
+                    bool(preferences.get("monitoring_notifications", True))
+                    if monitoring_notifications is None
+                    else bool(monitoring_notifications)
+                ),
+                "report_notifications": bool(values.get("simulation_results", True)),
+            }
+            _, save_error = update_user_preferences(
+                supabase,
+                user_id,
+                {**legacy_values, "notification_preferences": values},
+            )
+            if save_error != "migration_required":
+                return save_error, False
+            # Keep current legacy notification behavior working while the new
+            # independent preferences migration is pending.
+            _, legacy_error = update_user_preferences(supabase, user_id, legacy_values)
+            return legacy_error, not bool(legacy_error)
 
         st.markdown(
             """
             <style id="cadivor-customer-settings-v11a1" data-cadivor-layout-style="true">
-            .cv-customer-hero{
+        .st-key-cadivor_authenticated_route_body:has([data-cadivor-settings-layout-marker="1"]){
+            box-sizing:border-box!important;width:100%!important;max-width:1440px!important;
+            margin:0 auto!important;padding:28px 0 36px!important;
+        }
+        .cv-customer-hero{
                 border:1px solid #BFDBFE;
                 border-radius:24px;
                 padding:26px 28px;
@@ -14534,6 +14430,58 @@ def run_authenticated_app() -> None:
             unsafe_allow_html=True,
         )
 
+        st.markdown(
+            """
+            <style id="cadivor-settings-mockup-v1" data-cadivor-layout-style="true">
+              .cv-customer-hero{border:0!important;border-radius:0!important;padding:0!important;margin:0 0 12px!important;background:transparent!important;box-shadow:none!important}
+              .cv-customer-kicker{display:none!important}
+              .cv-customer-title{font-size:29px!important;margin:0!important;letter-spacing:-.035em!important}
+              .cv-customer-copy{display:none!important}
+              .st-key-cv_settings_nav{box-sizing:border-box!important;width:100%!important;max-width:100%!important;margin:0 0 16px!important;padding:0!important;border:0!important;border-bottom:1px solid #dce5f0!important;border-radius:0!important;overflow:visible!important;background:transparent!important}
+              section[data-testid="stMain"] .st-key-cv_settings_nav .st-key-settings_tab_profile button,
+              section[data-testid="stMain"] .st-key-cv_settings_nav .st-key-settings_tab_preferences button,
+              section[data-testid="stMain"] .st-key-cv_settings_nav .st-key-settings_tab_workspace button,
+              section[data-testid="stMain"] .st-key-cv_settings_nav .st-key-settings_tab_security button,
+              section[data-testid="stMain"] .st-key-cv_settings_nav .st-key-settings_tab_billing button{
+                padding:10px 16px 11px!important;border:0!important;border-bottom:2px solid transparent!important;
+                border-radius:0!important;background:transparent!important;color:#5e6e84!important;
+                box-shadow:none!important;font-size:13px!important;font-weight:700!important
+              }
+              section[data-testid="stMain"] .st-key-cv_settings_nav .st-key-settings_tab_profile button[kind="primary"],
+              section[data-testid="stMain"] .st-key-cv_settings_nav .st-key-settings_tab_preferences button[kind="primary"],
+              section[data-testid="stMain"] .st-key-cv_settings_nav .st-key-settings_tab_workspace button[kind="primary"],
+              section[data-testid="stMain"] .st-key-cv_settings_nav .st-key-settings_tab_security button[kind="primary"],
+              section[data-testid="stMain"] .st-key-cv_settings_nav .st-key-settings_tab_billing button[kind="primary"]{
+                border-bottom-color:#2670e8!important;background:transparent!important;color:#2670e8!important;font-weight:800!important
+              }
+              .cv-settings-overview-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:0 0 14px}
+              .cv-settings-overview-card{box-sizing:border-box;min-width:0;border:1px solid #dce5f0;border-radius:15px;background:#fff;padding:18px 20px;box-shadow:0 3px 10px rgba(15,23,42,.025)}
+              .cv-settings-overview-card h2{margin:0;color:#17243d;font-size:17px;font-weight:780;letter-spacing:-.02em}
+              .cv-settings-overview-card p{margin:4px 0 14px;color:#74839a;font-size:12px;line-height:1.45}
+              .cv-settings-profile-summary{display:flex;align-items:center;gap:14px;margin:10px 0 16px}
+              .cv-settings-profile-avatar{display:flex;flex:0 0 64px;width:64px;height:64px;align-items:center;justify-content:center;overflow:hidden;border:1px solid #d5e4fb;border-radius:50%;background:#eaf2ff;color:#2670e8;font-size:20px;font-weight:850}
+              .cv-settings-profile-avatar img{width:100%;height:100%;object-fit:cover}
+              .cv-settings-profile-name{color:#17243d;font-size:18px;font-weight:820}
+              .cv-settings-profile-email{margin-top:3px;color:#74839a;font-size:13px;overflow-wrap:anywhere}
+              .cv-settings-facts{display:grid;grid-template-columns:1fr 1.3fr;gap:0 16px;border-top:1px solid #e7edf4}
+              .cv-settings-fact{display:grid;grid-template-columns:.75fr 1.2fr;gap:8px;padding:11px 0;border-bottom:1px solid #edf1f6;font-size:12px;line-height:1.35}
+              .cv-settings-fact span{color:#718198}.cv-settings-fact strong{color:#30435c;font-weight:700;overflow-wrap:anywhere}
+              .cv-settings-notification-heading{margin:9px 0 8px;color:#30435c;font-size:13px;font-weight:800}
+              .cv-settings-notification-row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:9px 0;border-bottom:1px solid #edf1f6}
+              .cv-settings-notification-row strong{display:block;color:#30435c;font-size:12px;font-weight:700}
+              .cv-settings-notification-row span{display:block;margin-top:2px;color:#8190a4;font-size:10px;line-height:1.35}
+              .cv-settings-overview-card [data-testid="stToggle"]{margin:0!important}
+              .cv-settings-overview-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-top:1px solid #edf1f6;color:#52647b;font-size:12px}
+              .cv-settings-overview-row strong{color:#17243d;font-weight:750}
+              .cv-settings-plan-summary{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:12px 0 15px;padding:14px 15px;border:1px solid #d9e8fb;border-radius:12px;background:#f4f8ff}
+              .cv-settings-plan-summary small{display:block;color:#74839a;font-size:10px;font-weight:700}
+              .cv-settings-plan-summary strong{display:block;margin-top:4px;color:#17243d;font-size:18px;font-weight:830}
+              @media(max-width:850px){.cv-settings-overview-grid{grid-template-columns:1fr}.cv-settings-facts{grid-template-columns:1fr}}
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+
         _settings_hero_tab = str(st.session_state.get("settings_active_tab") or "Profile")
         if _settings_hero_tab == "Billing":
             _settings_hero_title = "Plan & billing"
@@ -14564,10 +14512,9 @@ def run_authenticated_app() -> None:
                     "when the team is ready to upgrade."
                 )
         else:
-            _settings_hero_title = "Profile & preferences"
+            _settings_hero_title = "Settings"
             _settings_hero_copy = (
-                "Manage the personal identity, display defaults, and notification "
-                "preferences Cadivor uses across engineering workspaces and reports."
+                "Manage your account, preferences, security, and billing."
             )
         st.markdown(
             f"""
@@ -14584,7 +14531,7 @@ def run_authenticated_app() -> None:
 
         settings_setup_done = completion_count(onboarding_progress or {})
         settings_show_setup = should_show_setup_continuation(onboarding_progress)
-        if settings_show_setup:
+        if settings_show_setup and st.session_state.get("settings_active_tab") == "Workspace":
             settings_setup_percent = int((settings_setup_done / 5) * 100)
             missing_labels = required_setup_missing(onboarding_progress)
             missing_html = "".join(
@@ -14721,175 +14668,267 @@ def run_authenticated_app() -> None:
         settings_tab = str(st.session_state.get("settings_active_tab") or "Profile")
 
         if settings_tab == "Profile":
-            summary_col, form_col = st.columns([0.36, 0.64], gap="large")
+            display_name = _safe_text(
+                customer_profile.get("full_name"),
+                profile.get("full_name") or profile.get("email") or "Cadivor user",
+            )
+            display_email = auth_email or "Not recorded"
+            display_company = _safe_text(
+                customer_profile.get("company_name"),
+                profile.get("company_name") or profile.get("company") or "Not recorded",
+            )
+            display_role = _safe_text(
+                customer_profile.get("job_title"),
+                profile.get("role_title") or "Not recorded",
+            )
+            display_country = _safe_text(
+                customer_profile.get("country"), profile.get("country") or "Not recorded"
+            )
+            display_timezone = _safe_text(
+                customer_profile.get("timezone"), profile.get("timezone") or "Not recorded"
+            )
+            avatar_url_value = _safe_text(
+                customer_profile.get("avatar_url"), profile.get("avatar_url", "")
+            )
+            initials_value = html.escape(profile.get("initials", "C"))
+            avatar_markup = (
+                f'<img src="{html.escape(avatar_url_value, quote=True)}" alt="Profile photo">'
+                if avatar_url_value
+                else initials_value
+            )
 
-            with summary_col:
-                avatar_url_value = _safe_text(
-                    customer_profile.get("avatar_url"),
-                    profile.get("avatar_url", ""),
-                )
-                initials_value = profile.get("initials", "C")
-                avatar_markup = (
-                    f'<img src="{html.escape(avatar_url_value, quote=True)}" alt="Profile photo">'
-                    if avatar_url_value
-                    else html.escape(initials_value)
-                )
-                display_name = _safe_text(
-                    customer_profile.get("full_name"),
-                    profile.get("full_name", "Cadivor user"),
-                )
-                display_job = _safe_text(
-                    customer_profile.get("job_title"),
-                    profile.get("role_title", "Cadivor workspace member"),
-                )
-                display_company = _safe_text(
-                    customer_profile.get("company_name"),
-                    profile.get("company", "Not set"),
-                )
-
-                st.markdown(
-                    f"""
-                    <div class="cv-profile-card">
-                      <div class="cv-profile-top">
-                        <div class="cv-profile-avatar">{avatar_markup}</div>
-                        <div>
-                          <div class="cv-profile-name">{html.escape(display_name)}</div>
-                          <div class="cv-profile-role">{html.escape(display_job)}</div>
-                        </div>
-                      </div>
-                      <div class="cv-profile-facts">
-                        <div class="cv-profile-fact">
-                          <span>Email</span>
-                          <strong>{html.escape(auth_email)}</strong>
-                        </div>
-                        <div class="cv-profile-fact">
-                          <span>Company</span>
-                          <strong>{html.escape(display_company)}</strong>
-                        </div>
-                        <div class="cv-profile-fact">
-                          <span>Your subscription</span>
-                          <strong>{html.escape(plan_display_label(selected_plan_name or profile.get("plan", "Starter")))}</strong>
-                        </div>
-                      </div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
-
-            with form_col:
+            overview_top_left, overview_top_right = st.columns(2, gap="small")
+            with overview_top_left:
                 with st.container(border=True):
-                    st.subheader("Profile information")
-                    st.caption(
-                        "This information personalizes your account, team presence, "
-                        "workspace records, and future report attribution."
+                    profile_heading, profile_action = st.columns([4, 1.3], vertical_alignment="center")
+                    with profile_heading:
+                        st.markdown("### Profile")
+                        st.caption("Manage your account information and profile details.")
+                    with profile_action:
+                        if st.button(
+                            "✎  Edit Profile",
+                            key="settings_profile_edit_toggle",
+                            use_container_width=True,
+                        ):
+                            st.session_state["settings_profile_editing"] = not bool(
+                                st.session_state.get("settings_profile_editing")
+                            )
+                    st.markdown(
+                        f"""
+                        <div class="cv-settings-profile-summary">
+                          <div class="cv-settings-profile-avatar">{avatar_markup}</div>
+                          <div><div class="cv-settings-profile-name">{html.escape(display_name)}</div>
+                          <div class="cv-settings-profile-email">{html.escape(display_email)}</div></div>
+                        </div>
+                        <div class="cv-settings-facts">
+                          <div class="cv-settings-fact"><span>Full name</span><strong>{html.escape(display_name)}</strong></div>
+                          <div class="cv-settings-fact"><span>Email address</span><strong>{html.escape(display_email)}</strong></div>
+                          <div class="cv-settings-fact"><span>Organization</span><strong>{html.escape(display_company)}</strong></div>
+                          <div class="cv-settings-fact"><span>Role</span><strong>{html.escape(display_role)}</strong></div>
+                          <div class="cv-settings-fact"><span>Location</span><strong>{html.escape(display_country)}</strong></div>
+                          <div class="cv-settings-fact"><span>Time zone</span><strong>{html.escape(display_timezone)}</strong></div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
                     )
+                    if st.session_state.get("settings_profile_editing"):
+                        st.divider()
+                        with st.form("settings_profile_editor", clear_on_submit=False):
+                            edit_name = st.text_input(
+                                "Full name", value=display_name if display_name != "Cadivor user" else "",
+                                key="customer_profile_full_name",
+                            )
+                            edit_company = st.text_input(
+                                "Organization", value="" if display_company == "Not recorded" else display_company,
+                                key="customer_profile_company",
+                            )
+                            edit_role = st.text_input(
+                                "Role", value="" if display_role == "Not recorded" else display_role,
+                                key="customer_profile_job_title",
+                            )
+                            edit_phone, edit_country = st.columns(2)
+                            with edit_phone:
+                                phone_value = st.text_input(
+                                    "Phone", value=_safe_text(customer_profile.get("phone"), profile.get("phone", "")),
+                                    key="customer_profile_phone",
+                                )
+                            with edit_country:
+                                country_value = st.text_input(
+                                    "Country", value="" if display_country == "Not recorded" else display_country,
+                                    key="customer_profile_country",
+                                )
+                            edit_timezone = st.text_input(
+                                "Time zone", value="" if display_timezone == "Not recorded" else display_timezone,
+                                key="customer_profile_timezone_edit",
+                            )
+                            edit_avatar = st.text_input(
+                                "Profile image URL", value=avatar_url_value,
+                                key="customer_profile_avatar",
+                            )
+                            edit_bio = st.text_area(
+                                "Professional bio", value=_safe_text(customer_profile.get("bio"), ""),
+                                key="customer_profile_bio", height=90,
+                            )
+                            save_profile = st.form_submit_button(
+                                "Save Profile", type="primary", disabled=migration_required
+                            )
+                        if save_profile:
+                            saved_profile, save_error = update_customer_profile(
+                                supabase,
+                                user_id,
+                                {
+                                    "full_name": edit_name.strip(),
+                                    "company_name": edit_company.strip(),
+                                    "job_title": edit_role.strip(),
+                                    "phone": phone_value.strip(),
+                                    "country": country_value.strip(),
+                                    "timezone": edit_timezone.strip(),
+                                    "avatar_url": edit_avatar.strip(),
+                                    "bio": edit_bio.strip(),
+                                },
+                            )
+                            if save_error:
+                                st.error(f"Unable to save profile: {save_error}")
+                            else:
+                                st.session_state["settings_profile_editing"] = False
+                                st.toast("Profile saved", icon="✅")
+                                st.rerun()
 
-                    full_name_value = st.text_input(
-                        "Full name",
-                        value=_safe_text(
-                            customer_profile.get("full_name"),
-                            profile.get("full_name", ""),
-                        ),
-                        placeholder="Joshua Kashambala",
-                        key="customer_profile_full_name",
-                    )
-                    company_value = st.text_input(
-                        "Company / organization",
-                        value=_safe_text(
-                            customer_profile.get("company_name"),
-                            profile.get("company", ""),
-                        ),
-                        placeholder="Egres Technologies",
-                        key="customer_profile_company",
-                    )
-                    job_title_value = st.text_input(
-                        "Job title",
-                        value=_safe_text(
-                            customer_profile.get("job_title"),
-                            profile.get("role_title", ""),
-                        ),
-                        placeholder="Founder, Engineering Lead, Sourcing Manager",
-                        key="customer_profile_job_title",
-                    )
+            with overview_top_right:
+                with st.container(border=True):
+                    st.markdown("### Account Preferences")
+                    st.caption("Customize your experience and notification settings.")
+                    st.markdown('<div class="cv-settings-notification-heading">Notifications</div>', unsafe_allow_html=True)
+                    for key, label, description, preference_key in notification_settings:
+                        label_col, toggle_col = st.columns([5, 1], vertical_alignment="center")
+                        with label_col:
+                            st.markdown(
+                                f'<div><strong style="color:#30435c;font-size:12px">{html.escape(label)}</strong>'
+                                f'<span style="display:block;margin-top:2px;color:#8190a4;font-size:10px">{html.escape(description)}</span></div>',
+                                unsafe_allow_html=True,
+                            )
+                        with toggle_col:
+                            st.toggle(
+                                label,
+                                value=notification_preferences[preference_key],
+                                key=key,
+                                label_visibility="collapsed",
+                            )
+                    st.markdown("#### Time zone")
+                    st.caption("Used for timestamps and scheduled workspace activity.")
+                    from zoneinfo import ZoneInfo, available_timezones
 
-                    phone_col, country_col = st.columns(2)
-                    with phone_col:
-                        phone_value = st.text_input(
-                            "Phone",
-                            value=_safe_text(
-                                customer_profile.get("phone"),
-                                profile.get("phone", ""),
-                            ),
-                            placeholder="+1 555 000 0000",
-                            key="customer_profile_phone",
+                    timezone_options = sorted(available_timezones())
+                    if display_timezone != "Not recorded" and display_timezone not in timezone_options:
+                        timezone_options.insert(0, display_timezone)
+                    if not timezone_options:
+                        timezone_options = ["UTC"]
+
+                    def _timezone_label(timezone_name: str) -> str:
+                        try:
+                            offset = datetime.now(ZoneInfo(timezone_name)).strftime("%z")
+                            offset_label = f"UTC{offset[:3]}:{offset[3:]}" if offset else "UTC"
+                        except Exception:
+                            offset_label = "UTC"
+                        common_names = {
+                            "America/New_York": "Eastern Time (US & Canada)",
+                            "America/Chicago": "Central Time (US & Canada)",
+                            "America/Denver": "Mountain Time (US & Canada)",
+                            "America/Los_Angeles": "Pacific Time (US & Canada)",
+                            "UTC": "Coordinated Universal Time",
+                        }
+                        pretty_name = common_names.get(
+                            timezone_name,
+                            timezone_name.replace("_", " ").replace("/", " / "),
                         )
-                    with country_col:
-                        country_value = st.text_input(
-                            "Country",
-                            value=_safe_text(
-                                customer_profile.get("country"),
-                                profile.get("country", ""),
-                            ),
-                            placeholder="United States",
-                            key="customer_profile_country",
-                        )
+                        return f"({offset_label}) {pretty_name}"
 
-                    timezone_value = st.text_input(
+                    timezone_value = st.selectbox(
                         "Time zone",
-                        value=_safe_text(
-                            customer_profile.get("timezone"),
-                            profile.get("timezone", ""),
-                        ),
-                        placeholder="America/New_York",
+                        timezone_options,
+                        index=(timezone_options.index(display_timezone)
+                               if display_timezone in timezone_options else 0),
+                        format_func=_timezone_label,
                         key="customer_profile_timezone",
+                        label_visibility="collapsed",
                     )
-                    avatar_value = st.text_input(
-                        "Profile image URL",
-                        value=_safe_text(
-                            customer_profile.get("avatar_url"),
-                            profile.get("avatar_url", ""),
-                        ),
-                        placeholder="https://example.com/profile.jpg",
-                        key="customer_profile_avatar",
-                    )
-                    bio_value = st.text_area(
-                        "Professional bio",
-                        value=_safe_text(customer_profile.get("bio"), ""),
-                        placeholder=(
-                            "Optional short description shown in future collaboration "
-                            "and approval workflows."
-                        ),
-                        height=110,
-                        key="customer_profile_bio",
-                    )
-
-                    cadivor_button_wrap("primary")
                     if st.button(
-                        "Save Profile",
+                        "Save account preferences",
+                        key="settings_profile_save_preferences",
                         type="primary",
                         disabled=migration_required,
-                        key="save_customer_profile",
+                        use_container_width=True,
                     ):
-                        saved_profile, save_error = update_customer_profile(
-                            supabase,
-                            user_id,
-                            {
-                                "full_name": full_name_value.strip(),
-                                "company_name": company_value.strip(),
-                                "job_title": job_title_value.strip(),
-                                "phone": phone_value.strip(),
-                                "country": country_value.strip(),
-                                "timezone": timezone_value.strip(),
-                                "avatar_url": avatar_value.strip(),
-                                "bio": bio_value.strip(),
-                            },
+                        preference_save_error, notification_save_needs_migration = (
+                            _save_notification_values(_notification_values_from_state())
                         )
-                        if save_error:
-                            st.error(f"Unable to save profile: {save_error}")
+                        _, timezone_save_error = update_customer_profile(
+                            supabase, user_id, {"timezone": timezone_value.strip()}
+                        )
+                        if preference_save_error or timezone_save_error:
+                            st.error(
+                                "Unable to save all account preferences: "
+                                + str(preference_save_error or timezone_save_error)
+                            )
+                        elif notification_save_needs_migration:
+                            st.warning(
+                                "Your time zone and existing notification settings were saved. "
+                                "Apply `supabase/migrations/20261018_customer_notification_preferences.sql` "
+                                "to save the five notification choices independently."
+                            )
                         else:
-                            st.success("Customer profile saved.")
+                            st.toast("Account preferences saved", icon="✅")
                             st.rerun()
-                    cadivor_button_wrap_end()
+
+            overview_bottom_left, overview_bottom_right = st.columns(2, gap="small")
+            with overview_bottom_left:
+                with st.container(border=True):
+                    st.markdown("### Security")
+                    st.caption("Review the current account sign-in and access settings.")
+                    st.markdown(
+                        f"""
+                        <div class="cv-settings-overview-row"><span>Sign-in email</span><strong>{html.escape(display_email)}</strong></div>
+                        <div class="cv-settings-overview-row"><span>Current session</span><strong>Active in this browser</strong></div>
+                        <div class="cv-settings-overview-row"><span>Two-factor status</span><strong>Not recorded</strong></div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+                    if st.button(
+                        "Review security settings  ›",
+                        key="settings_profile_open_security",
+                        use_container_width=True,
+                    ):
+                        st.session_state["settings_active_tab"] = "Security"
+                        st.rerun()
+
+            with overview_bottom_right:
+                with st.container(border=True):
+                    st.markdown("### Billing")
+                    st.caption("Manage your subscription and usage.")
+                    current_plan_label = plan_display_label(
+                        selected_plan_name or profile.get("plan", "Starter")
+                    )
+                    st.markdown(
+                        f"""
+                        <div class="cv-settings-plan-summary"><div><small>Current plan</small>
+                        <strong>{html.escape(current_plan_label)}</strong></div></div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+                    monthly_limit = selected_plan.get("monthly_bom_limit") if isinstance(selected_plan, dict) else None
+                    saved_limit = selected_plan.get("max_saved_boms") if isinstance(selected_plan, dict) else None
+                    st.markdown(
+                        f'<div class="cv-settings-overview-row"><span>Monthly BOM analyses</span><strong>{html.escape(format_limit(monthly_limit, "BOM analysis", "BOM analyses"))}</strong></div>'
+                        f'<div class="cv-settings-overview-row"><span>Saved BOM allowance</span><strong>{html.escape(format_limit(saved_limit, "saved BOM"))}</strong></div>',
+                        unsafe_allow_html=True,
+                    )
+                    if st.button(
+                        "Manage plan  ›",
+                        key="settings_profile_open_billing",
+                        use_container_width=True,
+                    ):
+                        st.session_state["settings_active_tab"] = "Billing"
+                        st.rerun()
 
         elif settings_tab == "Preferences":
             with st.container(border=True):
@@ -14962,25 +15001,26 @@ def run_authenticated_app() -> None:
                     )
 
                 st.subheader("Notification preferences")
-                email_notifications = st.toggle(
-                    "Account and product email",
-                    value=bool(preferences.get("email_notifications", True)),
-                    key="customer_pref_email",
-                )
-                workspace_notifications = st.toggle(
-                    "Workspace collaboration updates",
-                    value=bool(preferences.get("workspace_notifications", True)),
-                    key="customer_pref_workspace",
-                )
+                for widget_key, label, description, preference_key in notification_settings:
+                    label_col, toggle_col = st.columns([5, 1], vertical_alignment="center")
+                    with label_col:
+                        st.markdown(
+                            f'<div><strong style="color:#30435c;font-size:12px">{html.escape(label)}</strong>'
+                            f'<span style="display:block;margin-top:2px;color:#8190a4;font-size:10px">{html.escape(description)}</span></div>',
+                            unsafe_allow_html=True,
+                        )
+                    with toggle_col:
+                        st.toggle(
+                            label,
+                            value=notification_preferences[preference_key],
+                            key=widget_key,
+                            label_visibility="collapsed",
+                        )
                 monitoring_notifications = st.toggle(
                     "Monitoring and lifecycle alerts",
                     value=bool(preferences.get("monitoring_notifications", True)),
                     key="customer_pref_monitoring",
-                )
-                report_notifications = st.toggle(
-                    "Report generation updates",
-                    value=bool(preferences.get("report_notifications", True)),
-                    key="customer_pref_reports",
+                    help="Controls email notifications for stock, supplier, and lifecycle changes.",
                 )
 
                 cadivor_button_wrap("primary")
@@ -14990,6 +15030,12 @@ def run_authenticated_app() -> None:
                     disabled=migration_required,
                     key="save_customer_preferences",
                 ):
+                    notification_save_error, notification_save_needs_migration = (
+                        _save_notification_values(
+                            _notification_values_from_state(),
+                            monitoring_notifications=monitoring_notifications,
+                        )
+                    )
                     saved_preferences, save_error = update_user_preferences(
                         supabase,
                         user_id,
@@ -14998,14 +15044,19 @@ def run_authenticated_app() -> None:
                             "density": density_value.lower(),
                             "default_units": units_value.lower(),
                             "default_currency": currency_value,
-                            "email_notifications": email_notifications,
-                            "workspace_notifications": workspace_notifications,
-                            "monitoring_notifications": monitoring_notifications,
-                            "report_notifications": report_notifications,
                         },
                     )
-                    if save_error:
-                        st.error(f"Unable to save preferences: {save_error}")
+                    if save_error or notification_save_error:
+                        st.error(
+                            "Unable to save preferences: "
+                            + str(save_error or notification_save_error)
+                        )
+                    elif notification_save_needs_migration:
+                        st.warning(
+                            "Application preferences and existing notification settings were saved. "
+                            "Apply `supabase/migrations/20261018_customer_notification_preferences.sql` "
+                            "to save the five notification choices independently."
+                        )
                     else:
                         st.success("Preferences saved.")
                         st.rerun()
@@ -15344,7 +15395,6 @@ def run_authenticated_app() -> None:
                                         )
 
         stop_authenticated_page()
-
 
     # ---------- Workspace ----------
     if app_mode == "Workspace":
