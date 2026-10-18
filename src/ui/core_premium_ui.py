@@ -276,6 +276,26 @@ def inject_workspace_geometry_final() -> None:
             unsafe_allow_html=True,
         )
     _inject_approved_visual_overrides()
+    # All authenticated routes share the same content-start line. Individual
+    # page canvases used to add their own top padding (24–48px), while Reports
+    # relied only on the main block inset, making it the lone page that began
+    # near the top of the workspace.
+    st.markdown(
+        """
+        <style id="cadivor-route-start-alignment" data-cadivor-layout-style="true">
+        html body section[data-testid="stMain"] .st-key-approved_home_page,
+        html body section[data-testid="stMain"] [class*="st-key-approved_page_canvas_standard_"],
+        html body section[data-testid="stMain"] [class*="st-key-approved_page_canvas_wide_"],
+        html body section[data-testid="stMain"] [class*="st-key-approved_page_canvas_full_"],
+        html body section[data-testid="stMain"] .st-key-cadivor_decision_packet_shell,
+        html body section[data-testid="stMain"] .st-key-cv_procurement_workspace {
+          padding-top: 0 !important;
+          margin-top: 0 !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def _inject_approved_visual_overrides() -> None:
