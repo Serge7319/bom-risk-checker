@@ -208,3 +208,77 @@ html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render
     margin-left: 12px !important;
   }
 }
+
+
+/* Keep every filter in the same compact pill family shown in the mockup. */
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_monitoring .st-key-approved_monitoring_filters .st-key-approved_monitoring_category_row [class*="st-key-approved_monitoring_filter_"] .stButton > button {
+  box-sizing: border-box !important;
+  min-height: 42px !important;
+  height: 42px !important;
+  padding: 0 12px !important;
+  border: 1px solid #dce5f1 !important;
+  border-radius: 999px !important;
+  background: #fff !important;
+  color: #52647b !important;
+  box-shadow: none !important;
+  font-size: 14px !important;
+  font-weight: 550 !important;
+  white-space: nowrap !important;
+}
+
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_monitoring .st-key-approved_monitoring_filters .st-key-approved_monitoring_category_row [class*="st-key-approved_monitoring_filter_"] .stButton > button:hover {
+  border-color: #9bbdf5 !important;
+  background: #f8fbff !important;
+  color: #2563eb !important;
+}
+
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_monitoring .st-key-approved_monitoring_filters .st-key-approved_monitoring_category_row [class*="st-key-approved_monitoring_filter_selected_"] .stButton > button {
+  border-color: #70a4ff !important;
+  border-radius: 999px !important;
+  background: #edf5ff !important;
+  color: #2563eb !important;
+}
+
+/* The alert row and its header share one six-column grid, preventing the
+   Streamlit column gutters from pushing the action menu beyond the card. */
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_monitoring [class*="st-key-approved_monitoring_alert_row_"] [data-testid="stHorizontalBlock"] {
+  display: grid !important;
+  grid-template-columns: .8fr 1.3fr 1.9fr 1.2fr 1.2fr .28fr !important;
+  align-items: center !important;
+  gap: 12px !important;
+  box-sizing: border-box !important;
+  width: 100% !important;
+}
+
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_monitoring [class*="st-key-approved_monitoring_alert_row_"] [data-testid="stColumn"],
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_monitoring [class*="st-key-approved_monitoring_alert_row_"] [data-testid="column"] {
+  box-sizing: border-box !important;
+  display: flex !important;
+  align-items: center !important;
+  width: auto !important;
+  max-width: none !important;
+  min-width: 0 !important;
+  flex: none !important;
+  padding: 4px 5px !important;
+}
+
+/* Match the blue outlined next-action buttons in the reference. */
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_monitoring [class*="st-key-approved_alert_action_"] .stButton > button {
+  box-sizing: border-box !important;
+  min-height: 42px !important;
+  height: auto !important;
+  padding: 7px 12px !important;
+  border: 1px solid #70a4ff !important;
+  border-radius: 9px !important;
+  background: #fff !important;
+  color: #2563eb !important;
+  box-shadow: none !important;
+  font-size: 14px !important;
+  font-weight: 650 !important;
+  white-space: normal !important;
+}
+
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_monitoring [class*="st-key-approved_alert_action_"] .stButton > button:hover {
+  border-color: #4f8df5 !important;
+  background: #f4f8ff !important;
+}
