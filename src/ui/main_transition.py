@@ -3,7 +3,7 @@
 Continuity contract (login → first content, and every authenticated navigation):
 every visible frame shows exactly one of:
 - readable auth progress ("Signing you in…"),
-- target-route shell plus in-main "Opening {route}…",
+- a stable, text-free cover while the next route mounts,
 - distinctive content for that same target route.
 
 This module owns ONLY the main-panel loading surface. Foundation topbar and
@@ -22,6 +22,8 @@ DELAY_ROUTE_BODY_REVEAL_KEY = "cadivor_delay_route_body_reveal"
 MAIN_TRANSITION_ACTIVE_KEY = "cadivor_main_transition_active"
 MAIN_TRANSITION_ROUTE_KEY = "cadivor_main_transition_route"
 MAIN_TRANSITION_GEN_KEY = "cadivor_main_transition_gen"
+MAIN_TRANSITION_KIND_KEY = "cadivor_main_transition_kind"
+MAIN_TRANSITION_PREVIOUS_ROUTE_KEY = "cadivor_main_transition_previous_route"
 OPENING_STARTED_AT_KEY = "cadivor_opening_started_at"
 OPENING_ROUTE_KEY = "cadivor_opening_route"
 BOM_ANALYSIS_TRANSITION_KEY = "cadivor_bom_analysis_transition"
@@ -35,6 +37,9 @@ def get_presented_route(session_state: MutableMapping[str, Any] | None = None) -
 def arm_main_transition(
     session_state: MutableMapping[str, Any],
     target_route: str,
+    *,
+    kind: str = "blocking",
+    previous_route: str = "",
 ) -> None:
     """Arm a main-content transition before target chrome commits on the next run.
 
@@ -44,6 +49,11 @@ def arm_main_transition(
     route = str(target_route or "").strip()
     if not route:
         return
+    transition_kind = (
+        "navigation"
+        if str(kind or "").strip().casefold() == "navigation"
+        else "blocking"
+    )
     # Analysis handoffs can arm the same destination more than once while
     # Streamlit consumes an upload, submits the worker, and paints progress.
     # Keep that transition intact instead of resetting its body marker on each
@@ -55,9 +65,14 @@ def arm_main_transition(
     if already_armed:
         session_state[DELAY_ROUTE_BODY_REVEAL_KEY] = True
         return
+    prior = str(
+        previous_route or session_state.get(PRESENTED_ROUTE_KEY) or ""
+    ).strip()
     session_state.pop(PRESENTED_ROUTE_KEY, None)
     session_state[MAIN_TRANSITION_ACTIVE_KEY] = True
     session_state[MAIN_TRANSITION_ROUTE_KEY] = route
+    session_state[MAIN_TRANSITION_KIND_KEY] = transition_kind
+    session_state[MAIN_TRANSITION_PREVIOUS_ROUTE_KEY] = prior
     session_state[DELAY_ROUTE_BODY_REVEAL_KEY] = True
 
 
@@ -69,7 +84,7 @@ def arm_bom_analysis_transition(
     normalized_mode = str(mode or "start").strip().casefold()
     if normalized_mode not in {"start", "rerun"}:
         normalized_mode = "start"
-    arm_main_transition(session_state, "BOM Analyzer")
+    arm_main_transition(session_state, "BOM Analyzer", kind="blocking")
     session_state[BOM_ANALYSIS_TRANSITION_KEY] = normalized_mode
 
 
@@ -92,11 +107,10 @@ def should_paint_opening_overlay(
     target_route: str = "",
     session_state: MutableMapping[str, Any] | None = None,
 ) -> bool:
-    """Cover route changes while Streamlit replaces its stale page DOM.
+    """Keep one transition owner until the destination body is ready.
 
-    Even a warm route can spend a frame showing the previous page with
-    Streamlit's stale-content fade applied. Keep one transition owner during
-    every route change so the outgoing page never flashes through.
+    The owner renders as a thin progress strip for in-app navigation, and as a
+    full cover only for first admission or explicitly blocking work.
     """
     del target_route, session_state
     return bool(needs_transition)
@@ -196,6 +210,34 @@ def inject_main_transition_css(transition_gen: int) -> None:
           display:block;height:100%;width:42%;border-radius:999px;background:#2563EB;
           animation:cv-main-transition-progress 1.1s ease-in-out infinite
         }}
+        /* Normal page hops cover stale page content until the destination
+           body is ready. The cover is deliberately non-interactive: it must
+           never eat a navigation click, and the persistent rail stays clear. */
+        .cv-main-transition.cv-route-loading[data-cadivor-transition-kind="navigation"]{{
+          box-sizing:border-box!important;position:fixed!important;
+          left:var(--cv-foundation-rail,228px)!important;right:0!important;
+          top:var(--cv-foundation-top,64px)!important;bottom:0!important;
+          width:calc(100vw - var(--cv-foundation-rail,228px))!important;
+          height:calc(100vh - var(--cv-foundation-top,64px))!important;
+          height:calc(100dvh - var(--cv-foundation-top,64px))!important;
+          min-height:0!important;max-height:none!important;
+          margin:0!important;padding:0!important;border:0!important;border-radius:0!important;
+          display:block!important;background:#F5F7FB!important;overflow:hidden!important;
+          box-shadow:none!important;pointer-events:none!important;opacity:1!important;
+          visibility:visible!important;z-index:2147483000!important;clip-path:inset(0)!important
+        }}
+        .cv-main-transition.cv-route-loading[data-cadivor-transition-kind="navigation"] .cv-main-transition-card{{
+          display:none!important
+        }}
+        .cv-main-transition.cv-route-loading[data-cadivor-transition-kind="navigation"] .cv-main-transition-progress{{
+          position:absolute!important;left:0!important;right:0!important;top:0!important;
+          display:block!important;width:100%!important;height:3px!important;
+          margin:0!important;border-radius:0!important;background:transparent!important;overflow:hidden!important
+        }}
+        .cv-main-transition.cv-route-loading[data-cadivor-transition-kind="navigation"] .cv-main-transition-progress>i{{
+          display:block!important;width:18%!important;height:3px!important;border-radius:0!important;
+          background:#2563EB!important;animation:cv-main-transition-progress 1.1s ease-in-out infinite
+        }}
         @keyframes cv-main-transition-progress{{
           0%{{transform:translateX(-120%)}}
           100%{{transform:translateX(280%)}}
@@ -242,33 +284,22 @@ def inject_main_transition_css(transition_gen: int) -> None:
           display:none!important;visibility:hidden!important;pointer-events:none!important;
           opacity:0!important;height:0!important;overflow:hidden!important
         }}
-        /* Hide outgoing Streamlit route wrappers while Opening owns the main
-           viewport. Persistent foundation chrome and the transition host stay. */
+        /* Freeze stale controls while a route is changing, but retain the
+           previous page visually until the destination body is ready. */
         body:has([data-cadivor-main-transition="1"])
-          section[data-testid="stMain"] [data-testid="stMainBlockContainer"]
-          > [data-testid="stVerticalBlock"]
-          > [data-testid="stElementContainer"][data-stale="true"]:not(
+          section[data-testid="stMain"] [data-stale="true"]:not(
             :has([data-cadivor-transition-host])
-          ){{
+          ):not(:has([class*="st-key-cv_foundation_"])){{
+          visibility:visible!important;opacity:1!important;filter:none!important;
           pointer-events:none!important
         }}
-        body:has([data-cadivor-main-transition="1"])
-          section[data-testid="stMain"] [data-testid="stMainBlockContainer"]
-          > [data-testid="stVerticalBlock"]
-          > [data-testid="stElementContainer"][data-stale="true"]:not(
-            :has([data-cadivor-topbar-flow-host])
-          ):not(
-            :has([class*="st-key-cv_foundation_"])
-          ):not(
+        /* Only after the destination body marker arrives may the old route
+           wrappers be removed. This prevents a blank frame during reruns. */
+        body:has([data-cadivor-page-body][data-cadivor-transition-gen="{gen}"])
+          section[data-testid="stMain"] [data-stale="true"]:not(
             :has([data-cadivor-transition-host])
-          ),
-        body:has([data-cadivor-main-transition="1"])
-          section[data-testid="stMain"] [data-testid="stMainBlockContainer"]
-          > [data-testid="stVerticalBlock"]
-          > [data-testid="stLayoutWrapper"][data-stale="true"]:not(
+          ):not(:has([data-cadivor-topbar-flow-host])):not(
             :has([class*="st-key-cv_foundation_"])
-          ):not(
-            :has([data-cadivor-transition-host])
           ){{
           visibility:hidden!important;opacity:0!important;pointer-events:none!important
         }}
@@ -328,7 +359,7 @@ def inject_main_transition_css(transition_gen: int) -> None:
           opacity:0!important;z-index:-1!important
         }}
         body:not(:has([data-cadivor-page-body][data-cadivor-transition-gen="{gen}"]))
-          [data-cadivor-main-transition="1"][data-cadivor-transition-gen="{gen}"] {{
+          [data-cadivor-main-transition="1"][data-cadivor-transition-gen="{gen}"]:not([data-cadivor-transition-kind="navigation"]) {{
           pointer-events:auto!important
         }}
         body:has([data-cadivor-page-body][data-cadivor-transition-gen="{gen}"])
@@ -346,6 +377,10 @@ def inject_main_transition_css(transition_gen: int) -> None:
         }}
         @media (max-width:1100px){{
           .cv-main-transition.cv-route-loading{{left:0!important;width:100vw!important}}
+          .cv-main-transition.cv-route-loading[data-cadivor-transition-kind="navigation"]{{
+            left:var(--cv-foundation-rail,0px)!important;
+            right:0!important;width:calc(100vw - var(--cv-foundation-rail,0px))!important
+          }}
         }}
         </style>
         """,
@@ -357,6 +392,31 @@ def route_loading_markup(target_route: str, transition_gen: int) -> str:
     """Return the in-main target-route loading HTML (no nested <style>)."""
     safe_route = html.escape(str(target_route or "").strip() or "workspace")
     gen = int(transition_gen)
+    transition_kind = str(
+        st.session_state.get(MAIN_TRANSITION_KIND_KEY) or "blocking"
+    ).strip().casefold()
+    if transition_kind not in {"navigation", "blocking"}:
+        transition_kind = "blocking"
+    if (
+        transition_kind == "navigation"
+        and str(st.session_state.get(MAIN_TRANSITION_PREVIOUS_ROUTE_KEY) or "").strip()
+    ):
+        return f"""
+        <div data-cadivor-transition-host="cadivor-main-transition"
+             data-cadivor-transition-gen="{gen}"
+             data-cadivor-transition-kind="navigation"
+             data-testid="cadivor-main-transition-host">
+          <div class="cv-main-transition cv-route-loading"
+               data-cadivor-main-transition="1"
+               data-cadivor-route-loading="{safe_route}"
+               data-cadivor-transition-kind="navigation"
+               data-cadivor-transition-gen="{gen}"
+               data-testid="cadivor-route-loading"
+               role="status" aria-label="Loading {safe_route}">
+            <div class="cv-main-transition-progress" aria-hidden="true"><i></i></div>
+          </div>
+        </div>
+        """
     mode = str(st.session_state.get(BOM_ANALYSIS_TRANSITION_KEY) or "").strip().casefold()
     if safe_route == "BOM Analyzer" and mode == "rerun":
         title = "Rerunning BOM analysis…"
@@ -370,10 +430,12 @@ def route_loading_markup(target_route: str, transition_gen: int) -> str:
     return f"""
         <div data-cadivor-transition-host="cadivor-main-transition"
              data-cadivor-transition-gen="{gen}"
+             data-cadivor-transition-kind="blocking"
              data-testid="cadivor-main-transition-host">
         <div class="cv-main-transition cv-route-loading"
              data-cadivor-main-transition="1"
              data-cadivor-route-loading="{safe_route}"
+             data-cadivor-transition-kind="blocking"
              data-cadivor-transition-gen="{gen}"
              data-testid="cadivor-route-loading"
              style="box-sizing:border-box;position:fixed;left:var(--cv-foundation-rail,0px);right:0;top:var(--cv-foundation-top,64px);bottom:0;width:calc(100vw - var(--cv-foundation-rail,0px));height:calc(100dvh - var(--cv-foundation-top,64px));min-height:calc(100vh - var(--cv-foundation-top,64px));z-index:2147483000;display:flex;align-items:center;justify-content:center;margin:0;padding:0;background:#F5F7FB;overflow:hidden;font-family:Inter,system-ui,sans-serif"
@@ -490,6 +552,8 @@ def reveal_main_transition(route: str = "") -> None:
     if safe_route:
         st.session_state[PRESENTED_ROUTE_KEY] = safe_route
     st.session_state[MAIN_TRANSITION_ACTIVE_KEY] = False
+    st.session_state[MAIN_TRANSITION_KIND_KEY] = ""
+    st.session_state.pop(MAIN_TRANSITION_PREVIOUS_ROUTE_KEY, None)
     st.session_state.pop(DELAY_ROUTE_BODY_REVEAL_KEY, None)
     st.session_state.pop(BOM_ANALYSIS_TRANSITION_KEY, None)
     try:

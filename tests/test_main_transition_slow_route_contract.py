@@ -22,10 +22,7 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
         self.assertIn("clip-path:inset(0)!important", SOURCE)
         self.assertIn("z-index:2147483000!important", SOURCE)
         self.assertIn("pointer-events:auto!important", SOURCE)
-        self.assertIn(
-            '> [data-testid="stElementContainer"][data-stale="true"]:not(',
-            SOURCE,
-        )
+        self.assertIn('[data-stale="true"]:not(', SOURCE)
 
     def test_route_cover_is_painted_before_shell_role_lookup(self):
         runtime = (ROOT / "src" / "authenticated_runtime.py").read_text(encoding="utf-8")
@@ -43,6 +40,39 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
         self.assertNotIn("components.html(", paint)
         self.assertNotIn("window.parent", paint)
         self.assertNotIn("with container(key=owner_key)", paint)
+
+    def test_regular_navigation_covers_stale_page_without_capturing_clicks(self):
+        namespace = {
+            "html": html,
+            "BOM_ANALYSIS_TRANSITION_KEY": "cadivor_bom_analysis_transition",
+            "MAIN_TRANSITION_KIND_KEY": "cadivor_main_transition_kind",
+            "MAIN_TRANSITION_PREVIOUS_ROUTE_KEY": "cadivor_main_transition_previous_route",
+            "st": SimpleNamespace(session_state={
+                "cadivor_main_transition_kind": "navigation",
+                "cadivor_main_transition_previous_route": "Engineering Decisions",
+            }),
+        }
+        helper = next(
+            node for node in ast.parse(SOURCE).body
+            if isinstance(node, ast.FunctionDef) and node.name == "route_loading_markup"
+        )
+        module = ast.Module(body=[helper], type_ignores=[])
+        exec(compile(ast.fix_missing_locations(module), "<route-loading>", "exec"), namespace)
+        markup = namespace["route_loading_markup"]("Portfolio Intelligence", 21)
+        self.assertIn('data-cadivor-transition-kind="navigation"', markup)
+        self.assertIn("cv-main-transition-progress", markup)
+        self.assertNotIn("Opening Portfolio Intelligence", markup)
+        nav_css = SOURCE.split(
+            '.cv-main-transition.cv-route-loading[data-cadivor-transition-kind="navigation"]{{',
+            1,
+        )[1].split("}}", 1)[0]
+        self.assertIn("height:calc(100dvh - var(--cv-foundation-top,64px))!important", nav_css)
+        self.assertIn("background:#F5F7FB!important", nav_css)
+        self.assertIn("pointer-events:none!important", nav_css)
+        self.assertIn(
+            ':not([data-cadivor-transition-kind="navigation"]) {{\n          pointer-events:auto!important',
+            SOURCE,
+        )
 
     def test_reveal_marker_hides_the_matching_transition_generation(self):
         reveal = SOURCE.split("def reveal_main_transition", 1)[1]
@@ -172,6 +202,8 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
         namespace = {
             "html": html,
             "BOM_ANALYSIS_TRANSITION_KEY": "cadivor_bom_analysis_transition",
+            "MAIN_TRANSITION_KIND_KEY": "cadivor_main_transition_kind",
+            "MAIN_TRANSITION_PREVIOUS_ROUTE_KEY": "cadivor_main_transition_previous_route",
             "st": SimpleNamespace(session_state={}),
         }
         exec(compile(ast.fix_missing_locations(module), "<transition-copy>", "exec"), namespace)
