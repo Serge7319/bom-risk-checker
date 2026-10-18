@@ -10,7 +10,7 @@ import html
 import hashlib
 import io
 from functools import wraps
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 import streamlit as st
@@ -884,6 +884,7 @@ def begin_approved_page() -> None:
         .st-key-approved_home_page{box-sizing:border-box!important;width:100%!important;max-width:1440px!important;margin-left:auto!important;margin-right:auto!important;padding:48px 0 28px!important}
         .st-key-approved_home_page > [data-testid="stVerticalBlock"]{gap:22px!important}
         .cv-ap-home-kpis{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:16px!important;margin:44px 0 0!important}
+        @media(min-width:1251px){.st-key-approved_home_header [class*="st-key-approved_home_new_bom"],[class*="st-key-approved_home_open_reports"]{position:relative!important;left:-12px!important}}
         .cv-ap-home-kpi{display:flex!important;align-items:flex-start!important;gap:18px!important;box-sizing:border-box!important;min-height:190px!important;padding:24px 22px!important;border:1px solid #dce7f5!important;border-radius:16px!important;background:#f9fbff!important;box-shadow:0 2px 7px rgba(15,23,42,.035)!important}
         .cv-ap-home-kpi .cv-ap-home-icon{display:flex!important;align-items:center!important;justify-content:center!important;flex:0 0 60px!important;width:60px!important;height:60px!important;border-radius:50%!important;background:#e8f1ff!important;margin:0!important}
         .cv-ap-home-icon svg{width:30px!important;height:30px!important}
@@ -1027,18 +1028,54 @@ def begin_approved_page() -> None:
         .st-key-approved_saved_bom_delete_screen button[kind="primary"]{background:#be123c!important;border-color:#be123c!important}
         .st-key-approved_monitoring_alert_card{box-sizing:border-box!important;width:100%!important;margin:8px 0 20px!important;overflow-x:auto!important;border:1px solid #cbd8e8!important;border-radius:16px!important;background:#fff!important;box-shadow:0 3px 12px rgba(15,23,42,.045)!important}
         .st-key-approved_monitoring_alert_card>[data-testid="stVerticalBlock"]{gap:0!important}
-        .cv-ap-monitoring-table-head{display:grid!important;grid-template-columns:.8fr 1.3fr 1.6fr .9fr 1.2fr!important;align-items:center!important;gap:12px!important;box-sizing:border-box!important;min-height:56px!important;padding:0 20px!important;background:#f7f9fc!important;border-bottom:1px solid #dce4ef!important}
-        .cv-ap-monitoring-table-head [role="columnheader"]{display:flex!important;align-items:center!important;min-width:0!important;min-height:44px!important;color:#64748b!important;font-size:12px!important;font-weight:750!important;letter-spacing:.035em!important;text-transform:uppercase!important}
-        .cv-ap-monitoring-table-head [role="columnheader"]:first-child,.cv-ap-monitoring-table-head [role="columnheader"]:nth-child(4),.cv-ap-monitoring-table-head [role="columnheader"]:last-child{justify-content:center!important;text-align:center!important}
+        .cv-ap-kpis.cv-ap-monitoring-kpis{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:16px!important;margin:0 0 18px!important}
+        .cv-ap-monitoring-kpi{display:grid!important;grid-template-columns:42px minmax(0,1fr) auto!important;grid-template-rows:42px auto!important;align-items:center!important;column-gap:12px!important;row-gap:10px!important;box-sizing:border-box!important;min-width:0!important;min-height:132px!important;padding:14px 16px!important;border:1px solid #e3ebf6!important;border-radius:14px!important;background:linear-gradient(135deg,#fbfdff 0%,#f7faff 100%)!important;box-shadow:0 2px 7px rgba(15,23,42,.035)!important}
+        .cv-ap-monitoring-icon{grid-column:1;grid-row:1;display:inline-flex!important;align-items:center!important;justify-content:center!important;width:42px!important;height:42px!important;border-radius:50%!important}
+        .cv-ap-monitoring-icon svg{width:22px!important;height:22px!important;display:block!important}
+        .cv-ap-monitoring-kpi--blue .cv-ap-monitoring-icon{background:#e6f0ff!important;color:#2563eb!important}
+        .cv-ap-monitoring-kpi--red .cv-ap-monitoring-icon{background:#ffe9e9!important;color:#ef4444!important}
+        .cv-ap-monitoring-kpi--violet .cv-ap-monitoring-icon{background:#f1eaff!important;color:#8b5cf6!important}
+        .cv-ap-monitoring-kpi--green .cv-ap-monitoring-icon{background:#e3f8ed!important;color:#16a34a!important}
+        .cv-ap-monitoring-copy{grid-column:1/3;grid-row:2;min-width:0;align-self:start}
+        .cv-ap-monitoring-copy span{display:block;overflow:hidden;color:#52647b!important;font-size:14px!important;font-weight:650!important;line-height:1.3!important;text-overflow:ellipsis;white-space:nowrap}
+        .cv-ap-monitoring-copy strong{display:block;margin-top:5px;color:#12213b!important;font-size:30px!important;font-weight:780!important;line-height:1!important;letter-spacing:-.035em!important}
+        .cv-ap-monitoring-kpi .cv-ap-spark{grid-column:3;grid-row:2;align-self:center;width:clamp(50px,24%,84px)!important;height:36px!important;flex:0 1 84px!important}
+        .st-key-approved_monitoring_filters{box-sizing:border-box!important;width:100%!important;margin:0 0 22px!important;padding:12px 18px!important;border:1px solid #e3ebf6!important;border-radius:12px!important;background:#fff!important;box-shadow:0 2px 7px rgba(15,23,42,.025)!important}
+        .st-key-approved_monitoring_filters>[data-testid="stVerticalBlock"]{gap:0!important}
+        .st-key-approved_monitoring_filters [data-testid="stHorizontalBlock"]{align-items:center!important;gap:18px!important}
+        .st-key-approved_monitoring_filters [data-testid="stWidgetLabel"] p{margin:0 0 5px!important;color:#52647b!important;font-size:12px!important;font-weight:700!important}
+        .cv-ap-monitoring-show-label{display:flex;align-items:center;min-height:40px;color:#52647b;font-size:12px;font-weight:700}
+        .cv-ap-monitoring-period-label{display:flex;align-items:center;min-height:40px;color:#52647b;font-size:12px;font-weight:700;white-space:nowrap}
+        .st-key-approved_monitoring_filters [data-testid="stSegmentedControl"]{width:100%!important}
+        .st-key-approved_monitoring_filters [data-testid="stSegmentedControl"] button{min-height:38px!important;border-radius:999px!important;color:#52647b!important}
+        .st-key-approved_monitoring_filters [data-testid="stSegmentedControl"] button[aria-pressed="true"]{border-color:#8db7ff!important;background:#edf5ff!important;color:#2563eb!important}
+        .st-key-approved_monitoring_filters [data-testid="stSelectbox"] [data-baseweb="select"]>div{min-height:40px!important;border:1px solid #d9e2ee!important;border-radius:9px!important;background:#fff!important}
+        .cv-ap-monitoring-period-range{display:flex;align-items:center;gap:6px;margin:5px 0 0 38%;color:#8290a3;font-size:10px;line-height:1.3}
+        .cv-ap-monitoring-period-range svg{width:14px;height:14px;flex:0 0 14px;color:#6f8098}
+        .st-key-approved_monitoring_alert_heading{box-sizing:border-box!important;width:100%!important;margin:0!important;padding:18px 20px 12px!important}
+        .st-key-approved_monitoring_alert_heading>[data-testid="stVerticalBlock"]{gap:0!important}
+        .cv-ap-monitoring-heading h2{margin:0!important;color:#14233d!important;font-size:20px!important;font-weight:760!important;line-height:1.25!important;letter-spacing:-.02em!important}
+        .cv-ap-monitoring-heading p{margin:4px 0 0!important;color:#64748b!important;font-size:12px!important}
+        .cv-ap-monitoring-count{color:#64748b!important;font-size:12px!important;text-align:right!important;white-space:nowrap}
+        .cv-ap-monitoring-table-head{display:grid!important;grid-template-columns:.8fr 1.3fr 1.9fr 1.2fr 1.2fr!important;align-items:center!important;gap:12px!important;box-sizing:border-box!important;min-height:56px!important;padding:0 20px!important;background:#f7f9fc!important;border-bottom:1px solid #dce4ef!important}
+        .cv-ap-monitoring-table-head [role="columnheader"]{display:flex!important;align-items:center!important;min-width:0!important;min-height:44px!important;color:#64748b!important;font-size:12px!important;font-weight:750!important;letter-spacing:.035em!important;text-transform:uppercase!important;text-align:left!important}
+        .cv-ap-monitoring-table-head [role="columnheader"]:first-child,.cv-ap-monitoring-table-head [role="columnheader"]:nth-child(4),.cv-ap-monitoring-table-head [role="columnheader"]:last-child{justify-content:flex-start!important;text-align:left!important}
         [class*="st-key-approved_monitoring_alert_row_"]{box-sizing:border-box!important;min-height:68px!important;margin:0!important;padding:9px 20px!important;border-bottom:1px solid #e5ebf3!important;background:#fff!important}
         [class*="st-key-approved_monitoring_alert_row_"] [data-testid="stVerticalBlock"]{gap:0!important}
         [class*="st-key-approved_monitoring_alert_row_"] [data-testid="stHorizontalBlock"]{align-items:center!important;gap:12px!important}
         [class*="st-key-approved_monitoring_alert_row_"] [data-testid="stColumn"],[class*="st-key-approved_monitoring_alert_row_"] [data-testid="column"]{box-sizing:border-box!important;min-width:0!important;padding:4px 5px!important;display:flex!important;align-items:center!important}
         [class*="st-key-approved_monitoring_alert_row_"] [data-testid="stMarkdownContainer"] p{margin:0!important;color:#52647b!important;font-size:13px!important;line-height:1.4!important;overflow-wrap:anywhere!important}
         [class*="st-key-approved_monitoring_alert_row_"] .cv-ap-meta{margin-top:3px!important;font-size:11px!important}
-        .cv-ap-monitoring-detected{width:100%;color:#52647b;text-align:center;font-size:12px;line-height:1.35}
-        [class*="st-key-approved_alert_action_"] button{min-height:34px!important;height:auto!important;padding:6px 8px!important;white-space:normal!important;font-size:12px!important}
+        .cv-ap-monitoring-detected{width:100%;color:#52647b;text-align:left;font-size:12px;line-height:1.35}
+        .cv-ap-monitoring-detected strong{display:block;color:#34445d;font-size:12px;font-weight:650}
+        .cv-ap-monitoring-detected small{display:block;margin-top:3px;color:#8090a5;font-size:10px}
+        [class*="st-key-approved_alert_action_"] button{min-height:36px!important;height:auto!important;padding:6px 10px!important;border:1px solid #8db7ff!important;border-radius:8px!important;background:#fff!important;color:#2563eb!important;white-space:normal!important;font-size:12px!important;font-weight:700!important;box-shadow:none!important}
+        [class*="st-key-approved_alert_action_"] button:hover{border-color:#5b96f5!important;background:#f4f8ff!important}
         .cv-ap-table-center{width:100%;display:flex;align-items:center;justify-content:center;text-align:center}
+        @media(max-width:1100px){[class*="st-key-approved_home_new_bom"],[class*="st-key-approved_home_open_reports"]{left:0!important}}
+        @media(max-width:1100px){.cv-ap-kpis.cv-ap-monitoring-kpis{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:12px!important}.cv-ap-monitoring-kpi{min-height:118px!important}.st-key-approved_monitoring_filters [data-testid="stHorizontalBlock"]{gap:12px!important}}
+        @media(max-width:900px){.cv-ap-kpis.cv-ap-monitoring-kpis{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important}}
+        @media(max-width:760px){.cv-ap-kpis.cv-ap-monitoring-kpis{grid-template-columns:1fr!important}.st-key-approved_monitoring_filters [data-testid="stHorizontalBlock"]{flex-wrap:wrap!important}.st-key-approved_monitoring_filters [data-testid="column"]{flex:1 1 100%!important;width:100%!important}.st-key-approved_monitoring_alert_heading{padding:14px 14px 10px!important}.cv-ap-monitoring-heading h2{font-size:18px!important}}
         @media(max-width:1100px){
           .cv-ap-monitoring-table-head{gap:8px!important;padding:0 14px!important}
           [class*="st-key-approved_monitoring_alert_row_"]{padding:8px 14px!important}
@@ -3010,6 +3047,83 @@ def _next_action(row: dict[str, Any]) -> tuple[str, str]:
     return "View details", "Monitoring"
 
 
+def _alert_recorded_date(row: dict[str, Any]) -> date | None:
+    raw = str(_first(row, "created_at", fallback="") or "").strip()
+    if not raw:
+        return None
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00")).date()
+    except ValueError:
+        try:
+            return date.fromisoformat(raw[:10])
+        except ValueError:
+            return None
+
+
+def _alert_date_range_label(period: str, source: list[dict[str, Any]], today: date) -> str:
+    if period == "All recorded":
+        recorded = [item for row in source if (item := _alert_recorded_date(row)) is not None]
+        if not recorded:
+            return "No alert dates recorded"
+        start, end = min(recorded), max(recorded)
+    else:
+        days = {"Last 7 days": 7, "Last 30 days": 30, "Last 90 days": 90}.get(period, 30)
+        start, end = today - timedelta(days=days - 1), today
+    if start == end:
+        return f"{start.strftime('%b')} {start.day}, {start.year}"
+    if start.year != end.year:
+        return f"{start.strftime('%b')} {start.day}, {start.year} – {end.strftime('%b')} {end.day}, {end.year}"
+    return f"{start.strftime('%b')} {start.day} – {end.strftime('%b')} {end.day}, {end.year}"
+
+
+def _alerts_in_period(source: list[dict[str, Any]], period: str, today: date) -> list[dict[str, Any]]:
+    if period == "All recorded":
+        return list(source)
+    days = {"Last 7 days": 7, "Last 30 days": 30, "Last 90 days": 90}.get(period, 30)
+    cutoff = today - timedelta(days=days - 1)
+    return [
+        row
+        for row in source
+        if (recorded := _alert_recorded_date(row)) is not None and cutoff <= recorded <= today
+    ]
+
+
+def _alert_detected_labels(row: dict[str, Any], now: datetime | None = None) -> tuple[str, str]:
+    raw = str(_first(row, "created_at", fallback="") or "").strip()
+    recorded_date = _alert_recorded_date(row)
+    if recorded_date is None:
+        return "Date unavailable", ""
+
+    has_time = "T" in raw or (" " in raw and ":" in raw)
+    if not has_time:
+        age_days = max(0, ((now or datetime.now(timezone.utc)).date() - recorded_date).days)
+        relative = "Today" if age_days == 0 else ("Yesterday" if age_days == 1 else f"{age_days} days ago")
+        return relative, f"{recorded_date.strftime('%b')} {recorded_date.day}, {recorded_date.year}"
+
+    try:
+        timestamp = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return f"{recorded_date.strftime('%b')} {recorded_date.day}", f"{recorded_date.year}"
+    if timestamp.tzinfo is None:
+        timestamp = timestamp.replace(tzinfo=timezone.utc)
+    current = now or datetime.now(timezone.utc)
+    age_seconds = max(0, (current.astimezone(timezone.utc) - timestamp.astimezone(timezone.utc)).total_seconds())
+    if age_seconds < 60:
+        relative = "Just now"
+    elif age_seconds < 3600:
+        minutes = int(age_seconds // 60)
+        relative = f"{minutes} {'min' if minutes == 1 else 'mins'} ago"
+    elif age_seconds < 86400:
+        hours = int(age_seconds // 3600)
+        relative = f"{hours} {'hour' if hours == 1 else 'hours'} ago"
+    else:
+        age_days = int(age_seconds // 86400)
+        relative = "Yesterday" if age_days == 1 else f"{age_days} days ago"
+    local_stamp = timestamp.astimezone(timezone.utc)
+    exact = f"{local_stamp.strftime('%b')} {local_stamp.day}, {local_stamp.year} {local_stamp.strftime('%H:%M')} UTC"
+    return relative, exact
+
+
 def render_monitoring(alerts: list[dict[str, Any]] | None) -> None:
     begin_approved_page()
     source = _records(alerts)
@@ -3022,46 +3136,89 @@ def render_monitoring(alerts: list[dict[str, Any]] | None) -> None:
         """,
         unsafe_allow_html=True,
     )
-    selected = st.segmented_control(
-        "Show",
-        ["All alerts", "Stock & supply", "Lifecycle", "Price movement", "Supplier", "Quality", "Regulatory"],
-        default="All alerts",
-        key="approved_alert_category",
+
+    categories = ["All alerts", "Stock & supply", "Lifecycle", "Price movement", "Supplier", "Quality", "Regulatory"]
+    period_options = ["Last 30 days", "Last 7 days", "Last 90 days", "All recorded"]
+    today = datetime.now(timezone.utc).date()
+    active_period = str(st.session_state.get("approved_alert_period") or "Last 30 days")
+    period_source = _alerts_in_period(source, active_period, today)
+    high = sum(1 for row in period_source if "high" in str(_first(row, "severity", fallback="")).casefold())
+    lifecycle_count = sum(1 for row in period_source if _alert_category(row) == "Lifecycle")
+    inventory_count = sum(1 for row in period_source if _alert_category(row) == "Stock & supply")
+    active_spark = spark_slots(_alert_slots(period_source, lambda _row: True), "#8bb8ff")
+    high_spark = spark_slots(_alert_slots(period_source, lambda row: "high" in str(_first(row, "severity", fallback="")).casefold()), "#f5a1a1")
+    life_spark = spark_slots(_alert_slots(period_source, lambda row: _alert_category(row) == "Lifecycle"), "#c4a5ff")
+    stock_spark = spark_slots(_alert_slots(period_source, lambda row: _alert_category(row) == "Stock & supply"), "#9bdfbb")
+    monitoring_cards = (
+        ("Active alerts", len(source), "blue", "bell", active_spark),
+        ("High priority", high, "red", "triangle-alert", high_spark),
+        ("Lifecycle changes", lifecycle_count, "violet", "refresh-cw", life_spark),
+        ("Inventory updates", inventory_count, "green", "package", stock_spark),
     )
-    period = st.selectbox("Time period", ["All recorded", "Last 30 days"], key="approved_alert_period")
+    cards_html = "".join(
+        f"<article class='cv-ap-kpi cv-ap-monitoring-kpi cv-ap-monitoring-kpi--{tone}'>"
+        f"<span class='cv-ap-monitoring-icon' aria-hidden='true'>{lucide(icon, 22)}</span>"
+        f"<div class='cv-ap-monitoring-copy'><span>{_esc(label)}</span><strong>{_esc(value)}</strong></div>"
+        f"{spark}</article>"
+        for label, value, tone, icon, spark in monitoring_cards
+    )
+    st.markdown(
+        f"<section class='cv-ap cv-ap-kpis cv-ap-monitoring-kpis' aria-label='Monitoring summary'>{cards_html}</section>",
+        unsafe_allow_html=True,
+    )
+
+    with st.container(key="approved_monitoring_filters"):
+        label_col, show_col, period_col = st.columns([0.48, 5.2, 1.72], vertical_alignment="center")
+        with label_col:
+            st.markdown("<div class='cv-ap-monitoring-show-label'>Show</div>", unsafe_allow_html=True)
+        with show_col:
+            selected = st.segmented_control(
+                "Alert category",
+                categories,
+                default="All alerts",
+                key="approved_alert_category",
+                label_visibility="collapsed",
+                width="stretch",
+            )
+        with period_col:
+            period_label_col, period_select_col = st.columns([0.82, 1.38], vertical_alignment="center")
+            with period_label_col:
+                st.markdown("<div class='cv-ap-monitoring-period-label'>Time period</div>", unsafe_allow_html=True)
+            with period_select_col:
+                period = st.selectbox(
+                    "Time period",
+                    period_options,
+                    index=0,
+                    key="approved_alert_period",
+                    label_visibility="collapsed",
+                )
+            date_range = _alert_date_range_label(str(period or "Last 30 days"), source, today)
+            st.markdown(
+                f"<div class='cv-ap-monitoring-period-range'>{lucide('calendar-clock', 14)}<span>{_esc(date_range)}</span></div>",
+                unsafe_allow_html=True,
+            )
+
     rows = source
     if selected and selected != "All alerts":
         rows = [row for row in rows if _alert_category(row) == selected]
-    if period == "Last 30 days":
-        from datetime import datetime, timedelta, timezone
-
-        cutoff = (datetime.now(timezone.utc) - timedelta(days=30)).date().isoformat()
-        rows = [row for row in rows if str(_first(row, "created_at", fallback=""))[:10] >= cutoff]
+    rows = _alerts_in_period(rows, str(period or "Last 30 days"), today)
+    filtered_total = len(rows)
     rows = rows[:8]
-    high = sum(1 for row in source if "high" in str(_first(row, "severity", fallback="")).casefold())
-    lifecycle_count = sum(1 for row in source if _alert_category(row) == "Lifecycle")
-    inventory_count = sum(1 for row in source if _alert_category(row) == "Stock & supply")
-    active_spark = spark_slots(_alert_slots(source, lambda _row: True), "#2563eb")
-    high_spark = spark_slots(_alert_slots(source, lambda row: "high" in str(_first(row, "severity", fallback="")).casefold()), "#e11d48")
-    life_spark = spark_slots(_alert_slots(source, lambda row: _alert_category(row) == "Lifecycle"), "#d97706")
-    stock_spark = spark_slots(_alert_slots(source, lambda row: _alert_category(row) == "Stock & supply"), "#16a34a")
-    st.markdown(
-        f"""
-        <div class="cv-ap">
-          <section class="cv-ap-kpis">
-            <article class="cv-ap-kpi cv-ap-kpi-row"><div><span>Active alerts</span><strong>{len(source)}</strong></div>{active_spark}</article>
-            <article class="cv-ap-kpi cv-ap-kpi-row"><div><span>High priority</span><strong>{high}</strong></div>{high_spark}</article>
-            <article class="cv-ap-kpi cv-ap-kpi-row"><div><span>Lifecycle changes</span><strong>{lifecycle_count}</strong></div>{life_spark}</article>
-            <article class="cv-ap-kpi cv-ap-kpi-row"><div><span>Inventory updates</span><strong>{inventory_count}</strong></div>{stock_spark}</article>
-          </section>
-          <p class="cv-ap-meta">Each sparkline is a 12-bucket frame. Only recorded alert dates are drawn. Empty buckets are a data limitation: no alert history is stored for those periods.</p>
-          <h2>Recent alerts</h2>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    monitoring_widths = [0.8, 1.3, 1.6, 0.9, 1.2]
+
     with st.container(key="approved_monitoring_alert_card"):
+        with st.container(key="approved_monitoring_alert_heading"):
+            heading_col, count_col = st.columns([5, 1], vertical_alignment="center")
+            with heading_col:
+                st.markdown(
+                    "<div class='cv-ap-monitoring-heading'><h2>Recent alerts</h2></div>",
+                    unsafe_allow_html=True,
+                )
+            with count_col:
+                shown_start = 1 if rows else 0
+                st.markdown(
+                    f"<div class='cv-ap-monitoring-count'>{shown_start}–{len(rows)} of {filtered_total} alerts</div>",
+                    unsafe_allow_html=True,
+                )
         header_labels = ("Severity", "Component", "Signal", "Detected", "Next action")
         header_cells = "".join(
             f"<span role='columnheader'>{_esc(label)}</span>"
@@ -3073,21 +3230,25 @@ def render_monitoring(alerts: list[dict[str, Any]] | None) -> None:
         )
         if not rows:
             st.markdown(
-                "<div class='cv-ap-home-empty'>No alerts in the selected period.</div>",
+                "<div class='cv-ap-home-empty'>No alerts match the selected filters.</div>",
                 unsafe_allow_html=True,
             )
         for index, row in enumerate(rows):
             severity = str(_first(row, "severity", fallback="Low"))
             kind = "high" if "high" in severity.casefold() else ("medium" if "med" in severity.casefold() else "low")
             action_label, destination = _next_action(row)
+            mpn = _first(row, "mpn", "part_number", fallback="Component")
+            manufacturer = _first(row, "manufacturer", "manufacturer_name", "brand", fallback="")
+            detected_relative, detected_exact = _alert_detected_labels(row)
             with st.container(key=f"approved_monitoring_alert_row_{index}"):
-                cells = st.columns(monitoring_widths, vertical_alignment="center")
+                cells = st.columns([0.8, 1.3, 1.9, 1.2, 1.2], vertical_alignment="center")
                 cells[0].markdown(
-                    f"<span class='cv-pill {kind}'>{_esc(severity)}</span>",
+                    f"<span class='cv-pill {kind}'><i class='cv-pill-dot'></i>{_esc(severity)}</span>",
                     unsafe_allow_html=True,
                 )
+                component_detail = f"<div class='cv-ap-meta'>{_esc(manufacturer)}</div>" if manufacturer else ""
                 cells[1].markdown(
-                    f"<div class='cv-ap-name'>{_esc(_first(row, 'mpn', 'part_number', fallback='Component'))}</div>",
+                    f"<div class='cv-ap-name'>{_esc(mpn)}</div>{component_detail}",
                     unsafe_allow_html=True,
                 )
                 cells[2].markdown(
@@ -3096,7 +3257,8 @@ def render_monitoring(alerts: list[dict[str, Any]] | None) -> None:
                     unsafe_allow_html=True,
                 )
                 cells[3].markdown(
-                    f"<div class='cv-ap-monitoring-detected'>{_esc(str(_first(row, 'created_at', fallback=''))[:10])}</div>",
+                    f"<div class='cv-ap-monitoring-detected'><strong>{_esc(detected_relative)}</strong>"
+                    f"<small>{_esc(detected_exact)}</small></div>",
                     unsafe_allow_html=True,
                 )
                 with cells[4]:
