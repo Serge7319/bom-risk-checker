@@ -27,6 +27,7 @@ DATASHEET_QA_PENDING_QUESTION_KEY = "datasheet_qa_pending_question"
 DATASHEET_QA_ACTIVE_FINGERPRINT_KEY = "datasheet_qa_active_fingerprint"
 DATASHEET_QA_STORE_COUNT_KEY = "datasheet_qa_store_count"
 DATASHEET_QA_EMPTY_ASK_KEY = "datasheet_qa_empty_ask"
+DATASHEET_QA_UPLOAD_SIGNATURE_KEY = "datasheet_qa_upload_signature"
 
 STATUS_IDLE = "idle"
 STATUS_PROCESSING = "processing"
@@ -68,6 +69,18 @@ _VCEO_RE = re.compile(
 )
 _SUPPLY_QUESTION_RE = re.compile(
     r"\b(supply\s+voltage|vcc|vdd|vin\b|operating\s+supply)\b",
+    re.IGNORECASE,
+)
+_IDENTITY_QUESTION_RE = re.compile(
+    r"\b(description|describe|identify|identity|overview|what\s+is\s+this|"
+    r"what\s+type|device\s+type|part\s+type|what\s+does\s+this\s+(?:part|device|component)|"
+    r"what\s+kind\s+of\s+(?:part|device|component))\b",
+    re.IGNORECASE,
+)
+_IDENTITY_SENTENCE_RE = re.compile(
+    r"\b(sensor|microcontroller|controller|transistor|mosfet|diode|rectifier|"
+    r"regulator|amplifier|integrated circuit|memory|connector|oscillator|"
+    r"temperature|humidity|features|designed|provides|consists|device)\b",
     re.IGNORECASE,
 )
 
@@ -265,10 +278,24 @@ def clear_datasheet_document(session_state: MutableMapping[str, Any]) -> None:
     session_state.pop(DATASHEET_QA_DOC_KEY, None)
     session_state.pop(DATASHEET_QA_THREAD_KEY, None)
     session_state.pop(DATASHEET_QA_ACTIVE_FINGERPRINT_KEY, None)
+    session_state.pop(DATASHEET_QA_UPLOAD_SIGNATURE_KEY, None)
     session_state.pop(DATASHEET_QA_PENDING_QUESTION_KEY, None)
     session_state[DATASHEET_QA_STATUS_KEY] = STATUS_IDLE
     session_state.pop(DATASHEET_QA_LAST_SUBMIT_KEY, None)
     session_state.pop(DATASHEET_QA_LAST_SUBMIT_AT_KEY, None)
+
+
+def datasheet_upload_signature(file_bytes: bytes, *, filename: str = "") -> str:
+    """Return a non-reversible digest for de-duplicating an uploaded PDF."""
+    digest = hashlib.sha256()
+    digest.update(str(filename or "").strip().casefold().encode("utf-8"))
+    digest.update(b"\0")
+    digest.update(bytes(file_bytes or b""))
+    return digest.hexdigest()
+
+
+def _is_identity_question(question: str) -> bool:
+    return bool(_IDENTITY_QUESTION_RE.search(str(question or "")))
 
 
 def document_fingerprint(document: Mapping[str, Any] | None) -> str:
@@ -873,6 +900,13 @@ def retrieve_relevant_chunks(
         score += 0.05 * min(len(overlap), 8)
         score -= 0.001 * max(int(chunk.get("page") or 1) - 1, 0)
         scored.append((score, row))
+    if _is_identity_question(question):
+        opening = sorted(
+            (row for row in all_chunks if int(row.get("page") or 10**9) <= 3),
+            key=lambda row: (int(row.get("page") or 10**9), int(row.get("start_char") or 0)),
+        )
+        if opening:
+            return opening[: max(1, int(limit))]
     scored.sort(key=lambda item: (-item[0], int(item[1].get("page") or 0)))
     selected: list[dict[str, Any]] = [dict(row[1]) for row in scored[: max(1, int(limit))]]
     # Identity anchors: earliest pages first, stable for wrong-premise grounding.
@@ -980,11 +1014,56 @@ def _evidence_from_chunks(
     return evidence
 
 
+def _identity_evidence(chunks: list[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """Select a short device-description sentence from the opening pages."""
+    ordered = sorted(
+        (chunk for chunk in chunks if isinstance(chunk, Mapping)),
+        key=lambda item: (int(item.get("page") or 10**9), int(item.get("start_char") or 0)),
+    )
+    evidence: list[dict[str, Any]] = []
+    for chunk in ordered:
+        text = str(chunk.get("text") or "").strip()
+        if not text:
+            continue
+        # PDF extraction often wraps a single sentence across visual lines;
+        # fold those line breaks before sentence selection so an opening line
+        # such as "features a" is never returned as a complete description.
+        normalized = re.sub(r"\s+", " ", text).strip()
+        sentences = [
+            sentence.strip(" -\n")
+            for sentence in re.split(r"(?<=[.!?;])\s+", normalized)
+            if sentence.strip()
+        ]
+        selected = next(
+            (
+                sentence for sentence in sentences
+                if _IDENTITY_SENTENCE_RE.search(sentence) and len(sentence) > 24
+            ),
+            "",
+        )
+        if not selected:
+            continue
+        page = int(chunk.get("page") or 0)
+        evidence.append({
+            "page": page,
+            "citation": f"Page {page}" if page else "",
+            "excerpt": selected[:500],
+            "chunk_id": str(chunk.get("chunk_id") or ""),
+        })
+        if len(evidence) >= 2:
+            break
+    return evidence
+
+
 def _local_grounded_answer(question: str, chunks: list[Mapping[str, Any]]) -> tuple[str, list[dict]]:
     """Answer from excerpts without an external model when evidence exists."""
     if not chunks:
         return NOT_FOUND_ANSWER, []
-    evidence = _evidence_from_chunks(question, chunks)
+    evidence = (
+        _identity_evidence(chunks)
+        if _is_identity_question(question)
+        else _evidence_from_chunks(question, chunks)
+    )
     if not evidence:
         return NOT_FOUND_ANSWER, []
 
@@ -1002,6 +1081,13 @@ def _local_grounded_answer(question: str, chunks: list[Mapping[str, Any]]) -> tu
         return str(supply_fix["answer"]), evidence
 
     lowered_q = question.casefold()
+    if _is_identity_question(question):
+        excerpts = [str(item.get("excerpt") or "").strip() for item in evidence if item.get("excerpt")]
+        if not excerpts:
+            return NOT_FOUND_ANSWER, []
+        citations = [str(item.get("citation") or "") for item in evidence if item.get("citation")]
+        citation_text = f" ({', '.join(citations[:2])})" if citations else ""
+        return f"The datasheet describes the device as follows: {excerpts[0]}{citation_text}", evidence
     if any(token in lowered_q for token in ("drop-in", "drop in", "equivalent", "suitable substitute")):
         answer = (
             "The uploaded datasheet excerpts do not by themselves establish drop-in "
@@ -1167,6 +1253,27 @@ def answer_datasheet_question(
             "notice": "",
             "assisted_fallback": False,
             "answer_kind": "insufficient_evidence",
+        }
+
+    if _is_identity_question(cleaned):
+        answer, evidence = _local_grounded_answer(cleaned, chunks)
+        citations = _citations_from_chunks(
+            [
+                {"page": item.get("page")}
+                for item in evidence
+                if item.get("citation") and item.get("page")
+            ]
+        )
+        return {
+            "ok": True,
+            "error": "",
+            "answer": answer,
+            "citations": citations,
+            "evidence": evidence,
+            "provider": "local-excerpts",
+            "notice": "",
+            "assisted_fallback": False,
+            "answer_kind": "insufficient_evidence" if answer == NOT_FOUND_ANSWER else "supported",
         }
 
     answer = ""

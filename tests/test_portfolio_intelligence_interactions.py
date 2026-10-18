@@ -102,6 +102,25 @@ def test_at_risk_count_opens_an_escaped_component_list():
     assert "Qty 4" in markup
 
 
+def test_view_all_boms_uses_a_pre_render_route_handoff(monkeypatch):
+    from pathlib import Path
+    from src.ui import navigation
+
+    calls = []
+    monkeypatch.setattr(
+        navigation,
+        "return_to_saved_bom_list",
+        lambda **kwargs: calls.append(kwargs),
+    )
+    portfolio_intelligence._open_all_saved_boms_from_portfolio()
+    source = (Path(__file__).resolve().parents[1] / "src" / "portfolio_intelligence.py").read_text(encoding="utf-8")
+    assert calls == [{"_rerun": False, "arm_opening": True}]
+    button = source.split('key="portfolio_view_all_boms"', 1)[1].split("bom_rows =", 1)[0]
+    assert "on_click=_open_all_saved_boms_from_portfolio" in button
+    assert 'if st.button("View all BOMs' not in source
+    assert 'intelligence.get("navigate")' not in source
+
+
 class _FakeStreamlit:
     def __init__(self, clicked_key: str):
         self.clicked_key = clicked_key

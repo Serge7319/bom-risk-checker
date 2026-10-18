@@ -339,13 +339,22 @@ _ILLUSTRATION_SVG = {
 def _generic_component_svg(package_style: str, dimension: int) -> str:
     """Neutral two-terminal package art; never imply an IC for unknown parts."""
     if package_style == "th":
-        drawing = '<rect x="8" y="8" width="8" height="8" rx="3"/><path d="M12 8V3m0 13v5"/>'
+        drawing = (
+            '<path d="M12 8V3m0 13v5" stroke="#a8b3c1" stroke-width="1.35"/>'
+            '<rect x="7.7" y="7.5" width="8.6" height="9" rx="3" fill="#475569" stroke="#334155" stroke-width="1.1"/>'
+            '<path d="M9.5 9.5h4.8" stroke="#aeb9c7" stroke-width=".8" stroke-linecap="round"/>'
+        )
     else:
-        drawing = '<rect x="7" y="8" width="10" height="8" rx="2"/><path d="M2 10h5m10 0h5M2 14h5m10 0h5"/>'
+        drawing = (
+            '<rect x="2.5" y="9" width="5" height="6" rx="1" fill="#c7d0db" stroke="#9aa8b8" stroke-width=".7"/>'
+            '<rect x="16.5" y="9" width="5" height="6" rx="1" fill="#c7d0db" stroke="#9aa8b8" stroke-width=".7"/>'
+            '<rect x="6.5" y="7" width="11" height="10" rx="2.1" fill="#475569" stroke="#334155" stroke-width="1.1"/>'
+            '<path d="M8.7 9.4h6.1" stroke="#aeb9c7" stroke-width=".8" stroke-linecap="round"/>'
+        )
     svg = (
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{dimension}" height="{dimension}" viewBox="0 0 24 24">'
-        '<rect x="1" y="1" width="22" height="22" rx="5" fill="#f0f9ff" stroke="#bae6fd" stroke-width="1"/>'
-        f'<g fill="none" stroke="#0369a1" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">{drawing}</g>'
+        '<rect x="1" y="1" width="22" height="22" rx="5" fill="#f5f7fa" stroke="#dbe3ec" stroke-width="1"/>'
+        f'<g fill="none" stroke="#53657b" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">{drawing}</g>'
         '</svg>'
     )
     return "data:image/svg+xml;base64," + base64.b64encode(svg.encode("utf-8")).decode("ascii")

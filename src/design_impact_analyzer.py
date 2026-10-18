@@ -536,7 +536,9 @@ def _css() -> None:
           .cv20-status--muted{color:#596a7e;background:#f1f5f9}
           .cv20-section-title{margin:0 0 4px;color:#17253e;font-size:19px;font-weight:760;letter-spacing:-.02em}
           .cv20-section-copy{margin:0 0 12px;color:#708096;font-size:12px;line-height:1.45}
-          .cv20-map-card,.cv20-factors-card,.cv20-project-card{height:100%;padding:18px;border:1px solid #dbe5f0;border-radius:14px;background:#fff}
+          .cv20-map-card{height:auto;min-height:0;padding:18px;border:1px solid #dbe5f0;border-radius:14px;background:#fff}
+          .cv20-factors-card{height:auto;min-height:0;padding:17px 18px 14px;border:1px solid #dbe5f0;border-radius:14px;background:#fff}
+          .cv20-project-card{height:auto;min-height:0;padding:0;border:1px solid #dbe5f0;border-radius:14px;background:#fff}
           .cv20-map-card .cv-ap-card{margin:0;border:0;padding:0;box-shadow:none}
           .cv20-map-card .cv-ap-card h2{margin:0 0 13px;font-size:16px;font-weight:760;color:#17253e}
           .cv20-impact-map__header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin:0 0 12px}
@@ -1114,6 +1116,44 @@ def _render_design_impact_workspace(
     left, right = st.columns([1.3, 1], gap="medium")
     with left:
         st.markdown('<div class="cv20-map-card">' + (impact_map_markup or '<h2 class="cv20-section-title">Impact map</h2><p class="cv20-section-copy">No project map data is recorded.</p>') + '</div>', unsafe_allow_html=True)
+        st.caption(
+            f"Evidence coverage: {intelligence.get('affected_bom_count', 0)} saved BOM(s) across "
+            f"{intelligence.get('project_count', 0)} project(s). Package / pins: {package_pins}."
+        )
+        with st.expander("Recommendations and score details", expanded=False):
+            st.markdown('<h3 class="cv20-section-title">Recommended next steps</h3>', unsafe_allow_html=True)
+            recommendation_markup = ''.join(
+                f'<div class="cv20-recommendation">{html.escape(str(item))}</div>'
+                for item in intelligence.get("recommendations", [])
+            )
+            st.markdown(f'<div class="cv20-recommendation-list">{recommendation_markup}</div>', unsafe_allow_html=True)
+            st.caption("Confirm electrical function, package, footprint, pinout, and design constraints in the source engineering files before approving a component change.")
+            if intelligence.get("impact_score_capped"):
+                st.caption(f"Driver points total {intelligence['impact_score_raw']}; the displayed score is capped at 100/100.")
+            else:
+                st.caption(f"The impact score totals {intelligence.get('impact_score', 0)}/100 from the factors below.")
+            for driver in intelligence.get("impact_score_drivers", []):
+                st.markdown(
+                    f'<div class="cv20-impact"><strong>{html.escape(driver["label"])} · +{int(driver["points"])} points</strong>'
+                    f'<p>{html.escape(driver["detail"])}</p></div>', unsafe_allow_html=True,
+                )
+        with st.expander("Continue the engineering workflow", expanded=False):
+            actions = st.columns(2)
+            with actions[0]:
+                internal_nav_button(
+                    "Find replacement", "Alternative Finder", key="impact_find_replacement", use_container_width=True,
+                    original_part=current, source_page="design_impact", return_page="Design Impact Analyzer", return_mpn=current,
+                )
+                if has_monitoring:
+                    internal_nav_button("Open monitoring", "Monitoring", key="impact_monitoring", use_container_width=True, mpn=current)
+                else:
+                    st.caption("No monitoring record exists for this component yet.")
+            with actions[1]:
+                if has_decision:
+                    internal_nav_button("Engineering Decisions", "Engineering Decisions", key="impact_decisions", use_container_width=True, focus_part=current)
+                else:
+                    st.caption("No engineering decision exists for this component yet.")
+                internal_nav_button("Portfolio Intelligence", "Portfolio Intelligence", key="impact_portfolio", use_container_width=True)
     with right:
         st.markdown(factor_markup, unsafe_allow_html=True)
         st.markdown(project_table_markup, unsafe_allow_html=True)
@@ -1122,57 +1162,14 @@ def _render_design_impact_workspace(
             type="secondary", use_container_width=False, original_part=current,
             source_page="design_impact", return_page="Design Impact Analyzer", return_mpn=current,
         )
-
-    analysis_rows = [row for row in intelligence.get("affected_projects") or [] if row.get("Analysis ID")]
-    if analysis_rows:
-        with st.expander("Open an affected BOM", expanded=False):
-            for index, row in enumerate(analysis_rows):
-                label = f"{row.get('Project', 'Project')} · {row.get('BOM', 'Saved BOM')}"
-                internal_nav_button(
-                    f"View BOM Risk · {label}", "Analysis Details", key=f"impact_project_{index}",
-                    type="secondary", use_container_width=True, analysis_id=row["Analysis ID"],
-                )
-
-    with st.expander("Recommendations and score details", expanded=False):
-        st.markdown('<h3 class="cv20-section-title">Recommended next steps</h3>', unsafe_allow_html=True)
-        recommendation_markup = ''.join(
-            f'<div class="cv20-recommendation">{html.escape(str(item))}</div>'
-            for item in intelligence.get("recommendations", [])
-        )
-        st.markdown(f'<div class="cv20-recommendation-list">{recommendation_markup}</div>', unsafe_allow_html=True)
-        st.caption("Confirm electrical function, package, footprint, pinout, and design constraints in the source engineering files before approving a component change.")
-        if intelligence.get("impact_score_capped"):
-            st.caption(f"Driver points total {intelligence['impact_score_raw']}; the displayed score is capped at 100/100.")
-        else:
-            st.caption(f"The impact score totals {intelligence.get('impact_score', 0)}/100 from the factors below.")
-        for driver in intelligence.get("impact_score_drivers", []):
-            st.markdown(
-                f'<div class="cv20-impact"><strong>{html.escape(driver["label"])} · +{int(driver["points"])} points</strong>'
-                f'<p>{html.escape(driver["detail"])}</p></div>', unsafe_allow_html=True,
-            )
-
-    st.caption(
-        f"Evidence coverage: {intelligence.get('affected_bom_count', 0)} saved BOM(s) across "
-        f"{intelligence.get('project_count', 0)} project(s). Package / pins: {package_pins}."
-    )
-    with st.expander("Continue the engineering workflow", expanded=False):
-        actions = st.columns(4)
-        with actions[0]:
-            internal_nav_button(
-                "Find replacement", "Alternative Finder", key="impact_find_replacement", use_container_width=True,
-                original_part=current, source_page="design_impact", return_page="Design Impact Analyzer", return_mpn=current,
-            )
-        with actions[1]:
-            if has_monitoring:
-                internal_nav_button("Open monitoring", "Monitoring", key="impact_monitoring", use_container_width=True, mpn=current)
-            else:
-                st.caption("No monitoring record exists for this component yet.")
-        with actions[2]:
-            if has_decision:
-                internal_nav_button("Engineering Decisions", "Engineering Decisions", key="impact_decisions", use_container_width=True, focus_part=current)
-            else:
-                st.caption("No engineering decision exists for this component yet.")
-        with actions[3]:
-            internal_nav_button("Portfolio Intelligence", "Portfolio Intelligence", key="impact_portfolio", use_container_width=True)
+        analysis_rows = [row for row in intelligence.get("affected_projects") or [] if row.get("Analysis ID")]
+        if analysis_rows:
+            with st.expander("Open an affected BOM", expanded=False):
+                for index, row in enumerate(analysis_rows):
+                    label = f"{row.get('Project', 'Project')} · {row.get('BOM', 'Saved BOM')}"
+                    internal_nav_button(
+                        f"View BOM Risk · {label}", "Analysis Details", key=f"impact_project_{index}",
+                        type="secondary", use_container_width=True, analysis_id=row["Analysis ID"],
+                    )
 
     st.markdown("</div>", unsafe_allow_html=True)

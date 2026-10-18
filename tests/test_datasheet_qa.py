@@ -18,6 +18,7 @@ from src.datasheet_qa import (
     compact_datasheet_history,
     extract_uploaded_datasheet,
     retrieve_relevant_chunks,
+    datasheet_upload_signature,
     store_document_in_session,
     append_thread_turn,
 )
@@ -178,6 +179,41 @@ class DatasheetQaCoreTests(unittest.TestCase):
         self.assertTrue(result["citations"])
         self.assertEqual(result.get("answer_kind"), "wrong_premise")
 
+    def test_description_question_uses_the_opening_device_overview(self):
+        document = extract_uploaded_datasheet(
+            _text_pdf_bytes(
+                [
+                    "DHT11 Temperature & Humidity Sensor features a\n"
+                    "temperature & humidity sensor complex with calibrated digital signal output.",
+                    "A long unrelated appendix discusses the part description field for software records.",
+                    "The document metadata contains further generic part description references.",
+                ]
+            ),
+            filename="DHT11.pdf",
+        )
+        result = answer_datasheet_question(
+            document,
+            "Please provide a description for this part",
+            ai_client=object(),
+        )
+
+        self.assertTrue(result["ok"])
+        self.assertIn("DHT11", result["answer"])
+        self.assertIn("Sensor", result["answer"])
+        self.assertIn("temperature & humidity sensor complex", result["answer"])
+        self.assertIn("Page 1", result["citations"])
+        self.assertEqual(result["evidence"][0]["page"], 1)
+
+    def test_upload_signature_changes_for_new_document(self):
+        first = datasheet_upload_signature(b"first pdf", filename="first.pdf")
+        same = datasheet_upload_signature(b"first pdf", filename="first.pdf")
+        different_content = datasheet_upload_signature(b"second pdf", filename="first.pdf")
+        different_name = datasheet_upload_signature(b"first pdf", filename="renamed.pdf")
+
+        self.assertEqual(first, same)
+        self.assertNotEqual(first, different_content)
+        self.assertNotEqual(first, different_name)
+
     def test_true_missing_evidence_is_not_found(self):
         document = extract_uploaded_datasheet(
             _text_pdf_bytes(["Package dimensions and marking information only."]),
@@ -289,7 +325,7 @@ class DatasheetQaUiWiringTests(unittest.TestCase):
         page = (root / "src" / "pages" / "datasheet_qa.py").read_text(encoding="utf-8")
         self.assertIn('"Datasheet Q&A"', shell)
         self.assertIn('"Datasheet Q&A"', runtime)
-        self.assertIn("render_datasheet_qa_page", runtime)
+        self.assertIn("render_datasheet_live", runtime)
         self.assertIn("datasheet_qa_ask_button", page)
         self.assertIn("on_click=_typed_ask_click", page)
         self.assertIn("Datasheet Q&A", page)
