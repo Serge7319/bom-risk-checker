@@ -29,6 +29,9 @@ def test_approved_search_and_datasheet_mockup_keep_existing_processing_paths():
     source = (
         Path(__file__).resolve().parents[1] / "src" / "ui" / "approved_pages.py"
     ).read_text(encoding="utf-8")
+    qna_styles = (
+        Path(__file__).resolve().parents[1] / "src" / "pages" / "datasheet_qa.py"
+    ).read_text(encoding="utf-8")
     finder = source.split("def render_replacement_search", 1)[1].split(
         "def render_compare_live", 1
     )[0]
@@ -45,11 +48,20 @@ def test_approved_search_and_datasheet_mockup_keep_existing_processing_paths():
     assert "store_document_in_session(st.session_state, extracted)" in datasheet
     assert 'key=DATASHEET_QA_QUESTION_WIDGET_KEY' in datasheet
     assert 'key="approved_datasheet_ask"' in datasheet
+    assert 'key="approved_datasheet_follow_up"' in datasheet
+    assert "ASK A FOLLOW-UP" in datasheet
+    assert "cv-dq-current-question" in datasheet
+    assert "show_question_reference=False" in datasheet
     assert "_execute_datasheet_question(" in datasheet
     assert "_render_thread_turn(" in datasheet
     assert "on_change=on_datasheet_upload_change" in datasheet
     assert "data:application/pdf;base64," in datasheet
     assert "Change document" in datasheet
+    assert "Open PDF ↗" in datasheet
+    assert "render_datasheet_page_png(payload, source_page)" in datasheet
+    assert "_render_ask_next_chips(" in datasheet
+    assert "Earlier questions" in datasheet
+    assert "max-width:1440px" in qna_styles
 
 
 def test_completed_empty_supplier_search_shows_guidance_without_zero_count_table():

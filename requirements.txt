@@ -12,3 +12,4 @@ plotly
 stripe
 extra-streamlit-components==0.1.81
 pypdf>=5.0,<7
+pypdfium2>=5.14,<6

@@ -12,6 +12,7 @@ from src.datasheet_qa import (
     DATASHEET_QA_CLEAR_QUESTION_KEY,
     DATASHEET_QA_DOC_KEY,
     DATASHEET_QA_EMPTY_ASK_KEY,
+    DATASHEET_QA_FOLLOW_UP_WIDGET_KEY,
     DATASHEET_QA_PENDING_QUESTION_KEY,
     DATASHEET_QA_QUESTION_WIDGET_KEY,
     DATASHEET_QA_STATUS_KEY,
@@ -57,10 +58,10 @@ def _inject_datasheet_qa_styles() -> None:
     st.markdown(
         """
         <style id="cadivor-datasheet-qa-css-v7" data-cadivor-layout-style="true">
-        /* Narrow the conversation canvas without touching global shell CSS files. */
+        /* Keep the datasheet workspace the same width as Cadivor Home. */
         section[data-testid="stMain"] [data-testid="stMainBlockContainer"] > div:has(.dq-marker){
-          max-width:1120px!important;
-          width:min(100%,1120px)!important;
+          max-width:1440px!important;
+          width:min(100%,1440px)!important;
           margin-left:auto!important;
           margin-right:auto!important;
         }
@@ -171,6 +172,84 @@ def _inject_datasheet_qa_styles() -> None:
         }
         .dq-composer-title{margin:0;font-size:14px;font-weight:800;color:#0F172A}
         .dq-composer-hint{margin:4px 0 10px;font-size:12px;line-height:1.4;color:#64748B}
+        .dq-breadcrumb{margin:0 0 8px;color:#8291a7;font-size:11px;font-weight:700}
+        .st-key-approved_datasheet_workspace .dq-title{font-size:28px;font-weight:700;letter-spacing:-.025em;line-height:1.2}
+        .st-key-approved_datasheet_workspace .dq-sub{max-width:none;font-size:13px;color:#71829b}
+        .st-key-approved_datasheet_workspace .dq-hero{margin:0 0 18px}
+        .dq-answer-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
+        .dq-answer-badge{display:inline-flex;align-items:center;padding:4px 9px;border-radius:999px;background:#eef5ff;color:#2865ed;font-size:10px;font-weight:800;letter-spacing:.03em}
+        .dq-citation-count{color:#8795a8;font-size:10px;font-weight:650}
+        .dq-question-reference{margin:0 0 12px;color:#435875;font-size:12px;line-height:1.45}
+        .dq-evidence-wrap{margin-top:14px}
+        .dq-evidence-label{font-size:10px}
+        .dq-evidence-row{align-items:stretch}
+        .dq-evidence-quote{flex-basis:100%;background:#f7faff;color:#334d70}
+        .st-key-approved_datasheet_workspace .dq-assistant{padding:16px;border-radius:12px;background:#f9fbff;box-shadow:none}
+        .dq-chip{font-size:10px!important;padding:3px 8px!important}
+        .dq-ask-next{margin:14px 0 12px;padding:0;border:0}
+        .dq-ask-next-label{margin:0 0 8px;font-size:9px;letter-spacing:.04em}
+        .st-key-approved_datasheet_workspace .dq-empty{border-style:solid;background:#fff}
+        .cv-dq-page-preview{display:block;width:100%;max-height:460px;object-fit:contain;background:#fff}
+        .cv-dq-page-preview-frame{display:flex;align-items:center;justify-content:center;min-height:420px;padding:16px;background:#f5f8fc;border:1px solid #e3eaf3;border-radius:10px;overflow:hidden}
+        .cv-dq-page-preview-frame img{width:auto;max-width:100%;max-height:460px;object-fit:contain;box-shadow:0 1px 4px rgba(15,23,42,.12)}
+        .cv-dq-page-fallback{min-height:420px;padding:24px;background:#fff;color:#425874;white-space:pre-wrap;font-size:12px;line-height:1.55}
+        .cv-dq-doc-link{display:inline-flex;align-items:center;justify-content:center;min-height:40px;padding:0 14px;border:1px solid #d6e0ee;border-radius:9px;background:#fff;color:#344a68!important;font-size:12px;font-weight:700;text-decoration:none!important;white-space:nowrap}
+        .cv-dq-doc-link:hover{border-color:#9ab6eb;background:#f8fbff}
+        .cv-dq-source-nav{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:12px}
+        .cv-dq-source-nav span{color:#2463e8;font-size:11px}
+        .st-key-approved_datasheet_change_document button{min-height:40px!important;height:40px!important;border:1px solid #d6e0ee!important;border-radius:9px!important;background:#fff!important;color:#344a68!important;font-size:11px!important;font-weight:700!important;box-shadow:none!important}
+        .st-key-approved_datasheet_previous_page button,.st-key-approved_datasheet_next_page button{min-height:32px!important;padding:0 4px!important;border:0!important;background:transparent!important;color:#2463e8!important;font-size:10px!important;box-shadow:none!important}
+        .st-key-approved_datasheet_next_page{display:flex!important;justify-content:flex-end!important}
+        .st-key-approved_datasheet_workspace{box-sizing:border-box!important;width:100%!important;max-width:1440px!important;margin:0 auto!important}
+        .st-key-approved_datasheet_workspace>[data-testid="stVerticalBlock"]{gap:14px!important}
+        .st-key-approved_datasheet_upload_card{box-sizing:border-box!important;width:100%!important;margin:0 0 14px!important;padding:20px 22px!important;border:1px solid #dfe7f1!important;border-radius:13px!important;background:#fff!important}
+        .cv-dq-upload-heading{display:flex;align-items:center;gap:14px;margin:0 0 16px}
+        .cv-dq-upload-heading p{margin:0 0 4px;color:#7e8da2;font-size:9px;font-weight:800;letter-spacing:.06em}
+        .cv-dq-upload-heading h2{margin:0 0 4px;color:#172942;font-size:17px;font-weight:740}
+        .cv-dq-upload-heading span:not(.cv-dq-document-icon){color:#75849a;font-size:11px}
+        .cv-dq-document{min-height:66px;padding:10px 14px!important;border-radius:12px!important;background:#fff!important}
+        .cv-dq-document-icon{flex-basis:44px!important;width:44px!important;height:44px!important;border-radius:10px!important;background:#eff5ff!important;color:#2865ed!important}
+        .cv-dq-document-icon svg{width:22px;height:22px}
+        .cv-dq-document-copy small{display:block;margin-bottom:3px;color:#8291a7;font-size:8px;font-weight:800;letter-spacing:.06em}
+        .cv-dq-document-copy strong{font-size:12px!important}
+        .cv-dq-document-copy span{font-size:10px!important}
+        .cv-dq-private{padding:6px 10px!important;font-size:9px!important}
+        .cv-dq-doc-link.is-disabled{opacity:.55;cursor:not-allowed}
+        .cv-dq-picker-label{margin:0 0 8px;color:#5f718b;font-size:11px}
+        .cv-dq-field-label{margin:8px 0 6px;color:#7d8ca1;font-size:9px;font-weight:800;letter-spacing:.05em}
+        .st-key-approved_datasheet_question_panel,.st-key-approved_datasheet_source_panel{box-sizing:border-box!important;width:100%!important;min-width:0!important;min-height:610px!important;margin:0!important;padding:20px 21px 18px!important;border:1px solid #dfe7f1!important;border-radius:13px!important;background:#fff!important}
+        .st-key-approved_datasheet_question_panel>[data-testid="stVerticalBlock"],.st-key-approved_datasheet_source_panel>[data-testid="stVerticalBlock"]{gap:.45rem!important}
+        .cv-dq-question-head{margin:0 0 14px!important}
+        .cv-dq-question-head h2{margin:0 0 5px!important;font-size:16px!important;font-weight:700!important}
+        .cv-dq-question-head p{font-size:10px!important}
+        .st-key-approved_datasheet_question_panel [data-testid="stTextArea"] textarea{min-height:64px!important;height:64px!important;padding:11px 13px!important;border:1px solid #d6e0ee!important;border-radius:9px!important;background:#fff!important;font-size:11px!important}
+        .st-key-approved_datasheet_question_panel [data-testid="stTextArea"] textarea::placeholder{color:#8a98aa!important;opacity:1!important}
+        .st-key-approved_datasheet_question_panel .st-key-datasheet_qa_follow_up [data-baseweb="input"]{min-height:40px!important;border:1px solid #d6e0ee!important;border-radius:9px!important;background:#fff!important}
+        .st-key-approved_datasheet_question_panel .st-key-datasheet_qa_follow_up input{height:38px!important;color:#344a68!important;font-size:11px!important}
+        .st-key-approved_datasheet_question_panel .st-key-datasheet_qa_follow_up input::placeholder{color:#8a98aa!important;opacity:1!important}
+        .st-key-approved_datasheet_question_panel [data-testid="stWidgetLabel"]{display:none!important}
+        .st-key-approved_datasheet_question_panel .st-key-approved_datasheet_ask button{min-height:40px!important;height:40px!important;padding:0 14px!important;border-radius:8px!important;font-size:11px!important}
+        .st-key-approved_datasheet_question_panel [class*="st-key-dq_chip_"] button{min-height:28px!important;margin:0!important;padding:5px 10px!important;border:1px solid #e0e8f3!important;background:#f4f7fb!important;color:#4d627f!important;font-size:10px!important}
+        .st-key-approved_datasheet_question_panel [data-testid="stHorizontalBlock"]:has([class*="st-key-dq_chip_"]){gap:.35rem!important;flex-wrap:wrap!important}
+        .cv-dq-answer-empty{display:flex;flex-direction:column;gap:6px;margin-top:16px;padding:18px;border:1px solid #e5ecf5;border-radius:11px;background:#f9fbff;color:#7889a1;font-size:11px;line-height:1.45}
+        .cv-dq-answer-empty strong{color:#314865;font-size:12px}
+        .cv-dq-answer-caution{margin:14px 0 0;color:#8a97aa;font-size:9px;line-height:1.45}
+        .st-key-approved_datasheet_source_panel .cv-dq-source-head{margin-bottom:14px!important}
+        .cv-dq-source-head h2{margin:0!important;color:#172942;font-size:16px;font-weight:700}
+        .cv-dq-source-head p{margin:4px 0 0!important;color:#8190a6;font-size:10px}
+        .cv-dq-page-badge{padding:6px 10px;border-radius:999px;background:#f1f5f9;color:#5e718c;font-size:9px;font-weight:800;white-space:nowrap}
+        .cv-dq-page-preview-frame{min-height:460px!important;padding:16px!important}
+        .cv-dq-page-preview-frame img{max-height:490px!important}
+        .cv-dq-page-fallback{box-sizing:border-box;width:100%;min-height:460px!important;max-height:490px;overflow:auto;border:1px solid #e4eaf3;border-radius:9px;white-space:normal!important}
+        .cv-dq-source-nav{margin-top:12px}
+        .cv-dq-source-nav button{border:0!important;background:transparent!important;color:#2463e8!important;font-size:10px!important;box-shadow:none!important}
+        .st-key-datasheet_qa_uploader{margin:0!important}
+        section[data-testid="stMain"]:has(.dq-hide-picker) .st-key-datasheet_qa_uploader{display:none!important}
+        section[data-testid="stMain"]:has(.dq-picker-open) .st-key-datasheet_qa_uploader{display:block!important}
+        section[data-testid="stMain"] .st-key-datasheet_qa_uploader [data-testid="stFileUploaderDropzone"]{min-height:72px!important;padding:10px 14px!important;border:1px dashed #b9c8dc!important;border-radius:10px!important;background:#fafcff!important}
+        section[data-testid="stMain"] .st-key-datasheet_qa_uploader [data-testid="stFileUploaderDropzoneInstructions"] p{font-size:10px!important}
+        @media(max-width:900px){.st-key-approved_datasheet_question_panel,.st-key-approved_datasheet_source_panel{min-height:0!important}.cv-dq-page-preview-frame,.cv-dq-page-fallback{min-height:320px!important}}
+        @media(max-width:850px){.st-key-approved_datasheet_workspace .dq-title{font-size:24px}.cv-dq-page-preview-frame,.cv-dq-page-fallback{min-height:300px}}
         /* Production hotfix: bare st.text_area (outside st.form) collapses under
            Emotion layout — stTextArea / RootElement hit height 0–2px with
            overflow:hidden, so Ask Cadivor shows with no visible composer.
@@ -209,6 +288,9 @@ def _inject_datasheet_qa_styles() -> None:
         section[data-testid="stMain"] .stFormSubmitButton>button{
           min-width:148px!important;width:auto!important;max-width:220px!important
         }
+        section[data-testid="stMain"] .st-key-approved_datasheet_question_panel .st-key-datasheet_qa_question [data-testid="stTextAreaRootElement"]{min-height:64px!important;height:auto!important}
+        section[data-testid="stMain"] .st-key-approved_datasheet_question_panel .st-key-datasheet_qa_question textarea{min-height:64px!important;height:64px!important;resize:none!important}
+        section[data-testid="stMain"] .st-key-approved_datasheet_question_panel [class*="st-key-dq_chip_"] button{min-height:28px!important;padding:5px 10px!important;font-size:10px!important}
         </style>
         """,
         unsafe_allow_html=True,
@@ -225,28 +307,13 @@ def _execute_datasheet_question(
     st.session_state[DATASHEET_QA_STATUS_KEY] = STATUS_PROCESSING
     try:
         history = compact_datasheet_history(thread)
-        progress = st.status(
-            "Cadivor is reviewing the datasheet evidence…",
-            expanded=True,
-        )
-        with progress:
-            st.write("Retrieving relevant pages…")
+        with st.spinner("Cadivor is reviewing the datasheet…"):
             result = answer_datasheet_question(
                 document,
                 question,
                 ai_client=build_datasheet_ai_client(),
                 history=history,
             )
-            st.write("Preparing your answer…")
-            try:
-                progress.update(
-                    label="Answer ready",
-                    state="complete",
-                    expanded=False,
-                )
-            except Exception:
-                # Status update is cosmetic; never block the answer turn.
-                pass
         append_thread_turn(
             st.session_state,
             question=question,
@@ -288,6 +355,18 @@ def _typed_ask_click() -> None:
     queue_datasheet_follow_up(st.session_state, question)
 
 
+def _typed_follow_up_click() -> None:
+    """Queue the bottom-of-answer follow-up composer through the same path."""
+    question = resolve_datasheet_question(
+        st.session_state.get(DATASHEET_QA_FOLLOW_UP_WIDGET_KEY),
+    )
+    if not question:
+        st.session_state[DATASHEET_QA_EMPTY_ASK_KEY] = True
+        return
+    st.session_state.pop(DATASHEET_QA_EMPTY_ASK_KEY, None)
+    queue_datasheet_follow_up(st.session_state, question)
+
+
 def _answer_html(answer: str) -> str:
     blocks = format_datasheet_answer_blocks(answer)
     if not blocks:
@@ -307,6 +386,7 @@ def _render_ask_next_chips(
     turn_index: int,
     fingerprint: str,
     disabled: bool,
+    title: str = "Ask next",
 ) -> None:
     if not suggestions:
         return
@@ -314,7 +394,7 @@ def _render_ask_next_chips(
     overflow = suggestions[VISIBLE_FOLLOW_UPS:]
     _html(
         '<div class="dq-ask-next">'
-        '<div class="dq-ask-next-label">Ask next</div>'
+        f'<div class="dq-ask-next-label">{_esc(title)}</div>'
         "</div>"
     )
     for start in range(0, len(visible), 3):
@@ -328,7 +408,7 @@ def _render_ask_next_chips(
                 st.button(
                     suggestion,
                     key=f"dq_chip_{digest}",
-                    use_container_width=True,
+                    use_container_width=False,
                     disabled=disabled,
                     on_click=_chip_click,
                     args=(suggestion,),
@@ -342,7 +422,7 @@ def _render_ask_next_chips(
                 st.button(
                     suggestion,
                     key=f"dq_chip_more_{digest}",
-                    use_container_width=True,
+                    use_container_width=False,
                     disabled=disabled,
                     on_click=_chip_click,
                     args=(suggestion,),
@@ -356,13 +436,16 @@ def _render_thread_turn(
     fingerprint: str,
     disabled: bool,
     show_follow_ups: bool,
+    show_question: bool = True,
+    show_question_reference: bool = True,
 ) -> None:
-    _html(
-        '<div class="dq-user">'
-        '<div class="dq-role">You</div>'
-        f'<div class="dq-q">{_esc(turn.get("question"))}</div>'
-        "</div>"
-    )
+    if show_question:
+        _html(
+            '<div class="dq-user">'
+            '<div class="dq-role">You</div>'
+            f'<div class="dq-q">{_esc(turn.get("question"))}</div>'
+            "</div>"
+        )
     if turn.get("error") and not turn.get("ok"):
         st.error(str(turn.get("error")))
         return
@@ -394,9 +477,18 @@ def _render_thread_turn(
             "</div>"
         )
 
+    question_reference = (
+        f'<p class="dq-question-reference">{_esc(turn.get("question"))}</p>'
+        if show_question_reference
+        else ""
+    )
     _html(
         '<div class="dq-assistant">'
-        '<div class="dq-role">Cadivor</div>'
+        '<div class="dq-answer-head">'
+        '<span class="dq-answer-badge">ANSWER</span>'
+        f'<span class="dq-citation-count">{len(citations)} citation{"s" if len(citations) != 1 else ""}</span>'
+        '</div>'
+        f"{question_reference}"
         f"{_answer_html(answer)}"
         f"{notice_html}"
         f"{evidence_html}"

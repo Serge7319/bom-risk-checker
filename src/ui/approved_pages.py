@@ -1,6797 +1,2683 @@
-"""Approved page bodies for the Cadivor mockups.
-
-Live workspace records fill the layout. Sample names from the mockups are not
-invented when the workspace has different BOMs.
-"""
-
-from __future__ import annotations
-
-import html
-import hashlib
-import io
-from functools import wraps
-from datetime import datetime, timedelta, timezone
-from typing import Any
-
-import streamlit as st
-
-from src.bom_upload_flow import (
-    prepare_new_approved_bom_analysis,
-    should_render_approved_bom_upload_form,
-    should_stop_approved_bom_renderer,
-)
-from src.saved_bom_project import (
-    NEW_PROJECT_CHOICE,
-    analysis_title_for_upload,
-    assign_project,
-    project_choices,
-    resolve_project_choice,
-    split_project_and_bom,
-)
-from src.ui.cadivor_design_system.icons import lucide
-from src.compatibility_gate import (
-    CRITICAL_FIRMWARE_WARNING,
-    CRITICAL_PHYSICAL_WARNING,
-    assess_part_compatibility,
-    comparison_row_part_values,
-    package_document_conflicts,
-)
-from src.ui.navigation import (
-    internal_nav_button,
-    navigate_to,
-    navigate_to_alternative_finder,
-)
-
-
-PROJECT_ICON = (
-    '<span class="cv-ap-project-icon" aria-hidden="true">'
-    f"{lucide('layers', 22)}"
-    "</span>"
-)
-
-SAVED_BOM_EDIT_STATE = "approved_saved_bom_edit_id"
-SAVED_BOM_DELETE_STATE = "approved_saved_bom_delete_id"
-SAVED_BOM_EDIT_REVISION_STATE = "approved_saved_bom_edit_revision"
-
-
-DOC = (
-    '<svg class="cv-ap-chip" width="28" height="28" viewBox="0 0 32 32" aria-hidden="true" '
-    'style="width:28px;height:28px;display:inline-block;vertical-align:middle;margin-right:8px">'
-    '<rect width="32" height="32" rx="8" fill="#eef2ff"/>'
-    '<path d="M10 8h8l4 4v12H10z" fill="#fff" stroke="#2563eb" stroke-width="1.4"/>'
-    '<path d="M18 8v4h4" fill="none" stroke="#2563eb" stroke-width="1.4"/>'
-    "</svg>"
-)
-
-
-def part_mark(seed: str = "") -> str:
-    """Illustration for a live part. The workspace does not store product photos."""
-    text = str(seed or "").casefold()
-    if any(token in text for token in ("cap", "grm", "ceramic", "murata")):
-        body = (
-            '<rect x="8" y="14" width="32" height="20" rx="3" fill="#d6d3d1"/>'
-            '<rect x="14" y="18" width="20" height="12" rx="1" fill="#a8a29e"/>'
-            '<path d="M12 14v-6M36 14v-6" stroke="#78716c" stroke-width="2"/>'
-        )
-    elif any(token in text for token in ("reg", "tps", "buck", "converter")):
-        body = (
-            '<rect x="10" y="12" width="28" height="28" rx="4" fill="#1e293b"/>'
-            '<circle cx="24" cy="26" r="6" fill="#334155"/>'
-            '<path d="M16 12v-4M24 12v-4M32 12v-4M16 40v4M24 40v4M32 40v4" stroke="#94a3b8" stroke-width="2"/>'
-        )
-    else:
-        body = (
-            '<rect x="12" y="14" width="24" height="24" rx="2" fill="#0f172a"/>'
-            '<path d="M16 14v-5M22 14v-5M26 14v-5M32 14v-5M16 38v5M22 38v5M26 38v5M32 38v5" stroke="#64748b" stroke-width="1.6"/>'
-            '<path d="M12 20h-4M12 26h-4M12 32h-4M36 20h4M36 26h4M36 32h4" stroke="#64748b" stroke-width="1.6"/>'
-        )
-    return (
-        '<svg class="cv-ap-chip" width="42" height="42" viewBox="0 0 48 48" aria-hidden="true" '
-        'style="width:42px;height:42px;display:inline-block;vertical-align:middle;margin-right:8px">'
-        f'<rect width="48" height="48" rx="10" fill="#f8fafc"/>{body}</svg>'
-    )
-
-
-CHIP = (
-    '<svg class="cv-ap-chip" width="36" height="36" viewBox="0 0 48 48" aria-hidden="true" '
-    'style="width:36px;height:36px;display:inline-block;vertical-align:middle">'
-    '<rect width="48" height="48" rx="10" fill="#eef2ff"/>'
-    '<rect x="16" y="16" width="16" height="16" rx="2" fill="#334155"/>'
-    '<path d="M20 10v6M28 10v6M20 32v6M28 32v6M10 20h6M10 28h6M32 20h6M32 28h6" stroke="#64748b" stroke-width="2"/>'
-    "</svg>"
-)
-
-
-def _esc(value: Any, fallback: str = "â€”") -> str:
-    if value is None:
-        return fallback
-    text = str(value).strip()
-    if not text or text.lower() in {"nan", "none"}:
-        return fallback
-    return html.escape(text)
-
-
-def _num(value: Any, default: int = 0) -> int:
-    try:
-        if value is None or str(value).strip() == "":
-            return default
-        return int(float(value))
-    except (TypeError, ValueError):
-        return default
-
-
-def _first(row: dict[str, Any], *keys: str, fallback: Any = None) -> Any:
-    for key in keys:
-        value = row.get(key)
-        if value is not None and str(value).strip() not in {"", "nan", "None"}:
-            return value
-    return fallback
-
-
-def _candidate_mpn(row: dict[str, Any]) -> str:
-    """Read the supplier candidate part number. Blank means the row is not a part."""
-    for key in (
-        "Alternative Part",
-        "mpn",
-        "MPN",
-        "alternative_mpn",
-        "manufacturer_part_number",
-        "part_number",
-        "Part Number",
-    ):
-        text = str(row.get(key) or "").strip()
-        if text and text.casefold() not in {"nan", "none", "â€”", "-"}:
-            return text
-    return ""
-
-
-def _candidate_field(row: dict[str, Any], *keys: str, fallback: str = "â€”") -> str:
-    for key in keys:
-        if key not in row or row.get(key) is None:
-            continue
-        text = str(row.get(key)).strip()
-        if not text or text.casefold() in {"nan", "none"}:
-            continue
-        return html.escape(text)
-    return fallback
-
-
-def _candidate_stock(row: dict[str, Any]) -> int:
-    for key in ("Stock", "stock_total", "stock_available"):
-        if key in row and row.get(key) not in (None, ""):
-            return _num(row.get(key))
-    return 0
-
-
-_CANDIDATE_BLANK = {
-    "", "â€”", "-", "â€“", "nan", "none", "n/a", "not available", "not recorded",
-    "not found", "unknown", "unavailable", "null",
-}
-
-
-def _candidate_recorded(row: dict[str, Any], *keys: str, missing: str = "Not recorded") -> str:
-    for key in keys:
-        if key not in row or row.get(key) is None:
-            continue
-        text = str(row.get(key)).strip()
-        if text and text.casefold() not in _CANDIDATE_BLANK:
-            return text
-    return missing
-
-
-def _candidate_http_url(value: Any) -> str:
-    text = str(value or "").strip()
-    if text.lower().startswith(("https://", "http://")):
-        return text
-    return ""
-
-
-def _part_field(part: dict[str, Any], *keys: str) -> str:
-    for key in keys:
-        if key not in part or part.get(key) is None:
-            continue
-        if key in {"pin_count", "channel_count", "Pin Count"}:
-            try:
-                number = int(float(part.get(key)))
-            except (TypeError, ValueError):
-                continue
-            if number <= 0:
-                continue
-            return str(number)
-        text = str(part.get(key)).strip()
-        if text and text.casefold() not in _CANDIDATE_BLANK and text not in {"0", "0.0"}:
-            return text
-    return ""
-
-
-def _field_source(part: dict[str, Any], key: str, fallback: str = "") -> str:
-    sources = part.get("field_sources") if isinstance(part.get("field_sources"), dict) else {}
-    source = str(sources.get(key) or fallback or part.get("source") or "").strip()
-    return source
-
-
-def _finding_label(status: str, original: str, candidate: str, evidence: str = "") -> tuple[str, str]:
-    note = str(evidence or "").strip()
-    if original and candidate and status == "Match":
-        if note and "match exactly" not in note.casefold() and "equivalent" not in note.casefold():
-            return "Compatible", f"{note} This is not an approval to use the part."
-        return "Compatible", "The retrieved values match. This is not an approval to use the part."
-    if original and candidate and status == "Different":
-        return "Known conflict", note or "The retrieved values differ. Review this difference before use."
-    if original and candidate and status == "Needs review":
-        return (
-            "Needs review",
-            note or "Both values were retrieved and they differ. This is not proof of electrical fit.",
-        )
-    if not original and not candidate:
-        return "Unknown", "Neither supplier record included this attribute."
-    missing = "original" if not original else "candidate"
-    return "Needs review", f"The {missing} record does not include this attribute, so fit cannot be confirmed."
-
-
-def _value_cell(value: str, source: str, note: str = "") -> str:
-    if not value:
-        shown = "Unknown"
-        detail = note or "Not in the retrieved supplier record."
-    else:
-        shown = value
-        detail = source or "Supplier record"
-    extra = f"<small>{_esc(detail)}</small>"
-    if note and value:
-        extra += f"<small>{_esc(note)}</small>"
-    return f"<div>{_esc(shown)}{extra}</div>"
-
-
-def _candidate_part_payload(row: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "description": _part_field(row, "description", "Description"),
-        "manufacturer": _part_field(row, "Manufacturer", "manufacturer"),
-        "package": _part_field(row, "package", "Package", "Package / Case", "package_case"),
-        "pin_count": _first(
-            row,
-            "pin_count",
-            "Pin Count",
-            "Number of Pins",
-            "number_of_pins",
-            "pins",
-            fallback=0,
-        ),
-        "mounting_style": _part_field(row, "mounting_style", "Mounting Style"),
-        "voltage_range": _part_field(row, "voltage_range", "Voltage Range"),
-        "temperature_range": _part_field(row, "temperature_range", "Temperature Range"),
-        "channel_count": row.get("channel_count") or row.get("Channel Count") or 0,
-        "architecture": _part_field(
-            row,
-            "architecture",
-            "Architecture",
-            "Device family / architecture",
-            "device_family_architecture",
-            "device_family",
-            "core",
-            "ISA",
-        ),
-        "lifecycle_status": _part_field(row, "Lifecycle", "lifecycle_status"),
-        "stock_total": row.get("Stock", row.get("stock_total")),
-        "unit_price": row.get("unit_price", row.get("Unit Price")),
-        "lead_time_weeks": row.get("lead_time_weeks"),
-        "bandwidth_mhz": row.get("bandwidth_mhz"),
-        "slew_rate_v_us": row.get("slew_rate_v_us"),
-        "input_offset_mv": row.get("input_offset_mv"),
-        "input_bias_na": row.get("input_bias_na"),
-        "quiescent_current_ma": row.get("quiescent_current_ma"),
-        "gbw_mhz": row.get("gbw_mhz"),
-        "source": _part_field(row, "Supplier", "source") or "DigiKey",
-        "datasheet_url": _first(
-            row,
-            "datasheet_url",
-            "Datasheet URL",
-            "datasheetUrl",
-            "Data Sheet URL",
-            fallback="",
-        ),
-        "field_sources": row.get("field_sources") if isinstance(row.get("field_sources"), dict) else {},
-        "manufacturer_part_number": _candidate_mpn(row),
-    }
-
-
-def _comparison_table(
-    rows: list[tuple], compatibility: dict[str, Any] | None = None
-) -> str:
-    compatibility = compatibility if isinstance(compatibility, dict) else {}
-    critical_keys = set()
-    if compatibility.get("package_mismatch"):
-        critical_keys.add("package")
-    if compatibility.get("pin_count_mismatch"):
-        critical_keys.add("pin count")
-    if compatibility.get("architecture_mismatch"):
-        critical_keys.add("architecture")
-    body = []
-    for row in rows:
-        label, original, original_source, candidate, candidate_source, status = row[:6]
-        note = row[6] if len(row) > 6 else ""
-        evidence = row[7] if len(row) > 7 else ""
-        finding, why = _finding_label(status, original, candidate, evidence)
-        if finding == "Unknown":
-            why = (
-                f"{label} was not in either supplier record. "
-                "Check the datasheet or product page before treating it as a match."
-            )
-        kind = {
-            "Compatible": "compatible",
-            "Needs review": "review",
-            "Known conflict": "conflict",
-        }.get(finding, "unknown")
-        normalized_label = str(label or "").casefold()
-        critical = (
-            ("package" in critical_keys and "package" in normalized_label)
-            or (
-                "pin count" in critical_keys
-                and normalized_label in {"pin count", "number of pins", "pins"}
-            )
-            or (
-                "architecture" in critical_keys
-                and (
-                    "architecture" in normalized_label
-                    or "device family" in normalized_label
-                    or normalized_label in {"core", "instruction set"}
-                )
-            )
-        )
-        if critical:
-            kind = "critical"
-        row_class = " class='cv-compat-critical-row'" if critical else ""
-        body.append(
-            f"<tr{row_class}>"
-            f"<td>{_esc(label)}</td>"
-            f"<td>{_value_cell(original, original_source, note)}</td>"
-            f"<td>{_value_cell(candidate, candidate_source)}</td>"
-            f"<td><span class='cv-finding {kind}'>{_esc(finding)}</span><small>{_esc(why)}</small></td>"
-            "</tr>"
-        )
-    return (
-        "<table class='cv-candidate-compare'><thead><tr>"
-        "<th>Attribute</th><th>Original</th><th>Candidate</th><th>Finding</th>"
-        f"</tr></thead><tbody>{''.join(body)}</tbody></table>"
-    )
-
-
-def _candidate_detail_html(row: dict[str, Any], original: dict[str, Any] | None = None) -> str:
-    """Compare one candidate with the original using retrieved supplier evidence."""
-    from src.datasheet_comparison import build_datasheet_comparison
-    from src.risk_engine import recorded_supply_factors
-
-    original = original if isinstance(original, dict) else {}
-    candidate = _candidate_part_payload(row)
-    compatibility = assess_part_compatibility(original, candidate)
-    mpn = _candidate_mpn(row)
-    original_mpn = _part_field(original, "manufacturer_part_number", "mpn") or "Original"
-    classification = _part_field(row, "Classification", "Category")
-    verified = classification == "Verified direct substitute"
-    comparison = build_datasheet_comparison(original, candidate)
-    technical = []
-    for item in comparison.get("rows") or []:
-        key = str(item.get("Key") or "")
-        if key == "lifecycle_status":
-            continue
-        label = str(item.get("Attribute") or key)
-        original_value = str(item.get("Original") or "")
-        candidate_value = str(item.get("Candidate") or "")
-        if original_value.casefold() in _CANDIDATE_BLANK or original_value.casefold() == "not available":
-            original_value = ""
-        if candidate_value.casefold() in _CANDIDATE_BLANK or candidate_value.casefold() == "not available":
-            candidate_value = ""
-        status = str(item.get("Status") or "")
-        evidence = str(item.get("Evidence") or "")
-        if key == "package" and compatibility.get("package_mismatch"):
-            original_value = str(compatibility.get("source_package") or original_value)
-            candidate_value = str(compatibility.get("candidate_package") or candidate_value)
-        if key == "pin_count" and compatibility.get("pin_count_mismatch"):
-            original_value = str(compatibility.get("source_pin_count") or original_value)
-            candidate_value = str(compatibility.get("candidate_pin_count") or candidate_value)
-        if key == "architecture" and compatibility.get("architecture_mismatch"):
-            original_value = str(compatibility.get("source_architecture") or original_value)
-            candidate_value = str(compatibility.get("candidate_architecture") or candidate_value)
-        if key == "architecture" and status == "Different" and original_value and candidate_value:
-            if compatibility.get("architecture_mismatch"):
-                evidence = CRITICAL_FIRMWARE_WARNING
-            else:
-                status = "Needs review"
-                evidence = "The supplier category labels differ. This is not a verified functional conflict."
-        if key == "package" and compatibility.get("package_mismatch"):
-            status = "Different"
-            evidence = CRITICAL_PHYSICAL_WARNING
-        if key == "pin_count" and compatibility.get("pin_count_mismatch"):
-            status = "Different"
-            evidence = CRITICAL_PHYSICAL_WARNING
-        if key == "voltage_range" and original_value and candidate_value:
-            from src.parametric_compare import supply_range_finding
-
-            covered = supply_range_finding(original_value, candidate_value)
-            if covered:
-                status, evidence = covered
-        if key == "input_bias_na" and original_value and candidate_value:
-            from src.parametric_compare import bias_condition_finding
-
-            judged = bias_condition_finding(
-                original_value,
-                candidate_value,
-                design_limit=original.get("input_bias_design_limit")
-                or original.get("design_limit_input_bias"),
-            )
-            if judged:
-                status, evidence = judged
-        if key == "temperature_range" and original_value and candidate_value:
-            import re
-
-            stripped = [
-                re.sub(r"\s*\([^)]*\)", "", value).strip()
-                for value in (original_value, candidate_value)
-            ]
-            if stripped[0].casefold() == stripped[1].casefold():
-                status = "Match"
-                evidence = "The temperature ranges match. A parenthetical note such as (TA) is the measurement condition, not a second limit."
-        notes = original.get("field_source_notes") if isinstance(original.get("field_source_notes"), dict) else {}
-        technical.append((
-            label,
-            original_value,
-            _field_source(original, key),
-            candidate_value,
-            _field_source(candidate, key, candidate.get("source") or "DigiKey"),
-            status,
-            str(notes.get(key) or ""),
-            evidence,
-        ))
-    # Some supplier matrices omit identity fields even when the returned part
-    # records contain them. Keep a critical mismatch visible in the detail table.
-    present_labels = {str(item[0] or "").casefold() for item in technical}
-    present_keys = set(present_labels)
-    if any("package" in item for item in present_labels):
-        present_keys.add("package")
-    if any("pin count" in item or "number of pins" in item for item in present_labels):
-        present_keys.add("pin count")
-    if any("architecture" in item or "device family" in item for item in present_labels):
-        present_keys.add("architecture")
-    for key, label, left, right, mismatch, evidence in (
-        (
-            "package",
-            "Package",
-            compatibility.get("source_package"),
-            compatibility.get("candidate_package"),
-            compatibility.get("package_mismatch"),
-            CRITICAL_PHYSICAL_WARNING,
-        ),
-        (
-            "pin count",
-            "Pin count",
-            compatibility.get("source_pin_count"),
-            compatibility.get("candidate_pin_count"),
-            compatibility.get("pin_count_mismatch"),
-            CRITICAL_PHYSICAL_WARNING,
-        ),
-        (
-            "architecture",
-            "Device family / architecture",
-            compatibility.get("source_architecture"),
-            compatibility.get("candidate_architecture"),
-            compatibility.get("architecture_mismatch"),
-            CRITICAL_FIRMWARE_WARNING,
-        ),
-    ):
-        if mismatch and key not in present_keys:
-            technical.append(
-                (
-                    label,
-                    str(left or ""),
-                    _field_source(original, key),
-                    str(right or ""),
-                    _field_source(candidate, key, candidate.get("source") or "Supplier record"),
-                    "Different",
-                    "",
-                    evidence,
-                )
-            )
-    conflicts = [
-        item[0]
-        for item in technical
-        if _finding_label(item[5], item[1], item[3], item[7] if len(item) > 7 else "")[0] == "Known conflict"
-    ]
-    if conflicts:
-        fit = (
-            "Technical fit is not established. Known conflicts: "
-            + ", ".join(conflicts)
-            + ". Part-number or family similarity is not compatibility evidence."
-        )
-    else:
-        fit = (
-            "Technical fit is not established. No retrieved attribute was a known conflict, "
-            "but missing evidence still has to be checked. Part-number or family similarity "
-            "is not compatibility evidence."
-        )
-    if verified:
-        relationship = (
-            "The supplier recorded this as a verified direct substitute. "
-            "That relationship is not an approval to use the part."
-        )
-    else:
-        relationship = "Compatibility is not verified."
-        if classification:
-            relationship += f" Supplier classification: {classification}."
-    recommendation = _part_field(row, "Recommendation")
-    next_step = recommendation or "Check the datasheet, footprint, and qualification before use."
-
-    supply_rows = []
-    supply_specs = (
-        ("Manufacturer", "manufacturer", "manufacturer"),
-        ("Lifecycle", "lifecycle_status", "lifecycle_status"),
-        ("Stock", "stock_total", "stock_total"),
-        ("Lead time", "lead_time_weeks", "lead_time_weeks"),
-        ("Unit price", "unit_price", "unit_price"),
-        ("Distributor", "source", "source"),
-    )
-    for label, original_key, candidate_key in supply_specs:
-        original_value = _part_field(original, original_key)
-        candidate_value = _part_field(candidate, candidate_key)
-        if original_key == "stock_total" and original.get("stock_total") not in (None, ""):
-            original_value = f"{_num(original.get('stock_total')):,}"
-        if candidate_key == "stock_total" and candidate.get("stock_total") not in (None, ""):
-            candidate_value = f"{_num(candidate.get('stock_total')):,}"
-        if original_key == "lead_time_weeks" and _evidence_number(original.get("lead_time_weeks")):
-            original_value = f"{original.get('lead_time_weeks')} weeks"
-        if candidate_key == "lead_time_weeks" and _evidence_number(candidate.get("lead_time_weeks")):
-            candidate_value = f"{candidate.get('lead_time_weeks')} weeks"
-        if original_key == "unit_price" and _evidence_number(original.get("unit_price"), positive=True):
-            original_value = f"${float(original.get('unit_price')):.4f}".rstrip("0").rstrip(".")
-        if candidate_key == "unit_price" and _evidence_number(candidate.get("unit_price"), positive=True):
-            candidate_value = f"${float(candidate.get('unit_price')):.4f}".rstrip("0").rstrip(".")
-        status = "Match" if original_value and candidate_value and original_value.casefold() == candidate_value.casefold() else "Different"
-        if label in {"Stock", "Unit price", "Distributor", "Manufacturer", "Lead time"} and original_value and candidate_value and status == "Different":
-            status = "Needs review"
-        supply_evidence = ""
-        if label == "Lead time" and status == "Needs review":
-            supply_evidence = (
-                "Both records include a lead time. The difference is schedule evidence, "
-                "not electrical compatibility."
-            )
-        elif label == "Lifecycle" and status == "Different":
-            supply_evidence = (
-                "Lifecycle status differs. This is supply evidence and is separate from electrical fit."
-            )
-        supply_rows.append((
-            label,
-            original_value,
-            _field_source(original, original_key, str(original.get("source") or "")),
-            candidate_value,
-            _field_source(candidate, candidate_key, str(candidate.get("source") or "")),
-            status,
-            "",
-            supply_evidence,
-        ))
-
-    factors = recorded_supply_factors({
-        "lifecycle_status": candidate.get("lifecycle_status"),
-        "stock_total": candidate.get("stock_total"),
-        "lead_time_weeks": candidate.get("lead_time_weeks"),
-        "source": candidate.get("source") or "DigiKey",
-        "quantity": 0,
-    })
-    factor_html = []
-    applied_points = 0
-    for factor in factors:
-        reasons = factor["reasons"] or ["Cadivor's recorded-data rules did not add a penalty for this value."]
-        if factor["factor"] == "Stock" and not factor["reasons"]:
-            reasons = ["No BOM quantity was supplied, so shortage rules were not applied."]
-        applied_points += int(factor["points"])
-        factor_html.append(
-            f"<li><strong>{_esc(factor['factor'])}:</strong> {_esc(factor['recorded'])} "
-            f"({_esc(factor['source'] or 'Supplier')}). {_esc(' '.join(reasons))}</li>"
-        )
-    if candidate.get("lead_time_weeks") in (None, ""):
-        factor_html.append(
-            "<li><strong>Lead time:</strong> Unknown. DigiKey's manufacturer lead time was not in this record. "
-            "Use the product page or datasheet before judging schedule risk.</li>"
-        )
-    factor_html.append(
-        "<li><strong>Supplier diversity:</strong> Unknown. This row is one distributor listing, "
-        "not a manufacturer source count, so Cadivor's single-source rule was not applied.</li>"
-    )
-    risk_html = (
-        "<p>Supply and lifecycle risk is separate from technical fit. "
-        f"Recorded-factor points under Cadivor's existing rules: {applied_points}. "
-        "Rules without evidence were not scored.</p>"
-        f"<ul>{''.join(factor_html)}</ul>"
-    )
-    links = _detail_links(original, row)
-    return (
-        f'<div class="cv-candidate-detail" data-candidate-mpn="{_esc(mpn)}">'
-        f'<p class="cv-candidate-title">{_esc(mpn)} compared with {_esc(original_mpn)}</p>'
-        f"<p class='cv-candidate-unverified'>{_esc(relationship)} {_esc(fit)}</p>"
-        f"{_compatibility_banner_html(compatibility)}"
-        "<p class='cv-candidate-section'>Does it technically fit?</p>"
-        f"{_comparison_table(technical, compatibility)}"
-        "<p class='cv-candidate-section'>Supply and lifecycle risk</p>"
-        f"{_comparison_table(supply_rows)}"
-        f"{risk_html}"
-        f"<p><strong>Next step.</strong> {_esc(next_step)}</p>"
-        f"<p class='cv-candidate-links'>{links}</p>"
-        "</div>"
-    )
-
-
-def _compatibility_banner_html(compatibility: dict[str, Any] | None) -> str:
-    """Render prominent compatibility blockers and missing-evidence gates."""
-    compatibility = compatibility if isinstance(compatibility, dict) else {}
-    critical = list(compatibility.get("critical_warnings") or [])
-    review = list(compatibility.get("review_warnings") or [])
-    if critical:
-        return (
-            "<div class='cv-compat-banner critical' role='alert'>"
-            "<strong>CRITICAL COMPATIBILITY BLOCK â€” NOT A DROP-IN REPLACEMENT</strong>"
-            f"<ul>{''.join(f'<li>{_esc(item)}</li>' for item in critical)}</ul>"
-            "<span>Do not approve this candidate as a drop-in replacement. A physical redesign and/or firmware rewrite may be required.</span>"
-            "</div>"
-        )
-    if review:
-        return (
-            "<div class='cv-compat-banner review' role='status'>"
-            "<strong>DROP-IN COMPATIBILITY NOT VERIFIED</strong>"
-            f"<ul>{''.join(f'<li>{_esc(item)}</li>' for item in review)}</ul>"
-            "</div>"
-        )
-    return (
-        "<div class='cv-compat-banner review' role='status'>"
-        "<strong>Engineering review required</strong>"
-        f"<span>{_esc(compatibility.get('drop_in_status') or 'Electrical fit and pinout still require engineering review.')}</span>"
-        "</div>"
-    )
-
-
-def _evidence_number(value: Any, positive: bool = False) -> bool:
-    try:
-        number = float(value)
-    except (TypeError, ValueError):
-        return False
-    return number > 0 if positive else True
-
-
-def _detail_links(original: dict[str, Any], row: dict[str, Any]) -> str:
-    links = []
-    for label, source in (
-        (f"{_part_field(original, 'manufacturer_part_number') or 'Original'} product page", original),
-        (f"{_candidate_mpn(row)} product page", row),
-        (f"{_candidate_mpn(row)} datasheet", row),
-    ):
-        url = ""
-        for key in ("product_detail_url", "Product URL", "Source URL", "datasheet_url", "Datasheet URL"):
-            if "datasheet" in label.casefold() and "data" not in key.casefold() and "Datasheet" not in key:
-                continue
-            if "product page" in label.casefold() and "data" in key.casefold():
-                continue
-            url = _candidate_http_url(source.get(key) if isinstance(source, dict) else "")
-            if url:
-                break
-        if url and url not in {item[1] for item in links}:
-            links.append((label, url))
-    if not links:
-        return "No supplier or datasheet link was recorded."
-    return " ".join(
-        f'<a href="{html.escape(url, quote=True)}" rel="noopener noreferrer">{_esc(label)}</a>'
-        for label, url in links
-    )
-
-
-def begin_approved_page() -> None:
-    st.markdown(
-        """
-        <style data-cadivor-layout-style="true">
-        .cv-ap{color:#0f172a;font-family:Inter,"Segoe UI",sans-serif}
-        .cv-ap-kicker{margin:0 0 6px;color:#64748b;font-size:12px;font-weight:700;letter-spacing:.08em}
-        .cv-ap h1{margin:0 0 6px;font-size:32px;line-height:1.15;letter-spacing:-.03em}
-        .cv-ap-sub{margin:0 0 18px;color:#64748b;font-size:14px}
-        .cv-ap-flow{display:flex;align-items:center;gap:14px;box-sizing:border-box;width:100%;margin:0 0 16px;padding:15px 18px;background:#fff;border:1px solid #dfe7f1;border-radius:11px;color:#718096}
-        .cv-ap-flow-step{display:flex;align-items:center;gap:10px;white-space:nowrap;font-size:12px;font-weight:600}
-        .cv-ap-flow-node{display:inline-flex;align-items:center;justify-content:center;flex:0 0 26px;width:26px;height:26px;border:1px solid #d9e2ee;border-radius:50%;background:#f1f5f9;color:#718096;font-size:11px;font-weight:750}
-        .cv-ap-flow-step.current{color:#1c3c70;font-weight:750}
-        .cv-ap-flow-step.current .cv-ap-flow-node{border-color:#2865ed;background:#2865ed;color:#fff}
-        .cv-ap-flow-step.complete{color:#52647b}
-        .cv-ap-flow-step.complete .cv-ap-flow-node{border-color:#b9e4cc;background:#eaf8f0;color:#147a47}
-        .cv-ap-flow-line{flex:1 1 36px;min-width:18px;height:2px;background:#d8e1ed}
-        .cv-ap-flow-status{margin-left:auto;padding:6px 12px;border-radius:999px;background:#eef5ff;color:#2865ed;font-size:9px;font-weight:800;letter-spacing:.04em;white-space:nowrap}
-        .cv-ap-entry-heading{display:flex;align-items:center;gap:14px;margin:0 0 10px}
-        .cv-ap-entry-icon{display:inline-flex;align-items:center;justify-content:center;flex:0 0 44px;width:44px;height:44px;border-radius:9px;background:#eef5ff;color:#2865ed}
-        .cv-ap-entry-icon svg{width:23px;height:23px;display:block}
-        .cv-ap-entry-heading p{margin:0 0 4px;color:#8491a3;font-size:9px;font-weight:800;letter-spacing:.07em}
-        .cv-ap-entry-heading h2{margin:0;color:#172942;font-size:18px;line-height:1.25;font-weight:760;letter-spacing:-.02em}
-        .cv-ap-entry-copy{margin:0 0 12px;color:#6d7d92;font-size:12px}
-        .st-key-approved_replacement_search_card,.st-key-approved_datasheet_upload_card{box-sizing:border-box;width:100%;margin:0 0 16px;padding:18px 20px 14px;background:#fff;border:1px solid #dfe7f1;border-radius:12px}
-        .st-key-approved_replacement_search_card>[data-testid="stVerticalBlock"],.st-key-approved_datasheet_upload_card>[data-testid="stVerticalBlock"]{gap:.55rem}
-        .st-key-approved_replacement_search_card [data-testid="stWidgetLabel"] p,.st-key-approved_datasheet_question_panel [data-testid="stWidgetLabel"] p{margin-bottom:4px;color:#728198;font-size:9px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
-        .st-key-approved_replacement_search_card [data-testid="stTextInput"] [data-baseweb="input"]{box-sizing:border-box!important;min-height:48px!important;background:#fff!important;border:1.5px solid #9aabc0!important;border-radius:9px!important;box-shadow:0 1px 2px rgba(20,40,70,.05)!important}
-        .st-key-approved_replacement_search_card [data-testid="stTextInput"] [data-baseweb="input"]>div{background:transparent!important;border:0!important;box-shadow:none!important}
-        .st-key-approved_replacement_search_card [data-testid="stTextInput"] input{min-height:46px!important;background:transparent!important;border:0!important;border-radius:8px!important;color:#172942!important;caret-color:#2865ed!important;font-size:14px!important}
-        .st-key-approved_replacement_search_card [data-testid="stTextInput"] input::placeholder{color:#8a98aa!important;opacity:1!important}
-        .st-key-approved_replacement_search_card [data-testid="stTextInput"] [data-baseweb="input"]:focus-within{border-color:#2865ed!important;box-shadow:0 0 0 3px rgba(40,101,237,.13)!important}
-        .st-key-approved_replacement_search_card button[kind="primary"],.st-key-approved_datasheet_question_panel button[kind="primary"]{min-height:44px!important;height:44px!important;border-radius:8px!important}
-        .cv-ap-replacement-note{margin:2px 0 8px;color:#8391a4;font-size:11px}
-        .cv-ap-context-note{display:flex;align-items:flex-start;gap:9px;margin:3px 0 0;padding:11px 12px;border-top:1px solid #edf1f6;color:#65758b;font-size:11px;line-height:1.45}
-        .cv-ap-context-note svg{flex:0 0 18px;width:18px;height:18px;color:#8796aa}
-        .cv-ap-waiting{box-sizing:border-box;width:100%;margin:0 0 14px;padding:16px 20px 20px;background:#fff;border:1px solid #dfe7f1;border-radius:12px}
-        .cv-ap-waiting-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-bottom:12px;border-bottom:1px solid #edf1f6}
-        .cv-ap-waiting-head h2{margin:0;color:#172942;font-size:15px;font-weight:750}
-        .cv-ap-waiting-status{padding:5px 9px;border-radius:999px;background:#f1f5f9;color:#718096;font-size:8px;font-weight:800;letter-spacing:.03em;white-space:nowrap}
-        .cv-ap-waiting-intro{display:flex;align-items:center;gap:16px;margin:22px 2px 28px}
-        .cv-ap-waiting-icon{display:inline-flex;align-items:center;justify-content:center;flex:0 0 72px;width:72px;height:72px;border:1px solid #e4ebf4;border-radius:16px;background:#f3f7fd;color:#7d8ba0}
-        .cv-ap-waiting-icon svg{width:25px;height:25px}
-        .cv-ap-waiting-intro h3{margin:0 0 5px;color:#263a56;font-size:16px;font-weight:730}
-        .cv-ap-waiting-intro p{margin:0;color:#78879b;font-size:11px}
-        .cv-ap-review-label{margin:0 0 9px;color:#7c8a9e;font-size:9px;font-weight:800;letter-spacing:.05em;text-transform:uppercase}
-        .cv-ap-review-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
-        .cv-ap-review-item{min-height:80px;padding:13px 14px;background:#f8fafc;border:1px solid #edf1f6;border-radius:8px}
-        .cv-ap-review-item-head{display:flex;align-items:center;gap:8px;margin-bottom:7px;color:#3c4f68;font-size:11px;font-weight:750}
-        .cv-ap-review-item-head svg{width:18px;height:18px;color:#2865ed}
-        .cv-ap-review-item p{margin:0;color:#738299;font-size:10px;line-height:1.45}
-        .st-key-approved_datasheet_upload_card [data-testid="stWidgetLabel"] p{margin:2px 0 7px;color:#77869a;font-size:10px;font-weight:650}
-        .st-key-approved_datasheet_upload_card [data-testid="stFileUploader"]{margin:0!important}
-        .st-key-approved_datasheet_upload_card [data-testid="stFileUploaderDropzone"]{box-sizing:border-box;min-height:154px!important;border:1px dashed #b9c8dc!important;border-radius:10px!important;background:#fbfcfe!important;padding:24px 30px!important}
-        .st-key-approved_datasheet_upload_card [data-testid="stFileUploaderDropzone"] button{min-height:38px!important;height:38px!important;border:1px solid #d5deea!important;border-radius:8px!important;background:#fff!important;color:#32445e!important;box-shadow:none!important}
-        .st-key-approved_datasheet_upload_card [data-testid="stFileUploaderDropzoneInstructions"]{color:#738299!important}
-        .st-key-approved_datasheet_upload_card [data-testid="stFileUploaderDropzoneInstructions"] p{font-size:11px!important}
-        .cv-ap-document-state{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:0 0 16px;padding:9px 14px;background:#f8fafc;border:1px solid #edf1f6;border-radius:6px;color:#7d8ca0;font-size:10px}
-        .cv-ap-document-state strong{color:#3c4f68;font-weight:700}
-        .cv-ap-document-state .ready{color:#147a47;font-weight:700}
-        .cv-ap-document-state .pending{color:#7d8ca0;font-weight:600}
-        .st-key-approved_datasheet_question_panel,.st-key-approved_datasheet_source_panel{box-sizing:border-box;width:100%;margin:0 0 16px;padding:14px 16px 12px;background:#fff;border:1px solid #dfe7f1;border-radius:12px}
-        .st-key-approved_datasheet_question_panel>[data-testid="stVerticalBlock"]{gap:.25rem}
-        .st-key-approved_datasheet_question_panel [data-testid="stTextInput"] input{min-height:42px!important;border-radius:8px!important}
-        .st-key-approved_datasheet_workspace{box-sizing:border-box;width:100%;max-width:1160px;margin:0 auto}
-        .cv-dq-document{display:flex;align-items:center;gap:12px;min-width:0;padding:12px 14px;border:1px solid #dfe7f1;border-radius:11px;background:#fff}
-        .cv-dq-document-icon{display:flex;align-items:center;justify-content:center;flex:0 0 38px;width:38px;height:38px;border-radius:9px;background:#eff5ff;color:#2865ed;font-size:10px;font-weight:850}
-        .cv-dq-document-copy{min-width:0;flex:1}.cv-dq-document-copy strong{display:block;overflow:hidden;color:#172942;font-size:12px;text-overflow:ellipsis;white-space:nowrap}.cv-dq-document-copy span{display:block;margin-top:4px;color:#77869a;font-size:10px}
-        .cv-dq-private{flex:0 0 auto;padding:5px 8px;border-radius:999px;background:#edf8f1;color:#147a47;font-size:9px;font-weight:750}
-        .cv-dq-question-head{margin:0 0 8px}.cv-dq-question-head h2{margin:0 0 5px;color:#172942;font-size:15px;font-weight:760}.cv-dq-question-head p{margin:0;color:#78879b;font-size:11px;line-height:1.5}
-        .cv-dq-source-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:8px}.cv-dq-source-head p{margin:3px 0 0}
-        .cv-dq-source-badge{padding:5px 8px;border-radius:999px;background:#eaf8f0;color:#147a47;font-size:9px;font-weight:750;white-space:nowrap}
-        .cv-dq-viewer{overflow:hidden;border:1px solid #e1e8f1;border-radius:9px;background:#f4f7fb}
-        .cv-dq-viewer-empty{display:flex;min-height:380px;align-items:center;justify-content:center;padding:24px;color:#7a8799;text-align:center;font-size:12px;line-height:1.5}
-        .cv-dq-evidence-label{margin:15px 0 7px;color:#7c8a9e;font-size:9px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
-        .cv-dq-limit-note{margin:8px 0 0;color:#8996a8;font-size:10px;line-height:1.45}
-        .st-key-approved_datasheet_upload_card [data-testid="stFileUploaderDropzone"]{min-height:168px!important}
-        .cv-ap-question-help{margin:2px 0 0;color:#8794a7;font-size:10px}
-        .cv-ap-evidence-panel{box-sizing:border-box;width:100%;margin:0 0 14px;padding:14px 18px 10px;background:#fff;border:1px solid #dfe7f1;border-radius:12px}
-        .cv-ap-evidence-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 9px}
-        .cv-ap-evidence-head h2{margin:0;color:#172942;font-size:15px;font-weight:750}
-        .cv-ap-evidence-head p{margin:0;color:#8391a4;font-size:10px;text-align:right}
-        .cv-ap-evidence-panel .cv-ap-table th{background:#f8fafc}
-        .cv-ap-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:0 0 18px}
-        .cv-ap-kpis.three{grid-template-columns:repeat(3,minmax(0,1fr))}
-        .cv-ap-kpis.five{grid-template-columns:repeat(5,minmax(0,1fr))}
-        .cv-ap-kpi{background:#fff;border:1px solid #e6edf5;border-radius:16px;padding:12px 14px;min-height:92px}
-        .cv-ap-kpi-top{display:flex;align-items:center;gap:8px}
-        .cv-ap-kpi-row{display:flex;align-items:center;justify-content:space-between;gap:8px}
-        .cv-ap-ico{width:40px;height:40px;border-radius:12px;display:inline-flex;align-items:center;justify-content:center;background:#eff6ff;flex:0 0 40px}
-        .cv-ap-ico svg{width:20px;height:20px;display:block}
-        .cv-ap-ico.warn{background:#fff7ed}
-        .cv-ap-ico.risk{background:#fff1f2}
-        .cv-ap-ico.ok{background:#ecfdf5}
-        .cv-ap-project{display:flex;align-items:center;gap:10px;min-height:40px}
-        .cv-ap-project-icon{width:40px;height:40px;flex:0 0 40px;display:inline-flex;align-items:center;justify-content:center;border-radius:10px;background:#eef2ff;color:#2563eb}
-        .cv-ap-project-icon svg{width:22px;height:22px;display:block;stroke:#2563eb}
-        .cv-ed-queue{border:1px solid #e6edf5;border-radius:16px;background:#fff;padding:14px 14px 6px;margin-top:8px}
-        .cv-ed-queue h2{margin:0;font-size:16px}
-        .cv-pill.review{background:#ede9fe;color:#6d28d9}
-        [class*="st-key-approved_home_open_"] button,
-        [class*="st-key-approved_bom_row_open_"] button{
-          background:#f1f5f9 !important;background-color:#f1f5f9 !important;color:#2563eb !important;
-          border:1px solid #e2e8f0 !important;border-radius:8px !important;
-          min-height:32px !important;height:32px !important;min-width:0 !important;width:auto !important;
-          padding:0 14px !important;font-weight:700 !important;box-shadow:none !important;outline:none
-        }
-        [class*="st-key-approved_home_open_"] button *,
-        [class*="st-key-approved_bom_row_open_"] button *{
-          background:transparent !important;border:0 !important;box-shadow:none !important;
-          color:#2563eb !important;height:auto !important;min-height:0 !important;padding:0 !important
-        }
-        [class*="st-key-approved_home_open_"] button:focus-visible,
-        [class*="st-key-approved_bom_row_open_"] button:focus-visible,
-        [class*="st-key-approved_decision_record_"] button:focus-visible{
-          outline:2px solid #2563eb !important;outline-offset:2px !important;box-shadow:none !important
-        }
-        [class*="st-key-approved_decision_record_"] button{
-          background:#fff !important;color:#2563eb !important;border:1px solid #bfdbfe !important;
-          border-radius:8px !important;min-height:32px !important;height:32px !important;
-          min-width:0 !important;width:auto !important;padding:0 12px !important;font-weight:700 !important;
-          box-shadow:none !important;outline:none
-        }
-        [class*="st-key-approved_decision_record_"] button *{
-          background:transparent !important;border:0 !important;box-shadow:none !important;
-          color:#2563eb !important;height:auto !important;min-height:0 !important;padding:0 !important
-        }
-        [class*="st-key-approved_home_menu_"] [data-testid="stPopover"] > button,[class*="st-key-approved_bom_menu_"] [data-testid="stPopover"] > button,[class*="st-key-approved_report_menu_"] [data-testid="stPopover"] > button,[class*="st-key-approved_decision_menu_"] [data-testid="stPopover"] > button{width:32px!important;min-width:32px!important;max-width:32px!important;height:32px!important;min-height:32px!important;padding:0!important;border-radius:8px!important}
-        [class*="st-key-approved_home_menu_"] [data-testid="stPopover"] > button svg,[class*="st-key-approved_bom_menu_"] [data-testid="stPopover"] > button svg,[class*="st-key-approved_report_menu_"] [data-testid="stPopover"] > button svg,[class*="st-key-approved_decision_menu_"] [data-testid="stPopover"] > button svg{display:none!important}
-        [class*="st-key-approved_home_row_"],[class*="st-key-approved_bom_row_"],[class*="st-key-approved_report_row_"]{border-top:1px solid #eef2f7;padding:0;margin:0}
-        [class*="st-key-approved_settings_screen"] h1{font-size:28px;margin:0 0 8px}
-        [class*="st-key-approved_settings_screen"] [data-testid="stForm"]{border:0;padding:0}
-        [class*="st-key-approved_settings_screen"] [data-testid="stVerticalBlock"]{gap:0.4rem}
-        .cv-ap-kpi span{display:block;color:#64748b;font-size:13px;font-weight:650}
-        .cv-ap-kpi strong{display:block;margin-top:8px;font-size:28px;letter-spacing:-.03em}
-        .cv-ap-kpi em{display:block;margin-top:4px;font-style:normal;font-size:12px;color:#16a34a}
-        .cv-ap-kpi em.down{color:#e11d48}
-        .cv-ap-kpi em.muted{color:#94a3b8}
-        .cv-ap-card{background:#fff;border:1px solid #e6edf5;border-radius:16px;padding:8px 8px 4px;margin-bottom:12px}
-        .cv-ap-table{width:100%;border-collapse:separate;border-spacing:0}
-        .cv-ap-table th{text-align:left;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#94a3b8;padding:8px 10px}
-        .cv-ap-table td{padding:8px 10px;border-top:1px solid #eef2f7;font-size:13px;vertical-align:middle}
-        .cv-ap-table td.cv-compare-compat-critical{background:#fff1f2!important;color:#991b1b!important;font-weight:800;border-top-color:#fecdd3!important}
-        .cv-ap-table td.cv-compare-diff{background:#eff6ff;color:#1d4ed8}
-        .cv-part-photo{box-sizing:border-box;flex:0 0 var(--cv-part-photo-size,72px);width:var(--cv-part-photo-size,72px);height:var(--cv-part-photo-size,72px);border-radius:12px;background:#f1f5f9;border:1px solid #e2e8f0;display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;overflow:hidden;margin-right:10px;color:#64748b}
-        .cv-part-photo img{display:block;width:100%;height:100%;padding:4px;box-sizing:border-box;object-fit:contain}
-        .cv-part-photo__placeholder{display:flex;width:100%;height:100%;align-items:center;justify-content:center}
-        .cv-part-photo__placeholder svg{display:block;width:62%;height:62%}
-        .cv-part-photo[data-illustration="generic"]{background:#f5f7fa;border-color:#dbe3ec;color:#53657b}
-        .cv-part-photo[data-illustration="ic"]{background:#eff6ff;border-color:#dbeafe;color:#2563eb}
-        .cv-part-photo[data-illustration="capacitor"]{background:#f5f3ff;border-color:#e9d5ff;color:#7c3aed}
-        .cv-part-photo[data-illustration="resistor"]{background:#fff7ed;border-color:#fed7aa;color:#c2410c}
-        .cv-part-photo[data-illustration="inductor"]{background:#f0fdfa;border-color:#ccfbf1;color:#0f766e}
-        .cv-part-photo[data-illustration="connector"]{background:#ecfeff;border-color:#cffafe;color:#0e7490}
-        .cv-part-photo[data-illustration="diode"]{background:#fff1f2;border-color:#ffe4e6;color:#be123c}
-        .cv-part-photo[data-illustration="transistor"]{background:#f0fdf4;border-color:#dcfce7;color:#15803d}
-        .cv-part-photo[data-illustration="sensor"]{background:#ecfeff;border-color:#cffafe;color:#0891b2}
-        .cv-part-photo[data-illustration="switch"]{background:#fffbeb;border-color:#fef3c7;color:#b45309}
-        .cv-ei-part{display:flex;align-items:center;gap:9px;min-width:0}
-        .cv-ei-part .cv-part-photo{flex:0 0 var(--cv-part-photo-size,48px);margin:0}
-        .cv-ei-part-copy{display:flex;flex-direction:column;gap:2px;min-width:0}
-        .cv-ei-part-copy .cv-ap-name{display:block;overflow-wrap:anywhere}
-        .cv-map{display:grid;grid-template-columns:180px 1fr;gap:18px;align-items:center;padding:8px 8px 16px}
-        .cv-map-part{border:1px solid #bfdbfe;background:#eff6ff;border-radius:12px;padding:12px}
-        .cv-map-branches{display:grid;gap:10px;border-left:2px solid #cbd5e1;padding-left:16px}
-        .cv-map-branch{display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:#fff;border:1px solid #e6edf5;border-radius:12px;padding:8px 10px}
-        .cv-set-grid{display:grid;grid-template-columns:1.1fr .9fr;gap:14px}
-        .cv-security-row{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-top:1px solid #eef2f7}
-        .cv-plan-card{background:#eff6ff;border:1px solid #dbeafe;border-radius:16px;padding:16px 18px}
-        .cv-ap-name{font-weight:750}
-        .cv-ap-meta{color:#64748b;font-size:12px}
-        .st-key-approved_home_recent_card{margin:0 0 16px!important;padding:0!important;border:1px solid #c5d1df!important;border-radius:16px!important;background:#fff!important;box-shadow:0 3px 12px rgba(15,23,42,.055)!important}
-        .st-key-approved_home_recent_card [data-testid="stVerticalBlock"]{gap:0!important}
-        .cv-ap-home-recent-heading{padding:18px 20px 14px}
-        .cv-ap-home-recent-heading h2{margin:0 0 4px;color:#0f172a;font-size:21px;font-weight:760;letter-spacing:-.02em}
-        .cv-ap-home-recent-heading p{margin:0;color:#64748b;font-size:13px}
-        [class*="st-key-approved_home_row_"]{min-height:66px!important;margin:0!important;padding:7px 20px!important;border-top:0!important;border-bottom:1px solid #e5ebf3!important;background:#fff!important}
-        [class*="st-key-approved_home_row_"] [data-testid="stHorizontalBlock"]{align-items:center!important}
-        .cv-ap-home-bom{display:flex;align-items:center;min-width:0;min-height:40px}
-        .cv-ap-home-bom-copy{display:flex;flex:1;flex-direction:column;min-width:0}
-        .cv-ap-home-bom .cv-ap-name{display:block;overflow:hidden;color:#17253e;font-size:13px;font-weight:750;text-overflow:ellipsis;white-space:nowrap}
-        .cv-ap-home-bom small{display:block;margin-top:3px;overflow:hidden;color:#74839a;font-size:11px;text-overflow:ellipsis;white-space:nowrap}
-        .cv-ap-home-project{display:block;overflow:hidden;color:#52647b;font-size:13px;line-height:1.4;text-overflow:ellipsis;white-space:nowrap}
-        /* Route canvas widths mirror Home by default; table-heavy views get a bounded wider canvas. */
-        section[data-testid="stMain"] [class*="st-key-approved_page_canvas_standard_"]{
-          box-sizing:border-box!important;width:100%!important;max-width:1440px!important;min-width:0!important;
-          margin-left:auto!important;margin-right:auto!important
-        }
-        section[data-testid="stMain"] [class*="st-key-approved_page_canvas_wide_"]{
-          box-sizing:border-box!important;width:100%!important;max-width:1560px!important;min-width:0!important;
-          margin-left:auto!important;margin-right:auto!important
-        }
-        section[data-testid="stMain"] [class*="st-key-approved_page_canvas_standard_"]>[data-testid="stVerticalBlock"],
-        section[data-testid="stMain"] [class*="st-key-approved_page_canvas_wide_"]>[data-testid="stVerticalBlock"]{
-          box-sizing:border-box!important;width:100%!important;max-width:100%!important;min-width:0!important
-        }
-        .st-key-approved_home_page{box-sizing:border-box!important;width:100%!important;max-width:1440px!important;margin-left:auto!important;margin-right:auto!important;padding:48px 0 28px!important}
-        .st-key-approved_home_page > [data-testid="stVerticalBlock"]{gap:22px!important}
-        .cv-ap-home-kpis{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:16px!important;margin:44px 0 0!important}
-        .cv-ap-home-kpi{display:flex!important;align-items:flex-start!important;gap:18px!important;box-sizing:border-box!important;min-height:190px!important;padding:24px 22px!important;border:1px solid #dce7f5!important;border-radius:16px!important;background:#f9fbff!important;box-shadow:0 2px 7px rgba(15,23,42,.035)!important}
-        .cv-ap-home-kpi .cv-ap-home-icon{display:flex!important;align-items:center!important;justify-content:center!important;flex:0 0 60px!important;width:60px!important;height:60px!important;border-radius:50%!important;background:#e8f1ff!important;margin:0!important}
-        .cv-ap-home-icon svg{width:30px!important;height:30px!important}
-        .cv-ap-home-icon.warn{background:#fff3d5!important}
-        .cv-ap-home-icon.risk{background:#fee9ed!important}
-        .cv-ap-home-icon.ok{background:#e7f8ee!important}
-        .cv-ap-home-kpi-copy{display:flex;flex:1;flex-direction:column;min-width:0;min-height:132px;padding-top:4px}
-        .cv-ap-home-kpi .cv-ap-home-kpi-label{display:block!important;color:#64748b!important;font-size:16px!important;font-weight:650!important;line-height:1.3!important;white-space:nowrap}
-        .cv-ap-home-kpi-copy strong{display:block!important;margin-top:8px!important;color:#0f172a!important;font-size:36px!important;font-weight:780!important;line-height:1.05!important;letter-spacing:-.04em!important;white-space:nowrap}
-        .cv-ap-home-kpi-copy em{display:block!important;margin-top:auto!important;padding-top:14px!important;font-size:15px!important;line-height:1.25!important}
-        .st-key-approved_home_recent_card{margin:26px 0 0!important;padding:0!important;border:1px solid #cbd8e8!important;border-radius:16px!important;background:#fff!important;box-shadow:0 3px 12px rgba(15,23,42,.045)!important}
-        .st-key-approved_home_recent_card [data-testid="stVerticalBlock"]{gap:0!important}
-        .st-key-approved_home_recent_card [data-testid="stElementContainer"]{margin:0!important;padding:0!important}
-        .cv-ap-home-table-head{display:grid!important;grid-template-columns:2.25fr 1.35fr .76fr .84fr 1fr 1.18fr .68fr!important;align-items:center!important;gap:16px!important;box-sizing:border-box!important;min-height:68px!important;padding:0 30px!important;background:#f7f9fc!important;border-top:1px solid #e5ebf3!important;border-bottom:1px solid #dce4ef!important}
-        .cv-ap-home-table-head [role="columnheader"]{display:flex;align-items:center;min-width:0;min-height:48px;overflow:visible;color:#64748b;font-size:14px;font-weight:750;line-height:1.25;letter-spacing:.035em;text-transform:uppercase;white-space:normal;overflow-wrap:anywhere}
-        .cv-ap-home-table-head [role="columnheader"]:nth-child(n+3){justify-content:center!important;text-align:center}
-        .st-key-approved_home_recent_heading{margin:0!important;padding:22px 26px 16px!important}
-        .st-key-approved_home_recent_heading [data-testid="stVerticalBlock"]{gap:0!important}
-        .st-key-approved_home_recent_heading [data-testid="stHorizontalBlock"]{align-items:center!important}
-        .st-key-approved_home_recent_heading [data-testid="stHorizontalBlock"]>div:first-child{box-sizing:border-box!important;flex:1 1 0%!important;width:auto!important;min-width:0!important}
-        .st-key-approved_home_recent_heading [data-testid="stHorizontalBlock"]>div:last-child{box-sizing:border-box!important;flex:0 0 128px!important;width:128px!important;min-width:128px!important}
-        .st-key-approved_home_recent_heading [data-testid="stColumn"]:last-child [data-testid="stVerticalBlock"]{align-items:flex-end!important}
-        .cv-ap-home-recent-heading{padding:0!important}
-        .cv-ap-home-recent-heading h2{margin:0 0 5px!important;color:#0f172a!important;font-size:28px!important;font-weight:760!important;line-height:1.2!important;letter-spacing:-.025em!important}
-        .st-key-approved_home_view_all_wrap [data-testid="stVerticalBlock"]{width:100%!important}
-        .st-key-approved_home_view_all_wrap [data-testid="stElementContainer"]{display:flex!important;justify-content:flex-end!important;width:100%!important}
-        [class*="st-key-approved_home_view_all"] button,[class*="st-key-approved_home_view_all"] button *{color:#2563eb!important}
-        .cv-ap-home-recent-heading p{margin:0!important;color:#64748b!important;font-size:16px!important;line-height:1.4!important}
-        [class*="st-key-approved_home_view_all"] button{width:108px!important;max-width:108px!important;min-width:100px!important;height:48px!important;min-height:48px!important;margin-left:auto!important;padding:0 12px!important;border:1px solid #bfdbfe!important;border-radius:10px!important;background:#eaf2ff!important;color:#2563eb!important;box-shadow:none!important;font-size:15px!important;font-weight:700!important}
-        [class*="st-key-approved_home_view_all"] button *,[class*="st-key-approved_home_view_all"] button p,[class*="st-key-approved_home_view_all"] button span{color:#2563eb!important}
-        [class*="st-key-approved_home_view_all"] button:hover{background:#dbeafe!important;border-color:#93b4ee!important}
-        [class*="st-key-approved_home_new_bom"] button,[class*="st-key-approved_home_new_bom"] button p,[class*="st-key-approved_home_new_bom"] button span{white-space:nowrap!important}
-        [class*="st-key-approved_home_row_"]{box-sizing:border-box!important;min-height:120px!important;margin:0!important;padding:18px 30px!important;border-top:0!important;border-bottom:1px solid #e5ebf3!important;background:#fff!important}
-        [class*="st-key-approved_home_row_"] [data-testid="stVerticalBlock"]{display:flex!important;flex-direction:column!important;gap:0!important;justify-content:center!important;min-height:84px!important}
-        [class*="st-key-approved_home_row_"] [data-testid="stElementContainer"]{margin:0!important;padding:0!important}
-        [class*="st-key-approved_home_row_"] [data-testid="stHorizontalBlock"]{align-items:stretch!important;min-height:84px!important}
-        [class*="st-key-approved_home_row_"] [data-testid="column"]{align-self:stretch!important;display:flex!important;align-items:center!important;justify-content:center!important;min-height:84px!important}
-        [class*="st-key-approved_home_row_"] [data-testid="column"]:nth-child(-n+2){justify-content:flex-start!important}
-        [class*="st-key-approved_home_row_"] [data-testid="column"] [data-testid="stMarkdownContainer"]{width:100%!important}
-        [class*="st-key-approved_home_row_"] [data-testid="column"]:nth-child(n+3) [data-testid="stVerticalBlock"]{align-items:center!important}
-        .cv-ap-home-cell-center{display:flex;align-items:center;justify-content:center;width:100%;min-height:38px;text-align:center;line-height:1.25}
-        [class*="st-key-approved_home_row_"] [data-testid="stVerticalBlock"]{justify-content:center!important}
-        [class*="st-key-approved_home_row_"] [data-testid="stMarkdownContainer"] p{margin:0!important;color:#52647b!important;font-size:14px!important;line-height:1.35!important}
-        .cv-ap-home-bom{display:flex;align-items:center;gap:16px;min-width:0;min-height:84px}
-        .cv-ap-home-row-icon{display:inline-flex;align-items:center;justify-content:center;flex:0 0 48px;width:48px;height:48px;border-radius:50%;background:#edf4ff;color:#2563eb}
-        .cv-ap-home-row-icon svg{width:24px;height:24px;display:block}
-        .cv-ap-home-bom-copy{display:flex;flex:1;flex-direction:column;min-width:0}
-        .cv-ap-home-bom .cv-ap-name{display:block;min-width:0;color:#17253e;font-size:15px;font-weight:750;line-height:1.28;white-space:normal;overflow-wrap:anywhere}
-        .cv-ap-home-bom small{display:block;margin-top:4px;overflow:hidden;color:#74839a;font-size:13px;line-height:1.25;text-overflow:ellipsis;white-space:nowrap}
-        .cv-ap-home-project{display:flex;align-items:center;min-width:0;min-height:84px;overflow:visible;color:#52647b;font-size:14px;line-height:1.3;white-space:normal;overflow-wrap:anywhere}
-        .st-key-approved_home_recent_card .cv-pill{min-height:40px;padding:8px 12px;font-size:14px;font-weight:750}
-        .st-key-approved_home_recent_card .cv-pill-dot{width:8px;height:8px;flex-basis:8px}
-        .cv-home-risk-count{display:inline-flex;align-items:center;justify-content:center;min-width:52px;min-height:40px;padding:0 12px;border-radius:12px;background:#fee9ed;color:#d81b43;font-size:16px;font-weight:750;line-height:1}
-        .cv-home-risk-count.clear{background:#dcfce7;color:#15803d}
-        [class*="st-key-approved_home_menu_"] [data-testid="stPopover"] button[aria-expanded]{display:inline-flex!important;align-items:center!important;justify-content:center!important;width:44px!important;min-width:44px!important;height:44px!important;min-height:44px!important;padding:0!important;border:0!important;border-radius:10px!important;background:transparent!important;color:#64748b!important;box-shadow:none!important;font-size:22px!important;font-weight:750!important;line-height:1!important}
-        [class*="st-key-approved_home_menu_"] [data-testid="stPopover"] button[aria-expanded] svg,[class*="st-key-approved_home_menu_"] [data-testid="stPopover"] button[aria-expanded] [data-testid="stIconMaterial"]{display:none!important}
-        [class*="st-key-approved_home_row_"] [data-testid="stColumn"]:last-child{text-align:right}
-        .cv-ap-home-empty{padding:26px 24px;color:#64748b;font-size:16px}
-        @media(max-width:1600px){
-          .st-key-approved_home_page{padding:36px 0 24px!important}
-          .st-key-approved_home_header .cv-ap h1{font-size:30px!important;line-height:1.12!important}
-          .st-key-approved_home_header .cv-ap-sub{font-size:17px!important}
-          [class*="st-key-approved_home_new_bom"] button,[class*="st-key-approved_home_open_reports"] button{min-height:48px!important;height:48px!important;padding:0 14px!important;font-size:14px!important}
-          .cv-ap-home-kpis{gap:12px!important;margin-top:30px!important}
-          .cv-ap-home-kpi{gap:12px!important;min-height:150px!important;padding:18px 16px!important}
-          .cv-ap-home-kpi .cv-ap-home-icon{flex-basis:52px!important;width:52px!important;height:52px!important}
-          .cv-ap-home-icon svg{width:26px!important;height:26px!important}
-          .cv-ap-home-kpi-copy{min-height:100px}
-          .cv-ap-home-kpi .cv-ap-home-kpi-label{font-size:15px!important}
-          .cv-ap-home-kpi-copy strong{margin-top:8px!important;font-size:34px!important}
-          .cv-ap-home-kpi-copy em{padding-top:8px!important;font-size:13px!important}
-          .st-key-approved_home_recent_card{margin-top:18px!important}
-          .st-key-approved_home_recent_heading{padding:16px 18px 12px!important}
-          .cv-ap-home-recent-heading h2{font-size:20px!important}
-          .cv-ap-home-recent-heading p{font-size:13px!important}
-          [class*="st-key-approved_home_view_all"] button{width:92px!important;max-width:92px!important;min-width:86px!important;height:40px!important;min-height:40px!important;padding:0 10px!important;font-size:13px!important}
-          .cv-ap-home-table-head{gap:12px!important;min-height:56px!important;padding:0 16px!important}
-          .cv-ap-home-table-head [role="columnheader"]{font-size:12px!important;letter-spacing:.025em!important}
-          [class*="st-key-approved_home_row_"]{min-height:112px!important;padding:18px 22px!important}
-          [class*="st-key-approved_home_row_"] [data-testid="stHorizontalBlock"]{align-items:stretch!important;gap:12px!important;min-height:76px!important}
-          [class*="st-key-approved_home_row_"] [data-testid="column"]{min-height:76px!important}
-          [class*="st-key-approved_home_row_"] [data-testid="stVerticalBlock"]{min-height:76px!important}
-          [class*="st-key-approved_home_row_"] [data-testid="stMarkdownContainer"] p{font-size:14px!important}
-          .cv-ap-home-bom{gap:16px!important;min-height:76px}
-          .cv-ap-home-row-icon{flex-basis:48px;width:48px;height:48px}
-          .cv-ap-home-row-icon svg{width:24px;height:24px}
-          .cv-ap-home-bom .cv-ap-name{font-size:14px}
-          .cv-ap-home-bom small{font-size:11px}
-          .cv-ap-home-project{min-height:76px;font-size:14px}
-          .st-key-approved_home_recent_card .cv-pill{min-height:38px;padding:8px 10px;font-size:14px}
-          .st-key-approved_home_recent_card .cv-pill-dot{width:7px;height:7px;flex-basis:7px}
-          .cv-home-risk-count{min-width:48px;min-height:38px;padding:0 10px;font-size:16px}
-          [class*="st-key-approved_home_menu_"] [data-testid="stPopover"] button[aria-expanded]{width:36px!important;min-width:36px!important;height:36px!important;min-height:36px!important;font-size:18px!important}
-          .cv-ap-home-empty{padding:18px 16px;font-size:14px}
-        }
-        @media(max-width:1250px){
-          .st-key-approved_home_page{padding:22px 0 20px!important}
-          .st-key-approved_home_header .cv-ap h1{font-size:26px!important;line-height:1.14!important}
-          .st-key-approved_home_header .cv-ap-sub{font-size:15px!important}
-          [class*="st-key-approved_home_new_bom"] button,[class*="st-key-approved_home_open_reports"] button{min-height:42px!important;height:42px!important;padding:0 10px!important;font-size:13px!important}
-          .cv-ap-home-kpis{gap:10px!important;margin-top:18px!important}
-          .cv-ap-home-kpi{gap:10px!important;min-height:124px!important;padding:12px 10px!important}
-          .cv-ap-home-kpi .cv-ap-home-icon{flex-basis:40px!important;width:40px!important;height:40px!important}
-          .cv-ap-home-icon svg{width:20px!important;height:20px!important}
-          .cv-ap-home-kpi-copy{min-height:88px;padding-top:1px}
-          .cv-ap-home-kpi .cv-ap-home-kpi-label{font-size:12px!important}
-          .cv-ap-home-kpi-copy strong{margin-top:6px!important;font-size:26px!important}
-          .cv-ap-home-kpi-copy em{padding-top:6px!important;font-size:11px!important}
-          .st-key-approved_home_recent_card{margin-top:14px!important}
-          .st-key-approved_home_recent_heading{padding:12px!important}
-          .cv-ap-home-recent-heading h2{font-size:19px!important}
-          .cv-ap-home-recent-heading p{font-size:12px!important}
-          [class*="st-key-approved_home_view_all"] button{width:78px!important;max-width:78px!important;min-width:76px!important;height:34px!important;min-height:34px!important;padding:0 6px!important;font-size:11px!important}
-          .cv-ap-home-table-head{gap:8px!important;min-height:44px!important;padding:0 12px!important}
-          .cv-ap-home-table-head [role="columnheader"]{font-size:10px!important;letter-spacing:.015em!important}
-          [class*="st-key-approved_home_row_"]{min-height:96px!important;padding:16px!important}
-          [class*="st-key-approved_home_row_"] [data-testid="stHorizontalBlock"]{align-items:stretch!important;gap:8px!important;min-height:64px!important}
-          [class*="st-key-approved_home_row_"] [data-testid="column"]{min-height:64px!important}
-          [class*="st-key-approved_home_row_"] [data-testid="stVerticalBlock"]{min-height:64px!important}
-          [class*="st-key-approved_home_row_"] [data-testid="stMarkdownContainer"] p{font-size:12px!important}
-          .cv-ap-home-bom{gap:12px!important;min-height:64px}
-          .cv-ap-home-row-icon{flex-basis:38px;width:38px;height:38px}
-          .cv-ap-home-row-icon svg{width:20px;height:20px}
-          .cv-ap-home-bom .cv-ap-name{font-size:12px}
-          .cv-ap-home-bom small{font-size:10px}
-          .cv-ap-home-project{min-height:64px;font-size:12px}
-          .st-key-approved_home_recent_card .cv-pill{min-height:30px;padding:6px 8px;font-size:12px}
-          .st-key-approved_home_recent_card .cv-pill-dot{width:6px;height:6px;flex-basis:6px}
-          .cv-home-risk-count{min-width:38px;min-height:30px;padding:0 8px;font-size:14px}
-          [class*="st-key-approved_home_menu_"] [data-testid="stPopover"] button[aria-expanded]{width:32px!important;min-width:32px!important;height:32px!important;min-height:32px!important;font-size:16px!important}
-          .cv-ap-home-empty{padding:14px 12px;font-size:13px}
-        }
-        @media(max-width:900px){.st-key-approved_home_header .cv-ap h1{font-size:24px!important}}
-        @media(max-width:1100px){.st-key-approved_home_page{padding:22px 0 20px!important}.cv-ap-home-kpis{grid-template-columns:repeat(2,minmax(0,1fr))!important}.cv-ap-home-kpi{min-height:124px!important}.cv-ap-home-kpi-copy{min-height:88px}}
-
-        @media(max-width:700px){.st-key-approved_home_page{padding:24px 0!important}.st-key-approved_home_header [data-testid="stHorizontalBlock"]{flex-wrap:wrap!important}.st-key-approved_home_header .cv-ap h1{font-size:34px!important}.st-key-approved_home_header .cv-ap-sub{font-size:16px!important}.cv-ap-home-kpis{grid-template-columns:1fr!important;gap:12px!important}.cv-ap-home-kpi{min-height:132px!important;padding:18px!important}.cv-ap-home-kpi-copy{min-height:90px}.st-key-approved_home_recent_heading{padding:18px 16px 14px!important}[class*="st-key-approved_home_row_"]{padding:12px 16px!important}}
-        .st-key-approved_saved_bom_settings_page{box-sizing:border-box!important;width:100%!important;max-width:760px!important;margin:0 auto 24px!important;padding:0!important}
-        .st-key-approved_saved_bom_settings_page>[data-testid="stVerticalBlock"]{gap:12px!important}
-        .st-key-approved_saved_bom_edit_screen,.st-key-approved_saved_bom_delete_screen{box-sizing:border-box!important;width:100%!important;max-width:none!important;margin:0 auto!important;padding:22px!important;border:1px solid #d7e0eb!important;border-radius:16px!important;background:#fff!important}
-        .st-key-approved_saved_bom_delete_screen button[kind="primary"]{background:#be123c!important;border-color:#be123c!important}
-        .st-key-approved_monitoring_alert_card{box-sizing:border-box!important;width:100%!important;margin:8px 0 20px!important;overflow-x:auto!important;border:1px solid #cbd8e8!important;border-radius:16px!important;background:#fff!important;box-shadow:0 3px 12px rgba(15,23,42,.045)!important}
-        .st-key-approved_monitoring_alert_card>[data-testid="stVerticalBlock"]{gap:0!important}
-        .cv-ap-monitoring-table-head{display:grid!important;grid-template-columns:.8fr 1.3fr 1.6fr .9fr 1.2fr!important;align-items:center!important;gap:12px!important;box-sizing:border-box!important;min-height:56px!important;padding:0 20px!important;background:#f7f9fc!important;border-bottom:1px solid #dce4ef!important}
-        .cv-ap-monitoring-table-head [role="columnheader"]{display:flex!important;align-items:center!important;min-width:0!important;min-height:44px!important;color:#64748b!important;font-size:12px!important;font-weight:750!important;letter-spacing:.035em!important;text-transform:uppercase!important}
-        .cv-ap-monitoring-table-head [role="columnheader"]:first-child,.cv-ap-monitoring-table-head [role="columnheader"]:nth-child(4),.cv-ap-monitoring-table-head [role="columnheader"]:last-child{justify-content:center!important;text-align:center!important}
-        [class*="st-key-approved_monitoring_alert_row_"]{box-sizing:border-box!important;min-height:68px!important;margin:0!important;padding:9px 20px!important;border-bottom:1px solid #e5ebf3!important;background:#fff!important}
-        [class*="st-key-approved_monitoring_alert_row_"] [data-testid="stVerticalBlock"]{gap:0!important}
-        [class*="st-key-approved_monitoring_alert_row_"] [data-testid="stHorizontalBlock"]{align-items:center!important;gap:12px!important}
-        [class*="st-key-approved_monitoring_alert_row_"] [data-testid="stColumn"],[class*="st-key-approved_monitoring_alert_row_"] [data-testid="column"]{box-sizing:border-box!important;min-width:0!important;padding:4px 5px!important;display:flex!important;align-items:center!important}
-        [class*="st-key-approved_monitoring_alert_row_"] [data-testid="stMarkdownContainer"] p{margin:0!important;color:#52647b!important;font-size:13px!important;line-height:1.4!important;overflow-wrap:anywhere!important}
-        [class*="st-key-approved_monitoring_alert_row_"] .cv-ap-meta{margin-top:3px!important;font-size:11px!important}
-        .cv-ap-monitoring-detected{width:100%;color:#52647b;text-align:center;font-size:12px;line-height:1.35}
-        [class*="st-key-approved_alert_action_"] button{min-height:34px!important;height:auto!important;padding:6px 8px!important;white-space:normal!important;font-size:12px!important}
-        .cv-ap-table-center{width:100%;display:flex;align-items:center;justify-content:center;text-align:center}
-        @media(max-width:1100px){
-          .cv-ap-monitoring-table-head{gap:8px!important;padding:0 14px!important}
-          [class*="st-key-approved_monitoring_alert_row_"]{padding:8px 14px!important}
-          [class*="st-key-approved_monitoring_alert_row_"] [data-testid="stHorizontalBlock"]{gap:8px!important}
-          [class*="st-key-approved_monitoring_alert_row_"] [data-testid="stMarkdownContainer"] p{font-size:12px!important}
-        }
-        @media(max-width:760px){
-          .cv-ap-monitoring-table-head,[class*="st-key-approved_monitoring_alert_row_"]{min-width:720px!important}
-        }
-        .cv-pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:3px 8px;font-size:12px;font-weight:750}
-        .cv-pill-dot{width:7px;height:7px;border-radius:50%;background:currentColor;flex:0 0 7px}
-        .cv-pill.high{background:#ffe4e6;color:#be123c}
-        .cv-pill.medium{background:#fef3c7;color:#b45309}
-        .cv-pill.low{background:#dcfce7;color:#15803d}
-        .cv-pill.verify{background:#e2e8f0;color:#475569}
-        .cv-pill.open{background:#dbeafe;color:#1d4ed8}
-        .cv-ap-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-bottom:22px}
-        .cv-ap-template{background:#f8fafc;border:1px solid #e6edf5;border-radius:16px;padding:18px}
-        .cv-ap-template h3{margin:8px 0 6px;font-size:16px}
-        .cv-ap-template p{margin:0 0 12px;color:#64748b;font-size:13px}
-        .cv-ap-chip{display:inline-flex;margin-right:6px;padding:2px 8px;border-radius:999px;background:#e0e7ff;color:#3730a3;font-size:11px;font-weight:750}
-        .cv-ap-chip-icon{width:36px;height:36px;vertical-align:middle;margin-right:8px}
-        [class*="st-key-cv_candidate_hit_"]{position:relative;border-radius:12px;transition:background .15s ease,box-shadow .15s ease}
-        [class*="st-key-cv_candidate_hit_"]:hover{background:#f8fbff}
-        [class*="st-key-cv_candidate_hit_"]:has(button:focus-visible){background:#f8fbff;box-shadow:inset 0 0 0 2px #bfdbfe}
-        [class*="st-key-cv_candidate_row_open_"] [class*="st-key-cv_candidate_hit_"]{background:#f8fbff}
-        [class*="st-key-cv_candidate_hit_"] [data-testid="stHorizontalBlock"],[class*="st-key-cv_candidate_hit_"] [data-testid="stColumn"],[class*="st-key-cv_candidate_hit_"] [data-testid="column"],[class*="st-key-cv_candidate_hit_"] [class*="st-key-cv_candidate_open_"],[class*="st-key-cv_candidate_hit_"] [data-testid="stButton"]{position:static !important;overflow:visible !important}
-        [class*="st-key-cv_candidate_open_"] button{position:static !important;background:transparent !important;border:0 !important;box-shadow:none !important;color:#2563eb !important;font-weight:750 !important;padding:0 !important;min-height:0 !important;height:auto !important;justify-content:flex-start !important;text-align:left !important}
-        [class*="st-key-cv_candidate_open_"] button p,[class*="st-key-cv_candidate_open_"] button span{color:#2563eb !important}
-        [class*="st-key-cv_candidate_hit_"]:hover [class*="st-key-cv_candidate_open_"] button{text-decoration:underline;text-underline-offset:3px}
-        [class*="st-key-cv_candidate_open_"] button::before{content:"";position:absolute;inset:0;z-index:2;cursor:pointer}
-        .cv-candidate-detail{margin:4px 0 12px;padding:14px 16px;border:1px solid #e6edf5;border-radius:14px;background:#fff}
-        .cv-candidate-title,.cv-candidate-section{margin:12px 0 6px;font-size:16px;font-weight:750;color:#0f172a}
-        .cv-candidate-compare{width:100%;border-collapse:collapse;margin:0 0 8px}
-        .cv-candidate-compare th,.cv-candidate-compare td{text-align:left;vertical-align:top;padding:8px 10px;border-top:1px solid #e6edf5;font-size:13px}
-        .cv-candidate-compare th{font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:#64748b}
-        .cv-candidate-compare small{display:block;color:#64748b;font-size:11px;margin-top:3px}
-        .cv-finding{display:inline-flex;border-radius:999px;padding:2px 8px;font-size:12px;font-weight:750}
-        .cv-finding.compatible{background:#dcfce7;color:#166534}
-        .cv-finding.review{background:#fef3c7;color:#92400e}
-        .cv-finding.conflict{background:#ffe4e6;color:#9f1239}
-        .cv-finding.critical{background:#991b1b;color:#fff}
-        .cv-finding.unknown{background:#f1f5f9;color:#475569}
-        .cv-candidate-compare tr.cv-compat-critical-row td{background:#fff1f2!important;color:#9f1239;border-top-color:#fecdd3;font-weight:700}
-        .cv-candidate-compare tr.cv-compat-critical-row small{color:#9f1239}
-        .cv-compat-banner{margin:10px 0 14px;padding:12px 14px;border-radius:10px;font-size:13px;line-height:1.45}
-        .cv-compat-banner strong{display:block;margin-bottom:5px;font-size:13px;letter-spacing:.015em}
-        .cv-compat-banner ul{margin:4px 0 6px;padding-left:20px}
-        .cv-compat-banner.critical{color:#7f1d1d;background:#fff1f2;border:2px solid #dc2626;box-shadow:0 0 0 2px rgba(220,38,38,.08)}
-        .cv-compat-banner.critical li{color:#991b1b;font-weight:750}
-        .cv-compat-banner.review{color:#854d0e;background:#fffbeb;border:1px solid #f59e0b}
-        .cv-compat-pill{display:inline-flex;align-items:center;border-radius:999px;padding:3px 8px;font-size:10px;font-weight:850;letter-spacing:.02em}
-        .cv-compat-pill.critical{color:#fff;background:#b91c1c}
-        .cv-compat-pill.review{color:#854d0e;background:#fef3c7}
-        .cv-compat-inline-critical{margin-top:4px;color:#991b1b;font-size:11px;font-weight:750;line-height:1.35}
-        .cv-candidate-unverified{margin:0 0 10px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:8px 10px;font-size:13px}
-        .cv-candidate-verified{margin:0 0 10px;color:#1e3a8a;background:#eff6ff;border:1px solid #dbeafe;border-radius:10px;padding:8px 10px;font-size:13px}
-        .cv-candidate-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 18px;margin:0}
-        .cv-candidate-facts div{font-size:13px}
-        .cv-candidate-facts span{display:block;color:#64748b;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
-        .cv-candidate-links a{color:#2563eb}
-        .cv-ap-banner{background:#eff6ff;border:1px solid #dbeafe;border-radius:16px;padding:18px 20px;margin-bottom:14px}
-        .cv-ap-split{display:grid;grid-template-columns:1.4fr .8fr;gap:14px}
-        .cv-ap-chart{background:#fff;border:1px solid #e6edf5;border-radius:16px;padding:14px 16px 8px;margin:0 0 14px}
-        .cv-ap-chart h3{margin:0 0 8px;font-size:14px}
-        .cv-ap-charts{display:grid;grid-template-columns:1.4fr .8fr;gap:14px;margin-bottom:14px}
-        .cv-ed-card{display:flex;align-items:center;gap:14px;background:transparent;border:0;padding:16px 18px;min-height:0;height:100%;box-sizing:border-box}
-        .cv-ed-card .cv-ap-ico{width:48px;height:48px;flex:0 0 48px;border-radius:50%}
-        .cv-ed-card .cv-ap-ico svg{width:24px;height:24px}
-        [class*="st-key-approved_decision_cardwrap_"]{position:relative;border:1px solid #e6edf5;border-radius:16px;background:#fff;padding:0;overflow:hidden;box-sizing:border-box;height:112px;min-height:112px}
-        [class*="st-key-approved_decision_cardwrap_"]:has(.is-active),
-        [class*="st-key-approved_decision_cardwrap_"]:has(button:focus-visible){border-color:#93c5fd;box-shadow:0 0 0 2px #bfdbfe}
-        .cv-ed-card .cv-ed-copy{flex:1;min-width:0}
-        .cv-ed-card .cv-ed-copy span{display:block;color:#64748b;font-size:14px;font-weight:650}
-        .cv-ed-card .cv-ed-copy strong{display:flex;align-items:center;gap:8px;margin-top:4px;font-size:32px;letter-spacing:-.03em;color:#0f172a}
-        .cv-ed-chevron{width:18px;height:18px;flex:0 0 18px;display:block}
-        .cv-due-late{color:#be123c;font-weight:700}
-        [class*="st-key-approved_decision_cardwrap_"] [data-testid="stHorizontalBlock"]{align-items:center}
-        [class*="st-key-approved_decision_queue"]{border:1px solid #e6edf5;border-radius:16px;background:#fff;padding:10px 12px 6px;margin-top:8px}
-        /* BOM list frame and title/toolbar actions share the same right edge. */
-        .st-key-approved_bom_catalog_table{box-sizing:border-box!important;margin:14px 0 16px!important;padding:0!important;border:1px solid #cbd8e8!important;border-radius:16px!important;background:#fff!important;box-shadow:0 3px 12px rgba(15,23,42,.045)!important}
-        .st-key-approved_bom_catalog_table>[data-testid="stVerticalBlock"]{gap:0!important}
-        .st-key-approved_bom_catalog_table [data-testid="stElementContainer"]{margin:0!important;padding:0!important}
-        .st-key-approved_bom_catalog_table .cv-ap-home-table-head{border-top:0!important;border-radius:15px 15px 0 0!important}
-        .st-key-approved_bom_title [data-testid="stColumn"]:last-child [data-testid="stVerticalBlock"],
-        .st-key-approved_bom_toolbar [data-testid="stColumn"]:last-child [data-testid="stVerticalBlock"]{align-items:flex-end!important}
-        .st-key-approved_bom_title [data-testid="stColumn"]:last-child [data-testid="stElementContainer"],
-        .st-key-approved_bom_toolbar [data-testid="stColumn"]:last-child [data-testid="stElementContainer"]{display:flex!important;justify-content:flex-end!important;width:100%!important}
-        .st-key-approved_bom_title [data-testid="stColumn"]:last-child button{white-space:nowrap!important}
-        .st-key-approved_bom_toolbar [data-testid="stColumn"]:last-child button{white-space:nowrap!important}
-        .st-key-approved_bom_upload_panel{box-sizing:border-box!important;width:100%!important;max-width:720px!important;margin:22px auto 0!important;padding:24px 26px 22px!important;border:1px solid #dce5f0!important;border-radius:18px!important;background:#fff!important;box-shadow:0 4px 18px rgba(15,23,42,.055)!important}
-        @media(max-width:720px){.st-key-approved_bom_upload_panel{padding:20px 18px 18px!important}}
-        .st-key-approved_bom_upload_panel>[data-testid="stVerticalBlock"]{gap:.85rem!important}
-        .cv-bom-upload-heading h2{margin:0 0 5px!important;color:#142239!important;font-size:21px!important;font-weight:750!important;letter-spacing:-.02em!important}
-        .cv-bom-upload-heading p{margin:0!important;color:#64748b!important;font-size:14px!important;line-height:1.45!important}
-        [class*="st-key-approved_bom_analyze"] button{width:auto!important;min-width:148px!important;max-width:100%!important;min-height:44px!important}
-        /* Engineering decision cards and controls follow the approved light-tint dashboard style. */
-        .st-key-approved_decision_cardwrap_open{background:#f2f7ff!important;border-color:#dbeafe!important}
-        .st-key-approved_decision_cardwrap_overdue{background:#fff4f5!important;border-color:#ffe0e6!important}
-        .st-key-approved_decision_cardwrap_resolved{background:#effaf3!important;border-color:#d8f3e2!important}
-        .st-key-approved_decision_cardwrap_boms{background:#f2f7ff!important;border-color:#dbeafe!important}
-        .st-key-approved_decision_toolbar [data-testid="stHorizontalBlock"]{align-items:center!important;gap:10px!important}
-        .st-key-approved_decision_queue [data-testid="stTextInput"] input{box-sizing:border-box!important;height:42px!important;min-height:42px!important;border:1px solid #d8e1ed!important;border-radius:9px!important;background-color:#fff!important;padding-left:38px!important;color:#17253e!important;font-size:14px!important;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='%2364778b' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-4-4'/%3E%3C/svg%3E")!important;background-repeat:no-repeat!important;background-position:12px center!important;background-size:16px 16px!important}
-        .st-key-approved_decision_queue [data-testid="stPopover"]>button{display:flex!important;align-items:center!important;justify-content:center!important;gap:8px!important;width:100%!important;min-width:0!important;height:42px!important;min-height:42px!important;padding:0 12px!important;border:1px solid #d8e1ed!important;border-radius:9px!important;background:#fff!important;color:#334155!important;box-shadow:none!important;font-size:13px!important;font-weight:650!important;white-space:nowrap!important}
-        .st-key-approved_decision_queue [data-testid="stPopover"]>button:hover{border-color:#aebfd2!important;background:#f8fafc!important}
-        .st-key-approved_decision_queue [data-testid="stPopover"]>button p{margin:0!important;color:#334155!important;font-size:13px!important;font-weight:650!important}
-        .st-key-approved_decision_queue [data-testid="stPopover"]>button svg{width:16px!important;height:16px!important;color:#64748b!important}
-        .st-key-approved_decision_table_head{margin:7px -12px 0!important;padding:0 12px!important;border-top:1px solid #e5ebf3!important;border-bottom:1px solid #e5ebf3!important;background:#f5f7fa!important}
-        .st-key-approved_decision_table_head>[data-testid="stVerticalBlock"]{gap:0!important}
-        .st-key-approved_decision_table_head [data-testid="stHorizontalBlock"]{align-items:center!important;min-height:46px!important}
-        .cv-decision-table-heading{color:#64748b;font-size:11px;font-weight:750;line-height:1.25;letter-spacing:.055em;text-transform:uppercase;overflow-wrap:anywhere}
-        [class*="st-key-approved_decision_row_"]{margin:0!important;padding:10px 0!important;border-bottom:1px solid #e8edf3!important}
-        [class*="st-key-approved_decision_row_"] [data-testid="stHorizontalBlock"]{align-items:center!important}
-        [class*="st-key-approved_decision_row_"] [data-testid="stVerticalBlock"]{gap:0!important}
-        [class*="st-key-approved_bom_toolbar"] [data-testid="stHorizontalBlock"]{flex-wrap:nowrap;align-items:flex-end}
-        @media(max-width:1100px){
-          [class*="st-key-approved_bom_toolbar"] [data-testid="stHorizontalBlock"]{flex-wrap:wrap}
-          [class*="st-key-approved_bom_toolbar"] [data-testid="stColumn"]{flex:1 1 180px !important;width:auto !important;min-width:160px}
-          .st-key-approved_decision_cards>[data-testid="stHorizontalBlock"]{flex-wrap:wrap!important;gap:12px!important}
-          .st-key-approved_decision_cards>[data-testid="stHorizontalBlock"]>[data-testid="column"]{flex:1 1 calc(50% - 12px)!important;width:auto!important;min-width:245px!important}
-          .st-key-approved_decision_toolbar [data-testid="stHorizontalBlock"]{flex-wrap:wrap!important}
-          .st-key-approved_decision_toolbar [data-testid="stColumn"]:first-child{flex:1 1 100%!important;width:100%!important}
-          .st-key-approved_decision_toolbar [data-testid="stColumn"]:not(:first-child){flex:1 1 155px!important;width:auto!important;min-width:140px!important}
-          .st-key-approved_bom_upload_panel{padding:22px 22px 18px!important}
-        }
-        @media(max-width:620px){
-          .st-key-approved_decision_cards>[data-testid="stHorizontalBlock"]>[data-testid="column"]{flex:1 1 100%!important;min-width:0!important}
-          .st-key-approved_bom_title [data-testid="stHorizontalBlock"]{flex-wrap:wrap!important;gap:10px!important}
-          .st-key-approved_bom_title [data-testid="stColumn"]:first-child{flex:1 1 100%!important;width:100%!important}
-          .st-key-approved_bom_title [data-testid="stColumn"]:last-child{flex:1 1 auto!important;width:auto!important}
-          .st-key-approved_bom_upload_panel{padding:18px 16px 14px!important}
-        }
-        @media(max-width:900px){.cv-ap-kpis,.cv-ap-cards,.cv-ap-split{display:block}}
-        @media(max-width:900px){.cv-ap-review-grid{grid-template-columns:1fr}.cv-ap-flow{gap:8px;padding:12px}.cv-ap-flow-line{min-width:8px}}
-        @media(max-width:620px){.cv-ap-flow{flex-wrap:wrap}.cv-ap-flow-status{margin-left:0}.cv-ap-waiting-intro{align-items:flex-start}.cv-ap-document-state,.cv-ap-evidence-head{align-items:flex-start;flex-direction:column}.cv-ap-evidence-head p{text-align:left}}
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-def end_approved_page() -> None:
-    """Stop the script so the previous workspace renderer does not run."""
-    from src.authenticated_runtime import (
-        reveal_authenticated_page_body,
-        stop_authenticated_page,
-    )
-
-    route = str(st.session_state.get("cadivor_route") or st.session_state.get("app_mode") or "")
-    reveal_authenticated_page_body(route)
-    stop_authenticated_page()
-
-
-def legacy_tools_open(page: str) -> bool:
-    return st.session_state.get("cadivor_show_legacy_tools") == page
-
-
-def _open_legacy(page: str) -> None:
-    st.session_state["cadivor_show_legacy_tools"] = page
-
-
-def render_legacy_back(page: str) -> None:
-    if st.button("Back to approved view", key=f"approved_back_{page}"):
-        st.session_state.pop("cadivor_show_legacy_tools", None)
-        st.rerun()
-
-
-def _health_pill(score: int) -> str:
-    if score >= 80:
-        kind = "low"
-    elif score >= 70:
-        kind = "medium"
-    else:
-        kind = "high"
-    return f'<span class="cv-pill {kind}"><span class="cv-pill-dot" aria-hidden="true"></span>{score}/100</span>'
-
-
-def _rows_with_project_edits(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    edits = st.session_state.get("cadivor_saved_project_titles") or {}
-    if not isinstance(edits, dict) or not edits:
-        return rows
-    merged = []
-    for row in rows:
-        title = edits.get(str(row.get("id") or ""))
-        merged.append({**row, "project_name": title} if title else row)
-    return merged
-
-
-def _update_home_saved_analysis_cache(
-    analysis_id: str,
-    user_id: str,
-    *,
-    stored_title: str | None = None,
-    filename: str | None = None,
-    deleted: bool = False,
-) -> None:
-    """Keep Home's last-known rows in sync with a saved BOM edit."""
-    from src.pages.home_workspace import SAVED_ANALYSES_CACHE_KEY
-
-    cache = st.session_state.get(SAVED_ANALYSES_CACHE_KEY)
-    if not isinstance(cache, dict) or str(cache.get("user_id") or "") != str(user_id or ""):
-        return
-    analysis_key = str(analysis_id or "")
-    updated_rows = []
-    for row in list(cache.get("rows") or []):
-        if not isinstance(row, dict):
-            continue
-        if str(row.get("id") or "") != analysis_key:
-            updated_rows.append(row)
-            continue
-        if deleted:
-            continue
-        updated = dict(row)
-        if stored_title is not None:
-            updated["project_name"] = stored_title
-        if filename is not None:
-            updated["filename"] = filename
-        updated_rows.append(updated)
-    st.session_state[SAVED_ANALYSES_CACHE_KEY] = {**cache, "rows": updated_rows}
-
-
-def _persist_project_title(
-    analysis_id: str,
-    user_id: str,
-    stored_title: str,
-    *,
-    filename: str | None = None,
-) -> None:
-    """Persist the project/BOM label and, when supplied, its displayed source filename."""
-    from src.authenticated_runtime import supabase
-
-    updates = {"project_name": stored_title}
-    if filename is not None and str(filename).strip():
-        updates["filename"] = str(filename).strip()
-    response = (
-        supabase.table("analyses")
-        .update(updates)
-        .eq("id", analysis_id)
-        .eq("user_id", user_id)
-        .select("id")
-        .execute()
-    )
-    if not getattr(response, "data", None):
-        raise RuntimeError("The saved BOM could not be found for this user.")
-    supabase.table("analysis_parts").update({"project_name": stored_title}).eq(
-        "analysis_id", analysis_id
-    ).eq("user_id", user_id).execute()
-
-def _render_project_editor(row: dict[str, Any], scope: str, rows: list[dict[str, Any]], user_id: str) -> None:
-    analysis_id = str(row.get("id") or "")
-    current, _bom = split_project_and_bom(row)
-    choices = project_choices(rows)
-    if current and current not in choices:
-        choices = [current, *[name for name in choices if name != current]]
-    options = [*choices, NEW_PROJECT_CHOICE]
-    selected = st.selectbox(
-        "Project",
-        options,
-        index=options.index(current) if current in options else 0,
-        key=f"{scope}_project_choice_{analysis_id}",
-    )
-    typed = ""
-    if selected == NEW_PROJECT_CHOICE:
-        typed = st.text_input(
-            "New project name",
-            key=f"{scope}_project_typed_{analysis_id}",
-            placeholder="Project name",
-        )
-    save_col, cancel_col = st.columns([1, 1])
-    with save_col:
-        if st.button("Save project", key=f"{scope}_project_save_{analysis_id}", type="primary"):
-            project = resolve_project_choice(selected, typed, blank_uses_general=not current)
-            if not project:
-                st.caption("Enter a project name to save this assignment.")
-            else:
-                updated = assign_project(row, project)
-                if user_id and analysis_id:
-                    _persist_project_title(analysis_id, user_id, updated["project_name"])
-                titles = dict(st.session_state.get("cadivor_saved_project_titles") or {})
-                titles[analysis_id] = updated["project_name"]
-                st.session_state["cadivor_saved_project_titles"] = titles
-                _update_home_saved_analysis_cache(
-                    analysis_id,
-                    user_id,
-                    stored_title=updated["project_name"],
-                )
-                st.session_state.pop("approved_project_editor", None)
-                st.rerun()
-    with cancel_col:
-        if st.button("Cancel", key=f"{scope}_project_cancel_{analysis_id}"):
-            st.session_state.pop("approved_project_editor", None)
-            st.rerun()
-
-
-def _render_project_cell(
-    column,
-    row: dict[str, Any],
-    scope: str,
-    rows: list[dict[str, Any]],
-    user_id: str,
-) -> None:
-    """Render project text without placing row actions inside the Project column."""
-    project, _bom = split_project_and_bom(row)
-    with column:
-        st.markdown(
-            f"<span class='cv-ap-home-project'>{_esc(project or 'â€”')}</span>",
-            unsafe_allow_html=True,
-        )
-
-
-def _queue_saved_bom_action(analysis_id: str, action: str) -> None:
-    """Open a specific saved BOM in the manager, editor, or delete confirmation."""
-    target = str(analysis_id or "").strip()
-    if not target or action not in {"edit", "delete"}:
-        return
-    st.session_state.pop(SAVED_BOM_EDIT_STATE, None)
-    st.session_state.pop(SAVED_BOM_DELETE_STATE, None)
-    if action == "edit":
-        revision = int(st.session_state.get(SAVED_BOM_EDIT_REVISION_STATE) or 0) + 1
-        st.session_state[SAVED_BOM_EDIT_REVISION_STATE] = revision
-        st.session_state[SAVED_BOM_EDIT_STATE] = target
-    else:
-        st.session_state[SAVED_BOM_DELETE_STATE] = target
-    navigate_to(
-        "BOM Settings",
-        saved_bom_id=target,
-        saved_bom_action=action,
-        arm_opening=False,
-    )
-
-
-def _render_saved_bom_actions(column, analysis_id: str, *, scope: str, row_key: str) -> None:
-    target = str(analysis_id or "").strip()
-    if not target:
-        return
-    with column:
-        with st.container(key=f"approved_{scope}_menu_{row_key}"):
-            with st.popover("â‹¯", help="Open, view the detailed risk report, edit, or delete this BOM."):
-                if st.button(
-                    "Open",
-                    key=f"approved_{scope}_action_open_{row_key}",
-                    use_container_width=True,
-                ):
-                    navigate_to(
-                        "BOM Settings",
-                        saved_bom_id=target,
-                        saved_bom_action="open",
-                        arm_opening=False,
-                    )
-                if st.button(
-                    "Engineering Intelligence",
-                    key=f"approved_{scope}_action_bom_risk_{row_key}",
-                    use_container_width=True,
-                ):
-                    st.session_state["cadivor_show_detailed_risk"] = False
-                    st.session_state["cadivor_ei_report_tab"] = "BOM Risk"
-                    st.session_state["cadivor_active_analysis_id"] = target
-                    st.session_state["analysis_id"] = target
-                    st.session_state["cadivor_pending_analysis_section"] = "Engineering Intelligence"
-                    st.session_state["cadivor_pending_analysis_section_id"] = target
-                    navigate_to(
-                        "Analysis Details",
-                        analysis_id=target,
-                        analysis_tab="Engineering Intelligence",
-                        arm_opening=False,
-                    )
-                if st.button(
-                    "Detailed Risk Report",
-                    key=f"approved_{scope}_action_risk_report_{row_key}",
-                    use_container_width=True,
-                ):
-                    st.session_state["cadivor_show_detailed_risk"] = True
-                    st.session_state["cadivor_active_analysis_id"] = target
-                    st.session_state["analysis_id"] = target
-                    st.session_state[f"cadivor_detailed_risk_mpn_{target}"] = ""
-                    st.session_state["cadivor_pending_analysis_section"] = "Engineering Intelligence"
-                    st.session_state["cadivor_pending_analysis_section_id"] = target
-                    navigate_to(
-                        "Analysis Details",
-                        analysis_id=target,
-                        analysis_tab="Engineering Intelligence",
-                        arm_opening=False,
-                    )
-                if st.button(
-                    "Edit project and file name",
-                    key=f"approved_{scope}_action_edit_{row_key}",
-                    use_container_width=True,
-                ):
-                    _queue_saved_bom_action(target, "edit")
-                if st.button(
-                    "Delete",
-                    key=f"approved_{scope}_action_delete_{row_key}",
-                    use_container_width=True,
-                ):
-                    _queue_saved_bom_action(target, "delete")
-
-
-def _delete_saved_bom(analysis_id: str, user_id: str) -> None:
-    """Delete one user-owned analysis and its associated saved records."""
-    from src.authenticated_runtime import supabase
-
-    supabase.table("analysis_parts").delete().eq("analysis_id", analysis_id).eq(
-        "user_id", user_id
-    ).execute()
-    try:
-        supabase.table("part_monitor_history").delete().eq(
-            "analysis_id", analysis_id
-        ).execute()
-    except Exception:
-        pass
-    supabase.table("analyses").delete().eq("id", analysis_id).eq(
-        "user_id", user_id
-    ).execute()
-
-
-def _render_saved_bom_edit_page(row: dict[str, Any], user_id: str) -> None:
-    analysis_id = str(row.get("id") or "").strip()
-    project, bom_name = split_project_and_bom(row)
-    source_filename = str(_first(row, "filename", "source_filename", fallback="") or "").strip()
-    if source_filename in {"â€”", "-"}:
-        source_filename = ""
-    nonce = int(st.session_state.get(SAVED_BOM_EDIT_REVISION_STATE) or 0)
-    with st.container(key="approved_saved_bom_settings_page"):
-        st.markdown(
-            """
-            <div class="cv-ap">
-              <p class="cv-ap-kicker">BOM SETTINGS</p>
-              <h1>Edit saved BOM</h1>
-              <p class="cv-ap-sub">Update the project, BOM name, or uploaded file name for this saved analysis.</p>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        with st.container(key="approved_saved_bom_edit_screen"):
-            with st.form(key=f"approved_saved_bom_edit_form_{analysis_id}_{nonce}"):
-                project_value = st.text_input(
-                    "Project name",
-                    value=project or "General",
-                    key=f"approved_saved_bom_project_{analysis_id}_{nonce}",
-                )
-                bom_value = st.text_input(
-                    "BOM name",
-                    value=bom_name,
-                    key=f"approved_saved_bom_name_{analysis_id}_{nonce}",
-                )
-                filename_value = st.text_input(
-                    "Uploaded file name",
-                    value=source_filename,
-                    key=f"approved_saved_bom_filename_{analysis_id}_{nonce}",
-                    help="This changes the file name shown in Cadivor. It does not replace the uploaded file contents.",
-                )
-                st.caption("Changing these labels does not rerun the analysis or replace its uploaded contents.")
-                save_col, cancel_col = st.columns([1, 1])
-                with save_col:
-                    save = st.form_submit_button(
-                        "Save changes",
-                        type="primary",
-                        use_container_width=True,
-                    )
-                with cancel_col:
-                    cancel = st.form_submit_button(
-                        "Cancel",
-                        use_container_width=True,
-                    )
-            if cancel:
-                st.session_state.pop(SAVED_BOM_EDIT_STATE, None)
-                navigate_to("BOM Analyzer", show_saved_analyses="1", arm_opening=False)
-            if save:
-                clean_bom_name = str(bom_value or "").strip()
-                clean_filename = str(filename_value or "").strip()
-                if not clean_bom_name:
-                    st.error("Enter a BOM name before saving.")
-                else:
-                    stored_title = analysis_title_for_upload(project_value, clean_bom_name)
-                    try:
-                        _persist_project_title(
-                            analysis_id,
-                            user_id,
-                            stored_title,
-                            filename=clean_filename or None,
-                        )
-                    except Exception:
-                        st.error("Cadivor couldn't save these changes. Please try again.")
-                    else:
-                        titles = dict(st.session_state.get("cadivor_saved_project_titles") or {})
-                        titles[analysis_id] = stored_title
-                        st.session_state["cadivor_saved_project_titles"] = titles
-                        _update_home_saved_analysis_cache(
-                            analysis_id,
-                            user_id,
-                            stored_title=stored_title,
-                            filename=clean_filename or None,
-                        )
-                        st.session_state.pop(SAVED_BOM_EDIT_STATE, None)
-                        navigate_to("BOM Analyzer", show_saved_analyses="1", arm_opening=False)
-            st.divider()
-            if st.button(
-                "Delete this BOM",
-                key=f"approved_saved_bom_edit_delete_{analysis_id}",
-                type="secondary",
-            ):
-                _queue_saved_bom_action(analysis_id, "delete")
-
-
-def _render_saved_bom_open_page(
-    row: dict[str, Any],
-    components: list[dict[str, Any]] | None,
-) -> None:
-    """Edit the saved MPN/quantity rows and rerun the normal BOM analysis."""
-    import pandas as pd
-
-    analysis_id = str(row.get("id") or "").strip()
-    project, bom_name = split_project_and_bom(row)
-    source_filename = str(_first(row, "filename", "source_filename", fallback="") or "").strip()
-    rows = []
-    for part in components or []:
-        mpn = str(_first(part, "mpn", "manufacturer_part_number", "part_number", fallback="") or "").strip()
-        if not mpn:
-            continue
-        quantity = _first(part, "quantity", "qty", "Quantity", fallback=1)
-        rows.append({"MPN": mpn, "Quantity": quantity})
-    initial = pd.DataFrame(rows, columns=["MPN", "Quantity"])
-    nonce = int(st.session_state.get(SAVED_BOM_EDIT_REVISION_STATE) or 0)
-    with st.container(key="approved_saved_bom_original_editor"):
-        st.markdown(
-            """
-            <div class="cv-ap">
-              <p class="cv-ap-kicker">BOM EDITOR</p>
-              <h1>Open original BOM</h1>
-              <p class="cv-ap-sub">Update component numbers or quantities, then rerun the analysis.</p>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        rerun_notice = st.session_state.pop("cadivor_bom_rerun_complete_notice", None)
-        if (
-            isinstance(rerun_notice, dict)
-            and str(rerun_notice.get("analysis_id") or "").strip() == analysis_id
-        ):
-            st.success(
-                "The updated analysis is saved. This editor now shows its revised BOM rows; "
-                "select View BOM Risk whenever you want to review the results."
-            )
-        st.info(
-            "Cadivor rebuilds these rows from the saved analyzed components. "
-            "Rerunning creates a new saved analysis and keeps this report available."
-        )
-        if not rows:
-            st.warning(
-                "No saved component rows were found for this BOM. Add rows below or return to BOMs and upload the source file."
-            )
-        with st.form(key=f"approved_saved_bom_original_form_{analysis_id}_{nonce}"):
-            project_value = st.text_input(
-                "Project name",
-                value=project or "General",
-                key=f"approved_saved_bom_original_project_{analysis_id}_{nonce}",
-            )
-            bom_value = st.text_input(
-                "BOM name",
-                value=bom_name or source_filename or "Saved BOM",
-                key=f"approved_saved_bom_original_name_{analysis_id}_{nonce}",
-            )
-            edited = st.data_editor(
-                initial,
-                key=f"approved_saved_bom_original_rows_{analysis_id}_{nonce}",
-                num_rows="dynamic",
-                hide_index=True,
-                use_container_width=True,
-                column_config={
-                    "MPN": st.column_config.TextColumn("Manufacturer part number", required=True),
-                    "Quantity": st.column_config.NumberColumn(
-                        "Quantity", min_value=1, step=1, required=True,
-                    ),
-                },
-            )
-            rerun = st.form_submit_button(
-                "Rerun analysis with updates",
-                type="primary",
-                use_container_width=True,
-            )
-        back_col, risk_col = st.columns(2)
-        with back_col:
-            if st.button("Back to BOMs", key=f"approved_saved_bom_original_back_{analysis_id}"):
-                navigate_to("BOM Analyzer", show_saved_analyses="1", arm_opening=False)
-        with risk_col:
-            if st.button("View BOM Risk", key=f"approved_saved_bom_original_risk_{analysis_id}"):
-                st.session_state["cadivor_show_detailed_risk"] = False
-                st.session_state["cadivor_ei_report_tab"] = "BOM Risk"
-                st.session_state["cadivor_active_analysis_id"] = analysis_id
-                st.session_state["analysis_id"] = analysis_id
-                navigate_to(
-                    "Analysis Details",
-                    analysis_id=analysis_id,
-                    analysis_tab="Engineering Intelligence",
-                    arm_opening=False,
-                )
-        if rerun:
-            from src.saved_bom_editor import normalize_saved_bom_rows, saved_bom_csv_bytes
-
-            normalized, validation_error = normalize_saved_bom_rows(
-                edited.to_dict(orient="records")
-            )
-            if validation_error:
-                st.error(validation_error)
-            elif not str(bom_value or "").strip():
-                st.error("Enter a BOM name before rerunning this analysis.")
-            else:
-                upload = io.BytesIO(saved_bom_csv_bytes(normalized))
-                file_stem = source_filename.rsplit(".", 1)[0] if source_filename else str(bom_value).strip()
-                upload.name = f"{file_stem}_updated.csv"
-                upload.seek(0)
-                st.session_state["cadivor_bom_analysis_ready"] = True
-                st.session_state["cadivor_pending_upload"] = upload
-                st.session_state["cadivor_pending_project"] = str(project_value or "").strip() or "General"
-                st.session_state["cadivor_pending_bom_name"] = str(bom_value or "").strip()
-                # Keep the rerun in the BOM workspace. The runtime consumes this
-                # one-shot submission before drawing the new-upload form.
-                st.session_state["cadivor_saved_bom_rerun_pending"] = True
-                st.session_state["cadivor_bom_upload_open"] = False
-                from src.ui.main_transition import arm_bom_analysis_transition
-
-                arm_bom_analysis_transition(st.session_state, "rerun")
-                navigate_to("BOM Analyzer", new_analysis="1", arm_opening=False)
-
-
-def _render_saved_bom_delete_page(row: dict[str, Any], user_id: str) -> None:
-    analysis_id = str(row.get("id") or "").strip()
-    _project, bom_name = split_project_and_bom(row)
-    display_name = bom_name or str(row.get("filename") or "Saved BOM")
-    with st.container(key="approved_saved_bom_settings_page"):
-        st.markdown(
-            """
-            <div class="cv-ap">
-              <p class="cv-ap-kicker">BOM SETTINGS</p>
-              <h1>Delete saved BOM</h1>
-              <p class="cv-ap-sub">Confirm before removing this analysis.</p>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        with st.container(key="approved_saved_bom_delete_screen"):
-            st.warning(
-                f"Delete â€œ{display_name}â€ and its saved component records? "
-                "This action cannot be undone."
-            )
-            cancel_col, delete_col = st.columns([1, 1])
-            with cancel_col:
-                if st.button(
-                    "Cancel",
-                    key="approved_saved_bom_delete_cancel",
-                    use_container_width=True,
-                ):
-                    st.session_state.pop(SAVED_BOM_DELETE_STATE, None)
-                    navigate_to("BOM Analyzer", show_saved_analyses="1", arm_opening=False)
-            with delete_col:
-                if st.button(
-                    "Delete permanently",
-                    key="approved_saved_bom_delete_confirm",
-                    type="primary",
-                    use_container_width=True,
-                ):
-                    try:
-                        _delete_saved_bom(analysis_id, user_id)
-                    except Exception:
-                        st.error("Cadivor couldn't delete this BOM. Please try again.")
-                    else:
-                        titles = dict(st.session_state.get("cadivor_saved_project_titles") or {})
-                        titles.pop(analysis_id, None)
-                        st.session_state["cadivor_saved_project_titles"] = titles
-                        _update_home_saved_analysis_cache(
-                            analysis_id,
-                            user_id,
-                            deleted=True,
-                        )
-                        st.session_state.pop(SAVED_BOM_DELETE_STATE, None)
-                        st.session_state.pop(SAVED_BOM_EDIT_STATE, None)
-                        navigate_to("BOM Analyzer", show_saved_analyses="1", arm_opening=False)
-
-
-def render_saved_bom_settings(
-    records: list[dict[str, Any]] | None,
-    user_id: str = "",
-    components: list[dict[str, Any]] | None = None,
-) -> None:
-    """Render the standalone settings page for a selected saved BOM."""
-    begin_approved_page()
-    rows = _rows_with_project_edits(_records(records))
-    query_id = ""
-    query_action = ""
-    try:
-        query_id = str(st.query_params.get("saved_bom_id", "") or "").strip()
-        query_action = str(st.query_params.get("saved_bom_action", "") or "").strip().casefold()
-    except Exception:
-        pass
-    edit_id = str(st.session_state.get(SAVED_BOM_EDIT_STATE) or query_id).strip()
-    delete_id = str(st.session_state.get(SAVED_BOM_DELETE_STATE) or "").strip()
-    open_id = query_id if query_action == "open" else ""
-    if not delete_id and query_action == "delete":
-        delete_id = query_id
-    target_id = delete_id or open_id or edit_id
-    target_row = next(
-        (row for row in rows if str(row.get("id") or "").strip() == target_id),
-        None,
-    )
-    if target_row is None:
-        st.markdown(
-            "<div class='cv-ap'><p class='cv-ap-kicker'>BOM SETTINGS</p>"
-            "<h1>Saved BOM settings</h1><p class='cv-ap-sub'>Select a saved BOM from the BOMs page to edit its details.</p></div>",
-            unsafe_allow_html=True,
-        )
-        if st.button("Return to BOMs", key="approved_saved_bom_settings_back"):
-            st.session_state.pop(SAVED_BOM_EDIT_STATE, None)
-            st.session_state.pop(SAVED_BOM_DELETE_STATE, None)
-            navigate_to("BOM Analyzer", show_saved_analyses="1", arm_opening=False)
-    elif delete_id:
-        _render_saved_bom_delete_page(target_row, user_id)
-    elif open_id:
-        _render_saved_bom_open_page(target_row, components)
-    else:
-        _render_saved_bom_edit_page(target_row, user_id)
-    end_approved_page()
-
-
-def catalog_health_label(score: int, high_risk: int) -> str:
-    if high_risk >= 20 or score < 55:
-        return "At risk"
-    if high_risk >= 5 or score < 80:
-        return "Review"
-    return "Healthy"
-
-
-def _parse_timestamp(value: Any):
-    text = str(value or "").strip()
-    if not text or text.lower() in {"nan", "none", "â€”"}:
-        return None
-    from datetime import date, datetime
-
-    normalized = text.replace("Z", "+00:00")
-    try:
-        return datetime.fromisoformat(normalized)
-    except ValueError:
-        try:
-            return datetime.combine(date.fromisoformat(normalized[:10]), datetime.min.time())
-        except ValueError:
-            return None
-
-
-def analyzed_label(value: Any) -> str:
-    parsed = _parse_timestamp(value)
-    if parsed is None:
-        text = str(value or "").strip()
-        if not text or text.lower() in {"nan", "none"}:
-            return "Not recorded"
-        return text[:10]
-    label = parsed.strftime("%b %d, %Y").replace(" 0", " ")
-    if parsed.hour or parsed.minute or parsed.second:
-        clock = parsed.strftime("%I:%M %p").lstrip("0")
-        label = f"{label}<br>{clock}"
-    return label
-
-
-def within_analyzed_range(value: Any, date_range: str, today) -> bool:
-    if date_range == "All time":
-        return True
-    parsed = _parse_timestamp(value)
-    if parsed is None:
-        return False
-    window = 30 if "30" in date_range else 90
-    analyzed = parsed.date()
-    return 0 <= (today - analyzed).days <= window
-
-
-def catalog_project_options(rows: list[dict[str, Any]]) -> list[str]:
-    names = []
-    for row in rows:
-        project, _bom = split_project_and_bom(row)
-        if project and project not in names:
-            names.append(project)
-    return ["All projects", *sorted(names)]
-
-
-def reset_catalog_filters(state: dict[str, Any]) -> None:
-    """New widget keys restore Search, Project, Health, and Date range to their defaults."""
-    state["approved_bom_filter_nonce"] = int(state.get("approved_bom_filter_nonce") or 0) + 1
-
-
-def decision_status_label(row: dict[str, Any], today) -> str:
-    status = str(_first(row, "status", "decision_status", fallback="Open") or "Open")
-    folded = status.casefold()
-    if any(token in folded for token in ("resolv", "closed", "accepted")):
-        return "Resolved"
-    if str(row.get("source") or "").casefold() == "monitoring":
-        if folded not in {"new", "open", "overdue"}:
-            # An engineering workflow can be progressing or a candidate can be
-            # rejected while the underlying supply alert is still active.
-            return "In review"
-    if "review" in folded:
-        return "In review"
-    if "over" in folded:
-        return "Overdue"
-    due = _parse_timestamp(_first(row, "due_date", "due_at", fallback=None))
-    if due is not None and due.date() < today and "resolv" not in folded:
-        return "Overdue"
-    return "Open"
-
-
-def _decision_affected_bom_rows(rows: list[tuple[dict[str, Any], str]]) -> list[dict[str, Any]]:
-    """Collapse component alerts into one actionable row per saved BOM."""
-    grouped: dict[str, dict[str, Any]] = {}
-    for row, status in rows:
-        related_boms = row.get("related_boms") or []
-        candidates: dict[str, dict[str, Any]] = {}
-        for related in related_boms:
-            if not isinstance(related, dict):
-                continue
-            analysis_id = str(related.get("id") or "").strip()
-            if analysis_id:
-                candidates[analysis_id] = dict(related)
-
-        direct_id = str(
-            _first(row, "analysis_id", "context_analysis_id", fallback="") or ""
-        ).strip()
-        if direct_id:
-            candidate = candidates.setdefault(direct_id, {})
-            candidate.setdefault("id", direct_id)
-            for key, value in (
-                ("project_name", _first(row, "project_name", "project", fallback="")),
-                ("bom_name", _first(row, "bom_name", "bom", fallback="")),
-                ("filename", _first(row, "filename", "source_filename", fallback="")),
-            ):
-                if value and not candidate.get(key):
-                    candidate[key] = value
-
-        for analysis_id, candidate in candidates.items():
-            project = str(candidate.get("project_name") or candidate.get("project") or "").strip()
-            bom_name = str(candidate.get("bom_name") or candidate.get("bom") or "").strip()
-            name = str(candidate.get("name") or "").strip()
-            if not name:
-                if project and bom_name and not project.casefold().endswith(bom_name.casefold()):
-                    name = f"{project} Â· {bom_name}"
-                else:
-                    name = bom_name or project or str(candidate.get("filename") or "Saved BOM")
-
-            record = grouped.setdefault(
-                analysis_id,
-                {
-                    "id": analysis_id,
-                    "name": name,
-                    "component_keys": set(),
-                    "event_keys": set(),
-                    "open_decisions": 0,
-                },
-            )
-            if record["name"] == "Saved BOM" and name != "Saved BOM":
-                record["name"] = name
-
-            mpn = str(_first(row, "mpn", "part_number", "component", fallback="") or "").strip()
-            part_id = str(_first(row, "part_id", "analysis_part_id", fallback="") or "").strip()
-            if mpn or part_id:
-                record["component_keys"].add((mpn or part_id).casefold())
-            event_key = str(_first(row, "decision_id", "id", fallback="") or "").strip()
-            if not event_key:
-                event_values = [
-                    str(_first(row, key, fallback="") or "").strip()
-                    for key in ("mpn", "part_number", "alert_message", "title", "created_at")
-                ]
-                event_key = "|".join(value for value in event_values if value)
-                if not event_key:
-                    event_key = f"unidentified-event-{len(record['event_keys'])}"
-            if event_key not in record["event_keys"]:
-                record["event_keys"].add(event_key)
-                if status != "Resolved":
-                    record["open_decisions"] += 1
-
-    result = []
-    for record in grouped.values():
-        result.append(
-            {
-                "id": record["id"],
-                "name": record["name"],
-                "affected_components": len(record["component_keys"]),
-                "open_decisions": record["open_decisions"],
-                "status": "Needs review" if record["open_decisions"] else "Resolved",
-            }
-        )
-    return sorted(result, key=lambda item: (item["name"].casefold(), item["id"]))
-
-
-def decision_queue_view(
-    records: list[dict[str, Any]] | None,
-    *,
-    query: str = "",
-    status_filter: str = "All statuses",
-    sort_by: str = "Due date",
-    scope: str = "",
-    today=None,
-) -> dict[str, Any]:
-    """Counts use every loaded record. Search, status, and card scope filter the queue."""
-    from datetime import date
-
-    today = today or date.today()
-    source = _records(records)
-    prepared = []
-    for row in source:
-        status = decision_status_label(row, today)
-        prepared.append((row, status))
-    open_count = sum(1 for _row, status in prepared if status == "Open")
-    overdue = sum(1 for _row, status in prepared if status == "Overdue")
-    resolved_month = 0
-    for row, status in prepared:
-        if status != "Resolved":
-            continue
-        stamp = _parse_timestamp(
-            _first(row, "resolved_at", "updated_at", "created_at", fallback=None)
-        )
-        if stamp is not None and stamp.year == today.year and stamp.month == today.month:
-            resolved_month += 1
-    affected_analysis_ids: set[str] = set()
-    for row, _status in prepared:
-        direct_id = str(
-            _first(row, "analysis_id", "context_analysis_id", fallback="") or ""
-        ).strip()
-        if direct_id:
-            affected_analysis_ids.add(direct_id)
-        for related_bom in row.get("related_boms") or []:
-            if isinstance(related_bom, dict):
-                related_id = str(related_bom.get("id") or "").strip()
-                if related_id:
-                    affected_analysis_ids.add(related_id)
-    affected = len(affected_analysis_ids)
-    needle = query.strip().casefold()
-    visible = []
-    for row, status in prepared:
-        if scope == "boms":
-            direct_id = str(
-                _first(row, "analysis_id", "context_analysis_id", fallback="") or ""
-            ).strip()
-            has_related = any(
-                isinstance(bom, dict) and str(bom.get("id") or "").strip()
-                for bom in (row.get("related_boms") or [])
-            )
-            if not direct_id and not has_related:
-                continue
-        if status_filter != "All statuses" and status_filter.casefold() != status.casefold():
-            continue
-        search_values = [
-            str(_first(row, key, fallback="") or "")
-            for key in (
-                "mpn", "part_number", "title", "summary", "alert_message",
-                "owner", "assigned_owner", "assignee", "resolution", "project_name",
-                "bom_name", "filename",
-            )
-        ]
-        search_values.extend(
-            str(bom.get(key) or "")
-            for bom in (row.get("related_boms") or [])
-            if isinstance(bom, dict)
-            for key in ("name", "project_name", "bom_name", "filename")
-        )
-        blob = " ".join(search_values).casefold()
-        if needle and needle not in blob:
-            continue
-        visible.append((row, status))
-    risk_rank = {"high": 0, "medium": 1, "low": 2}
-
-    def _risk_key(item):
-        level = str(_first(item[0], "risk_level", "severity", fallback="")).casefold()
-        for name, rank in risk_rank.items():
-            if name in level:
-                return rank
-        return 3
-
-    if sort_by == "Component":
-        visible.sort(key=lambda item: str(_first(item[0], "mpn", "part_number", fallback="")).casefold())
-    elif sort_by == "Risk level":
-        visible.sort(key=_risk_key)
-    else:
-        visible.sort(key=lambda item: str(_first(item[0], "due_date", "created_at", fallback="") or "9999"))
-    return {
-        "open": open_count,
-        "overdue": overdue,
-        "resolved_month": resolved_month,
-        "affected": affected,
-        "rows": visible,
-        "boms": _decision_affected_bom_rows(visible) if scope == "boms" else [],
-    }
-
-
-def decision_action_label(row: dict[str, Any], status: str) -> str:
-    recorded = _first(row, "decision", "resolution", "decision_text", fallback=None)
-    if status in {"In review", "Resolved"} or recorded:
-        return "Review"
-    return "Record decision"
-
-
-def _render_decision_affected_boms(rows: list[dict[str, Any]]) -> None:
-    """Show BOM-level impact when the affected-BOM KPI is selected."""
-    st.markdown(
-        f"<h2 class='cv-decision-bom-title'>Affected saved BOMs ({len(rows)})</h2>"
-        "<p class='cv-decision-bom-subtitle'>Each saved BOM appears once, with its affected components and open decisions.</p>",
-        unsafe_allow_html=True,
-    )
-    widths = [2.2, 0.9, 0.9, 1.0, 0.8]
-    with st.container(key="approved_decision_bom_table"):
-        with st.container(key="approved_decision_bom_table_head"):
-            header = st.columns(widths, vertical_alignment="center")
-            for column, label in zip(
-                header,
-                ("Saved BOM", "Affected components", "Open decisions", "Status", "Action"),
-            ):
-                column.markdown(
-                    f"<div class='cv-decision-table-heading' role='columnheader'>{_esc(label)}</div>",
-                    unsafe_allow_html=True,
-                )
-        if not rows:
-            st.caption("No saved BOMs match the current search and status filters.")
-            return
-        for index, row in enumerate(rows):
-            with st.container(key=f"approved_decision_bom_row_{index}"):
-                cells = st.columns(widths, vertical_alignment="center")
-                cells[0].markdown(
-                    f"<div class='cv-decision-bom-name'>{_esc(row.get('name') or 'Saved BOM')}</div>",
-                    unsafe_allow_html=True,
-                )
-                affected_components = int(row.get("affected_components") or 0)
-                open_decisions = int(row.get("open_decisions") or 0)
-                cells[1].markdown(
-                    f"{affected_components} component{'s' if affected_components != 1 else ''}"
-                )
-                cells[2].markdown(
-                    f"{open_decisions} open" if open_decisions else "None"
-                )
-                status_kind = "open" if open_decisions else "low"
-                cells[3].markdown(
-                    f"<span class='cv-pill {status_kind}'>{_esc(row.get('status') or 'Resolved')}</span>",
-                    unsafe_allow_html=True,
-                )
-                with cells[4]:
-                    analysis_id = str(row.get("id") or "").strip()
-                    if st.button(
-                        "Open BOM",
-                        key=f"approved_decision_bom_open_{index}",
-                        use_container_width=True,
-                        disabled=not analysis_id,
-                    ):
-                        navigate_to(
-                            "BOM Settings",
-                            saved_bom_id=analysis_id,
-                            saved_bom_action="open",
-                            arm_opening=False,
-                        )
-
-
-def _records(rows: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
-    return [row for row in rows or [] if isinstance(row, dict)]
-
-
-def live_bar_chart(title: str, points: list[tuple[str, float]], color: str = "#2563eb") -> str:
-    """Bar chart of live numeric records. Empty input renders nothing."""
-    clean = [(str(label), float(value)) for label, value in points if label]
-    if not clean:
-        return ""
-    peak = max(value for _, value in clean) or 1.0
-    width = 560
-    slot = width / len(clean[:8])
-    marks = []
-    for index, (label, value) in enumerate(clean[:8]):
-        height = 112 * (value / peak)
-        x = 12 + index * slot
-        bar = max(10.0, slot - 22)
-        marks.append(
-            f'<rect x="{x:.1f}" y="{132 - height:.1f}" width="{bar:.1f}" height="{max(height, 2):.1f}" rx="5" fill="{color}"/>'
-            f'<text x="{x:.1f}" y="154" font-size="11" fill="#64748b">{html.escape(label[:12])}</text>'
-        )
-    return (
-        f'<article class="cv-ap-chart"><h3>{html.escape(title)}</h3>'
-        f'<svg viewBox="0 0 {width} 168" width="100%" height="168" role="img" aria-label="{html.escape(title)}">'
-        f'{"".join(marks)}</svg></article>'
-    )
-
-
-def series_chart(title: str, series: list[tuple[str, str, list[tuple[str, float]]]]) -> str:
-    """Line chart. Each series is (name, color, points). Missing points stay off the line."""
-    prepared = []
-    for name, color, points in series:
-        clean = [(str(label), float(value)) for label, value in points if label]
-        if clean:
-            prepared.append((name, color, clean))
-    if not prepared:
-        return (
-            f'<article class="cv-ap-chart"><h3>{html.escape(title)}</h3>'
-            '<p class="cv-ap-meta">No supply or demand values are recorded for this scenario.</p></article>'
-        )
-    labels = [label for label, _value in prepared[0][2]]
-    peak = max(value for _name, _color, points in prepared for _label, value in points) or 1.0
-    width = 640
-    slot = width / max(len(labels), 1)
-
-    def _point(index: int, value: float) -> str:
-        x = 28 + index * slot
-        y = 128 - (108 * (value / peak))
-        return f"{x:.1f},{y:.1f}"
-
-    lines = []
-    legend = []
-    for name, color, points in prepared:
-        coords = " ".join(_point(index, value) for index, (_label, value) in enumerate(points))
-        lines.append(f'<polyline fill="none" stroke="{color}" stroke-width="3" points="{coords}"/>')
-        legend.append(f'<span style="color:{color}">{html.escape(name)}</span>')
-    axis = "".join(
-        f'<text x="{28 + index * slot:.1f}" y="150" font-size="11" fill="#64748b">{html.escape(label[:10])}</text>'
-        for index, label in enumerate(labels[:8])
-    )
-    return (
-        f'<article class="cv-ap-chart"><h3>{html.escape(title)}</h3>'
-        f'<svg viewBox="0 0 {width} 168" width="100%" height="168" role="img" aria-label="{html.escape(title)}">'
-        f'{"".join(lines)}{axis}</svg><p class="cv-ap-meta">{" Â· ".join(legend)}</p></article>'
-    )
-
-
-def sparkline(values: list[float], color: str = "#2563eb") -> str:
-    """Small trend line from recorded values. A single value draws one point, not a made-up history."""
-    if not values:
-        return '<svg class="cv-ap-spark" viewBox="0 0 88 28" width="88" height="28" aria-hidden="true"></svg>'
-    peak = max(values) or 1.0
-    slot = 80 / max(len(values) - 1, 1)
-    coords = []
-    for index, value in enumerate(values[:12]):
-        x = 4 + index * slot
-        y = 24 - (18 * (value / peak))
-        coords.append(f"{x:.1f},{y:.1f}")
-    marks = f'<polyline fill="none" stroke="{color}" stroke-width="2" points="{" ".join(coords)}"/>'
-    if len(coords) == 1:
-        marks += f'<circle cx="{coords[0].split(",")[0]}" cy="{coords[0].split(",")[1]}" r="2.5" fill="{color}"/>'
-    return f'<svg class="cv-ap-spark" viewBox="0 0 88 28" width="88" height="28" aria-hidden="true">{marks}</svg>'
-
-
-def risk_mix_chart(parts: list[dict[str, Any]] | None) -> str:
-    counts = {"High": 0, "Medium": 0, "Low": 0}
-    for part in _records(parts):
-        level = str(_first(part, "risk_level", "severity", fallback="")).casefold()
-        if "high" in level:
-            counts["High"] += 1
-        elif "med" in level:
-            counts["Medium"] += 1
-        elif "low" in level:
-            counts["Low"] += 1
-    total = sum(counts.values())
-    if not total:
-        return ""
-    colors = {"High": "#e11d48", "Medium": "#d97706", "Low": "#16a34a"}
-    start = 0.0
-    slices = []
-    for label, count in counts.items():
-        if not count:
-            continue
-        end = start + (count / total) * 100
-        slices.append(
-            f'<circle cx="70" cy="70" r="42" fill="none" stroke="{colors[label]}" stroke-width="18" '
-            f'pathLength="100" stroke-dasharray="{count / total * 100:.2f} {100 - count / total * 100:.2f}" '
-            f'stroke-dashoffset="{-start:.2f}"/>'
-        )
-        start = end
-    legend = "".join(
-        f'<div><span class="cv-pill {"high" if label=="High" else "medium" if label=="Medium" else "low"}">{label}</span> {count}</div>'
-        for label, count in counts.items()
-        if count
-    )
-    return (
-        '<article class="cv-ap-chart"><h3>Risk distribution</h3>'
-        f'<svg viewBox="0 0 140 140" width="140" height="140" role="img" aria-label="Risk distribution">{"".join(slices)}</svg>'
-        f'<div class="cv-ap-meta">{legend}</div></article>'
-    )
-
-
-def render_home(
-    *,
-    name: str,
-    analyses: list[dict[str, Any]] | None,
-    plan_notice: str = "",
-    pause_new_analyses: bool = False,
-    user_id: str = "",
-    saved_boms_stale: bool = False,
-) -> None:
-    begin_approved_page()
-    from src.pages.home_workspace import remember_saved_analyses_for_session
-
-    remember_saved_analyses_for_session(
-        st.session_state,
-        user_id=user_id,
-        rows=analyses,
-    )
-    rows = _rows_with_project_edits(_records(analyses))
-    high = sum(_num(_first(row, "high_risk_count")) for row in rows)
-    review = sum(1 for row in rows if _num(_first(row, "high_risk_count")) or _num(_first(row, "health_score"), 100) < 80)
-    health_values = [_num(_first(row, "health_score")) for row in rows]
-    average = round(sum(health_values) / len(health_values)) if health_values else 0
-    greeting = name or "there"
-    notice = f"<p class='cv-ap-sub'>{_esc(plan_notice)}</p>" if plan_notice else ""
-    with st.container(key="approved_home_page"):
-        if saved_boms_stale:
-            st.info("Showing the saved BOM list from this session. Cadivor couldnâ€™t refresh it just now.")
-            if st.button("Retry saved BOMs", key="home_retry_saved_boms"):
-                st.rerun()
-        with st.container(key="approved_home_header"):
-            title_col, action_col = st.columns([4.8, 1], vertical_alignment="top")
-            with title_col:
-                st.markdown(
-                    f"""
-                    <div class="cv-ap">
-                      <p class="cv-ap-kicker">HOME</p>
-                      <h1>Good afternoon, {_esc(greeting)}</h1>
-                      <p class="cv-ap-sub">Here's what's happening with your BOMs today.</p>
-                      {notice}
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
-            with action_col:
-                if pause_new_analyses:
-                    if st.button("Open reports", key="approved_home_open_reports", type="primary"):
-                        navigate_to("Reports")
-                elif st.button(
-                    "+ New BOM analysis",
-                    key="approved_home_new_bom",
-                    type="primary",
-                    width="stretch",
-                ):
-                    prepare_new_approved_bom_analysis(st.session_state)
-                    navigate_to("BOM Analyzer", new_analysis="1")
-
-        saved_delta = _home_weekly_delta(rows, "saved_boms")
-        review_delta = _home_weekly_delta(rows, "needs_review")
-        risk_delta = _home_weekly_delta(rows, "high_risk_parts")
-        health_delta = _home_weekly_delta(rows, "average_health")
-        st.markdown(
-            f"""
-            <section class="cv-ap cv-ap-kpis cv-ap-home-kpis">
-              <article class="cv-ap-kpi cv-ap-home-kpi">
-                <span class="cv-ap-ico cv-ap-home-icon">{ICO_DOC}</span>
-                <div class="cv-ap-home-kpi-copy"><span class="cv-ap-home-kpi-label">Saved BOMs</span><strong>{len(rows)}</strong>{saved_delta}</div>
-              </article>
-              <article class="cv-ap-kpi cv-ap-home-kpi">
-                <span class="cv-ap-ico cv-ap-home-icon warn">{ICO_WARN}</span>
-                <div class="cv-ap-home-kpi-copy"><span class="cv-ap-home-kpi-label">BOMs needing review</span><strong>{review}</strong>{review_delta}</div>
-              </article>
-              <article class="cv-ap-kpi cv-ap-home-kpi">
-                <span class="cv-ap-ico cv-ap-home-icon risk">{ICO_RISK}</span>
-                <div class="cv-ap-home-kpi-copy"><span class="cv-ap-home-kpi-label">High-risk parts</span><strong>{high}</strong>{risk_delta}</div>
-              </article>
-              <article class="cv-ap-kpi cv-ap-home-kpi">
-                <span class="cv-ap-ico cv-ap-home-icon ok">{ICO_HEALTH}</span>
-                <div class="cv-ap-home-kpi-copy"><span class="cv-ap-home-kpi-label">Average health</span><strong>{average}/100</strong>{health_delta}</div>
-              </article>
-            </section>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        home_widths = [2.25, 1.35, 0.76, 0.84, 1.0, 1.18, 0.68]
-        with st.container(key="approved_home_recent_card"):
-            with st.container(key="approved_home_recent_heading"):
-                heading_col, view_all_col = st.columns([10, 1], vertical_alignment="center")
-                with heading_col:
-                    st.markdown(
-                        "<div class='cv-ap-home-recent-heading'><h2>Recent BOMs</h2>"
-                        "<p>Your latest analyses and their current status.</p></div>",
-                        unsafe_allow_html=True,
-                    )
-                with view_all_col:
-                    with st.container(key="approved_home_view_all_wrap"):
-                        if st.button(
-                            ":blue[View all]",
-                            key="approved_home_view_all",
-                            type="secondary",
-                            width="stretch",
-                        ):
-                            navigate_to("BOM Analyzer", show_saved_analyses="1", arm_opening=False)
-            header_labels = ("Name", "Project", "Part count", "Health", "High-risk parts", "Last analyzed", "Actions")
-            header_cells = "".join(
-                f"<span role='columnheader'>{_esc(label)}</span>"
-                for label in header_labels
-            )
-            st.markdown(
-                f"<div class='cv-ap-home-table-head' role='row'>{header_cells}</div>",
-                unsafe_allow_html=True,
-            )
-            if not rows:
-                st.markdown(
-                    "<div class='cv-ap-home-empty'>No saved BOMs yet. Start a new BOM analysis to fill this workspace.</div>",
-                    unsafe_allow_html=True,
-                )
-            for index, row in enumerate(rows[:3]):
-                project, bom_name = split_project_and_bom(row)
-                source_filename = str(_first(row, "filename", "source_filename", fallback="") or "").strip()
-                parts = _num(_first(row, "total_parts"))
-                score = _num(_first(row, "health_score"))
-                risk = _num(_first(row, "high_risk_count"))
-                risk_html = (
-                    f"<span class='cv-home-risk-count high'>{risk}</span>"
-                    if risk
-                    else "<span class='cv-home-risk-count clear'>0</span>"
-                )
-                updated = analyzed_label(_first(row, "created_at", "updated_at", fallback=""))
-                analysis_id = str(row.get("id") or "")
-                display_bom_name = bom_name or source_filename or "Saved BOM"
-                if not bom_name and display_bom_name.casefold().endswith(".csv"):
-                    display_bom_name = display_bom_name[:-4]
-                with st.container(key=f"approved_home_row_{index}"):
-                    cells = st.columns(home_widths, vertical_alignment="center")
-                    cells[0].markdown(
-                        f"<div class='cv-ap-home-bom'><span class='cv-ap-home-row-icon'>{lucide('file-text', 24)}</span>"
-                        f"<span class='cv-ap-home-bom-copy'><strong class='cv-ap-name'>{_esc(display_bom_name)}</strong></span></div>",
-                        unsafe_allow_html=True,
-                    )
-                    _render_project_cell(cells[1], row, "home", rows, user_id)
-                    cells[2].markdown(
-                        f"<div class='cv-ap-home-cell-center'>{parts}</div>", unsafe_allow_html=True
-                    )
-                    cells[3].markdown(
-                        f"<div class='cv-ap-home-cell-center'>{_health_pill(score)}</div>",
-                        unsafe_allow_html=True,
-                    )
-                    cells[4].markdown(
-                        f"<div class='cv-ap-home-cell-center'>{risk_html}</div>",
-                        unsafe_allow_html=True,
-                    )
-                    cells[5].markdown(
-                        f"<div class='cv-ap-home-cell-center'>{updated}</div>",
-                        unsafe_allow_html=True,
-                    )
-                    _render_saved_bom_actions(cells[6], analysis_id, scope="home", row_key=str(index))
-        if plan_notice and st.button("Compare plans", key="approved_home_compare_plans"):
-            navigate_to("Pricing")
-    end_approved_page()
-
-
-def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") -> None:
-    begin_approved_page()
-    analysis_error = st.session_state.pop("cadivor_bom_analysis_error", "")
-    if analysis_error:
-        st.error("The BOM analysis could not complete. Your upload is still here; review it and try again.")
-    from src.pages.home_workspace import remember_saved_analyses_for_session
-
-    remember_saved_analyses_for_session(
-        st.session_state,
-        user_id=user_id,
-        rows=records,
-    )
-    rows = _rows_with_project_edits(_records(records))
-    edit_id = str(st.session_state.get(SAVED_BOM_EDIT_STATE) or "").strip()
-    delete_id = str(st.session_state.get(SAVED_BOM_DELETE_STATE) or "").strip()
-    action_id = delete_id or edit_id
-    if action_id:
-        target_row = next((row for row in rows if str(row.get("id") or "").strip() == action_id), None)
-        if target_row is None:
-            st.error("This saved BOM is no longer available in the current workspace.")
-            if st.button("Return to BOMs", key="approved_saved_bom_action_back"):
-                st.session_state.pop(SAVED_BOM_EDIT_STATE, None)
-                st.session_state.pop(SAVED_BOM_DELETE_STATE, None)
-                navigate_to("BOM Analyzer", show_saved_analyses="1", arm_opening=False)
-        elif delete_id:
-            _render_saved_bom_delete_page(target_row, user_id)
-        else:
-            _render_saved_bom_edit_page(target_row, user_id)
-        end_approved_page()
-        return
-    analysis_running = bool(
-        st.session_state.get("bom8_analysis_future")
-        or st.session_state.get("bom8_analysis_pending")
-        or st.session_state.get("bom8_analysis_in_progress")
-        or st.session_state.get("cadivor_bom_pipeline_active")
-    )
-    catalog_requested = bool(
-        st.session_state.get("cadivor_bom_catalog_requested")
-        or st.session_state.get("cadivor_show_saved_boms")
-    ) and not analysis_running
-    upload_mode = bool(st.session_state.get("cadivor_bom_upload_open")) and not catalog_requested
-    analysis_results = st.session_state.get("results_df")
-    results_visible = bool(
-        not catalog_requested
-        and analysis_results is not None
-        and not getattr(analysis_results, "empty", True)
-    )
-    with st.container(key="approved_bom_title"):
-        title_col, action_col = st.columns([5.2, 1.8], vertical_alignment="center")
-        with title_col:
-            st.markdown(
-                f"""
-                <div class="cv-ap">
-                  <h1>{_esc("Analyzing BOM" if analysis_running else ("BOM analysis results" if results_visible else "BOMs"))}</h1>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-        with action_col:
-            if analysis_running:
-                pass
-            elif upload_mode and not results_visible:
-                if st.button(
-                    "Manage saved BOMs",
-                    key="approved_bom_manage",
-                    type="tertiary",
-                    disabled=analysis_running,
-                ):
-                    st.session_state["cadivor_bom_upload_open"] = False
-                    st.session_state["cadivor_manage_saved_boms"] = False
-                    st.session_state.pop("cadivor_bom_pipeline_active", None)
-                    st.session_state.pop("bom8_analysis_upload_file", None)
-                    st.rerun()
-            else:
-                if st.button(
-                    "+ New BOM analysis",
-                    key="approved_bom_new",
-                    type="primary",
-                    disabled=analysis_running,
-                ):
-                    prepare_new_approved_bom_analysis(st.session_state)
-                    st.rerun()
-    if analysis_running and not results_visible:
-        with st.container(key="approved_bom_upload_progress"):
-            active_name = str(st.session_state.get("bom8_bom_name") or "this BOM").strip()
-            st.caption(
-                f"Preparing or checking supplier data for {active_name}. Your report will open when the analysis is complete."
-            )
-    elif should_render_approved_bom_upload_form(
-        upload_mode=upload_mode,
-        analysis_running=analysis_running,
-        results_visible=results_visible,
-    ):
-        with st.container(key="approved_bom_upload_panel"):
-            st.markdown(
-                """
-                <div class="cv-bom-upload-heading">
-                  <h2>New BOM analysis</h2>
-                  <p>Choose a project, name your analysis, and upload a BOM file to review its risk.</p>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-            with st.form(key="approved_bom_upload_form", clear_on_submit=False):
-                typed_project = st.text_input(
-                    "Project name",
-                    key="approved_bom_project_name",
-                    placeholder="Example: Motor Controller",
-                    help="Enter a new name or reuse an existing project name. Leave blank to use General.",
-                    autocomplete="off",
-                    disabled=analysis_running,
-                )
-                bom_name = st.text_input(
-                    "BOM name",
-                    key="approved_bom_name",
-                    autocomplete="off",
-                    disabled=analysis_running,
-                )
-                uploaded = st.file_uploader(
-                    "Upload your BOM file",
-                    type=["csv", "xlsx"],
-                    key="bom_file_uploader",
-                    help="CSV or Excel with MPN and Quantity columns.",
-                    disabled=analysis_running,
-                )
-                submitted = st.form_submit_button(
-                    "Analyzing BOMâ€¦" if analysis_running else "Analyze BOM",
-                    key="approved_bom_analyze",
-                    type="primary",
-                    disabled=analysis_running,
-                )
-                if submitted and uploaded is not None:
-                    st.session_state["cadivor_bom_analysis_ready"] = True
-                    st.session_state["cadivor_pending_upload"] = uploaded
-                    st.session_state["cadivor_pending_project"] = resolve_project_choice(
-                        NEW_PROJECT_CHOICE,
-                        typed_project,
-                        blank_uses_general=True,
-                    )
-                    st.session_state["cadivor_pending_bom_name"] = bom_name
-                    return
-                if uploaded is None:
-                    st.caption("Choose a CSV or Excel file to run the existing BOM analysis.")
-    elif results_visible:
-        pass
-    else:
-        from datetime import date
-
-        project_options = catalog_project_options(rows)
-        filter_nonce = int(st.session_state.get("approved_bom_filter_nonce") or 0)
-        project_key = f"approved_bom_project_{filter_nonce}"
-        if st.session_state.get(project_key) not in project_options and project_key in st.session_state:
-            st.session_state[project_key] = "All projects"
-        with st.container(key="approved_bom_toolbar"):
-            search_col, project_col, health_col, date_col, clear_col = st.columns(
-                [1.7, 1.05, 1, 1.05, 0.85],
-                vertical_alignment="bottom",
-            )
-            with search_col:
-                query = st.text_input(
-                    "Search",
-                    key=f"approved_bom_search_{filter_nonce}",
-                    placeholder="Search BOMs, projects, or files",
-                    label_visibility="collapsed",
-                )
-            with project_col:
-                project_filter = st.selectbox("Project", project_options, key=project_key)
-            with health_col:
-                health_filter = st.selectbox(
-                    "Health",
-                    ["All health", "Healthy", "Review", "At risk"],
-                    key=f"approved_bom_health_{filter_nonce}",
-                )
-            with date_col:
-                date_filter = st.selectbox(
-                    "Date range",
-                    ["Last 90 days", "Last 30 days", "All time"],
-                    key=f"approved_bom_dates_{filter_nonce}",
-                )
-            with clear_col:
-                if st.button("Clear filters", key="approved_bom_clear"):
-                    reset_catalog_filters(st.session_state)
-                    st.rerun()
-        needle = query.strip().casefold()
-        today = date.today()
-        visible = []
-        for row in rows:
-            project_name, bom_name = split_project_and_bom(row)
-            filename = str(_first(row, "filename", "source_filename", fallback="") or "")
-            if needle and needle not in f"{project_name} {bom_name} {filename}".casefold():
-                continue
-            if project_filter != "All projects" and project_name != project_filter:
-                continue
-            score = _num(_first(row, "health_score"))
-            high = _num(_first(row, "high_risk_count"))
-            label = catalog_health_label(score, high)
-            if health_filter != "All health" and label != health_filter:
-                continue
-            if not within_analyzed_range(_first(row, "created_at", "updated_at", fallback=""), date_filter, today):
-                continue
-            visible.append((row, label, project_name, bom_name))
-        bom_widths = [2.25, 1.35, 0.76, 0.84, 1.0, 1.18, 0.68]
-        with st.container(key="approved_bom_catalog_table"):
-            header_labels = ("Name", "Project", "Part count", "Health", "High-risk parts", "Last analyzed", "Actions")
-            header_cells = "".join(
-                f"<span role='columnheader'>{_esc(label)}</span>"
-                for label in header_labels
-            )
-            st.markdown(
-                f"<div class='cv-ap-home-table-head' role='row'>{header_cells}</div>",
-                unsafe_allow_html=True,
-            )
-            if not visible:
-                st.markdown(
-                    "<div class='cv-ap-home-empty'>No BOMs match these filters.</div>",
-                    unsafe_allow_html=True,
-                )
-            for index, (row, label, project_name, bom_name) in enumerate(visible[:12]):
-                kind = {"Healthy": "low", "Review": "medium", "At risk": "high"}[label]
-                analysis_id = str(row.get("id") or "")
-                high = _num(_first(row, "high_risk_count"))
-                source_filename = str(_first(row, "filename", "source_filename", fallback="") or "").strip()
-                display_bom_name = bom_name or source_filename or "Saved BOM"
-                if not bom_name and display_bom_name.casefold().endswith(".csv"):
-                    display_bom_name = display_bom_name[:-4]
-                risk_html = (
-                    f"<span class='cv-home-risk-count high'>{high}</span>"
-                    if high
-                    else "<span class='cv-home-risk-count clear'>0</span>"
-                )
-                analyzed = analyzed_label(_first(row, "created_at", "updated_at", fallback=""))
-                with st.container(key=f"approved_home_row_{index}"):
-                    cells = st.columns(bom_widths, vertical_alignment="center")
-                    cells[0].markdown(
-                        f"<div class='cv-ap-home-bom'><span class='cv-ap-home-row-icon'>{lucide('file-text', 24)}</span>"
-                        f"<span class='cv-ap-home-bom-copy'><strong class='cv-ap-name'>{_esc(display_bom_name)}</strong></span></div>",
-                        unsafe_allow_html=True,
-                    )
-                    _render_project_cell(cells[1], row, "home", rows, user_id)
-                    cells[2].markdown(
-                        f"<div class='cv-ap-home-project cv-ap-table-center'>{_num(_first(row, 'total_parts'))}</div>",
-                        unsafe_allow_html=True,
-                    )
-                    cells[3].markdown(
-                        f"<div class='cv-ap-table-center'>{_health_pill(_num(_first(row, 'health_score')))}</div>",
-                        unsafe_allow_html=True,
-                    )
-                    cells[4].markdown(
-                        f"<div class='cv-ap-table-center'>{risk_html}</div>",
-                        unsafe_allow_html=True,
-                    )
-                    cells[5].markdown(
-                        f"<div class='cv-ap-home-project cv-ap-table-center'>{analyzed}</div>",
-                        unsafe_allow_html=True,
-                    )
-                    _render_saved_bom_actions(
-                        cells[6],
-                        analysis_id,
-                        scope="home",
-                        row_key=str(index),
-                    )
-    if st.session_state.get("cadivor_bom_analysis_ready"):
-        return
-    # On ordinary visits this renderer owns the page and stops the legacy route.
-    # A submitted upload must continue through the same runtime so it can parse,
-    # analyze, save, and render the result on subsequent Streamlit reruns.
-    if should_stop_approved_bom_renderer(
-        st.session_state,
-        upload_mode=upload_mode,
-        results_visible=results_visible,
-    ):
-        end_approved_page()
-
-
-def render_decision_queue(records: list[dict[str, Any]] | None) -> None:
-    begin_approved_page()
-    from datetime import date
-
-    counts = decision_queue_view(records, today=date.today())
-    st.markdown(
-        """
-        <div class="cv-ap">
-          <p class="cv-ap-kicker">ENGINEERING</p>
-          <h1>Engineering decisions</h1>
-          <p class="cv-ap-sub">This queue tracks individual monitoring alerts and BOM reviews. An approved alternate stays linked here until you explicitly record how it resolves the alert.</p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    icon_open = '<svg viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="1.8"><path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5"/></svg>'
-    icon_over = '<svg viewBox="0 0 24 24" fill="none" stroke="#e11d48" stroke-width="1.8"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17h.01"/></svg>'
-    icon_ok = '<svg viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="1.8"><circle cx="12" cy="12" r="8"/><path d="M8 12l3 3 5-6"/></svg>'
-    icon_boms = '<svg viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="1.8"><path d="M12 3l8 4-8 4-8-4z"/><path d="M4 12l8 4 8-4"/><path d="M4 16l8 4 8-4"/></svg>'
-    cards = (
-        ("open", "Open decisions", counts["open"], "Open", "", icon_open, ""),
-        ("overdue", "Overdue", counts["overdue"], "Overdue", "", icon_over, "risk"),
-        ("resolved", "Resolved this month", counts["resolved_month"], "Resolved", "", icon_ok, "ok"),
-        ("boms", "BOMs affected", counts["affected"], "All statuses", "boms", icon_boms, ""),
-    )
-    active_filter = str(st.session_state.get("approved_decision_filter") or "All statuses")
-    active_scope = str(st.session_state.get("approved_decision_scope") or "")
-    with st.container(key="approved_decision_cards"):
-        card_cols = st.columns(4)
-        for column, (key, label, count, status, scope, icon, tone) in zip(card_cols, cards):
-            selected = active_scope == scope and (
-                scope == "boms" or active_filter == status
-            )
-            selected_class = " is-active" if selected and (scope or status != "All statuses") else ""
-            with column:
-                with st.container(key=f"approved_decision_cardwrap_{key}"):
-                    st.markdown(
-                        f"<article class='cv-ed-card{selected_class}'>"
-                        f"<span class='cv-ap-ico {tone}'>{icon}</span>"
-                        f"<div class='cv-ed-copy'><span>{label}</span>"
-                        f"<strong>{count}<svg class='cv-ed-chevron' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='#94a3b8' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><path d='m9 18 6-6-6-6'/></svg></strong></div>"
-                        f"</article>",
-                        unsafe_allow_html=True,
-                    )
-                    if st.button(label, key=f"approved_decision_drill_{key}"):
-                        st.session_state["approved_decision_filter"] = status
-                        st.session_state["approved_decision_scope"] = scope
-                        if scope == "boms":
-                            st.session_state["approved_decision_search"] = ""
-                        st.rerun()
-    with st.container(key="approved_decision_queue"):
-        with st.container(key="approved_decision_toolbar"):
-            heading, search_col, filter_col, sort_col = st.columns(
-                [1.55, 2.35, 0.85, 0.85],
-                vertical_alignment="center",
-            )
-            with search_col:
-                query = st.text_input(
-                    "Search",
-                    key="approved_decision_search",
-                    placeholder="Search components, decisions or owners",
-                    label_visibility="collapsed",
-                )
-            with filter_col:
-                with st.popover(
-                    "Filter",
-                    icon=":material/filter_list:",
-                    key="approved_decision_filter_popover",
-                ):
-                    status_filter = st.selectbox(
-                        "Status",
-                        ["All statuses", "Open", "Overdue", "In review", "Resolved"],
-                        key="approved_decision_filter",
-                        label_visibility="collapsed",
-                        on_change=lambda: st.session_state.__setitem__("approved_decision_scope", ""),
-                    )
-            with sort_col:
-                with st.popover(
-                    "Sort",
-                    icon=":material/sort:",
-                    key="approved_decision_sort_popover",
-                ):
-                    sort_by = st.selectbox(
-                        "Sort by",
-                        ["Due date", "Risk level", "Component"],
-                        key="approved_decision_sort",
-                        label_visibility="collapsed",
-                    )
-        view = decision_queue_view(
-            records,
-            query=query,
-            status_filter=status_filter,
-            sort_by=sort_by,
-            scope=str(st.session_state.get("approved_decision_scope") or ""),
-            today=date.today(),
-        )
-        if str(st.session_state.get("approved_decision_scope") or "") == "boms":
-            _render_decision_affected_boms(view["boms"])
-            end_approved_page()
-            return
-        with heading:
-            st.markdown(f"<h2>Decision queue ({len(view['rows'])})</h2>", unsafe_allow_html=True)
-        widths = [1.55, 1.55, 0.75, 1.0, 0.8, 0.85, 1.5]
-        with st.container(key="approved_decision_table_head"):
-            header = st.columns(widths, vertical_alignment="center")
-            for column, label in zip(header, ("Component", "Title", "Risk level", "Decision status", "Owner", "Due date", "Actions")):
-                heading_modifier = {
-                    "Owner": " owner",
-                    "Due date": " due-date",
-                    "Actions": " actions",
-                }.get(label, "")
-                column.markdown(
-                    f"<div class='cv-decision-table-heading{heading_modifier}' role='columnheader'>{_esc(label)}</div>",
-                    unsafe_allow_html=True,
-                )
-        if not view["rows"]:
-            st.caption("No engineering decisions match this view.")
-        for index, (row, status) in enumerate(view["rows"][:20]):
-            level = _first(row, "risk_level", "severity", fallback=None)
-            if not level:
-                level_html = "Not recorded"
-            else:
-                folded = str(level).casefold()
-                kind = "high" if "high" in folded else ("low" if "low" in folded else "medium")
-                level_html = f"<span class='cv-pill {kind}'>{_esc(level)}</span>"
-            status_kind = {"Open": "open", "Overdue": "high", "In review": "review", "Resolved": "low"}.get(status, "open")
-            owner = _first(row, "assigned_owner", "owner", "assignee", fallback=None)
-            owner_label = "Unassigned" if owner is None else _esc(owner)
-            mpn = str(_first(row, "mpn", "part_number", "component", fallback="Not recorded"))
-            detail = _first(row, "description", "part_description", fallback=None)
-            resolution = _first(row, "resolution", fallback=None)
-            subtitle_parts = []
-            if detail:
-                subtitle_parts.append(f"<div class='cv-ap-meta'>{_esc(detail)}</div>")
-            if resolution:
-                subtitle_parts.append(
-                    f"<div class='cv-ap-meta' style='color:#047857;font-weight:750'>"
-                    f"{_esc(resolution)}</div>"
-                )
-            subtitle = "".join(subtitle_parts)
-            due = _first(row, "due_date", "due_at", fallback=None)
-            if not due:
-                due_label = "Not recorded"
-            else:
-                due_text = analyzed_label(due).split("<br>", 1)[0]
-                due_label = f"<span class='cv-due-late'>{due_text}</span>" if status == "Overdue" else due_text
-            title = _first(row, "alert_message", "title", "summary", fallback=None)
-            title_label = "Not recorded" if title is None else _esc(title)
-            image_source = _first(
-                row,
-                "image_url",
-                "product_image_url",
-                "primary_image_url",
-                "supplier_image_url",
-                "photo_url",
-                "PhotoUrl",
-                "photoUrl",
-                "ImageURL",
-                "ImageUrl",
-                "PrimaryPhoto",
-                "image",
-                fallback="",
-            )
-            photo = part_photo(
-                image_source,
-                size=60,
-                part=row,
-                part_number=mpn,
-            )
-            with st.container(key=f"approved_decision_row_{index}"):
-                cells = st.columns(widths, vertical_alignment="center")
-                cells[0].markdown(
-                    f"<div class='cv-ei-part'>{photo}<span class='cv-ei-part-copy'><span class='cv-ap-name'>{_esc(mpn)}</span>{subtitle}</span></div>",
-                    unsafe_allow_html=True,
-                )
-                cells[1].markdown(title_label)
-                cells[2].markdown(level_html, unsafe_allow_html=True)
-                cells[3].markdown(f"<span class='cv-pill {status_kind}'>{_esc(status)}</span>", unsafe_allow_html=True)
-                cells[4].markdown(owner_label)
-                cells[5].markdown(due_label, unsafe_allow_html=True)
-                analysis_id = str(
-                    row.get("analysis_id")
-                    or row.get("context_analysis_id")
-                    or ""
-                )
-                action = decision_action_label(row, status)
-                with cells[6]:
-                    action_col, overflow_col = st.columns(
-                        [1, 0.28],
-                        gap="small",
-                        vertical_alignment="center",
-                    )
-                    button_type = "primary" if action == "Review" else "secondary"
-                    button_key = (
-                        f"approved_decision_review_{index}"
-                        if action == "Review"
-                        else f"approved_decision_record_{index}"
-                    )
-                    with action_col:
-                        if st.button(
-                            action,
-                            key=button_key,
-                            type=button_type,
-                            use_container_width=True,
-                            help="Open this exact monitoring event to review its evidence and record the outcome.",
-                        ):
-                            st.session_state["cadivor_decision_focus_mpn"] = mpn
-                            from src.decision_engine import monitoring_decision_id
-
-                            decision_id = str(
-                                row.get("decision_id") or monitoring_decision_id(row)
-                            )
-                            navigate_to(
-                                "Engineering Decisions",
-                                decision_id=decision_id,
-                            )
-                    with overflow_col:
-                        with st.container(key=f"approved_decision_menu_{index}"):
-                            with st.popover(
-                                "â‹¯",
-                                help="Open the original BOM, Engineering Intelligence, the detailed report, or find a replacement.",
-                            ):
-                                if analysis_id:
-                                    if st.button(
-                                        "Open original BOM",
-                                        key=f"approved_decision_action_open_{index}",
-                                        use_container_width=True,
-                                    ):
-                                        navigate_to(
-                                            "BOM Settings",
-                                            saved_bom_id=analysis_id,
-                                            saved_bom_action="open",
-                                            arm_opening=False,
-                                        )
-                                    if st.button(
-                                        "Engineering Intelligence",
-                                        key=f"approved_decision_action_risk_{index}",
-                                        use_container_width=True,
-                                    ):
-                                        st.session_state["cadivor_show_detailed_risk"] = False
-                                        st.session_state["cadivor_ei_report_tab"] = "BOM Risk"
-                                        st.session_state["cadivor_active_analysis_id"] = analysis_id
-                                        st.session_state["analysis_id"] = analysis_id
-                                        st.session_state["cadivor_pending_analysis_section"] = "Engineering Intelligence"
-                                        st.session_state["cadivor_pending_analysis_section_id"] = analysis_id
-                                        navigate_to(
-                                            "Analysis Details",
-                                            analysis_id=analysis_id,
-                                            analysis_tab="Engineering Intelligence",
-                                            arm_opening=False,
-                                        )
-                                    if st.button(
-                                        "Detailed Risk Report",
-                                        key=f"approved_decision_action_report_{index}",
-                                        use_container_width=True,
-                                    ):
-                                        st.session_state["cadivor_show_detailed_risk"] = True
-                                        st.session_state["cadivor_active_analysis_id"] = analysis_id
-                                        st.session_state["analysis_id"] = analysis_id
-                                        st.session_state[f"cadivor_detailed_risk_mpn_{analysis_id}"] = ""
-                                        st.session_state["cadivor_pending_analysis_section"] = "Engineering Intelligence"
-                                        st.session_state["cadivor_pending_analysis_section_id"] = analysis_id
-                                        navigate_to(
-                                            "Analysis Details",
-                                            analysis_id=analysis_id,
-                                            analysis_tab="Engineering Intelligence",
-                                            arm_opening=False,
-                                        )
-                                if mpn and mpn != "Not recorded":
-                                    if st.button(
-                                        "Find replacement",
-                                        key=f"approved_decision_action_alternative_{index}",
-                                        use_container_width=True,
-                                    ):
-                                        project_name = str(
-                                            _first(row, "project_name", "project", fallback="") or ""
-                                        )
-                                        bom_name = str(
-                                            _first(row, "bom_name", "filename", fallback="") or ""
-                                        )
-                                        navigate_to_alternative_finder(
-                                            mpn=mpn,
-                                            manufacturer=str(
-                                                _first(row, "manufacturer", "manufacturer_name", fallback="") or ""
-                                            ),
-                                            description=str(detail or ""),
-                                            lifecycle=str(
-                                                _first(row, "lifecycle_status", "lifecycle", fallback="") or ""
-                                            ),
-                                            risk=str(level or ""),
-                                            analysis_id=analysis_id,
-                                            part_id=str(
-                                                _first(row, "part_id", "analysis_part_id", fallback="") or ""
-                                            ),
-                                            source_page=(
-                                                "engineering_intelligence_review"
-                                                if analysis_id
-                                                else ""
-                                            ),
-                                            return_analysis_id=analysis_id,
-                                            project_name=project_name,
-                                            bom_name=bom_name,
-                                        )
-                                if not analysis_id:
-                                    st.caption(
-                                "No single saved BOM is linked to this alert. Open Record decision to review the event and choose a BOM context when available."
-                                    )
-    end_approved_page()
-
-
-def _alert_slots(source: list[dict[str, Any]], predicate) -> list[float | None]:
-    counts: dict[str, int] = {}
-    for item in source:
-        if not predicate(item):
-            continue
-        day = str(_first(item, "created_at", fallback=""))[:10]
-        if not day:
-            continue
-        counts[day] = counts.get(day, 0) + 1
-    slots: list[float | None] = [None] * 12
-    for index, day in enumerate(sorted(counts)[:12]):
-        slots[index] = float(counts[day])
-    return slots
-
-
-def _alert_category(row: dict[str, Any]) -> str:
-    text = f"{_first(row, 'alert_type', fallback='')} {_first(row, 'alert_message', fallback='')}".casefold()
-    if "life" in text:
-        return "Lifecycle"
-    if "price" in text or "cost" in text:
-        return "Price movement"
-    if "stock" in text or "invent" in text:
-        return "Stock & supply"
-    if "supplier" in text:
-        return "Supplier"
-    if "qual" in text:
-        return "Quality"
-    if "regulat" in text or "compliance" in text:
-        return "Regulatory"
-    return "Other"
-
-
-def _next_action(row: dict[str, Any]) -> tuple[str, str]:
-    category = _alert_category(row)
-    if category == "Lifecycle":
-        return "Review alternatives", "Alternative Finder"
-    if category == "Stock & supply":
-        return "View suppliers", "Procurement Advisor"
-    if category == "Price movement":
-        return "View pricing", "Cost Optimization"
-    return "View details", "Monitoring"
-
-
-def render_monitoring(alerts: list[dict[str, Any]] | None) -> None:
-    begin_approved_page()
-    source = _records(alerts)
-    st.markdown(
-        """
-        <div class="cv-ap">
-          <h1>Alerts & monitoring</h1>
-          <p class="cv-ap-sub">Stay ahead of changes in component availability, lifecycle status, pricing and supplier activity.</p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    selected = st.segmented_control(
-        "Show",
-        ["All alerts", "Stock & supply", "Lifecycle", "Price movement", "Supplier", "Quality", "Regulatory"],
-        default="All alerts",
-        key="approved_alert_category",
-    )
-    period = st.selectbox("Time period", ["All recorded", "Last 30 days"], key="approved_alert_period")
-    rows = source
-    if selected and selected != "All alerts":
-        rows = [row for row in rows if _alert_category(row) == selected]
-    if period == "Last 30 days":
-        from datetime import datetime, timedelta, timezone
-
-        cutoff = (datetime.now(timezone.utc) - timedelta(days=30)).date().isoformat()
-        rows = [row for row in rows if str(_first(row, "created_at", fallback=""))[:10] >= cutoff]
-    rows = rows[:8]
-    high = sum(1 for row in source if "high" in str(_first(row, "severity", fallback="")).casefold())
-    lifecycle_count = sum(1 for row in source if _alert_category(row) == "Lifecycle")
-    inventory_count = sum(1 for row in source if _alert_category(row) == "Stock & supply")
-    active_spark = spark_slots(_alert_slots(source, lambda _row: True), "#2563eb")
-    high_spark = spark_slots(_alert_slots(source, lambda row: "high" in str(_first(row, "severity", fallback="")).casefold()), "#e11d48")
-    life_spark = spark_slots(_alert_slots(source, lambda row: _alert_category(row) == "Lifecycle"), "#d97706")
-    stock_spark = spark_slots(_alert_slots(source, lambda row: _alert_category(row) == "Stock & supply"), "#16a34a")
-    st.markdown(
-        f"""
-        <div class="cv-ap">
-          <section class="cv-ap-kpis">
-            <article class="cv-ap-kpi cv-ap-kpi-row"><div><span>Active alerts</span><strong>{len(source)}</strong></div>{active_spark}</article>
-            <article class="cv-ap-kpi cv-ap-kpi-row"><div><span>High priority</span><strong>{high}</strong></div>{high_spark}</article>
-            <article class="cv-ap-kpi cv-ap-kpi-row"><div><span>Lifecycle changes</span><strong>{lifecycle_count}</strong></div>{life_spark}</article>
-            <article class="cv-ap-kpi cv-ap-kpi-row"><div><span>Inventory updates</span><strong>{inventory_count}</strong></div>{stock_spark}</article>
-          </section>
-          <p class="cv-ap-meta">Each sparkline is a 12-bucket frame. Only recorded alert dates are drawn. Empty buckets are a data limitation: no alert history is stored for those periods.</p>
-          <h2>Recent alerts</h2>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    monitoring_widths = [0.8, 1.3, 1.6, 0.9, 1.2]
-    with st.container(key="approved_monitoring_alert_card"):
-        header_labels = ("Severity", "Component", "Signal", "Detected", "Next action")
-        header_cells = "".join(
-            f"<span role='columnheader'>{_esc(label)}</span>"
-            for label in header_labels
-        )
-        st.markdown(
-            f"<div class='cv-ap-monitoring-table-head' role='row'>{header_cells}</div>",
-            unsafe_allow_html=True,
-        )
-        if not rows:
-            st.markdown(
-                "<div class='cv-ap-home-empty'>No alerts in the selected period.</div>",
-                unsafe_allow_html=True,
-            )
-        for index, row in enumerate(rows):
-            severity = str(_first(row, "severity", fallback="Low"))
-            kind = "high" if "high" in severity.casefold() else ("medium" if "med" in severity.casefold() else "low")
-            action_label, destination = _next_action(row)
-            with st.container(key=f"approved_monitoring_alert_row_{index}"):
-                cells = st.columns(monitoring_widths, vertical_alignment="center")
-                cells[0].markdown(
-                    f"<span class='cv-pill {kind}'>{_esc(severity)}</span>",
-                    unsafe_allow_html=True,
-                )
-                cells[1].markdown(
-                    f"<div class='cv-ap-name'>{_esc(_first(row, 'mpn', 'part_number', fallback='Component'))}</div>",
-                    unsafe_allow_html=True,
-                )
-                cells[2].markdown(
-                    f"<div class='cv-ap-name'>{_esc(_first(row, 'alert_type', fallback='Update'))}</div>"
-                    f"<div class='cv-ap-meta'>{_esc(_first(row, 'alert_message', fallback=''))}</div>",
-                    unsafe_allow_html=True,
-                )
-                cells[3].markdown(
-                    f"<div class='cv-ap-monitoring-detected'>{_esc(str(_first(row, 'created_at', fallback=''))[:10])}</div>",
-                    unsafe_allow_html=True,
-                )
-                with cells[4]:
-                    if st.button(
-                        action_label,
-                        key=f"approved_alert_action_{index}",
-                        type="secondary",
-                        use_container_width=True,
-                    ):
-                        navigate_to(destination)
-    end_approved_page()
-
-
-def render_reports_list(records: list[dict[str, Any]] | None) -> None:
-    begin_approved_page()
-    rows = _records(records)[:8]
-    templates = (
-        (
-            "Executive BOM Report",
-            "High-level summary of cost, supply risk and key insights for stakeholders.",
-            "file-text",
-            ("DOCX", "XLSX", "PPTX"),
-        ),
-        (
-            "Engineering Risk Review",
-            "Detailed assessment of supply, obsolescence and compliance risks across your BOM.",
-            "shield",
-            ("DOCX", "XLSX"),
-        ),
-        (
-            "Sourcing Summary",
-            "Supplier options, cost comparison and recommended sourcing strategies.",
-            "shopping-cart",
-            ("XLSX", "PPTX"),
-        ),
-    )
-    cards = []
-    for title, copy, icon_name, formats in templates:
-        chips = "".join(
-            f"<span class='cv-ap-report-format'>{_esc(fmt)}</span>"
-            for fmt in formats
-        )
-        cards.append(
-            "<article class='cv-ap-report-template'>"
-            "<div class='cv-ap-report-template-main'>"
-            f"<span class='cv-ap-report-template-icon' aria-hidden='true'>{lucide(icon_name, 26)}</span>"
-            "<div class='cv-ap-report-template-copy'>"
-            f"<h3>{_esc(title)}</h3><p>{_esc(copy)}</p>"
-            "</div></div>"
-            "<div class='cv-ap-report-template-footer'>"
-            f"<span class='cv-ap-report-formats-label'>Formats</span>{chips}"
-            "</div></article>"
-        )
-
-    st.markdown(
-        """
-        <style data-cadivor-layout-style="true">
-          .st-key-approved_page_canvas_wide_render_reports_list>[data-testid="stVerticalBlock"]{gap:0!important}
-          .st-key-approved_page_canvas_wide_render_reports_list .cv-ap-report{
-            color:#0f172a;font-family:Inter,"Segoe UI",sans-serif
-          }
-          .st-key-approved_page_canvas_wide_render_reports_list .cv-ap-report h1{
-            margin:0 0 7px;color:#14233c;font-size:34px;font-weight:760;line-height:1.15;letter-spacing:-.035em
-          }
-          .st-key-approved_page_canvas_wide_render_reports_list .cv-ap-report-kicker{
-            margin:0 0 8px;color:#64748b;font-size:12px;font-weight:750;letter-spacing:.09em
-          }
-          .st-key-approved_page_canvas_wide_render_reports_list .cv-ap-report-sub{
-            margin:0 0 38px;color:#64748b;font-size:15px;line-height:1.45
-          }
-          .st-key-approved_page_canvas_wide_render_reports_list .cv-ap-report-section-title{
-            margin:0 0 15px;color:#17253e;font-size:21px;font-weight:750;line-height:1.25;letter-spacing:-.02em
-          }
-          .st-key-approved_page_canvas_wide_render_reports_list .cv-ap-report-cards{
-            display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin:0 0 40px
-          }
-          .st-key-approved_page_canvas_wide_render_reports_list .cv-ap-report-template{
-            box-sizing:border-box;display:flex;flex-direction:column;justify-content:space-between;min-width:0;min-height:206px;
-            padding:22px 28px 18px;border:1px solid #dbeafe;border-radius:12px;background:#f8fbff
-          }
-          .st-key-approved_page_canvas_wide_render_reports_list .cv-ap-report-template-main{
-            display:flex;align-items:flex-start;gap:22px;min-width:0
-          }
-          .st-key-approved_page_canvas_wide_render_reports_list .cv-ap-report-template-icon{
-            box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;flex:0 0 72px;
-            width:72px;height:72px;border-radius:14px;background:#e8f1ff;color:#2563eb
-          }
-          .st-key-approved_page_canvas_wide_render_reports_list .cv-ap-report-template-icon svg{
-            width:28px;height:28px;stroke:currentColor
-          }
-          .st-key-approved_page_canvas_wide_render_reports_list .cv-ap-report-template-copy{min-width:0}
-          .st-key-approved_page_canvas_wide_render_reports_list .cv-ap-report-template h3{
-            margin:7px 0 7px;color:#14233c;font-size:19px;font-weight:750;line-height:1.3;letter-spacing:-.015em
-          }
-          .st-key-approved_page_canvas_wide_render_reports_list .cv-ap-report-template p{
-            margin:0;color:#64748b;font-size:15px;line-height:1.5
-          }
-          .st-key-approved_page_canvas_wide_render_reports_list .cv-ap-report-template-footer{
-            display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding-top:15px;margin-top:18px;border-top:1px solid #dce8f7
-          }
-          .st-key-approved_page_canvas_wide_render_reports_list .cv-ap-report-formats-label{
-            margin-right:8px;color:#64748b;font-size:13px;font-weight:650
-          }
-          .st-key-approved_page_canvas_wide_render_reports_list .cv-ap-report-format{
-            display:inline-flex;align-items:center;justify-content:center;min-height:32px;padding:0 12px;
-            border:1px solid #d9e7fb;border-radius:8px;background:#eaf2ff;color:#2563eb;font-size:13px;font-weight:750
-          }
-          .st-key-approved_page_canvas_wide_render_reports_list .st-key-approved_report_table{
-            box-sizing:border-box;width:100%;overflow:hidden;border:1px solid #dce5f0;border-radius:12px;background:#fff
-          }
-          .st-key-approved_page_canvas_wide_render_reports_list .st-key-approved_report_table > [data-testid="stVerticalBlock"]{
-            gap:0!important
-          }
-          .st-key-approved_page_canvas_wide_render_reports_list .st-key-approved_report_table_header{
-            box-sizing:border-box;width:100%;min-height:58px;margin:0;padding:0 18px;
-            border-bottom:1px solid #dce4ef;background:#f5f7fa
-          }
-          .st-key-approved_page_canvas_wide_render_reports_list .st-key-approved_report_table_header>[data-testid="stVerticalBlock"]{
-            gap:0!important;min-height:58px;justify-content:center
-          }
-          .st-key-approved_page_canvas_wide_render_reports_list .st-key-approved_report_table_header [data-testid="stHorizontalBlock"]{
-            align-items:center!important;gap:12px!important;min-height:56px
-          }
-          .cv-ap-report-header-label{
-            color:#64748b;font-size:12px;font-weight:750;line-height:1.25;letter-spacing:.045em;text-transform:uppercase
-          }
-          .cv-ap-report-header-help{margin-left:4px;color:#94a3b8;font-size:13px;font-weight:700}
-          .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_row_"]{
-            box-sizing:border-box;min-height:84px;margin:0;padding:12px 18px;border-bottom:1px solid #e5ebf3;background:#fff
-          }
-          .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_row_"]:last-child{border-bottom:0}
-          .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_row_"] > [data-testid="stVerticalBlock"]{
-            gap:0!important;min-height:60px;justify-content:center
-          }
-          .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_row_"] [data-testid="stHorizontalBlock"]{
-            align-items:center!important;gap:12px!important;min-height:58px
-          }
-          .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_row_"] [data-testid="column"],
-          .st-key-approved_page_canvas_wide_render_reports_list .st-key-approved_report_table_header [data-testid="column"]{
-            box-sizing:border-box;display:flex;align-items:center;min-width:0;padding:4px 4px
-          }
-          .cv-ap-report-name-cell{display:flex;align-items:center;gap:13px;min-width:0}
-          .cv-ap-report-row-icon{
-            box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;flex:0 0 28px;width:28px;height:28px;
-            border-radius:0;background:transparent;color:#475569
-          }
-          .cv-ap-report-row-icon svg{width:26px;height:26px}
-          .cv-ap-report-name-copy{display:flex;flex-direction:column;min-width:0}
-          .cv-ap-report-name-copy strong{display:block;overflow:hidden;color:#17253e;font-size:15px;font-weight:750;line-height:1.3;text-overflow:ellipsis;white-space:nowrap}
-          .cv-ap-report-name-copy small{display:block;margin-top:3px;color:#74839a;font-size:13px;line-height:1.25}
-          .cv-ap-report-source,.cv-ap-report-date{display:block;overflow:hidden;max-width:100%;color:#52647b;font-size:13px;line-height:1.4;text-overflow:ellipsis;white-space:nowrap}
-          .cv-ap-report-health{display:inline-flex;align-items:center;justify-content:flex-start;gap:10px;color:#17253e;font-size:15px}
-          .cv-ap-report-health strong{font-weight:700}
-          .cv-ap-report-dot{display:inline-block;flex:0 0 13px;width:13px;height:13px;border-radius:50%;background:#cbd5e1}
-          .cv-ap-report-dot.good{background:#22a447}
-          .cv-ap-report-dot.watch{background:#f5b313}
-          .cv-ap-report-dot.risk{background:#e85b59}
-          .cv-ap-report-risk{text-align:left;color:#e34f55;font-size:15px;font-weight:700}
-          .cv-ap-report-empty{padding:22px 18px;color:#64748b;font-size:13px}
-          @media(max-width:1050px){
-            .st-key-approved_page_canvas_wide_render_reports_list .cv-ap-report-cards{grid-template-columns:repeat(2,minmax(0,1fr))}
-            .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_row_"]{padding:8px 12px}
-          }
-          @media(max-width:760px){
-            .st-key-approved_page_canvas_wide_render_reports_list .cv-ap-report h1{font-size:28px}
-            .st-key-approved_page_canvas_wide_render_reports_list .cv-ap-report-cards{grid-template-columns:1fr;gap:12px}
-            .st-key-approved_page_canvas_wide_render_reports_list .cv-ap-report-template{min-height:0}
-            .st-key-approved_page_canvas_wide_render_reports_list .st-key-approved_report_table{overflow-x:auto}
-            .st-key-approved_page_canvas_wide_render_reports_list .st-key-approved_report_table_header,
-            .st-key-approved_page_canvas_wide_render_reports_list [class*="st-key-approved_report_row_"]{min-width:820px}
-          }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        """
-        <div class="cv-ap-report">
-          <p class="cv-ap-report-kicker">REPORTS</p>
-          <h1>Engineering reports</h1>
-          <p class="cv-ap-report-sub">Create tailored reports from your engineering data and analysis results.</p>
-          <h2 class="cv-ap-report-section-title">Report templates</h2>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        "<section class='cv-ap-report-cards'>" + "".join(cards) + "</section>",
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        "<h2 class='cv-ap-report-section-title'>Recent report sources</h2>",
-        unsafe_allow_html=True,
-    )
-
-    widths = [2.05, 1.1, 1.1, 1.15, 1.1, 0.65]
-    with st.container(key="approved_report_table"):
-        with st.container(key="approved_report_table_header"):
-            header_cells = st.columns(widths, vertical_alignment="center")
-            for header_cell, label in zip(
-                header_cells,
-                ("Name", "Source", "Last updated", "", "High-risk parts", "Action"),
-            ):
-                if label:
-                    header_cell.markdown(
-                        f"<span class='cv-ap-report-header-label'>{_esc(label)}</span>",
-                        unsafe_allow_html=True,
-                    )
-            header_cells[3].markdown(
-                "<span class='cv-ap-report-header-label'>Health score "
-                "<span class='cv-ap-report-header-help' title='Health score from the latest saved BOM analysis.'>â“˜</span></span>",
-                unsafe_allow_html=True,
-            )
-        if not rows:
-            st.markdown(
-                "<div class='cv-ap-report-empty'>Upload a BOM analysis to populate recent report sources.</div>",
-                unsafe_allow_html=True,
-            )
-        for index, row in enumerate(rows):
-            raw_health = _first(row, "health_score")
-            has_health = raw_health is not None
-            score = _num(raw_health) if has_health else None
-            health_state = (
-                "good" if score is not None and score >= 80 else
-                "watch" if score is not None and score >= 60 else
-                "risk" if score is not None else ""
-            )
-            health_text = str(score) if score is not None else "â€”"
-            high_risk_raw = _first(row, "high_risk_count", "high_risk_parts")
-            high_risk_text = str(_num(high_risk_raw)) if high_risk_raw is not None else "â€”"
-            project_name = _first(row, "project_name", "name", fallback="Saved BOM")
-            source_name = _first(
-                row,
-                "source_reference",
-                "source_id",
-                "filename",
-                "uploaded_file",
-                "file_name",
-                fallback="â€”",
-            )
-            source_text = _esc(source_name)
-            source_title = _esc(source_name)
-            updated = str(
-                _first(row, "created_at", "updated_at", "analyzed_at", "date", fallback="â€”")
-            ).strip()
-            updated = updated.replace("T", " ")[:10] if updated not in {"", "â€”"} else "â€”"
-            analysis_id = str(row.get("id") or "")
-            with st.container(key=f"approved_report_row_{index}"):
-                cells = st.columns(widths, vertical_alignment="center")
-                cells[0].markdown(
-                    f"<div class='cv-ap-report-name-cell'>"
-                    f"<span class='cv-ap-report-row-icon' aria-hidden='true'>{lucide('package', 21)}</span>"
-                    f"<span class='cv-ap-report-name-copy'><strong>{_esc(project_name)}</strong>"
-                    "<small>BOM Analysis</small></span></div>",
-                    unsafe_allow_html=True,
-                )
-                cells[1].markdown(
-                    f"<span class='cv-ap-report-source' title='{source_title}'>{source_text}</span>",
-                    unsafe_allow_html=True,
-                )
-                cells[2].markdown(
-                    f"<span class='cv-ap-report-date'>{_esc(updated)}</span>",
-                    unsafe_allow_html=True,
-                )
-                cells[3].markdown(
-                    f"<span class='cv-ap-report-health'><i class='cv-ap-report-dot {health_state}'></i>"
-                    f"<strong>{_esc(health_text)}</strong></span>",
-                    unsafe_allow_html=True,
-                )
-                cells[4].markdown(
-                    f"<div class='cv-ap-report-risk'>{_esc(high_risk_text)}</div>",
-                    unsafe_allow_html=True,
-                )
-                with cells[5]:
-                    if analysis_id:
-                        internal_nav_button(
-                            "Open\u00a0\u00a0>",
-                            "Analysis Details",
-                            key=f"approved_report_open_{index}",
-                            type="tertiary",
-                            analysis_id=analysis_id,
-                        )
-    # Reports sometimes returns to a remembered scroll offset after a route
-    # swap. Run the reset in the app document (not a component iframe), then
-    # align this canvas at the top so the title and template cards are visible.
-    st.html(
-        """
-        <script>
-        (() => {
-          const canvasSelector = '.st-key-approved_page_canvas_wide_render_reports_list';
-          const resetReportsScroll = () => {
-            const canvas = document.querySelector(canvasSelector);
-            if (!canvas) return;
-            for (let node = canvas; node && node !== document.documentElement; node = node.parentElement) {
-              const overflowY = getComputedStyle(node).overflowY;
-              if (node.scrollHeight > node.clientHeight || overflowY === 'auto' || overflowY === 'scroll') {
-                node.scrollTop = 0;
-                if (typeof node.scrollTo === 'function') node.scrollTo({top: 0, left: 0, behavior: 'auto'});
-              }
-            }
-            window.scrollTo({top: 0, left: 0, behavior: 'auto'});
-            canvas.scrollIntoView({block: 'start', behavior: 'auto'});
-          };
-          [0, 80, 240, 500].forEach((delay) => window.setTimeout(resetReportsScroll, delay));
-        })();
-        </script>
-        """,
-        unsafe_allow_javascript=True,
-    )
-    end_approved_page()
-
-
-def render_simple_workspace(
-    *,
-    kicker: str,
-    title: str,
-    subtitle: str,
-    kpis: list[tuple[str, str]],
-    headers: list[str],
-    table_rows: list[list[str]],
-    legacy_page: str = "",
-    legacy_label: str = "Open workspace tools",
-    chart_html: str = "",
-    lead_html: str = "",
-    control=None,
-    kpi_details: dict[str, dict[str, Any]] | None = None,
-) -> None:
-    begin_approved_page()
-    kpi_html = "".join(
-        f"<article class='cv-ap-kpi'><span>{_esc(label)}</span><strong>{_esc(value)}</strong></article>"
-        for label, value in kpis
-    )
-    head = "".join(f"<th>{_esc(header)}</th>" for header in headers)
-    body = []
-    for row in table_rows[:8]:
-        cells = "".join(f"<td>{cell}</td>" for cell in row)
-        body.append(f"<tr>{cells}</tr>")
-    if not body:
-        body.append(f"<tr><td colspan='{max(1, len(headers))}'>No saved records for this workspace yet.</td></tr>")
-    if len(kpis) == 5:
-        columns = "five"
-    elif len(kpis) == 3:
-        columns = "three"
-    else:
-        columns = "four"
-    charts = f'<div class="cv-ap-charts">{chart_html}</div>' if chart_html else ""
-    st.markdown(
-        f"""
-        <div class="cv-ap">
-          <p class="cv-ap-kicker">{_esc(kicker)}</p>
-          <h1>{_esc(title)}</h1>
-          <p class="cv-ap-sub">{_esc(subtitle)}</p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    if control is not None:
-        control()
-
-    if kpi_details:
-        st.markdown(
-            """
-            <style id="cv-ap-clickable-kpis" data-cadivor-layout-style="true">
-              .st-key-approved_simple_workspace_kpis button{
-                width:100%;min-height:92px;border:1px solid #dbe3ef!important;
-                border-radius:16px!important;background:#fff!important;color:#0f172a!important;
-                padding:14px 16px!important;text-align:left!important;white-space:normal!important;
-                box-shadow:0 8px 24px rgba(15,23,42,.035)!important;transition:all .15s ease
-              }
-              .st-key-approved_simple_workspace_kpis button:hover{
-                border-color:#93c5fd!important;background:#f8fbff!important;color:#0f172a!important
-              }
-              .st-key-approved_simple_workspace_kpis button[kind="primary"]{
-                border-color:#60a5fa!important;background:#eff6ff!important;color:#0f172a!important
-              }
-              .st-key-approved_simple_workspace_kpis button p{
-                margin:0!important;white-space:normal!important;line-height:1.25!important
-              }
-              .st-key-approved_simple_workspace_kpis button p:first-child{
-                color:#64748b!important;font-size:11px!important;font-weight:800!important
-              }
-              .st-key-approved_simple_workspace_kpis button p:last-child{
-                color:#0f172a!important;font-size:25px!important;font-weight:900!important;
-                letter-spacing:-.035em!important;margin-top:7px!important
-              }
-              .st-key-approved_workspace_kpi_detail{
-                border:1px solid #dbe3ef;border-radius:16px;background:#fff;
-                padding:16px;margin:12px 0 18px;box-shadow:0 8px 24px rgba(15,23,42,.035)
-              }
-              .cv-ap-risk-disclosure summary{
-                cursor:pointer;display:inline-flex;align-items:center;gap:8px;list-style:none;
-                color:#1d4ed8;font-size:12px;font-weight:800;white-space:nowrap
-              }
-              .cv-ap-risk-disclosure summary::-webkit-details-marker{display:none}
-              .cv-ap-risk-disclosure summary::after{content:"âŒ„";font-size:14px;color:#64748b}
-              .cv-ap-risk-disclosure[open] summary::after{content:"âŒƒ"}
-              .cv-ap-risk-disclosure ul{margin:8px 0 2px;padding:0 0 0 16px;min-width:190px}
-              .cv-ap-risk-disclosure li{margin:5px 0;color:#334155;font-size:11px;line-height:1.4}
-              .cv-ap-risk-zero{
-                display:inline-flex;align-items:center;justify-content:center;min-width:27px;
-                border:1px solid #bbf7d0;border-radius:999px;background:#ecfdf5;color:#047857;
-                font-size:12px;font-weight:850;padding:3px 8px
-              }
-              .cv-ap-risk-missing{max-width:220px;color:#64748b;font-size:11px;line-height:1.4;white-space:normal}
-            </style>
-            """,
-            unsafe_allow_html=True,
-        )
-        selected_key = "approved_workspace_kpi_detail_selection"
-        selected_label = str(st.session_state.get(selected_key) or "")
-        with st.container(key="approved_simple_workspace_kpis"):
-            card_columns = st.columns(len(kpis), gap="small")
-            for index, (label, value) in enumerate(kpis):
-                with card_columns[index]:
-                    active = selected_label == label
-                    if st.button(
-                        f"**{label}**  \n\n{value}",
-                        key=f"approved_simple_workspace_kpi_{index}",
-                        type="primary" if active else "secondary",
-                        use_container_width=True,
-                        help=f"Show the records behind {label.lower()}",
-                    ):
-                        st.session_state[selected_key] = "" if active else label
-
-        selected_label = str(st.session_state.get(selected_key) or "")
-        detail = kpi_details.get(selected_label)
-        if detail is not None:
-            with st.container(key="approved_workspace_kpi_detail"):
-                title_col, close_col = st.columns([5, 1], vertical_alignment="center")
-                with title_col:
-                    st.markdown(
-                        f"<h3>{_esc(selected_label)}</h3><p>{_esc(str(detail.get('description') or 'Related saved records.'))}</p>",
-                        unsafe_allow_html=True,
-                    )
-                with close_col:
-                    if st.button("Close", key="approved_workspace_kpi_detail_close", type="secondary"):
-                        st.session_state.pop(selected_key, None)
-                        st.rerun()
-                rows = list(detail.get("rows") or [])
-                total = len(rows)
-                visible_rows = rows[:200]
-                if visible_rows:
-                    import pandas as pd
-
-                    columns_in_order = list(detail.get("headers") or [])
-                    frame = pd.DataFrame(visible_rows)
-                    if columns_in_order:
-                        frame = frame.reindex(columns=columns_in_order)
-                    st.dataframe(
-                        frame,
-                        hide_index=True,
-                        use_container_width=True,
-                        height=min(460, max(200, 42 + min(len(frame), 10) * 35)),
-                    )
-                    if total > len(visible_rows):
-                        st.caption(f"Showing the first {len(visible_rows)} of {total:,} records.")
-                else:
-                    st.info(str(detail.get("empty_message") or "No matching records are available."))
-        st.markdown(
-            f"""
-            <div class="cv-ap">
-              {lead_html}
-              {charts}
-              <section class="cv-ap-card"><table class="cv-ap-table"><thead><tr>{head}</tr></thead><tbody>{''.join(body)}</tbody></table></section>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-    else:
-        st.markdown(
-            f"""
-            <div class="cv-ap">
-              {lead_html}
-              <section class="cv-ap-kpis {columns}">{kpi_html}</section>
-              {charts}
-              <section class="cv-ap-card"><table class="cv-ap-table"><thead><tr>{head}</tr></thead><tbody>{''.join(body)}</tbody></table></section>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-    if legacy_page and st.button(legacy_label, key=f"approved_legacy_{legacy_page}"):
-        _open_legacy(legacy_page)
-        st.rerun()
-    end_approved_page()
-
-def part_photo(
-    url: Any = "",
-    size: int = 72,
-    part: dict[str, Any] | None = None,
-    part_number: str = "",
-) -> str:
-    """Supplier photo, or a category illustration labeled as artwork."""
-    from src.part_images import part_image_markup
-
-    number = part_number or str(
-        _first(
-            part or {},
-            "mpn",
-            "MPN",
-            "manufacturer_part_number",
-            "part_number",
-            "component",
-            fallback="",
-        )
-        or ""
-    )
-    return part_image_markup(url, number, size=size, part=part)
-
-
-
-def render_bom_component_table(records: Any) -> None:
-    """Render BOM risk results as a compact, image-led component register."""
-    if hasattr(records, "to_dict"):
-        rows = records.to_dict("records")
-    else:
-        rows = list(records or [])
-    if not rows:
-        st.info("No components match the selected filters.")
-        return
-
-    def value(row: dict[str, Any], *keys: str, default: str = "Not recorded") -> str:
-        for key in keys:
-            raw = row.get(key)
-            if raw is None:
-                continue
-            text = str(raw).strip()
-            if text.casefold() not in {"", "nan", "none", "<na>"}:
-                return text
-        return default
-
-    def count_label(raw: str) -> str:
-        try:
-            return f"{int(float(raw)):,}"
-        except (TypeError, ValueError, OverflowError):
-            return "Not recorded"
-
-    body = []
-    for row in rows:
-        mpn = value(row, "MPN", "mpn", "part_number", "component")
-        maker = value(row, "Manufacturer", "manufacturer", default="")
-        image_url = value(
-            row,
-            "Photo", "image_url", "product_image_url", "primary_image_url",
-            "supplier_image_url", "photo_url", "PhotoUrl", "photoUrl",
-            "ImageURL", "ImageUrl", "PrimaryPhoto", default="",
-        )
-        photo = part_photo(image_url, size=64, part=row, part_number=mpn)
-        stock = count_label(value(row, "Stock Available", "stock_available", default=""))
-        supplier_count = count_label(value(row, "Supplier Count", "supplier_count", default=""))
-        lifecycle = value(row, "Lifecycle Status", "lifecycle_status")
-        risk = value(row, "Risk Level", "risk_level")
-        folded_risk = risk.casefold()
-        risk_tone = "high" if "high" in folded_risk else (
-            "low" if "low" in folded_risk else ("medium" if "medium" in folded_risk else "unknown")
-        )
-        score = value(row, "Risk Score", "risk_score")
-        source = value(row, "Best Source", "best_source", "preferred_supplier")
-        maker_html = f"<span>{html.escape(maker)}</span>" if maker else ""
-        body.append(
-            "<tr>"
-            f"<td><div class='cv-bom-component'>{photo}<div class='cv-bom-component-copy'>"
-            f"<strong>{html.escape(mpn)}</strong>{maker_html}</div></div></td>"
-            f"<td><strong>{html.escape(stock)}</strong><span>{html.escape(supplier_count)} suppliers</span></td>"
-            f"<td>{html.escape(lifecycle)}</td>"
-            f"<td><div class='cv-bom-risk-cell'><strong>{html.escape(score)}</strong>"
-            f"<span class='cv-bom-risk cv-bom-risk--{risk_tone}'>{html.escape(risk)}</span></div></td>"
-            f"<td>{html.escape(source)}</td>"
-            "</tr>"
-        )
-
-    st.markdown(
-        """
-        <style>
-          .cv-bom-results-scroll{width:100%;overflow-x:auto;border:1px solid #e2e8f0;border-radius:14px;background:#fff}
-          .cv-bom-results{width:100%;min-width:760px;border-collapse:separate;border-spacing:0;table-layout:fixed}
-          .cv-bom-results th{padding:12px 14px;text-align:left;background:#f8fafc;color:#475569;font-size:11px;font-weight:750;letter-spacing:.045em;text-transform:uppercase;border-bottom:1px solid #e2e8f0}
-          .cv-bom-results td{padding:10px 14px;vertical-align:middle;border-bottom:1px solid #edf2f7;color:#334155;font-size:13px;line-height:1.35;overflow-wrap:anywhere}
-          .cv-bom-results tr:last-child td{border-bottom:0}
-          .cv-bom-results th:first-child{width:34%}.cv-bom-results th:nth-child(2){width:19%}.cv-bom-results th:nth-child(3){width:17%}.cv-bom-results th:nth-child(4){width:15%}.cv-bom-results th:nth-child(5){width:15%}
-          .cv-bom-component{display:flex;align-items:center;gap:12px;min-height:64px}
-          .cv-bom-component .cv-part-photo{display:inline-flex;flex:0 0 auto;width:var(--cv-part-photo-size);height:var(--cv-part-photo-size);align-items:center;justify-content:center;overflow:hidden;border:1px solid #e2e8f0;border-radius:12px;background:#f8fafc;color:#64748b}
-          .cv-bom-component .cv-part-photo img{width:100%;height:100%;object-fit:contain;display:block}
-          .cv-bom-component .cv-part-photo__placeholder svg{width:28px;height:28px}
-          .cv-bom-component-copy{display:flex;min-width:0;flex-direction:column;gap:3px}.cv-bom-component-copy strong{color:#0f172a;font-size:13px;line-height:1.3;overflow-wrap:anywhere}.cv-bom-component-copy span,.cv-bom-results td>span{color:#64748b;font-size:11px}
-          .cv-bom-risk-cell{display:flex;flex-direction:column;align-items:flex-start;gap:5px}.cv-bom-risk-cell strong{color:#0f172a;font-variant-numeric:tabular-nums}
-          .cv-bom-risk{display:inline-flex;align-items:center;border-radius:999px;padding:3px 8px;font-size:11px;font-weight:700;white-space:nowrap}
-          .cv-bom-risk--high{background:#fff1f2;color:#be123c}.cv-bom-risk--medium{background:#fffbeb;color:#b45309}.cv-bom-risk--low{background:#ecfdf5;color:#047857}.cv-bom-risk--unknown{background:#f1f5f9;color:#475569}
-          @media(max-width:820px){.cv-bom-results{min-width:700px}.cv-bom-results th,.cv-bom-results td{padding-left:10px;padding-right:10px}}
-        </style>
-        <div class="cv-bom-results-scroll" role="region" aria-label="BOM component register" tabindex="0">
-          <table class="cv-bom-results"><thead><tr><th>Component</th><th>Stock / suppliers</th><th>Lifecycle</th><th>Risk</th><th>Preferred source</th></tr></thead>
-          <tbody>__ROWS__</tbody></table>
-        </div>
-        """.replace("__ROWS__", "".join(body)),
-        unsafe_allow_html=True,
-    )
-
-def part_thumbnail(seed: str = "", url: str = "") -> str:
-    return part_photo(url)
-
-
-def _prior_delta(rows: list[dict[str, Any]], *prior_keys: str) -> str:
-    values = []
-    for row in rows:
-        raw = _first(row, *prior_keys, fallback=None)
-        if raw is None:
-            continue
-        values.append(_num(raw))
-    if not values:
-        return "<em class='muted'>Not recorded</em>"
-    return f"<em>{sum(values)}</em>"
-
-
-def _home_weekly_delta(
-    rows: list[dict[str, Any]],
-    metric: str,
-    *,
-    now: datetime | None = None,
-) -> str:
-    """Compare live BOM records from the latest 7 days with the 7 days before."""
-    point = now or datetime.now(timezone.utc)
-    if point.tzinfo is None:
-        point = point.replace(tzinfo=timezone.utc)
-    point = point.astimezone(timezone.utc)
-    current_start = point - timedelta(days=7)
-    previous_start = point - timedelta(days=14)
-    current_rows: list[dict[str, Any]] = []
-    previous_rows: list[dict[str, Any]] = []
-
-    for row in rows:
-        recorded_at = _parse_timestamp(_first(row, "created_at", fallback=None))
-        if recorded_at is None:
-            continue
-        if recorded_at.tzinfo is None:
-            recorded_at = recorded_at.replace(tzinfo=timezone.utc)
-        recorded_at = recorded_at.astimezone(timezone.utc)
-        if current_start <= recorded_at < point:
-            current_rows.append(row)
-        elif previous_start <= recorded_at < current_start:
-            previous_rows.append(row)
-
-    if not current_rows and not previous_rows:
-        if metric == "saved_boms":
-            return (
-                "<em class='muted' title='No BOMs were analyzed in the last 14 days.'>"
-                "No new BOMs in the past 14 days</em>"
-            )
-        if metric == "average_health":
-            if rows:
-                return (
-                    f"<em class='muted' title='Portfolio health averaged across all saved BOMs; "
-                    f"no two recent weekly groups are available.'>Across {len(rows)} saved BOMs</em>"
-                )
-            return "<em class='muted'>No saved BOMs to compare</em>"
-        return (
-            "<em class='muted' title='No BOMs were analyzed in the last 14 days.'>"
-            "No recent analyses to compare</em>"
-        )
-
-    if metric == "saved_boms":
-        current_value = len(current_rows)
-        previous_value = len(previous_rows)
-        detail = "BOMs analyzed in the latest 7 days compared with the 7 days before"
-        higher_is_better = True
-    elif metric == "needs_review":
-        current_value = sum(
-            1
-            for row in current_rows
-            if _num(_first(row, "high_risk_count")) > 0
-            or _num(_first(row, "health_score"), 100) < 80
-        )
-        previous_value = sum(
-            1
-            for row in previous_rows
-            if _num(_first(row, "high_risk_count")) > 0
-            or _num(_first(row, "health_score"), 100) < 80
-        )
-        detail = "BOMs needing review in the latest 7 days compared with the 7 days before"
-        higher_is_better = False
-    elif metric == "high_risk_parts":
-        current_value = sum(_num(_first(row, "high_risk_count")) for row in current_rows)
-        previous_value = sum(_num(_first(row, "high_risk_count")) for row in previous_rows)
-        detail = "High-risk parts in BOMs analyzed in the latest 7 days compared with the 7 days before"
-        higher_is_better = False
-    elif metric == "average_health":
-        current_scores = [
-            _num(_first(row, "health_score"))
-            for row in current_rows
-            if _first(row, "health_score", fallback=None) is not None
-        ]
-        previous_scores = [
-            _num(_first(row, "health_score"))
-            for row in previous_rows
-            if _first(row, "health_score", fallback=None) is not None
-        ]
-        if not current_scores or not previous_scores:
-            return (
-                f"<em class='muted' title='No health scores are available in both weekly groups.'>"
-                f"Across {len(rows)} saved BOMs</em>"
-            )
-        current_value = round(sum(current_scores) / len(current_scores))
-        previous_value = round(sum(previous_scores) / len(previous_scores))
-        detail = "Average health for BOMs analyzed in the latest 7 days compared with the 7 days before"
-        higher_is_better = True
-    else:
-        return "<em class='muted'>Trend unavailable</em>"
-
-    delta = current_value - previous_value
-    if delta == 0:
-        return f"<em class='muted' title='{detail}'>â†’ 0 from last week</em>"
-
-    favorable = (delta > 0) == higher_is_better
-    tone = "" if favorable else "down"
-    arrow = "â†—" if delta > 0 else "â†˜"
-    signed = f"+{delta}" if delta > 0 else f"âˆ’{abs(delta)}"
-    return f"<em class='{tone}' title='{detail}'>{arrow} {signed} from last week</em>"
-
-
-def spark_slots(values: list[float | None], color: str = "#2563eb") -> str:
-    """Twelve-bucket sparkline frame. None leaves that period empty; it is not drawn as zero."""
-    buckets = 12
-    slots = list(values[:buckets])
-    while len(slots) < buckets:
-        slots.append(None)
-    recorded = [value for value in slots if value is not None]
-    peak = max(recorded) if recorded else 1.0
-    marks = [
-        '<rect x="0" y="0" width="84" height="36" rx="8" fill="#f8fafc"/>',
-        '<line x1="4" y1="30" x2="80" y2="30" stroke="#e2e8f0" stroke-width="1"/>',
-    ]
-    for index, value in enumerate(slots):
-        x = 4 + index * 6.5
-        if value is None:
-            continue
-        height = max(8.0, 22.0 * (float(value) / (peak or 1.0)))
-        marks.append(
-            f'<rect x="{x:.1f}" y="{30 - height:.1f}" width="3" height="{height:.1f}" rx="1" fill="{color}"/>'
-        )
-    return (
-        f'<svg class="cv-ap-spark" viewBox="0 0 84 36" width="84" height="36" aria-hidden="true">{"".join(marks)}</svg>'
-    )
-
-
-ICO_DOC = '<svg viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="1.8"><path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5"/></svg>'
-ICO_WARN = '<svg viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="1.8"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17h.01"/></svg>'
-ICO_RISK = '<svg viewBox="0 0 24 24" fill="none" stroke="#e11d48" stroke-width="1.8"><path d="M12 3l7 3v6c0 5-3 8-7 9-4-1-7-4-7-9V6z"/></svg>'
-ICO_HEALTH = '<svg viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="1.8"><path d="M3 12h4l2-5 4 10 2-5h6"/></svg>'
-
-
-def impact_map_html(
-    *,
-    part: str,
-    projects: list[tuple[str, str]],
-    manufacturer: str = "",
-    supplier: str = "",
-    supplier_count: str = "",
-    lifecycle: str = "",
-) -> str:
-    """Node diagram of the live part, its saved BOMs, and recorded evidence."""
-    nodes = []
-    y = 24
-    for project, bom in projects[:4]:
-        nodes.append((220, y, project or "Project not recorded", "#eef2ff", "#6366f1"))
-        nodes.append((460, y, bom or "BOM file not recorded", "#f5f3ff", "#7c3aed"))
-        y += 64
-    manufacturer_label = manufacturer or supplier
-    if manufacturer_label:
-        nodes.append((220, y, f"Manufacturer: {manufacturer_label}", "#ecfdf5", "#059669"))
-        y += 64
-    if supplier_count:
-        nodes.append((220, y, f"Supplier sources: {supplier_count}", "#ecfdf5", "#059669"))
-        y += 64
-    if lifecycle:
-        nodes.append((220, y, lifecycle, "#fff7ed", "#ea580c"))
-        y += 64
-    height = max(180, y + 20)
-    paths = []
-    boxes = [
-        f'<rect x="16" y="{(height/2)-28:.0f}" width="150" height="56" rx="12" fill="#eff6ff" stroke="#2563eb"/>'
-        f'<text x="28" y="{(height/2)-6:.0f}" font-size="11" fill="#64748b">Component</text>'
-        f'<text x="28" y="{(height/2)+12:.0f}" font-size="13" font-weight="700" fill="#0f172a">{html.escape(part or "Component")[:22]}</text>'
-    ]
-    part_y = height / 2
-    for index, (x, node_y, label, fill, stroke) in enumerate(nodes):
-        paths.append(
-            f'<path d="M166 {part_y:.0f} C 190 {part_y:.0f}, 190 {node_y+22}, {x} {node_y+22}" fill="none" stroke="{stroke}" stroke-width="2"/>'
-        )
-        if x > 300 and index:
-            paths.append(
-                f'<path d="M370 {node_y+22} H {x}" fill="none" stroke="{stroke}" stroke-width="2"/>'
-            )
-        boxes.append(
-            f'<g><title>{html.escape(label)}</title>'
-            f'<rect x="{x}" y="{node_y}" width="180" height="44" rx="10" fill="{fill}" stroke="{stroke}"/>'
-            f'<text x="{x+12}" y="{node_y+27}" font-size="12" fill="#0f172a">{html.escape(label[:26])}</text></g>'
-        )
-    legend = "".join(
-        f'<span class="cv20-map-legend__item"><i style="--legend-color:{color}"></i>{label}</span>'
-        for label, color in (
-            ("Project", "#2563eb"), ("BOM", "#7c3aed"),
-            ("Supply chain", "#059669"), ("Lifecycle", "#ea580c"),
-        )
-    )
-    return (
-        "<section class='cv-ap-card cv20-impact-map'>"
-        '<header class="cv20-impact-map__header"><div><h2>Impact map</h2>'
-        f'<p>Saved-BOM usage and recorded supply evidence for {html.escape(part or "this component")}.</p>'
-        f'</div><div class="cv20-map-legend" aria-label="Impact map legend">{legend}</div></header>'
-        f'<svg viewBox="0 0 680 {height}" width="100%" height="{height}" role="img" aria-label="Impact map for {html.escape(part or "component", quote=True)}">'
-        f'{"".join(paths)}{"".join(boxes)}</svg></section>'
-    )
-
-
-def procurement_header_html(
-    part: dict[str, Any],
-    recommendation: dict[str, Any] | None = None,
-) -> str:
-    """Compatibility export for the reusable procurement workspace markup."""
-    from src.procurement_advisor import procurement_header_html as render_header
-
-    return render_header(part, recommendation)
-
-
-def portfolio_charts_html(parts: list[dict[str, Any]] | None) -> str:
-    """Trend frame stays empty without monthly history. The donut uses live risk counts."""
-    months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-    ticks = "".join(
-        f'<text x="{24 + index * 46}" y="132" font-size="10" fill="#94a3b8">{label}</text>'
-        for index, label in enumerate(months)
-    )
-    trend = (
-        '<article class="cv-ap-chart"><h3>Portfolio risk trend</h3>'
-        '<svg viewBox="0 0 580 148" width="100%" height="148" role="img" aria-label="Portfolio risk trend">'
-        '<line x1="20" y1="16" x2="20" y2="112" stroke="#e2e8f0"/>'
-        '<line x1="20" y1="112" x2="560" y2="112" stroke="#e2e8f0"/>'
-        f'{ticks}</svg><p class="cv-ap-meta">Monthly history is not recorded.</p></article>'
-    )
-    mix = risk_mix_chart(parts) or (
-        '<article class="cv-ap-chart"><h3>Risk distribution</h3><p class="cv-ap-meta">Not recorded</p></article>'
-    )
-    return f'<div class="cv-ap-charts">{trend}{mix}</div>'
-
-
-def _dual_scale_supply_chart(
-    labels: list[str],
-    *,
-    baseline: float,
-    disrupted_values: list[float] | None,
-    demand: float,
-    disrupted_label: str,
-    demand_label: str,
-) -> str:
-    """Stock stays on the left axis. Demand uses a labeled index scale so it stays visible."""
-    width = 640
-    slot = (width - 70) / max(len(labels) - 1, 1)
-    stock_peak = max([baseline, * (disrupted_values or [baseline])]) or 1.0
-    stock_peak = stock_peak * 1.15
-
-    def stock_y(value: float) -> float:
-        return 118 - (96 * (value / stock_peak))
-
-    demand_y = 78.0
-    stock_line = " ".join(f"{36 + index * slot:.1f},{stock_y(baseline):.1f}" for index in range(len(labels)))
-    lines = [f'<polyline fill="none" stroke="#2563eb" stroke-width="2.5" points="{stock_line}"/>']
-    if disrupted_values:
-        disrupted_line = " ".join(
-            f"{36 + index * slot:.1f},{stock_y(value):.1f}" for index, value in enumerate(disrupted_values)
-        )
-        lines.append(f'<polyline fill="none" stroke="#e11d48" stroke-width="2.5" points="{disrupted_line}"/>')
-    demand_line = " ".join(f"{36 + index * slot:.1f},{demand_y:.1f}" for index in range(len(labels)))
-    lines.append(
-        f'<polyline fill="none" stroke="#64748b" stroke-width="2.5" stroke-dasharray="6 4" points="{demand_line}"/>'
-    )
-    grid = []
-    for fraction, label in ((0, "0"), (0.5, _compact_units(stock_peak * 0.5)), (1, _compact_units(stock_peak))):
-        y = 118 - (96 * fraction)
-        grid.append(f'<line x1="36" y1="{y:.1f}" x2="610" y2="{y:.1f}" stroke="#e2e8f0"/>')
-        grid.append(f'<text x="2" y="{y + 4:.1f}" font-size="10" fill="#64748b">{label}</text>')
-    grid.append(f'<text x="612" y="{demand_y + 4:.1f}" font-size="10" fill="#64748b">{_compact_units(demand)}</text>')
-    grid.append('<text x="36" y="14" font-size="10" fill="#64748b">Recorded stock (units)</text>')
-    grid.append('<text x="430" y="14" font-size="10" fill="#64748b">Required units (index scale)</text>')
-    axis = "".join(
-        f'<text x="{36 + index * slot:.1f}" y="138" font-size="11" fill="#64748b">{html.escape(label)}</text>'
-        for index, label in enumerate(labels)
-    )
-    legend = (
-        '<p class="cv-ap-meta">'
-        '<span style="color:#2563eb">Baseline supply (modeled)</span> Â· '
-        f'<span style="color:#e11d48">{html.escape(disrupted_label)}</span> Â· '
-        f'<span style="color:#64748b">{html.escape(demand_label)}</span>'
-        "</p>"
-    )
-    return (
-        '<article class="cv-ap-chart"><h3>Projected supply vs. demand</h3>'
-        f'<svg viewBox="0 0 {width} 150" width="100%" height="168" role="img" aria-label="Projected supply vs. demand">'
-        f'{"".join(grid)}{"".join(lines)}{axis}</svg>{legend}</article>'
-    )
-
-
-def _compact_units(value: float) -> str:
-    number = float(value)
-    if abs(number) >= 1000:
-        return f"{number / 1000:.1f}k"
-    if abs(number - round(number)) < 0.05:
-        return str(int(round(number)))
-    return f"{number:.1f}"
-
-
-def modeled_supply_chart(
-    *,
-    baseline: float | None,
-    disrupted: float | None,
-    demand: float | None,
-    stock_reduction_percent: int = 0,
-    demand_growth_percent: int = 0,
-    disrupted_label: str = "",
-    assumption: str = "",
-) -> str:
-    """90-day scenario lines. These are modeled projections, not observed history."""
-    labels = ["Day 0", "Day 15", "Day 30", "Day 45", "Day 60", "Day 75", "Day 90"]
-    series = []
-    if baseline is not None:
-        series.append(("Baseline supply (modeled)", "#2563eb", [(label, baseline) for label in labels]))
-    if disrupted is not None and baseline is not None:
-        points = []
-        for index, label in enumerate(labels):
-            points.append((label, baseline if index < 3 else disrupted))
-        series.append((disrupted_label or f"Disrupted supply (modeled, {stock_reduction_percent}% stock cut)", "#e11d48", points))
-    if demand is not None:
-        series.append(
-            (
-                "Demand forecast (modeled, required units held flat)" if demand_growth_percent == 0 else f"Demand forecast (modeled, {demand_growth_percent}% growth)",
-                "#64748b",
-                [(label, demand) for label in labels],
-            )
-        )
-    if demand is not None and baseline is not None:
-        disrupted_values = [baseline if index < 3 else disrupted for index in range(len(labels))]
-        chart = _dual_scale_supply_chart(
-            labels,
-            baseline=baseline,
-            disrupted_values=disrupted_values if disrupted is not None else None,
-            demand=demand,
-            disrupted_label=disrupted_label or "Disrupted supply (modeled)",
-            demand_label="Demand forecast (modeled, required units)",
-        )
-    else:
-        chart = series_chart("Projected supply vs. demand", series)
-    detail = assumption or (
-        "Baseline holds recorded stock flat for 90 days. "
-        f"Disrupted supply applies the {stock_reduction_percent}% stock-reduction slider after day 45. "
-        f"Demand holds required units flat, including the {demand_growth_percent}% demand-growth slider."
-    )
-    note = (
-        "<p class='cv-ap-meta'>Modeled scenario, not observed history. "
-        f"{detail} Demand is plotted on a labeled index scale so required units stay visible beside recorded stock. "
-        "The quantities themselves are unchanged. Days without a recorded input stay off the line.</p>"
-    )
-    return chart + note
-
-
-def supply_scenario_chart(parts: list[dict[str, Any]] | None, scenario: dict[str, Any] | None, choice: str) -> str:
-    """90-day lines for the reference scenario control. Disruption uses recorded supplier counts."""
-    baseline_total = 0.0
-    disrupted_total = 0.0
-    have_stock = False
-    for part in parts or []:
-        if not isinstance(part, dict):
-            continue
-        raw = part.get("stock_available")
-        if raw is None or str(raw).strip() == "":
-            continue
-        try:
-            stock = float(raw)
-        except (TypeError, ValueError):
-            continue
-        have_stock = True
-        baseline_total += stock
-        count = None
-        suppliers = part.get("supplier_count")
-        try:
-            if suppliers not in (None, ""):
-                count = int(float(suppliers))
-        except (TypeError, ValueError):
-            count = None
-        if choice == "Primary supplier disruption" and count and count > 0:
-            disrupted_total += stock * max(count - 1, 0) / count
-        else:
-            disrupted_total += stock
-    demand = None
-    rows = (scenario or {}).get("rows") or []
-    if rows:
-        try:
-            demand = sum(float(row.get("Required Units") or 0) for row in rows if isinstance(row, dict))
-        except (TypeError, ValueError):
-            demand = None
-    if choice == "Primary supplier disruption":
-        assumption = (
-            "Primary supplier disruption, 90-day horizon. "
-            "After day 45, each part with a recorded supplier count loses one supplier's even share of recorded stock. "
-            "Parts without a supplier count keep recorded stock. Demand is required units, held flat."
-        )
-        disrupted_label = "Disrupted supply (modeled, one supplier share removed)"
-    else:
-        assumption = "No disruption selected. Disrupted supply matches recorded stock across the 90-day horizon. Demand is required units, held flat."
-        disrupted_label = "Disrupted supply (modeled, no disruption)"
-    return modeled_supply_chart(
-        baseline=baseline_total if have_stock else None,
-        disrupted=disrupted_total if have_stock else None,
-        demand=demand,
-        disrupted_label=disrupted_label,
-        assumption=assumption,
-    )
-
-
-def excel_bytes(rows: list[dict[str, Any]]) -> bytes:
-    import pandas as pd
-
-    frame = pd.DataFrame(rows)
-    buffer = io.BytesIO()
-    frame.to_excel(buffer, index=False)
-    return buffer.getvalue()
-
-
-def _navigate_back_to_bom_review(context: dict[str, Any]) -> bool:
-    """Restore the BOM report that launched the current replacement search."""
-    analysis_id = str(context.get("analysis_id") or "").strip()
-    if not analysis_id:
-        return False
-
-    from src.ui.navigation import navigate_to
-
-    source_page = str(context.get("source_page") or "")
-    st.session_state["cadivor_active_analysis_id"] = analysis_id
-    st.session_state["analysis_id"] = analysis_id
-    st.session_state["cadivor_pending_analysis_section"] = "Engineering Intelligence"
-    st.session_state["cadivor_pending_analysis_section_id"] = analysis_id
-    if source_page == "engineering_intelligence_review":
-        st.session_state["cadivor_show_detailed_risk"] = False
-        st.session_state["cadivor_ei_report_tab"] = "BOM Risk"
-    elif source_page == "detailed_risk_report":
-        st.session_state["cadivor_show_detailed_risk"] = True
-        source_mpn = str(context.get("mpn") or context.get("original_part") or "").strip()
-        if source_mpn:
-            st.session_state[f"cadivor_detailed_risk_mpn_{analysis_id}"] = source_mpn
-
-    navigate_to(
-        "Analysis Details",
-        analysis_id=analysis_id,
-        analysis_tab="Engineering Intelligence",
-        _rerun=False,
-        arm_opening=False,
-    )
-    return True
-
-
-def _datasheet_url(part: dict[str, Any] | None) -> str:
-    part = part if isinstance(part, dict) else {}
-    for key in ("datasheet_url", "Datasheet URL", "datasheetUrl", "Data Sheet URL"):
-        url = _candidate_http_url(part.get(key))
-        if url:
-            return url
-    discovery = part.get("_discovery_row")
-    if isinstance(discovery, dict):
-        for key in ("datasheet_url", "Datasheet URL", "datasheetUrl", "Data Sheet URL"):
-            url = _candidate_http_url(discovery.get(key))
-            if url:
-                return url
-    return ""
-
-
-def _datasheet_evidence_key(
-    source_mpn: str,
-    candidate_mpn: str,
-    source_url: str,
-    candidate_url: str,
-    source_upload_fingerprint: str = "",
-    candidate_upload_fingerprint: str = "",
-) -> str:
-    material = "|".join(
-        value.strip().casefold()
-        for value in (
-            source_mpn,
-            candidate_mpn,
-            source_url,
-            candidate_url,
-            source_upload_fingerprint,
-            candidate_upload_fingerprint,
-        )
-    )
-    return "cadivor_alt_datasheet_review_" + hashlib.sha256(material.encode("utf-8")).hexdigest()[:16]
-
-
-def _request_datasheet_review(session_state_key: str) -> None:
-    """Queue PDF extraction from the approval panel's direct review action."""
-    st.session_state[session_state_key] = True
-
-
-def _render_datasheet_evidence_review(
-    *,
-    original: dict[str, Any],
-    candidate: dict[str, Any],
-    source_mpn: str,
-    candidate_mpn: str,
-    key_suffix: str,
-) -> dict[str, Any]:
-    """Automatically analyze linked manufacturer PDFs and collect reviewer citations."""
-    source_url = _datasheet_url(original)
-    candidate_url = _datasheet_url(candidate)
-    source_upload = None
-    candidate_upload = None
-    source_upload_bytes = b""
-    candidate_upload_bytes = b""
-    source_upload_fingerprint = ""
-    candidate_upload_fingerprint = ""
-    uploaded_source = None
-    uploaded_candidate = None
-    review_key = _datasheet_evidence_key(
-        source_mpn,
-        candidate_mpn,
-        source_url,
-        candidate_url,
-    )
-    review_request_key = f"cadivor_alt_datasheet_review_request_{key_suffix}"
-    with st.expander("Datasheet & documentation review", expanded=True):
-        st.caption(
-            "Cadivor automatically retrieves and analyzes available supplier/manufacturer PDFs, then shows page-cited findings. Review the linked documents and package drawings before approving; an upload is only a fallback when no working link is available."
-        )
-        link_cols = st.columns(2)
-        for column, label, url in (
-            (link_cols[0], "Open source datasheet", source_url),
-            (link_cols[1], "Open candidate datasheet", candidate_url),
-        ):
-            with column:
-                if url:
-                    st.link_button(label, url, use_container_width=True)
-                else:
-                    st.caption(label.replace("Open ", "") + " not supplied by the catalog.")
-
-        with st.expander("Optional: upload or replace a datasheet", expanded=False):
-            st.caption(
-                "You do not need to upload a file when Cadivor has a working supplier/manufacturer PDF link. Use this only when a link is missing, outdated, or points to the wrong document."
-            )
-            upload_cols = st.columns(2)
-            with upload_cols[0]:
-                uploaded_source = st.file_uploader(
-                    "Optional source PDF",
-                    type=["pdf"],
-                    key=f"cadivor_alt_source_pdf_{key_suffix}",
-                    help="Fallback for a missing or outdated source datasheet link.",
-                )
-            with upload_cols[1]:
-                uploaded_candidate = st.file_uploader(
-                    "Optional candidate PDF",
-                    type=["pdf"],
-                    key=f"cadivor_alt_candidate_pdf_{key_suffix}",
-                    help="Fallback for a missing or outdated candidate datasheet link.",
-                )
-
-        source_upload_bytes = uploaded_source.getvalue() if uploaded_source is not None else b""
-        candidate_upload_bytes = uploaded_candidate.getvalue() if uploaded_candidate is not None else b""
-        if uploaded_source is not None:
-            st.download_button(
-                "Download source PDF to inspect drawings",
-                data=source_upload_bytes,
-                file_name=str(getattr(uploaded_source, "name", "source-datasheet.pdf") or "source-datasheet.pdf"),
-                mime="application/pdf",
-                key=f"cadivor_alt_source_pdf_download_{key_suffix}",
-            )
-        if uploaded_candidate is not None:
-            st.download_button(
-                "Download candidate PDF to inspect drawings",
-                data=candidate_upload_bytes,
-                file_name=str(getattr(uploaded_candidate, "name", "candidate-datasheet.pdf") or "candidate-datasheet.pdf"),
-                mime="application/pdf",
-                key=f"cadivor_alt_candidate_pdf_download_{key_suffix}",
-            )
-        source_upload_fingerprint = hashlib.sha256(source_upload_bytes).hexdigest()[:16] if source_upload_bytes else ""
-        candidate_upload_fingerprint = hashlib.sha256(candidate_upload_bytes).hexdigest()[:16] if candidate_upload_bytes else ""
-        review_key = _datasheet_evidence_key(
-            source_mpn,
-            candidate_mpn,
-            source_url,
-            candidate_url,
-            source_upload_fingerprint,
-            candidate_upload_fingerprint,
-        )
-        review_state = st.session_state.get(review_key)
-        if not isinstance(review_state, dict):
-            review_state = {}
-        has_documents = bool(
-            source_url or candidate_url or source_upload_bytes or candidate_upload_bytes
-        )
-        if not has_documents:
-            st.info(
-                "No supplier/manufacturer PDF link was returned for this comparison. Cadivor cannot analyze an unlinked document automatically. You may optionally upload a PDF or cite the controlled documents you reviewed."
-            )
-
-        review_state = review_state if isinstance(review_state, dict) else {}
-        review_requested = bool(st.session_state.pop(review_request_key, False))
-        review_clicked = False
-        if has_documents and review_state.get("review_completed"):
-            review_clicked = st.button(
-                "Refresh datasheet analysis",
-                key=f"cadivor_alt_datasheet_extract_{key_suffix}",
-                type="secondary",
-                help="Re-fetch linked PDFs and refresh page-cited text. You must still inspect package drawings and pinout yourself.",
-            )
-        auto_review_requested = bool(
-            has_documents and not review_state.get("review_completed")
-        )
-        if has_documents and (
-            auto_review_requested or review_requested or review_clicked
-        ):
-            from src.datasheet_comparison import (
-                build_datasheet_review_evidence,
-                extract_datasheet_text,
-                infer_component_family,
-            )
-            from src.datasheet_qa import extract_uploaded_datasheet
-            from concurrent.futures import ThreadPoolExecutor
-
-            def extract_documents(url: str, uploaded: Any, upload_bytes: bytes, side: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-                documents: list[dict[str, Any]] = []
-                results: list[tuple[str, dict[str, Any], str]] = []
-                if url:
-                    results.append(("Supplier-linked PDF", extract_datasheet_text(url), url))
-                if uploaded is not None and upload_bytes:
-                    filename = str(getattr(uploaded, "name", "manufacturer-datasheet.pdf") or "manufacturer-datasheet.pdf")
-                    results.append((filename, extract_uploaded_datasheet(upload_bytes, filename=filename), ""))
-                pages: list[dict[str, Any]] = []
-                reasons: list[str] = []
-                for label, result, document_url in results:
-                    result = result if isinstance(result, dict) else {}
-                    readable = result.get("pages") if isinstance(result.get("pages"), list) else []
-                    page_count = len(readable)
-                    documents.append(
-                        {
-                            "name": label,
-                            "url": document_url,
-                            "available": bool(result.get("available")),
-                            "page_count": page_count,
-                            "reason": str(result.get("reason") or ""),
-                            "side": side,
-                        }
-                    )
-                    for page in readable:
-                        if isinstance(page, dict):
-                            pages.append({**page, "document": label})
-                    if result.get("reason"):
-                        reasons.append(f"{label}: {result['reason']}")
-                combined = {
-                    "available": bool(pages),
-                    "reason": "; ".join(reasons) if not pages else "",
-                    "pages": pages,
-                    "page_count": len(pages),
-                }
-                return combined, documents
-
-            with st.spinner("Cadivor is fetching linked datasheets and extracting page-cited evidenceâ€¦"):
-                with ThreadPoolExecutor(max_workers=2) as pool:
-                    source_future = pool.submit(
-                        extract_documents,
-                        source_url,
-                        uploaded_source,
-                        source_upload_bytes,
-                        "Source",
-                    )
-                    candidate_future = pool.submit(
-                        extract_documents,
-                        candidate_url,
-                        uploaded_candidate,
-                        candidate_upload_bytes,
-                        "Candidate",
-                    )
-                    source_pdf, source_documents = source_future.result()
-                    candidate_pdf, candidate_documents = candidate_future.result()
-            evidence = build_datasheet_review_evidence(
-                source_pdf,
-                candidate_pdf,
-                infer_component_family(original or candidate),
-            )
-            evidence.update(
-                {
-                    "source_url": source_url,
-                    "candidate_url": candidate_url,
-                    "source_documents": source_documents,
-                    "candidate_documents": candidate_documents,
-                    "source_upload_fingerprint": source_upload_fingerprint,
-                    "candidate_upload_fingerprint": candidate_upload_fingerprint,
-                    "reviewed_at": datetime.now(timezone.utc).isoformat(),
-                    "source_pdf": source_pdf,
-                    "candidate_pdf": candidate_pdf,
-                    "review_completed": True,
-                }
-            )
-            st.session_state[review_key] = evidence
-            review_state = evidence
-
-        if review_state:
-            for label, side_key, docs_key in (
-                ("Source", "source_pdf", "source_documents"),
-                ("Candidate", "candidate_pdf", "candidate_documents"),
-            ):
-                documents = [
-                    item for item in review_state.get(docs_key) or [] if isinstance(item, dict)
-                ]
-                if documents:
-                    for document in documents:
-                        name = str(document.get("name") or "PDF")
-                        if document.get("available"):
-                            st.success(
-                                f"{label} Â· {name}: extracted readable text from {document.get('page_count') or 0} page(s)."
-                            )
-                        else:
-                            reason = str(document.get("reason") or "Open the document and review it directly.")
-                            st.warning(f"{label} Â· {name}: {reason}")
-                else:
-                    document = review_state.get(side_key) or {}
-                    if document.get("available"):
-                        st.success(
-                            f"{label}: extracted readable text from {len(document.get('pages') or [])} PDF page(s)."
-                        )
-                    else:
-                        st.warning(f"{label}: no readable PDF text was extracted. Open the document and review it directly.")
-
-            fields = review_state.get("field_evidence") or []
-            if fields:
-                rows_html = []
-                for row in fields:
-                    rows_html.append(
-                        "<tr>"
-                        f"<td>{_esc(row.get('Attribute') or '')}</td>"
-                        f"<td>{_esc(row.get('Original PDF evidence') or 'Not found')}</td>"
-                        f"<td>{_esc(row.get('Candidate PDF evidence') or 'Not found')}</td>"
-                        f"<td>{_esc(row.get('Source pages') or 'Not available')}</td>"
-                        f"<td>{_esc(row.get('Status') or 'Needs data')}</td>"
-                        "</tr>"
-                    )
-                st.markdown(
-                    "<div class='cv-ap-card'><table class='cv-ap-table'><thead><tr>"
-                    "<th>Attribute</th><th>Source datasheet</th><th>Candidate datasheet</th>"
-                    f"<th>Document page</th><th>Finding</th></tr></thead><tbody>{''.join(rows_html)}"
-                    "</tbody></table></div>",
-                    unsafe_allow_html=True,
-                )
-
-            for label, document_key in (("Source", "source"), ("Candidate", "candidate")):
-                document_evidence = review_state.get(document_key) or {}
-                excerpts = document_evidence.get("dimension_evidence") or []
-                with st.expander(
-                    f"{label} package / dimension excerpts ({len(excerpts)})",
-                    expanded=False,
-                ):
-                    if excerpts:
-                        for excerpt in excerpts:
-                            doc_label = str(excerpt.get("document") or "Datasheet")
-                            st.markdown(
-                                f"**{_esc(doc_label)} Â· page {_esc(excerpt.get('page') or '?')}** Â· "
-                                f"{_esc(excerpt.get('excerpt') or '')}"
-                            )
-                    else:
-                        st.caption(
-                            "No text-based package or dimension excerpt was found. Open the package-outline drawing in the PDF; drawings and scanned pages may not be extractable as text."
-                        )
-            st.caption(
-                "These citations point to extracted text; they are not an automatic fit verdict. Confirm the package-outline drawing, dimensions, pin pitch, and pinout in the original manufacturer documents. Image-only pages require direct visual review."
-            )
-
-        st.markdown("**Record values verified from the cited documents**")
-        st.caption(
-            "Cadivor only uses these entries to fill missing catalog or comparison values. A known mismatch cannot be overridden here."
-        )
-
-        def recorded_value(part: dict[str, Any], *keys: str) -> str:
-            return _part_field(part, *keys)
-
-        source_columns = st.columns(2)
-        with source_columns[0]:
-            source_package = st.text_input(
-                "Source package / case",
-                value=recorded_value(original, "package", "Package", "Package / Case"),
-                key=f"cadivor_alt_source_package_{key_suffix}",
-                disabled=bool(recorded_value(original, "package", "Package", "Package / Case")),
-                help="A recorded value is locked so a known mismatch cannot be edited away.",
-            )
-            source_pins = st.text_input(
-                "Source pin count",
-                value=recorded_value(original, "pin_count", "Pin Count", "Number of Pins", "pins"),
-                key=f"cadivor_alt_source_pins_{key_suffix}",
-                disabled=bool(recorded_value(original, "pin_count", "Pin Count", "Number of Pins", "pins")),
-                help="A recorded value is locked so a known mismatch cannot be edited away.",
-            )
-            source_architecture = st.text_input(
-                "Source processor family / ISA (if applicable)",
-                value=recorded_value(original, "architecture", "Device family / architecture", "device_family", "core", "ISA"),
-                key=f"cadivor_alt_source_architecture_{key_suffix}",
-                disabled=bool(recorded_value(original, "architecture", "Device family / architecture", "device_family", "core", "ISA")),
-                help="A recorded value is locked so a known mismatch cannot be edited away.",
-            )
-        with source_columns[1]:
-            candidate_package = st.text_input(
-                "Candidate package / case",
-                value=recorded_value(candidate, "package", "Package", "Package / Case"),
-                key=f"cadivor_alt_candidate_package_{key_suffix}",
-                disabled=bool(recorded_value(candidate, "package", "Package", "Package / Case")),
-                help="A recorded value is locked so a known mismatch cannot be edited away.",
-            )
-            candidate_pins = st.text_input(
-                "Candidate pin count",
-                value=recorded_value(candidate, "pin_count", "Pin Count", "Number of Pins", "pins"),
-                key=f"cadivor_alt_candidate_pins_{key_suffix}",
-                disabled=bool(recorded_value(candidate, "pin_count", "Pin Count", "Number of Pins", "pins")),
-                help="A recorded value is locked so a known mismatch cannot be edited away.",
-            )
-            candidate_architecture = st.text_input(
-                "Candidate processor family / ISA (if applicable)",
-                value=recorded_value(candidate, "architecture", "Device family / architecture", "device_family", "core", "ISA"),
-                key=f"cadivor_alt_candidate_architecture_{key_suffix}",
-                disabled=bool(recorded_value(candidate, "architecture", "Device family / architecture", "device_family", "core", "ISA")),
-                help="A recorded value is locked so a known mismatch cannot be edited away.",
-            )
-            extracted_candidate_lifecycle = next(
-                (
-                    str(row.get("Candidate PDF value") or "").strip()
-                    for row in review_state.get("field_evidence") or []
-                    if isinstance(row, dict) and str(row.get("Key") or "") == "lifecycle_status"
-                ),
-                "",
-            )
-            if extracted_candidate_lifecycle.casefold() in _CANDIDATE_BLANK:
-                extracted_candidate_lifecycle = ""
-            recorded_candidate_lifecycle = _part_field(
-                candidate,
-                "Lifecycle",
-                "Lifecycle Status",
-                "lifecycle_status",
-                "lifecycle",
-                "product_status",
-            )
-            candidate_lifecycle_default = recorded_candidate_lifecycle or extracted_candidate_lifecycle
-            candidate_lifecycle = st.text_input(
-                "Candidate lifecycle status",
-                value=candidate_lifecycle_default,
-                key=f"cadivor_alt_candidate_lifecycle_{key_suffix}",
-                disabled=bool(recorded_candidate_lifecycle),
-                help="Unknown lifecycle is not treated as Active. Enter the manufacturer-confirmed status and cite its document/page.",
-            )
-
-        citation_cols = st.columns(2)
-        with citation_cols[0]:
-            source_reference = st.text_input(
-                "Source citation Â· document / revision / pages",
-                placeholder="Manufacturer datasheet, Rev, package and pinout pages",
-                key=f"cadivor_alt_source_reference_{key_suffix}",
-                help="Cite the pages where you reviewed the package outline, dimensions, pinout, and applicable requirements. Use the linked source PDF above.",
-            )
-        with citation_cols[1]:
-            candidate_reference = st.text_input(
-                "Candidate citation Â· document / revision / pages",
-                placeholder="Manufacturer datasheet, Rev, package and pinout pages",
-                key=f"cadivor_alt_candidate_reference_{key_suffix}",
-                help="Cite the pages where you reviewed the package outline, dimensions, pinout, and applicable requirements. Use the linked candidate PDF above.",
-            )
-
-    attested = bool(
-        st.session_state.get(f"cadivor_alt_document_attestation_{key_suffix}", False)
-    )
-    review_state = dict(review_state or {})
-    review_state["verified_values"] = {
-        "source_package": source_package,
-        "source_pin_count": source_pins,
-        "source_architecture": source_architecture,
-        "candidate_package": candidate_package,
-        "candidate_pin_count": candidate_pins,
-        "candidate_architecture": candidate_architecture,
-        "candidate_lifecycle_status": candidate_lifecycle,
-    }
-    review_state["reviewer_attestation"] = {
-        "confirmed": bool(attested),
-        "source_reference": str(source_reference or "").strip(),
-        "candidate_reference": str(candidate_reference or "").strip(),
-        "recorded_at": datetime.now(timezone.utc).isoformat() if attested else "",
-    }
-    review_state["review_complete"] = bool(
-        attested and str(source_reference or "").strip() and str(candidate_reference or "").strip()
-    )
-    review_state["review_completed"] = bool(review_state.get("review_completed"))
-    review_state["datasheet_review_required"] = has_documents
-    review_state["source_url"] = source_url
-    review_state["candidate_url"] = candidate_url
-    review_state["review_request_key"] = review_request_key
-    return review_state
-
-
-def _approval_evidence_for_comparison(
-    original: dict[str, Any],
-    candidate: dict[str, Any],
-    comparison_evidence: dict[str, Any] | None,
-) -> tuple[dict[str, Any], dict[str, Any], list[str]]:
-    """Fill missing approval fields from the comparison result for this BOM handoff."""
-    source = dict(original or {})
-    alternate = dict(candidate or {})
-    conflicts: list[str] = []
-    evidence = comparison_evidence if isinstance(comparison_evidence, dict) else {}
-    comparison = evidence.get("comparison") if isinstance(evidence.get("comparison"), dict) else {}
-    slot = str(evidence.get("slot") or "Part B")
-    if slot not in {"Part B", "Part C"}:
-        return source, alternate, conflicts
-    card_key = "part_b" if slot == "Part B" else "part_c"
-    source_card = comparison.get("part_a") if isinstance(comparison.get("part_a"), dict) else {}
-    candidate_card = comparison.get(card_key) if isinstance(comparison.get(card_key), dict) else {}
-    rows = comparison.get("rows") if isinstance(comparison.get("rows"), list) else []
-    from src.compatibility_gate import comparison_row_part_values
-
-    source_values = comparison_row_part_values(rows, "Part A")
-    candidate_values = comparison_row_part_values(rows, slot)
-
-    def is_missing(value: Any) -> bool:
-        return str(value or "").strip().casefold() in {
-            "", "â€”", "-", "â€“", "unknown", "not recorded", "not available", "n/a", "none", "nan", "0", "0.0"
-        }
-
-    def package_token(value: Any) -> tuple[str, ...]:
-        import re
-
-        return tuple(sorted(re.findall(r"[a-z]+|\d+(?:\.\d+)?", str(value or "").casefold())))
-
-    for target, values, card, label in (
-        (source, source_values, source_card, "source"),
-        (alternate, candidate_values, candidate_card, "candidate"),
-    ):
-        for key in ("package", "pin_count", "architecture", "lifecycle_status"):
-            matrix_value = values.get(key) or card.get(key)
-            if is_missing(matrix_value):
-                continue
-            current = target.get(key)
-            if not is_missing(current):
-                same = (
-                    package_token(current) == package_token(matrix_value)
-                    if key == "package"
-                    else str(current).strip().casefold() == str(matrix_value).strip().casefold()
-                )
-                if not same and key in {"package", "pin_count", "architecture", "lifecycle_status"}:
-                    conflicts.append(
-                        f"{label.title()} {key.replace('_', ' ')} evidence differs between the alternative search and comparison data."
-                    )
-                continue
-            target[key] = matrix_value
-        if label == "source":
-            if is_missing(target.get("datasheet_url")) and source_card.get("datasheet_url"):
-                target["datasheet_url"] = source_card.get("datasheet_url")
-        else:
-            if is_missing(target.get("datasheet_url")) and candidate_card.get("datasheet_url"):
-                target["datasheet_url"] = candidate_card.get("datasheet_url")
-            if is_missing(target.get("manufacturer_part_number")) and candidate_card.get("mpn"):
-                target["manufacturer_part_number"] = candidate_card.get("mpn")
-            if is_missing(target.get("description")) and candidate_card.get("description"):
-                target["description"] = candidate_card.get("description")
-            if is_missing(target.get("manufacturer")) and candidate_card.get("manufacturer"):
-                target["manufacturer"] = candidate_card.get("manufacturer")
-    return source, alternate, list(dict.fromkeys(conflicts))
-
-
-def _approval_datasheet_snapshot(review: dict[str, Any] | None) -> dict[str, Any]:
-    """Persist a concise evidence trail, never the full PDF text."""
-    review = review if isinstance(review, dict) else {}
-
-    def document_rows(key: str) -> list[dict[str, Any]]:
-        output = []
-        for item in review.get(key) or []:
-            if not isinstance(item, dict):
-                continue
-            output.append(
-                {
-                    "name": str(item.get("name") or "PDF"),
-                    "url": str(item.get("url") or ""),
-                    "available": bool(item.get("available")),
-                    "page_count": int(item.get("page_count") or 0),
-                    "reason": str(item.get("reason") or "")[:240],
-                }
-            )
-        return output[:4]
-
-    def excerpt_rows(key: str) -> list[dict[str, Any]]:
-        output = []
-        side = review.get(key) if isinstance(review.get(key), dict) else {}
-        for item in (side.get("dimension_evidence") or [])[:4]:
-            if not isinstance(item, dict):
-                continue
-            output.append(
-                {
-                    "document": str(item.get("document") or "PDF"),
-                    "page": str(item.get("page") or "?"),
-                    "excerpt": str(item.get("excerpt") or "")[:200],
-                }
-            )
-        return output
-
-    fields = []
-    for row in (review.get("field_evidence") or [])[:12]:
-        if not isinstance(row, dict):
-            continue
-        fields.append(
-            {
-                "attribute": str(row.get("Attribute") or "")[:80],
-                "key": str(row.get("Key") or "")[:80],
-                "source_value": str(row.get("Original PDF value") or "")[:100],
-                "candidate_value": str(row.get("Candidate PDF value") or "")[:100],
-                "source_excerpt": str(row.get("Original PDF evidence") or "")[:180],
-                "candidate_excerpt": str(row.get("Candidate PDF evidence") or "")[:180],
-                "source_page": str(row.get("Original PDF page") or "")[:120],
-                "candidate_page": str(row.get("Candidate PDF page") or "")[:120],
-                "pages": str(row.get("Source pages") or "")[:120],
-                "status": str(row.get("Status") or "Needs data")[:40],
-            }
-        )
-    return {
-        "source_url": str(review.get("source_url") or ""),
-        "candidate_url": str(review.get("candidate_url") or ""),
-        "source_documents": document_rows("source_documents"),
-        "candidate_documents": document_rows("candidate_documents"),
-        "source_dimensions": excerpt_rows("source"),
-        "candidate_dimensions": excerpt_rows("candidate"),
-        "field_evidence": fields,
-        "document_findings": [str(value)[:240] for value in review.get("document_findings") or []][:8],
-        "verified_values": dict(review.get("verified_values") or {}),
-        "reviewer_attestation": dict(review.get("reviewer_attestation") or {}),
-        "review_complete": bool(review.get("review_complete")),
-        "review_completed": bool(review.get("review_completed")),
-        "reviewed_at": str(review.get("reviewed_at") or ""),
-        "interpretation": str(review.get("interpretation") or "")[:500],
-    }
-
-
-def _render_bom_replacement_approvals(
-    *,
-    source_context: Any,
-    query: str,
-    original: dict[str, Any],
-    candidate: dict[str, Any],
-    recorded_from: str = "Find a replacement",
-    comparison_evidence: dict[str, Any] | None = None,
-) -> None:
-    """Show approval and saved-decision status inside one expanded candidate."""
-    from src.approved_alternatives import (
-        approved_records_for_part,
-        candidate_lifecycle_is_blocked,
-        part_key,
-        project_decision_context_key,
-    )
-    from src.normalizer import normalize_part_number
-
-    context = source_context if isinstance(source_context, dict) else {}
-    source_mpn = str(context.get("mpn") or original.get("manufacturer_part_number") or "").strip()
-    candidate_mpn = _candidate_mpn(candidate)
-    query_key = normalize_part_number(query) or str(query or "").strip().upper()
-    source_key = normalize_part_number(source_mpn) or source_mpn.upper()
-    if not query_key or not source_key or query_key != source_key:
-        if query_key:
-            st.info(
-                "To save an approval to a BOM, open Find a replacement from that BOMâ€™s â€œReview alternative partsâ€ action."
-            )
-        return
-
-    analysis_id = str(
-        context.get("analysis_id")
-        or st.session_state.get("cadivor_active_analysis_id")
-        or st.session_state.get("analysis_id")
-        or ""
-    ).strip()
-    project_name = str(
-        context.get("project_name")
-        or context.get("bom_name")
-        or st.session_state.get("project_name")
-        or analysis_id
-    ).strip()
-    if not analysis_id:
-        st.info(
-            "This search is not linked to a saved BOM. Open Find a replacement from the BOM Risk page to record an approval."
-        )
-        return
-    if not candidate_mpn:
-        return
-
-    auth_user = st.session_state.get("user")
-    user_id = (
-        auth_user.get("id")
-        if isinstance(auth_user, dict)
-        else getattr(auth_user, "id", "")
-    ) or st.session_state.get("user_id")
-    user_id = str(user_id or "").strip()
-    if not user_id:
-        st.warning("Sign in again before saving replacement approvals.")
-        return
-
-    candidate_key = part_key(candidate_mpn)
-    widget_suffix = hashlib.sha1(
-        f"{project_decision_context_key(project_name, analysis_id)}|{part_key(source_mpn)}|{candidate_key}".encode("utf-8")
-    ).hexdigest()[:12]
-    approval_anchor = f"cadivor-approval-checklist-{widget_suffix}"
-    st.markdown(
-        f"<a class='cv-approval-jump' href='#{approval_anchor}'>Skip the evidence details and go to review &amp; approval â†“</a>",
-        unsafe_allow_html=True,
-    )
-    approval_original, approval_candidate, comparison_conflicts = _approval_evidence_for_comparison(
-        original,
-        candidate,
-        comparison_evidence,
-    )
-    datasheet_review = _render_datasheet_evidence_review(
-        original=approval_original,
-        candidate=approval_candidate,
-        source_mpn=source_mpn,
-        candidate_mpn=candidate_mpn,
-        key_suffix=widget_suffix,
-    )
-    verified_values = datasheet_review.get("verified_values") or {}
-
-    def _missing_approval_value(value: Any) -> bool:
-        return str(value or "").strip().casefold() in {
-            "", "â€”", "-", "â€“", "unknown", "not recorded", "not available", "not found", "n/a", "none", "nan", "unavailable", "0", "0.0"
-        }
-
-    for target, side in ((approval_original, "source"), (approval_candidate, "candidate")):
-        for field, verified_key in (
-            ("package", f"{side}_package"),
-            ("pin_count", f"{side}_pin_count"),
-            ("architecture", f"{side}_architecture"),
-        ):
-            if _missing_approval_value(target.get(field)) and not _missing_approval_value(verified_values.get(verified_key)):
-                target[field] = verified_values[verified_key]
-                sources = dict(target.get("field_sources") or {})
-                sources[field] = "Reviewer-entered value from cited manufacturer documentation"
-                target["field_sources"] = sources
-    if _missing_approval_value(approval_candidate.get("lifecycle_status")) and not _missing_approval_value(
-        verified_values.get("candidate_lifecycle_status")
-    ):
-        approval_candidate["lifecycle_status"] = verified_values["candidate_lifecycle_status"]
-        approval_candidate["Lifecycle"] = verified_values["candidate_lifecycle_status"]
-
-    document_values: dict[str, dict[str, str]] = {"source": {}, "candidate": {}}
-    for row in datasheet_review.get("field_evidence") or []:
-        if not isinstance(row, dict):
-            continue
-        field = str(row.get("Key") or "")
-        if field not in {"package", "pin_count", "architecture", "lifecycle_status"}:
-            continue
-        for side, value_key in (
-            ("source", "Original PDF value"),
-            ("candidate", "Candidate PDF value"),
-        ):
-            value = str(row.get(value_key) or "").strip()
-            if not _missing_approval_value(value):
-                document_values[side].setdefault(field, value)
-
-    document_source_conflicts = []
-    for target, side in ((approval_original, "source"), (approval_candidate, "candidate")):
-        recorded_payload = _candidate_part_payload(target)
-        for field, extracted_value in document_values[side].items():
-            recorded_value = recorded_payload.get(field)
-            if _missing_approval_value(recorded_value):
-                target[field] = extracted_value
-                if side == "candidate" and field == "lifecycle_status" and _missing_approval_value(target.get("Lifecycle")):
-                    target["Lifecycle"] = extracted_value
-                sources = dict(target.get("field_sources") or {})
-                sources[field] = "Page-cited manufacturer PDF text"
-                target["field_sources"] = sources
-                continue
-            probe = dict(recorded_payload)
-            probe[field] = extracted_value
-            discrepancy = assess_part_compatibility(recorded_payload, probe)
-            mismatch = (
-                package_document_conflicts(recorded_value, extracted_value)
-                if field == "package"
-                else discrepancy.get("pin_count_mismatch")
-                if field == "pin_count"
-                else discrepancy.get("architecture_mismatch")
-                if field == "architecture"
-                else False
-            )
-            if mismatch:
-                document_source_conflicts.append(
-                    f"The {side} catalog/comparison value for {field.replace('_', ' ')} conflicts with its manufacturer datasheet."
-                )
-            elif field == "lifecycle_status" and str(recorded_value or "").strip().casefold() != extracted_value.casefold():
-                document_source_conflicts.append(
-                    f"The {side} catalog/comparison lifecycle status conflicts with its manufacturer datasheet."
-                )
-
-    # A documented explicit lifecycle status can fill a missing supplier status;
-    # it can also block a candidate when the manufacturer PDF says EOL/obsolete.
-    candidate_lifecycle_evidence = next(
-        (
-            str(row.get("Candidate PDF value") or "").strip()
-            for row in datasheet_review.get("field_evidence") or []
-            if isinstance(row, dict) and str(row.get("Key") or "") == "lifecycle_status"
-        ),
-        "",
-    )
-    if _missing_approval_value(approval_candidate.get("lifecycle_status")) and candidate_lifecycle_evidence:
-        approval_candidate["lifecycle_status"] = candidate_lifecycle_evidence
-        if _missing_approval_value(approval_candidate.get("Lifecycle")):
-            approval_candidate["Lifecycle"] = candidate_lifecycle_evidence
-
-    compatibility = assess_part_compatibility(
-        approval_original,
-        _candidate_part_payload(approval_candidate),
-    )
-    from src.datasheet_comparison import compare_datasheet_dimension_evidence
-
-    datasheet_conflicts = document_source_conflicts + compare_datasheet_dimension_evidence(
-        (datasheet_review.get("source") or {}).get("dimension_evidence") or [],
-        (datasheet_review.get("candidate") or {}).get("dimension_evidence") or [],
-    )
-    datasheet_conflicts = list(dict.fromkeys(datasheet_conflicts))
-    datasheet_review["document_findings"] = datasheet_conflicts
-    datasheet_lifecycle_blocked = candidate_lifecycle_is_blocked(
-        {"lifecycle_status": candidate_lifecycle_evidence}
-    ) if candidate_lifecycle_evidence else False
-    compatibility_blocked = bool(
-        compatibility.get("blocked_from_drop_in_approval")
-        or compatibility.get("requires_acknowledgement")
-        or comparison_conflicts
-        or datasheet_conflicts
-    )
-    st.markdown(f"<div id='{approval_anchor}'></div>", unsafe_allow_html=True)
-    st.markdown("#### Engineering approval")
-    st.caption(
-        "Review the checks below, cite the pages you inspected, then confirm your review. The confirmation does not save the decision; use the approval button at the end."
-    )
-    attested = st.checkbox(
-        "I reviewed both documents, including package dimensions, pinout, and applicable electrical or firmware requirements.",
-        key=f"cadivor_alt_document_attestation_{widget_suffix}",
-    )
-    st.caption("This checkbox records your review. It does not approve the part by itself.")
-    reviewer_attestation = dict(datasheet_review.get("reviewer_attestation") or {})
-    reviewer_attestation["confirmed"] = bool(attested)
-    reviewer_attestation["recorded_at"] = (
-        datetime.now(timezone.utc).isoformat() if attested else ""
-    )
-    datasheet_review["reviewer_attestation"] = reviewer_attestation
-    datasheet_review["review_complete"] = bool(
-        attested
-        and str(reviewer_attestation.get("source_reference") or "").strip()
-        and str(reviewer_attestation.get("candidate_reference") or "").strip()
-    )
-    review_references_complete = bool(datasheet_review.get("review_complete"))
-    linked_documents_reviewed = bool(
-        not datasheet_review.get("datasheet_review_required")
-        or datasheet_review.get("review_completed")
-    )
-    lifecycle_blocked = bool(
-        candidate_lifecycle_is_blocked(approval_candidate)
-        or datasheet_lifecycle_blocked
-    )
-    candidate_lifecycle_value = _part_field(
-        approval_candidate,
-        "Lifecycle",
-        "Lifecycle Status",
-        "lifecycle_status",
-        "lifecycle",
-        "product_status",
-    ).casefold()
-    lifecycle_verified = any(
-        token in candidate_lifecycle_value
-        for token in (
-            "active",
-            "in production",
-            "nrnd",
-            "not recommended for new designs",
-        )
-    )
-    lifecycle_nrnd = "nrnd" in candidate_lifecycle_value or "not recommended for new designs" in candidate_lifecycle_value
-
-    context_key = project_decision_context_key(project_name, analysis_id)
-    try:
-        from src.authenticated_runtime import load_analysis_decisions
-
-        records: list[dict[str, Any]] = []
-        for decision_context in dict.fromkeys((context_key, analysis_id)):
-            records.extend(
-                load_analysis_decisions(
-                    user_id,
-                    analysis_id=decision_context,
-                    limit=500,
-                )
-                or []
-            )
-        records.extend(
-            load_analysis_decisions(
-                user_id,
-                project_name=project_name,
-                limit=500,
-            )
-            or []
-        )
-    except Exception as exc:
-        st.error(f"Could not load saved approvals for this BOM: {exc}")
-        return
-
-    existing_records = [
-        row
-        for row in records
-        if isinstance(row, dict)
-        and str(row.get("decision") or "").strip().casefold() == "approved"
-        and part_key(row.get("original_part")) == part_key(source_mpn)
-        and part_key(row.get("alternative_part"))
-        and part_key(row.get("alternative_part")) != part_key(source_mpn)
-    ]
-    existing = approved_records_for_part(
-        existing_records,
-        source_mpn,
-        project_name=project_name,
-        analysis_id=analysis_id,
-    )
-    flash = st.session_state.pop("cadivor_approved_alternatives_flash", "")
-    if flash:
-        st.success(str(flash))
-
-    current = next(
-        (row for row in existing if part_key(row.get("alternative_part")) == candidate_key),
-        None,
-    )
-    approved_names = [
-        str(row.get("alternative_part") or "").strip()
-        for row in existing
-        if str(row.get("alternative_part") or "").strip()
-    ]
-    if approved_names:
-        st.caption(
-            f"Approved for this BOM ({len(approved_names)}/3): "
-            + ", ".join(approved_names)
-        )
-    if current:
-        if compatibility_blocked:
-            st.error(
-                f"A saved approval for {candidate_mpn} is blocked by the current compatibility gate. "
-                "Review the mismatch and remove the saved approval if it is no longer valid."
-            )
-        else:
-            st.success(f"{candidate_mpn} is approved for {project_name}.")
-        saved_note = str(current.get("engineering_note") or "").strip()
-        if saved_note:
-            st.caption(f"Saved review note: {saved_note}")
-    st.caption(
-        "This records your teamâ€™s decision; it does not certify electrical or mechanical compatibility."
-    )
-    st.caption(
-        "Saved approvals stay with this BOM across analysis reruns and appear in its Risk and Alternatives views."
-    )
-
-    previous_note = str(current.get("engineering_note") or "") if current else ""
-    note_value = st.text_area(
-        "Engineering approval note (supply continuity plan required for NRND)" if lifecycle_nrnd else "Engineering approval note (optional)",
-        value=previous_note,
-        placeholder=(
-            "Record the supply-continuity plan for this NRND part."
-            if lifecycle_nrnd
-            else "For example: datasheet, package, pinout, and operating range reviewed."
-        ),
-        height=72,
-        key=f"cadivor_approved_alternative_note_{widget_suffix}",
-    )
-    can_approve = (
-        not lifecycle_blocked
-        and lifecycle_verified
-        and (not lifecycle_nrnd or bool(str(note_value or "").strip()))
-        and not compatibility_blocked
-        and review_references_complete
-        and linked_documents_reviewed
-        and (current is not None or len(approved_names) < 3)
-    )
-    reviewer_attestation = datasheet_review.get("reviewer_attestation") or {}
-    reviewer_attestation = reviewer_attestation if isinstance(reviewer_attestation, dict) else {}
-    missing_review_steps = []
-    if not str(reviewer_attestation.get("source_reference") or "").strip():
-        missing_review_steps.append("add the source document revision and pages you checked")
-    if not str(reviewer_attestation.get("candidate_reference") or "").strip():
-        missing_review_steps.append("add the candidate document revision and pages you checked")
-    if not reviewer_attestation.get("confirmed"):
-        missing_review_steps.append("confirm your review in this approval section")
-    if lifecycle_nrnd and not str(note_value or "").strip():
-        missing_review_steps.append("record the NRND supply-continuity plan")
-    if current is None and len(approved_names) >= 3:
-        missing_review_steps.append("remove one approved alternative; this BOM is at the three-part limit")
-
-    blockers: list[str] = []
-    if lifecycle_blocked:
-        blockers.append(
-            "This candidate is obsolete, discontinued, or end of life. Choose a different candidate."
-        )
-    elif not lifecycle_verified:
-        blockers.append(
-            "Candidate lifecycle is not verified as Active or NRND. Confirm it from a manufacturer source."
-        )
-    if compatibility.get("blocked_from_drop_in_approval"):
-        blockers.extend(compatibility.get("critical_warnings") or [
-            "The physical package or processor architecture is incompatible. Choose another candidate."
-        ])
-    elif comparison_conflicts or datasheet_conflicts:
-        blockers.extend(comparison_conflicts + datasheet_conflicts)
-    elif compatibility.get("requires_acknowledgement"):
-        blockers.extend(compatibility.get("review_warnings") or [
-            "Package, pin count, or processor architecture still needs verification."
-        ])
-    if not linked_documents_reviewed:
-        blockers.append("Wait for the linked datasheet analysis, then inspect both documents.")
-    blockers.extend(missing_review_steps)
-
-    with st.container(key=f"cadivor_approval_actions_{widget_suffix}"):
-        st.markdown("**Approval status**")
-        if can_approve:
-            next_action = "Update approval" if current else "Approve this alternative"
-            st.success(
-                f"Review complete. Click â€œ{next_action}â€ below to save the decision to this BOM."
-            )
-        elif compatibility.get("blocked_from_drop_in_approval") or lifecycle_blocked:
-            st.error("This candidate cannot be approved as a direct replacement.")
-        else:
-            st.warning("Approval is locked. Complete the items below; the button will enable when they pass.")
-        if blockers:
-            st.markdown("\n".join(f"- {item}" for item in dict.fromkeys(blockers)))
-        if not linked_documents_reviewed:
-            review_request_key = str(datasheet_review.get("review_request_key") or "")
-            if review_request_key:
-                st.button(
-                    "Analyze linked datasheets",
-                    key=f"cadivor_alt_datasheet_review_bottom_{widget_suffix}",
-                    type="secondary",
-                    on_click=_request_datasheet_review,
-                    args=(review_request_key,),
-                    help="Analyze the available supplier PDFs before continuing.",
-                )
-        st.caption(
-            "Your checkbox confirms the review; it does not save the BOM decision. Saved approvals appear in this BOMâ€™s Risk and Alternatives views."
-        )
-
-        st.markdown(
-            f"""
-            <style>
-            html body section[data-testid="stMain"] .st-key-cadivor_approval_actions_{widget_suffix} .stButton > button[kind="primary"]:disabled {{
-              background:#e2e8f0 !important; background-color:#e2e8f0 !important;
-              border:1px solid #cbd5e1 !important; color:#64748b !important;
-              box-shadow:none !important; opacity:1 !important; cursor:not-allowed !important;
-              transform:none !important;
-            }}
-            html body section[data-testid="stMain"] .st-key-cadivor_approval_actions_{widget_suffix} .stButton > button[kind="primary"]:disabled * {{
-              color:#64748b !important; background:transparent !important;
-            }}
-            .cv-approval-jump {{
-              display:inline-block; margin:4px 0 12px; padding:8px 12px;
-              color:#1d4ed8; background:#eff6ff; border:1px solid #bfdbfe;
-              border-radius:8px; font-size:13px; font-weight:700; text-decoration:none;
-            }}
-            </style>
-            """,
-            unsafe_allow_html=True,
-        )
-        save_clicked = st.button(
-            (
-                "Update approval" if current else "Approve this alternative"
-            ) if can_approve else "Approval locked â€” resolve the items above",
-            key=f"cadivor_approved_alternative_save_{widget_suffix}",
-            type="primary",
-            disabled=not can_approve,
-            use_container_width=True,
-        )
-    remove_clicked = False
-    if current:
-        remove_clicked = st.button(
-            "Remove approval",
-            key=f"cadivor_approved_alternative_remove_{widget_suffix}",
-            use_container_width=True,
-        )
-
-    if save_clicked and (
-        lifecycle_blocked
-        or not lifecycle_verified
-        or (lifecycle_nrnd and not str(note_value or "").strip())
-        or compatibility_blocked
-        or not review_references_complete
-        or not linked_documents_reviewed
-    ):
-        st.error("Cadivor blocked this approval because required compatibility or documentation review checks are incomplete.")
-        return
-    if not save_clicked and not remove_clicked:
-        return
-
-    from src.authenticated_runtime import archive_analysis_decision, save_analysis_decision
-
-    if remove_clicked:
-        try:
-            for row in existing_records:
-                if (
-                    part_key(row.get("alternative_part")) == candidate_key
-                    and row.get("id")
-                ):
-                    archive_analysis_decision(user_id, row["id"])
-        except Exception as exc:
-            st.error(f"Could not remove this approval: {exc}")
-            return
-        st.session_state["cadivor_approved_alternatives_flash"] = (
-            f"Approval for {candidate_mpn} removed from {project_name}."
-        )
-        if _navigate_back_to_bom_review(context):
-            st.rerun()
-            return
-        st.rerun()
-        return
-
-    profile = st.session_state.get("profile")
-    profile = profile if isinstance(profile, dict) else {}
-    user_metadata = getattr(auth_user, "user_metadata", {}) or {}
-    if not isinstance(user_metadata, dict):
-        user_metadata = {}
-    engineer_name = str(
-        profile.get("full_name")
-        or profile.get("name")
-        or user_metadata.get("full_name")
-        or user_metadata.get("name")
-        or (auth_user.get("email") if isinstance(auth_user, dict) else getattr(auth_user, "email", ""))
-        or "Cadivor user"
-    ).strip()
-
-    def _number_value(row: dict[str, Any], *keys: str) -> float:
-        for key in keys:
-            try:
-                number = float(row.get(key))
-            except (TypeError, ValueError):
-                continue
-            if number == number and number not in (float("inf"), float("-inf")):
-                return number
-        return 0.0
-
-    supplier = str(
-        candidate.get("Supplier")
-        or candidate.get("supplier")
-        or candidate.get("Manufacturer")
-        or candidate.get("manufacturer")
-        or ""
-    ).strip()
-    comparison_rows_snapshot = []
-    comparison = comparison_evidence.get("comparison") if isinstance(comparison_evidence, dict) else {}
-    comparison_rows = comparison.get("rows") if isinstance(comparison, dict) else []
-    for row in comparison_rows or []:
-        if not isinstance(row, dict):
-            continue
-        comparison_rows_snapshot.append(
-            {
-                "attribute": str(row.get("Attribute") or "")[:100],
-                "part_a": str(row.get("Part A") or "")[:120],
-                "part_b": str(row.get("Part B") or "")[:120],
-                "part_c": str(row.get("Part C") or "")[:120],
-                "assessment": str(row.get("Assessment") or row.get("Status") or "")[:60],
-                "evidence": str(row.get("Evidence") or "")[:200],
-            }
-        )
-        if len(comparison_rows_snapshot) >= 24:
-            break
-    compatibility_warnings = list(
-        dict.fromkeys(
-            list(compatibility.get("critical_warnings") or [])
-            + list(compatibility.get("review_warnings") or [])
-            + comparison_conflicts
-            + datasheet_conflicts
-        )
-    )
-    payload = {
-        "analysis_id": analysis_id,
-        "context_key": context_key,
-        "project_name": project_name,
-        "engineer_name": engineer_name,
-        "original_part": source_mpn,
-        "alternative_part": candidate_mpn,
-        "decision": "Approved",
-        "engineering_note": str(note_value or "").strip(),
-        "recommendation_score": int(_number_value(candidate, "Recommendation Score", "recommendation_score")),
-        "recommendation_rating": "User approved",
-        "compatibility_confidence": int(_number_value(candidate, "Compatibility Confidence", "compatibility_confidence")),
-        "compatibility_rating": "User decision; compatibility not independently certified",
-        "lifecycle": str(approval_candidate.get("Lifecycle") or approval_candidate.get("lifecycle_status") or ""),
-        "risk": str(candidate.get("Estimated Risk") or candidate.get("risk_level") or candidate.get("risk") or ""),
-        "supplier": supplier,
-        "stock": int(_number_value(candidate, "Stock", "stock_total", "stock_available")),
-        "unit_price": _number_value(candidate, "Unit Price", "unit_price", "price"),
-        "package": str(approval_candidate.get("Package") or approval_candidate.get("package") or ""),
-        "source_snapshot": {
-            "original": approval_original,
-            "selected_alternative": approval_candidate,
-        },
-        "comparison_snapshot": {
-            "recorded_from": str(recorded_from or "Find a replacement"),
-            "comparison_slot": str(comparison_evidence.get("slot") or "") if isinstance(comparison_evidence, dict) else "",
-            "comparison_matrix": comparison_rows_snapshot,
-            "comparison_data_conflicts": comparison_conflicts,
-            "datasheet_review": _approval_datasheet_snapshot(datasheet_review),
-            "compatibility_review": {
-                "summary": str(compatibility.get("drop_in_status") or ""),
-                "warnings": compatibility_warnings,
-                "source_package": compatibility.get("source_package"),
-                "candidate_package": compatibility.get("candidate_package"),
-                "source_pin_count": compatibility.get("source_pin_count"),
-                "candidate_pin_count": compatibility.get("candidate_pin_count"),
-                "source_architecture": compatibility.get("source_architecture"),
-                "candidate_architecture": compatibility.get("candidate_architecture"),
-                "datasheet_package_or_isa_conflicts": datasheet_conflicts,
-                "reviewer_attested": review_references_complete,
-            },
-        },
-    }
-    try:
-        saved = save_analysis_decision(user_id, payload)
-        saved_id = saved.get("id") if isinstance(saved, dict) else None
-        for row in existing_records:
-            if (
-                part_key(row.get("alternative_part")) == candidate_key
-                and row.get("id")
-                and row.get("id") != saved_id
-            ):
-                archive_analysis_decision(user_id, row["id"])
-    except Exception as exc:
-        st.error(f"Could not save the approved alternative: {exc}")
-        return
-
-    st.session_state["cadivor_approved_alternatives_flash"] = (
-        f"{candidate_mpn} approved for {project_name} and saved to this BOM."
-    )
-    if _navigate_back_to_bom_review(context):
-        st.rerun()
-        return
-    st.rerun()
-
-
-def _approved_flow_stepper_markup(labels: tuple[str, ...], active_step: int = 1) -> str:
-    """Render the non-interactive progress indicator for the approved workflows."""
-    parts: list[str] = []
-    for index, label in enumerate(labels, start=1):
-        active = index == active_step
-        complete = index < active_step
-        state = " current" if active else " complete" if complete else ""
-        aria_current = " aria-current='step'" if active else ""
-        node = "âœ“" if complete else str(index)
-        parts.append(
-            f"<span class='cv-ap-flow-step{state}'{aria_current}>"
-            f"<span class='cv-ap-flow-node'>{node}</span>"
-            f"<span>{_esc(label)}</span></span>"
-        )
-        if index < len(labels):
-            parts.append("<span class='cv-ap-flow-line' aria-hidden='true'></span>")
-    return (
-        "<nav class='cv-ap-flow' aria-label='Workflow steps'>"
-        + "".join(parts)
-        + f"<span class='cv-ap-flow-status'>STEP {active_step} OF {len(labels)}</span></nav>"
-    )
-
-
-def _render_replacement_search_waiting_state() -> None:
-    """Show the empty Finder state without implying that the search has run."""
-    search_icon = (
-        "<svg viewBox='0 0 24 24' aria-hidden='true'><circle cx='10.5' cy='10.5' r='6.5' "
-        "fill='none' stroke='currentColor' stroke-width='1.8'/><path d='m15.5 15.5 5 5' "
-        "fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round'/></svg>"
-    )
-    shield_icon = (
-        "<svg viewBox='0 0 24 24' aria-hidden='true'><path d='M12 3 20 6v5c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6z' "
-        "fill='none' stroke='currentColor' stroke-width='1.8' stroke-linejoin='round'/></svg>"
-    )
-    package_icon = (
-        "<svg viewBox='0 0 24 24' aria-hidden='true'><path d='m12 3 9 5v8l-9 5-9-5V8zM3.5 8 12 13l8.5-5M12 13v8' "
-        "fill='none' stroke='currentColor' stroke-width='1.8' stroke-linejoin='round'/></svg>"
-    )
-    book_icon = (
-        "<svg viewBox='0 0 24 24' aria-hidden='true'><path d='M4 4h12a3 3 0 0 1 3 3v13H7a3 3 0 0 1-3-3zM7 4v16M10 9h6M10 13h6' "
-        "fill='none' stroke='currentColor' stroke-width='1.8' stroke-linejoin='round'/></svg>"
-    )
-    st.markdown(
-        f"""
-        <section class="cv-ap-waiting" aria-label="Replacement candidates">
-          <div class="cv-ap-waiting-head"><h2>Replacement candidates</h2>
-            <span class="cv-ap-waiting-status">WAITING FOR SEARCH</span></div>
-          <div class="cv-ap-waiting-intro"><span class="cv-ap-waiting-icon">{search_icon}</span>
-            <div><h3>Search for a part to begin</h3>
-              <p>Supplier-backed candidate rows will appear here after the MPN search finishes.</p></div>
-          </div>
-          <p class="cv-ap-review-label">Review before approval</p>
-          <div class="cv-ap-review-grid">
-            <article class="cv-ap-review-item"><div class="cv-ap-review-item-head">{shield_icon}Compatibility evidence</div>
-              <p>Package, pin count, and architecture need engineering review.</p></article>
-            <article class="cv-ap-review-item"><div class="cv-ap-review-item-head">{package_icon}Supplier evidence</div>
-              <p>Lifecycle, stock, and source links appear when available.</p></article>
-            <article class="cv-ap-review-item"><div class="cv-ap-review-item-head">{book_icon}Datasheet review</div>
-              <p>Check cited dimensions and source documents before sign-off.</p></article>
-          </div>
-        </section>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-def render_replacement_search() -> None:
-    """Find-a-replacement layout wired to the live alternative search."""
-    begin_approved_page()
-    from src.approved_alternatives import (
-        candidate_lifecycle_is_blocked,
-        part_key,
-        toggle_comparison_candidate,
-    )
-    from src.alternative_finder_state import (
-        has_durable_search_for_mpn,
-        init_alternative_finder_state,
-    )
-    from src.ui.navigation import (
-        ALT_FINDER_RETURN_DECISION_ID_KEY,
-        ALT_FINDER_RETURN_MPN_KEY,
-        ALT_FINDER_RETURN_PAGE_KEY,
-        apply_alternative_finder_prefill,
-        consume_alternative_finder_context,
-        reveal_authenticated_page_body,
-    )
-
-    init_alternative_finder_state(st.session_state)
-
-    def _query_param(key: str, default: str = "") -> str:
-        try:
-            value = st.query_params.get(key, default)
-        except Exception:
-            return default
-        if isinstance(value, (list, tuple)):
-            value = value[-1] if value else default
-        return str(value or default)
-
-    navigation_context = consume_alternative_finder_context(_query_param)
-    if navigation_context:
-        apply_alternative_finder_prefill(navigation_context)
-        source_context = dict(
-            st.session_state.get("alternative_prefill_source_context") or {}
-        )
-        for context_key in (
-            "description",
-            "source_page",
-            "analysis_id",
-            "project_name",
-            "bom_name",
-            "mpn",
-            "prefill_id",
-            "return_analysis_id",
-            "return_page",
-            "return_mpn",
-            "return_decision_id",
-        ):
-            if navigation_context.get(context_key):
-                source_context[context_key] = navigation_context[context_key]
-        st.session_state["alternative_prefill_source_context"] = source_context
-        # The approved renderer owns the visible input. Populate its key before
-        # constructing the widget so the clicked MPN appears on the first render.
-        clicked_mpn = str(navigation_context.get("mpn") or "").strip()
-        if clicked_mpn:
-            st.session_state["approved_replacement_query"] = clicked_mpn
-            st.session_state["cadivor_replacement_query"] = clicked_mpn
-    source_context = st.session_state.get("alternative_prefill_source_context")
-    source_context = source_context if isinstance(source_context, dict) else {}
-    return_target = str(source_context.get("source_page") or "")
-    return_page = str(source_context.get("return_page") or "").strip()
-    return_decision_id = str(source_context.get("return_decision_id") or "").strip()
-    return_analysis_id = str(
-        source_context.get("return_analysis_id") or source_context.get("analysis_id") or ""
-    ).strip()
-    return_label = {
-        "engineering_intelligence_review": "â† Back to BOM Risk",
-        "detailed_risk_report": "â† Back to Detailed Risk Report",
-    }.get(return_target, "â† Back to BOM")
-    if return_page == "Engineering Decisions" and return_decision_id:
-        if st.button(
-            "â† Back to decision review",
-            key=(
-                "cadivor_replacement_return_decision_"
-                f"{hashlib.sha1(return_decision_id.encode('utf-8')).hexdigest()[:12]}"
-            ),
-            type="secondary",
-        ):
-            for state_key in (
-                ALT_FINDER_RETURN_PAGE_KEY,
-                ALT_FINDER_RETURN_MPN_KEY,
-                ALT_FINDER_RETURN_DECISION_ID_KEY,
-            ):
-                st.session_state.pop(state_key, None)
-            navigate_to("Engineering Decisions", decision_id=return_decision_id)
-            st.rerun()
-    elif return_analysis_id and st.button(
-        return_label,
-        key=f"cadivor_replacement_return_{hashlib.sha1(return_analysis_id.encode('utf-8')).hexdigest()[:12]}",
-        type="secondary",
-    ):
-        if _navigate_back_to_bom_review(source_context):
-            st.rerun()
-    st.session_state.setdefault(
-        "approved_replacement_query",
-        str(st.session_state.get("cadivor_replacement_query") or ""),
-    )
-    st.markdown(
-        "<div class='cv-ap'><h1>Find a replacement</h1>"
-        "<p class='cv-ap-sub'>Search a source part, then review supplier evidence and compare compatible candidates.</p></div>",
-        unsafe_allow_html=True,
-    )
-    flow_stepper = st.empty()
-    flow_stepper.markdown(
-        _approved_flow_stepper_markup(
-            ("Enter part", "Review candidates", "Compare and record"),
-            active_step=1,
-        ),
-        unsafe_allow_html=True,
-    )
-    with st.container(key="approved_replacement_search_card"):
-        st.markdown(
-            "<div class='cv-ap-entry-heading'><span class='cv-ap-entry-icon'>"
-            "<svg viewBox='0 0 24 24' aria-hidden='true'><circle cx='10.5' cy='10.5' r='6.5' "
-            "fill='none' stroke='currentColor' stroke-width='1.8'/><path d='m15.5 15.5 5 5' "
-            "fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round'/></svg>"
-            "</span><div><p>SOURCE COMPONENT</p><h2>Find alternatives for a part</h2></div></div>"
-            "<p class='cv-ap-entry-copy'>Enter the manufacturer part number to search supplier catalogs.</p>",
-            unsafe_allow_html=True,
-        )
-        search_col, button_col = st.columns([5, 1], vertical_alignment="bottom")
-        with search_col:
-            query = st.text_input(
-                "Manufacturer part number",
-                key="approved_replacement_query",
-                placeholder="e.g., LM7805ACT",
-            )
-        with button_col:
-            run = st.button("Search", key="approved_replacement_search", type="primary")
-        st.markdown(
-            "<p class='cv-ap-replacement-note'>Search results appear after the search completes.</p>"
-            "<div class='cv-ap-context-note'><svg viewBox='0 0 24 24' aria-hidden='true'>"
-            "<path d='M12 3 21 8v8l-9 5-9-5V8z' fill='none' stroke='currentColor' stroke-width='1.8'/>"
-            "</svg><span>Working from a saved BOM? Start from the component action menu to keep this search linked to that analysis.</span></div>",
-            unsafe_allow_html=True,
-        )
-    # Reveal the real Finder content before the blocking supplier lookup. The
-    # opaque route cover should not sit over the active page while results load.
-    reveal_authenticated_page_body("Alternative Finder")
-    query = str(query or st.session_state.get("approved_replacement_query") or "").strip()
-    result = st.session_state.get("alternative_finder_result")
-    prefilled_search_pending = bool(
-        st.session_state.pop("alternative_prefill_search_pending", False)
-    )
-    if (run or prefilled_search_pending) and query:
-        from src.alternative_finder_search import run_alternative_finder_search
-
-        with st.spinner(f"Searching supplier catalogs for {query}â€¦"):
-            run_alternative_finder_search(st.session_state, query)
-        result = st.session_state.get("alternative_finder_result")
-    original = {}
-    candidates: list[dict[str, Any]] = []
-    if isinstance(result, dict):
-        original = result.get("original_data") if isinstance(result.get("original_data"), dict) else {}
-        raw_candidates = result.get("candidates") or result.get("alternative_candidates") or []
-        candidates = [row for row in raw_candidates if isinstance(row, dict)]
-    if isinstance(source_context, dict) and query:
-        from src.normalizer import normalize_part_number
-
-        context_mpn = str(source_context.get("mpn") or "").strip()
-        if (
-            context_mpn
-            and (normalize_part_number(context_mpn) or context_mpn.upper())
-            == (normalize_part_number(query) or query.upper())
-        ):
-            # Keep the clicked source visible even when a supplier has no exact
-            # catalog record for it.
-            original = dict(original)
-            original["manufacturer_part_number"] = context_mpn
-            for field, context_field in (
-                ("manufacturer", "manufacturer"),
-                ("description", "description"),
-                ("lifecycle", "lifecycle"),
-                ("risk_level", "risk"),
-            ):
-                if not str(original.get(field) or "").strip():
-                    original[field] = source_context.get(context_field) or ""
-    search_completed = has_durable_search_for_mpn(st.session_state, query)
-    flow_stepper.markdown(
-        _approved_flow_stepper_markup(
-            ("Enter part", "Review candidates", "Compare and record"),
-            active_step=2 if search_completed else 1,
-        ),
-        unsafe_allow_html=True,
-    )
-    if not search_completed:
-        # The initial Finder view is only a search form. Keep a stale prior
-        # result hidden while the user edits a new query; show results and
-        # filters only after that exact MPN has finished searching.
-        st.session_state["approved_replacement_compare_candidates"] = []
-        _render_replacement_search_waiting_state()
-        return
-    supplier_candidate_count = len(candidates)
-    if supplier_candidate_count:
-        fit_filter, life_filter, stock_filter, risk_filter, sort_by = st.columns(5)
-        with fit_filter:
-            fit_choice = st.selectbox("Parametric fit", ["All"], key="approved_fit_filter")
-        with life_filter:
-            life_choice = st.selectbox("Lifecycle", ["All", "Active", "NRND", "Obsolete"], key="approved_life_filter")
-        with stock_filter:
-            stock_choice = st.selectbox("Stock", ["All", "In stock", "No stock"], key="approved_stock_filter")
-        with risk_filter:
-            risk_choice = st.selectbox(
-                "Risk",
-                ["All", "High", "Medium", "Low", "Needs verification"],
-                key="approved_risk_filter",
-            )
-        with sort_by:
-            sort_choice = st.selectbox("Sort by", ["Overall match", "Stock", "Risk"], key="approved_replacement_sort")
-    else:
-        # Don't show inert filter controls when the supplier search returned no
-        # component rows. The empty state below explains what the user can do.
-        fit_choice = life_choice = stock_choice = risk_choice = sort_choice = "All"
-    filtered = []
-    for row in candidates:
-        level = str(row.get("Estimated Risk") or row.get("risk_level") or row.get("risk") or "")
-        lifecycle = str(row.get("Lifecycle") or row.get("lifecycle_status") or row.get("lifecycle") or "")
-        stock_value = _candidate_stock(row)
-        if life_choice != "All" and life_choice.casefold() not in lifecycle.casefold():
-            continue
-        if risk_choice != "All" and risk_choice.casefold() not in level.casefold():
-            continue
-        if stock_choice == "In stock" and stock_value <= 0:
-            continue
-        if stock_choice == "No stock" and stock_value > 0:
-            continue
-        filtered.append(row)
-    if sort_choice == "Stock":
-        filtered.sort(key=_candidate_stock, reverse=True)
-    elif sort_choice == "Risk":
-        filtered.sort(key=lambda row: str(row.get("Estimated Risk") or row.get("risk_level") or ""))
-    named = [row for row in filtered if _candidate_mpn(row)]
-    dropped = len(filtered) - len(named)
-    excluded_obsolete = [row for row in named if candidate_lifecycle_is_blocked(row)]
-    # Explicit obsolete/EOL records can be inspected, but must never appear as
-    # replacement-ready choices or enter comparison/approval selection.
-    candidates = (
-        []
-        if life_choice.casefold() == "obsolete"
-        else [row for row in named if not candidate_lifecycle_is_blocked(row)]
-    )
-    del fit_choice
-    mpn = _esc(original.get("manufacturer_part_number") or original.get("mpn") or (query or "Search an MPN"))
-    manufacturer = _esc(original.get("manufacturer") or original.get("Manufacturer") or original.get("manufacturer_name") or "â€”")
-    description = _esc(original.get("description") or original.get("category") or "")
-    notice = ""
-    lookup_error = ""
-    search_error = ""
-    candidate_status = ""
-    if isinstance(result, dict):
-        lookup_error = str(result.get("lookup_error") or "").strip()
-        search_error = str(result.get("search_error") or "").strip()
-        discovery = result.get("discovery_metadata")
-        if isinstance(discovery, dict):
-            candidate_status = str(discovery.get("candidate_status") or "").strip()
-    source_notice = lookup_error
-    candidate_notice = ""
-    if query.strip() and isinstance(result, dict) and not candidates and excluded_obsolete:
-        candidate_notice = (
-            f"{len(excluded_obsolete)} supplier match{'es' if len(excluded_obsolete) != 1 else ''} "
-            "marked obsolete or end of life. Cadivor excluded these from replacement selection."
-        )
-    elif query.strip() and isinstance(result, dict) and not supplier_candidate_count:
-        candidate_notice = search_error or candidate_status or "No replacement candidates were returned for this part."
-    elif dropped:
-        candidate_notice = (
-            f"{dropped} supplier row{'s' if dropped != 1 else ''} had no part number "
-            f"and {'were' if dropped != 1 else 'was'} left out."
-        )
-    elif excluded_obsolete:
-        candidate_notice = (
-            f"{len(excluded_obsolete)} obsolete or end-of-life supplier match"
-            f"{'es' if len(excluded_obsolete) != 1 else ''} excluded from replacement selection."
-        )
-    notice = candidate_notice
-    shown = candidates[:25]
-    if len(candidates) > len(shown) and not notice:
-        notice = f"Showing {len(shown)} of {len(candidates)} supplier alternatives."
-    notice_html = f"<p class='cv-ap-sub'>{_esc(notice)}</p>" if notice and shown else ""
-    source_html = f"<p class='cv-ap-sub'>{_esc(source_notice)}</p>" if source_notice else ""
-    st.markdown(
-        f"""
-        <div class="cv-ap">
-          <h2>Source component</h2>
-          {source_html}
-          <section class="cv-ap-card">
-            <div class="cv-ap-meta">Source part</div>
-            <div class="cv-ei-part">{part_photo(str(original.get('image_url') or original.get('photo_url') or ''), part=original)}<span class="cv-ei-part-copy"><span class="cv-ap-name">{mpn}</span><span class="cv-ei-meta">{description}</span></span></div>
-            <p>Manufacturer {manufacturer}</p>
-          </section>
-          {notice_html}
-          <h2>Replacement candidates</h2>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    if excluded_obsolete:
-        with st.expander(
-            f"View {len(excluded_obsolete)} excluded obsolete / end-of-life record"
-            f"{'s' if len(excluded_obsolete) != 1 else ''}",
-            expanded=False,
-        ):
-            st.caption("These supplier records are shown for context only; they cannot be compared or approved as replacements.")
-            for row in excluded_obsolete:
-                st.markdown(
-                    f"- **{_esc(_candidate_mpn(row))}** Â· "
-                    f"{_esc(_candidate_field(row, 'Manufacturer', 'manufacturer'))} Â· "
-                    f"{_esc(_candidate_field(row, 'Lifecycle', 'Lifecycle Status', 'lifecycle_status', 'lifecycle'))}",
-                    unsafe_allow_html=False,
-                )
-    if not shown:
-        st.session_state["approved_replacement_compare_candidates"] = []
-        st.session_state.pop("cadivor_replacement_open_mpn", None)
-        if excluded_obsolete:
-            empty_title = "No replacement-ready candidates"
-            empty_detail = candidate_notice
-        elif dropped:
-            empty_title = "Supplier results need part-number verification"
-            empty_detail = candidate_notice
-        elif supplier_candidate_count:
-            empty_title = "No candidates match the selected filters"
-            empty_detail = "Broaden the filters above or search this part again."
-        else:
-            empty_title = "No supplier alternatives found"
-            empty_detail = candidate_notice or (
-                "The configured supplier catalogs returned no alternatives for this part. "
-                "This does not confirm that no replacement exists. Try another MPN or review supplier catalogs directly."
-            )
-        st.markdown(
-            f"<section class='cv-ap-card cv-ap-empty-state'>"
-            f"<h3>{_esc(empty_title)}</h3><p>{_esc(empty_detail)}</p></section>",
-            unsafe_allow_html=True,
-        )
-        return
-    from src.part_images import part_image_markup
-
-    header = st.columns([2.4, 1.3, 1.8, 0.9, 0.8, 0.9, 0.7])
-    for column, label in zip(
-        header,
-        ("Candidate MPN", "Manufacturer", "Supplier relationship", "Lifecycle", "Stock", "Suppliers", "Risk"),
-    ):
-        column.markdown(f"<div class='cv-ap-meta'>{label}</div>", unsafe_allow_html=True)
-    selected = str(st.session_state.get("cadivor_replacement_open_mpn") or "")
-    for index, row in enumerate(shown):
-        candidate_mpn = _candidate_mpn(row)
-        is_open = candidate_mpn == selected
-        compatibility = assess_part_compatibility(
-            original,
-            _candidate_part_payload(row),
-        )
-        if compatibility.get("critical_warnings"):
-            compatibility_label = (
-                "<span class='cv-compat-pill critical'>NOT DROP-IN</span>"
-                "<div class='cv-compat-inline-critical'>"
-                + "<br>".join(_esc(item) for item in compatibility["critical_warnings"])
-                + "</div>"
-            )
-        elif compatibility.get("review_warnings"):
-            compatibility_label = (
-                "<span class='cv-compat-pill review'>NOT VERIFIED</span>"
-            )
-        else:
-            compatibility_label = (
-                "<span class='cv-compat-pill review'>ENGINEERING REVIEW</span>"
-            )
-        relationship_label = _candidate_field(
-            row,
-            "Classification",
-            "Category",
-            "fit",
-            "parametric_fit",
-            fallback="Supplier catalog result",
-        )
-        relationship_html = (
-            f"{compatibility_label}<small>{relationship_label}</small>"
-            if compatibility.get("critical_warnings") or compatibility.get("review_warnings")
-            else relationship_label
-        )
-        level = _candidate_field(row, "Estimated Risk", "risk_level", "risk", fallback="Unknown")
-        pill = ""
-        if "high" in level.casefold():
-            pill = "high"
-        elif "low" in level.casefold():
-            pill = "low"
-        elif "medium" in level.casefold():
-            pill = "medium"
-        elif "verification" in level.casefold():
-            pill = "verify"
-        level_html = f"<span class='cv-pill {pill}'>{level}</span>" if pill else level
-        discovery = row.get("_discovery_row") if isinstance(row.get("_discovery_row"), dict) else {}
-        image = str(
-            row.get("image_url")
-            or row.get("photo_url")
-            or row.get("Image URL")
-            or discovery.get("image_url")
-            or discovery.get("photo_url")
-            or ""
-        )
-        row_key = f"cv_candidate_row_{'open' if is_open else 'shut'}_{index}"
-        with st.container(key=row_key):
-            with st.container(key=f"cv_candidate_hit_{index}"):
-                cells = st.columns([2.4, 1.3, 1.8, 0.9, 0.8, 0.9, 0.7], vertical_alignment="center")
-                with cells[0]:
-                    photo_col, name_col = st.columns([0.35, 1.5], vertical_alignment="center")
-                    photo_col.markdown(
-                        part_image_markup(image, candidate_mpn, size=48, part=row),
-                        unsafe_allow_html=True,
-                    )
-                    if name_col.button(
-                        candidate_mpn,
-                        key=f"cv_candidate_open_{index}",
-                        help=(
-                            f"Show recorded details for {candidate_mpn}. "
-                            "Press Enter or Space."
-                        ),
-                    ):
-                        st.session_state["cadivor_replacement_open_mpn"] = "" if is_open else candidate_mpn
-                        st.rerun()
-                cells[1].markdown(_candidate_field(row, "Manufacturer", "manufacturer"))
-                cells[2].markdown(relationship_html, unsafe_allow_html=True)
-                cells[3].markdown(_candidate_field(row, "Lifecycle", "lifecycle_status", "lifecycle"))
-                cells[4].markdown(_candidate_field(row, "Stock", "stock_total", "stock_available"))
-                cells[5].markdown(_candidate_field(row, "Supplier", "supplier_count", "supplier"))
-                cells[6].markdown(level_html, unsafe_allow_html=True)
-            if is_open:
-                st.markdown(_candidate_detail_html(row, original), unsafe_allow_html=True)
-                _render_bom_replacement_approvals(
-                    source_context=source_context,
-                    query=query,
-                    original=original,
-                    candidate=row,
-                )
-
-    from src.normalizer import normalize_part_number
-
-    compare_source_mpn = str(original.get("manufacturer_part_number") or query or "").strip()
-    compare_source_token = normalize_part_number(compare_source_mpn) or compare_source_mpn.upper()
-    if st.session_state.get("approved_replacement_compare_source") != compare_source_token:
-        st.session_state["approved_replacement_compare_source"] = compare_source_token
-        st.session_state["approved_replacement_compare_candidates"] = []
-    compare_candidates = [
-        str(item or "").strip()
-        for item in st.session_state.get("approved_replacement_compare_candidates", [])
-        if str(item or "").strip()
-    ]
-    eligible_compare_keys = {part_key(_candidate_mpn(row)) for row in candidates[:5]}
-    compare_candidates = [
-        item for item in compare_candidates if part_key(item) in eligible_compare_keys
-    ][:2]
-    st.session_state["approved_replacement_compare_candidates"] = compare_candidates
-
-    def _toggle_compare_candidate(candidate_mpn: str) -> None:
-        current = st.session_state.get("approved_replacement_compare_candidates") or []
-        st.session_state["approved_replacement_compare_candidates"] = (
-            toggle_comparison_candidate(current, candidate_mpn, limit=2)
-        )
-    if shown and compare_source_mpn:
-        selected_candidate_text = " Â· ".join(_esc(item) for item in compare_candidates)
-        selected_candidate_line = (
-            f"<p class='cv-ap-meta'>Selected replacements: {selected_candidate_text}</p>"
-            if selected_candidate_text
-            else ""
-        )
-        st.markdown(
-            "<section class='cv-ap-card'><h3>Compare up to 3 parts</h3>"
-            f"<p class='cv-ap-sub'>Part A: {_esc(compare_source_mpn)}. Add up to two replacement candidates, then compare them with the source part.</p>"
-            f"<p class='cv-ap-meta'>{len(compare_candidates) + 1} of 3 parts selected</p>"
-            f"{selected_candidate_line}</section>",
-            unsafe_allow_html=True,
-        )
-        for index, row in enumerate(candidates[:5]):
-            candidate = _candidate_mpn(row)
-            if not candidate:
-                continue
-            candidate_token = part_key(candidate)
-            selected = any(
-                part_key(item) == candidate_token
-                for item in compare_candidates
-            )
-            toggle_cols = st.columns([2.5, 1], vertical_alignment="center")
-            with toggle_cols[0]:
-                st.caption(candidate)
-            with toggle_cols[1]:
-                st.button(
-                    "Remove" if selected else "Add to comparison",
-                    key=(
-                        "approved_replacement_compare_toggle_"
-                        + hashlib.sha1(candidate_token.encode("utf-8")).hexdigest()[:12]
-                    ),
-                    disabled=not selected and len(compare_candidates) >= 2,
-                    use_container_width=True,
-                    on_click=_toggle_compare_candidate,
-                    args=(candidate,),
-                )
-        selected_compare_candidates = list(compare_candidates)
-        if selected_compare_candidates:
-            if st.button(
-                f"Compare {len(selected_compare_candidates) + 1} parts",
-                key="approved_replacement_compare_selected",
-                type="primary",
-            ):
-                source_mpn = compare_source_mpn
-                candidate_b = selected_compare_candidates[0]
-                candidate_c = selected_compare_candidates[1] if len(selected_compare_candidates) > 1 else ""
-                st.session_state["cadivor_compare_part_a"] = source_mpn
-                st.session_state["cadivor_compare_part_b"] = candidate_b
-                st.session_state["cadivor_compare_part_c"] = candidate_c
-                selected_keys = {part_key(candidate_b), part_key(candidate_c)}
-                candidate_snapshots = [
-                    dict(row)
-                    for row in candidates
-                    if part_key(_candidate_mpn(row)) in selected_keys
-                ]
-                # Widget state is cleaned up at the end of this Finder run.
-                # Stage values under non-widget keys and apply them on the
-                # Compare page before its text inputs are created.
-                st.session_state["cadivor_compare_pending_handoff"] = {
-                    "part_numbers": [
-                        source_mpn,
-                        candidate_b,
-                        *([candidate_c] if candidate_c else []),
-                    ],
-                    "auto_run": True,
-                    "decision_context": {
-                        "source_context": dict(source_context),
-                        "original": dict(original),
-                        "candidates": candidate_snapshots,
-                    },
-                }
-                st.session_state.pop("cadivor_compare_result", None)
-                navigate_to("Compare Parts")
-    elif query.strip() and isinstance(result, dict):
-        st.info(
-            "No supplier candidates were returned for this part. You can still compare manufacturer part numbers manually; missing evidence will stay visible."
-        )
-        if st.button(
-            "Compare part numbers manually",
-            key="approved_replacement_manual_compare",
-            type="secondary",
-        ):
-            source_mpn = str(original.get("manufacturer_part_number") or query).strip()
-            st.session_state["cadivor_compare_part_a"] = source_mpn
-            st.session_state["cadivor_compare_part_b"] = ""
-            st.session_state["cadivor_compare_part_c"] = ""
-            st.session_state["cadivor_compare_pending_handoff"] = {
-                "part_numbers": [source_mpn],
-                "auto_run": False,
-                "decision_context": {
-                    "source_context": dict(source_context),
-                    "original": dict(original),
-                    "candidates": [],
-                },
-            }
-            st.session_state.pop("cadivor_compare_result", None)
-            navigate_to("Compare Parts")
-    end_approved_page()
-
-
-
-
-def render_compare_live() -> None:
-    """Compare up to three parts, with each candidate checked against Part A."""
-    begin_approved_page()
-    from src.approved_alternatives import part_key
-    from src.parts_compare import resolve_compare_parts_submitted_mpn, run_compare_parts_many
-    from src.ui.navigation import reveal_authenticated_page_body
-
-    pending_handoff = st.session_state.pop("cadivor_compare_pending_handoff", None)
-    if isinstance(pending_handoff, dict):
-        pending_parts = [
-            str(value or "").strip()
-            for value in pending_handoff.get("part_numbers", [])
-            if str(value or "").strip()
-        ][:3]
-        st.session_state["approved_compare_a"] = pending_parts[0] if pending_parts else ""
-        st.session_state["approved_compare_b"] = pending_parts[1] if len(pending_parts) > 1 else ""
-        st.session_state["approved_compare_c"] = pending_parts[2] if len(pending_parts) > 2 else ""
-        st.session_state["approved_compare_show_c"] = len(pending_parts) > 2
-        st.session_state["cadivor_compare_part_a"] = pending_parts[0] if pending_parts else ""
-        st.session_state["cadivor_compare_part_b"] = pending_parts[1] if len(pending_parts) > 1 else ""
-        st.session_state["cadivor_compare_part_c"] = pending_parts[2] if len(pending_parts) > 2 else ""
-        decision_context = pending_handoff.get("decision_context")
-        if isinstance(decision_context, dict):
-            decision_context = dict(decision_context)
-            decision_context["part_numbers"] = pending_parts
-            st.session_state["cadivor_compare_decision_context"] = decision_context
-        else:
-            st.session_state.pop("cadivor_compare_decision_context", None)
-        if pending_handoff.get("auto_run") and len(pending_parts) >= 2:
-            st.session_state["approved_compare_auto_run_pending"] = True
-        else:
-            st.session_state.pop("approved_compare_auto_run_pending", None)
-        st.session_state.pop("cadivor_compare_result", None)
-
-    st.session_state.setdefault("approved_compare_a", str(st.session_state.get("cadivor_compare_part_a") or ""))
-    st.session_state.setdefault("approved_compare_b", str(st.session_state.get("cadivor_compare_part_b") or ""))
-    st.session_state.setdefault("approved_compare_c", str(st.session_state.get("cadivor_compare_part_c") or ""))
-    st.session_state.setdefault("approved_compare_show_c", bool(st.session_state.get("approved_compare_c")))
-
-    def _show_third_part() -> None:
-        st.session_state["approved_compare_show_c"] = True
-
-    def _remove_third_part() -> None:
-        st.session_state["approved_compare_show_c"] = False
-        st.session_state["approved_compare_c"] = ""
-        st.session_state["cadivor_compare_part_c"] = ""
-        st.session_state.pop("cadivor_compare_result", None)
-
-    compare_handoff = st.session_state.get("cadivor_compare_decision_context")
-    if isinstance(compare_handoff, dict):
-        source_context = compare_handoff.get("source_context")
-        source_context = source_context if isinstance(source_context, dict) else {}
-        if source_context.get("mpn"):
-            return_params = {
-                key: source_context.get(key)
-                for key in (
-                    "analysis_id",
-                    "part_id",
-                    "source_page",
-                    "return_analysis_id",
-                    "return_page",
-                    "return_mpn",
-                    "return_decision_id",
-                    "project_name",
-                    "bom_name",
-                    "prefill_id",
-                    "manufacturer",
-                    "description",
-                    "lifecycle",
-                    "risk",
-                )
-                if source_context.get(key)
-            }
-            return_params.update(
-                {
-                    "original_part": str(source_context.get("mpn") or ""),
-                    "intent": "find_alternatives",
-                }
-            )
-            if st.button(
-                "â† Back to replacement search",
-                key="approved_compare_back_to_replacement_search",
-                type="secondary",
-            ):
-                navigate_to("Alternative Finder", **return_params)
-
-    st.markdown(
-        """
-        <div class="cv-ap">
-          <p class="cv-ap-kicker">PARTS</p>
-          <h1>Compare parts</h1>
-          <p class="cv-ap-sub">Compare two or three parts side by side. Part B and Part C are each checked against Part A using available supplier and datasheet evidence.</p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    with st.form("approved_compare_form", clear_on_submit=False):
-        if st.session_state.get("approved_compare_show_c"):
-            input_cols = st.columns(3)
-        else:
-            input_cols = st.columns(2)
-        with input_cols[0]:
-            entered_a = st.text_input("Part A", key="approved_compare_a", placeholder="Manufacturer part number")
-        with input_cols[1]:
-            entered_b = st.text_input("Part B", key="approved_compare_b", placeholder="Manufacturer part number")
-        entered_c = ""
-        if st.session_state.get("approved_compare_show_c"):
-            with input_cols[2]:
-                entered_c = st.text_input("Part C", key="approved_compare_c", placeholder="Manufacturer part number")
-        submitted = st.form_submit_button(
-            "Compare parts",
-            type="primary",
-            key="approved_compare_run",
-        )
-    # The compare form is now visibly mounted. Close the navigation cover before
-    # supplier lookups begin so progress does not dim the full page.
-    reveal_authenticated_page_body("Compare Parts")
-    part_a = resolve_compare_parts_submitted_mpn(
-        entered_a,
-        st.session_state.get("approved_compare_a"),
-        st.session_state.get("cadivor_compare_part_a"),
-    )
-    part_b = resolve_compare_parts_submitted_mpn(
-        entered_b,
-        st.session_state.get("approved_compare_b"),
-        st.session_state.get("cadivor_compare_part_b"),
-    )
-    part_c = resolve_compare_parts_submitted_mpn(
-        entered_c,
-        st.session_state.get("approved_compare_c"),
-        st.session_state.get("cadivor_compare_part_c"),
-    ) if st.session_state.get("approved_compare_show_c") else ""
-    has_part_c = bool(str(part_c or "").strip())
-    requested_parts = [part for part in (part_a, part_b, part_c) if str(part or "").strip()]
-    auto_run = bool(st.session_state.pop("approved_compare_auto_run_pending", False))
-    if submitted or auto_run:
-        if len(requested_parts) >= 2:
-            try:
-                with st.spinner("Comparing recorded supplier and datasheet evidenceâ€¦"):
-                    st.session_state["cadivor_compare_result"] = run_compare_parts_many(requested_parts)
-                st.session_state["cadivor_compare_part_c"] = part_c
-            except Exception:
-                st.session_state["cadivor_compare_result"] = {
-                    "status": "failed",
-                    "part_a": part_a,
-                    "part_b": part_b,
-                    "part_c": part_c,
-                    "part_numbers": requested_parts,
-                    "error": "Cadivor could not complete this comparison right now. Please try again.",
-                }
-        else:
-            st.session_state["cadivor_compare_result"] = {
-                "status": "failed",
-                "part_a": part_a,
-                "part_b": part_b,
-                "part_c": part_c,
-                "part_numbers": requested_parts,
-                "error": "Enter Part A and Part B manufacturer part numbers.",
-            }
-    if st.session_state.get("approved_compare_show_c"):
-        st.button("Remove Part C", key="approved_compare_remove_c", on_click=_remove_third_part)
-    else:
-        st.button(
-            "ï¼‹ Add part",
-            key="approved_compare_add_c",
-            type="secondary",
-            on_click=_show_third_part,
-        )
-
-    result = st.session_state.get("cadivor_compare_result")
-    if isinstance(result, dict):
-        result_parts = result.get("part_numbers")
-        if result_parts is None:
-            result_parts = [result.get("part_a"), result.get("part_b")]
-        normalize = lambda value: str(value or "").strip().casefold()
-        if [normalize(value) for value in result_parts] != [normalize(value) for value in requested_parts]:
-            result = None
-    comparison = result.get("comparison") if isinstance(result, dict) else {}
-    if not isinstance(comparison, dict):
-        comparison = {}
-    counts = comparison.get("counts") if isinstance(comparison.get("counts"), dict) else {}
-    card_a = comparison.get("part_a") if isinstance(comparison.get("part_a"), dict) else {}
-    card_b = comparison.get("part_b") if isinstance(comparison.get("part_b"), dict) else {}
-    card_c = comparison.get("part_c") if isinstance(comparison.get("part_c"), dict) else {}
-    rows = comparison.get("rows") if isinstance(comparison.get("rows"), list) else []
-    body = []
-    rendered_compatibility_labels: set[str] = set()
-    missing = {"", "â€”", "-", "â€“", "not available", "not recorded", "n/a", "none", "nan"}
-
-    def _recorded(row: dict[str, Any], *keys: str) -> str:
-        for key in keys:
-            text = str(row.get(key) or "").strip()
-            if text and text.casefold() not in missing:
-                return text
-        return ""
-
-    def _compare_part_evidence(card: dict[str, Any], slot: str) -> dict[str, Any]:
-        part = {
-            "manufacturer_part_number": card.get("mpn") or "",
-            "manufacturer": card.get("manufacturer") or "",
-            "description": card.get("description") or "",
-            "package": card.get("package") or "",
-        }
-        part.update(
-            {
-                key: value
-                for key, value in comparison_row_part_values(rows, slot).items()
-                if value
-            }
-        )
-        return part
-
-    compatibility_by_slot: dict[str, dict[str, Any]] = {}
-    if comparison and card_a and card_b:
-        compare_original = _compare_part_evidence(card_a, "Part A")
-        compatibility_by_slot["Part B"] = assess_part_compatibility(
-            compare_original,
-            _compare_part_evidence(card_b, "Part B"),
-        )
-        if has_part_c and card_c:
-            compatibility_by_slot["Part C"] = assess_part_compatibility(
-                compare_original,
-                _compare_part_evidence(card_c, "Part C"),
-            )
-    compatibility_notices = []
-    for slot, card in (("Part B", card_b), ("Part C", card_c)):
-        assessment = compatibility_by_slot.get(slot, {})
-        if not assessment:
-            continue
-        mpn_label = _esc(card.get("mpn") or slot)
-        if assessment.get("critical_warnings"):
-            compatibility_notices.append(
-                "<div class='cv-compat-banner critical' role='alert'>"
-                f"<strong>{slot} Â· {mpn_label} â€” NOT A DROP-IN REPLACEMENT</strong>"
-                f"<ul>{''.join(f'<li>{_esc(item)}</li>' for item in assessment['critical_warnings'])}</ul>"
-                "Do not approve this as a drop-in replacement. A physical redesign and/or firmware rewrite may be required."
-                "</div>"
-            )
-        elif assessment.get("review_warnings"):
-            compatibility_notices.append(
-                "<div class='cv-compat-banner review' role='status'>"
-                f"<strong>{slot} Â· {mpn_label} â€” DROP-IN FIT NOT VERIFIED</strong>"
-                f"<ul>{''.join(f'<li>{_esc(item)}</li>' for item in assessment['review_warnings'])}</ul>"
-                "</div>"
-            )
-
-    for row in rows[:24]:
-        if not isinstance(row, dict):
-            continue
-        label = _recorded(row, "Attribute", "label", "parameter", "field")
-        if not label or label.casefold() == "parameter":
-            continue
-        raw_a = _recorded(row, "Part A", "part_a", "a", "value_a", "Original")
-        raw_b = _recorded(row, "Part B", "part_b", "b", "value_b", "Candidate")
-        raw_c = _recorded(row, "Part C", "part_c", "c", "value_c")
-        if not raw_a and not raw_b and not raw_c:
-            continue
-        label_key = label.casefold()
-
-        def critical_for(slot: str) -> bool:
-            assessment = compatibility_by_slot.get(slot, {})
-            if "package" in label_key:
-                return bool(assessment.get("package_mismatch"))
-            if label_key in {"pin count", "number of pins", "pins"}:
-                return bool(assessment.get("pin_count_mismatch"))
-            if "architecture" in label_key or label_key in {"device family", "core", "instruction set"}:
-                return bool(assessment.get("architecture_mismatch"))
-            return False
-
-        def compare_cell(value: str, slot: str, base_value: str) -> str:
-            critical = critical_for(slot)
-            if critical:
-                return f"<td class='cv-compare-compat-critical'>{_esc(value or 'Not recorded')}</td>"
-            if value and base_value != value:
-                return f"<td class='cv-compare-diff'>{_esc(value)}</td>"
-            return f"<td>{_esc(value or 'Not recorded')}</td>"
-
-        cells = [
-            f"<td>{_esc(raw_a or 'Not recorded')}</td>",
-            compare_cell(raw_b, "Part B", raw_a),
-        ]
-        if has_part_c:
-            cells.append(compare_cell(raw_c, "Part C", raw_a))
-        body.append(f"<tr><td>{_esc(label)}</td>{''.join(cells)}</tr>")
-        rendered_compatibility_labels.add(label_key)
-    compatibility_fields = (
-        ("package", "Package", "package_mismatch", "source_package", "candidate_package"),
-        ("pin count", "Pin count", "pin_count_mismatch", "source_pin_count", "candidate_pin_count"),
-        (
-            "architecture",
-            "Device family / architecture",
-            "architecture_mismatch",
-            "source_architecture",
-            "candidate_architecture",
-        ),
-    )
-    for normalized, label, mismatch_key, source_key, candidate_key in compatibility_fields:
-        already_rendered = any(
-            normalized in value
-            or (normalized == "pin count" and "number of pins" in value)
-            or (normalized == "architecture" and "device family" in value)
-            for value in rendered_compatibility_labels
-        )
-        if already_rendered or not any(
-            row.get(mismatch_key) for row in compatibility_by_slot.values()
-        ):
-            continue
-        source_assessment = compatibility_by_slot.get("Part B", {})
-        source_value = source_assessment.get(source_key)
-        part_b_assessment = compatibility_by_slot.get("Part B", {})
-        part_b_value = part_b_assessment.get(candidate_key)
-        if source_value in (None, ""):
-            source_value = "Not recorded"
-        if part_b_value in (None, ""):
-            part_b_value = "Not recorded"
-        part_b_cell = (
-            f"<td class='cv-compare-compat-critical'>{_esc(part_b_value)}</td>"
-            if part_b_assessment.get(mismatch_key)
-            else f"<td>{_esc(part_b_value)}</td>"
-        )
-        cells = [f"<td>{_esc(source_value)}</td>", part_b_cell]
-        if has_part_c:
-            part_c_assessment = compatibility_by_slot.get("Part C", {})
-            part_c_value = part_c_assessment.get(candidate_key)
-            if part_c_value in (None, ""):
-                part_c_value = "Not recorded"
-            part_c_cell = (
-                f"<td class='cv-compare-compat-critical'>{_esc(part_c_value)}</td>"
-                if part_c_assessment.get(mismatch_key)
-                else f"<td>{_esc(part_c_value)}</td>"
-            )
-            cells.append(part_c_cell)
-        body.append(f"<tr><td>{_esc(label)}</td>{''.join(cells)}</tr>")
-    ran = isinstance(result, dict) and str(result.get("status") or "") in {"completed", "failed"}
-    error = str(result.get("error") if isinstance(result, dict) else "").strip()
-    if not body:
-        if ran and error and error != "â€”":
-            empty = error
-        elif ran or comparison:
-            empty = "No comparable attributes were recorded for these parts."
-        elif part_a.strip() and part_b.strip():
-            empty = "No comparison is available yet. Run Compare parts to load recorded attributes."
-        else:
-            empty = "Enter Part A and Part B manufacturer part numbers to compare."
-    else:
-        empty = ""
-    submitted_a = str(result.get("part_a") or "") if isinstance(result, dict) else ""
-    submitted_b = str(result.get("part_b") or "") if isinstance(result, dict) else ""
-    name_a = _esc(card_a.get("mpn") or submitted_a or part_a or "Part A")
-    name_b = _esc(card_b.get("mpn") or submitted_b or part_b or "Part B")
-    submitted_c = str(result.get("part_c") or "") if isinstance(result, dict) else ""
-    name_c = _esc(card_c.get("mpn") or submitted_c or part_c or "Part C")
-    notice = "".join(compatibility_notices)
-    headers = f"<th>Parameter</th><th>{name_a}</th><th>{name_b}</th>"
-    if has_part_c:
-        headers += f"<th>{name_c}</th>"
-    table = (
-        f"<p class='cv-ap-sub'>{_esc(empty)}</p>"
-        if empty
-        else (
-            "<section class='cv-ap-card'><table class='cv-ap-table'><thead><tr>"
-            f"{headers}"
-            f"</tr></thead><tbody>{''.join(body)}</tbody></table></section>"
-        )
-    )
-    figures = ""
-    if comparison:
-        figures = (
-            "<section class='cv-ap-kpis three'>"
-            f"<article class='cv-ap-kpi'><span>Compatible checks</span><strong>{_esc(counts.get('compatible', 'â€”'))}</strong></article>"
-            f"<article class='cv-ap-kpi'><span>Differences found</span><strong>{_esc(counts.get('material_difference', 'â€”'))}</strong></article>"
-            f"<article class='cv-ap-kpi'><span>Needs validation</span><strong>{_esc(counts.get('needs_data', 'â€”'))}</strong></article>"
-            "</section>"
-        )
-    st.markdown(
-        f"""
-        <div class="cv-ap">
-          {notice}
-          {figures}
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    card_specs = [(card_a, name_a, part_a), (card_b, name_b, part_b)]
-    if has_part_c:
-        card_specs.append((card_c, name_c, part_c))
-    card_cols = st.columns(len(card_specs), gap="small")
-    for col, (card, title, current_mpn) in zip(card_cols, card_specs):
-        with col:
-            part_info = card or {"manufacturer_part_number": current_mpn}
-            title = _esc(part_info.get("mpn") or title)
-            image = str(part_info.get("image_url") or part_info.get("photo_url") or "")
-            details = _esc(part_info.get("description") or part_info.get("manufacturer") or "Not recorded")
-            st.markdown(
-                "<article class='cv-ap-template'><div class='cv-ei-part'>"
-                f"{part_photo(image, size=48, part=part_info)}<span class='cv-ei-part-copy'>"
-                f"<h3>{title}</h3><p>{details}</p></span></div></article>",
-                unsafe_allow_html=True,
-            )
-    st.markdown(table, unsafe_allow_html=True)
-    handoff_context = st.session_state.get("cadivor_compare_decision_context")
-    if (
-        isinstance(handoff_context, dict)
-        and isinstance(result, dict)
-        and str(result.get("status") or "") == "completed"
-    ):
-        handoff_parts = [
-            str(value or "").strip().casefold()
-            for value in handoff_context.get("part_numbers", [])
-            if str(value or "").strip()
-        ]
-        current_parts = [str(value or "").strip().casefold() for value in requested_parts]
-        if handoff_parts == current_parts:
-            decision_source = handoff_context.get("source_context")
-            decision_source = decision_source if isinstance(decision_source, dict) else {}
-            decision_original = handoff_context.get("original")
-            decision_original = decision_original if isinstance(decision_original, dict) else {}
-            candidate_rows = handoff_context.get("candidates")
-            candidate_rows = candidate_rows if isinstance(candidate_rows, list) else []
-            expected_candidate_keys = {part_key(value) for value in requested_parts[1:]}
-            approved_candidates = [
-                row
-                for row in candidate_rows
-                if isinstance(row, dict)
-                and part_key(_candidate_mpn(row)) in expected_candidate_keys
-            ]
-            if approved_candidates:
-                st.markdown("### Choose a replacement for this BOM")
-                st.caption(
-                    "Review the comparison, then approve the replacement you want to keep. "
-                    "Saved approvals appear in this BOMâ€™s Alternatives and BOM Risk views."
-                )
-                for candidate in approved_candidates:
-                    st.markdown(f"#### {_esc(_candidate_mpn(candidate))}")
-                    candidate_slot = (
-                        "Part C"
-                        if card_c and part_key(_candidate_mpn(candidate)) == part_key(card_c.get("mpn"))
-                        else "Part B"
-                    )
-                    _render_bom_replacement_approvals(
-                        source_context=decision_source,
-                        query=part_a,
-                        original=decision_original,
-                        candidate=candidate,
-                        recorded_from="Compare parts",
-                        comparison_evidence={"comparison": comparison, "slot": candidate_slot},
-                    )
-    end_approved_page()
-
-
-def render_datasheet_live() -> None:
-    """Approved Datasheet Q&A upload and cited source-review workspace."""
-    import base64
-
-    from src.datasheet_qa import (
-        DATASHEET_QA_CLEAR_QUESTION_KEY,
-        DATASHEET_QA_DOC_KEY,
-        DATASHEET_QA_PENDING_QUESTION_KEY,
-        DATASHEET_QA_QUESTION_WIDGET_KEY,
-        DATASHEET_QA_STATUS_KEY,
-        DATASHEET_QA_THREAD_KEY,
-        DATASHEET_QA_UPLOAD_SIGNATURE_KEY,
-        STATUS_PROCESSING,
-        apply_datasheet_question_clear,
-        clear_datasheet_document,
-        consume_datasheet_pending_question,
-        datasheet_upload_signature,
-        document_fingerprint,
-        extract_uploaded_datasheet,
-        store_document_in_session,
-    )
-    from src.datasheet_comparison import MAX_DATASHEET_BYTES, MAX_DATASHEET_PAGES
-    from src.pages.datasheet_qa import (
-        _execute_datasheet_question,
-        _inject_datasheet_qa_styles,
-        _render_thread_turn,
-        _typed_ask_click,
-    )
-
-    def store_new_upload(uploaded: Any) -> dict[str, Any] | None:
-        if uploaded is None:
-            return None
-        payload = uploaded.getvalue()
-        filename = str(uploaded.name or "datasheet.pdf")
-        signature = datasheet_upload_signature(payload, filename=filename)
-        if signature == str(st.session_state.get(DATASHEET_QA_UPLOAD_SIGNATURE_KEY) or ""):
-            return None
-        current = st.session_state.get(DATASHEET_QA_DOC_KEY)
-        # Migrate an already-active document into the signature scheme without
-        # re-extracting it on the first render after this release.
-        if (
-            isinstance(current, dict)
-            and str(current.get("filename") or "") == filename
-            and str(current.get("content_fingerprint") or "") == hashlib.sha256(payload).hexdigest()[:16]
-        ):
-            st.session_state[DATASHEET_QA_UPLOAD_SIGNATURE_KEY] = signature
-            return None
-        extracted = extract_uploaded_datasheet(payload, filename=filename)
-        store_document_in_session(st.session_state, extracted)
-        st.session_state[DATASHEET_QA_UPLOAD_SIGNATURE_KEY] = signature
-        st.session_state[DATASHEET_QA_QUESTION_WIDGET_KEY] = ""
-        st.session_state.pop(DATASHEET_QA_CLEAR_QUESTION_KEY, None)
-        st.session_state.pop("approved_datasheet_source_page", None)
-        return extracted
-
-    def on_datasheet_upload_change() -> None:
-        store_new_upload(st.session_state.get("datasheet_qa_uploader"))
-
-    def on_remove_datasheet() -> None:
-        clear_datasheet_document(st.session_state)
-        st.session_state.pop("datasheet_qa_uploader", None)
-        st.session_state.pop("approved_datasheet_source_page", None)
-        st.session_state.pop(DATASHEET_QA_QUESTION_WIDGET_KEY, None)
-        st.session_state.pop(DATASHEET_QA_PENDING_QUESTION_KEY, None)
-        st.session_state.pop(DATASHEET_QA_CLEAR_QUESTION_KEY, None)
-
-    begin_approved_page()
-    _inject_datasheet_qa_styles()
-    apply_datasheet_question_clear(st.session_state)
-    pdf_limit = f"{MAX_DATASHEET_BYTES / (1024 * 1024):g} MB"
-    with st.container(key="approved_datasheet_workspace"):
-        document = st.session_state.get(DATASHEET_QA_DOC_KEY)
-        uploaded = st.session_state.get("datasheet_qa_uploader")
-        extracted = store_new_upload(uploaded)
-        if extracted is not None and not extracted.get("available"):
-            st.error(str(extracted.get("reason") or "Could not read this PDF."))
-        document = st.session_state.get(DATASHEET_QA_DOC_KEY)
-        ready = isinstance(document, dict) and bool(document.get("available"))
-        filename = str(document.get("filename") or "") if isinstance(document, dict) else ""
-        page_count = int(
-            document.get("source_page_count") or document.get("page_count") or 0
-        ) if isinstance(document, dict) else 0
-        thread = list(st.session_state.get(DATASHEET_QA_THREAD_KEY) or [])
-        pending_question = consume_datasheet_pending_question(st.session_state) if ready else ""
-        if pending_question:
-            _execute_datasheet_question(
-                document=document,
-                question=pending_question,
-                thread=list(st.session_state.get(DATASHEET_QA_THREAD_KEY) or []),
-            )
-        thread = list(st.session_state.get(DATASHEET_QA_THREAD_KEY) or [])
-        latest = thread[-1] if thread and isinstance(thread[-1], dict) else {}
-        active_page = 1
-        primary = latest.get("primary_evidence") if isinstance(latest.get("primary_evidence"), dict) else {}
-        try:
-            active_page = max(1, min(page_count or 1, int(primary.get("page") or 1)))
-        except (TypeError, ValueError):
-            active_page = 1
-        page_key = "approved_datasheet_source_page"
-        if pending_question:
-            st.session_state[page_key] = active_page
-        if page_key in st.session_state:
-            try:
-                current_page = int(st.session_state[page_key])
-            except (TypeError, ValueError):
-                current_page = 1
-            if current_page < 1 or current_page > max(page_count, 1):
-                st.session_state[page_key] = active_page
-
-        st.markdown(
-            '<div class="dq-marker" aria-hidden="true"></div>'
-            "<div class='cv-ap'><p class='cv-ap-kicker'>DATASHEET Q&amp;A</p>"
-            "<h1>Ask a datasheet</h1>"
-            "<p class='cv-ap-sub'>Ask precise technical questions, inspect cited evidence, and review the original source pages.</p></div>",
-            unsafe_allow_html=True,
-        )
-        active_step = 3 if ready and thread else 2 if ready else 1
-        st.markdown(
-            _approved_flow_stepper_markup(
-                ("Upload PDF", "Ask a question", "Review citations"),
-                active_step=active_step,
-            ),
-            unsafe_allow_html=True,
-        )
-
-        if not ready:
-            with st.container(key="approved_datasheet_upload_card"):
-                st.markdown(
-                    "<div class='cv-ap-entry-heading'><span class='cv-ap-entry-icon'>"
-                    "<svg viewBox='0 0 24 24' aria-hidden='true'><path d='M5 3h10l4 4v14H5zM15 3v5h4M8 12h8M8 16h8' "
-                    "fill='none' stroke='currentColor' stroke-width='1.8' stroke-linejoin='round'/></svg>"
-                    "</span><div><p>STEP 1 Â· UPLOAD</p><h2>Choose a datasheet PDF</h2></div></div>"
-                    "<p class='cv-ap-entry-copy'>Upload the manufacturer's document. Cadivor extracts its text so answers can cite the exact source pages.</p>",
-                    unsafe_allow_html=True,
-                )
-                uploaded = st.file_uploader(
-                    "Choose a datasheet PDF",
-                    type=["pdf"],
-                    key="datasheet_qa_uploader",
-                    on_change=on_datasheet_upload_change,
-                    help=f"PDF only Â· up to {pdf_limit} Â· up to {MAX_DATASHEET_PAGES} pages Â· text-searchable pages required.",
-                )
-                st.markdown(
-                    f"<p class='cv-ap-limit-note'>PDF only Â· up to {_esc(pdf_limit)} Â· up to {MAX_DATASHEET_PAGES} pages Â· text-searchable pages required Â· private session. Scanned image-only PDFs are not supported yet.</p>",
-                    unsafe_allow_html=True,
-                )
-            if isinstance(document, dict) and document.get("reason"):
-                st.warning(str(document.get("reason")))
-            end_approved_page()
-            return
-
-        payload = uploaded.getvalue() if uploaded is not None else b""
-        if payload and hashlib.sha256(payload).hexdigest()[:16] != str(document.get("content_fingerprint") or ""):
-            payload = b""
-        size_text = f"{len(payload) / 1024:,.0f} KB Â· " if payload else ""
-        analyzed_pages = int(document.get("page_count") or page_count)
-        metadata = (
-            f"PDF Â· {size_text}{analyzed_pages} page{'s' if analyzed_pages != 1 else ''} analyzed"
-            if analyzed_pages != page_count
-            else f"PDF Â· {size_text}{page_count} page{'s' if page_count != 1 else ''}"
-        )
-        document_cols = st.columns([5.5, 2.4, 1], gap="small", vertical_alignment="center")
-        with document_cols[0]:
-            st.markdown(
-                "<div class='cv-dq-document'><span class='cv-dq-document-icon'>PDF</span>"
-                f"<span class='cv-dq-document-copy'><strong>{_esc(filename or 'Active datasheet')}</strong><span>{_esc(metadata)}</span></span>"
-                "<span class='cv-dq-private'>Private session</span></div>",
-                unsafe_allow_html=True,
-            )
-        with document_cols[1]:
-            st.file_uploader(
-                "Change document",
-                type=["pdf"],
-                key="datasheet_qa_uploader",
-                on_change=on_datasheet_upload_change,
-                label_visibility="collapsed",
-                help="Select a new PDF to replace the active datasheet and start a fresh evidence thread.",
-            )
-        with document_cols[2]:
-            st.button(
-                "Remove",
-                key="approved_datasheet_remove",
-                type="secondary",
-                on_click=on_remove_datasheet,
-                use_container_width=True,
-            )
-
-        left, right = st.columns([1.2, 1], gap="medium")
-        with left:
-            with st.container(key="approved_datasheet_question_panel"):
-                st.markdown(
-                    "<div class='cv-dq-question-head'><h2>Ask this datasheet</h2>"
-                    "<p>Answers use the active PDF and include page-level evidence.</p></div>",
-                    unsafe_allow_html=True,
-                )
-                st.text_area(
-                    "Question",
-                    key=DATASHEET_QA_QUESTION_WIDGET_KEY,
-                    placeholder="Example: What package dimensions and land pattern does the datasheet specify?",
-                    height=86,
-                    label_visibility="collapsed",
-                    disabled=str(st.session_state.get(DATASHEET_QA_STATUS_KEY) or "") == STATUS_PROCESSING,
-                )
-                st.button(
-                    "Ask Cadivor",
-                    key="approved_datasheet_ask",
-                    type="primary",
-                    on_click=_typed_ask_click,
-                    disabled=str(st.session_state.get(DATASHEET_QA_STATUS_KEY) or "") == STATUS_PROCESSING,
-                )
-                st.markdown(
-                    "<p class='cv-dq-limit-note'>Cadivor does not infer missing dimensions or claim interchangeability. Verify critical values against the source page before sign-off.</p>",
-                    unsafe_allow_html=True,
-                )
-            if not thread:
-                st.markdown(
-                    "<section class='cv-dq-panel'><h2>No questions yet</h2>"
-                    "<p>Start with package dimensions, pinout, ratings, device identity, or lifecycle wording in the datasheet.</p></section>",
-                    unsafe_allow_html=True,
-                )
-            else:
-                fingerprint = document_fingerprint(document) or "doc"
-                for turn_index, turn in enumerate(thread):
-                    if isinstance(turn, dict):
-                        _render_thread_turn(
-                            turn,
-                            turn_index=turn_index,
-                            fingerprint=fingerprint,
-                            disabled=str(st.session_state.get(DATASHEET_QA_STATUS_KEY) or "") == STATUS_PROCESSING,
-                            show_follow_ups=(turn_index == len(thread) - 1),
-                        )
-
-        with right:
-            with st.container(key="approved_datasheet_source_panel"):
-                st.markdown(
-                    "<div class='cv-dq-source-head'><div><h2>Document evidence</h2>"
-                    f"<p>{_esc(filename or 'Active datasheet')}</p></div><span class='cv-dq-source-badge'>Original PDF</span></div>",
-                    unsafe_allow_html=True,
-                )
-                if page_count:
-                    source_page = st.selectbox(
-                        "Source page",
-                        options=list(range(1, page_count + 1)),
-                        index=max(0, min(page_count - 1, int(st.session_state.get(page_key, active_page)) - 1)),
-                        format_func=lambda page: f"Page {page}",
-                        key=page_key,
-                    )
-                else:
-                    source_page = 1
-                if payload:
-                    encoded_pdf = base64.b64encode(payload).decode("ascii")
-                    st.components.v1.html(
-                        "<div class='cv-dq-viewer'><iframe title='Original datasheet page' "
-                        f"src='data:application/pdf;base64,{encoded_pdf}#page={source_page}&zoom=page-width' "
-                        "style='display:block;width:100%;height:600px;border:0;background:#eef2f7'></iframe></div>",
-                        height=602,
-                        scrolling=False,
-                    )
-                    st.download_button(
-                        "Download source PDF",
-                        data=payload,
-                        file_name=filename or "datasheet.pdf",
-                        mime="application/pdf",
-                        key=f"approved_datasheet_download_{document_fingerprint(document) or 'active'}",
-                    )
-                else:
-                    pages = document.get("pages") if isinstance(document, dict) else []
-                    source_text = next(
-                        (str(item.get("text") or "") for item in pages or [] if isinstance(item, dict) and int(item.get("page") or 0) == source_page),
-                        "",
-                    )
-                    st.markdown(
-                        "<div class='cv-dq-viewer-empty'>The original PDF is not available in this session view. "
-                        "Use Change document to select it again; extracted text remains available for cited answers.</div>",
-                        unsafe_allow_html=True,
-                    )
-                    if source_text:
-                        st.markdown(f"<p class='cv-dq-evidence-label'>Extracted text Â· Page {source_page}</p><div class='dq-evidence-quote'>{_esc(source_text[:1800])}</div>", unsafe_allow_html=True)
-                if st.session_state.pop("datasheet_qa_empty_ask", False):
-                    st.warning("Enter a question about this datasheet.")
-    end_approved_page()
-
-
-def render_settings_workspace(profile: dict[str, Any], plan_name: str) -> None:
-    """Profile, notifications, security, and billing on one screen."""
-    begin_approved_page()
-    profile = profile if isinstance(profile, dict) else {}
-    name = _esc(profile.get("full_name") or profile.get("email") or "Account")
-    email = _esc(profile.get("email") or "")
-    company = _esc(profile.get("company") or profile.get("company_name") or "Not recorded")
-    role = _esc(profile.get("role_title") or profile.get("role") or "Not recorded")
-    timezone = _esc(profile.get("timezone") or "Not recorded")
-    workspace = _esc(profile.get("workspace_name") or company)
-    plan = _esc(plan_name or profile.get("plan") or "Not recorded")
-    with st.container(key="approved_settings_screen"):
-        _render_settings_panels(profile, name, email, company, role, timezone, workspace, plan)
-    end_approved_page()
-
-
-def _render_settings_panels(profile, name, email, company, role, timezone, workspace, plan) -> None:
-    st.markdown("<div class='cv-ap'><h1>Settings</h1></div>", unsafe_allow_html=True)
-    left, right = st.columns(2)
-    with left:
-        st.markdown(
-            f"""
-            <div class="cv-ap"><section class="cv-ap-card"><h2>Profile</h2>
-            <p class="cv-ap-name">{name}</p><p>{email}</p>
-            <div class="cv-security-row"><span>Organization</span><strong>{company}</strong></div>
-            <div class="cv-security-row"><span>Role</span><strong>{role}</strong></div>
-            <div class="cv-security-row"><span>Workspace</span><strong>{workspace}</strong></div>
-            </section></div>
-            """,
-            unsafe_allow_html=True,
-        )
-        with st.form("approved_profile_form"):
-            name_col, company_col, role_col = st.columns(3)
-            full_name = name_col.text_input("Full name", value=str(profile.get("full_name") or ""))
-            company_input = company_col.text_input("Organization", value=str(profile.get("company") or profile.get("company_name") or ""))
-            role_input = role_col.text_input("Role", value=str(profile.get("role_title") or ""))
-            submitted = st.form_submit_button("Save profile")
-        if submitted:
-            from src.authenticated_runtime import update_user_profile_fields
-
-            user_id = str(profile.get("id") or st.session_state.get("user_id") or "")
-            allowed, skipped = update_user_profile_fields(
-                user_id,
-                {"full_name": full_name, "company": company_input, "role_title": role_input},
-            )
-            if allowed:
-                st.success("Profile updated.")
-            elif skipped:
-                st.info("Those profile fields are not stored on this account.")
-        st.markdown(
-            """
-            <div class="cv-ap"><section class="cv-ap-card"><h2>Security</h2>
-            <div class="cv-security-row"><span>Password</span><strong>Managed by your sign-in provider</strong></div>
-            <div class="cv-security-row"><span>Two-factor authentication</span><strong>Not recorded</strong></div>
-            <div class="cv-security-row"><span>Active sessions</span><strong>This browser session</strong></div>
-            <div class="cv-security-row"><span>Connected accounts</span><strong>Not recorded</strong></div>
-            </section></div>
-            """,
-            unsafe_allow_html=True,
-        )
-    with right:
-        st.markdown(
-            f"""
-            <div class="cv-ap"><section class="cv-ap-card"><h2>Account preferences</h2>
-            <p class="cv-ap-meta">Email notifications use this account. Timezone {timezone}</p>
-            </section></div>
-            """,
-            unsafe_allow_html=True,
-        )
-        st.toggle("Project activity", key="approved_notify_project")
-        st.toggle("Simulation results", key="approved_notify_simulation")
-        st.toggle("Team activity", key="approved_notify_team")
-        st.toggle("Product updates", key="approved_notify_product")
-        st.toggle("Marketing emails", key="approved_notify_marketing")
-        st.text_input("Timezone", key="approved_settings_timezone", placeholder=str(profile.get("timezone") or "Not recorded"))
-        st.markdown(
-            f"""
-            <div class="cv-ap"><section class="cv-plan-card"><p class="cv-ap-meta">Current plan</p>
-            <h2>{plan}</h2>
-            <p>Plan limits come from the signed-in subscription. Features that are not on this account stay blank.</p>
-            </section></div>
-            """,
-            unsafe_allow_html=True,
-        )
-        if st.button("Manage plan", key="approved_settings_manage_plan", type="primary"):
-            navigate_to("Pricing")
-
-
-# Apply one centered page canvas to every approved page renderer. Dense data views
-# use a slightly wider cap; each canvas remains fluid below its max-width.
-def _with_approved_page_canvas(width_variant: str):
-    def decorate(renderer):
-        @wraps(renderer)
-        def wrapped(*args, **kwargs):
-            key = f"approved_page_canvas_{width_variant}_{renderer.__name__}"
-            with st.container(key=key):
-                return renderer(*args, **kwargs)
-        return wrapped
-    return decorate
-
-
-for _renderer_name, _width_variant in (
-    ("render_saved_bom_settings", "standard"),
-    ("render_home", "standard"),
-    ("render_bom_catalog", "wide"),
-    ("render_decision_queue", "standard"),
-    ("render_monitoring", "wide"),
-    ("render_reports_list", "wide"),
-    ("render_simple_workspace", "wide"),
-    ("render_replacement_search", "wide"),
-    ("render_compare_live", "wide"),
-    ("render_datasheet_live", "standard"),
-    ("render_settings_workspace", "standard"),
-):
-    globals()[_renderer_name] = _with_approved_page_canvas(_width_variant)(
-        globals()[_renderer_name]
-    )
+YªçŠx-®éÜj×¢ëiºÚ+Š§j[h‘éÜ¢éí×m¶ë¤èµ©hºÚn¶X§zÍHˆˆ\›Ý™YYÙH›ÙY\È›ÜˆHØY]›Üˆ[ØÚÝ\Ë‚‚“]™HÛÜšÜÜXÙH™XÛÜ™Èš[H^[Ý]ˆØ[\H˜[Y\Èœ›ÛHH[ØÚÝ\È\™H›Ýš[™[YÚ[ˆHÛÜšÜÜXÙH\ÈY™™\™[“Ó\Ë‚ˆˆˆ‚‚™œ›ÛH×Ù]\™W×È[\Ü[››Ý][ÛœÂ‚š[\Ü[š[\Ü\ÚX‚š[\Ü[Â™œ›ÛH[˜ÝÛÛÈ[\ÜÜ˜\Â™œ›ÛH]][YH[\Ü]][YK[YY[K[Y^›Û™B™œ›ÛH\[™È[\Ü[žB‚š[\ÜÝ™X[[]\ÈÝ‚™œ›ÛHÜ˜Ë˜›ÛWÝ\ØYÙ›ÝÈ[\Ü
+ˆ™\\™WÛ™]×Ø\›Ý™YØ›ÛWØ[˜[\Ú\ËˆÚÝ[Ü™[™\—Ø\›Ý™YØ›ÛWÝ\ØYÙ›Ü›KˆÚÝ[ÜÝÜØ\›Ý™YØ›ÛWÜ™[™\™\‹ŠB™œ›ÛHÜ˜ËœØ]™YØ›ÛWÜ›Ú™XÝ[\Ü
+ˆ‘U×Ô“Ò‘PÕÐÒÒPÑKˆ[˜[\Ú\×Ý]WÙ›Ü—Ý\ØYˆ\ÜÚYÛ—Ü›Ú™XÝˆ›Ú™XÝØÚÚXÙ\Ëˆ™\ÛÛ™WÜ›Ú™XÝØÚÚXÙKˆÜ]Ü›Ú™XÝØ[™Ø›ÛKŠB™œ›ÛHÜ˜ËZK˜ØY]›Ü—Ù\ÚYÛ—ÜÞ\Ý[KšXÛÛœÈ[\ÜXÚYB™œ›ÛHÜ˜Ë˜ÛÛ\]Xš[]WÙØ]H[\Ü
+ˆÔ’UPÐSÑ’T“UÐT‘WÕÐT“’S‘ËˆÔ’UPÐSÔTÒPÐSÕÐT“’S‘Ëˆ\ÜÙ\Ü×Ü\ØÛÛ\]Xš[]KˆÛÛ\\š\ÛÛ—Ü›Ý×Ü\Ý˜[Y\ËˆXÚØYÙWÙØÝ[Y[ØÛÛ™›XÝËŠB™œ›ÛHÜ˜ËZK›˜]šYØ][Ûˆ[\Ü
+ˆ[\›˜[Û˜]—Ø]Û‹ˆ˜]šYØ]WÝËˆ˜]šYØ]WÝ×Ø[\›˜]]™WÙš[™\‹ŠB‚‚”“Ò‘PÕÒPÓÓˆH
+ˆ	ÏÜ[ˆÛ\ÜÏH˜Ý‹X\\›Ú™XÝZXÛÛˆˆ\šXKZY[HYH‰ÂˆˆžÛXÚYJ	Û^Y\œÉËŒŠ_H‚ˆÜÜ[ˆ‚ŠB‚”ÐU‘QÐ“ÓWÑQUÔÕUHH˜\›Ý™YÜØ]™YØ›ÛWÙY]ÚY‚”ÐU‘QÐ“ÓWÑSUWÔÕUHH˜\›Ý™YÜØ]™YØ›ÛWÙ[]WÚY‚”ÐU‘QÐ“ÓWÑQUÔ‘U’TÒSÓ—ÔÕUHH˜\›Ý™YÜØ]™YØ›ÛWÙY]Ü™]š\Ú[Ûˆ‚‚‚‘ÐÈH
+ˆ	ÏÝ™ÈÛ\ÜÏH˜Ý‹X\XÚ\ˆÚYHŒŽˆZYÚHŒŽˆšY]Ð›ÞHŒÌˆÌˆˆ\šXKZY[HYHˆ	Âˆ	ÜÝ[OHÚYŒŽÚZYÚŒŽÙ\Ü^Nš[›[™KX›ØÚÎÝ™\XØ[X[YÛŽ›ZYNÛX\™Ú[‹\šYÚŽ‰Âˆ	Ï™XÝÚYHŒÌˆˆZYÚHŒÌˆˆžHŽˆš[HˆÙYYŒ™™ˆ‹Ï‰Âˆ	Ï]H“LLŒL’Lˆˆš[HˆÙ™™ˆˆÝ›ÚÙOHˆÌMŒÙXˆˆÝ›ÚÙK]ÚYHŒK‹Ï‰Âˆ	Ï]H“LNˆš[H››Û™HˆÝ›ÚÙOHˆÌMŒÙXˆˆÝ›ÚÙK]ÚYHŒK‹Ï‰ÂˆÜÝ™Ïˆ‚ŠB‚‚™Yˆ\ÛX\šÊÙYYˆÝˆHˆŠHOˆÝŽ‚ˆˆˆ’[\Ý˜][Ûˆ›ÜˆH]™H\ˆHÛÜšÜÜXÙHÙ\È›ÝÝÜ™H›ÙXÝÝÜËˆˆˆ‚ˆ^HÝŠÙYYÜˆˆŠK˜Ø\ÙY›Û
+
+BˆYˆ[žJÚÙ[ˆ[ˆ^›ÜˆÚÙ[ˆ[ˆ
+˜Ø\‹™Ü›H‹˜Ù\˜[ZXÈ‹›]\˜]HŠJN‚ˆ›ÙHH
+ˆ	Ï™XÝHŽˆOHŒMˆÚYHŒÌˆˆZYÚHŒŒˆžHŒÈˆš[HˆÙ™ÙH‹Ï‰Âˆ	Ï™XÝHŒMˆOHŒNˆÚYHŒŒˆZYÚHŒLˆˆžHŒHˆš[HˆØNLŽYH‹Ï‰Âˆ	Ï]H“LLˆM‹M“LÍˆM‹MˆˆÝ›ÚÙOHˆÍÎÌM˜ÈˆÝ›ÚÙK]ÚYHŒˆ‹Ï‰Âˆ
+Bˆ[Yˆ[žJÚÙ[ˆ[ˆ^›ÜˆÚÙ[ˆ[ˆ
+œ™YÈ‹È‹˜XÚÈ‹˜ÛÛ™\\ˆŠJN‚ˆ›ÙHH
+ˆ	Ï™XÝHŒLˆOHŒLˆˆÚYHŒŽˆZYÚHŒŽˆžHˆš[HˆÌYLŽLØˆ‹Ï‰Âˆ	ÏÚ\˜ÛHÞHŒˆÞOHŒˆˆHˆˆš[HˆÌÌÍMMH‹Ï‰Âˆ	Ï]H“LMˆL‹MLL‹MLÌˆL‹MLMˆLLÌˆˆÝ›ÚÙOHˆÎMLØŽˆÝ›ÚÙK]ÚYHŒˆ‹Ï‰Âˆ
+Bˆ[ÙN‚ˆ›ÙHH
+ˆ	Ï™XÝHŒLˆˆOHŒMˆÚYHŒˆZYÚHŒˆžHŒˆˆš[HˆÌŒMÌ˜H‹Ï‰Âˆ	Ï]H“LMˆM‹MSLŒˆM‹MSLˆM‹MSLÌˆM‹MSLMˆÎSLŒˆÎSLˆÎSLÌˆÎHˆÝ›ÚÙOHˆÍÍˆˆÝ›ÚÙK]ÚYHŒKˆ‹Ï‰Âˆ	Ï]H“LLˆŒMLLˆšMLLˆÌšMLÍˆŒLÍˆšLÍˆÌšˆÝ›ÚÙOHˆÍÍˆˆÝ›ÚÙK]ÚYHŒKˆ‹Ï‰Âˆ
+Bˆ™]\›ˆ
+ˆ	ÏÝ™ÈÛ\ÜÏH˜Ý‹X\XÚ\ˆÚYHˆˆZYÚHˆˆšY]Ð›ÞHŒˆ\šXKZY[HYHˆ	Âˆ	ÜÝ[OHÚYœÚZYÚœÙ\Ü^Nš[›[™KX›ØÚÎÝ™\XØ[X[YÛŽ›ZYNÛX\™Ú[‹\šYÚŽ‰Âˆ‰Ï™XÝÚYHˆZYÚHˆžHŒLˆš[HˆÙŽ˜Y˜È‹ÏžØ›Ù_OÜÝ™Ï‰Âˆ
+B‚‚ÒTH
+ˆ	ÏÝ™ÈÛ\ÜÏH˜Ý‹X\XÚ\ˆÚYHŒÍˆˆZYÚHŒÍˆˆšY]Ð›ÞHŒˆ\šXKZY[HYHˆ	Âˆ	ÜÝ[OHÚYŒÍœÚZYÚŒÍœÙ\Ü^Nš[›[™KX›ØÚÎÝ™\XØ[X[YÛŽ›ZYH‰Âˆ	Ï™XÝÚYHˆZYÚHˆžHŒLˆš[HˆÙYYŒ™™ˆ‹Ï‰Âˆ	Ï™XÝHŒMˆˆOHŒMˆˆÚYHŒMˆˆZYÚHŒMˆˆžHŒˆˆš[HˆÌÌÍMMH‹Ï‰Âˆ	Ï]H“LŒL“LŽL“LŒÌ“LŽÌ“LLŒ“LLŽ“LÌˆŒ“LÌˆŽˆˆÝ›ÚÙOHˆÍÍˆˆÝ›ÚÙK]ÚYHŒˆ‹Ï‰ÂˆÜÝ™Ïˆ‚ŠB‚‚™YˆÙ\ØÊ˜[YNˆ[žK˜[˜XÚÎˆÝˆH¸ %ŠHOˆÝŽ‚ˆYˆ˜[YH\È›Û™N‚ˆ™]\›ˆ˜[˜XÚÂˆ^HÝŠ˜[YJKœÝš\
+
+BˆYˆ›Ý^Üˆ^›ÝÙ\Š
+H[ˆÈ›˜[ˆ‹››Û™HŸN‚ˆ™]\›ˆ˜[˜XÚÂˆ™]\›ˆ[™\ØØ\J^
+B‚‚™YˆÛ[J˜[YNˆ[žKY˜][ˆ[H
+HOˆ[‚ˆžN‚ˆYˆ˜[YH\È›Û™HÜˆÝŠ˜[YJKœÝš\
+
+HOHˆŽ‚ˆ™]\›ˆY˜][ˆ™]\›ˆ[
+›Ø]
+˜[YJJBˆ^Ù\
+\Q\œ›Ü‹˜[YQ\œ›ÜŠN‚ˆ™]\›ˆY˜][‚‚™YˆÙš\œÝ
+›ÝÎˆXÝÜÝ‹[žWK
+šÙ^\ÎˆÝ‹˜[˜XÚÎˆ[žHH›Û™JHOˆ[žN‚ˆ›ÜˆÙ^H[ˆÙ^\Î‚ˆ˜[YHH›ÝË™Ù]
+Ù^JBˆYˆ˜[YH\È›Ý›Û™H[™ÝŠ˜[YJKœÝš\
+
+H›Ý[ˆÈˆ‹›˜[ˆ‹“›Û™HŸN‚ˆ™]\›ˆ˜[YBˆ™]\›ˆ˜[˜XÚÂ‚‚™YˆØØ[™Y]WÛ\Š›ÝÎˆXÝÜÝ‹[žWJHOˆÝŽ‚ˆˆˆ”™XYHÝ\Y\ˆØ[™Y]H\[X™\‹ˆ›[šÈYX[œÈH›ÝÈ\È›ÝH\ˆˆˆ‚ˆ›ÜˆÙ^H[ˆ
+ˆ[\›˜]]™H\‹ˆ›\ˆ‹ˆ“Tˆ‹ˆ˜[\›˜]]™WÛ\ˆ‹ˆ›X[Y˜XÝ\™\—Ü\Û[X™\ˆ‹ˆœ\Û[X™\ˆ‹ˆ”\[X™\ˆ‹ˆ
+N‚ˆ^HÝŠ›ÝË™Ù]
+Ù^JHÜˆˆŠKœÝš\
+
+BˆYˆ^[™^˜Ø\ÙY›Û
+
+H›Ý[ˆÈ›˜[ˆ‹››Û™H‹¸ %‹‹HŸN‚ˆ™]\›ˆ^ˆ™]\›ˆˆ‚‚‚™YˆØØ[™Y]WÙšY[
+›ÝÎˆXÝÜÝ‹[žWK
+šÙ^\ÎˆÝ‹˜[˜XÚÎˆÝˆH¸ %ŠHOˆÝŽ‚ˆ›ÜˆÙ^H[ˆÙ^\Î‚ˆYˆÙ^H›Ý[ˆ›ÝÈÜˆ›ÝË™Ù]
+Ù^JH\È›Û™N‚ˆÛÛ[YBˆ^HÝŠ›ÝË™Ù]
+Ù^JJKœÝš\
+
+BˆYˆ›Ý^Üˆ^˜Ø\ÙY›Û
+
+H[ˆÈ›˜[ˆ‹››Û™HŸN‚ˆÛÛ[YBˆ™]\›ˆ[™\ØØ\J^
+Bˆ™]\›ˆ˜[˜XÚÂ‚‚™YˆØØ[™Y]WÜÝØÚÊ›ÝÎˆXÝÜÝ‹[žWJHOˆ[‚ˆ›ÜˆÙ^H[ˆ
+”ÝØÚÈ‹œÝØÚ×ÝÝ[‹œÝØÚ×Ø]˜Z[X›HŠN‚ˆYˆÙ^H[ˆ›ÝÈ[™›ÝË™Ù]
+Ù^JH›Ý[ˆ
+›Û™KˆŠN‚ˆ™]\›ˆÛ[J›ÝË™Ù]
+Ù^JJBˆ™]\›ˆ‚‚—ÐÐS‘QUWÐ“S’ÈHÂˆˆ‹¸ %‹‹H‹¸ $È‹›˜[ˆ‹››Û™H‹›‹ØH‹››Ý]˜Z[X›H‹››Ý™XÛÜ™Y‹ˆ››Ý›Ý[™‹[šÛ›ÝÛˆ‹[˜]˜Z[X›H‹›[‹ŸB‚‚™YˆØØ[™Y]WÜ™XÛÜ™Y
+›ÝÎˆXÝÜÝ‹[žWK
+šÙ^\ÎˆÝ‹Z\ÜÚ[™ÎˆÝˆH“›Ý™XÛÜ™YŠHOˆÝŽ‚ˆ›ÜˆÙ^H[ˆÙ^\Î‚ˆYˆÙ^H›Ý[ˆ›ÝÈÜˆ›ÝË™Ù]
+Ù^JH\È›Û™N‚ˆÛÛ[YBˆ^HÝŠ›ÝË™Ù]
+Ù^JJKœÝš\
+
+BˆYˆ^[™^˜Ø\ÙY›Û
+
+H›Ý[ˆÐÐS‘QUWÐ“S’Î‚ˆ™]\›ˆ^ˆ™]\›ˆZ\ÜÚ[™Â‚‚™YˆØØ[™Y]WÚÝ\›
+˜[YNˆ[žJHOˆÝŽ‚ˆ^HÝŠ˜[YHÜˆˆŠKœÝš\
+
+BˆYˆ^›ÝÙ\Š
+KœÝ\ÝÚ]
+
+šÎ‹ËÈ‹š‹ËÈŠJN‚ˆ™]\›ˆ^ˆ™]\›ˆˆ‚‚‚™YˆÜ\ÙšY[
+\ˆXÝÜÝ‹[žWK
+šÙ^\ÎˆÝŠHOˆÝŽ‚ˆ›ÜˆÙ^H[ˆÙ^\Î‚ˆYˆÙ^H›Ý[ˆ\Üˆ\™Ù]
+Ù^JH\È›Û™N‚ˆÛÛ[YBˆYˆÙ^H[ˆÈœ[—ØÛÝ[‹˜Ú[›™[ØÛÝ[‹”[ˆÛÝ[ŸN‚ˆžN‚ˆ[X™\ˆH[
+›Ø]
+\™Ù]
+Ù^JJJBˆ^Ù\
+\Q\œ›Ü‹˜[YQ\œ›ÜŠN‚ˆÛÛ[YBˆYˆ[X™\ˆH‚ˆÛÛ[YBˆ™]\›ˆÝŠ[X™\ŠBˆ^HÝŠ\™Ù]
+Ù^JJKœÝš\
+
+BˆYˆ^[™^˜Ø\ÙY›Û
+
+H›Ý[ˆÐÐS‘QUWÐ“S’È[™^›Ý[ˆÈŒ‹ŒŒŸN‚ˆ™]\›ˆ^ˆ™]\›ˆˆ‚‚‚™YˆÙšY[ÜÛÝ\˜ÙJ\ˆXÝÜÝ‹[žWKÙ^NˆÝ‹˜[˜XÚÎˆÝˆHˆŠHOˆÝŽ‚ˆÛÝ\˜Ù\ÈH\™Ù]
+™šY[ÜÛÝ\˜Ù\ÈŠHYˆ\Ú[œÝ[˜ÙJ\™Ù]
+™šY[ÜÛÝ\˜Ù\ÈŠKXÝ
+H[ÙHßBˆÛÝ\˜ÙHHÝŠÛÝ\˜Ù\Ë™Ù]
+Ù^JHÜˆ˜[˜XÚÈÜˆ\™Ù]
+œÛÝ\˜ÙHŠHÜˆˆŠKœÝš\
+
+Bˆ™]\›ˆÛÝ\˜ÙB‚‚™YˆÙš[™[™×ÛX™[
+Ý]\ÎˆÝ‹ÜšYÚ[˜[ˆÝ‹Ø[™Y]NˆÝ‹]šY[˜ÙNˆÝˆHˆŠHOˆ\VÜÝ‹Ý—N‚ˆ›ÝHHÝŠ]šY[˜ÙHÜˆˆŠKœÝš\
+
+BˆYˆÜšYÚ[˜[[™Ø[™Y]H[™Ý]\ÈOH“X]ÚŽ‚ˆYˆ›ÝH[™›X]Ú^XÝHˆ›Ý[ˆ›ÝK˜Ø\ÙY›Û
+
+H[™™\]Z]˜[[ˆ›Ý[ˆ›ÝK˜Ø\ÙY›Û
+
+N‚ˆ™]\›ˆÛÛ\]X›H‹ˆžÛ›Ý_H\È\È›Ý[ˆ\›Ý˜[È\ÙHH\ˆ‚ˆ™]\›ˆÛÛ\]X›H‹•H™]šY]™Y˜[Y\ÈX]Úˆ\È\È›Ý[ˆ\›Ý˜[È\ÙHH\ˆ‚ˆYˆÜšYÚ[˜[[™Ø[™Y]H[™Ý]\ÈOH‘Y™™\™[Ž‚ˆ™]\›ˆ’Û›ÝÛˆÛÛ™›XÝ‹›ÝHÜˆ•H™]šY]™Y˜[Y\ÈY™™\‹ˆ™]šY]È\ÈY™™\™[˜ÙH™Y›Ü™H\ÙKˆ‚ˆYˆÜšYÚ[˜[[™Ø[™Y]H[™Ý]\ÈOH“™YYÈ™]šY]ÈŽ‚ˆ™]\›ˆ
+ˆ“™YYÈ™]šY]È‹ˆ›ÝHÜˆ›Ý˜[Y\ÈÙ\™H™]šY]™Y[™^HY™™\‹ˆ\È\È›Ý›ÛÙˆÙˆ[XÝšXØ[š]ˆ‹ˆ
+BˆYˆ›ÝÜšYÚ[˜[[™›ÝØ[™Y]N‚ˆ™]\›ˆ•[šÛ›ÝÛˆ‹“™Z]\ˆÝ\Y\ˆ™XÛÜ™[˜ÛYY\È]šX]Kˆ‚ˆZ\ÜÚ[™ÈH›ÜšYÚ[˜[ˆYˆ›ÝÜšYÚ[˜[[ÙH˜Ø[™Y]H‚ˆ™]\›ˆ“™YYÈ™]šY]È‹ˆ•HÛZ\ÜÚ[™ßH™XÛÜ™Ù\È›Ý[˜ÛYH\È]šX]KÛÈš]Ø[››Ý™HÛÛ™š\›YYˆ‚‚‚™YˆÝ˜[YWØÙ[
+˜[YNˆÝ‹ÛÝ\˜ÙNˆÝ‹›ÝNˆÝˆHˆŠHOˆÝŽ‚ˆYˆ›Ý˜[YN‚ˆÚÝÛˆH•[šÛ›ÝÛˆ‚ˆ]Z[H›ÝHÜˆ“›Ý[ˆH™]šY]™YÝ\Y\ˆ™XÛÜ™ˆ‚ˆ[ÙN‚ˆÚÝÛˆH˜[YBˆ]Z[HÛÝ\˜ÙHÜˆ”Ý\Y\ˆ™XÛÜ™‚ˆ^˜HHˆÛX[ž×Ù\ØÊ]Z[
+_OÜÛX[ˆ‚ˆYˆ›ÝH[™˜[YN‚ˆ^˜H
+ÏHˆÛX[ž×Ù\ØÊ›ÝJ_OÜÛX[ˆ‚ˆ™]\›ˆˆ]ž×Ù\ØÊÚÝÛŠ_^Ù^˜_OÙ]ˆ‚‚‚™YˆØØ[™Y]WÜ\Ü^[ØY
+›ÝÎˆXÝÜÝ‹[žWJHOˆXÝÜÝ‹[žWN‚ˆ™]\›ˆÂˆ™\ØÜš\[ÛˆŽˆÜ\ÙšY[
+›ÝË™\ØÜš\[Ûˆ‹‘\ØÜš\[ÛˆŠKˆ›X[Y˜XÝ\™\ˆŽˆÜ\ÙšY[
+›ÝË“X[Y˜XÝ\™\ˆ‹›X[Y˜XÝ\™\ˆŠKˆœXÚØYÙHŽˆÜ\ÙšY[
+›ÝËœXÚØYÙH‹”XÚØYÙH‹”XÚØYÙHÈØ\ÙH‹œXÚØYÙWØØ\ÙHŠKˆœ[—ØÛÝ[ŽˆÙš\œÝ
+ˆ›ÝËˆœ[—ØÛÝ[‹ˆ”[ˆÛÝ[‹ˆ“[X™\ˆÙˆ[œÈ‹ˆ›[X™\—ÛÙ—Ü[œÈ‹ˆœ[œÈ‹ˆ˜[˜XÚÏLˆ
+Kˆ›[Ý[[™×ÜÝ[HŽˆÜ\ÙšY[
+›ÝË›[Ý[[™×ÜÝ[H‹“[Ý[[™ÈÝ[HŠKˆ›ÛYÙWÜ˜[™ÙHŽˆÜ\ÙšY[
+›ÝË›ÛYÙWÜ˜[™ÙH‹•›ÛYÙH˜[™ÙHŠKˆ[\\˜]\™WÜ˜[™ÙHŽˆÜ\ÙšY[
+›ÝË[\\˜]\™WÜ˜[™ÙH‹•[\\˜]\™H˜[™ÙHŠKˆ˜Ú[›™[ØÛÝ[Žˆ›ÝË™Ù]
+˜Ú[›™[ØÛÝ[ŠHÜˆ›ÝË™Ù]
+Ú[›™[ÛÝ[ŠHÜˆˆ˜\˜Ú]XÝ\™HŽˆÜ\ÙšY[
+ˆ›ÝËˆ˜\˜Ú]XÝ\™H‹ˆ\˜Ú]XÝ\™H‹ˆ‘]šXÙH˜[Z[HÈ\˜Ú]XÝ\™H‹ˆ™]šXÙWÙ˜[Z[WØ\˜Ú]XÝ\™H‹ˆ™]šXÙWÙ˜[Z[H‹ˆ˜ÛÜ™H‹ˆ’TÐH‹ˆ
+Kˆ›Y™XÞXÛWÜÝ]\ÈŽˆÜ\ÙšY[
+›ÝË“Y™XÞXÛH‹›Y™XÞXÛWÜÝ]\ÈŠKˆœÝØÚ×ÝÝ[Žˆ›ÝË™Ù]
+”ÝØÚÈ‹›ÝË™Ù]
+œÝØÚ×ÝÝ[ŠJKˆ[š]ÜšXÙHŽˆ›ÝË™Ù]
+[š]ÜšXÙH‹›ÝË™Ù]
+•[š]šXÙHŠJKˆ›XYÝ[YWÝÙYZÜÈŽˆ›ÝË™Ù]
+›XYÝ[YWÝÙYZÜÈŠKˆ˜˜[™ÚYÛZˆŽˆ›ÝË™Ù]
+˜˜[™ÚYÛZˆŠKˆœÛ]×Ü˜]WÝ—Ý\ÈŽˆ›ÝË™Ù]
+œÛ]×Ü˜]WÝ—Ý\ÈŠKˆš[œ]ÛÙ™œÙ]Û]ˆŽˆ›ÝË™Ù]
+š[œ]ÛÙ™œÙ]Û]ˆŠKˆš[œ]ØšX\×Û˜HŽˆ›ÝË™Ù]
+š[œ]ØšX\×Û˜HŠKˆœ]ZY\ØÙ[ØÝ\œ™[ÛXHŽˆ›ÝË™Ù]
+œ]ZY\ØÙ[ØÝ\œ™[ÛXHŠKˆ™Ø×ÛZˆŽˆ›ÝË™Ù]
+™Ø×ÛZˆŠKˆœÛÝ\˜ÙHŽˆÜ\ÙšY[
+›ÝË”Ý\Y\ˆ‹œÛÝ\˜ÙHŠHÜˆ‘YÚRÙ^H‹ˆ™]\ÚY]Ý\›ŽˆÙš\œÝ
+ˆ›ÝËˆ™]\ÚY]Ý\›‹ˆ‘]\ÚY]T“‹ˆ™]\ÚY]\›‹ˆ‘]HÚY]T“‹ˆ˜[˜XÚÏHˆ‹ˆ
+Kˆ™šY[ÜÛÝ\˜Ù\ÈŽˆ›ÝË™Ù]
+™šY[ÜÛÝ\˜Ù\ÈŠHYˆ\Ú[œÝ[˜ÙJ›ÝË™Ù]
+™šY[ÜÛÝ\˜Ù\ÈŠKXÝ
+H[ÙHßKˆ›X[Y˜XÝ\™\—Ü\Û[X™\ˆŽˆØØ[™Y]WÛ\Š›ÝÊKˆB‚‚™YˆØÛÛ\\š\ÛÛ—ÝX›Jˆ›ÝÜÎˆ\ÝÝ\WKÛÛ\]Xš[]NˆXÝÜÝ‹[žWH›Û™HH›Û™BŠHOˆÝŽ‚ˆÛÛ\]Xš[]HHÛÛ\]Xš[]HYˆ\Ú[œÝ[˜ÙJÛÛ\]Xš[]KXÝ
+H[ÙHßBˆÜš]XØ[ÚÙ^\ÈHÙ]
+
+BˆYˆÛÛ\]Xš[]K™Ù]
+œXÚØYÙWÛZ\ÛX]ÚŠN‚ˆÜš]XØ[ÚÙ^\Ë˜Y
+œXÚØYÙHŠBˆYˆÛÛ\]Xš[]K™Ù]
+œ[—ØÛÝ[ÛZ\ÛX]ÚŠN‚ˆÜš]XØ[ÚÙ^\Ë˜Y
+œ[ˆÛÝ[ŠBˆYˆÛÛ\]Xš[]K™Ù]
+˜\˜Ú]XÝ\™WÛZ\ÛX]ÚŠN‚ˆÜš]XØ[ÚÙ^\Ë˜Y
+˜\˜Ú]XÝ\™HŠBˆ›ÙHH×Bˆ›Üˆ›ÝÈ[ˆ›ÝÜÎ‚ˆX™[ÜšYÚ[˜[ÜšYÚ[˜[ÜÛÝ\˜ÙKØ[™Y]KØ[™Y]WÜÛÝ\˜ÙKÝ]\ÈH›ÝÖÎ—Bˆ›ÝHH›ÝÖÍ—HYˆ[Š›ÝÊHˆˆ[ÙHˆ‚ˆ]šY[˜ÙHH›ÝÖÍ×HYˆ[Š›ÝÊHˆÈ[ÙHˆ‚ˆš[™[™ËÚHHÙš[™[™×ÛX™[
+Ý]\ËÜšYÚ[˜[Ø[™Y]K]šY[˜ÙJBˆYˆš[™[™ÈOH•[šÛ›ÝÛˆŽ‚ˆÚHH
+ˆˆžÛX™[HØ\È›Ý[ˆZ]\ˆÝ\Y\ˆ™XÛÜ™ˆ‚ˆÚXÚÈH]\ÚY]Üˆ›ÙXÝYÙH™Y›Ü™H™X][™È]\ÈHX]Úˆ‚ˆ
+BˆÚ[™HÂˆÛÛ\]X›HŽˆ˜ÛÛ\]X›H‹ˆ“™YYÈ™]šY]ÈŽˆœ™]šY]È‹ˆ’Û›ÝÛˆÛÛ™›XÝŽˆ˜ÛÛ™›XÝ‹ˆK™Ù]
+š[™[™Ë[šÛ›ÝÛˆŠBˆ›Ü›X[^™YÛX™[HÝŠX™[ÜˆˆŠK˜Ø\ÙY›Û
+
+BˆÜš]XØ[H
+ˆ
+œXÚØYÙHˆ[ˆÜš]XØ[ÚÙ^\È[™œXÚØYÙHˆ[ˆ›Ü›X[^™YÛX™[
+BˆÜˆ
+ˆœ[ˆÛÝ[ˆ[ˆÜš]XØ[ÚÙ^\Âˆ[™›Ü›X[^™YÛX™[[ˆÈœ[ˆÛÝ[‹›[X™\ˆÙˆ[œÈ‹œ[œÈŸBˆ
+BˆÜˆ
+ˆ˜\˜Ú]XÝ\™Hˆ[ˆÜš]XØ[ÚÙ^\Âˆ[™
+ˆ˜\˜Ú]XÝ\™Hˆ[ˆ›Ü›X[^™YÛX™[ˆÜˆ™]šXÙH˜[Z[Hˆ[ˆ›Ü›X[^™YÛX™[ˆÜˆ›Ü›X[^™YÛX™[[ˆÈ˜ÛÜ™H‹š[œÝXÝ[ÛˆÙ]ŸBˆ
+Bˆ
+Bˆ
+BˆYˆÜš]XØ[‚ˆÚ[™H˜Üš]XØ[‚ˆ›Ý×ØÛ\ÜÈHˆÛ\ÜÏIØÝ‹XÛÛ\]XÜš]XØ[\›ÝÉÈˆYˆÜš]XØ[[ÙHˆ‚ˆ›ÙK˜\[™
+ˆˆžÜ›Ý×ØÛ\ÜßOˆ‚ˆˆž×Ù\ØÊX™[
+_OÝˆ‚ˆˆž×Ý˜[YWØÙ[
+ÜšYÚ[˜[ÜšYÚ[˜[ÜÛÝ\˜ÙK›ÝJ_OÝˆ‚ˆˆž×Ý˜[YWØÙ[
+Ø[™Y]KØ[™Y]WÜÛÝ\˜ÙJ_OÝˆ‚ˆˆÜ[ˆÛ\ÜÏIØÝ‹Yš[™[™ÈÚÚ[™IÏž×Ù\ØÊš[™[™Ê_OÜÜ[ÛX[ž×Ù\ØÊÚJ_OÜÛX[Ýˆ‚ˆÝˆ‚ˆ
+Bˆ™]\›ˆ
+ˆX›HÛ\ÜÏIØÝ‹XØ[™Y]KXÛÛ\\™IÏXYˆ‚ˆ]šX]OÝ“ÜšYÚ[˜[ÝØ[™Y]OÝ‘š[™[™ÏÝˆ‚ˆˆÝÝXY›ÙOžÉÉËš›Ú[Š›ÙJ_OÝ›ÙOÝX›Oˆ‚ˆ
+B‚‚™YˆØØ[™Y]WÙ]Z[Ú[
+›ÝÎˆXÝÜÝ‹[žWKÜšYÚ[˜[ˆXÝÜÝ‹[žWH›Û™HH›Û™JHOˆÝŽ‚ˆˆˆÛÛ\\™HÛ™HØ[™Y]HÚ]HÜšYÚ[˜[\Ú[™È™]šY]™YÝ\Y\ˆ]šY[˜ÙKˆˆˆ‚ˆœ›ÛHÜ˜Ë™]\ÚY]ØÛÛ\\š\ÛÛˆ[\ÜZ[Ù]\ÚY]ØÛÛ\\š\ÛÛ‚ˆœ›ÛHÜ˜Ëœš\Ú×Ù[™Ú[™H[\Ü™XÛÜ™YÜÝ\WÙ˜XÝÜœÂ‚ˆÜšYÚ[˜[HÜšYÚ[˜[Yˆ\Ú[œÝ[˜ÙJÜšYÚ[˜[XÝ
+H[ÙHßBˆØ[™Y]HHØØ[™Y]WÜ\Ü^[ØY
+›ÝÊBˆÛÛ\]Xš[]HH\ÜÙ\Ü×Ü\ØÛÛ\]Xš[]JÜšYÚ[˜[Ø[™Y]JBˆ\ˆHØØ[™Y]WÛ\Š›ÝÊBˆÜšYÚ[˜[Û\ˆHÜ\ÙšY[
+ÜšYÚ[˜[›X[Y˜XÝ\™\—Ü\Û[X™\ˆ‹›\ˆŠHÜˆ“ÜšYÚ[˜[‚ˆÛ\ÜÚYšXØ][ÛˆHÜ\ÙšY[
+›ÝËÛ\ÜÚYšXØ][Ûˆ‹Ø]YÛÜžHŠBˆ™\šYšYYHÛ\ÜÚYšXØ][ÛˆOH•™\šYšYY\™XÝÝXœÝ]]H‚ˆÛÛ\\š\ÛÛˆHZ[Ù]\ÚY]ØÛÛ\\š\ÛÛŠÜšYÚ[˜[Ø[™Y]JBˆXÚšXØ[H×Bˆ›Üˆ][H[ˆÛÛ\\š\ÛÛ‹™Ù]
+œ›ÝÜÈŠHÜˆ×N‚ˆÙ^HHÝŠ][K™Ù]
+’Ù^HŠHÜˆˆŠBˆYˆÙ^HOH›Y™XÞXÛWÜÝ]\ÈŽ‚ˆÛÛ[YBˆX™[HÝŠ][K™Ù]
+]šX]HŠHÜˆÙ^JBˆÜšYÚ[˜[Ý˜[YHHÝŠ][K™Ù]
+“ÜšYÚ[˜[ŠHÜˆˆŠBˆØ[™Y]WÝ˜[YHHÝŠ][K™Ù]
+Ø[™Y]HŠHÜˆˆŠBˆYˆÜšYÚ[˜[Ý˜[YK˜Ø\ÙY›Û
+
+H[ˆÐÐS‘QUWÐ“S’ÈÜˆÜšYÚ[˜[Ý˜[YK˜Ø\ÙY›Û
+
+HOH››Ý]˜Z[X›HŽ‚ˆÜšYÚ[˜[Ý˜[YHHˆ‚ˆYˆØ[™Y]WÝ˜[YK˜Ø\ÙY›Û
+
+H[ˆÐÐS‘QUWÐ“S’ÈÜˆØ[™Y]WÝ˜[YK˜Ø\ÙY›Û
+
+HOH››Ý]˜Z[X›HŽ‚ˆØ[™Y]WÝ˜[YHHˆ‚ˆÝ]\ÈHÝŠ][K™Ù]
+”Ý]\ÈŠHÜˆˆŠBˆ]šY[˜ÙHHÝŠ][K™Ù]
+‘]šY[˜ÙHŠHÜˆˆŠBˆYˆÙ^HOHœXÚØYÙHˆ[™ÛÛ\]Xš[]K™Ù]
+œXÚØYÙWÛZ\ÛX]ÚŠN‚ˆÜšYÚ[˜[Ý˜[YHHÝŠÛÛ\]Xš[]K™Ù]
+œÛÝ\˜ÙWÜXÚØYÙHŠHÜˆÜšYÚ[˜[Ý˜[YJBˆØ[™Y]WÝ˜[YHHÝŠÛÛ\]Xš[]K™Ù]
+˜Ø[™Y]WÜXÚØYÙHŠHÜˆØ[™Y]WÝ˜[YJBˆYˆÙ^HOHœ[—ØÛÝ[ˆ[™ÛÛ\]Xš[]K™Ù]
+œ[—ØÛÝ[ÛZ\ÛX]ÚŠN‚ˆÜšYÚ[˜[Ý˜[YHHÝŠÛÛ\]Xš[]K™Ù]
+œÛÝ\˜ÙWÜ[—ØÛÝ[ŠHÜˆÜšYÚ[˜[Ý˜[YJBˆØ[™Y]WÝ˜[YHHÝŠÛÛ\]Xš[]K™Ù]
+˜Ø[™Y]WÜ[—ØÛÝ[ŠHÜˆØ[™Y]WÝ˜[YJBˆYˆÙ^HOH˜\˜Ú]XÝ\™Hˆ[™ÛÛ\]Xš[]K™Ù]
+˜\˜Ú]XÝ\™WÛZ\ÛX]ÚŠN‚ˆÜšYÚ[˜[Ý˜[YHHÝŠÛÛ\]Xš[]K™Ù]
+œÛÝ\˜ÙWØ\˜Ú]XÝ\™HŠHÜˆÜšYÚ[˜[Ý˜[YJBˆØ[™Y]WÝ˜[YHHÝŠÛÛ\]Xš[]K™Ù]
+˜Ø[™Y]WØ\˜Ú]XÝ\™HŠHÜˆØ[™Y]WÝ˜[YJBˆYˆÙ^HOH˜\˜Ú]XÝ\™Hˆ[™Ý]\ÈOH‘Y™™\™[ˆ[™ÜšYÚ[˜[Ý˜[YH[™Ø[™Y]WÝ˜[YN‚ˆYˆÛÛ\]Xš[]K™Ù]
+˜\˜Ú]XÝ\™WÛZ\ÛX]ÚŠN‚ˆ]šY[˜ÙHHÔ’UPÐSÑ’T“UÐT‘WÕÐT“’S‘Âˆ[ÙN‚ˆÝ]\ÈH“™YYÈ™]šY]È‚ˆ]šY[˜ÙHH•HÝ\Y\ˆØ]YÛÜžHX™[ÈY™™\‹ˆ\È\È›ÝH™\šYšYY[˜Ý[Û˜[ÛÛ™›XÝˆ‚ˆYˆÙ^HOHœXÚØYÙHˆ[™ÛÛ\]Xš[]K™Ù]
+œXÚØYÙWÛZ\ÛX]ÚŠN‚ˆÝ]\ÈH‘Y™™\™[‚ˆ]šY[˜ÙHHÔ’UPÐSÔTÒPÐSÕÐT“’S‘ÂˆYˆÙ^HOHœ[—ØÛÝ[ˆ[™ÛÛ\]Xš[]K™Ù]
+œ[—ØÛÝ[ÛZ\ÛX]ÚŠN‚ˆÝ]\ÈH‘Y™™\™[‚ˆ]šY[˜ÙHHÔ’UPÐSÔTÒPÐSÕÐT“’S‘ÂˆYˆÙ^HOH›ÛYÙWÜ˜[™ÙHˆ[™ÜšYÚ[˜[Ý˜[YH[™Ø[™Y]WÝ˜[YN‚ˆœ›ÛHÜ˜Ëœ\˜[Y]šX×ØÛÛ\\™H[\ÜÝ\WÜ˜[™ÙWÙš[™[™Â‚ˆÛÝ™\™YHÝ\WÜ˜[™ÙWÙš[™[™ÊÜšYÚ[˜[Ý˜[YKØ[™Y]WÝ˜[YJBˆYˆÛÝ™\™Y‚ˆÝ]\Ë]šY[˜ÙHHÛÝ™\™YˆYˆÙ^HOHš[œ]ØšX\×Û˜Hˆ[™ÜšYÚ[˜[Ý˜[YH[™Ø[™Y]WÝ˜[YN‚ˆœ›ÛHÜ˜Ëœ\˜[Y]šX×ØÛÛ\\™H[\ÜšX\×ØÛÛ™][Û—Ùš[™[™Â‚ˆYÙYHšX\×ØÛÛ™][Û—Ùš[™[™ÊˆÜšYÚ[˜[Ý˜[YKˆØ[™Y]WÝ˜[YKˆ\ÚYÛ—Û[Z][ÜšYÚ[˜[™Ù]
+š[œ]ØšX\×Ù\ÚYÛ—Û[Z]ŠBˆÜˆÜšYÚ[˜[™Ù]
+™\ÚYÛ—Û[Z]Ú[œ]ØšX\ÈŠKˆ
+BˆYˆYÙY‚ˆÝ]\Ë]šY[˜ÙHHYÙYˆYˆÙ^HOH[\\˜]\™WÜ˜[™ÙHˆ[™ÜšYÚ[˜[Ý˜[YH[™Ø[™Y]WÝ˜[YN‚ˆ[\Ü™B‚ˆÝš\YHÂˆ™KœÝXŠˆ—Ê—
+×ŠWJ—
+H‹ˆ‹˜[YJKœÝš\
+
+Bˆ›Üˆ˜[YH[ˆ
+ÜšYÚ[˜[Ý˜[YKØ[™Y]WÝ˜[YJBˆBˆYˆÝš\YÌK˜Ø\ÙY›Û
+
+HOHÝš\YÌWK˜Ø\ÙY›Û
+
+N‚ˆÝ]\ÈH“X]Ú‚ˆ]šY[˜ÙHH•H[\\˜]\™H˜[™Ù\ÈX]ÚˆH\™[]XØ[›ÝHÝXÚ\È
+JH\ÈHYX\Ý\™[Y[ÛÛ™][Û‹›ÝHÙXÛÛ™[Z]ˆ‚ˆ›Ý\ÈHÜšYÚ[˜[™Ù]
+™šY[ÜÛÝ\˜ÙWÛ›Ý\ÈŠHYˆ\Ú[œÝ[˜ÙJÜšYÚ[˜[™Ù]
+™šY[ÜÛÝ\˜ÙWÛ›Ý\ÈŠKXÝ
+H[ÙHßBˆXÚšXØ[˜\[™
+
+ˆX™[ˆÜšYÚ[˜[Ý˜[YKˆÙšY[ÜÛÝ\˜ÙJÜšYÚ[˜[Ù^JKˆØ[™Y]WÝ˜[YKˆÙšY[ÜÛÝ\˜ÙJØ[™Y]KÙ^KØ[™Y]K™Ù]
+œÛÝ\˜ÙHŠHÜˆ‘YÚRÙ^HŠKˆÝ]\ËˆÝŠ›Ý\Ë™Ù]
+Ù^JHÜˆˆŠKˆ]šY[˜ÙKˆ
+JBˆÈÛÛYHÝ\Y\ˆX]šXÙ\ÈÛZ]Y[]HšY[È]™[ˆÚ[ˆH™]\›™Y\ˆÈ™XÛÜ™ÈÛÛZ[ˆ[KˆÙY\HÜš]XØ[Z\ÛX]Úš\ÚX›H[ˆH]Z[X›K‚ˆ™\Ù[ÛX™[ÈHÜÝŠ][VÌHÜˆˆŠK˜Ø\ÙY›Û
+
+H›Üˆ][H[ˆXÚšXØ[Bˆ™\Ù[ÚÙ^\ÈHÙ]
+™\Ù[ÛX™[ÊBˆYˆ[žJœXÚØYÙHˆ[ˆ][H›Üˆ][H[ˆ™\Ù[ÛX™[ÊN‚ˆ™\Ù[ÚÙ^\Ë˜Y
+œXÚØYÙHŠBˆYˆ[žJœ[ˆÛÝ[ˆ[ˆ][HÜˆ›[X™\ˆÙˆ[œÈˆ[ˆ][H›Üˆ][H[ˆ™\Ù[ÛX™[ÊN‚ˆ™\Ù[ÚÙ^\Ë˜Y
+œ[ˆÛÝ[ŠBˆYˆ[žJ˜\˜Ú]XÝ\™Hˆ[ˆ][HÜˆ™]šXÙH˜[Z[Hˆ[ˆ][H›Üˆ][H[ˆ™\Ù[ÛX™[ÊN‚ˆ™\Ù[ÚÙ^\Ë˜Y
+˜\˜Ú]XÝ\™HŠBˆ›ÜˆÙ^KX™[YšYÚZ\ÛX]Ú]šY[˜ÙH[ˆ
+ˆ
+ˆœXÚØYÙH‹ˆ”XÚØYÙH‹ˆÛÛ\]Xš[]K™Ù]
+œÛÝ\˜ÙWÜXÚØYÙHŠKˆÛÛ\]Xš[]K™Ù]
+˜Ø[™Y]WÜXÚØYÙHŠKˆÛÛ\]Xš[]K™Ù]
+œXÚØYÙWÛZ\ÛX]ÚŠKˆÔ’UPÐSÔTÒPÐSÕÐT“’S‘Ëˆ
+Kˆ
+ˆœ[ˆÛÝ[‹ˆ”[ˆÛÝ[‹ˆÛÛ\]Xš[]K™Ù]
+œÛÝ\˜ÙWÜ[—ØÛÝ[ŠKˆÛÛ\]Xš[]K™Ù]
+˜Ø[™Y]WÜ[—ØÛÝ[ŠKˆÛÛ\]Xš[]K™Ù]
+œ[—ØÛÝ[ÛZ\ÛX]ÚŠKˆÔ’UPÐSÔTÒPÐSÕÐT“’S‘Ëˆ
+Kˆ
+ˆ˜\˜Ú]XÝ\™H‹ˆ‘]šXÙH˜[Z[HÈ\˜Ú]XÝ\™H‹ˆÛÛ\]Xš[]K™Ù]
+œÛÝ\˜ÙWØ\˜Ú]XÝ\™HŠKˆÛÛ\]Xš[]K™Ù]
+˜Ø[™Y]WØ\˜Ú]XÝ\™HŠKˆÛÛ\]Xš[]K™Ù]
+˜\˜Ú]XÝ\™WÛZ\ÛX]ÚŠKˆÔ’UPÐSÑ’T“UÐT‘WÕÐT“’S‘Ëˆ
+Kˆ
+N‚ˆYˆZ\ÛX]Ú[™Ù^H›Ý[ˆ™\Ù[ÚÙ^\Î‚ˆXÚšXØ[˜\[™
+ˆ
+ˆX™[ˆÝŠYÜˆˆŠKˆÙšY[ÜÛÝ\˜ÙJÜšYÚ[˜[Ù^JKˆÝŠšYÚÜˆˆŠKˆÙšY[ÜÛÝ\˜ÙJØ[™Y]KÙ^KØ[™Y]K™Ù]
+œÛÝ\˜ÙHŠHÜˆ”Ý\Y\ˆ™XÛÜ™ŠKˆ‘Y™™\™[‹ˆˆ‹ˆ]šY[˜ÙKˆ
+Bˆ
+BˆÛÛ™›XÝÈHÂˆ][VÌBˆ›Üˆ][H[ˆXÚšXØ[ˆYˆÙš[™[™×ÛX™[
+][VÍWK][VÌWK][VÌ×K][VÍ×HYˆ[Š][JHˆÈ[ÙHˆŠVÌHOH’Û›ÝÛˆÛÛ™›XÝ‚ˆBˆYˆÛÛ™›XÝÎ‚ˆš]H
+ˆ•XÚšXØ[š]\È›Ý\ÝX›\ÚYˆÛ›ÝÛˆÛÛ™›XÝÎˆ‚ˆ
+È‹‹š›Ú[ŠÛÛ™›XÝÊBˆ
+È‹ˆ\[[X™\ˆÜˆ˜[Z[HÚ[Z[\š]H\È›ÝÛÛ\]Xš[]H]šY[˜ÙKˆ‚ˆ
+Bˆ[ÙN‚ˆš]H
+ˆ•XÚšXØ[š]\È›Ý\ÝX›\ÚYˆ›È™]šY]™Y]šX]HØ\ÈHÛ›ÝÛˆÛÛ™›XÝ‚ˆ˜]Z\ÜÚ[™È]šY[˜ÙHÝ[\ÈÈ™HÚXÚÙYˆ\[[X™\ˆÜˆ˜[Z[HÚ[Z[\š]H‚ˆš\È›ÝÛÛ\]Xš[]H]šY[˜ÙKˆ‚ˆ
+BˆYˆ™\šYšYY‚ˆ™[][ÛœÚ\H
+ˆ•HÝ\Y\ˆ™XÛÜ™Y\È\ÈH™\šYšYY\™XÝÝXœÝ]]Kˆ‚ˆ•]™[][ÛœÚ\\È›Ý[ˆ\›Ý˜[È\ÙHH\ˆ‚ˆ
+Bˆ[ÙN‚ˆ™[][ÛœÚ\HÛÛ\]Xš[]H\È›Ý™\šYšYYˆ‚ˆYˆÛ\ÜÚYšXØ][ÛŽ‚ˆ™[][ÛœÚ\
+ÏHˆˆÝ\Y\ˆÛ\ÜÚYšXØ][ÛŽˆØÛ\ÜÚYšXØ][ÛŸKˆ‚ˆ™XÛÛ[Y[™][ÛˆHÜ\ÙšY[
+›ÝË”™XÛÛ[Y[™][ÛˆŠBˆ™^ÜÝ\H™XÛÛ[Y[™][ÛˆÜˆÚXÚÈH]\ÚY]›ÛÝš[[™]X[YšXØ][Ûˆ™Y›Ü™H\ÙKˆ‚‚ˆÝ\WÜ›ÝÜÈH×BˆÝ\WÜÜXÜÈH
+ˆ
+“X[Y˜XÝ\™\ˆ‹›X[Y˜XÝ\™\ˆ‹›X[Y˜XÝ\™\ˆŠKˆ
+“Y™XÞXÛH‹›Y™XÞXÛWÜÝ]\È‹›Y™XÞXÛWÜÝ]\ÈŠKˆ
+”ÝØÚÈ‹œÝØÚ×ÝÝ[‹œÝØÚ×ÝÝ[ŠKˆ
+“XY[YH‹›XYÝ[YWÝÙYZÜÈ‹›XYÝ[YWÝÙYZÜÈŠKˆ
+•[š]šXÙH‹[š]ÜšXÙH‹[š]ÜšXÙHŠKˆ
+‘\ÝšX]Üˆ‹œÛÝ\˜ÙH‹œÛÝ\˜ÙHŠKˆ
+Bˆ›ÜˆX™[ÜšYÚ[˜[ÚÙ^KØ[™Y]WÚÙ^H[ˆÝ\WÜÜXÜÎ‚ˆÜšYÚ[˜[Ý˜[YHHÜ\ÙšY[
+ÜšYÚ[˜[ÜšYÚ[˜[ÚÙ^JBˆØ[™Y]WÝ˜[YHHÜ\ÙšY[
+Ø[™Y]KØ[™Y]WÚÙ^JBˆYˆÜšYÚ[˜[ÚÙ^HOHœÝØÚ×ÝÝ[ˆ[™ÜšYÚ[˜[™Ù]
+œÝØÚ×ÝÝ[ŠH›Ý[ˆ
+›Û™KˆŠN‚ˆÜšYÚ[˜[Ý˜[YHHˆž×Û[JÜšYÚ[˜[™Ù]
+	ÜÝØÚ×ÝÝ[	ÊJN‹H‚ˆYˆØ[™Y]WÚÙ^HOHœÝØÚ×ÝÝ[ˆ[™Ø[™Y]K™Ù]
+œÝØÚ×ÝÝ[ŠH›Ý[ˆ
+›Û™KˆŠN‚ˆØ[™Y]WÝ˜[YHHˆž×Û[JØ[™Y]K™Ù]
+	ÜÝØÚ×ÝÝ[	ÊJN‹H‚ˆYˆÜšYÚ[˜[ÚÙ^HOH›XYÝ[YWÝÙYZÜÈˆ[™Ù]šY[˜ÙWÛ[X™\ŠÜšYÚ[˜[™Ù]
+›XYÝ[YWÝÙYZÜÈŠJN‚ˆÜšYÚ[˜[Ý˜[YHHˆžÛÜšYÚ[˜[™Ù]
+	ÛXYÝ[YWÝÙYZÜÉÊ_HÙYZÜÈ‚ˆYˆØ[™Y]WÚÙ^HOH›XYÝ[YWÝÙYZÜÈˆ[™Ù]šY[˜ÙWÛ[X™\ŠØ[™Y]K™Ù]
+›XYÝ[YWÝÙYZÜÈŠJN‚ˆØ[™Y]WÝ˜[YHHˆžØØ[™Y]K™Ù]
+	ÛXYÝ[YWÝÙYZÜÉÊ_HÙYZÜÈ‚ˆYˆÜšYÚ[˜[ÚÙ^HOH[š]ÜšXÙHˆ[™Ù]šY[˜ÙWÛ[X™\ŠÜšYÚ[˜[™Ù]
+[š]ÜšXÙHŠKÜÚ]]™OUYJN‚ˆÜšYÚ[˜[Ý˜[YHHˆ‰Ù›Ø]
+ÜšYÚ[˜[™Ù]
+	Ý[š]ÜšXÙIÊJN‹ŸH‹œœÝš\
+ŒŠKœœÝš\
+‹ˆŠBˆYˆØ[™Y]WÚÙ^HOH[š]ÜšXÙHˆ[™Ù]šY[˜ÙWÛ[X™\ŠØ[™Y]K™Ù]
+[š]ÜšXÙHŠKÜÚ]]™OUYJN‚ˆØ[™Y]WÝ˜[YHHˆ‰Ù›Ø]
+Ø[™Y]K™Ù]
+	Ý[š]ÜšXÙIÊJN‹ŸH‹œœÝš\
+ŒŠKœœÝš\
+‹ˆŠBˆÝ]\ÈH“X]ÚˆYˆÜšYÚ[˜[Ý˜[YH[™Ø[™Y]WÝ˜[YH[™ÜšYÚ[˜[Ý˜[YK˜Ø\ÙY›Û
+
+HOHØ[™Y]WÝ˜[YK˜Ø\ÙY›Û
+
+H[ÙH‘Y™™\™[‚ˆYˆX™[[ˆÈ”ÝØÚÈ‹•[š]šXÙH‹‘\ÝšX]Üˆ‹“X[Y˜XÝ\™\ˆ‹“XY[YHŸH[™ÜšYÚ[˜[Ý˜[YH[™Ø[™Y]WÝ˜[YH[™Ý]\ÈOH‘Y™™\™[Ž‚ˆÝ]\ÈH“™YYÈ™]šY]È‚ˆÝ\WÙ]šY[˜ÙHHˆ‚ˆYˆX™[OH“XY[YHˆ[™Ý]\ÈOH“™YYÈ™]šY]ÈŽ‚ˆÝ\WÙ]šY[˜ÙHH
+ˆ›Ý™XÛÜ™È[˜ÛYHHXY[YKˆHY™™\™[˜ÙH\ÈØÚY[H]šY[˜ÙK‚ˆ››Ý[XÝšXØ[ÛÛ\]Xš[]Kˆ‚ˆ
+Bˆ[YˆX™[OH“Y™XÞXÛHˆ[™Ý]\ÈOH‘Y™™\™[Ž‚ˆÝ\WÙ]šY[˜ÙHH
+ˆ“Y™XÞXÛHÝ]\ÈY™™\œËˆ\È\ÈÝ\H]šY[˜ÙH[™\ÈÙ\\˜]Hœ›ÛH[XÝšXØ[š]ˆ‚ˆ
+BˆÝ\WÜ›ÝÜË˜\[™
+
+ˆX™[ˆÜšYÚ[˜[Ý˜[YKˆÙšY[ÜÛÝ\˜ÙJÜšYÚ[˜[ÜšYÚ[˜[ÚÙ^KÝŠÜšYÚ[˜[™Ù]
+œÛÝ\˜ÙHŠHÜˆˆŠJKˆØ[™Y]WÝ˜[YKˆÙšY[ÜÛÝ\˜ÙJØ[™Y]KØ[™Y]WÚÙ^KÝŠØ[™Y]K™Ù]
+œÛÝ\˜ÙHŠHÜˆˆŠJKˆÝ]\Ëˆˆ‹ˆÝ\WÙ]šY[˜ÙKˆ
+JB‚ˆ˜XÝÜœÈH™XÛÜ™YÜÝ\WÙ˜XÝÜœÊÂˆ›Y™XÞXÛWÜÝ]\ÈŽˆØ[™Y]K™Ù]
+›Y™XÞXÛWÜÝ]\ÈŠKˆœÝØÚ×ÝÝ[ŽˆØ[™Y]K™Ù]
+œÝØÚ×ÝÝ[ŠKˆ›XYÝ[YWÝÙYZÜÈŽˆØ[™Y]K™Ù]
+›XYÝ[YWÝÙYZÜÈŠKˆœÛÝ\˜ÙHŽˆØ[™Y]K™Ù]
+œÛÝ\˜ÙHŠHÜˆ‘YÚRÙ^H‹ˆœ]X[]HŽˆˆJBˆ˜XÝÜ—Ú[H×Bˆ\YYÜÚ[ÈHˆ›Üˆ˜XÝÜˆ[ˆ˜XÝÜœÎ‚ˆ™X\ÛÛœÈH˜XÝÜ–Èœ™X\ÛÛœÈ—HÜˆÈØY]›Ü‰ÜÈ™XÛÜ™YY]H[\ÈY›ÝYH[˜[H›Üˆ\È˜[YKˆ—BˆYˆ˜XÝÜ–È™˜XÝÜˆ—HOH”ÝØÚÈˆ[™›Ý˜XÝÜ–Èœ™X\ÛÛœÈ—N‚ˆ™X\ÛÛœÈHÈ“›È“ÓH]X[]HØ\ÈÝ\YYÛÈÚÜYÙH[\ÈÙ\™H›Ý\YYˆ—Bˆ\YYÜÚ[È
+ÏH[
+˜XÝÜ–ÈœÚ[È—JBˆ˜XÝÜ—Ú[˜\[™
+ˆˆOÝ›Û™Ïž×Ù\ØÊ˜XÝÜ–ÉÙ˜XÝÜ‰×J_NÜÝ›Û™Ïˆ×Ù\ØÊ˜XÝÜ–ÉÜ™XÛÜ™Y	×J_H‚ˆˆŠ×Ù\ØÊ˜XÝÜ–ÉÜÛÝ\˜ÙI×HÜˆ	ÔÝ\Y\‰Ê_JKˆ×Ù\ØÊ	È	Ëš›Ú[Š™X\ÛÛœÊJ_OÛOˆ‚ˆ
+BˆYˆØ[™Y]K™Ù]
+›XYÝ[YWÝÙYZÜÈŠH[ˆ
+›Û™KˆŠN‚ˆ˜XÝÜ—Ú[˜\[™
+ˆOÝ›Û™Ï“XY[YNÜÝ›Û™Ïˆ[šÛ›ÝÛ‹ˆYÚRÙ^IÜÈX[Y˜XÝ\™\ˆXY[YHØ\È›Ý[ˆ\È™XÛÜ™ˆ‚ˆ•\ÙHH›ÙXÝYÙHÜˆ]\ÚY]™Y›Ü™HYÚ[™ÈØÚY[Hš\ÚËÛOˆ‚ˆ
+Bˆ˜XÝÜ—Ú[˜\[™
+ˆOÝ›Û™Ï”Ý\Y\ˆ]™\œÚ]NÜÝ›Û™Ïˆ[šÛ›ÝÛ‹ˆ\È›ÝÈ\ÈÛ™H\ÝšX]Üˆ\Ý[™Ë‚ˆ››ÝHX[Y˜XÝ\™\ˆÛÝ\˜ÙHÛÝ[ÛÈØY]›Ü‰ÜÈÚ[™ÛK\ÛÝ\˜ÙH[HØ\È›Ý\YYÛOˆ‚ˆ
+Bˆš\Ú×Ú[H
+ˆ”Ý\H[™Y™XÞXÛHš\ÚÈ\ÈÙ\\˜]Hœ›ÛHXÚšXØ[š]ˆ‚ˆˆ”™XÛÜ™YY˜XÝÜˆÚ[È[™\ˆØY]›Ü‰ÜÈ^\Ý[™È[\ÎˆØ\YYÜÚ[ßKˆ‚ˆ”[\ÈÚ]Ý]]šY[˜ÙHÙ\™H›ÝØÛÜ™YÜˆ‚ˆˆ[žÉÉËš›Ú[Š˜XÝÜ—Ú[
+_OÝ[ˆ‚ˆ
+Bˆ[šÜÈHÙ]Z[Û[šÜÊÜšYÚ[˜[›ÝÊBˆ™]\›ˆ
+ˆ‰Ï]ˆÛ\ÜÏH˜Ý‹XØ[™Y]KY]Z[ˆ]KXØ[™Y]K[\Hž×Ù\ØÊ\Š_H‰Âˆ‰ÏÛ\ÜÏH˜Ý‹XØ[™Y]K]]Hž×Ù\ØÊ\Š_HÛÛ\\™YÚ]×Ù\ØÊÜšYÚ[˜[Û\Š_OÜ‰ÂˆˆÛ\ÜÏIØÝ‹XØ[™Y]K][™\šYšYY	Ïž×Ù\ØÊ™[][ÛœÚ\
+_H×Ù\ØÊš]
+_OÜˆ‚ˆˆž×ØÛÛ\]Xš[]WØ˜[›™\—Ú[
+ÛÛ\]Xš[]J_H‚ˆÛ\ÜÏIØÝ‹XØ[™Y]K\ÙXÝ[Û‰Ï‘Ù\È]XÚšXØ[Hš]ÏÜˆ‚ˆˆž×ØÛÛ\\š\ÛÛ—ÝX›JXÚšXØ[ÛÛ\]Xš[]J_H‚ˆÛ\ÜÏIØÝ‹XØ[™Y]K\ÙXÝ[Û‰Ï”Ý\H[™Y™XÞXÛHš\ÚÏÜˆ‚ˆˆž×ØÛÛ\\š\ÛÛ—ÝX›JÝ\WÜ›ÝÜÊ_H‚ˆˆžÜš\Ú×Ú[H‚ˆˆÝ›Û™Ï“™^Ý\ÜÝ›Û™Ïˆ×Ù\ØÊ™^ÜÝ\
+_OÜˆ‚ˆˆÛ\ÜÏIØÝ‹XØ[™Y]K[[šÜÉÏžÛ[šÜßOÜˆ‚ˆÙ]ˆ‚ˆ
+B‚‚™YˆØÛÛ\]Xš[]WØ˜[›™\—Ú[
+ÛÛ\]Xš[]NˆXÝÜÝ‹[žWH›Û™JHOˆÝŽ‚ˆˆˆ”™[™\ˆ›ÛZ[™[ÛÛ\]Xš[]H›ØÚÙ\œÈ[™Z\ÜÚ[™ËY]šY[˜ÙHØ]\Ëˆˆˆ‚ˆÛÛ\]Xš[]HHÛÛ\]Xš[]HYˆ\Ú[œÝ[˜ÙJÛÛ\]Xš[]KXÝ
+H[ÙHßBˆÜš]XØ[H\Ý
+ÛÛ\]Xš[]K™Ù]
+˜Üš]XØ[ÝØ\›š[™ÜÈŠHÜˆ×JBˆ™]šY]ÈH\Ý
+ÛÛ\]Xš[]K™Ù]
+œ™]šY]×ÝØ\›š[™ÜÈŠHÜˆ×JBˆYˆÜš]XØ[‚ˆ™]\›ˆ
+ˆ]ˆÛ\ÜÏIØÝ‹XÛÛ\]X˜[›™\ˆÜš]XØ[	È›ÛOIØ[\	Ïˆ‚ˆÝ›Û™ÏÔ’UPÐSÓÓTUP’SUH“ÐÒÈ8 %“ÕH“ÔRSˆ‘TPÑSQS•ÜÝ›Û™Ïˆ‚ˆˆ[žÉÉËš›Ú[Š‰ÏOž×Ù\ØÊ][J_OÛO‰È›Üˆ][H[ˆÜš]XØ[
+_OÝ[ˆ‚ˆÜ[‘È›Ý\›Ý™H\ÈØ[™Y]H\ÈH›ÜZ[ˆ™\XÙ[Y[ˆH\ÚXØ[™Y\ÚYÛˆ[™ÛÜˆš\›]Ø\™H™]Üš]HX^H™H™\]Z\™YÜÜ[ˆ‚ˆÙ]ˆ‚ˆ
+BˆYˆ™]šY]Î‚ˆ™]\›ˆ
+ˆ]ˆÛ\ÜÏIØÝ‹XÛÛ\]X˜[›™\ˆ™]šY]ÉÈ›ÛOIÜÝ]\ÉÏˆ‚ˆÝ›Û™Ï‘“ÔRSˆÓÓTUP’SUH“Õ‘T’Q’QQÜÝ›Û™Ïˆ‚ˆˆ[žÉÉËš›Ú[Š‰ÏOž×Ù\ØÊ][J_OÛO‰È›Üˆ][H[ˆ™]šY]Ê_OÝ[ˆ‚ˆÙ]ˆ‚ˆ
+Bˆ™]\›ˆ
+ˆ]ˆÛ\ÜÏIØÝ‹XÛÛ\]X˜[›™\ˆ™]šY]ÉÈ›ÛOIÜÝ]\ÉÏˆ‚ˆÝ›Û™Ï‘[™Ú[™Y\š[™È™]šY]È™\]Z\™YÜÝ›Û™Ïˆ‚ˆˆÜ[ž×Ù\ØÊÛÛ\]Xš[]K™Ù]
+	Ù›ÜÚ[—ÜÝ]\ÉÊHÜˆ	Ñ[XÝšXØ[š][™[›Ý]Ý[™\]Z\™H[™Ú[™Y\š[™È™]šY]Ë‰Ê_OÜÜ[ˆ‚ˆÙ]ˆ‚ˆ
+B‚‚™YˆÙ]šY[˜ÙWÛ[X™\Š˜[YNˆ[žKÜÚ]]™Nˆ›ÛÛH˜[ÙJHOˆ›ÛÛ‚ˆžN‚ˆ[X™\ˆH›Ø]
+˜[YJBˆ^Ù\
+\Q\œ›Ü‹˜[YQ\œ›ÜŠN‚ˆ™]\›ˆ˜[ÙBˆ™]\›ˆ[X™\ˆˆYˆÜÚ]]™H[ÙHYB‚‚™YˆÙ]Z[Û[šÜÊÜšYÚ[˜[ˆXÝÜÝ‹[žWK›ÝÎˆXÝÜÝ‹[žWJHOˆÝŽ‚ˆ[šÜÈH×Bˆ›ÜˆX™[ÛÝ\˜ÙH[ˆ
+ˆ
+ˆž×Ü\ÙšY[
+ÜšYÚ[˜[	ÛX[Y˜XÝ\™\—Ü\Û[X™\‰ÊHÜˆ	ÓÜšYÚ[˜[	ßH›ÙXÝYÙH‹ÜšYÚ[˜[
+Kˆ
+ˆž×ØØ[™Y]WÛ\Š›ÝÊ_H›ÙXÝYÙH‹›ÝÊKˆ
+ˆž×ØØ[™Y]WÛ\Š›ÝÊ_H]\ÚY]‹›ÝÊKˆ
+N‚ˆ\›Hˆ‚ˆ›ÜˆÙ^H[ˆ
+œ›ÙXÝÙ]Z[Ý\›‹”›ÙXÝT“‹”ÛÝ\˜ÙHT“‹™]\ÚY]Ý\›‹‘]\ÚY]T“ŠN‚ˆYˆ™]\ÚY]ˆ[ˆX™[˜Ø\ÙY›Û
+
+H[™™]Hˆ›Ý[ˆÙ^K˜Ø\ÙY›Û
+
+H[™‘]\ÚY]ˆ›Ý[ˆÙ^N‚ˆÛÛ[YBˆYˆœ›ÙXÝYÙHˆ[ˆX™[˜Ø\ÙY›Û
+
+H[™™]Hˆ[ˆÙ^K˜Ø\ÙY›Û
+
+N‚ˆÛÛ[YBˆ\›HØØ[™Y]WÚÝ\›
+ÛÝ\˜ÙK™Ù]
+Ù^JHYˆ\Ú[œÝ[˜ÙJÛÝ\˜ÙKXÝ
+H[ÙHˆŠBˆYˆ\›‚ˆœ™XZÂˆYˆ\›[™\››Ý[ˆÚ][VÌWH›Üˆ][H[ˆ[šÜßN‚ˆ[šÜË˜\[™
+
+X™[\›
+JBˆYˆ›Ý[šÜÎ‚ˆ™]\›ˆ“›ÈÝ\Y\ˆÜˆ]\ÚY][šÈØ\È™XÛÜ™Yˆ‚ˆ™]\›ˆˆ‹š›Ú[Šˆ‰ÏH™YHžÚ[™\ØØ\J\›][ÝOUYJ_Hˆ™[H››ÛÜ[™\ˆ›Ü™Y™\œ™\ˆž×Ù\ØÊX™[
+_OØO‰Âˆ›ÜˆX™[\›[ˆ[šÜÂˆ
+B‚‚™Yˆ™YÚ[—Ø\›Ý™YÜYÙJ
+HOˆ›Û™N‚ˆÝ›X\šÙÝÛŠˆˆˆ‚ˆÝ[H]KXØY]›Ü‹[^[Ý]\Ý[OHYH‚ˆ˜Ý‹X\ØÛÛÜŽˆÌŒMÌ˜NÙ›ÛY˜[Z[N’[\‹”ÙYÛÙHRH‹Ø[œË\Ù\šYŸBˆ˜Ý‹X\ZÚXÚÙ\žÛX\™Ú[ŽŒœØÛÛÜŽˆÍÍŽÙ›Û\Ú^™NŒLœÙ›Û]ÙZYÚÌÛ]\‹\ÜXÚ[™Î‹Œ[_Bˆ˜Ý‹X\^ÛX\™Ú[ŽŒœÙ›Û\Ú^™NŒÌœÛ[™KZZYÚŒKŒMNÛ]\‹\ÜXÚ[™Î‹KŒÙ[_Bˆ˜Ý‹X\\ÝXžÛX\™Ú[ŽŒNØÛÛÜŽˆÍÍŽÙ›Û\Ú^™NŒMBˆ˜Ý‹X\Y›ÝÞÙ\Ü^N™›^Ø[YÛ‹Z][\Î˜Ù[\ŽÙØ\ŒMØ›Þ\Ú^š[™Î˜›Ü™\‹X›ÞÝÚYŒL	NÛX\™Ú[ŽŒMœÜY[™ÎŒM\NØ˜XÚÙÜ›Ý[™ˆÙ™™ŽØ›Ü™\ŽŒ\ÛÛYÙ™MÙŒNØ›Ü™\‹\˜Y]\ÎŒL\ØÛÛÜŽˆÍÌNMŸBˆ˜Ý‹X\Y›ÝË\Ý\Ù\Ü^N™›^Ø[YÛ‹Z][\Î˜Ù[\ŽÙØ\ŒLÝÚ]K\ÜXÙN››ÝÜ˜\Ù›Û\Ú^™NŒLœÙ›Û]ÙZYÚŒBˆ˜Ý‹X\Y›ÝË[›Ù^Ù\Ü^Nš[›[™KY›^Ø[YÛ‹Z][\Î˜Ù[\ŽÚ\ÝYžKXÛÛ[˜Ù[\ŽÙ›^ŒœÝÚYŒœÚZYÚŒœØ›Ü™\ŽŒ\ÛÛYÙYL™YNØ›Ü™\‹\˜Y]\ÎL	NØ˜XÚÙÜ›Ý[™ˆÙŒYYŽNØÛÛÜŽˆÍÌNMŽÙ›Û\Ú^™NŒL\Ù›Û]ÙZYÚÍLBˆ˜Ý‹X\Y›ÝË\Ý\˜Ý\œ™[ØÛÛÜŽˆÌXÌØÍÌÙ›Û]ÙZYÚÍLBˆ˜Ý‹X\Y›ÝË\Ý\˜Ý\œ™[˜Ý‹X\Y›ÝË[›Ù^Ø›Ü™\‹XÛÛÜŽˆÌŽYYØ˜XÚÙÜ›Ý[™ˆÌŽYYØÛÛÜŽˆÙ™™ŸBˆ˜Ý‹X\Y›ÝË\Ý\˜ÛÛ\]^ØÛÛÜŽˆÍLØŸBˆ˜Ý‹X\Y›ÝË\Ý\˜ÛÛ\]H˜Ý‹X\Y›ÝË[›Ù^Ø›Ü™\‹XÛÛÜŽˆØŽYMØÎØ˜XÚÙÜ›Ý[™ˆÙXYŽŒØÛÛÜŽˆÌMØMßBˆ˜Ý‹X\Y›ÝË[[™^Ù›^ŒHHÍœÛZ[‹]ÚYŒNÚZYÚŒœØ˜XÚÙÜ›Ý[™ˆÙLYYBˆ˜Ý‹X\Y›ÝË\Ý]\ÞÛX\™Ú[‹[Y˜]]ÎÜY[™ÎœLœØ›Ü™\‹\˜Y]\ÎŽNN\Ø˜XÚÙÜ›Ý[™ˆÙYYY™ŽØÛÛÜŽˆÌŽYYÙ›Û\Ú^™NŽ\Ù›Û]ÙZYÚŽÛ]\‹\ÜXÚ[™Î‹Œ[NÝÚ]K\ÜXÙN››ÝÜ˜\Bˆ˜Ý‹X\Y[žKZXY[™ÞÙ\Ü^N™›^Ø[YÛ‹Z][\Î˜Ù[\ŽÙØ\ŒMÛX\™Ú[ŽŒLBˆ˜Ý‹X\Y[žKZXÛÛžÙ\Ü^Nš[›[™KY›^Ø[YÛ‹Z][\Î˜Ù[\ŽÚ\ÝYžKXÛÛ[˜Ù[\ŽÙ›^ŒÝÚYÚZYÚØ›Ü™\‹\˜Y]\ÎŽ\Ø˜XÚÙÜ›Ý[™ˆÙYYY™ŽØÛÛÜŽˆÌŽYYBˆ˜Ý‹X\Y[žKZXÛÛˆÝ™ÞÝÚYŒŒÜÚZYÚŒŒÜÙ\Ü^N˜›ØÚßBˆ˜Ý‹X\Y[žKZXY[™ÈÛX\™Ú[ŽŒØÛÛÜŽˆÎLXLÎÙ›Û\Ú^™NŽ\Ù›Û]ÙZYÚŽÛ]\‹\ÜXÚ[™Î‹ŒÙ[_Bˆ˜Ý‹X\Y[žKZXY[™ÈžÛX\™Ú[ŽŒØÛÛÜŽˆÌMÌŽMŽÙ›Û\Ú^™NŒNÛ[™KZZYÚŒKŒNÙ›Û]ÙZYÚÍŒÛ]\‹\ÜXÚ[™Î‹KŒ™[_Bˆ˜Ý‹X\Y[žKXÛÜ^ÛX\™Ú[ŽŒLœØÛÛÜŽˆÍ™ÙLŽÙ›Û\Ú^™NŒLœBˆœÝZÙ^KX\›Ý™YÜ™\XÙ[Y[ÜÙX\˜ÚØØ\™œÝZÙ^KX\›Ý™YÙ]\ÚY]Ý\ØYØØ\™Ø›Þ\Ú^š[™Î˜›Ü™\‹X›ÞÝÚYŒL	NÛX\™Ú[ŽŒMœÜY[™ÎŒNŒMØ˜XÚÙÜ›Ý[™ˆÙ™™ŽØ›Ü™\ŽŒ\ÛÛYÙ™MÙŒNØ›Ü™\‹\˜Y]\ÎŒLœBˆœÝZÙ^KX\›Ý™YÜ™\XÙ[Y[ÜÙX\˜ÚØØ\™–Ù]K]\ÝYHœÝ™\XØ[›ØÚÈ—KœÝZÙ^KX\›Ý™YÙ]\ÚY]Ý\ØYØØ\™–Ù]K]\ÝYHœÝ™\XØ[›ØÚÈ—^ÙØ\‹M\™[_BˆœÝZÙ^KX\›Ý™YÜ™\XÙ[Y[ÜÙX\˜ÚØØ\™Ù]K]\ÝYHœÝÚYÙ]X™[—HœÝZÙ^KX\›Ý™YÙ]\ÚY]Ü]Y\Ý[Û—Ü[™[Ù]K]\ÝYHœÝÚYÙ]X™[—HÛX\™Ú[‹X›ÝÛNØÛÛÜŽˆÍÌŽNNÙ›Û\Ú^™NŽ\Ù›Û]ÙZYÚŽÛ]\‹\ÜXÚ[™Î‹Œ™[NÝ^]˜[œÙ›Ü›N\\˜Ø\Ù_BˆœÝZÙ^KX\›Ý™YÜ™\XÙ[Y[ÜÙX\˜ÚØØ\™Ù]K]\ÝYHœÝ^[œ]—HÙ]KX˜\Ù]ÙXHš[œ]—^Ø›Þ\Ú^š[™Î˜›Ü™\‹X›ÞZ[\Ü[ÛZ[‹ZZYÚZ[\Ü[Ø˜XÚÙÜ›Ý[™ˆÙ™™ˆZ[\Ü[Ø›Ü™\ŽŒK\ÛÛYÎXXX˜ÌZ[\Ü[Ø›Ü™\‹\˜Y]\ÎŽ\Z[\Ü[Ø›Þ\ÚYÝÎŒ\œ™Ø˜JŒÌŒJHZ[\Ü[BˆœÝZÙ^KX\›Ý™YÜ™\XÙ[Y[ÜÙX\˜ÚØØ\™Ù]K]\ÝYHœÝ^[œ]—HÙ]KX˜\Ù]ÙXHš[œ]—O™]žØ˜XÚÙÜ›Ý[™˜[œÜ\™[Z[\Ü[Ø›Ü™\ŽŒZ[\Ü[Ø›Þ\ÚYÝÎ››Û™HZ[\Ü[BˆœÝZÙ^KX\›Ý™YÜ™\XÙ[Y[ÜÙX\˜ÚØØ\™Ù]K]\ÝYHœÝ^[œ]—H[œ]ÛZ[‹ZZYÚœZ[\Ü[Ø˜XÚÙÜ›Ý[™˜[œÜ\™[Z[\Ü[Ø›Ü™\ŽŒZ[\Ü[Ø›Ü™\‹\˜Y]\ÎŽZ[\Ü[ØÛÛÜŽˆÌMÌŽMˆZ[\Ü[ØØ\™]XÛÛÜŽˆÌŽYYZ[\Ü[Ù›Û\Ú^™NŒMZ[\Ü[BˆœÝZÙ^KX\›Ý™YÜ™\XÙ[Y[ÜÙX\˜ÚØØ\™Ù]K]\ÝYHœÝ^[œ]—H[œ]ŽœXÙZÛ\žØÛÛÜŽˆÎNNXHZ[\Ü[ÛÜXÚ]NŒHZ[\Ü[BˆœÝZÙ^KX\›Ý™YÜ™\XÙ[Y[ÜÙX\˜ÚØØ\™Ù]K]\ÝYHœÝ^[œ]—HÙ]KX˜\Ù]ÙXHš[œ]—N™›ØÝ\Ë]Ú][žØ›Ü™\‹XÛÛÜŽˆÌŽYYZ[\Ü[Ø›Þ\ÚYÝÎŒÜ™Ø˜JLKŒÍËŒLÊHZ[\Ü[BˆœÝZÙ^KX\›Ý™YÜ™\XÙ[Y[ÜÙX\˜ÚØØ\™]Û–ÚÚ[™Hœš[X\žH—KœÝZÙ^KX\›Ý™YÙ]\ÚY]Ü]Y\Ý[Û—Ü[™[]Û–ÚÚ[™Hœš[X\žH—^ÛZ[‹ZZYÚZ[\Ü[ÚZYÚZ[\Ü[Ø›Ü™\‹\˜Y]\ÎŽZ[\Ü[Bˆ˜Ý‹X\\™\XÙ[Y[[›Ý^ÛX\™Ú[ŽŒœØÛÛÜŽˆÎÎLXMÙ›Û\Ú^™NŒL\Bˆ˜Ý‹X\XÛÛ^[›Ý^Ù\Ü^N™›^Ø[YÛ‹Z][\Î™›^\Ý\ÙØ\Ž\ÛX\™Ú[ŽŒÜÜY[™ÎŒL\LœØ›Ü™\‹]ÜŒ\ÛÛYÙYŒYŽØÛÛÜŽˆÍMÍNŽÙ›Û\Ú^™NŒL\Û[™KZZYÚŒK_Bˆ˜Ý‹X\XÛÛ^[›ÝHÝ™ÞÙ›^ŒNÝÚYŒNÚZYÚŒNØÛÛÜŽˆÎÎM˜X_Bˆ˜Ý‹X\]ØZ][™ÞØ›Þ\Ú^š[™Î˜›Ü™\‹X›ÞÝÚYŒL	NÛX\™Ú[ŽŒMÜY[™ÎŒMœŒŒØ˜XÚÙÜ›Ý[™ˆÙ™™ŽØ›Ü™\ŽŒ\ÛÛYÙ™MÙŒNØ›Ü™\‹\˜Y]\ÎŒLœBˆ˜Ý‹X\]ØZ][™ËZXYÙ\Ü^N™›^Ø[YÛ‹Z][\Î˜Ù[\ŽÚ\ÝYžKXÛÛ[œÜXÙKX™]ÙY[ŽÙØ\ŒLœÜY[™ËX›ÝÛNŒLœØ›Ü™\‹X›ÝÛNŒ\ÛÛYÙYŒYŸBˆ˜Ý‹X\]ØZ][™ËZXYžÛX\™Ú[ŽŒØÛÛÜŽˆÌMÌŽMŽÙ›Û\Ú^™NŒM\Ù›Û]ÙZYÚÍLBˆ˜Ý‹X\]ØZ][™Ë\Ý]\ÞÜY[™Î\\Ø›Ü™\‹\˜Y]\ÎŽNN\Ø˜XÚÙÜ›Ý[™ˆÙŒYYŽNØÛÛÜŽˆÍÌNMŽÙ›Û\Ú^™NŽÙ›Û]ÙZYÚŽÛ]\‹\ÜXÚ[™Î‹ŒÙ[NÝÚ]K\ÜXÙN››ÝÜ˜\Bˆ˜Ý‹X\]ØZ][™ËZ[›ÞÙ\Ü^N™›^Ø[YÛ‹Z][\Î˜Ù[\ŽÙØ\ŒMœÛX\™Ú[ŽŒŒœœŽBˆ˜Ý‹X\]ØZ][™ËZXÛÛžÙ\Ü^Nš[›[™KY›^Ø[YÛ‹Z][\Î˜Ù[\ŽÚ\ÝYžKXÛÛ[˜Ù[\ŽÙ›^ŒÌœÝÚYÌœÚZYÚÌœØ›Ü™\ŽŒ\ÛÛYÙMX™Ø›Ü™\‹\˜Y]\ÎŒMœØ˜XÚÙÜ›Ý[™ˆÙŒÙÙ™ØÛÛÜŽˆÍÙ˜LBˆ˜Ý‹X\]ØZ][™ËZXÛÛˆÝ™ÞÝÚYŒ\ÚZYÚŒ\Bˆ˜Ý‹X\]ØZ][™ËZ[›ÈÞÛX\™Ú[ŽŒ\ØÛÛÜŽˆÌŒØMMŽÙ›Û\Ú^™NŒMœÙ›Û]ÙZYÚÌÌBˆ˜Ý‹X\]ØZ][™ËZ[›ÈÛX\™Ú[ŽŒØÛÛÜŽˆÍÎÎXŽÙ›Û\Ú^™NŒL\Bˆ˜Ý‹X\\™]šY]Ë[X™[ÛX\™Ú[ŽŒ\ØÛÛÜŽˆÍØÎNYNÙ›Û\Ú^™NŽ\Ù›Û]ÙZYÚŽÛ]\‹\ÜXÚ[™Î‹ŒY[NÝ^]˜[œÙ›Ü›N\\˜Ø\Ù_Bˆ˜Ý‹X\\™]šY]ËYÜšYÙ\Ü^N™ÜšYÙÜšY][\]KXÛÛ[[œÎœ™\X]
+ËZ[›X^
+YœŠJNÙØ\ŒLœBˆ˜Ý‹X\\™]šY]ËZ][^ÛZ[‹ZZYÚŽÜY[™ÎŒLÜMØ˜XÚÙÜ›Ý[™ˆÙŽ˜Y˜ÎØ›Ü™\ŽŒ\ÛÛYÙYŒYŽØ›Ü™\‹\˜Y]\ÎŽBˆ˜Ý‹X\\™]šY]ËZ][KZXYÙ\Ü^N™›^Ø[YÛ‹Z][\Î˜Ù[\ŽÙØ\ŽÛX\™Ú[‹X›ÝÛNÜØÛÛÜŽˆÌØÍŽÙ›Û\Ú^™NŒL\Ù›Û]ÙZYÚÍLBˆ˜Ý‹X\\™]šY]ËZ][KZXYÝ™ÞÝÚYŒNÚZYÚŒNØÛÛÜŽˆÌŽYYBˆ˜Ý‹X\\™]šY]ËZ][HÛX\™Ú[ŽŒØÛÛÜŽˆÍÌÎŽNNÙ›Û\Ú^™NŒLÛ[™KZZYÚŒK_BˆœÝZÙ^KX\›Ý™YÙ]\ÚY]Ý\ØYØØ\™Ù]K]\ÝYHœÝÚYÙ]X™[—HÛX\™Ú[ŽŒœÜØÛÛÜŽˆÍÍÎŽXNÙ›Û\Ú^™NŒLÙ›Û]ÙZYÚLBˆœÝZÙ^KX\›Ý™YÙ]\ÚY]Ý\ØYØØ\™Ù]K]\ÝYHœÝš[U\ØY\ˆ—^ÛX\™Ú[ŽŒZ[\Ü[BˆœÝZÙ^KX\›Ý™YÙ]\ÚY]Ý\ØYØØ\™Ù]K]\ÝYHœÝš[U\ØY\‘›Ü›Û™H—^Ø›Þ\Ú^š[™Î˜›Ü™\‹X›ÞÛZ[‹ZZYÚŒMMZ[\Ü[Ø›Ü™\ŽŒ\\ÚYØŽXÎÈZ[\Ü[Ø›Ü™\‹\˜Y]\ÎŒLZ[\Ü[Ø˜XÚÙÜ›Ý[™ˆÙ˜™˜Ù™HZ[\Ü[ÜY[™ÎŒÌZ[\Ü[BˆœÝZÙ^KX\›Ý™YÙ]\ÚY]Ý\ØYØØ\™Ù]K]\ÝYHœÝš[U\ØY\‘›Ü›Û™H—H]ÛžÛZ[‹ZZYÚŒÎZ[\Ü[ÚZYÚŒÎZ[\Ü[Ø›Ü™\ŽŒ\ÛÛYÙYYXHZ[\Ü[Ø›Ü™\‹\˜Y]\ÎŽZ[\Ü[Ø˜XÚÙÜ›Ý[™ˆÙ™™ˆZ[\Ü[ØÛÛÜŽˆÌÌYHZ[\Ü[Ø›Þ\ÚYÝÎ››Û™HZ[\Ü[BˆœÝZÙ^KX\›Ý™YÙ]\ÚY]Ý\ØYØØ\™Ù]K]\ÝYHœÝš[U\ØY\‘›Ü›Û™R[œÝXÝ[ÛœÈ—^ØÛÛÜŽˆÍÌÎŽNHZ[\Ü[BˆœÝZÙ^KX\›Ý™YÙ]\ÚY]Ý\ØYØØ\™Ù]K]\ÝYHœÝš[U\ØY\‘›Ü›Û™R[œÝXÝ[ÛœÈ—HÙ›Û\Ú^™NŒL\Z[\Ü[Bˆ˜Ý‹X\YØÝ[Y[\Ý]^Ù\Ü^N™›^Ø[YÛ‹Z][\Î˜Ù[\ŽÚ\ÝYžKXÛÛ[œÜXÙKX™]ÙY[ŽÙØ\ŒMœÛX\™Ú[ŽŒMœÜY[™ÎŽ\MØ˜XÚÙÜ›Ý[™ˆÙŽ˜Y˜ÎØ›Ü™\ŽŒ\ÛÛYÙYŒYŽØ›Ü™\‹\˜Y]\ÎœØÛÛÜŽˆÍÙØLÙ›Û\Ú^™NŒLBˆ˜Ý‹X\YØÝ[Y[\Ý]HÝ›Û™ÞØÛÛÜŽˆÌØÍŽÙ›Û]ÙZYÚÌBˆ˜Ý‹X\YØÝ[Y[\Ý]Hœ™XY^ØÛÛÜŽˆÌMØMÎÙ›Û]ÙZYÚÌBˆ˜Ý‹X\YØÝ[Y[\Ý]Hœ[™[™ÞØÛÛÜŽˆÍÙØLÙ›Û]ÙZYÚŒBˆœÝZÙ^KX\›Ý™YÙ]\ÚY]Ü]Y\Ý[Û—Ü[™[œÝZÙ^KX\›Ý™YÙ]\ÚY]ÜÛÝ\˜ÙWÜ[™[Ø›Þ\Ú^š[™Î˜›Ü™\‹X›ÞÝÚYŒL	NÛX\™Ú[ŽŒMœÜY[™ÎŒMMœLœØ˜XÚÙÜ›Ý[™ˆÙ™™ŽØ›Ü™\ŽŒ\ÛÛYÙ™MÙŒNØ›Ü™\‹\˜Y]\ÎŒLœBˆœÝZÙ^KX\›Ý™YÙ]\ÚY]Ü]Y\Ý[Û—Ü[™[–Ù]K]\ÝYHœÝ™\XØ[›ØÚÈ—^ÙØ\‹Œ\™[_BˆœÝZÙ^KX\›Ý™YÙ]\ÚY]Ü]Y\Ý[Û—Ü[™[Ù]K]\ÝYHœÝ^[œ]—H[œ]ÛZ[‹ZZYÚœZ[\Ü[Ø›Ü™\‹\˜Y]\ÎŽZ[\Ü[BˆœÝZÙ^KX\›Ý™YÙ]\ÚY]ÝÛÜšÜÜXÙ^Ø›Þ\Ú^š[™Î˜›Ü™\‹X›ÞÝÚYŒL	NÛX^]ÚYŒMÛX\™Ú[ŽŒ]]ßBˆ˜Ý‹YKYØÝ[Y[Ù\Ü^N™›^Ø[YÛ‹Z][\Î˜Ù[\ŽÙØ\ŒLœÛZ[‹]ÚYŒÜY[™ÎŒLœMØ›Ü™\ŽŒ\ÛÛYÙ™MÙŒNØ›Ü™\‹\˜Y]\ÎŒL\Ø˜XÚÙÜ›Ý[™ˆÙ™™ŸBˆ˜Ý‹YKYØÝ[Y[ZXÛÛžÙ\Ü^N™›^Ø[YÛ‹Z][\Î˜Ù[\ŽÚ\ÝYžKXÛÛ[˜Ù[\ŽÙ›^ŒÎÝÚYŒÎÚZYÚŒÎØ›Ü™\‹\˜Y]\ÎŽ\Ø˜XÚÙÜ›Ý[™ˆÙY™Y™ŽØÛÛÜŽˆÌŽYYÙ›Û\Ú^™NŒLÙ›Û]ÙZYÚŽLBˆ˜Ý‹YKYØÝ[Y[XÛÜ^ÛZ[‹]ÚYŒÙ›^Œ_K˜Ý‹YKYØÝ[Y[XÛÜHÝ›Û™ÞÙ\Ü^N˜›ØÚÎÛÝ™\™›ÝÎšY[ŽØÛÛÜŽˆÌMÌŽMŽÙ›Û\Ú^™NŒLœÝ^[Ý™\™›ÝÎ™[\Ú\ÎÝÚ]K\ÜXÙN››ÝÜ˜\K˜Ý‹YKYØÝ[Y[XÛÜHÜ[žÙ\Ü^N˜›ØÚÎÛX\™Ú[‹]ÜØÛÛÜŽˆÍÍÎŽXNÙ›Û\Ú^™NŒLBˆ˜Ý‹YK\š]˜]^Ù›^Œ]]ÎÜY[™Î\Ø›Ü™\‹\˜Y]\ÎŽNN\Ø˜XÚÙÜ›Ý[™ˆÙYŽŒNØÛÛÜŽˆÌMØMÎÙ›Û\Ú^™NŽ\Ù›Û]ÙZYÚÍLBˆ˜Ý‹YK\]Y\Ý[Û‹ZXYÛX\™Ú[ŽŒK˜Ý‹YK\]Y\Ý[Û‹ZXYžÛX\™Ú[ŽŒ\ØÛÛÜŽˆÌMÌŽMŽÙ›Û\Ú^™NŒM\Ù›Û]ÙZYÚÍŒK˜Ý‹YK\]Y\Ý[Û‹ZXYÛX\™Ú[ŽŒØÛÛÜŽˆÍÎÎXŽÙ›Û\Ú^™NŒL\Û[™KZZYÚŒK_Bˆ˜Ý‹YKXÝ\œ™[\]Y\Ý[ÛžÛX\™Ú[ŽÜLœÜY[™ÎŒL\LÜØ›Ü™\ŽŒ\ÛÛYÙ™LYNØ›Ü™\‹\˜Y]\ÎŽ\Ø˜XÚÙÜ›Ý[™ˆÙ™™ŽØÛÛÜŽˆÌÍMŽÙ›Û\Ú^™NŒL\Û[™KZZYÚŒK_Bˆ˜Ý‹YKXÝ\œ™[\]Y\Ý[ÛˆÛX[Ù\Ü^N˜›ØÚÎÛX\™Ú[‹X›ÝÛN\ØÛÛÜŽˆÎŽLXMÎÙ›Û\Ú^™NŽÙ›Û]ÙZYÚŽÛ]\‹\ÜXÚ[™Î‹Œ™[_Bˆ˜Ý‹YKY›ÛÝË]\[X™[ÛX\™Ú[ŽŒMœØÛÛÜŽˆÍÙØLNÙ›Û\Ú^™NŽ\Ù›Û]ÙZYÚŽÛ]\‹\ÜXÚ[™Î‹ŒY[_BˆœÝZÙ^KX\›Ý™YÙ]\ÚY]Ù›ÛÝ×Ý\]ÛžÛZ[‹ZZYÚZ[\Ü[ÚZYÚZ[\Ü[Ø›Ü™\‹\˜Y]\ÎŽZ[\Ü[Ù›Û\Ú^™NŒL\Z[\Ü[Bˆ˜Ý‹YK\ÛÝ\˜ÙKZXYÙ\Ü^N™›^Ø[YÛ‹Z][\Î™›^\Ý\Ú\ÝYžKXÛÛ[œÜXÙKX™]ÙY[ŽÙØ\ŒLœÛX\™Ú[‹X›ÝÛNŽK˜Ý‹YK\ÛÝ\˜ÙKZXYÛX\™Ú[ŽŒÜBˆ˜Ý‹YK\ÛÝ\˜ÙKX˜YÙ^ÜY[™Î\Ø›Ü™\‹\˜Y]\ÎŽNN\Ø˜XÚÙÜ›Ý[™ˆÙXYŽŒØÛÛÜŽˆÌMØMÎÙ›Û\Ú^™NŽ\Ù›Û]ÙZYÚÍLÝÚ]K\ÜXÙN››ÝÜ˜\Bˆ˜Ý‹YK]šY]Ù\žÛÝ™\™›ÝÎšY[ŽØ›Ü™\ŽŒ\ÛÛYÙLYNŒNØ›Ü™\‹\˜Y]\ÎŽ\Ø˜XÚÙÜ›Ý[™ˆÙÙ˜ŸBˆ˜Ý‹YK]šY]Ù\‹Y[\^Ù\Ü^N™›^ÛZ[‹ZZYÚŒÎØ[YÛ‹Z][\Î˜Ù[\ŽÚ\ÝYžKXÛÛ[˜Ù[\ŽÜY[™ÎŒØÛÛÜŽˆÍØNÎNNÝ^X[YÛŽ˜Ù[\ŽÙ›Û\Ú^™NŒLœÛ[™KZZYÚŒK_Bˆ˜Ý‹YKY]šY[˜ÙK[X™[ÛX\™Ú[ŽŒM\ÜØÛÛÜŽˆÍØÎNYNÙ›Û\Ú^™NŽ\Ù›Û]ÙZYÚŽÛ]\‹\ÜXÚ[™Î‹Œ™[NÝ^]˜[œÙ›Ü›N\\˜Ø\Ù_Bˆ˜Ý‹YK[[Z][›Ý^ÛX\™Ú[ŽŽØÛÛÜŽˆÎNM˜NÙ›Û\Ú^™NŒLÛ[™KZZYÚŒK_BˆœÝZÙ^KX\›Ý™YÙ]\ÚY]Ý\ØYØØ\™Ù]K]\ÝYHœÝš[U\ØY\‘›Ü›Û™H—^ÛZ[‹ZZYÚŒMŽZ[\Ü[Bˆ˜Ý‹X\\]Y\Ý[Û‹Z[ÛX\™Ú[ŽŒœØÛÛÜŽˆÎÎMMÎÙ›Û\Ú^™NŒLBˆ˜Ý‹X\Y]šY[˜ÙK\[™[Ø›Þ\Ú^š[™Î˜›Ü™\‹X›ÞÝÚYŒL	NÛX\™Ú[ŽŒMÜY[™ÎŒMNLØ˜XÚÙÜ›Ý[™ˆÙ™™ŽØ›Ü™\ŽŒ\ÛÛYÙ™MÙŒNØ›Ü™\‹\˜Y]\ÎŒLœBˆ˜Ý‹X\Y]šY[˜ÙKZXYÙ\Ü^N™›^Ø[YÛ‹Z][\Î˜Ù[\ŽÚ\ÝYžKXÛÛ[œÜXÙKX™]ÙY[ŽÙØ\ŒLœÛX\™Ú[ŽŒ\Bˆ˜Ý‹X\Y]šY[˜ÙKZXYžÛX\™Ú[ŽŒØÛÛÜŽˆÌMÌŽMŽÙ›Û\Ú^™NŒM\Ù›Û]ÙZYÚÍLBˆ˜Ý‹X\Y]šY[˜ÙKZXYÛX\™Ú[ŽŒØÛÛÜŽˆÎÎLXMÙ›Û\Ú^™NŒLÝ^X[YÛŽœšYÚBˆ˜Ý‹X\Y]šY[˜ÙK\[™[˜Ý‹X\]X›HØ˜XÚÙÜ›Ý[™ˆÙŽ˜Y˜ßBˆ˜Ý‹X\ZÜ\ÞÙ\Ü^N™ÜšYÙÜšY][\]KXÛÛ[[œÎœ™\X]
+Z[›X^
+YœŠJNÙØ\ŒLœÛX\™Ú[ŽŒNBˆ˜Ý‹X\ZÜ\Ë™Y^ÙÜšY][\]KXÛÛ[[œÎœ™\X]
+ËZ[›X^
+YœŠJ_Bˆ˜Ý‹X\ZÜ\Ë™š]™^ÙÜšY][\]KXÛÛ[[œÎœ™\X]
+KZ[›X^
+YœŠJ_Bˆ˜Ý‹X\ZÜ^Ø˜XÚÙÜ›Ý[™ˆÙ™™ŽØ›Ü™\ŽŒ\ÛÛYÙM™YNØ›Ü™\‹\˜Y]\ÎŒMœÜY[™ÎŒLœMÛZ[‹ZZYÚŽLœBˆ˜Ý‹X\ZÜK]ÜÙ\Ü^N™›^Ø[YÛ‹Z][\Î˜Ù[\ŽÙØ\ŽBˆ˜Ý‹X\ZÜK\›ÝÞÙ\Ü^N™›^Ø[YÛ‹Z][\Î˜Ù[\ŽÚ\ÝYžKXÛÛ[œÜXÙKX™]ÙY[ŽÙØ\ŽBˆ˜Ý‹X\ZXÛÞÝÚYÚZYÚØ›Ü™\‹\˜Y]\ÎŒLœÙ\Ü^Nš[›[™KY›^Ø[YÛ‹Z][\Î˜Ù[\ŽÚ\ÝYžKXÛÛ[˜Ù[\ŽØ˜XÚÙÜ›Ý[™ˆÙY™™™ŽÙ›^ŒBˆ˜Ý‹X\ZXÛÈÝ™ÞÝÚYŒŒÚZYÚŒŒÙ\Ü^N˜›ØÚßBˆ˜Ý‹X\ZXÛËØ\›žØ˜XÚÙÜ›Ý[™ˆÙ™™ÙYBˆ˜Ý‹X\ZXÛËœš\ÚÞØ˜XÚÙÜ›Ý[™ˆÙ™™ŒYŒŸBˆ˜Ý‹X\ZXÛË›ÚÞØ˜XÚÙÜ›Ý[™ˆÙXÙ™_Bˆ˜Ý‹X\\›Ú™XÝÙ\Ü^N™›^Ø[YÛ‹Z][\Î˜Ù[\ŽÙØ\ŒLÛZ[‹ZZYÚBˆ˜Ý‹X\\›Ú™XÝZXÛÛžÝÚYÚZYÚÙ›^ŒÙ\Ü^Nš[›[™KY›^Ø[YÛ‹Z][\Î˜Ù[\ŽÚ\ÝYžKXÛÛ[˜Ù[\ŽØ›Ü™\‹\˜Y]\ÎŒLØ˜XÚÙÜ›Ý[™ˆÙYYŒ™™ŽØÛÛÜŽˆÌMŒÙXŸBˆ˜Ý‹X\\›Ú™XÝZXÛÛˆÝ™ÞÝÚYŒŒœÚZYÚŒŒœÙ\Ü^N˜›ØÚÎÜÝ›ÚÙNˆÌMŒÙXŸBˆ˜Ý‹YY\]Y]Y^Ø›Ü™\ŽŒ\ÛÛYÙM™YNØ›Ü™\‹\˜Y]\ÎŒMœØ˜XÚÙÜ›Ý[™ˆÙ™™ŽÜY[™ÎŒMMœÛX\™Ú[‹]ÜŽBˆ˜Ý‹YY\]Y]YHžÛX\™Ú[ŽŒÙ›Û\Ú^™NŒMœBˆ˜Ý‹\[œ™]šY]ÞØ˜XÚÙÜ›Ý[™ˆÙYNY™NØÛÛÜŽˆÍ™Ž_BˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÚÛYWÛÜ[—È—H]Û‹ˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YØ›ÛWÜ›Ý×ÛÜ[—È—H]ÛžÂˆ˜XÚÙÜ›Ý[™ˆÙŒYYŽHZ[\Ü[Ø˜XÚÙÜ›Ý[™XÛÛÜŽˆÙŒYYŽHZ[\Ü[ØÛÛÜŽˆÌMŒÙXˆZ[\Ü[Âˆ›Ü™\ŽŒ\ÛÛYÙL™NŒZ[\Ü[Ø›Ü™\‹\˜Y]\ÎŽZ[\Ü[ÂˆZ[‹ZZYÚŒÌœZ[\Ü[ÚZYÚŒÌœZ[\Ü[ÛZ[‹]ÚYŒZ[\Ü[ÝÚY˜]]ÈZ[\Ü[ÂˆY[™ÎŒMZ[\Ü[Ù›Û]ÙZYÚÌZ[\Ü[Ø›Þ\ÚYÝÎ››Û™HZ[\Ü[ÛÝ][™N››Û™BˆBˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÚÛYWÛÜ[—È—H]Ûˆ
+‹ˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YØ›ÛWÜ›Ý×ÛÜ[—È—H]Ûˆ
+žÂˆ˜XÚÙÜ›Ý[™˜[œÜ\™[Z[\Ü[Ø›Ü™\ŽŒZ[\Ü[Ø›Þ\ÚYÝÎ››Û™HZ[\Ü[ÂˆÛÛÜŽˆÌMŒÙXˆZ[\Ü[ÚZYÚ˜]]ÈZ[\Ü[ÛZ[‹ZZYÚŒZ[\Ü[ÜY[™ÎŒZ[\Ü[ˆBˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÚÛYWÛÜ[—È—H]ÛŽ™›ØÝ\Ë]š\ÚX›KˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YØ›ÛWÜ›Ý×ÛÜ[—È—H]ÛŽ™›ØÝ\Ë]š\ÚX›KˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÙXÚ\Ú[Û—Ü™XÛÜ™È—H]ÛŽ™›ØÝ\Ë]š\ÚX›^ÂˆÝ][™NŒœÛÛYÌMŒÙXˆZ[\Ü[ÛÝ][™K[Ù™œÙ]ŒœZ[\Ü[Ø›Þ\ÚYÝÎ››Û™HZ[\Ü[ˆBˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÙXÚ\Ú[Û—Ü™XÛÜ™È—H]ÛžÂˆ˜XÚÙÜ›Ý[™ˆÙ™™ˆZ[\Ü[ØÛÛÜŽˆÌMŒÙXˆZ[\Ü[Ø›Ü™\ŽŒ\ÛÛYØ™™™™HZ[\Ü[Âˆ›Ü™\‹\˜Y]\ÎŽZ[\Ü[ÛZ[‹ZZYÚŒÌœZ[\Ü[ÚZYÚŒÌœZ[\Ü[ÂˆZ[‹]ÚYŒZ[\Ü[ÝÚY˜]]ÈZ[\Ü[ÜY[™ÎŒLœZ[\Ü[Ù›Û]ÙZYÚÌZ[\Ü[Âˆ›Þ\ÚYÝÎ››Û™HZ[\Ü[ÛÝ][™N››Û™BˆBˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÙXÚ\Ú[Û—Ü™XÛÜ™È—H]Ûˆ
+žÂˆ˜XÚÙÜ›Ý[™˜[œÜ\™[Z[\Ü[Ø›Ü™\ŽŒZ[\Ü[Ø›Þ\ÚYÝÎ››Û™HZ[\Ü[ÂˆÛÛÜŽˆÌMŒÙXˆZ[\Ü[ÚZYÚ˜]]ÈZ[\Ü[ÛZ[‹ZZYÚŒZ[\Ü[ÜY[™ÎŒZ[\Ü[ˆBˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÚÛYWÛY[WÈ—HÙ]K]\ÝYHœÝÜÝ™\ˆ—Hˆ]Û‹ØÛ\ÜÊHœÝZÙ^KX\›Ý™YØ›ÛWÛY[WÈ—HÙ]K]\ÝYHœÝÜÝ™\ˆ—Hˆ]Û‹ØÛ\ÜÊHœÝZÙ^KX\›Ý™YÜ™\ÜÛY[WÈ—HÙ]K]\ÝYHœÝÜÝ™\ˆ—Hˆ]Û‹ØÛ\ÜÊHœÝZÙ^KX\›Ý™YÙXÚ\Ú[Û—ÛY[WÈ—HÙ]K]\ÝYHœÝÜÝ™\ˆ—Hˆ]ÛžÝÚYŒÌœZ[\Ü[ÛZ[‹]ÚYŒÌœZ[\Ü[ÛX^]ÚYŒÌœZ[\Ü[ÚZYÚŒÌœZ[\Ü[ÛZ[‹ZZYÚŒÌœZ[\Ü[ÜY[™ÎŒZ[\Ü[Ø›Ü™\‹\˜Y]\ÎŽZ[\Ü[BˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÚÛYWÛY[WÈ—HÙ]K]\ÝYHœÝÜÝ™\ˆ—Hˆ]ÛˆÝ™ËØÛ\ÜÊHœÝZÙ^KX\›Ý™YØ›ÛWÛY[WÈ—HÙ]K]\ÝYHœÝÜÝ™\ˆ—Hˆ]ÛˆÝ™ËØÛ\ÜÊHœÝZÙ^KX\›Ý™YÜ™\ÜÛY[WÈ—HÙ]K]\ÝYHœÝÜÝ™\ˆ—Hˆ]ÛˆÝ™ËØÛ\ÜÊHœÝZÙ^KX\›Ý™YÙXÚ\Ú[Û—ÛY[WÈ—HÙ]K]\ÝYHœÝÜÝ™\ˆ—Hˆ]ÛˆÝ™ÞÙ\Ü^N››Û™HZ[\Ü[BˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÚÛYWÜ›Ý×È—KØÛ\ÜÊHœÝZÙ^KX\›Ý™YØ›ÛWÜ›Ý×È—KØÛ\ÜÊHœÝZÙ^KX\›Ý™YÜ™\ÜÜ›Ý×È—^Ø›Ü™\‹]ÜŒ\ÛÛYÙYYŒ™ÎÜY[™ÎŒÛX\™Ú[ŽŒBˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÜÙ][™Ü×ÜØÜ™Y[ˆ—H^Ù›Û\Ú^™NŒŽÛX\™Ú[ŽŒBˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÜÙ][™Ü×ÜØÜ™Y[ˆ—HÙ]K]\ÝYHœÝ›Ü›H—^Ø›Ü™\ŽŒÜY[™ÎŒBˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÜÙ][™Ü×ÜØÜ™Y[ˆ—HÙ]K]\ÝYHœÝ™\XØ[›ØÚÈ—^ÙØ\Œ™[_Bˆ˜Ý‹X\ZÜHÜ[žÙ\Ü^N˜›ØÚÎØÛÛÜŽˆÍÍŽÙ›Û\Ú^™NŒLÜÙ›Û]ÙZYÚLBˆ˜Ý‹X\ZÜHÝ›Û™ÞÙ\Ü^N˜›ØÚÎÛX\™Ú[‹]ÜŽÙ›Û\Ú^™NŒŽÛ]\‹\ÜXÚ[™Î‹KŒÙ[_Bˆ˜Ý‹X\ZÜH[^Ù\Ü^N˜›ØÚÎÛX\™Ú[‹]ÜÙ›Û\Ý[N››Ü›X[Ù›Û\Ú^™NŒLœØÛÛÜŽˆÌM˜LÍ_Bˆ˜Ý‹X\ZÜH[K™ÝÛžØÛÛÜŽˆÙLLYBˆ˜Ý‹X\ZÜH[K›]]YØÛÛÜŽˆÎMLØŽBˆ˜Ý‹X\XØ\™Ø˜XÚÙÜ›Ý[™ˆÙ™™ŽØ›Ü™\ŽŒ\ÛÛYÙM™YNØ›Ü™\‹\˜Y]\ÎŒMœÜY[™ÎŽÛX\™Ú[‹X›ÝÛNŒLœBˆ˜Ý‹X\]X›^ÝÚYŒL	NØ›Ü™\‹XÛÛ\ÙNœÙ\\˜]NØ›Ü™\‹\ÜXÚ[™ÎŒBˆ˜Ý‹X\]X›HÝ^X[YÛŽ›YÙ›Û\Ú^™NŒL\Û]\‹\ÜXÚ[™Î‹Œ™[NÝ^]˜[œÙ›Ü›N\\˜Ø\ÙNØÛÛÜŽˆÎMLØŽÜY[™ÎŽLBˆ˜Ý‹X\]X›HÜY[™ÎŽLØ›Ü™\‹]ÜŒ\ÛÛYÙYYŒ™ÎÙ›Û\Ú^™NŒLÜÝ™\XØ[X[YÛŽ›ZY_Bˆ˜Ý‹X\]X›H˜Ý‹XÛÛ\\™KXÛÛ\]XÜš]XØ[Ø˜XÚÙÜ›Ý[™ˆÙ™™ŒYŒˆZ[\Ü[ØÛÛÜŽˆÎNLXŒXˆZ[\Ü[Ù›Û]ÙZYÚŽØ›Ü™\‹]ÜXÛÛÜŽˆÙ™XÙÈZ[\Ü[Bˆ˜Ý‹X\]X›H˜Ý‹XÛÛ\\™KYY™žØ˜XÚÙÜ›Ý[™ˆÙY™™™ŽØÛÛÜŽˆÌYYBˆ˜Ý‹\\\ÝÞØ›Þ\Ú^š[™Î˜›Ü™\‹X›ÞÙ›^Œ˜\ŠKXÝ‹\\\ÝË\Ú^™KÌœ
+NÝÚY˜\ŠKXÝ‹\\\ÝË\Ú^™KÌœ
+NÚZYÚ˜\ŠKXÝ‹\\\ÝË\Ú^™KÌœ
+NØ›Ü™\‹\˜Y]\ÎŒLœØ˜XÚÙÜ›Ý[™ˆÙŒYYŽNØ›Ü™\ŽŒ\ÛÛYÙL™NŒÙ\Ü^Nš[›[™KY›^Ø[YÛ‹Z][\Î˜Ù[\ŽÚ\ÝYžKXÛÛ[˜Ù[\ŽÝ™\XØ[X[YÛŽ›ZYNÛÝ™\™›ÝÎšY[ŽÛX\™Ú[‹\šYÚŒLØÛÛÜŽˆÍÍŸBˆ˜Ý‹\\\ÝÈ[YÞÙ\Ü^N˜›ØÚÎÝÚYŒL	NÚZYÚŒL	NÜY[™ÎØ›Þ\Ú^š[™Î˜›Ü™\‹X›ÞÛØš™XÝYš]˜ÛÛZ[ŸBˆ˜Ý‹\\\Ý××ÜXÙZÛ\žÙ\Ü^N™›^ÝÚYŒL	NÚZYÚŒL	NØ[YÛ‹Z][\Î˜Ù[\ŽÚ\ÝYžKXÛÛ[˜Ù[\ŸBˆ˜Ý‹\\\Ý××ÜXÙZÛ\ˆÝ™ÞÙ\Ü^N˜›ØÚÎÝÚYŒ‰NÚZYÚŒ‰_Bˆ˜Ý‹\\\ÝÖÙ]KZ[\Ý˜][ÛH™Ù[™\šXÈ—^Ø˜XÚÙÜ›Ý[™ˆÙYÙ˜NØ›Ü™\‹XÛÛÜŽˆÙ™LÙXÎØÛÛÜŽˆÍLÍMØŸBˆ˜Ý‹\\\ÝÖÙ]KZ[\Ý˜][ÛHšXÈ—^Ø˜XÚÙÜ›Ý[™ˆÙY™™™ŽØ›Ü™\‹XÛÛÜŽˆÙ™XY™NØÛÛÜŽˆÌMŒÙXŸBˆ˜Ý‹\\\ÝÖÙ]KZ[\Ý˜][ÛH˜Ø\XÚ]Üˆ—^Ø˜XÚÙÜ›Ý[™ˆÙYŒÙ™ŽØ›Ü™\‹XÛÛÜŽˆÙNYY™ŽØÛÛÜŽˆÍØÌØYYBˆ˜Ý‹\\\ÝÖÙ]KZ[\Ý˜][ÛHœ™\Ú\ÝÜˆ—^Ø˜XÚÙÜ›Ý[™ˆÙ™™ÙYØ›Ü™\‹XÛÛÜŽˆÙ™YØXNØÛÛÜŽˆØÌLßBˆ˜Ý‹\\\ÝÖÙ]KZ[\Ý˜][ÛHš[™XÝÜˆ—^Ø˜XÚÙÜ›Ý[™ˆÙŒ™˜NØ›Ü™\‹XÛÛÜŽˆØØÙ˜™ŒNØÛÛÜŽˆÌÍ™_Bˆ˜Ý‹\\\ÝÖÙ]KZ[\Ý˜][ÛH˜ÛÛ›™XÝÜˆ—^Ø˜XÚÙÜ›Ý[™ˆÙXÙ™Y™ŽØ›Ü™\‹XÛÛÜŽˆØÙ™˜Y™NØÛÛÜŽˆÌMÍLBˆ˜Ý‹\\\ÝÖÙ]KZ[\Ý˜][ÛH™[ÙH—^Ø˜XÚÙÜ›Ý[™ˆÙ™™ŒYŒŽØ›Ü™\‹XÛÛÜŽˆÙ™™MMŽØÛÛÜŽˆØ™LLŒØßBˆ˜Ý‹\\\ÝÖÙ]KZ[\Ý˜][ÛH˜[œÚ\ÝÜˆ—^Ø˜XÚÙÜ›Ý[™ˆÙŒ™Ø›Ü™\‹XÛÛÜŽˆÙÙ˜ÙMÎØÛÛÜŽˆÌMNÙBˆ˜Ý‹\\\ÝÖÙ]KZ[\Ý˜][ÛHœÙ[œÛÜˆ—^Ø˜XÚÙÜ›Ý[™ˆÙXÙ™Y™ŽØ›Ü™\‹XÛÛÜŽˆØÙ™˜Y™NØÛÛÜŽˆÌLXŒŸBˆ˜Ý‹\\\ÝÖÙ]KZ[\Ý˜][ÛHœÝÚ]Ú—^Ø˜XÚÙÜ›Ý[™ˆÙ™™˜™XŽØ›Ü™\‹XÛÛÜŽˆÙ™YŒØÍÎØÛÛÜŽˆØLÌ_Bˆ˜Ý‹YZK\\Ù\Ü^N™›^Ø[YÛ‹Z][\Î˜Ù[\ŽÙØ\Ž\ÛZ[‹]ÚYŒBˆ˜Ý‹YZK\\˜Ý‹\\\ÝÞÙ›^Œ˜\ŠKXÝ‹\\\ÝË\Ú^™K
+NÛX\™Ú[ŽŒBˆ˜Ý‹YZK\\XÛÜ^Ù\Ü^N™›^Ù›^Y\™XÝ[ÛŽ˜ÛÛ[[ŽÙØ\ŒœÛZ[‹]ÚYŒBˆ˜Ý‹YZK\\XÛÜH˜Ý‹X\[˜[Y^Ù\Ü^N˜›ØÚÎÛÝ™\™›ÝË]Ü˜\˜[ž]Ú\™_Bˆ˜Ý‹[X\Ù\Ü^N™ÜšYÙÜšY][\]KXÛÛ[[œÎŒNYœŽÙØ\ŒNØ[YÛ‹Z][\Î˜Ù[\ŽÜY[™ÎŽMœBˆ˜Ý‹[X\\\Ø›Ü™\ŽŒ\ÛÛYØ™™™™NØ˜XÚÙÜ›Ý[™ˆÙY™™™ŽØ›Ü™\‹\˜Y]\ÎŒLœÜY[™ÎŒLœBˆ˜Ý‹[X\Xœ˜[˜Ú\ÞÙ\Ü^N™ÜšYÙØ\ŒLØ›Ü™\‹[YŒœÛÛYØØ™YLNÜY[™Ë[YŒMœBˆ˜Ý‹[X\Xœ˜[˜ÚÙ\Ü^N™›^ÙØ\ŽØ[YÛ‹Z][\Î˜Ù[\ŽÙ›^]Ü˜\Ü˜\Ø˜XÚÙÜ›Ý[™ˆÙ™™ŽØ›Ü™\ŽŒ\ÛÛYÙM™YNØ›Ü™\‹\˜Y]\ÎŒLœÜY[™ÎŽLBˆ˜Ý‹\Ù]YÜšYÙ\Ü^N™ÜšYÙÜšY][\]KXÛÛ[[œÎŒKŒYœˆŽYœŽÙØ\ŒMBˆ˜Ý‹\ÙXÝ\š]K\›ÝÞÙ\Ü^N™›^Ú\ÝYžKXÛÛ[œÜXÙKX™]ÙY[ŽÙØ\ŒLœÜY[™ÎŒLØ›Ü™\‹]ÜŒ\ÛÛYÙYYŒ™ßBˆ˜Ý‹\[‹XØ\™Ø˜XÚÙÜ›Ý[™ˆÙY™™™ŽØ›Ü™\ŽŒ\ÛÛYÙ™XY™NØ›Ü™\‹\˜Y]\ÎŒMœÜY[™ÎŒMœNBˆ˜Ý‹X\[˜[Y^Ù›Û]ÙZYÚÍLBˆ˜Ý‹X\[Y]^ØÛÛÜŽˆÍÍŽÙ›Û\Ú^™NŒLœBˆœÝZÙ^KX\›Ý™YÚÛYWÜ™XÙ[ØØ\™ÛX\™Ú[ŽŒMœZ[\Ü[ÜY[™ÎŒZ[\Ü[Ø›Ü™\ŽŒ\ÛÛYØÍYYˆZ[\Ü[Ø›Ü™\‹\˜Y]\ÎŒMœZ[\Ü[Ø˜XÚÙÜ›Ý[™ˆÙ™™ˆZ[\Ü[Ø›Þ\ÚYÝÎŒÜLœ™Ø˜JMKŒË‹ŒMJHZ[\Ü[BˆœÝZÙ^KX\›Ý™YÚÛYWÜ™XÙ[ØØ\™Ù]K]\ÝYHœÝ™\XØ[›ØÚÈ—^ÙØ\ŒZ[\Ü[Bˆ˜Ý‹X\ZÛYK\™XÙ[ZXY[™ÞÜY[™ÎŒNŒMBˆ˜Ý‹X\ZÛYK\™XÙ[ZXY[™ÈžÛX\™Ú[ŽŒØÛÛÜŽˆÌŒMÌ˜NÙ›Û\Ú^™NŒŒ\Ù›Û]ÙZYÚÍŒÛ]\‹\ÜXÚ[™Î‹KŒ™[_Bˆ˜Ý‹X\ZÛYK\™XÙ[ZXY[™ÈÛX\™Ú[ŽŒØÛÛÜŽˆÍÍŽÙ›Û\Ú^™NŒLÜBˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÚÛYWÜ›Ý×È—^ÛZ[‹ZZYÚœZ[\Ü[ÛX\™Ú[ŽŒZ[\Ü[ÜY[™ÎÜŒZ[\Ü[Ø›Ü™\‹]ÜŒZ[\Ü[Ø›Ü™\‹X›ÝÛNŒ\ÛÛYÙMYX™ŒÈZ[\Ü[Ø˜XÚÙÜ›Ý[™ˆÙ™™ˆZ[\Ü[BˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÚÛYWÜ›Ý×È—HÙ]K]\ÝYHœÝÜš^›Û[›ØÚÈ—^Ø[YÛ‹Z][\Î˜Ù[\ˆZ[\Ü[Bˆ˜Ý‹X\ZÛYKX›Û^Ù\Ü^N™›^Ø[YÛ‹Z][\Î˜Ù[\ŽÛZ[‹]ÚYŒÛZ[‹ZZYÚBˆ˜Ý‹X\ZÛYKX›ÛKXÛÜ^Ù\Ü^N™›^Ù›^ŒNÙ›^Y\™XÝ[ÛŽ˜ÛÛ[[ŽÛZ[‹]ÚYŒBˆ˜Ý‹X\ZÛYKX›ÛH˜Ý‹X\[˜[Y^Ù\Ü^N˜›ØÚÎÛÝ™\™›ÝÎšY[ŽØÛÛÜŽˆÌMÌLÙNÙ›Û\Ú^™NŒLÜÙ›Û]ÙZYÚÍLÝ^[Ý™\™›ÝÎ™[\Ú\ÎÝÚ]K\ÜXÙN››ÝÜ˜\Bˆ˜Ý‹X\ZÛYKX›ÛHÛX[Ù\Ü^N˜›ØÚÎÛX\™Ú[‹]ÜŒÜÛÝ™\™›ÝÎšY[ŽØÛÛÜŽˆÍÍÎXNÙ›Û\Ú^™NŒL\Ý^[Ý™\™›ÝÎ™[\Ú\ÎÝÚ]K\ÜXÙN››ÝÜ˜\Bˆ˜Ý‹X\ZÛYK\›Ú™XÝÙ\Ü^N˜›ØÚÎÛÝ™\™›ÝÎšY[ŽØÛÛÜŽˆÍLØŽÙ›Û\Ú^™NŒLÜÛ[™KZZYÚŒKÝ^[Ý™\™›ÝÎ™[\Ú\ÎÝÚ]K\ÜXÙN››ÝÜ˜\BˆÊˆ›Ý]HØ[˜\ÈÚYÈZ\œ›ÜˆÛYHžHY˜][ÈX›KZX]žHšY]ÜÈÙ]H›Ý[™YÚY\ˆØ[˜\Ëˆ
+‹ÂˆÙXÝ[Û–Ù]K]\ÝYHœÝXZ[ˆ—HØÛ\ÜÊHœÝZÙ^KX\›Ý™YÜYÙWØØ[˜\×ÜÝ[™\™È—^Âˆ›Þ\Ú^š[™Î˜›Ü™\‹X›ÞZ[\Ü[ÝÚYŒL	HZ[\Ü[ÛX^]ÚYŒMZ[\Ü[ÛZ[‹]ÚYŒZ[\Ü[ÂˆX\™Ú[‹[Y˜]]ÈZ[\Ü[ÛX\™Ú[‹\šYÚ˜]]ÈZ[\Ü[ˆBˆÙXÝ[Û–Ù]K]\ÝYHœÝXZ[ˆ—HØÛ\ÜÊHœÝZÙ^KX\›Ý™YÜYÙWØØ[˜\×ÝÚYWÈ—^Âˆ›Þ\Ú^š[™Î˜›Ü™\‹X›ÞZ[\Ü[ÝÚYŒL	HZ[\Ü[ÛX^]ÚYŒMMŒZ[\Ü[ÛZ[‹]ÚYŒZ[\Ü[ÂˆX\™Ú[‹[Y˜]]ÈZ[\Ü[ÛX\™Ú[‹\šYÚ˜]]ÈZ[\Ü[ˆBˆÙXÝ[Û–Ù]K]\ÝYHœÝXZ[ˆ—HØÛ\ÜÊHœÝZÙ^KX\›Ý™YÜYÙWØØ[˜\×ÜÝ[™\™È—O–Ù]K]\ÝYHœÝ™\XØ[›ØÚÈ—KˆÙXÝ[Û–Ù]K]\ÝYHœÝXZ[ˆ—HØÛ\ÜÊHœÝZÙ^KX\›Ý™YÜYÙWØØ[˜\×ÝÚYWÈ—O–Ù]K]\ÝYHœÝ™\XØ[›ØÚÈ—^Âˆ›Þ\Ú^š[™Î˜›Ü™\‹X›ÞZ[\Ü[ÝÚYŒL	HZ[\Ü[ÛX^]ÚYŒL	HZ[\Ü[ÛZ[‹]ÚYŒZ[\Ü[ˆBˆœÝZÙ^KX\›Ý™YÚÛYWÜYÙ^Ø›Þ\Ú^š[™Î˜›Ü™\‹X›ÞZ[\Ü[ÝÚYŒL	HZ[\Ü[ÛX^]ÚYŒMZ[\Ü[ÛX\™Ú[‹[Y˜]]ÈZ[\Ü[ÛX\™Ú[‹\šYÚ˜]]ÈZ[\Ü[ÜY[™ÎŽZ[\Ü[BˆœÝZÙ^KX\›Ý™YÚÛYWÜYÙHˆÙ]K]\ÝYHœÝ™\XØ[›ØÚÈ—^ÙØ\ŒŒœZ[\Ü[Bˆ˜Ý‹X\ZÛYKZÜ\ÞÙ\Ü^N™ÜšYZ[\Ü[ÙÜšY][\]KXÛÛ[[œÎœ™\X]
+Z[›X^
+YœŠJHZ[\Ü[ÙØ\ŒMœZ[\Ü[ÛX\™Ú[ŽZ[\Ü[Bˆ˜Ý‹X\ZÛYKZÜ^Ù\Ü^N™›^Z[\Ü[Ø[YÛ‹Z][\Î™›^\Ý\Z[\Ü[ÙØ\ŒNZ[\Ü[Ø›Þ\Ú^š[™Î˜›Ü™\‹X›ÞZ[\Ü[ÛZ[‹ZZYÚŒNLZ[\Ü[ÜY[™ÎŒŒœZ[\Ü[Ø›Ü™\ŽŒ\ÛÛYÙÙMÙHZ[\Ü[Ø›Ü™\‹\˜Y]\ÎŒMœZ[\Ü[Ø˜XÚÙÜ›Ý[™ˆÙŽY˜™™ˆZ[\Ü[Ø›Þ\ÚYÝÎŒœÜ™Ø˜JMKŒË‹ŒÍJHZ[\Ü[Bˆ˜Ý‹X\ZÛYKZÜH˜Ý‹X\ZÛYKZXÛÛžÙ\Ü^N™›^Z[\Ü[Ø[YÛ‹Z][\Î˜Ù[\ˆZ[\Ü[Ú\ÝYžKXÛÛ[˜Ù[\ˆZ[\Ü[Ù›^ŒŒZ[\Ü[ÝÚYŒZ[\Ü[ÚZYÚŒZ[\Ü[Ø›Ü™\‹\˜Y]\ÎL	HZ[\Ü[Ø˜XÚÙÜ›Ý[™ˆÙNŒY™ˆZ[\Ü[ÛX\™Ú[ŽŒZ[\Ü[Bˆ˜Ý‹X\ZÛYKZXÛÛˆÝ™ÞÝÚYŒÌZ[\Ü[ÚZYÚŒÌZ[\Ü[Bˆ˜Ý‹X\ZÛYKZXÛÛ‹Ø\›žØ˜XÚÙÜ›Ý[™ˆÙ™™ŒÙHZ[\Ü[Bˆ˜Ý‹X\ZÛYKZXÛÛ‹œš\ÚÞØ˜XÚÙÜ›Ý[™ˆÙ™YNYYZ[\Ü[Bˆ˜Ý‹X\ZÛYKZXÛÛ‹›ÚÞØ˜XÚÙÜ›Ý[™ˆÙMÙŽYHZ[\Ü[Bˆ˜Ý‹X\ZÛYKZÜKXÛÜ^Ù\Ü^N™›^Ù›^ŒNÙ›^Y\™XÝ[ÛŽ˜ÛÛ[[ŽÛZ[‹]ÚYŒÛZ[‹ZZYÚŒLÌœÜY[™Ë]ÜBˆ˜Ý‹X\ZÛYKZÜH˜Ý‹X\ZÛYKZÜK[X™[Ù\Ü^N˜›ØÚÈZ[\Ü[ØÛÛÜŽˆÍÍˆZ[\Ü[Ù›Û\Ú^™NŒMœZ[\Ü[Ù›Û]ÙZYÚLZ[\Ü[Û[™KZZYÚŒKŒÈZ[\Ü[ÝÚ]K\ÜXÙN››ÝÜ˜\Bˆ˜Ý‹X\ZÛYKZÜKXÛÜHÝ›Û™ÞÙ\Ü^N˜›ØÚÈZ[\Ü[ÛX\™Ú[‹]ÜŽZ[\Ü[ØÛÛÜŽˆÌŒMÌ˜HZ[\Ü[Ù›Û\Ú^™NŒÍœZ[\Ü[Ù›Û]ÙZYÚÎZ[\Ü[Û[™KZZYÚŒKŒHZ[\Ü[Û]\‹\ÜXÚ[™Î‹KŒ[HZ[\Ü[ÝÚ]K\ÜXÙN››ÝÜ˜\Bˆ˜Ý‹X\ZÛYKZÜKXÛÜH[^Ù\Ü^N˜›ØÚÈZ[\Ü[ÛX\™Ú[‹]Ü˜]]ÈZ[\Ü[ÜY[™Ë]ÜŒMZ[\Ü[Ù›Û\Ú^™NŒM\Z[\Ü[Û[™KZZYÚŒKŒHZ[\Ü[BˆœÝZÙ^KX\›Ý™YÚÛYWÜ™XÙ[ØØ\™ÛX\™Ú[ŽŒœZ[\Ü[ÜY[™ÎŒZ[\Ü[Ø›Ü™\ŽŒ\ÛÛYØØ™NZ[\Ü[Ø›Ü™\‹\˜Y]\ÎŒMœZ[\Ü[Ø˜XÚÙÜ›Ý[™ˆÙ™™ˆZ[\Ü[Ø›Þ\ÚYÝÎŒÜLœ™Ø˜JMKŒË‹ŒJHZ[\Ü[BˆœÝZÙ^KX\›Ý™YÚÛYWÜ™XÙ[ØØ\™Ù]K]\ÝYHœÝ™\XØ[›ØÚÈ—^ÙØ\ŒZ[\Ü[BˆœÝZÙ^KX\›Ý™YÚÛYWÜ™XÙ[ØØ\™Ù]K]\ÝYHœÝ[[Y[ÛÛZ[™\ˆ—^ÛX\™Ú[ŽŒZ[\Ü[ÜY[™ÎŒZ[\Ü[Bˆ˜Ý‹X\ZÛYK]X›KZXYÙ\Ü^N™ÜšYZ[\Ü[ÙÜšY][\]KXÛÛ[[œÎŒ‹ŒYœˆKŒÍYœˆÍ™œˆŽœˆYœˆKŒNœˆŽœˆZ[\Ü[Ø[YÛ‹Z][\Î˜Ù[\ˆZ[\Ü[ÙØ\ŒMœZ[\Ü[Ø›Þ\Ú^š[™Î˜›Ü™\‹X›ÞZ[\Ü[ÛZ[‹ZZYÚŽZ[\Ü[ÜY[™ÎŒÌZ[\Ü[Ø˜XÚÙÜ›Ý[™ˆÙÙŽY˜ÈZ[\Ü[Ø›Ü™\‹]ÜŒ\ÛÛYÙMYX™ŒÈZ[\Ü[Ø›Ü™\‹X›ÝÛNŒ\ÛÛYÙÙMYˆZ[\Ü[Bˆ˜Ý‹X\ZÛYK]X›KZXYÜ›ÛOH˜ÛÛ[[šXY\ˆ—^Ù\Ü^N™›^Ø[YÛ‹Z][\Î˜Ù[\ŽÛZ[‹]ÚYŒÛZ[‹ZZYÚÛÝ™\™›ÝÎš\ÚX›NØÛÛÜŽˆÍÍŽÙ›Û\Ú^™NŒMÙ›Û]ÙZYÚÍLÛ[™KZZYÚŒKŒNÛ]\‹\ÜXÚ[™Î‹ŒÍY[NÝ^]˜[œÙ›Ü›N\\˜Ø\ÙNÝÚ]K\ÜXÙN››Ü›X[ÛÝ™\™›ÝË]Ü˜\˜[ž]Ú\™_Bˆ˜Ý‹X\ZÛYK]X›KZXYÜ›ÛOH˜ÛÛ[[šXY\ˆ—N›XÚ[
+ŠÌÊ^Ú\ÝYžKXÛÛ[˜Ù[\ˆZ[\Ü[Ý^X[YÛŽ˜Ù[\ŸBˆœÝZÙ^KX\›Ý™YÚÛYWÜ™XÙ[ÚXY[™ÞÛX\™Ú[ŽŒZ[\Ü[ÜY[™ÎŒŒœœMœZ[\Ü[BˆœÝZÙ^KX\›Ý™YÚÛYWÜ™XÙ[ÚXY[™ÈÙ]K]\ÝYHœÝ™\XØ[›ØÚÈ—^ÙØ\ŒZ[\Ü[BˆœÝZÙ^KX\›Ý™YÚÛYWÜ™XÙ[ÚXY[™ÈÙ]K]\ÝYHœÝÜš^›Û[›ØÚÈ—^Ø[YÛ‹Z][\Î˜Ù[\ˆZ[\Ü[BˆœÝZÙ^KX\›Ý™YÚÛYWÜ™XÙ[ÚXY[™ÈÙ]K]\ÝYHœÝÜš^›Û[›ØÚÈ—O™]Ž™š\œÝXÚ[Ø›Þ\Ú^š[™Î˜›Ü™\‹X›ÞZ[\Ü[Ù›^ŒHH	HZ[\Ü[ÝÚY˜]]ÈZ[\Ü[ÛZ[‹]ÚYŒZ[\Ü[BˆœÝZÙ^KX\›Ý™YÚÛYWÜ™XÙ[ÚXY[™ÈÙ]K]\ÝYHœÝÜš^›Û[›ØÚÈ—O™]Ž›\ÝXÚ[Ø›Þ\Ú^š[™Î˜›Ü™\‹X›ÞZ[\Ü[Ù›^ŒLŽZ[\Ü[ÝÚYŒLŽZ[\Ü[ÛZ[‹]ÚYŒLŽZ[\Ü[BˆœÝZÙ^KX\›Ý™YÚÛYWÜ™XÙ[ÚXY[™ÈÙ]K]\ÝYHœÝÛÛ[[ˆ—N›\ÝXÚ[Ù]K]\ÝYHœÝ™\XØ[›ØÚÈ—^Ø[YÛ‹Z][\Î™›^Y[™Z[\Ü[Bˆ˜Ý‹X\ZÛYK\™XÙ[ZXY[™ÞÜY[™ÎŒZ[\Ü[Bˆ˜Ý‹X\ZÛYK\™XÙ[ZXY[™ÈžÛX\™Ú[ŽŒ\Z[\Ü[ØÛÛÜŽˆÌŒMÌ˜HZ[\Ü[Ù›Û\Ú^™NŒŽZ[\Ü[Ù›Û]ÙZYÚÍŒZ[\Ü[Û[™KZZYÚŒKŒˆZ[\Ü[Û]\‹\ÜXÚ[™Î‹KŒY[HZ[\Ü[BˆœÝZÙ^KX\›Ý™YÚÛYWÝšY]×Ø[ÝÜ˜\Ù]K]\ÝYHœÝ™\XØ[›ØÚÈ—^ÝÚYŒL	HZ[\Ü[BˆœÝZÙ^KX\›Ý™YÚÛYWÝšY]×Ø[ÝÜ˜\Ù]K]\ÝYHœÝ[[Y[ÛÛZ[™\ˆ—^Ù\Ü^N™›^Z[\Ü[Ú\ÝYžKXÛÛ[™›^Y[™Z[\Ü[ÝÚYŒL	HZ[\Ü[BˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÚÛYWÝšY]×Ø[—H]Û‹ØÛ\ÜÊHœÝZÙ^KX\›Ý™YÚÛYWÝšY]×Ø[—H]Ûˆ
+žØÛÛÜŽˆÌMŒÙXˆZ[\Ü[Bˆ˜Ý‹X\ZÛYK\™XÙ[ZXY[™ÈÛX\™Ú[ŽŒZ[\Ü[ØÛÛÜŽˆÍÍˆZ[\Ü[Ù›Û\Ú^™NŒMœZ[\Ü[Û[™KZZYÚŒKZ[\Ü[BˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÚÛYWÝšY]×Ø[—H]ÛžÝÚYŒLZ[\Ü[ÛX^]ÚYŒLZ[\Ü[ÛZ[‹]ÚYŒLZ[\Ü[ÚZYÚZ[\Ü[ÛZ[‹ZZYÚZ[\Ü[ÛX\™Ú[‹[Y˜]]ÈZ[\Ü[ÜY[™ÎŒLœZ[\Ü[Ø›Ü™\ŽŒ\ÛÛYØ™™™™HZ[\Ü[Ø›Ü™\‹\˜Y]\ÎŒLZ[\Ü[Ø˜XÚÙÜ›Ý[™ˆÙXYŒ™™ˆZ[\Ü[ØÛÛÜŽˆÌMŒÙXˆZ[\Ü[Ø›Þ\ÚYÝÎ››Û™HZ[\Ü[Ù›Û\Ú^™NŒM\Z[\Ü[Ù›Û]ÙZYÚÌZ[\Ü[BˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÚÛYWÝšY]×Ø[—H]Ûˆ
+‹ØÛ\ÜÊHœÝZÙ^KX\›Ý™YÚÛYWÝšY]×Ø[—H]ÛˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÚÛYWÝšY]×Ø[—H]ÛˆÜ[žØÛÛÜŽˆÌMŒÙXˆZ[\Ü[BˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÚÛYWÝšY]×Ø[—H]ÛŽšÝ™\žØ˜XÚÙÜ›Ý[™ˆÙ™XY™HZ[\Ü[Ø›Ü™\‹XÛÛÜŽˆÎLØYHZ[\Ü[BˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÚÛYWÛ™]×Ø›ÛH—H]Û‹ØÛ\ÜÊHœÝZÙ^KX\›Ý™YÚÛYWÛ™]×Ø›ÛH—H]ÛˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÚÛYWÛ™]×Ø›ÛH—H]ÛˆÜ[žÝÚ]K\ÜXÙN››ÝÜ˜\Z[\Ü[BˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÚÛYWÜ›Ý×È—^Ø›Þ\Ú^š[™Î˜›Ü™\‹X›ÞZ[\Ü[ÛZ[‹ZZYÚŒLŒZ[\Ü[ÛX\™Ú[ŽŒZ[\Ü[ÜY[™ÎŒNÌZ[\Ü[Ø›Ü™\‹]ÜŒZ[\Ü[Ø›Ü™\‹X›ÝÛNŒ\ÛÛYÙMYX™ŒÈZ[\Ü[Ø˜XÚÙÜ›Ý[™ˆÙ™™ˆZ[\Ü[BˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÚÛYWÜ›Ý×È—HÙ]K]\ÝYHœÝ™\XØ[›ØÚÈ—^Ù\Ü^N™›^Z[\Ü[Ù›^Y\™XÝ[ÛŽ˜ÛÛ[[ˆZ[\Ü[ÙØ\ŒZ[\Ü[Ú\ÝYžKXÛÛ[˜Ù[\ˆZ[\Ü[ÛZ[‹ZZYÚŽZ[\Ü[BˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÚÛYWÜ›Ý×È—HÙ]K]\ÝYHœÝ[[Y[ÛÛZ[™\ˆ—^ÛX\™Ú[ŽŒZ[\Ü[ÜY[™ÎŒZ[\Ü[BˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÚÛYWÜ›Ý×È—HÙ]K]\ÝYHœÝÜš^›Û[›ØÚÈ—^Ø[YÛ‹Z][\ÎœÝ™]ÚZ[\Ü[ÛZ[‹ZZYÚŽZ[\Ü[BˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÚÛYWÜ›Ý×È—HÙ]K]\ÝYH˜ÛÛ[[ˆ—^Ø[YÛ‹\Ù[ŽœÝ™]ÚZ[\Ü[Ù\Ü^N™›^Z[\Ü[Ø[YÛ‹Z][\Î˜Ù[\ˆZ[\Ü[Ú\ÝYžKXÛÛ[˜Ù[\ˆZ[\Ü[ÛZ[‹ZZYÚŽZ[\Ü[BˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÚÛYWÜ›Ý×È—HÙ]K]\ÝYH˜ÛÛ[[ˆ—N›XÚ[
+[ŠÌŠ^Ú\ÝYžKXÛÛ[™›^\Ý\Z[\Ü[BˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÚÛYWÜ›Ý×È—HÙ]K]\ÝYH˜ÛÛ[[ˆ—HÙ]K]\ÝYHœÝX\šÙÝÛÛÛZ[™\ˆ—^ÝÚYŒL	HZ[\Ü[BˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÚÛYWÜ›Ý×È—HÙ]K]\ÝYH˜ÛÛ[[ˆ—N›XÚ[
+ŠÌÊHÙ]K]\ÝYHœÝ™\XØ[›ØÚÈ—^Ø[YÛ‹Z][\Î˜Ù[\ˆZ[\Ü[Bˆ˜Ý‹X\ZÛYKXÙ[XÙ[\žÙ\Ü^N™›^Ø[YÛ‹Z][\Î˜Ù[\ŽÚ\ÝYžKXÛÛ[˜Ù[\ŽÝÚYŒL	NÛZ[‹ZZYÚŒÎÝ^X[YÛŽ˜Ù[\ŽÛ[™KZZYÚŒKŒ_BˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÚÛYWÜ›Ý×È—HÙ]K]\ÝYHœÝ™\XØ[›ØÚÈ—^Ú\ÝYžKXÛÛ[˜Ù[\ˆZ[\Ü[BˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÚÛYWÜ›Ý×È—HÙ]K]\ÝYHœÝX\šÙÝÛÛÛZ[™\ˆ—HÛX\™Ú[ŽŒZ[\Ü[ØÛÛÜŽˆÍLØˆZ[\Ü[Ù›Û\Ú^™NŒMZ[\Ü[Û[™KZZYÚŒKŒÍHZ[\Ü[Bˆ˜Ý‹X\ZÛYKX›Û^Ù\Ü^N™›^Ø[YÛ‹Z][\Î˜Ù[\ŽÙØ\ŒMœÛZ[‹]ÚYŒÛZ[‹ZZYÚŽBˆ˜Ý‹X\ZÛYK\›ÝËZXÛÛžÙ\Ü^Nš[›[™KY›^Ø[YÛ‹Z][\Î˜Ù[\ŽÚ\ÝYžKXÛÛ[˜Ù[\ŽÙ›^ŒÝÚYÚZYÚØ›Ü™\‹\˜Y]\ÎL	NØ˜XÚÙÜ›Ý[™ˆÙY™ŽØÛÛÜŽˆÌMŒÙXŸBˆ˜Ý‹X\ZÛYK\›ÝËZXÛÛˆÝ™ÞÝÚYŒÚZYÚŒÙ\Ü^N˜›ØÚßBˆ˜Ý‹X\ZÛYKX›ÛKXÛÜ^Ù\Ü^N™›^Ù›^ŒNÙ›^Y\™XÝ[ÛŽ˜ÛÛ[[ŽÛZ[‹]ÚYŒBˆ˜Ý‹X\ZÛYKX›ÛH˜Ý‹X\[˜[Y^Ù\Ü^N˜›ØÚÎÛZ[‹]ÚYŒØÛÛÜŽˆÌMÌLÙNÙ›Û\Ú^™NŒM\Ù›Û]ÙZYÚÍLÛ[™KZZYÚŒKŒŽÝÚ]K\ÜXÙN››Ü›X[ÛÝ™\™›ÝË]Ü˜\˜[ž]Ú\™_Bˆ˜Ý‹X\ZÛYKX›ÛHÛX[Ù\Ü^N˜›ØÚÎÛX\™Ú[‹]ÜÛÝ™\™›ÝÎšY[ŽØÛÛÜŽˆÍÍÎXNÙ›Û\Ú^™NŒLÜÛ[™KZZYÚŒKŒNÝ^[Ý™\™›ÝÎ™[\Ú\ÎÝÚ]K\ÜXÙN››ÝÜ˜\Bˆ˜Ý‹X\ZÛYK\›Ú™XÝÙ\Ü^N™›^Ø[YÛ‹Z][\Î˜Ù[\ŽÛZ[‹]ÚYŒÛZ[‹ZZYÚŽÛÝ™\™›ÝÎš\ÚX›NØÛÛÜŽˆÍLØŽÙ›Û\Ú^™NŒMÛ[™KZZYÚŒKŒÎÝÚ]K\ÜXÙN››Ü›X[ÛÝ™\™›ÝË]Ü˜\˜[ž]Ú\™_BˆœÝZÙ^KX\›Ý™YÚÛYWÜ™XÙ[ØØ\™˜Ý‹\[ÛZ[‹ZZYÚÜY[™ÎŽLœÙ›Û\Ú^™NŒMÙ›Û]ÙZYÚÍLBˆœÝZÙ^KX\›Ý™YÚÛYWÜ™XÙ[ØØ\™˜Ý‹\[YÝÝÚYŽÚZYÚŽÙ›^X˜\Ú\ÎŽBˆ˜Ý‹ZÛYK\š\ÚËXÛÝ[Ù\Ü^Nš[›[™KY›^Ø[YÛ‹Z][\Î˜Ù[\ŽÚ\ÝYžKXÛÛ[˜Ù[\ŽÛZ[‹]ÚYLœÛZ[‹ZZYÚÜY[™ÎŒLœØ›Ü™\‹\˜Y]\ÎŒLœØ˜XÚÙÜ›Ý[™ˆÙ™YNYYØÛÛÜŽˆÙXÎÙ›Û\Ú^™NŒMœÙ›Û]ÙZYÚÍLÛ[™KZZYÚŒ_Bˆ˜Ý‹ZÛYK\š\ÚËXÛÝ[˜ÛX\žØ˜XÚÙÜ›Ý[™ˆÙÙ˜ÙMÎØÛÛÜŽˆÌMNÙBˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÚÛYWÛY[WÈ—HÙ]K]\ÝYHœÝÜÝ™\ˆ—H]Û–Ø\šXKY^[™Y^Ù\Ü^Nš[›[™KY›^Z[\Ü[Ø[YÛ‹Z][\Î˜Ù[\ˆZ[\Ü[Ú\ÝYžKXÛÛ[˜Ù[\ˆZ[\Ü[ÝÚYZ[\Ü[ÛZ[‹]ÚYZ[\Ü[ÚZYÚZ[\Ü[ÛZ[‹ZZYÚZ[\Ü[ÜY[™ÎŒZ[\Ü[Ø›Ü™\ŽŒZ[\Ü[Ø›Ü™\‹\˜Y]\ÎŒLZ[\Ü[Ø˜XÚÙÜ›Ý[™˜[œÜ\™[Z[\Ü[ØÛÛÜŽˆÍÍˆZ[\Ü[Ø›Þ\ÚYÝÎ››Û™HZ[\Ü[Ù›Û\Ú^™NŒŒœZ[\Ü[Ù›Û]ÙZYÚÍLZ[\Ü[Û[™KZZYÚŒHZ[\Ü[BˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÚÛYWÛY[WÈ—HÙ]K]\ÝYHœÝÜÝ™\ˆ—H]Û–Ø\šXKY^[™YHÝ™ËØÛ\ÜÊHœÝZÙ^KX\›Ý™YÚÛYWÛY[WÈ—HÙ]K]\ÝYHœÝÜÝ™\ˆ—H]Û–Ø\šXKY^[™YHÙ]K]\ÝYHœÝXÛÛ“X]\šX[—^Ù\Ü^N››Û™HZ[\Ü[BˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÚÛYWÜ›Ý×È—HÙ]K]\ÝYHœÝÛÛ[[ˆ—N›\ÝXÚ[Ý^X[YÛŽœšYÚBˆ˜Ý‹X\ZÛYKY[\^ÜY[™ÎŒœØÛÛÜŽˆÍÍŽÙ›Û\Ú^™NŒMœBˆYYXJX^]ÚYŒMŒ
+^ÂˆœÝZÙ^KX\›Ý™YÚÛYWÜYÙ^ÜY[™ÎŒÍœZ[\Ü[BˆœÝZÙ^KX\›Ý™YÚÛYWÚXY\ˆ˜Ý‹X\^Ù›Û\Ú^™NŒÌZ[\Ü[Û[™KZZYÚŒKŒLˆZ[\Ü[BˆœÝZÙ^KX\›Ý™YÚÛYWÚXY\ˆ˜Ý‹X\\ÝXžÙ›Û\Ú^™NŒMÜZ[\Ü[BˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÚÛYWÛ™]×Ø›ÛH—H]Û‹ØÛ\ÜÊHœÝZÙ^KX\›Ý™YÚÛYWÛÜ[—Ü™\ÜÈ—H]ÛžÛZ[‹ZZYÚZ[\Ü[ÚZYÚZ[\Ü[ÜY[™ÎŒMZ[\Ü[Ù›Û\Ú^™NŒMZ[\Ü[Bˆ˜Ý‹X\ZÛYKZÜ\ÞÙØ\ŒLœZ[\Ü[ÛX\™Ú[‹]ÜŒÌZ[\Ü[Bˆ˜Ý‹X\ZÛYKZÜ^ÙØ\ŒLœZ[\Ü[ÛZ[‹ZZYÚŒMLZ[\Ü[ÜY[™ÎŒNMœZ[\Ü[Bˆ˜Ý‹X\ZÛYKZÜH˜Ý‹X\ZÛYKZXÛÛžÙ›^X˜\Ú\ÎLœZ[\Ü[ÝÚYLœZ[\Ü[ÚZYÚLœZ[\Ü[Bˆ˜Ý‹X\ZÛYKZXÛÛˆÝ™ÞÝÚYŒœZ[\Ü[ÚZYÚŒœZ[\Ü[Bˆ˜Ý‹X\ZÛYKZÜKXÛÜ^ÛZ[‹ZZYÚŒLBˆ˜Ý‹X\ZÛYKZÜH˜Ý‹X\ZÛYKZÜK[X™[Ù›Û\Ú^™NŒM\Z[\Ü[Bˆ˜Ý‹X\ZÛYKZÜKXÛÜHÝ›Û™ÞÛX\™Ú[‹]ÜŽZ[\Ü[Ù›Û\Ú^™NŒÍZ[\Ü[Bˆ˜Ý‹X\ZÛYKZÜKXÛÜH[^ÜY[™Ë]ÜŽZ[\Ü[Ù›Û\Ú^™NŒLÜZ[\Ü[BˆœÝZÙ^KX\›Ý™YÚÛYWÜ™XÙ[ØØ\™ÛX\™Ú[‹]ÜŒNZ[\Ü[BˆœÝZÙ^KX\›Ý™YÚÛYWÜ™XÙ[ÚXY[™ÞÜY[™ÎŒMœNLœZ[\Ü[Bˆ˜Ý‹X\ZÛYK\™XÙ[ZXY[™ÈžÙ›Û\Ú^™NŒŒZ[\Ü[Bˆ˜Ý‹X\ZÛYK\™XÙ[ZXY[™ÈÙ›Û\Ú^™NŒLÜZ[\Ü[BˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÚÛYWÝšY]×Ø[—H]ÛžÝÚYŽLœZ[\Ü[ÛX^]ÚYŽLœZ[\Ü[ÛZ[‹]ÚYŽœZ[\Ü[ÚZYÚZ[\Ü[ÛZ[‹ZZYÚZ[\Ü[ÜY[™ÎŒLZ[\Ü[Ù›Û\Ú^™NŒLÜZ[\Ü[Bˆ˜Ý‹X\ZÛYK]X›KZXYÙØ\ŒLœZ[\Ü[ÛZ[‹ZZYÚMœZ[\Ü[ÜY[™ÎŒMœZ[\Ü[Bˆ˜Ý‹X\ZÛYK]X›KZXYÜ›ÛOH˜ÛÛ[[šXY\ˆ—^Ù›Û\Ú^™NŒLœZ[\Ü[Û]\‹\ÜXÚ[™Î‹ŒY[HZ[\Ü[BˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÚÛYWÜ›Ý×È—^ÛZ[‹ZZYÚŒLLœZ[\Ü[ÜY[™ÎŒNŒœZ[\Ü[BˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÚÛYWÜ›Ý×È—HÙ]K]\ÝYHœÝÜš^›Û[›ØÚÈ—^Ø[YÛ‹Z][\ÎœÝ™]ÚZ[\Ü[ÙØ\ŒLœZ[\Ü[ÛZ[‹ZZYÚÍœZ[\Ü[BˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÚÛYWÜ›Ý×È—HÙ]K]\ÝYH˜ÛÛ[[ˆ—^ÛZ[‹ZZYÚÍœZ[\Ü[BˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÚÛYWÜ›Ý×È—HÙ]K]\ÝYHœÝ™\XØ[›ØÚÈ—^ÛZ[‹ZZYÚÍœZ[\Ü[BˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÚÛYWÜ›Ý×È—HÙ]K]\ÝYHœÝX\šÙÝÛÛÛZ[™\ˆ—HÙ›Û\Ú^™NŒMZ[\Ü[Bˆ˜Ý‹X\ZÛYKX›Û^ÙØ\ŒMœZ[\Ü[ÛZ[‹ZZYÚÍœBˆ˜Ý‹X\ZÛYK\›ÝËZXÛÛžÙ›^X˜\Ú\ÎÝÚYÚZYÚBˆ˜Ý‹X\ZÛYK\›ÝËZXÛÛˆÝ™ÞÝÚYŒÚZYÚŒBˆ˜Ý‹X\ZÛYKX›ÛH˜Ý‹X\[˜[Y^Ù›Û\Ú^™NŒMBˆ˜Ý‹X\ZÛYKX›ÛHÛX[Ù›Û\Ú^™NŒL\Bˆ˜Ý‹X\ZÛYK\›Ú™XÝÛZ[‹ZZYÚÍœÙ›Û\Ú^™NŒMBˆœÝZÙ^KX\›Ý™YÚÛYWÜ™XÙ[ØØ\™˜Ý‹\[ÛZ[‹ZZYÚŒÎÜY[™ÎŽLÙ›Û\Ú^™NŒMBˆœÝZÙ^KX\›Ý™YÚÛYWÜ™XÙ[ØØ\™˜Ý‹\[YÝÝÚYÜÚZYÚÜÙ›^X˜\Ú\ÎÜBˆ˜Ý‹ZÛYK\š\ÚËXÛÝ[ÛZ[‹]ÚYÛZ[‹ZZYÚŒÎÜY[™ÎŒLÙ›Û\Ú^™NŒMœBˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÚÛYWÛY[WÈ—HÙ]K]\ÝYHœÝÜÝ™\ˆ—H]Û–Ø\šXKY^[™Y^ÝÚYŒÍœZ[\Ü[ÛZ[‹]ÚYŒÍœZ[\Ü[ÚZYÚŒÍœZ[\Ü[ÛZ[‹ZZYÚŒÍœZ[\Ü[Ù›Û\Ú^™NŒNZ[\Ü[Bˆ˜Ý‹X\ZÛYKY[\^ÜY[™ÎŒNMœÙ›Û\Ú^™NŒMBˆBˆYYXJX^]ÚYŒLL
+^ÂˆœÝZÙ^KX\›Ý™YÚÛYWÜYÙ^ÜY[™ÎŒŒœŒZ[\Ü[BˆœÝZÙ^KX\›Ý™YÚÛYWÚXY\ˆ˜Ý‹X\^Ù›Û\Ú^™NŒœZ[\Ü[Û[™KZZYÚŒKŒMZ[\Ü[BˆœÝZÙ^KX\›Ý™YÚÛYWÚXY\ˆ˜Ý‹X\\ÝXžÙ›Û\Ú^™NŒM\Z[\Ü[BˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÚÛYWÛ™]×Ø›ÛH—H]Û‹ØÛ\ÜÊHœÝZÙ^KX\›Ý™YÚÛYWÛÜ[—Ü™\ÜÈ—H]ÛžÛZ[‹ZZYÚœZ[\Ü[ÚZYÚœZ[\Ü[ÜY[™ÎŒLZ[\Ü[Ù›Û\Ú^™NŒLÜZ[\Ü[Bˆ˜Ý‹X\ZÛYKZÜ\ÞÙØ\ŒLZ[\Ü[ÛX\™Ú[‹]ÜŒNZ[\Ü[Bˆ˜Ý‹X\ZÛYKZÜ^ÙØ\ŒLZ[\Ü[ÛZ[‹ZZYÚŒLZ[\Ü[ÜY[™ÎŒLœLZ[\Ü[Bˆ˜Ý‹X\ZÛYKZÜH˜Ý‹X\ZÛYKZXÛÛžÙ›^X˜\Ú\ÎZ[\Ü[ÝÚYZ[\Ü[ÚZYÚZ[\Ü[Bˆ˜Ý‹X\ZÛYKZXÛÛˆÝ™ÞÝÚYŒŒZ[\Ü[ÚZYÚŒŒZ[\Ü[Bˆ˜Ý‹X\ZÛYKZÜKXÛÜ^ÛZ[‹ZZYÚŽÜY[™Ë]ÜŒ\Bˆ˜Ý‹X\ZÛYKZÜH˜Ý‹X\ZÛYKZÜK[X™[Ù›Û\Ú^™NŒLœZ[\Ü[Bˆ˜Ý‹X\ZÛYKZÜKXÛÜHÝ›Û™ÞÛX\™Ú[‹]ÜœZ[\Ü[Ù›Û\Ú^™NŒœZ[\Ü[Bˆ˜Ý‹X\ZÛYKZÜKXÛÜH[^ÜY[™Ë]ÜœZ[\Ü[Ù›Û\Ú^™NŒL\Z[\Ü[BˆœÝZÙ^KX\›Ý™YÚÛYWÜ™XÙ[ØØ\™ÛX\™Ú[‹]ÜŒMZ[\Ü[BˆœÝZÙ^KX\›Ý™YÚÛYWÜ™XÙ[ÚXY[™ÞÜY[™ÎŒLœZ[\Ü[Bˆ˜Ý‹X\ZÛYK\™XÙ[ZXY[™ÈžÙ›Û\Ú^™NŒN\Z[\Ü[Bˆ˜Ý‹X\ZÛYK\™XÙ[ZXY[™ÈÙ›Û\Ú^™NŒLœZ[\Ü[BˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÚÛYWÝšY]×Ø[—H]ÛžÝÚYÎZ[\Ü[ÛX^]ÚYÎZ[\Ü[ÛZ[‹]ÚYÍœZ[\Ü[ÚZYÚŒÍZ[\Ü[ÛZ[‹ZZYÚŒÍZ[\Ü[ÜY[™ÎŒœZ[\Ü[Ù›Û\Ú^™NŒL\Z[\Ü[Bˆ˜Ý‹X\ZÛYK]X›KZXYÙØ\ŽZ[\Ü[ÛZ[‹ZZYÚZ[\Ü[ÜY[™ÎŒLœZ[\Ü[Bˆ˜Ý‹X\ZÛYK]X›KZXYÜ›ÛOH˜ÛÛ[[šXY\ˆ—^Ù›Û\Ú^™NŒLZ[\Ü[Û]\‹\ÜXÚ[™Î‹ŒMY[HZ[\Ü[BˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÚÛYWÜ›Ý×È—^ÛZ[‹ZZYÚŽMœZ[\Ü[ÜY[™ÎŒMœZ[\Ü[BˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÚÛYWÜ›Ý×È—HÙ]K]\ÝYHœÝÜš^›Û[›ØÚÈ—^Ø[YÛ‹Z][\ÎœÝ™]ÚZ[\Ü[ÙØ\ŽZ[\Ü[ÛZ[‹ZZYÚZ[\Ü[BˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÚÛYWÜ›Ý×È—HÙ]K]\ÝYH˜ÛÛ[[ˆ—^ÛZ[‹ZZYÚZ[\Ü[BˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÚÛYWÜ›Ý×È—HÙ]K]\ÝYHœÝ™\XØ[›ØÚÈ—^ÛZ[‹ZZYÚZ[\Ü[BˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÚÛYWÜ›Ý×È—HÙ]K]\ÝYHœÝX\šÙÝÛÛÛZ[™\ˆ—HÙ›Û\Ú^™NŒLœZ[\Ü[Bˆ˜Ý‹X\ZÛYKX›Û^ÙØ\ŒLœZ[\Ü[ÛZ[‹ZZYÚBˆ˜Ý‹X\ZÛYK\›ÝËZXÛÛžÙ›^X˜\Ú\ÎŒÎÝÚYŒÎÚZYÚŒÎBˆ˜Ý‹X\ZÛYK\›ÝËZXÛÛˆÝ™ÞÝÚYŒŒÚZYÚŒŒBˆ˜Ý‹X\ZÛYKX›ÛH˜Ý‹X\[˜[Y^Ù›Û\Ú^™NŒLœBˆ˜Ý‹X\ZÛYKX›ÛHÛX[Ù›Û\Ú^™NŒLBˆ˜Ý‹X\ZÛYK\›Ú™XÝÛZ[‹ZZYÚÙ›Û\Ú^™NŒLœBˆœÝZÙ^KX\›Ý™YÚÛYWÜ™XÙ[ØØ\™˜Ý‹\[ÛZ[‹ZZYÚŒÌÜY[™ÎœÙ›Û\Ú^™NŒLœBˆœÝZÙ^KX\›Ý™YÚÛYWÜ™XÙ[ØØ\™˜Ý‹\[YÝÝÚYœÚZYÚœÙ›^X˜\Ú\ÎœBˆ˜Ý‹ZÛYK\š\ÚËXÛÝ[ÛZ[‹]ÚYŒÎÛZ[‹ZZYÚŒÌÜY[™ÎŒÙ›Û\Ú^™NŒMBˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÚÛYWÛY[WÈ—HÙ]K]\ÝYHœÝÜÝ™\ˆ—H]Û–Ø\šXKY^[™Y^ÝÚYŒÌœZ[\Ü[ÛZ[‹]ÚYŒÌœZ[\Ü[ÚZYÚŒÌœZ[\Ü[ÛZ[‹ZZYÚŒÌœZ[\Ü[Ù›Û\Ú^™NŒMœZ[\Ü[Bˆ˜Ý‹X\ZÛYKY[\^ÜY[™ÎŒMLœÙ›Û\Ú^™NŒLÜBˆBˆYYXJX^]ÚYŽL
+^ËœÝZÙ^KX\›Ý™YÚÛYWÚXY\ˆ˜Ý‹X\^Ù›Û\Ú^™NŒZ[\Ü[_BˆYYXJX^]ÚYŒLL
+^ËœÝZÙ^KX\›Ý™YÚÛYWÜYÙ^ÜY[™ÎŒŒœŒZ[\Ü[K˜Ý‹X\ZÛYKZÜ\ÞÙÜšY][\]KXÛÛ[[œÎœ™\X]
+‹Z[›X^
+YœŠJHZ[\Ü[K˜Ý‹X\ZÛYKZÜ^ÛZ[‹ZZYÚŒLZ[\Ü[K˜Ý‹X\ZÛYKZÜKXÛÜ^ÛZ[‹ZZYÚŽ_B‚ˆYYXJX^]ÚYÌ
+^ËœÝZÙ^KX\›Ý™YÚÛYWÜYÙ^ÜY[™ÎŒZ[\Ü[KœÝZÙ^KX\›Ý™YÚÛYWÚXY\ˆÙ]K]\ÝYHœÝÜš^›Û[›ØÚÈ—^Ù›^]Ü˜\Ü˜\Z[\Ü[KœÝZÙ^KX\›Ý™YÚÛYWÚXY\ˆ˜Ý‹X\^Ù›Û\Ú^™NŒÍZ[\Ü[KœÝZÙ^KX\›Ý™YÚÛYWÚXY\ˆ˜Ý‹X\\ÝXžÙ›Û\Ú^™NŒMœZ[\Ü[K˜Ý‹X\ZÛYKZÜ\ÞÙÜšY][\]KXÛÛ[[œÎŒYœˆZ[\Ü[ÙØ\ŒLœZ[\Ü[K˜Ý‹X\ZÛYKZÜ^ÛZ[‹ZZYÚŒLÌœZ[\Ü[ÜY[™ÎŒNZ[\Ü[K˜Ý‹X\ZÛYKZÜKXÛÜ^ÛZ[‹ZZYÚŽLKœÝZÙ^KX\›Ý™YÚÛYWÜ™XÙ[ÚXY[™ÞÜY[™ÎŒNMœMZ[\Ü[VØÛ\ÜÊHœÝZÙ^KX\›Ý™YÚÛYWÜ›Ý×È—^ÜY[™ÎŒLœMœZ[\Ü[_BˆœÝZÙ^KX\›Ý™YÜØ]™YØ›ÛWÜÙ][™Ü×ÜYÙ^Ø›Þ\Ú^š[™Î˜›Ü™\‹X›ÞZ[\Ü[ÝÚYŒL	HZ[\Ü[ÛX^]ÚYÍŒZ[\Ü[ÛX\™Ú[ŽŒ]]ÈZ[\Ü[ÜY[™ÎŒZ[\Ü[BˆœÝZÙ^KX\›Ý™YÜØ]™YØ›ÛWÜÙ][™Ü×ÜYÙO–Ù]K]\ÝYHœÝ™\XØ[›ØÚÈ—^ÙØ\ŒLœZ[\Ü[BˆœÝZÙ^KX\›Ý™YÜØ]™YØ›ÛWÙY]ÜØÜ™Y[‹œÝZÙ^KX\›Ý™YÜØ]™YØ›ÛWÙ[]WÜØÜ™Y[žØ›Þ\Ú^š[™Î˜›Ü™\‹X›ÞZ[\Ü[ÝÚYŒL	HZ[\Ü[ÛX^]ÚY››Û™HZ[\Ü[ÛX\™Ú[ŽŒ]]ÈZ[\Ü[ÜY[™ÎŒŒœZ[\Ü[Ø›Ü™\ŽŒ\ÛÛYÙÙLXˆZ[\Ü[Ø›Ü™\‹\˜Y]\ÎŒMœZ[\Ü[Ø˜XÚÙÜ›Ý[™ˆÙ™™ˆZ[\Ü[BˆœÝZÙ^KX\›Ý™YÜØ]™YØ›ÛWÙ[]WÜØÜ™Y[ˆ]Û–ÚÚ[™Hœš[X\žH—^Ø˜XÚÙÜ›Ý[™ˆØ™LLŒØÈZ[\Ü[Ø›Ü™\‹XÛÛÜŽˆØ™LLŒØÈZ[\Ü[BˆœÝZÙ^KX\›Ý™YÛ[Ûš]Üš[™×Ø[\ØØ\™Ø›Þ\Ú^š[™Î˜›Ü™\‹X›ÞZ[\Ü[ÝÚYŒL	HZ[\Ü[ÛX\™Ú[ŽŽŒZ[\Ü[ÛÝ™\™›ÝË^˜]]ÈZ[\Ü[Ø›Ü™\ŽŒ\ÛÛYØØ™NZ[\Ü[Ø›Ü™\‹\˜Y]\ÎŒMœZ[\Ü[Ø˜XÚÙÜ›Ý[™ˆÙ™™ˆZ[\Ü[Ø›Þ\ÚYÝÎŒÜLœ™Ø˜JMKŒË‹ŒJHZ[\Ü[BˆœÝZÙ^KX\›Ý™YÛ[Ûš]Üš[™×Ø[\ØØ\™–Ù]K]\ÝYHœÝ™\XØ[›ØÚÈ—^ÙØ\ŒZ[\Ü[Bˆ˜Ý‹X\[[Ûš]Üš[™Ë]X›KZXYÙ\Ü^N™ÜšYZ[\Ü[ÙÜšY][\]KXÛÛ[[œÎ‹ŽœˆKŒÙœˆK™œˆŽYœˆKŒ™œˆZ[\Ü[Ø[YÛ‹Z][\Î˜Ù[\ˆZ[\Ü[ÙØ\ŒLœZ[\Ü[Ø›Þ\Ú^š[™Î˜›Ü™\‹X›ÞZ[\Ü[ÛZ[‹ZZYÚMœZ[\Ü[ÜY[™ÎŒŒZ[\Ü[Ø˜XÚÙÜ›Ý[™ˆÙÙŽY˜ÈZ[\Ü[Ø›Ü™\‹X›ÝÛNŒ\ÛÛYÙÙMYˆZ[\Ü[Bˆ˜Ý‹X\[[Ûš]Üš[™Ë]X›KZXYÜ›ÛOH˜ÛÛ[[šXY\ˆ—^Ù\Ü^N™›^Z[\Ü[Ø[YÛ‹Z][\Î˜Ù[\ˆZ[\Ü[ÛZ[‹]ÚYŒZ[\Ü[ÛZ[‹ZZYÚZ[\Ü[ØÛÛÜŽˆÍÍˆZ[\Ü[Ù›Û\Ú^™NŒLœZ[\Ü[Ù›Û]ÙZYÚÍLZ[\Ü[Û]\‹\ÜXÚ[™Î‹ŒÍY[HZ[\Ü[Ý^]˜[œÙ›Ü›N\\˜Ø\ÙHZ[\Ü[Bˆ˜Ý‹X\[[Ûš]Üš[™Ë]X›KZXYÜ›ÛOH˜ÛÛ[[šXY\ˆ—N™š\œÝXÚ[˜Ý‹X\[[Ûš]Üš[™Ë]X›KZXYÜ›ÛOH˜ÛÛ[[šXY\ˆ—N›XÚ[
+
+K˜Ý‹X\[[Ûš]Üš[™Ë]X›KZXYÜ›ÛOH˜ÛÛ[[šXY\ˆ—N›\ÝXÚ[Ú\ÝYžKXÛÛ[˜Ù[\ˆZ[\Ü[Ý^X[YÛŽ˜Ù[\ˆZ[\Ü[BˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÛ[Ûš]Üš[™×Ø[\Ü›Ý×È—^Ø›Þ\Ú^š[™Î˜›Ü™\‹X›ÞZ[\Ü[ÛZ[‹ZZYÚŽZ[\Ü[ÛX\™Ú[ŽŒZ[\Ü[ÜY[™ÎŽ\ŒZ[\Ü[Ø›Ü™\‹X›ÝÛNŒ\ÛÛYÙMYX™ŒÈZ[\Ü[Ø˜XÚÙÜ›Ý[™ˆÙ™™ˆZ[\Ü[BˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÛ[Ûš]Üš[™×Ø[\Ü›Ý×È—HÙ]K]\ÝYHœÝ™\XØ[›ØÚÈ—^ÙØ\ŒZ[\Ü[BˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÛ[Ûš]Üš[™×Ø[\Ü›Ý×È—HÙ]K]\ÝYHœÝÜš^›Û[›ØÚÈ—^Ø[YÛ‹Z][\Î˜Ù[\ˆZ[\Ü[ÙØ\ŒLœZ[\Ü[BˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÛ[Ûš]Üš[™×Ø[\Ü›Ý×È—HÙ]K]\ÝYHœÝÛÛ[[ˆ—KØÛ\ÜÊHœÝZÙ^KX\›Ý™YÛ[Ûš]Üš[™×Ø[\Ü›Ý×È—HÙ]K]\ÝYH˜ÛÛ[[ˆ—^Ø›Þ\Ú^š[™Î˜›Ü™\‹X›ÞZ[\Ü[ÛZ[‹]ÚYŒZ[\Ü[ÜY[™Î\Z[\Ü[Ù\Ü^N™›^Z[\Ü[Ø[YÛ‹Z][\Î˜Ù[\ˆZ[\Ü[BˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÛ[Ûš]Üš[™×Ø[\Ü›Ý×È—HÙ]K]\ÝYHœÝX\šÙÝÛÛÛZ[™\ˆ—HÛX\™Ú[ŽŒZ[\Ü[ØÛÛÜŽˆÍLØˆZ[\Ü[Ù›Û\Ú^™NŒLÜZ[\Ü[Û[™KZZYÚŒKZ[\Ü[ÛÝ™\™›ÝË]Ü˜\˜[ž]Ú\™HZ[\Ü[BˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÛ[Ûš]Üš[™×Ø[\Ü›Ý×È—H˜Ý‹X\[Y]^ÛX\™Ú[‹]ÜŒÜZ[\Ü[Ù›Û\Ú^™NŒL\Z[\Ü[Bˆ˜Ý‹X\[[Ûš]Üš[™ËY]XÝYÝÚYŒL	NØÛÛÜŽˆÍLØŽÝ^X[YÛŽ˜Ù[\ŽÙ›Û\Ú^™NŒLœÛ[™KZZYÚŒKŒÍ_BˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YØ[\ØXÝ[Û—È—H]ÛžÛZ[‹ZZYÚŒÍZ[\Ü[ÚZYÚ˜]]ÈZ[\Ü[ÜY[™ÎœZ[\Ü[ÝÚ]K\ÜXÙN››Ü›X[Z[\Ü[Ù›Û\Ú^™NŒLœZ[\Ü[Bˆ˜Ý‹X\]X›KXÙ[\žÝÚYŒL	NÙ\Ü^N™›^Ø[YÛ‹Z][\Î˜Ù[\ŽÚ\ÝYžKXÛÛ[˜Ù[\ŽÝ^X[YÛŽ˜Ù[\ŸBˆYYXJX^]ÚYŒLL
+^Âˆ˜Ý‹X\[[Ûš]Üš[™Ë]X›KZXYÙØ\ŽZ[\Ü[ÜY[™ÎŒMZ[\Ü[BˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÛ[Ûš]Üš[™×Ø[\Ü›Ý×È—^ÜY[™ÎŽMZ[\Ü[BˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÛ[Ûš]Üš[™×Ø[\Ü›Ý×È—HÙ]K]\ÝYHœÝÜš^›Û[›ØÚÈ—^ÙØ\ŽZ[\Ü[BˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÛ[Ûš]Üš[™×Ø[\Ü›Ý×È—HÙ]K]\ÝYHœÝX\šÙÝÛÛÛZ[™\ˆ—HÙ›Û\Ú^™NŒLœZ[\Ü[BˆBˆYYXJX^]ÚYÍŒ
+^Âˆ˜Ý‹X\[[Ûš]Üš[™Ë]X›KZXYØÛ\ÜÊHœÝZÙ^KX\›Ý™YÛ[Ûš]Üš[™×Ø[\Ü›Ý×È—^ÛZ[‹]ÚYÌŒZ[\Ü[BˆBˆ˜Ý‹\[Ù\Ü^Nš[›[™KY›^Ø[YÛ‹Z][\Î˜Ù[\ŽÙØ\œØ›Ü™\‹\˜Y]\ÎŽNN\ÜY[™ÎŒÜÙ›Û\Ú^™NŒLœÙ›Û]ÙZYÚÍLBˆ˜Ý‹\[YÝÝÚYÜÚZYÚÜØ›Ü™\‹\˜Y]\ÎL	NØ˜XÚÙÜ›Ý[™˜Ý\œ™[ÛÛÜŽÙ›^ŒÜBˆ˜Ý‹\[šYÚØ˜XÚÙÜ›Ý[™ˆÙ™™MMŽØÛÛÜŽˆØ™LLŒØßBˆ˜Ý‹\[›YY][^Ø˜XÚÙÜ›Ý[™ˆÙ™YŒØÍÎØÛÛÜŽˆØLÌ_Bˆ˜Ý‹\[›ÝÞØ˜XÚÙÜ›Ý[™ˆÙÙ˜ÙMÎØÛÛÜŽˆÌMNÙBˆ˜Ý‹\[™\šYž^Ø˜XÚÙÜ›Ý[™ˆÙL™NŒØÛÛÜŽˆÍÍMMŽ_Bˆ˜Ý‹\[›Ü[žØ˜XÚÙÜ›Ý[™ˆÙ™XY™NØÛÛÜŽˆÌYYBˆ˜Ý‹X\XØ\™ÞÙ\Ü^N™ÜšYÙÜšY][\]KXÛÛ[[œÎœ™\X]
+ËZ[›X^
+YœŠJNÙØ\ŒMÛX\™Ú[‹X›ÝÛNŒŒœBˆ˜Ý‹X\][\]^Ø˜XÚÙÜ›Ý[™ˆÙŽ˜Y˜ÎØ›Ü™\ŽŒ\ÛÛYÙM™YNØ›Ü™\‹\˜Y]\ÎŒMœÜY[™ÎŒNBˆ˜Ý‹X\][\]HÞÛX\™Ú[ŽŽœÙ›Û\Ú^™NŒMœBˆ˜Ý‹X\][\]HÛX\™Ú[ŽŒLœØÛÛÜŽˆÍÍŽÙ›Û\Ú^™NŒLÜBˆ˜Ý‹X\XÚ\Ù\Ü^Nš[›[™KY›^ÛX\™Ú[‹\šYÚœÜY[™ÎŒœØ›Ü™\‹\˜Y]\ÎŽNN\Ø˜XÚÙÜ›Ý[™ˆÙLMÙ™ŽØÛÛÜŽˆÌÍÌÌLÎÙ›Û\Ú^™NŒL\Ù›Û]ÙZYÚÍLBˆ˜Ý‹X\XÚ\ZXÛÛžÝÚYŒÍœÚZYÚŒÍœÝ™\XØ[X[YÛŽ›ZYNÛX\™Ú[‹\šYÚŽBˆØÛ\ÜÊHœÝZÙ^KXÝ—ØØ[™Y]WÚ]È—^ÜÜÚ][ÛŽœ™[]]™NØ›Ü™\‹\˜Y]\ÎŒLœÝ˜[œÚ][ÛŽ˜˜XÚÙÜ›Ý[™ŒM\ÈX\ÙK›Þ\ÚYÝÈŒM\ÈX\Ù_BˆØÛ\ÜÊHœÝZÙ^KXÝ—ØØ[™Y]WÚ]È—NšÝ™\žØ˜XÚÙÜ›Ý[™ˆÙŽ˜™™ŸBˆØÛ\ÜÊHœÝZÙ^KXÝ—ØØ[™Y]WÚ]È—Nš\Ê]ÛŽ™›ØÝ\Ë]š\ÚX›J^Ø˜XÚÙÜ›Ý[™ˆÙŽ˜™™ŽØ›Þ\ÚYÝÎš[œÙ]œØ™™™™_BˆØÛ\ÜÊHœÝZÙ^KXÝ—ØØ[™Y]WÜ›Ý×ÛÜ[—È—HØÛ\ÜÊHœÝZÙ^KXÝ—ØØ[™Y]WÚ]È—^Ø˜XÚÙÜ›Ý[™ˆÙŽ˜™™ŸBˆØÛ\ÜÊHœÝZÙ^KXÝ—ØØ[™Y]WÚ]È—HÙ]K]\ÝYHœÝÜš^›Û[›ØÚÈ—KØÛ\ÜÊHœÝZÙ^KXÝ—ØØ[™Y]WÚ]È—HÙ]K]\ÝYHœÝÛÛ[[ˆ—KØÛ\ÜÊHœÝZÙ^KXÝ—ØØ[™Y]WÚ]È—HÙ]K]\ÝYH˜ÛÛ[[ˆ—KØÛ\ÜÊHœÝZÙ^KXÝ—ØØ[™Y]WÚ]È—HØÛ\ÜÊHœÝZÙ^KXÝ—ØØ[™Y]WÛÜ[—È—KØÛ\ÜÊHœÝZÙ^KXÝ—ØØ[™Y]WÚ]È—HÙ]K]\ÝYHœÝ]Ûˆ—^ÜÜÚ][ÛŽœÝ]XÈZ[\Ü[ÛÝ™\™›ÝÎš\ÚX›HZ[\Ü[BˆØÛ\ÜÊHœÝZÙ^KXÝ—ØØ[™Y]WÛÜ[—È—H]ÛžÜÜÚ][ÛŽœÝ]XÈZ[\Ü[Ø˜XÚÙÜ›Ý[™˜[œÜ\™[Z[\Ü[Ø›Ü™\ŽŒZ[\Ü[Ø›Þ\ÚYÝÎ››Û™HZ[\Ü[ØÛÛÜŽˆÌMŒÙXˆZ[\Ü[Ù›Û]ÙZYÚÍLZ[\Ü[ÜY[™ÎŒZ[\Ü[ÛZ[‹ZZYÚŒZ[\Ü[ÚZYÚ˜]]ÈZ[\Ü[Ú\ÝYžKXÛÛ[™›^\Ý\Z[\Ü[Ý^X[YÛŽ›YZ[\Ü[BˆØÛ\ÜÊHœÝZÙ^KXÝ—ØØ[™Y]WÛÜ[—È—H]ÛˆØÛ\ÜÊHœÝZÙ^KXÝ—ØØ[™Y]WÛÜ[—È—H]ÛˆÜ[žØÛÛÜŽˆÌMŒÙXˆZ[\Ü[BˆØÛ\ÜÊHœÝZÙ^KXÝ—ØØ[™Y]WÚ]È—NšÝ™\ˆØÛ\ÜÊHœÝZÙ^KXÝ—ØØ[™Y]WÛÜ[—È—H]ÛžÝ^YXÛÜ˜][ÛŽ[™\›[™NÝ^][™\›[™K[Ù™œÙ]ŒÜBˆØÛ\ÜÊHœÝZÙ^KXÝ—ØØ[™Y]WÛÜ[—È—H]ÛŽŽ˜™Y›Ü™^ØÛÛ[ˆˆŽÜÜÚ][ÛŽ˜XœÛÛ]NÚ[œÙ]ŒÞ‹Z[™^ŒŽØÝ\œÛÜŽœÚ[\ŸBˆ˜Ý‹XØ[™Y]KY]Z[ÛX\™Ú[ŽLœÜY[™ÎŒMMœØ›Ü™\ŽŒ\ÛÛYÙM™YNØ›Ü™\‹\˜Y]\ÎŒMØ˜XÚÙÜ›Ý[™ˆÙ™™ŸBˆ˜Ý‹XØ[™Y]K]]K˜Ý‹XØ[™Y]K\ÙXÝ[ÛžÛX\™Ú[ŽŒLœœÙ›Û\Ú^™NŒMœÙ›Û]ÙZYÚÍLØÛÛÜŽˆÌŒMÌ˜_Bˆ˜Ý‹XØ[™Y]KXÛÛ\\™^ÝÚYŒL	NØ›Ü™\‹XÛÛ\ÙN˜ÛÛ\ÙNÛX\™Ú[ŽŒBˆ˜Ý‹XØ[™Y]KXÛÛ\\™H˜Ý‹XØ[™Y]KXÛÛ\\™HÝ^X[YÛŽ›YÝ™\XØ[X[YÛŽÜÜY[™ÎŽLØ›Ü™\‹]ÜŒ\ÛÛYÙM™YNÙ›Û\Ú^™NŒLÜBˆ˜Ý‹XØ[™Y]KXÛÛ\\™HÙ›Û\Ú^™NŒL\Û]\‹\ÜXÚ[™Î‹Œ[NÝ^]˜[œÙ›Ü›N\\˜Ø\ÙNØÛÛÜŽˆÍÍŸBˆ˜Ý‹XØ[™Y]KXÛÛ\\™HÛX[Ù\Ü^N˜›ØÚÎØÛÛÜŽˆÍÍŽÙ›Û\Ú^™NŒL\ÛX\™Ú[‹]ÜŒÜBˆ˜Ý‹Yš[™[™ÞÙ\Ü^Nš[›[™KY›^Ø›Ü™\‹\˜Y]\ÎŽNN\ÜY[™ÎŒœÙ›Û\Ú^™NŒLœÙ›Û]ÙZYÚÍLBˆ˜Ý‹Yš[™[™Ë˜ÛÛ\]X›^Ø˜XÚÙÜ›Ý[™ˆÙÙ˜ÙMÎØÛÛÜŽˆÌMLÍBˆ˜Ý‹Yš[™[™Ëœ™]šY]ÞØ˜XÚÙÜ›Ý[™ˆÙ™YŒØÍÎØÛÛÜŽˆÎL_Bˆ˜Ý‹Yš[™[™Ë˜ÛÛ™›XÝØ˜XÚÙÜ›Ý[™ˆÙ™™MMŽØÛÛÜŽˆÎYŒLŒÎ_Bˆ˜Ý‹Yš[™[™Ë˜Üš]XØ[Ø˜XÚÙÜ›Ý[™ˆÎNLXŒXŽØÛÛÜŽˆÙ™™ŸBˆ˜Ý‹Yš[™[™Ë[šÛ›ÝÛžØ˜XÚÙÜ›Ý[™ˆÙŒYYŽNØÛÛÜŽˆÍÍMMŽ_Bˆ˜Ý‹XØ[™Y]KXÛÛ\\™H‹˜Ý‹XÛÛ\]XÜš]XØ[\›ÝÈØ˜XÚÙÜ›Ý[™ˆÙ™™ŒYŒˆZ[\Ü[ØÛÛÜŽˆÎYŒLŒÎNØ›Ü™\‹]ÜXÛÛÜŽˆÙ™XÙÎÙ›Û]ÙZYÚÌBˆ˜Ý‹XØ[™Y]KXÛÛ\\™H‹˜Ý‹XÛÛ\]XÜš]XØ[\›ÝÈÛX[ØÛÛÜŽˆÎYŒLŒÎ_Bˆ˜Ý‹XÛÛ\]X˜[›™\žÛX\™Ú[ŽŒLMÜY[™ÎŒLœMØ›Ü™\‹\˜Y]\ÎŒLÙ›Û\Ú^™NŒLÜÛ[™KZZYÚŒK_Bˆ˜Ý‹XÛÛ\]X˜[›™\ˆÝ›Û™ÞÙ\Ü^N˜›ØÚÎÛX\™Ú[‹X›ÝÛN\Ù›Û\Ú^™NŒLÜÛ]\‹\ÜXÚ[™Î‹ŒMY[_Bˆ˜Ý‹XÛÛ\]X˜[›™\ˆ[ÛX\™Ú[ŽœÜY[™Ë[YŒŒBˆ˜Ý‹XÛÛ\]X˜[›™\‹˜Üš]XØ[ØÛÛÜŽˆÍÙŒYYØ˜XÚÙÜ›Ý[™ˆÙ™™ŒYŒŽØ›Ü™\ŽŒœÛÛYÙÌŒŽØ›Þ\ÚYÝÎŒœ™Ø˜JŒŒÎÎŒ
+_Bˆ˜Ý‹XÛÛ\]X˜[›™\‹˜Üš]XØ[^ØÛÛÜŽˆÎNLXŒXŽÙ›Û]ÙZYÚÍLBˆ˜Ý‹XÛÛ\]X˜[›™\‹œ™]šY]ÞØÛÛÜŽˆÎMNØ˜XÚÙÜ›Ý[™ˆÙ™™˜™XŽØ›Ü™\ŽŒ\ÛÛYÙNYLŸBˆ˜Ý‹XÛÛ\]\[Ù\Ü^Nš[›[™KY›^Ø[YÛ‹Z][\Î˜Ù[\ŽØ›Ü™\‹\˜Y]\ÎŽNN\ÜY[™ÎŒÜÙ›Û\Ú^™NŒLÙ›Û]ÙZYÚŽLÛ]\‹\ÜXÚ[™Î‹Œ™[_Bˆ˜Ý‹XÛÛ\]\[˜Üš]XØ[ØÛÛÜŽˆÙ™™ŽØ˜XÚÙÜ›Ý[™ˆØŽLXÌXßBˆ˜Ý‹XÛÛ\]\[œ™]šY]ÞØÛÛÜŽˆÎMNØ˜XÚÙÜ›Ý[™ˆÙ™YŒØÍßBˆ˜Ý‹XÛÛ\]Z[›[™KXÜš]XØ[ÛX\™Ú[‹]ÜØÛÛÜŽˆÎNLXŒXŽÙ›Û\Ú^™NŒL\Ù›Û]ÙZYÚÍLÛ[™KZZYÚŒKŒÍ_Bˆ˜Ý‹XØ[™Y]K][™\šYšYYÛX\™Ú[ŽŒLØÛÛÜŽˆÎLNØ˜XÚÙÜ›Ý[™ˆÙ™™˜™XŽØ›Ü™\ŽŒ\ÛÛYÙ™MŽNØ›Ü™\‹\˜Y]\ÎŒLÜY[™ÎŽLÙ›Û\Ú^™NŒLÜBˆ˜Ý‹XØ[™Y]K]™\šYšYYÛX\™Ú[ŽŒLØÛÛÜŽˆÌYLØNNØ˜XÚÙÜ›Ý[™ˆÙY™™™ŽØ›Ü™\ŽŒ\ÛÛYÙ™XY™NØ›Ü™\‹\˜Y]\ÎŒLÜY[™ÎŽLÙ›Û\Ú^™NŒLÜBˆ˜Ý‹XØ[™Y]KY˜XÝÞÙ\Ü^N™ÜšYÙÜšY][\]KXÛÛ[[œÎœ™\X]
+‹Z[›X^
+YœŠJNÙØ\ŽNÛX\™Ú[ŽŒBˆ˜Ý‹XØ[™Y]KY˜XÝÈ]žÙ›Û\Ú^™NŒLÜBˆ˜Ý‹XØ[™Y]KY˜XÝÈÜ[žÙ\Ü^N˜›ØÚÎØÛÛÜŽˆÍÍŽÙ›Û\Ú^™NŒL\Ù›Û]ÙZYÚÌÛ]\‹\ÜXÚ[™Î‹Œ[NÝ^]˜[œÙ›Ü›N\\˜Ø\Ù_Bˆ˜Ý‹XØ[™Y]K[[šÜÈ^ØÛÛÜŽˆÌMŒÙXŸBˆ˜Ý‹X\X˜[›™\žØ˜XÚÙÜ›Ý[™ˆÙY™™™ŽØ›Ü™\ŽŒ\ÛÛYÙ™XY™NØ›Ü™\‹\˜Y]\ÎŒMœÜY[™ÎŒNŒÛX\™Ú[‹X›ÝÛNŒMBˆ˜Ý‹X\\Ü]Ù\Ü^N™ÜšYÙÜšY][\]KXÛÛ[[œÎŒKœˆŽœŽÙØ\ŒMBˆ˜Ý‹X\XÚ\Ø˜XÚÙÜ›Ý[™ˆÙ™™ŽØ›Ü™\ŽŒ\ÛÛYÙM™YNØ›Ü™\‹\˜Y]\ÎŒMœÜY[™ÎŒMMœÛX\™Ú[ŽŒMBˆ˜Ý‹X\XÚ\ÞÛX\™Ú[ŽŒÙ›Û\Ú^™NŒMBˆ˜Ý‹X\XÚ\ÞÙ\Ü^N™ÜšYÙÜšY][\]KXÛÛ[[œÎŒKœˆŽœŽÙØ\ŒMÛX\™Ú[‹X›ÝÛNŒMBˆ˜Ý‹YYXØ\™Ù\Ü^N™›^Ø[YÛ‹Z][\Î˜Ù[\ŽÙØ\ŒMØ˜XÚÙÜ›Ý[™˜[œÜ\™[Ø›Ü™\ŽŒÜY[™ÎŒMœNÛZ[‹ZZYÚŒÚZYÚŒL	NØ›Þ\Ú^š[™Î˜›Ü™\‹X›ÞBˆ˜Ý‹YYXØ\™˜Ý‹X\ZXÛÞÝÚYÚZYÚÙ›^ŒØ›Ü™\‹\˜Y]\ÎL	_Bˆ˜Ý‹YYXØ\™˜Ý‹X\ZXÛÈÝ™ÞÝÚYŒÚZYÚŒBˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÙXÚ\Ú[Û—ØØ\™Ü˜\È—^ÜÜÚ][ÛŽœ™[]]™NØ›Ü™\ŽŒ\ÛÛYÙM™YNØ›Ü™\‹\˜Y]\ÎŒMœØ˜XÚÙÜ›Ý[™ˆÙ™™ŽÜY[™ÎŒÛÝ™\™›ÝÎšY[ŽØ›Þ\Ú^š[™Î˜›Ü™\‹X›ÞÚZYÚŒLLœÛZ[‹ZZYÚŒLLœBˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÙXÚ\Ú[Û—ØØ\™Ü˜\È—Nš\Êš\ËXXÝ]™JKˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÙXÚ\Ú[Û—ØØ\™Ü˜\È—Nš\Ê]ÛŽ™›ØÝ\Ë]š\ÚX›J^Ø›Ü™\‹XÛÛÜŽˆÎLØÍY™Ø›Þ\ÚYÝÎŒœØ™™™™_Bˆ˜Ý‹YYXØ\™˜Ý‹YYXÛÜ^Ù›^ŒNÛZ[‹]ÚYŒBˆ˜Ý‹YYXØ\™˜Ý‹YYXÛÜHÜ[žÙ\Ü^N˜›ØÚÎØÛÛÜŽˆÍÍŽÙ›Û\Ú^™NŒMÙ›Û]ÙZYÚLBˆ˜Ý‹YYXØ\™˜Ý‹YYXÛÜHÝ›Û™ÞÙ\Ü^N™›^Ø[YÛ‹Z][\Î˜Ù[\ŽÙØ\ŽÛX\™Ú[‹]ÜÙ›Û\Ú^™NŒÌœÛ]\‹\ÜXÚ[™Î‹KŒÙ[NØÛÛÜŽˆÌŒMÌ˜_Bˆ˜Ý‹YYXÚ]œ›ÛžÝÚYŒNÚZYÚŒNÙ›^ŒNÙ\Ü^N˜›ØÚßBˆ˜Ý‹YYK[]^ØÛÛÜŽˆØ™LLŒØÎÙ›Û]ÙZYÚÌBˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÙXÚ\Ú[Û—ØØ\™Ü˜\È—HÙ]K]\ÝYHœÝÜš^›Û[›ØÚÈ—^Ø[YÛ‹Z][\Î˜Ù[\ŸBˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÙXÚ\Ú[Û—Ü]Y]YH—^Ø›Ü™\ŽŒ\ÛÛYÙM™YNØ›Ü™\‹\˜Y]\ÎŒMœØ˜XÚÙÜ›Ý[™ˆÙ™™ŽÜY[™ÎŒLLœœÛX\™Ú[‹]ÜŽBˆÊˆ“ÓH\Ýœ˜[YH[™]KÝÛÛ˜\ˆXÝ[ÛœÈÚ\™HHØ[YHšYÚYÙKˆ
+‹ÂˆœÝZÙ^KX\›Ý™YØ›ÛWØØ][Ù×ÝX›^Ø›Þ\Ú^š[™Î˜›Ü™\‹X›ÞZ[\Ü[ÛX\™Ú[ŽŒMMœZ[\Ü[ÜY[™ÎŒZ[\Ü[Ø›Ü™\ŽŒ\ÛÛYØØ™NZ[\Ü[Ø›Ü™\‹\˜Y]\ÎŒMœZ[\Ü[Ø˜XÚÙÜ›Ý[™ˆÙ™™ˆZ[\Ü[Ø›Þ\ÚYÝÎŒÜLœ™Ø˜JMKŒË‹ŒJHZ[\Ü[BˆœÝZÙ^KX\›Ý™YØ›ÛWØØ][Ù×ÝX›O–Ù]K]\ÝYHœÝ™\XØ[›ØÚÈ—^ÙØ\ŒZ[\Ü[BˆœÝZÙ^KX\›Ý™YØ›ÛWØØ][Ù×ÝX›HÙ]K]\ÝYHœÝ[[Y[ÛÛZ[™\ˆ—^ÛX\™Ú[ŽŒZ[\Ü[ÜY[™ÎŒZ[\Ü[BˆœÝZÙ^KX\›Ý™YØ›ÛWØØ][Ù×ÝX›H˜Ý‹X\ZÛYK]X›KZXYØ›Ü™\‹]ÜŒZ[\Ü[Ø›Ü™\‹\˜Y]\ÎŒM\M\Z[\Ü[BˆœÝZÙ^KX\›Ý™YØ›ÛWÝ]HÙ]K]\ÝYHœÝÛÛ[[ˆ—N›\ÝXÚ[Ù]K]\ÝYHœÝ™\XØ[›ØÚÈ—KˆœÝZÙ^KX\›Ý™YØ›ÛWÝÛÛ˜\ˆÙ]K]\ÝYHœÝÛÛ[[ˆ—N›\ÝXÚ[Ù]K]\ÝYHœÝ™\XØ[›ØÚÈ—^Ø[YÛ‹Z][\Î™›^Y[™Z[\Ü[BˆœÝZÙ^KX\›Ý™YØ›ÛWÝ]HÙ]K]\ÝYHœÝÛÛ[[ˆ—N›\ÝXÚ[Ù]K]\ÝYHœÝ[[Y[ÛÛZ[™\ˆ—KˆœÝZÙ^KX\›Ý™YØ›ÛWÝÛÛ˜\ˆÙ]K]\ÝYHœÝÛÛ[[ˆ—N›\ÝXÚ[Ù]K]\ÝYHœÝ[[Y[ÛÛZ[™\ˆ—^Ù\Ü^N™›^Z[\Ü[Ú\ÝYžKXÛÛ[™›^Y[™Z[\Ü[ÝÚYŒL	HZ[\Ü[BˆœÝZÙ^KX\›Ý™YØ›ÛWÝ]HÙ]K]\ÝYHœÝÛÛ[[ˆ—N›\ÝXÚ[]ÛžÝÚ]K\ÜXÙN››ÝÜ˜\Z[\Ü[BˆœÝZÙ^KX\›Ý™YØ›ÛWÝÛÛ˜\ˆÙ]K]\ÝYHœÝÛÛ[[ˆ—N›\ÝXÚ[]ÛžÝÚ]K\ÜXÙN››ÝÜ˜\Z[\Ü[BˆœÝZÙ^KX\›Ý™YØ›ÛWÝ\ØYÜ[™[Ø›Þ\Ú^š[™Î˜›Ü™\‹X›ÞZ[\Ü[ÝÚYŒL	HZ[\Ü[ÛX^]ÚYÌŒZ[\Ü[ÛX\™Ú[ŽŒŒœ]]ÈZ[\Ü[ÜY[™ÎŒœŒœZ[\Ü[Ø›Ü™\ŽŒ\ÛÛYÙÙMYŒZ[\Ü[Ø›Ü™\‹\˜Y]\ÎŒNZ[\Ü[Ø˜XÚÙÜ›Ý[™ˆÙ™™ˆZ[\Ü[Ø›Þ\ÚYÝÎŒN™Ø˜JMKŒË‹ŒMJHZ[\Ü[BˆYYXJX^]ÚYÌŒ
+^ËœÝZÙ^KX\›Ý™YØ›ÛWÝ\ØYÜ[™[ÜY[™ÎŒŒNNZ[\Ü[_BˆœÝZÙ^KX\›Ý™YØ›ÛWÝ\ØYÜ[™[–Ù]K]\ÝYHœÝ™\XØ[›ØÚÈ—^ÙØ\‹Ž\™[HZ[\Ü[Bˆ˜Ý‹X›ÛK]\ØYZXY[™ÈžÛX\™Ú[ŽŒ\Z[\Ü[ØÛÛÜŽˆÌMŒŒÎHZ[\Ü[Ù›Û\Ú^™NŒŒ\Z[\Ü[Ù›Û]ÙZYÚÍLZ[\Ü[Û]\‹\ÜXÚ[™Î‹KŒ™[HZ[\Ü[Bˆ˜Ý‹X›ÛK]\ØYZXY[™ÈÛX\™Ú[ŽŒZ[\Ü[ØÛÛÜŽˆÍÍˆZ[\Ü[Ù›Û\Ú^™NŒMZ[\Ü[Û[™KZZYÚŒKHZ[\Ü[BˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YØ›ÛWØ[˜[^™H—H]ÛžÝÚY˜]]ÈZ[\Ü[ÛZ[‹]ÚYŒMZ[\Ü[ÛX^]ÚYŒL	HZ[\Ü[ÛZ[‹ZZYÚZ[\Ü[BˆÊˆ[™Ú[™Y\š[™ÈXÚ\Ú[ÛˆØ\™È[™ÛÛ›ÛÈ›ÛÝÈH\›Ý™YYÚ][\Ú›Ø\™Ý[Kˆ
+‹ÂˆœÝZÙ^KX\›Ý™YÙXÚ\Ú[Û—ØØ\™Ü˜\ÛÜ[žØ˜XÚÙÜ›Ý[™ˆÙŒ™Ù™ˆZ[\Ü[Ø›Ü™\‹XÛÛÜŽˆÙ™XY™HZ[\Ü[BˆœÝZÙ^KX\›Ý™YÙXÚ\Ú[Û—ØØ\™Ü˜\ÛÝ™\™Y^Ø˜XÚÙÜ›Ý[™ˆÙ™™HZ[\Ü[Ø›Ü™\‹XÛÛÜŽˆÙ™™LMˆZ[\Ü[BˆœÝZÙ^KX\›Ý™YÙXÚ\Ú[Û—ØØ\™Ü˜\Ü™\ÛÛ™YØ˜XÚÙÜ›Ý[™ˆÙY™˜YŒÈZ[\Ü[Ø›Ü™\‹XÛÛÜŽˆÙŒÙLˆZ[\Ü[BˆœÝZÙ^KX\›Ý™YÙXÚ\Ú[Û—ØØ\™Ü˜\Ø›Û\ÞØ˜XÚÙÜ›Ý[™ˆÙŒ™Ù™ˆZ[\Ü[Ø›Ü™\‹XÛÛÜŽˆÙ™XY™HZ[\Ü[BˆœÝZÙ^KX\›Ý™YÙXÚ\Ú[Û—ÝÛÛ˜\ˆÙ]K]\ÝYHœÝÜš^›Û[›ØÚÈ—^Ø[YÛ‹Z][\Î˜Ù[\ˆZ[\Ü[ÙØ\ŒLZ[\Ü[BˆœÝZÙ^KX\›Ý™YÙXÚ\Ú[Û—Ü]Y]YHÙ]K]\ÝYHœÝ^[œ]—H[œ]Ø›Þ\Ú^š[™Î˜›Ü™\‹X›ÞZ[\Ü[ÚZYÚœZ[\Ü[ÛZ[‹ZZYÚœZ[\Ü[Ø›Ü™\ŽŒ\ÛÛYÙLYYZ[\Ü[Ø›Ü™\‹\˜Y]\ÎŽ\Z[\Ü[Ø˜XÚÙÜ›Ý[™XÛÛÜŽˆÙ™™ˆZ[\Ü[ÜY[™Ë[YŒÎZ[\Ü[ØÛÛÜŽˆÌMÌLÙHZ[\Ü[Ù›Û\Ú^™NŒMZ[\Ü[Ø˜XÚÙÜ›Ý[™Z[XYÙN\›
+™]Nš[XYÙKÜÝ™ÊÞ[	LÐÜÝ™È[œÏIÚ‹ËÝÝÝËÌË›Ü™ËÌŒÜÝ™ÉÈÚYIÌN	ÈZYÚIÌN	ÈšY]Ð›ÞIÌ	Èš[IÛ›Û™IÈÝ›ÚÙOIÉLŒÍÍÎ‰ÈÝ›ÚÙK]ÚYIÌ‰ÈÝ›ÚÙK[[™XØ\IÜ›Ý[™	ÉLÑILÐØÚ\˜ÛHÞIÌLIÈÞOIÌLIÈIÍÉËÉLÑILÐÜ]IÛLŒŒMM	ËÉLÑILÐËÜÝ™ÉLÑHŠHZ[\Ü[Ø˜XÚÙÜ›Ý[™\™\X]››Ë\™\X]Z[\Ü[Ø˜XÚÙÜ›Ý[™\ÜÚ][ÛŽŒLœÙ[\ˆZ[\Ü[Ø˜XÚÙÜ›Ý[™\Ú^™NŒMœMœZ[\Ü[BˆœÝZÙ^KX\›Ý™YÙXÚ\Ú[Û—Ü]Y]YHÙ]K]\ÝYHœÝÜÝ™\ˆ—O˜]ÛžÙ\Ü^N™›^Z[\Ü[Ø[YÛ‹Z][\Î˜Ù[\ˆZ[\Ü[Ú\ÝYžKXÛÛ[˜Ù[\ˆZ[\Ü[ÙØ\ŽZ[\Ü[ÝÚYŒL	HZ[\Ü[ÛZ[‹]ÚYŒZ[\Ü[ÚZYÚœZ[\Ü[ÛZ[‹ZZYÚœZ[\Ü[ÜY[™ÎŒLœZ[\Ü[Ø›Ü™\ŽŒ\ÛÛYÙLYYZ[\Ü[Ø›Ü™\‹\˜Y]\ÎŽ\Z[\Ü[Ø˜XÚÙÜ›Ý[™ˆÙ™™ˆZ[\Ü[ØÛÛÜŽˆÌÌÍMMHZ[\Ü[Ø›Þ\ÚYÝÎ››Û™HZ[\Ü[Ù›Û\Ú^™NŒLÜZ[\Ü[Ù›Û]ÙZYÚLZ[\Ü[ÝÚ]K\ÜXÙN››ÝÜ˜\Z[\Ü[BˆœÝZÙ^KX\›Ý™YÙXÚ\Ú[Û—Ü]Y]YHÙ]K]\ÝYHœÝÜÝ™\ˆ—O˜]ÛŽšÝ™\žØ›Ü™\‹XÛÛÜŽˆØYX™™ˆZ[\Ü[Ø˜XÚÙÜ›Ý[™ˆÙŽ˜Y˜ÈZ[\Ü[BˆœÝZÙ^KX\›Ý™YÙXÚ\Ú[Û—Ü]Y]YHÙ]K]\ÝYHœÝÜÝ™\ˆ—O˜]ÛˆÛX\™Ú[ŽŒZ[\Ü[ØÛÛÜŽˆÌÌÍMMHZ[\Ü[Ù›Û\Ú^™NŒLÜZ[\Ü[Ù›Û]ÙZYÚLZ[\Ü[BˆœÝZÙ^KX\›Ý™YÙXÚ\Ú[Û—Ü]Y]YHÙ]K]\ÝYHœÝÜÝ™\ˆ—O˜]ÛˆÝ™ÞÝÚYŒMœZ[\Ü[ÚZYÚŒMœZ[\Ü[ØÛÛÜŽˆÍÍˆZ[\Ü[BˆœÝZÙ^KX\›Ý™YÙXÚ\Ú[Û—ÝX›WÚXYÛX\™Ú[ŽÜLLœZ[\Ü[ÜY[™ÎŒLœZ[\Ü[Ø›Ü™\‹]ÜŒ\ÛÛYÙMYX™ŒÈZ[\Ü[Ø›Ü™\‹X›ÝÛNŒ\ÛÛYÙMYX™ŒÈZ[\Ü[Ø˜XÚÙÜ›Ý[™ˆÙYÙ˜HZ[\Ü[BˆœÝZÙ^KX\›Ý™YÙXÚ\Ú[Û—ÝX›WÚXY–Ù]K]\ÝYHœÝ™\XØ[›ØÚÈ—^ÙØ\ŒZ[\Ü[BˆœÝZÙ^KX\›Ý™YÙXÚ\Ú[Û—ÝX›WÚXYÙ]K]\ÝYHœÝÜš^›Û[›ØÚÈ—^Ø[YÛ‹Z][\Î˜Ù[\ˆZ[\Ü[ÛZ[‹ZZYÚœZ[\Ü[Bˆ˜Ý‹YXÚ\Ú[Û‹]X›KZXY[™ÞØÛÛÜŽˆÍÍŽÙ›Û\Ú^™NŒL\Ù›Û]ÙZYÚÍLÛ[™KZZYÚŒKŒNÛ]\‹\ÜXÚ[™Î‹ŒMY[NÝ^]˜[œÙ›Ü›N\\˜Ø\ÙNÛÝ™\™›ÝË]Ü˜\˜[ž]Ú\™_BˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÙXÚ\Ú[Û—Ü›Ý×È—^ÛX\™Ú[ŽŒZ[\Ü[ÜY[™ÎŒLZ[\Ü[Ø›Ü™\‹X›ÝÛNŒ\ÛÛYÙNYŒÈZ[\Ü[BˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÙXÚ\Ú[Û—Ü›Ý×È—HÙ]K]\ÝYHœÝÜš^›Û[›ØÚÈ—^Ø[YÛ‹Z][\Î˜Ù[\ˆZ[\Ü[BˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YÙXÚ\Ú[Û—Ü›Ý×È—HÙ]K]\ÝYHœÝ™\XØ[›ØÚÈ—^ÙØ\ŒZ[\Ü[BˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YØ›ÛWÝÛÛ˜\ˆ—HÙ]K]\ÝYHœÝÜš^›Û[›ØÚÈ—^Ù›^]Ü˜\››ÝÜ˜\Ø[YÛ‹Z][\Î™›^Y[™BˆYYXJX^]ÚYŒLL
+^ÂˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YØ›ÛWÝÛÛ˜\ˆ—HÙ]K]\ÝYHœÝÜš^›Û[›ØÚÈ—^Ù›^]Ü˜\Ü˜\BˆØÛ\ÜÊHœÝZÙ^KX\›Ý™YØ›ÛWÝÛÛ˜\ˆ—HÙ]K]\ÝYHœÝÛÛ[[ˆ—^Ù›^ŒHHNZ[\Ü[ÝÚY˜]]ÈZ[\Ü[ÛZ[‹]ÚYŒMŒBˆœÝZÙ^KX\›Ý™YÙXÚ\Ú[Û—ØØ\™Ï–Ù]K]\ÝYHœÝÜš^›Û[›ØÚÈ—^Ù›^]Ü˜\Ü˜\Z[\Ü[ÙØ\ŒLœZ[\Ü[BˆœÝZÙ^KX\›Ý™YÙXÚ\Ú[Û—ØØ\™Ï–Ù]K]\ÝYHœÝÜš^›Û[›ØÚÈ—O–Ù]K]\ÝYH˜ÛÛ[[ˆ—^Ù›^ŒHHØ[ÊL	HHLœ
+HZ[\Ü[ÝÚY˜]]ÈZ[\Ü[ÛZ[‹]ÚYŒ\Z[\Ü[BˆœÝZÙ^KX\›Ý™YÙXÚ\Ú[Û—ÝÛÛ˜\ˆÙ]K]\ÝYHœÝÜš^›Û[›ØÚÈ—^Ù›^]Ü˜\Ü˜\Z[\Ü[BˆœÝZÙ^KX\›Ý™YÙXÚ\Ú[Û—ÝÛÛ˜\ˆÙ]K]\ÝYHœÝÛÛ[[ˆ—N™š\œÝXÚ[Ù›^ŒHHL	HZ[\Ü[ÝÚYŒL	HZ[\Ü[BˆœÝZÙ^KX\›Ý™YÙXÚ\Ú[Û—ÝÛÛ˜\ˆÙ]K]\ÝYHœÝÛÛ[[ˆ—N››Ý
+™š\œÝXÚ[
+^Ù›^ŒHHMM\Z[\Ü[ÝÚY˜]]ÈZ[\Ü[ÛZ[‹]ÚYŒMZ[\Ü[BˆœÝZÙ^KX\›Ý™YØ›ÛWÝ\ØYÜ[™[ÜY[™ÎŒŒœŒœNZ[\Ü[BˆBˆYYXJX^]ÚYŒŒ
+^ÂˆœÝZÙ^KX\›Ý™YÙXÚ\Ú[Û—ØØ\™Ï–Ù]K]\ÝYHœÝÜš^›Û[›ØÚÈ—O–Ù]K]\ÝYH˜ÛÛ[[ˆ—^Ù›^ŒHHL	HZ[\Ü[ÛZ[‹]ÚYŒZ[\Ü[BˆœÝZÙ^KX\›Ý™YØ›ÛWÝ]HÙ]K]\ÝYHœÝÜš^›Û[›ØÚÈ—^Ù›^]Ü˜\Ü˜\Z[\Ü[ÙØ\ŒLZ[\Ü[BˆœÝZÙ^KX\›Ý™YØ›ÛWÝ]HÙ]K]\ÝYHœÝÛÛ[[ˆ—N™š\œÝXÚ[Ù›^ŒHHL	HZ[\Ü[ÝÚYŒL	HZ[\Ü[BˆœÝZÙ^KX\›Ý™YØ›ÛWÝ]HÙ]K]\ÝYHœÝÛÛ[[ˆ—N›\ÝXÚ[Ù›^ŒHH]]ÈZ[\Ü[ÝÚY˜]]ÈZ[\Ü[BˆœÝZÙ^KX\›Ý™YØ›ÛWÝ\ØYÜ[™[ÜY[™ÎŒNMœMZ[\Ü[BˆBˆYYXJX^]ÚYŽL
+^Ë˜Ý‹X\ZÜ\Ë˜Ý‹X\XØ\™Ë˜Ý‹X\\Ü]Ù\Ü^N˜›ØÚß_BˆYYXJX^]ÚYŽL
+^Ë˜Ý‹X\\™]šY]ËYÜšYÙÜšY][\]KXÛÛ[[œÎŒYœŸK˜Ý‹X\Y›ÝÞÙØ\ŽÜY[™ÎŒLœK˜Ý‹X\Y›ÝË[[™^ÛZ[‹]ÚYŽ_BˆYYXJX^]ÚYŒŒ
+^Ë˜Ý‹X\Y›ÝÞÙ›^]Ü˜\Ü˜\K˜Ý‹X\Y›ÝË\Ý]\ÞÛX\™Ú[‹[YŒK˜Ý‹X\]ØZ][™ËZ[›ÞØ[YÛ‹Z][\Î™›^\Ý\K˜Ý‹X\YØÝ[Y[\Ý]K˜Ý‹X\Y]šY[˜ÙKZXYØ[YÛ‹Z][\Î™›^\Ý\Ù›^Y\™XÝ[ÛŽ˜ÛÛ[[ŸK˜Ý‹X\Y]šY[˜ÙKZXYÝ^X[YÛŽ›Y_BˆÜÝ[O‚ˆˆˆ‹ˆ[œØY™WØ[Ý×Ú[UYKˆ
+B‚‚™Yˆ[™Ø\›Ý™YÜYÙJ
+HOˆ›Û™N‚ˆˆˆ”ÝÜHØÜš\ÛÈH™]š[Ý\ÈÛÜšÜÜXÙH™[™\™\ˆÙ\È›Ý[‹ˆˆˆ‚ˆœ›ÛHÜ˜Ë˜]][XØ]YÜ[[YH[\Ü
+ˆ™]™X[Ø]][XØ]YÜYÙWØ›ÙKˆÝÜØ]][XØ]YÜYÙKˆ
+B‚ˆ›Ý]HHÝŠÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+˜ØY]›Ü—Ü›Ý]HŠHÜˆÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+˜\Û[ÙHŠHÜˆˆŠBˆ™]™X[Ø]][XØ]YÜYÙWØ›ÙJ›Ý]JBˆÝÜØ]][XØ]YÜYÙJ
+B‚‚™YˆYØXÞWÝÛÛ×ÛÜ[ŠYÙNˆÝŠHOˆ›ÛÛ‚ˆ™]\›ˆÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+˜ØY]›Ü—ÜÚÝ×ÛYØXÞWÝÛÛÈŠHOHYÙB‚‚™YˆÛÜ[—ÛYØXÞJYÙNˆÝŠHOˆ›Û™N‚ˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜ØY]›Ü—ÜÚÝ×ÛYØXÞWÝÛÛÈ—HHYÙB‚‚™Yˆ™[™\—ÛYØXÞWØ˜XÚÊYÙNˆÝŠHOˆ›Û™N‚ˆYˆÝ˜]ÛŠ˜XÚÈÈ\›Ý™YšY]È‹Ù^OYˆ˜\›Ý™YØ˜XÚ×ÞÜYÙ_HŠN‚ˆÝœÙ\ÜÚ[Û—ÜÝ]KœÜ
+˜ØY]›Ü—ÜÚÝ×ÛYØXÞWÝÛÛÈ‹›Û™JBˆÝœ™\[Š
+B‚‚™YˆÚX[Ü[
+ØÛÜ™Nˆ[
+HOˆÝŽ‚ˆYˆØÛÜ™HH‚ˆÚ[™H›ÝÈ‚ˆ[YˆØÛÜ™HHÌ‚ˆÚ[™H›YY][H‚ˆ[ÙN‚ˆÚ[™HšYÚ‚ˆ™]\›ˆ‰ÏÜ[ˆÛ\ÜÏH˜Ý‹\[ÚÚ[™HÜ[ˆÛ\ÜÏH˜Ý‹\[YÝˆ\šXKZY[HYHÜÜ[žÜØÛÜ™_KÌLÜÜ[‰Â‚‚™YˆÜ›ÝÜ×ÝÚ]Ü›Ú™XÝÙY]Ê›ÝÜÎˆ\ÝÙXÝÜÝ‹[žWWJHOˆ\ÝÙXÝÜÝ‹[žWWN‚ˆY]ÈHÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+˜ØY]›Ü—ÜØ]™YÜ›Ú™XÝÝ]\ÈŠHÜˆßBˆYˆ›Ý\Ú[œÝ[˜ÙJY]ËXÝ
+HÜˆ›ÝY]Î‚ˆ™]\›ˆ›ÝÜÂˆY\™ÙYH×Bˆ›Üˆ›ÝÈ[ˆ›ÝÜÎ‚ˆ]HHY]Ë™Ù]
+ÝŠ›ÝË™Ù]
+šYŠHÜˆˆŠJBˆY\™ÙY˜\[™
+ÊŠœ›ÝËœ›Ú™XÝÛ˜[YHŽˆ]_HYˆ]H[ÙH›ÝÊBˆ™]\›ˆY\™ÙY‚‚™YˆÝ\]WÚÛYWÜØ]™YØ[˜[\Ú\×ØØXÚJˆ[˜[\Ú\×ÚYˆÝ‹ˆ\Ù\—ÚYˆÝ‹ˆ
+‹ˆÝÜ™YÝ]NˆÝˆ›Û™HH›Û™Kˆš[[˜[YNˆÝˆ›Û™HH›Û™Kˆ[]Yˆ›ÛÛH˜[ÙKŠHOˆ›Û™N‚ˆˆˆ’ÙY\ÛYIÜÈ\ÝZÛ›ÝÛˆ›ÝÜÈ[ˆÞ[˜ÈÚ]HØ]™Y“ÓHY]ˆˆˆ‚ˆœ›ÛHÜ˜ËœYÙ\ËšÛYWÝÛÜšÜÜXÙH[\ÜÐU‘QÐSSTÑT×ÐÐPÒWÒÑVB‚ˆØXÚHHÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+ÐU‘QÐSSTÑT×ÐÐPÒWÒÑVJBˆYˆ›Ý\Ú[œÝ[˜ÙJØXÚKXÝ
+HÜˆÝŠØXÚK™Ù]
+\Ù\—ÚYŠHÜˆˆŠHOHÝŠ\Ù\—ÚYÜˆˆŠN‚ˆ™]\›‚ˆ[˜[\Ú\×ÚÙ^HHÝŠ[˜[\Ú\×ÚYÜˆˆŠBˆ\]YÜ›ÝÜÈH×Bˆ›Üˆ›ÝÈ[ˆ\Ý
+ØXÚK™Ù]
+œ›ÝÜÈŠHÜˆ×JN‚ˆYˆ›Ý\Ú[œÝ[˜ÙJ›ÝËXÝ
+N‚ˆÛÛ[YBˆYˆÝŠ›ÝË™Ù]
+šYŠHÜˆˆŠHOH[˜[\Ú\×ÚÙ^N‚ˆ\]YÜ›ÝÜË˜\[™
+›ÝÊBˆÛÛ[YBˆYˆ[]Y‚ˆÛÛ[YBˆ\]YHXÝ
+›ÝÊBˆYˆÝÜ™YÝ]H\È›Ý›Û™N‚ˆ\]YÈœ›Ú™XÝÛ˜[YH—HHÝÜ™YÝ]BˆYˆš[[˜[YH\È›Ý›Û™N‚ˆ\]YÈ™š[[˜[YH—HHš[[˜[YBˆ\]YÜ›ÝÜË˜\[™
+\]Y
+BˆÝœÙ\ÜÚ[Û—ÜÝ]VÔÐU‘QÐSSTÑT×ÐÐPÒWÒÑVWHHÊŠ˜ØXÚKœ›ÝÜÈŽˆ\]YÜ›ÝÜßB‚‚™YˆÜ\œÚ\ÝÜ›Ú™XÝÝ]Jˆ[˜[\Ú\×ÚYˆÝ‹ˆ\Ù\—ÚYˆÝ‹ˆÝÜ™YÝ]NˆÝ‹ˆ
+‹ˆš[[˜[YNˆÝˆ›Û™HH›Û™KŠHOˆ›Û™N‚ˆˆˆ”\œÚ\ÝH›Ú™XÝÐ“ÓHX™[[™Ú[ˆÝ\YY]È\Ü^YYÛÝ\˜ÙHš[[˜[YKˆˆˆ‚ˆœ›ÛHÜ˜Ë˜]][XØ]YÜ[[YH[\ÜÝ\X˜\ÙB‚ˆ\]\ÈHÈœ›Ú™XÝÛ˜[YHŽˆÝÜ™YÝ]_BˆYˆš[[˜[YH\È›Ý›Û™H[™ÝŠš[[˜[YJKœÝš\
+
+N‚ˆ\]\ÖÈ™š[[˜[YH—HHÝŠš[[˜[YJKœÝš\
+
+Bˆ™\ÜÛœÙHH
+ˆÝ\X˜\ÙKX›J˜[˜[\Ù\ÈŠBˆ\]J\]\ÊBˆ™\JšY‹[˜[\Ú\×ÚY
+Bˆ™\J\Ù\—ÚY‹\Ù\—ÚY
+BˆœÙ[XÝ
+šYŠBˆ™^XÝ]J
+Bˆ
+BˆYˆ›ÝÙ]]Š™\ÜÛœÙK™]H‹›Û™JN‚ˆ˜Z\ÙH[[YQ\œ›ÜŠ•HØ]™Y“ÓHÛÝ[›Ý™H›Ý[™›Üˆ\È\Ù\‹ˆŠBˆÝ\X˜\ÙKX›J˜[˜[\Ú\×Ü\ÈŠK\]JÈœ›Ú™XÝÛ˜[YHŽˆÝÜ™YÝ]_JK™\Jˆ˜[˜[\Ú\×ÚY‹[˜[\Ú\×ÚYˆ
+K™\J\Ù\—ÚY‹\Ù\—ÚY
+K™^XÝ]J
+B‚™YˆÜ™[™\—Ü›Ú™XÝÙY]ÜŠ›ÝÎˆXÝÜÝ‹[žWKØÛÜNˆÝ‹›ÝÜÎˆ\ÝÙXÝÜÝ‹[žWWK\Ù\—ÚYˆÝŠHOˆ›Û™N‚ˆ[˜[\Ú\×ÚYHÝŠ›ÝË™Ù]
+šYŠHÜˆˆŠBˆÝ\œ™[Ø›ÛHHÜ]Ü›Ú™XÝØ[™Ø›ÛJ›ÝÊBˆÚÚXÙ\ÈH›Ú™XÝØÚÚXÙ\Ê›ÝÜÊBˆYˆÝ\œ™[[™Ý\œ™[›Ý[ˆÚÚXÙ\Î‚ˆÚÚXÙ\ÈHØÝ\œ™[
+–Û˜[YH›Üˆ˜[YH[ˆÚÚXÙ\ÈYˆ˜[YHOHÝ\œ™[WBˆÜ[ÛœÈHÊ˜ÚÚXÙ\Ë‘U×Ô“Ò‘PÕÐÒÒPÑWBˆÙ[XÝYHÝœÙ[XÝ›Þ
+ˆ”›Ú™XÝ‹ˆÜ[ÛœËˆ[™^[Ü[ÛœËš[™^
+Ý\œ™[
+HYˆÝ\œ™[[ˆÜ[ÛœÈ[ÙHˆÙ^OYˆžÜØÛÜ_WÜ›Ú™XÝØÚÚXÙWÞØ[˜[\Ú\×ÚYH‹ˆ
+Bˆ\YHˆ‚ˆYˆÙ[XÝYOH‘U×Ô“Ò‘PÕÐÒÒPÑN‚ˆ\YHÝ^Ú[œ]
+ˆ“™]È›Ú™XÝ˜[YH‹ˆÙ^OYˆžÜØÛÜ_WÜ›Ú™XÝÝ\YÞØ[˜[\Ú\×ÚYH‹ˆXÙZÛ\H”›Ú™XÝ˜[YH‹ˆ
+BˆØ]™WØÛÛØ[˜Ù[ØÛÛHÝ˜ÛÛ[[œÊÌKWJBˆÚ]Ø]™WØÛÛ‚ˆYˆÝ˜]ÛŠ”Ø]™H›Ú™XÝ‹Ù^OYˆžÜØÛÜ_WÜ›Ú™XÝÜØ]™WÞØ[˜[\Ú\×ÚYH‹\OHœš[X\žHŠN‚ˆ›Ú™XÝH™\ÛÛ™WÜ›Ú™XÝØÚÚXÙJÙ[XÝY\Y›[š×Ý\Ù\×ÙÙ[™\˜[[›ÝÝ\œ™[
+BˆYˆ›Ý›Ú™XÝ‚ˆÝ˜Ø\[ÛŠ‘[\ˆH›Ú™XÝ˜[YHÈØ]™H\È\ÜÚYÛ›Y[ˆŠBˆ[ÙN‚ˆ\]YH\ÜÚYÛ—Ü›Ú™XÝ
+›ÝË›Ú™XÝ
+BˆYˆ\Ù\—ÚY[™[˜[\Ú\×ÚY‚ˆÜ\œÚ\ÝÜ›Ú™XÝÝ]J[˜[\Ú\×ÚY\Ù\—ÚY\]YÈœ›Ú™XÝÛ˜[YH—JBˆ]\ÈHXÝ
+ÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+˜ØY]›Ü—ÜØ]™YÜ›Ú™XÝÝ]\ÈŠHÜˆßJBˆ]\ÖØ[˜[\Ú\×ÚYHH\]YÈœ›Ú™XÝÛ˜[YH—BˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜ØY]›Ü—ÜØ]™YÜ›Ú™XÝÝ]\È—HH]\ÂˆÝ\]WÚÛYWÜØ]™YØ[˜[\Ú\×ØØXÚJˆ[˜[\Ú\×ÚYˆ\Ù\—ÚYˆÝÜ™YÝ]O]\]YÈœ›Ú™XÝÛ˜[YH—Kˆ
+BˆÝœÙ\ÜÚ[Û—ÜÝ]KœÜ
+˜\›Ý™YÜ›Ú™XÝÙY]Üˆ‹›Û™JBˆÝœ™\[Š
+BˆÚ]Ø[˜Ù[ØÛÛ‚ˆYˆÝ˜]ÛŠØ[˜Ù[‹Ù^OYˆžÜØÛÜ_WÜ›Ú™XÝØØ[˜Ù[ÞØ[˜[\Ú\×ÚYHŠN‚ˆÝœÙ\ÜÚ[Û—ÜÝ]KœÜ
+˜\›Ý™YÜ›Ú™XÝÙY]Üˆ‹›Û™JBˆÝœ™\[Š
+B‚‚™YˆÜ™[™\—Ü›Ú™XÝØÙ[
+ˆÛÛ[[‹ˆ›ÝÎˆXÝÜÝ‹[žWKˆØÛÜNˆÝ‹ˆ›ÝÜÎˆ\ÝÙXÝÜÝ‹[žWWKˆ\Ù\—ÚYˆÝ‹ŠHOˆ›Û™N‚ˆˆˆ”™[™\ˆ›Ú™XÝ^Ú]Ý]XÚ[™È›ÝÈXÝ[ÛœÈ[œÚYHH›Ú™XÝÛÛ[[‹ˆˆˆ‚ˆ›Ú™XÝØ›ÛHHÜ]Ü›Ú™XÝØ[™Ø›ÛJ›ÝÊBˆÚ]ÛÛ[[Ž‚ˆÝ›X\šÙÝÛŠˆˆÜ[ˆÛ\ÜÏIØÝ‹X\ZÛYK\›Ú™XÝ	Ïž×Ù\ØÊ›Ú™XÝÜˆ	ø %	Ê_OÜÜ[ˆ‹ˆ[œØY™WØ[Ý×Ú[UYKˆ
+B‚‚™YˆÜ]Y]YWÜØ]™YØ›ÛWØXÝ[ÛŠ[˜[\Ú\×ÚYˆÝ‹XÝ[ÛŽˆÝŠHOˆ›Û™N‚ˆˆˆ“Ü[ˆHÜXÚYšXÈØ]™Y“ÓH[ˆHX[˜YÙ\‹Y]Ü‹Üˆ[]HÛÛ™š\›X][Û‹ˆˆˆ‚ˆ\™Ù]HÝŠ[˜[\Ú\×ÚYÜˆˆŠKœÝš\
+
+BˆYˆ›Ý\™Ù]ÜˆXÝ[Ûˆ›Ý[ˆÈ™Y]‹™[]HŸN‚ˆ™]\›‚ˆÝœÙ\ÜÚ[Û—ÜÝ]KœÜ
+ÐU‘QÐ“ÓWÑQUÔÕUK›Û™JBˆÝœÙ\ÜÚ[Û—ÜÝ]KœÜ
+ÐU‘QÐ“ÓWÑSUWÔÕUK›Û™JBˆYˆXÝ[ÛˆOH™Y]Ž‚ˆ™]š\Ú[ÛˆH[
+ÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+ÐU‘QÐ“ÓWÑQUÔ‘U’TÒSÓ—ÔÕUJHÜˆ
+H
+ÈBˆÝœÙ\ÜÚ[Û—ÜÝ]VÔÐU‘QÐ“ÓWÑQUÔ‘U’TÒSÓ—ÔÕUWHH™]š\Ú[Û‚ˆÝœÙ\ÜÚ[Û—ÜÝ]VÔÐU‘QÐ“ÓWÑQUÔÕUWHH\™Ù]ˆ[ÙN‚ˆÝœÙ\ÜÚ[Û—ÜÝ]VÔÐU‘QÐ“ÓWÑSUWÔÕUWHH\™Ù]ˆ˜]šYØ]WÝÊˆ“ÓHÙ][™ÜÈ‹ˆØ]™YØ›ÛWÚY]\™Ù]ˆØ]™YØ›ÛWØXÝ[ÛXXÝ[Û‹ˆ\›WÛÜ[š[™ÏQ˜[ÙKˆ
+B‚‚™YˆÜ™[™\—ÜØ]™YØ›ÛWØXÝ[ÛœÊÛÛ[[‹[˜[\Ú\×ÚYˆÝ‹
+‹ØÛÜNˆÝ‹›Ý×ÚÙ^NˆÝŠHOˆ›Û™N‚ˆ\™Ù]HÝŠ[˜[\Ú\×ÚYÜˆˆŠKœÝš\
+
+BˆYˆ›Ý\™Ù]‚ˆ™]\›‚ˆÚ]ÛÛ[[Ž‚ˆÚ]Ý˜ÛÛZ[™\ŠÙ^OYˆ˜\›Ý™YÞÜØÛÜ_WÛY[WÞÜ›Ý×ÚÙ^_HŠN‚ˆÚ]ÝœÜÝ™\Š¸¢ëÈ‹[H“Ü[‹šY]ÈH]Z[Yš\ÚÈ™\ÜY]Üˆ[]H\È“ÓKˆŠN‚ˆYˆÝ˜]ÛŠˆ“Ü[ˆ‹ˆÙ^OYˆ˜\›Ý™YÞÜØÛÜ_WØXÝ[Û—ÛÜ[—ÞÜ›Ý×ÚÙ^_H‹ˆ\ÙWØÛÛZ[™\—ÝÚYUYKˆ
+N‚ˆ˜]šYØ]WÝÊˆ“ÓHÙ][™ÜÈ‹ˆØ]™YØ›ÛWÚY]\™Ù]ˆØ]™YØ›ÛWØXÝ[ÛH›Ü[ˆ‹ˆ\›WÛÜ[š[™ÏQ˜[ÙKˆ
+BˆYˆÝ˜]ÛŠˆ‘[™Ú[™Y\š[™È[[YÙ[˜ÙH‹ˆÙ^OYˆ˜\›Ý™YÞÜØÛÜ_WØXÝ[Û—Ø›ÛWÜš\Ú×ÞÜ›Ý×ÚÙ^_H‹ˆ\ÙWØÛÛZ[™\—ÝÚYUYKˆ
+N‚ˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜ØY]›Ü—ÜÚÝ×Ù]Z[YÜš\ÚÈ—HH˜[ÙBˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜ØY]›Ü—ÙZWÜ™\ÜÝXˆ—HH“ÓHš\ÚÈ‚ˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜ØY]›Ü—ØXÝ]™WØ[˜[\Ú\×ÚY—HH\™Ù]ˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜[˜[\Ú\×ÚY—HH\™Ù]ˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜ØY]›Ü—Ü[™[™×Ø[˜[\Ú\×ÜÙXÝ[Ûˆ—HH‘[™Ú[™Y\š[™È[[YÙ[˜ÙH‚ˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜ØY]›Ü—Ü[™[™×Ø[˜[\Ú\×ÜÙXÝ[Û—ÚY—HH\™Ù]ˆ˜]šYØ]WÝÊˆ[˜[\Ú\È]Z[È‹ˆ[˜[\Ú\×ÚY]\™Ù]ˆ[˜[\Ú\×ÝXH‘[™Ú[™Y\š[™È[[YÙ[˜ÙH‹ˆ\›WÛÜ[š[™ÏQ˜[ÙKˆ
+BˆYˆÝ˜]ÛŠˆ‘]Z[Yš\ÚÈ™\Ü‹ˆÙ^OYˆ˜\›Ý™YÞÜØÛÜ_WØXÝ[Û—Üš\Ú×Ü™\ÜÞÜ›Ý×ÚÙ^_H‹ˆ\ÙWØÛÛZ[™\—ÝÚYUYKˆ
+N‚ˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜ØY]›Ü—ÜÚÝ×Ù]Z[YÜš\ÚÈ—HHYBˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜ØY]›Ü—ØXÝ]™WØ[˜[\Ú\×ÚY—HH\™Ù]ˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜[˜[\Ú\×ÚY—HH\™Ù]ˆÝœÙ\ÜÚ[Û—ÜÝ]VÙˆ˜ØY]›Ü—Ù]Z[YÜš\Ú×Û\—ÞÝ\™Ù]H—HHˆ‚ˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜ØY]›Ü—Ü[™[™×Ø[˜[\Ú\×ÜÙXÝ[Ûˆ—HH‘[™Ú[™Y\š[™È[[YÙ[˜ÙH‚ˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜ØY]›Ü—Ü[™[™×Ø[˜[\Ú\×ÜÙXÝ[Û—ÚY—HH\™Ù]ˆ˜]šYØ]WÝÊˆ[˜[\Ú\È]Z[È‹ˆ[˜[\Ú\×ÚY]\™Ù]ˆ[˜[\Ú\×ÝXH‘[™Ú[™Y\š[™È[[YÙ[˜ÙH‹ˆ\›WÛÜ[š[™ÏQ˜[ÙKˆ
+BˆYˆÝ˜]ÛŠˆ‘Y]›Ú™XÝ[™š[H˜[YH‹ˆÙ^OYˆ˜\›Ý™YÞÜØÛÜ_WØXÝ[Û—ÙY]ÞÜ›Ý×ÚÙ^_H‹ˆ\ÙWØÛÛZ[™\—ÝÚYUYKˆ
+N‚ˆÜ]Y]YWÜØ]™YØ›ÛWØXÝ[ÛŠ\™Ù]™Y]ŠBˆYˆÝ˜]ÛŠˆ‘[]H‹ˆÙ^OYˆ˜\›Ý™YÞÜØÛÜ_WØXÝ[Û—Ù[]WÞÜ›Ý×ÚÙ^_H‹ˆ\ÙWØÛÛZ[™\—ÝÚYUYKˆ
+N‚ˆÜ]Y]YWÜØ]™YØ›ÛWØXÝ[ÛŠ\™Ù]™[]HŠB‚‚™YˆÙ[]WÜØ]™YØ›ÛJ[˜[\Ú\×ÚYˆÝ‹\Ù\—ÚYˆÝŠHOˆ›Û™N‚ˆˆˆ‘[]HÛ™H\Ù\‹[ÝÛ™Y[˜[\Ú\È[™]È\ÜÛØÚX]YØ]™Y™XÛÜ™Ëˆˆˆ‚ˆœ›ÛHÜ˜Ë˜]][XØ]YÜ[[YH[\ÜÝ\X˜\ÙB‚ˆÝ\X˜\ÙKX›J˜[˜[\Ú\×Ü\ÈŠK™[]J
+K™\J˜[˜[\Ú\×ÚY‹[˜[\Ú\×ÚY
+K™\Jˆ\Ù\—ÚY‹\Ù\—ÚYˆ
+K™^XÝ]J
+BˆžN‚ˆÝ\X˜\ÙKX›Jœ\Û[Ûš]Ü—Ú\ÝÜžHŠK™[]J
+K™\Jˆ˜[˜[\Ú\×ÚY‹[˜[\Ú\×ÚYˆ
+K™^XÝ]J
+Bˆ^Ù\^Ù\[ÛŽ‚ˆ\ÜÂˆÝ\X˜\ÙKX›J˜[˜[\Ù\ÈŠK™[]J
+K™\JšY‹[˜[\Ú\×ÚY
+K™\Jˆ\Ù\—ÚY‹\Ù\—ÚYˆ
+K™^XÝ]J
+B‚‚™YˆÜ™[™\—ÜØ]™YØ›ÛWÙY]ÜYÙJ›ÝÎˆXÝÜÝ‹[žWK\Ù\—ÚYˆÝŠHOˆ›Û™N‚ˆ[˜[\Ú\×ÚYHÝŠ›ÝË™Ù]
+šYŠHÜˆˆŠKœÝš\
+
+Bˆ›Ú™XÝ›ÛWÛ˜[YHHÜ]Ü›Ú™XÝØ[™Ø›ÛJ›ÝÊBˆÛÝ\˜ÙWÙš[[˜[YHHÝŠÙš\œÝ
+›ÝË™š[[˜[YH‹œÛÝ\˜ÙWÙš[[˜[YH‹˜[˜XÚÏHˆŠHÜˆˆŠKœÝš\
+
+BˆYˆÛÝ\˜ÙWÙš[[˜[YH[ˆÈ¸ %‹‹HŸN‚ˆÛÝ\˜ÙWÙš[[˜[YHHˆ‚ˆ›Û˜ÙHH[
+ÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+ÐU‘QÐ“ÓWÑQUÔ‘U’TÒSÓ—ÔÕUJHÜˆ
+BˆÚ]Ý˜ÛÛZ[™\ŠÙ^OH˜\›Ý™YÜØ]™YØ›ÛWÜÙ][™Ü×ÜYÙHŠN‚ˆÝ›X\šÙÝÛŠˆˆˆ‚ˆ]ˆÛ\ÜÏH˜Ý‹X\‚ˆÛ\ÜÏH˜Ý‹X\ZÚXÚÙ\ˆ“ÓHÑUS‘ÔÏÜ‚ˆO‘Y]Ø]™Y“ÓOÚO‚ˆÛ\ÜÏH˜Ý‹X\\ÝXˆ•\]HH›Ú™XÝ“ÓH˜[YKÜˆ\ØYYš[H˜[YH›Üˆ\ÈØ]™Y[˜[\Ú\ËÜ‚ˆÙ]‚ˆˆˆ‹ˆ[œØY™WØ[Ý×Ú[UYKˆ
+BˆÚ]Ý˜ÛÛZ[™\ŠÙ^OH˜\›Ý™YÜØ]™YØ›ÛWÙY]ÜØÜ™Y[ˆŠN‚ˆÚ]Ý™›Ü›JÙ^OYˆ˜\›Ý™YÜØ]™YØ›ÛWÙY]Ù›Ü›WÞØ[˜[\Ú\×ÚYWÞÛ›Û˜Ù_HŠN‚ˆ›Ú™XÝÝ˜[YHHÝ^Ú[œ]
+ˆ”›Ú™XÝ˜[YH‹ˆ˜[YO\›Ú™XÝÜˆ‘Ù[™\˜[‹ˆÙ^OYˆ˜\›Ý™YÜØ]™YØ›ÛWÜ›Ú™XÝÞØ[˜[\Ú\×ÚYWÞÛ›Û˜Ù_H‹ˆ
+Bˆ›ÛWÝ˜[YHHÝ^Ú[œ]
+ˆ“ÓH˜[YH‹ˆ˜[YOX›ÛWÛ˜[YKˆÙ^OYˆ˜\›Ý™YÜØ]™YØ›ÛWÛ˜[YWÞØ[˜[\Ú\×ÚYWÞÛ›Û˜Ù_H‹ˆ
+Bˆš[[˜[YWÝ˜[YHHÝ^Ú[œ]
+ˆ•\ØYYš[H˜[YH‹ˆ˜[YO\ÛÝ\˜ÙWÙš[[˜[YKˆÙ^OYˆ˜\›Ý™YÜØ]™YØ›ÛWÙš[[˜[YWÞØ[˜[\Ú\×ÚYWÞÛ›Û˜Ù_H‹ˆ[H•\ÈÚ[™Ù\ÈHš[H˜[YHÚÝÛˆ[ˆØY]›Ü‹ˆ]Ù\È›Ý™\XÙHH\ØYYš[HÛÛ[Ëˆ‹ˆ
+BˆÝ˜Ø\[ÛŠÚ[™Ú[™È\ÙHX™[ÈÙ\È›Ý™\[ˆH[˜[\Ú\ÈÜˆ™\XÙH]È\ØYYÛÛ[ËˆŠBˆØ]™WØÛÛØ[˜Ù[ØÛÛHÝ˜ÛÛ[[œÊÌKWJBˆÚ]Ø]™WØÛÛ‚ˆØ]™HHÝ™›Ü›WÜÝX›Z]Ø]ÛŠˆ”Ø]™HÚ[™Ù\È‹ˆ\OHœš[X\žH‹ˆ\ÙWØÛÛZ[™\—ÝÚYUYKˆ
+BˆÚ]Ø[˜Ù[ØÛÛ‚ˆØ[˜Ù[HÝ™›Ü›WÜÝX›Z]Ø]ÛŠˆØ[˜Ù[‹ˆ\ÙWØÛÛZ[™\—ÝÚYUYKˆ
+BˆYˆØ[˜Ù[‚ˆÝœÙ\ÜÚ[Û—ÜÝ]KœÜ
+ÐU‘QÐ“ÓWÑQUÔÕUK›Û™JBˆ˜]šYØ]WÝÊ“ÓH[˜[^™\ˆ‹ÚÝ×ÜØ]™YØ[˜[\Ù\ÏHŒH‹\›WÛÜ[š[™ÏQ˜[ÙJBˆYˆØ]™N‚ˆÛX[—Ø›ÛWÛ˜[YHHÝŠ›ÛWÝ˜[YHÜˆˆŠKœÝš\
+
+BˆÛX[—Ùš[[˜[YHHÝŠš[[˜[YWÝ˜[YHÜˆˆŠKœÝš\
+
+BˆYˆ›ÝÛX[—Ø›ÛWÛ˜[YN‚ˆÝ™\œ›ÜŠ‘[\ˆH“ÓH˜[YH™Y›Ü™HØ]š[™ËˆŠBˆ[ÙN‚ˆÝÜ™YÝ]HH[˜[\Ú\×Ý]WÙ›Ü—Ý\ØY
+›Ú™XÝÝ˜[YKÛX[—Ø›ÛWÛ˜[YJBˆžN‚ˆÜ\œÚ\ÝÜ›Ú™XÝÝ]Jˆ[˜[\Ú\×ÚYˆ\Ù\—ÚYˆÝÜ™YÝ]Kˆš[[˜[YOXÛX[—Ùš[[˜[YHÜˆ›Û™Kˆ
+Bˆ^Ù\^Ù\[ÛŽ‚ˆÝ™\œ›ÜŠØY]›ÜˆÛÝ[‰ÝØ]™H\ÙHÚ[™Ù\ËˆX\ÙHžHYØZ[‹ˆŠBˆ[ÙN‚ˆ]\ÈHXÝ
+ÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+˜ØY]›Ü—ÜØ]™YÜ›Ú™XÝÝ]\ÈŠHÜˆßJBˆ]\ÖØ[˜[\Ú\×ÚYHHÝÜ™YÝ]BˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜ØY]›Ü—ÜØ]™YÜ›Ú™XÝÝ]\È—HH]\ÂˆÝ\]WÚÛYWÜØ]™YØ[˜[\Ú\×ØØXÚJˆ[˜[\Ú\×ÚYˆ\Ù\—ÚYˆÝÜ™YÝ]O\ÝÜ™YÝ]Kˆš[[˜[YOXÛX[—Ùš[[˜[YHÜˆ›Û™Kˆ
+BˆÝœÙ\ÜÚ[Û—ÜÝ]KœÜ
+ÐU‘QÐ“ÓWÑQUÔÕUK›Û™JBˆ˜]šYØ]WÝÊ“ÓH[˜[^™\ˆ‹ÚÝ×ÜØ]™YØ[˜[\Ù\ÏHŒH‹\›WÛÜ[š[™ÏQ˜[ÙJBˆÝ™]šY\Š
+BˆYˆÝ˜]ÛŠˆ‘[]H\È“ÓH‹ˆÙ^OYˆ˜\›Ý™YÜØ]™YØ›ÛWÙY]Ù[]WÞØ[˜[\Ú\×ÚYH‹ˆ\OHœÙXÛÛ™\žH‹ˆ
+N‚ˆÜ]Y]YWÜØ]™YØ›ÛWØXÝ[ÛŠ[˜[\Ú\×ÚY™[]HŠB‚‚™YˆÜ™[™\—ÜØ]™YØ›ÛWÛÜ[—ÜYÙJˆ›ÝÎˆXÝÜÝ‹[žWKˆÛÛ\Û™[Îˆ\ÝÙXÝÜÝ‹[žWWH›Û™KŠHOˆ›Û™N‚ˆˆˆ‘Y]HØ]™YT‹Ü]X[]H›ÝÜÈ[™™\[ˆH›Ü›X[“ÓH[˜[\Ú\Ëˆˆˆ‚ˆ[\Ü[™\È\È‚ˆ[˜[\Ú\×ÚYHÝŠ›ÝË™Ù]
+šYŠHÜˆˆŠKœÝš\
+
+Bˆ›Ú™XÝ›ÛWÛ˜[YHHÜ]Ü›Ú™XÝØ[™Ø›ÛJ›ÝÊBˆÛÝ\˜ÙWÙš[[˜[YHHÝŠÙš\œÝ
+›ÝË™š[[˜[YH‹œÛÝ\˜ÙWÙš[[˜[YH‹˜[˜XÚÏHˆŠHÜˆˆŠKœÝš\
+
+Bˆ›ÝÜÈH×Bˆ›Üˆ\[ˆÛÛ\Û™[ÈÜˆ×N‚ˆ\ˆHÝŠÙš\œÝ
+\›\ˆ‹›X[Y˜XÝ\™\—Ü\Û[X™\ˆ‹œ\Û[X™\ˆ‹˜[˜XÚÏHˆŠHÜˆˆŠKœÝš\
+
+BˆYˆ›Ý\Ž‚ˆÛÛ[YBˆ]X[]HHÙš\œÝ
+\œ]X[]H‹œ]H‹”]X[]H‹˜[˜XÚÏLJBˆ›ÝÜË˜\[™
+È“TˆŽˆ\‹”]X[]HŽˆ]X[]_JBˆ[š]X[H‘]Qœ˜[YJ›ÝÜËÛÛ[[œÏVÈ“Tˆ‹”]X[]H—JBˆ›Û˜ÙHH[
+ÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+ÐU‘QÐ“ÓWÑQUÔ‘U’TÒSÓ—ÔÕUJHÜˆ
+BˆÚ]Ý˜ÛÛZ[™\ŠÙ^OH˜\›Ý™YÜØ]™YØ›ÛWÛÜšYÚ[˜[ÙY]ÜˆŠN‚ˆÝ›X\šÙÝÛŠˆˆˆ‚ˆ]ˆÛ\ÜÏH˜Ý‹X\‚ˆÛ\ÜÏH˜Ý‹X\ZÚXÚÙ\ˆ“ÓHQUÔÜ‚ˆO“Ü[ˆÜšYÚ[˜[“ÓOÚO‚ˆÛ\ÜÏH˜Ý‹X\\ÝXˆ•\]HÛÛ\Û™[[X™\œÈÜˆ]X[]Y\Ë[ˆ™\[ˆH[˜[\Ú\ËÜ‚ˆÙ]‚ˆˆˆ‹ˆ[œØY™WØ[Ý×Ú[UYKˆ
+Bˆ™\[—Û›ÝXÙHHÝœÙ\ÜÚ[Û—ÜÝ]KœÜ
+˜ØY]›Ü—Ø›ÛWÜ™\[—ØÛÛ\]WÛ›ÝXÙH‹›Û™JBˆYˆ
+ˆ\Ú[œÝ[˜ÙJ™\[—Û›ÝXÙKXÝ
+Bˆ[™ÝŠ™\[—Û›ÝXÙK™Ù]
+˜[˜[\Ú\×ÚYŠHÜˆˆŠKœÝš\
+
+HOH[˜[\Ú\×ÚYˆ
+N‚ˆÝœÝXØÙ\ÜÊˆ•H\]Y[˜[\Ú\È\ÈØ]™Yˆ\ÈY]Üˆ›ÝÈÚÝÜÈ]È™]š\ÙY“ÓH›ÝÜÎÈ‚ˆœÙ[XÝšY]È“ÓHš\ÚÈÚ[™]™\ˆ[ÝHØ[È™]šY]ÈH™\Ý[Ëˆ‚ˆ
+BˆÝš[™›ÊˆØY]›Üˆ™XZ[È\ÙH›ÝÜÈœ›ÛHHØ]™Y[˜[^™YÛÛ\Û™[Ëˆ‚ˆ”™\[›š[™ÈÜ™X]\ÈH™]ÈØ]™Y[˜[\Ú\È[™ÙY\È\È™\Ü]˜Z[X›Kˆ‚ˆ
+BˆYˆ›Ý›ÝÜÎ‚ˆÝØ\›š[™Êˆ“›ÈØ]™YÛÛ\Û™[›ÝÜÈÙ\™H›Ý[™›Üˆ\È“ÓKˆY›ÝÜÈ™[ÝÈÜˆ™]\›ˆÈ“Ó\È[™\ØYHÛÝ\˜ÙHš[Kˆ‚ˆ
+BˆÚ]Ý™›Ü›JÙ^OYˆ˜\›Ý™YÜØ]™YØ›ÛWÛÜšYÚ[˜[Ù›Ü›WÞØ[˜[\Ú\×ÚYWÞÛ›Û˜Ù_HŠN‚ˆ›Ú™XÝÝ˜[YHHÝ^Ú[œ]
+ˆ”›Ú™XÝ˜[YH‹ˆ˜[YO\›Ú™XÝÜˆ‘Ù[™\˜[‹ˆÙ^OYˆ˜\›Ý™YÜØ]™YØ›ÛWÛÜšYÚ[˜[Ü›Ú™XÝÞØ[˜[\Ú\×ÚYWÞÛ›Û˜Ù_H‹ˆ
+Bˆ›ÛWÝ˜[YHHÝ^Ú[œ]
+ˆ“ÓH˜[YH‹ˆ˜[YOX›ÛWÛ˜[YHÜˆÛÝ\˜ÙWÙš[[˜[YHÜˆ”Ø]™Y“ÓH‹ˆÙ^OYˆ˜\›Ý™YÜØ]™YØ›ÛWÛÜšYÚ[˜[Û˜[YWÞØ[˜[\Ú\×ÚYWÞÛ›Û˜Ù_H‹ˆ
+BˆY]YHÝ™]WÙY]ÜŠˆ[š]X[ˆÙ^OYˆ˜\›Ý™YÜØ]™YØ›ÛWÛÜšYÚ[˜[Ü›ÝÜ×ÞØ[˜[\Ú\×ÚYWÞÛ›Û˜Ù_H‹ˆ[WÜ›ÝÜÏH™[˜[ZXÈ‹ˆYWÚ[™^UYKˆ\ÙWØÛÛZ[™\—ÝÚYUYKˆÛÛ[[—ØÛÛ™šYÏ^Âˆ“TˆŽˆÝ˜ÛÛ[[—ØÛÛ™šYË•^ÛÛ[[Š“X[Y˜XÝ\™\ˆ\[X™\ˆ‹™\]Z\™YUYJKˆ”]X[]HŽˆÝ˜ÛÛ[[—ØÛÛ™šYË“[X™\ÛÛ[[Šˆ”]X[]H‹Z[—Ý˜[YOLKÝ\LK™\]Z\™YUYKˆ
+KˆKˆ
+Bˆ™\[ˆHÝ™›Ü›WÜÝX›Z]Ø]ÛŠˆ”™\[ˆ[˜[\Ú\ÈÚ]\]\È‹ˆ\OHœš[X\žH‹ˆ\ÙWØÛÛZ[™\—ÝÚYUYKˆ
+Bˆ˜XÚ×ØÛÛš\Ú×ØÛÛHÝ˜ÛÛ[[œÊŠBˆÚ]˜XÚ×ØÛÛ‚ˆYˆÝ˜]ÛŠ˜XÚÈÈ“Ó\È‹Ù^OYˆ˜\›Ý™YÜØ]™YØ›ÛWÛÜšYÚ[˜[Ø˜XÚ×ÞØ[˜[\Ú\×ÚYHŠN‚ˆ˜]šYØ]WÝÊ“ÓH[˜[^™\ˆ‹ÚÝ×ÜØ]™YØ[˜[\Ù\ÏHŒH‹\›WÛÜ[š[™ÏQ˜[ÙJBˆÚ]š\Ú×ØÛÛ‚ˆYˆÝ˜]ÛŠ•šY]È“ÓHš\ÚÈ‹Ù^OYˆ˜\›Ý™YÜØ]™YØ›ÛWÛÜšYÚ[˜[Üš\Ú×ÞØ[˜[\Ú\×ÚYHŠN‚ˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜ØY]›Ü—ÜÚÝ×Ù]Z[YÜš\ÚÈ—HH˜[ÙBˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜ØY]›Ü—ÙZWÜ™\ÜÝXˆ—HH“ÓHš\ÚÈ‚ˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜ØY]›Ü—ØXÝ]™WØ[˜[\Ú\×ÚY—HH[˜[\Ú\×ÚYˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜[˜[\Ú\×ÚY—HH[˜[\Ú\×ÚYˆ˜]šYØ]WÝÊˆ[˜[\Ú\È]Z[È‹ˆ[˜[\Ú\×ÚYX[˜[\Ú\×ÚYˆ[˜[\Ú\×ÝXH‘[™Ú[™Y\š[™È[[YÙ[˜ÙH‹ˆ\›WÛÜ[š[™ÏQ˜[ÙKˆ
+BˆYˆ™\[Ž‚ˆœ›ÛHÜ˜ËœØ]™YØ›ÛWÙY]Üˆ[\Ü›Ü›X[^™WÜØ]™YØ›ÛWÜ›ÝÜËØ]™YØ›ÛWØÜÝ—Øž]\Â‚ˆ›Ü›X[^™Y˜[Y][Û—Ù\œ›ÜˆH›Ü›X[^™WÜØ]™YØ›ÛWÜ›ÝÜÊˆY]Y×ÙXÝ
+ÜšY[Hœ™XÛÜ™ÈŠBˆ
+BˆYˆ˜[Y][Û—Ù\œ›ÜŽ‚ˆÝ™\œ›ÜŠ˜[Y][Û—Ù\œ›ÜŠBˆ[Yˆ›ÝÝŠ›ÛWÝ˜[YHÜˆˆŠKœÝš\
+
+N‚ˆÝ™\œ›ÜŠ‘[\ˆH“ÓH˜[YH™Y›Ü™H™\[›š[™È\È[˜[\Ú\ËˆŠBˆ[ÙN‚ˆ\ØYH[Ëž]\ÒSÊØ]™YØ›ÛWØÜÝ—Øž]\Ê›Ü›X[^™Y
+JBˆš[WÜÝ[HHÛÝ\˜ÙWÙš[[˜[YKœœÜ]
+‹ˆ‹JVÌHYˆÛÝ\˜ÙWÙš[[˜[YH[ÙHÝŠ›ÛWÝ˜[YJKœÝš\
+
+Bˆ\ØY›˜[YHHˆžÙš[WÜÝ[_WÝ\]Y˜ÜÝˆ‚ˆ\ØYœÙYZÊ
+BˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜ØY]›Ü—Ø›ÛWØ[˜[\Ú\×Ü™XYH—HHYBˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜ØY]›Ü—Ü[™[™×Ý\ØY—HH\ØYˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜ØY]›Ü—Ü[™[™×Ü›Ú™XÝ—HHÝŠ›Ú™XÝÝ˜[YHÜˆˆŠKœÝš\
+
+HÜˆ‘Ù[™\˜[‚ˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜ØY]›Ü—Ü[™[™×Ø›ÛWÛ˜[YH—HHÝŠ›ÛWÝ˜[YHÜˆˆŠKœÝš\
+
+BˆÈÙY\H™\[ˆ[ˆH“ÓHÛÜšÜÜXÙKˆH[[YHÛÛœÝ[Y\È\ÂˆÈÛ™K\ÚÝÝX›Z\ÜÚ[Ûˆ™Y›Ü™H˜]Ú[™ÈH™]Ë]\ØY›Ü›K‚ˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜ØY]›Ü—ÜØ]™YØ›ÛWÜ™\[—Ü[™[™È—HHYBˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜ØY]›Ü—Ø›ÛWÝ\ØYÛÜ[ˆ—HH˜[ÙBˆœ›ÛHÜ˜ËZK›XZ[—Ý˜[œÚ][Ûˆ[\Ü\›WØ›ÛWØ[˜[\Ú\×Ý˜[œÚ][Û‚‚ˆ\›WØ›ÛWØ[˜[\Ú\×Ý˜[œÚ][ÛŠÝœÙ\ÜÚ[Û—ÜÝ]Kœ™\[ˆŠBˆ˜]šYØ]WÝÊ“ÓH[˜[^™\ˆ‹™]×Ø[˜[\Ú\ÏHŒH‹\›WÛÜ[š[™ÏQ˜[ÙJB‚‚™YˆÜ™[™\—ÜØ]™YØ›ÛWÙ[]WÜYÙJ›ÝÎˆXÝÜÝ‹[žWK\Ù\—ÚYˆÝŠHOˆ›Û™N‚ˆ[˜[\Ú\×ÚYHÝŠ›ÝË™Ù]
+šYŠHÜˆˆŠKœÝš\
+
+BˆÜ›Ú™XÝ›ÛWÛ˜[YHHÜ]Ü›Ú™XÝØ[™Ø›ÛJ›ÝÊBˆ\Ü^WÛ˜[YHH›ÛWÛ˜[YHÜˆÝŠ›ÝË™Ù]
+™š[[˜[YHŠHÜˆ”Ø]™Y“ÓHŠBˆÚ]Ý˜ÛÛZ[™\ŠÙ^OH˜\›Ý™YÜØ]™YØ›ÛWÜÙ][™Ü×ÜYÙHŠN‚ˆÝ›X\šÙÝÛŠˆˆˆ‚ˆ]ˆÛ\ÜÏH˜Ý‹X\‚ˆÛ\ÜÏH˜Ý‹X\ZÚXÚÙ\ˆ“ÓHÑUS‘ÔÏÜ‚ˆO‘[]HØ]™Y“ÓOÚO‚ˆÛ\ÜÏH˜Ý‹X\\ÝXˆÛÛ™š\›H™Y›Ü™H™[[Ýš[™È\È[˜[\Ú\ËÜ‚ˆÙ]‚ˆˆˆ‹ˆ[œØY™WØ[Ý×Ú[UYKˆ
+BˆÚ]Ý˜ÛÛZ[™\ŠÙ^OH˜\›Ý™YÜØ]™YØ›ÛWÙ[]WÜØÜ™Y[ˆŠN‚ˆÝØ\›š[™Êˆˆ‘[]H8 'Ù\Ü^WÛ˜[Y_x 'H[™]ÈØ]™YÛÛ\Û™[™XÛÜ™ÏÈ‚ˆ•\ÈXÝ[ÛˆØ[››Ý™H[™Û™Kˆ‚ˆ
+BˆØ[˜Ù[ØÛÛ[]WØÛÛHÝ˜ÛÛ[[œÊÌKWJBˆÚ]Ø[˜Ù[ØÛÛ‚ˆYˆÝ˜]ÛŠˆØ[˜Ù[‹ˆÙ^OH˜\›Ý™YÜØ]™YØ›ÛWÙ[]WØØ[˜Ù[‹ˆ\ÙWØÛÛZ[™\—ÝÚYUYKˆ
+N‚ˆÝœÙ\ÜÚ[Û—ÜÝ]KœÜ
+ÐU‘QÐ“ÓWÑSUWÔÕUK›Û™JBˆ˜]šYØ]WÝÊ“ÓH[˜[^™\ˆ‹ÚÝ×ÜØ]™YØ[˜[\Ù\ÏHŒH‹\›WÛÜ[š[™ÏQ˜[ÙJBˆÚ][]WØÛÛ‚ˆYˆÝ˜]ÛŠˆ‘[]H\›X[™[H‹ˆÙ^OH˜\›Ý™YÜØ]™YØ›ÛWÙ[]WØÛÛ™š\›H‹ˆ\OHœš[X\žH‹ˆ\ÙWØÛÛZ[™\—ÝÚYUYKˆ
+N‚ˆžN‚ˆÙ[]WÜØ]™YØ›ÛJ[˜[\Ú\×ÚY\Ù\—ÚY
+Bˆ^Ù\^Ù\[ÛŽ‚ˆÝ™\œ›ÜŠØY]›ÜˆÛÝ[‰Ý[]H\È“ÓKˆX\ÙHžHYØZ[‹ˆŠBˆ[ÙN‚ˆ]\ÈHXÝ
+ÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+˜ØY]›Ü—ÜØ]™YÜ›Ú™XÝÝ]\ÈŠHÜˆßJBˆ]\ËœÜ
+[˜[\Ú\×ÚY›Û™JBˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜ØY]›Ü—ÜØ]™YÜ›Ú™XÝÝ]\È—HH]\ÂˆÝ\]WÚÛYWÜØ]™YØ[˜[\Ú\×ØØXÚJˆ[˜[\Ú\×ÚYˆ\Ù\—ÚYˆ[]YUYKˆ
+BˆÝœÙ\ÜÚ[Û—ÜÝ]KœÜ
+ÐU‘QÐ“ÓWÑSUWÔÕUK›Û™JBˆÝœÙ\ÜÚ[Û—ÜÝ]KœÜ
+ÐU‘QÐ“ÓWÑQUÔÕUK›Û™JBˆ˜]šYØ]WÝÊ“ÓH[˜[^™\ˆ‹ÚÝ×ÜØ]™YØ[˜[\Ù\ÏHŒH‹\›WÛÜ[š[™ÏQ˜[ÙJB‚‚™Yˆ™[™\—ÜØ]™YØ›ÛWÜÙ][™ÜÊˆ™XÛÜ™Îˆ\ÝÙXÝÜÝ‹[žWWH›Û™Kˆ\Ù\—ÚYˆÝˆHˆ‹ˆÛÛ\Û™[Îˆ\ÝÙXÝÜÝ‹[žWWH›Û™HH›Û™KŠHOˆ›Û™N‚ˆˆˆ”™[™\ˆHÝ[™[Û™HÙ][™ÜÈYÙH›ÜˆHÙ[XÝYØ]™Y“ÓKˆˆˆ‚ˆ™YÚ[—Ø\›Ý™YÜYÙJ
+Bˆ›ÝÜÈHÜ›ÝÜ×ÝÚ]Ü›Ú™XÝÙY]ÊÜ™XÛÜ™Ê™XÛÜ™ÊJBˆ]Y\žWÚYHˆ‚ˆ]Y\žWØXÝ[ÛˆHˆ‚ˆžN‚ˆ]Y\žWÚYHÝŠÝœ]Y\žWÜ\˜[\Ë™Ù]
+œØ]™YØ›ÛWÚY‹ˆŠHÜˆˆŠKœÝš\
+
+Bˆ]Y\žWØXÝ[ÛˆHÝŠÝœ]Y\žWÜ\˜[\Ë™Ù]
+œØ]™YØ›ÛWØXÝ[Ûˆ‹ˆŠHÜˆˆŠKœÝš\
+
+K˜Ø\ÙY›Û
+
+Bˆ^Ù\^Ù\[ÛŽ‚ˆ\ÜÂˆY]ÚYHÝŠÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+ÐU‘QÐ“ÓWÑQUÔÕUJHÜˆ]Y\žWÚY
+KœÝš\
+
+Bˆ[]WÚYHÝŠÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+ÐU‘QÐ“ÓWÑSUWÔÕUJHÜˆˆŠKœÝš\
+
+BˆÜ[—ÚYH]Y\žWÚYYˆ]Y\žWØXÝ[ÛˆOH›Ü[ˆˆ[ÙHˆ‚ˆYˆ›Ý[]WÚY[™]Y\žWØXÝ[ÛˆOH™[]HŽ‚ˆ[]WÚYH]Y\žWÚYˆ\™Ù]ÚYH[]WÚYÜˆÜ[—ÚYÜˆY]ÚYˆ\™Ù]Ü›ÝÈH™^
+ˆ
+›ÝÈ›Üˆ›ÝÈ[ˆ›ÝÜÈYˆÝŠ›ÝË™Ù]
+šYŠHÜˆˆŠKœÝš\
+
+HOH\™Ù]ÚY
+Kˆ›Û™Kˆ
+BˆYˆ\™Ù]Ü›ÝÈ\È›Û™N‚ˆÝ›X\šÙÝÛŠˆ]ˆÛ\ÜÏIØÝ‹X\	ÏÛ\ÜÏIØÝ‹X\ZÚXÚÙ\‰Ï“ÓHÑUS‘ÔÏÜˆ‚ˆO”Ø]™Y“ÓHÙ][™ÜÏÚOÛ\ÜÏIØÝ‹X\\ÝX‰Ï”Ù[XÝHØ]™Y“ÓHœ›ÛHH“Ó\ÈYÙHÈY]]È]Z[ËÜÙ]ˆ‹ˆ[œØY™WØ[Ý×Ú[UYKˆ
+BˆYˆÝ˜]ÛŠ”™]\›ˆÈ“Ó\È‹Ù^OH˜\›Ý™YÜØ]™YØ›ÛWÜÙ][™Ü×Ø˜XÚÈŠN‚ˆÝœÙ\ÜÚ[Û—ÜÝ]KœÜ
+ÐU‘QÐ“ÓWÑQUÔÕUK›Û™JBˆÝœÙ\ÜÚ[Û—ÜÝ]KœÜ
+ÐU‘QÐ“ÓWÑSUWÔÕUK›Û™JBˆ˜]šYØ]WÝÊ“ÓH[˜[^™\ˆ‹ÚÝ×ÜØ]™YØ[˜[\Ù\ÏHŒH‹\›WÛÜ[š[™ÏQ˜[ÙJBˆ[Yˆ[]WÚY‚ˆÜ™[™\—ÜØ]™YØ›ÛWÙ[]WÜYÙJ\™Ù]Ü›ÝË\Ù\—ÚY
+Bˆ[YˆÜ[—ÚY‚ˆÜ™[™\—ÜØ]™YØ›ÛWÛÜ[—ÜYÙJ\™Ù]Ü›ÝËÛÛ\Û™[ÊBˆ[ÙN‚ˆÜ™[™\—ÜØ]™YØ›ÛWÙY]ÜYÙJ\™Ù]Ü›ÝË\Ù\—ÚY
+Bˆ[™Ø\›Ý™YÜYÙJ
+B‚‚™YˆØ][Ù×ÚX[ÛX™[
+ØÛÜ™Nˆ[YÚÜš\ÚÎˆ[
+HOˆÝŽ‚ˆYˆYÚÜš\ÚÈHŒÜˆØÛÜ™HMN‚ˆ™]\›ˆ]š\ÚÈ‚ˆYˆYÚÜš\ÚÈHHÜˆØÛÜ™H‚ˆ™]\›ˆ”™]šY]È‚ˆ™]\›ˆ’X[H‚‚‚™YˆÜ\œÙWÝ[Y\Ý[\
+˜[YNˆ[žJN‚ˆ^HÝŠ˜[YHÜˆˆŠKœÝš\
+
+BˆYˆ›Ý^Üˆ^›ÝÙ\Š
+H[ˆÈ›˜[ˆ‹››Û™H‹¸ %ŸN‚ˆ™]\›ˆ›Û™Bˆœ›ÛH]][YH[\Ü]K]][YB‚ˆ›Ü›X[^™YH^œ™\XÙJ–ˆ‹ŠÌŒŠBˆžN‚ˆ™]\›ˆ]][YK™œ›ÛZ\ÛÙ›Ü›X]
+›Ü›X[^™Y
+Bˆ^Ù\˜[YQ\œ›ÜŽ‚ˆžN‚ˆ™]\›ˆ]][YK˜ÛÛXš[™J]K™œ›ÛZ\ÛÙ›Ü›X]
+›Ü›X[^™YÎŒLJK]][YK›Z[‹[YJ
+JBˆ^Ù\˜[YQ\œ›ÜŽ‚ˆ™]\›ˆ›Û™B‚‚™Yˆ[˜[^™YÛX™[
+˜[YNˆ[žJHOˆÝŽ‚ˆ\œÙYHÜ\œÙWÝ[Y\Ý[\
+˜[YJBˆYˆ\œÙY\È›Û™N‚ˆ^HÝŠ˜[YHÜˆˆŠKœÝš\
+
+BˆYˆ›Ý^Üˆ^›ÝÙ\Š
+H[ˆÈ›˜[ˆ‹››Û™HŸN‚ˆ™]\›ˆ“›Ý™XÛÜ™Y‚ˆ™]\›ˆ^ÎŒLBˆX™[H\œÙYœÝ™[YJ‰Xˆ	Y	VHŠKœ™\XÙJˆ‹ˆŠBˆYˆ\œÙYšÝ\ˆÜˆ\œÙY›Z[]HÜˆ\œÙYœÙXÛÛ™‚ˆÛØÚÈH\œÙYœÝ™[YJ‰RN‰SH	\ŠK›Ýš\
+ŒŠBˆX™[HˆžÛX™[OœžØÛØÚßH‚ˆ™]\›ˆX™[‚‚™YˆÚ][—Ø[˜[^™YÜ˜[™ÙJ˜[YNˆ[žK]WÜ˜[™ÙNˆÝ‹Ù^JHOˆ›ÛÛ‚ˆYˆ]WÜ˜[™ÙHOH[[YHŽ‚ˆ™]\›ˆYBˆ\œÙYHÜ\œÙWÝ[Y\Ý[\
+˜[YJBˆYˆ\œÙY\È›Û™N‚ˆ™]\›ˆ˜[ÙBˆÚ[™ÝÈHÌYˆŒÌˆ[ˆ]WÜ˜[™ÙH[ÙHLˆ[˜[^™YH\œÙY™]J
+Bˆ™]\›ˆH
+Ù^HH[˜[^™Y
+K™^\ÈHÚ[™ÝÂ‚‚™YˆØ][Ù×Ü›Ú™XÝÛÜ[ÛœÊ›ÝÜÎˆ\ÝÙXÝÜÝ‹[žWWJHOˆ\ÝÜÝ—N‚ˆ˜[Y\ÈH×Bˆ›Üˆ›ÝÈ[ˆ›ÝÜÎ‚ˆ›Ú™XÝØ›ÛHHÜ]Ü›Ú™XÝØ[™Ø›ÛJ›ÝÊBˆYˆ›Ú™XÝ[™›Ú™XÝ›Ý[ˆ˜[Y\Î‚ˆ˜[Y\Ë˜\[™
+›Ú™XÝ
+Bˆ™]\›ˆÈ[›Ú™XÝÈ‹
+œÛÜY
+˜[Y\ÊWB‚‚™Yˆ™\Ù]ØØ][Ù×Ùš[\œÊÝ]NˆXÝÜÝ‹[žWJHOˆ›Û™N‚ˆˆˆ“™]ÈÚYÙ]Ù^\È™\ÝÜ™HÙX\˜Ú›Ú™XÝX[[™]H˜[™ÙHÈZ\ˆY˜][Ëˆˆˆ‚ˆÝ]VÈ˜\›Ý™YØ›ÛWÙš[\—Û›Û˜ÙH—HH[
+Ý]K™Ù]
+˜\›Ý™YØ›ÛWÙš[\—Û›Û˜ÙHŠHÜˆ
+H
+ÈB‚‚™YˆXÚ\Ú[Û—ÜÝ]\×ÛX™[
+›ÝÎˆXÝÜÝ‹[žWKÙ^JHOˆÝŽ‚ˆÝ]\ÈHÝŠÙš\œÝ
+›ÝËœÝ]\È‹™XÚ\Ú[Û—ÜÝ]\È‹˜[˜XÚÏH“Ü[ˆŠHÜˆ“Ü[ˆŠBˆ›ÛYHÝ]\Ë˜Ø\ÙY›Û
+
+BˆYˆ[žJÚÙ[ˆ[ˆ›ÛY›ÜˆÚÙ[ˆ[ˆ
+œ™\ÛÛˆ‹˜ÛÜÙY‹˜XØÙ\YŠJN‚ˆ™]\›ˆ”™\ÛÛ™Y‚ˆYˆÝŠ›ÝË™Ù]
+œÛÝ\˜ÙHŠHÜˆˆŠK˜Ø\ÙY›Û
+
+HOH›[Ûš]Üš[™ÈŽ‚ˆYˆ›ÛY›Ý[ˆÈ›™]È‹›Ü[ˆ‹›Ý™\™YHŸN‚ˆÈ[ˆ[™Ú[™Y\š[™ÈÛÜšÙ›ÝÈØ[ˆ™H›ÙÜ™\ÜÚ[™ÈÜˆHØ[™Y]HØ[ˆ™BˆÈ™Z™XÝYÚ[HH[™\›Z[™ÈÝ\H[\\ÈÝ[XÝ]™K‚ˆ™]\›ˆ’[ˆ™]šY]È‚ˆYˆœ™]šY]Èˆ[ˆ›ÛY‚ˆ™]\›ˆ’[ˆ™]šY]È‚ˆYˆ›Ý™\ˆˆ[ˆ›ÛY‚ˆ™]\›ˆ“Ý™\™YH‚ˆYHHÜ\œÙWÝ[Y\Ý[\
+Ùš\œÝ
+›ÝË™YWÙ]H‹™YWØ]‹˜[˜XÚÏS›Û™JJBˆYˆYH\È›Ý›Û™H[™YK™]J
+HÙ^H[™œ™\ÛÛˆˆ›Ý[ˆ›ÛY‚ˆ™]\›ˆ“Ý™\™YH‚ˆ™]\›ˆ“Ü[ˆ‚‚‚™YˆÙXÚ\Ú[Û—ØY™™XÝYØ›ÛWÜ›ÝÜÊ›ÝÜÎˆ\ÝÝ\VÙXÝÜÝ‹[žWKÝ—WJHOˆ\ÝÙXÝÜÝ‹[žWWN‚ˆˆˆÛÛ\ÙHÛÛ\Û™[[\È[ÈÛ™HXÝ[Û˜X›H›ÝÈ\ˆØ]™Y“ÓKˆˆˆ‚ˆÜ›Ý\YˆXÝÜÝ‹XÝÜÝ‹[žWWHHßBˆ›Üˆ›ÝËÝ]\È[ˆ›ÝÜÎ‚ˆ™[]YØ›Û\ÈH›ÝË™Ù]
+œ™[]YØ›Û\ÈŠHÜˆ×BˆØ[™Y]\ÎˆXÝÜÝ‹XÝÜÝ‹[žWWHHßBˆ›Üˆ™[]Y[ˆ™[]YØ›Û\Î‚ˆYˆ›Ý\Ú[œÝ[˜ÙJ™[]YXÝ
+N‚ˆÛÛ[YBˆ[˜[\Ú\×ÚYHÝŠ™[]Y™Ù]
+šYŠHÜˆˆŠKœÝš\
+
+BˆYˆ[˜[\Ú\×ÚY‚ˆØ[™Y]\ÖØ[˜[\Ú\×ÚYHHXÝ
+™[]Y
+B‚ˆ\™XÝÚYHÝŠˆÙš\œÝ
+›ÝË˜[˜[\Ú\×ÚY‹˜ÛÛ^Ø[˜[\Ú\×ÚY‹˜[˜XÚÏHˆŠHÜˆˆ‚ˆ
+KœÝš\
+
+BˆYˆ\™XÝÚY‚ˆØ[™Y]HHØ[™Y]\ËœÙ]Y˜][
+\™XÝÚYßJBˆØ[™Y]KœÙ]Y˜][
+šY‹\™XÝÚY
+Bˆ›ÜˆÙ^K˜[YH[ˆ
+ˆ
+œ›Ú™XÝÛ˜[YH‹Ùš\œÝ
+›ÝËœ›Ú™XÝÛ˜[YH‹œ›Ú™XÝ‹˜[˜XÚÏHˆŠJKˆ
+˜›ÛWÛ˜[YH‹Ùš\œÝ
+›ÝË˜›ÛWÛ˜[YH‹˜›ÛH‹˜[˜XÚÏHˆŠJKˆ
+™š[[˜[YH‹Ùš\œÝ
+›ÝË™š[[˜[YH‹œÛÝ\˜ÙWÙš[[˜[YH‹˜[˜XÚÏHˆŠJKˆ
+N‚ˆYˆ˜[YH[™›ÝØ[™Y]K™Ù]
+Ù^JN‚ˆØ[™Y]VÚÙ^WHH˜[YB‚ˆ›Üˆ[˜[\Ú\×ÚYØ[™Y]H[ˆØ[™Y]\Ëš][\Ê
+N‚ˆ›Ú™XÝHÝŠØ[™Y]K™Ù]
+œ›Ú™XÝÛ˜[YHŠHÜˆØ[™Y]K™Ù]
+œ›Ú™XÝŠHÜˆˆŠKœÝš\
+
+Bˆ›ÛWÛ˜[YHHÝŠØ[™Y]K™Ù]
+˜›ÛWÛ˜[YHŠHÜˆØ[™Y]K™Ù]
+˜›ÛHŠHÜˆˆŠKœÝš\
+
+Bˆ˜[YHHÝŠØ[™Y]K™Ù]
+›˜[YHŠHÜˆˆŠKœÝš\
+
+BˆYˆ›Ý˜[YN‚ˆYˆ›Ú™XÝ[™›ÛWÛ˜[YH[™›Ý›Ú™XÝ˜Ø\ÙY›Û
+
+K™[™ÝÚ]
+›ÛWÛ˜[YK˜Ø\ÙY›Û
+
+JN‚ˆ˜[YHHˆžÜ›Ú™XÝH0­ÈØ›ÛWÛ˜[Y_H‚ˆ[ÙN‚ˆ˜[YHH›ÛWÛ˜[YHÜˆ›Ú™XÝÜˆÝŠØ[™Y]K™Ù]
+™š[[˜[YHŠHÜˆ”Ø]™Y“ÓHŠB‚ˆ™XÛÜ™HÜ›Ý\YœÙ]Y˜][
+ˆ[˜[\Ú\×ÚYˆÂˆšYŽˆ[˜[\Ú\×ÚYˆ›˜[YHŽˆ˜[YKˆ˜ÛÛ\Û™[ÚÙ^\ÈŽˆÙ]
+
+Kˆ™]™[ÚÙ^\ÈŽˆÙ]
+
+Kˆ›Ü[—ÙXÚ\Ú[ÛœÈŽˆˆKˆ
+BˆYˆ™XÛÜ™È›˜[YH—HOH”Ø]™Y“ÓHˆ[™˜[YHOH”Ø]™Y“ÓHŽ‚ˆ™XÛÜ™È›˜[YH—HH˜[YB‚ˆ\ˆHÝŠÙš\œÝ
+›ÝË›\ˆ‹œ\Û[X™\ˆ‹˜ÛÛ\Û™[‹˜[˜XÚÏHˆŠHÜˆˆŠKœÝš\
+
+Bˆ\ÚYHÝŠÙš\œÝ
+›ÝËœ\ÚY‹˜[˜[\Ú\×Ü\ÚY‹˜[˜XÚÏHˆŠHÜˆˆŠKœÝš\
+
+BˆYˆ\ˆÜˆ\ÚY‚ˆ™XÛÜ™È˜ÛÛ\Û™[ÚÙ^\È—K˜Y
+
+\ˆÜˆ\ÚY
+K˜Ø\ÙY›Û
+
+JBˆ]™[ÚÙ^HHÝŠÙš\œÝ
+›ÝË™XÚ\Ú[Û—ÚY‹šY‹˜[˜XÚÏHˆŠHÜˆˆŠKœÝš\
+
+BˆYˆ›Ý]™[ÚÙ^N‚ˆ]™[Ý˜[Y\ÈHÂˆÝŠÙš\œÝ
+›ÝËÙ^K˜[˜XÚÏHˆŠHÜˆˆŠKœÝš\
+
+Bˆ›ÜˆÙ^H[ˆ
+›\ˆ‹œ\Û[X™\ˆ‹˜[\ÛY\ÜØYÙH‹]H‹˜Ü™X]YØ]ŠBˆBˆ]™[ÚÙ^HHŸ‹š›Ú[Š˜[YH›Üˆ˜[YH[ˆ]™[Ý˜[Y\ÈYˆ˜[YJBˆYˆ›Ý]™[ÚÙ^N‚ˆ]™[ÚÙ^HHˆ[šY[YšYYY]™[^Û[Š™XÛÜ™ÉÙ]™[ÚÙ^\É×J_H‚ˆYˆ]™[ÚÙ^H›Ý[ˆ™XÛÜ™È™]™[ÚÙ^\È—N‚ˆ™XÛÜ™È™]™[ÚÙ^\È—K˜Y
+]™[ÚÙ^JBˆYˆÝ]\ÈOH”™\ÛÛ™YŽ‚ˆ™XÛÜ™È›Ü[—ÙXÚ\Ú[ÛœÈ—H
+ÏHB‚ˆ™\Ý[H×Bˆ›Üˆ™XÛÜ™[ˆÜ›Ý\Y˜[Y\Ê
+N‚ˆ™\Ý[˜\[™
+ˆÂˆšYŽˆ™XÛÜ™ÈšY—Kˆ›˜[YHŽˆ™XÛÜ™È›˜[YH—Kˆ˜Y™™XÝYØÛÛ\Û™[ÈŽˆ[Š™XÛÜ™È˜ÛÛ\Û™[ÚÙ^\È—JKˆ›Ü[—ÙXÚ\Ú[ÛœÈŽˆ™XÛÜ™È›Ü[—ÙXÚ\Ú[ÛœÈ—KˆœÝ]\ÈŽˆ“™YYÈ™]šY]ÈˆYˆ™XÛÜ™È›Ü[—ÙXÚ\Ú[ÛœÈ—H[ÙH”™\ÛÛ™Y‹ˆBˆ
+Bˆ™]\›ˆÛÜY
+™\Ý[Ù^O[[X™H][Nˆ
+][VÈ›˜[YH—K˜Ø\ÙY›Û
+
+K][VÈšY—JJB‚‚™YˆXÚ\Ú[Û—Ü]Y]YWÝšY]Êˆ™XÛÜ™Îˆ\ÝÙXÝÜÝ‹[žWWH›Û™Kˆ
+‹ˆ]Y\žNˆÝˆHˆ‹ˆÝ]\×Ùš[\ŽˆÝˆH[Ý]\Ù\È‹ˆÛÜØžNˆÝˆH‘YH]H‹ˆØÛÜNˆÝˆHˆ‹ˆÙ^OS›Û™KŠHOˆXÝÜÝ‹[žWN‚ˆˆˆÛÝ[È\ÙH]™\žHØYY™XÛÜ™ˆÙX\˜ÚÝ]\Ë[™Ø\™ØÛÜHš[\ˆH]Y]YKˆˆˆ‚ˆœ›ÛH]][YH[\Ü]B‚ˆÙ^HHÙ^HÜˆ]KÙ^J
+BˆÛÝ\˜ÙHHÜ™XÛÜ™Ê™XÛÜ™ÊBˆ™\\™YH×Bˆ›Üˆ›ÝÈ[ˆÛÝ\˜ÙN‚ˆÝ]\ÈHXÚ\Ú[Û—ÜÝ]\×ÛX™[
+›ÝËÙ^JBˆ™\\™Y˜\[™
+
+›ÝËÝ]\ÊJBˆÜ[—ØÛÝ[HÝ[JH›ÜˆÜ›ÝËÝ]\È[ˆ™\\™YYˆÝ]\ÈOH“Ü[ˆŠBˆÝ™\™YHHÝ[JH›ÜˆÜ›ÝËÝ]\È[ˆ™\\™YYˆÝ]\ÈOH“Ý™\™YHŠBˆ™\ÛÛ™YÛ[ÛHˆ›Üˆ›ÝËÝ]\È[ˆ™\\™Y‚ˆYˆÝ]\ÈOH”™\ÛÛ™YŽ‚ˆÛÛ[YBˆÝ[\HÜ\œÙWÝ[Y\Ý[\
+ˆÙš\œÝ
+›ÝËœ™\ÛÛ™YØ]‹\]YØ]‹˜Ü™X]YØ]‹˜[˜XÚÏS›Û™JBˆ
+BˆYˆÝ[\\È›Ý›Û™H[™Ý[\žYX\ˆOHÙ^KžYX\ˆ[™Ý[\›[ÛOHÙ^K›[Û‚ˆ™\ÛÛ™YÛ[Û
+ÏHBˆY™™XÝYØ[˜[\Ú\×ÚYÎˆÙ]ÜÝ—HHÙ]
+
+Bˆ›Üˆ›ÝËÜÝ]\È[ˆ™\\™Y‚ˆ\™XÝÚYHÝŠˆÙš\œÝ
+›ÝË˜[˜[\Ú\×ÚY‹˜ÛÛ^Ø[˜[\Ú\×ÚY‹˜[˜XÚÏHˆŠHÜˆˆ‚ˆ
+KœÝš\
+
+BˆYˆ\™XÝÚY‚ˆY™™XÝYØ[˜[\Ú\×ÚYË˜Y
+\™XÝÚY
+Bˆ›Üˆ™[]YØ›ÛH[ˆ›ÝË™Ù]
+œ™[]YØ›Û\ÈŠHÜˆ×N‚ˆYˆ\Ú[œÝ[˜ÙJ™[]YØ›ÛKXÝ
+N‚ˆ™[]YÚYHÝŠ™[]YØ›ÛK™Ù]
+šYŠHÜˆˆŠKœÝš\
+
+BˆYˆ™[]YÚY‚ˆY™™XÝYØ[˜[\Ú\×ÚYË˜Y
+™[]YÚY
+BˆY™™XÝYH[ŠY™™XÝYØ[˜[\Ú\×ÚYÊBˆ™YYHH]Y\žKœÝš\
+
+K˜Ø\ÙY›Û
+
+Bˆš\ÚX›HH×Bˆ›Üˆ›ÝËÝ]\È[ˆ™\\™Y‚ˆYˆØÛÜHOH˜›Û\ÈŽ‚ˆ\™XÝÚYHÝŠˆÙš\œÝ
+›ÝË˜[˜[\Ú\×ÚY‹˜ÛÛ^Ø[˜[\Ú\×ÚY‹˜[˜XÚÏHˆŠHÜˆˆ‚ˆ
+KœÝš\
+
+Bˆ\×Ü™[]YH[žJˆ\Ú[œÝ[˜ÙJ›ÛKXÝ
+H[™ÝŠ›ÛK™Ù]
+šYŠHÜˆˆŠKœÝš\
+
+Bˆ›Üˆ›ÛH[ˆ
+›ÝË™Ù]
+œ™[]YØ›Û\ÈŠHÜˆ×JBˆ
+BˆYˆ›Ý\™XÝÚY[™›Ý\×Ü™[]Y‚ˆÛÛ[YBˆYˆÝ]\×Ùš[\ˆOH[Ý]\Ù\Èˆ[™Ý]\×Ùš[\‹˜Ø\ÙY›Û
+
+HOHÝ]\Ë˜Ø\ÙY›Û
+
+N‚ˆÛÛ[YBˆÙX\˜ÚÝ˜[Y\ÈHÂˆÝŠÙš\œÝ
+›ÝËÙ^K˜[˜XÚÏHˆŠHÜˆˆŠBˆ›ÜˆÙ^H[ˆ
+ˆ›\ˆ‹œ\Û[X™\ˆ‹]H‹œÝ[[X\žH‹˜[\ÛY\ÜØYÙH‹ˆ›ÝÛ™\ˆ‹˜\ÜÚYÛ™YÛÝÛ™\ˆ‹˜\ÜÚYÛ™YH‹œ™\ÛÛ][Ûˆ‹œ›Ú™XÝÛ˜[YH‹ˆ˜›ÛWÛ˜[YH‹™š[[˜[YH‹ˆ
+BˆBˆÙX\˜ÚÝ˜[Y\Ë™^[™
+ˆÝŠ›ÛK™Ù]
+Ù^JHÜˆˆŠBˆ›Üˆ›ÛH[ˆ
+›ÝË™Ù]
+œ™[]YØ›Û\ÈŠHÜˆ×JBˆYˆ\Ú[œÝ[˜ÙJ›ÛKXÝ
+Bˆ›ÜˆÙ^H[ˆ
+›˜[YH‹œ›Ú™XÝÛ˜[YH‹˜›ÛWÛ˜[YH‹™š[[˜[YHŠBˆ
+Bˆ›ØˆHˆ‹š›Ú[ŠÙX\˜ÚÝ˜[Y\ÊK˜Ø\ÙY›Û
+
+BˆYˆ™YYH[™™YYH›Ý[ˆ›ØŽ‚ˆÛÛ[YBˆš\ÚX›K˜\[™
+
+›ÝËÝ]\ÊJBˆš\Ú×Ü˜[šÈHÈšYÚŽˆ›YY][HŽˆK›ÝÈŽˆŸB‚ˆYˆÜš\Ú×ÚÙ^J][JN‚ˆ]™[HÝŠÙš\œÝ
+][VÌKœš\Ú×Û]™[‹œÙ]™\š]H‹˜[˜XÚÏHˆŠJK˜Ø\ÙY›Û
+
+Bˆ›Üˆ˜[YK˜[šÈ[ˆš\Ú×Ü˜[šËš][\Ê
+N‚ˆYˆ˜[YH[ˆ]™[‚ˆ™]\›ˆ˜[šÂˆ™]\›ˆÂ‚ˆYˆÛÜØžHOHÛÛ\Û™[Ž‚ˆš\ÚX›KœÛÜ
+Ù^O[[X™H][NˆÝŠÙš\œÝ
+][VÌK›\ˆ‹œ\Û[X™\ˆ‹˜[˜XÚÏHˆŠJK˜Ø\ÙY›Û
+
+JBˆ[YˆÛÜØžHOH”š\ÚÈ]™[Ž‚ˆš\ÚX›KœÛÜ
+Ù^OWÜš\Ú×ÚÙ^JBˆ[ÙN‚ˆš\ÚX›KœÛÜ
+Ù^O[[X™H][NˆÝŠÙš\œÝ
+][VÌK™YWÙ]H‹˜Ü™X]YØ]‹˜[˜XÚÏHˆŠHÜˆŽNNNHŠJBˆ™]\›ˆÂˆ›Ü[ˆŽˆÜ[—ØÛÝ[ˆ›Ý™\™YHŽˆÝ™\™YKˆœ™\ÛÛ™YÛ[ÛŽˆ™\ÛÛ™YÛ[Ûˆ˜Y™™XÝYŽˆY™™XÝYˆœ›ÝÜÈŽˆš\ÚX›Kˆ˜›Û\ÈŽˆÙXÚ\Ú[Û—ØY™™XÝYØ›ÛWÜ›ÝÜÊš\ÚX›JHYˆØÛÜHOH˜›Û\Èˆ[ÙH×KˆB‚‚™YˆXÚ\Ú[Û—ØXÝ[Û—ÛX™[
+›ÝÎˆXÝÜÝ‹[žWKÝ]\ÎˆÝŠHOˆÝŽ‚ˆ™XÛÜ™YHÙš\œÝ
+›ÝË™XÚ\Ú[Ûˆ‹œ™\ÛÛ][Ûˆ‹™XÚ\Ú[Û—Ý^‹˜[˜XÚÏS›Û™JBˆYˆÝ]\È[ˆÈ’[ˆ™]šY]È‹”™\ÛÛ™YŸHÜˆ™XÛÜ™Y‚ˆ™]\›ˆ”™]šY]È‚ˆ™]\›ˆ”™XÛÜ™XÚ\Ú[Ûˆ‚‚‚™YˆÜ™[™\—ÙXÚ\Ú[Û—ØY™™XÝYØ›Û\Ê›ÝÜÎˆ\ÝÙXÝÜÝ‹[žWWJHOˆ›Û™N‚ˆˆˆ”ÚÝÈ“ÓK[]™[[\XÝÚ[ˆHY™™XÝYP“ÓHÔH\ÈÙ[XÝYˆˆˆ‚ˆÝ›X\šÙÝÛŠˆˆˆÛ\ÜÏIØÝ‹YXÚ\Ú[Û‹X›ÛK]]IÏY™™XÝYØ]™Y“Ó\È
+Û[Š›ÝÜÊ_JOÚˆ‚ˆÛ\ÜÏIØÝ‹YXÚ\Ú[Û‹X›ÛK\ÝX]IÏ‘XXÚØ]™Y“ÓH\X\œÈÛ˜ÙKÚ]]ÈY™™XÝYÛÛ\Û™[È[™Ü[ˆXÚ\Ú[ÛœËÜˆ‹ˆ[œØY™WØ[Ý×Ú[UYKˆ
+BˆÚYÈHÌ‹Œ‹ŽKŽKKŒŽBˆÚ]Ý˜ÛÛZ[™\ŠÙ^OH˜\›Ý™YÙXÚ\Ú[Û—Ø›ÛWÝX›HŠN‚ˆÚ]Ý˜ÛÛZ[™\ŠÙ^OH˜\›Ý™YÙXÚ\Ú[Û—Ø›ÛWÝX›WÚXYŠN‚ˆXY\ˆHÝ˜ÛÛ[[œÊÚYË™\XØ[Ø[YÛ›Y[H˜Ù[\ˆŠBˆ›ÜˆÛÛ[[‹X™[[ˆš\
+ˆXY\‹ˆ
+”Ø]™Y“ÓH‹Y™™XÝYÛÛ\Û™[È‹“Ü[ˆXÚ\Ú[ÛœÈ‹”Ý]\È‹XÝ[ÛˆŠKˆ
+N‚ˆÛÛ[[‹›X\šÙÝÛŠˆˆ]ˆÛ\ÜÏIØÝ‹YXÚ\Ú[Û‹]X›KZXY[™ÉÈ›ÛOIØÛÛ[[šXY\‰Ïž×Ù\ØÊX™[
+_OÙ]ˆ‹ˆ[œØY™WØ[Ý×Ú[UYKˆ
+BˆYˆ›Ý›ÝÜÎ‚ˆÝ˜Ø\[ÛŠ“›ÈØ]™Y“Ó\ÈX]ÚHÝ\œ™[ÙX\˜Ú[™Ý]\Èš[\œËˆŠBˆ™]\›‚ˆ›Üˆ[™^›ÝÈ[ˆ[[Y\˜]J›ÝÜÊN‚ˆÚ]Ý˜ÛÛZ[™\ŠÙ^OYˆ˜\›Ý™YÙXÚ\Ú[Û—Ø›ÛWÜ›Ý×ÞÚ[™^HŠN‚ˆÙ[ÈHÝ˜ÛÛ[[œÊÚYË™\XØ[Ø[YÛ›Y[H˜Ù[\ˆŠBˆÙ[ÖÌK›X\šÙÝÛŠˆˆ]ˆÛ\ÜÏIØÝ‹YXÚ\Ú[Û‹X›ÛK[˜[YIÏž×Ù\ØÊ›ÝË™Ù]
+	Û˜[YIÊHÜˆ	ÔØ]™Y“ÓIÊ_OÙ]ˆ‹ˆ[œØY™WØ[Ý×Ú[UYKˆ
+BˆY™™XÝYØÛÛ\Û™[ÈH[
+›ÝË™Ù]
+˜Y™™XÝYØÛÛ\Û™[ÈŠHÜˆ
+BˆÜ[—ÙXÚ\Ú[ÛœÈH[
+›ÝË™Ù]
+›Ü[—ÙXÚ\Ú[ÛœÈŠHÜˆ
+BˆÙ[ÖÌWK›X\šÙÝÛŠˆˆžØY™™XÝYØÛÛ\Û™[ßHÛÛ\Û™[ÉÜÉÈYˆY™™XÝYØÛÛ\Û™[ÈOHH[ÙH	ÉßH‚ˆ
+BˆÙ[ÖÌ—K›X\šÙÝÛŠˆˆžÛÜ[—ÙXÚ\Ú[ÛœßHÜ[ˆˆYˆÜ[—ÙXÚ\Ú[ÛœÈ[ÙH“›Û™H‚ˆ
+BˆÝ]\×ÚÚ[™H›Ü[ˆˆYˆÜ[—ÙXÚ\Ú[ÛœÈ[ÙH›ÝÈ‚ˆÙ[ÖÌ×K›X\šÙÝÛŠˆˆÜ[ˆÛ\ÜÏIØÝ‹\[ÜÝ]\×ÚÚ[™IÏž×Ù\ØÊ›ÝË™Ù]
+	ÜÝ]\ÉÊHÜˆ	Ô™\ÛÛ™Y	Ê_OÜÜ[ˆ‹ˆ[œØY™WØ[Ý×Ú[UYKˆ
+BˆÚ]Ù[ÖÍN‚ˆ[˜[\Ú\×ÚYHÝŠ›ÝË™Ù]
+šYŠHÜˆˆŠKœÝš\
+
+BˆYˆÝ˜]ÛŠˆ“Ü[ˆ“ÓH‹ˆÙ^OYˆ˜\›Ý™YÙXÚ\Ú[Û—Ø›ÛWÛÜ[—ÞÚ[™^H‹ˆ\ÙWØÛÛZ[™\—ÝÚYUYKˆ\ØX›Y[›Ý[˜[\Ú\×ÚYˆ
+N‚ˆ˜]šYØ]WÝÊˆ“ÓHÙ][™ÜÈ‹ˆØ]™YØ›ÛWÚYX[˜[\Ú\×ÚYˆØ]™YØ›ÛWØXÝ[ÛH›Ü[ˆ‹ˆ\›WÛÜ[š[™ÏQ˜[ÙKˆ
+B‚‚™YˆÜ™XÛÜ™Ê›ÝÜÎˆ\ÝÙXÝÜÝ‹[žWWH›Û™JHOˆ\ÝÙXÝÜÝ‹[žWWN‚ˆ™]\›ˆÜ›ÝÈ›Üˆ›ÝÈ[ˆ›ÝÜÈÜˆ×HYˆ\Ú[œÝ[˜ÙJ›ÝËXÝ
+WB‚‚™Yˆ]™WØ˜\—ØÚ\
+]NˆÝ‹Ú[Îˆ\ÝÝ\VÜÝ‹›Ø]WKÛÛÜŽˆÝˆHˆÌMŒÙXˆŠHOˆÝŽ‚ˆˆˆ˜\ˆÚ\Ùˆ]™H[Y\šXÈ™XÛÜ™Ëˆ[\H[œ]™[™\œÈ›Ý[™Ëˆˆˆ‚ˆÛX[ˆHÊÝŠX™[
+K›Ø]
+˜[YJJH›ÜˆX™[˜[YH[ˆÚ[ÈYˆX™[BˆYˆ›ÝÛX[Ž‚ˆ™]\›ˆˆ‚ˆXZÈHX^
+˜[YH›ÜˆË˜[YH[ˆÛX[ŠHÜˆKŒˆÚYHMŒˆÛÝHÚYÈ[ŠÛX[–ÎŽJBˆX\šÜÈH×Bˆ›Üˆ[™^
+X™[˜[YJH[ˆ[[Y\˜]JÛX[–ÎŽJN‚ˆZYÚHLLˆ
+ˆ
+˜[YHÈXZÊBˆHLˆ
+È[™^
+ˆÛÝˆ˜\ˆHX^
+LŒÛÝHŒŠBˆX\šÜË˜\[™
+ˆ‰Ï™XÝHžÞ‹ŒYŸHˆOHžÌLÌˆHZYÚ‹ŒYŸHˆÚYHžØ˜\Ž‹ŒYŸHˆZYÚHžÛX^
+ZYÚŠN‹ŒYŸHˆžHHˆš[HžØÛÛÜŸH‹Ï‰Âˆ‰Ï^HžÞ‹ŒYŸHˆOHŒMMˆ›Û\Ú^™OHŒLHˆš[HˆÍÍˆžÚ[™\ØØ\JX™[ÎŒL—J_OÝ^‰Âˆ
+Bˆ™]\›ˆ
+ˆ‰Ï\XÛHÛ\ÜÏH˜Ý‹X\XÚ\ÏžÚ[™\ØØ\J]J_OÚÏ‰Âˆ‰ÏÝ™ÈšY]Ð›ÞHŒÝÚYHMŽˆÚYHŒL	HˆZYÚHŒMŽˆ›ÛOHš[YÈˆ\šXK[X™[HžÚ[™\ØØ\J]J_H‰Âˆ‰ÞÈˆ‹š›Ú[ŠX\šÜÊ_OÜÝ™ÏØ\XÛO‰Âˆ
+B‚‚™YˆÙ\šY\×ØÚ\
+]NˆÝ‹Ù\šY\Îˆ\ÝÝ\VÜÝ‹Ý‹\ÝÝ\VÜÝ‹›Ø]WWWJHOˆÝŽ‚ˆˆˆ“[™HÚ\ˆXXÚÙ\šY\È\È
+˜[YKÛÛÜ‹Ú[ÊKˆZ\ÜÚ[™ÈÚ[ÈÝ^HÙ™ˆH[™Kˆˆˆ‚ˆ™\\™YH×Bˆ›Üˆ˜[YKÛÛÜ‹Ú[È[ˆÙ\šY\Î‚ˆÛX[ˆHÊÝŠX™[
+K›Ø]
+˜[YJJH›ÜˆX™[˜[YH[ˆÚ[ÈYˆX™[BˆYˆÛX[Ž‚ˆ™\\™Y˜\[™
+
+˜[YKÛÛÜ‹ÛX[ŠJBˆYˆ›Ý™\\™Y‚ˆ™]\›ˆ
+ˆ‰Ï\XÛHÛ\ÜÏH˜Ý‹X\XÚ\ÏžÚ[™\ØØ\J]J_OÚÏ‰Âˆ	ÏÛ\ÜÏH˜Ý‹X\[Y]H“›ÈÝ\HÜˆ[X[™˜[Y\È\™H™XÛÜ™Y›Üˆ\ÈØÙ[˜\š[ËÜØ\XÛO‰Âˆ
+BˆX™[ÈHÛX™[›ÜˆX™[Ý˜[YH[ˆ™\\™YÌVÌ—WBˆXZÈHX^
+˜[YH›ÜˆÛ˜[YKØÛÛÜ‹Ú[È[ˆ™\\™Y›ÜˆÛX™[˜[YH[ˆÚ[ÊHÜˆKŒˆÚYHˆÛÝHÚYÈX^
+[ŠX™[ÊKJB‚ˆYˆÜÚ[
+[™^ˆ[˜[YNˆ›Ø]
+HOˆÝŽ‚ˆHŽ
+È[™^
+ˆÛÝˆHHLŽH
+L
+ˆ
+˜[YHÈXZÊJBˆ™]\›ˆˆžÞ‹ŒYŸKÞN‹ŒYŸH‚‚ˆ[™\ÈH×BˆYÙ[™H×Bˆ›Üˆ˜[YKÛÛÜ‹Ú[È[ˆ™\\™Y‚ˆÛÛÜ™ÈHˆ‹š›Ú[ŠÜÚ[
+[™^˜[YJH›Üˆ[™^
+ÛX™[˜[YJH[ˆ[[Y\˜]JÚ[ÊJBˆ[™\Ë˜\[™
+‰ÏÛ[[™Hš[H››Û™HˆÝ›ÚÙOHžØÛÛÜŸHˆÝ›ÚÙK]ÚYHŒÈˆÚ[ÏHžØÛÛÜ™ßH‹Ï‰ÊBˆYÙ[™˜\[™
+‰ÏÜ[ˆÝ[OH˜ÛÛÜŽžØÛÛÜŸHžÚ[™\ØØ\J˜[YJ_OÜÜ[‰ÊBˆ^\ÈHˆ‹š›Ú[Šˆ‰Ï^HžÌŽ
+È[™^
+ˆÛÝ‹ŒYŸHˆOHŒMLˆ›Û\Ú^™OHŒLHˆš[HˆÍÍˆžÚ[™\ØØ\JX™[ÎŒLJ_OÝ^‰Âˆ›Üˆ[™^X™[[ˆ[[Y\˜]JX™[ÖÎŽJBˆ
+Bˆ™]\›ˆ
+ˆ‰Ï\XÛHÛ\ÜÏH˜Ý‹X\XÚ\ÏžÚ[™\ØØ\J]J_OÚÏ‰Âˆ‰ÏÝ™ÈšY]Ð›ÞHŒÝÚYHMŽˆÚYHŒL	HˆZYÚHŒMŽˆ›ÛOHš[YÈˆ\šXK[X™[HžÚ[™\ØØ\J]J_H‰Âˆ‰ÞÈˆ‹š›Ú[Š[™\Ê_^Ø^\ßOÜÝ™ÏÛ\ÜÏH˜Ý‹X\[Y]HžÈˆ0­È‹š›Ú[ŠYÙ[™
+_OÜØ\XÛO‰Âˆ
+B‚‚™YˆÜ\šÛ[™J˜[Y\Îˆ\ÝÙ›Ø]KÛÛÜŽˆÝˆHˆÌMŒÙXˆŠHOˆÝŽ‚ˆˆˆ”ÛX[™[™[™Hœ›ÛH™XÛÜ™Y˜[Y\ËˆHÚ[™ÛH˜[YH˜]ÜÈÛ™HÚ[›ÝHXYK]\\ÝÜžKˆˆˆ‚ˆYˆ›Ý˜[Y\Î‚ˆ™]\›ˆ	ÏÝ™ÈÛ\ÜÏH˜Ý‹X\\Ü\šÈˆšY]Ð›ÞHŒŽˆÚYHŽˆZYÚHŒŽˆ\šXKZY[HYHÜÝ™Ï‰ÂˆXZÈHX^
+˜[Y\ÊHÜˆKŒˆÛÝHÈX^
+[Š˜[Y\ÊHHKJBˆÛÛÜ™ÈH×Bˆ›Üˆ[™^˜[YH[ˆ[[Y\˜]J˜[Y\ÖÎŒL—JN‚ˆH
+È[™^
+ˆÛÝˆHHH
+N
+ˆ
+˜[YHÈXZÊJBˆÛÛÜ™Ë˜\[™
+ˆžÞ‹ŒYŸKÞN‹ŒYŸHŠBˆX\šÜÈH‰ÏÛ[[™Hš[H››Û™HˆÝ›ÚÙOHžØÛÛÜŸHˆÝ›ÚÙK]ÚYHŒˆˆÚ[ÏHžÈˆ‹š›Ú[ŠÛÛÜ™Ê_H‹Ï‰ÂˆYˆ[ŠÛÛÜ™ÊHOHN‚ˆX\šÜÈ
+ÏH‰ÏÚ\˜ÛHÞHžØÛÛÜ™ÖÌKœÜ]
+‹ŠVÌ_HˆÞOHžØÛÛÜ™ÖÌKœÜ]
+‹ŠVÌW_HˆHŒ‹Hˆš[HžØÛÛÜŸH‹Ï‰Âˆ™]\›ˆ‰ÏÝ™ÈÛ\ÜÏH˜Ý‹X\\Ü\šÈˆšY]Ð›ÞHŒŽˆÚYHŽˆZYÚHŒŽˆ\šXKZY[HYHžÛX\šÜßOÜÝ™Ï‰Â‚‚™Yˆš\Ú×ÛZ^ØÚ\
+\Îˆ\ÝÙXÝÜÝ‹[žWWH›Û™JHOˆÝŽ‚ˆÛÝ[ÈHÈ’YÚŽˆ“YY][HŽˆ“ÝÈŽˆBˆ›Üˆ\[ˆÜ™XÛÜ™Ê\ÊN‚ˆ]™[HÝŠÙš\œÝ
+\œš\Ú×Û]™[‹œÙ]™\š]H‹˜[˜XÚÏHˆŠJK˜Ø\ÙY›Û
+
+BˆYˆšYÚˆ[ˆ]™[‚ˆÛÝ[ÖÈ’YÚ—H
+ÏHBˆ[Yˆ›YYˆ[ˆ]™[‚ˆÛÝ[ÖÈ“YY][H—H
+ÏHBˆ[Yˆ›ÝÈˆ[ˆ]™[‚ˆÛÝ[ÖÈ“ÝÈ—H
+ÏHBˆÝ[HÝ[JÛÝ[Ë˜[Y\Ê
+JBˆYˆ›ÝÝ[‚ˆ™]\›ˆˆ‚ˆÛÛÜœÈHÈ’YÚŽˆˆÙLLY‹“YY][HŽˆˆÙMÍÌˆ‹“ÝÈŽˆˆÌM˜LÍHŸBˆÝ\HŒˆÛXÙ\ÈH×Bˆ›ÜˆX™[ÛÝ[[ˆÛÝ[Ëš][\Ê
+N‚ˆYˆ›ÝÛÝ[‚ˆÛÛ[YBˆ[™HÝ\
+È
+ÛÝ[ÈÝ[
+H
+ˆLˆÛXÙ\Ë˜\[™
+ˆ‰ÏÚ\˜ÛHÞHÌˆÞOHÌˆHˆˆš[H››Û™HˆÝ›ÚÙOHžØÛÛÜœÖÛX™[_HˆÝ›ÚÙK]ÚYHŒNˆ	Âˆ‰Ü][™ÝHŒLˆÝ›ÚÙKY\Ú\œ˜^OHžØÛÝ[ÈÝ[
+ˆL‹Œ™ŸHÌLHÛÝ[ÈÝ[
+ˆL‹Œ™ŸHˆ	Âˆ‰ÜÝ›ÚÙKY\ÚÙ™œÙ]HžË\Ý\‹Œ™ŸH‹Ï‰Âˆ
+BˆÝ\H[™ˆYÙ[™Hˆ‹š›Ú[Šˆ‰Ï]Ü[ˆÛ\ÜÏH˜Ý‹\[ÈšYÚˆYˆX™[OH’YÚˆ[ÙH›YY][HˆYˆX™[OH“YY][Hˆ[ÙH›ÝÈŸHžÛX™[OÜÜ[ˆØÛÝ[OÙ]‰Âˆ›ÜˆX™[ÛÝ[[ˆÛÝ[Ëš][\Ê
+BˆYˆÛÝ[ˆ
+Bˆ™]\›ˆ
+ˆ	Ï\XÛHÛ\ÜÏH˜Ý‹X\XÚ\Ï”š\ÚÈ\ÝšX][ÛÚÏ‰Âˆ‰ÏÝ™ÈšY]Ð›ÞHŒMMˆÚYHŒMˆZYÚHŒMˆ›ÛOHš[YÈˆ\šXK[X™[H”š\ÚÈ\ÝšX][ÛˆžÈˆ‹š›Ú[ŠÛXÙ\Ê_OÜÝ™Ï‰Âˆ‰Ï]ˆÛ\ÜÏH˜Ý‹X\[Y]HžÛYÙ[™OÙ]Ø\XÛO‰Âˆ
+B‚‚™Yˆ™[™\—ÚÛYJˆ
+‹ˆ˜[YNˆÝ‹ˆ[˜[\Ù\Îˆ\ÝÙXÝÜÝ‹[žWWH›Û™Kˆ[—Û›ÝXÙNˆÝˆHˆ‹ˆ]\ÙWÛ™]×Ø[˜[\Ù\Îˆ›ÛÛH˜[ÙKˆ\Ù\—ÚYˆÝˆHˆ‹ˆØ]™YØ›Û\×ÜÝ[Nˆ›ÛÛH˜[ÙKŠHOˆ›Û™N‚ˆ™YÚ[—Ø\›Ý™YÜYÙJ
+Bˆœ›ÛHÜ˜ËœYÙ\ËšÛYWÝÛÜšÜÜXÙH[\Ü™[Y[X™\—ÜØ]™YØ[˜[\Ù\×Ù›Ü—ÜÙ\ÜÚ[Û‚‚ˆ™[Y[X™\—ÜØ]™YØ[˜[\Ù\×Ù›Ü—ÜÙ\ÜÚ[ÛŠˆÝœÙ\ÜÚ[Û—ÜÝ]Kˆ\Ù\—ÚY]\Ù\—ÚYˆ›ÝÜÏX[˜[\Ù\Ëˆ
+Bˆ›ÝÜÈHÜ›ÝÜ×ÝÚ]Ü›Ú™XÝÙY]ÊÜ™XÛÜ™Ê[˜[\Ù\ÊJBˆYÚHÝ[JÛ[JÙš\œÝ
+›ÝËšYÚÜš\Ú×ØÛÝ[ŠJH›Üˆ›ÝÈ[ˆ›ÝÜÊBˆ™]šY]ÈHÝ[JH›Üˆ›ÝÈ[ˆ›ÝÜÈYˆÛ[JÙš\œÝ
+›ÝËšYÚÜš\Ú×ØÛÝ[ŠJHÜˆÛ[JÙš\œÝ
+›ÝËšX[ÜØÛÜ™HŠKL
+H
+BˆX[Ý˜[Y\ÈH×Û[JÙš\œÝ
+›ÝËšX[ÜØÛÜ™HŠJH›Üˆ›ÝÈ[ˆ›ÝÜ×Bˆ]™\˜YÙHH›Ý[™
+Ý[JX[Ý˜[Y\ÊHÈ[ŠX[Ý˜[Y\ÊJHYˆX[Ý˜[Y\È[ÙHˆÜ™Y][™ÈH˜[YHÜˆ\™H‚ˆ›ÝXÙHHˆÛ\ÜÏIØÝ‹X\\ÝX‰Ïž×Ù\ØÊ[—Û›ÝXÙJ_OÜˆˆYˆ[—Û›ÝXÙH[ÙHˆ‚ˆÚ]Ý˜ÛÛZ[™\ŠÙ^OH˜\›Ý™YÚÛYWÜYÙHŠN‚ˆYˆØ]™YØ›Û\×ÜÝ[N‚ˆÝš[™›Ê”ÚÝÚ[™ÈHØ]™Y“ÓH\Ýœ›ÛH\ÈÙ\ÜÚ[Û‹ˆØY]›ÜˆÛÝ[¸ &]™Yœ™\Ú]\Ý›ÝËˆŠBˆYˆÝ˜]ÛŠ”™]žHØ]™Y“Ó\È‹Ù^OHšÛYWÜ™]žWÜØ]™YØ›Û\ÈŠN‚ˆÝœ™\[Š
+BˆÚ]Ý˜ÛÛZ[™\ŠÙ^OH˜\›Ý™YÚÛYWÚXY\ˆŠN‚ˆ]WØÛÛXÝ[Û—ØÛÛHÝ˜ÛÛ[[œÊÍŽWK™\XØ[Ø[YÛ›Y[HÜŠBˆÚ]]WØÛÛ‚ˆÝ›X\šÙÝÛŠˆˆˆˆ‚ˆ]ˆÛ\ÜÏH˜Ý‹X\‚ˆÛ\ÜÏH˜Ý‹X\ZÚXÚÙ\ˆ’ÓQOÜ‚ˆO‘ÛÛÙY\››ÛÛ‹×Ù\ØÊÜ™Y][™Ê_OÚO‚ˆÛ\ÜÏH˜Ý‹X\\ÝXˆ’\™IÜÈÚ]	ÜÈ\[š[™ÈÚ][Ý\ˆ“Ó\ÈÙ^KÜ‚ˆÛ›ÝXÙ_BˆÙ]‚ˆˆˆ‹ˆ[œØY™WØ[Ý×Ú[UYKˆ
+BˆÚ]XÝ[Û—ØÛÛ‚ˆYˆ]\ÙWÛ™]×Ø[˜[\Ù\Î‚ˆYˆÝ˜]ÛŠ“Ü[ˆ™\ÜÈ‹Ù^OH˜\›Ý™YÚÛYWÛÜ[—Ü™\ÜÈ‹\OHœš[X\žHŠN‚ˆ˜]šYØ]WÝÊ”™\ÜÈŠBˆ[YˆÝ˜]ÛŠˆŠÈ™]È“ÓH[˜[\Ú\È‹ˆÙ^OH˜\›Ý™YÚÛYWÛ™]×Ø›ÛH‹ˆ\OHœš[X\žH‹ˆÚYHœÝ™]Ú‹ˆ
+N‚ˆ™\\™WÛ™]×Ø\›Ý™YØ›ÛWØ[˜[\Ú\ÊÝœÙ\ÜÚ[Û—ÜÝ]JBˆ˜]šYØ]WÝÊ“ÓH[˜[^™\ˆ‹™]×Ø[˜[\Ú\ÏHŒHŠB‚ˆØ]™YÙ[HHÚÛYWÝÙYZÛWÙ[J›ÝÜËœØ]™YØ›Û\ÈŠBˆ™]šY]×Ù[HHÚÛYWÝÙYZÛWÙ[J›ÝÜË›™YY×Ü™]šY]ÈŠBˆš\Ú×Ù[HHÚÛYWÝÙYZÛWÙ[J›ÝÜËšYÚÜš\Ú×Ü\ÈŠBˆX[Ù[HHÚÛYWÝÙYZÛWÙ[J›ÝÜË˜]™\˜YÙWÚX[ŠBˆÝ›X\šÙÝÛŠˆˆˆˆ‚ˆÙXÝ[ÛˆÛ\ÜÏH˜Ý‹X\Ý‹X\ZÜ\ÈÝ‹X\ZÛYKZÜ\È‚ˆ\XÛHÛ\ÜÏH˜Ý‹X\ZÜHÝ‹X\ZÛYKZÜH‚ˆÜ[ˆÛ\ÜÏH˜Ý‹X\ZXÛÈÝ‹X\ZÛYKZXÛÛˆžÒPÓ×ÑÐßOÜÜ[‚ˆ]ˆÛ\ÜÏH˜Ý‹X\ZÛYKZÜKXÛÜHÜ[ˆÛ\ÜÏH˜Ý‹X\ZÛYKZÜK[X™[”Ø]™Y“Ó\ÏÜÜ[Ý›Û™ÏžÛ[Š›ÝÜÊ_OÜÝ›Û™ÏžÜØ]™YÙ[_OÙ]‚ˆØ\XÛO‚ˆ\XÛHÛ\ÜÏH˜Ý‹X\ZÜHÝ‹X\ZÛYKZÜH‚ˆÜ[ˆÛ\ÜÏH˜Ý‹X\ZXÛÈÝ‹X\ZÛYKZXÛÛˆØ\›ˆžÒPÓ×ÕÐT“ŸOÜÜ[‚ˆ]ˆÛ\ÜÏH˜Ý‹X\ZÛYKZÜKXÛÜHÜ[ˆÛ\ÜÏH˜Ý‹X\ZÛYKZÜK[X™[“Ó\È™YY[™È™]šY]ÏÜÜ[Ý›Û™ÏžÜ™]šY]ßOÜÝ›Û™ÏžÜ™]šY]×Ù[_OÙ]‚ˆØ\XÛO‚ˆ\XÛHÛ\ÜÏH˜Ý‹X\ZÜHÝ‹X\ZÛYKZÜH‚ˆÜ[ˆÛ\ÜÏH˜Ý‹X\ZXÛÈÝ‹X\ZÛYKZXÛÛˆš\ÚÈžÒPÓ×Ô’TÒßOÜÜ[‚ˆ]ˆÛ\ÜÏH˜Ý‹X\ZÛYKZÜKXÛÜHÜ[ˆÛ\ÜÏH˜Ý‹X\ZÛYKZÜK[X™[’YÚ\š\ÚÈ\ÏÜÜ[Ý›Û™ÏžÚYÚOÜÝ›Û™ÏžÜš\Ú×Ù[_OÙ]‚ˆØ\XÛO‚ˆ\XÛHÛ\ÜÏH˜Ý‹X\ZÜHÝ‹X\ZÛYKZÜH‚ˆÜ[ˆÛ\ÜÏH˜Ý‹X\ZXÛÈÝ‹X\ZÛYKZXÛÛˆÚÈžÒPÓ×ÒPSOÜÜ[‚ˆ]ˆÛ\ÜÏH˜Ý‹X\ZÛYKZÜKXÛÜHÜ[ˆÛ\ÜÏH˜Ý‹X\ZÛYKZÜK[X™[]™\˜YÙHX[ÜÜ[Ý›Û™ÏžØ]™\˜YÙ_KÌLÜÝ›Û™ÏžÚX[Ù[_OÙ]‚ˆØ\XÛO‚ˆÜÙXÝ[Û‚ˆˆˆ‹ˆ[œØY™WØ[Ý×Ú[UYKˆ
+B‚ˆÛYWÝÚYÈHÌ‹ŒKKŒÍKÍ‹ŽKŒKŒNŽBˆÚ]Ý˜ÛÛZ[™\ŠÙ^OH˜\›Ý™YÚÛYWÜ™XÙ[ØØ\™ŠN‚ˆÚ]Ý˜ÛÛZ[™\ŠÙ^OH˜\›Ý™YÚÛYWÜ™XÙ[ÚXY[™ÈŠN‚ˆXY[™×ØÛÛšY]×Ø[ØÛÛHÝ˜ÛÛ[[œÊÌLWK™\XØ[Ø[YÛ›Y[H˜Ù[\ˆŠBˆÚ]XY[™×ØÛÛ‚ˆÝ›X\šÙÝÛŠˆ]ˆÛ\ÜÏIØÝ‹X\ZÛYK\™XÙ[ZXY[™ÉÏ”™XÙ[“Ó\ÏÚˆ‚ˆ–[Ý\ˆ]\Ý[˜[\Ù\È[™Z\ˆÝ\œ™[Ý]\ËÜÙ]ˆ‹ˆ[œØY™WØ[Ý×Ú[UYKˆ
+BˆÚ]šY]×Ø[ØÛÛ‚ˆÚ]Ý˜ÛÛZ[™\ŠÙ^OH˜\›Ý™YÚÛYWÝšY]×Ø[ÝÜ˜\ŠN‚ˆYˆÝ˜]ÛŠˆŽ˜›YVÕšY]È[H‹ˆÙ^OH˜\›Ý™YÚÛYWÝšY]×Ø[‹ˆ\OHœÙXÛÛ™\žH‹ˆÚYHœÝ™]Ú‹ˆ
+N‚ˆ˜]šYØ]WÝÊ“ÓH[˜[^™\ˆ‹ÚÝ×ÜØ]™YØ[˜[\Ù\ÏHŒH‹\›WÛÜ[š[™ÏQ˜[ÙJBˆXY\—ÛX™[ÈH
+“˜[YH‹”›Ú™XÝ‹”\ÛÝ[‹’X[‹’YÚ\š\ÚÈ\È‹“\Ý[˜[^™Y‹XÝ[ÛœÈŠBˆXY\—ØÙ[ÈHˆ‹š›Ú[ŠˆˆÜ[ˆ›ÛOIØÛÛ[[šXY\‰Ïž×Ù\ØÊX™[
+_OÜÜ[ˆ‚ˆ›ÜˆX™[[ˆXY\—ÛX™[Âˆ
+BˆÝ›X\šÙÝÛŠˆˆ]ˆÛ\ÜÏIØÝ‹X\ZÛYK]X›KZXY	È›ÛOIÜ›ÝÉÏžÚXY\—ØÙ[ßOÙ]ˆ‹ˆ[œØY™WØ[Ý×Ú[UYKˆ
+BˆYˆ›Ý›ÝÜÎ‚ˆÝ›X\šÙÝÛŠˆ]ˆÛ\ÜÏIØÝ‹X\ZÛYKY[\IÏ“›ÈØ]™Y“Ó\ÈY]ˆÝ\H™]È“ÓH[˜[\Ú\ÈÈš[\ÈÛÜšÜÜXÙKÙ]ˆ‹ˆ[œØY™WØ[Ý×Ú[UYKˆ
+Bˆ›Üˆ[™^›ÝÈ[ˆ[[Y\˜]J›ÝÜÖÎŒ×JN‚ˆ›Ú™XÝ›ÛWÛ˜[YHHÜ]Ü›Ú™XÝØ[™Ø›ÛJ›ÝÊBˆÛÝ\˜ÙWÙš[[˜[YHHÝŠÙš\œÝ
+›ÝË™š[[˜[YH‹œÛÝ\˜ÙWÙš[[˜[YH‹˜[˜XÚÏHˆŠHÜˆˆŠKœÝš\
+
+Bˆ\ÈHÛ[JÙš\œÝ
+›ÝËÝ[Ü\ÈŠJBˆØÛÜ™HHÛ[JÙš\œÝ
+›ÝËšX[ÜØÛÜ™HŠJBˆš\ÚÈHÛ[JÙš\œÝ
+›ÝËšYÚÜš\Ú×ØÛÝ[ŠJBˆš\Ú×Ú[H
+ˆˆÜ[ˆÛ\ÜÏIØÝ‹ZÛYK\š\ÚËXÛÝ[YÚ	ÏžÜš\ÚßOÜÜ[ˆ‚ˆYˆš\ÚÂˆ[ÙHÜ[ˆÛ\ÜÏIØÝ‹ZÛYK\š\ÚËXÛÝ[ÛX\‰ÏŒÜÜ[ˆ‚ˆ
+Bˆ\]YH[˜[^™YÛX™[
+Ùš\œÝ
+›ÝË˜Ü™X]YØ]‹\]YØ]‹˜[˜XÚÏHˆŠJBˆ[˜[\Ú\×ÚYHÝŠ›ÝË™Ù]
+šYŠHÜˆˆŠBˆ\Ü^WØ›ÛWÛ˜[YHH›ÛWÛ˜[YHÜˆÛÝ\˜ÙWÙš[[˜[YHÜˆ”Ø]™Y“ÓH‚ˆYˆ›Ý›ÛWÛ˜[YH[™\Ü^WØ›ÛWÛ˜[YK˜Ø\ÙY›Û
+
+K™[™ÝÚ]
+‹˜ÜÝˆŠN‚ˆ\Ü^WØ›ÛWÛ˜[YHH\Ü^WØ›ÛWÛ˜[YVÎ‹MBˆÚ]Ý˜ÛÛZ[™\ŠÙ^OYˆ˜\›Ý™YÚÛYWÜ›Ý×ÞÚ[™^HŠN‚ˆÙ[ÈHÝ˜ÛÛ[[œÊÛYWÝÚYË™\XØ[Ø[YÛ›Y[H˜Ù[\ˆŠBˆÙ[ÖÌK›X\šÙÝÛŠˆˆ]ˆÛ\ÜÏIØÝ‹X\ZÛYKX›ÛIÏÜ[ˆÛ\ÜÏIØÝ‹X\ZÛYK\›ÝËZXÛÛ‰ÏžÛXÚYJ	Ùš[K]^	Ë
+_OÜÜ[ˆ‚ˆˆÜ[ˆÛ\ÜÏIØÝ‹X\ZÛYKX›ÛKXÛÜIÏÝ›Û™ÈÛ\ÜÏIØÝ‹X\[˜[YIÏž×Ù\ØÊ\Ü^WØ›ÛWÛ˜[YJ_OÜÝ›Û™ÏÜÜ[Ù]ˆ‹ˆ[œØY™WØ[Ý×Ú[UYKˆ
+BˆÜ™[™\—Ü›Ú™XÝØÙ[
+Ù[ÖÌWK›ÝËšÛYH‹›ÝÜË\Ù\—ÚY
+BˆÙ[ÖÌ—K›X\šÙÝÛŠˆˆ]ˆÛ\ÜÏIØÝ‹X\ZÛYKXÙ[XÙ[\‰ÏžÜ\ßOÙ]ˆ‹[œØY™WØ[Ý×Ú[UYBˆ
+BˆÙ[ÖÌ×K›X\šÙÝÛŠˆˆ]ˆÛ\ÜÏIØÝ‹X\ZÛYKXÙ[XÙ[\‰Ïž×ÚX[Ü[
+ØÛÜ™J_OÙ]ˆ‹ˆ[œØY™WØ[Ý×Ú[UYKˆ
+BˆÙ[ÖÍK›X\šÙÝÛŠˆˆ]ˆÛ\ÜÏIØÝ‹X\ZÛYKXÙ[XÙ[\‰ÏžÜš\Ú×Ú[OÙ]ˆ‹ˆ[œØY™WØ[Ý×Ú[UYKˆ
+BˆÙ[ÖÍWK›X\šÙÝÛŠˆˆ]ˆÛ\ÜÏIØÝ‹X\ZÛYKXÙ[XÙ[\‰ÏžÝ\]YOÙ]ˆ‹ˆ[œØY™WØ[Ý×Ú[UYKˆ
+BˆÜ™[™\—ÜØ]™YØ›ÛWØXÝ[ÛœÊÙ[ÖÍ—K[˜[\Ú\×ÚYØÛÜOHšÛYH‹›Ý×ÚÙ^O\ÝŠ[™^
+JBˆYˆ[—Û›ÝXÙH[™Ý˜]ÛŠÛÛ\\™H[œÈ‹Ù^OH˜\›Ý™YÚÛYWØÛÛ\\™WÜ[œÈŠN‚ˆ˜]šYØ]WÝÊ”šXÚ[™ÈŠBˆ[™Ø\›Ý™YÜYÙJ
+B‚‚™Yˆ™[™\—Ø›ÛWØØ][ÙÊ™XÛÜ™Îˆ\ÝÙXÝÜÝ‹[žWWH›Û™K\Ù\—ÚYˆÝˆHˆŠHOˆ›Û™N‚ˆ™YÚ[—Ø\›Ý™YÜYÙJ
+Bˆ[˜[\Ú\×Ù\œ›ÜˆHÝœÙ\ÜÚ[Û—ÜÝ]KœÜ
+˜ØY]›Ü—Ø›ÛWØ[˜[\Ú\×Ù\œ›Üˆ‹ˆŠBˆYˆ[˜[\Ú\×Ù\œ›ÜŽ‚ˆÝ™\œ›ÜŠ•H“ÓH[˜[\Ú\ÈÛÝ[›ÝÛÛ\]Kˆ[Ý\ˆ\ØY\ÈÝ[\™NÈ™]šY]È][™žHYØZ[‹ˆŠBˆœ›ÛHÜ˜ËœYÙ\ËšÛYWÝÛÜšÜÜXÙH[\Ü™[Y[X™\—ÜØ]™YØ[˜[\Ù\×Ù›Ü—ÜÙ\ÜÚ[Û‚‚ˆ™[Y[X™\—ÜØ]™YØ[˜[\Ù\×Ù›Ü—ÜÙ\ÜÚ[ÛŠˆÝœÙ\ÜÚ[Û—ÜÝ]Kˆ\Ù\—ÚY]\Ù\—ÚYˆ›ÝÜÏ\™XÛÜ™Ëˆ
+Bˆ›ÝÜÈHÜ›ÝÜ×ÝÚ]Ü›Ú™XÝÙY]ÊÜ™XÛÜ™Ê™XÛÜ™ÊJBˆY]ÚYHÝŠÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+ÐU‘QÐ“ÓWÑQUÔÕUJHÜˆˆŠKœÝš\
+
+Bˆ[]WÚYHÝŠÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+ÐU‘QÐ“ÓWÑSUWÔÕUJHÜˆˆŠKœÝš\
+
+BˆXÝ[Û—ÚYH[]WÚYÜˆY]ÚYˆYˆXÝ[Û—ÚY‚ˆ\™Ù]Ü›ÝÈH™^
+
+›ÝÈ›Üˆ›ÝÈ[ˆ›ÝÜÈYˆÝŠ›ÝË™Ù]
+šYŠHÜˆˆŠKœÝš\
+
+HOHXÝ[Û—ÚY
+K›Û™JBˆYˆ\™Ù]Ü›ÝÈ\È›Û™N‚ˆÝ™\œ›ÜŠ•\ÈØ]™Y“ÓH\È›ÈÛ™Ù\ˆ]˜Z[X›H[ˆHÝ\œ™[ÛÜšÜÜXÙKˆŠBˆYˆÝ˜]ÛŠ”™]\›ˆÈ“Ó\È‹Ù^OH˜\›Ý™YÜØ]™YØ›ÛWØXÝ[Û—Ø˜XÚÈŠN‚ˆÝœÙ\ÜÚ[Û—ÜÝ]KœÜ
+ÐU‘QÐ“ÓWÑQUÔÕUK›Û™JBˆÝœÙ\ÜÚ[Û—ÜÝ]KœÜ
+ÐU‘QÐ“ÓWÑSUWÔÕUK›Û™JBˆ˜]šYØ]WÝÊ“ÓH[˜[^™\ˆ‹ÚÝ×ÜØ]™YØ[˜[\Ù\ÏHŒH‹\›WÛÜ[š[™ÏQ˜[ÙJBˆ[Yˆ[]WÚY‚ˆÜ™[™\—ÜØ]™YØ›ÛWÙ[]WÜYÙJ\™Ù]Ü›ÝË\Ù\—ÚY
+Bˆ[ÙN‚ˆÜ™[™\—ÜØ]™YØ›ÛWÙY]ÜYÙJ\™Ù]Ü›ÝË\Ù\—ÚY
+Bˆ[™Ø\›Ý™YÜYÙJ
+Bˆ™]\›‚ˆ[˜[\Ú\×Ü[›š[™ÈH›ÛÛ
+ˆÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+˜›ÛNØ[˜[\Ú\×Ù]\™HŠBˆÜˆÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+˜›ÛNØ[˜[\Ú\×Ü[™[™ÈŠBˆÜˆÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+˜›ÛNØ[˜[\Ú\×Ú[—Ü›ÙÜ™\ÜÈŠBˆÜˆÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+˜ØY]›Ü—Ø›ÛWÜ\[[™WØXÝ]™HŠBˆ
+BˆØ][Ù×Ü™\]Y\ÝYH›ÛÛ
+ˆÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+˜ØY]›Ü—Ø›ÛWØØ][Ù×Ü™\]Y\ÝYŠBˆÜˆÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+˜ØY]›Ü—ÜÚÝ×ÜØ]™YØ›Û\ÈŠBˆ
+H[™›Ý[˜[\Ú\×Ü[›š[™Âˆ\ØYÛ[ÙHH›ÛÛ
+ÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+˜ØY]›Ü—Ø›ÛWÝ\ØYÛÜ[ˆŠJH[™›ÝØ][Ù×Ü™\]Y\ÝYˆ[˜[\Ú\×Ü™\Ý[ÈHÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+œ™\Ý[×ÙˆŠBˆ™\Ý[×Ýš\ÚX›HH›ÛÛ
+ˆ›ÝØ][Ù×Ü™\]Y\ÝYˆ[™[˜[\Ú\×Ü™\Ý[È\È›Ý›Û™Bˆ[™›ÝÙ]]Š[˜[\Ú\×Ü™\Ý[Ë™[\H‹YJBˆ
+BˆÚ]Ý˜ÛÛZ[™\ŠÙ^OH˜\›Ý™YØ›ÛWÝ]HŠN‚ˆ]WØÛÛXÝ[Û—ØÛÛHÝ˜ÛÛ[[œÊÍKŒ‹KŽK™\XØ[Ø[YÛ›Y[H˜Ù[\ˆŠBˆÚ]]WØÛÛ‚ˆÝ›X\šÙÝÛŠˆˆˆˆ‚ˆ]ˆÛ\ÜÏH˜Ý‹X\‚ˆOž×Ù\ØÊ[˜[^š[™È“ÓHˆYˆ[˜[\Ú\×Ü[›š[™È[ÙH
+“ÓH[˜[\Ú\È™\Ý[ÈˆYˆ™\Ý[×Ýš\ÚX›H[ÙH“Ó\ÈŠJ_OÚO‚ˆÙ]‚ˆˆˆ‹ˆ[œØY™WØ[Ý×Ú[UYKˆ
+BˆÚ]XÝ[Û—ØÛÛ‚ˆYˆ[˜[\Ú\×Ü[›š[™Î‚ˆ\ÜÂˆ[Yˆ\ØYÛ[ÙH[™›Ý™\Ý[×Ýš\ÚX›N‚ˆYˆÝ˜]ÛŠˆ“X[˜YÙHØ]™Y“Ó\È‹ˆÙ^OH˜\›Ý™YØ›ÛWÛX[˜YÙH‹ˆ\OH\X\žH‹ˆ\ØX›YX[˜[\Ú\×Ü[›š[™Ëˆ
+N‚ˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜ØY]›Ü—Ø›ÛWÝ\ØYÛÜ[ˆ—HH˜[ÙBˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜ØY]›Ü—ÛX[˜YÙWÜØ]™YØ›Û\È—HH˜[ÙBˆÝœÙ\ÜÚ[Û—ÜÝ]KœÜ
+˜ØY]›Ü—Ø›ÛWÜ\[[™WØXÝ]™H‹›Û™JBˆÝœÙ\ÜÚ[Û—ÜÝ]KœÜ
+˜›ÛNØ[˜[\Ú\×Ý\ØYÙš[H‹›Û™JBˆÝœ™\[Š
+Bˆ[ÙN‚ˆYˆÝ˜]ÛŠˆŠÈ™]È“ÓH[˜[\Ú\È‹ˆÙ^OH˜\›Ý™YØ›ÛWÛ™]È‹ˆ\OHœš[X\žH‹ˆ\ØX›YX[˜[\Ú\×Ü[›š[™Ëˆ
+N‚ˆ™\\™WÛ™]×Ø\›Ý™YØ›ÛWØ[˜[\Ú\ÊÝœÙ\ÜÚ[Û—ÜÝ]JBˆÝœ™\[Š
+BˆYˆ[˜[\Ú\×Ü[›š[™È[™›Ý™\Ý[×Ýš\ÚX›N‚ˆÚ]Ý˜ÛÛZ[™\ŠÙ^OH˜\›Ý™YØ›ÛWÝ\ØYÜ›ÙÜ™\ÜÈŠN‚ˆXÝ]™WÛ˜[YHHÝŠÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+˜›ÛNØ›ÛWÛ˜[YHŠHÜˆ\È“ÓHŠKœÝš\
+
+BˆÝ˜Ø\[ÛŠˆˆ”™\\š[™ÈÜˆÚXÚÚ[™ÈÝ\Y\ˆ]H›ÜˆØXÝ]™WÛ˜[Y_Kˆ[Ý\ˆ™\ÜÚ[Ü[ˆÚ[ˆH[˜[\Ú\È\ÈÛÛ\]Kˆ‚ˆ
+Bˆ[YˆÚÝ[Ü™[™\—Ø\›Ý™YØ›ÛWÝ\ØYÙ›Ü›Jˆ\ØYÛ[ÙO]\ØYÛ[ÙKˆ[˜[\Ú\×Ü[›š[™ÏX[˜[\Ú\×Ü[›š[™Ëˆ™\Ý[×Ýš\ÚX›O\™\Ý[×Ýš\ÚX›Kˆ
+N‚ˆÚ]Ý˜ÛÛZ[™\ŠÙ^OH˜\›Ý™YØ›ÛWÝ\ØYÜ[™[ŠN‚ˆÝ›X\šÙÝÛŠˆˆˆ‚ˆ]ˆÛ\ÜÏH˜Ý‹X›ÛK]\ØYZXY[™È‚ˆ“™]È“ÓH[˜[\Ú\ÏÚ‚ˆÚÛÜÙHH›Ú™XÝ˜[YH[Ý\ˆ[˜[\Ú\Ë[™\ØYH“ÓHš[HÈ™]šY]È]Èš\ÚËÜ‚ˆÙ]‚ˆˆˆ‹ˆ[œØY™WØ[Ý×Ú[UYKˆ
+BˆÚ]Ý™›Ü›JÙ^OH˜\›Ý™YØ›ÛWÝ\ØYÙ›Ü›H‹ÛX\—ÛÛ—ÜÝX›Z]Q˜[ÙJN‚ˆ\YÜ›Ú™XÝHÝ^Ú[œ]
+ˆ”›Ú™XÝ˜[YH‹ˆÙ^OH˜\›Ý™YØ›ÛWÜ›Ú™XÝÛ˜[YH‹ˆXÙZÛ\H‘^[\Nˆ[ÝÜˆÛÛ›Û\ˆ‹ˆ[H‘[\ˆH™]È˜[YHÜˆ™]\ÙH[ˆ^\Ý[™È›Ú™XÝ˜[YKˆX]™H›[šÈÈ\ÙHÙ[™\˜[ˆ‹ˆ]]ØÛÛ\]OH›Ù™ˆ‹ˆ\ØX›YX[˜[\Ú\×Ü[›š[™Ëˆ
+Bˆ›ÛWÛ˜[YHHÝ^Ú[œ]
+ˆ“ÓH˜[YH‹ˆÙ^OH˜\›Ý™YØ›ÛWÛ˜[YH‹ˆ]]ØÛÛ\]OH›Ù™ˆ‹ˆ\ØX›YX[˜[\Ú\×Ü[›š[™Ëˆ
+Bˆ\ØYYHÝ™š[WÝ\ØY\Šˆ•\ØY[Ý\ˆ“ÓHš[H‹ˆ\OVÈ˜ÜÝˆ‹žÞ—KˆÙ^OH˜›ÛWÙš[WÝ\ØY\ˆ‹ˆ[HÔÕˆÜˆ^Ù[Ú]Tˆ[™]X[]HÛÛ[[œËˆ‹ˆ\ØX›YX[˜[\Ú\×Ü[›š[™Ëˆ
+BˆÝX›Z]YHÝ™›Ü›WÜÝX›Z]Ø]ÛŠˆ[˜[^š[™È“Óx )ˆˆYˆ[˜[\Ú\×Ü[›š[™È[ÙH[˜[^™H“ÓH‹ˆÙ^OH˜\›Ý™YØ›ÛWØ[˜[^™H‹ˆ\OHœš[X\žH‹ˆ\ØX›YX[˜[\Ú\×Ü[›š[™Ëˆ
+BˆYˆÝX›Z]Y[™\ØYY\È›Ý›Û™N‚ˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜ØY]›Ü—Ø›ÛWØ[˜[\Ú\×Ü™XYH—HHYBˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜ØY]›Ü—Ü[™[™×Ý\ØY—HH\ØYYˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜ØY]›Ü—Ü[™[™×Ü›Ú™XÝ—HH™\ÛÛ™WÜ›Ú™XÝØÚÚXÙJˆ‘U×Ô“Ò‘PÕÐÒÒPÑKˆ\YÜ›Ú™XÝˆ›[š×Ý\Ù\×ÙÙ[™\˜[UYKˆ
+BˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜ØY]›Ü—Ü[™[™×Ø›ÛWÛ˜[YH—HH›ÛWÛ˜[YBˆ™]\›‚ˆYˆ\ØYY\È›Û™N‚ˆÝ˜Ø\[ÛŠÚÛÜÙHHÔÕˆÜˆ^Ù[š[HÈ[ˆH^\Ý[™È“ÓH[˜[\Ú\ËˆŠBˆ[Yˆ™\Ý[×Ýš\ÚX›N‚ˆ\ÜÂˆ[ÙN‚ˆœ›ÛH]][YH[\Ü]B‚ˆ›Ú™XÝÛÜ[ÛœÈHØ][Ù×Ü›Ú™XÝÛÜ[ÛœÊ›ÝÜÊBˆš[\—Û›Û˜ÙHH[
+ÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+˜\›Ý™YØ›ÛWÙš[\—Û›Û˜ÙHŠHÜˆ
+Bˆ›Ú™XÝÚÙ^HHˆ˜\›Ý™YØ›ÛWÜ›Ú™XÝÞÙš[\—Û›Û˜Ù_H‚ˆYˆÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+›Ú™XÝÚÙ^JH›Ý[ˆ›Ú™XÝÛÜ[ÛœÈ[™›Ú™XÝÚÙ^H[ˆÝœÙ\ÜÚ[Û—ÜÝ]N‚ˆÝœÙ\ÜÚ[Û—ÜÝ]VÜ›Ú™XÝÚÙ^WHH[›Ú™XÝÈ‚ˆÚ]Ý˜ÛÛZ[™\ŠÙ^OH˜\›Ý™YØ›ÛWÝÛÛ˜\ˆŠN‚ˆÙX\˜ÚØÛÛ›Ú™XÝØÛÛX[ØÛÛ]WØÛÛÛX\—ØÛÛHÝ˜ÛÛ[[œÊˆÌKËKŒKKKŒKŽWKˆ™\XØ[Ø[YÛ›Y[H˜›ÝÛH‹ˆ
+BˆÚ]ÙX\˜ÚØÛÛ‚ˆ]Y\žHHÝ^Ú[œ]
+ˆ”ÙX\˜Ú‹ˆÙ^OYˆ˜\›Ý™YØ›ÛWÜÙX\˜ÚÞÙš[\—Û›Û˜Ù_H‹ˆXÙZÛ\H”ÙX\˜Ú“Ó\Ë›Ú™XÝËÜˆš[\È‹ˆX™[Ýš\ÚXš[]OH˜ÛÛ\ÙY‹ˆ
+BˆÚ]›Ú™XÝØÛÛ‚ˆ›Ú™XÝÙš[\ˆHÝœÙ[XÝ›Þ
+”›Ú™XÝ‹›Ú™XÝÛÜ[ÛœËÙ^O\›Ú™XÝÚÙ^JBˆÚ]X[ØÛÛ‚ˆX[Ùš[\ˆHÝœÙ[XÝ›Þ
+ˆ’X[‹ˆÈ[X[‹’X[H‹”™]šY]È‹]š\ÚÈ—KˆÙ^OYˆ˜\›Ý™YØ›ÛWÚX[ÞÙš[\—Û›Û˜Ù_H‹ˆ
+BˆÚ]]WØÛÛ‚ˆ]WÙš[\ˆHÝœÙ[XÝ›Þ
+ˆ‘]H˜[™ÙH‹ˆÈ“\ÝL^\È‹“\ÝÌ^\È‹[[YH—KˆÙ^OYˆ˜\›Ý™YØ›ÛWÙ]\×ÞÙš[\—Û›Û˜Ù_H‹ˆ
+BˆÚ]ÛX\—ØÛÛ‚ˆYˆÝ˜]ÛŠÛX\ˆš[\œÈ‹Ù^OH˜\›Ý™YØ›ÛvÛnº¶‰žËkºwµçH\ÝÝ\VÜÝ‹Ý—WKˆX[Y˜XÝ\™\ŽˆÝˆHˆ‹ˆÝ\Y\ŽˆÝˆHˆ‹ˆÝ\Y\—ØÛÝ[ˆÝˆHˆ‹ˆY™XÞXÛNˆÝˆHˆ‹ŠHOˆÝŽ‚ˆˆˆ“›ÙHXYÜ˜[HÙˆH]™H\]ÈØ]™Y“Ó\Ë[™™XÛÜ™Y]šY[˜ÙKˆˆˆ‚ˆ›Ù\ÈH×BˆHHˆ›Üˆ›Ú™XÝ›ÛH[ˆ›Ú™XÝÖÎN‚ˆ›Ù\Ë˜\[™
+
+ŒŒK›Ú™XÝÜˆ”›Ú™XÝ›Ý™XÛÜ™Y‹ˆÙYYŒ™™ˆ‹ˆÍŒÍ™ŒHŠJBˆ›Ù\Ë˜\[™
+
+ŒK›ÛHÜˆ“ÓHš[H›Ý™XÛÜ™Y‹ˆÙYŒÙ™ˆ‹ˆÍØÌØYYŠJBˆH
+ÏHˆX[Y˜XÝ\™\—ÛX™[HX[Y˜XÝ\™\ˆÜˆÝ\Y\‚ˆYˆX[Y˜XÝ\™\—ÛX™[‚ˆ›Ù\Ë˜\[™
+
+ŒŒKˆ“X[Y˜XÝ\™\ŽˆÛX[Y˜XÝ\™\—ÛX™[H‹ˆÙXÙ™H‹ˆÌNMŽHŠJBˆH
+ÏHˆYˆÝ\Y\—ØÛÝ[‚ˆ›Ù\Ë˜\[™
+
+ŒŒKˆ”Ý\Y\ˆÛÝ\˜Ù\ÎˆÜÝ\Y\—ØÛÝ[H‹ˆÙXÙ™H‹ˆÌNMŽHŠJBˆH
+ÏHˆYˆY™XÞXÛN‚ˆ›Ù\Ë˜\[™
+
+ŒŒKY™XÞXÛKˆÙ™™ÙY‹ˆÙXMNÈŠJBˆH
+ÏHˆZYÚHX^
+NH
+ÈŒ
+Bˆ]ÈH×Bˆ›Þ\ÈHÂˆ‰Ï™XÝHŒMˆˆOHžÊZYÚÌŠKLŽ‹ŒŸHˆÚYHŒMLˆZYÚHMˆˆžHŒLˆˆš[HˆÙY™™™ˆˆÝ›ÚÙOHˆÌMŒÙXˆ‹Ï‰Âˆ‰Ï^HŒŽˆOHžÊZYÚÌŠKMŽ‹ŒŸHˆ›Û\Ú^™OHŒLHˆš[HˆÍÍˆÛÛ\Û™[Ý^‰Âˆ‰Ï^HŒŽˆOHžÊZYÚÌŠJÌLŽ‹ŒŸHˆ›Û\Ú^™OHŒLÈˆ›Û]ÙZYÚHÌˆš[HˆÌŒMÌ˜HžÚ[™\ØØ\J\ÜˆÛÛ\Û™[ŠVÎŒŒ—_OÝ^‰ÂˆBˆ\ÞHHZYÚÈ‚ˆ›Üˆ[™^
+›ÙWÞKX™[š[Ý›ÚÙJH[ˆ[[Y\˜]J›Ù\ÊN‚ˆ]Ë˜\[™
+ˆ‰Ï]H“LMˆÜ\ÞN‹ŒŸHÈNLÜ\ÞN‹ŒŸKNLÛ›ÙWÞJÌŒŸKÞHÛ›ÙWÞJÌŒŸHˆš[H››Û™HˆÝ›ÚÙOHžÜÝ›ÚÙ_HˆÝ›ÚÙK]ÚYHŒˆ‹Ï‰Âˆ
+BˆYˆˆÌ[™[™^‚ˆ]Ë˜\[™
+ˆ‰Ï]H“LÍÌÛ›ÙWÞJÌŒŸHÞHˆš[H››Û™HˆÝ›ÚÙOHžÜÝ›ÚÙ_HˆÝ›ÚÙK]ÚYHŒˆ‹Ï‰Âˆ
+Bˆ›Þ\Ë˜\[™
+ˆ‰ÏÏ]OžÚ[™\ØØ\JX™[
+_OÝ]O‰Âˆ‰Ï™XÝHžÞHˆOHžÛ›ÙWÞ_HˆÚYHŒNˆZYÚHˆžHŒLˆš[HžÙš[HˆÝ›ÚÙOHžÜÝ›ÚÙ_H‹Ï‰Âˆ‰Ï^HžÞ
+ÌLŸHˆOHžÛ›ÙWÞJÌßHˆ›Û\Ú^™OHŒLˆˆš[HˆÌŒMÌ˜HžÚ[™\ØØ\JX™[ÎŒ—J_OÝ^ÙÏ‰Âˆ
+BˆYÙ[™Hˆ‹š›Ú[Šˆ‰ÏÜ[ˆÛ\ÜÏH˜ÝŒŒ[X\[YÙ[™×Ú][HHÝ[OH‹K[YÙ[™XÛÛÜŽžØÛÛÜŸHÚOžÛX™[OÜÜ[‰Âˆ›ÜˆX™[ÛÛÜˆ[ˆ
+ˆ
+”›Ú™XÝ‹ˆÌMŒÙXˆŠK
+“ÓH‹ˆÍØÌØYYŠKˆ
+”Ý\HÚZ[ˆ‹ˆÌNMŽHŠK
+“Y™XÞXÛH‹ˆÙXMNÈŠKˆ
+Bˆ
+Bˆ™]\›ˆ
+ˆÙXÝ[ÛˆÛ\ÜÏIØÝ‹X\XØ\™ÝŒŒZ[\XÝ[X\	Ïˆ‚ˆ	ÏXY\ˆÛ\ÜÏH˜ÝŒŒZ[\XÝ[X\×ÚXY\ˆ]’[\XÝX\Ú‰Âˆ‰Ï”Ø]™YP“ÓH\ØYÙH[™™XÛÜ™YÝ\H]šY[˜ÙH›ÜˆÚ[™\ØØ\J\Üˆ\ÈÛÛ\Û™[Š_KÜ‰Âˆ‰ÏÙ]]ˆÛ\ÜÏH˜ÝŒŒ[X\[YÙ[™ˆ\šXK[X™[H’[\XÝX\YÙ[™žÛYÙ[™OÙ]ÚXY\‰Âˆ‰ÏÝ™ÈšY]Ð›ÞHŒŽÚZYÚHˆÚYHŒL	HˆZYÚHžÚZYÚHˆ›ÛOHš[YÈˆ\šXK[X™[H’[\XÝX\›ÜˆÚ[™\ØØ\J\Üˆ˜ÛÛ\Û™[‹][ÝOUYJ_H‰Âˆ‰ÞÈˆ‹š›Ú[Š]Ê_^Èˆ‹š›Ú[Š›Þ\Ê_OÜÝ™ÏÜÙXÝ[Û‰Âˆ
+B‚‚™Yˆ›ØÝ\™[Y[ÚXY\—Ú[
+ˆ\ˆXÝÜÝ‹[žWKˆ™XÛÛ[Y[™][ÛŽˆXÝÜÝ‹[žWH›Û™HH›Û™KŠHOˆÝŽ‚ˆˆˆÛÛ\]Xš[]H^Ü›ÜˆH™]\ØX›H›ØÝ\™[Y[ÛÜšÜÜXÙHX\šÝ\ˆˆˆ‚ˆœ›ÛHÜ˜Ëœ›ØÝ\™[Y[ØYš\ÛÜˆ[\Ü›ØÝ\™[Y[ÚXY\—Ú[\È™[™\—ÚXY\‚‚ˆ™]\›ˆ™[™\—ÚXY\Š\™XÛÛ[Y[™][ÛŠB‚‚™YˆÜ›Û[×ØÚ\×Ú[
+\Îˆ\ÝÙXÝÜÝ‹[žWWH›Û™JHOˆÝŽ‚ˆˆˆ•™[™œ˜[YHÝ^\È[\HÚ]Ý][ÛH\ÝÜžKˆHÛ]\Ù\È]™Hš\ÚÈÛÝ[Ëˆˆˆ‚ˆ[ÛÈHÈ’˜[ˆ‹‘™Xˆ‹“X\ˆ‹\ˆ‹“X^H‹’[ˆ‹’[‹]YÈ‹”Ù\‹“ØÝ‹“›Ýˆ‹‘XÈ—BˆXÚÜÈHˆ‹š›Ú[Šˆ‰Ï^HžÌ
+È[™^
+ˆŸHˆOHŒLÌˆˆ›Û\Ú^™OHŒLˆš[HˆÎMLØŽžÛX™[OÝ^‰Âˆ›Üˆ[™^X™[[ˆ[[Y\˜]J[ÛÊBˆ
+Bˆ™[™H
+ˆ	Ï\XÛHÛ\ÜÏH˜Ý‹X\XÚ\Ï”Ü›Û[Èš\ÚÈ™[™ÚÏ‰Âˆ	ÏÝ™ÈšY]Ð›ÞHŒNMˆÚYHŒL	HˆZYÚHŒMˆ›ÛOHš[YÈˆ\šXK[X™[H”Ü›Û[Èš\ÚÈ™[™‰Âˆ	Ï[™HOHŒŒˆLOHŒMˆˆHŒŒˆLHŒLLˆˆÝ›ÚÙOHˆÙL™NŒ‹Ï‰Âˆ	Ï[™HOHŒŒˆLOHŒLLˆˆHMŒˆLHŒLLˆˆÝ›ÚÙOHˆÙL™NŒ‹Ï‰Âˆ‰ÞÝXÚÜßOÜÝ™ÏÛ\ÜÏH˜Ý‹X\[Y]H“[ÛH\ÝÜžH\È›Ý™XÛÜ™YÜØ\XÛO‰Âˆ
+BˆZ^Hš\Ú×ÛZ^ØÚ\
+\ÊHÜˆ
+ˆ	Ï\XÛHÛ\ÜÏH˜Ý‹X\XÚ\Ï”š\ÚÈ\ÝšX][ÛÚÏÛ\ÜÏH˜Ý‹X\[Y]H“›Ý™XÛÜ™YÜØ\XÛO‰Âˆ
+Bˆ™]\›ˆ‰Ï]ˆÛ\ÜÏH˜Ý‹X\XÚ\ÈžÝ™[™^ÛZ^OÙ]‰Â‚‚™YˆÙX[ÜØØ[WÜÝ\WØÚ\
+ˆX™[Îˆ\ÝÜÝ—Kˆ
+‹ˆ˜\Ù[[™Nˆ›Ø]ˆ\Ü\YÝ˜[Y\Îˆ\ÝÙ›Ø]H›Û™Kˆ[X[™ˆ›Ø]ˆ\Ü\YÛX™[ˆÝ‹ˆ[X[™ÛX™[ˆÝ‹ŠHOˆÝŽ‚ˆˆˆ”ÝØÚÈÝ^\ÈÛˆHY^\Ëˆ[X[™\Ù\ÈHX™[Y[™^ØØ[HÛÈ]Ý^\Èš\ÚX›Kˆˆˆ‚ˆÚYHˆÛÝH
+ÚYHÌ
+HÈX^
+[ŠX™[ÊHHKJBˆÝØÚ×ÜXZÈHX^
+Ø˜\Ù[[™K
+ˆ
+\Ü\YÝ˜[Y\ÈÜˆØ˜\Ù[[™WJWJHÜˆKŒˆÝØÚ×ÜXZÈHÝØÚ×ÜXZÈ
+ˆKŒMB‚ˆYˆÝØÚ×ÞJ˜[YNˆ›Ø]
+HOˆ›Ø]‚ˆ™]\›ˆLNH
+Mˆ
+ˆ
+˜[YHÈÝØÚ×ÜXZÊJB‚ˆ[X[™ÞHHÎŒˆÝØÚ×Û[™HHˆ‹š›Ú[ŠˆžÌÍˆ
+È[™^
+ˆÛÝ‹ŒYŸKÜÝØÚ×ÞJ˜\Ù[[™JN‹ŒYŸHˆ›Üˆ[™^[ˆ˜[™ÙJ[ŠX™[ÊJJBˆ[™\ÈHÙ‰ÏÛ[[™Hš[H››Û™HˆÝ›ÚÙOHˆÌMŒÙXˆˆÝ›ÚÙK]ÚYHŒ‹HˆÚ[ÏHžÜÝØÚ×Û[™_H‹Ï‰×BˆYˆ\Ü\YÝ˜[Y\Î‚ˆ\Ü\YÛ[™HHˆ‹š›Ú[ŠˆˆžÌÍˆ
+È[™^
+ˆÛÝ‹ŒYŸKÜÝØÚ×ÞJ˜[YJN‹ŒYŸHˆ›Üˆ[™^˜[YH[ˆ[[Y\˜]J\Ü\YÝ˜[Y\ÊBˆ
+Bˆ[™\Ë˜\[™
+‰ÏÛ[[™Hš[H››Û™HˆÝ›ÚÙOHˆÙLLYˆÝ›ÚÙK]ÚYHŒ‹HˆÚ[ÏHžÙ\Ü\YÛ[™_H‹Ï‰ÊBˆ[X[™Û[™HHˆ‹š›Ú[ŠˆžÌÍˆ
+È[™^
+ˆÛÝ‹ŒYŸKÙ[X[™ÞN‹ŒYŸHˆ›Üˆ[™^[ˆ˜[™ÙJ[ŠX™[ÊJJBˆ[™\Ë˜\[™
+ˆ‰ÏÛ[[™Hš[H››Û™HˆÝ›ÚÙOHˆÍÍˆˆÝ›ÚÙK]ÚYHŒ‹HˆÝ›ÚÙKY\Ú\œ˜^OHˆˆÚ[ÏHžÙ[X[™Û[™_H‹Ï‰Âˆ
+BˆÜšYH×Bˆ›Üˆœ˜XÝ[Û‹X™[[ˆ
+
+ŒŠK
+KØÛÛ\XÝÝ[š]ÊÝØÚ×ÜXZÈ
+ˆJJK
+KØÛÛ\XÝÝ[š]ÊÝØÚ×ÜXZÊJJN‚ˆHHLNH
+Mˆ
+ˆœ˜XÝ[ÛŠBˆÜšY˜\[™
+‰Ï[™HOHŒÍˆˆLOHžÞN‹ŒYŸHˆHŒLˆLHžÞN‹ŒYŸHˆÝ›ÚÙOHˆÙL™NŒ‹Ï‰ÊBˆÜšY˜\[™
+‰Ï^HŒˆˆOHžÞH
+È‹ŒYŸHˆ›Û\Ú^™OHŒLˆš[HˆÍÍˆžÛX™[OÝ^‰ÊBˆÜšY˜\[™
+‰Ï^HŒLˆˆOHžÙ[X[™ÞH
+È‹ŒYŸHˆ›Û\Ú^™OHŒLˆš[HˆÍÍˆž×ØÛÛ\XÝÝ[š]Ê[X[™
+_OÝ^‰ÊBˆÜšY˜\[™
+	Ï^HŒÍˆˆOHŒMˆ›Û\Ú^™OHŒLˆš[HˆÍÍˆ”™XÛÜ™YÝØÚÈ
+[š]ÊOÝ^‰ÊBˆÜšY˜\[™
+	Ï^HÌˆOHŒMˆ›Û\Ú^™OHŒLˆš[HˆÍÍˆ”™\]Z\™Y[š]È
+[™^ØØ[JOÝ^‰ÊBˆ^\ÈHˆ‹š›Ú[Šˆ‰Ï^HžÌÍˆ
+È[™^
+ˆÛÝ‹ŒYŸHˆOHŒLÎˆ›Û\Ú^™OHŒLHˆš[HˆÍÍˆžÚ[™\ØØ\JX™[
+_OÝ^‰Âˆ›Üˆ[™^X™[[ˆ[[Y\˜]JX™[ÊBˆ
+BˆYÙ[™H
+ˆ	ÏÛ\ÜÏH˜Ý‹X\[Y]H‰Âˆ	ÏÜ[ˆÝ[OH˜ÛÛÜŽˆÌMŒÙXˆ˜\Ù[[™HÝ\H
+[Ù[Y
+OÜÜ[ˆ0­È	Âˆ‰ÏÜ[ˆÝ[OH˜ÛÛÜŽˆÙLLYžÚ[™\ØØ\J\Ü\YÛX™[
+_OÜÜ[ˆ0­È	Âˆ‰ÏÜ[ˆÝ[OH˜ÛÛÜŽˆÍÍˆžÚ[™\ØØ\J[X[™ÛX™[
+_OÜÜ[‰ÂˆÜˆ‚ˆ
+Bˆ™]\›ˆ
+ˆ	Ï\XÛHÛ\ÜÏH˜Ý‹X\XÚ\Ï”›Ú™XÝYÝ\HœËˆ[X[™ÚÏ‰Âˆ‰ÏÝ™ÈšY]Ð›ÞHŒÝÚYHMLˆÚYHŒL	HˆZYÚHŒMŽˆ›ÛOHš[YÈˆ\šXK[X™[H”›Ú™XÝYÝ\HœËˆ[X[™‰Âˆ‰ÞÈˆ‹š›Ú[ŠÜšY
+_^Èˆ‹š›Ú[Š[™\Ê_^Ø^\ßOÜÝ™ÏžÛYÙ[™OØ\XÛO‰Âˆ
+B‚‚™YˆØÛÛ\XÝÝ[š]Ê˜[YNˆ›Ø]
+HOˆÝŽ‚ˆ[X™\ˆH›Ø]
+˜[YJBˆYˆXœÊ[X™\ŠHHL‚ˆ™]\›ˆˆžÛ[X™\ˆÈL‹ŒYŸZÈ‚ˆYˆXœÊ[X™\ˆH›Ý[™
+[X™\ŠJHŒN‚ˆ™]\›ˆÝŠ[
+›Ý[™
+[X™\ŠJJBˆ™]\›ˆˆžÛ[X™\Ž‹ŒYŸH‚‚‚™Yˆ[Ù[YÜÝ\WØÚ\
+ˆ
+‹ˆ˜\Ù[[™Nˆ›Ø]›Û™Kˆ\Ü\Yˆ›Ø]›Û™Kˆ[X[™ˆ›Ø]›Û™KˆÝØÚ×Ü™YXÝ[Û—Ü\˜Ù[ˆ[Hˆ[X[™ÙÜ›ÝÝÜ\˜Ù[ˆ[Hˆ\Ü\YÛX™[ˆÝˆHˆ‹ˆ\ÜÝ[\[ÛŽˆÝˆHˆ‹ŠHOˆÝŽ‚ˆˆˆŽLY^HØÙ[˜\š[È[™\Ëˆ\ÙH\™H[Ù[Y›Ú™XÝ[ÛœË›ÝØœÙ\™Y\ÝÜžKˆˆˆ‚ˆX™[ÈHÈ‘^H‹‘^HMH‹‘^HÌ‹‘^HH‹‘^HŒ‹‘^HÍH‹‘^HL—BˆÙ\šY\ÈH×BˆYˆ˜\Ù[[™H\È›Ý›Û™N‚ˆÙ\šY\Ë˜\[™
+
+˜\Ù[[™HÝ\H
+[Ù[Y
+H‹ˆÌMŒÙXˆ‹ÊX™[˜\Ù[[™JH›ÜˆX™[[ˆX™[×JJBˆYˆ\Ü\Y\È›Ý›Û™H[™˜\Ù[[™H\È›Ý›Û™N‚ˆÚ[ÈH×Bˆ›Üˆ[™^X™[[ˆ[[Y\˜]JX™[ÊN‚ˆÚ[Ë˜\[™
+
+X™[˜\Ù[[™HYˆ[™^È[ÙH\Ü\Y
+JBˆÙ\šY\Ë˜\[™
+
+\Ü\YÛX™[Üˆˆ‘\Ü\YÝ\H
+[Ù[YÜÝØÚ×Ü™YXÝ[Û—Ü\˜Ù[IHÝØÚÈÝ]
+H‹ˆÙLLY‹Ú[ÊJBˆYˆ[X[™\È›Ý›Û™N‚ˆÙ\šY\Ë˜\[™
+ˆ
+ˆ‘[X[™›Ü™XØ\Ý
+[Ù[Y™\]Z\™Y[š]È[›]
+HˆYˆ[X[™ÙÜ›ÝÝÜ\˜Ù[OH[ÙHˆ‘[X[™›Ü™XØ\Ý
+[Ù[YÙ[X[™ÙÜ›ÝÝÜ\˜Ù[IHÜ›ÝÝ
+H‹ˆˆÍÍˆ‹ˆÊX™[[X[™
+H›ÜˆX™[[ˆX™[×Kˆ
+Bˆ
+BˆYˆ[X[™\È›Ý›Û™H[™˜\Ù[[™H\È›Ý›Û™N‚ˆ\Ü\YÝ˜[Y\ÈHØ˜\Ù[[™HYˆ[™^È[ÙH\Ü\Y›Üˆ[™^[ˆ˜[™ÙJ[ŠX™[ÊJWBˆÚ\HÙX[ÜØØ[WÜÝ\WØÚ\
+ˆX™[Ëˆ˜\Ù[[™OX˜\Ù[[™Kˆ\Ü\YÝ˜[Y\ÏY\Ü\YÝ˜[Y\ÈYˆ\Ü\Y\È›Ý›Û™H[ÙH›Û™Kˆ[X[™Y[X[™ˆ\Ü\YÛX™[Y\Ü\YÛX™[Üˆ‘\Ü\YÝ\H
+[Ù[Y
+H‹ˆ[X[™ÛX™[H‘[X[™›Ü™XØ\Ý
+[Ù[Y™\]Z\™Y[š]ÊH‹ˆ
+Bˆ[ÙN‚ˆÚ\HÙ\šY\×ØÚ\
+”›Ú™XÝYÝ\HœËˆ[X[™‹Ù\šY\ÊBˆ]Z[H\ÜÝ[\[ÛˆÜˆ
+ˆ˜\Ù[[™HÛÈ™XÛÜ™YÝØÚÈ›]›ÜˆL^\Ëˆ‚ˆˆ‘\Ü\YÝ\H\Y\ÈHÜÝØÚ×Ü™YXÝ[Û—Ü\˜Ù[IHÝØÚË\™YXÝ[ÛˆÛY\ˆY\ˆ^HKˆ‚ˆˆ‘[X[™ÛÈ™\]Z\™Y[š]È›][˜ÛY[™ÈHÙ[X[™ÙÜ›ÝÝÜ\˜Ù[IH[X[™YÜ›ÝÝÛY\‹ˆ‚ˆ
+Bˆ›ÝHH
+ˆÛ\ÜÏIØÝ‹X\[Y]IÏ“[Ù[YØÙ[˜\š[Ë›ÝØœÙ\™Y\ÝÜžKˆ‚ˆˆžÙ]Z[H[X[™\ÈÝYÛˆHX™[Y[™^ØØ[HÛÈ™\]Z\™Y[š]ÈÝ^Hš\ÚX›H™\ÚYH™XÛÜ™YÝØÚËˆ‚ˆ•H]X[]Y\È[\Ù[™\È\™H[˜Ú[™ÙYˆ^\ÈÚ]Ý]H™XÛÜ™Y[œ]Ý^HÙ™ˆH[™KÜˆ‚ˆ
+Bˆ™]\›ˆÚ\
+È›ÝB‚‚™YˆÝ\WÜØÙ[˜\š[×ØÚ\
+\Îˆ\ÝÙXÝÜÝ‹[žWWH›Û™KØÙ[˜\š[ÎˆXÝÜÝ‹[žWH›Û™KÚÚXÙNˆÝŠHOˆÝŽ‚ˆˆˆŽLY^H[™\È›ÜˆH™Y™\™[˜ÙHØÙ[˜\š[ÈÛÛ›Ûˆ\Ü\[Ûˆ\Ù\È™XÛÜ™YÝ\Y\ˆÛÝ[Ëˆˆˆ‚ˆ˜\Ù[[™WÝÝ[HŒˆ\Ü\YÝÝ[HŒˆ]™WÜÝØÚÈH˜[ÙBˆ›Üˆ\[ˆ\ÈÜˆ×N‚ˆYˆ›Ý\Ú[œÝ[˜ÙJ\XÝ
+N‚ˆÛÛ[YBˆ˜]ÈH\™Ù]
+œÝØÚ×Ø]˜Z[X›HŠBˆYˆ˜]È\È›Û™HÜˆÝŠ˜]ÊKœÝš\
+
+HOHˆŽ‚ˆÛÛ[YBˆžN‚ˆÝØÚÈH›Ø]
+˜]ÊBˆ^Ù\
+\Q\œ›Ü‹˜[YQ\œ›ÜŠN‚ˆÛÛ[YBˆ]™WÜÝØÚÈHYBˆ˜\Ù[[™WÝÝ[
+ÏHÝØÚÂˆÛÝ[H›Û™BˆÝ\Y\œÈH\™Ù]
+œÝ\Y\—ØÛÝ[ŠBˆžN‚ˆYˆÝ\Y\œÈ›Ý[ˆ
+›Û™KˆŠN‚ˆÛÝ[H[
+›Ø]
+Ý\Y\œÊJBˆ^Ù\
+\Q\œ›Ü‹˜[YQ\œ›ÜŠN‚ˆÛÝ[H›Û™BˆYˆÚÚXÙHOH”š[X\žHÝ\Y\ˆ\Ü\[Ûˆˆ[™ÛÝ[[™ÛÝ[ˆ‚ˆ\Ü\YÝÝ[
+ÏHÝØÚÈ
+ˆX^
+ÛÝ[HK
+HÈÛÝ[ˆ[ÙN‚ˆ\Ü\YÝÝ[
+ÏHÝØÚÂˆ[X[™H›Û™Bˆ›ÝÜÈH
+ØÙ[˜\š[ÈÜˆßJK™Ù]
+œ›ÝÜÈŠHÜˆ×BˆYˆ›ÝÜÎ‚ˆžN‚ˆ[X[™HÝ[J›Ø]
+›ÝË™Ù]
+”™\]Z\™Y[š]ÈŠHÜˆ
+H›Üˆ›ÝÈ[ˆ›ÝÜÈYˆ\Ú[œÝ[˜ÙJ›ÝËXÝ
+JBˆ^Ù\
+\Q\œ›Ü‹˜[YQ\œ›ÜŠN‚ˆ[X[™H›Û™BˆYˆÚÚXÙHOH”š[X\žHÝ\Y\ˆ\Ü\[ÛˆŽ‚ˆ\ÜÝ[\[ÛˆH
+ˆ”š[X\žHÝ\Y\ˆ\Ü\[Û‹LY^HÜš^›Û‹ˆ‚ˆY\ˆ^HKXXÚ\Ú]H™XÛÜ™YÝ\Y\ˆÛÝ[ÜÙ\ÈÛ™HÝ\Y\‰ÜÈ]™[ˆÚ\™HÙˆ™XÛÜ™YÝØÚËˆ‚ˆ”\ÈÚ]Ý]HÝ\Y\ˆÛÝ[ÙY\™XÛÜ™YÝØÚËˆ[X[™\È™\]Z\™Y[š]Ë[›]ˆ‚ˆ
+Bˆ\Ü\YÛX™[H‘\Ü\YÝ\H
+[Ù[YÛ™HÝ\Y\ˆÚ\™H™[[Ý™Y
+H‚ˆ[ÙN‚ˆ\ÜÝ[\[ÛˆH“›È\Ü\[ÛˆÙ[XÝYˆ\Ü\YÝ\HX]Ú\È™XÛÜ™YÝØÚÈXÜ›ÜÜÈHLY^HÜš^›Û‹ˆ[X[™\È™\]Z\™Y[š]Ë[›]ˆ‚ˆ\Ü\YÛX™[H‘\Ü\YÝ\H
+[Ù[Y›È\Ü\[ÛŠH‚ˆ™]\›ˆ[Ù[YÜÝ\WØÚ\
+ˆ˜\Ù[[™OX˜\Ù[[™WÝÝ[Yˆ]™WÜÝØÚÈ[ÙH›Û™Kˆ\Ü\YY\Ü\YÝÝ[Yˆ]™WÜÝØÚÈ[ÙH›Û™Kˆ[X[™Y[X[™ˆ\Ü\YÛX™[Y\Ü\YÛX™[ˆ\ÜÝ[\[ÛX\ÜÝ[\[Û‹ˆ
+B‚‚™Yˆ^Ù[Øž]\Ê›ÝÜÎˆ\ÝÙXÝÜÝ‹[žWWJHOˆž]\Î‚ˆ[\Ü[™\È\È‚ˆœ˜[YHH‘]Qœ˜[YJ›ÝÜÊBˆY™™\ˆH[Ëž]\ÒSÊ
+Bˆœ˜[YK×Ù^Ù[
+Y™™\‹[™^Q˜[ÙJBˆ™]\›ˆY™™\‹™Ù]˜[YJ
+B‚‚™YˆÛ˜]šYØ]WØ˜XÚ×Ý×Ø›ÛWÜ™]šY]ÊÛÛ^ˆXÝÜÝ‹[žWJHOˆ›ÛÛ‚ˆˆˆ”™\ÝÜ™HH“ÓH™\Ü]][˜ÚYHÝ\œ™[™\XÙ[Y[ÙX\˜Úˆˆˆ‚ˆ[˜[\Ú\×ÚYHÝŠÛÛ^™Ù]
+˜[˜[\Ú\×ÚYŠHÜˆˆŠKœÝš\
+
+BˆYˆ›Ý[˜[\Ú\×ÚY‚ˆ™]\›ˆ˜[ÙB‚ˆœ›ÛHÜ˜ËZK›˜]šYØ][Ûˆ[\Ü˜]šYØ]WÝÂ‚ˆÛÝ\˜ÙWÜYÙHHÝŠÛÛ^™Ù]
+œÛÝ\˜ÙWÜYÙHŠHÜˆˆŠBˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜ØY]›Ü—ØXÝ]™WØ[˜[\Ú\×ÚY—HH[˜[\Ú\×ÚYˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜[˜[\Ú\×ÚY—HH[˜[\Ú\×ÚYˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜ØY]›Ü—Ü[™[™×Ø[˜[\Ú\×ÜÙXÝ[Ûˆ—HH‘[™Ú[™Y\š[™È[[YÙ[˜ÙH‚ˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜ØY]›Ü—Ü[™[™×Ø[˜[\Ú\×ÜÙXÝ[Û—ÚY—HH[˜[\Ú\×ÚYˆYˆÛÝ\˜ÙWÜYÙHOH™[™Ú[™Y\š[™×Ú[[YÙ[˜ÙWÜ™]šY]ÈŽ‚ˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜ØY]›Ü—ÜÚÝ×Ù]Z[YÜš\ÚÈ—HH˜[ÙBˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜ØY]›Ü—ÙZWÜ™\ÜÝXˆ—HH“ÓHš\ÚÈ‚ˆ[YˆÛÝ\˜ÙWÜYÙHOH™]Z[YÜš\Ú×Ü™\ÜŽ‚ˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜ØY]›Ü—ÜÚÝ×Ù]Z[YÜš\ÚÈ—HHYBˆÛÝ\˜ÙWÛ\ˆHÝŠÛÛ^™Ù]
+›\ˆŠHÜˆÛÛ^™Ù]
+›ÜšYÚ[˜[Ü\ŠHÜˆˆŠKœÝš\
+
+BˆYˆÛÝ\˜ÙWÛ\Ž‚ˆÝœÙ\ÜÚ[Û—ÜÝ]VÙˆ˜ØY]›Ü—Ù]Z[YÜš\Ú×Û\—ÞØ[˜[\Ú\×ÚYH—HHÛÝ\˜ÙWÛ\‚‚ˆ˜]šYØ]WÝÊˆ[˜[\Ú\È]Z[È‹ˆ[˜[\Ú\×ÚYX[˜[\Ú\×ÚYˆ[˜[\Ú\×ÝXH‘[™Ú[™Y\š[™È[[YÙ[˜ÙH‹ˆÜ™\[Q˜[ÙKˆ\›WÛÜ[š[™ÏQ˜[ÙKˆ
+Bˆ™]\›ˆYB‚‚™YˆÙ]\ÚY]Ý\›
+\ˆXÝÜÝ‹[žWH›Û™JHOˆÝŽ‚ˆ\H\Yˆ\Ú[œÝ[˜ÙJ\XÝ
+H[ÙHßBˆ›ÜˆÙ^H[ˆ
+™]\ÚY]Ý\›‹‘]\ÚY]T“‹™]\ÚY]\›‹‘]HÚY]T“ŠN‚ˆ\›HØØ[™Y]WÚÝ\›
+\™Ù]
+Ù^JJBˆYˆ\›‚ˆ™]\›ˆ\›ˆ\ØÛÝ™\žHH\™Ù]
+—Ù\ØÛÝ™\žWÜ›ÝÈŠBˆYˆ\Ú[œÝ[˜ÙJ\ØÛÝ™\žKXÝ
+N‚ˆ›ÜˆÙ^H[ˆ
+™]\ÚY]Ý\›‹‘]\ÚY]T“‹™]\ÚY]\›‹‘]HÚY]T“ŠN‚ˆ\›HØØ[™Y]WÚÝ\›
+\ØÛÝ™\žK™Ù]
+Ù^JJBˆYˆ\›‚ˆ™]\›ˆ\›ˆ™]\›ˆˆ‚‚‚™YˆÙ]\ÚY]Ù]šY[˜ÙWÚÙ^JˆÛÝ\˜ÙWÛ\ŽˆÝ‹ˆØ[™Y]WÛ\ŽˆÝ‹ˆÛÝ\˜ÙWÝ\›ˆÝ‹ˆØ[™Y]WÝ\›ˆÝ‹ˆÛÝ\˜ÙWÝ\ØYÙš[™Ù\œš[ˆÝˆHˆ‹ˆØ[™Y]WÝ\ØYÙš[™Ù\œš[ˆÝˆHˆ‹ŠHOˆÝŽ‚ˆX]\šX[HŸ‹š›Ú[Šˆ˜[YKœÝš\
+
+K˜Ø\ÙY›Û
+
+Bˆ›Üˆ˜[YH[ˆ
+ˆÛÝ\˜ÙWÛ\‹ˆØ[™Y]WÛ\‹ˆÛÝ\˜ÙWÝ\›ˆØ[™Y]WÝ\›ˆÛÝ\˜ÙWÝ\ØYÙš[™Ù\œš[ˆØ[™Y]WÝ\ØYÙš[™Ù\œš[ˆ
+Bˆ
+Bˆ™]\›ˆ˜ØY]›Ü—Ø[Ù]\ÚY]Ü™]šY]×Èˆ
+È\ÚX‹œÚLMŠX]\šX[™[˜ÛÙJ]‹NŠJKš^YÙ\Ý
+
+VÎŒM—B‚‚™YˆÜ™\]Y\ÝÙ]\ÚY]Ü™]šY]ÊÙ\ÜÚ[Û—ÜÝ]WÚÙ^NˆÝŠHOˆ›Û™N‚ˆˆˆ”]Y]YHˆ^˜XÝ[Ûˆœ›ÛHH\›Ý˜[[™[	ÜÈ\™XÝ™]šY]ÈXÝ[Û‹ˆˆˆ‚ˆÝœÙ\ÜÚ[Û—ÜÝ]VÜÙ\ÜÚ[Û—ÜÝ]WÚÙ^WHHYB‚‚™YˆÜ™[™\—Ù]\ÚY]Ù]šY[˜ÙWÜ™]šY]Êˆ
+‹ˆÜšYÚ[˜[ˆXÝÜÝ‹[žWKˆØ[™Y]NˆXÝÜÝ‹[žWKˆÛÝ\˜ÙWÛ\ŽˆÝ‹ˆØ[™Y]WÛ\ŽˆÝ‹ˆÙ^WÜÝY™š^ˆÝ‹ŠHOˆXÝÜÝ‹[žWN‚ˆˆˆ]]ÛX]XØ[H[˜[^™H[šÙYX[Y˜XÝ\™\ˆœÈ[™ÛÛXÝ™]šY]Ù\ˆÚ]][ÛœËˆˆˆ‚ˆÛÝ\˜ÙWÝ\›HÙ]\ÚY]Ý\›
+ÜšYÚ[˜[
+BˆØ[™Y]WÝ\›HÙ]\ÚY]Ý\›
+Ø[™Y]JBˆÛÝ\˜ÙWÝ\ØYH›Û™BˆØ[™Y]WÝ\ØYH›Û™BˆÛÝ\˜ÙWÝ\ØYØž]\ÈHˆˆ‚ˆØ[™Y]WÝ\ØYØž]\ÈHˆˆ‚ˆÛÝ\˜ÙWÝ\ØYÙš[™Ù\œš[Hˆ‚ˆØ[™Y]WÝ\ØYÙš[™Ù\œš[Hˆ‚ˆ\ØYYÜÛÝ\˜ÙHH›Û™Bˆ\ØYYØØ[™Y]HH›Û™Bˆ™]šY]×ÚÙ^HHÙ]\ÚY]Ù]šY[˜ÙWÚÙ^JˆÛÝ\˜ÙWÛ\‹ˆØ[™Y]WÛ\‹ˆÛÝ\˜ÙWÝ\›ˆØ[™Y]WÝ\›ˆ
+Bˆ™]šY]×Ü™\]Y\ÝÚÙ^HHˆ˜ØY]›Ü—Ø[Ù]\ÚY]Ü™]šY]×Ü™\]Y\ÝÞÚÙ^WÜÝY™š^H‚ˆÚ]Ý™^[™\Š‘]\ÚY]	ˆØÝ[Y[][Ûˆ™]šY]È‹^[™YUYJN‚ˆÝ˜Ø\[ÛŠˆØY]›Üˆ]]ÛX]XØ[H™]šY]™\È[™[˜[^™\È]˜Z[X›HÝ\Y\‹ÛX[Y˜XÝ\™\ˆœË[ˆÚÝÜÈYÙKXÚ]Yš[™[™ÜËˆ™]šY]ÈH[šÙYØÝ[Y[È[™XÚØYÙH˜]Ú[™ÜÈ™Y›Ü™H\›Ýš[™ÎÈ[ˆ\ØY\ÈÛ›HH˜[˜XÚÈÚ[ˆ›ÈÛÜšÚ[™È[šÈ\È]˜Z[X›Kˆ‚ˆ
+Bˆ[š×ØÛÛÈHÝ˜ÛÛ[[œÊŠBˆ›ÜˆÛÛ[[‹X™[\›[ˆ
+ˆ
+[š×ØÛÛÖÌK“Ü[ˆÛÝ\˜ÙH]\ÚY]‹ÛÝ\˜ÙWÝ\›
+Kˆ
+[š×ØÛÛÖÌWK“Ü[ˆØ[™Y]H]\ÚY]‹Ø[™Y]WÝ\›
+Kˆ
+N‚ˆÚ]ÛÛ[[Ž‚ˆYˆ\›‚ˆÝ›[š×Ø]ÛŠX™[\›\ÙWØÛÛZ[™\—ÝÚYUYJBˆ[ÙN‚ˆÝ˜Ø\[ÛŠX™[œ™\XÙJ“Ü[ˆ‹ˆŠH
+Èˆ›ÝÝ\YYžHHØ][ÙËˆŠB‚ˆÚ]Ý™^[™\Š“Ü[Û˜[ˆ\ØYÜˆ™\XÙHH]\ÚY]‹^[™YQ˜[ÙJN‚ˆÝ˜Ø\[ÛŠˆ–[ÝHÈ›Ý™YYÈ\ØYHš[HÚ[ˆØY]›Üˆ\ÈHÛÜšÚ[™ÈÝ\Y\‹ÛX[Y˜XÝ\™\ˆˆ[šËˆ\ÙH\ÈÛ›HÚ[ˆH[šÈ\ÈZ\ÜÚ[™ËÝ]]YÜˆÚ[ÈÈHÜ›Û™ÈØÝ[Y[ˆ‚ˆ
+Bˆ\ØYØÛÛÈHÝ˜ÛÛ[[œÊŠBˆÚ]\ØYØÛÛÖÌN‚ˆ\ØYYÜÛÝ\˜ÙHHÝ™š[WÝ\ØY\Šˆ“Ü[Û˜[ÛÝ\˜ÙHˆ‹ˆ\OVÈœˆ—KˆÙ^OYˆ˜ØY]›Ü—Ø[ÜÛÝ\˜ÙWÜ—ÞÚÙ^WÜÝY™š^H‹ˆ[H‘˜[˜XÚÈ›ÜˆHZ\ÜÚ[™ÈÜˆÝ]]YÛÝ\˜ÙH]\ÚY][šËˆ‹ˆ
+BˆÚ]\ØYØÛÛÖÌWN‚ˆ\ØYYØØ[™Y]HHÝ™š[WÝ\ØY\Šˆ“Ü[Û˜[Ø[™Y]Hˆ‹ˆ\OVÈœˆ—KˆÙ^OYˆ˜ØY]›Ü—Ø[ØØ[™Y]WÜ—ÞÚÙ^WÜÝY™š^H‹ˆ[H‘˜[˜XÚÈ›ÜˆHZ\ÜÚ[™ÈÜˆÝ]]YØ[™Y]H]\ÚY][šËˆ‹ˆ
+B‚ˆÛÝ\˜ÙWÝ\ØYØž]\ÈH\ØYYÜÛÝ\˜ÙK™Ù]˜[YJ
+HYˆ\ØYYÜÛÝ\˜ÙH\È›Ý›Û™H[ÙHˆˆ‚ˆØ[™Y]WÝ\ØYØž]\ÈH\ØYYØØ[™Y]K™Ù]˜[YJ
+HYˆ\ØYYØØ[™Y]H\È›Ý›Û™H[ÙHˆˆ‚ˆYˆ\ØYYÜÛÝ\˜ÙH\È›Ý›Û™N‚ˆÝ™ÝÛ›ØYØ]ÛŠˆ‘ÝÛ›ØYÛÝ\˜ÙHˆÈ[œÜXÝ˜]Ú[™ÜÈ‹ˆ]O\ÛÝ\˜ÙWÝ\ØYØž]\Ëˆš[WÛ˜[YO\ÝŠÙ]]Š\ØYYÜÛÝ\˜ÙK›˜[YH‹œÛÝ\˜ÙKY]\ÚY]œˆŠHÜˆœÛÝ\˜ÙKY]\ÚY]œˆŠKˆZ[YOH˜\XØ][Û‹Üˆ‹ˆÙ^OYˆ˜ØY]›Ü—Ø[ÜÛÝ\˜ÙWÜ—ÙÝÛ›ØYÞÚÙ^WÜÝY™š^H‹ˆ
+BˆYˆ\ØYYØØ[™Y]H\È›Ý›Û™N‚ˆÝ™ÝÛ›ØYØ]ÛŠˆ‘ÝÛ›ØYØ[™Y]HˆÈ[œÜXÝ˜]Ú[™ÜÈ‹ˆ]OXØ[™Y]WÝ\ØYØž]\Ëˆš[WÛ˜[YO\ÝŠÙ]]Š\ØYYØØ[™Y]K›˜[YH‹˜Ø[™Y]KY]\ÚY]œˆŠHÜˆ˜Ø[™Y]KY]\ÚY]œˆŠKˆZ[YOH˜\XØ][Û‹Üˆ‹ˆÙ^OYˆ˜ØY]›Ü—Ø[ØØ[™Y]WÜ—ÙÝÛ›ØYÞÚÙ^WÜÝY™š^H‹ˆ
+BˆÛÝ\˜ÙWÝ\ØYÙš[™Ù\œš[H\ÚX‹œÚLMŠÛÝ\˜ÙWÝ\ØYØž]\ÊKš^YÙ\Ý
+
+VÎŒM—HYˆÛÝ\˜ÙWÝ\ØYØž]\È[ÙHˆ‚ˆØ[™Y]WÝ\ØYÙš[™Ù\œš[H\ÚX‹œÚLMŠØ[™Y]WÝ\ØYØž]\ÊKš^YÙ\Ý
+
+VÎŒM—HYˆØ[™Y]WÝ\ØYØž]\È[ÙHˆ‚ˆ™]šY]×ÚÙ^HHÙ]\ÚY]Ù]šY[˜ÙWÚÙ^JˆÛÝ\˜ÙWÛ\‹ˆØ[™Y]WÛ\‹ˆÛÝ\˜ÙWÝ\›ˆØ[™Y]WÝ\›ˆÛÝ\˜ÙWÝ\ØYÙš[™Ù\œš[ˆØ[™Y]WÝ\ØYÙš[™Ù\œš[ˆ
+Bˆ™]šY]×ÜÝ]HHÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+™]šY]×ÚÙ^JBˆYˆ›Ý\Ú[œÝ[˜ÙJ™]šY]×ÜÝ]KXÝ
+N‚ˆ™]šY]×ÜÝ]HHßBˆ\×ÙØÝ[Y[ÈH›ÛÛ
+ˆÛÝ\˜ÙWÝ\›ÜˆØ[™Y]WÝ\›ÜˆÛÝ\˜ÙWÝ\ØYØž]\ÈÜˆØ[™Y]WÝ\ØYØž]\Âˆ
+BˆYˆ›Ý\×ÙØÝ[Y[Î‚ˆÝš[™›Êˆ“›ÈÝ\Y\‹ÛX[Y˜XÝ\™\ˆˆ[šÈØ\È™]\›™Y›Üˆ\ÈÛÛ\\š\ÛÛ‹ˆØY]›ÜˆØ[››Ý[˜[^™H[ˆ[›[šÙYØÝ[Y[]]ÛX]XØ[Kˆ[ÝHX^HÜ[Û˜[H\ØYHˆÜˆÚ]HHÛÛ›ÛYØÝ[Y[È[ÝH™]šY]ÙYˆ‚ˆ
+B‚ˆ™]šY]×ÜÝ]HH™]šY]×ÜÝ]HYˆ\Ú[œÝ[˜ÙJ™]šY]×ÜÝ]KXÝ
+H[ÙHßBˆ™]šY]×Ü™\]Y\ÝYH›ÛÛ
+ÝœÙ\ÜÚ[Û—ÜÝ]KœÜ
+™]šY]×Ü™\]Y\ÝÚÙ^K˜[ÙJJBˆ™]šY]×ØÛXÚÙYH˜[ÙBˆYˆ\×ÙØÝ[Y[È[™™]šY]×ÜÝ]K™Ù]
+œ™]šY]×ØÛÛ\]YŠN‚ˆ™]šY]×ØÛXÚÙYHÝ˜]ÛŠˆ”™Yœ™\Ú]\ÚY][˜[\Ú\È‹ˆÙ^OYˆ˜ØY]›Ü—Ø[Ù]\ÚY]Ù^˜XÝÞÚÙ^WÜÝY™š^H‹ˆ\OHœÙXÛÛ™\žH‹ˆ[H”™KY™]Ú[šÙYœÈ[™™Yœ™\ÚYÙKXÚ]Y^ˆ[ÝH]\ÝÝ[[œÜXÝXÚØYÙH˜]Ú[™ÜÈ[™[›Ý][Ý\œÙ[‹ˆ‹ˆ
+Bˆ]]×Ü™]šY]×Ü™\]Y\ÝYH›ÛÛ
+ˆ\×ÙØÝ[Y[È[™›Ý™]šY]×ÜÝ]K™Ù]
+œ™]šY]×ØÛÛ\]YŠBˆ
+BˆYˆ\×ÙØÝ[Y[È[™
+ˆ]]×Ü™]šY]×Ü™\]Y\ÝYÜˆ™]šY]×Ü™\]Y\ÝYÜˆ™]šY]×ØÛXÚÙYˆ
+N‚ˆœ›ÛHÜ˜Ë™]\ÚY]ØÛÛ\\š\ÛÛˆ[\Ü
+ˆZ[Ù]\ÚY]Ü™]šY]×Ù]šY[˜ÙKˆ^˜XÝÙ]\ÚY]Ý^ˆ[™™\—ØÛÛ\Û™[Ù˜[Z[Kˆ
+Bˆœ›ÛHÜ˜Ë™]\ÚY]ÜXH[\Ü^˜XÝÝ\ØYYÙ]\ÚY]ˆœ›ÛHÛÛ˜Ý\œ™[™]\™\È[\Ü™XYÛÛ^XÝ]Ü‚‚ˆYˆ^˜XÝÙØÝ[Y[Ê\›ˆÝ‹\ØYYˆ[žK\ØYØž]\Îˆž]\ËÚYNˆÝŠHOˆ\VÙXÝÜÝ‹[žWK\ÝÙXÝÜÝ‹[žWWWN‚ˆØÝ[Y[Îˆ\ÝÙXÝÜÝ‹[žWWHH×Bˆ™\Ý[Îˆ\ÝÝ\VÜÝ‹XÝÜÝ‹[žWKÝ—WHH×BˆYˆ\›‚ˆ™\Ý[Ë˜\[™
+
+”Ý\Y\‹[[šÙYˆ‹^˜XÝÙ]\ÚY]Ý^
+\›
+K\›
+JBˆYˆ\ØYY\È›Ý›Û™H[™\ØYØž]\Î‚ˆš[[˜[YHHÝŠÙ]]Š\ØYY›˜[YH‹›X[Y˜XÝ\™\‹Y]\ÚY]œˆŠHÜˆ›X[Y˜XÝ\™\‹Y]\ÚY]œˆŠBˆ™\Ý[Ë˜\[™
+
+š[[˜[YK^˜XÝÝ\ØYYÙ]\ÚY]
+\ØYØž]\Ëš[[˜[YOYš[[˜[YJKˆŠJBˆYÙ\Îˆ\ÝÙXÝÜÝ‹[žWWHH×Bˆ™X\ÛÛœÎˆ\ÝÜÝ—HH×Bˆ›ÜˆX™[™\Ý[ØÝ[Y[Ý\›[ˆ™\Ý[Î‚ˆ™\Ý[H™\Ý[Yˆ\Ú[œÝ[˜ÙJ™\Ý[XÝ
+H[ÙHßBˆ™XYX›HH™\Ý[™Ù]
+œYÙ\ÈŠHYˆ\Ú[œÝ[˜ÙJ™\Ý[™Ù]
+œYÙ\ÈŠK\Ý
+H[ÙH×BˆYÙWØÛÝ[H[Š™XYX›JBˆØÝ[Y[Ë˜\[™
+ˆÂˆ›˜[YHŽˆX™[ˆ\›ŽˆØÝ[Y[Ý\›ˆ˜]˜Z[X›HŽˆ›ÛÛ
+™\Ý[™Ù]
+˜]˜Z[X›HŠJKˆœYÙWØÛÝ[ŽˆYÙWØÛÝ[ˆœ™X\ÛÛˆŽˆÝŠ™\Ý[™Ù]
+œ™X\ÛÛˆŠHÜˆˆŠKˆœÚYHŽˆÚYKˆBˆ
+Bˆ›ÜˆYÙH[ˆ™XYX›N‚ˆYˆ\Ú[œÝ[˜ÙJYÙKXÝ
+N‚ˆYÙ\Ë˜\[™
+ÊŠœYÙK™ØÝ[Y[ŽˆX™[JBˆYˆ™\Ý[™Ù]
+œ™X\ÛÛˆŠN‚ˆ™X\ÛÛœË˜\[™
+ˆžÛX™[NˆÜ™\Ý[ÉÜ™X\ÛÛ‰×_HŠBˆÛÛXš[™YHÂˆ˜]˜Z[X›HŽˆ›ÛÛ
+YÙ\ÊKˆœ™X\ÛÛˆŽˆŽÈ‹š›Ú[Š™X\ÛÛœÊHYˆ›ÝYÙ\È[ÙHˆ‹ˆœYÙ\ÈŽˆYÙ\ËˆœYÙWØÛÝ[Žˆ[ŠYÙ\ÊKˆBˆ™]\›ˆÛÛXš[™YØÝ[Y[Â‚ˆÚ]ÝœÜ[›™\ŠØY]›Üˆ\È™]Ú[™È[šÙY]\ÚY]È[™^˜XÝ[™ÈYÙKXÚ]Y]šY[˜Ùx )ˆŠN‚ˆÚ]™XYÛÛ^XÝ]ÜŠX^ÝÛÜšÙ\œÏLŠH\ÈÛÛ‚ˆÛÝ\˜ÙWÙ]\™HHÛÛœÝX›Z]
+ˆ^˜XÝÙØÝ[Y[ËˆÛÝ\˜ÙWÝ\›ˆ\ØYYÜÛÝ\˜ÙKˆÛÝ\˜ÙWÝ\ØYØž]\Ëˆ”ÛÝ\˜ÙH‹ˆ
+BˆØ[™Y]WÙ]\™HHÛÛœÝX›Z]
+ˆ^˜XÝÙØÝ[Y[ËˆØ[™Y]WÝ\›ˆ\ØYYØØ[™Y]KˆØ[™Y]WÝ\ØYØž]\ËˆØ[™Y]H‹ˆ
+BˆÛÝ\˜ÙWÜ‹ÛÝ\˜ÙWÙØÝ[Y[ÈHÛÝ\˜ÙWÙ]\™Kœ™\Ý[
+
+BˆØ[™Y]WÜ‹Ø[™Y]WÙØÝ[Y[ÈHØ[™Y]WÙ]\™Kœ™\Ý[
+
+Bˆ]šY[˜ÙHHZ[Ù]\ÚY]Ü™]šY]×Ù]šY[˜ÙJˆÛÝ\˜ÙWÜ‹ˆØ[™Y]WÜ‹ˆ[™™\—ØÛÛ\Û™[Ù˜[Z[JÜšYÚ[˜[ÜˆØ[™Y]JKˆ
+Bˆ]šY[˜ÙK\]JˆÂˆœÛÝ\˜ÙWÝ\›ŽˆÛÝ\˜ÙWÝ\›ˆ˜Ø[™Y]WÝ\›ŽˆØ[™Y]WÝ\›ˆœÛÝ\˜ÙWÙØÝ[Y[ÈŽˆÛÝ\˜ÙWÙØÝ[Y[Ëˆ˜Ø[™Y]WÙØÝ[Y[ÈŽˆØ[™Y]WÙØÝ[Y[ËˆœÛÝ\˜ÙWÝ\ØYÙš[™Ù\œš[ŽˆÛÝ\˜ÙWÝ\ØYÙš[™Ù\œš[ˆ˜Ø[™Y]WÝ\ØYÙš[™Ù\œš[ŽˆØ[™Y]WÝ\ØYÙš[™Ù\œš[ˆœ™]šY]ÙYØ]Žˆ]][YK››ÝÊ[Y^›Û™K]ÊKš\ÛÙ›Ü›X]
+
+KˆœÛÝ\˜ÙWÜˆŽˆÛÝ\˜ÙWÜ‹ˆ˜Ø[™Y]WÜˆŽˆØ[™Y]WÜ‹ˆœ™]šY]×ØÛÛ\]YŽˆYKˆBˆ
+BˆÝœÙ\ÜÚ[Û—ÜÝ]VÜ™]šY]×ÚÙ^WHH]šY[˜ÙBˆ™]šY]×ÜÝ]HH]šY[˜ÙB‚ˆYˆ™]šY]×ÜÝ]N‚ˆ›ÜˆX™[ÚYWÚÙ^KØÜ×ÚÙ^H[ˆ
+ˆ
+”ÛÝ\˜ÙH‹œÛÝ\˜ÙWÜˆ‹œÛÝ\˜ÙWÙØÝ[Y[ÈŠKˆ
+Ø[™Y]H‹˜Ø[™Y]WÜˆ‹˜Ø[™Y]WÙØÝ[Y[ÈŠKˆ
+N‚ˆØÝ[Y[ÈHÂˆ][H›Üˆ][H[ˆ™]šY]×ÜÝ]K™Ù]
+ØÜ×ÚÙ^JHÜˆ×HYˆ\Ú[œÝ[˜ÙJ][KXÝ
+BˆBˆYˆØÝ[Y[Î‚ˆ›ÜˆØÝ[Y[[ˆØÝ[Y[Î‚ˆ˜[YHHÝŠØÝ[Y[™Ù]
+›˜[YHŠHÜˆ”ˆŠBˆYˆØÝ[Y[™Ù]
+˜]˜Z[X›HŠN‚ˆÝœÝXØÙ\ÜÊˆˆžÛX™[H0­ÈÛ˜[Y_Nˆ^˜XÝY™XYX›H^œ›ÛHÙØÝ[Y[™Ù]
+	ÜYÙWØÛÝ[	ÊHÜˆHYÙJÊKˆ‚ˆ
+Bˆ[ÙN‚ˆ™X\ÛÛˆHÝŠØÝ[Y[™Ù]
+œ™X\ÛÛˆŠHÜˆ“Ü[ˆHØÝ[Y[[™™]šY]È]\™XÝKˆŠBˆÝØ\›š[™ÊˆžÛX™[H0­ÈÛ˜[Y_NˆÜ™X\ÛÛŸHŠBˆ[ÙN‚ˆØÝ[Y[H™]šY]×ÜÝ]K™Ù]
+ÚYWÚÙ^JHÜˆßBˆYˆØÝ[Y[™Ù]
+˜]˜Z[X›HŠN‚ˆÝœÝXØÙ\ÜÊˆˆžÛX™[Nˆ^˜XÝY™XYX›H^œ›ÛHÛ[ŠØÝ[Y[™Ù]
+	ÜYÙ\ÉÊHÜˆ×J_HˆYÙJÊKˆ‚ˆ
+Bˆ[ÙN‚ˆÝØ\›š[™ÊˆžÛX™[Nˆ›È™XYX›Hˆ^Ø\È^˜XÝYˆÜ[ˆHØÝ[Y[[™™]šY]È]\™XÝKˆŠB‚ˆšY[ÈH™]šY]×ÜÝ]K™Ù]
+™šY[Ù]šY[˜ÙHŠHÜˆ×BˆYˆšY[Î‚ˆ›ÝÜ×Ú[H×Bˆ›Üˆ›ÝÈ[ˆšY[Î‚ˆ›ÝÜ×Ú[˜\[™
+ˆˆ‚ˆˆž×Ù\ØÊ›ÝË™Ù]
+	Ð]šX]IÊHÜˆ	ÉÊ_OÝˆ‚ˆˆž×Ù\ØÊ›ÝË™Ù]
+	ÓÜšYÚ[˜[ˆ]šY[˜ÙIÊHÜˆ	Ó›Ý›Ý[™	Ê_OÝˆ‚ˆˆž×Ù\ØÊ›ÝË™Ù]
+	ÐØ[™Y]Hˆ]šY[˜ÙIÊHÜˆ	Ó›Ý›Ý[™	Ê_OÝˆ‚ˆˆž×Ù\ØÊ›ÝË™Ù]
+	ÔÛÝ\˜ÙHYÙ\ÉÊHÜˆ	Ó›Ý]˜Z[X›IÊ_OÝˆ‚ˆˆž×Ù\ØÊ›ÝË™Ù]
+	ÔÝ]\ÉÊHÜˆ	Ó™YYÈ]IÊ_OÝˆ‚ˆÝˆ‚ˆ
+BˆÝ›X\šÙÝÛŠˆ]ˆÛ\ÜÏIØÝ‹X\XØ\™	ÏX›HÛ\ÜÏIØÝ‹X\]X›IÏXYˆ‚ˆ]šX]OÝ”ÛÝ\˜ÙH]\ÚY]ÝØ[™Y]H]\ÚY]Ýˆ‚ˆˆ‘ØÝ[Y[YÙOÝ‘š[™[™ÏÝÝÝXY›ÙOžÉÉËš›Ú[Š›ÝÜ×Ú[
+_H‚ˆÝ›ÙOÝX›OÙ]ˆ‹ˆ[œØY™WØ[Ý×Ú[UYKˆ
+B‚ˆ›ÜˆX™[ØÝ[Y[ÚÙ^H[ˆ
+
+”ÛÝ\˜ÙH‹œÛÝ\˜ÙHŠK
+Ø[™Y]H‹˜Ø[™Y]HŠJN‚ˆØÝ[Y[Ù]šY[˜ÙHH™]šY]×ÜÝ]K™Ù]
+ØÝ[Y[ÚÙ^JHÜˆßBˆ^Ù\œÈHØÝ[Y[Ù]šY[˜ÙK™Ù]
+™[Y[œÚ[Û—Ù]šY[˜ÙHŠHÜˆ×BˆÚ]Ý™^[™\ŠˆˆžÛX™[HXÚØYÙHÈ[Y[œÚ[Ûˆ^Ù\œÈ
+Û[Š^Ù\œÊ_JH‹ˆ^[™YQ˜[ÙKˆ
+N‚ˆYˆ^Ù\œÎ‚ˆ›Üˆ^Ù\œ[ˆ^Ù\œÎ‚ˆØ×ÛX™[HÝŠ^Ù\œ™Ù]
+™ØÝ[Y[ŠHÜˆ‘]\ÚY]ŠBˆÝ›X\šÙÝÛŠˆˆŠŠž×Ù\ØÊØ×ÛX™[
+_H0­ÈYÙH×Ù\ØÊ^Ù\œ™Ù]
+	ÜYÙIÊHÜˆ	ÏÉÊ_JŠˆ0­È‚ˆˆž×Ù\ØÊ^Ù\œ™Ù]
+	Ù^Ù\œ	ÊHÜˆ	ÉÊ_H‚ˆ
+Bˆ[ÙN‚ˆÝ˜Ø\[ÛŠˆ“›È^X˜\ÙYXÚØYÙHÜˆ[Y[œÚ[Ûˆ^Ù\œØ\È›Ý[™ˆÜ[ˆHXÚØYÙK[Ý][™H˜]Ú[™È[ˆHŽÈ˜]Ú[™ÜÈ[™ØØ[›™YYÙ\ÈX^H›Ý™H^˜XÝX›H\È^ˆ‚ˆ
+BˆÝ˜Ø\[ÛŠˆ•\ÙHÚ]][ÛœÈÚ[È^˜XÝY^È^H\™H›Ý[ˆ]]ÛX]XÈš]™\™XÝˆÛÛ™š\›HHXÚØYÙK[Ý][™H˜]Ú[™Ë[Y[œÚ[ÛœË[ˆ]Ú[™[›Ý][ˆHÜšYÚ[˜[X[Y˜XÝ\™\ˆØÝ[Y[Ëˆ[XYÙK[Û›HYÙ\È™\]Z\™H\™XÝš\ÝX[™]šY]Ëˆ‚ˆ
+B‚ˆÝ›X\šÙÝÛŠŠŠ”™XÛÜ™˜[Y\È™\šYšYYœ›ÛHHÚ]YØÝ[Y[ÊŠˆŠBˆÝ˜Ø\[ÛŠˆØY]›ÜˆÛ›H\Ù\È\ÙH[šY\ÈÈš[Z\ÜÚ[™ÈØ][ÙÈÜˆÛÛ\\š\ÛÛˆ˜[Y\ËˆHÛ›ÝÛˆZ\ÛX]ÚØ[››Ý™HÝ™\œšY[ˆ\™Kˆ‚ˆ
+B‚ˆYˆ™XÛÜ™YÝ˜[YJ\ˆXÝÜÝ‹[žWK
+šÙ^\ÎˆÝŠHOˆÝŽ‚ˆ™]\›ˆÜ\ÙšY[
+\
+šÙ^\ÊB‚ˆÛÝ\˜ÙWØÛÛ[[œÈHÝ˜ÛÛ[[œÊŠBˆÚ]ÛÝ\˜ÙWØÛÛ[[œÖÌN‚ˆÛÝ\˜ÙWÜXÚØYÙHHÝ^Ú[œ]
+ˆ”ÛÝ\˜ÙHXÚØYÙHÈØ\ÙH‹ˆ˜[YO\™XÛÜ™YÝ˜[YJÜšYÚ[˜[œXÚØYÙH‹”XÚØYÙH‹”XÚØYÙHÈØ\ÙHŠKˆÙ^OYˆ˜ØY]›Ü—Ø[ÜÛÝ\˜ÙWÜXÚØYÙWÞÚÙ^WÜÝY™š^H‹ˆ\ØX›YX›ÛÛ
+™XÛÜ™YÝ˜[YJÜšYÚ[˜[œXÚØYÙH‹”XÚØYÙH‹”XÚØYÙHÈØ\ÙHŠJKˆ[HH™XÛÜ™Y˜[YH\ÈØÚÙYÛÈHÛ›ÝÛˆZ\ÛX]ÚØ[››Ý™HY]Y]Ø^Kˆ‹ˆ
+BˆÛÝ\˜ÙWÜ[œÈHÝ^Ú[œ]
+ˆ”ÛÝ\˜ÙH[ˆÛÝ[‹ˆ˜[YO\™XÛÜ™YÝ˜[YJÜšYÚ[˜[œ[—ØÛÝ[‹”[ˆÛÝ[‹“[X™\ˆÙˆ[œÈ‹œ[œÈŠKˆÙ^OYˆ˜ØY]›Ü—Ø[ÜÛÝ\˜ÙWÜ[œ×ÞÚÙ^WÜÝY™š^H‹ˆ\ØX›YX›ÛÛ
+™XÛÜ™YÝ˜[YJÜšYÚ[˜[œ[—ØÛÝ[‹”[ˆÛÝ[‹“[X™\ˆÙˆ[œÈ‹œ[œÈŠJKˆ[HH™XÛÜ™Y˜[YH\ÈØÚÙYÛÈHÛ›ÝÛˆZ\ÛX]ÚØ[››Ý™HY]Y]Ø^Kˆ‹ˆ
+BˆÛÝ\˜ÙWØ\˜Ú]XÝ\™HHÝ^Ú[œ]
+ˆ”ÛÝ\˜ÙH›ØÙ\ÜÛÜˆ˜[Z[HÈTÐH
+Yˆ\XØX›JH‹ˆ˜[YO\™XÛÜ™YÝ˜[YJÜšYÚ[˜[˜\˜Ú]XÝ\™H‹‘]šXÙH˜[Z[HÈ\˜Ú]XÝ\™H‹™]šXÙWÙ˜[Z[H‹˜ÛÜ™H‹’TÐHŠKˆÙ^OYˆ˜ØY]›Ü—Ø[ÜÛÝ\˜ÙWØ\˜Ú]XÝ\™WÞÚÙ^WÜÝY™š^H‹ˆ\ØX›YX›ÛÛ
+™XÛÜ™YÝ˜[YJÜšYÚ[˜[˜\˜Ú]XÝ\™H‹‘]šXÙH˜[Z[HÈ\˜Ú]XÝ\™H‹™]šXÙWÙ˜[Z[H‹˜ÛÜ™H‹’TÐHŠJKˆ[HH™XÛÜ™Y˜[YH\ÈØÚÙYÛÈHÛ›ÝÛˆZ\ÛX]ÚØ[››Ý™HY]Y]Ø^Kˆ‹ˆ
+BˆÚ]ÛÝ\˜ÙWØÛÛ[[œÖÌWN‚ˆØ[™Y]WÜXÚØYÙHHÝ^Ú[œ]
+ˆØ[™Y]HXÚØYÙHÈØ\ÙH‹ˆ˜[YO\™XÛÜ™YÝ˜[YJØ[™Y]KœXÚØYÙH‹”XÚØYÙH‹”XÚØYÙHÈØ\ÙHŠKˆÙ^OYˆ˜ØY]›Ü—Ø[ØØ[™Y]WÜXÚØYÙWÞÚÙ^WÜÝY™š^H‹ˆ\ØX›YX›ÛÛ
+™XÛÜ™YÝ˜[YJØ[™Y]KœXÚØYÙH‹”XÚØYÙH‹”XÚØYÙHÈØ\ÙHŠJKˆ[HH™XÛÜ™Y˜[YH\ÈØÚÙYÛÈHÛ›ÝÛˆZ\ÛX]ÚØ[››Ý™HY]Y]Ø^Kˆ‹ˆ
+BˆØ[™Y]WÜ[œÈHÝ^Ú[œ]
+ˆØ[™Y]H[ˆÛÝ[‹ˆ˜[YO\™XÛÜ™YÝ˜[YJØ[™Y]Kœ[—ØÛÝ[‹”[ˆÛÝ[‹“[X™\ˆÙˆ[œÈ‹œ[œÈŠKˆÙ^OYˆ˜ØY]›Ü—Ø[ØØ[™Y]WÜ[œ×ÞÚÙ^WÜÝY™š^H‹ˆ\ØX›YX›ÛÛ
+™XÛÜ™YÝ˜[YJØ[™Y]Kœ[—ØÛÝ[‹”[ˆÛÝ[‹“[X™\ˆÙˆ[œÈ‹œ[œÈŠJKˆ[HH™XÛÜ™Y˜[YH\ÈØÚÙYÛÈHÛ›ÝÛˆZ\ÛX]ÚØ[››Ý™HY]Y]Ø^Kˆ‹ˆ
+BˆØ[™Y]WØ\˜Ú]XÝ\™HHÝ^Ú[œ]
+ˆØ[™Y]H›ØÙ\ÜÛÜˆ˜[Z[HÈTÐH
+Yˆ\XØX›JH‹ˆ˜[YO\™XÛÜ™YÝ˜[YJØ[™Y]K˜\˜Ú]XÝ\™H‹‘]šXÙH˜[Z[HÈ\˜Ú]XÝ\™H‹™]šXÙWÙ˜[Z[H‹˜ÛÜ™H‹’TÐHŠKˆÙ^OYˆ˜ØY]›Ü—Ø[ØØ[™Y]WØ\˜Ú]XÝ\™WÞÚÙ^WÜÝY™š^H‹ˆ\ØX›YX›ÛÛ
+™XÛÜ™YÝ˜[YJØ[™Y]K˜\˜Ú]XÝ\™H‹‘]šXÙH˜[Z[HÈ\˜Ú]XÝ\™H‹™]šXÙWÙ˜[Z[H‹˜ÛÜ™H‹’TÐHŠJKˆ[HH™XÛÜ™Y˜[YH\ÈØÚÙYÛÈHÛ›ÝÛˆZ\ÛX]ÚØ[››Ý™HY]Y]Ø^Kˆ‹ˆ
+Bˆ^˜XÝYØØ[™Y]WÛY™XÞXÛHH™^
+ˆ
+ˆÝŠ›ÝË™Ù]
+Ø[™Y]Hˆ˜[YHŠHÜˆˆŠKœÝš\
+
+Bˆ›Üˆ›ÝÈ[ˆ™]šY]×ÜÝ]K™Ù]
+™šY[Ù]šY[˜ÙHŠHÜˆ×BˆYˆ\Ú[œÝ[˜ÙJ›ÝËXÝ
+H[™ÝŠ›ÝË™Ù]
+’Ù^HŠHÜˆˆŠHOH›Y™XÞXÛWÜÝ]\È‚ˆ
+Kˆˆ‹ˆ
+BˆYˆ^˜XÝYØØ[™Y]WÛY™XÞXÛK˜Ø\ÙY›Û
+
+H[ˆÐÐS‘QUWÐ“S’Î‚ˆ^˜XÝYØØ[™Y]WÛY™XÞXÛHHˆ‚ˆ™XÛÜ™YØØ[™Y]WÛY™XÞXÛHHÜ\ÙšY[
+ˆØ[™Y]Kˆ“Y™XÞXÛH‹ˆ“Y™XÞXÛHÝ]\È‹ˆ›Y™XÞXÛWÜÝ]\È‹ˆ›Y™XÞXÛH‹ˆœ›ÙXÝÜÝ]\È‹ˆ
+BˆØ[™Y]WÛY™XÞXÛWÙY˜][H™XÛÜ™YØØ[™Y]WÛY™XÞXÛHÜˆ^˜XÝYØØ[™Y]WÛY™XÞXÛBˆØ[™Y]WÛY™XÞXÛHHÝ^Ú[œ]
+ˆØ[™Y]HY™XÞXÛHÝ]\È‹ˆ˜[YOXØ[™Y]WÛY™XÞXÛWÙY˜][ˆÙ^OYˆ˜ØY]›Ü—Ø[ØØ[™Y]WÛY™XÞXÛWÞÚÙ^WÜÝY™š^H‹ˆ\ØX›YX›ÛÛ
+™XÛÜ™YØØ[™Y]WÛY™XÞXÛJKˆ[H•[šÛ›ÝÛˆY™XÞXÛH\È›Ý™X]Y\ÈXÝ]™Kˆ[\ˆHX[Y˜XÝ\™\‹XÛÛ™š\›YYÝ]\È[™Ú]H]ÈØÝ[Y[ÜYÙKˆ‹ˆ
+B‚ˆÚ]][Û—ØÛÛÈHÝ˜ÛÛ[[œÊŠBˆÚ]Ú]][Û—ØÛÛÖÌN‚ˆÛÝ\˜ÙWÜ™Y™\™[˜ÙHHÝ^Ú[œ]
+ˆ”ÛÝ\˜ÙHÚ]][Ûˆ0­ÈØÝ[Y[È™]š\Ú[ÛˆÈYÙ\È‹ˆXÙZÛ\H“X[Y˜XÝ\™\ˆ]\ÚY]™]‹XÚØYÙH[™[›Ý]YÙ\È‹ˆÙ^OYˆ˜ØY]›Ü—Ø[ÜÛÝ\˜ÙWÜ™Y™\™[˜ÙWÞÚÙ^WÜÝY™š^H‹ˆ[HÚ]HHYÙ\ÈÚ\™H[ÝH™]šY]ÙYHXÚØYÙHÝ][™K[Y[œÚ[ÛœË[›Ý][™\XØX›H™\]Z\™[Y[Ëˆ\ÙHH[šÙYÛÝ\˜ÙHˆX›Ý™Kˆ‹ˆ
+BˆÚ]Ú]][Û—ØÛÛÖÌWN‚ˆØ[™Y]WÜ™Y™\™[˜ÙHHÝ^Ú[œ]
+ˆØ[™Y]HÚ]][Ûˆ0­ÈØÝ[Y[È™]š\Ú[ÛˆÈYÙ\È‹ˆXÙZÛ\H“X[Y˜XÝ\™\ˆ]\ÚY]™]‹XÚØYÙH[™[›Ý]YÙ\È‹ˆÙ^OYˆ˜ØY]›Ü—Ø[ØØ[™Y]WÜ™Y™\™[˜ÙWÞÚÙ^WÜÝY™š^H‹ˆ[HÚ]HHYÙ\ÈÚ\™H[ÝH™]šY]ÙYHXÚØYÙHÝ][™K[Y[œÚ[ÛœË[›Ý][™\XØX›H™\]Z\™[Y[Ëˆ\ÙHH[šÙYØ[™Y]HˆX›Ý™Kˆ‹ˆ
+B‚ˆ]\ÝYH›ÛÛ
+ˆÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+ˆ˜ØY]›Ü—Ø[ÙØÝ[Y[Ø]\Ý][Û—ÞÚÙ^WÜÝY™š^H‹˜[ÙJBˆ
+Bˆ™]šY]×ÜÝ]HHXÝ
+™]šY]×ÜÝ]HÜˆßJBˆ™]šY]×ÜÝ]VÈ™\šYšYYÝ˜[Y\È—HHÂˆœÛÝ\˜ÙWÜXÚØYÙHŽˆÛÝ\˜ÙWÜXÚØYÙKˆœÛÝ\˜ÙWÜ[—ØÛÝ[ŽˆÛÝ\˜ÙWÜ[œËˆœÛÝ\˜ÙWØ\˜Ú]XÝ\™HŽˆÛÝ\˜ÙWØ\˜Ú]XÝ\™Kˆ˜Ø[™Y]WÜXÚØYÙHŽˆØ[™Y]WÜXÚØYÙKˆ˜Ø[™Y]WÜ[—ØÛÝ[ŽˆØ[™Y]WÜ[œËˆ˜Ø[™Y]WØ\˜Ú]XÝ\™HŽˆØ[™Y]WØ\˜Ú]XÝ\™Kˆ˜Ø[™Y]WÛY™XÞXÛWÜÝ]\ÈŽˆØ[™Y]WÛY™XÞXÛKˆBˆ™]šY]×ÜÝ]VÈœ™]šY]Ù\—Ø]\Ý][Ûˆ—HHÂˆ˜ÛÛ™š\›YYŽˆ›ÛÛ
+]\ÝY
+KˆœÛÝ\˜ÙWÜ™Y™\™[˜ÙHŽˆÝŠÛÝ\˜ÙWÜ™Y™\™[˜ÙHÜˆˆŠKœÝš\
+
+Kˆ˜Ø[™Y]WÜ™Y™\™[˜ÙHŽˆÝŠØ[™Y]WÜ™Y™\™[˜ÙHÜˆˆŠKœÝš\
+
+Kˆœ™XÛÜ™YØ]Žˆ]][YK››ÝÊ[Y^›Û™K]ÊKš\ÛÙ›Ü›X]
+
+HYˆ]\ÝY[ÙHˆ‹ˆBˆ™]šY]×ÜÝ]VÈœ™]šY]×ØÛÛ\]H—HH›ÛÛ
+ˆ]\ÝY[™ÝŠÛÝ\˜ÙWÜ™Y™\™[˜ÙHÜˆˆŠKœÝš\
+
+H[™ÝŠØ[™Y]WÜ™Y™\™[˜ÙHÜˆˆŠKœÝš\
+
+Bˆ
+Bˆ™]šY]×ÜÝ]VÈœ™]šY]×ØÛÛ\]Y—HH›ÛÛ
+™]šY]×ÜÝ]K™Ù]
+œ™]šY]×ØÛÛ\]YŠJBˆ™]šY]×ÜÝ]VÈ™]\ÚY]Ü™]šY]×Ü™\]Z\™Y—HH\×ÙØÝ[Y[Âˆ™]šY]×ÜÝ]VÈœÛÝ\˜ÙWÝ\›—HHÛÝ\˜ÙWÝ\›ˆ™]šY]×ÜÝ]VÈ˜Ø[™Y]WÝ\›—HHØ[™Y]WÝ\›ˆ™]šY]×ÜÝ]VÈœ™]šY]×Ü™\]Y\ÝÚÙ^H—HH™]šY]×Ü™\]Y\ÝÚÙ^Bˆ™]\›ˆ™]šY]×ÜÝ]B‚‚™YˆØ\›Ý˜[Ù]šY[˜ÙWÙ›Ü—ØÛÛ\\š\ÛÛŠˆÜšYÚ[˜[ˆXÝÜÝ‹[žWKˆØ[™Y]NˆXÝÜÝ‹[žWKˆÛÛ\\š\ÛÛ—Ù]šY[˜ÙNˆXÝÜÝ‹[žWH›Û™KŠHOˆ\VÙXÝÜÝ‹[žWKXÝÜÝ‹[žWK\ÝÜÝ—WN‚ˆˆˆ‘š[Z\ÜÚ[™È\›Ý˜[šY[Èœ›ÛHHÛÛ\\š\ÛÛˆ™\Ý[›Üˆ\È“ÓH[™Ù™‹ˆˆˆ‚ˆÛÝ\˜ÙHHXÝ
+ÜšYÚ[˜[ÜˆßJBˆ[\›˜]HHXÝ
+Ø[™Y]HÜˆßJBˆÛÛ™›XÝÎˆ\ÝÜÝ—HH×Bˆ]šY[˜ÙHHÛÛ\\š\ÛÛ—Ù]šY[˜ÙHYˆ\Ú[œÝ[˜ÙJÛÛ\\š\ÛÛ—Ù]šY[˜ÙKXÝ
+H[ÙHßBˆÛÛ\\š\ÛÛˆH]šY[˜ÙK™Ù]
+˜ÛÛ\\š\ÛÛˆŠHYˆ\Ú[œÝ[˜ÙJ]šY[˜ÙK™Ù]
+˜ÛÛ\\š\ÛÛˆŠKXÝ
+H[ÙHßBˆÛÝHÝŠ]šY[˜ÙK™Ù]
+œÛÝŠHÜˆ”\ˆŠBˆYˆÛÝ›Ý[ˆÈ”\ˆ‹”\ÈŸN‚ˆ™]\›ˆÛÝ\˜ÙK[\›˜]KÛÛ™›XÝÂˆØ\™ÚÙ^HHœ\ØˆˆYˆÛÝOH”\ˆˆ[ÙHœ\ØÈ‚ˆÛÝ\˜ÙWØØ\™HÛÛ\\š\ÛÛ‹™Ù]
+œ\ØHŠHYˆ\Ú[œÝ[˜ÙJÛÛ\\š\ÛÛ‹™Ù]
+œ\ØHŠKXÝ
+H[ÙHßBˆØ[™Y]WØØ\™HÛÛ\\š\ÛÛ‹™Ù]
+Ø\™ÚÙ^JHYˆ\Ú[œÝ[˜ÙJÛÛ\\š\ÛÛ‹™Ù]
+Ø\™ÚÙ^JKXÝ
+H[ÙHßBˆ›ÝÜÈHÛÛ\\š\ÛÛ‹™Ù]
+œ›ÝÜÈŠHYˆ\Ú[œÝ[˜ÙJÛÛ\\š\ÛÛ‹™Ù]
+œ›ÝÜÈŠK\Ý
+H[ÙH×Bˆœ›ÛHÜ˜Ë˜ÛÛ\]Xš[]WÙØ]H[\ÜÛÛ\\š\ÛÛ—Ü›Ý×Ü\Ý˜[Y\Â‚ˆÛÝ\˜ÙWÝ˜[Y\ÈHÛÛ\\š\ÛÛ—Ü›Ý×Ü\Ý˜[Y\Ê›ÝÜË”\HŠBˆØ[™Y]WÝ˜[Y\ÈHÛÛ\\š\ÛÛ—Ü›Ý×Ü\Ý˜[Y\Ê›ÝÜËÛÝ
+B‚ˆYˆ\×ÛZ\ÜÚ[™Ê˜[YNˆ[žJHOˆ›ÛÛ‚ˆ™]\›ˆÝŠ˜[YHÜˆˆŠKœÝš\
+
+K˜Ø\ÙY›Û
+
+H[ˆÂˆˆ‹¸ %‹‹H‹¸ $È‹[šÛ›ÝÛˆ‹››Ý™XÛÜ™Y‹››Ý]˜Z[X›H‹›‹ØH‹››Û™H‹›˜[ˆ‹Œ‹ŒŒ‚ˆB‚ˆYˆXÚØYÙWÝÚÙ[Š˜[YNˆ[žJHOˆ\VÜÝ‹‹‹—N‚ˆ[\Ü™B‚ˆ™]\›ˆ\JÛÜY
+™K™š[™[
+ˆ–ØK^—Jß
+ÊÎ——
+ÊOÈ‹ÝŠ˜[YHÜˆˆŠK˜Ø\ÙY›Û
+
+JJJB‚ˆ›Üˆ\™Ù]˜[Y\ËØ\™X™[[ˆ
+ˆ
+ÛÝ\˜ÙKÛÝ\˜ÙWÝ˜[Y\ËÛÝ\˜ÙWØØ\™œÛÝ\˜ÙHŠKˆ
+[\›˜]KØ[™Y]WÝ˜[Y\ËØ[™Y]WØØ\™˜Ø[™Y]HŠKˆ
+N‚ˆ›ÜˆÙ^H[ˆ
+œXÚØYÙH‹œ[—ØÛÝ[‹˜\˜Ú]XÝ\™H‹›Y™XÞXÛWÜÝ]\ÈŠN‚ˆX]š^Ý˜[YHH˜[Y\Ë™Ù]
+Ù^JHÜˆØ\™™Ù]
+Ù^JBˆYˆ\×ÛZ\ÜÚ[™ÊX]š^Ý˜[YJN‚ˆÛÛ[YBˆÝ\œ™[H\™Ù]™Ù]
+Ù^JBˆYˆ›Ý\×ÛZ\ÜÚ[™ÊÝ\œ™[
+N‚ˆØ[YHH
+ˆXÚØYÙWÝÚÙ[ŠÝ\œ™[
+HOHXÚØYÙWÝÚÙ[ŠX]š^Ý˜[YJBˆYˆÙ^HOHœXÚØYÙH‚ˆ[ÙHÝŠÝ\œ™[
+KœÝš\
+
+K˜Ø\ÙY›Û
+
+HOHÝŠX]š^Ý˜[YJKœÝš\
+
+K˜Ø\ÙY›Û
+
+Bˆ
+BˆYˆ›ÝØ[YH[™Ù^H[ˆÈœXÚØYÙH‹œ[—ØÛÝ[‹˜\˜Ú]XÝ\™H‹›Y™XÞXÛWÜÝ]\ÈŸN‚ˆÛÛ™›XÝË˜\[™
+ˆˆžÛX™[]J
+_HÚÙ^Kœ™\XÙJ	×ÉË	È	Ê_H]šY[˜ÙHY™™\œÈ™]ÙY[ˆH[\›˜]]™HÙX\˜Ú[™ÛÛ\\š\ÛÛˆ]Kˆ‚ˆ
+BˆÛÛ[YBˆ\™Ù]ÚÙ^WHHX]š^Ý˜[YBˆYˆX™[OHœÛÝ\˜ÙHŽ‚ˆYˆ\×ÛZ\ÜÚ[™Ê\™Ù]™Ù]
+™]\ÚY]Ý\›ŠJH[™ÛÝ\˜ÙWØØ\™™Ù]
+™]\ÚY]Ý\›ŠN‚ˆ\™Ù]È™]\ÚY]Ý\›—HHÛÝ\˜ÙWØØ\™™Ù]
+™]\ÚY]Ý\›ŠBˆ[ÙN‚ˆYˆ\×ÛZ\ÜÚ[™Ê\™Ù]™Ù]
+™]\ÚY]Ý\›ŠJH[™Ø[™Y]WØØ\™™Ù]
+™]\ÚY]Ý\›ŠN‚ˆ\™Ù]È™]\ÚY]Ý\›—HHØ[™Y]WØØ\™™Ù]
+™]\ÚY]Ý\›ŠBˆYˆ\×ÛZ\ÜÚ[™Ê\™Ù]™Ù]
+›X[Y˜XÝ\™\—Ü\Û[X™\ˆŠJH[™Ø[™Y]WØØ\™™Ù]
+›\ˆŠN‚ˆ\™Ù]È›X[Y˜XÝ\™\—Ü\Û[X™\ˆ—HHØ[™Y]WØØ\™™Ù]
+›\ˆŠBˆYˆ\×ÛZ\ÜÚ[™Ê\™Ù]™Ù]
+™\ØÜš\[ÛˆŠJH[™Ø[™Y]WØØ\™™Ù]
+™\ØÜš\[ÛˆŠN‚ˆ\™Ù]È™\ØÜš\[Ûˆ—HHØ[™Y]WØØ\™™Ù]
+™\ØÜš\[ÛˆŠBˆYˆ\×ÛZ\ÜÚ[™Ê\™Ù]™Ù]
+›X[Y˜XÝ\™\ˆŠJH[™Ø[™Y]WØØ\™™Ù]
+›X[Y˜XÝ\™\ˆŠN‚ˆ\™Ù]È›X[Y˜XÝ\™\ˆ—HHØ[™Y]WØØ\™™Ù]
+›X[Y˜XÝ\™\ˆŠBˆ™]\›ˆÛÝ\˜ÙK[\›˜]K\Ý
+XÝ™œ›ÛZÙ^\ÊÛÛ™›XÝÊJB‚‚™YˆØ\›Ý˜[Ù]\ÚY]ÜÛ˜\ÚÝ
+™]šY]ÎˆXÝÜÝ‹[žWH›Û™JHOˆXÝÜÝ‹[žWN‚ˆˆˆ”\œÚ\ÝHÛÛ˜Ú\ÙH]šY[˜ÙH˜Z[™]™\ˆH[ˆ^ˆˆˆ‚ˆ™]šY]ÈH™]šY]ÈYˆ\Ú[œÝ[˜ÙJ™]šY]ËXÝ
+H[ÙHßB‚ˆYˆØÝ[Y[Ü›ÝÜÊÙ^NˆÝŠHOˆ\ÝÙXÝÜÝ‹[žWWN‚ˆÝ]]H×Bˆ›Üˆ][H[ˆ™]šY]Ë™Ù]
+Ù^JHÜˆ×N‚ˆYˆ›Ý\Ú[œÝ[˜ÙJ][KXÝ
+N‚ˆÛÛ[YBˆÝ]]˜\[™
+ˆÂˆ›˜[YHŽˆÝŠ][K™Ù]
+›˜[YHŠHÜˆ”ˆŠKˆ\›ŽˆÝŠ][K™Ù]
+\›ŠHÜˆˆŠKˆ˜]˜Z[X›HŽˆ›ÛÛ
+][K™Ù]
+˜]˜Z[X›HŠJKˆœYÙWØÛÝ[Žˆ[
+][K™Ù]
+œYÙWØÛÝ[ŠHÜˆ
+Kˆœ™X\ÛÛˆŽˆÝŠ][K™Ù]
+œ™X\ÛÛˆŠHÜˆˆŠVÎŒKˆBˆ
+Bˆ™]\›ˆÝ]]ÎB‚ˆYˆ^Ù\œÜ›ÝÜÊÙ^NˆÝŠHOˆ\ÝÙXÝÜÝ‹[žWWN‚ˆÝ]]H×BˆÚYHH™]šY]Ë™Ù]
+Ù^JHYˆ\Ú[œÝ[˜ÙJ™]šY]Ë™Ù]
+Ù^JKXÝ
+H[ÙHßBˆ›Üˆ][H[ˆ
+ÚYK™Ù]
+™[Y[œÚ[Û—Ù]šY[˜ÙHŠHÜˆ×JVÎN‚ˆYˆ›Ý\Ú[œÝ[˜ÙJ][KXÝ
+N‚ˆÛÛ[YBˆÝ]]˜\[™
+ˆÂˆ™ØÝ[Y[ŽˆÝŠ][K™Ù]
+™ØÝ[Y[ŠHÜˆ”ˆŠKˆœYÙHŽˆÝŠ][K™Ù]
+œYÙHŠHÜˆÈŠKˆ™^Ù\œŽˆÝŠ][K™Ù]
+™^Ù\œŠHÜˆˆŠVÎŒŒKˆBˆ
+Bˆ™]\›ˆÝ]]‚ˆšY[ÈH×Bˆ›Üˆ›ÝÈ[ˆ
+™]šY]Ë™Ù]
+™šY[Ù]šY[˜ÙHŠHÜˆ×JVÎŒL—N‚ˆYˆ›Ý\Ú[œÝ[˜ÙJ›ÝËXÝ
+N‚ˆÛÛ[YBˆšY[Ë˜\[™
+ˆÂˆ˜]šX]HŽˆÝŠ›ÝË™Ù]
+]šX]HŠHÜˆˆŠVÎŽKˆšÙ^HŽˆÝŠ›ÝË™Ù]
+’Ù^HŠHÜˆˆŠVÎŽKˆœÛÝ\˜ÙWÝ˜[YHŽˆÝŠ›ÝË™Ù]
+“ÜšYÚ[˜[ˆ˜[YHŠHÜˆˆŠVÎŒLKˆ˜Ø[™Y]WÝ˜[YHŽˆÝŠ›ÝË™Ù]
+Ø[™Y]Hˆ˜[YHŠHÜˆˆŠVÎŒLKˆœÛÝ\˜ÙWÙ^Ù\œŽˆÝŠ›ÝË™Ù]
+“ÜšYÚ[˜[ˆ]šY[˜ÙHŠHÜˆˆŠVÎŒNKˆ˜Ø[™Y]WÙ^Ù\œŽˆÝŠ›ÝË™Ù]
+Ø[™Y]Hˆ]šY[˜ÙHŠHÜˆˆŠVÎŒNKˆœÛÝ\˜ÙWÜYÙHŽˆÝŠ›ÝË™Ù]
+“ÜšYÚ[˜[ˆYÙHŠHÜˆˆŠVÎŒLŒKˆ˜Ø[™Y]WÜYÙHŽˆÝŠ›ÝË™Ù]
+Ø[™Y]HˆYÙHŠHÜˆˆŠVÎŒLŒKˆœYÙ\ÈŽˆÝŠ›ÝË™Ù]
+”ÛÝ\˜ÙHYÙ\ÈŠHÜˆˆŠVÎŒLŒKˆœÝ]\ÈŽˆÝŠ›ÝË™Ù]
+”Ý]\ÈŠHÜˆ“™YYÈ]HŠVÎKˆBˆ
+Bˆ™]\›ˆÂˆœÛÝ\˜ÙWÝ\›ŽˆÝŠ™]šY]Ë™Ù]
+œÛÝ\˜ÙWÝ\›ŠHÜˆˆŠKˆ˜Ø[™Y]WÝ\›ŽˆÝŠ™]šY]Ë™Ù]
+˜Ø[™Y]WÝ\›ŠHÜˆˆŠKˆœÛÝ\˜ÙWÙØÝ[Y[ÈŽˆØÝ[Y[Ü›ÝÜÊœÛÝ\˜ÙWÙØÝ[Y[ÈŠKˆ˜Ø[™Y]WÙØÝ[Y[ÈŽˆØÝ[Y[Ü›ÝÜÊ˜Ø[™Y]WÙØÝ[Y[ÈŠKˆœÛÝ\˜ÙWÙ[Y[œÚ[ÛœÈŽˆ^Ù\œÜ›ÝÜÊœÛÝ\˜ÙHŠKˆ˜Ø[™Y]WÙ[Y[œÚ[ÛœÈŽˆ^Ù\œÜ›ÝÜÊ˜Ø[™Y]HŠKˆ™šY[Ù]šY[˜ÙHŽˆšY[Ëˆ™ØÝ[Y[Ùš[™[™ÜÈŽˆÜÝŠ˜[YJVÎŒH›Üˆ˜[YH[ˆ™]šY]Ë™Ù]
+™ØÝ[Y[Ùš[™[™ÜÈŠHÜˆ×WVÎŽKˆ™\šYšYYÝ˜[Y\ÈŽˆXÝ
+™]šY]Ë™Ù]
+™\šYšYYÝ˜[Y\ÈŠHÜˆßJKˆœ™]šY]Ù\—Ø]\Ý][ÛˆŽˆXÝ
+™]šY]Ë™Ù]
+œ™]šY]Ù\—Ø]\Ý][ÛˆŠHÜˆßJKˆœ™]šY]×ØÛÛ\]HŽˆ›ÛÛ
+™]šY]Ë™Ù]
+œ™]šY]×ØÛÛ\]HŠJKˆœ™]šY]×ØÛÛ\]YŽˆ›ÛÛ
+™]šY]Ë™Ù]
+œ™]šY]×ØÛÛ\]YŠJKˆœ™]šY]ÙYØ]ŽˆÝŠ™]šY]Ë™Ù]
+œ™]šY]ÙYØ]ŠHÜˆˆŠKˆš[\œ™]][ÛˆŽˆÝŠ™]šY]Ë™Ù]
+š[\œ™]][ÛˆŠHÜˆˆŠVÎLKˆB‚‚™YˆÜ™[™\—Ø›ÛWÜ™\XÙ[Y[Ø\›Ý˜[Êˆ
+‹ˆÛÝ\˜ÙWØÛÛ^ˆ[žKˆ]Y\žNˆÝ‹ˆÜšYÚ[˜[ˆXÝÜÝ‹[žWKˆØ[™Y]NˆXÝÜÝ‹[žWKˆ™XÛÜ™YÙœ›ÛNˆÝˆH‘š[™H™\XÙ[Y[‹ˆÛÛ\\š\ÛÛ—Ù]šY[˜ÙNˆXÝÜÝ‹[žWH›Û™HH›Û™KŠHOˆ›Û™N‚ˆˆˆ”ÚÝÈ\›Ý˜[[™Ø]™YYXÚ\Ú[ÛˆÝ]\È[œÚYHÛ™H^[™YØ[™Y]Kˆˆˆ‚ˆœ›ÛHÜ˜Ë˜\›Ý™YØ[\›˜]]™\È[\Ü
+ˆ\›Ý™YÜ™XÛÜ™×Ù›Ü—Ü\ˆØ[™Y]WÛY™XÞXÛWÚ\×Ø›ØÚÙYˆ\ÚÙ^Kˆ›Ú™XÝÙXÚ\Ú[Û—ØÛÛ^ÚÙ^Kˆ
+Bˆœ›ÛHÜ˜Ë››Ü›X[^™\ˆ[\Ü›Ü›X[^™WÜ\Û[X™\‚‚ˆÛÛ^HÛÝ\˜ÙWØÛÛ^Yˆ\Ú[œÝ[˜ÙJÛÝ\˜ÙWØÛÛ^XÝ
+H[ÙHßBˆÛÝ\˜ÙWÛ\ˆHÝŠÛÛ^™Ù]
+›\ˆŠHÜˆÜšYÚ[˜[™Ù]
+›X[Y˜XÝ\™\—Ü\Û[X™\ˆŠHÜˆˆŠKœÝš\
+
+BˆØ[™Y]WÛ\ˆHØØ[™Y]WÛ\ŠØ[™Y]JBˆ]Y\žWÚÙ^HH›Ü›X[^™WÜ\Û[X™\Š]Y\žJHÜˆÝŠ]Y\žHÜˆˆŠKœÝš\
+
+K\\Š
+BˆÛÝ\˜ÙWÚÙ^HH›Ü›X[^™WÜ\Û[X™\ŠÛÝ\˜ÙWÛ\ŠHÜˆÛÝ\˜ÙWÛ\‹\\Š
+BˆYˆ›Ý]Y\žWÚÙ^HÜˆ›ÝÛÝ\˜ÙWÚÙ^HÜˆ]Y\žWÚÙ^HOHÛÝ\˜ÙWÚÙ^N‚ˆYˆ]Y\žWÚÙ^N‚ˆÝš[™›Êˆ•ÈØ]™H[ˆ\›Ý˜[ÈH“ÓKÜ[ˆš[™H™\XÙ[Y[œ›ÛH]“Óx &\È8 '™]šY]È[\›˜]]™H\ø 'HXÝ[Û‹ˆ‚ˆ
+Bˆ™]\›‚‚ˆ[˜[\Ú\×ÚYHÝŠˆÛÛ^™Ù]
+˜[˜[\Ú\×ÚYŠBˆÜˆÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+˜ØY]›Ü—ØXÝ]™WØ[˜[\Ú\×ÚYŠBˆÜˆÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+˜[˜[\Ú\×ÚYŠBˆÜˆˆ‚ˆ
+KœÝš\
+
+Bˆ›Ú™XÝÛ˜[YHHÝŠˆÛÛ^™Ù]
+œ›Ú™XÝÛ˜[YHŠBˆÜˆÛÛ^™Ù]
+˜›ÛWÛ˜[YHŠBˆÜˆÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+œ›Ú™XÝÛ˜[YHŠBˆÜˆ[˜[\Ú\×ÚYˆ
+KœÝš\
+
+BˆYˆ›Ý[˜[\Ú\×ÚY‚ˆÝš[™›Êˆ•\ÈÙX\˜Ú\È›Ý[šÙYÈHØ]™Y“ÓKˆÜ[ˆš[™H™\XÙ[Y[œ›ÛHH“ÓHš\ÚÈYÙHÈ™XÛÜ™[ˆ\›Ý˜[ˆ‚ˆ
+Bˆ™]\›‚ˆYˆ›ÝØ[™Y]WÛ\Ž‚ˆ™]\›‚‚ˆ]]Ý\Ù\ˆHÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+\Ù\ˆŠBˆ\Ù\—ÚYH
+ˆ]]Ý\Ù\‹™Ù]
+šYŠBˆYˆ\Ú[œÝ[˜ÙJ]]Ý\Ù\‹XÝ
+Bˆ[ÙHÙ]]Š]]Ý\Ù\‹šY‹ˆŠBˆ
+HÜˆÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+\Ù\—ÚYŠBˆ\Ù\—ÚYHÝŠ\Ù\—ÚYÜˆˆŠKœÝš\
+
+BˆYˆ›Ý\Ù\—ÚY‚ˆÝØ\›š[™Ê”ÚYÛˆ[ˆYØZ[ˆ™Y›Ü™HØ]š[™È™\XÙ[Y[\›Ý˜[ËˆŠBˆ™]\›‚‚ˆØ[™Y]WÚÙ^HH\ÚÙ^JØ[™Y]WÛ\ŠBˆÚYÙ]ÜÝY™š^H\ÚX‹œÚLJˆˆžÜ›Ú™XÝÙXÚ\Ú[Û—ØÛÛ^ÚÙ^J›Ú™XÝÛ˜[YK[˜[\Ú\×ÚY
+__Ü\ÚÙ^JÛÝ\˜ÙWÛ\Š__ØØ[™Y]WÚÙ^_H‹™[˜ÛÙJ]‹NŠBˆ
+Kš^YÙ\Ý
+
+VÎŒL—Bˆ\›Ý˜[Ø[˜ÚÜˆHˆ˜ØY]›Ü‹X\›Ý˜[XÚXÚÛ\Ý^ÝÚYÙ]ÜÝY™š^H‚ˆÝ›X\šÙÝÛŠˆˆHÛ\ÜÏIØÝ‹X\›Ý˜[Z[\	È™YIÈÞØ\›Ý˜[Ø[˜ÚÜŸIÏ”ÚÚ\H]šY[˜ÙH]Z[È[™ÛÈÈ™]šY]È	˜[\È\›Ý˜[8¡¤ÏØOˆ‹ˆ[œØY™WØ[Ý×Ú[UYKˆ
+Bˆ\›Ý˜[ÛÜšYÚ[˜[\›Ý˜[ØØ[™Y]KÛÛ\\š\ÛÛ—ØÛÛ™›XÝÈHØ\›Ý˜[Ù]šY[˜ÙWÙ›Ü—ØÛÛ\\š\ÛÛŠˆÜšYÚ[˜[ˆØ[™Y]KˆÛÛ\\š\ÛÛ—Ù]šY[˜ÙKˆ
+Bˆ]\ÚY]Ü™]šY]ÈHÜ™[™\—Ù]\ÚY]Ù]šY[˜ÙWÜ™]šY]ÊˆÜšYÚ[˜[X\›Ý˜[ÛÜšYÚ[˜[ˆØ[™Y]OX\›Ý˜[ØØ[™Y]KˆÛÝ\˜ÙWÛ\\ÛÝ\˜ÙWÛ\‹ˆØ[™Y]WÛ\XØ[™Y]WÛ\‹ˆÙ^WÜÝY™š^]ÚYÙ]ÜÝY™š^ˆ
+Bˆ™\šYšYYÝ˜[Y\ÈH]\ÚY]Ü™]šY]Ë™Ù]
+™\šYšYYÝ˜[Y\ÈŠHÜˆßB‚ˆYˆÛZ\ÜÚ[™×Ø\›Ý˜[Ý˜[YJ˜[YNˆ[žJHOˆ›ÛÛ‚ˆ™]\›ˆÝŠ˜[YHÜˆˆŠKœÝš\
+
+K˜Ø\ÙY›Û
+
+H[ˆÂˆˆ‹¸ %‹‹H‹¸ $È‹[šÛ›ÝÛˆ‹››Ý™XÛÜ™Y‹››Ý]˜Z[X›H‹››Ý›Ý[™‹›‹ØH‹››Û™H‹›˜[ˆ‹[˜]˜Z[X›H‹Œ‹ŒŒ‚ˆB‚ˆ›Üˆ\™Ù]ÚYH[ˆ
+
+\›Ý˜[ÛÜšYÚ[˜[œÛÝ\˜ÙHŠK
+\›Ý˜[ØØ[™Y]K˜Ø[™Y]HŠJN‚ˆ›ÜˆšY[™\šYšYYÚÙ^H[ˆ
+ˆ
+œXÚØYÙH‹ˆžÜÚY_WÜXÚØYÙHŠKˆ
+œ[—ØÛÝ[‹ˆžÜÚY_WÜ[—ØÛÝ[ŠKˆ
+˜\˜Ú]XÝ\™H‹ˆžÜÚY_WØ\˜Ú]XÝ\™HŠKˆ
+N‚ˆYˆÛZ\ÜÚ[™×Ø\›Ý˜[Ý˜[YJ\™Ù]™Ù]
+šY[
+JH[™›ÝÛZ\ÜÚ[™×Ø\›Ý˜[Ý˜[YJ™\šYšYYÝ˜[Y\Ë™Ù]
+™\šYšYYÚÙ^JJN‚ˆ\™Ù]ÙšY[HH™\šYšYYÝ˜[Y\ÖÝ™\šYšYYÚÙ^WBˆÛÝ\˜Ù\ÈHXÝ
+\™Ù]™Ù]
+™šY[ÜÛÝ\˜Ù\ÈŠHÜˆßJBˆÛÝ\˜Ù\ÖÙšY[HH”™]šY]Ù\‹Y[\™Y˜[YHœ›ÛHÚ]YX[Y˜XÝ\™\ˆØÝ[Y[][Ûˆ‚ˆ\™Ù]È™šY[ÜÛÝ\˜Ù\È—HHÛÝ\˜Ù\ÂˆYˆÛZ\ÜÚ[™×Ø\›Ý˜[Ý˜[YJ\›Ý˜[ØØ[™Y]K™Ù]
+›Y™XÞXÛWÜÝ]\ÈŠJH[™›ÝÛZ\ÜÚ[™×Ø\›Ý˜[Ý˜[YJˆ™\šYšYYÝ˜[Y\Ë™Ù]
+˜Ø[™Y]WÛY™XÞXÛWÜÝ]\ÈŠBˆ
+N‚ˆ\›Ý˜[ØØ[™Y]VÈ›Y™XÞXÛWÜÝ]\È—HH™\šYšYYÝ˜[Y\ÖÈ˜Ø[™Y]WÛY™XÞXÛWÜÝ]\È—Bˆ\›Ý˜[ØØ[™Y]VÈ“Y™XÞXÛH—HH™\šYšYYÝ˜[Y\ÖÈ˜Ø[™Y]WÛY™XÞXÛWÜÝ]\È—B‚ˆØÝ[Y[Ý˜[Y\ÎˆXÝÜÝ‹XÝÜÝ‹Ý—WHHÈœÛÝ\˜ÙHŽˆßK˜Ø[™Y]HŽˆß_Bˆ›Üˆ›ÝÈ[ˆ]\ÚY]Ü™]šY]Ë™Ù]
+™šY[Ù]šY[˜ÙHŠHÜˆ×N‚ˆYˆ›Ý\Ú[œÝ[˜ÙJ›ÝËXÝ
+N‚ˆÛÛ[YBˆšY[HÝŠ›ÝË™Ù]
+’Ù^HŠHÜˆˆŠBˆYˆšY[›Ý[ˆÈœXÚØYÙH‹œ[—ØÛÝ[‹˜\˜Ú]XÝ\™H‹›Y™XÞXÛWÜÝ]\ÈŸN‚ˆÛÛ[YBˆ›ÜˆÚYK˜[YWÚÙ^H[ˆ
+ˆ
+œÛÝ\˜ÙH‹“ÜšYÚ[˜[ˆ˜[YHŠKˆ
+˜Ø[™Y]H‹Ø[™Y]Hˆ˜[YHŠKˆ
+N‚ˆ˜[YHHÝŠ›ÝË™Ù]
+˜[YWÚÙ^JHÜˆˆŠKœÝš\
+
+BˆYˆ›ÝÛZ\ÜÚ[™×Ø\›Ý˜[Ý˜[YJ˜[YJN‚ˆØÝ[Y[Ý˜[Y\ÖÜÚYWKœÙ]Y˜][
+šY[˜[YJB‚ˆØÝ[Y[ÜÛÝ\˜ÙWØÛÛ™›XÝÈH×Bˆ›Üˆ\™Ù]ÚYH[ˆ
+
+\›Ý˜[ÛÜšYÚ[˜[œÛÝ\˜ÙHŠK
+\›Ý˜[ØØ[™Y]K˜Ø[™Y]HŠJN‚ˆ™XÛÜ™YÜ^[ØYHØØ[™Y]WÜ\Ü^[ØY
+\™Ù]
+Bˆ›ÜˆšY[^˜XÝYÝ˜[YH[ˆØÝ[Y[Ý˜[Y\ÖÜÚYWKš][\Ê
+N‚ˆ™XÛÜ™YÝ˜[YHH™XÛÜ™YÜ^[ØY™Ù]
+šY[
+BˆYˆÛZ\ÜÚ[™×Ø\›Ý˜[Ý˜[YJ™XÛÜ™YÝ˜[YJN‚ˆ\™Ù]ÙšY[HH^˜XÝYÝ˜[YBˆYˆÚYHOH˜Ø[™Y]Hˆ[™šY[OH›Y™XÞXÛWÜÝ]\Èˆ[™ÛZ\ÜÚ[™×Ø\›Ý˜[Ý˜[YJ\™Ù]™Ù]
+“Y™XÞXÛHŠJN‚ˆ\™Ù]È“Y™XÞXÛH—HH^˜XÝYÝ˜[YBˆÛÝ\˜Ù\ÈHXÝ
+\™Ù]™Ù]
+™šY[ÜÛÝ\˜Ù\ÈŠHÜˆßJBˆÛÝ\˜Ù\ÖÙšY[HH”YÙKXÚ]YX[Y˜XÝ\™\ˆˆ^‚ˆ\™Ù]È™šY[ÜÛÝ\˜Ù\È—HHÛÝ\˜Ù\ÂˆÛÛ[YBˆ›Ø™HHXÝ
+™XÛÜ™YÜ^[ØY
+Bˆ›Ø™VÙšY[HH^˜XÝYÝ˜[YBˆ\ØÜ™\[˜ÞHH\ÜÙ\Ü×Ü\ØÛÛ\]Xš[]J™XÛÜ™YÜ^[ØY›Ø™JBˆZ\ÛX]ÚH
+ˆXÚØYÙWÙØÝ[Y[ØÛÛ™›XÝÊ™XÛÜ™YÝ˜[YK^˜XÝYÝ˜[YJBˆYˆšY[OHœXÚØYÙH‚ˆ[ÙH\ØÜ™\[˜ÞK™Ù]
+œ[—ØÛÝ[ÛZ\ÛX]ÚŠBˆYˆšY[OHœ[—ØÛÝ[‚ˆ[ÙH\ØÜ™\[˜ÞK™Ù]
+˜\˜Ú]XÝ\™WÛZ\ÛX]ÚŠBˆYˆšY[OH˜\˜Ú]XÝ\™H‚ˆ[ÙH˜[ÙBˆ
+BˆYˆZ\ÛX]Ú‚ˆØÝ[Y[ÜÛÝ\˜ÙWØÛÛ™›XÝË˜\[™
+ˆˆ•HÜÚY_HØ][ÙËØÛÛ\\š\ÛÛˆ˜[YH›ÜˆÙšY[œ™\XÙJ	×ÉË	È	Ê_HÛÛ™›XÝÈÚ]]ÈX[Y˜XÝ\™\ˆ]\ÚY]ˆ‚ˆ
+Bˆ[YˆšY[OH›Y™XÞXÛWÜÝ]\Èˆ[™ÝŠ™XÛÜ™YÝ˜[YHÜˆˆŠKœÝš\
+
+K˜Ø\ÙY›Û
+
+HOH^˜XÝYÝ˜[YK˜Ø\ÙY›Û
+
+N‚ˆØÝ[Y[ÜÛÝ\˜ÙWØÛÛ™›XÝË˜\[™
+ˆˆ•HÜÚY_HØ][ÙËØÛÛ\\š\ÛÛˆY™XÞXÛHÝ]\ÈÛÛ™›XÝÈÚ]]ÈX[Y˜XÝ\™\ˆ]\ÚY]ˆ‚ˆ
+B‚ˆÈHØÝ[Y[Y^XÚ]Y™XÞXÛHÝ]\ÈØ[ˆš[HZ\ÜÚ[™ÈÝ\Y\ˆÝ]\ÎÂˆÈ]Ø[ˆ[ÛÈ›ØÚÈHØ[™Y]HÚ[ˆHX[Y˜XÝ\™\ˆˆØ^\ÈSÓÛØœÛÛ]K‚ˆØ[™Y]WÛY™XÞXÛWÙ]šY[˜ÙHH™^
+ˆ
+ˆÝŠ›ÝË™Ù]
+Ø[™Y]Hˆ˜[YHŠHÜˆˆŠKœÝš\
+
+Bˆ›Üˆ›ÝÈ[ˆ]\ÚY]Ü™]šY]Ë™Ù]
+™šY[Ù]šY[˜ÙHŠHÜˆ×BˆYˆ\Ú[œÝ[˜ÙJ›ÝËXÝ
+H[™ÝŠ›ÝË™Ù]
+’Ù^HŠHÜˆˆŠHOH›Y™XÞXÛWÜÝ]\È‚ˆ
+Kˆˆ‹ˆ
+BˆYˆÛZ\ÜÚ[™×Ø\›Ý˜[Ý˜[YJ\›Ý˜[ØØ[™Y]K™Ù]
+›Y™XÞXÛWÜÝ]\ÈŠJH[™Ø[™Y]WÛY™XÞXÛWÙ]šY[˜ÙN‚ˆ\›Ý˜[ØØ[™Y]VÈ›Y™XÞXÛWÜÝ]\È—HHØ[™Y]WÛY™XÞXÛWÙ]šY[˜ÙBˆYˆÛZ\ÜÚ[™×Ø\›Ý˜[Ý˜[YJ\›Ý˜[ØØ[™Y]K™Ù]
+“Y™XÞXÛHŠJN‚ˆ\›Ý˜[ØØ[™Y]VÈ“Y™XÞXÛH—HHØ[™Y]WÛY™XÞXÛWÙ]šY[˜ÙB‚ˆÛÛ\]Xš[]HH\ÜÙ\Ü×Ü\ØÛÛ\]Xš[]Jˆ\›Ý˜[ÛÜšYÚ[˜[ˆØØ[™Y]WÜ\Ü^[ØY
+\›Ý˜[ØØ[™Y]JKˆ
+Bˆœ›ÛHÜ˜Ë™]\ÚY]ØÛÛ\\š\ÛÛˆ[\ÜÛÛ\\™WÙ]\ÚY]Ù[Y[œÚ[Û—Ù]šY[˜ÙB‚ˆ]\ÚY]ØÛÛ™›XÝÈHØÝ[Y[ÜÛÝ\˜ÙWØÛÛ™›XÝÈ
+ÈÛÛ\\™WÙ]\ÚY]Ù[Y[œÚ[Û—Ù]šY[˜ÙJˆ
+]\ÚY]Ü™]šY]Ë™Ù]
+œÛÝ\˜ÙHŠHÜˆßJK™Ù]
+™[Y[œÚ[Û—Ù]šY[˜ÙHŠHÜˆ×Kˆ
+]\ÚY]Ü™]šY]Ë™Ù]
+˜Ø[™Y]HŠHÜˆßJK™Ù]
+™[Y[œÚ[Û—Ù]šY[˜ÙHŠHÜˆ×Kˆ
+Bˆ]\ÚY]ØÛÛ™›XÝÈH\Ý
+XÝ™œ›ÛZÙ^\Ê]\ÚY]ØÛÛ™›XÝÊJBˆ]\ÚY]Ü™]šY]ÖÈ™ØÝ[Y[Ùš[™[™ÜÈ—HH]\ÚY]ØÛÛ™›XÝÂˆ]\ÚY]ÛY™XÞXÛWØ›ØÚÙYHØ[™Y]WÛY™XÞXÛWÚ\×Ø›ØÚÙY
+ˆÈ›Y™XÞXÛWÜÝ]\ÈŽˆØ[™Y]WÛY™XÞXÛWÙ]šY[˜Ù_Bˆ
+HYˆØ[™Y]WÛY™XÞXÛWÙ]šY[˜ÙH[ÙH˜[ÙBˆÛÛ\]Xš[]WØ›ØÚÙYH›ÛÛ
+ˆÛÛ\]Xš[]K™Ù]
+˜›ØÚÙYÙœ›ÛWÙ›ÜÚ[—Ø\›Ý˜[ŠBˆÜˆÛÛ\]Xš[]K™Ù]
+œ™\]Z\™\×ØXÚÛ›ÝÛYÙ[Y[ŠBˆÜˆÛÛ\\š\ÛÛ—ØÛÛ™›XÝÂˆÜˆ]\ÚY]ØÛÛ™›XÝÂˆ
+BˆÝ›X\šÙÝÛŠˆ]ˆYIÞØ\›Ý˜[Ø[˜ÚÜŸIÏÙ]ˆ‹[œØY™WØ[Ý×Ú[UYJBˆÝ›X\šÙÝÛŠˆÈÈÈÈ[™Ú[™Y\š[™È\›Ý˜[ŠBˆÝ˜Ø\[ÛŠˆ”™]šY]ÈHÚXÚÜÈ™[ÝËÚ]HHYÙ\È[ÝH[œÜXÝY[ˆÛÛ™š\›H[Ý\ˆ™]šY]ËˆHÛÛ™š\›X][ÛˆÙ\È›ÝØ]™HHXÚ\Ú[ÛŽÈ\ÙHH\›Ý˜[]Ûˆ]H[™ˆ‚ˆ
+Bˆ]\ÝYHÝ˜ÚXÚØ›Þ
+ˆ’H™]šY]ÙY›ÝØÝ[Y[Ë[˜ÛY[™ÈXÚØYÙH[Y[œÚ[ÛœË[›Ý][™\XØX›H[XÝšXØ[Üˆš\›]Ø\™H™\]Z\™[Y[Ëˆ‹ˆÙ^OYˆ˜ØY]›Ü—Ø[ÙØÝ[Y[Ø]\Ý][Û—ÞÝÚYÙ]ÜÝY™š^H‹ˆ
+BˆÝ˜Ø\[ÛŠ•\ÈÚXÚØ›Þ™XÛÜ™È[Ý\ˆ™]šY]Ëˆ]Ù\È›Ý\›Ý™HH\žH]Ù[‹ˆŠBˆ™]šY]Ù\—Ø]\Ý][ÛˆHXÝ
+]\ÚY]Ü™]šY]Ë™Ù]
+œ™]šY]Ù\—Ø]\Ý][ÛˆŠHÜˆßJBˆ™]šY]Ù\—Ø]\Ý][Û–È˜ÛÛ™š\›YY—HH›ÛÛ
+]\ÝY
+Bˆ™]šY]Ù\—Ø]\Ý][Û–Èœ™XÛÜ™YØ]—HH
+ˆ]][YK››ÝÊ[Y^›Û™K]ÊKš\ÛÙ›Ü›X]
+
+HYˆ]\ÝY[ÙHˆ‚ˆ
+Bˆ]\ÚY]Ü™]šY]ÖÈœ™]šY]Ù\—Ø]\Ý][Ûˆ—HH™]šY]Ù\—Ø]\Ý][Û‚ˆ]\ÚY]Ü™]šY]ÖÈœ™]šY]×ØÛÛ\]H—HH›ÛÛ
+ˆ]\ÝYˆ[™ÝŠ™]šY]Ù\—Ø]\Ý][Û‹™Ù]
+œÛÝ\˜ÙWÜ™Y™\™[˜ÙHŠHÜˆˆŠKœÝš\
+
+Bˆ[™ÝŠ™]šY]Ù\—Ø]\Ý][Û‹™Ù]
+˜Ø[™Y]WÜ™Y™\™[˜ÙHŠHÜˆˆŠKœÝš\
+
+Bˆ
+Bˆ™]šY]×Ü™Y™\™[˜Ù\×ØÛÛ\]HH›ÛÛ
+]\ÚY]Ü™]šY]Ë™Ù]
+œ™]šY]×ØÛÛ\]HŠJBˆ[šÙYÙØÝ[Y[×Ü™]šY]ÙYH›ÛÛ
+ˆ›Ý]\ÚY]Ü™]šY]Ë™Ù]
+™]\ÚY]Ü™]šY]×Ü™\]Z\™YŠBˆÜˆ]\ÚY]Ü™]šY]Ë™Ù]
+œ™]šY]×ØÛÛ\]YŠBˆ
+BˆY™XÞXÛWØ›ØÚÙYH›ÛÛ
+ˆØ[™Y]WÛY™XÞXÛWÚ\×Ø›ØÚÙY
+\›Ý˜[ØØ[™Y]JBˆÜˆ]\ÚY]ÛY™XÞXÛWØ›ØÚÙYˆ
+BˆØ[™Y]WÛY™XÞXÛWÝ˜[YHHÜ\ÙšY[
+ˆ\›Ý˜[ØØ[™Y]Kˆ“Y™XÞXÛH‹ˆ“Y™XÞXÛHÝ]\È‹ˆ›Y™XÞXÛWÜÝ]\È‹ˆ›Y™XÞXÛH‹ˆœ›ÙXÝÜÝ]\È‹ˆ
+K˜Ø\ÙY›Û
+
+BˆY™XÞXÛWÝ™\šYšYYH[žJˆÚÙ[ˆ[ˆØ[™Y]WÛY™XÞXÛWÝ˜[YBˆ›ÜˆÚÙ[ˆ[ˆ
+ˆ˜XÝ]™H‹ˆš[ˆ›ÙXÝ[Ûˆ‹ˆ›œ›™‹ˆ››Ý™XÛÛ[Y[™Y›Üˆ™]È\ÚYÛœÈ‹ˆ
+Bˆ
+BˆY™XÞXÛWÛœ›™H›œ›™ˆ[ˆØ[™Y]WÛY™XÞXÛWÝ˜[YHÜˆ››Ý™XÛÛ[Y[™Y›Üˆ™]È\ÚYÛœÈˆ[ˆØ[™Y]WÛY™XÞXÛWÝ˜[YB‚ˆÛÛ^ÚÙ^HH›Ú™XÝÙXÚ\Ú[Û—ØÛÛ^ÚÙ^J›Ú™XÝÛ˜[YK[˜[\Ú\×ÚY
+BˆžN‚ˆœ›ÛHÜ˜Ë˜]][XØ]YÜ[[YH[\ÜØYØ[˜[\Ú\×ÙXÚ\Ú[ÛœÂ‚ˆ™XÛÜ™Îˆ\ÝÙXÝÜÝ‹[žWWHH×Bˆ›ÜˆXÚ\Ú[Û—ØÛÛ^[ˆXÝ™œ›ÛZÙ^\Ê
+ÛÛ^ÚÙ^K[˜[\Ú\×ÚY
+JN‚ˆ™XÛÜ™Ë™^[™
+ˆØYØ[˜[\Ú\×ÙXÚ\Ú[ÛœÊˆ\Ù\—ÚYˆ[˜[\Ú\×ÚYYXÚ\Ú[Û—ØÛÛ^ˆ[Z]MLˆ
+BˆÜˆ×Bˆ
+Bˆ™XÛÜ™Ë™^[™
+ˆØYØ[˜[\Ú\×ÙXÚ\Ú[ÛœÊˆ\Ù\—ÚYˆ›Ú™XÝÛ˜[YO\›Ú™XÝÛ˜[YKˆ[Z]MLˆ
+BˆÜˆ×Bˆ
+Bˆ^Ù\^Ù\[Ûˆ\È^Î‚ˆÝ™\œ›ÜŠˆÛÝ[›ÝØYØ]™Y\›Ý˜[È›Üˆ\È“ÓNˆÙ^ßHŠBˆ™]\›‚‚ˆ^\Ý[™×Ü™XÛÜ™ÈHÂˆ›ÝÂˆ›Üˆ›ÝÈ[ˆ™XÛÜ™ÂˆYˆ\Ú[œÝ[˜ÙJ›ÝËXÝ
+Bˆ[™ÝŠ›ÝË™Ù]
+™XÚ\Ú[ÛˆŠHÜˆˆŠKœÝš\
+
+K˜Ø\ÙY›Û
+
+HOH˜\›Ý™Y‚ˆ[™\ÚÙ^J›ÝË™Ù]
+›ÜšYÚ[˜[Ü\ŠJHOH\ÚÙ^JÛÝ\˜ÙWÛ\ŠBˆ[™\ÚÙ^J›ÝË™Ù]
+˜[\›˜]]™WÜ\ŠJBˆ[™\ÚÙ^J›ÝË™Ù]
+˜[\›˜]]™WÜ\ŠJHOH\ÚÙ^JÛÝ\˜ÙWÛ\ŠBˆBˆ^\Ý[™ÈH\›Ý™YÜ™XÛÜ™×Ù›Ü—Ü\
+ˆ^\Ý[™×Ü™XÛÜ™ËˆÛÝ\˜ÙWÛ\‹ˆ›Ú™XÝÛ˜[YO\›Ú™XÝÛ˜[YKˆ[˜[\Ú\×ÚYX[˜[\Ú\×ÚYˆ
+Bˆ›\ÚHÝœÙ\ÜÚ[Û—ÜÝ]KœÜ
+˜ØY]›Ü—Ø\›Ý™YØ[\›˜]]™\×Ù›\Ú‹ˆŠBˆYˆ›\Ú‚ˆÝœÝXØÙ\ÜÊÝŠ›\Ú
+JB‚ˆÝ\œ™[H™^
+ˆ
+›ÝÈ›Üˆ›ÝÈ[ˆ^\Ý[™ÈYˆ\ÚÙ^J›ÝË™Ù]
+˜[\›˜]]™WÜ\ŠJHOHØ[™Y]WÚÙ^JKˆ›Û™Kˆ
+Bˆ\›Ý™YÛ˜[Y\ÈHÂˆÝŠ›ÝË™Ù]
+˜[\›˜]]™WÜ\ŠHÜˆˆŠKœÝš\
+
+Bˆ›Üˆ›ÝÈ[ˆ^\Ý[™ÂˆYˆÝŠ›ÝË™Ù]
+˜[\›˜]]™WÜ\ŠHÜˆˆŠKœÝš\
+
+BˆBˆYˆ\›Ý™YÛ˜[Y\Î‚ˆÝ˜Ø\[ÛŠˆˆ\›Ý™Y›Üˆ\È“ÓH
+Û[Š\›Ý™YÛ˜[Y\Ê_KÌÊNˆ‚ˆ
+È‹‹š›Ú[Š\›Ý™YÛ˜[Y\ÊBˆ
+BˆYˆÝ\œ™[‚ˆYˆÛÛ\]Xš[]WØ›ØÚÙY‚ˆÝ™\œ›ÜŠˆˆHØ]™Y\›Ý˜[›ÜˆØØ[™Y]WÛ\ŸH\È›ØÚÙYžHHÝ\œ™[ÛÛ\]Xš[]HØ]Kˆ‚ˆ”™]šY]ÈHZ\ÛX]Ú[™™[[Ý™HHØ]™Y\›Ý˜[Yˆ]\È›ÈÛ™Ù\ˆ˜[Yˆ‚ˆ
+Bˆ[ÙN‚ˆÝœÝXØÙ\ÜÊˆžØØ[™Y]WÛ\ŸH\È\›Ý™Y›ÜˆÜ›Ú™XÝÛ˜[Y_KˆŠBˆØ]™YÛ›ÝHHÝŠÝ\œ™[™Ù]
+™[™Ú[™Y\š[™×Û›ÝHŠHÜˆˆŠKœÝš\
+
+BˆYˆØ]™YÛ›ÝN‚ˆÝ˜Ø\[ÛŠˆ”Ø]™Y™]šY]È›ÝNˆÜØ]™YÛ›Ý_HŠBˆÝ˜Ø\[ÛŠˆ•\È™XÛÜ™È[Ý\ˆX[x &\ÈXÚ\Ú[ÛŽÈ]Ù\È›ÝÙ\YžH[XÝšXØ[ÜˆYXÚ[šXØ[ÛÛ\]Xš[]Kˆ‚ˆ
+BˆÝ˜Ø\[ÛŠˆ”Ø]™Y\›Ý˜[ÈÝ^HÚ]\È“ÓHXÜ›ÜÜÈ[˜[\Ú\È™\[œÈ[™\X\ˆ[ˆ]Èš\ÚÈ[™[\›˜]]™\ÈšY]ÜËˆ‚ˆ
+B‚ˆ™]š[Ý\×Û›ÝHHÝŠÝ\œ™[™Ù]
+™[™Ú[™Y\š[™×Û›ÝHŠHÜˆˆŠHYˆÝ\œ™[[ÙHˆ‚ˆ›ÝWÝ˜[YHHÝ^Ø\™XJˆ‘[™Ú[™Y\š[™È\›Ý˜[›ÝH
+Ý\HÛÛ[Z]H[ˆ™\]Z\™Y›Üˆ”“‘
+HˆYˆY™XÞXÛWÛœ›™[ÙH‘[™Ú[™Y\š[™È\›Ý˜[›ÝH
+Ü[Û˜[
+H‹ˆ˜[YO\™]š[Ý\×Û›ÝKˆXÙZÛ\Jˆ”™XÛÜ™HÝ\KXÛÛ[Z]H[ˆ›Üˆ\È”“‘\ˆ‚ˆYˆY™XÞXÛWÛœ›™ˆ[ÙH‘›Üˆ^[\Nˆ]\ÚY]XÚØYÙK[›Ý][™Ü\˜][™È˜[™ÙH™]šY]ÙYˆ‚ˆ
+KˆZYÚMÌ‹ˆÙ^OYˆ˜ØY]›Ü—Ø\›Ý™YØ[\›˜]]™WÛ›ÝWÞÝÚYÙ]ÜÝY™š^H‹ˆ
+BˆØ[—Ø\›Ý™HH
+ˆ›ÝY™XÞXÛWØ›ØÚÙYˆ[™Y™XÞXÛWÝ™\šYšYYˆ[™
+›ÝY™XÞXÛWÛœ›™Üˆ›ÛÛ
+ÝŠ›ÝWÝ˜[YHÜˆˆŠKœÝš\
+
+JJBˆ[™›ÝÛÛ\]Xš[]WØ›ØÚÙYˆ[™™]šY]×Ü™Y™\™[˜Ù\×ØÛÛ\]Bˆ[™[šÙYÙØÝ[Y[×Ü™]šY]ÙYˆ[™
+Ý\œ™[\È›Ý›Û™HÜˆ[Š\›Ý™YÛ˜[Y\ÊHÊBˆ
+Bˆ™]šY]Ù\—Ø]\Ý][ÛˆH]\ÚY]Ü™]šY]Ë™Ù]
+œ™]šY]Ù\—Ø]\Ý][ÛˆŠHÜˆßBˆ™]šY]Ù\—Ø]\Ý][ÛˆH™]šY]Ù\—Ø]\Ý][ÛˆYˆ\Ú[œÝ[˜ÙJ™]šY]Ù\—Ø]\Ý][Û‹XÝ
+H[ÙHßBˆZ\ÜÚ[™×Ü™]šY]×ÜÝ\ÈH×BˆYˆ›ÝÝŠ™]šY]Ù\—Ø]\Ý][Û‹™Ù]
+œÛÝ\˜ÙWÜ™Y™\™[˜ÙHŠHÜˆˆŠKœÝš\
+
+N‚ˆZ\ÜÚ[™×Ü™]šY]×ÜÝ\Ë˜\[™
+˜YHÛÝ\˜ÙHØÝ[Y[™]š\Ú[Ûˆ[™YÙ\È[ÝHÚXÚÙYŠBˆYˆ›ÝÝŠ™]šY]Ù\—Ø]\Ý][Û‹™Ù]
+˜Ø[™Y]WÜ™Y™\™[˜ÙHŠHÜˆˆŠKœÝš\
+
+N‚ˆZ\ÜÚ[™×Ü™]šY]×ÜÝ\Ë˜\[™
+˜YHØ[™Y]HØÝ[Y[™]š\Ú[Ûˆ[™YÙ\È[ÝHÚXÚÙYŠBˆYˆ›Ý™]šY]Ù\—Ø]\Ý][Û‹™Ù]
+˜ÛÛ™š\›YYŠN‚ˆZ\ÜÚ[™×Ü™]šY]×ÜÝ\Ë˜\[™
+˜ÛÛ™š\›H[Ý\ˆ™]šY]È[ˆ\È\›Ý˜[ÙXÝ[ÛˆŠBˆYˆY™XÞXÛWÛœ›™[™›ÝÝŠ›ÝWÝ˜[YHÜˆˆŠKœÝš\
+
+N‚ˆZ\ÜÚ[™×Ü™]šY]×ÜÝ\Ë˜\[™
+œ™XÛÜ™H”“‘Ý\KXÛÛ[Z]H[ˆŠBˆYˆÝ\œ™[\È›Û™H[™[Š\›Ý™YÛ˜[Y\ÊHHÎ‚ˆZ\ÜÚ[™×Ü™]šY]×ÜÝ\Ë˜\[™
+œ™[[Ý™HÛ™H\›Ý™Y[\›˜]]™NÈ\È“ÓH\È]H™YK\\[Z]ŠB‚ˆ›ØÚÙ\œÎˆ\ÝÜÝ—HH×BˆYˆY™XÞXÛWØ›ØÚÙY‚ˆ›ØÚÙ\œË˜\[™
+ˆ•\ÈØ[™Y]H\ÈØœÛÛ]K\ØÛÛ[YYÜˆ[™ÙˆY™KˆÚÛÜÙHHY™™\™[Ø[™Y]Kˆ‚ˆ
+Bˆ[Yˆ›ÝY™XÞXÛWÝ™\šYšYY‚ˆ›ØÚÙ\œË˜\[™
+ˆØ[™Y]HY™XÞXÛH\È›Ý™\šYšYY\ÈXÝ]™HÜˆ”“‘ˆÛÛ™š\›H]œ›ÛHHX[Y˜XÝ\™\ˆÛÝ\˜ÙKˆ‚ˆ
+BˆYˆÛÛ\]Xš[]K™Ù]
+˜›ØÚÙYÙœ›ÛWÙ›ÜÚ[—Ø\›Ý˜[ŠN‚ˆ›ØÚÙ\œË™^[™
+ÛÛ\]Xš[]K™Ù]
+˜Üš]XØ[ÝØ\›š[™ÜÈŠHÜˆÂˆ•H\ÚXØ[XÚØYÙHÜˆ›ØÙ\ÜÛÜˆ\˜Ú]XÝ\™H\È[˜ÛÛ\]X›KˆÚÛÜÙH[›Ý\ˆØ[™Y]Kˆ‚ˆJBˆ[YˆÛÛ\\š\ÛÛ—ØÛÛ™›XÝÈÜˆ]\ÚY]ØÛÛ™›XÝÎ‚ˆ›ØÚÙ\œË™^[™
+ÛÛ\\š\ÛÛ—ØÛÛ™›XÝÈ
+È]\ÚY]ØÛÛ™›XÝÊBˆ[YˆÛÛ\]Xš[]K™Ù]
+œ™\]Z\™\×ØXÚÛ›ÝÛYÙ[Y[ŠN‚ˆ›ØÚÙ\œË™^[™
+ÛÛ\]Xš[]K™Ù]
+œ™]šY]×ÝØ\›š[™ÜÈŠHÜˆÂˆ”XÚØYÙK[ˆÛÝ[Üˆ›ØÙ\ÜÛÜˆ\˜Ú]XÝ\™HÝ[™YYÈ™\šYšXØ][Û‹ˆ‚ˆJBˆYˆ›Ý[šÙYÙØÝ[Y[×Ü™]šY]ÙY‚ˆ›ØÚÙ\œË˜\[™
+•ØZ]›ÜˆH[šÙY]\ÚY][˜[\Ú\Ë[ˆ[œÜXÝ›ÝØÝ[Y[ËˆŠBˆ›ØÚÙ\œË™^[™
+Z\ÜÚ[™×Ü™]šY]×ÜÝ\ÊB‚ˆÚ]Ý˜ÛÛZ[™\ŠÙ^OYˆ˜ØY]›Ü—Ø\›Ý˜[ØXÝ[Ûœ×ÞÝÚYÙ]ÜÝY™š^HŠN‚ˆÝ›X\šÙÝÛŠŠŠ\›Ý˜[Ý]\ÊŠˆŠBˆYˆØ[—Ø\›Ý™N‚ˆ™^ØXÝ[ÛˆH•\]H\›Ý˜[ˆYˆÝ\œ™[[ÙH\›Ý™H\È[\›˜]]™H‚ˆÝœÝXØÙ\ÜÊˆˆ”™]šY]ÈÛÛ\]KˆÛXÚÈ8 'Û™^ØXÝ[ÛŸx 'H™[ÝÈÈØ]™HHXÚ\Ú[ÛˆÈ\È“ÓKˆ‚ˆ
+Bˆ[YˆÛÛ\]Xš[]K™Ù]
+˜›ØÚÙYÙœ›ÛWÙ›ÜÚ[—Ø\›Ý˜[ŠHÜˆY™XÞXÛWØ›ØÚÙY‚ˆÝ™\œ›ÜŠ•\ÈØ[™Y]HØ[››Ý™H\›Ý™Y\ÈH\™XÝ™\XÙ[Y[ˆŠBˆ[ÙN‚ˆÝØ\›š[™Ê\›Ý˜[\ÈØÚÙYˆÛÛ\]HH][\È™[ÝÎÈH]ÛˆÚ[[˜X›HÚ[ˆ^H\ÜËˆŠBˆYˆ›ØÚÙ\œÎ‚ˆÝ›X\šÙÝÛŠ—ˆ‹š›Ú[Šˆ‹HÚ][_Hˆ›Üˆ][H[ˆXÝ™œ›ÛZÙ^\Ê›ØÚÙ\œÊJJBˆYˆ›Ý[šÙYÙØÝ[Y[×Ü™]šY]ÙY‚ˆ™]šY]×Ü™\]Y\ÝÚÙ^HHÝŠ]\ÚY]Ü™]šY]Ë™Ù]
+œ™]šY]×Ü™\]Y\ÝÚÙ^HŠHÜˆˆŠBˆYˆ™]šY]×Ü™\]Y\ÝÚÙ^N‚ˆÝ˜]ÛŠˆ[˜[^™H[šÙY]\ÚY]È‹ˆÙ^OYˆ˜ØY]›Ü—Ø[Ù]\ÚY]Ü™]šY]×Ø›ÝÛWÞÝÚYÙ]ÜÝY™š^H‹ˆ\OHœÙXÛÛ™\žH‹ˆÛ—ØÛXÚÏWÜ™\]Y\ÝÙ]\ÚY]Ü™]šY]Ëˆ\™ÜÏJ™]šY]×Ü™\]Y\ÝÚÙ^K
+Kˆ[H[˜[^™HH]˜Z[X›HÝ\Y\ˆœÈ™Y›Ü™HÛÛ[Z[™Ëˆ‹ˆ
+BˆÝ˜Ø\[ÛŠˆ–[Ý\ˆÚXÚØ›ÞÛÛ™š\›\ÈH™]šY]ÎÈ]Ù\È›ÝØ]™HH“ÓHXÚ\Ú[Û‹ˆØ]™Y\›Ý˜[È\X\ˆ[ˆ\È“Óx &\Èš\ÚÈ[™[\›˜]]™\ÈšY]ÜËˆ‚ˆ
+B‚ˆÝ›X\šÙÝÛŠˆˆˆˆ‚ˆÝ[O‚ˆ[›ÙHÙXÝ[Û–Ù]K]\ÝYHœÝXZ[ˆ—HœÝZÙ^KXØY]›Ü—Ø\›Ý˜[ØXÝ[Ûœ×ÞÝÚYÙ]ÜÝY™š^HœÝ]Ûˆˆ]Û–ÚÚ[™Hœš[X\žH—N™\ØX›YÞÂˆ˜XÚÙÜ›Ý[™ˆÙL™NŒZ[\Ü[È˜XÚÙÜ›Ý[™XÛÛÜŽˆÙL™NŒZ[\Ü[Âˆ›Ü™\ŽŒ\ÛÛYØØ™YLHZ[\Ü[ÈÛÛÜŽˆÍÍˆZ[\Ü[Âˆ›Þ\ÚYÝÎ››Û™HZ[\Ü[ÈÜXÚ]NŒHZ[\Ü[ÈÝ\œÛÜŽ››ÝX[ÝÙYZ[\Ü[Âˆ˜[œÙ›Ü›N››Û™HZ[\Ü[Âˆ_Bˆ[›ÙHÙXÝ[Û–Ù]K]\ÝYHœÝXZ[ˆ—HœÝZÙ^KXØY]›Ü—Ø\›Ý˜[ØXÝ[Ûœ×ÞÝÚYÙ]ÜÝY™š^HœÝ]Ûˆˆ]Û–ÚÚ[™Hœš[X\žH—N™\ØX›Y
+ˆÞÂˆÛÛÜŽˆÍÍˆZ[\Ü[È˜XÚÙÜ›Ý[™˜[œÜ\™[Z[\Ü[Âˆ_Bˆ˜Ý‹X\›Ý˜[Z[\ÞÂˆ\Ü^Nš[›[™KX›ØÚÎÈX\™Ú[ŽLœÈY[™ÎŽLœÂˆÛÛÜŽˆÌYYÈ˜XÚÙÜ›Ý[™ˆÙY™™™ŽÈ›Ü™\ŽŒ\ÛÛYØ™™™™NÂˆ›Ü™\‹\˜Y]\ÎŽÈ›Û\Ú^™NŒLÜÈ›Û]ÙZYÚÌÈ^YXÛÜ˜][ÛŽ››Û™NÂˆ_BˆÜÝ[O‚ˆˆˆ‹ˆ[œØY™WØ[Ý×Ú[UYKˆ
+BˆØ]™WØÛXÚÙYHÝ˜]ÛŠˆ
+ˆ•\]H\›Ý˜[ˆYˆÝ\œ™[[ÙH\›Ý™H\È[\›˜]]™H‚ˆ
+HYˆØ[—Ø\›Ý™H[ÙH\›Ý˜[ØÚÙY8 %™\ÛÛ™HH][\ÈX›Ý™H‹ˆÙ^OYˆ˜ØY]›Ü—Ø\›Ý™YØ[\›˜]]™WÜØ]™WÞÝÚYÙ]ÜÝY™š^H‹ˆ\OHœš[X\žH‹ˆ\ØX›Y[›ÝØ[—Ø\›Ý™Kˆ\ÙWØÛÛZ[™\—ÝÚYUYKˆ
+Bˆ™[[Ý™WØÛXÚÙYH˜[ÙBˆYˆÝ\œ™[‚ˆ™[[Ý™WØÛXÚÙYHÝ˜]ÛŠˆ”™[[Ý™H\›Ý˜[‹ˆÙ^OYˆ˜ØY]›Ü—Ø\›Ý™YØ[\›˜]]™WÜ™[[Ý™WÞÝÚYÙ]ÜÝY™š^H‹ˆ\ÙWØÛÛZ[™\—ÝÚYUYKˆ
+B‚ˆYˆØ]™WØÛXÚÙY[™
+ˆY™XÞXÛWØ›ØÚÙYˆÜˆ›ÝY™XÞXÛWÝ™\šYšYYˆÜˆ
+Y™XÞXÛWÛœ›™[™›ÝÝŠ›ÝWÝ˜[YHÜˆˆŠKœÝš\
+
+JBˆÜˆÛÛ\]Xš[]WØ›ØÚÙYˆÜˆ›Ý™]šY]×Ü™Y™\™[˜Ù\×ØÛÛ\]BˆÜˆ›Ý[šÙYÙØÝ[Y[×Ü™]šY]ÙYˆ
+N‚ˆÝ™\œ›ÜŠØY]›Üˆ›ØÚÙY\È\›Ý˜[™XØ]\ÙH™\]Z\™YÛÛ\]Xš[]HÜˆØÝ[Y[][Ûˆ™]šY]ÈÚXÚÜÈ\™H[˜ÛÛ\]KˆŠBˆ™]\›‚ˆYˆ›ÝØ]™WØÛXÚÙY[™›Ý™[[Ý™WØÛXÚÙY‚ˆ™]\›‚‚ˆœ›ÛHÜ˜Ë˜]][XØ]YÜ[[YH[\Ü\˜Ú]™WØ[˜[\Ú\×ÙXÚ\Ú[Û‹Ø]™WØ[˜[\Ú\×ÙXÚ\Ú[Û‚‚ˆYˆ™[[Ý™WØÛXÚÙY‚ˆžN‚ˆ›Üˆ›ÝÈ[ˆ^\Ý[™×Ü™XÛÜ™Î‚ˆYˆ
+ˆ\ÚÙ^J›ÝË™Ù]
+˜[\›˜]]™WÜ\ŠJHOHØ[™Y]WÚÙ^Bˆ[™›ÝË™Ù]
+šYŠBˆ
+N‚ˆ\˜Ú]™WØ[˜[\Ú\×ÙXÚ\Ú[ÛŠ\Ù\—ÚY›ÝÖÈšY—JBˆ^Ù\^Ù\[Ûˆ\È^Î‚ˆÝ™\œ›ÜŠˆÛÝ[›Ý™[[Ý™H\È\›Ý˜[ˆÙ^ßHŠBˆ™]\›‚ˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜ØY]›Ü—Ø\›Ý™YØ[\›˜]]™\×Ù›\Ú—HH
+ˆˆ\›Ý˜[›ÜˆØØ[™Y]WÛ\ŸH™[[Ý™Yœ›ÛHÜ›Ú™XÝÛ˜[Y_Kˆ‚ˆ
+BˆYˆÛ˜]šYØ]WØ˜XÚ×Ý×Ø›ÛWÜ™]šY]ÊÛÛ^
+N‚ˆÝœ™\[Š
+Bˆ™]\›‚ˆÝœ™\[Š
+Bˆ™]\›‚‚ˆ›Ùš[HHÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+œ›Ùš[HŠBˆ›Ùš[HH›Ùš[HYˆ\Ú[œÝ[˜ÙJ›Ùš[KXÝ
+H[ÙHßBˆ\Ù\—ÛY]Y]HHÙ]]Š]]Ý\Ù\‹\Ù\—ÛY]Y]H‹ßJHÜˆßBˆYˆ›Ý\Ú[œÝ[˜ÙJ\Ù\—ÛY]Y]KXÝ
+N‚ˆ\Ù\—ÛY]Y]HHßBˆ[™Ú[™Y\—Û˜[YHHÝŠˆ›Ùš[K™Ù]
+™[Û˜[YHŠBˆÜˆ›Ùš[K™Ù]
+›˜[YHŠBˆÜˆ\Ù\—ÛY]Y]K™Ù]
+™[Û˜[YHŠBˆÜˆ\Ù\—ÛY]Y]K™Ù]
+›˜[YHŠBˆÜˆ
+]]Ý\Ù\‹™Ù]
+™[XZ[ŠHYˆ\Ú[œÝ[˜ÙJ]]Ý\Ù\‹XÝ
+H[ÙHÙ]]Š]]Ý\Ù\‹™[XZ[‹ˆŠJBˆÜˆØY]›Üˆ\Ù\ˆ‚ˆ
+KœÝš\
+
+B‚ˆYˆÛ[X™\—Ý˜[YJ›ÝÎˆXÝÜÝ‹[žWK
+šÙ^\ÎˆÝŠHOˆ›Ø]‚ˆ›ÜˆÙ^H[ˆÙ^\Î‚ˆžN‚ˆ[X™\ˆH›Ø]
+›ÝË™Ù]
+Ù^JJBˆ^Ù\
+\Q\œ›Ü‹˜[YQ\œ›ÜŠN‚ˆÛÛ[YBˆYˆ[X™\ˆOH[X™\ˆ[™[X™\ˆ›Ý[ˆ
+›Ø]
+š[™ˆŠK›Ø]
+‹Z[™ˆŠJN‚ˆ™]\›ˆ[X™\‚ˆ™]\›ˆŒ‚ˆÝ\Y\ˆHÝŠˆØ[™Y]K™Ù]
+”Ý\Y\ˆŠBˆÜˆØ[™Y]K™Ù]
+œÝ\Y\ˆŠBˆÜˆØ[™Y]K™Ù]
+“X[Y˜XÝ\™\ˆŠBˆÜˆØ[™Y]K™Ù]
+›X[Y˜XÝ\™\ˆŠBˆÜˆˆ‚ˆ
+KœÝš\
+
+BˆÛÛ\\š\ÛÛ—Ü›ÝÜ×ÜÛ˜\ÚÝH×BˆÛÛ\\š\ÛÛˆHÛÛ\\š\ÛÛ—Ù]šY[˜ÙK™Ù]
+˜ÛÛ\\š\ÛÛˆŠHYˆ\Ú[œÝ[˜ÙJÛÛ\\š\ÛÛ—Ù]šY[˜ÙKXÝ
+H[ÙHßBˆÛÛ\\š\ÛÛ—Ü›ÝÜÈHÛÛ\\š\ÛÛ‹™Ù]
+œ›ÝÜÈŠHYˆ\Ú[œÝ[˜ÙJÛÛ\\š\ÛÛ‹XÝ
+H[ÙH×Bˆ›Üˆ›ÝÈ[ˆÛÛ\\š\ÛÛ—Ü›ÝÜÈÜˆ×N‚ˆYˆ›Ý\Ú[œÝ[˜ÙJ›ÝËXÝ
+N‚ˆÛÛ[YBˆÛÛ\\š\ÛÛ—Ü›ÝÜ×ÜÛ˜\ÚÝ˜\[™
+ˆÂˆ˜]šX]HŽˆÝŠ›ÝË™Ù]
+]šX]HŠHÜˆˆŠVÎŒLKˆœ\ØHŽˆÝŠ›ÝË™Ù]
+”\HŠHÜˆˆŠVÎŒLŒKˆœ\ØˆŽˆÝŠ›ÝË™Ù]
+”\ˆŠHÜˆˆŠVÎŒLŒKˆœ\ØÈŽˆÝŠ›ÝË™Ù]
+”\ÈŠHÜˆˆŠVÎŒLŒKˆ˜\ÜÙ\ÜÛY[ŽˆÝŠ›ÝË™Ù]
+\ÜÙ\ÜÛY[ŠHÜˆ›ÝË™Ù]
+”Ý]\ÈŠHÜˆˆŠVÎŒKˆ™]šY[˜ÙHŽˆÝŠ›ÝË™Ù]
+‘]šY[˜ÙHŠHÜˆˆŠVÎŒŒKˆBˆ
+BˆYˆ[ŠÛÛ\\š\ÛÛ—Ü›ÝÜ×ÜÛ˜\ÚÝ
+HH‚ˆœ™XZÂˆÛÛ\]Xš[]WÝØ\›š[™ÜÈH\Ý
+ˆXÝ™œ›ÛZÙ^\Êˆ\Ý
+ÛÛ\]Xš[]K™Ù]
+˜Üš]XØ[ÝØ\›š[™ÜÈŠHÜˆ×JBˆ
+È\Ý
+ÛÛ\]Xš[]K™Ù]
+œ™]šY]×ÝØ\›š[™ÜÈŠHÜˆ×JBˆ
+ÈÛÛ\\š\ÛÛ—ØÛÛ™›XÝÂˆ
+È]\ÚY]ØÛÛ™›XÝÂˆ
+Bˆ
+Bˆ^[ØYHÂˆ˜[˜[\Ú\×ÚYŽˆ[˜[\Ú\×ÚYˆ˜ÛÛ^ÚÙ^HŽˆÛÛ^ÚÙ^Kˆœ›Ú™XÝÛ˜[YHŽˆ›Ú™XÝÛ˜[YKˆ™[™Ú[™Y\—Û˜[YHŽˆ[™Ú[™Y\—Û˜[YKˆ›ÜšYÚ[˜[Ü\ŽˆÛÝ\˜ÙWÛ\‹ˆ˜[\›˜]]™WÜ\ŽˆØ[™Y]WÛ\‹ˆ™XÚ\Ú[ÛˆŽˆ\›Ý™Y‹ˆ™[™Ú[™Y\š[™×Û›ÝHŽˆÝŠ›ÝWÝ˜[YHÜˆˆŠKœÝš\
+
+Kˆœ™XÛÛ[Y[™][Û—ÜØÛÜ™HŽˆ[
+Û[X™\—Ý˜[YJØ[™Y]K”™XÛÛ[Y[™][ÛˆØÛÜ™H‹œ™XÛÛ[Y[™][Û—ÜØÛÜ™HŠJKˆœ™XÛÛ[Y[™][Û—Ü˜][™ÈŽˆ•\Ù\ˆ\›Ý™Y‹ˆ˜ÛÛ\]Xš[]WØÛÛ™šY[˜ÙHŽˆ[
+Û[X™\—Ý˜[YJØ[™Y]KÛÛ\]Xš[]HÛÛ™šY[˜ÙH‹˜ÛÛ\]Xš[]WØÛÛ™šY[˜ÙHŠJKˆ˜ÛÛ\]Xš[]WÜ˜][™ÈŽˆ•\Ù\ˆXÚ\Ú[ÛŽÈÛÛ\]Xš[]H›Ý[™\[™[HÙ\YšYY‹ˆ›Y™XÞXÛHŽˆÝŠ\›Ý˜[ØØ[™Y]K™Ù]
+“Y™XÞXÛHŠHÜˆ\›Ý˜[ØØ[™Y]K™Ù]
+›Y™XÞXÛWÜÝ]\ÈŠHÜˆˆŠKˆœš\ÚÈŽˆÝŠØ[™Y]K™Ù]
+‘\Ý[X]Yš\ÚÈŠHÜˆØ[™Y]K™Ù]
+œš\Ú×Û]™[ŠHÜˆØ[™Y]K™Ù]
+œš\ÚÈŠHÜˆˆŠKˆœÝ\Y\ˆŽˆÝ\Y\‹ˆœÝØÚÈŽˆ[
+Û[X™\—Ý˜[YJØ[™Y]K”ÝØÚÈ‹œÝØÚ×ÝÝ[‹œÝØÚ×Ø]˜Z[X›HŠJKˆ[š]ÜšXÙHŽˆÛ[X™\—Ý˜[YJØ[™Y]K•[š]šXÙH‹[š]ÜšXÙH‹œšXÙHŠKˆœXÚØYÙHŽˆÝŠ\›Ý˜[ØØ[™Y]K™Ù]
+”XÚØYÙHŠHÜˆ\›Ý˜[ØØ[™Y]K™Ù]
+œXÚØYÙHŠHÜˆˆŠKˆœÛÝ\˜ÙWÜÛ˜\ÚÝŽˆÂˆ›ÜšYÚ[˜[Žˆ\›Ý˜[ÛÜšYÚ[˜[ˆœÙ[XÝYØ[\›˜]]™HŽˆ\›Ý˜[ØØ[™Y]KˆKˆ˜ÛÛ\\š\ÛÛ—ÜÛ˜\ÚÝŽˆÂˆœ™XÛÜ™YÙœ›ÛHŽˆÝŠ™XÛÜ™YÙœ›ÛHÜˆ‘š[™H™\XÙ[Y[ŠKˆ˜ÛÛ\\š\ÛÛ—ÜÛÝŽˆÝŠÛÛ\\š\ÛÛ—Ù]šY[˜ÙK™Ù]
+œÛÝŠHÜˆˆŠHYˆ\Ú[œÝ[˜ÙJÛÛ\\š\ÛÛ—Ù]šY[˜ÙKXÝ
+H[ÙHˆ‹ˆ˜ÛÛ\\š\ÛÛ—ÛX]š^ŽˆÛÛ\\š\ÛÛ—Ü›ÝÜ×ÜÛ˜\ÚÝˆ˜ÛÛ\\š\ÛÛ—Ù]WØÛÛ™›XÝÈŽˆÛÛ\\š\ÛÛ—ØÛÛ™›XÝËˆ™]\ÚY]Ü™]šY]ÈŽˆØ\›Ý˜[Ù]\ÚY]ÜÛ˜\ÚÝ
+]\ÚY]Ü™]šY]ÊKˆ˜ÛÛ\]Xš[]WÜ™]šY]ÈŽˆÂˆœÝ[[X\žHŽˆÝŠÛÛ\]Xš[]K™Ù]
+™›ÜÚ[—ÜÝ]\ÈŠHÜˆˆŠKˆØ\›š[™ÜÈŽˆÛÛ\]Xš[]WÝØ\›š[™ÜËˆœÛÝ\˜ÙWÜXÚØYÙHŽˆÛÛ\]Xš[]K™Ù]
+œÛÝ\˜ÙWÜXÚØYÙHŠKˆ˜Ø[™Y]WÜXÚØYÙHŽˆÛÛ\]Xš[]K™Ù]
+˜Ø[™Y]WÜXÚØYÙHŠKˆœÛÝ\˜ÙWÜ[—ØÛÝ[ŽˆÛÛ\]Xš[]K™Ù]
+œÛÝ\˜ÙWÜ[—ØÛÝ[ŠKˆ˜Ø[™Y]WÜ[—ØÛÝ[ŽˆÛÛ\]Xš[]K™Ù]
+˜Ø[™Y]WÜ[—ØÛÝ[ŠKˆœÛÝ\˜ÙWØ\˜Ú]XÝ\™HŽˆÛÛ\]Xš[]K™Ù]
+œÛÝ\˜ÙWØ\˜Ú]XÝ\™HŠKˆ˜Ø[™Y]WØ\˜Ú]XÝ\™HŽˆÛÛ\]Xš[]K™Ù]
+˜Ø[™Y]WØ\˜Ú]XÝ\™HŠKˆ™]\ÚY]ÜXÚØYÙWÛÜ—Ú\ØWØÛÛ™›XÝÈŽˆ]\ÚY]ØÛÛ™›XÝËˆœ™]šY]Ù\—Ø]\ÝYŽˆ™]šY]×Ü™Y™\™[˜Ù\×ØÛÛ\]KˆKˆKˆBˆžN‚ˆØ]™YHØ]™WØ[˜[\Ú\×ÙXÚ\Ú[ÛŠ\Ù\—ÚY^[ØY
+BˆØ]™YÚYHØ]™Y™Ù]
+šYŠHYˆ\Ú[œÝ[˜ÙJØ]™YXÝ
+H[ÙH›Û™Bˆ›Üˆ›ÝÈ[ˆ^\Ý[™×Ü™XÛÜ™Î‚ˆYˆ
+ˆ\ÚÙ^J›ÝË™Ù]
+˜[\›˜]]™WÜ\ŠJHOHØ[™Y]WÚÙ^Bˆ[™›ÝË™Ù]
+šYŠBˆ[™›ÝË™Ù]
+šYŠHOHØ]™YÚYˆ
+N‚ˆ\˜Ú]™WØ[˜[\Ú\×ÙXÚ\Ú[ÛŠ\Ù\—ÚY›ÝÖÈšY—JBˆ^Ù\^Ù\[Ûˆ\È^Î‚ˆÝ™\œ›ÜŠˆÛÝ[›ÝØ]™HH\›Ý™Y[\›˜]]™NˆÙ^ßHŠBˆ™]\›‚‚ˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜ØY]›Ü—Ø\›Ý™YØ[\›˜]]™\×Ù›\Ú—HH
+ˆˆžØØ[™Y]WÛ\ŸH\›Ý™Y›ÜˆÜ›Ú™XÝÛ˜[Y_H[™Ø]™YÈ\È“ÓKˆ‚ˆ
+BˆYˆÛ˜]šYØ]WØ˜XÚ×Ý×Ø›ÛWÜ™]šY]ÊÛÛ^
+N‚ˆÝœ™\[Š
+Bˆ™]\›‚ˆÝœ™\[Š
+B‚‚™YˆØ\›Ý™YÙ›Ý×ÜÝ\\—ÛX\šÝ\
+X™[Îˆ\VÜÝ‹‹‹—KXÝ]™WÜÝ\ˆ[HJHOˆÝŽ‚ˆˆˆ”™[™\ˆH›Û‹Z[\˜XÝ]™H›ÙÜ™\ÜÈ[™XØ]Üˆ›ÜˆH\›Ý™YÛÜšÙ›ÝÜËˆˆˆ‚ˆ\Îˆ\ÝÜÝ—HH×Bˆ›Üˆ[™^X™[[ˆ[[Y\˜]JX™[ËÝ\LJN‚ˆXÝ]™HH[™^OHXÝ]™WÜÝ\ˆÛÛ\]HH[™^XÝ]™WÜÝ\ˆÝ]HHˆÝ\œ™[ˆYˆXÝ]™H[ÙHˆÛÛ\]HˆYˆÛÛ\]H[ÙHˆ‚ˆ\šXWØÝ\œ™[Hˆ\šXKXÝ\œ™[IÜÝ\	ÈˆYˆXÝ]™H[ÙHˆ‚ˆ›ÙHH¸§$ÈˆYˆÛÛ\]H[ÙHÝŠ[™^
+Bˆ\Ë˜\[™
+ˆˆÜ[ˆÛ\ÜÏIØÝ‹X\Y›ÝË\Ý\ÜÝ]_IÞØ\šXWØÝ\œ™[Oˆ‚ˆˆÜ[ˆÛ\ÜÏIØÝ‹X\Y›ÝË[›ÙIÏžÛ›Ù_OÜÜ[ˆ‚ˆˆÜ[ž×Ù\ØÊX™[
+_OÜÜ[ÜÜ[ˆ‚ˆ
+BˆYˆ[™^[ŠX™[ÊN‚ˆ\Ë˜\[™
+Ü[ˆÛ\ÜÏIØÝ‹X\Y›ÝË[[™IÈ\šXKZY[IÝYIÏÜÜ[ˆŠBˆ™]\›ˆ
+ˆ˜]ˆÛ\ÜÏIØÝ‹X\Y›ÝÉÈ\šXK[X™[IÕÛÜšÙ›ÝÈÝ\ÉÏˆ‚ˆ
+Èˆ‹š›Ú[Š\ÊBˆ
+ÈˆÜ[ˆÛ\ÜÏIØÝ‹X\Y›ÝË\Ý]\ÉÏ”ÕTØXÝ]™WÜÝ\HÑˆÛ[ŠX™[Ê_OÜÜ[Û˜]ˆ‚ˆ
+B‚‚™YˆÜ™[™\—Ü™\XÙ[Y[ÜÙX\˜ÚÝØZ][™×ÜÝ]J
+HOˆ›Û™N‚ˆˆˆ”ÚÝÈH[\Hš[™\ˆÝ]HÚ]Ý][\Z[™È]HÙX\˜Ú\È[‹ˆˆˆ‚ˆÙX\˜ÚÚXÛÛˆH
+ˆÝ™ÈšY]Ð›ÞIÌ	È\šXKZY[IÝYIÏÚ\˜ÛHÞIÌLIÈÞOIÌLIÈIÍ‹IÈ‚ˆ™š[IÛ›Û™IÈÝ›ÚÙOIØÝ\œ™[ÛÛÜ‰ÈÝ›ÚÙK]ÚYIÌKŽ	ËÏ]IÛLMKHMKHHIÈ‚ˆ™š[IÛ›Û™IÈÝ›ÚÙOIØÝ\œ™[ÛÛÜ‰ÈÝ›ÚÙK]ÚYIÌKŽ	ÈÝ›ÚÙK[[™XØ\IÜ›Ý[™	ËÏÜÝ™Ïˆ‚ˆ
+BˆÚY[ÚXÛÛˆH
+ˆÝ™ÈšY]Ð›ÞIÌ	È\šXKZY[IÝYIÏ]IÓLLˆÈŒXÌKLËHKNLMKLKKNMKNLLž‰È‚ˆ™š[IÛ›Û™IÈÝ›ÚÙOIØÝ\œ™[ÛÛÜ‰ÈÝ›ÚÙK]ÚYIÌKŽ	ÈÝ›ÚÙK[[™Z›Ú[IÜ›Ý[™	ËÏÜÝ™Ïˆ‚ˆ
+BˆXÚØYÙWÚXÛÛˆH
+ˆÝ™ÈšY]Ð›ÞIÌ	È\šXKZY[IÝYIÏ]IÛLLˆÈH]ŽNHKNKMUŽ“LËHLˆLÛKMSLLˆLÝŽ	È‚ˆ™š[IÛ›Û™IÈÝ›ÚÙOIØÝ\œ™[ÛÛÜ‰ÈÝ›ÚÙK]ÚYIÌKŽ	ÈÝ›ÚÙK[[™Z›Ú[IÜ›Ý[™	ËÏÜÝ™Ïˆ‚ˆ
+Bˆ›ÛÚ×ÚXÛÛˆH
+ˆÝ™ÈšY]Ð›ÞIÌ	È\šXKZY[IÝYIÏ]IÓML˜LÈÈHÈÝŒLÒØLÈÈKLËLÞ“MÈŒM“LLZ“LLLÚ‰È‚ˆ™š[IÛ›Û™IÈÝ›ÚÙOIØÝ\œ™[ÛÛÜ‰ÈÝ›ÚÙK]ÚYIÌKŽ	ÈÝ›ÚÙK[[™Z›Ú[IÜ›Ý[™	ËÏÜÝ™Ïˆ‚ˆ
+BˆÝ›X\šÙÝÛŠˆˆˆˆ‚ˆÙXÝ[ÛˆÛ\ÜÏH˜Ý‹X\]ØZ][™Èˆ\šXK[X™[H”™\XÙ[Y[Ø[™Y]\È‚ˆ]ˆÛ\ÜÏH˜Ý‹X\]ØZ][™ËZXY”™\XÙ[Y[Ø[™Y]\ÏÚ‚ˆÜ[ˆÛ\ÜÏH˜Ý‹X\]ØZ][™Ë\Ý]\È•ÐRUS‘È“ÔˆÑPTÒÜÜ[Ù]‚ˆ]ˆÛ\ÜÏH˜Ý‹X\]ØZ][™ËZ[›ÈÜ[ˆÛ\ÜÏH˜Ý‹X\]ØZ][™ËZXÛÛˆžÜÙX\˜ÚÚXÛÛŸOÜÜ[‚ˆ]Ï”ÙX\˜Ú›ÜˆH\È™YÚ[ÚÏ‚ˆ”Ý\Y\‹X˜XÚÙYØ[™Y]H›ÝÜÈÚ[\X\ˆ\™HY\ˆHTˆÙX\˜Úš[š\Ú\ËÜÙ]‚ˆÙ]‚ˆÛ\ÜÏH˜Ý‹X\\™]šY]Ë[X™[”™]šY]È™Y›Ü™H\›Ý˜[Ü‚ˆ]ˆÛ\ÜÏH˜Ý‹X\\™]šY]ËYÜšY‚ˆ\XÛHÛ\ÜÏH˜Ý‹X\\™]šY]ËZ][H]ˆÛ\ÜÏH˜Ý‹X\\™]šY]ËZ][KZXYžÜÚY[ÚXÛÛŸPÛÛ\]Xš[]H]šY[˜ÙOÙ]‚ˆ”XÚØYÙK[ˆÛÝ[[™\˜Ú]XÝ\™H™YY[™Ú[™Y\š[™È™]šY]ËÜØ\XÛO‚ˆ\XÛHÛ\ÜÏH˜Ý‹X\\™]šY]ËZ][H]ˆÛ\ÜÏH˜Ý‹X\\™]šY]ËZ][KZXYžÜXÚØYÙWÚXÛÛŸTÝ\Y\ˆ]šY[˜ÙOÙ]‚ˆ“Y™XÞXÛKÝØÚË[™ÛÝ\˜ÙH[šÜÈ\X\ˆÚ[ˆ]˜Z[X›KÜØ\XÛO‚ˆ\XÛHÛ\ÜÏH˜Ý‹X\\™]šY]ËZ][H]ˆÛ\ÜÏH˜Ý‹X\\™]šY]ËZ][KZXYžØ›ÛÚ×ÚXÛÛŸQ]\ÚY]™]šY]ÏÙ]‚ˆÚXÚÈÚ]Y[Y[œÚ[ÛœÈ[™ÛÝ\˜ÙHØÝ[Y[È™Y›Ü™HÚYÛ‹[Ù™‹ÜØ\XÛO‚ˆÙ]‚ˆÜÙXÝ[Û‚ˆˆˆ‹ˆ[œØY™WØ[Ý×Ú[UYKˆ
+B‚‚™Yˆ™[™\—Ü™\XÙ[Y[ÜÙX\˜Ú
+
+HOˆ›Û™N‚ˆˆˆ‘š[™XK\™\XÙ[Y[^[Ý]Ú\™YÈH]™H[\›˜]]™HÙX\˜Úˆˆˆ‚ˆ™YÚ[—Ø\›Ý™YÜYÙJ
+Bˆœ›ÛHÜ˜Ë˜\›Ý™YØ[\›˜]]™\È[\Ü
+ˆØ[™Y]WÛY™XÞXÛWÚ\×Ø›ØÚÙYˆ\ÚÙ^KˆÙÙÛWØÛÛ\\š\ÛÛ—ØØ[™Y]Kˆ
+Bˆœ›ÛHÜ˜Ë˜[\›˜]]™WÙš[™\—ÜÝ]H[\Ü
+ˆ\×Ù\˜X›WÜÙX\˜ÚÙ›Ü—Û\‹ˆ[š]Ø[\›˜]]™WÙš[™\—ÜÝ]Kˆ
+Bˆœ›ÛHÜ˜ËZK›˜]šYØ][Ûˆ[\Ü
+ˆSÑ’S‘T—Ô‘UT“—ÑPÒTÒSÓ—ÒQÒÑVKˆSÑ’S‘T—Ô‘UT“—ÓT—ÒÑVKˆSÑ’S‘T—Ô‘UT“—ÔQÑWÒÑVKˆ\WØ[\›˜]]™WÙš[™\—Ü™Yš[ˆÛÛœÝ[YWØ[\›˜]]™WÙš[™\—ØÛÛ^ˆ™]™X[Ø]][XØ]YÜYÙWØ›ÙKˆ
+B‚ˆ[š]Ø[\›˜]]™WÙš[™\—ÜÝ]JÝœÙ\ÜÚ[Û—ÜÝ]JB‚ˆYˆÜ]Y\žWÜ\˜[JÙ^NˆÝ‹Y˜][ˆÝˆHˆŠHOˆÝŽ‚ˆžN‚ˆ˜[YHHÝœ]Y\žWÜ\˜[\Ë™Ù]
+Ù^KY˜][
+Bˆ^Ù\^Ù\[ÛŽ‚ˆ™]\›ˆY˜][ˆYˆ\Ú[œÝ[˜ÙJ˜[YK
+\Ý\JJN‚ˆ˜[YHH˜[YVËLWHYˆ˜[YH[ÙHY˜][ˆ™]\›ˆÝŠ˜[YHÜˆY˜][
+B‚ˆ˜]šYØ][Û—ØÛÛ^HÛÛœÝ[YWØ[\›˜]]™WÙš[™\—ØÛÛ^
+Ü]Y\žWÜ\˜[JBˆYˆ˜]šYØ][Û—ØÛÛ^‚ˆ\WØ[\›˜]]™WÙš[™\—Ü™Yš[
+˜]šYØ][Û—ØÛÛ^
+BˆÛÝ\˜ÙWØÛÛ^HXÝ
+ˆÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+˜[\›˜]]™WÜ™Yš[ÜÛÝ\˜ÙWØÛÛ^ŠHÜˆßBˆ
+Bˆ›ÜˆÛÛ^ÚÙ^H[ˆ
+ˆ™\ØÜš\[Ûˆ‹ˆœÛÝ\˜ÙWÜYÙH‹ˆ˜[˜[\Ú\×ÚY‹ˆœ›Ú™XÝÛ˜[YH‹ˆ˜›ÛWÛ˜[YH‹ˆ›\ˆ‹ˆœ™Yš[ÚY‹ˆœ™]\›—Ø[˜[\Ú\×ÚY‹ˆœ™]\›—ÜYÙH‹ˆœ™]\›—Û\ˆ‹ˆœ™]\›—ÙXÚ\Ú[Û—ÚY‹ˆ
+N‚ˆYˆ˜]šYØ][Û—ØÛÛ^™Ù]
+ÛÛ^ÚÙ^JN‚ˆÛÝ\˜ÙWØÛÛ^ØÛÛ^ÚÙ^WHH˜]šYØ][Û—ØÛÛ^ØÛÛ^ÚÙ^WBˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜[\›˜]]™WÜ™Yš[ÜÛÝ\˜ÙWØÛÛ^—HHÛÝ\˜ÙWØÛÛ^ˆÈH\›Ý™Y™[™\™\ˆÝÛœÈHš\ÚX›H[œ]ˆÜ[]H]ÈÙ^H™Y›Ü™BˆÈÛÛœÝXÝ[™ÈHÚYÙ]ÛÈHÛXÚÙYTˆ\X\œÈÛˆHš\œÝ™[™\‹‚ˆÛXÚÙYÛ\ˆHÝŠ˜]šYØ][Û—ØÛÛ^™Ù]
+›\ˆŠHÜˆˆŠKœÝš\
+
+BˆYˆÛXÚÙYÛ\Ž‚ˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜\›Ý™YÜ™\XÙ[Y[Ü]Y\žH—HHÛXÚÙYÛ\‚ˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜ØY]›Ü—Ü™\XÙ[Y[Ü]Y\žH—HHÛXÚÙYÛ\‚ˆÛÝ\˜ÙWØÛÛ^HÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+˜[\›˜]]™WÜ™Yš[ÜÛÝ\˜ÙWØÛÛ^ŠBˆÛÝ\˜ÙWØÛÛ^HÛÝ\˜ÙWØÛÛ^Yˆ\Ú[œÝ[˜ÙJÛÝ\˜ÙWØÛÛ^XÝ
+H[ÙHßBˆ™]\›—Ý\™Ù]HÝŠÛÝ\˜ÙWØÛÛ^™Ù]
+œÛÝ\˜ÙWÜYÙHŠHÜˆˆŠBˆ™]\›—ÜYÙHHÝŠÛÝ\˜ÙWØÛÛ^™Ù]
+œ™]\›—ÜYÙHŠHÜˆˆŠKœÝš\
+
+Bˆ™]\›—ÙXÚ\Ú[Û—ÚYHÝŠÛÝ\˜ÙWØÛÛ^™Ù]
+œ™]\›—ÙXÚ\Ú[Û—ÚYŠHÜˆˆŠKœÝš\
+
+Bˆ™]\›—Ø[˜[\Ú\×ÚYHÝŠˆÛÝ\˜ÙWØÛÛ^™Ù]
+œ™]\›—Ø[˜[\Ú\×ÚYŠHÜˆÛÝ\˜ÙWØÛÛ^™Ù]
+˜[˜[\Ú\×ÚYŠHÜˆˆ‚ˆ
+KœÝš\
+
+Bˆ™]\›—ÛX™[HÂˆ™[™Ú[™Y\š[™×Ú[[YÙ[˜ÙWÜ™]šY]ÈŽˆ¸¡¤˜XÚÈÈ“ÓHš\ÚÈ‹ˆ™]Z[YÜš\Ú×Ü™\ÜŽˆ¸¡¤˜XÚÈÈ]Z[Yš\ÚÈ™\Ü‹ˆK™Ù]
+™]\›—Ý\™Ù]¸¡¤˜XÚÈÈ“ÓHŠBˆYˆ™]\›—ÜYÙHOH‘[™Ú[™Y\š[™ÈXÚ\Ú[ÛœÈˆ[™™]\›—ÙXÚ\Ú[Û—ÚY‚ˆYˆÝ˜]ÛŠˆ¸¡¤˜XÚÈÈXÚ\Ú[Ûˆ™]šY]È‹ˆÙ^OJˆ˜ØY]›Ü—Ü™\XÙ[Y[Ü™]\›—ÙXÚ\Ú[Û—È‚ˆˆžÚ\ÚX‹œÚLJ™]\›—ÙXÚ\Ú[Û—ÚY™[˜ÛÙJ	Ý]‹N	ÊJKš^YÙ\Ý
+
+VÎŒL—_H‚ˆ
+Kˆ\OHœÙXÛÛ™\žH‹ˆ
+N‚ˆ›ÜˆÝ]WÚÙ^H[ˆ
+ˆSÑ’S‘T—Ô‘UT“—ÔQÑWÒÑVKˆSÑ’S‘T—Ô‘UT“—ÓT—ÒÑVKˆSÑ’S‘T—Ô‘UT“—ÑPÒTÒSÓ—ÒQÒÑVKˆ
+N‚ˆÝœÙ\ÜÚ[Û—ÜÝ]KœÜ
+Ý]WÚÙ^K›Û™JBˆ˜]šYØ]WÝÊ‘[™Ú[™Y\š[™ÈXÚ\Ú[ÛœÈ‹XÚ\Ú[Û—ÚY\™]\›—ÙXÚ\Ú[Û—ÚY
+BˆÝœ™\[Š
+Bˆ[Yˆ™]\›—Ø[˜[\Ú\×ÚY[™Ý˜]ÛŠˆ™]\›—ÛX™[ˆÙ^OYˆ˜ØY]›Ü—Ü™\XÙ[Y[Ü™]\›—ÞÚ\ÚX‹œÚLJ™]\›—Ø[˜[\Ú\×ÚY™[˜ÛÙJ	Ý]‹N	ÊJKš^YÙ\Ý
+
+VÎŒL—_H‹ˆ\OHœÙXÛÛ™\žH‹ˆ
+N‚ˆYˆÛ˜]šYØ]WØ˜XÚ×Ý×Ø›ÛWÜ™]šY]ÊÛÝ\˜ÙWØÛÛ^
+N‚ˆÝœ™\[Š
+BˆÝœÙ\ÜÚ[Û—ÜÝ]KœÙ]Y˜][
+ˆ˜\›Ý™YÜ™\XÙ[Y[Ü]Y\žH‹ˆÝŠÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+˜ØY]›Ü—Ü™\XÙ[Y[Ü]Y\žHŠHÜˆˆŠKˆ
+BˆÝ›X\šÙÝÛŠˆ]ˆÛ\ÜÏIØÝ‹X\	ÏO‘š[™H™\XÙ[Y[ÚOˆ‚ˆÛ\ÜÏIØÝ‹X\\ÝX‰Ï”ÙX\˜ÚHÛÝ\˜ÙH\[ˆ™]šY]ÈÝ\Y\ˆ]šY[˜ÙH[™ÛÛ\\™HÛÛ\]X›HØ[™Y]\ËÜÙ]ˆ‹ˆ[œØY™WØ[Ý×Ú[UYKˆ
+Bˆ›Ý×ÜÝ\\ˆHÝ™[\J
+Bˆ›Ý×ÜÝ\\‹›X\šÙÝÛŠˆØ\›Ý™YÙ›Ý×ÜÝ\\—ÛX\šÝ\
+ˆ
+‘[\ˆ\‹”™]šY]ÈØ[™Y]\È‹ÛÛ\\™H[™™XÛÜ™ŠKˆXÝ]™WÜÝ\LKˆ
+Kˆ[œØY™WØ[Ý×Ú[UYKˆ
+BˆÚ]Ý˜ÛÛZ[™\ŠÙ^OH˜\›Ý™YÜ™\XÙ[Y[ÜÙX\˜ÚØØ\™ŠN‚ˆÝ›X\šÙÝÛŠˆ]ˆÛ\ÜÏIØÝ‹X\Y[žKZXY[™ÉÏÜ[ˆÛ\ÜÏIØÝ‹X\Y[žKZXÛÛ‰Ïˆ‚ˆÝ™ÈšY]Ð›ÞIÌ	È\šXKZY[IÝYIÏÚ\˜ÛHÞIÌLIÈÞOIÌLIÈIÍ‹IÈ‚ˆ™š[IÛ›Û™IÈÝ›ÚÙOIØÝ\œ™[ÛÛÜ‰ÈÝ›ÚÙK]ÚYIÌKŽ	ËÏ]IÛLMKHMKHHIÈ‚ˆ™š[IÛ›Û™IÈÝ›ÚÙOIØÝ\œ™[ÛÛÜ‰ÈÝ›ÚÙK]ÚYIÌKŽ	ÈÝ›ÚÙK[[™XØ\IÜ›Ý[™	ËÏÜÝ™Ïˆ‚ˆÜÜ[]”ÓÕTÑHÓÓTÓ‘S•Ü‘š[™[\›˜]]™\È›ÜˆH\ÚÙ]Ù]ˆ‚ˆÛ\ÜÏIØÝ‹X\Y[žKXÛÜIÏ‘[\ˆHX[Y˜XÝ\™\ˆ\[X™\ˆÈÙX\˜ÚÝ\Y\ˆØ][ÙÜËÜˆ‹ˆ[œØY™WØ[Ý×Ú[UYKˆ
+BˆÙX\˜ÚØÛÛ]Û—ØÛÛHÝ˜ÛÛ[[œÊÍKWK™\XØ[Ø[YÛ›Y[H˜›ÝÛHŠBˆÚ]ÙX\˜ÚØÛÛ‚ˆ]Y\žHHÝ^Ú[œ]
+ˆ“X[Y˜XÝ\™\ˆ\[X™\ˆ‹ˆÙ^OH˜\›Ý™YÜ™\XÙ[Y[Ü]Y\žH‹ˆXÙZÛ\H™K™Ë‹MÎPPÕ‹ˆ
+BˆÚ]]Û—ØÛÛ‚ˆ[ˆHÝ˜]ÛŠ”ÙX\˜Ú‹Ù^OH˜\›Ý™YÜ™\XÙ[Y[ÜÙX\˜Ú‹\OHœš[X\žHŠBˆÝ›X\šÙÝÛŠˆÛ\ÜÏIØÝ‹X\\™\XÙ[Y[[›ÝIÏ”ÙX\˜Ú™\Ý[È\X\ˆY\ˆHÙX\˜ÚÛÛ\]\ËÜˆ‚ˆ]ˆÛ\ÜÏIØÝ‹X\XÛÛ^[›ÝIÏÝ™ÈšY]Ð›ÞIÌ	È\šXKZY[IÝYIÏˆ‚ˆ]IÓLLˆÈŒHŽNHKNKMUŽ‰Èš[IÛ›Û™IÈÝ›ÚÙOIØÝ\œ™[ÛÛÜ‰ÈÝ›ÚÙK]ÚYIÌKŽ	ËÏˆ‚ˆÜÝ™ÏÜ[•ÛÜšÚ[™Èœ›ÛHHØ]™Y“ÓOÈÝ\œ›ÛHHÛÛ\Û™[XÝ[ÛˆY[HÈÙY\\ÈÙX\˜Ú[šÙYÈ][˜[\Ú\ËÜÜ[Ù]ˆ‹ˆ[œØY™WØ[Ý×Ú[UYKˆ
+BˆÈ™]™X[H™X[š[™\ˆÛÛ[™Y›Ü™HH›ØÚÚ[™ÈÝ\Y\ˆÛÚÝ\ˆBˆÈÜ\]YH›Ý]HÛÝ™\ˆÚÝ[›ÝÚ]Ý™\ˆHXÝ]™HYÙHÚ[H™\Ý[ÈØY‚ˆ™]™X[Ø]][XØ]YÜYÙWØ›ÙJ[\›˜]]™Hš[™\ˆŠBˆ]Y\žHHÝŠ]Y\žHÜˆÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+˜\›Ý™YÜ™\XÙ[Y[Ü]Y\žHŠHÜˆˆŠKœÝš\
+
+Bˆ™\Ý[HÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+˜[\›˜]]™WÙš[™\—Ü™\Ý[ŠBˆ™Yš[YÜÙX\˜ÚÜ[™[™ÈH›ÛÛ
+ˆÝœÙ\ÜÚ[Û—ÜÝ]KœÜ
+˜[\›˜]]™WÜ™Yš[ÜÙX\˜ÚÜ[™[™È‹˜[ÙJBˆ
+BˆYˆ
+[ˆÜˆ™Yš[YÜÙX\˜ÚÜ[™[™ÊH[™]Y\žN‚ˆœ›ÛHÜ˜Ë˜[\›˜]]™WÙš[™\—ÜÙX\˜Ú[\Ü[—Ø[\›˜]]™WÙš[™\—ÜÙX\˜Ú‚ˆÚ]ÝœÜ[›™\Šˆ”ÙX\˜Ú[™ÈÝ\Y\ˆØ][ÙÜÈ›ÜˆÜ]Y\ž_x )ˆŠN‚ˆ[—Ø[\›˜]]™WÙš[™\—ÜÙX\˜Ú
+ÝœÙ\ÜÚ[Û—ÜÝ]K]Y\žJBˆ™\Ý[HÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+˜[\›˜]]™WÙš[™\—Ü™\Ý[ŠBˆÜšYÚ[˜[HßBˆØ[™Y]\Îˆ\ÝÙXÝÜÝ‹[žWWHH×BˆYˆ\Ú[œÝ[˜ÙJ™\Ý[XÝ
+N‚ˆÜšYÚ[˜[H™\Ý[™Ù]
+›ÜšYÚ[˜[Ù]HŠHYˆ\Ú[œÝ[˜ÙJ™\Ý[™Ù]
+›ÜšYÚ[˜[Ù]HŠKXÝ
+H[ÙHßBˆ˜]×ØØ[™Y]\ÈH™\Ý[™Ù]
+˜Ø[™Y]\ÈŠHÜˆ™\Ý[™Ù]
+˜[\›˜]]™WØØ[™Y]\ÈŠHÜˆ×BˆØ[™Y]\ÈHÜ›ÝÈ›Üˆ›ÝÈ[ˆ˜]×ØØ[™Y]\ÈYˆ\Ú[œÝ[˜ÙJ›ÝËXÝ
+WBˆYˆ\Ú[œÝ[˜ÙJÛÝ\˜ÙWØÛÛ^XÝ
+H[™]Y\žN‚ˆœ›ÛHÜ˜Ë››Ü›X[^™\ˆ[\Ü›Ü›X[^™WÜ\Û[X™\‚‚ˆÛÛ^Û\ˆHÝŠÛÝ\˜ÙWØÛÛ^™Ù]
+›\ˆŠHÜˆˆŠKœÝš\
+
+BˆYˆ
+ˆÛÛ^Û\‚ˆ[™
+›Ü›X[^™WÜ\Û[X™\ŠÛÛ^Û\ŠHÜˆÛÛ^Û\‹\\Š
+JBˆOH
+›Ü›X[^™WÜ\Û[X™\Š]Y\žJHÜˆ]Y\žK\\Š
+JBˆ
+N‚ˆÈÙY\HÛXÚÙYÛÝ\˜ÙHš\ÚX›H]™[ˆÚ[ˆHÝ\Y\ˆ\È›È^XÝˆÈØ][ÙÈ™XÛÜ™›Üˆ]‚ˆÜšYÚ[˜[HXÝ
+ÜšYÚ[˜[
+BˆÜšYÚ[˜[È›X[Y˜XÝ\™\—Ü\Û[X™\ˆ—HHÛÛ^Û\‚ˆ›ÜˆšY[ÛÛ^ÙšY[[ˆ
+ˆ
+›X[Y˜XÝ\™\ˆ‹›X[Y˜XÝ\™\ˆŠKˆ
+™\ØÜš\[Ûˆ‹™\ØÜš\[ÛˆŠKˆ
+›Y™XÞXÛH‹›Y™XÞXÛHŠKˆ
+œš\Ú×Û]™[‹œš\ÚÈŠKˆ
+N‚ˆYˆ›ÝÝŠÜšYÚ[˜[™Ù]
+šY[
+HÜˆˆŠKœÝš\
+
+N‚ˆÜšYÚ[˜[ÙšY[HHÛÝ\˜ÙWØÛÛ^™Ù]
+ÛÛ^ÙšY[
+HÜˆˆ‚ˆÙX\˜ÚØÛÛ\]YH\×Ù\˜X›WÜÙX\˜ÚÙ›Ü—Û\ŠÝœÙ\ÜÚ[Û—ÜÝ]K]Y\žJBˆ›Ý×ÜÝ\\‹›X\šÙÝÛŠˆØ\›Ý™YÙ›Ý×ÜÝ\\—ÛX\šÝ\
+ˆ
+‘[\ˆ\‹”™]šY]ÈØ[™Y]\È‹ÛÛ\\™H[™™XÛÜ™ŠKˆXÝ]™WÜÝ\LˆYˆÙX\˜ÚØÛÛ\]Y[ÙHKˆ
+Kˆ[œØY™WØ[Ý×Ú[UYKˆ
+BˆYˆ›ÝÙX\˜ÚØÛÛ\]Y‚ˆÈH[š]X[š[™\ˆšY]È\ÈÛ›HHÙX\˜Ú›Ü›KˆÙY\HÝ[Hš[Ü‚ˆÈ™\Ý[Y[ˆÚ[HH\Ù\ˆY]ÈH™]È]Y\žNÈÚÝÈ™\Ý[È[™ˆÈš[\œÈÛ›HY\ˆ]^XÝTˆ\Èš[š\ÚYÙX\˜Ú[™Ë‚ˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜\›Ý™YÜ™\XÙ[Y[ØÛÛ\\™WØØ[™Y]\È—HH×BˆÜ™[™\—Ü™\XÙ[Y[ÜÙX\˜ÚÝØZ][™×ÜÝ]J
+Bˆ™]\›‚ˆÝ\Y\—ØØ[™Y]WØÛÝ[H[ŠØ[™Y]\ÊBˆYˆÝ\Y\—ØØ[™Y]WØÛÝ[‚ˆš]Ùš[\‹Y™WÙš[\‹ÝØÚ×Ùš[\‹š\Ú×Ùš[\‹ÛÜØžHHÝ˜ÛÛ[[œÊJBˆÚ]š]Ùš[\Ž‚ˆš]ØÚÚXÙHHÝœÙ[XÝ›Þ
+”\˜[Y]šXÈš]‹È[—KÙ^OH˜\›Ý™YÙš]Ùš[\ˆŠBˆÚ]Y™WÙš[\Ž‚ˆY™WØÚÚXÙHHÝœÙ[XÝ›Þ
+“Y™XÞXÛH‹È[‹XÝ]™H‹“”“‘‹“ØœÛÛ]H—KÙ^OH˜\›Ý™YÛY™WÙš[\ˆŠBˆÚ]ÝØÚ×Ùš[\Ž‚ˆÝØÚ×ØÚÚXÙHHÝœÙ[XÝ›Þ
+”ÝØÚÈ‹È[‹’[ˆÝØÚÈ‹“›ÈÝØÚÈ—KÙ^OH˜\›Ý™YÜÝØÚ×Ùš[\ˆŠBˆÚ]š\Ú×Ùš[\Ž‚ˆš\Ú×ØÚÚXÙHHÝœÙ[XÝ›Þ
+ˆ”š\ÚÈ‹ˆÈ[‹’YÚ‹“YY][H‹“ÝÈ‹“™YYÈ™\šYšXØ][Ûˆ—KˆÙ^OH˜\›Ý™YÜš\Ú×Ùš[\ˆ‹ˆ
+BˆÚ]ÛÜØžN‚ˆÛÜØÚÚXÙHHÝœÙ[XÝ›Þ
+”ÛÜžH‹È“Ý™\˜[X]Ú‹”ÝØÚÈ‹”š\ÚÈ—KÙ^OH˜\›Ý™YÜ™\XÙ[Y[ÜÛÜŠBˆ[ÙN‚ˆÈÛ‰ÝÚÝÈ[™\š[\ˆÛÛ›ÛÈÚ[ˆHÝ\Y\ˆÙX\˜Ú™]\›™Y›ÂˆÈÛÛ\Û™[›ÝÜËˆH[\HÝ]H™[ÝÈ^Z[œÈÚ]H\Ù\ˆØ[ˆË‚ˆš]ØÚÚXÙHHY™WØÚÚXÙHHÝØÚ×ØÚÚXÙHHš\Ú×ØÚÚXÙHHÛÜØÚÚXÙHH[‚ˆš[\™YH×Bˆ›Üˆ›ÝÈ[ˆØ[™Y]\Î‚ˆ]™[HÝŠ›ÝË™Ù]
+‘\Ý[X]Yš\ÚÈŠHÜˆ›ÝË™Ù]
+œš\Ú×Û]™[ŠHÜˆ›ÝË™Ù]
+œš\ÚÈŠHÜˆˆŠBˆY™XÞXÛHHÝŠ›ÝË™Ù]
+“Y™XÞXÛHŠHÜˆ›ÝË™Ù]
+›Y™XÞXÛWÜÝ]\ÈŠHÜˆ›ÝË™Ù]
+›Y™XÞXÛHŠHÜˆˆŠBˆÝØÚ×Ý˜[YHHØØ[™Y]WÜÝØÚÊ›ÝÊBˆYˆY™WØÚÚXÙHOH[ˆ[™Y™WØÚÚXÙK˜Ø\ÙY›Û
+
+H›Ý[ˆY™XÞXÛK˜Ø\ÙY›Û
+
+N‚ˆÛÛ[YBˆYˆš\Ú×ØÚÚXÙHOH[ˆ[™š\Ú×ØÚÚXÙK˜Ø\ÙY›Û
+
+H›Ý[ˆ]™[˜Ø\ÙY›Û
+
+N‚ˆÛÛ[YBˆYˆÝØÚ×ØÚÚXÙHOH’[ˆÝØÚÈˆ[™ÝØÚ×Ý˜[YHH‚ˆÛÛ[YBˆYˆÝØÚ×ØÚÚXÙHOH“›ÈÝØÚÈˆ[™ÝØÚ×Ý˜[YHˆ‚ˆÛÛ[YBˆš[\™Y˜\[™
+›ÝÊBˆYˆÛÜØÚÚXÙHOH”ÝØÚÈŽ‚ˆš[\™YœÛÜ
+Ù^OWØØ[™Y]WÜÝØÚË™]™\œÙOUYJBˆ[YˆÛÜØÚÚXÙHOH”š\ÚÈŽ‚ˆš[\™YœÛÜ
+Ù^O[[X™H›ÝÎˆÝŠ›ÝË™Ù]
+‘\Ý[X]Yš\ÚÈŠHÜˆ›ÝË™Ù]
+œš\Ú×Û]™[ŠHÜˆˆŠJBˆ˜[YYHÜ›ÝÈ›Üˆ›ÝÈ[ˆš[\™YYˆØØ[™Y]WÛ\Š›ÝÊWBˆ›ÜYH[Šš[\™Y
+HH[Š˜[YY
+Bˆ^ÛYYÛØœÛÛ]HHÜ›ÝÈ›Üˆ›ÝÈ[ˆ˜[YYYˆØ[™Y]WÛY™XÞXÛWÚ\×Ø›ØÚÙY
+›ÝÊWBˆÈ^XÚ]ØœÛÛ]KÑSÓ™XÛÜ™ÈØ[ˆ™H[œÜXÝY]]\Ý™]™\ˆ\X\ˆ\ÂˆÈ™\XÙ[Y[\™XYHÚÚXÙ\ÈÜˆ[\ˆÛÛ\\š\ÛÛ‹Ø\›Ý˜[Ù[XÝ[Û‹‚ˆØ[™Y]\ÈH
+ˆ×BˆYˆY™WØÚÚXÙK˜Ø\ÙY›Û
+
+HOH›ØœÛÛ]H‚ˆ[ÙHÜ›ÝÈ›Üˆ›ÝÈ[ˆ˜[YYYˆ›ÝØ[™Y]WÛY™XÞXÛWÚ\×Ø›ØÚÙY
+›ÝÊWBˆ
+Bˆ[š]ØÚÚXÙBˆ\ˆHÙ\ØÊÜšYÚ[˜[™Ù]
+›X[Y˜XÝ\™\—Ü\Û[X™\ˆŠHÜˆÜšYÚ[˜[™Ù]
+›\ˆŠHÜˆ
+]Y\žHÜˆ”ÙX\˜Ú[ˆTˆŠJBˆX[Y˜XÝ\™\ˆHÙ\ØÊÜšYÚ[˜[™Ù]
+›X[Y˜XÝ\™\ˆŠHÜˆÜšYÚ[˜[™Ù]
+“X[Y˜XÝ\™\ˆŠHÜˆÜšYÚ[˜[™Ù]
+›X[Y˜XÝ\™\—Û˜[YHŠHÜˆ¸ %ŠBˆ\ØÜš\[ÛˆHÙ\ØÊÜšYÚ[˜[™Ù]
+™\ØÜš\[ÛˆŠHÜˆÜšYÚ[˜[™Ù]
+˜Ø]YÛÜžHŠHÜˆˆŠBˆ›ÝXÙHHˆ‚ˆÛÚÝ\Ù\œ›ÜˆHˆ‚ˆÙX\˜ÚÙ\œ›ÜˆHˆ‚ˆØ[™Y]WÜÝ]\ÈHˆ‚ˆYˆ\Ú[œÝ[˜ÙJ™\Ý[XÝ
+N‚ˆÛÚÝ\Ù\œ›ÜˆHÝŠ™\Ý[™Ù]
+›ÛÚÝ\Ù\œ›ÜˆŠHÜˆˆŠKœÝš\
+
+BˆÙX\˜ÚÙ\œ›ÜˆHÝŠ™\Ý[™Ù]
+œÙX\˜ÚÙ\œ›ÜˆŠHÜˆˆŠKœÝš\
+
+Bˆ\ØÛÝ™\žHH™\Ý[™Ù]
+™\ØÛÝ™\žWÛY]Y]HŠBˆYˆ\Ú[œÝ[˜ÙJ\ØÛÝ™\žKXÝ
+N‚ˆØ[™Y]WÜÝ]\ÈHÝŠ\ØÛÝ™\žK™Ù]
+˜Ø[™Y]WÜÝ]\ÈŠHÜˆˆŠKœÝš\
+
+BˆÛÝ\˜ÙWÛ›ÝXÙHHÛÚÝ\Ù\œ›Ü‚ˆØ[™Y]WÛ›ÝXÙHHˆ‚ˆYˆ]Y\žKœÝš\
+
+H[™\Ú[œÝ[˜ÙJ™\Ý[XÝ
+H[™›ÝØ[™Y]\È[™^ÛYYÛØœÛÛ]N‚ˆØ[™Y]WÛ›ÝXÙHH
+ˆˆžÛ[Š^ÛYYÛØœÛÛ]J_HÝ\Y\ˆX]ÚÉÙ\ÉÈYˆ[Š^ÛYYÛØœÛÛ]JHOHH[ÙH	ÉßH‚ˆ›X\šÙYØœÛÛ]HÜˆ[™ÙˆY™KˆØY]›Üˆ^ÛYY\ÙHœ›ÛH™\XÙ[Y[Ù[XÝ[Û‹ˆ‚ˆ
+Bˆ[Yˆ]Y\žKœÝš\
+
+H[™\Ú[œÝ[˜ÙJ™\Ý[XÝ
+H[™›ÝÝ\Y\—ØØ[™Y]WØÛÝ[‚ˆØ[™Y]WÛ›ÝXÙHHÙX\˜ÚÙ\œ›ÜˆÜˆØ[™Y]WÜÝ]\ÈÜˆ“›È™\XÙ[Y[Ø[™Y]\ÈÙ\™H™]\›™Y›Üˆ\È\ˆ‚ˆ[Yˆ›ÜY‚ˆØ[™Y]WÛ›ÝXÙHH
+ˆˆžÙ›ÜYHÝ\Y\ˆ›ÝÞÉÜÉÈYˆ›ÜYOHH[ÙH	ÉßHY›È\[X™\ˆ‚ˆˆ˜[™ÉÝÙ\™IÈYˆ›ÜYOHH[ÙH	ÝØ\ÉßHYÝ]ˆ‚ˆ
+Bˆ[Yˆ^ÛYYÛØœÛÛ]N‚ˆØ[™Y]WÛ›ÝXÙHH
+ˆˆžÛ[Š^ÛYYÛØœÛÛ]J_HØœÛÛ]HÜˆ[™[Ù‹[Y™HÝ\Y\ˆX]Ú‚ˆˆžÉÙ\ÉÈYˆ[Š^ÛYYÛØœÛÛ]JHOHH[ÙH	ÉßH^ÛYYœ›ÛH™\XÙ[Y[Ù[XÝ[Û‹ˆ‚ˆ
+Bˆ›ÝXÙHHØ[™Y]WÛ›ÝXÙBˆÚÝÛˆHØ[™Y]\ÖÎŒWBˆYˆ[ŠØ[™Y]\ÊHˆ[ŠÚÝÛŠH[™›Ý›ÝXÙN‚ˆ›ÝXÙHHˆ”ÚÝÚ[™ÈÛ[ŠÚÝÛŠ_HÙˆÛ[ŠØ[™Y]\Ê_HÝ\Y\ˆ[\›˜]]™\Ëˆ‚ˆ›ÝXÙWÚ[HˆÛ\ÜÏIØÝ‹X\\ÝX‰Ïž×Ù\ØÊ›ÝXÙJ_OÜˆˆYˆ›ÝXÙH[™ÚÝÛˆ[ÙHˆ‚ˆÛÝ\˜ÙWÚ[HˆÛ\ÜÏIØÝ‹X\\ÝX‰Ïž×Ù\ØÊÛÝ\˜ÙWÛ›ÝXÙJ_OÜˆˆYˆÛÝ\˜ÙWÛ›ÝXÙH[ÙHˆ‚ˆÝ›X\šÙÝÛŠˆˆˆˆ‚ˆ]ˆÛ\ÜÏH˜Ý‹X\‚ˆ”ÛÝ\˜ÙHÛÛ\Û™[Ú‚ˆÜÛÝ\˜ÙWÚ[BˆÙXÝ[ÛˆÛ\ÜÏH˜Ý‹X\XØ\™‚ˆ]ˆÛ\ÜÏH˜Ý‹X\[Y]H”ÛÝ\˜ÙH\Ù]‚ˆ]ˆÛ\ÜÏH˜Ý‹YZK\\žÜ\ÜÝÊÝŠÜšYÚ[˜[™Ù]
+	Ú[XYÙWÝ\›	ÊHÜˆÜšYÚ[˜[™Ù]
+	ÜÝ×Ý\›	ÊHÜˆ	ÉÊK\[ÜšYÚ[˜[
+_OÜ[ˆÛ\ÜÏH˜Ý‹YZK\\XÛÜHÜ[ˆÛ\ÜÏH˜Ý‹X\[˜[YHžÛ\ŸOÜÜ[Ü[ˆÛ\ÜÏH˜Ý‹YZK[Y]HžÙ\ØÜš\[ÛŸOÜÜ[ÜÜ[Ù]‚ˆ“X[Y˜XÝ\™\ˆÛX[Y˜XÝ\™\ŸOÜ‚ˆÜÙXÝ[Û‚ˆÛ›ÝXÙWÚ[Bˆ”™\XÙ[Y[Ø[™Y]\ÏÚ‚ˆÙ]‚ˆˆˆ‹ˆ[œØY™WØ[Ý×Ú[UYKˆ
+BˆYˆ^ÛYYÛØœÛÛ]N‚ˆÚ]Ý™^[™\Šˆˆ•šY]ÈÛ[Š^ÛYYÛØœÛÛ]J_H^ÛYYØœÛÛ]HÈ[™[Ù‹[Y™H™XÛÜ™‚ˆˆžÉÜÉÈYˆ[Š^ÛYYÛØœÛÛ]JHOHH[ÙH	ÉßH‹ˆ^[™YQ˜[ÙKˆ
+N‚ˆÝ˜Ø\[ÛŠ•\ÙHÝ\Y\ˆ™XÛÜ™È\™HÚÝÛˆ›ÜˆÛÛ^Û›NÈ^HØ[››Ý™HÛÛ\\™YÜˆ\›Ý™Y\È™\XÙ[Y[ËˆŠBˆ›Üˆ›ÝÈ[ˆ^ÛYYÛØœÛÛ]N‚ˆÝ›X\šÙÝÛŠˆˆ‹H
+Šž×Ù\ØÊØØ[™Y]WÛ\Š›ÝÊJ_JŠˆ0­È‚ˆˆž×Ù\ØÊØØ[™Y]WÙšY[
+›ÝË	ÓX[Y˜XÝ\™\‰Ë	ÛX[Y˜XÝ\™\‰ÊJ_H0­È‚ˆˆž×Ù\ØÊØØ[™Y]WÙšY[
+›ÝË	ÓY™XÞXÛIË	ÓY™XÞXÛHÝ]\ÉË	ÛY™XÞXÛWÜÝ]\ÉË	ÛY™XÞXÛIÊJ_H‹ˆ[œØY™WØ[Ý×Ú[Q˜[ÙKˆ
+BˆYˆ›ÝÚÝÛŽ‚ˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜\›Ý™YÜ™\XÙ[Y[ØÛÛ\\™WØØ[™Y]\È—HH×BˆÝœÙ\ÜÚ[Û—ÜÝ]KœÜ
+˜ØY]›Ü—Ü™\XÙ[Y[ÛÜ[—Û\ˆ‹›Û™JBˆYˆ^ÛYYÛØœÛÛ]N‚ˆ[\WÝ]HH“›È™\XÙ[Y[\™XYHØ[™Y]\È‚ˆ[\WÙ]Z[HØ[™Y]WÛ›ÝXÙBˆ[Yˆ›ÜY‚ˆ[\WÝ]HH”Ý\Y\ˆ™\Ý[È™YY\[[X™\ˆ™\šYšXØ][Ûˆ‚ˆ[\WÙ]Z[HØ[™Y]WÛ›ÝXÙBˆ[YˆÝ\Y\—ØØ[™Y]WØÛÝ[‚ˆ[\WÝ]HH“›ÈØ[™Y]\ÈX]ÚHÙ[XÝYš[\œÈ‚ˆ[\WÙ]Z[Hœ›ØY[ˆHš[\œÈX›Ý™HÜˆÙX\˜Ú\È\YØZ[‹ˆ‚ˆ[ÙN‚ˆ[\WÝ]HH“›ÈÝ\Y\ˆ[\›˜]]™\È›Ý[™‚ˆ[\WÙ]Z[HØ[™Y]WÛ›ÝXÙHÜˆ
+ˆ•HÛÛ™šYÝ\™YÝ\Y\ˆØ][ÙÜÈ™]\›™Y›È[\›˜]]™\È›Üˆ\È\ˆ‚ˆ•\ÈÙ\È›ÝÛÛ™š\›H]›È™\XÙ[Y[^\ÝËˆžH[›Ý\ˆTˆÜˆ™]šY]ÈÝ\Y\ˆØ][ÙÜÈ\™XÝKˆ‚ˆ
+BˆÝ›X\šÙÝÛŠˆˆÙXÝ[ÛˆÛ\ÜÏIØÝ‹X\XØ\™Ý‹X\Y[\K\Ý]IÏˆ‚ˆˆÏž×Ù\ØÊ[\WÝ]J_OÚÏž×Ù\ØÊ[\WÙ]Z[
+_OÜÜÙXÝ[Ûˆ‹ˆ[œØY™WØ[Ý×Ú[UYKˆ
+Bˆ™]\›‚ˆœ›ÛHÜ˜Ëœ\Ú[XYÙ\È[\Ü\Ú[XYÙWÛX\šÝ\‚ˆXY\ˆHÝ˜ÛÛ[[œÊÌ‹KŒËKŽŽKŽŽK×JBˆ›ÜˆÛÛ[[‹X™[[ˆš\
+ˆXY\‹ˆ
+Ø[™Y]HTˆ‹“X[Y˜XÝ\™\ˆ‹”Ý\Y\ˆ™[][ÛœÚ\‹“Y™XÞXÛH‹”ÝØÚÈ‹”Ý\Y\œÈ‹”š\ÚÈŠKˆ
+N‚ˆÛÛ[[‹›X\šÙÝÛŠˆ]ˆÛ\ÜÏIØÝ‹X\[Y]IÏžÛX™[OÙ]ˆ‹[œØY™WØ[Ý×Ú[UYJBˆÙ[XÝYHÝŠÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+˜ØY]›Ü—Ü™\XÙ[Y[ÛÜ[—Û\ˆŠHÜˆˆŠBˆ›Üˆ[™^›ÝÈ[ˆ[[Y\˜]JÚÝÛŠN‚ˆØ[™Y]WÛ\ˆHØØ[™Y]WÛ\Š›ÝÊBˆ\×ÛÜ[ˆHØ[™Y]WÛ\ˆOHÙ[XÝYˆÛÛ\]Xš[]HH\ÜÙ\Ü×Ü\ØÛÛ\]Xš[]JˆÜšYÚ[˜[ˆØØ[™Y]WÜ\Ü^[ØY
+›ÝÊKˆ
+BˆYˆÛÛ\]Xš[]K™Ù]
+˜Üš]XØ[ÝØ\›š[™ÜÈŠN‚ˆÛÛ\]Xš[]WÛX™[H
+ˆÜ[ˆÛ\ÜÏIØÝ‹XÛÛ\]\[Üš]XØ[	Ï““Õ“ÔRSÜÜ[ˆ‚ˆ]ˆÛ\ÜÏIØÝ‹XÛÛ\]Z[›[™KXÜš]XØ[	Ïˆ‚ˆ
+Èœˆ‹š›Ú[ŠÙ\ØÊ][JH›Üˆ][H[ˆÛÛ\]Xš[]VÈ˜Üš]XØ[ÝØ\›š[™ÜÈ—JBˆ
+ÈÙ]ˆ‚ˆ
+Bˆ[YˆÛÛ\]Xš[]K™Ù]
+œ™]šY]×ÝØ\›š[™ÜÈŠN‚ˆÛÛ\]Xš[]WÛX™[H
+ˆÜ[ˆÛ\ÜÏIØÝ‹XÛÛ\]\[™]šY]ÉÏ““Õ‘T’Q’QQÜÜ[ˆ‚ˆ
+Bˆ[ÙN‚ˆÛÛ\]Xš[]WÛX™[H
+ˆÜ[ˆÛ\ÜÏIØÝ‹XÛÛ\]\[™]šY]ÉÏ‘S‘ÒS‘QT’S‘È‘U’QUÏÜÜ[ˆ‚ˆ
+Bˆ™[][ÛœÚ\ÛX™[HØØ[™Y]WÙšY[
+ˆ›ÝËˆÛ\ÜÚYšXØ][Ûˆ‹ˆØ]YÛÜžH‹ˆ™š]‹ˆœ\˜[Y]šX×Ùš]‹ˆ˜[˜XÚÏH”Ý\Y\ˆØ][ÙÈ™\Ý[‹ˆ
+Bˆ™[][ÛœÚ\Ú[H
+ˆˆžØÛÛ\]Xš[]WÛX™[OÛX[žÜ™[][ÛœÚ\ÛX™[OÜÛX[ˆ‚ˆYˆÛÛ\]Xš[]K™Ù]
+˜Üš]XØ[ÝØ\›š[™ÜÈŠHÜˆÛÛ\]Xš[]K™Ù]
+œ™]šY]×ÝØ\›š[™ÜÈŠBˆ[ÙH™[][ÛœÚ\ÛX™[ˆ
+Bˆ]™[HØØ[™Y]WÙšY[
+›ÝË‘\Ý[X]Yš\ÚÈ‹œš\Ú×Û]™[‹œš\ÚÈ‹˜[˜XÚÏH•[šÛ›ÝÛˆŠBˆ[Hˆ‚ˆYˆšYÚˆ[ˆ]™[˜Ø\ÙY›Û
+
+N‚ˆ[HšYÚ‚ˆ[Yˆ›ÝÈˆ[ˆ]™[˜Ø\ÙY›Û
+
+N‚ˆ[H›ÝÈ‚ˆ[Yˆ›YY][Hˆ[ˆ]™[˜Ø\ÙY›Û
+
+N‚ˆ[H›YY][H‚ˆ[Yˆ™\šYšXØ][Ûˆˆ[ˆ]™[˜Ø\ÙY›Û
+
+N‚ˆ[H™\šYžH‚ˆ]™[Ú[HˆÜ[ˆÛ\ÜÏIØÝ‹\[Ü[IÏžÛ]™[OÜÜ[ˆˆYˆ[[ÙH]™[ˆ\ØÛÝ™\žHH›ÝË™Ù]
+—Ù\ØÛÝ™\žWÜ›ÝÈŠHYˆ\Ú[œÝ[˜ÙJ›ÝË™Ù]
+—Ù\ØÛÝ™\žWÜ›ÝÈŠKXÝ
+H[ÙHßBˆ[XYÙHHÝŠˆ›ÝË™Ù]
+š[XYÙWÝ\›ŠBˆÜˆ›ÝË™Ù]
+œÝ×Ý\›ŠBˆÜˆ›ÝË™Ù]
+’[XYÙHT“ŠBˆÜˆ\ØÛÝ™\žK™Ù]
+š[XYÙWÝ\›ŠBˆÜˆ\ØÛÝ™\žK™Ù]
+œÝ×Ý\›ŠBˆÜˆˆ‚ˆ
+Bˆ›Ý×ÚÙ^HHˆ˜Ý—ØØ[™Y]WÜ›Ý×ÞÉÛÜ[‰ÈYˆ\×ÛÜ[ˆ[ÙH	ÜÚ]	ßWÞÚ[™^H‚ˆÚ]Ý˜ÛÛZ[™\ŠÙ^O\›Ý×ÚÙ^JN‚ˆÚ]Ý˜ÛÛZ[™\ŠÙ^OYˆ˜Ý—ØØ[™Y]WÚ]ÞÚ[™^HŠN‚ˆÙ[ÈHÝ˜ÛÛ[[œÊÌ‹KŒËKŽŽKŽŽK×K™\XØ[Ø[YÛ›Y[H˜Ù[\ˆŠBˆÚ]Ù[ÖÌN‚ˆÝ×ØÛÛ˜[YWØÛÛHÝ˜ÛÛ[[œÊÌŒÍKKWK™\XØ[Ø[YÛ›Y[H˜Ù[\ˆŠBˆÝ×ØÛÛ›X\šÙÝÛŠˆ\Ú[XYÙWÛX\šÝ\
+[XYÙKØ[™Y]WÛ\‹Ú^™OM\\›ÝÊKˆ[œØY™WØ[Ý×Ú[UYKˆ
+BˆYˆ˜[YWØÛÛ˜]ÛŠˆØ[™Y]WÛ\‹ˆÙ^OYˆ˜Ý—ØØ[™Y]WÛÜ[—ÞÚ[™^H‹ˆ[Jˆˆ”ÚÝÈ™XÛÜ™Y]Z[È›ÜˆØØ[™Y]WÛ\ŸKˆ‚ˆ”™\ÜÈ[\ˆÜˆÜXÙKˆ‚ˆ
+Kˆ
+N‚ˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜ØY]›Ü—Ü™\XÙ[Y[ÛÜ[—Û\ˆ—HHˆˆYˆ\×ÛÜ[ˆ[ÙHØ[™Y]WÛ\‚ˆÝœ™\[Š
+BˆÙ[ÖÌWK›X\šÙÝÛŠØØ[™Y]WÙšY[
+›ÝË“X[Y˜XÝ\™\ˆ‹›X[Y˜XÝ\™\ˆŠJBˆÙ[ÖÌ—K›X\šÙÝÛŠ™[][ÛœÚ\Ú[[œØY™WØ[Ý×Ú[UYJBˆÙ[ÖÌ×K›X\šÙÝÛŠØØ[™Y]WÙšY[
+›ÝË“Y™XÞXÛH‹›Y™XÞXÛWÜÝ]\È‹›Y™XÞXÛHŠJBˆÙ[ÖÍK›X\šÙÝÛŠØØ[™Y]WÙšY[
+›ÝË”ÝØÚÈ‹œÝØÚ×ÝÝ[‹œÝØÚ×Ø]˜Z[X›HŠJBˆÙ[ÖÍWK›X\šÙÝÛŠØØ[™Y]WÙšY[
+›ÝË”Ý\Y\ˆ‹œÝ\Y\—ØÛÝ[‹œÝ\Y\ˆŠJBˆÙ[ÖÍ—K›X\šÙÝÛŠ]™[Ú[[œØY™WØ[Ý×Ú[UYJBˆYˆ\×ÛÜ[Ž‚ˆÝ›X\šÙÝÛŠØØ[™Y]WÙ]Z[Ú[
+›ÝËÜšYÚ[˜[
+K[œØY™WØ[Ý×Ú[UYJBˆÜ™[™\—Ø›ÛWÜ™\XÙ[Y[Ø\›Ý˜[ÊˆÛÝ\˜ÙWØÛÛ^\ÛÝ\˜ÙWØÛÛ^ˆ]Y\žO\]Y\žKˆÜšYÚ[˜[[ÜšYÚ[˜[ˆØ[™Y]O\›ÝËˆ
+B‚ˆœ›ÛHÜ˜Ë››Ü›X[^™\ˆ[\Ü›Ü›X[^™WÜ\Û[X™\‚‚ˆÛÛ\\™WÜÛÝ\˜ÙWÛ\ˆHÝŠÜšYÚ[˜[™Ù]
+›X[Y˜XÝ\™\—Ü\Û[X™\ˆŠHÜˆ]Y\žHÜˆˆŠKœÝš\
+
+BˆÛÛ\\™WÜÛÝ\˜ÙWÝÚÙ[ˆH›Ü›X[^™WÜ\Û[X™\ŠÛÛ\\™WÜÛÝ\˜ÙWÛ\ŠHÜˆÛÛ\\™WÜÛÝ\˜ÙWÛ\‹\\Š
+BˆYˆÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+˜\›Ý™YÜ™\XÙ[Y[ØÛÛ\\™WÜÛÝ\˜ÙHŠHOHÛÛ\\™WÜÛÝ\˜ÙWÝÚÙ[Ž‚ˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜\›Ý™YÜ™\XÙ[Y[ØÛÛ\\™WÜÛÝ\˜ÙH—HHÛÛ\\™WÜÛÝ\˜ÙWÝÚÙ[‚ˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜\›Ý™YÜ™\XÙ[Y[ØÛÛ\\™WØØ[™Y]\È—HH×BˆÛÛ\\™WØØ[™Y]\ÈHÂˆÝŠ][HÜˆˆŠKœÝš\
+
+Bˆ›Üˆ][H[ˆÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+˜\›Ý™YÜ™\XÙ[Y[ØÛÛ\\™WØØ[™Y]\È‹×JBˆYˆÝŠ][HÜˆˆŠKœÝš\
+
+BˆBˆ[YÚX›WØÛÛ\\™WÚÙ^\ÈHÜ\ÚÙ^JØØ[™Y]WÛ\Š›ÝÊJH›Üˆ›ÝÈ[ˆØ[™Y]\ÖÎW_BˆÛÛ\\™WØØ[™Y]\ÈHÂˆ][H›Üˆ][H[ˆÛÛ\\™WØØ[™Y]\ÈYˆ\ÚÙ^J][JH[ˆ[YÚX›WØÛÛ\\™WÚÙ^\ÂˆVÎŒ—BˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜\›Ý™YÜ™\XÙ[Y[ØÛÛ\\™WØØ[™Y]\È—HHÛÛ\\™WØØ[™Y]\Â‚ˆYˆÝÙÙÛWØÛÛ\\™WØØ[™Y]JØ[™Y]WÛ\ŽˆÝŠHOˆ›Û™N‚ˆÝ\œ™[HÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+˜\›Ý™YÜ™\XÙ[Y[ØÛÛ\\™WØØ[™Y]\ÈŠHÜˆ×BˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜\›Ý™YÜ™\XÙ[Y[ØÛÛ\\™WØØ[™Y]\È—HH
+ˆÙÙÛWØÛÛ\\š\ÛÛ—ØØ[™Y]JÝ\œ™[Ø[™Y]WÛ\‹[Z]LŠBˆ
+BˆYˆÚÝÛˆ[™ÛÛ\\™WÜÛÝ\˜ÙWÛ\Ž‚ˆÙ[XÝYØØ[™Y]WÝ^Hˆ0­È‹š›Ú[ŠÙ\ØÊ][JH›Üˆ][H[ˆÛÛ\\™WØØ[™Y]\ÊBˆÙ[XÝYØØ[™Y]WÛ[™HH
+ˆˆÛ\ÜÏIØÝ‹X\[Y]IÏ”Ù[XÝY™\XÙ[Y[ÎˆÜÙ[XÝYØØ[™Y]WÝ^OÜˆ‚ˆYˆÙ[XÝYØØ[™Y]WÝ^ˆ[ÙHˆ‚ˆ
+BˆÝ›X\šÙÝÛŠˆÙXÝ[ÛˆÛ\ÜÏIØÝ‹X\XØ\™	ÏÏÛÛ\\™H\ÈÈ\ÏÚÏˆ‚ˆˆÛ\ÜÏIØÝ‹X\\ÝX‰Ï”\Nˆ×Ù\ØÊÛÛ\\™WÜÛÝ\˜ÙWÛ\Š_KˆY\ÈÛÈ™\XÙ[Y[Ø[™Y]\Ë[ˆÛÛ\\™H[HÚ]HÛÝ\˜ÙH\Üˆ‚ˆˆÛ\ÜÏIØÝ‹X\[Y]IÏžÛ[ŠÛÛ\\™WØØ[™Y]\ÊH
+È_HÙˆÈ\ÈÙ[XÝYÜˆ‚ˆˆžÜÙ[XÝYØØ[™Y]WÛ[™_OÜÙXÝ[Ûˆ‹ˆ[œØY™WØ[Ý×Ú[UYKˆ
+Bˆ›Üˆ[™^›ÝÈ[ˆ[[Y\˜]JØ[™Y]\ÖÎWJN‚ˆØ[™Y]HHØØ[™Y]WÛ\Š›ÝÊBˆYˆ›ÝØ[™Y]N‚ˆÛÛ[YBˆØ[™Y]WÝÚÙ[ˆH\ÚÙ^JØ[™Y]JBˆÙ[XÝYH[žJˆ\ÚÙ^J][JHOHØ[™Y]WÝÚÙ[‚ˆ›Üˆ][H[ˆÛÛ\\™WØØ[™Y]\Âˆ
+BˆÙÙÛWØÛÛÈHÝ˜ÛÛ[[œÊÌ‹KWK™\XØ[Ø[YÛ›Y[H˜Ù[\ˆŠBˆÚ]ÙÙÛWØÛÛÖÌN‚ˆÝ˜Ø\[ÛŠØ[™Y]JBˆÚ]ÙÙÛWØÛÛÖÌWN‚ˆÝ˜]ÛŠˆ”™[[Ý™HˆYˆÙ[XÝY[ÙHYÈÛÛ\\š\ÛÛˆ‹ˆÙ^OJˆ˜\›Ý™YÜ™\XÙ[Y[ØÛÛ\\™WÝÙÙÛWÈ‚ˆ
+È\ÚX‹œÚLJØ[™Y]WÝÚÙ[‹™[˜ÛÙJ]‹NŠJKš^YÙ\Ý
+
+VÎŒL—Bˆ
+Kˆ\ØX›Y[›ÝÙ[XÝY[™[ŠÛÛ\\™WØØ[™Y]\ÊHH‹ˆ\ÙWØÛÛZ[™\—ÝÚYUYKˆÛ—ØÛXÚÏWÝÙÙÛWØÛÛ\\™WØØ[™Y]Kˆ\™ÜÏJØ[™Y]K
+Kˆ
+BˆÙ[XÝYØÛÛ\\™WØØ[™Y]\ÈH\Ý
+ÛÛ\\™WØØ[™Y]\ÊBˆYˆÙ[XÝYØÛÛ\\™WØØ[™Y]\Î‚ˆYˆÝ˜]ÛŠˆˆÛÛ\\™HÛ[ŠÙ[XÝYØÛÛ\\™WØØ[™Y]\ÊH
+È_H\È‹ˆÙ^OH˜\›Ý™YÜ™\XÙ[Y[ØÛÛ\\™WÜÙ[XÝY‹ˆ\OHœš[X\žH‹ˆ
+N‚ˆÛÝ\˜ÙWÛ\ˆHÛÛ\\™WÜÛÝ\˜ÙWÛ\‚ˆØ[™Y]WØˆHÙ[XÝYØÛÛ\\™WØØ[™Y]\ÖÌBˆØ[™Y]WØÈHÙ[XÝYØÛÛ\\™WØØ[™Y]\ÖÌWHYˆ[ŠÙ[XÝYØÛÛ\\™WØØ[™Y]\ÊHˆH[ÙHˆ‚ˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜ØY]›Ü—ØÛÛ\\™WÜ\ØH—HHÛÝ\˜ÙWÛ\‚ˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜ØY]›Ü—ØÛÛ\\™WÜ\Øˆ—HHØ[™Y]WØ‚ˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜ØY]›Ü—ØÛÛ\\™WÜ\ØÈ—HHØ[™Y]WØÂˆÙ[XÝYÚÙ^\ÈHÜ\ÚÙ^JØ[™Y]WØŠK\ÚÙ^JØ[™Y]WØÊ_BˆØ[™Y]WÜÛ˜\ÚÝÈHÂˆXÝ
+›ÝÊBˆ›Üˆ›ÝÈ[ˆØ[™Y]\ÂˆYˆ\ÚÙ^JØØ[™Y]WÛ\Š›ÝÊJH[ˆÙ[XÝYÚÙ^\ÂˆBˆÈÚYÙ]Ý]H\ÈÛX[™Y\]H[™Ùˆ\Èš[™\ˆ[‹‚ˆÈÝYÙH˜[Y\È[™\ˆ›Û‹]ÚYÙ]Ù^\È[™\H[HÛˆBˆÈÛÛ\\™HYÙH™Y›Ü™H]È^[œ]È\™HÜ™X]Y‚ˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜ØY]›Ü—ØÛÛ\\™WÜ[™[™×Ú[™Ù™ˆ—HHÂˆœ\Û[X™\œÈŽˆÂˆÛÝ\˜ÙWÛ\‹ˆØ[™Y]WØ‹ˆ
+ŠØØ[™Y]WØ×HYˆØ[™Y]WØÈ[ÙH×JKˆKˆ˜]]×Ü[ˆŽˆYKˆ™XÚ\Ú[Û—ØÛÛ^ŽˆÂˆœÛÝ\˜ÙWØÛÛ^ŽˆXÝ
+ÛÝ\˜ÙWØÛÛ^
+Kˆ›ÜšYÚ[˜[ŽˆXÝ
+ÜšYÚ[˜[
+Kˆ˜Ø[™Y]\ÈŽˆØ[™Y]WÜÛ˜\ÚÝËˆKˆBˆÝœÙ\ÜÚ[Û—ÜÝ]KœÜ
+˜ØY]›Ü—ØÛÛ\\™WÜ™\Ý[‹›Û™JBˆ˜]šYØ]WÝÊÛÛ\\™H\ÈŠBˆ[Yˆ]Y\žKœÝš\
+
+H[™\Ú[œÝ[˜ÙJ™\Ý[XÝ
+N‚ˆÝš[™›Êˆ“›ÈÝ\Y\ˆØ[™Y]\ÈÙ\™H™]\›™Y›Üˆ\È\ˆ[ÝHØ[ˆÝ[ÛÛ\\™HX[Y˜XÝ\™\ˆ\[X™\œÈX[X[NÈZ\ÜÚ[™È]šY[˜ÙHÚ[Ý^Hš\ÚX›Kˆ‚ˆ
+BˆYˆÝ˜]ÛŠˆÛÛ\\™H\[X™\œÈX[X[H‹ˆÙ^OH˜\›Ý™YÜ™\XÙ[Y[ÛX[X[ØÛÛ\\™H‹ˆ\OHœÙXÛÛ™\žH‹ˆ
+N‚ˆÛÝ\˜ÙWÛ\ˆHÝŠÜšYÚ[˜[™Ù]
+›X[Y˜XÝ\™\—Ü\Û[X™\ˆŠHÜˆ]Y\žJKœÝš\
+
+BˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜ØY]›Ü—ØÛÛ\\™WÜ\ØH—HHÛÝ\˜ÙWÛ\‚ˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜ØY]›Ü—ØÛÛ\\™WÜ\Øˆ—HHˆ‚ˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜ØY]›Ü—ØÛÛ\\™WÜ\ØÈ—HHˆ‚ˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜ØY]›Ü—ØÛÛ\\™WÜ[™[™×Ú[™Ù™ˆ—HHÂˆœ\Û[X™\œÈŽˆÜÛÝ\˜ÙWÛ\—Kˆ˜]]×Ü[ˆŽˆ˜[ÙKˆ™XÚ\Ú[Û—ØÛÛ^ŽˆÂˆœÛÝ\˜ÙWØÛÛ^ŽˆXÝ
+ÛÝ\˜ÙWØÛÛ^
+Kˆ›ÜšYÚ[˜[ŽˆXÝ
+ÜšYÚ[˜[
+Kˆ˜Ø[™Y]\ÈŽˆ×KˆKˆBˆÝœÙ\ÜÚ[Û—ÜÝ]KœÜ
+˜ØY]›Ü—ØÛÛ\\™WÜ™\Ý[‹›Û™JBˆ˜]šYØ]WÝÊÛÛ\\™H\ÈŠBˆ[™Ø\›Ý™YÜYÙJ
+B‚‚‚‚™Yˆ™[™\—ØÛÛ\\™WÛ]™J
+HOˆ›Û™N‚ˆˆˆÛÛ\\™H\È™YH\ËÚ]XXÚØ[™Y]HÚXÚÙYYØZ[œÝ\Kˆˆˆ‚ˆ™YÚ[—Ø\›Ý™YÜYÙJ
+Bˆœ›ÛHÜ˜Ë˜\›Ý™YØ[\›˜]]™\È[\Ü\ÚÙ^Bˆœ›ÛHÜ˜Ëœ\×ØÛÛ\\™H[\Ü™\ÛÛ™WØÛÛ\\™WÜ\×ÜÝX›Z]YÛ\‹[—ØÛÛ\\™WÜ\×ÛX[žBˆœ›ÛHÜ˜ËZK›˜]šYØ][Ûˆ[\Ü™]™X[Ø]][XØ]YÜYÙWØ›ÙB‚ˆ[™[™×Ú[™Ù™ˆHÝœÙ\ÜÚ[Û—ÜÝ]KœÜ
+˜ØY]›Ü—ØÛÛ\\™WÜ[™[™×Ú[™Ù™ˆ‹›Û™JBˆYˆ\Ú[œÝ[˜ÙJ[™[™×Ú[™Ù™‹XÝ
+N‚ˆ[™[™×Ü\ÈHÂˆÝŠ˜[YHÜˆˆŠKœÝš\
+
+Bˆ›Üˆ˜[YH[ˆ[™[™×Ú[™Ù™‹™Ù]
+œ\Û[X™\œÈ‹×JBˆYˆÝŠ˜[YHÜˆˆŠKœÝš\
+
+BˆVÎŒ×BˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜\›Ý™YØÛÛ\\™WØH—HH[™[™×Ü\ÖÌHYˆ[™[™×Ü\È[ÙHˆ‚ˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜\›Ý™YØÛÛ\\™WØˆ—HH[™[™×Ü\ÖÌWHYˆ[Š[™[™×Ü\ÊHˆH[ÙHˆ‚ˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜\›Ý™YØÛÛ\\™WØÈ—HH[™[™×Ü\ÖÌ—HYˆ[Š[™[™×Ü\ÊHˆˆ[ÙHˆ‚ˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜\›Ý™YØÛÛ\\™WÜÚÝ×ØÈ—HH[Š[™[™×Ü\ÊHˆ‚ˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜ØY]›Ü—ØÛÛ\\™WÜ\ØH—HH[™[™×Ü\ÖÌHYˆ[™[™×Ü\È[ÙHˆ‚ˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜ØY]›Ü—ØÛÛ\\™WÜ\Øˆ—HH[™[™×Ü\ÖÌWHYˆ[Š[™[™×Ü\ÊHˆH[ÙHˆ‚ˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜ØY]›Ü—ØÛÛ\\™WÜ\ØÈ—HH[™[™×Ü\ÖÌ—HYˆ[Š[™[™×Ü\ÊHˆˆ[ÙHˆ‚ˆXÚ\Ú[Û—ØÛÛ^H[™[™×Ú[™Ù™‹™Ù]
+™XÚ\Ú[Û—ØÛÛ^ŠBˆYˆ\Ú[œÝ[˜ÙJXÚ\Ú[Û—ØÛÛ^XÝ
+N‚ˆXÚ\Ú[Û—ØÛÛ^HXÝ
+XÚ\Ú[Û—ØÛÛ^
+BˆXÚ\Ú[Û—ØÛÛ^Èœ\Û[X™\œÈ—HH[™[™×Ü\ÂˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜ØY]›Ü—ØÛÛ\\™WÙXÚ\Ú[Û—ØÛÛ^—HHXÚ\Ú[Û—ØÛÛ^ˆ[ÙN‚ˆÝœÙ\ÜÚ[Û—ÜÝ]KœÜ
+˜ØY]›Ü—ØÛÛ\\™WÙXÚ\Ú[Û—ØÛÛ^‹›Û™JBˆYˆ[™[™×Ú[™Ù™‹™Ù]
+˜]]×Ü[ˆŠH[™[Š[™[™×Ü\ÊHHŽ‚ˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜\›Ý™YØÛÛ\\™WØ]]×Ü[—Ü[™[™È—HHYBˆ[ÙN‚ˆÝœÙ\ÜÚ[Û—ÜÝ]KœÜ
+˜\›Ý™YØÛÛ\\™WØ]]×Ü[—Ü[™[™È‹›Û™JBˆÝœÙ\ÜÚ[Û—ÜÝ]KœÜ
+˜ØY]›Ü—ØÛÛ\\™WÜ™\Ý[‹›Û™JB‚ˆÝœÙ\ÜÚ[Û—ÜÝ]KœÙ]Y˜][
+˜\›Ý™YØÛÛ\\™WØH‹ÝŠÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+˜ØY]›Ü—ØÛÛ\\™WÜ\ØHŠHÜˆˆŠJBˆÝœÙ\ÜÚ[Û—ÜÝ]KœÙ]Y˜][
+˜\›Ý™YØÛÛ\\™WØˆ‹ÝŠÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+˜ØY]›Ü—ØÛÛ\\™WÜ\ØˆŠHÜˆˆŠJBˆÝœÙ\ÜÚ[Û—ÜÝ]KœÙ]Y˜][
+˜\›Ý™YØÛÛ\\™WØÈ‹ÝŠÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+˜ØY]›Ü—ØÛÛ\\™WÜ\ØÈŠHÜˆˆŠJBˆÝœÙ\ÜÚ[Û—ÜÝ]KœÙ]Y˜][
+˜\›Ý™YØÛÛ\\™WÜÚÝ×ØÈ‹›ÛÛ
+ÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+˜\›Ý™YØÛÛ\\™WØÈŠJJB‚ˆYˆÜÚÝ×Ý\™Ü\
+
+HOˆ›Û™N‚ˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜\›Ý™YØÛÛ\\™WÜÚÝ×ØÈ—HHYB‚ˆYˆÜ™[[Ý™WÝ\™Ü\
+
+HOˆ›Û™N‚ˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜\›Ý™YØÛÛ\\™WÜÚÝ×ØÈ—HH˜[ÙBˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜\›Ý™YØÛÛ\\™WØÈ—HHˆ‚ˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜ØY]›Ü—ØÛÛ\\™WÜ\ØÈ—HHˆ‚ˆÝœÙ\ÜÚ[Û—ÜÝ]KœÜ
+˜ØY]›Ü—ØÛÛ\\™WÜ™\Ý[‹›Û™JB‚ˆÛÛ\\™WÚ[™Ù™ˆHÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+˜ØY]›Ü—ØÛÛ\\™WÙXÚ\Ú[Û—ØÛÛ^ŠBˆYˆ\Ú[œÝ[˜ÙJÛÛ\\™WÚ[™Ù™‹XÝ
+N‚ˆÛÝ\˜ÙWØÛÛ^HÛÛ\\™WÚ[™Ù™‹™Ù]
+œÛÝ\˜ÙWØÛÛ^ŠBˆÛÝ\˜ÙWØÛÛ^HÛÝ\˜ÙWØÛÛ^Yˆ\Ú[œÝ[˜ÙJÛÝ\˜ÙWØÛÛ^XÝ
+H[ÙHßBˆYˆÛÝ\˜ÙWØÛÛ^™Ù]
+›\ˆŠN‚ˆ™]\›—Ü\˜[\ÈHÂˆÙ^NˆÛÝ\˜ÙWØÛÛ^™Ù]
+Ù^JBˆ›ÜˆÙ^H[ˆ
+ˆ˜[˜[\Ú\×ÚY‹ˆœ\ÚY‹ˆœÛÝ\˜ÙWÜYÙH‹ˆœ™]\›—Ø[˜[\Ú\×ÚY‹ˆœ™]\›—ÜYÙH‹ˆœ™]\›—Û\ˆ‹ˆœ™]\›—ÙXÚ\Ú[Û—ÚY‹ˆœ›Ú™XÝÛ˜[YH‹ˆ˜›ÛWÛ˜[YH‹ˆœ™Yš[ÚY‹ˆ›X[Y˜XÝ\™\ˆ‹ˆ™\ØÜš\[Ûˆ‹ˆ›Y™XÞXÛH‹ˆœš\ÚÈ‹ˆ
+BˆYˆÛÝ\˜ÙWØÛÛ^™Ù]
+Ù^JBˆBˆ™]\›—Ü\˜[\Ë\]JˆÂˆ›ÜšYÚ[˜[Ü\ŽˆÝŠÛÝ\˜ÙWØÛÛ^™Ù]
+›\ˆŠHÜˆˆŠKˆš[[Žˆ™š[™Ø[\›˜]]™\È‹ˆBˆ
+BˆYˆÝ˜]ÛŠˆ¸¡¤˜XÚÈÈ™\XÙ[Y[ÙX\˜Ú‹ˆÙ^OH˜\›Ý™YØÛÛ\\™WØ˜XÚ×Ý×Ü™\XÙ[Y[ÜÙX\˜Ú‹ˆ\OHœÙXÛÛ™\žH‹ˆ
+N‚ˆ˜]šYØ]WÝÊ[\›˜]]™Hš[™\ˆ‹
+Šœ™]\›—Ü\˜[\ÊB‚ˆÝ›X\šÙÝÛŠˆˆˆ‚ˆ]ˆÛ\ÜÏH˜Ý‹X\‚ˆÛ\ÜÏH˜Ý‹X\ZÚXÚÙ\ˆ”T•ÏÜ‚ˆOÛÛ\\™H\ÏÚO‚ˆÛ\ÜÏH˜Ý‹X\\ÝXˆÛÛ\\™HÛÈÜˆ™YH\ÈÚYHžHÚYKˆ\ˆ[™\È\™HXXÚÚXÚÙYYØZ[œÝ\H\Ú[™È]˜Z[X›HÝ\Y\ˆ[™]\ÚY]]šY[˜ÙKÜ‚ˆÙ]‚ˆˆˆ‹ˆ[œØY™WØ[Ý×Ú[UYKˆ
+BˆÚ]Ý™›Ü›J˜\›Ý™YØÛÛ\\™WÙ›Ü›H‹ÛX\—ÛÛ—ÜÝX›Z]Q˜[ÙJN‚ˆYˆÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+˜\›Ý™YØÛÛ\\™WÜÚÝ×ØÈŠN‚ˆ[œ]ØÛÛÈHÝ˜ÛÛ[[œÊÊBˆ[ÙN‚ˆ[œ]ØÛÛÈHÝ˜ÛÛ[[œÊŠBˆÚ][œ]ØÛÛÖÌN‚ˆ[\™YØHHÝ^Ú[œ]
+”\H‹Ù^OH˜\›Ý™YØÛÛ\\™WØH‹XÙZÛ\H“X[Y˜XÝ\™\ˆ\[X™\ˆŠBˆÚ][œ]ØÛÛÖÌWN‚ˆ[\™YØˆHÝ^Ú[œ]
+”\ˆ‹Ù^OH˜\›Ý™YØÛÛ\\™WØˆ‹XÙZÛ\H“X[Y˜XÝ\™\ˆ\[X™\ˆŠBˆ[\™YØÈHˆ‚ˆYˆÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+˜\›Ý™YØÛÛ\\™WÜÚÝ×ØÈŠN‚ˆÚ][œ]ØÛÛÖÌ—N‚ˆ[\™YØÈHÝ^Ú[œ]
+”\È‹Ù^OH˜\›Ý™YØÛÛ\\™WØÈ‹XÙZÛ\H“X[Y˜XÝ\™\ˆ\[X™\ˆŠBˆÝX›Z]YHÝ™›Ü›WÜÝX›Z]Ø]ÛŠˆÛÛ\\™H\È‹ˆ\OHœš[X\žH‹ˆÙ^OH˜\›Ý™YØÛÛ\\™WÜ[ˆ‹ˆ
+BˆÈHÛÛ\\™H›Ü›H\È›ÝÈš\ÚX›H[Ý[YˆÛÜÙHH˜]šYØ][ÛˆÛÝ™\ˆ™Y›Ü™BˆÈÝ\Y\ˆÛÚÝ\È™YÚ[ˆÛÈ›ÙÜ™\ÜÈÙ\È›Ý[HH[YÙK‚ˆ™]™X[Ø]][XØ]YÜYÙWØ›ÙJÛÛ\\™H\ÈŠBˆ\ØHH™\ÛÛ™WØÛÛ\\™WÜ\×ÜÝX›Z]YÛ\Šˆ[\™YØKˆÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+˜\›Ý™YØÛÛ\\™WØHŠKˆÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+˜ØY]›Ü—ØÛÛ\\™WÜ\ØHŠKˆ
+Bˆ\ØˆH™\ÛÛ™WØÛÛ\\™WÜ\×ÜÝX›Z]YÛ\Šˆ[\™YØ‹ˆÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+˜\›Ý™YØÛÛ\\™WØˆŠKˆÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+˜ØY]›Ü—ØÛÛ\\™WÜ\ØˆŠKˆ
+Bˆ\ØÈH™\ÛÛ™WØÛÛ\\™WÜ\×ÜÝX›Z]YÛ\Šˆ[\™YØËˆÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+˜\›Ý™YØÛÛ\\™WØÈŠKˆÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+˜ØY]›Ü—ØÛÛ\\™WÜ\ØÈŠKˆ
+HYˆÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+˜\›Ý™YØÛÛ\\™WÜÚÝ×ØÈŠH[ÙHˆ‚ˆ\×Ü\ØÈH›ÛÛ
+ÝŠ\ØÈÜˆˆŠKœÝš\
+
+JBˆ™\]Y\ÝYÜ\ÈHÜ\›Üˆ\[ˆ
+\ØK\Ø‹\ØÊHYˆÝŠ\ÜˆˆŠKœÝš\
+
+WBˆ]]×Ü[ˆH›ÛÛ
+ÝœÙ\ÜÚ[Û—ÜÝ]KœÜ
+˜\›Ý™YØÛÛ\\™WØ]]×Ü[—Ü[™[™È‹˜[ÙJJBˆYˆÝX›Z]YÜˆ]]×Ü[Ž‚ˆYˆ[Š™\]Y\ÝYÜ\ÊHHŽ‚ˆžN‚ˆÚ]ÝœÜ[›™\ŠÛÛ\\š[™È™XÛÜ™YÝ\Y\ˆ[™]\ÚY]]šY[˜Ùx )ˆŠN‚ˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜ØY]›Ü—ØÛÛ\\™WÜ™\Ý[—HH[—ØÛÛ\\™WÜ\×ÛX[žJ™\]Y\ÝYÜ\ÊBˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜ØY]›Ü—ØÛÛ\\™WÜ\ØÈ—HH\ØÂˆ^Ù\^Ù\[ÛŽ‚ˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜ØY]›Ü—ØÛÛ\\™WÜ™\Ý[—HHÂˆœÝ]\ÈŽˆ™˜Z[Y‹ˆœ\ØHŽˆ\ØKˆœ\ØˆŽˆ\Ø‹ˆœ\ØÈŽˆ\ØËˆœ\Û[X™\œÈŽˆ™\]Y\ÝYÜ\Ëˆ™\œ›ÜˆŽˆØY]›ÜˆÛÝ[›ÝÛÛ\]H\ÈÛÛ\\š\ÛÛˆšYÚ›ÝËˆX\ÙHžHYØZ[‹ˆ‹ˆBˆ[ÙN‚ˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜ØY]›Ü—ØÛÛ\\™WÜ™\Ý[—HHÂˆœÝ]\ÈŽˆ™˜Z[Y‹ˆœ\ØHŽˆ\ØKˆœ\ØˆŽˆ\Ø‹ˆœ\ØÈŽˆ\ØËˆœ\Û[X™\œÈŽˆ™\]Y\ÝYÜ\Ëˆ™\œ›ÜˆŽˆ‘[\ˆ\H[™\ˆX[Y˜XÝ\™\ˆ\[X™\œËˆ‹ˆBˆYˆÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+˜\›Ý™YØÛÛ\\™WÜÚÝ×ØÈŠN‚ˆÝ˜]ÛŠ”™[[Ý™H\È‹Ù^OH˜\›Ý™YØÛÛ\\™WÜ™[[Ý™WØÈ‹Û—ØÛXÚÏWÜ™[[Ý™WÝ\™Ü\
+Bˆ[ÙN‚ˆÝ˜]ÛŠˆ»ï"ÈY\‹ˆÙ^OH˜\›Ý™YØÛÛ\\™WØYØÈ‹ˆ\OHœÙXÛÛ™\žH‹ˆÛ—ØÛXÚÏWÜÚÝ×Ý\™Ü\ˆ
+B‚ˆ™\Ý[HÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+˜ØY]›Ü—ØÛÛ\\™WÜ™\Ý[ŠBˆYˆ\Ú[œÝ[˜ÙJ™\Ý[XÝ
+N‚ˆ™\Ý[Ü\ÈH™\Ý[™Ù]
+œ\Û[X™\œÈŠBˆYˆ™\Ý[Ü\È\È›Û™N‚ˆ™\Ý[Ü\ÈHÜ™\Ý[™Ù]
+œ\ØHŠK™\Ý[™Ù]
+œ\ØˆŠWBˆ›Ü›X[^™HH[X™H˜[YNˆÝŠ˜[YHÜˆˆŠKœÝš\
+
+K˜Ø\ÙY›Û
+
+BˆYˆÛ›Ü›X[^™J˜[YJH›Üˆ˜[YH[ˆ™\Ý[Ü\×HOHÛ›Ü›X[^™J˜[YJH›Üˆ˜[YH[ˆ™\]Y\ÝYÜ\×N‚ˆ™\Ý[H›Û™BˆÛÛ\\š\ÛÛˆH™\Ý[™Ù]
+˜ÛÛ\\š\ÛÛˆŠHYˆ\Ú[œÝ[˜ÙJ™\Ý[XÝ
+H[ÙHßBˆYˆ›Ý\Ú[œÝ[˜ÙJÛÛ\\š\ÛÛ‹XÝ
+N‚ˆÛÛ\\š\ÛÛˆHßBˆÛÝ[ÈHÛÛ\\š\ÛÛ‹™Ù]
+˜ÛÝ[ÈŠHYˆ\Ú[œÝ[˜ÙJÛÛ\\š\ÛÛ‹™Ù]
+˜ÛÝ[ÈŠKXÝ
+H[ÙHßBˆØ\™ØHHÛÛ\\š\ÛÛ‹™Ù]
+œ\ØHŠHYˆ\Ú[œÝ[˜ÙJÛÛ\\š\ÛÛ‹™Ù]
+œ\ØHŠKXÝ
+H[ÙHßBˆØ\™ØˆHÛÛ\\š\ÛÛ‹™Ù]
+œ\ØˆŠHYˆ\Ú[œÝ[˜ÙJÛÛ\\š\ÛÛ‹™Ù]
+œ\ØˆŠKXÝ
+H[ÙHßBˆØ\™ØÈHÛÛ\\š\ÛÛ‹™Ù]
+œ\ØÈŠHYˆ\Ú[œÝ[˜ÙJÛÛ\\š\ÛÛ‹™Ù]
+œ\ØÈŠKXÝ
+H[ÙHßBˆ›ÝÜÈHÛÛ\\š\ÛÛ‹™Ù]
+œ›ÝÜÈŠHYˆ\Ú[œÝ[˜ÙJÛÛ\\š\ÛÛ‹™Ù]
+œ›ÝÜÈŠK\Ý
+H[ÙH×Bˆ›ÙHH×Bˆ™[™\™YØÛÛ\]Xš[]WÛX™[ÎˆÙ]ÜÝ—HHÙ]
+
+BˆZ\ÜÚ[™ÈHÈˆ‹¸ %‹‹H‹¸ $È‹››Ý]˜Z[X›H‹››Ý™XÛÜ™Y‹›‹ØH‹››Û™H‹›˜[ˆŸB‚ˆYˆÜ™XÛÜ™Y
+›ÝÎˆXÝÜÝ‹[žWK
+šÙ^\ÎˆÝŠHOˆÝŽ‚ˆ›ÜˆÙ^H[ˆÙ^\Î‚ˆ^HÝŠ›ÝË™Ù]
+Ù^JHÜˆˆŠKœÝš\
+
+BˆYˆ^[™^˜Ø\ÙY›Û
+
+H›Ý[ˆZ\ÜÚ[™Î‚ˆ™]\›ˆ^ˆ™]\›ˆˆ‚‚ˆYˆØÛÛ\\™WÜ\Ù]šY[˜ÙJØ\™ˆXÝÜÝ‹[žWKÛÝˆÝŠHOˆXÝÜÝ‹[žWN‚ˆ\HÂˆ›X[Y˜XÝ\™\—Ü\Û[X™\ˆŽˆØ\™™Ù]
+›\ˆŠHÜˆˆ‹ˆ›X[Y˜XÝ\™\ˆŽˆØ\™™Ù]
+›X[Y˜XÝ\™\ˆŠHÜˆˆ‹ˆ™\ØÜš\[ÛˆŽˆØ\™™Ù]
+™\ØÜš\[ÛˆŠHÜˆˆ‹ˆœXÚØYÙHŽˆØ\™™Ù]
+œXÚØYÙHŠHÜˆˆ‹ˆBˆ\\]JˆÂˆÙ^Nˆ˜[YBˆ›ÜˆÙ^K˜[YH[ˆÛÛ\\š\ÛÛ—Ü›Ý×Ü\Ý˜[Y\Ê›ÝÜËÛÝ
+Kš][\Ê
+BˆYˆ˜[YBˆBˆ
+Bˆ™]\›ˆ\‚ˆÛÛ\]Xš[]WØžWÜÛÝˆXÝÜÝ‹XÝÜÝ‹[žWWHHßBˆYˆÛÛ\\š\ÛÛˆ[™Ø\™ØH[™Ø\™ØŽ‚ˆÛÛ\\™WÛÜšYÚ[˜[HØÛÛ\\™WÜ\Ù]šY[˜ÙJØ\™ØK”\HŠBˆÛÛ\]Xš[]WØžWÜÛÝÈ”\ˆ—HH\ÜÙ\Ü×Ü\ØÛÛ\]Xš[]JˆÛÛ\\™WÛÜšYÚ[˜[ˆØÛÛ\\™WÜ\Ù]šY[˜ÙJØ\™Ø‹”\ˆŠKˆ
+BˆYˆ\×Ü\ØÈ[™Ø\™ØÎ‚ˆÛÛ\]Xš[]WØžWÜÛÝÈ”\È—HH\ÜÙ\Ü×Ü\ØÛÛ\]Xš[]JˆÛÛ\\™WÛÜšYÚ[˜[ˆØÛÛ\\™WÜ\Ù]šY[˜ÙJØ\™ØË”\ÈŠKˆ
+BˆÛÛ\]Xš[]WÛ›ÝXÙ\ÈH×Bˆ›ÜˆÛÝØ\™[ˆ
+
+”\ˆ‹Ø\™ØŠK
+”\È‹Ø\™ØÊJN‚ˆ\ÜÙ\ÜÛY[HÛÛ\]Xš[]WØžWÜÛÝ™Ù]
+ÛÝßJBˆYˆ›Ý\ÜÙ\ÜÛY[‚ˆÛÛ[YBˆ\—ÛX™[HÙ\ØÊØ\™™Ù]
+›\ˆŠHÜˆÛÝ
+BˆYˆ\ÜÙ\ÜÛY[™Ù]
+˜Üš]XØ[ÝØ\›š[™ÜÈŠN‚ˆÛÛ\]Xš[]WÛ›ÝXÙ\Ë˜\[™
+ˆ]ˆÛ\ÜÏIØÝ‹XÛÛ\]X˜[›™\ˆÜš]XØ[	È›ÛOIØ[\	Ïˆ‚ˆˆÝ›Û™ÏžÜÛÝH0­ÈÛ\—ÛX™[H8 %“ÕH“ÔRSˆ‘TPÑSQS•ÜÝ›Û™Ïˆ‚ˆˆ[žÉÉËš›Ú[Š‰ÏOž×Ù\ØÊ][J_OÛO‰È›Üˆ][H[ˆ\ÜÙ\ÜÛY[ÉØÜš]XØ[ÝØ\›š[™ÜÉ×J_OÝ[ˆ‚ˆ‘È›Ý\›Ý™H\È\ÈH›ÜZ[ˆ™\XÙ[Y[ˆH\ÚXØ[™Y\ÚYÛˆ[™ÛÜˆš\›]Ø\™H™]Üš]HX^H™H™\]Z\™Yˆ‚ˆÙ]ˆ‚ˆ
+Bˆ[Yˆ\ÜÙ\ÜÛY[™Ù]
+œ™]šY]×ÝØ\›š[™ÜÈŠN‚ˆÛÛ\]Xš[]WÛ›ÝXÙ\Ë˜\[™
+ˆ]ˆÛ\ÜÏIØÝ‹XÛÛ\]X˜[›™\ˆ™]šY]ÉÈ›ÛOIÜÝ]\ÉÏˆ‚ˆˆÝ›Û™ÏžÜÛÝH0­ÈÛ\—ÛX™[H8 %“ÔRSˆ’U“Õ‘T’Q’QQÜÝ›Û™Ïˆ‚ˆˆ[žÉÉËš›Ú[Š‰ÏOž×Ù\ØÊ][J_OÛO‰È›Üˆ][H[ˆ\ÜÙ\ÜÛY[ÉÜ™]šY]×ÝØ\›š[™ÜÉ×J_OÝ[ˆ‚ˆÙ]ˆ‚ˆ
+B‚ˆ›Üˆ›ÝÈ[ˆ›ÝÜÖÎŒN‚ˆYˆ›Ý\Ú[œÝ[˜ÙJ›ÝËXÝ
+N‚ˆÛÛ[YBˆX™[HÜ™XÛÜ™Y
+›ÝË]šX]H‹›X™[‹œ\˜[Y]\ˆ‹™šY[ŠBˆYˆ›ÝX™[ÜˆX™[˜Ø\ÙY›Û
+
+HOHœ\˜[Y]\ˆŽ‚ˆÛÛ[YBˆ˜]×ØHHÜ™XÛÜ™Y
+›ÝË”\H‹œ\ØH‹˜H‹˜[YWØH‹“ÜšYÚ[˜[ŠBˆ˜]×ØˆHÜ™XÛÜ™Y
+›ÝË”\ˆ‹œ\Øˆ‹˜ˆ‹˜[YWØˆ‹Ø[™Y]HŠBˆ˜]×ØÈHÜ™XÛÜ™Y
+›ÝË”\È‹œ\ØÈ‹˜È‹˜[YWØÈŠBˆYˆ›Ý˜]×ØH[™›Ý˜]×Øˆ[™›Ý˜]×ØÎ‚ˆÛÛ[YBˆX™[ÚÙ^HHX™[˜Ø\ÙY›Û
+
+B‚ˆYˆÜš]XØ[Ù›ÜŠÛÝˆÝŠHOˆ›ÛÛ‚ˆ\ÜÙ\ÜÛY[HÛÛ\]Xš[]WØžWÜÛÝ™Ù]
+ÛÝßJBˆYˆœXÚØYÙHˆ[ˆX™[ÚÙ^N‚ˆ™]\›ˆ›ÛÛ
+\ÜÙ\ÜÛY[™Ù]
+œXÚØYÙWÛZ\ÛX]ÚŠJBˆYˆX™[ÚÙ^H[ˆÈœ[ˆÛÝ[‹›[X™\ˆÙˆ[œÈ‹œ[œÈŸN‚ˆ™]\›ˆ›ÛÛ
+\ÜÙ\ÜÛY[™Ù]
+œ[—ØÛÝ[ÛZ\ÛX]ÚŠJBˆYˆ˜\˜Ú]XÝ\™Hˆ[ˆX™[ÚÙ^HÜˆX™[ÚÙ^H[ˆÈ™]šXÙH˜[Z[H‹˜ÛÜ™H‹š[œÝXÝ[ÛˆÙ]ŸN‚ˆ™]\›ˆ›ÛÛ
+\ÜÙ\ÜÛY[™Ù]
+˜\˜Ú]XÝ\™WÛZ\ÛX]ÚŠJBˆ™]\›ˆ˜[ÙB‚ˆYˆÛÛ\\™WØÙ[
+˜[YNˆÝ‹ÛÝˆÝ‹˜\ÙWÝ˜[YNˆÝŠHOˆÝŽ‚ˆÜš]XØ[HÜš]XØ[Ù›ÜŠÛÝ
+BˆYˆÜš]XØ[‚ˆ™]\›ˆˆÛ\ÜÏIØÝ‹XÛÛ\\™KXÛÛ\]XÜš]XØ[	Ïž×Ù\ØÊ˜[YHÜˆ	Ó›Ý™XÛÜ™Y	Ê_OÝˆ‚ˆYˆ˜[YH[™˜\ÙWÝ˜[YHOH˜[YN‚ˆ™]\›ˆˆÛ\ÜÏIØÝ‹XÛÛ\\™KYY™‰Ïž×Ù\ØÊ˜[YJ_OÝˆ‚ˆ™]\›ˆˆž×Ù\ØÊ˜[YHÜˆ	Ó›Ý™XÛÜ™Y	Ê_OÝˆ‚‚ˆÙ[ÈHÂˆˆž×Ù\ØÊ˜]×ØHÜˆ	Ó›Ý™XÛÜ™Y	Ê_OÝˆ‹ˆÛÛ\\™WØÙ[
+˜]×Ø‹”\ˆ‹˜]×ØJKˆBˆYˆ\×Ü\ØÎ‚ˆÙ[Ë˜\[™
+ÛÛ\\™WØÙ[
+˜]×ØË”\È‹˜]×ØJJBˆ›ÙK˜\[™
+ˆž×Ù\ØÊX™[
+_OÝžÉÉËš›Ú[ŠÙ[Ê_OÝˆŠBˆ™[™\™YØÛÛ\]Xš[]WÛX™[Ë˜Y
+X™[ÚÙ^JBˆÛÛ\]Xš[]WÙšY[ÈH
+ˆ
+œXÚØYÙH‹”XÚØYÙH‹œXÚØYÙWÛZ\ÛX]Ú‹œÛÝ\˜ÙWÜXÚØYÙH‹˜Ø[™Y]WÜXÚØYÙHŠKˆ
+œ[ˆÛÝ[‹”[ˆÛÝ[‹œ[—ØÛÝ[ÛZ\ÛX]Ú‹œÛÝ\˜ÙWÜ[—ØÛÝ[‹˜Ø[™Y]WÜ[—ØÛÝ[ŠKˆ
+ˆ˜\˜Ú]XÝ\™H‹ˆ‘]šXÙH˜[Z[HÈ\˜Ú]XÝ\™H‹ˆ˜\˜Ú]XÝ\™WÛZ\ÛX]Ú‹ˆœÛÝ\˜ÙWØ\˜Ú]XÝ\™H‹ˆ˜Ø[™Y]WØ\˜Ú]XÝ\™H‹ˆ
+Kˆ
+Bˆ›Üˆ›Ü›X[^™YX™[Z\ÛX]ÚÚÙ^KÛÝ\˜ÙWÚÙ^KØ[™Y]WÚÙ^H[ˆÛÛ\]Xš[]WÙšY[Î‚ˆ[™XYWÜ™[™\™YH[žJˆ›Ü›X[^™Y[ˆ˜[YBˆÜˆ
+›Ü›X[^™YOHœ[ˆÛÝ[ˆ[™›[X™\ˆÙˆ[œÈˆ[ˆ˜[YJBˆÜˆ
+›Ü›X[^™YOH˜\˜Ú]XÝ\™Hˆ[™™]šXÙH˜[Z[Hˆ[ˆ˜[YJBˆ›Üˆ˜[YH[ˆ™[™\™YØÛÛ\]Xš[]WÛX™[Âˆ
+BˆYˆ[™XYWÜ™[™\™YÜˆ›Ý[žJˆ›ÝË™Ù]
+Z\ÛX]ÚÚÙ^JH›Üˆ›ÝÈ[ˆÛÛ\]Xš[]WØžWÜÛÝ˜[Y\Ê
+Bˆ
+N‚ˆÛÛ[YBˆÛÝ\˜ÙWØ\ÜÙ\ÜÛY[HÛÛ\]Xš[]WØžWÜÛÝ™Ù]
+”\ˆ‹ßJBˆÛÝ\˜ÙWÝ˜[YHHÛÝ\˜ÙWØ\ÜÙ\ÜÛY[™Ù]
+ÛÝ\˜ÙWÚÙ^JBˆ\Ø—Ø\ÜÙ\ÜÛY[HÛÛ\]Xš[]WØžWÜÛÝ™Ù]
+”\ˆ‹ßJBˆ\Ø—Ý˜[YHH\Ø—Ø\ÜÙ\ÜÛY[™Ù]
+Ø[™Y]WÚÙ^JBˆYˆÛÝ\˜ÙWÝ˜[YH[ˆ
+›Û™KˆŠN‚ˆÛÝ\˜ÙWÝ˜[YHH“›Ý™XÛÜ™Y‚ˆYˆ\Ø—Ý˜[YH[ˆ
+›Û™KˆŠN‚ˆ\Ø—Ý˜[YHH“›Ý™XÛÜ™Y‚ˆ\Ø—ØÙ[H
+ˆˆÛ\ÜÏIØÝ‹XÛÛ\\™KXÛÛ\]XÜš]XØ[	Ïž×Ù\ØÊ\Ø—Ý˜[YJ_OÝˆ‚ˆYˆ\Ø—Ø\ÜÙ\ÜÛY[™Ù]
+Z\ÛX]ÚÚÙ^JBˆ[ÙHˆž×Ù\ØÊ\Ø—Ý˜[YJ_OÝˆ‚ˆ
+BˆÙ[ÈHÙˆž×Ù\ØÊÛÝ\˜ÙWÝ˜[YJ_OÝˆ‹\Ø—ØÙ[BˆYˆ\×Ü\ØÎ‚ˆ\Ø×Ø\ÜÙ\ÜÛY[HÛÛ\]Xš[]WØžWÜÛÝ™Ù]
+”\È‹ßJBˆ\Ø×Ý˜[YHH\Ø×Ø\ÜÙ\ÜÛY[™Ù]
+Ø[™Y]WÚÙ^JBˆYˆ\Ø×Ý˜[YH[ˆ
+›Û™KˆŠN‚ˆ\Ø×Ý˜[YHH“›Ý™XÛÜ™Y‚ˆ\Ø×ØÙ[H
+ˆˆÛ\ÜÏIØÝ‹XÛÛ\\™KXÛÛ\]XÜš]XØ[	Ïž×Ù\ØÊ\Ø×Ý˜[YJ_OÝˆ‚ˆYˆ\Ø×Ø\ÜÙ\ÜÛY[™Ù]
+Z\ÛX]ÚÚÙ^JBˆ[ÙHˆž×Ù\ØÊ\Ø×Ý˜[YJ_OÝˆ‚ˆ
+BˆÙ[Ë˜\[™
+\Ø×ØÙ[
+Bˆ›ÙK˜\[™
+ˆž×Ù\ØÊX™[
+_OÝžÉÉËš›Ú[ŠÙ[Ê_OÝˆŠBˆ˜[ˆH\Ú[œÝ[˜ÙJ™\Ý[XÝ
+H[™ÝŠ™\Ý[™Ù]
+œÝ]\ÈŠHÜˆˆŠH[ˆÈ˜ÛÛ\]Y‹™˜Z[YŸBˆ\œ›ÜˆHÝŠ™\Ý[™Ù]
+™\œ›ÜˆŠHYˆ\Ú[œÝ[˜ÙJ™\Ý[XÝ
+H[ÙHˆŠKœÝš\
+
+BˆYˆ›Ý›ÙN‚ˆYˆ˜[ˆ[™\œ›Üˆ[™\œ›ÜˆOH¸ %Ž‚ˆ[\HH\œ›Ü‚ˆ[Yˆ˜[ˆÜˆÛÛ\\š\ÛÛŽ‚ˆ[\HH“›ÈÛÛ\\˜X›H]šX]\ÈÙ\™H™XÛÜ™Y›Üˆ\ÙH\Ëˆ‚ˆ[Yˆ\ØKœÝš\
+
+H[™\Ø‹œÝš\
+
+N‚ˆ[\HH“›ÈÛÛ\\š\ÛÛˆ\È]˜Z[X›HY]ˆ[ˆÛÛ\\™H\ÈÈØY™XÛÜ™Y]šX]\Ëˆ‚ˆ[ÙN‚ˆ[\HH‘[\ˆ\H[™\ˆX[Y˜XÝ\™\ˆ\[X™\œÈÈÛÛ\\™Kˆ‚ˆ[ÙN‚ˆ[\HHˆ‚ˆÝX›Z]YØHHÝŠ™\Ý[™Ù]
+œ\ØHŠHÜˆˆŠHYˆ\Ú[œÝ[˜ÙJ™\Ý[XÝ
+H[ÙHˆ‚ˆÝX›Z]YØˆHÝŠ™\Ý[™Ù]
+œ\ØˆŠHÜˆˆŠHYˆ\Ú[œÝ[˜ÙJ™\Ý[XÝ
+H[ÙHˆ‚ˆ˜[YWØHHÙ\ØÊØ\™ØK™Ù]
+›\ˆŠHÜˆÝX›Z]YØHÜˆ\ØHÜˆ”\HŠBˆ˜[YWØˆHÙ\ØÊØ\™Ø‹™Ù]
+›\ˆŠHÜˆÝX›Z]YØˆÜˆ\ØˆÜˆ”\ˆŠBˆÝX›Z]YØÈHÝŠ™\Ý[™Ù]
+œ\ØÈŠHÜˆˆŠHYˆ\Ú[œÝ[˜ÙJ™\Ý[XÝ
+H[ÙHˆ‚ˆ˜[YWØÈHÙ\ØÊØ\™ØË™Ù]
+›\ˆŠHÜˆÝX›Z]YØÈÜˆ\ØÈÜˆ”\ÈŠBˆ›ÝXÙHHˆ‹š›Ú[ŠÛÛ\]Xš[]WÛ›ÝXÙ\ÊBˆXY\œÈHˆ”\˜[Y]\ÝžÛ˜[YWØ_OÝžÛ˜[YWØŸOÝˆ‚ˆYˆ\×Ü\ØÎ‚ˆXY\œÈ
+ÏHˆžÛ˜[YWØßOÝˆ‚ˆX›HH
+ˆˆÛ\ÜÏIØÝ‹X\\ÝX‰Ïž×Ù\ØÊ[\J_OÜˆ‚ˆYˆ[\Bˆ[ÙH
+ˆÙXÝ[ÛˆÛ\ÜÏIØÝ‹X\XØ\™	ÏX›HÛ\ÜÏIØÝ‹X\]X›IÏXYˆ‚ˆˆžÚXY\œßH‚ˆˆÝÝXY›ÙOžÉÉËš›Ú[Š›ÙJ_OÝ›ÙOÝX›OÜÙXÝ[Ûˆ‚ˆ
+Bˆ
+BˆšYÝ\™\ÈHˆ‚ˆYˆÛÛ\\š\ÛÛŽ‚ˆšYÝ\™\ÈH
+ˆÙXÝ[ÛˆÛ\ÜÏIØÝ‹X\ZÜ\È™YIÏˆ‚ˆˆ\XÛHÛ\ÜÏIØÝ‹X\ZÜIÏÜ[ÛÛ\]X›HÚXÚÜÏÜÜ[Ý›Û™Ïž×Ù\ØÊÛÝ[Ë™Ù]
+	ØÛÛ\]X›IË	ø %	ÊJ_OÜÝ›Û™ÏØ\XÛOˆ‚ˆˆ\XÛHÛ\ÜÏIØÝ‹X\ZÜIÏÜ[‘Y™™\™[˜Ù\È›Ý[™ÜÜ[Ý›Û™Ïž×Ù\ØÊÛÝ[Ë™Ù]
+	ÛX]\šX[ÙY™™\™[˜ÙIË	ø %	ÊJ_OÜÝ›Û™ÏØ\XÛOˆ‚ˆˆ\XÛHÛ\ÜÏIØÝ‹X\ZÜIÏÜ[“™YYÈ˜[Y][ÛÜÜ[Ý›Û™Ïž×Ù\ØÊÛÝ[Ë™Ù]
+	Û™YY×Ù]IË	ø %	ÊJ_OÜÝ›Û™ÏØ\XÛOˆ‚ˆÜÙXÝ[Ûˆ‚ˆ
+BˆÝ›X\šÙÝÛŠˆˆˆˆ‚ˆ]ˆÛ\ÜÏH˜Ý‹X\‚ˆÛ›ÝXÙ_BˆÙšYÝ\™\ßBˆÙ]‚ˆˆˆ‹ˆ[œØY™WØ[Ý×Ú[UYKˆ
+BˆØ\™ÜÜXÜÈHÊØ\™ØK˜[YWØK\ØJK
+Ø\™Ø‹˜[YWØ‹\ØŠWBˆYˆ\×Ü\ØÎ‚ˆØ\™ÜÜXÜË˜\[™
+
+Ø\™ØË˜[YWØË\ØÊJBˆØ\™ØÛÛÈHÝ˜ÛÛ[[œÊ[ŠØ\™ÜÜXÜÊKØ\HœÛX[ŠBˆ›ÜˆÛÛ
+Ø\™]KÝ\œ™[Û\ŠH[ˆš\
+Ø\™ØÛÛËØ\™ÜÜXÜÊN‚ˆÚ]ÛÛ‚ˆ\Ú[™›ÈHØ\™ÜˆÈ›X[Y˜XÝ\™\—Ü\Û[X™\ˆŽˆÝ\œ™[Û\ŸBˆ]HHÙ\ØÊ\Ú[™›Ë™Ù]
+›\ˆŠHÜˆ]JBˆ[XYÙHHÝŠ\Ú[™›Ë™Ù]
+š[XYÙWÝ\›ŠHÜˆ\Ú[™›Ë™Ù]
+œÝ×Ý\›ŠHÜˆˆŠBˆ]Z[ÈHÙ\ØÊ\Ú[™›Ë™Ù]
+™\ØÜš\[ÛˆŠHÜˆ\Ú[™›Ë™Ù]
+›X[Y˜XÝ\™\ˆŠHÜˆ“›Ý™XÛÜ™YŠBˆÝ›X\šÙÝÛŠˆ\XÛHÛ\ÜÏIØÝ‹X\][\]IÏ]ˆÛ\ÜÏIØÝ‹YZK\\	Ïˆ‚ˆˆžÜ\ÜÝÊ[XYÙKÚ^™OM\\\Ú[™›Ê_OÜ[ˆÛ\ÜÏIØÝ‹YZK\\XÛÜIÏˆ‚ˆˆÏžÝ]_OÚÏžÙ]Z[ßOÜÜÜ[Ù]Ø\XÛOˆ‹ˆ[œØY™WØ[Ý×Ú[UYKˆ
+BˆÝ›X\šÙÝÛŠX›K[œØY™WØ[Ý×Ú[UYJBˆ[™Ù™—ØÛÛ^HÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+˜ØY]›Ü—ØÛÛ\\™WÙXÚ\Ú[Û—ØÛÛ^ŠBˆYˆ
+ˆ\Ú[œÝ[˜ÙJ[™Ù™—ØÛÛ^XÝ
+Bˆ[™\Ú[œÝ[˜ÙJ™\Ý[XÝ
+Bˆ[™ÝŠ™\Ý[™Ù]
+œÝ]\ÈŠHÜˆˆŠHOH˜ÛÛ\]Y‚ˆ
+N‚ˆ[™Ù™—Ü\ÈHÂˆÝŠ˜[YHÜˆˆŠKœÝš\
+
+K˜Ø\ÙY›Û
+
+Bˆ›Üˆ˜[YH[ˆ[™Ù™—ØÛÛ^™Ù]
+œ\Û[X™\œÈ‹×JBˆYˆÝŠ˜[YHÜˆˆŠKœÝš\
+
+BˆBˆÝ\œ™[Ü\ÈHÜÝŠ˜[YHÜˆˆŠKœÝš\
+
+K˜Ø\ÙY›Û
+
+H›Üˆ˜[YH[ˆ™\]Y\ÝYÜ\×BˆYˆ[™Ù™—Ü\ÈOHÝ\œ™[Ü\Î‚ˆXÚ\Ú[Û—ÜÛÝ\˜ÙHH[™Ù™—ØÛÛ^™Ù]
+œÛÝ\˜ÙWØÛÛ^ŠBˆXÚ\Ú[Û—ÜÛÝ\˜ÙHHXÚ\Ú[Û—ÜÛÝ\˜ÙHYˆ\Ú[œÝ[˜ÙJXÚ\Ú[Û—ÜÛÝ\˜ÙKXÝ
+H[ÙHßBˆXÚ\Ú[Û—ÛÜšYÚ[˜[H[™Ù™—ØÛÛ^™Ù]
+›ÜšYÚ[˜[ŠBˆXÚ\Ú[Û—ÛÜšYÚ[˜[HXÚ\Ú[Û—ÛÜšYÚ[˜[Yˆ\Ú[œÝ[˜ÙJXÚ\Ú[Û—ÛÜšYÚ[˜[XÝ
+H[ÙHßBˆØ[™Y]WÜ›ÝÜÈH[™Ù™—ØÛÛ^™Ù]
+˜Ø[™Y]\ÈŠBˆØ[™Y]WÜ›ÝÜÈHØ[™Y]WÜ›ÝÜÈYˆ\Ú[œÝ[˜ÙJØ[™Y]WÜ›ÝÜË\Ý
+H[ÙH×Bˆ^XÝYØØ[™Y]WÚÙ^\ÈHÜ\ÚÙ^J˜[YJH›Üˆ˜[YH[ˆ™\]Y\ÝYÜ\ÖÌN—_Bˆ\›Ý™YØØ[™Y]\ÈHÂˆ›ÝÂˆ›Üˆ›ÝÈ[ˆØ[™Y]WÜ›ÝÜÂˆYˆ\Ú[œÝ[˜ÙJ›ÝËXÝ
+Bˆ[™\ÚÙ^JØØ[™Y]WÛ\Š›ÝÊJH[ˆ^XÝYØØ[™Y]WÚÙ^\ÂˆBˆYˆ\›Ý™YØØ[™Y]\Î‚ˆÝ›X\šÙÝÛŠˆÈÈÈÚÛÜÙHH™\XÙ[Y[›Üˆ\È“ÓHŠBˆÝ˜Ø\[ÛŠˆ”™]šY]ÈHÛÛ\\š\ÛÛ‹[ˆ\›Ý™HH™\XÙ[Y[[ÝHØ[ÈÙY\ˆ‚ˆ”Ø]™Y\›Ý˜[È\X\ˆ[ˆ\È“Óx &\È[\›˜]]™\È[™“ÓHš\ÚÈšY]ÜËˆ‚ˆ
+Bˆ›ÜˆØ[™Y]H[ˆ\›Ý™YØØ[™Y]\Î‚ˆÝ›X\šÙÝÛŠˆˆÈÈÈÈ×Ù\ØÊØØ[™Y]WÛ\ŠØ[™Y]JJ_HŠBˆØ[™Y]WÜÛÝH
+ˆ”\È‚ˆYˆØ\™ØÈ[™\ÚÙ^JØØ[™Y]WÛ\ŠØ[™Y]JJHOH\ÚÙ^JØ\™ØË™Ù]
+›\ˆŠJBˆ[ÙH”\ˆ‚ˆ
+BˆÜ™[™\—Ø›ÛWÜ™\XÙ[Y[Ø\›Ý˜[ÊˆÛÝ\˜ÙWØÛÛ^YXÚ\Ú[Û—ÜÛÝ\˜ÙKˆ]Y\žO\\ØKˆÜšYÚ[˜[YXÚ\Ú[Û—ÛÜšYÚ[˜[ˆØ[™Y]OXØ[™Y]Kˆ™XÛÜ™YÙœ›ÛOHÛÛ\\™H\È‹ˆÛÛ\\š\ÛÛ—Ù]šY[˜ÙO^È˜ÛÛ\\š\ÛÛˆŽˆÛÛ\\š\ÛÛ‹œÛÝŽˆØ[™Y]WÜÛÝKˆ
+Bˆ[™Ø\›Ý™YÜYÙJ
+B‚‚™Yˆ™[™\—Ù]\ÚY]Û]™J
+HOˆ›Û™N‚ˆˆˆ‘]\ÚY]IHÛÜšÜÜXÙHÝ[YÈH\›Ý™Y™]šY]È[ØÚÝ\ˆˆˆ‚ˆ[\Ü˜\ÙM‚ˆœ›ÛHÜ˜Ë™]\ÚY]ÜXH[\Ü
+ˆUTÒQUÔPWÐÓPT—ÔUQTÕSÓ—ÒÑVKˆUTÒQUÔPWÑÐ×ÒÑVKˆUTÒQUÔPWÑ“ÓÕ×ÕTÕÒQÑUÒÑVKˆUTÒQUÔPWÔS‘S‘×ÔUQTÕSÓ—ÒÑVKˆUTÒQUÔPWÔUQTÕSÓ—ÕÒQÑUÒÑVKˆUTÒQUÔPWÔÕUT×ÒÑVKˆUTÒQUÔPWÕ‘PQÒÑVKˆUTÒQUÔPWÕTÐQÔÒQÓUT‘WÒÑVKˆÕUT×Ô“ÐÑTÔÒS‘Ëˆ\WÙ]\ÚY]Ü]Y\Ý[Û—ØÛX\‹ˆÛX\—Ù]\ÚY]ÙØÝ[Y[ˆÛÛœÝ[YWÙ]\ÚY]Ü[™[™×Ü]Y\Ý[Û‹ˆ]\ÚY]Ý\ØYÜÚYÛ˜]\™KˆØÝ[Y[Ùš[™Ù\œš[ˆ^˜XÝÝ\ØYYÙ]\ÚY]ˆ™[™\—Ù]\ÚY]ÜYÙWÜ™ËˆÝÜ™WÙØÝ[Y[Ú[—ÜÙ\ÜÚ[Û‹ˆ
+Bˆœ›ÛHÜ˜Ë™]\ÚY]ØÛÛ\\š\ÛÛˆ[\ÜPVÑUTÒQUÐ–UTËPVÑUTÒQUÔQÑTÂˆœ›ÛHÜ˜ËœYÙ\Ë™]\ÚY]ÜXH[\Ü
+ˆÙ^XÝ]WÙ]\ÚY]Ü]Y\Ý[Û‹ˆÚ[š™XÝÙ]\ÚY]ÜXWÜÝ[\ËˆÜ™[™\—Ø\Ú×Û™^ØÚ\ËˆÜ™[™\—Ý™XYÝ\›‹ˆÝ\YØ\Ú×ØÛXÚËˆÝ\YÙ›ÛÝ×Ý\ØÛXÚËˆ
+B‚ˆYˆÝÜ™WÛ™]×Ý\ØY
+\ØYYˆ[žJHOˆXÝÜÝ‹[žWH›Û™N‚ˆYˆ\ØYY\È›Û™N‚ˆ™]\›ˆ›Û™Bˆ^[ØYH\ØYY™Ù]˜[YJ
+Bˆš[[˜[YHHÝŠ\ØYY›˜[YHÜˆ™]\ÚY]œˆŠBˆÚYÛ˜]\™HH]\ÚY]Ý\ØYÜÚYÛ˜]\™J^[ØYš[[˜[YOYš[[˜[YJBˆYˆÚYÛ˜]\™HOHÝŠÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+UTÒQUÔPWÕTÐQÔÒQÓUT‘WÒÑVJHÜˆˆŠN‚ˆ™]\›ˆ›Û™BˆÝ\œ™[HÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+UTÒQUÔPWÑÐ×ÒÑVJBˆÈZYÜ˜]H[ˆ[™XYKXXÝ]™HØÝ[Y[[ÈHÚYÛ˜]\™HØÚ[YHÚ]Ý]ˆÈ™KY^˜XÝ[™È]ÛˆHš\œÝ™[™\ˆY\ˆ\È™[X\ÙK‚ˆYˆ
+ˆ\Ú[œÝ[˜ÙJÝ\œ™[XÝ
+Bˆ[™ÝŠÝ\œ™[™Ù]
+™š[[˜[YHŠHÜˆˆŠHOHš[[˜[YBˆ[™ÝŠÝ\œ™[™Ù]
+˜ÛÛ[Ùš[™Ù\œš[ŠHÜˆˆŠHOH\ÚX‹œÚLMŠ^[ØY
+Kš^YÙ\Ý
+
+VÎŒM—Bˆ
+N‚ˆÝœÙ\ÜÚ[Û—ÜÝ]VÑUTÒQUÔPWÕTÐQÔÒQÓUT‘WÒÑVWHHÚYÛ˜]\™Bˆ™]\›ˆ›Û™Bˆ^˜XÝYH^˜XÝÝ\ØYYÙ]\ÚY]
+^[ØYš[[˜[YOYš[[˜[YJBˆÝÜ™WÙØÝ[Y[Ú[—ÜÙ\ÜÚ[ÛŠÝœÙ\ÜÚ[Û—ÜÝ]K^˜XÝY
+BˆÝœÙ\ÜÚ[Û—ÜÝ]VÑUTÒQUÔPWÕTÐQÔÒQÓUT‘WÒÑVWHHÚYÛ˜]\™BˆÝœÙ\ÜÚ[Û—ÜÝ]VÑUTÒQUÔPWÔUQTÕSÓ—ÕÒQÑUÒÑVWHHˆ‚ˆÝœÙ\ÜÚ[Û—ÜÝ]KœÜ
+UTÒQUÔPWÑ“ÓÕ×ÕTÕÒQÑUÒÑVK›Û™JBˆÝœÙ\ÜÚ[Û—ÜÝ]KœÜ
+UTÒQUÔPWÐÓPT—ÔUQTÕSÓ—ÒÑVK›Û™JBˆÝœÙ\ÜÚ[Û—ÜÝ]KœÜ
+˜\›Ý™YÙ]\ÚY]ÜÛÝ\˜ÙWÜYÙH‹›Û™JBˆ™]\›ˆ^˜XÝY‚ˆYˆÛ—Ù]\ÚY]Ý\ØYØÚ[™ÙJ
+HOˆ›Û™N‚ˆ\ØYYÙš[HHÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+™]\ÚY]ÜXWÝ\ØY\ˆŠBˆ^˜XÝYÙØÝ[Y[HÝÜ™WÛ™]×Ý\ØY
+\ØYYÙš[JBˆYˆ\ØYYÙš[H\È›Ý›Û™H[™
+ˆ^˜XÝYÙØÝ[Y[\È›Ý›Û™BˆÜˆ]\ÚY]Ý\ØYÜÚYÛ˜]\™Jˆ\ØYYÙš[K™Ù]˜[YJ
+Kš[[˜[YO\ÝŠ\ØYYÙš[K›˜[YHÜˆ™]\ÚY]œˆŠBˆ
+BˆOHÝŠÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+UTÒQUÔPWÕTÐQÔÒQÓUT‘WÒÑVJHÜˆˆŠBˆ
+N‚ˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ™]\ÚY]ÜXWÜÚÝ×ÜXÚÙ\ˆ—HH˜[ÙB‚ˆYˆÛ—Ü™[[Ý™WÙ]\ÚY]
+
+HOˆ›Û™N‚ˆÛX\—Ù]\ÚY]ÙØÝ[Y[
+ÝœÙ\ÜÚ[Û—ÜÝ]JBˆÝœÙ\ÜÚ[Û—ÜÝ]KœÜ
+™]\ÚY]ÜXWÝ\ØY\ˆ‹›Û™JBˆÝœÙ\ÜÚ[Û—ÜÝ]KœÜ
+™]\ÚY]ÜXWÜÚÝ×ÜXÚÙ\ˆ‹›Û™JBˆÝœÙ\ÜÚ[Û—ÜÝ]KœÜ
+˜\›Ý™YÙ]\ÚY]ÜÛÝ\˜ÙWÜYÙH‹›Û™JBˆÝœÙ\ÜÚ[Û—ÜÝ]KœÜ
+UTÒQUÔPWÔUQTÕSÓ—ÕÒQÑUÒÑVK›Û™JBˆÝœÙ\ÜÚ[Û—ÜÝ]KœÜ
+UTÒQUÔPWÑ“ÓÕ×ÕTÕÒQÑUÒÑVK›Û™JBˆÝœÙ\ÜÚ[Û—ÜÝ]KœÜ
+UTÒQUÔPWÔS‘S‘×ÔUQTÕSÓ—ÒÑVK›Û™JBˆÝœÙ\ÜÚ[Û—ÜÝ]KœÜ
+UTÒQUÔPWÐÓPT—ÔUQTÕSÓ—ÒÑVK›Û™JB‚ˆYˆÚ[™ÙWÜÛÝ\˜ÙWÜYÙJ[Nˆ[
+HOˆ›Û™N‚ˆžN‚ˆÝ\œ™[H[
+ÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+˜\›Ý™YÙ]\ÚY]ÜÛÝ\˜ÙWÜYÙHŠHÜˆXÝ]™WÜYÙJBˆ^Ù\
+\Q\œ›Ü‹˜[YQ\œ›ÜŠN‚ˆÝ\œ™[HXÝ]™WÜYÙBˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ˜\›Ý™YÙ]\ÚY]ÜÛÝ\˜ÙWÜYÙH—HHX^
+ˆKZ[ŠX^
+YÙWØÛÝ[JKÝ\œ™[
+È[
+[JJBˆ
+B‚ˆ™YÚ[—Ø\›Ý™YÜYÙJ
+BˆÚ[š™XÝÙ]\ÚY]ÜXWÜÝ[\Ê
+Bˆ\WÙ]\ÚY]Ü]Y\Ý[Û—ØÛX\ŠÝœÙ\ÜÚ[Û—ÜÝ]JBˆ—Û[Z]HˆžÓPVÑUTÒQUÐ–UTÈÈ
+L
+ˆL
+N™ßHPˆ‚ˆÚ]Ý˜ÛÛZ[™\ŠÙ^OH˜\›Ý™YÙ]\ÚY]ÝÛÜšÜÜXÙHŠN‚ˆØÝ[Y[HÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+UTÒQUÔPWÑÐ×ÒÑVJBˆ\ØYYHÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+™]\ÚY]ÜXWÝ\ØY\ˆŠBˆ^˜XÝYHÝÜ™WÛ™]×Ý\ØY
+\ØYY
+BˆYˆ^˜XÝY\È›Ý›Û™H[™›Ý^˜XÝY™Ù]
+˜]˜Z[X›HŠN‚ˆÝ™\œ›ÜŠÝŠ^˜XÝY™Ù]
+œ™X\ÛÛˆŠHÜˆÛÝ[›Ý™XY\È‹ˆŠJBˆØÝ[Y[HÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+UTÒQUÔPWÑÐ×ÒÑVJBˆ™XYHH\Ú[œÝ[˜ÙJØÝ[Y[XÝ
+H[™›ÛÛ
+ØÝ[Y[™Ù]
+˜]˜Z[X›HŠJBˆš[[˜[YHHÝŠØÝ[Y[™Ù]
+™š[[˜[YHŠHÜˆˆŠHYˆ\Ú[œÝ[˜ÙJØÝ[Y[XÝ
+H[ÙHˆ‚ˆYÙWØÛÝ[H[
+ˆØÝ[Y[™Ù]
+œÛÝ\˜ÙWÜYÙWØÛÝ[ŠHÜˆØÝ[Y[™Ù]
+œYÙWØÛÝ[ŠHÜˆˆ
+HYˆ\Ú[œÝ[˜ÙJØÝ[Y[XÝ
+H[ÙHˆ™XYH\Ý
+ÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+UTÒQUÔPWÕ‘PQÒÑVJHÜˆ×JBˆ[™[™×Ü]Y\Ý[ÛˆHÛÛœÝ[YWÙ]\ÚY]Ü[™[™×Ü]Y\Ý[ÛŠÝœÙ\ÜÚ[Û—ÜÝ]JHYˆ™XYH[ÙHˆ‚ˆYˆ[™[™×Ü]Y\Ý[ÛŽ‚ˆÙ^XÝ]WÙ]\ÚY]Ü]Y\Ý[ÛŠˆØÝ[Y[YØÝ[Y[ˆ]Y\Ý[Û\[™[™×Ü]Y\Ý[Û‹ˆ™XY[\Ý
+ÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+UTÒQUÔPWÕ‘PQÒÑVJHÜˆ×JKˆ
+BˆÝœÙ\ÜÚ[Û—ÜÝ]VÑUTÒQUÔPWÑ“ÓÕ×ÕTÕÒQÑUÒÑVWHHˆ‚ˆ™XYH\Ý
+ÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+UTÒQUÔPWÕ‘PQÒÑVJHÜˆ×JBˆ]\ÝH™XYËLWHYˆ™XY[™\Ú[œÝ[˜ÙJ™XYËLWKXÝ
+H[ÙHßBˆXÝ]™WÜYÙHHBˆš[X\žHH]\Ý™Ù]
+œš[X\žWÙ]šY[˜ÙHŠHYˆ\Ú[œÝ[˜ÙJ]\Ý™Ù]
+œš[X\žWÙ]šY[˜ÙHŠKXÝ
+H[ÙHßBˆžN‚ˆXÝ]™WÜYÙHHX^
+KZ[ŠYÙWØÛÝ[ÜˆK[
+š[X\žK™Ù]
+œYÙHŠHÜˆJJJBˆ^Ù\
+\Q\œ›Ü‹˜[YQ\œ›ÜŠN‚ˆXÝ]™WÜYÙHHBˆYÙWÚÙ^HH˜\›Ý™YÙ]\ÚY]ÜÛÝ\˜ÙWÜYÙH‚ˆYˆ[™[™×Ü]Y\Ý[ÛŽ‚ˆÝœÙ\ÜÚ[Û—ÜÝ]VÜYÙWÚÙ^WHHXÝ]™WÜYÙBˆYˆYÙWÚÙ^H[ˆÝœÙ\ÜÚ[Û—ÜÝ]N‚ˆžN‚ˆÝ\œ™[ÜYÙHH[
+ÝœÙ\ÜÚ[Û—ÜÝ]VÜYÙWÚÙ^WJBˆ^Ù\
+\Q\œ›Ü‹˜[YQ\œ›ÜŠN‚ˆÝ\œ™[ÜYÙHHBˆÝœÙ\ÜÚ[Û—ÜÝ]VÜYÙWÚÙ^WHHXÝ]™WÜYÙBˆYˆÝ\œ™[ÜYÙHHÜˆÝ\œ™[ÜYÙHˆX^
+YÙWØÛÝ[JN‚ˆÝœÙ\ÜÚ[Û—ÜÝ]VÜYÙWÚÙ^WHHXÝ]™WÜYÙBˆžN‚ˆÛÝ\˜ÙWÜYÙHHX^
+ˆKˆZ[ŠX^
+YÙWØÛÝ[JK[
+ÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+YÙWÚÙ^JHÜˆXÝ]™WÜYÙJJKˆ
+Bˆ^Ù\
+\Q\œ›Ü‹˜[YQ\œ›ÜŠN‚ˆÛÝ\˜ÙWÜYÙHHXÝ]™WÜYÙBˆÝœÙ\ÜÚ[Û—ÜÝ]VÜYÙWÚÙ^WHHXÝ]™WÜYÙB‚ˆÝ›X\šÙÝÛŠˆ	Ï]ˆÛ\ÜÏH™K[X\šÙ\ˆˆ\šXKZY[HYHÙ]‰ÂˆXY\ˆÛ\ÜÏIÙKZ\›ÉÏˆ‚ˆÛ\ÜÏIÙKXœ™XYÜ[X‰Ï‘[™Ú[™Y\š[™È[[YÙ[˜ÙHÈ]\ÚY]I˜[\ÐOÜˆ‚ˆHÛ\ÜÏIÙK]]IÏ‘]\ÚY]I˜[\ÐOÚOˆ‚ˆÛ\ÜÏIÙK\ÝX‰Ï\ÚÈ™XÚ\ÙH]Y\Ý[ÛœÈX›Ý]XÚšXØ[ØÝ[Y[È[™[œÜXÝHÝ\Ü[™ÈÛÝ\˜ÙHYÙ\ËÜˆ‚ˆÚXY\ˆ‹ˆ[œØY™WØ[Ý×Ú[UYKˆ
+B‚ˆYˆ›Ý™XYN‚ˆÚ]Ý˜ÛÛZ[™\ŠÙ^OH˜\›Ý™YÙ]\ÚY]Ý\ØYØØ\™ŠN‚ˆÝ›X\šÙÝÛŠˆ]ˆÛ\ÜÏIØÝ‹YK]\ØYZXY[™ÉÏÜ[ˆÛ\ÜÏIØÝ‹YKYØÝ[Y[ZXÛÛ‰È\šXKZY[IÝYIÏˆ‚ˆÝ™ÈšY]Ð›ÞIÌ	Ï]IÓMˆËŽŒŒž“LMËŽNHLš“NHMKZ‰È‚ˆ™š[IÛ›Û™IÈÝ›ÚÙOIØÝ\œ™[ÛÛÜ‰ÈÝ›ÚÙK]ÚYIÌKÉÈÝ›ÚÙK[[™XØ\IÜ›Ý[™	ÈÝ›ÚÙK[[™Z›Ú[IÜ›Ý[™	ËÏÜÝ™Ïˆ‚ˆÜÜ[]”ÑSPÕQUTÒQUÜÚÛÜÙHH]\ÚY]Úˆ‚ˆÜ[•\ØYH^\ÙX\˜ÚX›HX[Y˜XÝ\™\ˆØÝ[Y[È™YÚ[ˆHÚ]Y™]šY]ËÜÜ[Ù]Ù]ˆ‹ˆ[œØY™WØ[Ý×Ú[UYKˆ
+Bˆ\ØYYHÝ™š[WÝ\ØY\ŠˆÚÛÜÙHH]\ÚY]ˆ‹ˆ\OVÈœˆ—KˆÙ^OH™]\ÚY]ÜXWÝ\ØY\ˆ‹ˆÛ—ØÚ[™ÙO[Û—Ù]\ÚY]Ý\ØYØÚ[™ÙKˆ[Yˆ”ˆÛ›H0­È\ÈÜ—Û[Z]H0­È\ÈÓPVÑUTÒQUÔQÑTßHYÙ\È0­È^\ÙX\˜ÚX›HYÙ\È™\]Z\™Yˆ‹ˆ
+BˆÝ›X\šÙÝÛŠˆˆÛ\ÜÏIØÝ‹YK[[Z][›ÝIÏ”ˆÛ›H0­È\È×Ù\ØÊ—Û[Z]
+_H0­È\ÈÓPVÑUTÒQUÔQÑTßHYÙ\È0­È^\ÙX\˜ÚX›HYÙ\È™\]Z\™Y0­Èš]˜]HÙ\ÜÚ[Û‹ˆØØ[›™Y[XYÙK[Û›HœÈ\™H›ÝÝ\ÜYY]Üˆ‹ˆ[œØY™WØ[Ý×Ú[UYKˆ
+BˆYˆ\Ú[œÝ[˜ÙJØÝ[Y[XÝ
+H[™ØÝ[Y[™Ù]
+œ™X\ÛÛˆŠN‚ˆÝØ\›š[™ÊÝŠØÝ[Y[™Ù]
+œ™X\ÛÛˆŠJJBˆ[™Ø\›Ý™YÜYÙJ
+Bˆ™]\›‚‚ˆ^[ØYH\ØYY™Ù]˜[YJ
+HYˆ\ØYY\È›Ý›Û™H[ÙHˆˆ‚ˆYˆ^[ØY[™\ÚX‹œÚLMŠ^[ØY
+Kš^YÙ\Ý
+
+VÎŒM—HOHÝŠØÝ[Y[™Ù]
+˜ÛÛ[Ùš[™Ù\œš[ŠHÜˆˆŠN‚ˆ^[ØYHˆˆ‚ˆÚ^™WÝ^HˆžÛ[Š^[ØY
+HÈL‹ŒŸHÐˆ0­ÈˆYˆ^[ØY[ÙHˆ‚ˆ[˜[^™YÜYÙ\ÈH[
+ØÝ[Y[™Ù]
+œYÙWØÛÝ[ŠHÜˆYÙWØÛÝ[
+BˆY]Y]HH
+ˆˆžÜÚ^™WÝ^^ÜYÙWØÛÝ[HYÙ^ÉÜÉÈYˆYÙWØÛÝ[OHH[ÙH	ÉßH0­ÈØ[˜[^™YÜYÙ\ßH[˜[^™Y‚ˆYˆ[˜[^™YÜYÙ\ÈOHYÙWØÛÝ[ˆ[ÙHˆžÜÚ^™WÝ^^ÜYÙWØÛÝ[HYÙ^ÉÜÉÈYˆYÙWØÛÝ[OHH[ÙH	ÉßH‚ˆ
+BˆØÝ[Y[ØÛÛÈHÝ˜ÛÛ[[œÊÍKŒ‹KŒKKŒÍWKØ\HœÛX[‹™\XØ[Ø[YÛ›Y[H˜Ù[\ˆŠBˆÚ]ØÝ[Y[ØÛÛÖÌN‚ˆÝ›X\šÙÝÛŠˆ]ˆÛ\ÜÏIØÝ‹YKYØÝ[Y[	ÏÜ[ˆÛ\ÜÏIØÝ‹YKYØÝ[Y[ZXÛÛ‰È\šXKZY[IÝYIÏˆ‚ˆÝ™ÈšY]Ð›ÞIÌ	Ï]IÓMˆËŽŒŒž“LMËŽNHLš“NHMKZ‰È‚ˆ™š[IÛ›Û™IÈÝ›ÚÙOIØÝ\œ™[ÛÛÜ‰ÈÝ›ÚÙK]ÚYIÌKÉÈÝ›ÚÙK[[™XØ\IÜ›Ý[™	ÈÝ›ÚÙK[[™Z›Ú[IÜ›Ý[™	ËÏÜÝ™Ïˆ‚ˆˆÜÜ[Ü[ˆÛ\ÜÏIØÝ‹YKYØÝ[Y[XÛÜIÏÛX[”ÑSPÕQUTÒQUÜÛX[Ý›Û™Ïž×Ù\ØÊš[[˜[YHÜˆ	ÐXÝ]™H]\ÚY]	Ê_OÜÝ›Û™ÏÜ[ž×Ù\ØÊY]Y]J_OÜÜ[ÜÜ[ˆ‚ˆÜ[ˆÛ\ÜÏIØÝ‹YK\š]˜]IÏ•^^˜XÝYÜÜ[Ù]ˆ‹ˆ[œØY™WØ[Ý×Ú[UYKˆ
+BˆÚ]ØÝ[Y[ØÛÛÖÌWN‚ˆYˆÝ˜]ÛŠˆÚ[™ÙHØÝ[Y[‹ˆÙ^OH˜\›Ý™YÙ]\ÚY]ØÚ[™ÙWÙØÝ[Y[‹ˆ\OHœÙXÛÛ™\žH‹ˆ\ÙWØÛÛZ[™\—ÝÚYUYKˆ
+N‚ˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ™]\ÚY]ÜXWÜÚÝ×ÜXÚÙ\ˆ—HHYBˆÚ]ØÝ[Y[ØÛÛÖÌ—N‚ˆYˆ^[ØY‚ˆ[˜ÛÙYÜˆH˜\ÙM˜[˜ÛÙJ^[ØY
+K™XÛÙJ˜\ØÚZHŠBˆÝ›X\šÙÝÛŠˆHÛ\ÜÏIØÝ‹YKYØË[[šÉÈ\™Ù]I×Ø›[šÉÈ™[IÛ›ÛÜ[™\ˆ›Ü™Y™\œ™\‰È‚ˆˆš™YIÙ]N˜\XØ][Û‹ÜŽØ˜\ÙMÙ[˜ÛÙYÜŸHÜYÙO^ÜÛÝ\˜ÙWÜYÙ_IÏ“Ü[ˆˆ8¡¥ÏØOˆ‹ˆ[œØY™WØ[Ý×Ú[UYKˆ
+Bˆ[ÙN‚ˆÝ›X\šÙÝÛŠÜ[ˆÛ\ÜÏIØÝ‹YKYØË[[šÈ\ËY\ØX›Y	Ï”ˆ[˜]˜Z[X›OÜÜ[ˆ‹[œØY™WØ[Ý×Ú[UYJB‚ˆXÚÙ\—ÛÜ[ˆH›ÛÛ
+ÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+™]\ÚY]ÜXWÜÚÝ×ÜXÚÙ\ˆŠJBˆYˆXÚÙ\—ÛÜ[Ž‚ˆÝ›X\šÙÝÛŠ	Ï]ˆÛ\ÜÏH™K\XÚÙ\‹[Ü[ˆˆ\šXKZY[HYHÙ]‰Ë[œØY™WØ[Ý×Ú[UYJBˆÝ›X\šÙÝÛŠˆÛ\ÜÏIØÝ‹YK\XÚÙ\‹[X™[	ÏÚÛÜÙHH™\XÙ[Y[‹ˆH™]š[Ý\ÈÛÛ™\œØ][ÛˆÚ[™HÛX\™YÚ[ˆH™]ÈØÝ[Y[\È™XYKÜˆ‹ˆ[œØY™WØ[Ý×Ú[UYKˆ
+BˆYˆÝ˜]ÛŠØ[˜Ù[‹Ù^OH˜\›Ý™YÙ]\ÚY]ØØ[˜Ù[ØÚ[™ÙH‹\OHœÙXÛÛ™\žHŠN‚ˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ™]\ÚY]ÜXWÜÚÝ×ÜXÚÙ\ˆ—HH˜[ÙBˆÝœ™\[Š
+Bˆ[ÙN‚ˆÝ›X\šÙÝÛŠ	Ï]ˆÛ\ÜÏH™KZYK\XÚÙ\ˆˆ\šXKZY[HYHÙ]‰Ë[œØY™WØ[Ý×Ú[UYJBˆÝ™š[WÝ\ØY\ŠˆÚ[™ÙHØÝ[Y[‹ˆ\OVÈœˆ—KˆÙ^OH™]\ÚY]ÜXWÝ\ØY\ˆ‹ˆÛ—ØÚ[™ÙO[Û—Ù]\ÚY]Ý\ØYØÚ[™ÙKˆX™[Ýš\ÚXš[]OH˜ÛÛ\ÙYˆYˆ™XYH[ÙHš\ÚX›H‹ˆ[Yˆ”ˆÛ›H0­È\ÈÜ—Û[Z]H0­È\ÈÓPVÑUTÒQUÔQÑTßHYÙ\È0­È^\ÙX\˜ÚX›HYÙ\È™\]Z\™Yˆ‹ˆ
+BˆYˆXÚÙ\—ÛÜ[Ž‚ˆXÚÙ\—ØXÝ[ÛœÈHÝ˜ÛÛ[[œÊÌKKWJBˆÚ]XÚÙ\—ØXÝ[ÛœÖÌN‚ˆÝ˜]ÛŠˆ”™[[Ý™HØÝ[Y[‹ˆÙ^OH˜\›Ý™YÙ]\ÚY]Ü™[[Ý™H‹ˆ\OHœÙXÛÛ™\žH‹ˆÛ—ØÛXÚÏ[Û—Ü™[[Ý™WÙ]\ÚY]ˆ\ÙWØÛÛZ[™\—ÝÚYUYKˆ
+BˆÚ]XÚÙ\—ØXÝ[ÛœÖÌWN‚ˆYˆÝ˜]ÛŠ‘Û™H‹Ù^OH˜\›Ý™YÙ]\ÚY]ÙÛ™WÜXÚÙ\ˆ‹\OHœÙXÛÛ™\žH‹\ÙWØÛÛZ[™\—ÝÚYUYJN‚ˆÝœÙ\ÜÚ[Û—ÜÝ]VÈ™]\ÚY]ÜXWÜÚÝ×ÜXÚÙ\ˆ—HH˜[ÙBˆÝœ™\[Š
+B‚ˆYšYÚHÝ˜ÛÛ[[œÊÌŽL‹KŒKØ\H›YY][HŠBˆÚ]Y‚ˆÚ]Ý˜ÛÛZ[™\ŠÙ^OH˜\›Ý™YÙ]\ÚY]Ü]Y\Ý[Û—Ü[™[ŠN‚ˆÝ›X\šÙÝÛŠˆ]ˆÛ\ÜÏIØÝ‹YK\]Y\Ý[Û‹ZXY	Ï\ÚÈ\È]\ÚY]Úˆ‚ˆ[œÝÙ\œÈ[˜ÛYHYÙHÚ]][ÛœÈÛÈ[ÝHØ[ˆ™\šYžHHÛÝ\˜ÙH\™XÝKÜÙ]ˆ‹ˆ[œØY™WØ[Ý×Ú[UYKˆ
+Bˆ\×Ü›ØÙ\ÜÚ[™ÈHÝŠÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+UTÒQUÔPWÔÕUT×ÒÑVJHÜˆˆŠHOHÕUT×Ô“ÐÑTÔÒS‘ÂˆYˆ™XY‚ˆÝ›X\šÙÝÛŠˆˆ]ˆÛ\ÜÏIØÝ‹YKXÝ\œ™[\]Y\Ý[Û‰ÏÛX[–SÕTˆUQTÕSÓÜÛX[ž×Ù\ØÊ]\Ý™Ù]
+	Ü]Y\Ý[Û‰ÊJ_OÙ]ˆ‹ˆ[œØY™WØ[Ý×Ú[UYKˆ
+Bˆ[ÙN‚ˆÝ›X\šÙÝÛŠÛ\ÜÏIØÝ‹YKYšY[[X™[	Ï–SÕTˆUQTÕSÓÜˆ‹[œØY™WØ[Ý×Ú[UYJBˆÝ^Ø\™XJˆ”]Y\Ý[Ûˆ‹ˆÙ^OQUTÒQUÔPWÔUQTÕSÓ—ÕÒQÑUÒÑVKˆXÙZÛ\H‘^[\NˆÚ]XÚØYÙH[Y[œÚ[ÛœÈ[™[™]\›ˆÙ\ÈH]\ÚY]ÜXÚYžOÈ‹ˆZYÚMˆX™[Ýš\ÚXš[]OH˜ÛÛ\ÙY‹ˆ\ØX›YZ\×Ü›ØÙ\ÜÚ[™Ëˆ
+Bˆ\Ú×ØÛÛÈHÝ˜ÛÛ[[œÊÍWK™\XØ[Ø[YÛ›Y[H˜Ù[\ˆŠBˆÚ]\Ú×ØÛÛÖÌN‚ˆÝ›X\šÙÝÛŠÜ[ˆ\šXKZY[IÝYIÏÜÜ[ˆ‹[œØY™WØ[Ý×Ú[UYJBˆÚ]\Ú×ØÛÛÖÌWN‚ˆÝ˜]ÛŠˆ\ÚÈØY]›Üˆ‹ˆÙ^OH˜\›Ý™YÙ]\ÚY]Ø\ÚÈ‹ˆ\OHœš[X\žH‹ˆÛ—ØÛXÚÏWÝ\YØ\Ú×ØÛXÚËˆ\ØX›YZ\×Ü›ØÙ\ÜÚ[™Ëˆ\ÙWØÛÛZ[™\—ÝÚYUYKˆ
+Bˆš[™Ù\œš[HØÝ[Y[Ùš[™Ù\œš[
+ØÝ[Y[
+HÜˆ™ØÈ‚ˆ]\ÝÜÝYÙÙ\Ý[ÛœÈHÂˆÝŠ][JKœÝš\
+
+Bˆ›Üˆ][H[ˆ\Ý
+]\Ý™Ù]
+œÝYÙÙ\Ý[ÛœÈŠHÜˆ×JBˆYˆÝŠ][JKœÝš\
+
+BˆBˆYˆ›Ý]\ÝÜÝYÙÙ\Ý[ÛœÎ‚ˆ]\ÝÜÝYÙÙ\Ý[ÛœÈHÂˆ”XÚØYÙH[Y[œÚ[ÛœÈ‹ˆ”[ˆHÜšY[][Ûˆ‹ˆXœÛÛ]HX^˜][™ÜÈ‹ˆBˆÜ™[™\—Ø\Ú×Û™^ØÚ\Êˆ]\ÝÜÝYÙÙ\Ý[ÛœËˆ\›—Ú[™^[[Š™XY
+Kˆš[™Ù\œš[Yš[™Ù\œš[ˆ\ØX›Y\ÝŠÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+UTÒQUÔPWÔÕUT×ÒÑVJHÜˆˆŠHOHÕUT×Ô“ÐÑTÔÒS‘Ëˆ]OH”ÝYÙÙ\ÝY]Y\Ý[ÛœÈ‹ˆ
+BˆYˆ›Ý™XY‚ˆÝ›X\šÙÝÛŠˆ]ˆÛ\ÜÏIØÝ‹YKX[œÝÙ\‹Y[\IÏÝ›Û™Ï–[Ý\ˆ[œÝÙ\ˆ[™]šY[˜ÙHÚ[\X\ˆ\™KÜÝ›Û™Ïˆ‚ˆÜ[”Ý\Ú]XÚØYÙH[Y[œÚ[ÛœË[›Ý]˜][™ÜËÜˆ]šXÙHY[]KÜÜ[Ù]ˆ‹ˆ[œØY™WØ[Ý×Ú[UYKˆ
+Bˆ[ÙN‚ˆÜ™[™\—Ý™XYÝ\›Šˆ]\Ýˆ\›—Ú[™^[[Š™XY
+HHKˆš[™Ù\œš[Yš[™Ù\œš[ˆ\ØX›Y\ÝŠÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+UTÒQUÔPWÔÕUT×ÒÑVJHÜˆˆŠHOHÕUT×Ô“ÐÑTÔÒS‘ËˆÚÝ×Ù›ÛÝ×Ý\ÏQ˜[ÙKˆÚÝ×Ü]Y\Ý[ÛQ˜[ÙKˆÚÝ×Ü]Y\Ý[Û—Ü™Y™\™[˜ÙOQ˜[ÙKˆ
+BˆYˆ[Š™XY
+HˆN‚ˆÚ]Ý™^[™\Šˆ‘X\›Y\ˆ]Y\Ý[ÛœÈ
+Û[Š™XY
+HH_JH‹^[™YQ˜[ÙJN‚ˆ›Üˆ\›—Ú[™^\›ˆ[ˆ[[Y\˜]J™XYÎ‹LWJN‚ˆYˆ\Ú[œÝ[˜ÙJ\›‹XÝ
+N‚ˆÜ™[™\—Ý™XYÝ\›Šˆ\›‹ˆ\›—Ú[™^]\›—Ú[™^ˆš[™Ù\œš[Yš[™Ù\œš[ˆ\ØX›YUYKˆÚÝ×Ù›ÛÝ×Ý\ÏQ˜[ÙKˆ
+BˆÝ›X\šÙÝÛŠˆÛ\ÜÏIØÝ‹YKX[œÝÙ\‹XØ]][Û‰ÏRKYÙ[™\˜]Y[œÝÙ\œÈØ[ˆZ\ÜÈÛÛ^ˆÚXÚÈXXÚÚ]][ÛˆYØZ[œÝH[]\ÚY]™Y›Ü™H\ÚYÛˆÚYÛ‹[Ù™‹Üˆ‹ˆ[œØY™WØ[Ý×Ú[UYKˆ
+BˆYˆ™XY‚ˆÝ›X\šÙÝÛŠÛ\ÜÏIØÝ‹YKY›ÛÝË]\[X™[	ÏTÒÈH“ÓÕËUTÜˆ‹[œØY™WØ[Ý×Ú[UYJBˆ›ÛÝ×ØÛÛÈHÝ˜ÛÛ[[œÊÍKKŒ—K™\XØ[Ø[YÛ›Y[H˜›ÝÛHŠBˆÚ]›ÛÝ×ØÛÛÖÌN‚ˆÝ^Ú[œ]
+ˆ\ÚÈH›ÛÝË]\‹ˆÙ^OQUTÒQUÔPWÑ“ÓÕ×ÕTÕÒQÑUÒÑVKˆXÙZÛ\H\ÚÈX›Ý]HÚ]Y˜[Yx )ˆ‹ˆX™[Ýš\ÚXš[]OH˜ÛÛ\ÙY‹ˆ\ØX›YZ\×Ü›ØÙ\ÜÚ[™Ëˆ
+BˆÚ]›ÛÝ×ØÛÛÖÌWN‚ˆÝ˜]ÛŠˆ\ÚÈØY]›Üˆ‹ˆÙ^OH˜\›Ý™YÙ]\ÚY]Ù›ÛÝ×Ý\‹ˆ\OHœš[X\žH‹ˆÛ—ØÛXÚÏWÝ\YÙ›ÛÝ×Ý\ØÛXÚËˆ\ØX›YZ\×Ü›ØÙ\ÜÚ[™Ëˆ\ÙWØÛÛZ[™\—ÝÚYUYKˆ
+B‚ˆÚ]šYÚ‚ˆÚ]Ý˜ÛÛZ[™\ŠÙ^OH˜\›Ý™YÙ]\ÚY]ÜÛÝ\˜ÙWÜ[™[ŠN‚ˆÝ›X\šÙÝÛŠˆ]ˆÛ\ÜÏIØÝ‹YK\ÛÝ\˜ÙKZXY	Ï]‘ØÝ[Y[]šY[˜ÙOÚˆ‚ˆˆÚ]YYÙHœ›ÛH×Ù\ØÊš[[˜[YHÜˆ	ÐXÝ]™H]\ÚY]	Ê_OÜÙ]ˆ‚ˆˆÜ[ˆÛ\ÜÏIØÝ‹YK\YÙKX˜YÙIÏ”QÑHÜÛÝ\˜ÙWÜYÙ_HÈÛX^
+YÙWØÛÝ[J_OÜÜ[Ù]ˆ‹ˆ[œØY™WØ[Ý×Ú[UYKˆ
+BˆYˆ^[ØY‚ˆ™]šY]×Ü™ÈH™[™\—Ù]\ÚY]ÜYÙWÜ™Ê^[ØYÛÝ\˜ÙWÜYÙJBˆYˆ™]šY]×Ü™Î‚ˆ[˜ÛÙYÜ™]šY]ÈH˜\ÙM˜[˜ÛÙJ™]šY]×Ü™ÊK™XÛÙJ˜\ØÚZHŠBˆÝ›X\šÙÝÛŠˆ]ˆÛ\ÜÏIØÝ‹YK\YÙK\™]šY]ËYœ˜[YIÏˆ‚ˆˆ[YÈÛ\ÜÏIØÝ‹YK\YÙK\™]šY]ÉÈ[IÓÜšYÚ[˜[]\ÚY]YÙHÜÛÝ\˜ÙWÜYÙ_IÈÜ˜ÏIÙ]Nš[XYÙKÜ™ÎØ˜\ÙMÙ[˜ÛÙYÜ™]šY]ßIÏˆ‚ˆÙ]ˆ‹ˆ[œØY™WØ[Ý×Ú[UYKˆ
+Bˆ[ÙN‚ˆÝ›X\šÙÝÛŠˆ]ˆÛ\ÜÏIØÝ‹YK\YÙKY˜[˜XÚÉÏ•HÜšYÚ[˜[YÙH™]šY]ÈÛÝ[›Ý™H™[™\™Yˆ‚ˆ“Ü[ˆHˆÈ[œÜXÝHÛÝ\˜ÙH\™XÝKÙ]ˆ‹ˆ[œØY™WØ[Ý×Ú[UYKˆ
+Bˆ[ÙN‚ˆYÙ\ÈHØÝ[Y[™Ù]
+œYÙ\ÈŠHYˆ\Ú[œÝ[˜ÙJØÝ[Y[XÝ
+H[ÙH×BˆÛÝ\˜ÙWÝ^H™^
+ˆ
+ÝŠ][K™Ù]
+^ŠHÜˆˆŠH›Üˆ][H[ˆYÙ\ÈÜˆ×HYˆ\Ú[œÝ[˜ÙJ][KXÝ
+H[™[
+][K™Ù]
+œYÙHŠHÜˆ
+HOHÛÝ\˜ÙWÜYÙJKˆˆ‹ˆ
+BˆYˆÛÝ\˜ÙWÝ^‚ˆÝ›X\šÙÝÛŠˆˆ]ˆÛ\ÜÏIØÝ‹YK\YÙKY˜[˜XÚÉÏÝ›Û™Ï‘^˜XÝYÛÝ\˜ÙH^0­ÈYÙHÜÛÝ\˜ÙWÜYÙ_OÜÝ›Û™Ïœœž×Ù\ØÊÛÝ\˜ÙWÝ^ÎŒJ_OÙ]ˆ‹ˆ[œØY™WØ[Ý×Ú[UYKˆ
+Bˆ[ÙN‚ˆÝ›X\šÙÝÛŠˆ]ˆÛ\ÜÏIØÝ‹YK\YÙKY˜[˜XÚÉÏ”™K\Ù[XÝHˆÈ™]šY]È\ÈÜšYÚ[˜[YÙKˆ‚ˆ•H^˜XÝY^[™Ú]][ÛœÈ\™HÝ[]˜Z[X›H[ˆ\ÈÙ\ÜÚ[Û‹Ù]ˆ‹ˆ[œØY™WØ[Ý×Ú[UYKˆ
+Bˆ˜]—ØÛÛÈHÝ˜ÛÛ[[œÊÌKKWK™\XØ[Ø[YÛ›Y[H˜Ù[\ˆŠBˆÚ]˜]—ØÛÛÖÌN‚ˆÝ˜]ÛŠˆ¸¡¤™]š[Ý\ÈYÙH‹ˆÙ^OH˜\›Ý™YÙ]\ÚY]Ü™]š[Ý\×ÜYÙH‹ˆ\OH\X\žH‹ˆ\ØX›Y\ÛÝ\˜ÙWÜYÙHHKˆÛ—ØÛXÚÏXÚ[™ÙWÜÛÝ\˜ÙWÜYÙKˆ\™ÜÏJLK
+Kˆ
+BˆÚ]˜]—ØÛÛÖÌ—N‚ˆÝ˜]ÛŠˆ“™^YÙH8¡¤ˆ‹ˆÙ^OH˜\›Ý™YÙ]\ÚY]Û™^ÜYÙH‹ˆ\OH\X\žH‹ˆ\ØX›Y\ÛÝ\˜ÙWÜYÙHHX^
+YÙWØÛÝ[JKˆÛ—ØÛXÚÏXÚ[™ÙWÜÛÝ\˜ÙWÜYÙKˆ\™ÜÏJK
+Kˆ
+BˆYˆÝœÙ\ÜÚ[Û—ÜÝ]KœÜ
+™]\ÚY]ÜXWÙ[\WØ\ÚÈ‹˜[ÙJN‚ˆÝØ\›š[™Ê‘[\ˆH]Y\Ý[ÛˆX›Ý]\È]\ÚY]ˆŠBˆ[™Ø\›Ý™YÜYÙJ
+B‚‚™Yˆ™[™\—ÜÙ][™Ü×ÝÛÜšÜÜXÙJ›Ùš[NˆXÝÜÝ‹[žWK[—Û˜[YNˆÝŠHOˆ›Û™N‚ˆˆˆ”›Ùš[K›ÝYšXØ][ÛœËÙXÝ\š]K[™š[[™ÈÛˆÛ™HØÜ™Y[‹ˆˆˆ‚ˆ™YÚ[—Ø\›Ý™YÜYÙJ
+Bˆ›Ùš[HH›Ùš[HYˆ\Ú[œÝ[˜ÙJ›Ùš[KXÝ
+H[ÙHßBˆ˜[YHHÙ\ØÊ›Ùš[K™Ù]
+™[Û˜[YHŠHÜˆ›Ùš[K™Ù]
+™[XZ[ŠHÜˆXØÛÝ[ŠBˆ[XZ[HÙ\ØÊ›Ùš[K™Ù]
+™[XZ[ŠHÜˆˆŠBˆÛÛ\[žHHÙ\ØÊ›Ùš[K™Ù]
+˜ÛÛ\[žHŠHÜˆ›Ùš[K™Ù]
+˜ÛÛ\[žWÛ˜[YHŠHÜˆ“›Ý™XÛÜ™YŠBˆ›ÛHHÙ\ØÊ›Ùš[K™Ù]
+œ›ÛWÝ]HŠHÜˆ›Ùš[K™Ù]
+œ›ÛHŠHÜˆ“›Ý™XÛÜ™YŠBˆ[Y^›Û™HHÙ\ØÊ›Ùš[K™Ù]
+[Y^›Û™HŠHÜˆ“›Ý™XÛÜ™YŠBˆÛÜšÜÜXÙHHÙ\ØÊ›Ùš[K™Ù]
+ÛÜšÜÜXÙWÛ˜[YHŠHÜˆÛÛ\[žJBˆ[ˆHÙ\ØÊ[—Û˜[YHÜˆ›Ùš[K™Ù]
+œ[ˆŠHÜˆ“›Ý™XÛÜ™YŠBˆÚ]Ý˜ÛÛZ[™\ŠÙ^OH˜\›Ý™YÜÙ][™Ü×ÜØÜ™Y[ˆŠN‚ˆÜ™[™\—ÜÙ][™Ü×Ü[™[Ê›Ùš[K˜[YK[XZ[ÛÛ\[žK›ÛK[Y^›Û™KÛÜšÜÜXÙK[ŠBˆ[™Ø\›Ý™YÜYÙJ
+B‚‚™YˆÜ™[™\—ÜÙ][™Ü×Ü[™[Ê›Ùš[K˜[YK[XZ[ÛÛ\[žK›ÛK[Y^›Û™KÛÜšÜÜXÙK[ŠHOˆ›Û™N‚ˆÝ›X\šÙÝÛŠ]ˆÛ\ÜÏIØÝ‹X\	ÏO”Ù][™ÜÏÚOÙ]ˆ‹[œØY™WØ[Ý×Ú[UYJBˆYšYÚHÝ˜ÛÛ[[œÊŠBˆÚ]Y‚ˆÝ›X\šÙÝÛŠˆˆˆˆ‚ˆ]ˆÛ\ÜÏH˜Ý‹X\ÙXÝ[ÛˆÛ\ÜÏH˜Ý‹X\XØ\™”›Ùš[OÚ‚ˆÛ\ÜÏH˜Ý‹X\[˜[YHžÛ˜[Y_OÜžÙ[XZ[OÜ‚ˆ]ˆÛ\ÜÏH˜Ý‹\ÙXÝ\š]K\›ÝÈÜ[“Ü™Ø[š^˜][ÛÜÜ[Ý›Û™ÏžØÛÛ\[ž_OÜÝ›Û™ÏÙ]‚ˆ]ˆÛ\ÜÏH˜Ý‹\ÙXÝ\š]K\›ÝÈÜ[”›ÛOÜÜ[Ý›Û™ÏžÜ›Û_OÜÝ›Û™ÏÙ]‚ˆ]ˆÛ\ÜÏH˜Ý‹\ÙXÝ\š]K\›ÝÈÜ[•ÛÜšÜÜXÙOÜÜ[Ý›Û™ÏžÝÛÜšÜÜXÙ_OÜÝ›Û™ÏÙ]‚ˆÜÙXÝ[ÛÙ]‚ˆˆˆ‹ˆ[œØY™WØ[Ý×Ú[UYKˆ
+BˆÚ]Ý™›Ü›J˜\›Ý™YÜ›Ùš[WÙ›Ü›HŠN‚ˆ˜[YWØÛÛÛÛ\[žWØÛÛ›ÛWØÛÛHÝ˜ÛÛ[[œÊÊBˆ[Û˜[YHH˜[YWØÛÛ^Ú[œ]
+‘[˜[YH‹˜[YO\ÝŠ›Ùš[K™Ù]
+™[Û˜[YHŠHÜˆˆŠJBˆÛÛ\[žWÚ[œ]HÛÛ\[žWØÛÛ^Ú[œ]
+“Ü™Ø[š^˜][Ûˆ‹˜[YO\ÝŠ›Ùš[K™Ù]
+˜ÛÛ\[žHŠHÜˆ›Ùš[K™Ù]
+˜ÛÛ\[žWÛ˜[YHŠHÜˆˆŠJBˆ›ÛWÚ[œ]H›ÛWØÛÛ^Ú[œ]
+”›ÛH‹˜[YO\ÝŠ›Ùš[K™Ù]
+œ›ÛWÝ]HŠHÜˆˆŠJBˆÝX›Z]YHÝ™›Ü›WÜÝX›Z]Ø]ÛŠ”Ø]™H›Ùš[HŠBˆYˆÝX›Z]Y‚ˆœ›ÛHÜ˜Ë˜]][XØ]YÜ[[YH[\Ü\]WÝ\Ù\—Ü›Ùš[WÙšY[Â‚ˆ\Ù\—ÚYHÝŠ›Ùš[K™Ù]
+šYŠHÜˆÝœÙ\ÜÚ[Û—ÜÝ]K™Ù]
+\Ù\—ÚYŠHÜˆˆŠBˆ[ÝÙYÚÚ\YH\]WÝ\Ù\—Ü›Ùš[WÙšY[Êˆ\Ù\—ÚYˆÈ™[Û˜[YHŽˆ[Û˜[YK˜ÛÛ\[žHŽˆÛÛ\[žWÚ[œ]œ›ÛWÝ]HŽˆ›ÛWÚ[œ]Kˆ
+BˆYˆ[ÝÙY‚ˆÝœÝXØÙ\ÜÊ”›Ùš[H\]YˆŠBˆ[YˆÚÚ\Y‚ˆÝš[™›Ê•ÜÙH›Ùš[HšY[È\™H›ÝÝÜ™YÛˆ\ÈXØÛÝ[ˆŠBˆÝ›X\šÙÝÛŠˆˆˆ‚ˆ]ˆÛ\ÜÏH˜Ý‹X\ÙXÝ[ÛˆÛ\ÜÏH˜Ý‹X\XØ\™”ÙXÝ\š]OÚ‚ˆ]ˆÛ\ÜÏH˜Ý‹\ÙXÝ\š]K\›ÝÈÜ[”\ÜÝÛÜ™ÜÜ[Ý›Û™Ï“X[˜YÙYžH[Ý\ˆÚYÛ‹Z[ˆ›ÝšY\ÜÝ›Û™ÏÙ]‚ˆ]ˆÛ\ÜÏH˜Ý‹\ÙXÝ\š]K\›ÝÈÜ[•ÛËY˜XÝÜˆ]][XØ][ÛÜÜ[Ý›Û™Ï“›Ý™XÛÜ™YÜÝ›Û™ÏÙ]‚ˆ]ˆÛ\ÜÏH˜Ý‹\ÙXÝ\š]K\›ÝÈÜ[XÝ]™HÙ\ÜÚ[ÛœÏÜÜ[Ý›Û™Ï•\Èœ›ÝÜÙ\ˆÙ\ÜÚ[ÛÜÝ›Û™ÏÙ]‚ˆ]ˆÛ\ÜÏH˜Ý‹\ÙXÝ\š]K\›ÝÈÜ[ÛÛ›™XÝYXØÛÝ[ÏÜÜ[Ý›Û™Ï“›Ý™XÛÜ™YÜÝ›Û™ÏÙ]‚ˆÜÙXÝ[ÛÙ]‚ˆˆˆ‹ˆ[œØY™WØ[Ý×Ú[UYKˆ
+BˆÚ]šYÚ‚ˆÝ›X\šÙÝÛŠˆˆˆˆ‚ˆ]ˆÛ\ÜÏH˜Ý‹X\ÙXÝ[ÛˆÛ\ÜÏH˜Ý‹X\XØ\™XØÛÝ[™Y™\™[˜Ù\ÏÚ‚ˆÛ\ÜÏH˜Ý‹X\[Y]H‘[XZ[›ÝYšXØ][ÛœÈ\ÙH\ÈXØÛÝ[ˆ[Y^›Û™HÝ[Y^›Û™_OÜ‚ˆÜÙXÝ[ÛÙ]‚ˆˆˆ‹ˆ[œØY™WØ[Ý×Ú[UYKˆ
+BˆÝÙÙÛJ”›Ú™XÝXÝ]š]H‹Ù^OH˜\›Ý™YÛ›ÝYžWÜ›Ú™XÝŠBˆÝÙÙÛJ”Ú[][][Ûˆ™\Ý[È‹Ù^OH˜\›Ý™YÛ›ÝYžWÜÚ[][][ÛˆŠBˆÝÙÙÛJ•X[HXÝ]š]H‹Ù^OH˜\›Ý™YÛ›ÝYžWÝX[HŠBˆÝÙÙÛJ”›ÙXÝ\]\È‹Ù^OH˜\›Ý™YÛ›ÝYžWÜ›ÙXÝŠBˆÝÙÙÛJ“X\šÙ][™È[XZ[È‹Ù^OH˜\›Ý™YÛ›ÝYžWÛX\šÙ][™ÈŠBˆÝ^Ú[œ]
+•[Y^›Û™H‹Ù^OH˜\›Ý™YÜÙ][™Ü×Ý[Y^›Û™H‹XÙZÛ\\ÝŠ›Ùš[K™Ù]
+[Y^›Û™HŠHÜˆ“›Ý™XÛÜ™YŠJBˆÝ›X\šÙÝÛŠˆˆˆˆ‚ˆ]ˆÛ\ÜÏH˜Ý‹X\ÙXÝ[ÛˆÛ\ÜÏH˜Ý‹\[‹XØ\™Û\ÜÏH˜Ý‹X\[Y]HÝ\œ™[[Ü‚ˆžÜ[ŸOÚ‚ˆ”[ˆ[Z]ÈÛÛYHœ›ÛHHÚYÛ™YZ[ˆÝXœØÜš\[Û‹ˆ™X]\™\È]\™H›ÝÛˆ\ÈXØÛÝ[Ý^H›[šËÜ‚ˆÜÙXÝ[ÛÙ]‚ˆˆˆ‹ˆ[œØY™WØ[Ý×Ú[UYKˆ
+BˆYˆÝ˜]ÛŠ“X[˜YÙH[ˆ‹Ù^OH˜\›Ý™YÜÙ][™Ü×ÛX[˜YÙWÜ[ˆ‹\OHœš[X\žHŠN‚ˆ˜]šYØ]WÝÊ”šXÚ[™ÈŠB‚‚ˆÈ\HÛ™HÙ[\™YYÙHØ[˜\ÈÈ]™\žH\›Ý™YYÙH™[™\™\‹ˆ[œÙH]HšY]ÜÂˆÈ\ÙHHÛYÚHÚY\ˆØ\ÈXXÚØ[˜\È™[XZ[œÈ›ZY™[ÝÈ]ÈX^]ÚY‚™YˆÝÚ]Ø\›Ý™YÜYÙWØØ[˜\ÊÚYÝ˜\šX[ˆÝŠN‚ˆYˆXÛÜ˜]J™[™\™\ŠN‚ˆÜ˜\Ê™[™\™\ŠBˆYˆÜ˜\Y
+
+˜\™ÜË
+ŠšÝØ\™ÜÊN‚ˆÙ^HHˆ˜\›Ý™YÜYÙWØØ[˜\×ÞÝÚYÝ˜\šX[WÞÜ™[™\™\‹—×Û˜[YW×ßH‚ˆÚ]Ý˜ÛÛZ[™\ŠÙ^OZÙ^JN‚ˆ™]\›ˆ™[™\™\Š
+˜\™ÜË
+ŠšÝØ\™ÜÊBˆ™]\›ˆÜ˜\Yˆ™]\›ˆXÛÜ˜]B‚‚™›ÜˆÜ™[™\™\—Û˜[YKÝÚYÝ˜\šX[[ˆ
+ˆ
+œ™[™\—ÜØ]™YØ›ÛWÜÙ][™ÜÈ‹œÝ[™\™ŠKˆ
+œ™[™\—ÚÛYH‹œÝ[™\™ŠKˆ
+œ™[™\—Ø›ÛWØØ][ÙÈ‹ÚYHŠKˆ
+œ™[™\—ÙXÚ\Ú[Û—Ü]Y]YH‹œÝ[™\™ŠKˆ
+œ™[™\—Û[Ûš]Üš[™È‹ÚYHŠKˆ
+œ™[™\—Ü™\Ü×Û\Ý‹ÚYHŠKˆ
+œ™[™\—ÜÚ[\WÝÛÜšÜÜXÙH‹ÚYHŠKˆ
+œ™[™\—Ü™\XÙ[Y[ÜÙX\˜Ú‹ÚYHŠKˆ
+œ™[™\—ØÛÛ\\™WÛ]™H‹ÚYHŠKˆ
+œ™[™\—Ù]\ÚY]Û]™H‹œÝ[™\™ŠKˆ
+œ™[™\—ÜÙ][™Ü×ÝÛÜšÜÜXÙH‹œÝ[™\™ŠKŠN‚ˆÛØ˜[Ê
+V×Ü™[™\™\—Û˜[YWHHÝÚ]Ø\›Ý™YÜYÙWØØ[˜\ÊÝÚYÝ˜\šX[
+JˆÛØ˜[Ê
+V×Ü™[™\™\—Û˜[YWBˆ
+B
