@@ -1,5 +1,7 @@
 """Compilation and layout regressions for the authenticated Cadivor runtime."""
 from pathlib import Path
+import ast
+import types
 import unittest
 
 
@@ -19,6 +21,30 @@ class AuthenticatedRuntimeSyntaxTests(unittest.TestCase):
         source = (ROOT / "src" / "authenticated_runtime.py").read_text(encoding="utf-8")
         self.assertIn("from typing import Any", source)
         self.assertIn("def _clean_query_state(values: dict[str, Any])", source)
+
+    def test_navigation_query_reader_returns_flat_string_values(self) -> None:
+        source_path = ROOT / "src" / "ui" / "navigation.py"
+        tree = ast.parse(source_path.read_text(encoding="utf-8"))
+        reader = next(
+            node
+            for node in tree.body
+            if isinstance(node, ast.FunctionDef) and node.name == "read_query_params"
+        )
+        namespace = {
+            "st": types.SimpleNamespace(
+                query_params={
+                    "page": "Dashboard",
+                    "analysis_id": ["old", "current"],
+                    "empty": "",
+                }
+            )
+        }
+        isolated_module = ast.Module(body=[reader], type_ignores=[])
+        exec(compile(isolated_module, str(source_path), "exec"), namespace)
+        self.assertEqual(
+            namespace["read_query_params"](),
+            {"page": "Dashboard", "analysis_id": "current"},
+        )
 
     def test_one_time_report_offers_buy_first_and_analyze_first_paths(self) -> None:
         source = (ROOT / "src" / "authenticated_runtime.py").read_text(encoding="utf-8")
