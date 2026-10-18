@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from pathlib import Path
 
 from src.portfolio_intelligence import (
     build_portfolio_intelligence,
@@ -248,3 +249,15 @@ def test_portfolio_previous_window_uses_the_immediately_preceding_period():
     assert [row["id"] for row in previous_analyses] == ["previous"]
     assert [row["mpn"] for row in previous_parts] == ["B"]
     assert "Prior window" in note
+
+
+def test_portfolio_load_uses_thin_fields_and_filters_the_selected_period():
+    source = (Path(__file__).resolve().parents[1] / "src" / "authenticated_runtime.py").read_text()
+    block = source.split('if app_mode == "Portfolio Intelligence":', 1)[1].split(
+        '# ---------- Procurement Advisor ----------', 1
+    )[0]
+
+    assert '.select("*")' not in block
+    assert 'select("part_number,mpn,created_at")' in block
+    assert 'query.in_("analysis_id", relevant_analysis_ids)' in block
+    assert '"supplier_offers"' not in block

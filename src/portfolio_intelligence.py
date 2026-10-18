@@ -385,6 +385,9 @@ def build_portfolio_intelligence(
     medium_risk = [row for row in normalized if row["Risk Level"] == "Medium"]
     low_risk = [row for row in normalized if row["Risk Level"] == "Low"]
     unassessed = [row for row in normalized if row["Risk Level"] == "Unknown"]
+    single_source_ids = {id(row) for row in single_source}
+    no_stock_ids = {id(row) for row in no_stock}
+    lifecycle_exposed_ids = {id(row) for row in lifecycle_exposed}
 
     total_parts = len(normalized)
     concentration = 0
@@ -463,37 +466,45 @@ def build_portfolio_intelligence(
         summary_high = max(0, int(_number(summary_high_raw, 0)))
         summary_medium = max(0, int(_number(summary_medium_raw, 0)))
         summary_low = max(0, int(_number(summary_low_raw, 0)))
-        high_rows = [row for row in detail_rows if row["Risk Level"] == "High"]
-        medium_rows = [row for row in detail_rows if row["Risk Level"] == "Medium"]
-        low_rows = [row for row in detail_rows if row["Risk Level"] == "Low"]
-        risky_rows = [
-            row for row in detail_rows
-            if row["Risk Level"] in {"High", "Medium"}
-            or row in single_source
-            or row in lifecycle_exposed
-            or row in no_stock
-        ]
-        high_count = max(summary_high, len(high_rows))
-        medium_count = max(summary_medium, len(medium_rows))
-        low_count = max(summary_low, len(low_rows))
+        detail_counts = Counter()
+        risky_detail_count = 0
+        for row in detail_rows:
+            row_id = id(row)
+            risk_level = row["Risk Level"]
+            if risk_level in {"High", "Medium", "Low"}:
+                detail_counts[risk_level] += 1
+            is_risky = (
+                risk_level in {"High", "Medium"}
+                or row_id in single_source_ids
+                or row_id in lifecycle_exposed_ids
+                or row_id in no_stock_ids
+            )
+            if is_risky:
+                risky_detail_count += 1
+            if row_id in single_source_ids:
+                detail_counts["Single-source"] += 1
+            if row_id in lifecycle_exposed_ids:
+                detail_counts["End-of-life"] += 1
+            if row_id in no_stock_ids:
+                detail_counts["Out-of-stock"] += 1
+        high_count = max(summary_high, detail_counts["High"])
+        medium_count = max(summary_medium, detail_counts["Medium"])
+        low_count = max(summary_low, detail_counts["Low"])
         recorded_risk_count = high_count + medium_count
-        at_risk_count = max(recorded_risk_count, len(risky_rows))
+        at_risk_count = max(recorded_risk_count, risky_detail_count)
         if at_risk_count:
             if high_count:
                 overall_level = "High"
-            elif medium_count or risky_rows:
+            elif medium_count or risky_detail_count:
                 overall_level = "Medium"
             else:
                 overall_level = "Unknown"
             driver_counts = []
             if high_count:
                 driver_counts.append((high_count, "High risk"))
-            if len([row for row in detail_rows if row in single_source]):
-                driver_counts.append((len([row for row in detail_rows if row in single_source]), "Single-source"))
-            if len([row for row in detail_rows if row in lifecycle_exposed]):
-                driver_counts.append((len([row for row in detail_rows if row in lifecycle_exposed]), "End-of-life"))
-            if len([row for row in detail_rows if row in no_stock]):
-                driver_counts.append((len([row for row in detail_rows if row in no_stock]), "Out-of-stock"))
+            for driver in ("Single-source", "End-of-life", "Out-of-stock"):
+                if detail_counts[driver]:
+                    driver_counts.append((detail_counts[driver], driver))
             if medium_count:
                 driver_counts.append((medium_count, "Medium risk"))
             primary_driver = (
@@ -515,9 +526,9 @@ def build_portfolio_intelligence(
         recorded_date = _recorded_date(analysis)
         if recorded_date:
             month_label = recorded_date.strftime("%Y-%m")
-            monthly_counts[month_label]["High risk"] += max(summary_high, len(high_rows))
-            monthly_counts[month_label]["Medium risk"] += max(summary_medium, len(medium_rows))
-            monthly_counts[month_label]["Low risk"] += max(summary_low, len(low_rows))
+            monthly_counts[month_label]["High risk"] += high_count
+            monthly_counts[month_label]["Medium risk"] += medium_count
+            monthly_counts[month_label]["Low risk"] += low_count
     at_risk_boms.sort(
         key=lambda row: (
             -row["At-Risk Components"],

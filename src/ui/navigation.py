@@ -28,6 +28,7 @@ _LOGOUT_QUERY_KEYS = ("cadivor_signed_out", "auth", "source")
 # intentional in-app push so restore/rerun paths can avoid a duplicate entry.
 LAST_HISTORY_PUSH_PAGE_KEY = "cadivor_last_history_push_page"
 LAST_HISTORY_PUSH_PARAMS_KEY = "cadivor_last_history_push_params"
+PENDING_NAVIGATION_CONTEXT_KEY = "cadivor_pending_navigation_context"
 HISTORY_RESTORE_EVENT_KEY = "cadivor_history_restore_event"
 HISTORY_RESTORE_SNAPSHOT_KEY = "cadivor_history_restore_snapshot"
 
@@ -336,7 +337,15 @@ def navigate_to(page: str, *, _rerun: bool = True, arm_opening: bool = True, **p
             continue
         if value is not None and str(value).strip() != "":
             nav_params[key] = str(value)
+    previous_nav_params = st.session_state.get("cadivor_nav_params")
     st.session_state["cadivor_nav_params"] = nav_params
+    if current_page == page and previous_nav_params != nav_params:
+        # Streamlit can rerun a same-page widget callback before its query
+        # parameter snapshot catches up with the browser URL. Keep this
+        # intentional selection authoritative until the resolver sees it.
+        st.session_state[PENDING_NAVIGATION_CONTEXT_KEY] = dict(nav_params)
+    else:
+        st.session_state.pop(PENDING_NAVIGATION_CONTEXT_KEY, None)
     # A page hop may drop a stale forced-sign-out flag only for a live login.
     # It must never clear an explicit Sign out or invent a session from a token.
     try:

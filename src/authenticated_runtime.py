@@ -1896,6 +1896,7 @@ def resolve_canonical_app_route(*, allow_admin: bool = True) -> str:
         HISTORY_RESTORE_SNAPSHOT_KEY,
         LAST_HISTORY_PUSH_PARAMS_KEY,
         LAST_HISTORY_PUSH_PAGE_KEY,
+        PENDING_NAVIGATION_CONTEXT_KEY,
         commit_navigation_query_params,
         read_query_params,
     )
@@ -2053,6 +2054,21 @@ def resolve_canonical_app_route(*, allow_admin: bool = True) -> str:
     if route not in allow:
         route = "Dashboard"
 
+    pending_navigation_context = _clean_query_state(
+        st.session_state.get(PENDING_NAVIGATION_CONTEXT_KEY)
+        if isinstance(st.session_state.get(PENDING_NAVIGATION_CONTEXT_KEY), dict)
+        else {}
+    )
+    if browser_page or (
+        pending_navigation_context
+        and pending_navigation_context.get("page") != route
+    ):
+        # A real Back/Forward event or a different destination supersedes a
+        # same-page callback that was waiting for Streamlit's query snapshot.
+        st.session_state.pop(PENDING_NAVIGATION_CONTEXT_KEY, None)
+        pending_navigation_context = {}
+    explicit_navigation_context = dict(pending_navigation_context)
+
     route_changed = bool(previous_route) and previous_route != route
     if route_changed and history_restore:
         # Browser Back/Forward must retire prior body ownership the same way
@@ -2093,6 +2109,15 @@ def resolve_canonical_app_route(*, allow_admin: bool = True) -> str:
             "stale_query_params": dict(server_query_state),
             "event_id": browser_event_id,
         }
+    elif pending_navigation_context:
+        # Same-route selectors (for example Project / BOM in Detailed Risk
+        # Report) update the address bar without changing the page name. If
+        # Streamlit still exposes the pre-callback query snapshot, the
+        # explicit widget action remains authoritative for this rerun.
+        nav_params = dict(pending_navigation_context)
+        st.session_state["cadivor_nav_params"] = nav_params
+        if server_query_state == pending_navigation_context:
+            st.session_state.pop(PENDING_NAVIGATION_CONTEXT_KEY, None)
     elif snapshot_active and restore_snapshot:
         nav_params = dict(snapshot_target_params or restore_snapshot.get("params") or {})
         nav_params["page"] = route
@@ -2121,6 +2146,8 @@ def resolve_canonical_app_route(*, allow_admin: bool = True) -> str:
     restored_params = (
         dict(browser_params)
         if browser_params
+        else explicit_navigation_context
+        if explicit_navigation_context
         else dict(snapshot_target_params)
         if snapshot_active
         else _clean_query_state(observed_browser_params)
@@ -6659,25 +6686,77 @@ def run_authenticated_app() -> None:
 
     # ---------- Portfolio Intelligence ----------
     if app_mode == "Portfolio Intelligence":
-        try:
-            portfolio_analyses = load_analysis_history(current_user["id"]) or []
-        except Exception:
-            portfolio_analyses = []
+        from src.portfolio_intelligence import (
+            build_portfolio_intelligence,
+            filter_previous_portfolio_window,
+            filter_portfolio_window,
+            render_portfolio_intelligence_dashboard,
+        )
 
+        portfolio_window = str(st.session_state.get("portfolio_time_window") or "Last 12 months")
+        if portfolio_window not in {"Last 30 days", "Last 90 days", "Last 12 months", "All time"}:
+            portfolio_window = "Last 12 months"
+        portfolio_window_as_of = datetime.now(timezone.utc)
         try:
-            portfolio_parts_response = (
-                _workspace_query(supabase.table("analysis_parts").select("*"))
+            portfolio_analysis_response = (
+                _workspace_query(
+                    supabase.table("analyses").select(
+                        "id,user_id,project_name,filename,total_parts,health_score,"
+                        "high_risk_count,medium_risk_count,low_risk_count,created_at"
+                    )
+                )
                 .eq("user_id", current_user["id"])
-                .limit(10000)
+                .order("created_at", desc=True)
                 .execute()
             )
-            portfolio_parts = portfolio_parts_response.data or []
+            all_portfolio_analyses = portfolio_analysis_response.data or []
         except Exception:
-            portfolio_parts = []
+            all_portfolio_analyses = []
+
+        # Use analysis dates to narrow the part query before loading supplier
+        # evidence. The default 12-month view needs the current and immediately
+        # preceding year only; All time still includes all saved analyses.
+        portfolio_analyses, _, _, portfolio_window_note = filter_portfolio_window(
+            all_portfolio_analyses, [], [], portfolio_window, now=portfolio_window_as_of
+        )
+        previous_analyses, _, _, _previous_window_note = filter_previous_portfolio_window(
+            all_portfolio_analyses, [], [], portfolio_window, now=portfolio_window_as_of
+        )
+        relevant_analysis_ids = sorted({
+            str(row.get("id") or "").strip()
+            for row in [*portfolio_analyses, *previous_analyses]
+            if str(row.get("id") or "").strip()
+        })
+        query_analysis_ids = (
+            portfolio_window != "All time"
+            and 0 < len(relevant_analysis_ids) <= 150
+        )
+
+        portfolio_parts = []
+        if relevant_analysis_ids or portfolio_window == "All time":
+            part_selects = (
+                "analysis_id,mpn,manufacturer,description,category,image_url,"
+                "lifecycle_status,supplier_count,stock_available,risk_score,risk_level,quantity",
+                "analysis_id,mpn,manufacturer,lifecycle_status,supplier_count,"
+                "stock_available,risk_score,risk_level,quantity",
+            )
+            for columns in part_selects:
+                try:
+                    query = (
+                        _workspace_query(supabase.table("analysis_parts").select(columns))
+                        .eq("user_id", current_user["id"])
+                    )
+                    if query_analysis_ids:
+                        query = query.in_("analysis_id", relevant_analysis_ids)
+                    portfolio_parts_response = query.limit(10000).execute()
+                    portfolio_parts = portfolio_parts_response.data or []
+                    break
+                except Exception:
+                    continue
 
         try:
             portfolio_alert_response = (
-                _workspace_query(supabase.table("monitor_alerts").select("*"))
+                _workspace_query(supabase.table("monitor_alerts").select("part_number,mpn,created_at"))
                 .eq("user_id", current_user["id"])
                 .order("created_at", desc=True)
                 .limit(500)
@@ -6687,20 +6766,10 @@ def run_authenticated_app() -> None:
         except Exception:
             portfolio_alerts = []
 
-        from src.portfolio_intelligence import (
-            build_portfolio_intelligence,
-            filter_previous_portfolio_window,
-            filter_portfolio_window,
-            render_portfolio_intelligence_dashboard,
-        )
-
         from src.ui.navigation import open_saved_bom
         from src.ui.navigation import navigate_to as _portfolio_navigate_to
 
-        portfolio_window = str(st.session_state.get("portfolio_time_window") or "Last 12 months")
-        if portfolio_window not in {"Last 30 days", "Last 90 days", "Last 12 months", "All time"}:
-            portfolio_window = "Last 12 months"
-        all_portfolio_analyses = list(portfolio_analyses)
+        all_portfolio_analyses = list(all_portfolio_analyses)
         all_portfolio_parts = list(portfolio_parts)
         all_portfolio_alerts = list(portfolio_alerts)
         previous_analyses, previous_parts, previous_alerts, _previous_window_note = (
@@ -6709,6 +6778,7 @@ def run_authenticated_app() -> None:
                 all_portfolio_parts,
                 all_portfolio_alerts,
                 portfolio_window,
+                now=portfolio_window_as_of,
             )
         )
         portfolio_analyses, portfolio_parts, portfolio_alerts, portfolio_window_note = filter_portfolio_window(
@@ -6716,6 +6786,7 @@ def run_authenticated_app() -> None:
             all_portfolio_parts,
             all_portfolio_alerts,
             portfolio_window,
+            now=portfolio_window_as_of,
         )
         portfolio_intelligence = build_portfolio_intelligence(
             portfolio_analyses,
