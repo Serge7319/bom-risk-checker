@@ -7,12 +7,14 @@ from __future__ import annotations
 
 from collections import defaultdict
 import html
+from datetime import datetime
 from typing import Any, Callable, Dict, Iterable, List
 
 import pandas as pd
 import streamlit as st
 
-from src.ui.cadivor_design_system import MetricCard, cadivor_section_header, render_kpi_row_safe
+from src.ui.cadivor_design_system import MetricCard, cadivor_section_header
+from src.ui.cadivor_design_system.icons import lucide
 
 
 def _text(value: Any, default: str = "") -> str:
@@ -29,6 +31,17 @@ def _number(value: Any, default: float = 0.0) -> float:
         return float(value)
     except (TypeError, ValueError):
         return default
+
+
+def _date_label(value: Any) -> str:
+    raw = _text(value, "Not recorded")
+    if raw == "Not recorded":
+        return raw
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return raw
+    return f"{parsed.strftime('%b')} {parsed.day}, {parsed.year}"
 
 
 def _optional_number(value: Any) -> float | None:
@@ -454,6 +467,69 @@ def _css() -> None:
           .cv20-selected-part__links{display:flex;flex-wrap:wrap;gap:8px 16px;margin-top:12px}
           .cv20-selected-part__links a{font-size:12px;font-weight:720;color:#2563eb;text-decoration:none}
           .cv20-selected-part__links a:hover{text-decoration:underline;text-underline-offset:3px}
+          .cv20-selected-part{display:grid;grid-template-columns:minmax(270px,.92fr) minmax(480px,1.55fr);align-items:stretch;gap:20px;padding:18px 20px;margin:0 0 18px;border:1px solid #dfe7f1;border-radius:14px;background:#fff;box-shadow:0 2px 8px rgba(15,23,42,.025)}
+          .cv20-selected-part__identity{display:grid;grid-template-columns:92px minmax(0,1fr);align-items:center;gap:16px;min-width:0}
+          .cv20-selected-part__image{width:92px;height:92px;flex-basis:92px;border-radius:12px;background:#f3f6fa}
+          .cv20-selected-part__eyebrow{margin:0 0 3px;color:#8593a7;font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
+          .cv20-selected-part__mpn{font-size:24px;font-weight:780;letter-spacing:-.03em}
+          .cv20-selected-part__description{font-size:13px;color:#394a61}
+          .cv20-selected-part__meta{display:flex;flex-wrap:wrap;gap:4px 8px;margin-top:8px;color:#728096;font-size:11px;line-height:1.4}
+          .cv20-selected-part__meta span+span:before{content:"·";margin-right:8px;color:#a2adbc}
+          .cv20-selected-part__dimensions{margin-top:5px;color:#77869a;font-size:10px;line-height:1.4}
+          .cv20-selected-part__facts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));align-items:center;gap:0;margin:0;padding:8px 0 8px 7px;border-left:1px solid #e6ebf2}
+          .cv20-selected-part__fact{min-width:0;padding:4px 15px;border-right:1px solid #e6ebf2}
+          .cv20-selected-part__fact:last-child{border-right:0}
+          .cv20-selected-part__fact-label{margin-bottom:8px;color:#7c899d;font-size:11px;line-height:1.25}
+          .cv20-selected-part__fact-value{color:#14233c;font-size:14px;font-weight:720;line-height:1.35;overflow-wrap:anywhere}
+          .cv20-selected-part__fact-value .cv20-status{font-size:12px}
+          .cv20-selected-part__links{margin-top:9px;gap:7px 14px}
+          .cv20-kpi-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:14px;margin:0 0 20px}
+          .cv20-kpi-card{display:block;min-width:0;min-height:166px;padding:18px 17px 15px;border:1px solid #e1e8f1;border-radius:13px;background:#fff;color:inherit;text-decoration:none!important;box-shadow:0 3px 10px rgba(15,23,42,.025);transition:border-color .15s ease,box-shadow .15s ease}
+          .cv20-kpi-card:hover{border-color:#c4d7fb;box-shadow:0 5px 16px rgba(37,99,235,.08)}
+          .cv20-kpi-card__head{display:flex;align-items:center;gap:11px;min-height:34px;margin-bottom:8px}
+          .cv20-kpi-card__icon{display:flex;flex:0 0 34px;width:34px;height:34px;align-items:center;justify-content:center;border:1px solid #dbeafe;border-radius:9px;background:#f0f6ff;color:#2563eb}
+          .cv20-kpi-card__icon svg{width:20px;height:20px}
+          .cv20-kpi-card__label{color:#667991;font-size:12px;font-weight:700;line-height:1.25}
+          .cv20-kpi-card__value{color:#17253e;font-size:27px;font-weight:790;line-height:1.08;letter-spacing:-.035em;overflow-wrap:anywhere}
+          .cv20-kpi-card__detail{margin-top:9px;color:#74839a;font-size:11px;line-height:1.42}
+          .cv20-kpi-card--warning .cv20-kpi-card__icon{border-color:#fde4c4;background:#fff8ed;color:#c4650a}
+          .cv20-kpi-card--danger .cv20-kpi-card__icon{border-color:#f8d7d4;background:#fff2f0;color:#c0392b}
+          .cv20-kpi-card--success .cv20-kpi-card__icon{border-color:#c9f1df;background:#f0fbf5;color:#13804a}
+          .cv20-kpi-card--monitoring .cv20-kpi-card__icon{border-color:#c8f2ed;background:#effcf9;color:#138b80}
+          .cv20-kpi-card--warning .cv20-kpi-card__value{color:#c4650a}
+          .cv20-kpi-card--danger .cv20-kpi-card__value{color:#c0392b}
+          .cv20-detail-grid{align-items:start}
+          .cv20-detail-grid [data-testid="column"]{min-width:0}
+          .cv20-detail-grid .cv20-map-card{height:auto;min-height:100%;padding:18px 19px}
+          .cv20-detail-side{display:grid;gap:14px}
+          .cv20-factors-card{height:auto;padding:17px 18px 14px}
+          .cv20-factor{align-items:center;justify-content:flex-start;gap:12px;padding:12px 0}
+          .cv20-factor__icon{display:flex;flex:0 0 31px;width:31px;height:31px;align-items:center;justify-content:center;color:#3272e8}
+          .cv20-factor__icon svg{width:23px;height:23px}
+          .cv20-factor__body{flex:1;min-width:0}
+          .cv20-factor__top{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+          .cv20-factor__label{color:#1c2c44;font-size:13px;font-weight:720}
+          .cv20-factor__value{display:inline-flex;align-items:center;min-height:23px;padding:3px 9px;border-radius:999px;background:#f1f5f9;color:#56667c;font-size:10px;font-weight:760;text-align:left}
+          .cv20-factor__value--warning{background:#fff4df;color:#a65b00}.cv20-factor__value--danger{background:#fff0ee;color:#bd3329}.cv20-factor__value--success{background:#eaf8f0;color:#147a47}.cv20-factor__value--muted{background:#f1f5f9;color:#718096}
+          .cv20-factor__detail{margin-top:4px;color:#7a8799;font-size:10px;line-height:1.42}
+          .cv20-factor__chevron{margin-left:auto;color:#91a0b4;font-size:20px;line-height:1}
+          .cv20-factor-list{display:grid;gap:0}
+          .cv20-impact-score-note{margin-top:10px}
+          .cv20-project-card{height:auto;padding:0;overflow:hidden}
+          .cv20-project-card__header{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 15px 11px;border-bottom:1px solid #e9eef5}
+          .cv20-project-card__title{margin:0;color:#192942;font-size:15px;font-weight:760}
+          .cv20-project-card__count{color:#7a8799;font-size:10px}
+          .cv20-project-table-wrap{width:100%;overflow-x:auto}
+          .cv20-project-table{width:100%;margin:0;border-collapse:collapse;table-layout:fixed}
+          .cv20-project-table th{padding:9px 9px;background:#fbfcfe;color:#718096;font-size:9px;font-weight:760;text-align:left;white-space:nowrap}
+          .cv20-project-table td{padding:10px 9px;border-top:1px solid #edf1f6;color:#516176;font-size:9px;line-height:1.35;vertical-align:middle;overflow-wrap:anywhere}
+          .cv20-project-table th:first-child,.cv20-project-table td:first-child{padding-left:14px}
+          .cv20-project-name{display:block;color:#2764d9;font-size:10px;font-weight:720}
+          .cv20-project-sub{display:block;margin-top:3px;color:#8793a4;font-size:9px}
+          .cv20-project-impact{display:inline-flex;padding:4px 7px;border-radius:999px;background:#fff0ee;color:#bd3329;font-size:9px;font-weight:750;white-space:nowrap}
+          .cv20-project-impact--moderate{background:#fff4df;color:#a65b00}.cv20-project-impact--low{background:#eaf8f0;color:#147a47}.cv20-project-impact--muted{background:#f1f5f9;color:#718096}
+          .cv20-project-empty{padding:16px;color:#7a8799;font-size:11px}
+          .cv20-side-action{margin-top:-2px}
           .cv20-status{display:inline-flex;padding:3px 9px;border-radius:999px;font-style:normal;font-weight:760}
           .cv20-status--success{color:#147a47;background:#eaf8f0}
           .cv20-status--danger{color:#b42318;background:#fff0ee}
@@ -540,7 +616,8 @@ def _css() -> None:
           .cv20-home-filter-row [data-testid="stTextInput"] [data-testid="stWidgetLabel"],.cv20-home-filter-row [data-testid="stSelectbox"] [data-testid="stWidgetLabel"]{display:none!important}
           .cv20-home-filter-row{margin:3px 0 15px}
           .st-key-approved_home_page .cv20-page-head{margin-bottom:20px}
-          @media(max-width:760px){.cv20-page-head{align-items:stretch;flex-direction:column}.cv20-selected-part{align-items:flex-start}.cv20-page-title{font-size:27px}}
+          @media(max-width:1100px){.cv20-kpi-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.cv20-selected-part{grid-template-columns:minmax(240px,.9fr) minmax(0,1.2fr)}.cv20-selected-part__facts{grid-template-columns:repeat(2,minmax(0,1fr));row-gap:8px}.cv20-selected-part__fact:nth-child(2){border-right:0}}
+          @media(max-width:760px){.cv20-page-head{align-items:stretch;flex-direction:column}.cv20-selected-part{display:flex;align-items:flex-start;flex-direction:column}.cv20-selected-part__identity{width:100%}.cv20-selected-part__facts{width:100%;border-left:0;border-top:1px solid #e6ebf2;padding:10px 0 0}.cv20-page-title{font-size:27px}.cv20-kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.cv20-detail-grid [data-testid="column"]{width:100%!important}}
           @media(max-width:900px){.cv20-impact-steps{flex-wrap:wrap}.cv20-impact-step-note{flex-basis:100%;margin-left:0}.cv20-selected-for-review{flex-wrap:wrap;gap:10px}.st-key-design_impact_component_table [data-testid="stHorizontalBlock"]{gap:6px!important}}
           @media(max-width:700px){.st-key-design_impact_component_browser{padding:15px 12px 6px}.st-key-design_impact_component_table_head{display:none}.st-key-design_impact_component_table [data-testid="column"]:nth-child(4),.st-key-design_impact_component_table [data-testid="column"]:nth-child(6),.st-key-design_impact_component_table [data-testid="column"]:nth-child(7),.st-key-design_impact_component_table [data-testid="column"]:nth-child(8){display:none}.cv20-component-cell__image{flex-basis:36px;width:36px;height:36px}.cv20-selected-for-review{margin-left:8px;margin-right:8px;padding:10px}.cv20-impact-steps{gap:8px;padding:10px;font-size:10px}.cv20-impact-step{gap:6px}.cv20-impact-step b{width:22px;height:22px}}
         </style>
@@ -553,14 +630,13 @@ def _design_impact_kpis(intelligence: Dict[str, Any]) -> List[MetricCard]:
     """Live summary metrics from the saved BOM and recorded sourcing evidence."""
     stock = intelligence.get("minimum_stock")
     sources = intelligence.get("minimum_sources")
-    currency = _text(intelligence.get("price_currency"), "USD")
     hours = int(_number(intelligence.get("engineering_hours"), 1))
     return [
         MetricCard(
             label="Affected projects",
             value=str(intelligence["project_count"]),
-            detail="Unique saved projects containing this component.",
-            tone="info",
+            detail="Projects in saved analyses using this component.",
+            tone="danger" if int(intelligence["impact_score"]) >= 75 else "warning" if int(intelligence["impact_score"]) >= 40 else "info",
             icon="briefcase-business",
             href="#impact-affected-projects",
             action_label="View projects",
@@ -577,7 +653,7 @@ def _design_impact_kpis(intelligence: Dict[str, Any]) -> List[MetricCard]:
         MetricCard(
             label="Available stock",
             value="Not recorded" if stock is None else f"{int(stock):,}",
-            detail="Lowest recorded inventory across affected BOM rows.",
+            detail="Lowest inventory recorded across affected BOMs.",
             tone="warning" if stock is None or stock <= 0 else "success",
             icon="package",
             href="#impact-key-factors",
@@ -586,7 +662,7 @@ def _design_impact_kpis(intelligence: Dict[str, Any]) -> List[MetricCard]:
         MetricCard(
             label="Supplier sources",
             value="Not recorded" if sources is None else str(int(sources)),
-            detail="Minimum source count recorded for the selected component.",
+            detail="Minimum supplier count recorded across affected BOMs.",
             tone="warning" if sources is None or sources <= 1 else "success",
             icon="shopping-cart",
             href="#impact-key-factors",
@@ -595,13 +671,37 @@ def _design_impact_kpis(intelligence: Dict[str, Any]) -> List[MetricCard]:
         MetricCard(
             label="Estimated review",
             value=f"{hours} hrs",
-            detail="Planning estimate based on affected projects and recorded exceptions.",
+            detail="Planning estimate for impact review and mitigation.",
             tone="monitoring",
             icon="clock-3",
             href="#impact-affected-projects",
             action_label="View projects",
         ),
     ]
+
+
+def _design_impact_kpi_markup(metrics: List[MetricCard]) -> str:
+    """Render the detail-page KPI cards in the approved compact visual style."""
+    cards = []
+    for metric in metrics:
+        icon = lucide(metric.icon, 21)
+        content = (
+            '<div class="cv20-kpi-card__head">'
+            f'<span class="cv20-kpi-card__icon">{icon}</span>'
+            f'<span class="cv20-kpi-card__label">{html.escape(metric.label)}</span>'
+            '</div>'
+            f'<div class="cv20-kpi-card__value">{html.escape(metric.value)}</div>'
+            f'<div class="cv20-kpi-card__detail">{html.escape(metric.detail)}</div>'
+        )
+        if metric.href:
+            cards.append(
+                f'<a class="cv20-kpi-card cv20-kpi-card--{html.escape(metric.tone)}" '
+                f'href="{html.escape(metric.href, quote=True)}" aria-label="{html.escape(metric.label)}: {html.escape(metric.value)}">'
+                f'{content}</a>'
+            )
+        else:
+            cards.append(f'<article class="cv20-kpi-card cv20-kpi-card--{html.escape(metric.tone)}">{content}</article>')
+    return f'<section class="cv20-kpi-grid" aria-label="Component impact summary">{"".join(cards)}</section>'
 
 
 def _impact_details_scroll_script() -> str:
@@ -722,14 +822,14 @@ def _render_design_impact_workspace(
     from src.part_images import part_image_markup, part_image_source
 
     selected_photo_markup = part_image_markup(
-        intelligence.get("image_url"), current or "Component", size=72, part=intelligence
+        intelligence.get("image_url"), current or "Component", size=92, part=intelligence
     )
     unit_price = intelligence.get("unit_price")
     price_currency = _text(intelligence.get("price_currency"), "USD")
     price_label = "Not recorded" if unit_price is None else f"{price_currency} {float(unit_price):,.2f}"
     category = _text(intelligence.get("category"), "Not recorded")
     description = _text(intelligence.get("description"), "Description not recorded")
-    last_updated = _text(intelligence.get("last_updated"), "Not recorded")
+    last_updated = _date_label(intelligence.get("last_updated"))
     package_pins = _text(intelligence.get("package"), "Not recorded")
     pin_count = int(_number(intelligence.get("pin_count"), 0))
     if pin_count > 0:
@@ -737,6 +837,10 @@ def _render_design_impact_workspace(
     package_dimensions = _text(intelligence.get("package_dimensions"), "Not recorded")
     lifecycle_text = _text(intelligence.get("lifecycle"), "Not recorded")
     lifecycle_class = "success" if lifecycle_text.casefold() == "active" else "danger" if any(term in lifecycle_text.casefold() for term in ("obsolete", "eol", "nrnd", "not recommended")) else "muted"
+    device_type = _text(intelligence.get("device_subtype"), "")
+    if not device_type or device_type.casefold() in {"unknown", "not recorded"}:
+        device_type = category
+    manufacturer = _text(intelligence.get("manufacturer"), "Not recorded")
 
     def _evidence_link(label: str, raw_url: Any) -> str:
         url = _text(raw_url)
@@ -752,22 +856,33 @@ def _render_design_impact_workspace(
         _evidence_link("Open source record", intelligence.get("source_url")),
     ]))
     links_markup = f'<div class="cv20-selected-part__links">{document_links}</div>' if document_links else ""
+    fact_items = [
+        ("Lifecycle status", f'<span class="cv20-status cv20-status--{lifecycle_class}">{html.escape(lifecycle_text)}</span>'),
+        ("Category", html.escape(category)),
+        ("Unit price (" + html.escape(price_currency) + ")", html.escape(price_label.replace(f"{price_currency} ", ""))),
+        ("Last updated", html.escape(last_updated)),
+    ]
+    facts_markup = "".join(
+        '<div class="cv20-selected-part__fact">'
+        f'<div class="cv20-selected-part__fact-label">{label}</div>'
+        f'<div class="cv20-selected-part__fact-value">{value}</div></div>'
+        for label, value in fact_items
+    )
     summary_markup = (
         '<section class="cv20-selected-part">'
+        '<div class="cv20-selected-part__identity">'
         f'<div class="cv20-selected-part__image">{selected_photo_markup}</div>'
         '<div class="cv20-selected-part__body">'
+        '<div class="cv20-selected-part__eyebrow">Component</div>'
         f'<h2 class="cv20-selected-part__mpn">{html.escape(current)}</h2>'
         f'<div class="cv20-selected-part__description">{html.escape(description)}</div>'
-        '<div class="cv20-selected-part__facts">'
-        f'<span><b>Manufacturer</b> {html.escape(_text(intelligence.get("manufacturer"), "Not recorded"))}</span>'
-        f'<span><b>Category</b> {html.escape(category)}</span>'
-        f'<span><b>Device type</b> {html.escape(_text(intelligence.get("device_subtype"), "Not recorded"))}</span>'
-        f'<span><b>Package / pins</b> {html.escape(package_pins)}</span>'
-        f'<span><b>Package dimensions</b> {html.escape(package_dimensions)}</span>'
-        f'<span><b>Lifecycle</b> <i class="cv20-status cv20-status--{lifecycle_class}">{html.escape(lifecycle_text)}</i></span>'
-        f'<span><b>Unit price</b> {html.escape(price_label)}</span>'
-        f'<span><b>Updated</b> {html.escape(last_updated)}</span>'
-        f'</div>{links_markup}</div></section>'
+        '<div class="cv20-selected-part__meta">'
+        f'<span>{html.escape(device_type)}</span><span>{html.escape(manufacturer)}</span><span>{html.escape(package_pins)}</span>'
+        '</div>'
+        f'<div class="cv20-selected-part__dimensions">Package dimensions: {html.escape(package_dimensions)}</div>'
+        f'{links_markup}</div></div>'
+        f'<div class="cv20-selected-part__facts">{facts_markup}</div>'
+        '</section>'
     )
 
     if not review_started:
@@ -915,58 +1030,51 @@ def _render_design_impact_workspace(
         return
 
     st.markdown(summary_markup, unsafe_allow_html=True)
-    render_kpi_row_safe(_design_impact_kpis(intelligence), columns=5)
+    st.markdown(_design_impact_kpi_markup(_design_impact_kpis(intelligence)), unsafe_allow_html=True)
 
-    def _factor_row(label: str, value: str, state: str = "muted") -> str:
+    def _factor_row(label: str, value: str, detail: str, state: str, icon: str) -> str:
         return (
-            '<div class="cv20-factor"><span class="cv20-factor__label">' + html.escape(label) + '</span>'
-            f'<span class="cv20-factor__value cv20-factor__value--{state}">{html.escape(value)}</span></div>'
+            '<div class="cv20-factor">'
+            f'<span class="cv20-factor__icon" aria-hidden="true">{lucide(icon, 23)}</span>'
+            '<div class="cv20-factor__body"><div class="cv20-factor__top">'
+            f'<span class="cv20-factor__label">{html.escape(label)}</span>'
+            f'<span class="cv20-factor__value cv20-factor__value--{state}">{html.escape(value)}</span>'
+            f'</div><div class="cv20-factor__detail">{html.escape(detail)}</div></div>'
+            '<span class="cv20-factor__chevron" aria-hidden="true">›</span></div>'
         )
 
-    stock = intelligence.get("minimum_stock")
-    sources = intelligence.get("minimum_sources")
     lifecycle_value = _text(intelligence.get("lifecycle"), "Unknown")
     lifecycle_state = "danger" if any(term in lifecycle_value.casefold() for term in ("obsolete", "eol", "nrnd", "not recommended")) else "success" if lifecycle_value.casefold() == "active" else "muted"
-    stock_state = "muted" if stock is None else "danger" if stock <= 0 else "success"
-    source_state = "muted" if sources is None else "warning" if sources <= 1 else "success"
-    exposure_state = "warning" if int(intelligence.get("project_count") or 0) > 1 else "muted"
     risk_score = int(_number(intelligence.get("maximum_risk"), 0))
     risk_label = _text(intelligence.get("risk_level"), "Not recorded")
     if risk_label.casefold() in {"unknown", "not recorded"} and risk_score:
         risk_label = _impact_level(risk_score)
     lead_time = intelligence.get("maximum_lead_time_weeks")
-    lead_time_label = "Not recorded" if lead_time is None else f"Up to {float(lead_time):g} weeks"
+    risk_detail = f"Highest recorded BOM risk score: {risk_score}/100." if risk_score else "Risk evidence is not recorded in the saved BOMs."
+    if lead_time is not None:
+        risk_detail += f" Lead time recorded up to {float(lead_time):g} weeks."
+    lifecycle_detail = (
+        "Lifecycle status varies across saved BOM evidence."
+        if lifecycle_value.casefold() == "mixed"
+        else "Lifecycle status is not recorded in the saved BOM evidence."
+        if lifecycle_value.casefold() in {"unknown", "not recorded"}
+        else f"Lifecycle status recorded as {lifecycle_value}; confirm current supplier status before a change."
+    )
     factor_markup = (
         '<div id="impact-key-factors" class="cv20-factors-card">'
         '<h2 class="cv20-section-title">Key factors</h2>'
-        '<p class="cv20-section-copy">Evidence currently recorded for this component and its saved BOMs.</p>'
+        '<p class="cv20-section-copy">Evidence recorded for this component and its saved BOMs.</p>'
         '<div class="cv20-factor-list">'
-        + _factor_row("Supply risk", f"{risk_label} · {risk_score}/100" if risk_score else risk_label, "danger" if _recorded_risk_rank(risk_label) >= 4 else "warning" if _recorded_risk_rank(risk_label) == 3 else "success" if _recorded_risk_rank(risk_label) == 2 else "muted")
-        + _factor_row("Lifecycle status", lifecycle_value, lifecycle_state)
-        + _factor_row("Lead time", lead_time_label, "warning" if lead_time is not None and lead_time >= 16 else "muted")
-        + _factor_row("Price trend", "Not recorded", "muted")
-        + _factor_row("Available stock", _stock_label(stock), stock_state)
-        + _factor_row("Supplier sources", _source_label(sources), source_state)
-        + _factor_row("Alternatives", "Review in replacement comparison", "muted")
+        + _factor_row("Supply risk", risk_label, risk_detail,
+            "danger" if _recorded_risk_rank(risk_label) >= 4 else "warning" if _recorded_risk_rank(risk_label) == 3 else "success" if _recorded_risk_rank(risk_label) == 2 else "muted", "triangle-alert")
+        + _factor_row("Lifecycle status", lifecycle_value, lifecycle_detail, lifecycle_state, "badge-check")
+        + _factor_row("Price trend", "Not recorded", "Historical price movement is not available in the saved BOM evidence.", "muted", "chart-no-axes-combined")
+        + _factor_row("Alternatives", "Review required", "Check package, pinout, and datasheet evidence in the replacement comparison.", "muted", "boxes")
         + '</div>'
-        + '<p class="cv20-evidence-note">Price history and alternative compatibility are not inferred from the BOM. Review those in the sourcing comparison before acting.</p>'
         + f'<p class="cv20-impact-score-note">Impact score: {intelligence.get("impact_level", "Low")} review priority ({intelligence.get("impact_score", 0)}/100). This is a triage score, not a failure probability.</p>'
         + '</div>'
     )
 
-    left, right = st.columns([1.3, 1], gap="medium")
-    with left:
-        st.markdown('<div class="cv20-map-card">' + (impact_map_markup or '<h2 class="cv20-section-title">Impact map</h2><p class="cv20-section-copy">No project map data is recorded.</p>') + '</div>', unsafe_allow_html=True)
-    with right:
-        st.markdown(factor_markup, unsafe_allow_html=True)
-        internal_nav_button(
-            "Open replacement comparison", "Alternative Finder", key="design_impact_compare_alternatives",
-            type="secondary", use_container_width=True, original_part=current,
-            source_page="design_impact", return_page="Design Impact Analyzer", return_mpn=current,
-        )
-
-    st.markdown('<h2 id="impact-affected-projects" class="cv20-search-heading">Affected projects</h2>', unsafe_allow_html=True)
-    st.markdown('<p class="cv20-section-copy">Saved BOM records containing this component, grouped by project.</p>', unsafe_allow_html=True)
     project_rows = []
     for row in intelligence.get("affected_projects") or []:
         bom_names = row.get("BOM Names") or []
@@ -974,17 +1082,46 @@ def _render_design_impact_workspace(
         row_risk_level = _text(row.get("Risk Level"), "Unknown")
         if row_risk_level.casefold() == "unknown" and score:
             row_risk_level = _impact_level(score)
-        project_rows.append({
-            "Project": row.get("Project", "Project"),
-            "BOM": ", ".join(bom_names) if bom_names else row.get("BOM", "Not recorded"),
-            "Usage": f"{int(row.get('Quantity') or 0):,} units",
-            "Design phase": _text(row.get("Design Phase"), "Not recorded"),
-            "Impact": f"{row_risk_level} · {score}/100" if score else (row_risk_level if row_risk_level.casefold() != "unknown" else "Not recorded"),
-        })
-    if project_rows:
-        st.dataframe(pd.DataFrame(project_rows), hide_index=True, use_container_width=True, key="design_impact_affected_projects")
-    else:
-        st.info("No saved project records are linked to this component.")
+        impact_text = f"{row_risk_level} · {score}/100" if score else (row_risk_level if row_risk_level.casefold() != "unknown" else "Not recorded")
+        impact_class = "high" if _recorded_risk_rank(row_risk_level) >= 4 else "moderate" if _recorded_risk_rank(row_risk_level) == 3 else "low" if _recorded_risk_rank(row_risk_level) == 2 else "muted"
+        project_name = _text(row.get("Project"), "Project")
+        project_subtitle = _text(row.get("BOM"), "Saved BOM")
+        project_bom = ", ".join(bom_names) if bom_names else project_subtitle
+        quantity = int(row.get("Quantity") or 0)
+        phase = _text(row.get("Design Phase"), "Not recorded")
+        project_rows.append(
+            '<tr>'
+            f'<td><span class="cv20-project-name">{html.escape(project_name)}</span><span class="cv20-project-sub">{html.escape(project_subtitle)}</span></td>'
+            f'<td>{html.escape(project_bom)}</td>'
+            f'<td>{quantity:,} {"unit" if quantity == 1 else "units"}</td>'
+            f'<td>{html.escape(phase)}</td>'
+            f'<td><span class="cv20-project-impact cv20-project-impact--{impact_class}">{html.escape(impact_text)}</span></td>'
+            '</tr>'
+        )
+    project_table_markup = (
+        '<section id="impact-affected-projects" class="cv20-project-card">'
+        '<div class="cv20-project-card__header">'
+        f'<h2 class="cv20-project-card__title">Affected projects ({len(project_rows)})</h2>'
+        '<span class="cv20-project-card__count">Saved BOM usage</span></div>'
+        + ('<div class="cv20-project-table-wrap"><table class="cv20-project-table">'
+           '<thead><tr><th style="width:25%">Project</th><th style="width:23%">BOM</th>'
+           '<th style="width:12%">Usage</th><th style="width:18%">Design phase</th><th style="width:22%">Impact</th></tr></thead>'
+           f'<tbody>{"".join(project_rows)}</tbody></table></div>'
+           if project_rows else '<div class="cv20-project-empty">No saved project records are linked to this component.</div>')
+        + '</section>'
+    )
+
+    left, right = st.columns([1.3, 1], gap="medium")
+    with left:
+        st.markdown('<div class="cv20-map-card">' + (impact_map_markup or '<h2 class="cv20-section-title">Impact map</h2><p class="cv20-section-copy">No project map data is recorded.</p>') + '</div>', unsafe_allow_html=True)
+    with right:
+        st.markdown(factor_markup, unsafe_allow_html=True)
+        st.markdown(project_table_markup, unsafe_allow_html=True)
+        internal_nav_button(
+            "Open replacement comparison", "Alternative Finder", key="design_impact_compare_alternatives",
+            type="secondary", use_container_width=False, original_part=current,
+            source_page="design_impact", return_page="Design Impact Analyzer", return_mpn=current,
+        )
 
     analysis_rows = [row for row in intelligence.get("affected_projects") or [] if row.get("Analysis ID")]
     if analysis_rows:

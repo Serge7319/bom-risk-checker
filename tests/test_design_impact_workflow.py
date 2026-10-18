@@ -321,7 +321,7 @@ def test_component_list_is_the_first_step_and_details_wait_for_review(monkeypatc
     monkeypatch.setattr(part_images, "part_image_source", lambda *args, **kwargs: "data:image/svg+xml,test")
     monkeypatch.setattr(
         impact,
-        "render_kpi_row_safe",
+        "_design_impact_kpi_markup",
         lambda *args, **kwargs: pytest.fail("detailed assessment should wait for review submission"),
     )
 
@@ -411,7 +411,6 @@ def test_review_details_are_collapsed_and_validation_scope_is_clear(monkeypatch)
     monkeypatch.setattr(impact, "st", fake_st)
     monkeypatch.setattr(impact, "_css", lambda: None)
     monkeypatch.setattr(impact, "cadivor_section_header", lambda *args, **kwargs: None)
-    monkeypatch.setattr(impact, "render_kpi_row_safe", lambda *args, **kwargs: None)
 
     from src import part_images
 
@@ -432,6 +431,11 @@ def test_review_details_are_collapsed_and_validation_scope_is_clear(monkeypatch)
     assert "Confirm electrical function, package, footprint, pinout, and design constraints" in " ".join(fake_st.messages) + page_markup
     assert "Price trend" in page_markup
     assert "Alternatives" in page_markup
+    assert "cv20-selected-part__facts" in page_markup
+    assert "cv20-kpi-grid" in page_markup
+    assert "cv20-project-table" in page_markup
+    assert "Gateway" in page_markup and "Sensor" in page_markup
+    assert "Package dimensions: Not recorded" in page_markup
     assert any(args[0] == "Open replacement comparison" for args, _ in navigation_calls)
 
 

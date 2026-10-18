@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import unittest
 
-from src.design_impact_analyzer import _design_impact_kpis, _impact_details_scroll_script
+from src.design_impact_analyzer import _design_impact_kpi_markup, _design_impact_kpis, _impact_details_scroll_script
 from src.portfolio_intelligence import high_risk_components_disclosure
 
 
@@ -22,7 +22,7 @@ class DesignImpactReviewBehaviorTests(unittest.TestCase):
         )
 
         self.assertEqual(len(metrics), 5)
-        self.assertIn("Unique saved projects", metrics[0].detail)
+        self.assertIn("Projects in saved analyses", metrics[0].detail)
         self.assertEqual(metrics[0].href, "#impact-affected-projects")
         self.assertEqual(metrics[1].value, "82/100")
         self.assertIn("not a failure probability", metrics[1].detail)
@@ -31,6 +31,24 @@ class DesignImpactReviewBehaviorTests(unittest.TestCase):
         self.assertEqual(metrics[3].value, "3")
         self.assertEqual(metrics[4].value, "6 hrs")
         self.assertTrue(all(metric.action_label for metric in metrics))
+
+    def test_detail_kpis_use_compact_cards_without_large_action_bars(self):
+        metrics = _design_impact_kpis(
+            {
+                "project_count": 2,
+                "impact_score": 68,
+                "minimum_stock": 1240,
+                "minimum_sources": 2,
+                "engineering_hours": 4,
+            }
+        )
+        markup = _design_impact_kpi_markup(metrics)
+
+        self.assertEqual(markup.count('class="cv20-kpi-card '), 5)
+        self.assertIn("1,240", markup)
+        self.assertIn("68/100", markup)
+        self.assertIn("#impact-affected-projects", markup)
+        self.assertNotIn("cv64-metric__action", markup)
 
     def test_component_selection_scroll_targets_the_assessment(self):
         script = _impact_details_scroll_script()
