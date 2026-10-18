@@ -42,6 +42,13 @@ def _first(row: Dict[str, Any], *keys: str, default: Any = None) -> Any:
     return default
 
 
+def _open_all_saved_boms_from_portfolio() -> None:
+    """Set the BOM list route in the click callback before page rendering."""
+    from src.ui.navigation import return_to_saved_bom_list
+
+    return_to_saved_bom_list(_rerun=False, arm_opening=True)
+
+
 def _optional_number(value: Any) -> float | None:
     if value is None or str(value).strip().casefold() in {"", "nan", "none", "<na>"}:
         return None
@@ -1171,10 +1178,12 @@ def render_portfolio_intelligence_dashboard(
             unsafe_allow_html=True,
         )
     with table_right:
-        if st.button("View all BOMs  ›", key="portfolio_view_all_boms", use_container_width=True):
-            navigate = intelligence.get("navigate")
-            if callable(navigate):
-                navigate("BOM Analyzer", show_saved_analyses="1")
+        st.button(
+            "View all BOMs  ›",
+            key="portfolio_view_all_boms",
+            use_container_width=True,
+            on_click=_open_all_saved_boms_from_portfolio,
+        )
     bom_rows = intelligence.get("at_risk_boms") or []
     if not bom_rows:
         st.success("No at-risk BOMs are recorded in this time range.")

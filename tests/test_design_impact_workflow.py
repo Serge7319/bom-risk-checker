@@ -439,6 +439,22 @@ def test_review_details_are_collapsed_and_validation_scope_is_clear(monkeypatch)
     assert any(args[0] == "Open replacement comparison" for args, _ in navigation_calls)
 
 
+def test_design_impact_detail_sections_stay_under_their_related_columns():
+    source = (ROOT / "src" / "design_impact_analyzer.py").read_text(encoding="utf-8")
+    render = source.split("left, right = st.columns([1.3, 1]", 1)[1].split(
+        "st.markdown(\"</div>\"", 1
+    )[0]
+
+    left_block = render.split("with left:", 1)[1].split("with right:", 1)[0]
+    right_block = render.split("with right:", 1)[1]
+    assert left_block.index('with st.expander("Recommendations and score details"') >= 0
+    assert left_block.index('with st.expander("Continue the engineering workflow"') >= 0
+    assert 'with st.expander("Open an affected BOM"' in right_block
+    assert ".cv20-map-card{height:auto;min-height:0" in source
+    assert ".cv20-factors-card{height:auto;min-height:0" in source
+    assert ".cv20-project-card{height:auto;min-height:0" in source
+
+
 def test_runtime_restores_the_component_specific_map_for_the_selected_bom_rows():
     runtime = (ROOT / "src" / "authenticated_runtime.py").read_text(encoding="utf-8")
     section = runtime.split('if app_mode == "Design Impact Analyzer":', 1)[1].split(

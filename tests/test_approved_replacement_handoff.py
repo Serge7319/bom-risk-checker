@@ -13,7 +13,7 @@ def test_approved_finder_consumes_clicked_part_before_mounting_search_input():
     assert "consume_alternative_finder_context(_query_param)" in renderer
     assert "apply_alternative_finder_prefill(navigation_context)" in renderer
     assert renderer.index('st.session_state["approved_replacement_query"] = clicked_mpn') < renderer.index(
-        'st.text_input("Search MPN", key="approved_replacement_query")'
+        'key="approved_replacement_query"'
     )
     assert 'st.session_state.pop("alternative_prefill_search_pending", False)' in renderer
     assert "if (run or prefilled_search_pending) and query:" in renderer
@@ -36,15 +36,20 @@ def test_approved_search_and_datasheet_mockup_keep_existing_processing_paths():
         "def render_settings_workspace", 1
     )[0]
 
-    assert 'st.text_input("Search MPN", key="approved_replacement_query")' in finder
+    assert '"Manufacturer part number"' in finder
+    assert 'placeholder="e.g., LM7805ACT"' in finder
     assert 'st.button("Search", key="approved_replacement_search", type="primary")' in finder
     assert "run_alternative_finder_search(st.session_state, query)" in finder
     assert 'key="datasheet_qa_uploader"' in datasheet
-    assert 'extract_uploaded_datasheet(uploaded.getvalue(), filename=str(uploaded.name or ""))' in datasheet
+    assert "datasheet_upload_signature(payload, filename=filename)" in datasheet
     assert "store_document_in_session(st.session_state, extracted)" in datasheet
-    assert 'key="approved_datasheet_question"' in datasheet
+    assert 'key=DATASHEET_QA_QUESTION_WIDGET_KEY' in datasheet
     assert 'key="approved_datasheet_ask"' in datasheet
-    assert "_execute_datasheet_question(document=document, question=question.strip(), thread=thread)" in datasheet
+    assert "_execute_datasheet_question(" in datasheet
+    assert "_render_thread_turn(" in datasheet
+    assert "on_change=on_datasheet_upload_change" in datasheet
+    assert "data:application/pdf;base64," in datasheet
+    assert "Change document" in datasheet
 
 
 def test_completed_empty_supplier_search_shows_guidance_without_zero_count_table():

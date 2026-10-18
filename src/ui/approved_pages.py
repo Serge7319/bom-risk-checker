@@ -705,7 +705,11 @@ def begin_approved_page() -> None:
         .st-key-approved_replacement_search_card,.st-key-approved_datasheet_upload_card{box-sizing:border-box;width:100%;margin:0 0 16px;padding:18px 20px 14px;background:#fff;border:1px solid #dfe7f1;border-radius:12px}
         .st-key-approved_replacement_search_card>[data-testid="stVerticalBlock"],.st-key-approved_datasheet_upload_card>[data-testid="stVerticalBlock"]{gap:.55rem}
         .st-key-approved_replacement_search_card [data-testid="stWidgetLabel"] p,.st-key-approved_datasheet_question_panel [data-testid="stWidgetLabel"] p{margin-bottom:4px;color:#728198;font-size:9px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
-        .st-key-approved_replacement_search_card [data-testid="stTextInput"] input{min-height:46px!important;border-radius:8px!important}
+        .st-key-approved_replacement_search_card [data-testid="stTextInput"] [data-baseweb="input"]{box-sizing:border-box!important;min-height:48px!important;background:#fff!important;border:1.5px solid #9aabc0!important;border-radius:9px!important;box-shadow:0 1px 2px rgba(20,40,70,.05)!important}
+        .st-key-approved_replacement_search_card [data-testid="stTextInput"] [data-baseweb="input"]>div{background:transparent!important;border:0!important;box-shadow:none!important}
+        .st-key-approved_replacement_search_card [data-testid="stTextInput"] input{min-height:46px!important;background:transparent!important;border:0!important;border-radius:8px!important;color:#172942!important;caret-color:#2865ed!important;font-size:14px!important}
+        .st-key-approved_replacement_search_card [data-testid="stTextInput"] input::placeholder{color:#8a98aa!important;opacity:1!important}
+        .st-key-approved_replacement_search_card [data-testid="stTextInput"] [data-baseweb="input"]:focus-within{border-color:#2865ed!important;box-shadow:0 0 0 3px rgba(40,101,237,.13)!important}
         .st-key-approved_replacement_search_card button[kind="primary"],.st-key-approved_datasheet_question_panel button[kind="primary"]{min-height:44px!important;height:44px!important;border-radius:8px!important}
         .cv-ap-replacement-note{margin:2px 0 8px;color:#8391a4;font-size:11px}
         .cv-ap-context-note{display:flex;align-items:flex-start;gap:9px;margin:3px 0 0;padding:11px 12px;border-top:1px solid #edf1f6;color:#65758b;font-size:11px;line-height:1.45}
@@ -735,9 +739,22 @@ def begin_approved_page() -> None:
         .cv-ap-document-state strong{color:#3c4f68;font-weight:700}
         .cv-ap-document-state .ready{color:#147a47;font-weight:700}
         .cv-ap-document-state .pending{color:#7d8ca0;font-weight:600}
-        .st-key-approved_datasheet_question_panel{box-sizing:border-box;width:100%;margin:0 0 16px;padding:13px 20px 10px;background:#fff;border:1px solid #dfe7f1;border-radius:12px}
+        .st-key-approved_datasheet_question_panel,.st-key-approved_datasheet_source_panel{box-sizing:border-box;width:100%;margin:0 0 16px;padding:14px 16px 12px;background:#fff;border:1px solid #dfe7f1;border-radius:12px}
         .st-key-approved_datasheet_question_panel>[data-testid="stVerticalBlock"]{gap:.25rem}
         .st-key-approved_datasheet_question_panel [data-testid="stTextInput"] input{min-height:42px!important;border-radius:8px!important}
+        .st-key-approved_datasheet_workspace{box-sizing:border-box;width:100%;max-width:1160px;margin:0 auto}
+        .cv-dq-document{display:flex;align-items:center;gap:12px;min-width:0;padding:12px 14px;border:1px solid #dfe7f1;border-radius:11px;background:#fff}
+        .cv-dq-document-icon{display:flex;align-items:center;justify-content:center;flex:0 0 38px;width:38px;height:38px;border-radius:9px;background:#eff5ff;color:#2865ed;font-size:10px;font-weight:850}
+        .cv-dq-document-copy{min-width:0;flex:1}.cv-dq-document-copy strong{display:block;overflow:hidden;color:#172942;font-size:12px;text-overflow:ellipsis;white-space:nowrap}.cv-dq-document-copy span{display:block;margin-top:4px;color:#77869a;font-size:10px}
+        .cv-dq-private{flex:0 0 auto;padding:5px 8px;border-radius:999px;background:#edf8f1;color:#147a47;font-size:9px;font-weight:750}
+        .cv-dq-question-head{margin:0 0 8px}.cv-dq-question-head h2{margin:0 0 5px;color:#172942;font-size:15px;font-weight:760}.cv-dq-question-head p{margin:0;color:#78879b;font-size:11px;line-height:1.5}
+        .cv-dq-source-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:8px}.cv-dq-source-head p{margin:3px 0 0}
+        .cv-dq-source-badge{padding:5px 8px;border-radius:999px;background:#eaf8f0;color:#147a47;font-size:9px;font-weight:750;white-space:nowrap}
+        .cv-dq-viewer{overflow:hidden;border:1px solid #e1e8f1;border-radius:9px;background:#f4f7fb}
+        .cv-dq-viewer-empty{display:flex;min-height:380px;align-items:center;justify-content:center;padding:24px;color:#7a8799;text-align:center;font-size:12px;line-height:1.5}
+        .cv-dq-evidence-label{margin:15px 0 7px;color:#7c8a9e;font-size:9px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
+        .cv-dq-limit-note{margin:8px 0 0;color:#8996a8;font-size:10px;line-height:1.45}
+        .st-key-approved_datasheet_upload_card [data-testid="stFileUploaderDropzone"]{min-height:168px!important}
         .cv-ap-question-help{margin:2px 0 0;color:#8794a7;font-size:10px}
         .cv-ap-evidence-panel{box-sizing:border-box;width:100%;margin:0 0 14px;padding:14px 18px 10px;background:#fff;border:1px solid #dfe7f1;border-radius:12px}
         .cv-ap-evidence-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 9px}
@@ -809,7 +826,7 @@ def begin_approved_page() -> None:
         .cv-part-photo img{display:block;width:100%;height:100%;padding:4px;box-sizing:border-box;object-fit:contain}
         .cv-part-photo__placeholder{display:flex;width:100%;height:100%;align-items:center;justify-content:center}
         .cv-part-photo__placeholder svg{display:block;width:62%;height:62%}
-        .cv-part-photo[data-illustration="generic"]{background:#f0f9ff;border-color:#bae6fd;color:#0369a1}
+        .cv-part-photo[data-illustration="generic"]{background:#f5f7fa;border-color:#dbe3ec;color:#53657b}
         .cv-part-photo[data-illustration="ic"]{background:#eff6ff;border-color:#dbeafe;color:#2563eb}
         .cv-part-photo[data-illustration="capacitor"]{background:#f5f3ff;border-color:#e9d5ff;color:#7c3aed}
         .cv-part-photo[data-illustration="resistor"]{background:#fff7ed;border-color:#fed7aa;color:#c2410c}
@@ -5490,7 +5507,11 @@ def render_replacement_search() -> None:
         )
         search_col, button_col = st.columns([5, 1], vertical_alignment="bottom")
         with search_col:
-            query = st.text_input("Search MPN", key="approved_replacement_query")
+            query = st.text_input(
+                "Manufacturer part number",
+                key="approved_replacement_query",
+                placeholder="e.g., LM7805ACT",
+            )
         with button_col:
             run = st.button("Search", key="approved_replacement_search", type="primary")
         st.markdown(
@@ -6375,147 +6396,285 @@ def render_compare_live() -> None:
 
 
 def render_datasheet_live() -> None:
-    """Datasheet Q&A layout wired to the existing PDF question flow."""
+    """Approved Datasheet Q&A upload and cited source-review workspace."""
+    import base64
+
     from src.datasheet_qa import (
+        DATASHEET_QA_CLEAR_QUESTION_KEY,
         DATASHEET_QA_DOC_KEY,
+        DATASHEET_QA_PENDING_QUESTION_KEY,
+        DATASHEET_QA_QUESTION_WIDGET_KEY,
+        DATASHEET_QA_STATUS_KEY,
         DATASHEET_QA_THREAD_KEY,
+        DATASHEET_QA_UPLOAD_SIGNATURE_KEY,
+        STATUS_PROCESSING,
+        apply_datasheet_question_clear,
+        clear_datasheet_document,
+        consume_datasheet_pending_question,
+        datasheet_upload_signature,
+        document_fingerprint,
         extract_uploaded_datasheet,
         store_document_in_session,
     )
-    from src.pages.datasheet_qa import _execute_datasheet_question
+    from src.datasheet_comparison import MAX_DATASHEET_BYTES, MAX_DATASHEET_PAGES
+    from src.pages.datasheet_qa import (
+        _execute_datasheet_question,
+        _inject_datasheet_qa_styles,
+        _render_thread_turn,
+        _typed_ask_click,
+    )
+
+    def store_new_upload(uploaded: Any) -> dict[str, Any] | None:
+        if uploaded is None:
+            return None
+        payload = uploaded.getvalue()
+        filename = str(uploaded.name or "datasheet.pdf")
+        signature = datasheet_upload_signature(payload, filename=filename)
+        if signature == str(st.session_state.get(DATASHEET_QA_UPLOAD_SIGNATURE_KEY) or ""):
+            return None
+        current = st.session_state.get(DATASHEET_QA_DOC_KEY)
+        # Migrate an already-active document into the signature scheme without
+        # re-extracting it on the first render after this release.
+        if (
+            isinstance(current, dict)
+            and str(current.get("filename") or "") == filename
+            and str(current.get("content_fingerprint") or "") == hashlib.sha256(payload).hexdigest()[:16]
+        ):
+            st.session_state[DATASHEET_QA_UPLOAD_SIGNATURE_KEY] = signature
+            return None
+        extracted = extract_uploaded_datasheet(payload, filename=filename)
+        store_document_in_session(st.session_state, extracted)
+        st.session_state[DATASHEET_QA_UPLOAD_SIGNATURE_KEY] = signature
+        st.session_state[DATASHEET_QA_QUESTION_WIDGET_KEY] = ""
+        st.session_state.pop(DATASHEET_QA_CLEAR_QUESTION_KEY, None)
+        st.session_state.pop("approved_datasheet_source_page", None)
+        return extracted
+
+    def on_datasheet_upload_change() -> None:
+        store_new_upload(st.session_state.get("datasheet_qa_uploader"))
+
+    def on_remove_datasheet() -> None:
+        clear_datasheet_document(st.session_state)
+        st.session_state.pop("datasheet_qa_uploader", None)
+        st.session_state.pop("approved_datasheet_source_page", None)
+        st.session_state.pop(DATASHEET_QA_QUESTION_WIDGET_KEY, None)
+        st.session_state.pop(DATASHEET_QA_PENDING_QUESTION_KEY, None)
+        st.session_state.pop(DATASHEET_QA_CLEAR_QUESTION_KEY, None)
 
     begin_approved_page()
-    document = st.session_state.get(DATASHEET_QA_DOC_KEY)
-    ready = isinstance(document, dict) and bool(document.get("available"))
-    st.markdown(
-        "<div class='cv-ap'><p class='cv-ap-kicker'>DATASHEET Q&amp;A</p>"
-        "<h1>Ask a datasheet</h1>"
-        "<p class='cv-ap-sub'>Upload a manufacturer PDF, ask a technical question, and verify the cited pages.</p></div>",
-        unsafe_allow_html=True,
-    )
-    flow_stepper = st.empty()
-    flow_stepper.markdown(
-        _approved_flow_stepper_markup(
-            ("Upload PDF", "Ask a question", "Review citations"),
-            active_step=1,
-        ),
-        unsafe_allow_html=True,
-    )
-    with st.container(key="approved_datasheet_upload_card"):
-        st.markdown(
-            "<div class='cv-ap-entry-heading'><span class='cv-ap-entry-icon'>"
-            "<svg viewBox='0 0 24 24' aria-hidden='true'><path d='M5 3h10l4 4v14H5zM15 3v5h4M8 12h8M8 16h8' "
-            "fill='none' stroke='currentColor' stroke-width='1.8' stroke-linejoin='round'/></svg>"
-            "</span><div><p>DATASHEET Q&amp;A</p><h2>Upload the datasheet you want to review</h2></div></div>"
-            "<p class='cv-ap-entry-copy'>Cadivor uses the selected PDF for your questions and shows citations to the source pages.</p>",
-            unsafe_allow_html=True,
-        )
-        uploaded = st.file_uploader(
-            "Change document" if ready else "Choose a datasheet PDF",
-            type=["pdf"],
-            key="datasheet_qa_uploader",
-        )
-    if uploaded is not None and not ready:
-        extracted = extract_uploaded_datasheet(uploaded.getvalue(), filename=str(uploaded.name or ""))
-        store_document_in_session(st.session_state, extracted)
+    _inject_datasheet_qa_styles()
+    apply_datasheet_question_clear(st.session_state)
+    pdf_limit = f"{MAX_DATASHEET_BYTES / (1024 * 1024):g} MB"
+    with st.container(key="approved_datasheet_workspace"):
+        document = st.session_state.get(DATASHEET_QA_DOC_KEY)
+        uploaded = st.session_state.get("datasheet_qa_uploader")
+        extracted = store_new_upload(uploaded)
+        if extracted is not None and not extracted.get("available"):
+            st.error(str(extracted.get("reason") or "Could not read this PDF."))
         document = st.session_state.get(DATASHEET_QA_DOC_KEY)
         ready = isinstance(document, dict) and bool(document.get("available"))
-        if not ready:
-            st.warning(str((extracted or {}).get("reason") or "Could not read this PDF."))
+        filename = str(document.get("filename") or "") if isinstance(document, dict) else ""
+        page_count = int(
+            document.get("source_page_count") or document.get("page_count") or 0
+        ) if isinstance(document, dict) else 0
+        thread = list(st.session_state.get(DATASHEET_QA_THREAD_KEY) or [])
+        pending_question = consume_datasheet_pending_question(st.session_state) if ready else ""
+        if pending_question:
+            _execute_datasheet_question(
+                document=document,
+                question=pending_question,
+                thread=list(st.session_state.get(DATASHEET_QA_THREAD_KEY) or []),
+            )
+        thread = list(st.session_state.get(DATASHEET_QA_THREAD_KEY) or [])
+        latest = thread[-1] if thread and isinstance(thread[-1], dict) else {}
+        active_page = 1
+        primary = latest.get("primary_evidence") if isinstance(latest.get("primary_evidence"), dict) else {}
+        try:
+            active_page = max(1, min(page_count or 1, int(primary.get("page") or 1)))
+        except (TypeError, ValueError):
+            active_page = 1
+        page_key = "approved_datasheet_source_page"
+        if pending_question:
+            st.session_state[page_key] = active_page
+        if page_key in st.session_state:
+            try:
+                current_page = int(st.session_state[page_key])
+            except (TypeError, ValueError):
+                current_page = 1
+            if current_page < 1 or current_page > max(page_count, 1):
+                st.session_state[page_key] = active_page
 
-    raw_filename = str(document.get("filename") or "").strip() if isinstance(document, dict) else ""
-    filename = _esc(raw_filename or "No document selected")
-    document_state = (
-        "Ready for questions"
-        if ready
-        else "PDF needs attention"
-        if raw_filename
-        else "Questions unlock after a readable PDF is loaded"
-    )
-    document_state_class = "ready" if ready else "pending"
-    st.markdown(
-        f"<div class='cv-ap-document-state'><span><strong>Selected document</strong> · {filename}</span>"
-        f"<span class='{document_state_class}'>{_esc(document_state)}</span></div>",
-        unsafe_allow_html=True,
-    )
-    thread = list(st.session_state.get(DATASHEET_QA_THREAD_KEY) or [])
-    existing_latest = thread[-1] if thread and isinstance(thread[-1], dict) else {}
-    has_answer = bool(existing_latest.get("answer") or existing_latest.get("text"))
-    flow_stepper.markdown(
-        _approved_flow_stepper_markup(
-            ("Upload PDF", "Ask a question", "Review citations"),
-            active_step=3 if ready and has_answer else 2 if ready else 1,
-        ),
-        unsafe_allow_html=True,
-    )
-    with st.container(key="approved_datasheet_question_panel"):
-        question_col, ask_col = st.columns([6, 1], vertical_alignment="bottom")
-        with question_col:
-            question = st.text_input(
-                "Your question",
-                key="approved_datasheet_question",
-                disabled=not ready,
-                placeholder=(
-                    "Ask about package dimensions, pinout, or electrical ratings"
-                    if ready
-                    else "Upload a datasheet to enable questions"
-                ),
-            )
-        with ask_col:
-            ask = st.button(
-                "Ask",
-                key="approved_datasheet_ask",
-                type="primary",
-                disabled=not ready,
-            )
         st.markdown(
-            "<p class='cv-ap-question-help'>Answers cite source pages. Verify the cited details against the original datasheet.</p>",
+            '<div class="dq-marker" aria-hidden="true"></div>'
+            "<div class='cv-ap'><p class='cv-ap-kicker'>DATASHEET Q&amp;A</p>"
+            "<h1>Ask a datasheet</h1>"
+            "<p class='cv-ap-sub'>Ask precise technical questions, inspect cited evidence, and review the original source pages.</p></div>",
             unsafe_allow_html=True,
         )
-    if ask and question.strip() and ready:
-        thread = list(st.session_state.get(DATASHEET_QA_THREAD_KEY) or [])
-        _execute_datasheet_question(document=document, question=question.strip(), thread=thread)
-    thread = list(st.session_state.get(DATASHEET_QA_THREAD_KEY) or [])
-    latest = thread[-1] if thread and isinstance(thread[-1], dict) else {}
-    answer = _esc(latest.get("answer") or latest.get("text") or "")
-    evidence = latest.get("evidence") or latest.get("sources") or []
-    evidence_rows = []
-    if isinstance(evidence, list):
-        for item in evidence[:6]:
-            if isinstance(item, dict):
-                evidence_rows.append(
-                    "<tr>"
-                    f"<td>{_esc(item.get('parameter') or item.get('label') or item.get('text') or 'Source')}</td>"
-                    f"<td>{_esc(item.get('value') or item.get('excerpt') or '')}</td>"
-                    f"<td>{_esc(item.get('page') or '')}</td>"
-                    "</tr>"
-                )
-    if not evidence_rows:
-        empty_evidence = (
-            "Ask a question to see cited source evidence here."
-            if ready
-            else "Upload a PDF and ask a question to see cited source evidence here."
+        active_step = 3 if ready and thread else 2 if ready else 1
+        st.markdown(
+            _approved_flow_stepper_markup(
+                ("Upload PDF", "Ask a question", "Review citations"),
+                active_step=active_step,
+            ),
+            unsafe_allow_html=True,
         )
-        evidence_rows.append(f"<tr><td colspan='3'>{_esc(empty_evidence)}</td></tr>")
-    answer_block = (
-        f"<section class='cv-ap-banner'><h2>Answer</h2><p>{answer}</p></section>"
-        if answer and answer != "—"
-        else ""
-    )
-    st.markdown(
-        f"""
-        <div class="cv-ap">
-          {answer_block}
-          <section class="cv-ap-evidence-panel"><div class="cv-ap-evidence-head"><h2>Cited evidence</h2>
-            <p>Source pages appear here after a question is answered.</p></div>
-          <table class="cv-ap-table"><thead><tr>
-            <th>Source</th><th>Evidence</th><th>Page</th>
-          </tr></thead><tbody>{''.join(evidence_rows)}</tbody></table>
-          <p class="cv-ap-meta" style="margin:10px 0 2px;text-align:right">Verify each citation against the original document before design sign-off.</p></section>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+
+        if not ready:
+            with st.container(key="approved_datasheet_upload_card"):
+                st.markdown(
+                    "<div class='cv-ap-entry-heading'><span class='cv-ap-entry-icon'>"
+                    "<svg viewBox='0 0 24 24' aria-hidden='true'><path d='M5 3h10l4 4v14H5zM15 3v5h4M8 12h8M8 16h8' "
+                    "fill='none' stroke='currentColor' stroke-width='1.8' stroke-linejoin='round'/></svg>"
+                    "</span><div><p>STEP 1 · UPLOAD</p><h2>Choose a datasheet PDF</h2></div></div>"
+                    "<p class='cv-ap-entry-copy'>Upload the manufacturer's document. Cadivor extracts its text so answers can cite the exact source pages.</p>",
+                    unsafe_allow_html=True,
+                )
+                uploaded = st.file_uploader(
+                    "Choose a datasheet PDF",
+                    type=["pdf"],
+                    key="datasheet_qa_uploader",
+                    on_change=on_datasheet_upload_change,
+                    help=f"PDF only · up to {pdf_limit} · up to {MAX_DATASHEET_PAGES} pages · text-searchable pages required.",
+                )
+                st.markdown(
+                    f"<p class='cv-ap-limit-note'>PDF only · up to {_esc(pdf_limit)} · up to {MAX_DATASHEET_PAGES} pages · text-searchable pages required · private session. Scanned image-only PDFs are not supported yet.</p>",
+                    unsafe_allow_html=True,
+                )
+            if isinstance(document, dict) and document.get("reason"):
+                st.warning(str(document.get("reason")))
+            end_approved_page()
+            return
+
+        payload = uploaded.getvalue() if uploaded is not None else b""
+        if payload and hashlib.sha256(payload).hexdigest()[:16] != str(document.get("content_fingerprint") or ""):
+            payload = b""
+        size_text = f"{len(payload) / 1024:,.0f} KB · " if payload else ""
+        analyzed_pages = int(document.get("page_count") or page_count)
+        metadata = (
+            f"PDF · {size_text}{analyzed_pages} page{'s' if analyzed_pages != 1 else ''} analyzed"
+            if analyzed_pages != page_count
+            else f"PDF · {size_text}{page_count} page{'s' if page_count != 1 else ''}"
+        )
+        document_cols = st.columns([5.5, 2.4, 1], gap="small", vertical_alignment="center")
+        with document_cols[0]:
+            st.markdown(
+                "<div class='cv-dq-document'><span class='cv-dq-document-icon'>PDF</span>"
+                f"<span class='cv-dq-document-copy'><strong>{_esc(filename or 'Active datasheet')}</strong><span>{_esc(metadata)}</span></span>"
+                "<span class='cv-dq-private'>Private session</span></div>",
+                unsafe_allow_html=True,
+            )
+        with document_cols[1]:
+            st.file_uploader(
+                "Change document",
+                type=["pdf"],
+                key="datasheet_qa_uploader",
+                on_change=on_datasheet_upload_change,
+                label_visibility="collapsed",
+                help="Select a new PDF to replace the active datasheet and start a fresh evidence thread.",
+            )
+        with document_cols[2]:
+            st.button(
+                "Remove",
+                key="approved_datasheet_remove",
+                type="secondary",
+                on_click=on_remove_datasheet,
+                use_container_width=True,
+            )
+
+        left, right = st.columns([1.2, 1], gap="medium")
+        with left:
+            with st.container(key="approved_datasheet_question_panel"):
+                st.markdown(
+                    "<div class='cv-dq-question-head'><h2>Ask this datasheet</h2>"
+                    "<p>Answers use the active PDF and include page-level evidence.</p></div>",
+                    unsafe_allow_html=True,
+                )
+                st.text_area(
+                    "Question",
+                    key=DATASHEET_QA_QUESTION_WIDGET_KEY,
+                    placeholder="Example: What package dimensions and land pattern does the datasheet specify?",
+                    height=86,
+                    label_visibility="collapsed",
+                    disabled=str(st.session_state.get(DATASHEET_QA_STATUS_KEY) or "") == STATUS_PROCESSING,
+                )
+                st.button(
+                    "Ask Cadivor",
+                    key="approved_datasheet_ask",
+                    type="primary",
+                    on_click=_typed_ask_click,
+                    disabled=str(st.session_state.get(DATASHEET_QA_STATUS_KEY) or "") == STATUS_PROCESSING,
+                )
+                st.markdown(
+                    "<p class='cv-dq-limit-note'>Cadivor does not infer missing dimensions or claim interchangeability. Verify critical values against the source page before sign-off.</p>",
+                    unsafe_allow_html=True,
+                )
+            if not thread:
+                st.markdown(
+                    "<section class='cv-dq-panel'><h2>No questions yet</h2>"
+                    "<p>Start with package dimensions, pinout, ratings, device identity, or lifecycle wording in the datasheet.</p></section>",
+                    unsafe_allow_html=True,
+                )
+            else:
+                fingerprint = document_fingerprint(document) or "doc"
+                for turn_index, turn in enumerate(thread):
+                    if isinstance(turn, dict):
+                        _render_thread_turn(
+                            turn,
+                            turn_index=turn_index,
+                            fingerprint=fingerprint,
+                            disabled=str(st.session_state.get(DATASHEET_QA_STATUS_KEY) or "") == STATUS_PROCESSING,
+                            show_follow_ups=(turn_index == len(thread) - 1),
+                        )
+
+        with right:
+            with st.container(key="approved_datasheet_source_panel"):
+                st.markdown(
+                    "<div class='cv-dq-source-head'><div><h2>Document evidence</h2>"
+                    f"<p>{_esc(filename or 'Active datasheet')}</p></div><span class='cv-dq-source-badge'>Original PDF</span></div>",
+                    unsafe_allow_html=True,
+                )
+                if page_count:
+                    source_page = st.selectbox(
+                        "Source page",
+                        options=list(range(1, page_count + 1)),
+                        index=max(0, min(page_count - 1, int(st.session_state.get(page_key, active_page)) - 1)),
+                        format_func=lambda page: f"Page {page}",
+                        key=page_key,
+                    )
+                else:
+                    source_page = 1
+                if payload:
+                    encoded_pdf = base64.b64encode(payload).decode("ascii")
+                    st.components.v1.html(
+                        "<div class='cv-dq-viewer'><iframe title='Original datasheet page' "
+                        f"src='data:application/pdf;base64,{encoded_pdf}#page={source_page}&zoom=page-width' "
+                        "style='display:block;width:100%;height:600px;border:0;background:#eef2f7'></iframe></div>",
+                        height=602,
+                        scrolling=False,
+                    )
+                    st.download_button(
+                        "Download source PDF",
+                        data=payload,
+                        file_name=filename or "datasheet.pdf",
+                        mime="application/pdf",
+                        key=f"approved_datasheet_download_{document_fingerprint(document) or 'active'}",
+                    )
+                else:
+                    pages = document.get("pages") if isinstance(document, dict) else []
+                    source_text = next(
+                        (str(item.get("text") or "") for item in pages or [] if isinstance(item, dict) and int(item.get("page") or 0) == source_page),
+                        "",
+                    )
+                    st.markdown(
+                        "<div class='cv-dq-viewer-empty'>The original PDF is not available in this session view. "
+                        "Use Change document to select it again; extracted text remains available for cited answers.</div>",
+                        unsafe_allow_html=True,
+                    )
+                    if source_text:
+                        st.markdown(f"<p class='cv-dq-evidence-label'>Extracted text · Page {source_page}</p><div class='dq-evidence-quote'>{_esc(source_text[:1800])}</div>", unsafe_allow_html=True)
+                if st.session_state.pop("datasheet_qa_empty_ask", False):
+                    st.warning("Enter a question about this datasheet.")
     end_approved_page()
 
 
