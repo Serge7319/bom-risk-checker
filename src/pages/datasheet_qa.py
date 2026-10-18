@@ -198,8 +198,12 @@ def _inject_datasheet_qa_styles() -> None:
         .cv-dq-source-nav{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:12px}
         .cv-dq-source-nav span{color:#2463e8;font-size:11px}
         .st-key-approved_datasheet_change_document button{min-height:40px!important;height:40px!important;border:1px solid #d6e0ee!important;border-radius:9px!important;background:#fff!important;color:#344a68!important;font-size:11px!important;font-weight:700!important;box-shadow:none!important}
-        .st-key-approved_datasheet_previous_page button,.st-key-approved_datasheet_next_page button{min-height:32px!important;padding:0 4px!important;border:0!important;background:transparent!important;color:#2463e8!important;font-size:10px!important;box-shadow:none!important}
-        .st-key-approved_datasheet_next_page{display:flex!important;justify-content:flex-end!important}
+        .st-key-approved_datasheet_previous_page,.st-key-approved_datasheet_next_page{display:flex!important;min-width:0!important}
+        .st-key-approved_datasheet_previous_page button,.st-key-approved_datasheet_next_page button{box-sizing:border-box!important;min-width:0!important;min-height:34px!important;height:34px!important;padding:0 9px!important;border:1px solid #d6e0ee!important;border-radius:8px!important;background:#f8fbff!important;color:#2463e8!important;font-size:10px!important;font-weight:700!important;white-space:nowrap!important;box-shadow:none!important}
+        .st-key-approved_datasheet_previous_page button *, .st-key-approved_datasheet_next_page button *{color:#2463e8!important;white-space:nowrap!important}
+        .st-key-approved_datasheet_previous_page button:disabled,.st-key-approved_datasheet_next_page button:disabled{background:#f8fafc!important;color:#94a3b8!important;opacity:1!important}
+        .st-key-approved_datasheet_previous_page button:disabled *,.st-key-approved_datasheet_next_page button:disabled *{color:#94a3b8!important}
+        .st-key-approved_datasheet_next_page{justify-content:flex-start!important}
         .st-key-approved_datasheet_workspace{box-sizing:border-box!important;width:100%!important;max-width:1440px!important;margin:0 auto!important}
         .st-key-approved_datasheet_workspace>[data-testid="stVerticalBlock"]{gap:14px!important}
         .st-key-approved_datasheet_upload_card{box-sizing:border-box!important;width:100%!important;margin:0 0 14px!important;padding:20px 22px!important;border:1px solid #dfe7f1!important;border-radius:13px!important;background:#fff!important}
@@ -228,7 +232,9 @@ def _inject_datasheet_qa_styles() -> None:
         .st-key-approved_datasheet_question_panel .st-key-datasheet_qa_follow_up input{height:38px!important;color:#344a68!important;font-size:11px!important}
         .st-key-approved_datasheet_question_panel .st-key-datasheet_qa_follow_up input::placeholder{color:#8a98aa!important;opacity:1!important}
         .st-key-approved_datasheet_question_panel [data-testid="stWidgetLabel"]{display:none!important}
-        .st-key-approved_datasheet_question_panel .st-key-approved_datasheet_ask button{min-height:40px!important;height:40px!important;padding:0 14px!important;border-radius:8px!important;font-size:11px!important}
+        .st-key-approved_datasheet_question_panel .st-key-approved_datasheet_ask{box-sizing:border-box!important;width:100%!important;min-width:0!important}
+        .st-key-approved_datasheet_question_panel .st-key-approved_datasheet_ask [data-testid="stElementContainer"]{display:flex!important;justify-content:flex-end!important;width:100%!important;min-width:0!important}
+        .st-key-approved_datasheet_question_panel .st-key-approved_datasheet_ask button{box-sizing:border-box!important;width:100%!important;max-width:136px!important;min-width:0!important;min-height:40px!important;height:40px!important;padding:0 9px!important;border-radius:8px!important;font-size:10px!important;white-space:nowrap!important}
         .st-key-approved_datasheet_question_panel [class*="st-key-dq_chip_"] button{min-height:28px!important;margin:0!important;padding:5px 10px!important;border:1px solid #e0e8f3!important;background:#f4f7fb!important;color:#4d627f!important;font-size:10px!important}
         .st-key-approved_datasheet_question_panel [data-testid="stHorizontalBlock"]:has([class*="st-key-dq_chip_"]){gap:.35rem!important;flex-wrap:wrap!important}
         .cv-dq-answer-empty{display:flex;flex-direction:column;gap:6px;margin-top:16px;padding:18px;border:1px solid #e5ecf5;border-radius:11px;background:#f9fbff;color:#7889a1;font-size:11px;line-height:1.45}

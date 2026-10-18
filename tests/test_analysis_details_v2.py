@@ -159,7 +159,8 @@ class AnalysisDetailsV2Tests(unittest.TestCase):
 
         self.assertIn("PENDING_ANALYSIS_SECTION_KEY", consume)
         self.assertIn("cadivor_active_analysis_tab", sync)
-        self.assertIn('st.query_params["analysis_tab"]', commit)
+        self.assertIn("replace_navigation_query_params", commit)
+        self.assertNotIn('st.query_params["analysis_tab"]', commit)
         self.assertIn("PRIMARY_AREAS", render_nav)
         self.assertIn("render_saved_bom_section_nav", render_nav)
         self.assertIn("_commit_analysis_section_selection", render_nav)

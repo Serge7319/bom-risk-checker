@@ -32,6 +32,9 @@ def test_approved_search_and_datasheet_mockup_keep_existing_processing_paths():
     qna_styles = (
         Path(__file__).resolve().parents[1] / "src" / "pages" / "datasheet_qa.py"
     ).read_text(encoding="utf-8")
+    home_renderer = source.split("def render_home(", 1)[1].split(
+        "def render_bom_catalog", 1
+    )[0]
     finder = source.split("def render_replacement_search", 1)[1].split(
         "def render_compare_live", 1
     )[0]
@@ -58,10 +61,19 @@ def test_approved_search_and_datasheet_mockup_keep_existing_processing_paths():
     assert "data:application/pdf;base64," in datasheet
     assert "Change document" in datasheet
     assert "Open PDF ↗" in datasheet
+    assert "cv-dq-open-pdf-wrap" in datasheet
+    assert 'st.columns([3.2, 1]' in datasheet
+    assert 'st.columns([1.35, 1.45, 4]' in datasheet
     assert "render_datasheet_page_png(payload, source_page)" in datasheet
     assert "_render_ask_next_chips(" in datasheet
     assert "Earlier questions" in datasheet
     assert "max-width:1440px" in qna_styles
+    assert "cv-dq-open-pdf-wrap{display:flex;width:100%;justify-content:flex-end}" in source
+    assert "st-key-approved_datasheet_next_page button *{color:#2463e8!important" in qna_styles
+    assert "max-width:136px!important" in qna_styles
+    assert 'st.columns([3.1, 1]' in home_renderer
+    assert '"approved_home_row_last" if index == min(len(rows), 3) - 1' in home_renderer
+    assert ".st-key-approved_home_row_last{border-radius:0 0 15px 15px" in source
 
 
 def test_completed_empty_supplier_search_shows_guidance_without_zero_count_table():

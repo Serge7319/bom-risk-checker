@@ -593,8 +593,11 @@ def _css() -> None:
           [class*="st-key-design_impact_component_row_"] [data-testid="stMarkdownContainer"] p{margin:0;color:#344762;font-size:11px;line-height:1.35}
           [class*="st-key-design_impact_component_row_selected_"]{border-left:4px solid #2d66f5!important;background:#f0f6ff!important}
           [class*="st-key-design_impact_component_row_selected_"] [data-testid="stHorizontalBlock"]{background:#f0f6ff!important}
-          [class*="st-key-design_impact_component_row_"] .stButton button{min-height:26px!important;width:26px!important;min-width:26px!important;padding:0!important;border:1px solid #c8d4e3!important;border-radius:50%!important;background:#fff!important;color:#2563eb!important;font-size:13px!important;line-height:1!important}
-          [class*="st-key-design_impact_component_row_"] .stButton button[kind="primary"]{border:4px solid #2d66f5!important;background:#fff!important;color:transparent!important}
+          [class*="st-key-design_impact_component_row_"] .stButton button{position:relative!important;display:flex!important;align-items:center!important;justify-content:center!important;box-sizing:border-box!important;min-height:26px!important;width:26px!important;min-width:26px!important;padding:0!important;border:1px solid #b9c7da!important;border-radius:5px!important;background:#fff!important;color:transparent!important;font-size:0!important;line-height:1!important;box-shadow:none!important}
+          [class*="st-key-design_impact_component_row_"] .stButton button p{font-size:0!important;line-height:0!important}
+          [class*="st-key-design_impact_component_row_"] .stButton button:after{content:"";display:block;box-sizing:border-box;width:13px;height:13px;border:1.5px solid #91a1b7;border-radius:3px;background:#fff}
+          [class*="st-key-design_impact_component_row_"] .stButton button[kind="primary"]{border:1px solid #2d66f5!important;border-radius:5px!important;background:#2d66f5!important;color:transparent!important}
+          [class*="st-key-design_impact_component_row_"] .stButton button[kind="primary"]:after{content:"✓";display:flex;align-items:center;justify-content:center;width:16px;height:16px;border:0;border-radius:2px;background:#fff;color:#2d66f5;font-size:12px;font-weight:900;line-height:1}
           .cv20-component-cell{display:flex;align-items:center;gap:11px;min-width:0}
           .cv20-component-cell__image{display:flex;flex:0 0 46px;width:46px;height:46px;align-items:center;justify-content:center;overflow:hidden;border:1px solid #dce6f3;border-radius:10px;background:#f3f7fc;color:#2865ed;font-size:19px}
           .cv20-component-cell__image img{width:100%;height:100%;object-fit:contain}
@@ -978,7 +981,7 @@ def _render_design_impact_workspace(
                         with st.container(key=row_key):
                             row_columns = st.columns([.22, 2.35, 1.45, 1.42, 1.03, .58, 1.08, .72])
                             with row_columns[0]:
-                                if st.button("●" if is_selected else "○", key=f"design_impact_select_row_{row_index}", help=f"Select {mpn}", type="primary" if is_selected else "secondary"):
+                                if st.button("Selected" if is_selected else "Select", key=f"design_impact_select_row_{row_index}", help=f"Select {mpn} for impact review", type="primary" if is_selected else "secondary"):
                                     if mpn:
                                         st.session_state["design_impact_mpn"] = mpn
                                         st.session_state["design_impact_pending_mpn"] = mpn

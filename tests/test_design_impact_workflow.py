@@ -385,6 +385,17 @@ def test_initial_design_impact_has_no_implicit_component_selection():
     assert result["component_catalog"][0]["Part Number"] == "IC-100"
 
 
+def test_component_selection_control_uses_a_square_checkmark():
+    source = (ROOT / "src" / "design_impact_analyzer.py").read_text(encoding="utf-8")
+    selector_css = source.split("[class*=\"st-key-design_impact_component_row_\"] .stButton button{", 1)[1].split("}", 1)[0]
+    selected_css = source.split(".stButton button[kind=\"primary\"]{", 1)[1].split("}", 1)[0]
+
+    assert "border-radius:5px!important" in selector_css
+    assert "border-radius:50%" not in selector_css
+    assert "background:#2d66f5!important" in selected_css
+    assert "button[kind=\"primary\"]:after" in source
+
+
 def test_component_evidence_carries_document_and_lead_time_fields():
     result = impact.build_design_impact(
         [{"id": "bom-1", "project_name": "Gateway", "filename": "gateway.csv"}],

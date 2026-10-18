@@ -176,6 +176,7 @@ def test_home_to_alerts_one_push_then_back_and_forward_zero_restore_pushes(monke
     assert query.from_dict_calls == 1
     assert query.writes == 1
     assert query.get("page") == "Monitoring"
+    assert session["cadivor_last_history_push_params"] == {"page": "Monitoring"}
     assert session["cadivor_route"] == "Monitoring"
     assert session.get("access_token") == "live-a"
 
@@ -418,6 +419,64 @@ def test_url_change_echo_of_in_app_push_is_not_treated_as_restore(monkeypatch):
     assert session.get("cadivor_main_transition_active") is not True
 
 
+def test_same_page_url_change_restores_query_state_when_polling_fallback_fires(monkeypatch):
+    session = _Session(
+        {
+            "cadivor_route": "Analysis Details",
+            "app_mode": "Analysis Details",
+            "cadivor_nav_params": {
+                "page": "Analysis Details",
+                "analysis_id": "bom-1",
+                "analysis_tab": "Components",
+            },
+            "cadivor_last_history_push_page": "Analysis Details",
+            "cadivor_last_history_push_params": {
+                "page": "Analysis Details",
+                "analysis_id": "bom-1",
+                "analysis_tab": "Components",
+            },
+            "user": types.SimpleNamespace(id="user-1"),
+            "access_token": "live-a",
+            "refresh_token": "live-r",
+            "cadivor_auth_status": "authenticated",
+        }
+    )
+    query = _Query(
+        {
+            "page": "Analysis Details",
+            "analysis_id": "bom-1",
+            "analysis_tab": "Components",
+        }
+    )
+    events = [
+        {
+            "href": "http://127.0.0.1:8581/?page=Analysis+Details&analysis_id=bom-2&analysis_tab=Engineering+Intelligence",
+            "reason": "url-change",
+            "event_id": "same-page-back-1",
+        }
+    ]
+    _patch_runtime(monkeypatch, session, query, consume=lambda: events.pop(0) if events else None)
+
+    assert runtime.resolve_canonical_app_route() == "Analysis Details"
+    assert session["cadivor_nav_params"]["analysis_id"] == "bom-2"
+    assert session["cadivor_nav_params"]["analysis_tab"] == "Engineering Intelligence"
+    assert session["cadivor_active_analysis_id"] == "bom-2"
+    assert session["cadivor_analysis_section_bom-2"] == "Engineering Intelligence"
+    assert navigation.current_navigation_query_value(
+        "analysis_id", "", route="Analysis Details"
+    ) == "bom-2"
+    assert query.writes == 0
+
+    # A deliberate in-page selection after restoration replaces that restored
+    # context and must not be overwritten by the pending stale-query snapshot.
+    navigation.replace_navigation_query_params(
+        {"analysis_tab": "Components"}, supersede_restore=True
+    )
+    assert "cadivor_history_restore_snapshot" not in session
+    assert session["cadivor_nav_params"]["analysis_tab"] == "Components"
+    assert query.writes == 0
+
+
 def test_divergent_query_beats_stale_session_without_weakening_auth(monkeypatch):
     session = _Session(
         {
@@ -454,6 +513,14 @@ def test_repeated_route_ownership_does_not_stack_back_controls():
     nav = _source("src/ui/navigation.py")
     assert "commit_navigation_query_params" in nav
     assert "LAST_HISTORY_PUSH_PAGE_KEY" in nav
+    assert "replace_navigation_query_params" in nav
+    assert "history.replaceState" in nav
+    assert "LAST_HISTORY_PUSH_PARAMS_KEY" in nav
+    assert "browser_query_state == server_query_state" in _source("src/authenticated_runtime.py")
+    assert "replace_navigation_query_params" in _source("src/pages/analysis_detail.py")
+    assert 'st.query_params.from_dict(' not in _source("src/pages/analysis_detail.py").split(
+        "def _persist_component_focus_query", 1
+    )[1].split("def _matching_component_records", 1)[0]
     assert "cadivor_browser_navigation_bridge_v4" in _source("src/browser_navigation.py")
     assert "@lru_cache" in _source("src/browser_navigation.py")
     assert "register_component" in _source("src/browser_navigation.py")

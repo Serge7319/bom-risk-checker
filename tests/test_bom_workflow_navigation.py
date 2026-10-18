@@ -50,12 +50,81 @@ class BomWorkflowNavigationTests(unittest.TestCase):
         self.navigation.consume_new_analysis_navigation()
         self.assertNotIn("analysis_id", self.streamlit.session_state)
         self.assertNotIn("new_analysis", self.streamlit.session_state["cadivor_nav_params"])
-        self.assertNotIn("new_analysis", self.streamlit.query_params)
 
         # The next Streamlit rerun must keep the newly completed paid analysis.
         self.streamlit.session_state.update({"analysis_id": "paid-bom", "analysis_saved": True})
         self.assertEqual(self.streamlit.session_state["analysis_id"], "paid-bom")
         self.assertNotIn("new_analysis", self.streamlit.session_state["cadivor_nav_params"])
+
+    def test_restored_route_context_wins_over_stale_streamlit_query_snapshot(self):
+        self.streamlit.session_state["cadivor_nav_params"] = {
+            "page": "Analysis Details",
+            "analysis_id": "bom-restored",
+            "analysis_tab": "Alternatives",
+        }
+        self.streamlit.query_params.update({
+            "page": "Analysis Details",
+            "analysis_id": "bom-stale",
+            "analysis_tab": "Components",
+        })
+
+        self.assertEqual(
+            self.navigation.current_navigation_query_value(
+                "analysis_id", route="Analysis Details"
+            ),
+            "bom-restored",
+        )
+        self.assertEqual(
+            self.navigation.current_navigation_query_value(
+                "analysis_tab", route="Analysis Details"
+            ),
+            "Alternatives",
+        )
+        self.assertEqual(
+            self.navigation.current_navigation_query_value(
+                "analysis_id", route="Monitoring"
+            ),
+            "",
+        )
+
+    def test_intentional_in_page_replace_supersedes_pending_history_restore(self):
+        self.streamlit.session_state.update({
+            "cadivor_nav_params": {"page": "Analysis Details", "analysis_tab": "Overview"},
+            "cadivor_history_restore_snapshot": {
+                "route": "Analysis Details",
+                "params": {"page": "Analysis Details", "analysis_tab": "Overview"},
+            },
+        })
+
+        self.navigation.replace_navigation_query_params(
+            {"analysis_tab": "Components"}, supersede_restore=True
+        )
+        self.assertNotIn("cadivor_history_restore_snapshot", self.streamlit.session_state)
+        self.assertEqual(
+            self.streamlit.session_state["cadivor_nav_params"]["analysis_tab"],
+            "Components",
+        )
+
+    def test_one_shot_query_cleanup_updates_pending_restore_target(self):
+        self.streamlit.session_state.update({
+            "cadivor_nav_params": {
+                "page": "BOM Analyzer",
+                "new_analysis": "1",
+            },
+            "cadivor_history_restore_snapshot": {
+                "route": "BOM Analyzer",
+                "params": {"page": "BOM Analyzer", "new_analysis": "1"},
+                "stale_query_params": {"page": "Reports"},
+            },
+        })
+
+        self.navigation.replace_navigation_query_params({}, remove=("new_analysis",))
+
+        self.assertNotIn("new_analysis", self.streamlit.session_state["cadivor_nav_params"])
+        self.assertNotIn(
+            "new_analysis",
+            self.streamlit.session_state["cadivor_history_restore_snapshot"]["params"],
+        )
 
     def test_alternative_navigation_preserves_analysis_and_section_after_consumption(self):
         self.streamlit.session_state["cadivor_active_analysis_tab"] = "Components"
@@ -440,7 +509,8 @@ class BomWorkflowNavigationTests(unittest.TestCase):
         runtime = (ROOT / "src/authenticated_runtime.py").read_text()
         self.assertIn("def _dashboard_detail_view()", workspace)
         self.assertIn("def _set_dashboard_detail_view", workspace)
-        self.assertIn('st.query_params["dashboard_view"]', workspace)
+        self.assertIn("replace_navigation_query_params", workspace)
+        self.assertIn("supersede_restore=True", workspace)
         self.assertNotIn('href="?page=Dashboard&dashboard_view=', workspace)
         self.assertNotIn("cadivor_dashboard_drilldown", workspace)
         self.assertNotIn("dashboard_drilldown", runtime)

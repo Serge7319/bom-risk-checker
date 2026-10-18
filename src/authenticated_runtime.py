@@ -142,6 +142,7 @@ from src.ui.navigation import (
     reveal_authenticated_page_body,
     route_needs_main_transition,
     should_paint_opening_overlay,
+    replace_navigation_query_params,
 )
 from src.browser_navigation import consume_browser_navigation_event
 from src.ui.route_body import (
@@ -1892,14 +1893,27 @@ def resolve_canonical_app_route(*, allow_admin: bool = True) -> str:
     from src.ui.navigation import (
         HISTORY_RESTORE_EVENT_KEY,
         HISTORY_RESTORE_SNAPSHOT_KEY,
+        LAST_HISTORY_PUSH_PARAMS_KEY,
         LAST_HISTORY_PUSH_PAGE_KEY,
         commit_navigation_query_params,
+        read_query_params,
     )
 
     browser_page = ""
     browser_params: dict[str, str] = {}
+    observed_browser_params: dict[str, str] = {}
     browser_reason = ""
     browser_event_id = ""
+
+    def _clean_query_state(values: dict[str, Any]) -> dict[str, str]:
+        return {
+            str(key): str(value).strip()
+            for key, value in values.items()
+            if str(key) not in {"cadivor_signed_out", "auth", "source"}
+            and str(value or "").strip()
+        }
+
+    server_query_state = _clean_query_state(read_query_params())
     browser_event = consume_browser_navigation_event()
     previous_route = _safe_text(
         st.session_state.get("cadivor_route") or st.session_state.get("app_mode"),
@@ -1926,15 +1940,25 @@ def resolve_canonical_app_route(*, allow_admin: bool = True) -> str:
                 }
             except Exception:
                 browser_params = {}
+            observed_browser_params = dict(browser_params)
             browser_page = _safe_text(browser_params.get("page"), "")
             st.session_state["cadivor_last_browser_navigation_event_id"] = event_id
             # The polling fallback also sees intentional in-app URL writes.
-            # Ignore those echoes when the URL still names the route in session
-            # or the page that navigate_to just committed.
-            last_push = _safe_text(st.session_state.get(LAST_HISTORY_PUSH_PAGE_KEY), "")
-            if browser_reason == "url-change" and (
-                (browser_page and browser_page == previous_route)
-                or (browser_page and browser_page == last_push)
+            # Compare the complete query state: a Back/Forward hop can keep the
+            # same page while restoring a different analysis or focused part.
+            browser_query_state = _clean_query_state(browser_params)
+            last_push_state = st.session_state.get(LAST_HISTORY_PUSH_PARAMS_KEY)
+            if not isinstance(last_push_state, dict):
+                last_push_state = {}
+            last_push_state = {
+                str(key): str(value).strip()
+                for key, value in last_push_state.items()
+                if str(key) not in {"cadivor_signed_out", "auth", "source"}
+                and str(value or "").strip()
+            }
+            if browser_reason == "url-change" and browser_query_state and (
+                browser_query_state == server_query_state
+                or (last_push_state and browser_query_state == last_push_state)
             ):
                 browser_page = ""
                 browser_params = {}
@@ -1961,13 +1985,30 @@ def resolve_canonical_app_route(*, allow_admin: bool = True) -> str:
         restore_snapshot.get("stale_query_page"),
         "",
     )
+    snapshot_target_params = _clean_query_state(
+        restore_snapshot.get("params")
+        if isinstance(restore_snapshot.get("params"), dict)
+        else {}
+    )
+    snapshot_stale_params = _clean_query_state(
+        restore_snapshot.get("stale_query_params")
+        if isinstance(restore_snapshot.get("stale_query_params"), dict)
+        else {}
+    )
     if snapshot_route and session_page and snapshot_route != session_page:
         st.session_state.pop(HISTORY_RESTORE_SNAPSHOT_KEY, None)
         restore_snapshot = {}
         snapshot_route = ""
         snapshot_stale_query_page = ""
+        snapshot_target_params = {}
+        snapshot_stale_params = {}
 
     snapshot_active = bool(snapshot_route and snapshot_route == session_page)
+    snapshot_query_pending = bool(
+        snapshot_active
+        and snapshot_target_params
+        and server_query_state != snapshot_target_params
+    )
     query_diverged = bool(
         query_page and session_page and query_page != session_page
     )
@@ -1981,8 +2022,9 @@ def resolve_canonical_app_route(*, allow_admin: bool = True) -> str:
         and query_page != "BOM Analyzer"
     ):
         query_diverged = False
-    stale_query_after_restore = bool(
+    stale_query_after_restore = snapshot_query_pending or bool(
         snapshot_active
+        and not snapshot_stale_params
         and query_diverged
         and query_page == snapshot_stale_query_page
     )
@@ -2047,16 +2089,69 @@ def resolve_canonical_app_route(*, allow_admin: bool = True) -> str:
             "route": route,
             "params": dict(nav_params),
             "stale_query_page": query_page,
+            "stale_query_params": dict(server_query_state),
             "event_id": browser_event_id,
         }
+    elif snapshot_active and restore_snapshot:
+        nav_params = dict(snapshot_target_params or restore_snapshot.get("params") or {})
+        nav_params["page"] = route
+        st.session_state["cadivor_nav_params"] = nav_params
+        if not snapshot_query_pending:
+            st.session_state.pop(HISTORY_RESTORE_SNAPSHOT_KEY, None)
     elif stale_query_after_restore and restore_snapshot:
         nav_params = dict(restore_snapshot.get("params") or {})
         nav_params["page"] = route
         st.session_state["cadivor_nav_params"] = nav_params
     else:
-        st.session_state["cadivor_nav_params"] = {"page": route}
+        url_context = (
+            _clean_query_state(observed_browser_params)
+            if observed_browser_params
+            else server_query_state
+        )
+        nav_params = dict(url_context) if url_context.get("page") == route else {}
+        nav_params["page"] = route
+        st.session_state["cadivor_nav_params"] = nav_params
         if query_page == route or (snapshot_route and snapshot_route != route):
             st.session_state.pop(HISTORY_RESTORE_SNAPSHOT_KEY, None)
+
+    # Restore saved-BOM section widget state from the browser entry too. The
+    # section buttons are session widgets, so changing only the address bar
+    # would otherwise leave the previous selection painted after Back.
+    restored_params = (
+        dict(browser_params)
+        if browser_params
+        else dict(snapshot_target_params)
+        if snapshot_active
+        else _clean_query_state(observed_browser_params)
+        if observed_browser_params and _safe_text(observed_browser_params.get("page"), "") == route
+        else server_query_state
+        if history_restore and server_query_state.get("page") == route
+        else {}
+    )
+    restored_analysis_id = _safe_text(restored_params.get("analysis_id"), "")
+    if route == "Analysis Details" and restored_analysis_id:
+        restored_tab = _safe_text(
+            restored_params.get("analysis_tab"),
+            "Engineering Intelligence",
+        )
+        st.session_state["cadivor_active_analysis_id"] = restored_analysis_id
+        st.session_state["analysis_id"] = restored_analysis_id
+        st.session_state["cadivor_active_analysis_tab"] = restored_tab
+        st.session_state[f"cadivor_analysis_section_{restored_analysis_id}"] = restored_tab
+        st.session_state["cadivor_analysis_section_sync_id"] = restored_analysis_id
+        try:
+            from src.ui.bom_navigation import PRIMARY_AREAS, visible_area_for_section
+
+            visible_area = visible_area_for_section(restored_tab)
+            if visible_area in PRIMARY_AREAS:
+                st.session_state[f"cadivor_bom_area_{restored_analysis_id}"] = visible_area
+                st.session_state[f"cadivor_bom_more_{restored_analysis_id}"] = "More"
+            else:
+                st.session_state[f"cadivor_bom_more_{restored_analysis_id}"] = visible_area
+        except Exception:
+            pass
+        st.session_state["cadivor_stack_decision_brief"] = restored_tab == "Engineering Intelligence"
+        st.session_state["cadivor_decision_focus"] = restored_tab == "Engineering Decisions"
 
     active_snapshot = st.session_state.get(HISTORY_RESTORE_SNAPSHOT_KEY)
     restored_route_is_active = bool(
@@ -2067,6 +2162,7 @@ def resolve_canonical_app_route(*, allow_admin: bool = True) -> str:
         # Address bar already holds the restored route. Do not write query
         # params — that would push a duplicate history entry.
         st.session_state.pop(LAST_HISTORY_PUSH_PAGE_KEY, None)
+        st.session_state.pop(LAST_HISTORY_PUSH_PARAMS_KEY, None)
     elif restored_route_is_active:
         # The browser bridge restored this route, but Streamlit's backend query
         # state has not caught up. Preserve the route without creating history.
@@ -2132,6 +2228,15 @@ def run_authenticated_app() -> None:
     # page dispatch. Never re-resolve later with a sticky last-URL guard.
     _shell_route = resolve_canonical_app_route(allow_admin=True)
     app_mode = _shell_route
+
+    def _resolved_qp_value(name: str, default: str = "") -> str:
+        from src.ui.navigation import current_navigation_query_value as _current_navigation_query_value
+
+        return _current_navigation_query_value(
+            name,
+            default,
+            route=_safe_text(st.session_state.get("cadivor_route"), app_mode),
+        )
 
     # Paint the durable foundation shell BEFORE profile/workspace IO so Login→Dashboard
     # and authenticated navigations never clear to a blank body or remount a gate card.
@@ -3098,14 +3203,10 @@ def run_authenticated_app() -> None:
         NAV_OPTIONS.insert(NAV_OPTIONS.index("Settings"), "Admin Console")
         NAV_OPTIONS.append("Help")
 
-    if _qp_value("action") == "clear":
+    if _resolved_qp_value("action") == "clear":
         st.session_state.pop("results_df", None)
         st.session_state.pop("uploaded_filename", None)
-        try:
-            st.query_params["page"] = _qp_value("page", "Dashboard")
-            del st.query_params["action"]
-        except Exception:
-            pass
+        replace_navigation_query_params({}, remove=("action",))
 
     # Default user plan
     selected_plan_name = effective_plan_name
@@ -3321,10 +3422,10 @@ def run_authenticated_app() -> None:
     # Sprint 50.1.2 — session-only analysis continuity across Cadivor pages.
     # Query values are treated only as navigation inputs; the durable browser-session
     # context lives in st.session_state and is never written to the database.
-    _incoming_analysis_id = _safe_text(_qp_value("analysis_id", ""), "")
-    _incoming_analysis_tab = _safe_text(_qp_value("analysis_tab", ""), "").replace("+", " ")
-    _incoming_risk_filter = _safe_text(_qp_value("risk_filter", ""), "").strip().title()
-    _incoming_high_risk_review = _safe_text(_qp_value("high_risk_review", ""), "").lower() in {
+    _incoming_analysis_id = _safe_text(_resolved_qp_value("analysis_id", ""), "")
+    _incoming_analysis_tab = _safe_text(_resolved_qp_value("analysis_tab", ""), "").replace("+", " ")
+    _incoming_risk_filter = _safe_text(_resolved_qp_value("risk_filter", ""), "").strip().title()
+    _incoming_high_risk_review = _safe_text(_resolved_qp_value("high_risk_review", ""), "").lower() in {
         "1", "true", "yes", "on"
     }
     if _incoming_analysis_id:
@@ -3332,22 +3433,19 @@ def run_authenticated_app() -> None:
         st.session_state["analysis_id"] = _incoming_analysis_id
     if _incoming_analysis_tab:
         st.session_state["cadivor_active_analysis_tab"] = _incoming_analysis_tab
+    consumed_review_query_params: list[str] = []
     if _incoming_risk_filter in {"All", "High", "Medium", "Low"}:
         # KPI deep links should take the user directly to the corresponding
         # engineering review, while leaving the selectbox usable afterwards.
         st.session_state["bom81_detailed_risk_filter"] = _incoming_risk_filter
-        try:
-            st.query_params.pop("risk_filter", None)
-        except Exception:
-            pass
+        consumed_review_query_params.append("risk_filter")
     if _incoming_high_risk_review:
         st.session_state["bom81_high_risk_review"] = True
-        try:
-            st.query_params.pop("high_risk_review", None)
-        except Exception:
-            pass
+        consumed_review_query_params.append("high_risk_review")
+    if consumed_review_query_params:
+        replace_navigation_query_params({}, remove=tuple(consumed_review_query_params))
 
-    _new_analysis_requested = _safe_text(_qp_value("new_analysis", ""), "").lower() in {
+    _new_analysis_requested = _safe_text(_resolved_qp_value("new_analysis", ""), "").lower() in {
         "1", "true", "yes"
     }
     if _new_analysis_requested:
@@ -4206,7 +4304,7 @@ def run_authenticated_app() -> None:
                 supabase=supabase,
                 load_analysis_history=load_analysis_history,
                 light_plotly_layout=light_plotly_layout,
-                _qp_value=_qp_value,
+                _qp_value=_resolved_qp_value,
                 workspace_id=active_workspace_id,
                 workspace_role=active_workspace_role,
                 workspace_members=(
@@ -4255,8 +4353,8 @@ def run_authenticated_app() -> None:
             settings_history = []
             st.error("Saved BOM settings could not be loaded. Please return to BOMs and try again.")
         settings_components = []
-        settings_action = _safe_text(_qp_value("saved_bom_action", ""), "").casefold()
-        settings_analysis_id = _safe_text(_qp_value("saved_bom_id", ""), "").strip()
+        settings_action = _safe_text(_resolved_qp_value("saved_bom_action", ""), "").casefold()
+        settings_analysis_id = _safe_text(_resolved_qp_value("saved_bom_id", ""), "").strip()
         settings_analysis_owned = any(
             str(record.get("id") or "").strip() == settings_analysis_id
             for record in settings_history
@@ -4310,9 +4408,9 @@ def run_authenticated_app() -> None:
                 navigate_to("Pricing")
             stop_authenticated_page()
 
-        return_analysis_id = _qp_value("return_analysis_id")
+        return_analysis_id = _resolved_qp_value("return_analysis_id")
         focused_monitor_part = _safe_text(
-            _qp_value("mpn") or _qp_value("part"),
+            _resolved_qp_value("mpn") or _resolved_qp_value("part"),
             "",
         )
         if return_analysis_id and st.button("← Back to Saved BOM", key="monitoring_back_to_saved_bom", type="secondary"):
@@ -4431,7 +4529,7 @@ def run_authenticated_app() -> None:
         def _monitor_confidence(score):
             return max(65, min(98, int(round(float(score or 0) * 0.92 + 8))))
 
-        monitor_focus = _safe_text(_qp_value("monitor_focus", ""), "").strip().lower()
+        monitor_focus = _safe_text(_resolved_qp_value("monitor_focus", ""), "").strip().lower()
         monitor_focus_defaults = {
             "active": ("All", "Active", "All"),
             "immediate": ("Immediate action", "Active", "All"),
@@ -6191,7 +6289,7 @@ def run_authenticated_app() -> None:
             "export": "Export",
         }
         monitor_view = _safe_text(
-            _qp_value("monitor_view", "queue"),
+            _resolved_qp_value("monitor_view", "queue"),
             "queue",
         ).strip().lower()
         if monitor_view not in monitor_view_labels:
@@ -6462,13 +6560,13 @@ def run_authenticated_app() -> None:
 
         requested_impact_mpn = (
             st.session_state.get("design_impact_mpn")
-            or _qp_value("part")
-            or _qp_value("mpn")
+            or _resolved_qp_value("part")
+            or _resolved_qp_value("mpn")
             or ""
         )
 
-        impact_return_analysis_id = _safe_text(_qp_value("analysis_id", ""), "")
-        impact_return_section = _safe_text(_qp_value("return_section", "Components"), "Components")
+        impact_return_analysis_id = _safe_text(_resolved_qp_value("analysis_id", ""), "")
+        impact_return_section = _safe_text(_resolved_qp_value("return_section", "Components"), "Components")
 
         from src.design_impact_analyzer import build_design_impact, render_design_impact
         impact_intelligence = build_design_impact(
@@ -6746,10 +6844,7 @@ def run_authenticated_app() -> None:
             requested_edit_mpn = str(st.session_state.pop("pa_edit_request_mpn", "") or "").strip()
             route_focus_mpn = ""
             if not requested_edit_mpn:
-                try:
-                    route_focus_mpn = str(st.query_params.get("mpn", "") or "").strip()
-                except Exception:
-                    route_focus_mpn = ""
+                route_focus_mpn = _resolved_qp_value("mpn", "").strip()
             selected_mpn_key = "pa_selected_mpn"
             focus_target_mpn = requested_edit_mpn
             if focus_target_mpn in mpn_options:
@@ -7794,7 +7889,7 @@ def run_authenticated_app() -> None:
         requested_decision_id = (
             ""
             if st.session_state.pop(return_to_queue_pending_key, False)
-            else _qp_value("decision_id")
+            else _resolved_qp_value("decision_id")
         )
         # Keep the route cover up until the queue data has hydrated. A focused
         # packet releases it after its complete review layout has mounted.
@@ -7907,7 +8002,7 @@ def run_authenticated_app() -> None:
             # query may still contain the previous decision for one Streamlit
             # rerun after the in-app Back action clears it.
             focus_decision_id = requested_decision_id
-            focus_part = _qp_value("focus_part")
+            focus_part = _resolved_qp_value("focus_part")
             selected_decision = None
 
             if focus_decision_id:
@@ -10026,7 +10121,7 @@ def run_authenticated_app() -> None:
                         # compact focus token.  Give each focus its own widget
                         # keys so Streamlit can apply the intended filter
                         # without mutating an already-mounted widget.
-                        decision_focus = str(_qp_value("decision_focus", "") or "").strip().lower()
+                        decision_focus = str(_resolved_qp_value("decision_focus", "") or "").strip().lower()
                         decision_focus_defaults = {
                             "pending": ("All", "All"),
                             "critical": ("Critical", "All"),
@@ -11669,7 +11764,7 @@ def run_authenticated_app() -> None:
             labels = [_analysis_label(row) for row in report_records]
 
             incoming_report_analysis_id = str(
-                _qp_value("analysis_id", "")
+                _resolved_qp_value("analysis_id", "")
                 or st.session_state.get("cadivor_active_analysis_id", "")
                 or ""
             ).strip()
@@ -13214,13 +13309,10 @@ def run_authenticated_app() -> None:
                         type="secondary",
                     )
 
-                _single_bom_checkout_state = _safe_text(_qp_value("checkout", ""))
+                _single_bom_checkout_state = _safe_text(_resolved_qp_value("checkout", ""))
                 if _single_bom_checkout_state == "single_bom_success" and _single_bom_credit_ready:
                     st.session_state.pop(_single_bom_checkout_key, None)
-                    try:
-                        del st.query_params["checkout"]
-                    except Exception:
-                        pass
+                    replace_navigation_query_params({}, remove=("checkout",))
                 elif _single_bom_checkout_state == "single_bom_success" and not _single_bom_credit_ready:
                     @st.fragment(run_every="5s")
                     def _poll_single_bom_checkout_confirmation():
@@ -13228,8 +13320,8 @@ def run_authenticated_app() -> None:
                         # granted after available_credit sees webhook fulfillment.
                         if _single_bom_available_credit(_single_bom_user_id):
                             try:
-                                if _safe_text(_qp_value("checkout", "")) == "single_bom_success":
-                                    del st.query_params["checkout"]
+                                if _safe_text(_resolved_qp_value("checkout", "")) == "single_bom_success":
+                                    replace_navigation_query_params({}, remove=("checkout",))
                             except Exception:
                                 pass
                             st.rerun()
@@ -13284,7 +13376,7 @@ def run_authenticated_app() -> None:
         component_limit = selected_plan.get("max_parts_per_bom")
         component_limit_text = "Unlimited" if component_limit is None else f"{int(component_limit):,} per BOM"
         reports_text = "Student Edition watermark" if selected_plan.get("student_watermark") else "Included"
-        checkout_state = str(_qp_value("checkout", "") or "").strip().lower()
+        checkout_state = str(_resolved_qp_value("checkout", "") or "").strip().lower()
 
         if checkout_state == "success":
             st.success(
@@ -14073,7 +14165,7 @@ def run_authenticated_app() -> None:
     # ---------- Settings ----------
     if app_mode == "Settings":
         st.markdown('<div data-cadivor-settings-layout-marker="1"></div>', unsafe_allow_html=True)
-        _incoming_settings_tab = str(_qp_value("settings_tab", "") or "").strip()
+        _incoming_settings_tab = str(_resolved_qp_value("settings_tab", "") or "").strip()
         if _incoming_settings_tab in {
             "Profile",
             "Preferences",
@@ -16908,27 +17000,27 @@ def run_authenticated_app() -> None:
             should_start_new_alternative_search,
         )
         return_analysis_id = str(
-            _qp_value("return_analysis_id")
+            _resolved_qp_value("return_analysis_id")
             or st.session_state.get("cadivor_alt_finder_return_analysis_id", "")
             or ""
         ).strip()
         return_page = str(
-            _qp_value("return_page")
+            _resolved_qp_value("return_page")
             or st.session_state.get("cadivor_alt_finder_return_page", "")
             or ""
         ).strip()
         return_mpn = str(
-            _qp_value("return_mpn")
+            _resolved_qp_value("return_mpn")
             or st.session_state.get("cadivor_alt_finder_return_mpn", "")
             or ""
         ).strip()
         return_decision_id = str(
-            _qp_value("return_decision_id")
+            _resolved_qp_value("return_decision_id")
             or st.session_state.get(ALT_FINDER_RETURN_DECISION_ID_KEY, "")
             or ""
         ).strip()
         return_component = str(
-            _qp_value("return_component")
+            _resolved_qp_value("return_component")
             or st.session_state.get(ALT_FINDER_RETURN_COMPONENT_KEY, "")
             or ""
         ).strip()
@@ -20375,7 +20467,7 @@ def run_authenticated_app() -> None:
             or st.session_state.get("analysis_id"),
             "",
         )
-        _show_saved_analyses = _safe_text(_qp_value("show_saved_analyses", ""), "").lower() in {
+        _show_saved_analyses = _safe_text(_resolved_qp_value("show_saved_analyses", ""), "").lower() in {
             "1", "true", "yes", "on"
         } or bool(st.session_state.get("cadivor_show_saved_boms"))
         if (
@@ -22410,9 +22502,9 @@ def run_authenticated_app() -> None:
                                 "Continue to secure checkout →", st.session_state[_checkout_key],
                                 type="primary",
                             )
-                        if _safe_text(_qp_value("checkout", "")) == "single_bom_success":
+                        if _safe_text(_resolved_qp_value("checkout", "")) == "single_bom_success":
                             st.info("Payment confirmation is processing. Refresh this page in a moment to use your report credit.")
-                        elif _safe_text(_qp_value("checkout", "")) == "single_bom_cancel":
+                        elif _safe_text(_resolved_qp_value("checkout", "")) == "single_bom_cancel":
                             st.info("Checkout was canceled. No report credit was purchased.")
                     elif selected_plan_name == PLAN_SUBSCRIPTION_INACTIVE:
                         st.warning(

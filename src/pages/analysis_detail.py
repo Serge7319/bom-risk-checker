@@ -27,7 +27,9 @@ from src.ui.navigation import (
     internal_nav_button,
     navigate_to,
     navigate_to_alternative_finder,
-    read_query_params,
+    current_navigation_query_params,
+    current_navigation_query_value,
+    replace_navigation_query_params,
     return_to_saved_bom_list,
 )
 from src.ai_advisor import build_engineering_supply_advisor
@@ -209,7 +211,9 @@ def _open_component_analysis_section(
 def _sync_cadivor_active_analysis_tab(*, analysis_id: str = "") -> None:
     """Hydrate section state from URL only on entry/deep-link — never clobber widget selection."""
     try:
-        incoming = _normalize_analysis_tab(st.query_params.get("analysis_tab", ""))
+        incoming = _normalize_analysis_tab(
+            current_navigation_query_value("analysis_tab", "", route="Analysis Details")
+        )
     except Exception:
         incoming = ""
 
@@ -251,10 +255,11 @@ def _commit_analysis_section_selection(*, analysis_id: str, selected: str) -> st
     if clean not in ANALYSIS_SECTIONS:
         clean = "Engineering Intelligence"
     st.session_state["cadivor_active_analysis_tab"] = clean
-    try:
-        st.query_params["analysis_tab"] = clean
-    except Exception:
-        pass
+    nav_params = st.session_state.get("cadivor_nav_params") or {}
+    if not isinstance(nav_params, dict) or nav_params.get("analysis_tab") != clean:
+        replace_navigation_query_params(
+            {"analysis_tab": clean}, supersede_restore=True
+        )
     return clean
 
 
@@ -642,7 +647,7 @@ def _risk_label(part: dict[str, Any]) -> str:
 
 def _persist_component_focus_query(analysis_id: str, component_mpn: Any = "") -> None:
     """Commit row expansion at click time so refresh restores the same row."""
-    desired = read_query_params()
+    desired = current_navigation_query_params(route="Analysis Details")
     desired.update(
         {
             "page": "Analysis Details",
@@ -657,8 +662,10 @@ def _persist_component_focus_query(analysis_id: str, component_mpn: Any = "") ->
     else:
         desired.pop("component", None)
         desired.pop("focus", None)
-    st.query_params.from_dict(
-        {key: value for key, value in desired.items() if str(value).strip()}
+    replace_navigation_query_params(
+        {key: value for key, value in desired.items() if str(value).strip()},
+        remove=("component", "focus") if not component else (),
+        supersede_restore=True,
     )
 
 
@@ -1201,7 +1208,7 @@ def _render_focused_component_review(
                     return_analysis_id=analysis_id, arm_opening=False,
                 )
 
-    if _safe(st.query_params.get("focus"), "") == "component-review":
+    if current_navigation_query_value("focus", "", route="Analysis Details") == "component-review":
         components.html(
             """
             <script>
@@ -1240,15 +1247,23 @@ def render_analysis_detail(
     if _qp_value:
         analysis_id = _safe(_qp_value("analysis_id", ""), "")
     if not analysis_id:
-        analysis_id = _safe(st.query_params.get("analysis_id", ""), "")
+        analysis_id = current_navigation_query_value(
+            "analysis_id", "", route="Analysis Details"
+        )
 
     if analysis_id:
         st.session_state["cadivor_active_analysis_id"] = str(analysis_id)
         st.session_state["analysis_id"] = str(analysis_id)
 
-    requested_tab = _safe(st.query_params.get("tab", ""), "").strip().lower()
-    requested_component = _safe(st.query_params.get("component", ""), "").strip()
-    requested_focus = _safe(st.query_params.get("focus", ""), "").strip().lower()
+    requested_tab = current_navigation_query_value(
+        "tab", "", route="Analysis Details"
+    ).strip().lower()
+    requested_component = current_navigation_query_value(
+        "component", "", route="Analysis Details"
+    ).strip()
+    requested_focus = current_navigation_query_value(
+        "focus", "", route="Analysis Details"
+    ).strip().lower()
     component_focus_requested = bool(
         requested_component
         or requested_tab == "components"
@@ -1729,8 +1744,12 @@ def render_analysis_detail(
         workspace_id=workspace_id,
     )
 
-    focused_mpn = _safe(st.query_params.get("review_component"), "").strip()
-    focused_section = _normalize_analysis_tab(st.query_params.get("analysis_tab", ""))
+    focused_mpn = current_navigation_query_value(
+        "review_component", "", route="Analysis Details"
+    ).strip()
+    focused_section = _normalize_analysis_tab(
+        current_navigation_query_value("analysis_tab", "", route="Analysis Details")
+    )
     if focused_mpn and focused_section == "Engineering Decisions":
         from src.pages.saved_analysis_control import release_saved_analysis_placeholder
         from src.ui.navigation import reveal_authenticated_page_body
@@ -2083,7 +2102,9 @@ def render_analysis_detail(
         if stack_brief:
             selected_mpn = _safe(st.session_state.get("cadivor_review_mpn"), "")
             try:
-                query_component = st.query_params.get("component", "")
+                query_component = current_navigation_query_value(
+                    "component", "", route="Analysis Details"
+                )
                 if isinstance(query_component, list):
                     query_component = query_component[0] if query_component else ""
                 if str(query_component or "").strip():
@@ -2388,7 +2409,9 @@ def render_analysis_detail(
                 )
                 filtered_review_parts = []
                 priority_target_mpn = _safe(
-                    st.query_params.get("review_component")
+                                    current_navigation_query_value(
+                                        "review_component", "", route="Analysis Details"
+                                    )
                     or st.session_state.get(f"cv26_priority_action_target_{analysis_id}"), "",
                 )
                 if priority_target_mpn:
@@ -2400,8 +2423,11 @@ def render_analysis_detail(
                     with target_clear:
                         if st.button("Show all tasks", key=f"cv26_clear_priority_target_{analysis_id}"):
                             st.session_state.pop(f"cv26_priority_action_target_{analysis_id}", None)
-                            if "review_component" in st.query_params:
-                                del st.query_params["review_component"]
+                            replace_navigation_query_params(
+                                {},
+                                remove=("review_component",),
+                                supersede_restore=True,
+                            )
                             st.rerun()
                 search_mpn = ""
                 if len(review_parts) > 25 and not priority_target_mpn:
