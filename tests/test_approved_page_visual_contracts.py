@@ -39,17 +39,21 @@ class ApprovedPageVisualContractTests(unittest.TestCase):
             APPROVED_PAGES,
         )
 
-    def test_monitoring_category_buttons_have_seven_desktop_tracks(self):
+    def test_monitoring_show_pills_fit_and_wrap_before_the_period_control(self):
         self.assertIn(
-            '.st-key-approved_monitoring_category_row [data-testid="stHorizontalBlock"]{display:grid!important;grid-template-columns:1fr 1.35fr .95fr 1.28fr .95fr .95fr 1.05fr!important;',
-            APPROVED_PAGES,
+            '.st-key-approved_monitoring_filters .st-key-approved_monitoring_category_row [data-testid="stHorizontalBlock"] {',
+            MONITORING_HOME_CSS,
         )
-        self.assertIn("st.columns(\n            [0.42, 8.45, 3.1],", APPROVED_PAGES)
-        self.assertIn(
-            '.st-key-approved_monitoring_filters [data-testid="stHorizontalBlock"]:has(.st-key-approved_monitoring_category_row){display:grid!important;grid-template-columns:42px minmax(0,1fr)!important;',
-            APPROVED_PAGES,
-        )
+        self.assertIn("flex-flow: row wrap !important;", MONITORING_HOME_CSS)
+        self.assertIn("gap: 8px !important;", MONITORING_HOME_CSS)
+        self.assertIn("width: max-content !important;", MONITORING_HOME_CSS)
+        self.assertIn("white-space: nowrap !important;", MONITORING_HOME_CSS)
+        self.assertIn("max-width: 100% !important;", MONITORING_HOME_CSS)
 
+        monitoring_renderer = APPROVED_PAGES.split("def render_monitoring(", 1)[1]
+        self.assertIn("category_columns = st.columns(", monitoring_renderer)
+        self.assertIn("with period_col:", monitoring_renderer)
+        self.assertIn("period = st.selectbox(", monitoring_renderer)
     def test_selected_monitoring_filter_uses_mockup_pill_treatment(self):
         self.assertIn(
             'st-key-approved_monitoring_filter_selected_',
