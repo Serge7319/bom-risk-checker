@@ -11,6 +11,7 @@ product graph.
 import streamlit as st
 import streamlit.components.v1 as components
 import pandas as pd
+from typing import Any
 from src.readability_system import readability_css
 from src.living_workspace import (
     compute_dashboard_summary_metrics,
