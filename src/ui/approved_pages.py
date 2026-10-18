@@ -687,6 +687,63 @@ def begin_approved_page() -> None:
         .cv-ap-kicker{margin:0 0 6px;color:#64748b;font-size:12px;font-weight:700;letter-spacing:.08em}
         .cv-ap h1{margin:0 0 6px;font-size:32px;line-height:1.15;letter-spacing:-.03em}
         .cv-ap-sub{margin:0 0 18px;color:#64748b;font-size:14px}
+        .cv-ap-flow{display:flex;align-items:center;gap:14px;box-sizing:border-box;width:100%;margin:0 0 16px;padding:15px 18px;background:#fff;border:1px solid #dfe7f1;border-radius:11px;color:#718096}
+        .cv-ap-flow-step{display:flex;align-items:center;gap:10px;white-space:nowrap;font-size:12px;font-weight:600}
+        .cv-ap-flow-node{display:inline-flex;align-items:center;justify-content:center;flex:0 0 26px;width:26px;height:26px;border:1px solid #d9e2ee;border-radius:50%;background:#f1f5f9;color:#718096;font-size:11px;font-weight:750}
+        .cv-ap-flow-step.current{color:#1c3c70;font-weight:750}
+        .cv-ap-flow-step.current .cv-ap-flow-node{border-color:#2865ed;background:#2865ed;color:#fff}
+        .cv-ap-flow-step.complete{color:#52647b}
+        .cv-ap-flow-step.complete .cv-ap-flow-node{border-color:#b9e4cc;background:#eaf8f0;color:#147a47}
+        .cv-ap-flow-line{flex:1 1 36px;min-width:18px;height:2px;background:#d8e1ed}
+        .cv-ap-flow-status{margin-left:auto;padding:6px 12px;border-radius:999px;background:#eef5ff;color:#2865ed;font-size:9px;font-weight:800;letter-spacing:.04em;white-space:nowrap}
+        .cv-ap-entry-heading{display:flex;align-items:center;gap:14px;margin:0 0 10px}
+        .cv-ap-entry-icon{display:inline-flex;align-items:center;justify-content:center;flex:0 0 44px;width:44px;height:44px;border-radius:9px;background:#eef5ff;color:#2865ed}
+        .cv-ap-entry-icon svg{width:23px;height:23px;display:block}
+        .cv-ap-entry-heading p{margin:0 0 4px;color:#8491a3;font-size:9px;font-weight:800;letter-spacing:.07em}
+        .cv-ap-entry-heading h2{margin:0;color:#172942;font-size:18px;line-height:1.25;font-weight:760;letter-spacing:-.02em}
+        .cv-ap-entry-copy{margin:0 0 12px;color:#6d7d92;font-size:12px}
+        .st-key-approved_replacement_search_card,.st-key-approved_datasheet_upload_card{box-sizing:border-box;width:100%;margin:0 0 16px;padding:18px 20px 14px;background:#fff;border:1px solid #dfe7f1;border-radius:12px}
+        .st-key-approved_replacement_search_card>[data-testid="stVerticalBlock"],.st-key-approved_datasheet_upload_card>[data-testid="stVerticalBlock"]{gap:.55rem}
+        .st-key-approved_replacement_search_card [data-testid="stWidgetLabel"] p,.st-key-approved_datasheet_question_panel [data-testid="stWidgetLabel"] p{margin-bottom:4px;color:#728198;font-size:9px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
+        .st-key-approved_replacement_search_card [data-testid="stTextInput"] input{min-height:46px!important;border-radius:8px!important}
+        .st-key-approved_replacement_search_card button[kind="primary"],.st-key-approved_datasheet_question_panel button[kind="primary"]{min-height:44px!important;height:44px!important;border-radius:8px!important}
+        .cv-ap-replacement-note{margin:2px 0 8px;color:#8391a4;font-size:11px}
+        .cv-ap-context-note{display:flex;align-items:flex-start;gap:9px;margin:3px 0 0;padding:11px 12px;border-top:1px solid #edf1f6;color:#65758b;font-size:11px;line-height:1.45}
+        .cv-ap-context-note svg{flex:0 0 18px;width:18px;height:18px;color:#8796aa}
+        .cv-ap-waiting{box-sizing:border-box;width:100%;margin:0 0 14px;padding:16px 20px 20px;background:#fff;border:1px solid #dfe7f1;border-radius:12px}
+        .cv-ap-waiting-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-bottom:12px;border-bottom:1px solid #edf1f6}
+        .cv-ap-waiting-head h2{margin:0;color:#172942;font-size:15px;font-weight:750}
+        .cv-ap-waiting-status{padding:5px 9px;border-radius:999px;background:#f1f5f9;color:#718096;font-size:8px;font-weight:800;letter-spacing:.03em;white-space:nowrap}
+        .cv-ap-waiting-intro{display:flex;align-items:center;gap:16px;margin:22px 2px 28px}
+        .cv-ap-waiting-icon{display:inline-flex;align-items:center;justify-content:center;flex:0 0 72px;width:72px;height:72px;border:1px solid #e4ebf4;border-radius:16px;background:#f3f7fd;color:#7d8ba0}
+        .cv-ap-waiting-icon svg{width:25px;height:25px}
+        .cv-ap-waiting-intro h3{margin:0 0 5px;color:#263a56;font-size:16px;font-weight:730}
+        .cv-ap-waiting-intro p{margin:0;color:#78879b;font-size:11px}
+        .cv-ap-review-label{margin:0 0 9px;color:#7c8a9e;font-size:9px;font-weight:800;letter-spacing:.05em;text-transform:uppercase}
+        .cv-ap-review-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+        .cv-ap-review-item{min-height:80px;padding:13px 14px;background:#f8fafc;border:1px solid #edf1f6;border-radius:8px}
+        .cv-ap-review-item-head{display:flex;align-items:center;gap:8px;margin-bottom:7px;color:#3c4f68;font-size:11px;font-weight:750}
+        .cv-ap-review-item-head svg{width:18px;height:18px;color:#2865ed}
+        .cv-ap-review-item p{margin:0;color:#738299;font-size:10px;line-height:1.45}
+        .st-key-approved_datasheet_upload_card [data-testid="stWidgetLabel"] p{margin:2px 0 7px;color:#77869a;font-size:10px;font-weight:650}
+        .st-key-approved_datasheet_upload_card [data-testid="stFileUploader"]{margin:0!important}
+        .st-key-approved_datasheet_upload_card [data-testid="stFileUploaderDropzone"]{box-sizing:border-box;min-height:154px!important;border:1px dashed #b9c8dc!important;border-radius:10px!important;background:#fbfcfe!important;padding:24px 30px!important}
+        .st-key-approved_datasheet_upload_card [data-testid="stFileUploaderDropzone"] button{min-height:38px!important;height:38px!important;border:1px solid #d5deea!important;border-radius:8px!important;background:#fff!important;color:#32445e!important;box-shadow:none!important}
+        .st-key-approved_datasheet_upload_card [data-testid="stFileUploaderDropzoneInstructions"]{color:#738299!important}
+        .st-key-approved_datasheet_upload_card [data-testid="stFileUploaderDropzoneInstructions"] p{font-size:11px!important}
+        .cv-ap-document-state{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:0 0 16px;padding:9px 14px;background:#f8fafc;border:1px solid #edf1f6;border-radius:6px;color:#7d8ca0;font-size:10px}
+        .cv-ap-document-state strong{color:#3c4f68;font-weight:700}
+        .cv-ap-document-state .ready{color:#147a47;font-weight:700}
+        .cv-ap-document-state .pending{color:#7d8ca0;font-weight:600}
+        .st-key-approved_datasheet_question_panel{box-sizing:border-box;width:100%;margin:0 0 16px;padding:13px 20px 10px;background:#fff;border:1px solid #dfe7f1;border-radius:12px}
+        .st-key-approved_datasheet_question_panel>[data-testid="stVerticalBlock"]{gap:.25rem}
+        .st-key-approved_datasheet_question_panel [data-testid="stTextInput"] input{min-height:42px!important;border-radius:8px!important}
+        .cv-ap-question-help{margin:2px 0 0;color:#8794a7;font-size:10px}
+        .cv-ap-evidence-panel{box-sizing:border-box;width:100%;margin:0 0 14px;padding:14px 18px 10px;background:#fff;border:1px solid #dfe7f1;border-radius:12px}
+        .cv-ap-evidence-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 9px}
+        .cv-ap-evidence-head h2{margin:0;color:#172942;font-size:15px;font-weight:750}
+        .cv-ap-evidence-head p{margin:0;color:#8391a4;font-size:10px;text-align:right}
+        .cv-ap-evidence-panel .cv-ap-table th{background:#f8fafc}
         .cv-ap-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:0 0 18px}
         .cv-ap-kpis.three{grid-template-columns:repeat(3,minmax(0,1fr))}
         .cv-ap-kpis.five{grid-template-columns:repeat(5,minmax(0,1fr))}
@@ -1090,6 +1147,8 @@ def begin_approved_page() -> None:
           .st-key-approved_bom_upload_panel{padding:18px 16px 14px!important}
         }
         @media(max-width:900px){.cv-ap-kpis,.cv-ap-cards,.cv-ap-split{display:block}}
+        @media(max-width:900px){.cv-ap-review-grid{grid-template-columns:1fr}.cv-ap-flow{gap:8px;padding:12px}.cv-ap-flow-line{min-width:8px}}
+        @media(max-width:620px){.cv-ap-flow{flex-wrap:wrap}.cv-ap-flow-status{margin-left:0}.cv-ap-waiting-intro{align-items:flex-start}.cv-ap-document-state,.cv-ap-evidence-head{align-items:flex-start;flex-direction:column}.cv-ap-evidence-head p{text-align:left}}
         </style>
         """,
         unsafe_allow_html=True,
@@ -5240,6 +5299,72 @@ def _render_bom_replacement_approvals(
     st.rerun()
 
 
+def _approved_flow_stepper_markup(labels: tuple[str, ...], active_step: int = 1) -> str:
+    """Render the non-interactive progress indicator for the approved workflows."""
+    parts: list[str] = []
+    for index, label in enumerate(labels, start=1):
+        active = index == active_step
+        complete = index < active_step
+        state = " current" if active else " complete" if complete else ""
+        aria_current = " aria-current='step'" if active else ""
+        node = "✓" if complete else str(index)
+        parts.append(
+            f"<span class='cv-ap-flow-step{state}'{aria_current}>"
+            f"<span class='cv-ap-flow-node'>{node}</span>"
+            f"<span>{_esc(label)}</span></span>"
+        )
+        if index < len(labels):
+            parts.append("<span class='cv-ap-flow-line' aria-hidden='true'></span>")
+    return (
+        "<nav class='cv-ap-flow' aria-label='Workflow steps'>"
+        + "".join(parts)
+        + f"<span class='cv-ap-flow-status'>STEP {active_step} OF {len(labels)}</span></nav>"
+    )
+
+
+def _render_replacement_search_waiting_state() -> None:
+    """Show the empty Finder state without implying that the search has run."""
+    search_icon = (
+        "<svg viewBox='0 0 24 24' aria-hidden='true'><circle cx='10.5' cy='10.5' r='6.5' "
+        "fill='none' stroke='currentColor' stroke-width='1.8'/><path d='m15.5 15.5 5 5' "
+        "fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round'/></svg>"
+    )
+    shield_icon = (
+        "<svg viewBox='0 0 24 24' aria-hidden='true'><path d='M12 3 20 6v5c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6z' "
+        "fill='none' stroke='currentColor' stroke-width='1.8' stroke-linejoin='round'/></svg>"
+    )
+    package_icon = (
+        "<svg viewBox='0 0 24 24' aria-hidden='true'><path d='m12 3 9 5v8l-9 5-9-5V8zM3.5 8 12 13l8.5-5M12 13v8' "
+        "fill='none' stroke='currentColor' stroke-width='1.8' stroke-linejoin='round'/></svg>"
+    )
+    book_icon = (
+        "<svg viewBox='0 0 24 24' aria-hidden='true'><path d='M4 4h12a3 3 0 0 1 3 3v13H7a3 3 0 0 1-3-3zM7 4v16M10 9h6M10 13h6' "
+        "fill='none' stroke='currentColor' stroke-width='1.8' stroke-linejoin='round'/></svg>"
+    )
+    st.markdown(
+        f"""
+        <section class="cv-ap-waiting" aria-label="Replacement candidates">
+          <div class="cv-ap-waiting-head"><h2>Replacement candidates</h2>
+            <span class="cv-ap-waiting-status">WAITING FOR SEARCH</span></div>
+          <div class="cv-ap-waiting-intro"><span class="cv-ap-waiting-icon">{search_icon}</span>
+            <div><h3>Search for a part to begin</h3>
+              <p>Supplier-backed candidate rows will appear here after the MPN search finishes.</p></div>
+          </div>
+          <p class="cv-ap-review-label">Review before approval</p>
+          <div class="cv-ap-review-grid">
+            <article class="cv-ap-review-item"><div class="cv-ap-review-item-head">{shield_icon}Compatibility evidence</div>
+              <p>Package, pin count, and architecture need engineering review.</p></article>
+            <article class="cv-ap-review-item"><div class="cv-ap-review-item-head">{package_icon}Supplier evidence</div>
+              <p>Lifecycle, stock, and source links appear when available.</p></article>
+            <article class="cv-ap-review-item"><div class="cv-ap-review-item-head">{book_icon}Datasheet review</div>
+              <p>Check cited dimensions and source documents before sign-off.</p></article>
+          </div>
+        </section>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def render_replacement_search() -> None:
     """Find-a-replacement layout wired to the live alternative search."""
     begin_approved_page()
@@ -5342,15 +5467,39 @@ def render_replacement_search() -> None:
     )
     st.markdown(
         "<div class='cv-ap'><h1>Find a replacement</h1>"
-        "<p class='cv-ap-sub'>Search the source part, review current supplier evidence, "
-        "then compare and record the replacements your team approves.</p></div>",
+        "<p class='cv-ap-sub'>Search a source part, then review supplier evidence and compare compatible candidates.</p></div>",
         unsafe_allow_html=True,
     )
-    search_col, button_col = st.columns([4, 1], vertical_alignment="bottom")
-    with search_col:
-        query = st.text_input("Search MPN", key="approved_replacement_query")
-    with button_col:
-        run = st.button("Search", key="approved_replacement_search", type="primary")
+    flow_stepper = st.empty()
+    flow_stepper.markdown(
+        _approved_flow_stepper_markup(
+            ("Enter part", "Review candidates", "Compare and record"),
+            active_step=1,
+        ),
+        unsafe_allow_html=True,
+    )
+    with st.container(key="approved_replacement_search_card"):
+        st.markdown(
+            "<div class='cv-ap-entry-heading'><span class='cv-ap-entry-icon'>"
+            "<svg viewBox='0 0 24 24' aria-hidden='true'><circle cx='10.5' cy='10.5' r='6.5' "
+            "fill='none' stroke='currentColor' stroke-width='1.8'/><path d='m15.5 15.5 5 5' "
+            "fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round'/></svg>"
+            "</span><div><p>SOURCE COMPONENT</p><h2>Find alternatives for a part</h2></div></div>"
+            "<p class='cv-ap-entry-copy'>Enter the manufacturer part number to search supplier catalogs.</p>",
+            unsafe_allow_html=True,
+        )
+        search_col, button_col = st.columns([5, 1], vertical_alignment="bottom")
+        with search_col:
+            query = st.text_input("Search MPN", key="approved_replacement_query")
+        with button_col:
+            run = st.button("Search", key="approved_replacement_search", type="primary")
+        st.markdown(
+            "<p class='cv-ap-replacement-note'>Search results appear after the search completes.</p>"
+            "<div class='cv-ap-context-note'><svg viewBox='0 0 24 24' aria-hidden='true'>"
+            "<path d='M12 3 21 8v8l-9 5-9-5V8z' fill='none' stroke='currentColor' stroke-width='1.8'/>"
+            "</svg><span>Working from a saved BOM? Start from the component action menu to keep this search linked to that analysis.</span></div>",
+            unsafe_allow_html=True,
+        )
     # Reveal the real Finder content before the blocking supplier lookup. The
     # opaque route cover should not sit over the active page while results load.
     reveal_authenticated_page_body("Alternative Finder")
@@ -5392,11 +5541,20 @@ def render_replacement_search() -> None:
             ):
                 if not str(original.get(field) or "").strip():
                     original[field] = source_context.get(context_field) or ""
-    if not has_durable_search_for_mpn(st.session_state, query):
+    search_completed = has_durable_search_for_mpn(st.session_state, query)
+    flow_stepper.markdown(
+        _approved_flow_stepper_markup(
+            ("Enter part", "Review candidates", "Compare and record"),
+            active_step=2 if search_completed else 1,
+        ),
+        unsafe_allow_html=True,
+    )
+    if not search_completed:
         # The initial Finder view is only a search form. Keep a stale prior
         # result hidden while the user edits a new query; show results and
         # filters only after that exact MPN has finished searching.
         st.session_state["approved_replacement_compare_candidates"] = []
+        _render_replacement_search_waiting_state()
         return
     supplier_candidate_count = len(candidates)
     if supplier_candidate_count:
@@ -6229,7 +6387,34 @@ def render_datasheet_live() -> None:
     begin_approved_page()
     document = st.session_state.get(DATASHEET_QA_DOC_KEY)
     ready = isinstance(document, dict) and bool(document.get("available"))
-    uploaded = st.file_uploader("Change document", type=["pdf"], key="datasheet_qa_uploader")
+    st.markdown(
+        "<div class='cv-ap'><p class='cv-ap-kicker'>DATASHEET Q&amp;A</p>"
+        "<h1>Ask a datasheet</h1>"
+        "<p class='cv-ap-sub'>Upload a manufacturer PDF, ask a technical question, and verify the cited pages.</p></div>",
+        unsafe_allow_html=True,
+    )
+    flow_stepper = st.empty()
+    flow_stepper.markdown(
+        _approved_flow_stepper_markup(
+            ("Upload PDF", "Ask a question", "Review citations"),
+            active_step=1,
+        ),
+        unsafe_allow_html=True,
+    )
+    with st.container(key="approved_datasheet_upload_card"):
+        st.markdown(
+            "<div class='cv-ap-entry-heading'><span class='cv-ap-entry-icon'>"
+            "<svg viewBox='0 0 24 24' aria-hidden='true'><path d='M5 3h10l4 4v14H5zM15 3v5h4M8 12h8M8 16h8' "
+            "fill='none' stroke='currentColor' stroke-width='1.8' stroke-linejoin='round'/></svg>"
+            "</span><div><p>DATASHEET Q&amp;A</p><h2>Upload the datasheet you want to review</h2></div></div>"
+            "<p class='cv-ap-entry-copy'>Cadivor uses the selected PDF for your questions and shows citations to the source pages.</p>",
+            unsafe_allow_html=True,
+        )
+        uploaded = st.file_uploader(
+            "Change document" if ready else "Choose a datasheet PDF",
+            type=["pdf"],
+            key="datasheet_qa_uploader",
+        )
     if uploaded is not None and not ready:
         extracted = extract_uploaded_datasheet(uploaded.getvalue(), filename=str(uploaded.name or ""))
         store_document_in_session(st.session_state, extracted)
@@ -6237,14 +6422,62 @@ def render_datasheet_live() -> None:
         ready = isinstance(document, dict) and bool(document.get("available"))
         if not ready:
             st.warning(str((extracted or {}).get("reason") or "Could not read this PDF."))
-    question = st.text_input("Your question", key="approved_datasheet_question", disabled=not ready)
-    if st.button("Ask", key="approved_datasheet_ask", type="primary", disabled=not ready) and question.strip() and ready:
+
+    raw_filename = str(document.get("filename") or "").strip() if isinstance(document, dict) else ""
+    filename = _esc(raw_filename or "No document selected")
+    document_state = (
+        "Ready for questions"
+        if ready
+        else "PDF needs attention"
+        if raw_filename
+        else "Questions unlock after a readable PDF is loaded"
+    )
+    document_state_class = "ready" if ready else "pending"
+    st.markdown(
+        f"<div class='cv-ap-document-state'><span><strong>Selected document</strong> · {filename}</span>"
+        f"<span class='{document_state_class}'>{_esc(document_state)}</span></div>",
+        unsafe_allow_html=True,
+    )
+    thread = list(st.session_state.get(DATASHEET_QA_THREAD_KEY) or [])
+    existing_latest = thread[-1] if thread and isinstance(thread[-1], dict) else {}
+    has_answer = bool(existing_latest.get("answer") or existing_latest.get("text"))
+    flow_stepper.markdown(
+        _approved_flow_stepper_markup(
+            ("Upload PDF", "Ask a question", "Review citations"),
+            active_step=3 if ready and has_answer else 2 if ready else 1,
+        ),
+        unsafe_allow_html=True,
+    )
+    with st.container(key="approved_datasheet_question_panel"):
+        question_col, ask_col = st.columns([6, 1], vertical_alignment="bottom")
+        with question_col:
+            question = st.text_input(
+                "Your question",
+                key="approved_datasheet_question",
+                disabled=not ready,
+                placeholder=(
+                    "Ask about package dimensions, pinout, or electrical ratings"
+                    if ready
+                    else "Upload a datasheet to enable questions"
+                ),
+            )
+        with ask_col:
+            ask = st.button(
+                "Ask",
+                key="approved_datasheet_ask",
+                type="primary",
+                disabled=not ready,
+            )
+        st.markdown(
+            "<p class='cv-ap-question-help'>Answers cite source pages. Verify the cited details against the original datasheet.</p>",
+            unsafe_allow_html=True,
+        )
+    if ask and question.strip() and ready:
         thread = list(st.session_state.get(DATASHEET_QA_THREAD_KEY) or [])
         _execute_datasheet_question(document=document, question=question.strip(), thread=thread)
     thread = list(st.session_state.get(DATASHEET_QA_THREAD_KEY) or [])
     latest = thread[-1] if thread and isinstance(thread[-1], dict) else {}
     answer = _esc(latest.get("answer") or latest.get("text") or "")
-    filename = _esc((document or {}).get("filename") if isinstance(document, dict) else "No document selected")
     evidence = latest.get("evidence") or latest.get("sources") or []
     evidence_rows = []
     if isinstance(evidence, list):
@@ -6258,7 +6491,12 @@ def render_datasheet_live() -> None:
                     "</tr>"
                 )
     if not evidence_rows:
-        evidence_rows.append("<tr><td colspan='3'>Upload a text-searchable PDF and ask a question to see cited evidence.</td></tr>")
+        empty_evidence = (
+            "Ask a question to see cited source evidence here."
+            if ready
+            else "Upload a PDF and ask a question to see cited source evidence here."
+        )
+        evidence_rows.append(f"<tr><td colspan='3'>{_esc(empty_evidence)}</td></tr>")
     answer_block = (
         f"<section class='cv-ap-banner'><h2>Answer</h2><p>{answer}</p></section>"
         if answer and answer != "—"
@@ -6267,14 +6505,13 @@ def render_datasheet_live() -> None:
     st.markdown(
         f"""
         <div class="cv-ap">
-          <p class="cv-ap-kicker">DATASHEET Q&A</p>
-          <h1>Ask a datasheet</h1>
-          <p class="cv-ap-sub">Get precise answers from technical documents, with source citations.</p>
-          <section class="cv-ap-card"><div class="cv-ap-meta">Selected document</div><div class="cv-ap-name">{filename}</div></section>
           {answer_block}
-          <section class="cv-ap-card"><table class="cv-ap-table"><thead><tr>
+          <section class="cv-ap-evidence-panel"><div class="cv-ap-evidence-head"><h2>Cited evidence</h2>
+            <p>Source pages appear here after a question is answered.</p></div>
+          <table class="cv-ap-table"><thead><tr>
             <th>Source</th><th>Evidence</th><th>Page</th>
-          </tr></thead><tbody>{''.join(evidence_rows)}</tbody></table></section>
+          </tr></thead><tbody>{''.join(evidence_rows)}</tbody></table>
+          <p class="cv-ap-meta" style="margin:10px 0 2px;text-align:right">Verify each citation against the original document before design sign-off.</p></section>
         </div>
         """,
         unsafe_allow_html=True,

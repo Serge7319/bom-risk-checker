@@ -17,11 +17,34 @@ def test_approved_finder_consumes_clicked_part_before_mounting_search_input():
     )
     assert 'st.session_state.pop("alternative_prefill_search_pending", False)' in renderer
     assert "if (run or prefilled_search_pending) and query:" in renderer
-    guard = renderer.index("if not has_durable_search_for_mpn(st.session_state, query):")
+    guard = renderer.index("search_completed = has_durable_search_for_mpn(st.session_state, query)")
+    assert "if not search_completed:" in renderer[guard:]
     assert guard < renderer.index('fit_filter, life_filter, stock_filter, risk_filter, sort_by = st.columns(5)')
     assert guard < renderer.index("Replacement candidates</h2>")
     assert "        return\n    supplier_candidate_count = len(candidates)" in renderer[guard:]
     assert 'original["manufacturer_part_number"] = context_mpn' in renderer
+
+
+def test_approved_search_and_datasheet_mockup_keep_existing_processing_paths():
+    source = (
+        Path(__file__).resolve().parents[1] / "src" / "ui" / "approved_pages.py"
+    ).read_text(encoding="utf-8")
+    finder = source.split("def render_replacement_search", 1)[1].split(
+        "def render_compare_live", 1
+    )[0]
+    datasheet = source.split("def render_datasheet_live", 1)[1].split(
+        "def render_settings_workspace", 1
+    )[0]
+
+    assert 'st.text_input("Search MPN", key="approved_replacement_query")' in finder
+    assert 'st.button("Search", key="approved_replacement_search", type="primary")' in finder
+    assert "run_alternative_finder_search(st.session_state, query)" in finder
+    assert 'key="datasheet_qa_uploader"' in datasheet
+    assert 'extract_uploaded_datasheet(uploaded.getvalue(), filename=str(uploaded.name or ""))' in datasheet
+    assert "store_document_in_session(st.session_state, extracted)" in datasheet
+    assert 'key="approved_datasheet_question"' in datasheet
+    assert 'key="approved_datasheet_ask"' in datasheet
+    assert "_execute_datasheet_question(document=document, question=question.strip(), thread=thread)" in datasheet
 
 
 def test_completed_empty_supplier_search_shows_guidance_without_zero_count_table():
