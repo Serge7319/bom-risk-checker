@@ -126,6 +126,7 @@ def inject_workspace_geometry_final() -> None:
         _load_css("laptop_kpi_table_pass.css"),
         _load_css("executive_ux.css"),
         _load_css("premium_recovery.css"),
+        _load_css("monitoring_home_alignment.css"),
     ]
     combined = "\n".join(chunk for chunk in css_chunks if chunk.strip())
     if combined.strip():
