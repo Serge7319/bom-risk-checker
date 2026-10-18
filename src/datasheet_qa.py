@@ -22,6 +22,7 @@ DATASHEET_QA_LAST_SUBMIT_AT_KEY = "datasheet_qa_last_submit_at"
 DATASHEET_QA_SUBMIT_DEBOUNCE_SECONDS = 2.0
 DATASHEET_QA_STATUS_KEY = "datasheet_qa_status"
 DATASHEET_QA_QUESTION_WIDGET_KEY = "datasheet_qa_question"
+DATASHEET_QA_FOLLOW_UP_WIDGET_KEY = "datasheet_qa_follow_up"
 DATASHEET_QA_CLEAR_QUESTION_KEY = "datasheet_qa_clear_question"
 DATASHEET_QA_PENDING_QUESTION_KEY = "datasheet_qa_pending_question"
 DATASHEET_QA_ACTIVE_FINGERPRINT_KEY = "datasheet_qa_active_fingerprint"
@@ -279,6 +280,7 @@ def clear_datasheet_document(session_state: MutableMapping[str, Any]) -> None:
     session_state.pop(DATASHEET_QA_THREAD_KEY, None)
     session_state.pop(DATASHEET_QA_ACTIVE_FINGERPRINT_KEY, None)
     session_state.pop(DATASHEET_QA_UPLOAD_SIGNATURE_KEY, None)
+    session_state.pop(DATASHEET_QA_FOLLOW_UP_WIDGET_KEY, None)
     session_state.pop(DATASHEET_QA_PENDING_QUESTION_KEY, None)
     session_state[DATASHEET_QA_STATUS_KEY] = STATUS_IDLE
     session_state.pop(DATASHEET_QA_LAST_SUBMIT_KEY, None)
@@ -867,6 +869,67 @@ def extract_uploaded_datasheet(file_bytes: bytes, *, filename: str = "") -> dict
         }
 
 
+def render_datasheet_page_png(
+    file_bytes: bytes,
+    page_number: int,
+    *,
+    max_dimension: int = 1400,
+) -> bytes:
+    """Render one original PDF page for the in-session evidence viewer.
+
+    The PDF bytes are used only for this render and are not added to session
+    storage. An empty result lets the UI fall back to the extracted citation.
+    """
+    payload = bytes(file_bytes or b"")
+    if not payload.startswith(b"%PDF"):
+        return b""
+    try:
+        page_index = int(page_number) - 1
+        bound = max(320, min(2400, int(max_dimension)))
+        if page_index < 0:
+            return b""
+        try:
+            import pypdfium2 as pdfium
+        except ImportError:
+            # Local test and preview environments may already provide PyMuPDF
+            # without installing the production renderer dependency.
+            import fitz
+
+            with fitz.open(stream=payload, filetype="pdf") as pdf:
+                if page_index >= len(pdf):
+                    return b""
+                page = pdf.load_page(page_index)
+                width = max(float(page.rect.width), 1.0)
+                height = max(float(page.rect.height), 1.0)
+                scale = min(1.5, bound / max(width, height))
+                return page.get_pixmap(
+                    matrix=fitz.Matrix(scale, scale), alpha=False, annots=True
+                ).tobytes("png")
+
+        pdf = pdfium.PdfDocument(payload)
+        try:
+            if page_index >= len(pdf):
+                return b""
+            page = pdf[page_index]
+            try:
+                width, height = (max(float(value), 1.0) for value in page.get_size())
+                scale = min(1.5, bound / max(width, height))
+                bitmap = page.render(scale=scale, rotation=0)
+                try:
+                    image = bitmap.to_pil().copy()
+                    output = BytesIO()
+                    image.save(output, format="PNG")
+                    return output.getvalue()
+                finally:
+                    bitmap.close()
+            finally:
+                page.close()
+        finally:
+            pdf.close()
+    except Exception:
+        return b""
+
+
 def retrieve_relevant_chunks(
     document: Mapping[str, Any],
     question: str,
@@ -1419,6 +1482,7 @@ def store_document_in_session(
     session_state[DATASHEET_QA_DOC_KEY] = dict(document)
     session_state[DATASHEET_QA_THREAD_KEY] = []
     session_state.pop(DATASHEET_QA_PENDING_QUESTION_KEY, None)
+    session_state.pop(DATASHEET_QA_FOLLOW_UP_WIDGET_KEY, None)
     fingerprint = document_fingerprint(document)
     if fingerprint:
         session_state[DATASHEET_QA_ACTIVE_FINGERPRINT_KEY] = fingerprint

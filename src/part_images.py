@@ -337,24 +337,23 @@ _ILLUSTRATION_SVG = {
 
 
 def _generic_component_svg(package_style: str, dimension: int) -> str:
-    """Neutral two-terminal package art; never imply an IC for unknown parts."""
-    if package_style == "th":
-        drawing = (
-            '<path d="M12 8V3m0 13v5" stroke="#a8b3c1" stroke-width="1.35"/>'
-            '<rect x="7.7" y="7.5" width="8.6" height="9" rx="3" fill="#475569" stroke="#334155" stroke-width="1.1"/>'
-            '<path d="M9.5 9.5h4.8" stroke="#aeb9c7" stroke-width=".8" stroke-linecap="round"/>'
-        )
-    else:
-        drawing = (
-            '<rect x="2.5" y="9" width="5" height="6" rx="1" fill="#c7d0db" stroke="#9aa8b8" stroke-width=".7"/>'
-            '<rect x="16.5" y="9" width="5" height="6" rx="1" fill="#c7d0db" stroke="#9aa8b8" stroke-width=".7"/>'
-            '<rect x="6.5" y="7" width="11" height="10" rx="2.1" fill="#475569" stroke="#334155" stroke-width="1.1"/>'
-            '<path d="M8.7 9.4h6.1" stroke="#aeb9c7" stroke-width=".8" stroke-linecap="round"/>'
-        )
+    """Draw a familiar electronic-component icon when the family is unknown.
+
+    The schematic-style package reads as an electronic component without
+    claiming an exact part, package dimension, or mounting style.
+    """
+    del package_style  # Unknown-family art stays neutral across package metadata.
+    drawing = (
+        '<rect x="6.5" y="6.5" width="11" height="11" rx="2.4" '
+        'fill="#ffffff" stroke="#3569e8" stroke-width="1.35"/>'
+        '<path d="M9 3.5v3m3-3v3m3-3v3M9 17.5v3m3-3v3m3-3v3M3.5 9h3m-3 3h3m-3 3h3m11-6h3m-3 3h3m-3 3h3" '
+        'fill="none" stroke="#3569e8" stroke-width="1.25" stroke-linecap="round"/>'
+        '<circle cx="12" cy="12" r="2.1" fill="#eaf1ff" stroke="#9cb7f2" stroke-width=".9"/>'
+    )
     svg = (
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{dimension}" height="{dimension}" viewBox="0 0 24 24">'
-        '<rect x="1" y="1" width="22" height="22" rx="5" fill="#f5f7fa" stroke="#dbe3ec" stroke-width="1"/>'
-        f'<g fill="none" stroke="#53657b" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">{drawing}</g>'
+        '<rect x="1" y="1" width="22" height="22" rx="6" fill="#f3f7ff" stroke="#dce7fb" stroke-width="1"/>'
+        f'<g fill="none" stroke-linecap="round" stroke-linejoin="round">{drawing}</g>'
         '</svg>'
     )
     return "data:image/svg+xml;base64," + base64.b64encode(svg.encode("utf-8")).decode("ascii")

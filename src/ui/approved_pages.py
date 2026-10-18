@@ -742,12 +742,16 @@ def begin_approved_page() -> None:
         .st-key-approved_datasheet_question_panel,.st-key-approved_datasheet_source_panel{box-sizing:border-box;width:100%;margin:0 0 16px;padding:14px 16px 12px;background:#fff;border:1px solid #dfe7f1;border-radius:12px}
         .st-key-approved_datasheet_question_panel>[data-testid="stVerticalBlock"]{gap:.25rem}
         .st-key-approved_datasheet_question_panel [data-testid="stTextInput"] input{min-height:42px!important;border-radius:8px!important}
-        .st-key-approved_datasheet_workspace{box-sizing:border-box;width:100%;max-width:1160px;margin:0 auto}
+        .st-key-approved_datasheet_workspace{box-sizing:border-box;width:100%;max-width:1440px;margin:0 auto}
         .cv-dq-document{display:flex;align-items:center;gap:12px;min-width:0;padding:12px 14px;border:1px solid #dfe7f1;border-radius:11px;background:#fff}
         .cv-dq-document-icon{display:flex;align-items:center;justify-content:center;flex:0 0 38px;width:38px;height:38px;border-radius:9px;background:#eff5ff;color:#2865ed;font-size:10px;font-weight:850}
         .cv-dq-document-copy{min-width:0;flex:1}.cv-dq-document-copy strong{display:block;overflow:hidden;color:#172942;font-size:12px;text-overflow:ellipsis;white-space:nowrap}.cv-dq-document-copy span{display:block;margin-top:4px;color:#77869a;font-size:10px}
         .cv-dq-private{flex:0 0 auto;padding:5px 8px;border-radius:999px;background:#edf8f1;color:#147a47;font-size:9px;font-weight:750}
         .cv-dq-question-head{margin:0 0 8px}.cv-dq-question-head h2{margin:0 0 5px;color:#172942;font-size:15px;font-weight:760}.cv-dq-question-head p{margin:0;color:#78879b;font-size:11px;line-height:1.5}
+        .cv-dq-current-question{margin:7px 0 12px;padding:11px 13px;border:1px solid #d6e0ee;border-radius:9px;background:#fff;color:#344a68;font-size:11px;line-height:1.45}
+        .cv-dq-current-question small{display:block;margin-bottom:5px;color:#8291a7;font-size:8px;font-weight:800;letter-spacing:.06em}
+        .cv-dq-follow-up-label{margin:14px 0 6px;color:#7d8ca1;font-size:9px;font-weight:800;letter-spacing:.05em}
+        .st-key-approved_datasheet_follow_up button{min-height:40px!important;height:40px!important;border-radius:8px!important;font-size:11px!important}
         .cv-dq-source-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:8px}.cv-dq-source-head p{margin:3px 0 0}
         .cv-dq-source-badge{padding:5px 8px;border-radius:999px;background:#eaf8f0;color:#147a47;font-size:9px;font-weight:750;white-space:nowrap}
         .cv-dq-viewer{overflow:hidden;border:1px solid #e1e8f1;border-radius:9px;background:#f4f7fb}
@@ -6396,12 +6400,13 @@ def render_compare_live() -> None:
 
 
 def render_datasheet_live() -> None:
-    """Approved Datasheet Q&A upload and cited source-review workspace."""
+    """Datasheet Q&A workspace styled to the approved review mockup."""
     import base64
 
     from src.datasheet_qa import (
         DATASHEET_QA_CLEAR_QUESTION_KEY,
         DATASHEET_QA_DOC_KEY,
+        DATASHEET_QA_FOLLOW_UP_WIDGET_KEY,
         DATASHEET_QA_PENDING_QUESTION_KEY,
         DATASHEET_QA_QUESTION_WIDGET_KEY,
         DATASHEET_QA_STATUS_KEY,
@@ -6414,14 +6419,17 @@ def render_datasheet_live() -> None:
         datasheet_upload_signature,
         document_fingerprint,
         extract_uploaded_datasheet,
+        render_datasheet_page_png,
         store_document_in_session,
     )
     from src.datasheet_comparison import MAX_DATASHEET_BYTES, MAX_DATASHEET_PAGES
     from src.pages.datasheet_qa import (
         _execute_datasheet_question,
         _inject_datasheet_qa_styles,
+        _render_ask_next_chips,
         _render_thread_turn,
         _typed_ask_click,
+        _typed_follow_up_click,
     )
 
     def store_new_upload(uploaded: Any) -> dict[str, Any] | None:
@@ -6446,20 +6454,41 @@ def render_datasheet_live() -> None:
         store_document_in_session(st.session_state, extracted)
         st.session_state[DATASHEET_QA_UPLOAD_SIGNATURE_KEY] = signature
         st.session_state[DATASHEET_QA_QUESTION_WIDGET_KEY] = ""
+        st.session_state.pop(DATASHEET_QA_FOLLOW_UP_WIDGET_KEY, None)
         st.session_state.pop(DATASHEET_QA_CLEAR_QUESTION_KEY, None)
         st.session_state.pop("approved_datasheet_source_page", None)
         return extracted
 
     def on_datasheet_upload_change() -> None:
-        store_new_upload(st.session_state.get("datasheet_qa_uploader"))
+        uploaded_file = st.session_state.get("datasheet_qa_uploader")
+        extracted_document = store_new_upload(uploaded_file)
+        if uploaded_file is not None and (
+            extracted_document is not None
+            or datasheet_upload_signature(
+                uploaded_file.getvalue(), filename=str(uploaded_file.name or "datasheet.pdf")
+            )
+            == str(st.session_state.get(DATASHEET_QA_UPLOAD_SIGNATURE_KEY) or "")
+        ):
+            st.session_state["datasheet_qa_show_picker"] = False
 
     def on_remove_datasheet() -> None:
         clear_datasheet_document(st.session_state)
         st.session_state.pop("datasheet_qa_uploader", None)
+        st.session_state.pop("datasheet_qa_show_picker", None)
         st.session_state.pop("approved_datasheet_source_page", None)
         st.session_state.pop(DATASHEET_QA_QUESTION_WIDGET_KEY, None)
+        st.session_state.pop(DATASHEET_QA_FOLLOW_UP_WIDGET_KEY, None)
         st.session_state.pop(DATASHEET_QA_PENDING_QUESTION_KEY, None)
         st.session_state.pop(DATASHEET_QA_CLEAR_QUESTION_KEY, None)
+
+    def change_source_page(delta: int) -> None:
+        try:
+            current = int(st.session_state.get("approved_datasheet_source_page") or active_page)
+        except (TypeError, ValueError):
+            current = active_page
+        st.session_state["approved_datasheet_source_page"] = max(
+            1, min(max(page_count, 1), current + int(delta))
+        )
 
     begin_approved_page()
     _inject_datasheet_qa_styles()
@@ -6485,6 +6514,7 @@ def render_datasheet_live() -> None:
                 question=pending_question,
                 thread=list(st.session_state.get(DATASHEET_QA_THREAD_KEY) or []),
             )
+            st.session_state[DATASHEET_QA_FOLLOW_UP_WIDGET_KEY] = ""
         thread = list(st.session_state.get(DATASHEET_QA_THREAD_KEY) or [])
         latest = thread[-1] if thread and isinstance(thread[-1], dict) else {}
         active_page = 1
@@ -6501,33 +6531,36 @@ def render_datasheet_live() -> None:
                 current_page = int(st.session_state[page_key])
             except (TypeError, ValueError):
                 current_page = 1
+                st.session_state[page_key] = active_page
             if current_page < 1 or current_page > max(page_count, 1):
                 st.session_state[page_key] = active_page
+        try:
+            source_page = max(
+                1,
+                min(max(page_count, 1), int(st.session_state.get(page_key) or active_page)),
+            )
+        except (TypeError, ValueError):
+            source_page = active_page
+            st.session_state[page_key] = active_page
 
         st.markdown(
             '<div class="dq-marker" aria-hidden="true"></div>'
-            "<div class='cv-ap'><p class='cv-ap-kicker'>DATASHEET Q&amp;A</p>"
-            "<h1>Ask a datasheet</h1>"
-            "<p class='cv-ap-sub'>Ask precise technical questions, inspect cited evidence, and review the original source pages.</p></div>",
-            unsafe_allow_html=True,
-        )
-        active_step = 3 if ready and thread else 2 if ready else 1
-        st.markdown(
-            _approved_flow_stepper_markup(
-                ("Upload PDF", "Ask a question", "Review citations"),
-                active_step=active_step,
-            ),
+            "<header class='dq-hero'>"
+            "<p class='dq-breadcrumb'>Engineering Intelligence / Datasheet Q&amp;A</p>"
+            "<h1 class='dq-title'>Datasheet Q&amp;A</h1>"
+            "<p class='dq-sub'>Ask precise questions about technical documents and inspect the supporting source pages.</p>"
+            "</header>",
             unsafe_allow_html=True,
         )
 
         if not ready:
             with st.container(key="approved_datasheet_upload_card"):
                 st.markdown(
-                    "<div class='cv-ap-entry-heading'><span class='cv-ap-entry-icon'>"
-                    "<svg viewBox='0 0 24 24' aria-hidden='true'><path d='M5 3h10l4 4v14H5zM15 3v5h4M8 12h8M8 16h8' "
-                    "fill='none' stroke='currentColor' stroke-width='1.8' stroke-linejoin='round'/></svg>"
-                    "</span><div><p>STEP 1 · UPLOAD</p><h2>Choose a datasheet PDF</h2></div></div>"
-                    "<p class='cv-ap-entry-copy'>Upload the manufacturer's document. Cadivor extracts its text so answers can cite the exact source pages.</p>",
+                    "<div class='cv-dq-upload-heading'><span class='cv-dq-document-icon' aria-hidden='true'>"
+                    "<svg viewBox='0 0 24 24'><path d='M6 3.8h8l4 4V20H6zM14 3.8v4h4M9 12h6M9 15.5h6' "
+                    "fill='none' stroke='currentColor' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/></svg>"
+                    "</span><div><p>SELECTED DATASHEET</p><h2>Choose a datasheet PDF</h2>"
+                    "<span>Upload a text-searchable manufacturer document to begin a cited review.</span></div></div>",
                     unsafe_allow_html=True,
                 )
                 uploaded = st.file_uploader(
@@ -6538,7 +6571,7 @@ def render_datasheet_live() -> None:
                     help=f"PDF only · up to {pdf_limit} · up to {MAX_DATASHEET_PAGES} pages · text-searchable pages required.",
                 )
                 st.markdown(
-                    f"<p class='cv-ap-limit-note'>PDF only · up to {_esc(pdf_limit)} · up to {MAX_DATASHEET_PAGES} pages · text-searchable pages required · private session. Scanned image-only PDFs are not supported yet.</p>",
+                    f"<p class='cv-dq-limit-note'>PDF only · up to {_esc(pdf_limit)} · up to {MAX_DATASHEET_PAGES} pages · text-searchable pages required · private session. Scanned image-only PDFs are not supported yet.</p>",
                     unsafe_allow_html=True,
                 )
             if isinstance(document, dict) and document.get("reason"):
@@ -6552,127 +6585,241 @@ def render_datasheet_live() -> None:
         size_text = f"{len(payload) / 1024:,.0f} KB · " if payload else ""
         analyzed_pages = int(document.get("page_count") or page_count)
         metadata = (
-            f"PDF · {size_text}{analyzed_pages} page{'s' if analyzed_pages != 1 else ''} analyzed"
+            f"{size_text}{page_count} page{'s' if page_count != 1 else ''} · {analyzed_pages} analyzed"
             if analyzed_pages != page_count
-            else f"PDF · {size_text}{page_count} page{'s' if page_count != 1 else ''}"
+            else f"{size_text}{page_count} page{'s' if page_count != 1 else ''}"
         )
-        document_cols = st.columns([5.5, 2.4, 1], gap="small", vertical_alignment="center")
+        document_cols = st.columns([5.2, 1.25, 1.35], gap="small", vertical_alignment="center")
         with document_cols[0]:
             st.markdown(
-                "<div class='cv-dq-document'><span class='cv-dq-document-icon'>PDF</span>"
-                f"<span class='cv-dq-document-copy'><strong>{_esc(filename or 'Active datasheet')}</strong><span>{_esc(metadata)}</span></span>"
-                "<span class='cv-dq-private'>Private session</span></div>",
+                "<div class='cv-dq-document'><span class='cv-dq-document-icon' aria-hidden='true'>"
+                "<svg viewBox='0 0 24 24'><path d='M6 3.8h8l4 4V20H6zM14 3.8v4h4M9 12h6M9 15.5h6' "
+                "fill='none' stroke='currentColor' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/></svg>"
+                f"</span><span class='cv-dq-document-copy'><small>SELECTED DATASHEET</small><strong>{_esc(filename or 'Active datasheet')}</strong><span>{_esc(metadata)}</span></span>"
+                "<span class='cv-dq-private'>Text extracted</span></div>",
                 unsafe_allow_html=True,
             )
         with document_cols[1]:
-            st.file_uploader(
+            if st.button(
                 "Change document",
-                type=["pdf"],
-                key="datasheet_qa_uploader",
-                on_change=on_datasheet_upload_change,
-                label_visibility="collapsed",
-                help="Select a new PDF to replace the active datasheet and start a fresh evidence thread.",
-            )
-        with document_cols[2]:
-            st.button(
-                "Remove",
-                key="approved_datasheet_remove",
+                key="approved_datasheet_change_document",
                 type="secondary",
-                on_click=on_remove_datasheet,
                 use_container_width=True,
-            )
+            ):
+                st.session_state["datasheet_qa_show_picker"] = True
+        with document_cols[2]:
+            if payload:
+                encoded_pdf = base64.b64encode(payload).decode("ascii")
+                st.markdown(
+                    "<a class='cv-dq-doc-link' target='_blank' rel='noopener noreferrer' "
+                    f"href='data:application/pdf;base64,{encoded_pdf}#page={source_page}'>Open PDF ↗</a>",
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.markdown("<span class='cv-dq-doc-link is-disabled'>PDF unavailable</span>", unsafe_allow_html=True)
 
-        left, right = st.columns([1.2, 1], gap="medium")
+        picker_open = bool(st.session_state.get("datasheet_qa_show_picker"))
+        if picker_open:
+            st.markdown('<div class="dq-picker-open" aria-hidden="true"></div>', unsafe_allow_html=True)
+            st.markdown(
+                "<p class='cv-dq-picker-label'>Choose a replacement PDF. The previous conversation will be cleared when the new document is ready.</p>",
+                unsafe_allow_html=True,
+            )
+            if st.button("Cancel", key="approved_datasheet_cancel_change", type="secondary"):
+                st.session_state["datasheet_qa_show_picker"] = False
+                st.rerun()
+        else:
+            st.markdown('<div class="dq-hide-picker" aria-hidden="true"></div>', unsafe_allow_html=True)
+        st.file_uploader(
+            "Change document",
+            type=["pdf"],
+            key="datasheet_qa_uploader",
+            on_change=on_datasheet_upload_change,
+            label_visibility="collapsed" if ready else "visible",
+            help=f"PDF only · up to {pdf_limit} · up to {MAX_DATASHEET_PAGES} pages · text-searchable pages required.",
+        )
+        if picker_open:
+            picker_actions = st.columns([1, 1, 5])
+            with picker_actions[0]:
+                st.button(
+                    "Remove document",
+                    key="approved_datasheet_remove",
+                    type="secondary",
+                    on_click=on_remove_datasheet,
+                    use_container_width=True,
+                )
+            with picker_actions[1]:
+                if st.button("Done", key="approved_datasheet_done_picker", type="secondary", use_container_width=True):
+                    st.session_state["datasheet_qa_show_picker"] = False
+                    st.rerun()
+
+        left, right = st.columns([0.92, 1.08], gap="medium")
         with left:
             with st.container(key="approved_datasheet_question_panel"):
                 st.markdown(
                     "<div class='cv-dq-question-head'><h2>Ask this datasheet</h2>"
-                    "<p>Answers use the active PDF and include page-level evidence.</p></div>",
+                    "<p>Answers include page citations so you can verify the source directly.</p></div>",
                     unsafe_allow_html=True,
                 )
-                st.text_area(
-                    "Question",
-                    key=DATASHEET_QA_QUESTION_WIDGET_KEY,
-                    placeholder="Example: What package dimensions and land pattern does the datasheet specify?",
-                    height=86,
-                    label_visibility="collapsed",
-                    disabled=str(st.session_state.get(DATASHEET_QA_STATUS_KEY) or "") == STATUS_PROCESSING,
-                )
-                st.button(
-                    "Ask Cadivor",
-                    key="approved_datasheet_ask",
-                    type="primary",
-                    on_click=_typed_ask_click,
-                    disabled=str(st.session_state.get(DATASHEET_QA_STATUS_KEY) or "") == STATUS_PROCESSING,
-                )
-                st.markdown(
-                    "<p class='cv-dq-limit-note'>Cadivor does not infer missing dimensions or claim interchangeability. Verify critical values against the source page before sign-off.</p>",
-                    unsafe_allow_html=True,
-                )
-            if not thread:
-                st.markdown(
-                    "<section class='cv-dq-panel'><h2>No questions yet</h2>"
-                    "<p>Start with package dimensions, pinout, ratings, device identity, or lifecycle wording in the datasheet.</p></section>",
-                    unsafe_allow_html=True,
-                )
-            else:
+                is_processing = str(st.session_state.get(DATASHEET_QA_STATUS_KEY) or "") == STATUS_PROCESSING
+                if thread:
+                    st.markdown(
+                        f"<div class='cv-dq-current-question'><small>YOUR QUESTION</small>{_esc(latest.get('question'))}</div>",
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    st.markdown("<p class='cv-dq-field-label'>YOUR QUESTION</p>", unsafe_allow_html=True)
+                    st.text_area(
+                        "Question",
+                        key=DATASHEET_QA_QUESTION_WIDGET_KEY,
+                        placeholder="Example: What package dimensions and land pattern does the datasheet specify?",
+                        height=64,
+                        label_visibility="collapsed",
+                        disabled=is_processing,
+                    )
+                    ask_cols = st.columns([4, 1], vertical_alignment="center")
+                    with ask_cols[0]:
+                        st.markdown("<span aria-hidden='true'></span>", unsafe_allow_html=True)
+                    with ask_cols[1]:
+                        st.button(
+                            "Ask Cadivor",
+                            key="approved_datasheet_ask",
+                            type="primary",
+                            on_click=_typed_ask_click,
+                            disabled=is_processing,
+                            use_container_width=True,
+                        )
                 fingerprint = document_fingerprint(document) or "doc"
-                for turn_index, turn in enumerate(thread):
-                    if isinstance(turn, dict):
-                        _render_thread_turn(
-                            turn,
-                            turn_index=turn_index,
-                            fingerprint=fingerprint,
-                            disabled=str(st.session_state.get(DATASHEET_QA_STATUS_KEY) or "") == STATUS_PROCESSING,
-                            show_follow_ups=(turn_index == len(thread) - 1),
+                latest_suggestions = [
+                    str(item).strip()
+                    for item in list(latest.get("suggestions") or [])
+                    if str(item).strip()
+                ]
+                if not latest_suggestions:
+                    latest_suggestions = [
+                        "Package dimensions",
+                        "Pin 1 orientation",
+                        "Absolute max ratings",
+                    ]
+                _render_ask_next_chips(
+                    latest_suggestions,
+                    turn_index=len(thread),
+                    fingerprint=fingerprint,
+                    disabled=str(st.session_state.get(DATASHEET_QA_STATUS_KEY) or "") == STATUS_PROCESSING,
+                    title="Suggested questions",
+                )
+                if not thread:
+                    st.markdown(
+                        "<div class='cv-dq-answer-empty'><strong>Your answer and evidence will appear here.</strong>"
+                        "<span>Start with package dimensions, pinout, ratings, or device identity.</span></div>",
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    _render_thread_turn(
+                        latest,
+                        turn_index=len(thread) - 1,
+                        fingerprint=fingerprint,
+                        disabled=str(st.session_state.get(DATASHEET_QA_STATUS_KEY) or "") == STATUS_PROCESSING,
+                        show_follow_ups=False,
+                        show_question=False,
+                        show_question_reference=False,
+                    )
+                    if len(thread) > 1:
+                        with st.expander(f"Earlier questions ({len(thread) - 1})", expanded=False):
+                            for turn_index, turn in enumerate(thread[:-1]):
+                                if isinstance(turn, dict):
+                                    _render_thread_turn(
+                                        turn,
+                                        turn_index=turn_index,
+                                        fingerprint=fingerprint,
+                                        disabled=True,
+                                        show_follow_ups=False,
+                                    )
+                st.markdown(
+                    "<p class='cv-dq-answer-caution'>AI-generated answers can miss context. Check each citation against the full datasheet before design sign-off.</p>",
+                    unsafe_allow_html=True,
+                )
+                if thread:
+                    st.markdown("<p class='cv-dq-follow-up-label'>ASK A FOLLOW-UP</p>", unsafe_allow_html=True)
+                    follow_cols = st.columns([5, 1.2], vertical_alignment="bottom")
+                    with follow_cols[0]:
+                        st.text_input(
+                            "Ask a follow-up",
+                            key=DATASHEET_QA_FOLLOW_UP_WIDGET_KEY,
+                            placeholder="Ask about a cited value…",
+                            label_visibility="collapsed",
+                            disabled=is_processing,
+                        )
+                    with follow_cols[1]:
+                        st.button(
+                            "Ask Cadivor",
+                            key="approved_datasheet_follow_up",
+                            type="primary",
+                            on_click=_typed_follow_up_click,
+                            disabled=is_processing,
+                            use_container_width=True,
                         )
 
         with right:
             with st.container(key="approved_datasheet_source_panel"):
                 st.markdown(
                     "<div class='cv-dq-source-head'><div><h2>Document evidence</h2>"
-                    f"<p>{_esc(filename or 'Active datasheet')}</p></div><span class='cv-dq-source-badge'>Original PDF</span></div>",
+                    f"<p>Cited page from {_esc(filename or 'Active datasheet')}</p></div>"
+                    f"<span class='cv-dq-page-badge'>PAGE {source_page} / {max(page_count, 1)}</span></div>",
                     unsafe_allow_html=True,
                 )
-                if page_count:
-                    source_page = st.selectbox(
-                        "Source page",
-                        options=list(range(1, page_count + 1)),
-                        index=max(0, min(page_count - 1, int(st.session_state.get(page_key, active_page)) - 1)),
-                        format_func=lambda page: f"Page {page}",
-                        key=page_key,
-                    )
-                else:
-                    source_page = 1
                 if payload:
-                    encoded_pdf = base64.b64encode(payload).decode("ascii")
-                    st.components.v1.html(
-                        "<div class='cv-dq-viewer'><iframe title='Original datasheet page' "
-                        f"src='data:application/pdf;base64,{encoded_pdf}#page={source_page}&zoom=page-width' "
-                        "style='display:block;width:100%;height:600px;border:0;background:#eef2f7'></iframe></div>",
-                        height=602,
-                        scrolling=False,
-                    )
-                    st.download_button(
-                        "Download source PDF",
-                        data=payload,
-                        file_name=filename or "datasheet.pdf",
-                        mime="application/pdf",
-                        key=f"approved_datasheet_download_{document_fingerprint(document) or 'active'}",
-                    )
+                    preview_png = render_datasheet_page_png(payload, source_page)
+                    if preview_png:
+                        encoded_preview = base64.b64encode(preview_png).decode("ascii")
+                        st.markdown(
+                            "<div class='cv-dq-page-preview-frame'>"
+                            f"<img class='cv-dq-page-preview' alt='Original datasheet page {source_page}' src='data:image/png;base64,{encoded_preview}'>"
+                            "</div>",
+                            unsafe_allow_html=True,
+                        )
+                    else:
+                        st.markdown(
+                            "<div class='cv-dq-page-fallback'>The original page preview could not be rendered. "
+                            "Open the PDF to inspect the source directly.</div>",
+                            unsafe_allow_html=True,
+                        )
                 else:
                     pages = document.get("pages") if isinstance(document, dict) else []
                     source_text = next(
                         (str(item.get("text") or "") for item in pages or [] if isinstance(item, dict) and int(item.get("page") or 0) == source_page),
                         "",
                     )
-                    st.markdown(
-                        "<div class='cv-dq-viewer-empty'>The original PDF is not available in this session view. "
-                        "Use Change document to select it again; extracted text remains available for cited answers.</div>",
-                        unsafe_allow_html=True,
-                    )
                     if source_text:
-                        st.markdown(f"<p class='cv-dq-evidence-label'>Extracted text · Page {source_page}</p><div class='dq-evidence-quote'>{_esc(source_text[:1800])}</div>", unsafe_allow_html=True)
+                        st.markdown(
+                            f"<div class='cv-dq-page-fallback'><strong>Extracted source text · Page {source_page}</strong><br><br>{_esc(source_text[:2400])}</div>",
+                            unsafe_allow_html=True,
+                        )
+                    else:
+                        st.markdown(
+                            "<div class='cv-dq-page-fallback'>Re-select the PDF to preview this original page. "
+                            "The extracted text and citations are still available in this session.</div>",
+                            unsafe_allow_html=True,
+                        )
+                nav_cols = st.columns([1, 1, 1], vertical_alignment="center")
+                with nav_cols[0]:
+                    st.button(
+                        "← Previous page",
+                        key="approved_datasheet_previous_page",
+                        type="tertiary",
+                        disabled=source_page <= 1,
+                        on_click=change_source_page,
+                        args=(-1,),
+                    )
+                with nav_cols[2]:
+                    st.button(
+                        "Next page →",
+                        key="approved_datasheet_next_page",
+                        type="tertiary",
+                        disabled=source_page >= max(page_count, 1),
+                        on_click=change_source_page,
+                        args=(1,),
+                    )
                 if st.session_state.pop("datasheet_qa_empty_ask", False):
                     st.warning("Enter a question about this datasheet.")
     end_approved_page()

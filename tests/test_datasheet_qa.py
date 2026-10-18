@@ -9,6 +9,7 @@ from io import BytesIO
 
 from src.datasheet_qa import (
     DATASHEET_QA_DOC_KEY,
+    DATASHEET_QA_FOLLOW_UP_WIDGET_KEY,
     DATASHEET_QA_QUESTION_WIDGET_KEY,
     DATASHEET_QA_THREAD_KEY,
     NOT_FOUND_ANSWER,
@@ -18,6 +19,7 @@ from src.datasheet_qa import (
     compact_datasheet_history,
     extract_uploaded_datasheet,
     retrieve_relevant_chunks,
+    render_datasheet_page_png,
     datasheet_upload_signature,
     store_document_in_session,
     append_thread_turn,
@@ -54,6 +56,17 @@ def _blank_pdf_bytes() -> bytes:
 
 
 class DatasheetQaCoreTests(unittest.TestCase):
+    def test_source_preview_renders_the_requested_pdf_page_without_storing_bytes(self):
+        payload = _text_pdf_bytes(["First source page", "Second source page"])
+        first = render_datasheet_page_png(payload, 1)
+        second = render_datasheet_page_png(payload, 2)
+
+        self.assertTrue(first.startswith(b"\x89PNG\r\n\x1a\n"))
+        self.assertTrue(second.startswith(b"\x89PNG\r\n\x1a\n"))
+        self.assertNotEqual(first, second)
+        self.assertEqual(render_datasheet_page_png(payload, 3), b"")
+        self.assertEqual(render_datasheet_page_png(b"not a PDF", 1), b"")
+
     def test_extract_text_pdf_creates_page_chunks(self):
         payload = _text_pdf_bytes(
             [
@@ -214,6 +227,18 @@ class DatasheetQaCoreTests(unittest.TestCase):
         self.assertNotEqual(first, different_content)
         self.assertNotEqual(first, different_name)
 
+    def test_changing_or_removing_document_clears_follow_up_composer(self):
+        document = extract_uploaded_datasheet(
+            _text_pdf_bytes(["Operating supply voltage is 3.3 V."]),
+            filename="next.pdf",
+        )
+        state = {DATASHEET_QA_FOLLOW_UP_WIDGET_KEY: "stale question"}
+        store_document_in_session(state, document)
+        self.assertNotIn(DATASHEET_QA_FOLLOW_UP_WIDGET_KEY, state)
+        state[DATASHEET_QA_FOLLOW_UP_WIDGET_KEY] = "stale question"
+        clear_datasheet_document(state)
+        self.assertNotIn(DATASHEET_QA_FOLLOW_UP_WIDGET_KEY, state)
+
     def test_true_missing_evidence_is_not_found(self):
         document = extract_uploaded_datasheet(
             _text_pdf_bytes(["Package dimensions and marking information only."]),
@@ -350,6 +375,9 @@ class DatasheetQaUiWiringTests(unittest.TestCase):
         self.assertIn("stTextAreaRootElement", page)
         self.assertIn("min-height:84px!important", page)
         self.assertIn("Example: What are the absolute maximum ratings?", page)
+        self.assertIn("max-width:1440px!important", page)
+        self.assertIn('with st.spinner("Cadivor is reviewing the datasheet…")', page)
+        self.assertNotIn('st.status(\n            "Cadivor is reviewing', page)
 
 class ConversationalDatasheetQaV1Tests(unittest.TestCase):
     """Acceptance coverage T1–T8 for Conversational Datasheet Q&A v1."""

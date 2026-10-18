@@ -1,3 +1,4 @@
+import base64
 import unittest
 
 from src.component_family_profiles import FAMILY_PROFILES
@@ -191,7 +192,7 @@ def test_missing_category_metadata_uses_the_generic_illustration():
     assert "<img" in markup
 
 
-def test_generic_fallback_is_neutral_and_respects_mounting_style():
+def test_generic_fallback_is_neutral_without_guessing_mounting_style():
     generic_smd = part_image_source("", "UNKNOWN-SMD")
     generic_th = part_image_source("", "UNKNOWN-TH", part={"package": "through-hole"})
     neutral_ic_smd = part_image_source("", "UNKNOWN-SMD", category="IC")
@@ -200,9 +201,17 @@ def test_generic_fallback_is_neutral_and_respects_mounting_style():
     )
 
     assert generic_smd.startswith("data:image/svg+xml;base64,")
-    assert generic_smd != generic_th
+    assert generic_smd == generic_th
     assert generic_smd != neutral_ic_smd
     assert generic_th != neutral_ic_th
+
+
+def test_generic_component_fallback_uses_an_electronic_package_icon():
+    source = part_image_source("", "UNKNOWN-1")
+    svg = base64.b64decode(source.split(",", 1)[1]).decode("utf-8")
+    assert '<rect x="6.5" y="6.5" width="11" height="11"' in svg
+    assert "M9 3.5v3" in svg
+    assert '<circle cx="12" cy="12"' in svg
 
 
 def test_stored_description_selects_the_category_drawing():
