@@ -3,7 +3,11 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from src.portfolio_intelligence import build_portfolio_intelligence, filter_portfolio_window
+from src.portfolio_intelligence import (
+    build_portfolio_intelligence,
+    filter_portfolio_window,
+    filter_previous_portfolio_window,
+)
 from src.supply_risk_scenario import build_supply_scenario
 
 
@@ -219,3 +223,28 @@ def test_portfolio_time_filter_uses_saved_analysis_dates_and_keeps_matching_part
     assert [row["id"] for row in selected_analyses] == ["recent"]
     assert [row["mpn"] for row in selected_parts] == ["A"]
     assert "undated BOM(s) are excluded" in note
+
+
+def test_portfolio_previous_window_uses_the_immediately_preceding_period():
+    analyses = [
+        {"id": "current", "created_at": "2026-10-01T00:00:00Z"},
+        {"id": "previous", "created_at": "2026-09-01T00:00:00Z"},
+        {"id": "too-old", "created_at": "2026-08-01T00:00:00Z"},
+    ]
+    parts = [
+        {"analysis_id": "current", "mpn": "A"},
+        {"analysis_id": "previous", "mpn": "B"},
+        {"analysis_id": "too-old", "mpn": "C"},
+    ]
+
+    previous_analyses, previous_parts, _, note = filter_previous_portfolio_window(
+        analyses,
+        parts,
+        [],
+        "Last 30 days",
+        now=datetime(2026, 10, 18, tzinfo=timezone.utc),
+    )
+
+    assert [row["id"] for row in previous_analyses] == ["previous"]
+    assert [row["mpn"] for row in previous_parts] == ["B"]
+    assert "Prior window" in note

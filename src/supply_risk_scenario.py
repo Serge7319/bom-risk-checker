@@ -906,11 +906,28 @@ def render_supply_scenario_dashboard(
           .cv-sr-action-row{display:grid;grid-template-columns:1.45fr .95fr 1.2fr 1.3fr .58fr .9fr 1fr;gap:8px;align-items:center;padding:8px 10px 8px 13px;border-bottom:1px solid #edf1f6;color:#36465d;font-size:11px}
           .cv-sr-action-row:last-child{border-bottom:0}
           .cv-sr-action-row strong{color:#17243d;font-size:12px}
+          .cv-sr-action-target{min-width:0;color:#36465d;line-height:1.35;overflow-wrap:anywhere}
+          .cv-sr-action-target .cv-sr-action-part{display:block;color:#36465d;font-size:11px;font-weight:650}
+          .cv-sr-action-target small{display:block;margin-top:3px;color:#74839a;font-size:10px;line-height:1.35}
           [class*="st-key-cv_sr_action_row_"]{padding:2px 10px 2px 13px;border-bottom:1px solid #edf1f6}
           [class*="st-key-cv_sr_action_row_"]:last-child{border-bottom:0}
           [class*="st-key-cv_sr_action_row_"] [data-testid="stHorizontalBlock"]{align-items:center!important;gap:8px!important}
           [class*="st-key-cv_sr_action_row_"] [data-testid="stVerticalBlock"]{gap:0!important}
           [class*="st-key-cv_sr_action_row_"] [data-testid="stElementContainer"]{margin:0!important;padding:0!important}
+          section[data-testid="stMain"] [class*="st-key-supply_scenario_action_review_"] button:not(:disabled),
+          section[data-testid="stMain"] [class*="st-key-supply_scenario_action_review_"] button:not(:disabled):hover{
+            display:inline-flex!important;align-items:center!important;justify-content:center!important;
+            min-height:36px!important;padding:7px 10px!important;border:1px solid #b8c8df!important;
+            border-radius:8px!important;background:#fff!important;color:#1e3a5f!important;
+            opacity:1!important;text-shadow:none!important;box-shadow:none!important;font-weight:750!important
+          }
+          section[data-testid="stMain"] [class*="st-key-supply_scenario_action_review_"] button:not(:disabled):hover{
+            background:#f4f8ff!important;border-color:#8fb3ee!important;color:#1d4ed8!important
+          }
+          section[data-testid="stMain"] [class*="st-key-supply_scenario_action_review_"] button:not(:disabled) *,
+          section[data-testid="stMain"] [class*="st-key-supply_scenario_action_review_"] button:not(:disabled):hover *{
+            color:#1e3a5f!important;opacity:1!important
+          }
           .cv-sr-tag{display:inline-flex;align-items:center;border-radius:999px;padding:5px 8px;background:#eaf2ff;color:#2762bd;font-size:10px;font-weight:750;white-space:nowrap}
           .cv-sr-note{margin:10px 0 0;color:#74839a;font-size:11px;line-height:1.45}
           @media(max-width:1150px){.cv-sr-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.cv-sr-grid{grid-template-columns:1fr}.cv-sr-actions{overflow-x:auto}.cv-sr-action-head,.cv-sr-action-row{min-width:980px}}
@@ -1267,7 +1284,12 @@ def render_supply_scenario_dashboard(
                 with row_cols[1]:
                     st.markdown(f'<span class="cv-sr-tag">{html.escape(action["Type"])}</span>', unsafe_allow_html=True)
                 with row_cols[2]:
-                    st.markdown(f"{html.escape(action['Component'])}<small>{html.escape(action['Project'])}</small>", unsafe_allow_html=True)
+                    st.markdown(
+                        f'<div class="cv-sr-action-target"><span class="cv-sr-action-part">'
+                        f'{html.escape(action["Component"])}</span><small>'
+                        f'{html.escape(action["Project"])}</small></div>',
+                        unsafe_allow_html=True,
+                    )
                 with row_cols[3]:
                     st.markdown(html.escape(action["Expected impact"]), unsafe_allow_html=True)
                 with row_cols[4]:
