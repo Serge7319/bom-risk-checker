@@ -51,6 +51,25 @@ def _install_analysis_detail_import_stubs() -> None:
     navigation.return_to_saved_bom_list = lambda *args, **kwargs: None
     navigation.alternative_finder_href = lambda *args, **kwargs: "?"
     navigation.read_query_params = lambda: {}
+    def _active_navigation_params(*, route=None):
+        st = sys.modules["streamlit"]
+        params = st.session_state.get("cadivor_nav_params")
+        if isinstance(params, dict) and (not route or params.get("page") == route):
+            return dict(params)
+        return dict(st.query_params)
+
+    navigation.current_navigation_query_params = _active_navigation_params
+    navigation.current_navigation_query_value = lambda key, default="", *, route=None: str(
+        _active_navigation_params(route=route).get(key, default) or default
+    )
+
+    def _replace_query_params(updates, *, remove=(), supersede_restore=False):
+        query_params = sys.modules["streamlit"].query_params
+        for key in remove:
+            query_params.pop(key, None)
+        query_params.update(updates)
+        return True
+    navigation.replace_navigation_query_params = _replace_query_params
     sys.modules["src.ui.navigation"] = navigation
 
     urls = types.ModuleType("src.urls")

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from typing import Any, Mapping, Optional
 import html
+import json
 from uuid import uuid4
 
 import streamlit as st
@@ -26,6 +27,7 @@ _LOGOUT_QUERY_KEYS = ("cadivor_signed_out", "auth", "source")
 # Streamlit turns every query-param write into history.pushState. Track the last
 # intentional in-app push so restore/rerun paths can avoid a duplicate entry.
 LAST_HISTORY_PUSH_PAGE_KEY = "cadivor_last_history_push_page"
+LAST_HISTORY_PUSH_PARAMS_KEY = "cadivor_last_history_push_params"
 HISTORY_RESTORE_EVENT_KEY = "cadivor_history_restore_event"
 HISTORY_RESTORE_SNAPSHOT_KEY = "cadivor_history_restore_snapshot"
 
@@ -66,10 +68,7 @@ def consume_new_analysis_navigation() -> None:
     nav_params = dict(st.session_state.get("cadivor_nav_params") or {})
     nav_params.pop("new_analysis", None)
     st.session_state["cadivor_nav_params"] = nav_params
-    try:
-        st.query_params.pop("new_analysis", None)
-    except Exception:
-        pass
+    replace_navigation_query_params({}, remove=("new_analysis",))
 
 
 def read_query_params() -> dict[str, str]:
@@ -78,6 +77,44 @@ def read_query_params() -> dict[str, str]:
         raw = dict(st.query_params)
     except Exception:
         return {}
+
+
+def current_navigation_query_params(*, route: str | None = None) -> dict[str, str]:
+    """Read query context for the route currently being rendered.
+
+    After browser Back/Forward, Streamlit can rerun with its previous server
+    query snapshot while ``resolve_canonical_app_route`` has already restored
+    the address-bar state into ``cadivor_nav_params``. Page renderers should
+    prefer that authoritative snapshot until Streamlit catches up.
+    """
+    params = st.session_state.get("cadivor_nav_params")
+    if isinstance(params, Mapping):
+        cleaned = {
+            str(key): str(value).strip()
+            for key, value in params.items()
+            if str(key) not in _LOGOUT_QUERY_KEYS
+            and value is not None
+            and str(value).strip() != ""
+        }
+        expected_route = str(route or "").strip()
+        if cleaned.get("page"):
+            return (
+                cleaned
+                if not expected_route or cleaned.get("page") == expected_route
+                else {}
+            )
+    return read_query_params()
+
+
+def current_navigation_query_value(
+    key: str,
+    default: str = "",
+    *,
+    route: str | None = None,
+) -> str:
+    """Read one parameter from the active route's restored navigation context."""
+    value = current_navigation_query_params(route=route).get(str(key), default)
+    return str(value or default)
     out: dict[str, str] = {}
     for key, value in raw.items():
         if isinstance(value, (list, tuple)):
@@ -128,6 +165,83 @@ def commit_navigation_query_params(nav_params: Mapping[str, Any], *, push: bool)
         except Exception:
             return False
     st.session_state[LAST_HISTORY_PUSH_PAGE_KEY] = cleaned["page"]
+    st.session_state[LAST_HISTORY_PUSH_PARAMS_KEY] = dict(cleaned)
+    return True
+
+
+def replace_navigation_query_params(
+    updates: Mapping[str, Any],
+    *,
+    remove: tuple[str, ...] | list[str] = (),
+    supersede_restore: bool = False,
+) -> bool:
+    """Update in-page URL state without adding a browser Back step.
+
+    Streamlit's query-param setter always calls ``pushState``. Tabs and focused
+    rows are part of the current page, so they use the browser's ``replaceState``
+    via a tiny same-origin component instead. Route changes still go through
+    ``navigate_to`` and remain normal Back/Forward history entries.
+    """
+    cleaned = {
+        str(key): str(value).strip()
+        for key, value in updates.items()
+        if str(key) not in _LOGOUT_QUERY_KEYS
+        and value is not None
+        and str(value).strip() != ""
+    }
+    removed = [str(key) for key in remove if str(key) not in _LOGOUT_QUERY_KEYS]
+    if not cleaned and not removed:
+        return False
+
+    # Keep server-side navigation context current as well. Browser URL writes
+    # below are partial so unrelated query values are preserved in the address.
+    nav_params = dict(st.session_state.get("cadivor_nav_params") or {})
+    for key in removed:
+        nav_params.pop(key, None)
+    nav_params.update(cleaned)
+    if nav_params:
+        st.session_state["cadivor_nav_params"] = nav_params
+    if supersede_restore:
+        st.session_state.pop(HISTORY_RESTORE_SNAPSHOT_KEY, None)
+    else:
+        snapshot = st.session_state.get(HISTORY_RESTORE_SNAPSHOT_KEY)
+        if isinstance(snapshot, dict):
+            snapshot_params = dict(snapshot.get("params") or {})
+            for key in removed:
+                snapshot_params.pop(key, None)
+            snapshot_params.update(cleaned)
+            snapshot["params"] = snapshot_params
+            st.session_state[HISTORY_RESTORE_SNAPSHOT_KEY] = snapshot
+
+    try:
+        import streamlit.components.v1 as components
+
+        payload = json.dumps({"updates": cleaned, "remove": removed}, ensure_ascii=True)
+        components.html(
+            f"""
+            <script>
+            (() => {{
+              try {{
+                const w = window.parent;
+                const change = {payload};
+                const url = new URL(w.location.href);
+                for (const key of change.remove) url.searchParams.delete(key);
+                for (const [key, value] of Object.entries(change.updates)) {{
+                  url.searchParams.set(key, value);
+                }}
+                w.history.replaceState(w.history.state, "", url.pathname + url.search + url.hash);
+              }} catch (_) {{}}
+            }})();
+            </script>
+            """,
+            height=0,
+            width=0,
+        )
+    except Exception:
+        # URL persistence is secondary to the live in-page widget state. The
+        # route itself remains usable if components are unavailable in a test
+        # stub or an embedded browser blocks same-origin access.
+        return False
     return True
 
 
@@ -724,12 +838,7 @@ def consume_alternative_finder_context(
 
 
 def _clear_alt_query_params() -> None:
-    try:
-        for key in _ALT_NAV_KEYS:
-            if key in st.query_params:
-                del st.query_params[key]
-    except Exception:
-        pass
+    replace_navigation_query_params({}, remove=_ALT_NAV_KEYS)
 
 
 def _clear_consumed_alt_nav_params() -> None:

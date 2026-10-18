@@ -84,6 +84,13 @@ class AskCadivorSessionContractTests(unittest.TestCase):
         navigation.alternative_finder_href = lambda *a, **k: "?"
         navigation.internal_nav_button = MagicMock()
         navigation.ALTERNATIVE_FINDER_PAGE = "Alternative Finder"
+        navigation.current_navigation_query_params = lambda **kwargs: dict(st.query_params)
+        def _replace_navigation_query_params(updates, *, remove=(), supersede_restore=False):
+            for key in remove:
+                st.query_params.pop(key, None)
+            st.query_params.update(updates)
+            return True
+        navigation.replace_navigation_query_params = _replace_navigation_query_params
         sys.modules["src.ui.navigation"] = navigation
 
         ai_entitlements = types.ModuleType("src.services.ai_entitlements")

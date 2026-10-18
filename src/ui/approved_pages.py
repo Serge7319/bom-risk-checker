@@ -743,6 +743,7 @@ def begin_approved_page() -> None:
         .st-key-approved_datasheet_question_panel>[data-testid="stVerticalBlock"]{gap:.25rem}
         .st-key-approved_datasheet_question_panel [data-testid="stTextInput"] input{min-height:42px!important;border-radius:8px!important}
         .st-key-approved_datasheet_workspace{box-sizing:border-box;width:100%;max-width:1440px;margin:0 auto}
+        .cv-dq-open-pdf-wrap{display:flex;width:100%;justify-content:flex-end}
         .cv-dq-document{display:flex;align-items:center;gap:12px;min-width:0;padding:12px 14px;border:1px solid #dfe7f1;border-radius:11px;background:#fff}
         .cv-dq-document-icon{display:flex;align-items:center;justify-content:center;flex:0 0 38px;width:38px;height:38px;border-radius:9px;background:#eff5ff;color:#2865ed;font-size:10px;font-weight:850}
         .cv-dq-document-copy{min-width:0;flex:1}.cv-dq-document-copy strong{display:block;overflow:hidden;color:#172942;font-size:12px;text-overflow:ellipsis;white-space:nowrap}.cv-dq-document-copy span{display:block;margin-top:4px;color:#77869a;font-size:10px}
@@ -751,7 +752,9 @@ def begin_approved_page() -> None:
         .cv-dq-current-question{margin:7px 0 12px;padding:11px 13px;border:1px solid #d6e0ee;border-radius:9px;background:#fff;color:#344a68;font-size:11px;line-height:1.45}
         .cv-dq-current-question small{display:block;margin-bottom:5px;color:#8291a7;font-size:8px;font-weight:800;letter-spacing:.06em}
         .cv-dq-follow-up-label{margin:14px 0 6px;color:#7d8ca1;font-size:9px;font-weight:800;letter-spacing:.05em}
-        .st-key-approved_datasheet_follow_up button{min-height:40px!important;height:40px!important;border-radius:8px!important;font-size:11px!important}
+        .st-key-approved_datasheet_question_panel .st-key-approved_datasheet_follow_up{box-sizing:border-box!important;width:100%!important;min-width:0!important}
+        .st-key-approved_datasheet_question_panel .st-key-approved_datasheet_follow_up [data-testid="stElementContainer"]{display:flex!important;justify-content:flex-end!important;width:100%!important;min-width:0!important}
+        .st-key-approved_datasheet_question_panel .st-key-approved_datasheet_follow_up button{box-sizing:border-box!important;width:100%!important;max-width:136px!important;min-width:0!important;min-height:40px!important;height:40px!important;padding:0 9px!important;border-radius:8px!important;font-size:10px!important;white-space:nowrap!important}
         .cv-dq-source-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:8px}.cv-dq-source-head p{margin:3px 0 0}
         .cv-dq-source-badge{padding:5px 8px;border-radius:999px;background:#eaf8f0;color:#147a47;font-size:9px;font-weight:750;white-space:nowrap}
         .cv-dq-viewer{overflow:hidden;border:1px solid #e1e8f1;border-radius:9px;background:#f4f7fb}
@@ -914,6 +917,7 @@ def begin_approved_page() -> None:
         [class*="st-key-approved_home_view_all"] button:hover{background:#dbeafe!important;border-color:#93b4ee!important}
         [class*="st-key-approved_home_new_bom"] button,[class*="st-key-approved_home_new_bom"] button p,[class*="st-key-approved_home_new_bom"] button span{white-space:nowrap!important}
         [class*="st-key-approved_home_row_"]{box-sizing:border-box!important;min-height:120px!important;margin:0!important;padding:18px 30px!important;border-top:0!important;border-bottom:1px solid #e5ebf3!important;background:#fff!important}
+        .st-key-approved_home_recent_card .st-key-approved_home_row_last{border-radius:0 0 15px 15px!important;border-bottom:0!important;background:#fff!important}
         [class*="st-key-approved_home_row_"] [data-testid="stVerticalBlock"]{display:flex!important;flex-direction:column!important;gap:0!important;justify-content:center!important;min-height:84px!important}
         [class*="st-key-approved_home_row_"] [data-testid="stElementContainer"]{margin:0!important;padding:0!important}
         [class*="st-key-approved_home_row_"] [data-testid="stHorizontalBlock"]{align-items:stretch!important;min-height:84px!important}
@@ -1720,13 +1724,19 @@ def render_saved_bom_settings(
     components: list[dict[str, Any]] | None = None,
 ) -> None:
     """Render the standalone settings page for a selected saved BOM."""
+    from src.ui.navigation import current_navigation_query_value
+
     begin_approved_page()
     rows = _rows_with_project_edits(_records(records))
     query_id = ""
     query_action = ""
     try:
-        query_id = str(st.query_params.get("saved_bom_id", "") or "").strip()
-        query_action = str(st.query_params.get("saved_bom_action", "") or "").strip().casefold()
+        query_id = current_navigation_query_value(
+            "saved_bom_id", "", route="BOM Settings"
+        ).strip()
+        query_action = current_navigation_query_value(
+            "saved_bom_action", "", route="BOM Settings"
+        ).strip().casefold()
     except Exception:
         pass
     edit_id = str(st.session_state.get(SAVED_BOM_EDIT_STATE) or query_id).strip()
@@ -2240,7 +2250,7 @@ def render_home(
             if st.button("Retry saved BOMs", key="home_retry_saved_boms"):
                 st.rerun()
         with st.container(key="approved_home_header"):
-            title_col, action_col = st.columns([4.8, 1], vertical_alignment="top")
+            title_col, action_col = st.columns([3.1, 1], vertical_alignment="top")
             with title_col:
                 st.markdown(
                     f"""
@@ -2343,7 +2353,8 @@ def render_home(
                 display_bom_name = bom_name or source_filename or "Saved BOM"
                 if not bom_name and display_bom_name.casefold().endswith(".csv"):
                     display_bom_name = display_bom_name[:-4]
-                with st.container(key=f"approved_home_row_{index}"):
+                row_key = "approved_home_row_last" if index == min(len(rows), 3) - 1 else f"approved_home_row_{index}"
+                with st.container(key=row_key):
                     cells = st.columns(home_widths, vertical_alignment="center")
                     cells[0].markdown(
                         f"<div class='cv-ap-home-bom'><span class='cv-ap-home-row-icon'>{lucide('file-text', 24)}</span>"
@@ -5411,7 +5422,11 @@ def render_replacement_search() -> None:
 
     def _query_param(key: str, default: str = "") -> str:
         try:
-            value = st.query_params.get(key, default)
+            from src.ui.navigation import current_navigation_query_value
+
+            value = current_navigation_query_value(
+                key, default, route="Alternative Finder"
+            )
         except Exception:
             return default
         if isinstance(value, (list, tuple)):
@@ -6611,12 +6626,12 @@ def render_datasheet_live() -> None:
             if payload:
                 encoded_pdf = base64.b64encode(payload).decode("ascii")
                 st.markdown(
-                    "<a class='cv-dq-doc-link' target='_blank' rel='noopener noreferrer' "
-                    f"href='data:application/pdf;base64,{encoded_pdf}#page={source_page}'>Open PDF ↗</a>",
+                    "<div class='cv-dq-open-pdf-wrap'><a class='cv-dq-doc-link' target='_blank' rel='noopener noreferrer' "
+                    f"href='data:application/pdf;base64,{encoded_pdf}#page={source_page}'>Open PDF ↗</a></div>",
                     unsafe_allow_html=True,
                 )
             else:
-                st.markdown("<span class='cv-dq-doc-link is-disabled'>PDF unavailable</span>", unsafe_allow_html=True)
+                st.markdown("<div class='cv-dq-open-pdf-wrap'><span class='cv-dq-doc-link is-disabled'>PDF unavailable</span></div>", unsafe_allow_html=True)
 
         picker_open = bool(st.session_state.get("datasheet_qa_show_picker"))
         if picker_open:
@@ -6677,7 +6692,7 @@ def render_datasheet_live() -> None:
                         label_visibility="collapsed",
                         disabled=is_processing,
                     )
-                    ask_cols = st.columns([4, 1], vertical_alignment="center")
+                    ask_cols = st.columns([3.2, 1], gap="small", vertical_alignment="center")
                     with ask_cols[0]:
                         st.markdown("<span aria-hidden='true'></span>", unsafe_allow_html=True)
                     with ask_cols[1]:
@@ -6741,7 +6756,7 @@ def render_datasheet_live() -> None:
                 )
                 if thread:
                     st.markdown("<p class='cv-dq-follow-up-label'>ASK A FOLLOW-UP</p>", unsafe_allow_html=True)
-                    follow_cols = st.columns([5, 1.2], vertical_alignment="bottom")
+                    follow_cols = st.columns([4, 1.35], gap="small", vertical_alignment="bottom")
                     with follow_cols[0]:
                         st.text_input(
                             "Ask a follow-up",
@@ -6801,7 +6816,7 @@ def render_datasheet_live() -> None:
                             "The extracted text and citations are still available in this session.</div>",
                             unsafe_allow_html=True,
                         )
-                nav_cols = st.columns([1, 1, 1], vertical_alignment="center")
+                nav_cols = st.columns([1.35, 1.45, 4], gap="small", vertical_alignment="center")
                 with nav_cols[0]:
                     st.button(
                         "← Previous page",
@@ -6811,7 +6826,7 @@ def render_datasheet_live() -> None:
                         on_click=change_source_page,
                         args=(-1,),
                     )
-                with nav_cols[2]:
+                with nav_cols[1]:
                     st.button(
                         "Next page →",
                         key="approved_datasheet_next_page",

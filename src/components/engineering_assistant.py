@@ -15,7 +15,11 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 from src.urls import internal_app_href
-from src.ui.navigation import alternative_finder_href, internal_nav_button, ALTERNATIVE_FINDER_PAGE
+from src.ui.navigation import (
+    ALTERNATIVE_FINDER_PAGE,
+    alternative_finder_href,
+    internal_nav_button,
+)
 from src.ui.cadivor_design_system import (
     MetricCard,
     cadivor_badge,
@@ -296,8 +300,15 @@ def _pin_ask_cadivor_tab(*, source: str = "unknown", analysis_id: str = "") -> N
     """Keep authoritative section/query on Ask Cadivor without mutating bound nav widgets."""
     st.session_state["cadivor_active_analysis_tab"] = ASK_CADIVOR_TAB
     try:
-        st.query_params["analysis_tab"] = ASK_CADIVOR_TAB
+        from src.ui.navigation import replace_navigation_query_params
+
+        nav_params = st.session_state.get("cadivor_nav_params") or {}
+        if not isinstance(nav_params, dict) or nav_params.get("analysis_tab") != ASK_CADIVOR_TAB:
+            replace_navigation_query_params(
+                {"analysis_tab": ASK_CADIVOR_TAB}, supersede_restore=True
+            )
     except Exception:
+        # A missing browser URL bridge must never interrupt an in-flight answer.
         pass
     target_analysis_id = analysis_id or str(
         st.session_state.get("cadivor_active_analysis_id")
@@ -418,7 +429,9 @@ def _block_duplicate_submission(*, kind: str, analysis_id: str = "") -> bool:
 def _arm_copilot_workflow_snapshot(*, reason: str) -> None:
     """Persist pending copilot workflow before a rerun in the same Streamlit session."""
     try:
-        route_snapshot = {key: value for key, value in st.query_params.items()}
+        from src.ui.navigation import current_navigation_query_params
+
+        route_snapshot = current_navigation_query_params()
     except Exception:
         route_snapshot = {}
     snapshot = _capture_copilot_workflow_snapshot()
@@ -1799,7 +1812,12 @@ def _select_initial_suggestion(question: str, *, index: int, prompt_key: str, an
 def _apply_copilot_query_picks(*, prompt_key: str) -> None:
     """Consume legacy URL pick params once (backward compatibility for bookmarked links)."""
     try:
-        query_params = st.query_params
+        from src.ui.navigation import (
+            current_navigation_query_params,
+            replace_navigation_query_params,
+        )
+
+        query_params = current_navigation_query_params(route="Analysis Details")
     except Exception:
         return
 
@@ -1807,10 +1825,7 @@ def _apply_copilot_query_picks(*, prompt_key: str) -> None:
     if pick.isdigit():
         idx = int(pick)
         if 0 <= idx < len(SUGGESTIONS):
-            try:
-                del query_params["cv35_pick"]
-            except Exception:
-                pass
+            replace_navigation_query_params({}, remove=("cv35_pick",))
             analysis_id = str(
                 st.session_state.get("cadivor_active_analysis_id")
                 or st.session_state.get("analysis_id")
@@ -1832,10 +1847,7 @@ def _apply_copilot_query_picks(*, prompt_key: str) -> None:
     if 0 <= idx < len(options):
         question = str(options[idx] or "").strip()
         if question:
-            try:
-                del query_params["cv36_pick"]
-            except Exception:
-                pass
+            replace_navigation_query_params({}, remove=("cv36_pick",))
             _log_ask_cadivor("suggestion_selected", kind="cv36", index=idx, source="url")
             _queue_follow_up(
                 question,

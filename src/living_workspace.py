@@ -20,6 +20,9 @@ from src.ui.cadivor_design_system import (
     render_section_header,
     render_subsection_header,
 )
+from src.ui.navigation import (
+    replace_navigation_query_params,
+)
 
 
 def _text(value: Any, default: str = "") -> str:
@@ -44,28 +47,24 @@ def _set_dashboard_detail_view(view: str) -> None:
     if clean not in {"ready", "actions", "blocked"}:
         clean = ""
     st.session_state["cadivor_dashboard_view"] = clean
-    try:
-        if clean:
-            st.query_params["dashboard_view"] = clean
-        elif "dashboard_view" in st.query_params:
-            del st.query_params["dashboard_view"]
-    except Exception:
-        pass
+    if clean:
+        replace_navigation_query_params({"dashboard_view": clean}, supersede_restore=True)
+    else:
+        replace_navigation_query_params(
+            {}, remove=("dashboard_view",), supersede_restore=True
+        )
 
 
 def _dashboard_detail_view() -> str:
     """Read a validated Dashboard detail selection without widget state."""
-    session_value = str(st.session_state.get("cadivor_dashboard_view") or "").strip().lower()
-    if session_value in {"ready", "actions", "blocked"}:
-        return session_value
-    try:
-        value = st.query_params.get("dashboard_view", "")
-    except Exception:
-        return ""
-    if isinstance(value, (list, tuple)):
-        value = value[-1] if value else ""
+    from src.ui.navigation import current_navigation_query_value
+
+    value = current_navigation_query_value("dashboard_view", "", route="Dashboard")
     value = str(value or "").strip().lower()
-    return value if value in {"ready", "actions", "blocked"} else ""
+    if value in {"ready", "actions", "blocked"}:
+        return value
+    session_value = str(st.session_state.get("cadivor_dashboard_view") or "").strip().lower()
+    return session_value if session_value in {"ready", "actions", "blocked"} else ""
 
 
 def _parse_time(value: Any) -> Optional[datetime]:
