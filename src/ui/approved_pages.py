@@ -884,8 +884,7 @@ def begin_approved_page() -> None:
         .st-key-approved_home_page{box-sizing:border-box!important;width:100%!important;max-width:1440px!important;margin-left:auto!important;margin-right:auto!important;padding:48px 0 28px!important}
         .st-key-approved_home_page > [data-testid="stVerticalBlock"]{gap:22px!important}
         .cv-ap-home-kpis{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:16px!important;margin:44px 0 0!important}
-        /* Align the Home CTA with the left edge of the Average health card. */
-        @media(min-width:1251px){.st-key-approved_home_header [class*="st-key-approved_home_new_bom"],[class*="st-key-approved_home_open_reports"]{position:relative!important;left:-5px!important}}
+        /* Home CTA alignment is finalized in the late workspace stylesheet. */
         .cv-ap-home-kpi{display:flex!important;align-items:flex-start!important;gap:18px!important;box-sizing:border-box!important;min-height:190px!important;padding:24px 22px!important;border:1px solid #dce7f5!important;border-radius:16px!important;background:#f9fbff!important;box-shadow:0 2px 7px rgba(15,23,42,.035)!important}
         .cv-ap-home-kpi .cv-ap-home-icon{display:flex!important;align-items:center!important;justify-content:center!important;flex:0 0 60px!important;width:60px!important;height:60px!important;border-radius:50%!important;background:#e8f1ff!important;margin:0!important}
         .cv-ap-home-icon svg{width:30px!important;height:30px!important}
@@ -1061,10 +1060,6 @@ def begin_approved_page() -> None:
         [class*="st-key-approved_monitoring_filter_"] button{box-sizing:border-box!important;width:100%!important;min-height:42px!important;height:42px!important;padding:0 11px!important;border:1px solid #dce4ef!important;border-radius:999px!important;background:#fff!important;color:#52647b!important;box-shadow:none!important;font-size:14px!important;font-weight:550!important;white-space:nowrap!important}
         [class*="st-key-approved_monitoring_filter_"] button:hover{border-color:#9bbdf5!important;background:#f8fbff!important;color:#2563eb!important}
         .st-key-approved_monitoring_filters [data-testid^="stBaseButton-"]{box-sizing:border-box!important;min-height:42px!important;height:42px!important;border-radius:999px!important}
-        section[data-testid="stMain"] .st-key-approved_monitoring_filters .stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton)>button[kind="primary"]:not(:disabled),
-        section[data-testid="stMain"] .st-key-approved_monitoring_filters .stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton)>button[data-testid="stBaseButton-primary"]:not(:disabled){border:1px solid #6ea2ff!important;border-radius:999px!important;background:#edf5ff!important;color:#2563eb!important;box-shadow:none!important}
-        section[data-testid="stMain"] .st-key-approved_monitoring_filters .stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton)>button[kind="secondary"]:not(:disabled),
-        section[data-testid="stMain"] .st-key-approved_monitoring_filters .stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton)>button[data-testid="stBaseButton-secondary"]:not(:disabled){border:1px solid #dce4ef!important;border-radius:999px!important;background:#fff!important;color:#52647b!important;box-shadow:none!important}
         .st-key-approved_monitoring_period_control{box-sizing:border-box!important;width:100%!important}
         .st-key-approved_monitoring_period_control>[data-testid="stVerticalBlock"]{gap:0!important}
         .cv-ap-monitoring-calendar{display:flex;align-items:center;justify-content:center;min-height:42px;color:#52647b}
@@ -3196,7 +3191,7 @@ def render_monitoring(alerts: list[dict[str, Any]] | None) -> None:
     source = _records(alerts)
     st.markdown(
         """
-        <div class="cv-ap">
+        <div class="cv-ap cv-ap-monitoring-page-header">
           <h1>Alerts & monitoring</h1>
           <p class="cv-ap-sub">Stay ahead of changes in component availability, lifecycle status, pricing and supplier activity.</p>
         </div>
@@ -3330,11 +3325,12 @@ def render_monitoring(alerts: list[dict[str, Any]] | None) -> None:
                 for category_column, category in zip(category_columns, categories):
                     category_slug = category.casefold().replace("&", "and").replace(" ", "_")
                     with category_column:
-                        with st.container(key=f"approved_monitoring_filter_{category_slug}"):
+                        selected_key = "selected_" if selected == category else ""
+                        with st.container(key=f"approved_monitoring_filter_{selected_key}{category_slug}"):
                             if st.button(
                                 category,
                                 key=f"approved_monitoring_category_{category_slug}",
-                                type="primary" if selected == category else "secondary",
+                                type="secondary",
                                 width="stretch",
                             ):
                                 st.session_state["approved_alert_category"] = category
