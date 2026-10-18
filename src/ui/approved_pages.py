@@ -884,7 +884,8 @@ def begin_approved_page() -> None:
         .st-key-approved_home_page{box-sizing:border-box!important;width:100%!important;max-width:1440px!important;margin-left:auto!important;margin-right:auto!important;padding:48px 0 28px!important}
         .st-key-approved_home_page > [data-testid="stVerticalBlock"]{gap:22px!important}
         .cv-ap-home-kpis{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:16px!important;margin:44px 0 0!important}
-        @media(min-width:1251px){.st-key-approved_home_header [class*="st-key-approved_home_new_bom"],[class*="st-key-approved_home_open_reports"]{position:relative!important;left:-12px!important}}
+        /* Match the approved Home mockup's 12px inset between the CTA and the KPI-card edge. */
+        @media(min-width:1251px){.st-key-approved_home_header [class*="st-key-approved_home_new_bom"],[class*="st-key-approved_home_open_reports"]{position:relative!important;left:12px!important}}
         .cv-ap-home-kpi{display:flex!important;align-items:flex-start!important;gap:18px!important;box-sizing:border-box!important;min-height:190px!important;padding:24px 22px!important;border:1px solid #dce7f5!important;border-radius:16px!important;background:#f9fbff!important;box-shadow:0 2px 7px rgba(15,23,42,.035)!important}
         .cv-ap-home-kpi .cv-ap-home-icon{display:flex!important;align-items:center!important;justify-content:center!important;flex:0 0 60px!important;width:60px!important;height:60px!important;border-radius:50%!important;background:#e8f1ff!important;margin:0!important}
         .cv-ap-home-icon svg{width:30px!important;height:30px!important}
@@ -1026,41 +1027,55 @@ def begin_approved_page() -> None:
         .st-key-approved_saved_bom_settings_page>[data-testid="stVerticalBlock"]{gap:12px!important}
         .st-key-approved_saved_bom_edit_screen,.st-key-approved_saved_bom_delete_screen{box-sizing:border-box!important;width:100%!important;max-width:none!important;margin:0 auto!important;padding:22px!important;border:1px solid #d7e0eb!important;border-radius:16px!important;background:#fff!important}
         .st-key-approved_saved_bom_delete_screen button[kind="primary"]{background:#be123c!important;border-color:#be123c!important}
-        .st-key-approved_monitoring_alert_card{box-sizing:border-box!important;width:100%!important;margin:8px 0 20px!important;overflow-x:auto!important;border:1px solid #cbd8e8!important;border-radius:16px!important;background:#fff!important;box-shadow:0 3px 12px rgba(15,23,42,.045)!important}
-        .st-key-approved_monitoring_alert_card>[data-testid="stVerticalBlock"]{gap:0!important}
-        .cv-ap-kpis.cv-ap-monitoring-kpis{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:16px!important;margin:0 0 18px!important}
-        .cv-ap-monitoring-kpi{display:grid!important;grid-template-columns:42px minmax(0,1fr) auto!important;grid-template-rows:42px auto!important;align-items:center!important;column-gap:12px!important;row-gap:10px!important;box-sizing:border-box!important;min-width:0!important;min-height:132px!important;padding:14px 16px!important;border:1px solid #e3ebf6!important;border-radius:14px!important;background:linear-gradient(135deg,#fbfdff 0%,#f7faff 100%)!important;box-shadow:0 2px 7px rgba(15,23,42,.035)!important}
-        .cv-ap-monitoring-icon{grid-column:1;grid-row:1;display:inline-flex!important;align-items:center!important;justify-content:center!important;width:42px!important;height:42px!important;border-radius:50%!important}
-        .cv-ap-monitoring-icon svg{width:22px!important;height:22px!important;display:block!important}
+        .st-key-approved_monitoring_kpi_grid{box-sizing:border-box!important;width:100%!important;margin:0 0 20px!important}
+        .st-key-approved_monitoring_kpi_grid>[data-testid="stVerticalBlock"]{gap:0!important}
+        .st-key-approved_monitoring_kpi_grid [data-testid="stHorizontalBlock"]{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:16px!important;align-items:stretch!important}
+        .st-key-approved_monitoring_kpi_grid [data-testid="column"]{box-sizing:border-box!important;width:auto!important;min-width:0!important;padding:0!important}
+        [class*="st-key-approved_monitoring_kpi_"]{position:relative!important;box-sizing:border-box!important;width:100%!important;min-width:0!important}
+        [class*="st-key-approved_monitoring_kpi_"]>[data-testid="stVerticalBlock"]{position:relative!important;display:block!important;min-height:188px!important;gap:0!important}
+        .cv-ap-monitoring-kpi{display:grid!important;grid-template-columns:minmax(0,1fr) 116px!important;grid-template-rows:58px auto!important;align-items:center!important;column-gap:12px!important;row-gap:12px!important;box-sizing:border-box!important;width:100%!important;min-width:0!important;min-height:188px!important;padding:20px 24px!important;border:1px solid #e3ebf6!important;border-radius:14px!important;background:linear-gradient(135deg,#fbfdff 0%,#f7faff 100%)!important;box-shadow:0 2px 7px rgba(15,23,42,.035)!important}
+        .cv-ap-monitoring-icon{grid-column:1;grid-row:1;display:inline-flex!important;align-items:center!important;justify-content:center!important;width:52px!important;height:52px!important;border-radius:50%!important}
+        .cv-ap-monitoring-icon svg{width:28px!important;height:28px!important;display:block!important}
         .cv-ap-monitoring-kpi--blue .cv-ap-monitoring-icon{background:#e6f0ff!important;color:#2563eb!important}
         .cv-ap-monitoring-kpi--red .cv-ap-monitoring-icon{background:#ffe9e9!important;color:#ef4444!important}
         .cv-ap-monitoring-kpi--violet .cv-ap-monitoring-icon{background:#f1eaff!important;color:#8b5cf6!important}
         .cv-ap-monitoring-kpi--green .cv-ap-monitoring-icon{background:#e3f8ed!important;color:#16a34a!important}
-        .cv-ap-monitoring-copy{grid-column:1/3;grid-row:2;min-width:0;align-self:start}
-        .cv-ap-monitoring-copy span{display:block;overflow:hidden;color:#52647b!important;font-size:14px!important;font-weight:650!important;line-height:1.3!important;text-overflow:ellipsis;white-space:nowrap}
-        .cv-ap-monitoring-copy strong{display:block;margin-top:5px;color:#12213b!important;font-size:30px!important;font-weight:780!important;line-height:1!important;letter-spacing:-.035em!important}
-        .cv-ap-monitoring-kpi .cv-ap-spark{grid-column:3;grid-row:2;align-self:center;width:clamp(50px,24%,84px)!important;height:36px!important;flex:0 1 84px!important}
-        .st-key-approved_monitoring_filters{box-sizing:border-box!important;width:100%!important;margin:0 0 22px!important;padding:12px 18px!important;border:1px solid #e3ebf6!important;border-radius:12px!important;background:#fff!important;box-shadow:0 2px 7px rgba(15,23,42,.025)!important}
+        .cv-ap-monitoring-copy{grid-column:1;grid-row:2;min-width:0;align-self:start}
+        .cv-ap-monitoring-copy>span{display:block;overflow:hidden;color:#52647b!important;font-size:18px!important;font-weight:600!important;line-height:1.3!important;text-overflow:ellipsis;white-space:nowrap}
+        .cv-ap-monitoring-copy strong{display:flex!important;align-items:center!important;gap:12px!important;margin-top:5px;color:#12213b!important;font-size:40px!important;font-weight:650!important;line-height:1!important;letter-spacing:-.035em!important}
+        .cv-ap-monitoring-chevron{color:#64748b!important;font-size:34px!important;font-weight:400!important;line-height:1!important}
+        .cv-ap-monitoring-kpi .cv-ap-spark{grid-column:2;grid-row:1/3;align-self:center;width:112px!important;max-width:100%!important;height:56px!important}
+        [class*="st-key-approved_monitoring_kpi_"] [class*="st-key-approved_monitoring_action_"]{position:absolute!important;inset:0!important;z-index:3!important;margin:0!important;padding:0!important;opacity:0!important}
+        [class*="st-key-approved_monitoring_kpi_"] [class*="st-key-approved_monitoring_action_"] button{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;min-height:188px!important;cursor:pointer!important}
+        [class*="st-key-approved_monitoring_kpi_"] [class*="st-key-approved_monitoring_action_"]:focus-within{opacity:1!important}
+        [class*="st-key-approved_monitoring_kpi_"] [class*="st-key-approved_monitoring_action_"] button:focus-visible{opacity:1!important;color:transparent!important;background:rgba(255,255,255,.04)!important;outline:3px solid #2563eb!important;outline-offset:-4px!important}
+        .st-key-approved_monitoring_filters{box-sizing:border-box!important;width:100%!important;margin:0 0 22px!important;padding:14px 20px!important;border:1px solid #e3ebf6!important;border-radius:12px!important;background:#fff!important;box-shadow:0 2px 7px rgba(15,23,42,.025)!important}
         .st-key-approved_monitoring_filters>[data-testid="stVerticalBlock"]{gap:0!important}
-        .st-key-approved_monitoring_filters [data-testid="stHorizontalBlock"]{align-items:center!important;gap:18px!important}
+        .st-key-approved_monitoring_filters [data-testid="stHorizontalBlock"]{align-items:center!important;gap:10px!important}
         .st-key-approved_monitoring_filters [data-testid="stWidgetLabel"] p{margin:0 0 5px!important;color:#52647b!important;font-size:12px!important;font-weight:700!important}
-        .cv-ap-monitoring-show-label{display:flex;align-items:center;min-height:40px;color:#52647b;font-size:12px;font-weight:700}
-        .cv-ap-monitoring-period-label{display:flex;align-items:center;min-height:40px;color:#52647b;font-size:12px;font-weight:700;white-space:nowrap}
-        .st-key-approved_monitoring_filters [data-testid="stSegmentedControl"]{width:100%!important}
-        .st-key-approved_monitoring_filters [data-testid="stSegmentedControl"] button{min-height:38px!important;border-radius:999px!important;color:#52647b!important}
-        .st-key-approved_monitoring_filters [data-testid="stSegmentedControl"] button[aria-pressed="true"]{border-color:#8db7ff!important;background:#edf5ff!important;color:#2563eb!important}
-        .st-key-approved_monitoring_filters [data-testid="stSelectbox"] [data-baseweb="select"]>div{min-height:40px!important;border:1px solid #d9e2ee!important;border-radius:9px!important;background:#fff!important}
-        .cv-ap-monitoring-period-range{display:flex;align-items:center;gap:6px;margin:5px 0 0 38%;color:#8290a3;font-size:10px;line-height:1.3}
+        .cv-ap-monitoring-show-label{display:flex;align-items:center;min-height:42px;color:#52647b;font-size:12px;font-weight:700}
+        .cv-ap-monitoring-period-label{display:flex;align-items:center;min-height:42px;color:#52647b;font-size:14px;font-weight:650;white-space:nowrap}
+        [class*="st-key-approved_monitoring_filter_"]{box-sizing:border-box!important;width:100%!important;min-width:0!important}
+        [class*="st-key-approved_monitoring_filter_"] [data-testid="stVerticalBlock"]{gap:0!important}
+        [class*="st-key-approved_monitoring_filter_"] button{box-sizing:border-box!important;width:100%!important;min-height:42px!important;height:42px!important;padding:0 11px!important;border:1px solid #dce4ef!important;border-radius:999px!important;background:#fff!important;color:#52647b!important;box-shadow:none!important;font-size:14px!important;font-weight:550!important;white-space:nowrap!important}
+        [class*="st-key-approved_monitoring_filter_"] button:hover{border-color:#9bbdf5!important;background:#f8fbff!important;color:#2563eb!important}
+        [class*="st-key-approved_monitoring_filter_"] button[kind="primary"]{border-color:#6ea2ff!important;background:#edf5ff!important;color:#2563eb!important}
+        .st-key-approved_monitoring_period_control{box-sizing:border-box!important;width:100%!important}
+        .st-key-approved_monitoring_period_control>[data-testid="stVerticalBlock"]{gap:0!important}
+        .cv-ap-monitoring-calendar{display:flex;align-items:center;justify-content:center;min-height:42px;color:#52647b}
+        .cv-ap-monitoring-calendar svg{width:18px;height:18px}
+        .st-key-approved_monitoring_filters [data-testid="stSelectbox"] [data-baseweb="select"]>div{min-height:42px!important;border:1px solid #d9e2ee!important;border-radius:9px!important;background:#fff!important}
+        .cv-ap-monitoring-period-range{display:flex;align-items:center;gap:6px;margin:5px 0 0;color:#8290a3;font-size:10px;line-height:1.3}
         .cv-ap-monitoring-period-range svg{width:14px;height:14px;flex:0 0 14px;color:#6f8098}
         .st-key-approved_monitoring_alert_heading{box-sizing:border-box!important;width:100%!important;margin:0!important;padding:18px 20px 12px!important}
         .st-key-approved_monitoring_alert_heading>[data-testid="stVerticalBlock"]{gap:0!important}
         .cv-ap-monitoring-heading h2{margin:0!important;color:#14233d!important;font-size:20px!important;font-weight:760!important;line-height:1.25!important;letter-spacing:-.02em!important}
         .cv-ap-monitoring-heading p{margin:4px 0 0!important;color:#64748b!important;font-size:12px!important}
         .cv-ap-monitoring-count{color:#64748b!important;font-size:12px!important;text-align:right!important;white-space:nowrap}
-        .cv-ap-monitoring-table-head{display:grid!important;grid-template-columns:.8fr 1.3fr 1.9fr 1.2fr 1.2fr!important;align-items:center!important;gap:12px!important;box-sizing:border-box!important;min-height:56px!important;padding:0 20px!important;background:#f7f9fc!important;border-bottom:1px solid #dce4ef!important}
-        .cv-ap-monitoring-table-head [role="columnheader"]{display:flex!important;align-items:center!important;min-width:0!important;min-height:44px!important;color:#64748b!important;font-size:12px!important;font-weight:750!important;letter-spacing:.035em!important;text-transform:uppercase!important;text-align:left!important}
-        .cv-ap-monitoring-table-head [role="columnheader"]:first-child,.cv-ap-monitoring-table-head [role="columnheader"]:nth-child(4),.cv-ap-monitoring-table-head [role="columnheader"]:last-child{justify-content:flex-start!important;text-align:left!important}
-        [class*="st-key-approved_monitoring_alert_row_"]{box-sizing:border-box!important;min-height:68px!important;margin:0!important;padding:9px 20px!important;border-bottom:1px solid #e5ebf3!important;background:#fff!important}
+        .cv-ap-monitoring-table-head{display:grid!important;grid-template-columns:.8fr 1.3fr 1.9fr 1.2fr 1.2fr .28fr!important;align-items:center!important;gap:12px!important;box-sizing:border-box!important;min-height:54px!important;margin:0 20px 4px!important;padding:0 14px!important;border-radius:10px!important;background:#f0f4f9!important}
+        .cv-ap-monitoring-table-head [role="columnheader"]{display:flex!important;align-items:center!important;gap:5px!important;min-width:0!important;min-height:44px!important;color:#52647b!important;font-size:14px!important;font-weight:600!important;letter-spacing:0!important;text-transform:none!important;text-align:left!important;white-space:nowrap!important}
+        .cv-ap-monitoring-sort{color:#718199!important;font-size:16px!important;font-weight:500!important;line-height:1!important}
+        [class*="st-key-approved_monitoring_alert_row_"]{box-sizing:border-box!important;min-height:76px!important;margin:0 20px!important;padding:10px 14px!important;border-bottom:1px solid #e5ebf3!important;background:#fff!important}
         [class*="st-key-approved_monitoring_alert_row_"] [data-testid="stVerticalBlock"]{gap:0!important}
         [class*="st-key-approved_monitoring_alert_row_"] [data-testid="stHorizontalBlock"]{align-items:center!important;gap:12px!important}
         [class*="st-key-approved_monitoring_alert_row_"] [data-testid="stColumn"],[class*="st-key-approved_monitoring_alert_row_"] [data-testid="column"]{box-sizing:border-box!important;min-width:0!important;padding:4px 5px!important;display:flex!important;align-items:center!important}
@@ -1069,21 +1084,30 @@ def begin_approved_page() -> None:
         .cv-ap-monitoring-detected{width:100%;color:#52647b;text-align:left;font-size:12px;line-height:1.35}
         .cv-ap-monitoring-detected strong{display:block;color:#34445d;font-size:12px;font-weight:650}
         .cv-ap-monitoring-detected small{display:block;margin-top:3px;color:#8090a5;font-size:10px}
-        [class*="st-key-approved_alert_action_"] button{min-height:36px!important;height:auto!important;padding:6px 10px!important;border:1px solid #8db7ff!important;border-radius:8px!important;background:#fff!important;color:#2563eb!important;white-space:normal!important;font-size:12px!important;font-weight:700!important;box-shadow:none!important}
+        [class*="st-key-approved_alert_action_"] button{min-height:42px!important;height:auto!important;padding:7px 12px!important;border:1px solid #8db7ff!important;border-radius:9px!important;background:#fff!important;color:#2563eb!important;white-space:normal!important;font-size:14px!important;font-weight:650!important;box-shadow:none!important}
         [class*="st-key-approved_alert_action_"] button:hover{border-color:#5b96f5!important;background:#f4f8ff!important}
+        [class*="st-key-approved_alert_more_"] [data-testid="stPopover"]>button{display:flex!important;align-items:center!important;justify-content:center!important;width:40px!important;min-width:40px!important;height:40px!important;min-height:40px!important;padding:0!important;border:0!important;border-radius:8px!important;background:transparent!important;color:#64748b!important;font-size:22px!important;box-shadow:none!important}
+        [class*="st-key-approved_alert_more_"] [data-testid="stPopover"]>button:hover{background:#f1f5f9!important;color:#2563eb!important}
+        .cv-ap-alert-popover{min-width:220px;max-width:340px;padding:2px 1px;color:#34445d;font-size:13px;line-height:1.45}
+        .cv-ap-alert-popover strong,.cv-ap-alert-popover span{display:block;color:#172942;font-size:14px;font-weight:750}
+        .cv-ap-alert-popover span{margin-top:3px;color:#53647d;font-size:12px;font-weight:650}
+        .cv-ap-alert-popover p{margin:8px 0;color:#52647b;font-size:12px}
+        .cv-ap-alert-popover small{color:#8794a7;font-size:10px}
         .cv-ap-table-center{width:100%;display:flex;align-items:center;justify-content:center;text-align:center}
         @media(max-width:1100px){[class*="st-key-approved_home_new_bom"],[class*="st-key-approved_home_open_reports"]{left:0!important}}
-        @media(max-width:1100px){.cv-ap-kpis.cv-ap-monitoring-kpis{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:12px!important}.cv-ap-monitoring-kpi{min-height:118px!important}.st-key-approved_monitoring_filters [data-testid="stHorizontalBlock"]{gap:12px!important}}
-        @media(max-width:900px){.cv-ap-kpis.cv-ap-monitoring-kpis{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important}}
-        @media(max-width:760px){.cv-ap-kpis.cv-ap-monitoring-kpis{grid-template-columns:1fr!important}.st-key-approved_monitoring_filters [data-testid="stHorizontalBlock"]{flex-wrap:wrap!important}.st-key-approved_monitoring_filters [data-testid="column"]{flex:1 1 100%!important;width:100%!important}.st-key-approved_monitoring_alert_heading{padding:14px 14px 10px!important}.cv-ap-monitoring-heading h2{font-size:18px!important}}
+        @media(max-width:1100px){.st-key-approved_monitoring_kpi_grid [data-testid="stHorizontalBlock"]{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:12px!important}.cv-ap-monitoring-kpi{min-height:164px!important;padding:18px!important}.st-key-approved_monitoring_kpi_grid [class*="st-key-approved_monitoring_kpi_"]>[data-testid="stVerticalBlock"]{min-height:164px!important}.st-key-approved_monitoring_kpi_grid [class*="st-key-approved_monitoring_action_"] button{min-height:164px!important}.st-key-approved_monitoring_filters [data-testid="stHorizontalBlock"]{gap:8px!important}}
+        @media(max-width:1200px){.st-key-approved_monitoring_filters>[data-testid="stVerticalBlock"]>[data-testid="stHorizontalBlock"]{display:grid!important;grid-template-columns:1fr!important;gap:12px!important}.st-key-approved_monitoring_filters>[data-testid="stVerticalBlock"]>[data-testid="stHorizontalBlock"]>[data-testid="column"]{width:100%!important;min-width:0!important}.cv-ap-monitoring-show-label{display:none!important}.st-key-approved_monitoring_category_row [data-testid="stHorizontalBlock"]{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:8px!important}.st-key-approved_monitoring_category_row [data-testid="column"]{width:auto!important;min-width:0!important}}
+        @media(max-width:900px){.st-key-approved_monitoring_filters{padding:12px!important}.st-key-approved_monitoring_alert_heading{padding:14px 14px 10px!important}.cv-ap-monitoring-heading h2{font-size:18px!important}}
+        @media(max-width:640px){.st-key-approved_monitoring_category_row [data-testid="stHorizontalBlock"]{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
+        @media(max-width:640px){.st-key-approved_monitoring_kpi_grid [data-testid="stHorizontalBlock"]{grid-template-columns:1fr!important}.cv-ap-monitoring-kpi{min-height:150px!important}.st-key-approved_monitoring_alert_heading{padding:14px 14px 10px!important}.cv-ap-monitoring-heading h2{font-size:18px!important}}
         @media(max-width:1100px){
-          .cv-ap-monitoring-table-head{gap:8px!important;padding:0 14px!important}
-          [class*="st-key-approved_monitoring_alert_row_"]{padding:8px 14px!important}
+          .cv-ap-monitoring-table-head{gap:8px!important;padding:0 12px!important;margin-left:14px!important;margin-right:14px!important}
+          [class*="st-key-approved_monitoring_alert_row_"]{padding:8px 12px!important;margin-left:14px!important;margin-right:14px!important}
           [class*="st-key-approved_monitoring_alert_row_"] [data-testid="stHorizontalBlock"]{gap:8px!important}
           [class*="st-key-approved_monitoring_alert_row_"] [data-testid="stMarkdownContainer"] p{font-size:12px!important}
         }
         @media(max-width:760px){
-          .cv-ap-monitoring-table-head,[class*="st-key-approved_monitoring_alert_row_"]{min-width:720px!important}
+          .cv-ap-monitoring-table-head,[class*="st-key-approved_monitoring_alert_row_"]{min-width:790px!important}
         }
         .cv-pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:3px 8px;font-size:12px;font-weight:750}
         .cv-pill-dot{width:7px;height:7px;border-radius:50%;background:currentColor;flex:0 0 7px}
@@ -3004,19 +3028,40 @@ def render_decision_queue(records: list[dict[str, Any]] | None) -> None:
     end_approved_page()
 
 
-def _alert_slots(source: list[dict[str, Any]], predicate) -> list[float | None]:
-    counts: dict[str, int] = {}
-    for item in source:
-        if not predicate(item):
+def _alert_slots(
+    source: list[dict[str, Any]],
+    predicate,
+    period: str = "Last 30 days",
+    today: date | None = None,
+) -> list[float | None]:
+    """Group real alert records into six chronological spark-bar buckets."""
+    dates = [
+        recorded
+        for item in source
+        if predicate(item)
+        if (recorded := _alert_recorded_date(item)) is not None
+    ]
+    if not dates:
+        return [None] * 6
+
+    end = today or max(dates)
+    if period == "All recorded":
+        start = min(dates)
+        end = max(dates)
+        if start == end:
+            start = end - timedelta(days=5)
+    else:
+        days = {"Last 7 days": 7, "Last 30 days": 30, "Last 90 days": 90}.get(period, 30)
+        start = end - timedelta(days=days - 1)
+
+    span_days = max(1, (end - start).days + 1)
+    counts = [0] * 6
+    for recorded in dates:
+        if recorded < start or recorded > end:
             continue
-        day = str(_first(item, "created_at", fallback=""))[:10]
-        if not day:
-            continue
-        counts[day] = counts.get(day, 0) + 1
-    slots: list[float | None] = [None] * 12
-    for index, day in enumerate(sorted(counts)[:12]):
-        slots[index] = float(counts[day])
-    return slots
+        bucket = min(5, max(0, ((recorded - start).days * 6) // span_days))
+        counts[bucket] += 1
+    return [float(count) if count else None for count in counts]
 
 
 def _alert_category(row: dict[str, Any]) -> str:
@@ -3034,6 +3079,11 @@ def _alert_category(row: dict[str, Any]) -> str:
     if "regulat" in text or "compliance" in text:
         return "Regulatory"
     return "Other"
+
+
+def _is_high_priority_alert(row: dict[str, Any]) -> bool:
+    severity = str(_first(row, "severity", fallback="")).casefold()
+    return any(token in severity for token in ("high", "critical", "urgent"))
 
 
 def _next_action(row: dict[str, Any]) -> tuple[str, str]:
@@ -3142,66 +3192,170 @@ def render_monitoring(alerts: list[dict[str, Any]] | None) -> None:
     today = datetime.now(timezone.utc).date()
     active_period = str(st.session_state.get("approved_alert_period") or "Last 30 days")
     period_source = _alerts_in_period(source, active_period, today)
-    high = sum(1 for row in period_source if "high" in str(_first(row, "severity", fallback="")).casefold())
+    active_alert_count = len(period_source)
+    high = sum(1 for row in period_source if _is_high_priority_alert(row))
     lifecycle_count = sum(1 for row in period_source if _alert_category(row) == "Lifecycle")
     inventory_count = sum(1 for row in period_source if _alert_category(row) == "Stock & supply")
-    active_spark = spark_slots(_alert_slots(period_source, lambda _row: True), "#8bb8ff")
-    high_spark = spark_slots(_alert_slots(period_source, lambda row: "high" in str(_first(row, "severity", fallback="")).casefold()), "#f5a1a1")
-    life_spark = spark_slots(_alert_slots(period_source, lambda row: _alert_category(row) == "Lifecycle"), "#c4a5ff")
-    stock_spark = spark_slots(_alert_slots(period_source, lambda row: _alert_category(row) == "Stock & supply"), "#9bdfbb")
+    active_spark = spark_slots(
+        _alert_slots(period_source, lambda _row: True, active_period, today),
+        "#91bfff",
+    )
+    high_spark = spark_slots(
+        _alert_slots(period_source, _is_high_priority_alert, active_period, today),
+        "#f5a1a1",
+    )
+    life_spark = spark_slots(
+        _alert_slots(
+            period_source,
+            lambda row: _alert_category(row) == "Lifecycle",
+            active_period,
+            today,
+        ),
+        "#c4a5ff",
+    )
+    stock_spark = spark_slots(
+        _alert_slots(
+            period_source,
+            lambda row: _alert_category(row) == "Stock & supply",
+            active_period,
+            today,
+        ),
+        "#9bdfbb",
+    )
     monitoring_cards = (
-        ("Active alerts", len(source), "blue", "bell", active_spark),
-        ("High priority", high, "red", "triangle-alert", high_spark),
-        ("Lifecycle changes", lifecycle_count, "violet", "refresh-cw", life_spark),
-        ("Inventory updates", inventory_count, "green", "package", stock_spark),
+        (
+            "active",
+            "Active alerts",
+            active_alert_count,
+            "blue",
+            "bell",
+            active_spark,
+            "All alerts",
+            "All",
+        ),
+        (
+            "high",
+            "High priority",
+            high,
+            "red",
+            "triangle-alert",
+            high_spark,
+            "All alerts",
+            "High",
+        ),
+        (
+            "lifecycle",
+            "Lifecycle changes",
+            lifecycle_count,
+            "violet",
+            "refresh-cw",
+            life_spark,
+            "Lifecycle",
+            "All",
+        ),
+        (
+            "inventory",
+            "Inventory updates",
+            inventory_count,
+            "green",
+            "package",
+            stock_spark,
+            "Stock & supply",
+            "All",
+        ),
     )
-    cards_html = "".join(
-        f"<article class='cv-ap-kpi cv-ap-monitoring-kpi cv-ap-monitoring-kpi--{tone}'>"
-        f"<span class='cv-ap-monitoring-icon' aria-hidden='true'>{lucide(icon, 22)}</span>"
-        f"<div class='cv-ap-monitoring-copy'><span>{_esc(label)}</span><strong>{_esc(value)}</strong></div>"
-        f"{spark}</article>"
-        for label, value, tone, icon, spark in monitoring_cards
-    )
-    st.markdown(
-        f"<section class='cv-ap cv-ap-kpis cv-ap-monitoring-kpis' aria-label='Monitoring summary'>{cards_html}</section>",
-        unsafe_allow_html=True,
-    )
+    with st.container(key="approved_monitoring_kpi_grid"):
+        card_columns = st.columns(4, gap="small")
+        for column, (
+            slug,
+            label,
+            value,
+            tone,
+            icon,
+            spark,
+            target_category,
+            target_severity,
+        ) in zip(card_columns, monitoring_cards):
+            with column:
+                with st.container(key=f"approved_monitoring_kpi_{slug}"):
+                    st.markdown(
+                        f"<article class='cv-ap-kpi cv-ap-monitoring-kpi cv-ap-monitoring-kpi--{tone}'>"
+                        f"<span class='cv-ap-monitoring-icon' aria-hidden='true'>{lucide(icon, 26)}</span>"
+                        f"<div class='cv-ap-monitoring-copy'><span>{_esc(label)}</span>"
+                        f"<strong>{_esc(value)}<span class='cv-ap-monitoring-chevron' aria-hidden='true'>›</span></strong></div>"
+                        f"{spark}</article>",
+                        unsafe_allow_html=True,
+                    )
+                    if st.button(
+                        f"Show {label}",
+                        key=f"approved_monitoring_action_{slug}",
+                        help=f"Filter recent alerts to {label.casefold()}.",
+                        type="tertiary",
+                        width="stretch",
+                    ):
+                        st.session_state["approved_alert_category"] = target_category
+                        st.session_state["approved_alert_severity"] = target_severity
+                        st.rerun()
 
     with st.container(key="approved_monitoring_filters"):
-        label_col, show_col, period_col = st.columns([0.48, 5.2, 1.72], vertical_alignment="center")
+        selected = str(st.session_state.get("approved_alert_category") or "All alerts")
+        severity_filter = str(st.session_state.get("approved_alert_severity") or "All")
+        label_col, show_col, period_col = st.columns(
+            [0.42, 8.45, 3.1],
+            vertical_alignment="center",
+            gap="small",
+        )
         with label_col:
             st.markdown("<div class='cv-ap-monitoring-show-label'>Show</div>", unsafe_allow_html=True)
         with show_col:
-            selected = st.segmented_control(
-                "Alert category",
-                categories,
-                default="All alerts",
-                key="approved_alert_category",
-                label_visibility="collapsed",
-                width="stretch",
-            )
+            with st.container(key="approved_monitoring_category_row"):
+                category_columns = st.columns([1.0, 1.38, .84, 1.4, .72, .72, .94], gap="small")
+                for category_column, category in zip(category_columns, categories):
+                    category_slug = category.casefold().replace("&", "and").replace(" ", "_")
+                    with category_column:
+                        with st.container(key=f"approved_monitoring_filter_{category_slug}"):
+                            if st.button(
+                                category,
+                                key=f"approved_monitoring_category_{category_slug}",
+                                type="primary" if selected == category else "secondary",
+                                width="stretch",
+                            ):
+                                st.session_state["approved_alert_category"] = category
+                                st.session_state["approved_alert_severity"] = "All"
+                                st.rerun()
         with period_col:
-            period_label_col, period_select_col = st.columns([0.82, 1.38], vertical_alignment="center")
+            period_label_col, period_select_col = st.columns([.78, 1.5], vertical_alignment="center", gap="small")
             with period_label_col:
                 st.markdown("<div class='cv-ap-monitoring-period-label'>Time period</div>", unsafe_allow_html=True)
             with period_select_col:
-                period = st.selectbox(
-                    "Time period",
-                    period_options,
-                    index=0,
-                    key="approved_alert_period",
-                    label_visibility="collapsed",
-                )
+                with st.container(key="approved_monitoring_period_control"):
+                    calendar_col, select_col = st.columns([.18, 1], vertical_alignment="center", gap="small")
+                    with calendar_col:
+                        st.markdown(
+                            f"<div class='cv-ap-monitoring-calendar' aria-hidden='true'>{lucide('calendar-clock', 18)}</div>",
+                            unsafe_allow_html=True,
+                        )
+                    with select_col:
+                        period = st.selectbox(
+                            "Time period",
+                            period_options,
+                            index=0,
+                            key="approved_alert_period",
+                            label_visibility="collapsed",
+                        )
             date_range = _alert_date_range_label(str(period or "Last 30 days"), source, today)
-            st.markdown(
-                f"<div class='cv-ap-monitoring-period-range'>{lucide('calendar-clock', 14)}<span>{_esc(date_range)}</span></div>",
-                unsafe_allow_html=True,
-            )
+            with period_select_col:
+                st.markdown(
+                    f"<div class='cv-ap-monitoring-period-range'>{lucide('calendar-clock', 14)}<span>{_esc(date_range)}</span></div>",
+                    unsafe_allow_html=True,
+                )
 
     rows = source
     if selected and selected != "All alerts":
         rows = [row for row in rows if _alert_category(row) == selected]
     rows = _alerts_in_period(rows, str(period or "Last 30 days"), today)
+    if severity_filter == "High":
+        rows = [row for row in rows if _is_high_priority_alert(row)]
     filtered_total = len(rows)
     rows = rows[:8]
 
@@ -3221,9 +3375,9 @@ def render_monitoring(alerts: list[dict[str, Any]] | None) -> None:
                 )
         header_labels = ("Severity", "Component", "Signal", "Detected", "Next action")
         header_cells = "".join(
-            f"<span role='columnheader'>{_esc(label)}</span>"
+            f"<span role='columnheader'>{_esc(label)}<span class='cv-ap-monitoring-sort' aria-hidden='true'>{'↕' if label in {'Severity', 'Detected'} else ''}</span></span>"
             for label in header_labels
-        )
+        ) + "<span role='columnheader' aria-label='More actions'></span>"
         st.markdown(
             f"<div class='cv-ap-monitoring-table-head' role='row'>{header_cells}</div>",
             unsafe_allow_html=True,
@@ -3241,7 +3395,7 @@ def render_monitoring(alerts: list[dict[str, Any]] | None) -> None:
             manufacturer = _first(row, "manufacturer", "manufacturer_name", "brand", fallback="")
             detected_relative, detected_exact = _alert_detected_labels(row)
             with st.container(key=f"approved_monitoring_alert_row_{index}"):
-                cells = st.columns([0.8, 1.3, 1.9, 1.2, 1.2], vertical_alignment="center")
+                cells = st.columns([0.8, 1.3, 1.9, 1.2, 1.2, .28], vertical_alignment="center", gap="small")
                 cells[0].markdown(
                     f"<span class='cv-pill {kind}'><i class='cv-pill-dot'></i>{_esc(severity)}</span>",
                     unsafe_allow_html=True,
@@ -3269,6 +3423,20 @@ def render_monitoring(alerts: list[dict[str, Any]] | None) -> None:
                         use_container_width=True,
                     ):
                         navigate_to(destination)
+                with cells[5]:
+                    with st.container(key=f"approved_alert_more_{index}"):
+                        with st.popover(
+                            "⋯",
+                            help=f"View alert details for {mpn}.",
+                            key=f"approved_alert_popover_{index}",
+                        ):
+                            st.markdown(
+                                f"<div class='cv-ap-alert-popover'><strong>{_esc(mpn)}</strong>"
+                                f"<span>{_esc(_first(row, 'alert_type', fallback='Update'))}</span>"
+                                f"<p>{_esc(_first(row, 'alert_message', fallback='No additional signal details were recorded.'))}</p>"
+                                f"<small>{_esc(manufacturer or 'Manufacturer not recorded')} · {_esc(severity)}</small></div>",
+                                unsafe_allow_html=True,
+                            )
     end_approved_page()
 
 
@@ -3978,27 +4146,26 @@ def _home_weekly_delta(
 
 
 def spark_slots(values: list[float | None], color: str = "#2563eb") -> str:
-    """Twelve-bucket sparkline frame. None leaves that period empty; it is not drawn as zero."""
-    buckets = 12
+    """Six-bucket spark bar chart. Empty periods remain blank instead of implying zero data."""
+    buckets = 6
     slots = list(values[:buckets])
     while len(slots) < buckets:
         slots.append(None)
     recorded = [value for value in slots if value is not None]
     peak = max(recorded) if recorded else 1.0
     marks = [
-        '<rect x="0" y="0" width="84" height="36" rx="8" fill="#f8fafc"/>',
-        '<line x1="4" y1="30" x2="80" y2="30" stroke="#e2e8f0" stroke-width="1"/>',
+        '<line x1="4" y1="50" x2="108" y2="50" stroke="#edf1f6" stroke-width="1"/>',
     ]
     for index, value in enumerate(slots):
-        x = 4 + index * 6.5
+        x = 7 + index * 17
         if value is None:
             continue
-        height = max(8.0, 22.0 * (float(value) / (peak or 1.0)))
+        height = max(10.0, 39.0 * (float(value) / (peak or 1.0)))
         marks.append(
-            f'<rect x="{x:.1f}" y="{30 - height:.1f}" width="3" height="{height:.1f}" rx="1" fill="{color}"/>'
+            f'<rect x="{x:.1f}" y="{50 - height:.1f}" width="8" height="{height:.1f}" rx="2" fill="{color}" opacity=".62"/>'
         )
     return (
-        f'<svg class="cv-ap-spark" viewBox="0 0 84 36" width="84" height="36" aria-hidden="true">{"".join(marks)}</svg>'
+        f'<svg class="cv-ap-spark" viewBox="0 0 116 56" width="116" height="56" aria-hidden="true">{"".join(marks)}</svg>'
     )
 
 
