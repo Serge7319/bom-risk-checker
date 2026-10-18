@@ -155,7 +155,7 @@ def test_component_list_is_limited_to_ten_rows(monkeypatch):
     )
 
     assert len(fake_st.displayed_df) == 10
-    assert "PART-11" not in set(fake_st.displayed_df["Part Number"])
+    assert "PART-11" not in set(fake_st.displayed_df["MPN"])
 
 
 class _Rerun(Exception):

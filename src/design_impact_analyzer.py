@@ -12,7 +12,7 @@ from typing import Any, Callable, Dict, Iterable, List
 import pandas as pd
 import streamlit as st
 
-from src.ui.cadivor_design_system import MetricCard, render_kpi_row_safe
+from src.ui.cadivor_design_system import MetricCard, cadivor_section_header, render_kpi_row_safe
 
 
 def _text(value: Any, default: str = "") -> str:
