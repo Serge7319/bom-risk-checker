@@ -62,5 +62,32 @@ class ApprovedPageVisualContractTests(unittest.TestCase):
         self.assertIn('.st-key-approved_monitoring_alert_card {', MONITORING_HOME_CSS)
 
 
+    def test_monitoring_period_has_no_overlapping_date_caption(self):
+        monitoring_renderer = APPROVED_PAGES.split("def render_monitoring(", 1)[1]
+        self.assertNotIn("cv-ap-monitoring-period-range", monitoring_renderer)
+        self.assertNotIn("_alert_date_range_label", APPROVED_PAGES)
+
+    def test_monitoring_filters_and_actions_match_mockup(self):
+        self.assertIn(
+            '.st-key-approved_monitoring_category_row [class*="st-key-approved_monitoring_filter_"] .stButton > button',
+            MONITORING_HOME_CSS,
+        )
+        self.assertIn("border-radius: 999px !important;", MONITORING_HOME_CSS)
+        self.assertIn(
+            '[class*="st-key-approved_alert_action_"] .stButton > button',
+            MONITORING_HOME_CSS,
+        )
+        self.assertIn("border: 1px solid #70a4ff !important;", MONITORING_HOME_CSS)
+
+    def test_monitoring_alert_rows_use_matching_bounded_grid(self):
+        self.assertIn(
+            '[class*="st-key-approved_monitoring_alert_row_"] [data-testid="stHorizontalBlock"]',
+            MONITORING_HOME_CSS,
+        )
+        self.assertIn(
+            'grid-template-columns: .8fr 1.3fr 1.9fr 1.2fr 1.2fr .28fr !important;',
+            MONITORING_HOME_CSS,
+        )
+
 if __name__ == "__main__":
     unittest.main()
