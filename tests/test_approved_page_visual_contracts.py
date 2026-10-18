@@ -10,6 +10,11 @@ APPROVED_PAGES = (ROOT / "src" / "ui" / "approved_pages.py").read_text(
 MONITORING_HOME_CSS = (
     ROOT / "src" / "assets" / "css" / "monitoring_home_alignment.css"
 ).read_text(encoding="utf-8")
+MONITORING_FINAL_CSS = (
+    ROOT / "src" / "assets" / "css" / "monitoring_table_final.css"
+).read_text(encoding="utf-8")
+CORE_UI = (ROOT / "src" / "ui" / "core_premium_ui.py").read_text(encoding="utf-8")
+MARKETING_SITE = (ROOT / "src" / "marketing_site.py").read_text(encoding="utf-8")
 
 
 class ApprovedPageVisualContractTests(unittest.TestCase):
@@ -88,6 +93,22 @@ class ApprovedPageVisualContractTests(unittest.TestCase):
             'grid-template-columns: .8fr 1.3fr 1.9fr 1.2fr 1.2fr .28fr !important;',
             MONITORING_HOME_CSS,
         )
+
+    def test_monitoring_row_boundary_and_blue_action_are_applied_after_global_polish(self):
+        polish = CORE_UI.index("inject_sprint71_polish()")
+        final_style = CORE_UI.index('id="cadivor-monitoring-table-final"', polish)
+        self.assertGreater(final_style, polish)
+        self.assertIn("width: calc(100% - 44px) !important;", MONITORING_FINAL_CSS)
+        self.assertIn("width: calc(100% - 28px) !important;", MONITORING_FINAL_CSS)
+        self.assertIn("border: 1px solid #70a4ff !important;", MONITORING_FINAL_CSS)
+        self.assertIn("color: #2563eb !important;", MONITORING_FINAL_CSS)
+
+    def test_app_marketing_fallback_uses_authenticated_student_limits(self):
+        self.assertIn("5 BOM analyses/month", MARKETING_SITE)
+        self.assertIn("50 components/BOM", MARKETING_SITE)
+        self.assertNotIn("3 BOM analyses/month", MARKETING_SITE)
+        self.assertNotIn("25 components/BOM", MARKETING_SITE)
+        self.assertIn("Request access</a>", MARKETING_SITE)
 
 if __name__ == "__main__":
     unittest.main()
