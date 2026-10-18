@@ -140,6 +140,51 @@ def filter_portfolio_window(
     return filtered_analyses, filtered_parts, filtered_alerts, note
 
 
+def filter_previous_portfolio_window(
+    analyses: Iterable[Dict[str, Any]],
+    parts: Iterable[Dict[str, Any]],
+    alerts: Iterable[Dict[str, Any]],
+    window: str,
+    *,
+    now: datetime | None = None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], str]:
+    """Return the immediately preceding window for evidence-backed KPI deltas."""
+    analysis_rows = [row for row in (analyses or []) if isinstance(row, dict)]
+    part_rows = [row for row in (parts or []) if isinstance(row, dict)]
+    alert_rows = [row for row in (alerts or []) if isinstance(row, dict)]
+    days = {
+        "Last 30 days": 30,
+        "Last 90 days": 90,
+        "Last 12 months": 365,
+    }.get(_text(window, "All time"))
+    if days is None:
+        return [], [], [], "No previous-period comparison is available for the all-time view."
+
+    current = now or datetime.now(timezone.utc)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=timezone.utc)
+    current_cutoff = current - timedelta(days=days)
+    previous_cutoff = current - timedelta(days=days * 2)
+    selected = []
+    selected_ids = set()
+    for row in analysis_rows:
+        timestamp = _recorded_date(row)
+        if timestamp is not None and previous_cutoff <= timestamp < current_cutoff:
+            selected.append(row)
+            selected_ids.add(_text(row.get("id")))
+    selected_parts = [row for row in part_rows if _text(row.get("analysis_id")) in selected_ids]
+    selected_alerts = [
+        row for row in alert_rows
+        if (timestamp := _recorded_date(row)) is not None
+        and previous_cutoff <= timestamp < current_cutoff
+    ]
+    note = (
+        f"Prior window: {previous_cutoff.date().isoformat()} to "
+        f"{(current_cutoff - timedelta(seconds=1)).date().isoformat()}."
+    )
+    return selected, selected_parts, selected_alerts, note
+
+
 def high_risk_components_disclosure(
     risk_count: int,
     risk_records: Iterable[Dict[str, Any]],
@@ -898,6 +943,8 @@ def render_portfolio_intelligence_dashboard(
           .cv-pi-kpi-label{color:#52647b;font-size:12px;font-weight:700;line-height:1.3}
           .cv-pi-kpi-value{margin-top:8px;color:#0f172a;font-size:27px;font-weight:850;line-height:1.05;letter-spacing:-.035em}
           .cv-pi-kpi-note{margin-top:8px;color:#74839a;font-size:11px;line-height:1.35}
+          .cv-pi-kpi-delta{display:flex;align-items:center;gap:4px;margin-top:7px;font-size:10px;font-weight:750;line-height:1.3}
+          .cv-pi-kpi-delta.positive{color:#16804a}.cv-pi-kpi-delta.negative{color:#d0444a}.cv-pi-kpi-delta.neutral{color:#8190a4}
           .cv-pi-chart-grid{display:grid;grid-template-columns:minmax(0,1.58fr) minmax(360px,.95fr);gap:14px;margin:0 0 15px}
           .cv-pi-panel{box-sizing:border-box;min-width:0;border:1px solid #dce5f0;border-radius:15px;background:#fff;padding:17px 18px;box-shadow:0 3px 10px rgba(15,23,42,.025)}
           .cv-pi-panel h2{margin:0;color:#17243d;font-size:17px;font-weight:780;letter-spacing:-.02em}
@@ -908,6 +955,19 @@ def render_portfolio_intelligence_dashboard(
           .cv-pi-table-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin:7px 0 11px}
           .cv-pi-table-head h2{margin:0;color:#17243d;font-size:19px;font-weight:800;letter-spacing:-.025em}
           .cv-pi-table-head p{margin:4px 0 0;color:#74839a;font-size:12px}
+          .cv-pi-table-card{width:100%;overflow-x:auto;border:1px solid #dce5f0;border-radius:13px;background:#fff;box-shadow:0 3px 10px rgba(15,23,42,.025)}
+          .cv-pi-table{width:100%;min-width:980px;border-collapse:collapse;color:#334155;font-size:11px}
+          .cv-pi-table th{padding:11px 10px;background:#f4f7fb;border-bottom:1px solid #dfe7f1;color:#64748b;text-align:left;font-size:9px;font-weight:850;letter-spacing:.055em;text-transform:uppercase;white-space:nowrap}
+          .cv-pi-table td{padding:10px;border-bottom:1px solid #edf1f6;line-height:1.35;vertical-align:middle}
+          .cv-pi-table tbody tr:last-child td{border-bottom:0}
+          .cv-pi-table tbody tr:hover{background:#f8fbff}
+          .cv-pi-table .cv-pi-project{display:block;color:#1e293b;font-size:11px;font-weight:750;white-space:normal}
+          .cv-pi-table .cv-pi-bom{display:block;margin-top:3px;color:#74839a;font-size:10px;overflow-wrap:anywhere}
+          .cv-pi-risk-pill{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;font-weight:750}
+          .cv-pi-risk-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#94a3b8}
+          .cv-pi-risk-pill.high .cv-pi-risk-dot{background:#ef4444}
+          .cv-pi-risk-pill.medium .cv-pi-risk-dot{background:#f59e0b}
+          .cv-pi-risk-pill.low .cv-pi-risk-dot{background:#2670e8}
           @media(max-width:1200px){.cv-pi-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}.cv-pi-chart-grid{grid-template-columns:1fr}}
           @media(max-width:720px){.cv-pi-head{display:block}.cv-pi-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.cv-pi-title{font-size:27px}}
           @media(max-width:480px){.cv-pi-kpis{grid-template-columns:1fr}}
@@ -950,26 +1010,62 @@ def render_portfolio_intelligence_dashboard(
         ("⚠", "Single-Source Records", intelligence["single_source_count"], note_map["Single-Source Records"]),
         ("◷", "Lifecycle Exposure", intelligence["lifecycle_count"], note_map["Lifecycle Exposure"]),
     ]
-    cards = "".join(
-        f'<article class="cv-pi-kpi"><span class="cv-pi-kpi-icon">{icon}</span>'
-        f'<div class="cv-pi-kpi-label">{html.escape(label)}</div>'
-        f'<div class="cv-pi-kpi-value">{int(value):,}</div>'
-        f'<div class="cv-pi-kpi-note">{html.escape(note)}</div></article>'
-        for icon, label, value, note in metrics
-    )
+    comparison = intelligence.get("period_comparison") or {}
+    exposure_metrics = {"Single-Source Records", "Lifecycle Exposure"}
+    cards = ""
+    for icon, label, value, note in metrics:
+        change = comparison.get(label) if isinstance(comparison, dict) else None
+        delta_markup = '<div class="cv-pi-kpi-delta neutral">No prior-period baseline</div>'
+        if isinstance(change, dict):
+            current_value = int(_number(change.get("current"), value))
+            previous_value = int(_number(change.get("previous"), 0))
+            delta = current_value - previous_value
+            if previous_value == 0 and current_value > 0:
+                delta_text = "↑ New in period"
+            elif delta == 0:
+                delta_text = "→ No change"
+            else:
+                percent = round((delta / previous_value) * 100) if previous_value else None
+                delta_text = f"{'↑' if delta > 0 else '↓'} {delta:+,}"
+                if percent is not None:
+                    delta_text += f" ({percent:+d}%)"
+            is_adverse = label in exposure_metrics
+            is_positive = (delta <= 0) if is_adverse else (delta >= 0)
+            tone = "positive" if is_positive else "negative"
+            delta_markup = (
+                f'<div class="cv-pi-kpi-delta {tone}">{html.escape(delta_text)} '
+                "<span>vs. previous period</span></div>"
+            )
+        cards += (
+            f'<article class="cv-pi-kpi"><span class="cv-pi-kpi-icon">{icon}</span>'
+            f'<div class="cv-pi-kpi-label">{html.escape(label)}</div>'
+            f'<div class="cv-pi-kpi-value">{int(value):,}</div>'
+            f'<div class="cv-pi-kpi-note">{html.escape(note)}</div>{delta_markup}</article>'
+        )
     st.markdown(f'<section class="cv-pi-kpis">{cards}</section>', unsafe_allow_html=True)
 
     if intelligence.get("time_window_note"):
         st.caption(str(intelligence["time_window_note"]))
+    if comparison:
+        st.caption("Period deltas compare saved analysis timestamps with the immediately preceding window.")
 
     chart_left, chart_right = st.columns([1.58, .95], gap="small")
     with chart_left:
         with st.container(key="portfolio_risk_trend_panel"):
-            st.markdown(
-                '<div class="cv-pi-panel"><h2>Portfolio risk trend</h2>'
-                '<p class="cv-pi-panel-sub">Recorded component risk grouped by the saved BOM analysis date.</p></div>',
-                unsafe_allow_html=True,
-            )
+            trend_heading, trend_filter_col = st.columns([4, 1.25], vertical_alignment="center")
+            with trend_heading:
+                st.markdown(
+                    '<div class="cv-pi-panel"><h2>Portfolio risk trend</h2>'
+                    '<p class="cv-pi-panel-sub">Count of recorded at-risk components across saved BOMs.</p></div>',
+                    unsafe_allow_html=True,
+                )
+            with trend_filter_col:
+                selected_risk_level = st.selectbox(
+                    "Component risk level",
+                    ["All risk levels", "High risk", "Medium risk", "Low risk"],
+                    key="portfolio_risk_trend_level",
+                    label_visibility="collapsed",
+                )
             trend_rows = intelligence.get("monthly_risk_trend") or []
             if trend_rows:
                 try:
@@ -981,27 +1077,39 @@ def render_portfolio_intelligence_dashboard(
                         "Medium risk": ("#f59e0b", "rgba(245,158,11,.48)"),
                         "High risk": ("#e34f55", "rgba(227,79,85,.45)"),
                     }
-                    for risk_label in ("Low risk", "Medium risk", "High risk"):
+                    month_labels = []
+                    for row in trend_rows:
+                        raw_month = str(row.get("Month") or "")
+                        parsed_month = pd.to_datetime(raw_month, format="%Y-%m", errors="coerce")
+                        month_labels.append(parsed_month.strftime("%b %y") if pd.notna(parsed_month) else raw_month)
+                    visible_risk_levels = (
+                        ("Low risk", "Medium risk", "High risk")
+                        if selected_risk_level == "All risk levels"
+                        else (selected_risk_level,)
+                    )
+                    for risk_label in visible_risk_levels:
                         line, fill = palette[risk_label]
+                        is_stacked = selected_risk_level == "All risk levels"
                         figure.add_trace(go.Scatter(
-                            x=[row["Month"] for row in trend_rows],
+                            x=month_labels,
                             y=[row.get(risk_label, 0) for row in trend_rows],
                             name=risk_label,
-                            mode="lines",
-                            stackgroup="risk",
+                            mode="lines+markers",
+                            stackgroup="risk" if is_stacked else None,
+                            fill=None if is_stacked else "tozeroy",
                             line={"color": line, "width": 1.5},
                             fillcolor=fill,
-                            hovertemplate=f"%{{x}} · {risk_label}: %{{y}}<extra></extra>",
+                            hovertemplate=f"%{{x}} · {risk_label}: %{{y:,}} components<extra></extra>",
                         ))
                     figure.update_layout(
-                        height=275,
-                        margin={"l": 12, "r": 10, "t": 12, "b": 12},
+                        height=268,
+                        margin={"l": 12, "r": 8, "t": 10, "b": 8},
                         paper_bgcolor="white",
                         plot_bgcolor="white",
-                        legend={"orientation": "h", "y": -0.16, "x": .5, "xanchor": "center"},
+                        legend={"orientation": "h", "y": -0.18, "x": .5, "xanchor": "center"},
                         hovermode="x unified",
                         font={"family": "Inter, system-ui, sans-serif", "size": 11, "color": "#64748b"},
-                        xaxis={"title": None, "gridcolor": "#edf1f6", "showline": False},
+                        xaxis={"title": None, "type": "category", "gridcolor": "#edf1f6", "showline": False, "categoryorder": "array", "categoryarray": month_labels},
                         yaxis={"title": None, "gridcolor": "#edf1f6", "rangemode": "tozero", "zeroline": False},
                     )
                     st.plotly_chart(figure, use_container_width=True, config={"displayModeBar": False})
@@ -1026,18 +1134,23 @@ def render_portfolio_intelligence_dashboard(
                     import plotly.graph_objects as go
 
                     figure = go.Figure(data=[go.Pie(
-                        labels=["High risk", "Medium risk", "Low risk", "Unassessed"],
+                        labels=[
+                            f"High risk · {values[0]:,}",
+                            f"Medium risk · {values[1]:,}",
+                            f"Low risk · {values[2]:,}",
+                            f"Unassessed · {values[3]:,}",
+                        ],
                         values=values,
                         hole=.63,
                         sort=False,
                         marker={"colors": ["#e34f55", "#f59e0b", "#2670e8", "#cbd5e1"], "line": {"color": "#ffffff", "width": 2}},
                         textinfo="percent",
                         textposition="inside",
-                        hovertemplate="%{label}: %{value:,} (%{percent})<extra></extra>",
+                        hovertemplate="%{label}<br>%{percent} of component records<extra></extra>",
                     )])
                     assessed = int(intelligence.get("assessed_component_records") or 0)
                     figure.update_layout(
-                        height=275,
+                        height=268,
                         margin={"l": 8, "r": 8, "t": 8, "b": 8},
                         paper_bgcolor="white",
                         showlegend=True,
@@ -1066,47 +1179,48 @@ def render_portfolio_intelligence_dashboard(
     if not bom_rows:
         st.success("No at-risk BOMs are recorded in this time range.")
     else:
-        visible = bom_rows[:8]
-        table_data = pd.DataFrame([
-            {
-                "Project": row["Project"],
-                "BOM name": row["BOM"],
-                "Total components": row["Total Components"],
-                "At-risk components": row["At-Risk Components"],
-                "Risk level": row["Risk Level"],
-                "Primary risk driver": row["Primary Risk Driver"],
-                "Last updated": str(row["Last Updated"])[:10] if row["Last Updated"] != "Not recorded" else "—",
-            }
-            for row in visible
-        ])
-        selection_key = "portfolio_at_risk_bom_table_" + "_".join(
-            token.lower() for token in window.split()
+        visible = bom_rows[:5]
+        body_rows = []
+        for row in visible:
+            level = str(row.get("Risk Level") or "Unknown")
+            level_class = level.casefold() if level.casefold() in {"high", "medium", "low"} else "unknown"
+            updated = str(row.get("Last Updated") or "Not recorded")
+            updated = updated[:10] if updated != "Not recorded" else "—"
+            body_rows.append(
+                "<tr>"
+                f'<td><span class="cv-pi-project">{html.escape(str(row.get("Project") or "Saved BOM"))}</span></td>'
+                f'<td><span class="cv-pi-bom">{html.escape(str(row.get("BOM") or "Saved BOM"))}</span></td>'
+                f'<td>{int(_number(row.get("Total Components"), 0)):,}</td>'
+                f'<td><strong>{int(_number(row.get("At-Risk Components"), 0)):,}</strong></td>'
+                f'<td><span class="cv-pi-risk-pill {level_class}"><i class="cv-pi-risk-dot"></i>{html.escape(level)}</span></td>'
+                f'<td>{html.escape(str(row.get("Primary Risk Driver") or "Not recorded"))}</td>'
+                f'<td>{html.escape(updated)}</td></tr>'
+            )
+        st.markdown(
+            '<div class="cv-pi-table-card"><table class="cv-pi-table"><thead><tr>'
+            '<th>Project</th><th>BOM name</th><th>Total components</th><th>At-risk components</th>'
+            '<th>Risk level</th><th>Primary risk driver</th><th>Last updated</th></tr></thead>'
+            f'<tbody>{"".join(body_rows)}</tbody></table></div>',
+            unsafe_allow_html=True,
         )
-        selected = st.dataframe(
-            table_data,
-            hide_index=True,
-            use_container_width=True,
-            height=min(360, max(118, 38 + 36 * len(table_data))),
-            on_select="rerun",
-            selection_mode="single-row",
-            key=selection_key,
-            column_config={
-                "Total components": st.column_config.NumberColumn(format="%d"),
-                "At-risk components": st.column_config.NumberColumn(format="%d"),
-            },
-        )
-        selected_rows = []
-        try:
-            selected_rows = list(selected.selection.rows)
-        except Exception:
-            pass
-        if selected_rows:
-            selected_index = int(selected_rows[0])
-            if 0 <= selected_index < len(visible):
-                chosen = visible[selected_index]
-                if st.button("Open selected BOM", key="portfolio_open_selected_bom", type="primary"):
-                    opener = intelligence.get("open_saved_bom")
-                    if callable(opener):
-                        opener(str(chosen["Analysis ID"]), _rerun=True)
         if len(bom_rows) > len(visible):
             st.caption(f"Showing {len(visible)} of {len(bom_rows):,} at-risk BOMs. Use View all BOMs to open the complete saved analysis list.")
+        opener = intelligence.get("open_saved_bom")
+        if callable(opener):
+            open_options = {
+                str(row["Analysis ID"]): f'{row["Project"]} — {row["BOM"]}'
+                for row in bom_rows
+                if row.get("Analysis ID")
+            }
+            if open_options:
+                open_cols = st.columns([5, 1], vertical_alignment="bottom")
+                with open_cols[0]:
+                    chosen_id = st.selectbox(
+                        "Open a saved BOM",
+                        list(open_options),
+                        format_func=lambda analysis_id: open_options[analysis_id],
+                        key="portfolio_open_bom_selection",
+                    )
+                with open_cols[1]:
+                    if st.button("Open BOM →", key="portfolio_open_selected_bom", type="primary", use_container_width=True):
+                        opener(str(chosen_id), _rerun=True)

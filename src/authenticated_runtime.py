@@ -6583,6 +6583,7 @@ def run_authenticated_app() -> None:
 
         from src.portfolio_intelligence import (
             build_portfolio_intelligence,
+            filter_previous_portfolio_window,
             filter_portfolio_window,
             render_portfolio_intelligence_dashboard,
         )
@@ -6593,16 +6594,50 @@ def run_authenticated_app() -> None:
         portfolio_window = str(st.session_state.get("portfolio_time_window") or "Last 12 months")
         if portfolio_window not in {"Last 30 days", "Last 90 days", "Last 12 months", "All time"}:
             portfolio_window = "Last 12 months"
+        all_portfolio_analyses = list(portfolio_analyses)
+        all_portfolio_parts = list(portfolio_parts)
+        all_portfolio_alerts = list(portfolio_alerts)
+        previous_analyses, previous_parts, previous_alerts, _previous_window_note = (
+            filter_previous_portfolio_window(
+                all_portfolio_analyses,
+                all_portfolio_parts,
+                all_portfolio_alerts,
+                portfolio_window,
+            )
+        )
         portfolio_analyses, portfolio_parts, portfolio_alerts, portfolio_window_note = filter_portfolio_window(
-            portfolio_analyses,
-            portfolio_parts,
-            portfolio_alerts,
+            all_portfolio_analyses,
+            all_portfolio_parts,
+            all_portfolio_alerts,
             portfolio_window,
         )
         portfolio_intelligence = build_portfolio_intelligence(
             portfolio_analyses,
             portfolio_parts,
             portfolio_alerts,
+        )
+        previous_intelligence = build_portfolio_intelligence(
+            previous_analyses,
+            previous_parts,
+            previous_alerts,
+        )
+        metric_fields = {
+            "Saved Projects": "total_projects",
+            "Component Records": "total_component_records",
+            "Shared Components": "shared_component_count",
+            "Single-Source Records": "single_source_count",
+            "Lifecycle Exposure": "lifecycle_count",
+        }
+        portfolio_intelligence["period_comparison"] = (
+            {
+                label: {
+                    "current": int(portfolio_intelligence.get(field) or 0),
+                    "previous": int(previous_intelligence.get(field) or 0),
+                }
+                for label, field in metric_fields.items()
+            }
+            if previous_analyses
+            else {}
         )
         portfolio_intelligence["time_window"] = portfolio_window
         portfolio_intelligence["time_window_note"] = portfolio_window_note
@@ -14463,20 +14498,63 @@ def run_authenticated_app() -> None:
               .cv-settings-profile-avatar img{width:100%;height:100%;object-fit:cover}
               .cv-settings-profile-name{color:#17243d;font-size:18px;font-weight:820}
               .cv-settings-profile-email{margin-top:3px;color:#74839a;font-size:13px;overflow-wrap:anywhere}
-              .cv-settings-facts{display:grid;grid-template-columns:1fr 1.3fr;gap:0 16px;border-top:1px solid #e7edf4}
-              .cv-settings-fact{display:grid;grid-template-columns:.75fr 1.2fr;gap:8px;padding:11px 0;border-bottom:1px solid #edf1f6;font-size:12px;line-height:1.35}
-              .cv-settings-fact span{color:#718198}.cv-settings-fact strong{color:#30435c;font-weight:700;overflow-wrap:anywhere}
+              .cv-settings-facts{display:grid;grid-template-columns:1fr;gap:0;border-top:1px solid #e7edf4}
+              .cv-settings-fact{display:grid;grid-template-columns:20px minmax(92px,.8fr) minmax(0,1.25fr);gap:9px;align-items:center;padding:10px 0;border-bottom:1px solid #edf1f6;font-size:12px;line-height:1.35}
+              .cv-settings-fact>span{color:#718198}.cv-settings-fact .cv-settings-fact-icon{color:#647b98;line-height:1;text-align:center}.cv-settings-fact-icon svg,.cv-settings-notification-icon svg{display:block;width:16px;height:16px;stroke:#647b98;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.cv-settings-fact strong{color:#30435c;font-weight:700;overflow-wrap:anywhere}
               .cv-settings-notification-heading{margin:9px 0 8px;color:#30435c;font-size:13px;font-weight:800}
+              .cv-settings-email-heading{margin:8px 0 3px;color:#17243d;font-size:15px;font-weight:800}
+              .cv-settings-email-copy{margin:0 0 5px;color:#74839a;font-size:11px;line-height:1.4}
               .cv-settings-notification-row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:9px 0;border-bottom:1px solid #edf1f6}
               .cv-settings-notification-row strong{display:block;color:#30435c;font-size:12px;font-weight:700}
               .cv-settings-notification-row span{display:block;margin-top:2px;color:#8190a4;font-size:10px;line-height:1.35}
+              [data-testid="stVerticalBlockBorderWrapper"]:has(.cv-settings-email-heading)>[data-testid="stVerticalBlock"]{gap:.42rem!important}
+              [data-testid="stVerticalBlockBorderWrapper"]:has(.cv-settings-email-heading) [data-testid="stHorizontalBlock"]{align-items:center!important}
+              .cv-settings-notification-icon{display:flex;flex:0 0 28px;width:28px;height:28px;align-items:center;justify-content:center;border-radius:8px;background:#f0f5fc;color:#647b98;font-size:15px}
+              .cv-settings-notification-copy{min-width:0}
+              .cv-settings-notification-copy strong{display:block;color:#30435c;font-size:12px;font-weight:700}
+              .cv-settings-notification-copy span{display:block;margin-top:2px;color:#8190a4;font-size:10px;line-height:1.35}
+              .cv-settings-timezone-heading{margin:10px 0 3px;color:#17243d;font-size:15px;font-weight:800}
+              .cv-settings-timezone-copy{margin:0 0 4px;color:#74839a;font-size:11px;line-height:1.4}
               .cv-settings-overview-card [data-testid="stToggle"]{margin:0!important}
               .cv-settings-overview-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-top:1px solid #edf1f6;color:#52647b;font-size:12px}
               .cv-settings-overview-row strong{color:#17243d;font-weight:750}
-              .cv-settings-plan-summary{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:12px 0 15px;padding:14px 15px;border:1px solid #d9e8fb;border-radius:12px;background:#f4f8ff}
+              .cv-settings-security-status{display:flex;align-items:center;gap:11px;margin:11px 0 12px;padding:12px 13px;border:1px solid #bde8d2;border-radius:11px;background:#eefbf4}
+              .cv-settings-security-status-icon{display:grid;place-items:center;flex:0 0 34px;width:34px;height:34px;border-radius:10px;background:#d6f5e4;color:#15803d;font-size:17px;font-weight:850}
+              .cv-settings-security-status strong{display:block;color:#166534;font-size:12px;font-weight:800}
+              .cv-settings-security-status span{display:block;margin-top:3px;color:#4b7660;font-size:10px;line-height:1.4}
+              .cv-settings-plan-summary{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:12px 0 10px;padding:14px 15px;border:1px solid #d9e8fb;border-radius:12px;background:#f4f8ff}
               .cv-settings-plan-summary small{display:block;color:#74839a;font-size:10px;font-weight:700}
               .cv-settings-plan-summary strong{display:block;margin-top:4px;color:#17243d;font-size:18px;font-weight:830}
+              .cv-settings-plan-features{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;margin:5px 0 12px}
+              .cv-settings-plan-feature{display:flex;gap:7px;align-items:flex-start;color:#52647b;font-size:10px;line-height:1.4}
+              .cv-settings-plan-feature b{color:#2670e8;font-size:12px;line-height:1}
               @media(max-width:850px){.cv-settings-overview-grid{grid-template-columns:1fr}.cv-settings-facts{grid-template-columns:1fr}}
+              @media(max-width:520px){.cv-settings-plan-features{grid-template-columns:1fr}.cv-settings-fact{grid-template-columns:20px minmax(75px,.8fr) minmax(0,1.25fr)}}
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        # The older Settings stylesheet assigns a filled blue surface to the
+        # active tab. Reassert the approved underline treatment after it so
+        # the nav retains the mockup hierarchy at every viewport size.
+        st.markdown(
+            """
+            <style id="cadivor-settings-mockup-tab-override" data-cadivor-layout-style="true">
+              html body section[data-testid="stMain"] .st-key-cv_settings_nav [class*="st-key-settings_tab_"] button{
+                min-height:44px!important;padding:10px 16px 11px!important;
+                border:0!important;border-bottom:2px solid transparent!important;border-radius:0!important;
+                background:transparent!important;background-color:transparent!important;color:#5e6e84!important;
+                box-shadow:none!important;font-size:13px!important;font-weight:700!important
+              }
+              html body section[data-testid="stMain"] .st-key-cv_settings_nav [class*="st-key-settings_tab_"] button:hover{
+                background:#f8fbff!important;color:#2670e8!important
+              }
+              html body section[data-testid="stMain"] .st-key-cv_settings_nav [class*="st-key-settings_tab_"] button[kind="primary"],
+              html body section[data-testid="stMain"] .st-key-cv_settings_nav [class*="st-key-settings_tab_"] button[data-testid="stBaseButton-primary"]{
+                border-bottom-color:#2670e8!important;background:transparent!important;background-color:transparent!important;
+                color:#2670e8!important;font-weight:800!important
+              }
             </style>
             """,
             unsafe_allow_html=True,
@@ -14687,6 +14765,10 @@ def run_authenticated_app() -> None:
             display_timezone = _safe_text(
                 customer_profile.get("timezone"), profile.get("timezone") or "Not recorded"
             )
+            display_language = _safe_text(
+                customer_profile.get("language") or profile.get("language") or preferences.get("language"),
+                "English (US)",
+            )
             avatar_url_value = _safe_text(
                 customer_profile.get("avatar_url"), profile.get("avatar_url", "")
             )
@@ -14696,6 +14778,16 @@ def run_authenticated_app() -> None:
                 if avatar_url_value
                 else initials_value
             )
+            from src.ui.cadivor_design_system.icons import lucide
+
+            profile_icons = {
+                "Full name": '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>',
+                "Email address": '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>',
+                "Organization": lucide("factory", 16),
+                "Role": lucide("briefcase-business", 16),
+                "Location": '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></svg>',
+                "Language": '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/></svg>',
+            }
 
             overview_top_left, overview_top_right = st.columns(2, gap="small")
             with overview_top_left:
@@ -14721,12 +14813,12 @@ def run_authenticated_app() -> None:
                           <div class="cv-settings-profile-email">{html.escape(display_email)}</div></div>
                         </div>
                         <div class="cv-settings-facts">
-                          <div class="cv-settings-fact"><span>Full name</span><strong>{html.escape(display_name)}</strong></div>
-                          <div class="cv-settings-fact"><span>Email address</span><strong>{html.escape(display_email)}</strong></div>
-                          <div class="cv-settings-fact"><span>Organization</span><strong>{html.escape(display_company)}</strong></div>
-                          <div class="cv-settings-fact"><span>Role</span><strong>{html.escape(display_role)}</strong></div>
-                          <div class="cv-settings-fact"><span>Location</span><strong>{html.escape(display_country)}</strong></div>
-                          <div class="cv-settings-fact"><span>Time zone</span><strong>{html.escape(display_timezone)}</strong></div>
+                          <div class="cv-settings-fact"><span class="cv-settings-fact-icon" aria-hidden="true">{profile_icons['Full name']}</span><span>Full name</span><strong>{html.escape(display_name)}</strong></div>
+                          <div class="cv-settings-fact"><span class="cv-settings-fact-icon" aria-hidden="true">{profile_icons['Email address']}</span><span>Email address</span><strong>{html.escape(display_email)}</strong></div>
+                          <div class="cv-settings-fact"><span class="cv-settings-fact-icon" aria-hidden="true">{profile_icons['Organization']}</span><span>Organization</span><strong>{html.escape(display_company)}</strong></div>
+                          <div class="cv-settings-fact"><span class="cv-settings-fact-icon" aria-hidden="true">{profile_icons['Role']}</span><span>Role</span><strong>{html.escape(display_role)}</strong></div>
+                          <div class="cv-settings-fact"><span class="cv-settings-fact-icon" aria-hidden="true">{profile_icons['Location']}</span><span>Location</span><strong>{html.escape(display_country)}</strong></div>
+                          <div class="cv-settings-fact"><span class="cv-settings-fact-icon" aria-hidden="true">{profile_icons['Language']}</span><span>Language</span><strong>{html.escape(display_language)}</strong></div>
                         </div>
                         """,
                         unsafe_allow_html=True,
@@ -14798,13 +14890,26 @@ def run_authenticated_app() -> None:
                 with st.container(border=True):
                     st.markdown("### Account Preferences")
                     st.caption("Customize your experience and notification settings.")
-                    st.markdown('<div class="cv-settings-notification-heading">Notifications</div>', unsafe_allow_html=True)
+                    st.markdown(
+                        '<div class="cv-settings-email-heading">Email Notifications</div>'
+                        '<div class="cv-settings-email-copy">Choose what you would like to be notified about.</div>',
+                        unsafe_allow_html=True,
+                    )
+                    notification_icons = {
+                        "Project activity": lucide("bell", 16),
+                        "Simulation results": lucide("chart", 16),
+                        "Team activity": lucide("git-branch", 16),
+                        "Product updates": lucide("sparkles", 16),
+                        "Marketing emails": profile_icons["Email address"],
+                    }
                     for key, label, description, preference_key in notification_settings:
                         label_col, toggle_col = st.columns([5, 1], vertical_alignment="center")
                         with label_col:
                             st.markdown(
-                                f'<div><strong style="color:#30435c;font-size:12px">{html.escape(label)}</strong>'
-                                f'<span style="display:block;margin-top:2px;color:#8190a4;font-size:10px">{html.escape(description)}</span></div>',
+                                f'<div style="display:flex;align-items:center;gap:10px">'
+                                f'<span class="cv-settings-notification-icon" aria-hidden="true">{notification_icons.get(label, "")}</span>'
+                                f'<span class="cv-settings-notification-copy"><strong>{html.escape(label)}</strong>'
+                                f'<span>{html.escape(description)}</span></span></div>',
                                 unsafe_allow_html=True,
                             )
                         with toggle_col:
@@ -14814,13 +14919,24 @@ def run_authenticated_app() -> None:
                                 key=key,
                                 label_visibility="collapsed",
                             )
-                    st.markdown("#### Time zone")
-                    st.caption("Used for timestamps and scheduled workspace activity.")
+                    st.markdown(
+                        '<div class="cv-settings-timezone-heading">◎ &nbsp; Timezone</div>'
+                        '<div class="cv-settings-timezone-copy">Set your local timezone for timestamps and scheduling.</div>',
+                        unsafe_allow_html=True,
+                    )
                     from zoneinfo import ZoneInfo, available_timezones
 
                     timezone_options = sorted(available_timezones())
-                    if display_timezone != "Not recorded" and display_timezone not in timezone_options:
-                        timezone_options.insert(0, display_timezone)
+                    preferred_timezone = _safe_text(
+                        customer_profile.get("timezone")
+                        or profile.get("timezone")
+                        or preferences.get("timezone"),
+                        "America/New_York",
+                    )
+                    if preferred_timezone not in timezone_options:
+                        preferred_timezone = "America/New_York"
+                    if preferred_timezone not in timezone_options:
+                        timezone_options.insert(0, preferred_timezone)
                     if not timezone_options:
                         timezone_options = ["UTC"]
 
@@ -14843,22 +14959,25 @@ def run_authenticated_app() -> None:
                         )
                         return f"({offset_label}) {pretty_name}"
 
-                    timezone_value = st.selectbox(
-                        "Time zone",
-                        timezone_options,
-                        index=(timezone_options.index(display_timezone)
-                               if display_timezone in timezone_options else 0),
-                        format_func=_timezone_label,
-                        key="customer_profile_timezone",
-                        label_visibility="collapsed",
-                    )
-                    if st.button(
-                        "Save account preferences",
-                        key="settings_profile_save_preferences",
-                        type="primary",
-                        disabled=migration_required,
-                        use_container_width=True,
-                    ):
+                    timezone_cols = st.columns([4.2, 1.35], vertical_alignment="bottom")
+                    with timezone_cols[0]:
+                        timezone_value = st.selectbox(
+                            "Time zone",
+                            timezone_options,
+                            index=timezone_options.index(preferred_timezone),
+                            format_func=_timezone_label,
+                            key="customer_profile_timezone",
+                            label_visibility="collapsed",
+                        )
+                    with timezone_cols[1]:
+                        save_account_preferences = st.button(
+                            "Save",
+                            key="settings_profile_save_preferences",
+                            type="primary",
+                            disabled=migration_required,
+                            use_container_width=True,
+                        )
+                    if save_account_preferences:
                         preference_save_error, notification_save_needs_migration = (
                             _save_notification_values(_notification_values_from_state())
                         )
@@ -14884,12 +15003,15 @@ def run_authenticated_app() -> None:
             with overview_bottom_left:
                 with st.container(border=True):
                     st.markdown("### Security")
-                    st.caption("Review the current account sign-in and access settings.")
+                    st.caption("Review your sign-in method and available account controls.")
                     st.markdown(
                         f"""
+                        <div class="cv-settings-security-status"><span class="cv-settings-security-status-icon" aria-hidden="true">✓</span>
+                          <div><strong>Current sign-in is active</strong><span>This browser is authenticated. Two-factor status is not recorded.</span></div></div>
                         <div class="cv-settings-overview-row"><span>Sign-in email</span><strong>{html.escape(display_email)}</strong></div>
+                        <div class="cv-settings-overview-row"><span>Password</span><strong>Managed by sign-in provider</strong></div>
+                        <div class="cv-settings-overview-row"><span>Two-factor authentication</span><strong>Not recorded</strong></div>
                         <div class="cv-settings-overview-row"><span>Current session</span><strong>Active in this browser</strong></div>
-                        <div class="cv-settings-overview-row"><span>Two-factor status</span><strong>Not recorded</strong></div>
                         """,
                         unsafe_allow_html=True,
                     )
@@ -14903,32 +15025,64 @@ def run_authenticated_app() -> None:
 
             with overview_bottom_right:
                 with st.container(border=True):
-                    st.markdown("### Billing")
+                    billing_heading, billing_action = st.columns([4, 1.45], vertical_alignment="center")
+                    with billing_heading:
+                        st.markdown("### Billing")
+                    with billing_action:
+                        if st.button(
+                            "Manage plan",
+                            key="settings_profile_open_billing",
+                            use_container_width=True,
+                        ):
+                            st.session_state["settings_active_tab"] = "Billing"
+                            st.rerun()
                     st.caption("Manage your subscription and usage.")
                     current_plan_label = plan_display_label(
                         selected_plan_name or profile.get("plan", "Starter")
                     )
+                    plan_details = selected_plan if isinstance(selected_plan, dict) else {}
                     st.markdown(
                         f"""
-                        <div class="cv-settings-plan-summary"><div><small>Current plan</small>
+                        <div class="cv-settings-plan-summary"><div><small>♛ &nbsp; Current plan</small>
                         <strong>{html.escape(current_plan_label)}</strong></div></div>
                         """,
                         unsafe_allow_html=True,
                     )
-                    monthly_limit = selected_plan.get("monthly_bom_limit") if isinstance(selected_plan, dict) else None
-                    saved_limit = selected_plan.get("max_saved_boms") if isinstance(selected_plan, dict) else None
+                    monthly_limit = plan_details.get("monthly_bom_limit")
+                    saved_limit = plan_details.get("max_saved_boms")
+                    max_parts = plan_details.get("max_parts_per_bom")
+                    monitored_limit = plan_details.get("monitored_parts_limit")
+                    ai_credits = plan_details.get("ai_credits")
+                    included_users = plan_details.get("included_users")
+                    team_feature = (
+                        f"Up to {int(included_users):,} team members"
+                        if included_users is not None
+                        else "Custom team-member allowance"
+                        if plan_details.get("team_features")
+                        else "Individual workspace"
+                    )
+                    plan_features = [
+                        f"{format_limit(monthly_limit, 'BOM analysis', 'BOM analyses')} each month",
+                        f"{format_limit(max_parts, 'part')} per BOM",
+                        f"{format_limit(saved_limit, 'saved BOM')} saved BOMs",
+                        team_feature,
+                        f"{int(ai_credits or 0):,} AI credits",
+                        (
+                            "Datasheet comparison included"
+                            if plan_details.get("datasheet_comparison")
+                            else "Datasheet comparison not included"
+                        ),
+                        f"{format_limit(monitored_limit, 'monitored part')} monitored parts",
+                        "API access included" if plan_details.get("api_access") else "API access not included",
+                    ]
+                    feature_markup = "".join(
+                        f'<div class="cv-settings-plan-feature"><b aria-hidden="true">✓</b><span>{html.escape(feature)}</span></div>'
+                        for feature in plan_features
+                    )
                     st.markdown(
-                        f'<div class="cv-settings-overview-row"><span>Monthly BOM analyses</span><strong>{html.escape(format_limit(monthly_limit, "BOM analysis", "BOM analyses"))}</strong></div>'
-                        f'<div class="cv-settings-overview-row"><span>Saved BOM allowance</span><strong>{html.escape(format_limit(saved_limit, "saved BOM"))}</strong></div>',
+                        f'<div class="cv-settings-plan-features">{feature_markup}</div>',
                         unsafe_allow_html=True,
                     )
-                    if st.button(
-                        "Manage plan  ›",
-                        key="settings_profile_open_billing",
-                        use_container_width=True,
-                    ):
-                        st.session_state["settings_active_tab"] = "Billing"
-                        st.rerun()
 
         elif settings_tab == "Preferences":
             with st.container(border=True):
