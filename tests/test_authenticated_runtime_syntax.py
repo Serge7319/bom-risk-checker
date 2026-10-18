@@ -15,6 +15,11 @@ class AuthenticatedRuntimeSyntaxTests(unittest.TestCase):
         source = (ROOT / "src" / "authenticated_runtime.py").read_text(encoding="utf-8")
         self.assertNotIn("        from datetime import datetime, timezone\n", source)
 
+    def test_runtime_query_state_annotation_names_are_imported(self) -> None:
+        source = (ROOT / "src" / "authenticated_runtime.py").read_text(encoding="utf-8")
+        self.assertIn("from typing import Any", source)
+        self.assertIn("def _clean_query_state(values: dict[str, Any])", source)
+
     def test_one_time_report_offers_buy_first_and_analyze_first_paths(self) -> None:
         source = (ROOT / "src" / "authenticated_runtime.py").read_text(encoding="utf-8")
         self.assertIn("Buy one report now", source)
