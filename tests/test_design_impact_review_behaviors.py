@@ -14,19 +14,22 @@ class DesignImpactReviewBehaviorTests(unittest.TestCase):
                 "project_count": 3,
                 "affected_bom_count": 5,
                 "impact_score": 82,
-                "total_quantity": 14,
+                "minimum_stock": 120,
+                "minimum_sources": 3,
+                "engineering_hours": 6,
+                "price_currency": "USD",
             }
         )
 
-        self.assertEqual(len(metrics), 4)
-        self.assertIn("Unique saved project names", metrics[0].detail)
+        self.assertEqual(len(metrics), 5)
+        self.assertIn("Unique saved projects", metrics[0].detail)
         self.assertEqual(metrics[0].href, "#impact-affected-projects")
-        self.assertEqual(metrics[1].value, "5")
-        self.assertIn("Distinct saved analyses", metrics[1].detail)
-        self.assertEqual(metrics[2].value, "82/100")
-        self.assertIn("not a failure probability", metrics[2].detail)
-        self.assertEqual(metrics[2].href, "#impact-score-drivers")
-        self.assertIn("Sum of this part's quantities", metrics[3].detail)
+        self.assertEqual(metrics[1].value, "82/100")
+        self.assertIn("not a failure probability", metrics[1].detail)
+        self.assertEqual(metrics[1].href, "#impact-key-factors")
+        self.assertEqual(metrics[2].value, "120")
+        self.assertEqual(metrics[3].value, "3")
+        self.assertEqual(metrics[4].value, "6 hrs")
         self.assertTrue(all(metric.action_label for metric in metrics))
 
     def test_component_selection_scroll_targets_the_assessment(self):

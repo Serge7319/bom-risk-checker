@@ -3759,20 +3759,24 @@ def impact_map_html(
     *,
     part: str,
     projects: list[tuple[str, str]],
+    manufacturer: str = "",
     supplier: str = "",
     supplier_count: str = "",
     lifecycle: str = "",
 ) -> str:
-    """Node diagram. Connectors join only the live part, project, BOM, supplier, and lifecycle."""
+    """Node diagram of the live part, its saved BOMs, and recorded evidence."""
     nodes = []
     y = 24
     for project, bom in projects[:4]:
         nodes.append((220, y, project or "Project not recorded", "#eef2ff", "#6366f1"))
         nodes.append((460, y, bom or "BOM file not recorded", "#f5f3ff", "#7c3aed"))
         y += 64
-    supplier_label = supplier or ("Supplier name not recorded" if supplier_count else "Not recorded")
-    if supplier or supplier_count:
-        nodes.append((220, y, supplier_label, "#ecfdf5", "#059669"))
+    manufacturer_label = manufacturer or supplier
+    if manufacturer_label:
+        nodes.append((220, y, f"Manufacturer: {manufacturer_label}", "#ecfdf5", "#059669"))
+        y += 64
+    if supplier_count:
+        nodes.append((220, y, f"Supplier sources: {supplier_count}", "#ecfdf5", "#059669"))
         y += 64
     if lifecycle:
         nodes.append((220, y, lifecycle, "#fff7ed", "#ea580c"))
