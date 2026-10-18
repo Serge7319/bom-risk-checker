@@ -77,6 +77,14 @@ def read_query_params() -> dict[str, str]:
         raw = dict(st.query_params)
     except Exception:
         return {}
+    out: dict[str, str] = {}
+    for key, value in raw.items():
+        if isinstance(value, (list, tuple)):
+            value = value[-1] if value else ""
+        text = str(value or "").strip()
+        if text:
+            out[str(key)] = text
+    return out
 
 
 def current_navigation_query_params(*, route: str | None = None) -> dict[str, str]:
@@ -115,14 +123,6 @@ def current_navigation_query_value(
     """Read one parameter from the active route's restored navigation context."""
     value = current_navigation_query_params(route=route).get(str(key), default)
     return str(value or default)
-    out: dict[str, str] = {}
-    for key, value in raw.items():
-        if isinstance(value, (list, tuple)):
-            value = value[-1] if value else ""
-        text = str(value or "").strip()
-        if text:
-            out[str(key)] = text
-    return out
 
 
 def query_params_match(desired: Mapping[str, Any]) -> bool:
