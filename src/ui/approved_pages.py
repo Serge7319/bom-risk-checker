@@ -1065,8 +1065,6 @@ def begin_approved_page() -> None:
         .cv-ap-monitoring-calendar{display:flex;align-items:center;justify-content:center;min-height:42px;color:#52647b}
         .cv-ap-monitoring-calendar svg{width:18px;height:18px}
         .st-key-approved_monitoring_filters [data-testid="stSelectbox"] [data-baseweb="select"]>div{min-height:42px!important;border:1px solid #d9e2ee!important;border-radius:9px!important;background:#fff!important}
-        .cv-ap-monitoring-period-range{display:flex;align-items:center;gap:6px;margin:5px 0 0;color:#8290a3;font-size:10px;line-height:1.3}
-        .cv-ap-monitoring-period-range svg{width:14px;height:14px;flex:0 0 14px;color:#6f8098}
         .st-key-approved_monitoring_alert_heading{box-sizing:border-box!important;width:100%!important;margin:0!important;padding:18px 20px 12px!important}
         .st-key-approved_monitoring_alert_heading>[data-testid="stVerticalBlock"]{gap:0!important}
         .cv-ap-monitoring-heading h2{margin:0!important;color:#14233d!important;font-size:20px!important;font-weight:760!important;line-height:1.25!important;letter-spacing:-.02em!important}
@@ -3122,21 +3120,6 @@ def _alert_recorded_date(row: dict[str, Any]) -> date | None:
             return None
 
 
-def _alert_date_range_label(period: str, source: list[dict[str, Any]], today: date) -> str:
-    if period == "All recorded":
-        recorded = [item for row in source if (item := _alert_recorded_date(row)) is not None]
-        if not recorded:
-            return "No alert dates recorded"
-        start, end = min(recorded), max(recorded)
-    else:
-        days = {"Last 7 days": 7, "Last 30 days": 30, "Last 90 days": 90}.get(period, 30)
-        start, end = today - timedelta(days=days - 1), today
-    if start == end:
-        return f"{start.strftime('%b')} {start.day}, {start.year}"
-    if start.year != end.year:
-        return f"{start.strftime('%b')} {start.day}, {start.year} – {end.strftime('%b')} {end.day}, {end.year}"
-    return f"{start.strftime('%b')} {start.day} – {end.strftime('%b')} {end.day}, {end.year}"
-
 
 def _alerts_in_period(source: list[dict[str, Any]], period: str, today: date) -> list[dict[str, Any]]:
     if period == "All recorded":
@@ -3356,12 +3339,6 @@ def render_monitoring(alerts: list[dict[str, Any]] | None) -> None:
                             key="approved_alert_period",
                             label_visibility="collapsed",
                         )
-            date_range = _alert_date_range_label(str(period or "Last 30 days"), source, today)
-            with period_select_col:
-                st.markdown(
-                    f"<div class='cv-ap-monitoring-period-range'>{lucide('calendar-clock', 14)}<span>{_esc(date_range)}</span></div>",
-                    unsafe_allow_html=True,
-                )
 
     rows = source
     if selected and selected != "All alerts":
