@@ -32,29 +32,29 @@ html body section[data-testid="stMain"] .st-key-approved_home_header [class*="st
   min-width: 0 !important;
 }
 
-/* Monitoring: use the available workspace width instead of the global 1,440px cap. */
-section[data-testid="stMain"] [data-testid="stMainBlockContainer"]:has(.st-key-approved_page_canvas_wide_render_monitoring),
-section[data-testid="stMain"] .main .block-container:has(.st-key-approved_page_canvas_wide_render_monitoring) {
-  max-width: 1840px !important;
+/* Monitoring follows the same centered 1,440px workspace canvas as Home. */
+section[data-testid="stMain"] [data-testid="stMainBlockContainer"]:has(.st-key-approved_page_canvas_standard_render_monitoring),
+section[data-testid="stMain"] .main .block-container:has(.st-key-approved_page_canvas_standard_render_monitoring) {
+  max-width: 1440px !important;
 }
 
-html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_monitoring {
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring {
   box-sizing: border-box !important;
   width: 100% !important;
-  max-width: 1760px !important;
+  max-width: 1440px !important;
   min-width: 0 !important;
   margin-left: auto !important;
   margin-right: auto !important;
 }
 
-html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_monitoring > [data-testid="stVerticalBlock"] {
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring > [data-testid="stVerticalBlock"] {
   width: 100% !important;
   max-width: 100% !important;
   min-width: 0 !important;
 }
 
 /* Match the larger, card-based Monitoring mockup while retaining live data. */
-html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_monitoring .cv-ap-monitoring-page-header h1 {
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-page-header h1 {
   margin: 0 0 8px !important;
   color: #10213e !important;
   font-size: clamp(32px, 2.4vw, 42px) !important;
@@ -63,44 +63,44 @@ html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render
   letter-spacing: -.035em !important;
 }
 
-html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_monitoring .cv-ap-monitoring-page-header .cv-ap-sub {
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-page-header .cv-ap-sub {
   margin: 0 0 22px !important;
   color: #62738b !important;
   font-size: 16px !important;
   line-height: 1.5 !important;
 }
 
-html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_monitoring .cv-ap-monitoring-kpi {
-  grid-template-columns: minmax(0, 1fr) 124px !important;
-  grid-template-rows: 68px auto !important;
-  min-height: 216px !important;
-  padding: 24px 26px !important;
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-kpi {
+  grid-template-columns: minmax(0, 1fr) 104px !important;
+  grid-template-rows: 60px auto !important;
+  min-height: 190px !important;
+  padding: 20px 22px !important;
 }
 
-html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_monitoring .cv-ap-monitoring-icon {
-  width: 64px !important;
-  height: 64px !important;
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-icon {
+  width: 58px !important;
+  height: 58px !important;
 }
 
-html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_monitoring .cv-ap-monitoring-icon svg {
-  width: 32px !important;
-  height: 32px !important;
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-icon svg {
+  width: 28px !important;
+  height: 28px !important;
 }
 
-html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_monitoring .cv-ap-monitoring-copy > span {
-  font-size: 21px !important;
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-copy > span {
+  font-size: 18px !important;
 }
 
-html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_monitoring .cv-ap-monitoring-copy strong {
-  font-size: 46px !important;
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-copy strong {
+  font-size: 40px !important;
 }
 
-html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_monitoring .cv-ap-monitoring-kpi .cv-ap-spark {
-  width: 120px !important;
-  height: 64px !important;
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-kpi .cv-ap-spark {
+  width: 100px !important;
+  height: 58px !important;
 }
 
-html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_monitoring .st-key-approved_monitoring_alert_card {
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_alert_card {
   box-sizing: border-box !important;
   width: 100% !important;
   margin: 0 0 18px !important;
@@ -111,54 +111,54 @@ html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render
   box-shadow: 0 4px 14px rgba(15, 35, 65, .045) !important;
 }
 
-html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_monitoring .st-key-approved_monitoring_alert_card > [data-testid="stVerticalBlock"] {
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_alert_card > [data-testid="stVerticalBlock"] {
   width: 100% !important;
   gap: 0 !important;
 }
 
-html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_monitoring .st-key-approved_monitoring_alert_heading {
-  padding: 22px 24px 16px !important;
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_alert_heading {
+  padding: 18px 20px 14px !important;
 }
 
-html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_monitoring .cv-ap-monitoring-heading h2 {
-  font-size: 24px !important;
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-heading h2 {
+  font-size: 21px !important;
 }
 
-html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_monitoring .cv-ap-monitoring-count {
-  font-size: 14px !important;
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-count {
+  font-size: 12px !important;
 }
 
-html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_monitoring .cv-ap-monitoring-table-head {
-  min-height: 60px !important;
-  margin: 0 22px 4px !important;
-  padding: 0 18px !important;
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-table-head {
+  min-height: 56px !important;
+  margin: 0 18px 4px !important;
+  padding: 0 14px !important;
 }
 
-html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_monitoring .cv-ap-monitoring-table-head [role="columnheader"] {
-  font-size: 15px !important;
-}
-
-html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_monitoring [class*="st-key-approved_monitoring_alert_row_"] {
-  min-height: 86px !important;
-  margin: 0 22px !important;
-  padding: 12px 18px !important;
-}
-
-html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_monitoring [class*="st-key-approved_monitoring_alert_row_"] [data-testid="stMarkdownContainer"] p {
-  font-size: 15px !important;
-}
-
-html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_monitoring [class*="st-key-approved_monitoring_alert_row_"] .cv-ap-meta {
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-table-head [role="columnheader"] {
   font-size: 13px !important;
 }
 
-html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_monitoring .st-key-approved_monitoring_alert_card .cv-pill {
-  padding: 5px 10px !important;
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring [class*="st-key-approved_monitoring_alert_row_"] {
+  min-height: 74px !important;
+  margin: 0 18px !important;
+  padding: 10px 14px !important;
+}
+
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring [class*="st-key-approved_monitoring_alert_row_"] [data-testid="stMarkdownContainer"] p {
   font-size: 14px !important;
 }
 
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring [class*="st-key-approved_monitoring_alert_row_"] .cv-ap-meta {
+  font-size: 13px !important;
+}
+
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_alert_card .cv-pill {
+  padding: 4px 9px !important;
+  font-size: 13px !important;
+}
+
 /* The category control is a filter, not the page's primary action. */
-html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_monitoring .st-key-approved_monitoring_filters [class*="st-key-approved_monitoring_filter_selected_"] .stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton) > button[kind="secondary"]:not(:disabled) {
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_filters [class*="st-key-approved_monitoring_filter_selected_"] .stButton:not(.st-key-cv_foundation_navigation .stButton):not(.st-key-cv_analysis_section_nav .stButton):not(.st-key-cv_analysis_section_nav *):not([class*="st-key-cadivor_bom_tab_"]):not(.st-key-cv_saved_bom_nav_more .stButton) > button[kind="secondary"]:not(:disabled) {
   border: 1px solid #70a4ff !important;
   border-radius: 999px !important;
   background: #edf5ff !important;
@@ -166,44 +166,44 @@ html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render
   box-shadow: none !important;
 }
 
-html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_monitoring .st-key-approved_monitoring_filters [class*="st-key-approved_monitoring_filter_selected_"] .stButton > button:hover {
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_filters [class*="st-key-approved_monitoring_filter_selected_"] .stButton > button:hover {
   background: #e5efff !important;
   border-color: #4f8df5 !important;
 }
 
 @media (max-width: 1100px) {
-  html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_monitoring .cv-ap-monitoring-kpi {
+  html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-kpi {
     grid-template-columns: minmax(0, 1fr) 76px !important;
     min-height: 180px !important;
     padding: 18px !important;
   }
 
-  html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_monitoring .cv-ap-monitoring-icon {
+  html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-icon {
     width: 52px !important;
     height: 52px !important;
   }
 
-  html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_monitoring .cv-ap-monitoring-copy > span {
+  html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-copy > span {
     font-size: 16px !important;
   }
 
-  html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_monitoring .cv-ap-monitoring-copy strong {
+  html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-copy strong {
     font-size: 34px !important;
   }
 }
 
 @media (max-width: 640px) {
-  html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_monitoring .cv-ap-monitoring-kpi {
+  html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-kpi {
     min-height: 160px !important;
     padding: 14px !important;
   }
 
-  html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_monitoring .st-key-approved_monitoring_alert_heading {
+  html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_alert_heading {
     padding: 16px 14px 12px !important;
   }
 
-  html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_monitoring .cv-ap-monitoring-table-head,
-  html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_monitoring [class*="st-key-approved_monitoring_alert_row_"] {
+  html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-table-head,
+  html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring [class*="st-key-approved_monitoring_alert_row_"] {
     margin-right: 12px !important;
     margin-left: 12px !important;
   }
@@ -211,7 +211,7 @@ html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render
 
 
 /* Keep every filter in the same compact pill family shown in the mockup. */
-html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_monitoring .st-key-approved_monitoring_filters .st-key-approved_monitoring_category_row [class*="st-key-approved_monitoring_filter_"] .stButton > button {
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_filters .st-key-approved_monitoring_category_row [class*="st-key-approved_monitoring_filter_"] .stButton > button {
   box-sizing: border-box !important;
   min-height: 42px !important;
   height: 42px !important;
@@ -226,13 +226,13 @@ html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render
   white-space: nowrap !important;
 }
 
-html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_monitoring .st-key-approved_monitoring_filters .st-key-approved_monitoring_category_row [class*="st-key-approved_monitoring_filter_"] .stButton > button:hover {
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_filters .st-key-approved_monitoring_category_row [class*="st-key-approved_monitoring_filter_"] .stButton > button:hover {
   border-color: #9bbdf5 !important;
   background: #f8fbff !important;
   color: #2563eb !important;
 }
 
-html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_monitoring .st-key-approved_monitoring_filters .st-key-approved_monitoring_category_row [class*="st-key-approved_monitoring_filter_selected_"] .stButton > button {
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_filters .st-key-approved_monitoring_category_row [class*="st-key-approved_monitoring_filter_selected_"] .stButton > button {
   border-color: #70a4ff !important;
   border-radius: 999px !important;
   background: #edf5ff !important;
@@ -241,7 +241,7 @@ html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render
 
 /* The alert row and its header share one six-column grid, preventing the
    Streamlit column gutters from pushing the action menu beyond the card. */
-html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_monitoring [class*="st-key-approved_monitoring_alert_row_"] [data-testid="stHorizontalBlock"] {
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring [class*="st-key-approved_monitoring_alert_row_"] [data-testid="stHorizontalBlock"] {
   display: grid !important;
   grid-template-columns: .8fr 1.3fr 1.9fr 1.2fr 1.2fr .28fr !important;
   align-items: center !important;
@@ -250,8 +250,8 @@ html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render
   width: 100% !important;
 }
 
-html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_monitoring [class*="st-key-approved_monitoring_alert_row_"] [data-testid="stColumn"],
-html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_monitoring [class*="st-key-approved_monitoring_alert_row_"] [data-testid="column"] {
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring [class*="st-key-approved_monitoring_alert_row_"] [data-testid="stColumn"],
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring [class*="st-key-approved_monitoring_alert_row_"] [data-testid="column"] {
   box-sizing: border-box !important;
   display: flex !important;
   align-items: center !important;
@@ -263,7 +263,7 @@ html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render
 }
 
 /* Match the blue outlined next-action buttons in the reference. */
-html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_monitoring [class*="st-key-approved_alert_action_"] .stButton > button {
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring [class*="st-key-approved_alert_action_"] .stButton > button {
   box-sizing: border-box !important;
   min-height: 42px !important;
   height: auto !important;
@@ -278,7 +278,7 @@ html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render
   white-space: normal !important;
 }
 
-html body section[data-testid="stMain"] .st-key-approved_page_canvas_wide_render_monitoring [class*="st-key-approved_alert_action_"] .stButton > button:hover {
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring [class*="st-key-approved_alert_action_"] .stButton > button:hover {
   border-color: #4f8df5 !important;
   background: #f4f8ff !important;
 }

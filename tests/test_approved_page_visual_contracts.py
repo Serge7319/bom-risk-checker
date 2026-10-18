@@ -15,6 +15,8 @@ MONITORING_FINAL_CSS = (
 ).read_text(encoding="utf-8")
 CORE_UI = (ROOT / "src" / "ui" / "core_premium_ui.py").read_text(encoding="utf-8")
 MARKETING_SITE = (ROOT / "src" / "marketing_site.py").read_text(encoding="utf-8")
+MARKETING_WEB = (ROOT / "marketing-web" / "index.html").read_text(encoding="utf-8")
+MARKETING_JS = (ROOT / "marketing-web" / "app.js").read_text(encoding="utf-8")
 
 
 class ApprovedPageVisualContractTests(unittest.TestCase):
@@ -58,13 +60,21 @@ class ApprovedPageVisualContractTests(unittest.TestCase):
         self.assertIn('type="secondary"', monitoring_renderer)
         self.assertNotIn('type="primary" if selected == category', monitoring_renderer)
 
-    def test_monitoring_uses_wide_canvas_and_card_shell(self):
+    def test_monitoring_uses_home_width_canvas_and_card_shell(self):
         self.assertIn(
-            '[data-testid="stMainBlockContainer"]:has(.st-key-approved_page_canvas_wide_render_monitoring)',
+            '[data-testid="stMainBlockContainer"]:has(.st-key-approved_page_canvas_standard_render_monitoring)',
             MONITORING_HOME_CSS,
         )
-        self.assertIn('max-width: 1760px !important;', MONITORING_HOME_CSS)
+        self.assertIn('max-width: 1440px !important;', MONITORING_HOME_CSS)
+        self.assertIn('("render_monitoring", "standard")', APPROVED_PAGES)
         self.assertIn('.st-key-approved_monitoring_alert_card {', MONITORING_HOME_CSS)
+
+    def test_home_primary_action_starts_the_trial_and_keeps_audit_separate(self):
+        self.assertIn('data-auth="signup" data-intent="trial">Start 14-day trial</a>', MARKETING_WEB)
+        self.assertIn('data-auth="signup" data-intent="trial">Start 14-day free trial <span>→</span></a>', MARKETING_WEB)
+        self.assertIn('data-auth="signup" data-stress-cta="true">Try the free 5-part BOM audit</a>', MARKETING_WEB)
+        self.assertIn("intent: a.dataset.intent || 'trial'", MARKETING_JS)
+        self.assertIn('st.button("Start 14-Day Trial", key="cv_public_signup"', MARKETING_SITE)
 
 
     def test_monitoring_period_has_no_overlapping_date_caption(self):
