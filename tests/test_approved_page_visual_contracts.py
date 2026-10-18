@@ -37,6 +37,16 @@ class ApprovedPageVisualContractTests(unittest.TestCase):
         self.assertIn("flex-flow:row nowrap!important", responsive_rules)
         self.assertNotIn("grid-template-columns:repeat(4", responsive_rules)
 
+    def test_selected_monitoring_filter_uses_mockup_pill_treatment(self):
+        self.assertIn(
+            '.st-key-approved_monitoring_filters button[data-testid="stBaseButton-primary"]{border:1px solid #6ea2ff!important;border-radius:999px!important;background:#edf5ff!important;color:#2563eb!important;',
+            APPROVED_PAGES,
+        )
+        self.assertIn(
+            '.st-key-approved_monitoring_filters button[data-testid="stBaseButton-secondary"]{border:1px solid #dce4ef!important;border-radius:999px!important;background:#fff!important;color:#52647b!important;',
+            APPROVED_PAGES,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

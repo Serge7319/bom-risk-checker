@@ -1060,7 +1060,9 @@ def begin_approved_page() -> None:
         [class*="st-key-approved_monitoring_filter_"] [data-testid="stVerticalBlock"]{gap:0!important}
         [class*="st-key-approved_monitoring_filter_"] button{box-sizing:border-box!important;width:100%!important;min-height:42px!important;height:42px!important;padding:0 11px!important;border:1px solid #dce4ef!important;border-radius:999px!important;background:#fff!important;color:#52647b!important;box-shadow:none!important;font-size:14px!important;font-weight:550!important;white-space:nowrap!important}
         [class*="st-key-approved_monitoring_filter_"] button:hover{border-color:#9bbdf5!important;background:#f8fbff!important;color:#2563eb!important}
-        [class*="st-key-approved_monitoring_filter_"] button[kind="primary"]{border-color:#6ea2ff!important;background:#edf5ff!important;color:#2563eb!important}
+        .st-key-approved_monitoring_filters [data-testid^="stBaseButton-"]{box-sizing:border-box!important;min-height:42px!important;height:42px!important;border-radius:999px!important}
+        .st-key-approved_monitoring_filters button[kind="primary"],.st-key-approved_monitoring_filters button[data-testid="stBaseButton-primary"]{border:1px solid #6ea2ff!important;border-radius:999px!important;background:#edf5ff!important;color:#2563eb!important;box-shadow:none!important}
+        .st-key-approved_monitoring_filters button[kind="secondary"],.st-key-approved_monitoring_filters button[data-testid="stBaseButton-secondary"]{border:1px solid #dce4ef!important;border-radius:999px!important;background:#fff!important;color:#52647b!important;box-shadow:none!important}
         .st-key-approved_monitoring_period_control{box-sizing:border-box!important;width:100%!important}
         .st-key-approved_monitoring_period_control>[data-testid="stVerticalBlock"]{gap:0!important}
         .cv-ap-monitoring-calendar{display:flex;align-items:center;justify-content:center;min-height:42px;color:#52647b}
