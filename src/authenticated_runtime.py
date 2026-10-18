@@ -6529,8 +6529,12 @@ def run_authenticated_app() -> None:
         impact_map_markup = impact_map_html(
             part=str(impact_mpn or "Component"),
             projects=impact_map_projects,
-            supplier=str(impact_intelligence.get("manufacturer") or ""),
-            supplier_count=str(impact_intelligence.get("minimum_sources") or ""),
+            manufacturer=str(impact_intelligence.get("manufacturer") or ""),
+            supplier_count=(
+                str(impact_intelligence.get("minimum_sources"))
+                if impact_intelligence.get("minimum_sources") is not None
+                else ""
+            ),
             lifecycle=str(impact_intelligence.get("lifecycle") or ""),
         )
 
@@ -6543,8 +6547,10 @@ def run_authenticated_app() -> None:
             has_monitoring=has_impact_monitoring,
             has_decision=has_impact_decision,
             review_started=bool(
-                requested_impact_mpn
-                and str(requested_impact_mpn).strip().casefold()
+                impact_mpn
+                and str(st.session_state.get("design_impact_review_started_mpn") or "")
+                .strip()
+                .casefold()
                 == str(impact_mpn).strip().casefold()
             ),
         )
@@ -14519,9 +14525,10 @@ def run_authenticated_app() -> None:
               .cv-settings-overview-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-top:1px solid #edf1f6;color:#52647b;font-size:12px}
               .cv-settings-overview-row strong{color:#17243d;font-weight:750}
               .cv-settings-security-status{display:flex;align-items:center;gap:11px;margin:11px 0 12px;padding:12px 13px;border:1px solid #bde8d2;border-radius:11px;background:#eefbf4}
-              .cv-settings-security-status-icon{display:grid;place-items:center;flex:0 0 34px;width:34px;height:34px;border-radius:10px;background:#d6f5e4;color:#15803d;font-size:17px;font-weight:850}
+              .cv-settings-security-status-icon{display:flex;align-items:center;justify-content:center;flex:0 0 34px;width:34px;height:34px;border-radius:10px;background:#d6f5e4;color:#15803d;font-size:17px;font-weight:850;line-height:1}
+              .cv-settings-security-status-icon svg{display:block;width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
               .cv-settings-security-status strong{display:block;color:#166534;font-size:12px;font-weight:800}
-              .cv-settings-security-status span{display:block;margin-top:3px;color:#4b7660;font-size:10px;line-height:1.4}
+              .cv-settings-security-status > div > span{display:block;margin-top:3px;color:#4b7660;font-size:10px;line-height:1.4}
               .cv-settings-plan-summary{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:12px 0 10px;padding:14px 15px;border:1px solid #d9e8fb;border-radius:12px;background:#f4f8ff}
               .cv-settings-plan-summary small{display:block;color:#74839a;font-size:10px;font-weight:700}
               .cv-settings-plan-summary strong{display:block;margin-top:4px;color:#17243d;font-size:18px;font-weight:830}
@@ -14541,17 +14548,24 @@ def run_authenticated_app() -> None:
         st.markdown(
             """
             <style id="cadivor-settings-mockup-tab-override" data-cadivor-layout-style="true">
-              html body section[data-testid="stMain"] .st-key-cv_settings_nav [class*="st-key-settings_tab_"] button{
+              html body section[data-testid="stMain"] .st-key-cv_settings_nav.st-key-cv_settings_nav .st-key-settings_tab_profile.st-key-settings_tab_profile button,
+              html body section[data-testid="stMain"] .st-key-cv_settings_nav.st-key-cv_settings_nav .st-key-settings_tab_preferences.st-key-settings_tab_preferences button,
+              html body section[data-testid="stMain"] .st-key-cv_settings_nav.st-key-cv_settings_nav .st-key-settings_tab_workspace.st-key-settings_tab_workspace button,
+              html body section[data-testid="stMain"] .st-key-cv_settings_nav.st-key-cv_settings_nav .st-key-settings_tab_security.st-key-settings_tab_security button,
+              html body section[data-testid="stMain"] .st-key-cv_settings_nav.st-key-cv_settings_nav .st-key-settings_tab_billing.st-key-settings_tab_billing button{
                 min-height:44px!important;padding:10px 16px 11px!important;
                 border:0!important;border-bottom:2px solid transparent!important;border-radius:0!important;
                 background:transparent!important;background-color:transparent!important;color:#5e6e84!important;
                 box-shadow:none!important;font-size:13px!important;font-weight:700!important
               }
-              html body section[data-testid="stMain"] .st-key-cv_settings_nav [class*="st-key-settings_tab_"] button:hover{
+              html body section[data-testid="stMain"] .st-key-cv_settings_nav.st-key-cv_settings_nav [class*="st-key-settings_tab_"] button:hover{
                 background:#f8fbff!important;color:#2670e8!important
               }
-              html body section[data-testid="stMain"] .st-key-cv_settings_nav [class*="st-key-settings_tab_"] button[kind="primary"],
-              html body section[data-testid="stMain"] .st-key-cv_settings_nav [class*="st-key-settings_tab_"] button[data-testid="stBaseButton-primary"]{
+              html body section[data-testid="stMain"] .st-key-cv_settings_nav.st-key-cv_settings_nav .st-key-settings_tab_profile.st-key-settings_tab_profile button[kind="primary"],
+              html body section[data-testid="stMain"] .st-key-cv_settings_nav.st-key-cv_settings_nav .st-key-settings_tab_preferences.st-key-settings_tab_preferences button[kind="primary"],
+              html body section[data-testid="stMain"] .st-key-cv_settings_nav.st-key-cv_settings_nav .st-key-settings_tab_workspace.st-key-settings_tab_workspace button[kind="primary"],
+              html body section[data-testid="stMain"] .st-key-cv_settings_nav.st-key-cv_settings_nav .st-key-settings_tab_security.st-key-settings_tab_security button[kind="primary"],
+              html body section[data-testid="stMain"] .st-key-cv_settings_nav.st-key-cv_settings_nav .st-key-settings_tab_billing.st-key-settings_tab_billing button[kind="primary"]{
                 border-bottom-color:#2670e8!important;background:transparent!important;background-color:transparent!important;
                 color:#2670e8!important;font-weight:800!important
               }
@@ -14695,9 +14709,9 @@ def run_authenticated_app() -> None:
             or preferences_error == "migration_required"
         )
         if migration_required:
-            st.warning(
-                "Some profile settings are temporarily unavailable. "
-                "Your saved engineering data is unaffected. Please try again later."
+            st.caption(
+                "Some account settings are temporarily unavailable. "
+                "Saved analysis data is unaffected; contact your workspace administrator if this continues."
             )
 
         # Persist Settings section across Streamlit button reruns (native st.tabs
@@ -14986,18 +15000,16 @@ def run_authenticated_app() -> None:
                         )
                         if preference_save_error or timezone_save_error:
                             st.error(
-                                "Unable to save all account preferences: "
-                                + str(preference_save_error or timezone_save_error)
+                                "Unable to save the time zone or notification preferences. "
+                                "Please try again or contact your workspace administrator."
                             )
                         elif notification_save_needs_migration:
-                            st.warning(
-                                "Your time zone and existing notification settings were saved. "
-                                "Apply `supabase/migrations/20261018_customer_notification_preferences.sql` "
-                                "to save the five notification choices independently."
+                            st.toast(
+                                "Time zone saved. Notification choices could not be saved individually yet.",
+                                icon="ℹ️",
                             )
                         else:
                             st.toast("Account preferences saved", icon="✅")
-                            st.rerun()
 
             overview_bottom_left, overview_bottom_right = st.columns(2, gap="small")
             with overview_bottom_left:
@@ -15006,7 +15018,7 @@ def run_authenticated_app() -> None:
                     st.caption("Review your sign-in method and available account controls.")
                     st.markdown(
                         f"""
-                        <div class="cv-settings-security-status"><span class="cv-settings-security-status-icon" aria-hidden="true">✓</span>
+                        <div class="cv-settings-security-status"><span class="cv-settings-security-status-icon" aria-hidden="true">{lucide("shield", 18)}</span>
                           <div><strong>Current sign-in is active</strong><span>This browser is authenticated. Two-factor status is not recorded.</span></div></div>
                         <div class="cv-settings-overview-row"><span>Sign-in email</span><strong>{html.escape(display_email)}</strong></div>
                         <div class="cv-settings-overview-row"><span>Password</span><strong>Managed by sign-in provider</strong></div>
@@ -15202,18 +15214,15 @@ def run_authenticated_app() -> None:
                     )
                     if save_error or notification_save_error:
                         st.error(
-                            "Unable to save preferences: "
-                            + str(save_error or notification_save_error)
+                            "Unable to save preferences. Please try again or contact your workspace administrator."
                         )
                     elif notification_save_needs_migration:
-                        st.warning(
-                            "Application preferences and existing notification settings were saved. "
-                            "Apply `supabase/migrations/20261018_customer_notification_preferences.sql` "
-                            "to save the five notification choices independently."
+                        st.toast(
+                            "Preferences saved. Notification choices could not be saved individually yet.",
+                            icon="ℹ️",
                         )
                     else:
-                        st.success("Preferences saved.")
-                        st.rerun()
+                        st.toast("Preferences saved.", icon="✅")
                 cadivor_button_wrap_end()
 
             st.markdown(

@@ -102,6 +102,30 @@ def test_catalog_aggregates_parts_across_saved_boms():
     assert gateway["Quantity"] == 7
 
 
+def test_missing_supply_fields_remain_unrecorded_instead_of_becoming_zero():
+    result = impact.build_design_impact(
+        [{"id": "bom-1", "project_name": "Gateway", "filename": "gateway.csv"}],
+        [{"analysis_id": "bom-1", "mpn": "IC-100", "risk_score": 20}],
+    )
+
+    assert result["minimum_stock"] is None
+    assert result["minimum_sources"] is None
+    assert any("Inventory data" == item["Area"] for item in result["impact_categories"])
+    assert any("Supplier data" == item["Area"] for item in result["impact_categories"])
+    assert result["impact_score"] == 20
+
+
+def test_recorded_zero_stock_and_sources_are_scored_as_real_values():
+    result = impact.build_design_impact(
+        [{"id": "bom-1", "project_name": "Gateway", "filename": "gateway.csv"}],
+        [{"analysis_id": "bom-1", "mpn": "IC-100", "risk_score": 20, "stock_available": 0, "supplier_count": 0}],
+    )
+
+    assert result["minimum_stock"] == 0
+    assert result["minimum_sources"] == 0
+    assert result["impact_score"] == 55
+
+
 def test_component_list_is_limited_to_ten_rows(monkeypatch):
     fake_st = _FakeStreamlit(selected_rows=[], submit=False)
     monkeypatch.setattr(impact, "st", fake_st)
@@ -139,10 +163,11 @@ class _Rerun(Exception):
 
 
 class _FakeStreamlit:
-    def __init__(self, *, selected_rows, submit: bool, query: str = ""):
+    def __init__(self, *, selected_rows, submit: bool, query: str = "", submit_label: str = "Start impact review"):
         self.session_state = {}
         self.selected_rows = selected_rows
         self.submit = submit
+        self.submit_label = submit_label
         self.query = query
         self.button_label = ""
         self.messages = []
@@ -179,7 +204,8 @@ class _FakeStreamlit:
 
     def button(self, label, **kwargs):
         self.button_label = label
-        return self.submit
+        self.events.append(("button", label))
+        return self.submit and label == self.submit_label
 
     def caption(self, message):
         self.messages.append(message)
@@ -230,8 +256,8 @@ def _component_intelligence():
     }
 
 
-def test_search_filters_catalog_and_start_uses_selected_table_row(monkeypatch):
-    fake_st = _FakeStreamlit(selected_rows=[1], submit=True, query="sensor")
+def test_search_selects_a_component_before_starting_review(monkeypatch):
+    fake_st = _FakeStreamlit(selected_rows=[1], submit=False, query="sensor")
     monkeypatch.setattr(impact, "st", fake_st)
     monkeypatch.setattr(impact, "_css", lambda: None)
     monkeypatch.setattr(impact, "cadivor_section_header", lambda *args, **kwargs: None)
@@ -248,10 +274,34 @@ def test_search_filters_catalog_and_start_uses_selected_table_row(monkeypatch):
             impact_map_markup="<section>Impact map</section>",
         )
 
-    assert list(fake_st.displayed_df["Part Number"]) == ["CAP-220", "IC-100"]
-    assert fake_st.button_label == "Start impact review"
+    assert list(fake_st.displayed_df["MPN"]) == ["CAP-220", "IC-100"]
+    assert "Start impact review" in [event[1] for event in fake_st.events if event[0] == "button"]
     assert fake_st.session_state["design_impact_pending_mpn"] == "IC-100"
     assert fake_st.session_state["design_impact_mpn"] == "IC-100"
+    assert "design_impact_review_started_mpn" not in fake_st.session_state
+
+
+def test_start_impact_review_sets_the_selected_part_and_explicit_state(monkeypatch):
+    fake_st = _FakeStreamlit(selected_rows=[], submit=True, submit_label="Start impact review")
+    monkeypatch.setattr(impact, "st", fake_st)
+    monkeypatch.setattr(impact, "_css", lambda: None)
+    monkeypatch.setattr(impact, "cadivor_section_header", lambda *args, **kwargs: None)
+
+    from src import part_images
+
+    monkeypatch.setattr(part_images, "part_image_markup", lambda *args, **kwargs: "<span>part</span>")
+    monkeypatch.setattr(part_images, "part_image_source", lambda *args, **kwargs: "data:image/svg+xml,test")
+
+    with pytest.raises(_Rerun):
+        impact.render_design_impact(
+            intelligence=_component_intelligence(),
+            internal_nav_button=lambda *args, **kwargs: None,
+            review_started=False,
+            impact_map_markup="<section>Impact map</section>",
+        )
+
+    assert fake_st.session_state["design_impact_mpn"] == "CAP-220"
+    assert fake_st.session_state["design_impact_review_started_mpn"] == "CAP-220"
 
 
 def test_map_and_component_table_remain_visible_before_review(monkeypatch):
@@ -281,7 +331,7 @@ def test_map_and_component_table_remain_visible_before_review(monkeypatch):
     assert any("does not inspect PCB layouts" in message for message in fake_st.messages)
 
 
-def test_recommended_change_plan_precedes_collapsed_score_explanation(monkeypatch):
+def test_review_details_are_collapsed_and_validation_scope_is_clear(monkeypatch):
     fake_st = _FakeStreamlit(selected_rows=[], submit=False)
     monkeypatch.setattr(impact, "st", fake_st)
     monkeypatch.setattr(impact, "_css", lambda: None)
@@ -300,15 +350,11 @@ def test_recommended_change_plan_precedes_collapsed_score_explanation(monkeypatc
         impact_map_markup="<section>Impact map</section>",
     )
 
-    assert fake_st.expander_calls == [("Why this score", False)]
-    plan_event = next(i for i, event in enumerate(fake_st.events) if event[0] == "markdown" and "Recommended Change Plan" in event[1])
-    score_event = next(i for i, event in enumerate(fake_st.events) if event[0] == "expander" and event[1] == "Why this score")
-    assert plan_event < score_event
+    assert ("Recommendations and score details", False) in fake_st.expander_calls
     page_markup = "\n".join(
         str(event[1]) for event in fake_st.events if event[0] == "markdown"
     )
-    assert "Design validation required" in page_markup
-    assert "Saved BOM records do not include the schematic, PCB layout, netlist, firmware, or mechanical constraints" in page_markup
+    assert "Confirm electrical function, package, footprint, pinout, and design constraints" in " ".join(fake_st.messages) + page_markup
 
 
 def test_runtime_restores_the_component_specific_map_for_the_selected_bom_rows():
@@ -325,5 +371,7 @@ def test_runtime_restores_the_component_specific_map_for_the_selected_bom_rows()
     renderer = (ROOT / "src" / "design_impact_analyzer.py").read_text(encoding="utf-8")
     assert 'st.container(key="approved_home_page")' in renderer
     assert "max-width:1440px!important" in renderer
-    assert "columns=4" in renderer
-    assert "Estimated Review" not in renderer
+    assert "review_started=bool(" in section
+    assert "design_impact_review_started_mpn" in section
+    assert "columns=5" in renderer
+    assert "Estimated review" in renderer
