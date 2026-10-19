@@ -52,6 +52,8 @@ def test_new_user_with_no_saved_boms_is_first_review_only():
     assert "Start your first BOM review" in first_run
     assert "components.csv" in first_run
     assert "production-bom.xlsx" in first_run
+    svg_markup = first_run.split("<svg", 1)[1].split("</svg>", 1)[0]
+    assert "\n\n" not in svg_markup
     assert "A first review in four steps" in first_run
     assert "No analyses yet" in first_run
     for stage in ("Understand risk", "Make decisions", "Share the outcome"):
