@@ -282,6 +282,16 @@ def render_upload_detected(*, filename: str, component_count: int, deduplicated_
     )
 
 
+def _analysis_health_display(
+    health_score: int | None,
+    needs_verification_count: int = 0,
+) -> str:
+    """Never present a partial BOM score as an overall health result."""
+    if health_score is None or int(needs_verification_count or 0) > 0:
+        return "Needs verification"
+    return f"{int(health_score)}/100"
+
+
 def render_analysis_success(*, project_name: str, total_parts: int, high_count: int, medium_count: int, health_score: int | None, analysis_id: str, needs_verification_count: int = 0) -> None:
     """Render an outcome-focused transition after a BOM is analyzed and saved."""
     review_count = max(0, int(high_count or 0)) + max(0, int(medium_count or 0))
@@ -293,7 +303,7 @@ def render_analysis_success(*, project_name: str, total_parts: int, high_count: 
         "Complete a focused review before release." if medium_count else
         "No elevated component risks were detected."
     )
-    health_display = f"{int(health_score)}/100" if health_score is not None else "Needs verification"
+    health_display = _analysis_health_display(health_score, needs_verification_count)
     st.markdown(
         f"""
         <style id="cadivor-analysis-success-29b">
