@@ -13517,6 +13517,16 @@ def run_authenticated_app() -> None:
             radial-gradient(circle at 91% 12%,rgba(37,99,235,.13),transparent 29%),
             linear-gradient(135deg,#fff 0%,#f8fbff 64%,#eef5ff 100%);
             border-radius:26px;padding:36px 40px;margin-bottom:26px;box-shadow:0 20px 52px rgba(37,99,235,.08)}
+            /* Keep this route on the same bounded canvas as Home without changing other routes. */
+            section[data-testid="stMain"] [data-testid="stMainBlockContainer"]:has(.cv311-hero),
+            section[data-testid="stMain"] .main .block-container:has(.cv311-hero){
+              box-sizing:border-box!important;width:100%!important;max-width:1440px!important;
+              min-width:0!important;margin-left:auto!important;margin-right:auto!important
+            }
+            section[data-testid="stMain"] [data-testid="stMainBlockContainer"]:has(.cv311-hero) > [data-testid="stVerticalBlock"],
+            section[data-testid="stMain"] .main .block-container:has(.cv311-hero) > [data-testid="stVerticalBlock"]{
+              box-sizing:border-box!important;width:100%!important;max-width:100%!important;min-width:0!important
+            }
             .cv311-eyebrow{font-size:clamp(13px,.82vw,16px);font-weight:950;letter-spacing:.11em;text-transform:uppercase;color:#2563eb!important;margin-bottom:10px}
             .cv311-title{font-size:clamp(38px,2.55vw,54px);font-weight:950;letter-spacing:-.045em;color:#0f172a!important;line-height:1.06;margin-bottom:14px;max-width:1180px}
             .cv311-copy{font-size:clamp(17px,1.05vw,21px);font-weight:680;color:#52647a!important;line-height:1.62;max-width:1080px}
@@ -13527,22 +13537,22 @@ def run_authenticated_app() -> None:
             .cv311-plan-badge{border:1px solid #93c5fd;background:#eff6ff;color:#1d4ed8!important;border-radius:999px;padding:9px 14px;font-size:clamp(12px,.75vw,15px);font-weight:950;white-space:nowrap}
             .cv311-usage-meta{display:flex;justify-content:space-between;gap:12px;font-size:clamp(13px,.82vw,16px);font-weight:850;color:#475569!important;margin:17px 0 9px}
             .cv311-bar{height:11px;border-radius:999px;background:#e2e8f0;overflow:hidden}.cv311-bar i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#2563eb,#60a5fa);transition:width .45s ease}
-            .cv311-section-title{font-size:clamp(29px,1.75vw,38px);font-weight:950;color:#0f172a!important;margin:34px 0 8px;letter-spacing:-.025em;line-height:1.16}
+            .cv311-section-title{font-size:clamp(24px,1.55vw,32px);font-weight:950;color:#0f172a!important;margin:30px 0 8px;letter-spacing:-.025em;line-height:1.16}
             .cv311-section-copy{font-size:clamp(15px,.98vw,19px);font-weight:650;color:#64748b!important;line-height:1.55;margin:0 0 20px}
             div[data-testid="stVerticalBlockBorderWrapper"]:has(.cv311-card){padding:0!important;border-radius:23px!important;overflow:hidden!important;box-shadow:0 14px 38px rgba(15,23,42,.075)!important;transition:transform .22s ease,box-shadow .22s ease,border-color .22s ease!important;align-self:start!important}
             div[data-testid="stVerticalBlockBorderWrapper"]:has(.cv311-card):hover{transform:translateY(-4px);box-shadow:0 22px 52px rgba(15,23,42,.12)!important}
             div[data-testid="stVerticalBlockBorderWrapper"]:has(.cv311-featured){border:2px solid #2563eb!important;background:linear-gradient(180deg,#f2f7ff 0%,#fff 42%)!important;box-shadow:0 22px 56px rgba(37,99,235,.20)!important}
-            .cv311-card-inner{padding:29px 32px 22px}
+            .cv311-card-inner{padding:22px 20px 18px}
             .cv311-card-top{display:flex;justify-content:space-between;align-items:center;gap:14px}
             .cv311-name{font-size:clamp(25px,1.55vw,33px);font-weight:950;color:#0f172a!important;line-height:1.15;letter-spacing:-.025em}
             .cv311-tag{border:1px solid #93c5fd;background:#eff6ff;color:#1d4ed8!important;border-radius:999px;padding:9px 14px;font-size:clamp(11px,.72vw,14px);font-weight:950;white-space:nowrap;box-shadow:0 5px 14px rgba(37,99,235,.10);transition:transform .2s ease,box-shadow .2s ease}
             .cv311-tag.green{border-color:#6ee7b7;background:#ecfdf5;color:#047857!important}
-            .cv311-price{font-size:clamp(46px,3.2vw,68px);font-weight:950;letter-spacing:-.055em;color:#0f172a!important;margin:18px 0 4px;line-height:1}
+            .cv311-price{font-size:clamp(34px,2.45vw,54px);font-weight:950;letter-spacing:-.055em;color:#0f172a!important;margin:16px 0 4px;line-height:1}
             .cv311-period{font-size:clamp(14px,.9vw,18px);font-weight:750;color:#64748b!important;letter-spacing:0;margin-left:4px}
-            .cv311-outcome{font-size:clamp(17px,1.05vw,21px);font-weight:850;color:#1e293b!important;line-height:1.42;margin:15px 0 6px}
-            .cv311-for{font-size:clamp(14px,.9vw,18px);font-weight:680;color:#64748b!important;line-height:1.5;margin:0 0 15px}
-            .cv311-features{border-top:1px solid #dbe4ef;padding-top:14px}
-            .cv311-feature{display:flex;align-items:flex-start;gap:10px;font-size:clamp(14px,.88vw,17px);font-weight:720;color:#334155!important;line-height:1.44;margin:8px 0}
+            .cv311-outcome{font-size:clamp(15px,.95vw,18px);font-weight:850;color:#1e293b!important;line-height:1.42;margin:13px 0 6px}
+            .cv311-for{font-size:clamp(13px,.82vw,15px);font-weight:680;color:#64748b!important;line-height:1.45;margin:0 0 13px}
+            .cv311-features{border-top:1px solid #dbe4ef;padding-top:11px}
+            .cv311-feature{display:flex;align-items:flex-start;gap:8px;font-size:clamp(12px,.78vw,14px);font-weight:720;color:#334155!important;line-height:1.38;margin:7px 0}
             .cv311-check{color:#059669!important;font-weight:950;font-size:1.08em;line-height:1.35}.cv311-muted{color:#94a3b8!important}
             .cv311-current-note{border:1px solid #86efac;background:#ecfdf5;color:#047857!important;border-radius:12px;padding:13px 14px;font-size:clamp(13px,.82vw,16px);font-weight:900;text-align:center;margin:12px 12px 14px}
             .cv311-info-note{border:1px solid #bfdbfe;background:#f8fbff;color:#475569!important;border-radius:12px;padding:12px 14px;font-size:clamp(13px,.82vw,16px);font-weight:720;line-height:1.45;margin-top:12px}
@@ -13575,9 +13585,19 @@ def run_authenticated_app() -> None:
             .cv311-summary-value{font-size:clamp(15px,.95vw,19px);font-weight:950;color:#0f172a!important;line-height:1.25}
             .cv311-active{display:inline-flex;align-items:center;gap:7px;color:#047857!important;font-weight:900;font-size:clamp(13px,.82vw,16px);margin-top:7px}
             .cv311-active-dot{width:9px;height:9px;border-radius:999px;background:#10b981;box-shadow:0 0 0 4px rgba(16,185,129,.12)}
-            @media(max-width:1100px){.cv311-card-inner{padding:26px 25px 21px}.cv311-table{grid-template-columns:minmax(180px,1.4fr) repeat(5,minmax(130px,1fr))}}
+            @media(max-width:1100px){
+              .cv311-card-inner{padding:22px 18px 18px}
+              .cv311-table{grid-template-columns:minmax(180px,1.4fr) repeat(5,minmax(130px,1fr))}
+              section[data-testid="stMain"]:has(.cv311-hero) [data-testid="stHorizontalBlock"]{flex-wrap:wrap!important;gap:14px!important}
+              section[data-testid="stMain"]:has(.cv311-hero) [data-testid="stHorizontalBlock"] > [data-testid="stColumn"],
+              section[data-testid="stMain"]:has(.cv311-hero) [data-testid="stHorizontalBlock"] > [data-testid="column"]{flex:1 1 calc(50% - 8px)!important;width:calc(50% - 8px)!important;min-width:calc(50% - 8px)!important}
+            }
             @media(max-width:900px){.cv311-hero{padding:28px 24px}.cv311-current-head{display:block}.cv311-plan-badge{display:inline-block;margin-top:10px}.cv311-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.cv311-card-inner{padding:25px 22px}.cv311-compare{padding:20px 16px}.cv311-table{grid-template-columns:minmax(175px,1.4fr) repeat(5,minmax(125px,1fr))}}
-            @media(max-width:560px){.cv311-summary-grid{grid-template-columns:1fr}.cv311-current{padding:22px 20px}}
+            @media(max-width:560px){
+              .cv311-summary-grid{grid-template-columns:1fr}.cv311-current{padding:22px 20px}
+              section[data-testid="stMain"]:has(.cv311-hero) [data-testid="stHorizontalBlock"] > [data-testid="stColumn"],
+              section[data-testid="stMain"]:has(.cv311-hero) [data-testid="stHorizontalBlock"] > [data-testid="column"]{flex-basis:100%!important;width:100%!important;min-width:100%!important}
+            }
             </style>
             <section class="cv311-hero">
               <div class="cv311-eyebrow">Plans</div>
@@ -13718,7 +13738,11 @@ def run_authenticated_app() -> None:
                 return
 
             if not st.button(
-                f"Upgrade to {plan_name}",
+                {
+                    "starter": "Choose Starter",
+                    "professional": "Choose Professional",
+                    "business": "Upgrade to Business",
+                }.get(plan_slug, f"Upgrade to {plan_name}"),
                 key=button_key,
                 type="primary",
                 use_container_width=True,
@@ -13758,84 +13782,6 @@ def run_authenticated_app() -> None:
             # Do not paint the handoff in this run. A fragment rerun replaces the
             # upgrade button with the single styled confirmation.
             st.rerun(scope="fragment")
-
-        education_plans = [
-            {
-                "name": "Student",
-                "price": "Free",
-                "tag": "Education",
-                "outcome": "Build better engineering habits before entering industry.",
-                "audience": "University students, technical colleges, engineering clubs, and capstone teams.",
-                "features": [
-                    "5 BOM analyses per month",
-                    "Up to 50 components per BOM",
-                    "Basic risk analysis and health score",
-                    "Limited alternative search",
-                    'PDF reports with "Student Edition" watermark',
-                    "Community support only",
-                ],
-                "note": "No monitoring, API access, or team administration.",
-            },
-            {
-                "name": "Free Trial",
-                "price": "14 days",
-                "tag": "Full access",
-                "outcome": "Experience the complete Cadivor workflow before choosing a paid plan.",
-                "audience": "New professional and business customers evaluating Cadivor with real BOMs.",
-                "features": [
-                    "No feature restrictions during the trial",
-                    "Professional analysis and AI capabilities",
-                    "Monitoring, reports, and engineering decisions",
-                    "Team workflow evaluation",
-                    "Saved work remains available after trial",
-                ],
-                "note": "At trial end, saved work stays available. Choose a paid plan to create new analyses.",
-            },
-        ]
-
-        st.markdown('<div class="cv311-section-title">Start with Cadivor</div><div class="cv311-section-copy">Education access and a full-platform evaluation path.</div>', unsafe_allow_html=True)
-        education_columns = st.columns(2, gap="medium")
-        for column, plan in zip(education_columns, education_plans):
-            plan_key = plan["name"].lower()
-            is_current = normalized_current_plan == plan_key
-            with column:
-                with st.container(border=True):
-                    st.markdown(
-                        '<span class="cv311-card"></span>'
-                        '<div class="cv311-card-inner">'
-                        '<div class="cv311-card-top">'
-                        f'<div class="cv311-name">{plan["name"]}</div>'
-                        f'<div class="cv311-tag green">{plan["tag"]}</div>'
-                        '</div>'
-                        f'<div class="cv311-price">{plan["price"]}</div>'
-                        f'<div class="cv311-outcome">{plan["outcome"]}</div>'
-                        f'<div class="cv311-for">{plan["audience"]}</div>'
-                        '<div class="cv311-features">'
-                        + "".join(
-                            f'<div class="cv311-feature"><span class="cv311-check">✓</span><span>{feature}</span></div>'
-                            for feature in plan["features"]
-                        )
-                        + '</div>'
-                        f'<div class="cv311-info-note">{plan["note"]}</div>'
-                        '</div>',
-                        unsafe_allow_html=True,
-                    )
-                    if is_current:
-                        st.markdown('<div class="cv311-current-note">Your active plan</div>', unsafe_allow_html=True)
-                    elif plan_key == "student":
-                        st.link_button(
-                            "Request Student Access",
-                            mailto_href(
-                                "student",
-                                subject="Cadivor Student Plan Request",
-                            ),
-                            use_container_width=True,
-                        )
-                    else:
-                        st.markdown(
-                            '<div class="cv311-info-note">The 14-day full-access trial is intended for new customer evaluations.</div>',
-                            unsafe_allow_html=True,
-                        )
 
         paid_plans = [
             {
@@ -13912,97 +13858,104 @@ def run_authenticated_app() -> None:
             },
         ]
 
-        st.markdown('<div class="cv311-section-title">Plans for working engineering teams</div><div class="cv311-section-copy">Professional is the flagship plan; Business adds organization-wide collaboration and controls.</div>', unsafe_allow_html=True)
-        paid_rows = [paid_plans[:2], paid_plans[2:]]
-        for row_index, row_plans in enumerate(paid_rows):
-            paid_columns = st.columns(2, gap="medium")
-            for column, plan in zip(paid_columns, row_plans):
-                plan_key = plan["name"].lower()
-                is_current = normalized_current_plan == plan_key
-                featured = plan_key == "professional"
-                with column:
-                    with st.container(border=True):
-                        marker = " cv311-featured" if featured else ""
-                        display_price = html.escape(plan["price"]).replace("$", "&#36;")
-                        annual_line = annual_price_line(plan["name"])
-                        display_annual = (
-                            html.escape(annual_line).replace("$", "&#36;") if annual_line else ""
+        _plan_section_copy = "Compare the included capabilities and choose a path for your team."
+        if selected_plan_name == PLAN_TRIAL:
+            _plan_section_copy += " Your current trial remains active until it ends."
+        elif selected_plan_name == PLAN_TRIAL_EXPIRED:
+            _plan_section_copy += " Saved work remains available while you review paid options."
+        st.markdown(
+            '<div class="cv311-section-title">Choose the plan that fits your team</div>'
+            f'<div class="cv311-section-copy">{html.escape(_plan_section_copy)}</div>',
+            unsafe_allow_html=True,
+        )
+        paid_columns = st.columns(4, gap="small")
+        for column, plan in zip(paid_columns, paid_plans):
+            plan_key = plan["name"].lower()
+            is_current = normalized_current_plan == plan_key
+            featured = plan_key == "professional"
+            with column:
+                with st.container(border=True):
+                    marker = " cv311-featured" if featured else ""
+                    display_price = html.escape(plan["price"]).replace("$", "&#36;")
+                    annual_line = annual_price_line(plan["name"])
+                    display_annual = (
+                        html.escape(annual_line).replace("$", "&#36;") if annual_line else ""
+                    )
+                    st.markdown(
+                        f'<span class="cv311-card{marker}"></span>'
+                        '<div class="cv311-card-inner">'
+                        '<div class="cv311-card-top">'
+                        f'<div class="cv311-name">{plan["name"]}</div>'
+                        f'<div class="cv311-tag">{plan["tag"]}</div>'
+                        '</div>'
+                        f'<div class="cv311-price">{display_price}'
+                        + (f'<span class="cv311-period"> / month</span>' if plan["price"].startswith("$") else "")
+                        + '</div>'
+                        + (f'<div class="cv311-info-note">{display_annual}</div>' if display_annual else "")
+                        + f'<div class="cv311-outcome">{plan["outcome"]}</div>'
+                        f'<div class="cv311-for">{plan["audience"]}</div>'
+                        '</div>',
+                        unsafe_allow_html=True,
+                    )
+
+                    checkout_user_email = str(current_user.get("email") or "")
+                    checkout_user_id = str(current_user.get("id") or "")
+                    if is_current:
+                        st.markdown('<div class="cv311-current-note">Your active plan</div>', unsafe_allow_html=True)
+                    elif may_self_serve_checkout(selected_plan_name, plan["name"]) and plan_key in {
+                        "starter",
+                        "professional",
+                        "business",
+                    }:
+                        _render_plan_checkout_confirm(
+                            plan["name"],
+                            {
+                                "starter": "STRIPE_STARTER_PRICE_ID",
+                                "professional": "STRIPE_PRO_PRICE_ID",
+                                "business": "STRIPE_BUSINESS_PRICE_ID",
+                            }[plan_key],
+                            f"pricing_311_upgrade_{plan_key}",
+                            {
+                                "starter": "Starter — $29/month",
+                                "professional": "Professional — $99/month",
+                                "business": "Business — $299/month",
+                            }[plan_key],
+                            checkout_user_email,
+                            checkout_user_id,
+                            CHECKOUT_PLAN_TOKENS[plan["name"]],
                         )
+                    elif plan_key == "enterprise":
                         st.markdown(
-                            f'<span class="cv311-card{marker}"></span>'
-                            '<div class="cv311-card-inner">'
-                            '<div class="cv311-card-top">'
-                            f'<div class="cv311-name">{plan["name"]}</div>'
-                            f'<div class="cv311-tag">{plan["tag"]}</div>'
-                            '</div>'
-                            f'<div class="cv311-price">{display_price}'
-                            + (f'<span class="cv311-period"> / month</span>' if plan["price"].startswith("$") else "")
-                            + '</div>'
-                            + (f'<div class="cv311-info-note">{display_annual}</div>' if display_annual else "")
-                            + f'<div class="cv311-outcome">{plan["outcome"]}</div>'
-                            f'<div class="cv311-for">{plan["audience"]}</div>'
-                            '</div>',
+                            '<span class="cv311-contact-sales" data-testid="cv311-contact-sales"></span>',
+                            unsafe_allow_html=True,
+                        )
+                        st.link_button(
+                            "Contact Sales",
+                            mailto_href(
+                                "enterprise",
+                                subject="Cadivor Enterprise Inquiry",
+                            ),
+                            type="secondary",
+                            use_container_width=True,
+                        )
+                    elif plan_key == "starter" and normalized_current_plan != "starter":
+                        st.markdown(
+                            f'<div class="cv311-info-note">Contact {BILLING_EMAIL} to move an existing paid subscription to Starter.</div>',
                             unsafe_allow_html=True,
                         )
 
-                        checkout_user_email = str(current_user.get("email") or "")
-                        checkout_user_id = str(current_user.get("id") or "")
-                        if is_current:
-                            st.markdown('<div class="cv311-current-note">Your active plan</div>', unsafe_allow_html=True)
-                        elif may_self_serve_checkout(selected_plan_name, plan["name"]) and plan_key in {
-                            "starter",
-                            "professional",
-                            "business",
-                        }:
-                            _render_plan_checkout_confirm(
-                                plan["name"],
-                                {
-                                    "starter": "STRIPE_STARTER_PRICE_ID",
-                                    "professional": "STRIPE_PRO_PRICE_ID",
-                                    "business": "STRIPE_BUSINESS_PRICE_ID",
-                                }[plan_key],
-                                f"pricing_311_upgrade_{plan_key}",
-                                {
-                                    "starter": "Starter — $29/month",
-                                    "professional": "Professional — $99/month",
-                                    "business": "Business — $299/month",
-                                }[plan_key],
-                                checkout_user_email,
-                                checkout_user_id,
-                                CHECKOUT_PLAN_TOKENS[plan["name"]],
-                            )
-                        elif plan_key == "enterprise":
-                            st.markdown(
-                                '<span class="cv311-contact-sales" data-testid="cv311-contact-sales"></span>',
-                                unsafe_allow_html=True,
-                            )
-                            st.link_button(
-                                "Contact Sales",
-                                mailto_href(
-                                    "enterprise",
-                                    subject="Cadivor Enterprise Inquiry",
-                                ),
-                                type="secondary",
-                                use_container_width=True,
-                            )
-                        elif plan_key == "starter" and normalized_current_plan != "starter":
-                            st.markdown(
-                                f'<div class="cv311-info-note">Contact {BILLING_EMAIL} to move an existing paid subscription to Starter.</div>',
-                                unsafe_allow_html=True,
-                            )
-
-                        st.markdown(
-                            '<div class="cv311-card-inner cv311-card-features">'
-                            '<div class="cv311-features">'
-                            + "".join(
-                                f'<div class="cv311-feature"><span class="cv311-check">✓</span><span>{feature}</span></div>'
-                                for feature in plan["features"]
-                            )
-                            + '</div>'
-                            + (f'<div class="cv311-info-note">{plan["exclusions"]}</div>' if plan["exclusions"] else "")
-                            + '</div>',
-                            unsafe_allow_html=True,
+                    st.markdown(
+                        '<div class="cv311-card-inner cv311-card-features">'
+                        '<div class="cv311-features">'
+                        + "".join(
+                            f'<div class="cv311-feature"><span class="cv311-check">✓</span><span>{feature}</span></div>'
+                            for feature in plan["features"]
                         )
+                        + '</div>'
+                        + (f'<div class="cv311-info-note">{plan["exclusions"]}</div>' if plan["exclusions"] else "")
+                        + '</div>',
+                        unsafe_allow_html=True,
+                    )
 
         feature_rows = [
             ("BOM Analysis", "✓", "✓", "Unlimited", "Unlimited", "Unlimited"),
@@ -14038,6 +13991,36 @@ def run_authenticated_app() -> None:
             + '</div></section>',
             unsafe_allow_html=True,
         )
+
+        with st.container(border=True):
+            student_copy, student_action = st.columns([4, 1], gap="medium")
+            with student_copy:
+                st.markdown("**Student plan**")
+                student_plan = get_plan("Student")
+                student_bom_limit = student_plan.get("monthly_bom_limit")
+                student_part_limit = student_plan.get("max_parts_per_bom")
+                student_bom_text = (
+                    "unlimited" if student_bom_limit is None else f"{int(student_bom_limit):,}"
+                )
+                student_part_text = (
+                    "unlimited" if student_part_limit is None else f"{int(student_part_limit):,}"
+                )
+                st.caption(
+                    "Verified students can request free access: "
+                    f"{student_bom_text} BOM analyses per month, up to "
+                    f"{student_part_text} components per BOM, basic risk analysis, limited "
+                    "alternative search, Student Edition watermarked reports, and community "
+                    "support. Monitoring, API access, and team administration are not included."
+                )
+            with student_action:
+                if normalized_current_plan == "student":
+                    st.markdown('<div class="cv311-current-note">Your active plan</div>', unsafe_allow_html=True)
+                else:
+                    st.link_button(
+                        "Request student access",
+                        mailto_href("student", subject="Cadivor Student Plan Request"),
+                        use_container_width=True,
+                    )
 
         st.caption(
             "Stripe handles Starter, Professional, and Business payments securely. Plan activation is applied through the existing Cadivor subscription webhook."

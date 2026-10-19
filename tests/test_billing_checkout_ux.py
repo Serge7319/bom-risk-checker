@@ -24,7 +24,7 @@ class BillingCheckoutUxContractTests(unittest.TestCase):
 
     def _paid_card_loop(self) -> str:
         pricing = self._pricing_block()
-        start = pricing.find("paid_rows = [paid_plans[:2], paid_plans[2:]]")
+        start = pricing.find("paid_columns = st.columns(4, gap=\"small\")")
         end = pricing.find("feature_rows = [", start)
         self.assertGreater(start, 0)
         self.assertGreater(end, start)
@@ -49,15 +49,16 @@ class BillingCheckoutUxContractTests(unittest.TestCase):
         self.assertIn("STRIPE_STARTER_PRICE_ID", card_loop)
         self.assertIn("STRIPE_PRO_PRICE_ID", card_loop)
         self.assertIn("STRIPE_BUSINESS_PRICE_ID", card_loop)
-        # One plan grid only — confirmation replaces the upgrade control in-card.
-        self.assertEqual(card_loop.count("paid_columns = st.columns(2"), 1)
+        # One four-tier plan grid — confirmation replaces the choice control in-card.
+        self.assertEqual(card_loop.count("paid_columns = st.columns(4"), 1)
+        self.assertNotIn("paid_columns = st.columns(2", card_loop)
         self.assertNotIn("_start_plan_checkout(", card_loop)
 
     def test_checkout_cta_is_native_primary_with_stripe_handoff_copy(self):
         pricing = self._pricing_block()
         confirm = pricing[
             pricing.find("def _render_plan_checkout_confirm") : pricing.find(
-                "education_plans = ["
+                "paid_plans = ["
             )
         ]
         self.assertIn("@st.fragment", pricing[pricing.find("@st.fragment") : pricing.find("def _render_plan_checkout_confirm")])
@@ -119,6 +120,32 @@ class BillingCheckoutUxContractTests(unittest.TestCase):
         self.assertNotIn("create_checkout_session", enterprise)
         self.assertNotIn("Continue to secure checkout", enterprise)
         self.assertNotIn("STRIPE_", enterprise)
+
+    def test_pricing_uses_home_width_and_keeps_student_access(self):
+        pricing = self._pricing_block()
+        compact = pricing.replace(" ", "").replace("\n", "")
+        self.assertIn("max-width:1440px!important", compact)
+        self.assertIn(":has(.cv311-hero)", compact)
+        self.assertIn("Request student access", pricing)
+        self.assertIn("BOM analyses per month", pricing)
+        self.assertIn("cv311-compare", pricing)
+
+    def test_business_enterprise_details_and_feature_matrix_are_present(self):
+        pricing = self._pricing_block()
+        expected = (
+            "10 users included",
+            "Role-based permissions and approval workflows",
+            "Organization workspace and shared BOM library",
+            "Audit logs, comments, and activity history",
+            "API access and webhooks",
+            "SSO with SAML or OAuth",
+            "ERP and PLM integrations",
+            "On-premises deployment is planned as a future option.",
+            '("BOM Monitoring", "—", "—", "2,500 parts", "Unlimited", "Unlimited")',
+            '("Dedicated Support", "Community", "Email", "Priority", "Priority", "Dedicated")',
+        )
+        missing = [item for item in expected if item not in pricing]
+        self.assertFalse(missing, f"Pricing content missing: {missing}")
 
     def test_settings_nav_is_compact_left_aligned_segmented_group(self):
         settings = self._settings_block()
