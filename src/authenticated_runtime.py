@@ -13530,6 +13530,8 @@ def run_authenticated_app() -> None:
             .cv311-eyebrow{font-size:clamp(13px,.82vw,16px);font-weight:950;letter-spacing:.11em;text-transform:uppercase;color:#2563eb!important;margin-bottom:10px}
             .cv311-title{font-size:clamp(38px,2.55vw,54px);font-weight:950;letter-spacing:-.045em;color:#0f172a!important;line-height:1.06;margin-bottom:14px;max-width:1180px}
             .cv311-copy{font-size:clamp(17px,1.05vw,21px);font-weight:680;color:#52647a!important;line-height:1.62;max-width:1080px}
+            .cv311-compare p a{color:#2563eb!important;font-weight:850;text-decoration:none!important;white-space:nowrap}
+            .cv311-compare p a:hover{text-decoration:underline!important}
             .cv311-current{border:1px solid #dbeafe;background:linear-gradient(135deg,#fff 0%,#fbfdff 100%);border-radius:22px;padding:25px 28px;margin-bottom:26px;box-shadow:0 14px 38px rgba(15,23,42,.065)}
             .cv311-current-head{display:flex;justify-content:space-between;align-items:flex-start;gap:18px;margin-bottom:20px}
             .cv311-current-title{font-size:clamp(22px,1.35vw,28px);font-weight:950;color:#0f172a!important;line-height:1.2}
@@ -13957,6 +13959,19 @@ def run_authenticated_app() -> None:
                         unsafe_allow_html=True,
                     )
 
+        student_plan = get_plan("Student")
+        student_bom_limit = student_plan.get("monthly_bom_limit")
+        student_part_limit = student_plan.get("max_parts_per_bom")
+        student_bom_text = (
+            "unlimited" if student_bom_limit is None else f"{int(student_bom_limit):,}"
+        )
+        student_part_text = (
+            "unlimited" if student_part_limit is None else f"{int(student_part_limit):,}"
+        )
+        student_access_href = html.escape(
+            mailto_href("student", subject="Cadivor Student Plan Request"), quote=True
+        )
+
         feature_rows = [
             ("BOM Analysis", "✓", "✓", "Unlimited", "Unlimited", "Unlimited"),
             ("Alternative Search", "Limited", "✓", "Advanced", "Advanced", "Advanced"),
@@ -13971,7 +13986,7 @@ def run_authenticated_app() -> None:
         ]
         st.markdown(
             '<section class="cv311-compare"><h3>Feature comparison</h3>'
-            '<p>Free Trial includes the complete platform for 14 days and is therefore not repeated in the long-term plan matrix.</p>'
+            + f'<p>Free Trial includes the complete platform for 14 days and is therefore not repeated in the long-term plan matrix. Verified students can request free access with {student_bom_text} BOM analyses per month and up to {student_part_text} components per BOM. <a href="{student_access_href}">Request student access →</a></p>'
             '<div class="cv311-table">'
             '<div class="cv311-cell head">Feature</div>'
             '<div class="cv311-cell head">Student</div>'
@@ -13991,36 +14006,6 @@ def run_authenticated_app() -> None:
             + '</div></section>',
             unsafe_allow_html=True,
         )
-
-        with st.container(border=True):
-            student_copy, student_action = st.columns([4, 1], gap="medium")
-            with student_copy:
-                st.markdown("**Student plan**")
-                student_plan = get_plan("Student")
-                student_bom_limit = student_plan.get("monthly_bom_limit")
-                student_part_limit = student_plan.get("max_parts_per_bom")
-                student_bom_text = (
-                    "unlimited" if student_bom_limit is None else f"{int(student_bom_limit):,}"
-                )
-                student_part_text = (
-                    "unlimited" if student_part_limit is None else f"{int(student_part_limit):,}"
-                )
-                st.caption(
-                    "Verified students can request free access: "
-                    f"{student_bom_text} BOM analyses per month, up to "
-                    f"{student_part_text} components per BOM, basic risk analysis, limited "
-                    "alternative search, Student Edition watermarked reports, and community "
-                    "support. Monitoring, API access, and team administration are not included."
-                )
-            with student_action:
-                if normalized_current_plan == "student":
-                    st.markdown('<div class="cv311-current-note">Your active plan</div>', unsafe_allow_html=True)
-                else:
-                    st.link_button(
-                        "Request student access",
-                        mailto_href("student", subject="Cadivor Student Plan Request"),
-                        use_container_width=True,
-                    )
 
         st.caption(
             "Stripe handles Starter, Professional, and Business payments securely. Plan activation is applied through the existing Cadivor subscription webhook."
