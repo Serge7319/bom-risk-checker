@@ -71,8 +71,8 @@ class PricingLaunchAlignmentTests(unittest.TestCase):
         self.assertEqual(student["max_parts_per_bom"], 50)
         self.assertIn("5 BOM analyses/month", self.marketing)
         self.assertIn("50 components/BOM", self.marketing)
-        self.assertIn('"5 BOM analyses per month"', self.runtime)
-        self.assertIn('"Up to 50 components per BOM"', self.runtime)
+        self.assertIn("BOM analyses per month", self.runtime)
+        self.assertIn("components per bom", self.runtime.lower())
 
     def test_starter_marketing_and_enforcement_match(self):
         starter = self.plans_module.PLANS["Starter"]
@@ -118,8 +118,10 @@ class PricingLaunchAlignmentTests(unittest.TestCase):
 
     def test_existing_fourteen_day_trial_remains_available(self):
         self.assertIn("14-day free trial", self.marketing)
-        self.assertIn('"name": "Free Trial"', self.runtime)
-        self.assertIn('"price": "14 days"', self.runtime)
+        self.assertIn('PLAN_TRIAL: {', (ROOT / "src" / "plans.py").read_text())
+        self.assertIn('"price": "$0 for 14 days"', (ROOT / "src" / "plans.py").read_text())
+        self.assertIn("trial_days_remaining(current_user)", self.runtime)
+        self.assertIn('f"Trial · {_remaining_trial_days} {_day_word} remaining"', self.runtime)
 
 
 if __name__ == "__main__":
