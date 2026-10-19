@@ -638,6 +638,8 @@ def _submit_manual_signup(supabase, cookie_manager, email: str, password: str) -
         signup_options = {"email_redirect_to": redirect_url}
         if report_purchase:
             signup_options["data"] = confirm.report_purchase_signup_metadata()
+        else:
+            signup_options["data"] = confirm.standard_trial_signup_metadata()
         response = supabase.auth.sign_up({
             "email": email,
             "password": password,

@@ -4,7 +4,7 @@ from __future__ import annotations
 import sys
 import types
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
 from src.services.user_provisioning import (
@@ -62,6 +62,97 @@ class UserProvisioningTests(unittest.TestCase):
         self.assertFalse(created)
         self.assertEqual(profile["plan"], "Professional")
         supabase.table.return_value.insert.assert_not_called()
+
+    def test_recent_trigger_created_starter_row_is_repaired_to_trial(self):
+        created_at = datetime.now(timezone.utc) - timedelta(minutes=2)
+        auth_user = self._auth_user()
+        auth_user.created_at = created_at.isoformat()
+        auth_user.user_metadata["cadivor_signup_intent"] = "standard_trial"
+        existing = {
+            "id": "user-1",
+            "email": "user@example.com",
+            "plan": "Starter",
+            "trial_ends_at": None,
+            "stripe_customer_id": None,
+            "stripe_subscription_id": None,
+            "stripe_price_id": None,
+            "stripe_subscription_status": None,
+            "plan_grandfather_source": None,
+            "role": "user",
+        }
+        updated = {
+            **existing,
+            "plan": "Trial",
+            "trial_ends_at": (created_at + timedelta(days=14)).isoformat(),
+        }
+        update_query = MagicMock()
+        update_query.eq.return_value = update_query
+        update_query.is_.return_value = update_query
+        update_query.select.return_value = update_query
+        update_query.execute.return_value = types.SimpleNamespace(data=[updated])
+        supabase = MagicMock()
+        supabase.table.return_value.update.return_value = update_query
+
+        with patch(
+            "src.services.user_provisioning.execute_supabase_read",
+            return_value=types.SimpleNamespace(data=[existing]),
+        ):
+            profile, created = ensure_user_profile(supabase, auth_user)
+
+        self.assertFalse(created)
+        self.assertEqual(profile["plan"], "Trial")
+        self.assertEqual(resolve_effective_plan(profile)[0], "Trial")
+        self.assertEqual(
+            datetime.fromisoformat(profile["trial_ends_at"]),
+            created_at + timedelta(days=14),
+        )
+        supabase.table.return_value.update.assert_called_once_with(
+            {"plan": "Trial", "trial_ends_at": (created_at + timedelta(days=14)).isoformat()}
+        )
+        update_query.eq.assert_any_call("id", "user-1")
+        update_query.eq.assert_any_call("plan", "Starter")
+        update_query.is_.assert_any_call("trial_ends_at", "null")
+
+    def test_old_starter_profile_is_not_converted_to_trial(self):
+        auth_user = self._auth_user()
+        auth_user.created_at = (datetime.now(timezone.utc) - timedelta(days=15)).isoformat()
+        existing = {
+            "id": "user-1",
+            "email": "user@example.com",
+            "plan": "Starter",
+            "trial_ends_at": None,
+        }
+        supabase = MagicMock()
+        with patch(
+            "src.services.user_provisioning.execute_supabase_read",
+            return_value=types.SimpleNamespace(data=[existing]),
+        ):
+            profile, created = ensure_user_profile(supabase, auth_user)
+
+        self.assertFalse(created)
+        self.assertEqual(profile, existing)
+        supabase.table.return_value.update.assert_not_called()
+
+    def test_report_only_starter_profile_is_not_converted_to_trial(self):
+        auth_user = self._auth_user()
+        auth_user.created_at = (datetime.now(timezone.utc) - timedelta(minutes=2)).isoformat()
+        auth_user.user_metadata["cadivor_signup_intent"] = "one_time_report"
+        existing = {
+            "id": "user-1",
+            "email": "user@example.com",
+            "plan": "Starter",
+            "trial_ends_at": None,
+        }
+        supabase = MagicMock()
+        with patch(
+            "src.services.user_provisioning.execute_supabase_read",
+            return_value=types.SimpleNamespace(data=[existing]),
+        ):
+            profile, created = ensure_user_profile(supabase, auth_user)
+
+        self.assertFalse(created)
+        self.assertEqual(profile, existing)
+        supabase.table.return_value.update.assert_not_called()
 
     def test_missing_user_row_is_created(self):
         supabase = MagicMock()

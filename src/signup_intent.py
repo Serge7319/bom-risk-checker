@@ -7,6 +7,7 @@ REPORT_PURCHASE_QUERY_PARAM = "cadivor_purchase"
 REPORT_PURCHASE_QUERY_VALUE = "one_time_report"
 REPORT_PURCHASE_METADATA_KEY = "cadivor_signup_intent"
 REPORT_PURCHASE_METADATA_VALUE = "one_time_report"
+STANDARD_TRIAL_METADATA_VALUE = "standard_trial"
 REPORT_PURCHASE_ROUTE = "BOM Analyzer"
 REPORT_PURCHASE_PENDING_SESSION_KEY = "cadivor_report_purchase_pending"
 
@@ -22,3 +23,8 @@ def is_report_only_signup(metadata: Any) -> bool:
 def report_purchase_signup_metadata() -> dict[str, str]:
     """Return only the low-privilege marker used to suppress the free trial."""
     return {REPORT_PURCHASE_METADATA_KEY: REPORT_PURCHASE_METADATA_VALUE}
+
+
+def standard_trial_signup_metadata() -> dict[str, str]:
+    """Mark the normal self-serve signup path for profile-trigger recovery."""
+    return {REPORT_PURCHASE_METADATA_KEY: STANDARD_TRIAL_METADATA_VALUE}

@@ -27,6 +27,7 @@ from src.signup_intent import (
     REPORT_PURCHASE_QUERY_VALUE,
     REPORT_PURCHASE_ROUTE,
     report_purchase_signup_metadata as _report_purchase_signup_metadata,
+    standard_trial_signup_metadata as _standard_trial_signup_metadata,
 )
 
 # Query / marker contract
@@ -88,6 +89,10 @@ def report_purchase_requested() -> bool:
 
 def report_purchase_signup_metadata() -> dict[str, str]:
     return _report_purchase_signup_metadata()
+
+
+def standard_trial_signup_metadata() -> dict[str, str]:
+    return _standard_trial_signup_metadata()
 
 
 def _recovery_callback_requested() -> bool:
