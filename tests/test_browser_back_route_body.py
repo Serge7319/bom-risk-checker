@@ -99,10 +99,15 @@ def _patch_runtime(monkeypatch, session, query, consume=None):
     return fake_st
 
 
-def test_runtime_owns_shared_route_body_host_without_rewriting_pages():
+def test_shell_and_runtime_share_one_body_host_without_rewriting_pages():
     runtime_src = _source("src/authenticated_runtime.py")
     assert "claim_authenticated_route_body(app_mode)" in runtime_src
     assert "enter_authenticated_route_body(app_mode)" in runtime_src
+    assert runtime_src.index("render_unified_shell(") < runtime_src.index(
+        "claim_authenticated_route_body(app_mode)"
+    ) < runtime_src.index(
+        "enter_authenticated_route_body(app_mode)"
+    )
     assert "exit_authenticated_route_body()" in runtime_src
     shell_src = _source("src/ui/unified_shell.py")
     assert "claim_authenticated_route_body(current_page)" in shell_src
@@ -139,6 +144,10 @@ def test_route_body_uses_one_keyed_container_and_does_not_leak_rerun_context(mon
     assert first.key == "cadivor_authenticated_route_body"
     assert fake_st.container_keys == ["cadivor_authenticated_route_body"]
     assert claim_authenticated_route_body("Monitoring") is first
+    assert fake_st.container_keys == ["cadivor_authenticated_route_body"]
+    # A second claim in the same script run must reuse the host even if the
+    # route label changed after the shell painted its chrome.
+    assert claim_authenticated_route_body("Engineering Decisions") is first
     assert fake_st.container_keys == ["cadivor_authenticated_route_body"]
     enter_authenticated_route_body("Monitoring")
     assert first.entered == 1
@@ -589,6 +598,7 @@ def test_repeated_route_ownership_does_not_stack_back_controls():
     body = _source("src/ui/route_body.py")
     assert 'st.container(key=ROUTE_BODY_CONTAINER_KEY)' in body
     assert "stable keyed container" in body
+    assert "return str(run_id) if run_id else str(id(ctx))" in body
     assert "ROUTE_BODY_CM_RUN_STATE_KEY" in body
     nav = _source("src/ui/navigation.py")
     assert "commit_navigation_query_params" in nav
