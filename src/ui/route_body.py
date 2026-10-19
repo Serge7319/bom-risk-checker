@@ -29,17 +29,22 @@ ROUTE_BODY_CLAIM_RUN_STATE_KEY = "_cadivor_route_body_claim_run_id"
 def _current_script_run_id() -> str | None:
     """Return Streamlit's run id without requiring an active app context."""
     try:
-        from streamlit.runtime.scriptrunner_utils.script_run_context import (
-            get_script_run_ctx,
-        )
-
+        try:
+            from streamlit.runtime.scriptrunner import get_script_run_ctx
+        except ImportError:
+            from streamlit.runtime.scriptrunner_utils.script_run_context import (
+                get_script_run_ctx,
+            )
         ctx = get_script_run_ctx()
     except Exception:
         return None
     if ctx is None:
         return None
     run_id = getattr(ctx, "script_run_id", None)
-    return str(run_id) if run_id else None
+    # Streamlit versions may not expose script_run_id on ScriptRunContext.
+    # A context object is stable for one script run, so use its identity as a
+    # safe same-run fallback rather than treating the run as unknown.
+    return str(run_id) if run_id else str(id(ctx))
 
 
 def claim_authenticated_route_body(route: str = "") -> Any:
@@ -63,8 +68,9 @@ def claim_authenticated_route_body(route: str = "") -> Any:
         existing_host is not None
         and current_run_id
         and existing_run_id == current_run_id
-        and existing_route == route_key
     ):
+        if existing_route != route_key:
+            st.session_state[ROUTE_BODY_ROUTE_STATE_KEY] = route_key
         return existing_host
 
     exit_authenticated_route_body()
