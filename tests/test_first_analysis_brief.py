@@ -10,6 +10,22 @@ from src.components import first_analysis_brief
 
 
 class FirstAnalysisBriefTests(unittest.TestCase):
+    def test_analysis_success_does_not_show_partial_bom_health_score(self):
+        from src.components.onboarding import _analysis_health_display
+
+        self.assertEqual(
+            _analysis_health_display(91, needs_verification_count=9),
+            "Needs verification",
+        )
+        self.assertEqual(
+            _analysis_health_display(91, needs_verification_count=0),
+            "91/100",
+        )
+        self.assertEqual(
+            _analysis_health_display(None, needs_verification_count=0),
+            "Needs verification",
+        )
+
     def test_unassessed_component_card_shows_evidence_and_no_zero_score(self):
         rendered = []
         fake_streamlit = type(
