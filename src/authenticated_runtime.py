@@ -305,7 +305,10 @@ def load_user_data():
         recent_verified_profile,
         remember_verified_profile,
     )
-    from src.services.user_provisioning import ensure_user_profile
+    from src.services.user_provisioning import (
+        ensure_user_profile,
+        repair_recent_default_trial_profile,
+    )
 
     def _read_profile(user_id):
         return execute_supabase_read(
@@ -325,6 +328,7 @@ def load_user_data():
         recent_profile=recent_verified_profile,
         remember_profile=remember_verified_profile,
         transport_error_type=SupabaseReadTransportError,
+        repair_profile=repair_recent_default_trial_profile,
     )
 
 
@@ -2482,7 +2486,10 @@ def run_authenticated_app() -> None:
                     remember_verified_profile,
                 )
                 from src.services.opening_profile_read import load_profile_for_opening
-                from src.services.user_provisioning import ensure_user_profile
+                from src.services.user_provisioning import (
+                    ensure_user_profile,
+                    repair_recent_default_trial_profile,
+                )
 
                 def _read_opening_profile(user_id):
                     return execute_supabase_read(
@@ -2504,6 +2511,7 @@ def run_authenticated_app() -> None:
                     recent_profile=recent_verified_profile,
                     remember_profile=remember_verified_profile,
                     run_with_budget=run_with_read_budget,
+                    repair_profile=repair_recent_default_trial_profile,
                 )
                 if _profile_status == "error":
                     # Preserve the established auth-expiry and retryable error

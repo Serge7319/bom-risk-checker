@@ -203,7 +203,7 @@ class LoadWorkspaceProfileIdleRecoveryTests(unittest.TestCase):
     def tearDown(self):
         _purge_auth_modules()
 
-    def _load(self, *, read_profile, ensure_profile=None, recent=None, remember=None):
+    def _load(self, *, read_profile, ensure_profile=None, recent=None, remember=None, repair_profile=None):
         return self.recovery.load_workspace_profile(
             supabase=self.supabase,
             session_state=self.st.session_state,
@@ -213,6 +213,7 @@ class LoadWorkspaceProfileIdleRecoveryTests(unittest.TestCase):
             recent_profile=recent or (lambda *_a, **_k: None),
             remember_profile=remember or (lambda _s, profile: dict(profile)),
             transport_error_type=self.transport_error,
+            repair_profile=repair_profile,
         )
 
     def test_valid_active_session_returns_profile(self):
@@ -227,6 +228,20 @@ class LoadWorkspaceProfileIdleRecoveryTests(unittest.TestCase):
                 ensure_profile=MagicMock(side_effect=AssertionError("no provision")),
             )
         self.assertEqual(loaded["id"], "user-1")
+
+    def test_existing_starter_profile_is_repaired_before_return(self):
+        profile = {"id": "user-1", "email": "user@example.com", "plan": "Starter"}
+        repaired = {**profile, "plan": "Trial", "trial_ends_at": "2026-10-31T00:00:00+00:00"}
+        with patch.object(
+            self.recovery,
+            "refresh_authenticated_session",
+            return_value=("fresh", self.st.session_state["user"], _jwt(3600), "refresh-1"),
+        ):
+            loaded = self._load(
+                read_profile=lambda _uid: types.SimpleNamespace(data=[profile]),
+                repair_profile=lambda _client, _user, row: repaired if row["plan"] == "Starter" else row,
+            )
+        self.assertEqual(loaded["plan"], "Trial")
 
     def test_expired_session_refreshed_then_profile_retried(self):
         user = self.st.session_state["user"]
