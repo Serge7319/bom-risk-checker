@@ -189,6 +189,20 @@ class ApplicationShellV2Tests(unittest.TestCase):
         self.assertIn("cv_foundation_profile_trigger", self.app_shell_css)
         self.assertIn("cv_foundation_profile_panel", self.app_shell_css)
 
+    def test_profile_control_has_one_stable_desktop_anchor(self) -> None:
+        trigger = self.app_shell_css.split(".st-key-cv_foundation_profile_trigger{", 1)[1].split("}", 1)[0]
+        panel = self.app_shell_css.split(".st-key-cv_foundation_profile_panel{", 1)[1].split("}", 1)[0]
+        self.assertIn("bottom:16px!important", trigger)
+        self.assertIn("left:18px!important", trigger)
+        self.assertIn("top:auto!important", trigger)
+        self.assertIn("bottom:64px!important", panel)
+        self.assertIn("left:12px!important", panel)
+        self.assertIn("top:auto!important", panel)
+        dashboard_css = (REPO_ROOT / "src" / "assets" / "css" / "dashboard_visual_refresh.css").read_text(encoding="utf-8")
+        desktop_anchor = dashboard_css.split(".st-key-cv_foundation_profile_trigger {", 1)[1].split("}", 1)[0]
+        self.assertIn("bottom: 16px", desktop_anchor)
+        self.assertIn("left: 18px", desktop_anchor)
+
     def test_authenticated_shell_uses_the_persistent_navigation_rail(self) -> None:
         self.assertIn('key="cv_foundation_navigation"', self.unified_shell_source)
         self.assertIn('key=f"cv_foundation_nav_{slug}"', self.unified_shell_source)

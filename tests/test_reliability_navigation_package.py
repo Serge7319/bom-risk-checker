@@ -268,6 +268,8 @@ def test_new_analysis_clears_saved_list_navigation_state(monkeypatch):
     assert "cadivor_active_analysis_id" not in state
     assert "analysis_id" not in state
     assert "new_analysis" not in state["cadivor_nav_params"]
+    assert state["cadivor_bom_upload_open"] is True
+    assert "cadivor_bom_catalog_requested" not in state
 
 
 def test_plan_and_billing_opens_settings_billing_without_opening(monkeypatch):

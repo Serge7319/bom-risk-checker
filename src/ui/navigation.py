@@ -54,18 +54,16 @@ _ALT_NAV_KEYS = (
 
 
 def consume_new_analysis_navigation() -> None:
-    """Clear the prior BOM once, then retire the navigation instruction."""
-    for state_key in (
-        "cadivor_active_analysis_id",
-        "cadivor_active_analysis_tab",
-        "cadivor_show_saved_boms",
-        "cadivor_preselect_saved_bom_id",
-        "analysis_id",
-        "results_df",
-        "analysis_saved",
-        "uploaded_filename",
-    ):
-        st.session_state.pop(state_key, None)
+    """Open a clean upload form once, then retire the navigation instruction.
+
+    ``new_analysis=1`` is the user intent that starts the upload flow. Keeping
+    the handoff here ensures every entry point (including first-run onboarding)
+    clears a stale catalog selection and opens the form instead of landing on
+    the saved-BOM list.
+    """
+    from src.bom_upload_flow import prepare_new_approved_bom_analysis
+
+    prepare_new_approved_bom_analysis(st.session_state)
     nav_params = dict(st.session_state.get("cadivor_nav_params") or {})
     nav_params.pop("new_analysis", None)
     st.session_state["cadivor_nav_params"] = nav_params
