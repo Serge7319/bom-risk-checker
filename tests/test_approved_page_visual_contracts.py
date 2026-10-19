@@ -39,26 +39,17 @@ class ApprovedPageVisualContractTests(unittest.TestCase):
             APPROVED_PAGES,
         )
 
-    def test_monitoring_category_buttons_have_seven_desktop_tracks(self):
-        self.assertIn(
-            '.st-key-approved_monitoring_category_row [data-testid="stHorizontalBlock"]{display:grid!important;grid-template-columns:1fr 1.35fr .95fr 1.28fr .95fr .95fr 1.05fr!important;',
-            APPROVED_PAGES,
-        )
-        self.assertIn("st.columns(\n            [0.42, 8.45, 3.1],", APPROVED_PAGES)
-        self.assertIn(
-            '.st-key-approved_monitoring_filters [data-testid="stHorizontalBlock"]:has(.st-key-approved_monitoring_category_row){display:grid!important;grid-template-columns:42px minmax(0,1fr)!important;',
-            APPROVED_PAGES,
-        )
-
-    def test_selected_monitoring_filter_uses_mockup_pill_treatment(self):
-        self.assertIn(
-            'st-key-approved_monitoring_filter_selected_',
-            MONITORING_HOME_CSS,
-        )
+    def test_monitoring_category_filter_is_one_stateful_required_pills_widget(self):
         monitoring_renderer = APPROVED_PAGES.split("def render_monitoring(", 1)[1]
-        self.assertIn('selected_key = "selected_" if selected == category else ""', monitoring_renderer)
-        self.assertIn('type="secondary"', monitoring_renderer)
-        self.assertNotIn('type="primary" if selected == category', monitoring_renderer)
+        self.assertIn('selected = st.pills(', monitoring_renderer)
+        self.assertIn('key="approved_alert_category"', monitoring_renderer)
+        self.assertIn('selection_mode="single"', monitoring_renderer)
+        self.assertIn('required=True', monitoring_renderer)
+        self.assertIn('on_change=_reset_monitoring_severity', monitoring_renderer)
+        self.assertIn('st.session_state["approved_alert_category"] = target_category', monitoring_renderer)
+        self.assertIn('st.session_state["approved_alert_severity"] = target_severity', monitoring_renderer)
+        self.assertNotIn('category_columns = st.columns', monitoring_renderer)
+        self.assertNotIn('key=f"approved_monitoring_category_', monitoring_renderer)
 
     def test_monitoring_uses_home_width_canvas_and_card_shell(self):
         self.assertIn(
@@ -84,10 +75,12 @@ class ApprovedPageVisualContractTests(unittest.TestCase):
 
     def test_monitoring_filters_and_actions_match_mockup(self):
         self.assertIn(
-            '.st-key-approved_monitoring_category_row [class*="st-key-approved_monitoring_filter_"] .stButton > button',
-            MONITORING_HOME_CSS,
+            '.st-key-approved_monitoring_category_row [role="radiogroup"]',
+            MONITORING_FINAL_CSS,
         )
-        self.assertIn("border-radius: 999px !important;", MONITORING_HOME_CSS)
+        self.assertIn("border-radius: 999px !important;", MONITORING_FINAL_CSS)
+        self.assertIn("gap: 8px !important;", MONITORING_FINAL_CSS)
+        self.assertIn('button[aria-pressed="true"]', MONITORING_FINAL_CSS)
         self.assertIn(
             '[class*="st-key-approved_alert_action_"] .stButton > button',
             MONITORING_HOME_CSS,
@@ -113,18 +106,13 @@ class ApprovedPageVisualContractTests(unittest.TestCase):
         self.assertIn("border: 1px solid #70a4ff !important;", MONITORING_FINAL_CSS)
         self.assertIn("color: #2563eb !important;", MONITORING_FINAL_CSS)
 
-    def test_monitoring_filter_pills_have_separate_responsive_tracks(self):
+    def test_monitoring_filter_pills_wrap_before_the_period_control_can_overlap(self):
         self.assertIn(
-            "grid-template-columns: 42px minmax(0, 1fr) minmax(330px, 356px) !important;",
+            "grid-template-columns: 42px minmax(0, 1fr) 356px !important;",
             MONITORING_FINAL_CSS,
         )
-        self.assertIn(
-            "grid-template-columns: minmax(86px, 1fr) minmax(112px, 1.32fr)",
-            MONITORING_FINAL_CSS,
-        )
-        self.assertIn("gap: 8px !important;", MONITORING_FINAL_CSS)
-        self.assertIn("grid-template-columns: repeat(4, minmax(0, 1fr)) !important;", MONITORING_FINAL_CSS)
-        self.assertIn("grid-template-columns: repeat(2, minmax(0, 1fr)) !important;", MONITORING_FINAL_CSS)
+        self.assertIn("grid-template-columns: 42px minmax(0, 1fr) !important;", MONITORING_FINAL_CSS)
+        self.assertIn("flex-flow: row wrap !important;", MONITORING_FINAL_CSS)
         self.assertIn("max-width: 100% !important;", MONITORING_FINAL_CSS)
         self.assertIn("border-radius: 999px !important;", MONITORING_FINAL_CSS)
         self.assertIn("background: #edf5ff !important;", MONITORING_FINAL_CSS)
@@ -137,19 +125,12 @@ class ApprovedPageVisualContractTests(unittest.TestCase):
         self.assertNotIn("25 components/BOM", MARKETING_SITE)
         self.assertIn("Request access</a>", MARKETING_SITE)
 
-    def test_monitoring_filter_grid_normalizes_both_streamlit_column_wrappers(self):
-        self.assertIn(
-            '[data-testid="stHorizontalBlock"]:has(.st-key-approved_monitoring_category_row) > :is([data-testid="stColumn"], [data-testid="column"])',
-            MONITORING_FINAL_CSS,
-        )
-        self.assertIn(
-            '.st-key-approved_monitoring_category_row [data-testid="stHorizontalBlock"] > :is([data-testid="stColumn"], [data-testid="column"])',
-            MONITORING_FINAL_CSS,
-        )
-        self.assertIn("grid-template-columns: repeat(4, minmax(0, 1fr)) !important;", MONITORING_FINAL_CSS)
-        self.assertIn("grid-template-columns: repeat(2, minmax(0, 1fr)) !important;", MONITORING_FINAL_CSS)
-        self.assertIn("overflow-wrap: anywhere !important;", MONITORING_FINAL_CSS)
-        self.assertIn("display: contents !important;", MONITORING_FINAL_CSS)
+    def test_monitoring_filter_has_no_seven_column_button_layout_left_behind(self):
+        all_monitoring_styles = MONITORING_HOME_CSS + MONITORING_FINAL_CSS + APPROVED_PAGES
+        self.assertNotIn("st-key-approved_monitoring_filter_", all_monitoring_styles)
+        self.assertNotIn('key=f"approved_monitoring_category_', all_monitoring_styles)
+        monitoring_renderer = APPROVED_PAGES.split("def render_monitoring(", 1)[1]
+        self.assertNotIn("category_columns = st.columns", monitoring_renderer)
 
 if __name__ == "__main__":
     unittest.main()

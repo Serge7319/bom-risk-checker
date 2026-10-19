@@ -1055,11 +1055,11 @@ def begin_approved_page() -> None:
         .st-key-approved_monitoring_filters [data-testid="stWidgetLabel"] p{margin:0 0 5px!important;color:#52647b!important;font-size:12px!important;font-weight:700!important}
         .cv-ap-monitoring-show-label{display:flex;align-items:center;min-height:42px;color:#52647b;font-size:12px;font-weight:700}
         .cv-ap-monitoring-period-label{display:flex;align-items:center;min-height:42px;color:#52647b;font-size:14px;font-weight:650;white-space:nowrap}
-        [class*="st-key-approved_monitoring_filter_"]{box-sizing:border-box!important;width:100%!important;min-width:0!important}
-        [class*="st-key-approved_monitoring_filter_"] [data-testid="stVerticalBlock"]{gap:0!important}
-        [class*="st-key-approved_monitoring_filter_"] button{box-sizing:border-box!important;width:100%!important;min-height:42px!important;height:42px!important;padding:0 11px!important;border:1px solid #dce4ef!important;border-radius:999px!important;background:#fff!important;color:#52647b!important;box-shadow:none!important;font-size:14px!important;font-weight:550!important;white-space:nowrap!important}
-        [class*="st-key-approved_monitoring_filter_"] button:hover{border-color:#9bbdf5!important;background:#f8fbff!important;color:#2563eb!important}
-        .st-key-approved_monitoring_filters [data-testid^="stBaseButton-"]{box-sizing:border-box!important;min-height:42px!important;height:42px!important;border-radius:999px!important}
+        .st-key-approved_monitoring_category_row{box-sizing:border-box!important;width:100%!important;min-width:0!important}
+        .st-key-approved_monitoring_category_row [data-testid="stPills"],.st-key-approved_monitoring_category_row [role="radiogroup"],.st-key-approved_monitoring_category_row [data-baseweb="button-group"]{display:flex!important;flex-flow:row wrap!important;justify-content:flex-start!important;align-items:center!important;gap:8px!important;width:100%!important;min-width:0!important}
+        .st-key-approved_monitoring_category_row button,.st-key-approved_monitoring_category_row [role="radio"],.st-key-approved_monitoring_category_row [role="option"]{box-sizing:border-box!important;flex:0 0 auto!important;width:auto!important;min-width:0!important;min-height:42px!important;height:42px!important;padding:0 13px!important;border:1px solid #dce4ef!important;border-radius:999px!important;background:#fff!important;color:#52647b!important;box-shadow:none!important;font-size:12px!important;font-weight:600!important;white-space:nowrap!important}
+        .st-key-approved_monitoring_category_row button:hover,.st-key-approved_monitoring_category_row [role="radio"]:hover,.st-key-approved_monitoring_category_row [role="option"]:hover{border-color:#9bbdf5!important;background:#f8fbff!important;color:#2563eb!important}
+        .st-key-approved_monitoring_category_row button[aria-checked="true"],.st-key-approved_monitoring_category_row button[aria-pressed="true"],.st-key-approved_monitoring_category_row [role="radio"][aria-checked="true"],.st-key-approved_monitoring_category_row [role="option"][aria-selected="true"]{border-color:#70a4ff!important;background:#edf5ff!important;color:#2563eb!important}
         .st-key-approved_monitoring_period_control{box-sizing:border-box!important;width:100%!important}
         .st-key-approved_monitoring_period_control>[data-testid="stVerticalBlock"]{gap:0!important}
         .cv-ap-monitoring-calendar{display:flex;align-items:center;justify-content:center;min-height:42px;color:#52647b}
@@ -1094,9 +1094,6 @@ def begin_approved_page() -> None:
         .cv-ap-table-center{width:100%;display:flex;align-items:center;justify-content:center;text-align:center}
         @media(max-width:1100px){[class*="st-key-approved_home_new_bom"],[class*="st-key-approved_home_open_reports"]{left:0!important}}
         @media(max-width:1100px){.st-key-approved_monitoring_kpi_grid [data-testid="stHorizontalBlock"]{gap:12px!important}.st-key-approved_monitoring_kpi_grid [data-testid="column"]{flex:1 1 0!important;width:0!important;max-width:none!important}.cv-ap-monitoring-kpi{min-height:164px!important;padding:16px!important;grid-template-columns:minmax(0,1fr) 76px!important}.cv-ap-monitoring-copy>span{font-size:14px!important}.cv-ap-monitoring-copy strong{font-size:32px!important;gap:8px!important}.cv-ap-monitoring-chevron{font-size:26px!important}.st-key-approved_monitoring_kpi_active>[data-testid="stVerticalBlock"],.st-key-approved_monitoring_kpi_high>[data-testid="stVerticalBlock"],.st-key-approved_monitoring_kpi_lifecycle>[data-testid="stVerticalBlock"],.st-key-approved_monitoring_kpi_inventory>[data-testid="stVerticalBlock"]{min-height:164px!important}.st-key-approved_monitoring_kpi_active [class*="st-key-approved_monitoring_action_"] button,.st-key-approved_monitoring_kpi_high [class*="st-key-approved_monitoring_action_"] button,.st-key-approved_monitoring_kpi_lifecycle [class*="st-key-approved_monitoring_action_"] button,.st-key-approved_monitoring_kpi_inventory [class*="st-key-approved_monitoring_action_"] button{min-height:164px!important}.cv-ap-monitoring-kpi .cv-ap-spark{width:76px!important}.st-key-approved_monitoring_filters [data-testid="stHorizontalBlock"]{gap:8px!important}}
-        .st-key-approved_monitoring_category_row [data-testid="stHorizontalBlock"]{display:grid!important;grid-template-columns:1fr 1.35fr .95fr 1.28fr .95fr .95fr 1.05fr!important;align-items:center!important;gap:6px!important;width:100%!important}
-        .st-key-approved_monitoring_category_row [data-testid="stHorizontalBlock"]>[data-testid="column"]{box-sizing:border-box!important;width:auto!important;max-width:none!important;min-width:0!important;flex:none!important;padding:0!important}
-        .st-key-approved_monitoring_category_row [data-testid="stHorizontalBlock"] button{padding-left:8px!important;padding-right:8px!important;font-size:12px!important}
         @media(max-width:1200px){
           .st-key-approved_monitoring_filters [data-testid="stHorizontalBlock"]:has(.st-key-approved_monitoring_category_row){display:grid!important;grid-template-columns:42px minmax(0,1fr)!important;align-items:start!important;gap:8px!important}
           .st-key-approved_monitoring_filters [data-testid="stHorizontalBlock"]:has(.st-key-approved_monitoring_category_row)>[data-testid="column"]{box-sizing:border-box!important;width:auto!important;max-width:none!important;min-width:0!important;flex:none!important;padding:0!important}
@@ -1104,11 +1101,10 @@ def begin_approved_page() -> None:
           .st-key-approved_monitoring_filters [data-testid="column"]:has(.st-key-approved_monitoring_category_row){grid-column:2!important;grid-row:1!important}
           .st-key-approved_monitoring_filters [data-testid="column"]:has(.st-key-approved_monitoring_period_control){grid-column:1 / -1!important;grid-row:2!important}
           .st-key-approved_monitoring_period_control{width:340px!important;max-width:100%!important;margin-left:auto!important}
-          .st-key-approved_monitoring_category_row [data-testid="stHorizontalBlock"] button{padding-left:6px!important;padding-right:6px!important;font-size:11px!important}
           .cv-ap-monitoring-show-label{font-size:11px!important}
         }
         @media(max-width:900px){.st-key-approved_monitoring_filters{padding:12px!important}.st-key-approved_monitoring_alert_heading{padding:14px 14px 10px!important}.cv-ap-monitoring-heading h2{font-size:18px!important}}
-        @media(max-width:640px){.st-key-approved_monitoring_category_row [data-testid="stHorizontalBlock"]{grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:6px!important}.st-key-approved_monitoring_category_row [data-testid="stHorizontalBlock"]>[data-testid="column"]{width:auto!important;flex:none!important}.st-key-approved_monitoring_period_control{width:100%!important}.st-key-approved_monitoring_filters [data-testid="column"]:has(.cv-ap-monitoring-show-label){align-self:start!important}}
+        @media(max-width:640px){.st-key-approved_monitoring_period_control{width:100%!important}.st-key-approved_monitoring_filters [data-testid="column"]:has(.cv-ap-monitoring-show-label){align-self:start!important}.st-key-approved_monitoring_category_row button,.st-key-approved_monitoring_category_row [role="radio"],.st-key-approved_monitoring_category_row [role="option"]{min-height:38px!important;height:38px!important;padding:0 10px!important;font-size:11px!important}}
         @media(max-width:640px){.st-key-approved_monitoring_kpi_grid [data-testid="stHorizontalBlock"]{flex-wrap:wrap!important}.st-key-approved_monitoring_kpi_grid [data-testid="column"]{flex:1 1 calc(50% - 8px)!important;width:auto!important}.cv-ap-monitoring-kpi{min-height:150px!important}.st-key-approved_monitoring_alert_heading{padding:14px 14px 10px!important}.cv-ap-monitoring-heading h2{font-size:18px!important}}
         @media(max-width:1100px){
           .cv-ap-monitoring-table-head{gap:8px!important;padding:0 12px!important;margin-left:14px!important;margin-right:14px!important}
@@ -3329,8 +3325,12 @@ def render_monitoring(alerts: list[dict[str, Any]] | None) -> None:
                         st.rerun()
 
     with st.container(key="approved_monitoring_filters"):
-        selected = str(st.session_state.get("approved_alert_category") or "All alerts")
-        severity_filter = str(st.session_state.get("approved_alert_severity") or "All")
+        if st.session_state.get("approved_alert_category") not in categories:
+            st.session_state["approved_alert_category"] = "All alerts"
+
+        def _reset_monitoring_severity() -> None:
+            st.session_state["approved_alert_severity"] = "All"
+
         label_col, show_col, period_col = st.columns(
             [0.42, 8.45, 3.1],
             vertical_alignment="center",
@@ -3340,21 +3340,16 @@ def render_monitoring(alerts: list[dict[str, Any]] | None) -> None:
             st.markdown("<div class='cv-ap-monitoring-show-label'>Show</div>", unsafe_allow_html=True)
         with show_col:
             with st.container(key="approved_monitoring_category_row"):
-                category_columns = st.columns([1.0, 1.38, .84, 1.4, .72, .72, .94], gap="small")
-                for category_column, category in zip(category_columns, categories):
-                    category_slug = category.casefold().replace("&", "and").replace(" ", "_")
-                    with category_column:
-                        selected_key = "selected_" if selected == category else ""
-                        with st.container(key=f"approved_monitoring_filter_{selected_key}{category_slug}"):
-                            if st.button(
-                                category,
-                                key=f"approved_monitoring_category_{category_slug}",
-                                type="secondary",
-                                width="stretch",
-                            ):
-                                st.session_state["approved_alert_category"] = category
-                                st.session_state["approved_alert_severity"] = "All"
-                                st.rerun()
+                selected = st.pills(
+                    "Alert category",
+                    categories,
+                    selection_mode="single",
+                    required=True,
+                    key="approved_alert_category",
+                    on_change=_reset_monitoring_severity,
+                    label_visibility="collapsed",
+                    width="stretch",
+                )
         with period_col:
             period_label_col, period_select_col = st.columns([.78, 1.5], vertical_alignment="center", gap="small")
             with period_label_col:
@@ -3375,6 +3370,9 @@ def render_monitoring(alerts: list[dict[str, Any]] | None) -> None:
                             key="approved_alert_period",
                             label_visibility="collapsed",
                         )
+
+        selected = str(selected or "All alerts")
+        severity_filter = str(st.session_state.get("approved_alert_severity") or "All")
 
     rows = source
     if selected and selected != "All alerts":
