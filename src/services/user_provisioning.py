@@ -81,12 +81,16 @@ def _recent_default_trial_profile(auth_user: Any, profile: dict[str, Any]) -> bo
     return timedelta(0) <= age < timedelta(days=TRIAL_DAYS) and trial_end > now
 
 
-def _repair_recent_default_trial_profile(
+def repair_recent_default_trial_profile(
     supabase: Any,
     auth_user: Any,
     profile: dict[str, Any],
 ) -> dict[str, Any]:
-    """Promote a fresh trigger-created Starter row to its signup Trial once."""
+    """Promote a fresh trigger-created Starter row to its signup Trial once.
+
+    Safe to call on a loaded profile: ordinary, older, paid, and report-only
+    accounts return immediately without a database mutation.
+    """
     if not _recent_default_trial_profile(auth_user, profile):
         return profile
 
@@ -224,7 +228,7 @@ def ensure_user_profile(
 
     if existing.data:
         profile = existing.data[0]
-        repaired = _repair_recent_default_trial_profile(supabase, auth_user, profile)
+        repaired = repair_recent_default_trial_profile(supabase, auth_user, profile)
         return repaired, False
 
     row = build_default_user_row(auth_user)
@@ -247,7 +251,7 @@ def ensure_user_profile(
             ) from read_exc
         if retry.data:
             profile = retry.data[0]
-            repaired = _repair_recent_default_trial_profile(supabase, auth_user, profile)
+            repaired = repair_recent_default_trial_profile(supabase, auth_user, profile)
             return repaired, False
         raise UserProvisioningError("Cadivor could not create the user profile.") from exc
 
