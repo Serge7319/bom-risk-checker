@@ -137,5 +137,19 @@ class ApprovedPageVisualContractTests(unittest.TestCase):
         self.assertNotIn("25 components/BOM", MARKETING_SITE)
         self.assertIn("Request access</a>", MARKETING_SITE)
 
+    def test_monitoring_filter_grid_normalizes_both_streamlit_column_wrappers(self):
+        self.assertIn(
+            '[data-testid="stHorizontalBlock"]:has(.st-key-approved_monitoring_category_row) > :is([data-testid="stColumn"], [data-testid="column"])',
+            MONITORING_FINAL_CSS,
+        )
+        self.assertIn(
+            '.st-key-approved_monitoring_category_row [data-testid="stHorizontalBlock"] > :is([data-testid="stColumn"], [data-testid="column"])',
+            MONITORING_FINAL_CSS,
+        )
+        self.assertIn("grid-template-columns: repeat(4, minmax(0, 1fr)) !important;", MONITORING_FINAL_CSS)
+        self.assertIn("grid-template-columns: repeat(2, minmax(0, 1fr)) !important;", MONITORING_FINAL_CSS)
+        self.assertIn("overflow-wrap: anywhere !important;", MONITORING_FINAL_CSS)
+        self.assertIn("display: contents !important;", MONITORING_FINAL_CSS)
+
 if __name__ == "__main__":
     unittest.main()
