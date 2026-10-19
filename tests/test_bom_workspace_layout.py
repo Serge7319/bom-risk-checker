@@ -77,7 +77,7 @@ def test_new_bom_project_name_is_free_text():
 
 def test_new_bom_upload_submits_names_and_file_together():
     start = APPROVED_SOURCE.index('with st.container(key="approved_bom_upload_panel")')
-    end = APPROVED_SOURCE.index('    else:\\n        from datetime import date', start)
+    end = APPROVED_SOURCE.index('    else:\n        from datetime import date', start)
     upload_form = APPROVED_SOURCE[start:end]
 
     assert 'with st.form(key="approved_bom_upload_form", clear_on_submit=False)' in upload_form
@@ -86,6 +86,21 @@ def test_new_bom_upload_submits_names_and_file_together():
     assert 'st.session_state["cadivor_pending_project"]' in upload_form
     assert 'st.session_state["cadivor_pending_bom_name"] = bom_name' in upload_form
     assert '[class*="st-key-approved_bom_analyze"] button{width:auto!important' in APPROVED_SOURCE
+
+
+def test_new_bom_analysis_matches_approved_full_width_upload_mockup():
+    start = APPROVED_SOURCE.index('with st.container(key="approved_bom_upload_panel")')
+    end = APPROVED_SOURCE.index('    else:\n        from datetime import date', start)
+    upload_form = APPROVED_SOURCE[start:end]
+
+    assert '("render_bom_catalog", "standard")' in APPROVED_SOURCE
+    assert '.st-key-approved_bom_upload_panel{box-sizing:border-box!important;width:100%!important;max-width:none!important' in APPROVED_SOURCE
+    assert 'with st.container(key="approved_bom_upload_fields")' in upload_form
+    assert 'project_col, bom_col = st.columns(2, gap="large")' in upload_form
+    assert 'placeholder="Example: Motor Controller Rev A"' in upload_form
+    assert 'key="bom_file_uploader"' in upload_form
+    assert 'key="approved_bom_analyze"' in upload_form
+    assert 'st.session_state["cadivor_pending_upload"] = uploaded' in upload_form
 
 
 def test_analysis_workspace_hides_duplicate_legacy_hero_and_caps_actions():
