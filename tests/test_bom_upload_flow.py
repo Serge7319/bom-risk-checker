@@ -228,7 +228,13 @@ class ApprovedBOMSubmissionTests(unittest.TestCase):
         transition = source[consume : consume + 700]
         self.assertIn("if _approved_bom_submitted and uploaded_file is not None:", transition)
         self.assertIn("st.rerun()", transition)
-        self.assertIn("if not analysis_in_progress:\n            render_upload_detected(", source)
+        self.assertIn(
+            "if not analysis_in_progress and not _has_completed_saved_results:\n            render_upload_detected(",
+            source,
+        )
+        analyze_controls = source[source.index("        analyze_clicked = False") :]
+        self.assertIn("and not _has_completed_saved_results", analyze_controls)
+        self.assertNotIn('st.success("Saved automatically to your Cadivor workspace.")', source)
         self.assertNotIn("st.data_editor(\n                    bom_df", source)
 
     def test_upload_form_is_hidden_while_analysis_progress_is_active(self):

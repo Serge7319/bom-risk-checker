@@ -292,62 +292,104 @@ def _analysis_health_display(
     return f"{int(health_score)}/100"
 
 
-def render_analysis_success(*, project_name: str, total_parts: int, high_count: int, medium_count: int, health_score: int | None, analysis_id: str, needs_verification_count: int = 0) -> None:
-    """Render an outcome-focused transition after a BOM is analyzed and saved."""
-    review_count = max(0, int(high_count or 0)) + max(0, int(medium_count or 0))
-    estimated_minutes = max(2, min(15, review_count * 2 if review_count else 2))
-    recommendation = (
-        "Verify supplier evidence before interpreting the overall BOM health."
-        if health_score is None or needs_verification_count else
-        "Resolve critical components before release." if high_count else
-        "Complete a focused review before release." if medium_count else
-        "No elevated component risks were detected."
-    )
-    health_display = _analysis_health_display(health_score, needs_verification_count)
+def render_analysis_success(
+    *,
+    project_name: str,
+    total_parts: int,
+    high_count: int,
+    medium_count: int,
+    health_score: int | None,
+    analysis_id: str,
+    needs_verification_count: int = 0,
+    source_filename: str = "",
+) -> None:
+    """Render the approved result-page metadata, evidence status, and actions."""
+    del medium_count, health_score  # calculations remain in the analysis/report layers
+    total_parts = max(0, int(total_parts or 0))
+    high_count = max(0, int(high_count or 0))
+    needs_verification_count = max(0, int(needs_verification_count or 0))
+    project = html.escape(str(project_name or "BOM analysis"))
+    filename = html.escape(str(source_filename or "Uploaded BOM"))
+    if needs_verification_count:
+        status_title = "Overall BOM risk needs verification"
+        status_copy = (
+            "Supplier evidence is incomplete. Review the component statuses below "
+            "before relying on an overall exposure assessment."
+        )
+        status_class = "verify"
+    elif high_count:
+        status_title = "High-risk components need review"
+        status_copy = "Review supplier and lifecycle evidence for the flagged components."
+        status_class = "risk"
+    else:
+        status_title = "Analysis complete"
+        status_copy = "Review component-level supplier evidence and recommended next steps below."
+        status_class = "clear"
+    icon = "⚠" if status_class != "clear" else "✓"
     st.markdown(
         f"""
-        <style id="cadivor-analysis-success-29b">
-        .cv29b-success{{position:relative;overflow:hidden;border:1px solid #A7F3D0;background:linear-gradient(135deg,#FFFFFF 0%,#F0FDF4 58%,#ECFDF5 100%);border-radius:25px;padding:24px;box-shadow:0 20px 48px rgba(5,150,105,.09);margin:12px 0 18px}}
-        .cv29b-success-top{{display:flex;justify-content:space-between;gap:18px;align-items:flex-start}}
-        .cv29b-success-kicker{{color:#047857!important;font-size:10px;font-weight:950;letter-spacing:.1em;text-transform:uppercase;margin-bottom:7px}}
-        .cv29b-success h2{{color:#0F172A!important;font-size:27px;font-weight:950;letter-spacing:-.035em;margin:0 0 7px}}
-        .cv29b-success p{{color:#475569!important;font-size:13px;font-weight:650;line-height:1.55;margin:0}}
-        .cv29b-success-grid{{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:17px 0}}
-        .cv29b-success-stat{{border:1px solid #D1FAE5;background:rgba(255,255,255,.92);border-radius:15px;padding:13px}}
-        .cv29b-success-stat span{{display:block;color:#64748B!important;font-size:9px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px}}
-        .cv29b-success-stat strong{{display:block;color:#0F172A!important;font-size:22px;font-weight:950}}
-        .cv29b-success-actions{{display:flex;gap:9px;flex-wrap:wrap}}
-        .cv29b-success-btn{{display:inline-flex;text-decoration:none!important;border-radius:12px;padding:11px 14px;border:1px solid #059669;background:#059669;color:#FFFFFF!important;font-size:12px;font-weight:900}}
-        .cv29b-success-btn.secondary{{background:#FFFFFF;color:#047857!important;border-color:#A7F3D0}}
-        @media(max-width:780px){{.cv29b-success-grid{{grid-template-columns:repeat(2,minmax(0,1fr))}}.cv29b-success-top{{display:block}}}}
+        <style id="cadivor-analysis-success-29b" data-cadivor-layout-style="true">
+        .cvres-meta{{display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px;margin:1px 0 15px;color:#66758b!important;font-size:12px}}
+        .cvres-meta strong{{color:#172438!important;font-weight:700}}
+        .cvres-meta .dot{{color:#b5c0ce!important}}
+        .cvres-status{{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(350px,.9fr);align-items:center;gap:18px;border:1px solid #e1e7f0;border-radius:13px;padding:17px 19px;margin:0 0 15px;background:#fff}}
+        .cvres-status.verify{{border-color:#efd9a8;background:#fffaf0}}
+        .cvres-status.risk{{border-color:#fecaca;background:#fff7f6}}
+        .cvres-status.clear{{border-color:#b8e4c7;background:#f5fcf7}}
+        .cvres-status-copy{{display:flex;align-items:flex-start;gap:12px;min-width:0}}
+        .cvres-status-icon{{display:grid;flex:0 0 34px;width:34px;height:34px;place-items:center;border-radius:10px;color:#9a5c08;background:#ffedc2;font-size:18px;font-weight:800}}
+        .cvres-status.risk .cvres-status-icon{{color:#b42318;background:#ffe3de}}
+        .cvres-status.clear .cvres-status-icon{{color:#187145;background:#dff4e6}}
+        .cvres-status h2{{margin:0;color:#172438!important;font-size:15px;line-height:1.35;font-weight:700}}
+        .cvres-status p{{max-width:670px;margin:5px 0 0;color:#715a32!important;font-size:12px;line-height:1.5}}
+        .cvres-status.risk p{{color:#7b4540!important}}
+        .cvres-status.clear p{{color:#4c6e58!important}}
+        .cvres-counts{{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border-left:1px solid #ead8b4}}
+        .cvres-stat{{padding:0 11px;text-align:center}}
+        .cvres-stat+.cvres-stat{{border-left:1px solid #ead8b4}}
+        .cvres-stat strong{{display:block;color:#172438!important;font-size:20px;line-height:1.1;font-weight:650;font-variant-numeric:tabular-nums}}
+        .cvres-stat span{{display:block;margin-top:5px;color:#715a32!important;font-size:11px;line-height:1.25}}
+        div.st-key-cvres_actions{{margin:0 0 23px}}
+        div.st-key-cvres_actions [data-testid="stHorizontalBlock"]{{align-items:center;gap:10px}}
+        div.st-key-cvres_actions [data-testid="stButton"]{{width:auto}}
+        div.st-key-cvres_actions [data-testid="stButton"] button{{min-height:40px;border-radius:9px;font-size:13px;font-weight:700}}
+        @media(max-width:780px){{.cvres-status{{grid-template-columns:1fr}}.cvres-counts{{border-top:1px solid #ead8b4;border-left:0;padding-top:14px}}.cvres-stat:first-child{{padding-left:0}}}}
+        @media(max-width:520px){{div.st-key-cvres_actions [data-testid="stHorizontalBlock"]{{align-items:stretch;flex-direction:column}}}}
         </style>
-        <section class="cv29b-success"><div class="cv29b-success-top"><div><div class="cv29b-success-kicker">Analysis complete</div><h2>{html.escape(str(project_name or 'BOM analysis'))}</h2><p>{html.escape(recommendation)}</p></div></div><div class="cv29b-success-grid"><div class="cv29b-success-stat"><span>Health</span><strong>{html.escape(health_display)}</strong></div><div class="cv29b-success-stat"><span>Components</span><strong>{int(total_parts or 0)}</strong></div><div class="cv29b-success-stat"><span>Needs review</span><strong>{review_count}</strong></div><div class="cv29b-success-stat"><span>Needs verification</span><strong>{int(needs_verification_count or 0)}</strong></div></div></section>
+        <div class="cvres-meta" aria-label="Analysis details">
+          <strong>{project}</strong><span class="dot">•</span><span>▤ &nbsp;{filename}</span>
+          <span class="dot">•</span><span>{total_parts} components</span>
+          <span class="dot">•</span><span>Analysis complete</span>
+        </div>
+        <section class="cvres-status {status_class}" aria-label="BOM evidence status">
+          <div class="cvres-status-copy"><div class="cvres-status-icon" aria-hidden="true">{icon}</div>
+            <div><h2>{html.escape(status_title)}</h2><p>{html.escape(status_copy)}</p></div></div>
+          <div class="cvres-counts" aria-label="Analysis counts">
+            <div class="cvres-stat"><strong>{total_parts}</strong><span>components</span></div>
+            <div class="cvres-stat"><strong>{high_count}</strong><span>rated high risk</span></div>
+            <div class="cvres-stat"><strong>{needs_verification_count}</strong><span>need verification</span></div>
+          </div>
+        </section>
         """,
         unsafe_allow_html=True,
     )
     from src.ui.navigation import open_saved_bom
 
-    with st.container(key="cv29b_result_actions"):
-        spacer_col, review_col, report_col = st.columns(
-            [4.8, 1.65, 1.15],
-            vertical_alignment="center",
-        )
+    with st.container(key="cvres_actions"):
+        review_col, report_col = st.columns([0.25, 0.22], vertical_alignment="center")
         with review_col:
             if st.button(
-                "Open Engineering Review →",
+                "↗  Open Engineering Intelligence",
                 key="cv29b_open_engineering_review",
                 type="primary",
-                use_container_width=True,
             ):
                 open_saved_bom(str(analysis_id or ""), arm_opening=False, _rerun=True)
         with report_col:
             if st.button(
-                "Generate report",
+                "Generate detailed report",
                 key="cv29b_generate_report",
-                use_container_width=True,
             ):
-                navigate_to(
-                    "Reports",
+                navigate_to("Reports",
                     analysis_id=str(analysis_id or ""),
                     arm_opening=False,
                 )
