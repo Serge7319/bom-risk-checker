@@ -23087,7 +23087,7 @@ def run_authenticated_app() -> None:
             st.error("Quantity values must be greater than zero.")
             stop_authenticated_page()
 
-        if not analysis_in_progress:
+        if not analysis_in_progress and not _has_completed_saved_results:
             render_upload_detected(
                 filename=source_filename,
                 component_count=original_row_count,
@@ -23095,7 +23095,11 @@ def run_authenticated_app() -> None:
             )
 
         _one_time_preflight_price = ""
-        if _one_time_blocked_plan and not (_one_time_reserved or _one_time_available):
+        if (
+            _one_time_blocked_plan
+            and not (_one_time_reserved or _one_time_available)
+            and not _has_completed_saved_results
+        ):
             if len(bom_df) > ONE_TIME_BOM_MAX_PARTS:
                 st.error(
                     f"This BOM has {len(bom_df)} unique components. The one-time report covers "
@@ -23133,7 +23137,11 @@ def run_authenticated_app() -> None:
             )
         )
         analyze_clicked = False
-        if not _approved_bom_pipeline_active and not _resume_pending_one_time_analysis:
+        if (
+            not _approved_bom_pipeline_active
+            and not _resume_pending_one_time_analysis
+            and not _has_completed_saved_results
+        ):
             analyze_clicked = st.button(
                 "Analyzing BOM…" if analysis_in_progress else ("Analyze Sample BOM" if sample_mode else "Analyze BOM"),
                 type="primary",
@@ -23880,9 +23888,6 @@ def run_authenticated_app() -> None:
         if "results_df" in st.session_state:
             results_df = st.session_state["results_df"]
 
-            if st.session_state.get("analysis_saved") and st.session_state.get("analysis_id"):
-                st.success("Saved automatically to your Cadivor workspace.")
-
             if st.session_state.get("show_analysis_success_29b") and st.session_state.get("analysis_id"):
                 _high = len(results_df[results_df["Risk Level"] == "High"])
                 _medium = len(results_df[results_df["Risk Level"] == "Medium"])
@@ -23896,6 +23901,7 @@ def run_authenticated_app() -> None:
                     needs_verification_count=int(
                         (results_df["Risk Level"] == "Needs verification").sum()
                     ),
+                    source_filename=source_filename,
                 )
 
             reviewed_component_keys = render_first_analysis_brief(
@@ -23973,7 +23979,7 @@ def run_authenticated_app() -> None:
             ]
             if not detail_df.empty:
                 st.subheader("Part Details")
-                st.caption("Detailed records for components not already summarized in the priority cards.")
+                st.caption("Expand a component to review its supplier, lifecycle, stock, and evidence details.")
                 from src.alternate_reference_parser import extract_description_alternates
                 for _, row in detail_df.iterrows():
 

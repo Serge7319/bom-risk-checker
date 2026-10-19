@@ -26,7 +26,7 @@ class FirstAnalysisBriefTests(unittest.TestCase):
             "Needs verification",
         )
 
-    def test_unassessed_component_card_shows_evidence_and_no_zero_score(self):
+    def test_result_summary_shows_rated_and_verification_groups(self):
         rendered = []
         fake_streamlit = type(
             "FakeStreamlit",
@@ -73,12 +73,54 @@ class FirstAnalysisBriefTests(unittest.TestCase):
             )
 
         content = "\n".join(rendered)
-        self.assertEqual(reviewed, {"con-usb", "conusb"})
-        self.assertIn("Not assessed", content)
-        self.assertIn("Supplier coverage", content)
-        self.assertIn("Verify the part match", content)
-        self.assertIn("overall exposure cannot be confirmed", content)
-        self.assertNotIn(">0/100<", content)
+        self.assertEqual(reviewed, set())
+        self.assertIn("Rated components", content)
+        self.assertIn("Components needing verification", content)
+        self.assertIn("1 component needs verification", content)
+        self.assertIn("Supplier or part-number match incomplete", content)
+        self.assertIn("Verify part data", content)
+        self.assertNotIn("CON-USB", content)
+
+    def test_result_header_has_metadata_status_and_existing_navigation_actions(self):
+        from src.components import onboarding
+
+        rendered = []
+        buttons = []
+        fake_streamlit = type(
+            "FakeStreamlit",
+            (),
+            {
+                "markdown": staticmethod(lambda body, **_kwargs: rendered.append(body)),
+                "container": staticmethod(lambda **_kwargs: nullcontext()),
+                "columns": staticmethod(
+                    lambda *_args, **_kwargs: [nullcontext(), nullcontext()]
+                ),
+                "button": staticmethod(
+                    lambda label, **_kwargs: buttons.append(label) or False
+                ),
+            },
+        )()
+        with patch.object(onboarding, "st", fake_streamlit):
+            onboarding.render_analysis_success(
+                project_name="Prototype BOM",
+                total_parts=10,
+                high_count=1,
+                medium_count=0,
+                health_score=None,
+                analysis_id="analysis-1",
+                needs_verification_count=9,
+                source_filename="sample_bom.xlsx",
+            )
+
+        content = "\n".join(rendered)
+        self.assertIn("Overall BOM risk needs verification", content)
+        self.assertIn("Prototype BOM", content)
+        self.assertIn("sample_bom.xlsx", content)
+        self.assertIn("9</strong><span>need verification", content)
+        self.assertEqual(
+            buttons,
+            ["↗  Open Engineering Intelligence", "Generate detailed report"],
+        )
 
     def test_majority_unassessed_bom_does_not_say_no_critical_exposure(self):
         rendered = []
@@ -127,12 +169,12 @@ class FirstAnalysisBriefTests(unittest.TestCase):
             )
 
         content = "\n".join(rendered)
-        self.assertIn("Supplier evidence incomplete", content)
-        self.assertIn("9 remain unassessed", content)
-        self.assertIn("Rated risks to review", content)
+        self.assertIn("9 components need verification", content)
+        self.assertIn("1 medium risk", content)
+        self.assertIn("Components needing verification", content)
         self.assertNotIn("No critical exposure is recorded", content)
 
-    def test_priority_card_parts_are_filtered_out_of_repeated_details_section(self):
+    def test_summary_keeps_component_details_in_the_existing_register(self):
         from pathlib import Path
 
         source = Path("src/authenticated_runtime.py").read_text(encoding="utf-8")
@@ -143,7 +185,7 @@ class FirstAnalysisBriefTests(unittest.TestCase):
         self.assertIn("detail_df = filtered_df[", source)
         self.assertIn("~filtered_df.apply(_is_reviewed_component, axis=1)", source)
         self.assertIn(
-            "Detailed records for components not already summarized in the priority cards.",
+            "Expand a component to review its supplier, lifecycle, stock, and evidence details.",
             source,
         )
 
