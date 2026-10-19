@@ -129,6 +129,8 @@ class BillingCheckoutUxContractTests(unittest.TestCase):
         self.assertIn("Request student access", pricing)
         self.assertIn("BOM analyses per month", pricing)
         self.assertIn("cv311-compare", pricing)
+        self.assertIn(".cv311-compare p a", pricing)
+        self.assertNotIn('student_copy, student_action = st.columns', pricing)
 
     def test_business_enterprise_details_and_feature_matrix_are_present(self):
         pricing = self._pricing_block()
