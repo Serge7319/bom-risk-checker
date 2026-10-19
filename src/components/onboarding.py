@@ -269,7 +269,6 @@ def render_first_run_dashboard(*, current_user: dict[str, Any] | None, workspace
                       <text x="85" y="101" fill="#71829A" font-family="Inter,Arial,sans-serif" font-size="10">Part number · quantity</text>
                       <rect x="85" y="113" width="40" height="16" rx="8" fill="#EAF2FF"/>
                       <text x="95" y="124" fill="#1D4ED8" font-family="Inter,Arial,sans-serif" font-size="8" font-weight="800">CSV</text>
-
                       <rect x="42" y="174" width="168" height="91" rx="13" fill="#FFFFFF" stroke="#D9E5F3"/>
                       <rect x="57" y="190" width="36" height="43" rx="7" fill="#E8F7EF"/>
                       <path d="M67 201h16M67 208h16M67 215h11" stroke="#18824B" stroke-width="2" stroke-linecap="round"/>
@@ -277,7 +276,6 @@ def render_first_run_dashboard(*, current_user: dict[str, Any] | None, workspace
                       <text x="103" y="226" fill="#71829A" font-family="Inter,Arial,sans-serif" font-size="10">Your existing spreadsheet</text>
                       <rect x="103" y="238" width="45" height="16" rx="8" fill="#E8F7EF"/>
                       <text x="112" y="249" fill="#137342" font-family="Inter,Arial,sans-serif" font-size="8" font-weight="800">XLSX</text>
-
                       <rect x="303" y="39" width="190" height="245" rx="16" fill="#FFFFFF" stroke="#D5E2F1"/>
                       <rect x="321" y="57" width="28" height="28" rx="9" fill="#EAF2FF"/>
                       <path d="M329 71l5 5 8-10" fill="none" stroke="#2563EB" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
@@ -299,8 +297,7 @@ def render_first_run_dashboard(*, current_user: dict[str, Any] | None, workspace
                     </g>
                     <path d="M220 157h59" stroke="#6C9DF2" stroke-width="2.2" stroke-linecap="round" stroke-dasharray="4 6"/>
                     <path d="M273 149l9 8-9 8" fill="none" stroke="#3979E5" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
-                    <circle cx="225" cy="157" r="3" fill="#3979E5"/><circle cx="245" cy="157" r="3" fill="#3979E5"/><circle cx="265" cy="157" r="3" fill="#3979E5"/>
-                  </svg>
+                    <circle cx="225" cy="157" r="3" fill="#3979E5"/><circle cx="245" cy="157" r="3" fill="#3979E5"/><circle cx="265" cy="157" r="3" fill="#3979E5"/></svg>
                 </div>
                 """,
                 unsafe_allow_html=True,
