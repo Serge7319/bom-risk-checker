@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import html
+from pathlib import Path
 from typing import Any
 
 import streamlit as st
@@ -210,31 +211,127 @@ def _render_setup_checklist(*, analyses_count: int = 0, has_review: bool = False
 
 
 def render_first_run_dashboard(*, current_user: dict[str, Any] | None, workspace_name: str | None = None) -> None:
-    """Render the first-review guide. Navigation stays the upload action only."""
-    if st.button("Upload a BOM", type="primary", key="ftue_upload_first_bom"):
-        _go_to("BOM Analyzer", new_analysis="1")
+    """Render the approved first-run Home mockup without changing upload behavior."""
+    del current_user, workspace_name  # The approved empty state is the same for every workspace.
+
+    css_path = Path(__file__).resolve().parents[1] / "assets" / "css" / "first_run_home.css"
+    try:
+        first_run_css = css_path.read_text(encoding="utf-8")
+    except OSError:
+        first_run_css = ""
+    if first_run_css:
+        st.markdown(
+            f'<style id="cadivor-first-run-home">{first_run_css}</style>',
+            unsafe_allow_html=True,
+        )
+
+    with st.container(border=True):
+        copy_col, artwork_col = st.columns([1.08, 0.92], gap="large", vertical_alignment="center")
+        with copy_col:
+            st.markdown(
+                """
+                <div class="cv-home-first-run-marker"></div>
+                <div class="cv-home-first-run-copy">
+                  <div class="cv-home-first-run-eyebrow">YOUR ENGINEERING WORKSPACE</div>
+                  <h1>Start your first BOM review</h1>
+                  <p>Upload a BOM to identify component risk, review evidence, and document the next engineering action.</p>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            if st.button("Upload a BOM", type="primary", key="ftue_upload_first_bom"):
+                _go_to("BOM Analyzer", new_analysis="1")
+            st.markdown(
+                '<div class="cv-home-first-run-formats">Accepts CSV or XLSX · No template required</div>',
+                unsafe_allow_html=True,
+            )
+        with artwork_col:
+            st.markdown(
+                """
+                <div class="cv-home-first-run-art" role="img" aria-label="CSV and XLSX files flow into a BOM risk review">
+                  <svg viewBox="0 0 520 320" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <defs>
+                      <linearGradient id="cvBOMArtBg" x1="0" y1="0" x2="1" y2="1">
+                        <stop offset="0" stop-color="#F5F9FF"/>
+                        <stop offset="1" stop-color="#EAF2FF"/>
+                      </linearGradient>
+                      <filter id="cvBOMArtShadow" x="-20%" y="-20%" width="140%" height="150%">
+                        <feDropShadow dx="0" dy="7" stdDeviation="8" flood-color="#173B72" flood-opacity=".10"/>
+                      </filter>
+                    </defs>
+                    <circle cx="253" cy="158" r="145" fill="url(#cvBOMArtBg)"/>
+                    <circle cx="253" cy="158" r="119" fill="#F8FBFF" stroke="#DBE8FA" stroke-dasharray="4 7"/>
+                    <g filter="url(#cvBOMArtShadow)">
+                      <rect x="24" y="49" width="168" height="91" rx="13" fill="#FFFFFF" stroke="#D9E5F3"/>
+                      <rect x="39" y="65" width="36" height="43" rx="7" fill="#EAF2FF"/>
+                      <path d="M49 76h16M49 83h16M49 90h11" stroke="#2563EB" stroke-width="2" stroke-linecap="round"/>
+                      <text x="85" y="82" fill="#172B49" font-family="Inter,Arial,sans-serif" font-size="12" font-weight="700">components.csv</text>
+                      <text x="85" y="101" fill="#71829A" font-family="Inter,Arial,sans-serif" font-size="10">Part number · quantity</text>
+                      <rect x="85" y="113" width="40" height="16" rx="8" fill="#EAF2FF"/>
+                      <text x="95" y="124" fill="#1D4ED8" font-family="Inter,Arial,sans-serif" font-size="8" font-weight="800">CSV</text>
+
+                      <rect x="42" y="174" width="168" height="91" rx="13" fill="#FFFFFF" stroke="#D9E5F3"/>
+                      <rect x="57" y="190" width="36" height="43" rx="7" fill="#E8F7EF"/>
+                      <path d="M67 201h16M67 208h16M67 215h11" stroke="#18824B" stroke-width="2" stroke-linecap="round"/>
+                      <text x="103" y="207" fill="#172B49" font-family="Inter,Arial,sans-serif" font-size="12" font-weight="700">production-bom.xlsx</text>
+                      <text x="103" y="226" fill="#71829A" font-family="Inter,Arial,sans-serif" font-size="10">Your existing spreadsheet</text>
+                      <rect x="103" y="238" width="45" height="16" rx="8" fill="#E8F7EF"/>
+                      <text x="112" y="249" fill="#137342" font-family="Inter,Arial,sans-serif" font-size="8" font-weight="800">XLSX</text>
+
+                      <rect x="303" y="39" width="190" height="245" rx="16" fill="#FFFFFF" stroke="#D5E2F1"/>
+                      <rect x="321" y="57" width="28" height="28" rx="9" fill="#EAF2FF"/>
+                      <path d="M329 71l5 5 8-10" fill="none" stroke="#2563EB" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+                      <text x="358" y="69" fill="#172B49" font-family="Inter,Arial,sans-serif" font-size="11" font-weight="750">BOM risk review</text>
+                      <text x="358" y="83" fill="#71829A" font-family="Inter,Arial,sans-serif" font-size="9">Evidence organized by component</text>
+                      <path d="M321 101h154" stroke="#E6EDF6"/>
+                      <rect x="321" y="117" width="154" height="42" rx="9" fill="#F8FAFD"/>
+                      <circle cx="336" cy="138" r="6" fill="#FDE8E7"/><circle cx="336" cy="138" r="2.5" fill="#D94A45"/>
+                      <text x="350" y="136" fill="#31445F" font-family="Inter,Arial,sans-serif" font-size="9" font-weight="700">Lifecycle risk</text>
+                      <text x="350" y="149" fill="#71829A" font-family="Inter,Arial,sans-serif" font-size="8">Verified source evidence</text>
+                      <rect x="321" y="168" width="154" height="42" rx="9" fill="#F8FAFD"/>
+                      <circle cx="336" cy="189" r="6" fill="#FFF2D9"/><path d="M336 185v5m0 3h.1" stroke="#A7650A" stroke-width="1.6" stroke-linecap="round"/>
+                      <text x="350" y="187" fill="#31445F" font-family="Inter,Arial,sans-serif" font-size="9" font-weight="700">Supply availability</text>
+                      <text x="350" y="200" fill="#71829A" font-family="Inter,Arial,sans-serif" font-size="8">Stock and sourcing options</text>
+                      <rect x="321" y="219" width="154" height="42" rx="9" fill="#F8FAFD"/>
+                      <circle cx="336" cy="240" r="6" fill="#E7F6ED"/><path d="M333 240l2 2 4-5" fill="none" stroke="#16834B" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                      <text x="350" y="238" fill="#31445F" font-family="Inter,Arial,sans-serif" font-size="9" font-weight="700">Recommended action</text>
+                      <text x="350" y="251" fill="#71829A" font-family="Inter,Arial,sans-serif" font-size="8">Clear next steps for your team</text>
+                    </g>
+                    <path d="M220 157h59" stroke="#6C9DF2" stroke-width="2.2" stroke-linecap="round" stroke-dasharray="4 6"/>
+                    <path d="M273 149l9 8-9 8" fill="none" stroke="#3979E5" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <circle cx="225" cy="157" r="3" fill="#3979E5"/><circle cx="245" cy="157" r="3" fill="#3979E5"/><circle cx="265" cy="157" r="3" fill="#3979E5"/>
+                  </svg>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
     steps = (
-        ("1", "Upload", "Import a CSV or XLSX BOM."),
-        ("2", "Understand risk", "See the evidence that matters first."),
-        ("3", "Make decisions", "Review alternatives and record approvals."),
-        ("4", "Share the outcome", "Export an executive-ready report."),
+        ("1", "Upload", "Import your component list from a CSV or XLSX file."),
+        ("2", "Understand risk", "Review lifecycle, supply, and supplier evidence."),
+        ("3", "Make decisions", "Compare alternatives and record engineering approvals."),
+        ("4", "Share the outcome", "Export a clear report for your team."),
     )
     items = "".join(
-        f"""
-        <li>
-          <span class="cv-home-step-num">{number}</span>
-          <strong>{html.escape(title)}</strong>
-          <p>{html.escape(copy)}</p>
-        </li>
-        """
+        f'<li><span class="cv-home-step-num">{number}</span>'
+        f'<div><strong>{html.escape(title)}</strong><p>{html.escape(copy)}</p></div></li>'
         for number, title, copy in steps
     )
     st.markdown(
         f"""
-        <section class="cv-home-steps" aria-label="A first review in four steps">
-          <h2>A first review in four steps</h2>
+        <section class="cv-home-first-run-steps" aria-label="A first review in four steps">
+          <div class="cv-home-first-run-section-heading">
+            <span>YOUR FIRST REVIEW</span>
+            <h2>A first review in four steps</h2>
+          </div>
           <ol>{items}</ol>
+        </section>
+        <section class="cv-home-first-run-empty" aria-label="No analyses yet">
+          <div class="cv-home-first-run-empty-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M7 3.75h7l4 4v12.5H7a2 2 0 0 1-2-2v-12.5a2 2 0 0 1 2-2Z"/><path d="M14 3.75v4h4M8.5 12h7M8.5 15.5h7"/></svg>
+          </div>
+          <div><strong>No analyses yet</strong><p>Your first review will appear here after upload.</p></div>
+          <span class="cv-home-first-run-empty-mark" aria-hidden="true">+</span>
         </section>
         """,
         unsafe_allow_html=True,

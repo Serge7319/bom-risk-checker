@@ -48,8 +48,13 @@ def test_new_user_with_no_saved_boms_is_first_review_only():
         "def render_activation_strip", 1
     )[0]
     assert "Upload a BOM" in first_run
-    assert "Your BOM review workflow" in first_run
-    for stage in ("Upload BOM", "Analyze Risk", "Ask Cadivor", "Engineering Decision", "Continuous Monitoring"):
+    assert "cv-home-first-run-copy" in first_run
+    assert "Start your first BOM review" in first_run
+    assert "components.csv" in first_run
+    assert "production-bom.xlsx" in first_run
+    assert "A first review in four steps" in first_run
+    assert "No analyses yet" in first_run
+    for stage in ("Understand risk", "Make decisions", "Share the outcome"):
         assert stage in first_run
     for message in ONBOARDING_MESSAGES:
         assert message not in first_run
@@ -236,12 +241,14 @@ def test_paused_plan_does_not_change_saved_bom_identity():
     )[0]
     assert "Some details are still loading" not in dashboard
     assert "Try again" not in dashboard
-    assert 'reveal_authenticated_page_body("Dashboard")' in dashboard
     new_user = dashboard.split('if home["kind"] == HOME_NEW', 1)[1].split(
         "dashboard_nav_key", 1
     )[0]
     assert "render_first_run_dashboard(" in new_user
-    assert "Start your first BOM review" in new_user
+    assert "stop_authenticated_page()" in new_user
+    first_run_css = (ROOT / "src/assets/css/first_run_home.css").read_text(encoding="utf-8")
+    assert ".cv-dashboard-page" in first_run_css
+    assert "display: none !important" in first_run_css
 
 
 RETURNING_CONTROLS = (
@@ -270,7 +277,7 @@ def test_returning_home_hides_analytics_and_onboarding_controls():
     for label in RETURNING_CONTROLS:
         assert label not in returning
         assert label not in dashboard
-    assert "render_returning_home(" in returning
+    assert "render_home(" in returning
     assert "Retry updates" not in returning
     assert "Refresh workspace updates" not in returning
     home = (ROOT / "src/pages/home_workspace.py").read_text(encoding="utf-8")
@@ -307,6 +314,7 @@ def test_home_presentation_uses_the_full_width_bom_table():
         [
             (ROOT / "src/assets/css/dashboard_v2.css").read_text(encoding="utf-8"),
             (ROOT / "src/assets/css/dashboard_visual_refresh.css").read_text(encoding="utf-8"),
+            (ROOT / "src/assets/css/first_run_home.css").read_text(encoding="utf-8"),
         ]
     )
     first_run = onboarding.split("def render_first_run_dashboard", 1)[1].split(
@@ -327,9 +335,11 @@ def test_home_presentation_uses_the_full_width_bom_table():
     assert 'key="home_new_bom"' in home
     assert 'open_saved_bom(card["id"], arm_opening=True, _rerun=True)' in home
     assert 'open_saved_bom(analysis_id, arm_opening=True, _rerun=True)' in home
-    assert "Your BOM review workflow" in first_run
+    assert "A first review in four steps" in first_run
     assert "cv-home-step-num" in first_run
     assert 'key="ftue_upload_first_bom"' in first_run
+    assert "cv-home-first-run-marker" in styles
+    assert ".cv-home-first-run-steps ol" in styles
     for token in (
         ".cv-home-notice--caution",
         ".cv-home-notice--account",
@@ -346,7 +356,7 @@ def test_home_presentation_uses_the_full_width_bom_table():
     first_run = onboarding.split("def render_first_run_dashboard", 1)[1].split(
         "def render_activation_strip", 1
     )[0]
-    assert "Your BOM review workflow" in first_run
+    assert "A first review in four steps" in first_run
     assert "Upload a BOM" in first_run
     dashboard = _dashboard_source()
     new_user = dashboard.split('if home["kind"] == HOME_NEW', 1)[1].split(
