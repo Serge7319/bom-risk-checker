@@ -143,12 +143,13 @@ def test_onboarding_budget_worker_uses_only_script_thread_state_snapshot():
 def test_same_page_reruns_reuse_onboarding_and_command_palette_reads():
     runtime = _source("src/authenticated_runtime.py")
     command_block = runtime.split(
-        'with timed_phase("runtime.workspace_commands", operation="workspace_commands")', 1
+        'with timed_phase(\n        "runtime.workspace_commands"', 1
     )[1].split("render_command_nav_triggers", 1)[0]
 
     assert "recent_onboarding_progress(" in runtime
     assert "remember_onboarding_progress(" in runtime
-    assert "_cached_command_route == app_mode" in command_block
+    assert "_workspace_commands_cache_hit" in command_block
+    assert "cache_status=\"hit\" if _workspace_commands_cache_hit else \"miss\"" in command_block
     assert 'st.session_state["cadivor_workspace_command_cache_route"] = app_mode' in command_block
 
 

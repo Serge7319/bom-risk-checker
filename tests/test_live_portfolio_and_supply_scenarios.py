@@ -8,6 +8,7 @@ from src.portfolio_intelligence import (
     build_portfolio_intelligence,
     filter_portfolio_window,
     filter_previous_portfolio_window,
+    _shared_component_evidence_labels,
 )
 from src.supply_risk_scenario import build_supply_scenario
 
@@ -161,6 +162,35 @@ def test_portfolio_risk_distribution_keeps_unassessed_parts_unassessed():
     assert result["single_source_count"] == 1
     assert len(result["no_stock"]) == 1
     assert result["at_risk_boms"][0]["At-Risk Components"] == 1
+
+
+def test_portfolio_shared_components_keep_missing_risk_scores_unassessed():
+    result = build_portfolio_intelligence(
+        [
+            {"id": "analysis-1", "project_name": "Controller"},
+            {"id": "analysis-2", "project_name": "Gateway"},
+        ],
+        [
+            {"analysis_id": "analysis-1", "mpn": "SHARED-UNKNOWN"},
+            {"analysis_id": "analysis-2", "mpn": "SHARED-UNKNOWN"},
+            {"analysis_id": "analysis-1", "mpn": "SHARED-SCORED", "risk_score": 72},
+            {"analysis_id": "analysis-2", "mpn": "SHARED-SCORED", "risk_score": 72},
+        ],
+        [],
+    )
+
+    shared = {row["Part Number"]: row for row in result["shared_components"]}
+    assert shared["SHARED-UNKNOWN"]["Highest Risk Score"] is None
+    assert shared["SHARED-SCORED"]["Highest Risk Score"] == 72
+    assert [row["Part Number"] for row in result["shared_components"]] == [
+        "SHARED-SCORED",
+        "SHARED-UNKNOWN",
+    ]
+    assert _shared_component_evidence_labels(shared["SHARED-UNKNOWN"]) == (
+        "Risk not assessed",
+        "Stock not recorded",
+        "Supplier sources not recorded",
+    )
 
 
 def test_portfolio_distribution_reconciles_summary_counts_to_saved_bom_total():

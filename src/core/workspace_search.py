@@ -6,10 +6,37 @@ Command Center navigation remains available.
 """
 from __future__ import annotations
 
+import time
 from typing import Any
 
 from src.urls import internal_app_href
 from src.ui.navigation import ALTERNATIVE_FINDER_PAGE, alternative_finder_href
+
+
+WORKSPACE_COMMAND_CACHE_TTL_SECONDS = 30.0
+
+
+def workspace_command_cache_is_fresh(
+    commands: Any,
+    fetched_at: Any,
+    cache_scope: Any,
+    expected_scope: Any,
+    *,
+    now: float | None = None,
+) -> bool:
+    """Whether the session command index can be reused for this workspace."""
+    if (
+        not isinstance(commands, list)
+        or str(cache_scope or "") != str(expected_scope or "")
+    ):
+        return False
+    try:
+        timestamp = float(fetched_at)
+        current = time.time() if now is None else float(now)
+    except (TypeError, ValueError, OverflowError):
+        return False
+    age = current - timestamp
+    return 0 <= age < WORKSPACE_COMMAND_CACHE_TTL_SECONDS
 
 
 def _text(value: Any, default: str = "") -> str:
