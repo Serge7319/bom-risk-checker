@@ -50,11 +50,15 @@ def test_new_user_with_no_saved_boms_is_first_review_only():
     assert "Upload a BOM" in first_run
     assert "cv-home-first-run-copy" in first_run
     assert "Start your first BOM review" in first_run
-    assert "components.csv" in first_run
-    assert "production-bom.xlsx" in first_run
+    assert "CADIVOR ENGINEERING DECISION INTELLIGENCE" in first_run
+    assert '>CSV</text>' in first_run
+    assert '>XLSX</text>' in first_run
+    assert "BOM RISK REVIEW" in first_run
     svg_markup = first_run.split("<svg", 1)[1].split("</svg>", 1)[0]
     assert "\n\n" not in svg_markup
+    assert "icon=\":material/upload:\"" in first_run
     assert "A first review in four steps" in first_run
+    assert "cv-home-step-icon" in first_run
     assert "No analyses yet" in first_run
     for stage in ("Understand risk", "Make decisions", "Share the outcome"):
         assert stage in first_run
@@ -251,6 +255,8 @@ def test_paused_plan_does_not_change_saved_bom_identity():
     first_run_css = (ROOT / "src/assets/css/first_run_home.css").read_text(encoding="utf-8")
     assert ".cv-dashboard-page" in first_run_css
     assert "display: none !important" in first_run_css
+    assert ".cv-home-step-icon" in first_run_css
+    assert "min-height: 190px" in first_run_css
 
 
 RETURNING_CONTROLS = (
@@ -342,6 +348,8 @@ def test_home_presentation_uses_the_full_width_bom_table():
     assert 'key="ftue_upload_first_bom"' in first_run
     assert "cv-home-first-run-marker" in styles
     assert ".cv-home-first-run-steps ol" in styles
+    assert ".cv-home-step-icon" in styles
+    assert ".cv-home-first-run-empty" in styles
     for token in (
         ".cv-home-notice--caution",
         ".cv-home-notice--account",
