@@ -149,6 +149,7 @@ class ApprovedPageVisualContractTests(unittest.TestCase):
         self.assertIn("grid-template-columns: repeat(4, minmax(0, 1fr)) !important;", MONITORING_FINAL_CSS)
         self.assertIn("grid-template-columns: repeat(2, minmax(0, 1fr)) !important;", MONITORING_FINAL_CSS)
         self.assertIn("overflow-wrap: anywhere !important;", MONITORING_FINAL_CSS)
+        self.assertIn("display: contents !important;", MONITORING_FINAL_CSS)
 
 if __name__ == "__main__":
     unittest.main()
