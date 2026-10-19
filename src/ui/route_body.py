@@ -5,10 +5,11 @@ Streamlit marks widgets from a previous route ``data-stale`` when a later
 the Opening cover up until the destination body paints; same-page reruns keep
 the existing content at normal opacity while Streamlit refreshes it.
 
-Use one keyed ``st.container`` as the stable body slot. Its children are
-replaced by the next script run without blanking the workspace or stacking a
-new child container. Route transitions keep the Opening cover until the target
-route paints, including when session caches are warm.
+Use one keyed ``st.container`` as the stable body slot, claimed by the unified
+shell before route-dependent controls are painted. Its position matters as
+much as its key: claiming it after a variable number of controls lets stale
+Home content survive above the destination. Route transitions keep the Opening
+cover until the target route paints, including when session caches are warm.
 """
 from __future__ import annotations
 
@@ -22,6 +23,7 @@ ROUTE_BODY_ROUTE_STATE_KEY = "_cadivor_route_body_route"
 ROUTE_BODY_CM_STATE_KEY = "_cadivor_route_body_cm"
 ROUTE_BODY_CM_RUN_STATE_KEY = "_cadivor_route_body_cm_run_id"
 ROUTE_BODY_CONTAINER_KEY = "cadivor_authenticated_route_body"
+ROUTE_BODY_CLAIM_RUN_STATE_KEY = "_cadivor_route_body_claim_run_id"
 
 
 def _current_script_run_id() -> str | None:
@@ -41,21 +43,37 @@ def _current_script_run_id() -> str | None:
 
 
 def claim_authenticated_route_body(route: str = "") -> Any:
-    """Claim one stable keyed container for the current script run.
+    """Claim the single keyed container at the shell's fixed script position.
 
-    ``st.empty().container()`` allocates a new child block whenever a rerun
-    calls ``container()``. Keeping that placeholder across reruns can leave the
-    previous child mounted beside the new one, which duplicates page content.
-    A keyed container has one stable Streamlit identity, so the new run replaces
-    its children in place without first blanking the workspace.
+    The shell claims it before rendering route-specific menu controls. The
+    runtime calls this helper again later for backwards compatibility; that
+    second call is a no-op in the same script run.
     """
-    exit_authenticated_route_body()
     route_key = str(route or "").strip()
+    current_run_id = _current_script_run_id()
+    existing_host = st.session_state.get(ROUTE_BODY_HOST_STATE_KEY)
+    existing_route = str(
+        st.session_state.get(ROUTE_BODY_ROUTE_STATE_KEY) or ""
+    ).strip()
+    existing_run_id = st.session_state.get(ROUTE_BODY_CLAIM_RUN_STATE_KEY)
+    # The shell claims the host at its fixed, route-independent position. The
+    # runtime keeps its existing claim call for compatibility; make that later
+    # call idempotent within this run so it cannot move the host down the page.
+    if (
+        existing_host is not None
+        and current_run_id
+        and existing_run_id == current_run_id
+        and existing_route == route_key
+    ):
+        return existing_host
+
+    exit_authenticated_route_body()
     # Recreate the DeltaGenerator on this run; the key keeps its browser block
     # identity stable while avoiding a stale cursor from a prior run.
     host = st.container(key=ROUTE_BODY_CONTAINER_KEY)
     st.session_state[ROUTE_BODY_HOST_STATE_KEY] = host
     st.session_state[ROUTE_BODY_ROUTE_STATE_KEY] = route_key
+    st.session_state[ROUTE_BODY_CLAIM_RUN_STATE_KEY] = current_run_id
     return host
 
 

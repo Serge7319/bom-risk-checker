@@ -519,6 +519,13 @@ def render_unified_shell(
     """
     inject_unified_shell_css()
 
+    # Reserve the authenticated page body before profile controls, navigation
+    # rows, and command widgets add route-dependent Streamlit blocks. The
+    # runtime's later claim is intentionally idempotent for this script run.
+    from src.ui.route_body import claim_authenticated_route_body
+
+    claim_authenticated_route_body(current_page)
+
     full_name = profile.get("full_name") or profile.get("email") or "Cadivor user"
     email = profile.get("email") or ""
     initials = profile.get("initials") or "C"
