@@ -61,6 +61,70 @@ class AlternativeFinderSearchTests(unittest.TestCase):
         self.assertNotIn("super-secret", diagnostic["diagnostic_message"])
         self.assertNotIn("abcdefghijklmnop", diagnostic["diagnostic_message"])
 
+    def test_empty_timeout_search_is_incomplete_not_a_no_alternative_finding(self):
+        title, detail = self.search.replacement_search_empty_state(
+            {
+                "providers": {
+                    "DigiKey": {
+                        "substitutions": "error",
+                        "catalog": "error",
+                        "lookup": "error",
+                        "message": (
+                            "HTTPSConnectionPool(host='api.digikey.com'): "
+                            "Read timed out (read timeout=15)"
+                        ),
+                    },
+                    "Mouser": {
+                        "substitutions": "not_supported",
+                        "catalog": "available",
+                        "lookup": "available",
+                        "message": "Mouser does not expose explicit substitute relationships.",
+                    },
+                },
+                "provider_failures": ["DigiKey"],
+                "has_incomplete_evidence": True,
+            }
+        )
+
+        self.assertEqual(title, "Supplier search incomplete")
+        self.assertIn("DigiKey timed out", detail)
+        self.assertIn("No candidates were confirmed", detail)
+        self.assertIn("does not confirm that no replacement exists", detail)
+        self.assertNotIn("HTTPSConnectionPool", detail)
+        self.assertNotIn("read timeout=15", detail)
+
+    def test_unconfigured_catalogs_are_reported_as_incomplete_coverage(self):
+        title, detail = self.search.replacement_search_empty_state(
+            {
+                "providers": {
+                    "Mouser": {
+                        "substitutions": "not_configured",
+                        "lookup": "not_configured",
+                        "message": "credentials are not configured",
+                    }
+                },
+                "provider_failures": [],
+                "has_incomplete_evidence": True,
+            }
+        )
+
+        self.assertEqual(title, "Supplier coverage incomplete")
+        self.assertIn("Mouser is not configured", detail)
+        self.assertIn("does not confirm that no replacement exists", detail)
+
+    def test_source_lookup_error_is_not_rendered_as_a_raw_transport_exception(self):
+        title, detail = self.search.replacement_search_empty_state(
+            lookup_error=(
+                "HTTPSConnectionPool(host='api.digikey.com'): "
+                "Read timed out (read timeout=15)"
+            )
+        )
+
+        self.assertEqual(title, "Source part needs verification")
+        self.assertIn("Confirm the MPN and try again", detail)
+        self.assertNotIn("HTTPSConnectionPool", detail)
+        self.assertNotIn("read timeout=15", detail)
+
     def test_search_run_collects_stage_timings(self):
         run = self.search.AlternativeFinderSearchRun()
         with run.stage("original_lookup"):

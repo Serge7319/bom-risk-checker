@@ -16,7 +16,12 @@ def test_approved_finder_consumes_clicked_part_before_mounting_search_input():
         'key="approved_replacement_query"'
     )
     assert 'st.session_state.pop("alternative_prefill_search_pending", False)' in renderer
-    assert "if (run or prefilled_search_pending) and query:" in renderer
+    assert 'on_click=_queue_replacement_search' in renderer
+    assert 'st.session_state.pop("cadivor_replacement_search_pending", "")' in renderer
+    search_call = renderer.index("run_alternative_finder_search(st.session_state, query)")
+    completed_search_rerun = renderer.index("st.rerun()", search_call)
+    assert search_call < renderer.index('"<div class=\'cv-ap\'><h1>Find a replacement')
+    assert completed_search_rerun < renderer.index('"<div class=\'cv-ap\'><h1>Find a replacement')
     guard = renderer.index("search_completed = has_durable_search_for_mpn(st.session_state, query)")
     assert "if not search_completed:" in renderer[guard:]
     assert guard < renderer.index('fit_filter, life_filter, stock_filter, risk_filter, sort_by = st.columns(5)')
@@ -44,7 +49,8 @@ def test_approved_search_and_datasheet_mockup_keep_existing_processing_paths():
 
     assert '"Manufacturer part number"' in finder
     assert 'placeholder="e.g., LM7805ACT"' in finder
-    assert 'st.button("Search", key="approved_replacement_search", type="primary")' in finder
+    assert 'key="approved_replacement_search"' in finder
+    assert 'on_click=_queue_replacement_search' in finder
     assert "run_alternative_finder_search(st.session_state, query)" in finder
     assert 'key="datasheet_qa_uploader"' in datasheet
     assert "datasheet_upload_signature(payload, filename=filename)" in datasheet
@@ -84,9 +90,14 @@ def test_completed_empty_supplier_search_shows_guidance_without_zero_count_table
         "def render_compare_live", 1
     )[0]
 
-    assert '"No supplier alternatives found"' in renderer
+    assert '"Retry supplier search"' in renderer
     assert '"No replacement-ready candidates"' in renderer
-    assert "This does not confirm that no replacement exists." in renderer
+    assert "replacement_search_empty_state" in renderer
+    search_source = (
+        Path(__file__).resolve().parents[1] / "src" / "alternative_finder_search.py"
+    ).read_text(encoding="utf-8")
+    assert '"Supplier search incomplete"' in search_source
+    assert '"No replacement candidates confirmed"' in search_source
     assert 'if supplier_candidate_count:' in renderer
     assert 'st.session_state["approved_replacement_compare_candidates"] = []' in renderer
     assert '"Replacement options ({len(candidates)})"' not in renderer
@@ -191,9 +202,11 @@ def test_finder_route_stops_after_the_approved_renderer_and_reveals_before_searc
     assert branch.index("stop_authenticated_page()") < branch.index(
         "from integrations.supplier_aggregator import get_best_part_data"
     )
-    assert renderer.index("<h1>Find a replacement</h1>") < renderer.index(
-        'reveal_authenticated_page_body("Alternative Finder")'
-    ) < renderer.index("run_alternative_finder_search(st.session_state, query)")
+    first_reveal = renderer.index('reveal_authenticated_page_body("Alternative Finder")')
+    search_call = renderer.index("run_alternative_finder_search(st.session_state, query)")
+    heading = renderer.index("<h1>Find a replacement</h1>")
+    last_reveal = renderer.rindex('reveal_authenticated_page_body("Alternative Finder")')
+    assert first_reveal < search_call < heading < last_reveal
 
 
 def test_compare_handoff_is_staged_before_compare_widgets_and_can_save_approval():

@@ -238,7 +238,7 @@ def _navigate_to_detailed_report_analysis(current_analysis_id: str, selector_key
     # with the report that is actually open instead of the previous selection.
     st.session_state.pop(selector_key, None)
     st.session_state["cadivor_show_detailed_risk"] = True
-    from src.ui.navigation import navigate_to
+    from src.ui.navigation import navigate_to, request_main_scroll_reset
 
     navigate_to(
         "Analysis Details",
@@ -247,6 +247,11 @@ def _navigate_to_detailed_report_analysis(current_analysis_id: str, selector_key
         _rerun=False,
         arm_opening=False,
     )
+    # This renderer is a Streamlit fragment. A fragment-only rerun would keep
+    # the old ``analysis`` and ``parts`` closure alive, even though the URL and
+    # selector now point at the newly chosen saved BOM.
+    request_main_scroll_reset()
+    st.rerun()
 
 
 def _esc(value: Any, fallback: str = "—") -> str:

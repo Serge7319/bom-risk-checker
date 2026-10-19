@@ -1,5 +1,8 @@
 import unittest
+import sys
+import types
 from pathlib import Path
+from unittest.mock import Mock, patch
 
 from src.ui.ei_bom_report import (
     EI_TABS,
@@ -12,6 +15,7 @@ from src.ui.ei_bom_report import (
     _detailed_report_metadata_html,
     _format_detailed_report_date,
     _format_snapshot_timestamp,
+    _navigate_to_detailed_report_analysis,
 )
 
 
@@ -135,6 +139,40 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn("_load_saved_analysis_report_options(", page_source)
         self.assertIn("saved_analyses=saved_report_analyses", page_source)
+
+    def test_detailed_report_selection_forces_full_data_reload(self):
+        session = {
+            "ei_report_choice": "analysis-new",
+            "cadivor_show_detailed_risk": False,
+        }
+        fake_streamlit = types.SimpleNamespace(
+            session_state=session,
+            rerun=Mock(),
+        )
+        fake_navigation = types.SimpleNamespace(
+            navigate_to=Mock(),
+            request_main_scroll_reset=Mock(),
+        )
+        with patch.dict(
+            sys.modules,
+            {
+                "streamlit": fake_streamlit,
+                "src.ui.navigation": fake_navigation,
+            },
+        ):
+            _navigate_to_detailed_report_analysis("analysis-old", "ei_report_choice")
+
+        fake_navigation.navigate_to.assert_called_once_with(
+            "Analysis Details",
+            analysis_id="analysis-new",
+            analysis_tab="Engineering Intelligence",
+            _rerun=False,
+            arm_opening=False,
+        )
+        fake_navigation.request_main_scroll_reset.assert_called_once_with()
+        fake_streamlit.rerun.assert_called_once_with()
+        self.assertTrue(session["cadivor_show_detailed_risk"])
+        self.assertNotIn("ei_report_choice", session)
 
     def test_bom_risk_uses_the_approved_review_structure(self):
         html = engineering_intelligence_html(

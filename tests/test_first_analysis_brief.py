@@ -61,8 +61,60 @@ class FirstAnalysisBriefTests(unittest.TestCase):
         self.assertIn("Not assessed", content)
         self.assertIn("Supplier coverage", content)
         self.assertIn("Verify the part match", content)
-        self.assertIn("This is an evidence gap, not a low-risk result.", content)
+        self.assertIn("overall exposure cannot be confirmed", content)
         self.assertNotIn(">0/100<", content)
+
+    def test_majority_unassessed_bom_does_not_say_no_critical_exposure(self):
+        rendered = []
+        fake_streamlit = type(
+            "FakeStreamlit",
+            (),
+            {
+                "markdown": staticmethod(lambda body, **_kwargs: rendered.append(body)),
+                "subheader": staticmethod(lambda *_args, **_kwargs: None),
+                "caption": staticmethod(lambda *_args, **_kwargs: None),
+                "warning": staticmethod(lambda *_args, **_kwargs: None),
+                "success": staticmethod(lambda *_args, **_kwargs: None),
+                "container": staticmethod(lambda **_kwargs: nullcontext()),
+                "columns": staticmethod(
+                    lambda *_args, **_kwargs: [nullcontext(), nullcontext()]
+                ),
+                "button": staticmethod(lambda *_args, **_kwargs: False),
+            },
+        )()
+        rows = [
+            {
+                "MPN": "REVIEW-1",
+                "Manufacturer": "Example",
+                "Risk Level": "Medium",
+                "Risk Score": 55,
+                "Supplier Data Verified": True,
+            }
+        ] + [
+            {
+                "MPN": f"UNVERIFIED-{index}",
+                "Manufacturer": "Not recorded",
+                "Risk Level": "Needs verification",
+                "Risk Score": 0,
+                "Supplier Data Verified": False,
+                "Risk Reasons": "No supplier match",
+            }
+            for index in range(1, 10)
+        ]
+
+        with patch.object(first_analysis_brief, "st", fake_streamlit):
+            first_analysis_brief.render_first_analysis_brief(
+                pd.DataFrame(rows),
+                health_score=91,
+                analysis_id="analysis-majority-unassessed",
+                project_name="Project #1",
+            )
+
+        content = "\n".join(rendered)
+        self.assertIn("Supplier evidence incomplete", content)
+        self.assertIn("9 remain unassessed", content)
+        self.assertIn("Rated risks to review", content)
+        self.assertNotIn("No critical exposure is recorded", content)
 
     def test_priority_card_parts_are_filtered_out_of_repeated_details_section(self):
         from pathlib import Path
