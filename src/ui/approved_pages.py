@@ -5750,9 +5750,15 @@ def _render_replacement_search_waiting_state() -> None:
     )
 
 
+def _queue_replacement_search() -> None:
+    """Capture the submitted MPN before the next Finder render starts."""
+    query = str(st.session_state.get("approved_replacement_query") or "").strip()
+    if query:
+        st.session_state["cadivor_replacement_search_pending"] = query
+
+
 def render_replacement_search() -> None:
     """Find-a-replacement layout wired to the live alternative search."""
-    begin_approved_page()
     from src.approved_alternatives import (
         candidate_lifecycle_is_blocked,
         part_key,
@@ -5816,6 +5822,29 @@ def render_replacement_search() -> None:
             st.session_state["cadivor_replacement_query"] = clicked_mpn
     source_context = st.session_state.get("alternative_prefill_source_context")
     source_context = source_context if isinstance(source_context, dict) else {}
+    pending_query = str(
+        st.session_state.pop("cadivor_replacement_search_pending", "") or ""
+    ).strip()
+    query = pending_query or str(
+        st.session_state.get("approved_replacement_query") or ""
+    ).strip()
+    prefilled_search_pending = bool(
+        st.session_state.pop("alternative_prefill_search_pending", False)
+    )
+    begin_approved_page()
+    if query and (pending_query or prefilled_search_pending):
+        # Keep the old route body from appearing twice while supplier I/O blocks.
+        # Only the loading message is added before the completed Finder is painted.
+        reveal_authenticated_page_body("Alternative Finder")
+        from src.alternative_finder_search import run_alternative_finder_search
+
+        with st.spinner(f"Searching supplier catalogs for {query}…"):
+            run_alternative_finder_search(st.session_state, query)
+        # Finish this loading-only run before painting the completed Finder.
+        # That lets Streamlit retire the previous body first instead of briefly
+        # stacking the new results page below the old search form.
+        st.rerun()
+
     return_target = str(source_context.get("source_page") or "")
     return_page = str(source_context.get("return_page") or "").strip()
     return_decision_id = str(source_context.get("return_decision_id") or "").strip()
@@ -5885,7 +5914,12 @@ def render_replacement_search() -> None:
                 placeholder="e.g., LM7805ACT",
             )
         with button_col:
-            run = st.button("Search", key="approved_replacement_search", type="primary")
+            st.button(
+                "Search",
+                key="approved_replacement_search",
+                type="primary",
+                on_click=_queue_replacement_search,
+            )
         st.markdown(
             "<p class='cv-ap-replacement-note'>Search results appear after the search completes.</p>"
             "<div class='cv-ap-context-note'><svg viewBox='0 0 24 24' aria-hidden='true'>"
@@ -5894,19 +5928,10 @@ def render_replacement_search() -> None:
             unsafe_allow_html=True,
         )
     # Reveal the real Finder content before the blocking supplier lookup. The
-    # opaque route cover should not sit over the active page while results load.
+    # opaque route cover should not sit over the active page during later reruns.
     reveal_authenticated_page_body("Alternative Finder")
     query = str(query or st.session_state.get("approved_replacement_query") or "").strip()
     result = st.session_state.get("alternative_finder_result")
-    prefilled_search_pending = bool(
-        st.session_state.pop("alternative_prefill_search_pending", False)
-    )
-    if (run or prefilled_search_pending) and query:
-        from src.alternative_finder_search import run_alternative_finder_search
-
-        with st.spinner(f"Searching supplier catalogs for {query}…"):
-            run_alternative_finder_search(st.session_state, query)
-        result = st.session_state.get("alternative_finder_result")
     original = {}
     candidates: list[dict[str, Any]] = []
     if isinstance(result, dict):
@@ -6005,22 +6030,35 @@ def render_replacement_search() -> None:
     notice = ""
     lookup_error = ""
     search_error = ""
-    candidate_status = ""
+    discovery: dict[str, Any] = {}
     if isinstance(result, dict):
         lookup_error = str(result.get("lookup_error") or "").strip()
         search_error = str(result.get("search_error") or "").strip()
-        discovery = result.get("discovery_metadata")
-        if isinstance(discovery, dict):
-            candidate_status = str(discovery.get("candidate_status") or "").strip()
-    source_notice = lookup_error
+        raw_discovery = result.get("discovery_metadata")
+        if isinstance(raw_discovery, dict):
+            discovery = raw_discovery
+    source_notice = (
+        "Supplier records could not verify this source part. Confirm the MPN and retry."
+        if lookup_error
+        else ""
+    )
     candidate_notice = ""
+    empty_title = "No replacement candidates confirmed"
+    empty_detail = ""
     if query.strip() and isinstance(result, dict) and not candidates and excluded_obsolete:
         candidate_notice = (
             f"{len(excluded_obsolete)} supplier match{'es' if len(excluded_obsolete) != 1 else ''} "
             "marked obsolete or end of life. Cadivor excluded these from replacement selection."
         )
     elif query.strip() and isinstance(result, dict) and not supplier_candidate_count:
-        candidate_notice = search_error or candidate_status or "No replacement candidates were returned for this part."
+        from src.alternative_finder_search import replacement_search_empty_state
+
+        empty_title, empty_detail = replacement_search_empty_state(
+            discovery if isinstance(discovery, dict) else {},
+            lookup_error=lookup_error,
+            search_error=search_error,
+        )
+        candidate_notice = empty_detail
     elif dropped:
         candidate_notice = (
             f"{dropped} supplier row{'s' if dropped != 1 else ''} had no part number "
@@ -6079,17 +6117,29 @@ def render_replacement_search() -> None:
         elif supplier_candidate_count:
             empty_title = "No candidates match the selected filters"
             empty_detail = "Broaden the filters above or search this part again."
-        else:
-            empty_title = "No supplier alternatives found"
-            empty_detail = candidate_notice or (
-                "The configured supplier catalogs returned no alternatives for this part. "
-                "This does not confirm that no replacement exists. Try another MPN or review supplier catalogs directly."
+        elif not empty_detail:
+            from src.alternative_finder_search import replacement_search_empty_state
+
+            empty_title, empty_detail = replacement_search_empty_state(
+                discovery if isinstance(discovery, dict) else {},
+                lookup_error=lookup_error,
+                search_error=search_error,
             )
         st.markdown(
             f"<section class='cv-ap-card cv-ap-empty-state'>"
             f"<h3>{_esc(empty_title)}</h3><p>{_esc(empty_detail)}</p></section>",
             unsafe_allow_html=True,
         )
+        if query.strip() and not supplier_candidate_count and st.button(
+            "Retry supplier search",
+            key=(
+                "approved_replacement_retry_"
+                + hashlib.sha1(query.casefold().encode("utf-8")).hexdigest()[:12]
+            ),
+            type="secondary",
+        ):
+            st.session_state["cadivor_replacement_search_pending"] = query
+            st.rerun()
         return
     from src.part_images import part_image_markup
 

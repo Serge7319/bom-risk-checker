@@ -285,6 +285,7 @@ def navigate_to(page: str, *, _rerun: bool = True, arm_opening: bool = True, **p
             "alternative_original_manufacturer",
             "alternative_prefill_source_context",
             "alternative_prefill_search_pending",
+            "cadivor_replacement_search_pending",
             "approved_replacement_compare_source",
             "approved_replacement_compare_candidates",
         ):
@@ -308,12 +309,7 @@ def navigate_to(page: str, *, _rerun: bool = True, arm_opening: bool = True, **p
         # account panel into the destination shell while the route is mounting.
         st.session_state["cadivor_profile_menu_open"] = False
         # Reset main scroll only on real page changes — never on in-page reruns.
-        try:
-            token = int(st.session_state.get(NAV_SCROLL_RESET_TOKEN_KEY) or 0) + 1
-        except (TypeError, ValueError):
-            token = 1
-        st.session_state[NAV_SCROLL_RESET_TOKEN_KEY] = token
-        st.session_state[NAV_SCROLL_RESET_PENDING_KEY] = True
+        request_main_scroll_reset()
 
     # Focused high-risk review is session state. Clear it only when the user
     # explicitly navigates to the ordinary BOMs workspace, never during its
@@ -375,6 +371,21 @@ def navigate_to(page: str, *, _rerun: bool = True, arm_opening: bool = True, **p
         st.rerun()
 
 
+def request_main_scroll_reset() -> int:
+    """Schedule a stabilized scroll-to-top after the authenticated shell rerenders.
+
+    Use this for same-route workflows that replace the page's main task surface,
+    such as starting an analysis or selecting a different saved report.
+    """
+    try:
+        token = int(st.session_state.get(NAV_SCROLL_RESET_TOKEN_KEY) or 0) + 1
+    except (TypeError, ValueError):
+        token = 1
+    st.session_state[NAV_SCROLL_RESET_TOKEN_KEY] = token
+    st.session_state[NAV_SCROLL_RESET_PENDING_KEY] = True
+    return token
+
+
 def inject_nav_scroll_reset_if_needed() -> bool:
     """Scroll the main workspace to top once after a sidebar page change.
 
@@ -398,7 +409,14 @@ def inject_nav_scroll_reset_if_needed() -> bool:
           const doc = parentWindow.document;
           try {{ parentWindow.history.scrollRestoration = 'manual'; }} catch (error) {{}}
 
-          const resetTop = () => {{
+          let userInteracted = false;
+          const cancelPendingReset = () => {{ userInteracted = true; }};
+          ['wheel', 'touchstart', 'pointerdown', 'keydown'].forEach((eventName) => {{
+            doc.addEventListener(eventName, cancelPendingReset, {{ once: true, capture: true, passive: true }});
+          }});
+
+          const resetTop = (finalAttempt) => {{
+            if (userInteracted) return;
             const marked = doc.querySelector('[data-cadivor-nav-scroll-token="' + token + '"]');
             if (marked && marked.getAttribute('data-cadivor-nav-scroll-done') === '1') {{
               return;
@@ -420,13 +438,16 @@ def inject_nav_scroll_reset_if_needed() -> bool:
               }} catch (error) {{}}
             }}
             try {{ parentWindow.scrollTo({{ top: 0, left: 0, behavior: 'auto' }}); }} catch (error) {{}}
-            if (marked) {{
+            // Keep retrying through late Streamlit/browser restoration. The
+            // first call can run before the route body has mounted, so marking
+            // the reset complete there leaves some destinations half-scrolled.
+            if (marked && finalAttempt) {{
               try {{ marked.setAttribute('data-cadivor-nav-scroll-done', '1'); }} catch (error) {{}}
             }}
           }};
 
-          [0, 40, 120, 280, 600, 1100].forEach((delay) => {{
-            parentWindow.setTimeout(resetTop, delay);
+          [0, 40, 120, 280, 600, 1100].forEach((delay, index, delays) => {{
+            parentWindow.setTimeout(() => resetTop(index === delays.length - 1), delay);
           }});
         }})();
         </script>

@@ -152,18 +152,31 @@ def render_first_analysis_brief(
         medium_count=medium_count,
     )
     if needs_verification_count:
-        if attention_count:
-            summary += (
-                f" Another {needs_verification_count} component(s) cannot be risk-rated "
-                "until their supplier match and evidence are verified."
+        total_count = len(data)
+        assessed_count = max(0, total_count - needs_verification_count)
+        component_label = "component" if total_count == 1 else "components"
+        unassessed_verb = "remains" if needs_verification_count == 1 else "remain"
+        title = "Supplier evidence incomplete"
+        if high_count:
+            rated_risk = (
+                f"{high_count} assessed component{'s' if high_count != 1 else ''} "
+                f"{'are' if high_count != 1 else 'is'} high risk"
+                + (f" and {medium_count} need focused review" if medium_count else "")
+                + ". "
+            )
+        elif medium_count:
+            rated_risk = (
+                f"{medium_count} assessed component{'s' if medium_count != 1 else ''} "
+                f"{'need' if medium_count != 1 else 'needs'} focused review. "
             )
         else:
-            title = "Verify supplier evidence"
-            summary = (
-                f"{needs_verification_count} of {len(data)} component(s) lack enough "
-                "matched supplier evidence for a risk rating. This is an evidence gap, "
-                "not a low-risk result."
-            )
+            rated_risk = ""
+        summary = (
+            f"{rated_risk}Enough matched supplier evidence is available to rate "
+            f"{assessed_count} of {total_count} BOM {component_label}; "
+            f"{needs_verification_count} {unassessed_verb} unassessed. "
+            "The BOM's overall exposure cannot be confirmed until those evidence gaps are resolved."
+        )
 
     risk_health_display = (
         "Needs verification"
@@ -217,7 +230,7 @@ def render_first_analysis_brief(
           <p class="cv301-copy">{html.escape(summary)}</p>
           <div class="cv301-grid">
             <div class="cv301-stat"><span>Health</span><strong>{html.escape(risk_health_display)}</strong></div>
-            <div class="cv301-stat"><span>Needs review</span><strong>{attention_count}</strong></div>
+            <div class="cv301-stat"><span>{"Rated risks to review" if needs_verification_count else "Needs review"}</span><strong>{attention_count}</strong></div>
             <div class="cv301-stat"><span>No-stock parts</span><strong>{no_stock_count}</strong></div>
             <div class="cv301-stat"><span>Needs verification</span><strong>{needs_verification_count}</strong></div>
           </div>

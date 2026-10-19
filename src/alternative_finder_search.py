@@ -128,6 +128,114 @@ def _replacement_candidate_cause(discovery: Mapping[str, Any]) -> str:
     return "No replacement candidates were returned for this part."
 
 
+def replacement_search_empty_state(
+    discovery_metadata: Mapping[str, Any] | None = None,
+    *,
+    lookup_error: str = "",
+    search_error: str = "",
+) -> tuple[str, str]:
+    """Explain an empty search without presenting provider exceptions as findings.
+
+    A timed-out catalog is incomplete evidence, not proof that no replacement
+    exists. Keep supplier names and the failure class, but leave raw transport
+    errors in the correlated server diagnostics.
+    """
+    if str(lookup_error or "").strip():
+        return (
+            "Source part needs verification",
+            "Supplier records could not verify the source part. Confirm the MPN and try again; "
+            "this does not confirm that no replacement exists.",
+        )
+    if str(search_error or "").strip():
+        return (
+            "Supplier search did not complete",
+            "Cadivor could not complete the supplier search. Retry in a moment. "
+            "This result does not confirm that no replacement exists.",
+        )
+
+    discovery = discovery_metadata if isinstance(discovery_metadata, Mapping) else {}
+    providers = discovery.get("providers")
+    providers = providers if isinstance(providers, Mapping) else {}
+    failed_sources: list[str] = []
+    not_configured: list[str] = []
+
+    from integrations.supplier_diagnostics import (
+        CATEGORY_AUTHENTICATION,
+        CATEGORY_CONFIGURATION,
+        CATEGORY_RATE_LIMIT,
+        CATEGORY_TIMEOUT,
+        categorize_supplier_failure,
+    )
+
+    explicit_failures = {
+        str(item.get("source") or item.get("supplier") or "").strip().casefold()
+        if isinstance(item, Mapping)
+        else str(item or "").strip().casefold()
+        for item in discovery.get("provider_failures") or []
+    }
+    for source, raw_status in providers.items():
+        if not isinstance(raw_status, Mapping):
+            continue
+        name = str(source or "Supplier").strip()
+        message = str(raw_status.get("message") or "").strip()
+        statuses = [
+            str(raw_status.get(key) or "").strip().casefold()
+            for key in ("substitutions", "catalog", "lookup")
+        ]
+        if "not_configured" in statuses:
+            not_configured.append(name)
+            continue
+        failure = bool(
+            name.casefold() in explicit_failures
+            or any(status in {"error", "timeout", "failed", "rate_limited"} for status in statuses)
+        )
+        if not failure:
+            continue
+        category = categorize_supplier_failure(
+            provider_status="PROVIDER_ERROR",
+            error_message=message,
+        )
+        if category == CATEGORY_TIMEOUT:
+            label = f"{name} timed out"
+        elif category == CATEGORY_RATE_LIMIT:
+            label = f"{name} was rate limited"
+        elif category == CATEGORY_AUTHENTICATION:
+            label = f"{name} could not authenticate"
+        elif category == CATEGORY_CONFIGURATION:
+            not_configured.append(name)
+            continue
+        else:
+            label = f"{name} did not respond"
+        failed_sources.append(label)
+
+    if failed_sources:
+        detail = ", ".join(dict.fromkeys(failed_sources))
+        if not_configured:
+            detail += f"; {', '.join(dict.fromkeys(not_configured))} not configured"
+        return (
+            "Supplier search incomplete",
+            f"{detail}. No candidates were confirmed. Retry the search or check supplier "
+            "catalogs directly; this result does not confirm that no replacement exists.",
+        )
+    if not_configured or bool(discovery.get("has_incomplete_evidence")):
+        unique_unconfigured = list(dict.fromkeys(not_configured))
+        if unique_unconfigured:
+            verb = "is" if len(unique_unconfigured) == 1 else "are"
+            detail = f"{', '.join(unique_unconfigured)} {verb} not configured. "
+        else:
+            detail = "Some supplier catalogs could not be checked. "
+        return (
+            "Supplier coverage incomplete",
+            f"{detail}No candidates were confirmed. Retry after coverage is available or "
+            "check supplier catalogs directly; this result does not confirm that no replacement exists.",
+        )
+    return (
+        "No replacement candidates confirmed",
+        "The checked supplier catalogs returned no candidates for this part. This does not "
+        "confirm that no replacement exists; try another MPN or check supplier catalogs directly.",
+    )
+
+
 def _redact_secrets(message: str) -> str:
     text = str(message or "")
     text = _SECRET_PATTERN.sub(r"\1=<redacted>", text)

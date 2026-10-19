@@ -21619,7 +21619,9 @@ def run_authenticated_app() -> None:
                 # long-running analysis. Otherwise its submitted state is
                 # painted alongside the progress/results transition.
                 from src.ui.main_transition import arm_bom_analysis_transition
+                from src.ui.navigation import request_main_scroll_reset
 
+                request_main_scroll_reset()
                 arm_bom_analysis_transition(st.session_state, "start")
                 st.rerun()
             if not _approved_bom_submitted and st.session_state.get("cadivor_bom_pipeline_active"):
@@ -23141,9 +23143,11 @@ def run_authenticated_app() -> None:
         if analyze_clicked:
             # Render the busy state before the long-running supplier and risk analysis.
             from src.ui.main_transition import arm_bom_analysis_transition
+            from src.ui.navigation import request_main_scroll_reset
 
             st.session_state["bom8_analysis_in_progress"] = True
             st.session_state["bom8_analysis_pending"] = True
+            request_main_scroll_reset()
             arm_bom_analysis_transition(st.session_state, "start")
             st.rerun()
 
@@ -23271,6 +23275,12 @@ def run_authenticated_app() -> None:
                 analyze_requested = True
 
         if analyze_requested:
+            # The new analysis replaces the upload/review surface without a
+            # route change. Schedule the same stabilized top reset used on
+            # page navigation so progress never opens halfway down the page.
+            from src.ui.navigation import request_main_scroll_reset
+
+            request_main_scroll_reset()
             # A new analysis should be saved as a new database record.
             # These flags prevent old session state from blocking the new save.
             st.session_state.pop("analysis_saved", None)
