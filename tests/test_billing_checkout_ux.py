@@ -139,6 +139,14 @@ class BillingCheckoutUxContractTests(unittest.TestCase):
         self.assertIn("justify-content:flex-start!important", settings.replace(" ", ""))
         self.assertIn(":not(.st-key-cv_settings_nav)", self.laptop_css)
 
+    def test_settings_uses_home_width_and_text_only_active_underline_tabs(self):
+        settings = self._settings_block()
+        self.assertIn('key="approved_page_canvas_standard_settings"', settings)
+        self.assertIn("max-width:1440px!important", settings.replace(" ", ""))
+        self.assertIn("border-bottom:1pxsolid#dce5f0!important", settings.replace(" ", ""))
+        self.assertIn("background:transparent!important", settings.replace(" ", ""))
+        self.assertIn("border-bottom-color:#2670e8!important", settings.replace(" ", ""))
+
     def test_setup_actions_are_grouped(self):
         settings = self._settings_block()
         setup = settings[

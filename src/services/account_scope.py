@@ -21,6 +21,8 @@ _EXACT_KEYS = (
     "cadivor_home_saved_analyses",
     "cadivor_workspace_command_cache",
     "cadivor_workspace_command_cache_route",
+    "cadivor_workspace_command_cache_at",
+    "cadivor_workspace_command_cache_scope",
     "cadivor_secondary_data_delayed",
     "cadivor_home_secondary_cache",
     "cadivor_secondary_refresh_requested",

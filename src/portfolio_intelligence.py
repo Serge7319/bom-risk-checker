@@ -74,6 +74,25 @@ def _risk_bucket(score: float | None, raw_level: Any) -> str:
     return "Unknown"
 
 
+def _shared_component_evidence_labels(row: Dict[str, Any]) -> tuple[str, str, str]:
+    """Render absent portfolio evidence as unknown, never as a number."""
+    risk_score = _optional_number(row.get("Highest Risk Score"))
+    stock = _optional_number(row.get("Lowest Stock"))
+    sources = _optional_number(row.get("Minimum Supplier Sources"))
+    risk_label = (
+        f"Risk {int(risk_score)}/100" if risk_score is not None else "Risk not assessed"
+    )
+    stock_label = (
+        f"Lowest stock {int(stock):,}" if stock is not None else "Stock not recorded"
+    )
+    source_label = (
+        f"{int(sources)} source(s)"
+        if sources is not None
+        else "Supplier sources not recorded"
+    )
+    return risk_label, stock_label, source_label
+
+
 def _recorded_date(row: Dict[str, Any]) -> datetime | None:
     raw = _first(row, "updated_at", "created_at", "analyzed_at", "date", default=None)
     if raw is None:
@@ -359,8 +378,15 @@ def build_portfolio_intelligence(
                 "Image URL": worst["Image URL"],
             }
         )
+    # Unknown risk scores are valid portfolio data. Keep them after scored
+    # components instead of negating None, which used to crash the page when
+    # any shared part had not yet been assessed.
     shared_components.sort(
-        key=lambda row: (-row["Projects Using Part"], -row["Highest Risk Score"])
+        key=lambda row: (
+            -row["Projects Using Part"],
+            row["Highest Risk Score"] is None,
+            -(row["Highest Risk Score"] or 0),
+        )
     )
 
     single_source = [
@@ -790,6 +816,7 @@ def render_portfolio_intelligence(
             st.info("No component is currently recorded across multiple saved projects.")
         for index, row in enumerate(shared):
             photo = part_image_markup(row.get("Image URL"), row["Part Number"], size=64, part=row)
+            risk_label, stock_label, source_label = _shared_component_evidence_labels(row)
             st.markdown(
                 f"""
                 <section class="cv19-card cv-part-card-layout">
@@ -800,9 +827,9 @@ def render_portfolio_intelligence(
                     may reduce exposure across multiple designs.
                   </div>
                   <div class="cv19-meta">
-                    <span>Risk {row['Highest Risk Score']}/100</span>
-                    <span>Lowest stock {row['Lowest Stock']:,}</span>
-                    <span>{row['Minimum Supplier Sources']} source(s)</span>
+                    <span>{html.escape(risk_label)}</span>
+                    <span>{html.escape(stock_label)}</span>
+                    <span>{html.escape(source_label)}</span>
                     <span>{html.escape(row['Lifecycle'])}</span>
                   </div></div>
                 </section>
