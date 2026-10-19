@@ -371,3 +371,45 @@ html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_re
     width: 100% !important;
   }
 }
+
+
+/* Flatten any presentation wrappers Streamlit inserts between a horizontal
+   block and its columns. The columns then become the grid items that receive
+   the normalized dimensions above. */
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_filters [data-testid="stHorizontalBlock"]:has(.st-key-approved_monitoring_category_row) > :not(:is([data-testid="stColumn"], [data-testid="column"])) {
+  display: contents !important;
+}
+
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_category_row [data-testid="stHorizontalBlock"] > :not(:is([data-testid="stColumn"], [data-testid="column"])) {
+  display: contents !important;
+}
+
+/* Stack Time period before the category track can become narrower than its
+   seven labels, including laptop-sized browser windows. */
+@media (max-width: 1320px) {
+  html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_filters [data-testid="stHorizontalBlock"]:has(.st-key-approved_monitoring_category_row) {
+    grid-template-columns: 42px minmax(0, 1fr) !important;
+    align-items: start !important;
+  }
+
+  html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_filters [data-testid="stHorizontalBlock"]:has(.st-key-approved_monitoring_category_row) > :is([data-testid="stColumn"], [data-testid="column"]):has(.cv-ap-monitoring-show-label) {
+    grid-column: 1 !important;
+    grid-row: 1 !important;
+  }
+
+  html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_filters [data-testid="stHorizontalBlock"]:has(.st-key-approved_monitoring_category_row) > :is([data-testid="stColumn"], [data-testid="column"]):has(.st-key-approved_monitoring_category_row) {
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+  }
+
+  html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_filters [data-testid="stHorizontalBlock"]:has(.st-key-approved_monitoring_category_row) > :is([data-testid="stColumn"], [data-testid="column"]):has(.st-key-approved_monitoring_period_control) {
+    grid-column: 1 / -1 !important;
+    grid-row: 2 !important;
+  }
+
+  html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_period_control {
+    width: min(350px, 100%) !important;
+    max-width: 100% !important;
+    margin-left: auto !important;
+  }
+}
