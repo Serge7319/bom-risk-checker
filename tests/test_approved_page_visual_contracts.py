@@ -113,6 +113,23 @@ class ApprovedPageVisualContractTests(unittest.TestCase):
         self.assertIn("border: 1px solid #70a4ff !important;", MONITORING_FINAL_CSS)
         self.assertIn("color: #2563eb !important;", MONITORING_FINAL_CSS)
 
+    def test_monitoring_filter_pills_have_separate_responsive_tracks(self):
+        self.assertIn(
+            "grid-template-columns: 42px minmax(0, 1fr) minmax(330px, 356px) !important;",
+            MONITORING_FINAL_CSS,
+        )
+        self.assertIn(
+            "grid-template-columns: minmax(86px, 1fr) minmax(112px, 1.32fr)",
+            MONITORING_FINAL_CSS,
+        )
+        self.assertIn("gap: 8px !important;", MONITORING_FINAL_CSS)
+        self.assertIn("grid-template-columns: repeat(4, minmax(0, 1fr)) !important;", MONITORING_FINAL_CSS)
+        self.assertIn("grid-template-columns: repeat(2, minmax(0, 1fr)) !important;", MONITORING_FINAL_CSS)
+        self.assertIn("max-width: 100% !important;", MONITORING_FINAL_CSS)
+        self.assertIn("border-radius: 999px !important;", MONITORING_FINAL_CSS)
+        self.assertIn("background: #edf5ff !important;", MONITORING_FINAL_CSS)
+        self.assertIn("color: #2563eb !important;", MONITORING_FINAL_CSS)
+
     def test_app_marketing_fallback_uses_authenticated_student_limits(self):
         self.assertIn("5 BOM analyses/month", MARKETING_SITE)
         self.assertIn("50 components/BOM", MARKETING_SITE)

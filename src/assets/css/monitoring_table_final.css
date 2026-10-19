@@ -69,3 +69,166 @@ html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_re
   outline: 3px solid #93c5fd !important;
   outline-offset: 2px !important;
 }
+
+/* Keep the Show filters in separate, bounded tracks after shared button
+   styles load. The old nested flex widths could make neighboring pills touch
+   or overlap when the page canvas had less than the full browser width. */
+@media (min-width: 1201px) {
+  html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_filters > [data-testid="stVerticalBlock"] > [data-testid="stHorizontalBlock"] {
+    display: grid !important;
+    grid-template-columns: 42px minmax(0, 1fr) minmax(330px, 356px) !important;
+    align-items: center !important;
+    column-gap: 12px !important;
+    width: 100% !important;
+  }
+}
+
+@media (max-width: 1200px) {
+  html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_filters > [data-testid="stVerticalBlock"] > [data-testid="stHorizontalBlock"] {
+    display: grid !important;
+    grid-template-columns: 42px minmax(0, 1fr) !important;
+    align-items: start !important;
+    gap: 10px 12px !important;
+    width: 100% !important;
+  }
+
+  html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_filters > [data-testid="stVerticalBlock"] > [data-testid="stHorizontalBlock"] > :is([data-testid="stColumn"], [data-testid="column"]):has(.cv-ap-monitoring-show-label) {
+    grid-column: 1 !important;
+    grid-row: 1 !important;
+  }
+
+  html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_filters > [data-testid="stVerticalBlock"] > [data-testid="stHorizontalBlock"] > :is([data-testid="stColumn"], [data-testid="column"]):has(.st-key-approved_monitoring_category_row) {
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+  }
+
+  html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_filters > [data-testid="stVerticalBlock"] > [data-testid="stHorizontalBlock"] > :is([data-testid="stColumn"], [data-testid="column"]):has(.st-key-approved_monitoring_period_control) {
+    grid-column: 1 / -1 !important;
+    grid-row: 2 !important;
+  }
+
+  html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_period_control {
+    width: min(356px, 100%) !important;
+    margin-left: auto !important;
+  }
+}
+
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_filters > [data-testid="stVerticalBlock"] > [data-testid="stHorizontalBlock"] > :is([data-testid="stColumn"], [data-testid="column"]) {
+  box-sizing: border-box !important;
+  width: auto !important;
+  max-width: none !important;
+  min-width: 0 !important;
+  flex: none !important;
+  padding: 0 !important;
+}
+
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_category_row {
+  box-sizing: border-box !important;
+  width: 100% !important;
+  min-width: 0 !important;
+}
+
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_category_row > [data-testid="stVerticalBlock"] > [data-testid="stHorizontalBlock"] {
+  display: grid !important;
+  grid-template-columns: minmax(86px, 1fr) minmax(112px, 1.32fr) minmax(82px, .95fr) minmax(124px, 1.4fr) minmax(74px, .84fr) minmax(72px, .8fr) minmax(90px, 1fr) !important;
+  align-items: center !important;
+  gap: 8px !important;
+  width: 100% !important;
+  min-width: 0 !important;
+}
+
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_category_row > [data-testid="stVerticalBlock"] > [data-testid="stHorizontalBlock"] > :is([data-testid="stColumn"], [data-testid="column"]) {
+  box-sizing: border-box !important;
+  display: block !important;
+  width: auto !important;
+  max-width: none !important;
+  min-width: 0 !important;
+  flex: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_category_row [class*="st-key-approved_monitoring_filter_"] {
+  box-sizing: border-box !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_category_row [class*="st-key-approved_monitoring_filter_"] .stButton,
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_category_row [class*="st-key-approved_monitoring_filter_"] [data-testid="stElementContainer"] {
+  box-sizing: border-box !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  margin: 0 !important;
+}
+
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_category_row [class*="st-key-approved_monitoring_filter_"] .stButton > button {
+  box-sizing: border-box !important;
+  display: flex !important;
+  justify-content: center !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  height: 42px !important;
+  min-height: 42px !important;
+  margin: 0 !important;
+  padding: 0 7px !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  border: 1px solid #dce5f1 !important;
+  border-radius: 999px !important;
+  background: #fff !important;
+  color: #52647b !important;
+  box-shadow: none !important;
+  font-weight: 600 !important;
+  font-size: 12px !important;
+}
+
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_category_row [class*="st-key-approved_monitoring_filter_"] .stButton > button:hover {
+  border-color: #9bbdf5 !important;
+  background: #f8fbff !important;
+  color: #2563eb !important;
+}
+
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_category_row [class*="st-key-approved_monitoring_filter_selected_"] .stButton > button {
+  border-color: #70a4ff !important;
+  background: #edf5ff !important;
+  color: #2563eb !important;
+}
+
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_category_row [class*="st-key-approved_monitoring_filter_"] .stButton > button p {
+  box-sizing: border-box !important;
+  display: block !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  margin: 0 !important;
+  color: inherit !important;
+  font-size: inherit !important;
+  font-weight: inherit !important;
+  white-space: inherit !important;
+}
+
+@media (max-width: 900px) {
+  html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_category_row > [data-testid="stVerticalBlock"] > [data-testid="stHorizontalBlock"] {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+}
+
+@media (max-width: 640px) {
+  html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_category_row > [data-testid="stVerticalBlock"] > [data-testid="stHorizontalBlock"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_category_row [class*="st-key-approved_monitoring_filter_"] .stButton > button {
+    height: 38px !important;
+    min-height: 38px !important;
+  }
+}

@@ -1200,11 +1200,30 @@ def begin_approved_page() -> None:
         .st-key-approved_bom_toolbar [data-testid="stColumn"]:last-child [data-testid="stElementContainer"]{display:flex!important;justify-content:flex-end!important;width:100%!important}
         .st-key-approved_bom_title [data-testid="stColumn"]:last-child button{white-space:nowrap!important}
         .st-key-approved_bom_toolbar [data-testid="stColumn"]:last-child button{white-space:nowrap!important}
-        .st-key-approved_bom_upload_panel{box-sizing:border-box!important;width:100%!important;max-width:720px!important;margin:22px auto 0!important;padding:24px 26px 22px!important;border:1px solid #dce5f0!important;border-radius:18px!important;background:#fff!important;box-shadow:0 4px 18px rgba(15,23,42,.055)!important}
-        @media(max-width:720px){.st-key-approved_bom_upload_panel{padding:20px 18px 18px!important}}
-        .st-key-approved_bom_upload_panel>[data-testid="stVerticalBlock"]{gap:.85rem!important}
-        .cv-bom-upload-heading h2{margin:0 0 5px!important;color:#142239!important;font-size:21px!important;font-weight:750!important;letter-spacing:-.02em!important}
+        .st-key-approved_bom_upload_panel{box-sizing:border-box!important;width:100%!important;max-width:none!important;margin:22px auto 0!important;padding:24px 36px 38px!important;border:1px solid #dce5f0!important;border-radius:18px!important;background:#fff!important;box-shadow:0 4px 18px rgba(15,23,42,.055)!important}
+        .st-key-approved_bom_upload_panel>[data-testid="stVerticalBlock"]{gap:1rem!important}
+        .cv-bom-upload-heading{margin:0 0 2px!important;padding:0 0 18px!important;border-bottom:1px solid #e5ebf3!important}
+        .cv-bom-upload-heading h2{margin:0 0 5px!important;color:#142239!important;font-size:23px!important;font-weight:750!important;letter-spacing:-.02em!important}
         .cv-bom-upload-heading p{margin:0!important;color:#64748b!important;font-size:14px!important;line-height:1.45!important}
+        .st-key-approved_bom_upload_form{box-sizing:border-box!important;width:100%!important;padding:0!important;border:0!important;background:transparent!important}
+        .st-key-approved_bom_upload_form>[data-testid="stVerticalBlock"]{gap:1.1rem!important}
+        .st-key-approved_bom_upload_form [data-testid="stWidgetLabel"] p{margin:0 0 6px!important;color:#34445d!important;font-size:13px!important;font-weight:700!important;line-height:1.3!important}
+        .st-key-approved_bom_upload_form .st-key-approved_bom_project_name [data-testid="stWidgetLabel"] p:after{content:" (optional)";color:#8492a6;font-weight:500}
+        .st-key-approved_bom_upload_form .st-key-approved_bom_name [data-testid="stWidgetLabel"] p:after{content:" *";color:#dc3545;font-weight:800}
+        .st-key-approved_bom_upload_form [data-testid="stTextInput"] input{box-sizing:border-box!important;min-height:52px!important;border:1px solid #b8c7dc!important;border-radius:10px!important;background:#fbfdff!important;color:#172942!important;font-size:14px!important;box-shadow:none!important}
+        .st-key-approved_bom_upload_form [data-testid="stTextInput"] input:focus{border-color:#2865ed!important;box-shadow:0 0 0 3px rgba(40,101,237,.12)!important}
+        .st-key-approved_bom_upload_form [data-testid="stCaptionContainer"] p{margin:0!important;color:#718198!important;font-size:12px!important;line-height:1.45!important}
+        .st-key-approved_bom_upload_form .st-key-bom_file_uploader [data-testid="stWidgetLabel"] p{margin:0 0 9px!important;color:#34445d!important;font-size:13px!important;font-weight:700!important}
+        .st-key-approved_bom_upload_form [data-testid="stFileUploader"]{margin:0!important}
+        .st-key-approved_bom_upload_form [data-testid="stFileUploaderDropzone"]{box-sizing:border-box!important;min-height:208px!important;border:2px dashed #5b8cff!important;border-radius:14px!important;background:#f8fbff!important;padding:30px 28px!important}
+        .st-key-approved_bom_upload_form [data-testid="stFileUploaderDropzone"] svg{color:#2865ed!important}
+        .st-key-approved_bom_upload_form [data-testid="stFileUploaderDropzoneInstructions"]{color:#52647d!important}
+        .st-key-approved_bom_upload_form [data-testid="stFileUploaderDropzoneInstructions"] p{margin:0!important;color:#34445d!important;font-size:15px!important;font-weight:700!important;line-height:1.4!important}
+        .st-key-approved_bom_upload_form [data-testid="stFileUploaderDropzoneInstructions"] small{color:#718198!important;font-size:12px!important}
+        .st-key-approved_bom_upload_form [data-testid="stFileUploaderDropzone"] button{min-height:40px!important;height:40px!important;border:1px solid #c8d5e8!important;border-radius:9px!important;background:#fff!important;color:#225bd7!important;box-shadow:none!important;font-size:13px!important;font-weight:700!important}
+        .st-key-approved_bom_upload_form [data-testid="stFileUploaderDropzone"] button:hover{border-color:#8eafff!important;background:#f5f8ff!important}
+        .st-key-approved_bom_submit_row [data-testid="stHorizontalBlock"]{align-items:center!important;gap:16px!important}
+        .st-key-approved_bom_submit_row [data-testid="stCaptionContainer"] p{color:#718198!important;font-size:12px!important}
         [class*="st-key-approved_bom_analyze"] button{width:auto!important;min-width:148px!important;max-width:100%!important;min-height:44px!important}
         /* Engineering decision cards and controls follow the approved light-tint dashboard style. */
         .st-key-approved_decision_cardwrap_open{background:#f2f7ff!important;border-color:#dbeafe!important}
@@ -1233,9 +1252,15 @@ def begin_approved_page() -> None:
           .st-key-approved_decision_toolbar [data-testid="stHorizontalBlock"]{flex-wrap:wrap!important}
           .st-key-approved_decision_toolbar [data-testid="stColumn"]:first-child{flex:1 1 100%!important;width:100%!important}
           .st-key-approved_decision_toolbar [data-testid="stColumn"]:not(:first-child){flex:1 1 155px!important;width:auto!important;min-width:140px!important}
-          .st-key-approved_bom_upload_panel{padding:22px 22px 18px!important}
+          .st-key-approved_bom_upload_panel{padding:22px 24px 28px!important}
         }
         @media(max-width:620px){
+          .st-key-approved_bom_upload_panel{padding:18px 16px 22px!important}
+          .st-key-approved_bom_upload_fields [data-testid="stHorizontalBlock"],
+          .st-key-approved_bom_submit_row [data-testid="stHorizontalBlock"]{flex-wrap:wrap!important;gap:10px!important}
+          .st-key-approved_bom_upload_fields [data-testid="column"]{flex:1 1 100%!important;width:100%!important}
+          .st-key-approved_bom_submit_row [data-testid="column"]{flex:1 1 100%!important;width:100%!important}
+          .st-key-approved_bom_upload_form [data-testid="stFileUploaderDropzone"]{min-height:176px!important;padding:22px 14px!important}
           .st-key-approved_decision_cards>[data-testid="stHorizontalBlock"]>[data-testid="column"]{flex:1 1 100%!important;min-width:0!important}
           .st-key-approved_bom_title [data-testid="stHorizontalBlock"]{flex-wrap:wrap!important;gap:10px!important}
           .st-key-approved_bom_title [data-testid="stColumn"]:first-child{flex:1 1 100%!important;width:100%!important}
@@ -2558,20 +2583,26 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
                 unsafe_allow_html=True,
             )
             with st.form(key="approved_bom_upload_form", clear_on_submit=False):
-                typed_project = st.text_input(
-                    "Project name",
-                    key="approved_bom_project_name",
-                    placeholder="Example: Motor Controller",
-                    help="Enter a new name or reuse an existing project name. Leave blank to use General.",
-                    autocomplete="off",
-                    disabled=analysis_running,
-                )
-                bom_name = st.text_input(
-                    "BOM name",
-                    key="approved_bom_name",
-                    autocomplete="off",
-                    disabled=analysis_running,
-                )
+                with st.container(key="approved_bom_upload_fields"):
+                    project_col, bom_col = st.columns(2, gap="large")
+                    with project_col:
+                        typed_project = st.text_input(
+                            "Project name",
+                            key="approved_bom_project_name",
+                            placeholder="Example: Motor Controller",
+                            help="Enter a new name or reuse an existing project name. Leave blank to use General.",
+                            autocomplete="off",
+                            disabled=analysis_running,
+                        )
+                    with bom_col:
+                        bom_name = st.text_input(
+                            "BOM name",
+                            key="approved_bom_name",
+                            placeholder="Example: Motor Controller Rev A",
+                            autocomplete="off",
+                            disabled=analysis_running,
+                        )
+                st.caption("Use a project to group related BOM revisions. BOM name is required.")
                 uploaded = st.file_uploader(
                     "Upload your BOM file",
                     type=["csv", "xlsx"],
@@ -2579,12 +2610,18 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
                     help="CSV or Excel with MPN and Quantity columns.",
                     disabled=analysis_running,
                 )
-                submitted = st.form_submit_button(
-                    "Analyzing BOM…" if analysis_running else "Analyze BOM",
-                    key="approved_bom_analyze",
-                    type="primary",
-                    disabled=analysis_running,
-                )
+                with st.container(key="approved_bom_submit_row"):
+                    submit_col, guidance_col = st.columns([0.12, 0.88], gap="small", vertical_alignment="center")
+                    with submit_col:
+                        submitted = st.form_submit_button(
+                            "Analyzing BOM…" if analysis_running else "Analyze BOM",
+                            key="approved_bom_analyze",
+                            type="primary",
+                            disabled=analysis_running,
+                        )
+                    with guidance_col:
+                        if uploaded is None:
+                            st.caption("Choose a CSV or Excel file to run the existing BOM analysis.")
                 if submitted and uploaded is not None:
                     st.session_state["cadivor_bom_analysis_ready"] = True
                     st.session_state["cadivor_pending_upload"] = uploaded
@@ -2595,8 +2632,7 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
                     )
                     st.session_state["cadivor_pending_bom_name"] = bom_name
                     return
-                if uploaded is None:
-                    st.caption("Choose a CSV or Excel file to run the existing BOM analysis.")
+
     elif results_visible:
         pass
     else:
@@ -7263,7 +7299,7 @@ def _with_approved_page_canvas(width_variant: str):
 for _renderer_name, _width_variant in (
     ("render_saved_bom_settings", "standard"),
     ("render_home", "standard"),
-    ("render_bom_catalog", "wide"),
+    ("render_bom_catalog", "standard"),
     ("render_decision_queue", "standard"),
     ("render_monitoring", "standard"),
     ("render_reports_list", "wide"),
