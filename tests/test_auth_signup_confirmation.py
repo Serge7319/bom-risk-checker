@@ -551,6 +551,10 @@ class SignupConfirmationSignUpOptionsTests(unittest.TestCase):
         self.assertIn("options", kwargs)
         redirect = kwargs["options"]["email_redirect_to"]
         self.assertIn("cadivor_signup_confirm=1", redirect)
+        self.assertEqual(
+            kwargs["options"]["data"],
+            {"cadivor_signup_intent": "standard_trial"},
+        )
         pending.assert_called_once()
 
 

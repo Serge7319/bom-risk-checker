@@ -26,6 +26,120 @@ def _safe_text(value: Any, fallback: str = "") -> str:
     return text if text else fallback
 
 
+def _parse_timestamp(value: Any) -> datetime | None:
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        parsed = value
+    else:
+        try:
+            parsed = datetime.fromisoformat(str(value).strip().replace("Z", "+00:00"))
+        except (TypeError, ValueError):
+            return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
+def _recent_default_trial_profile(auth_user: Any, profile: dict[str, Any]) -> bool:
+    """Identify only a fresh Auth account with the legacy trigger's Starter row.
+
+    Some deployments create ``public.users`` at Auth signup with plan=Starter.
+    That row wins the insert race in ``ensure_user_profile`` and previously
+    bypassed the normal Trial default. Repair is limited to a new account's
+    first 14 days and an otherwise untouched, unbilled profile.
+    """
+    metadata = getattr(auth_user, "user_metadata", {}) or {}
+    if not isinstance(metadata, dict):
+        metadata = {}
+    signup_intent = str(metadata.get("cadivor_signup_intent") or "").strip().lower()
+    if is_report_only_signup(metadata) or signup_intent not in {"", "standard_trial"}:
+        return False
+
+    if str(profile.get("plan") or "").strip().lower() != "starter":
+        return False
+    if profile.get("trial_ends_at") not in (None, ""):
+        return False
+    if str(profile.get("role") or "").strip().lower() == "admin":
+        return False
+
+    # Never reclassify a paid, previously subscribed, or grandfathered profile.
+    protected_billing_fields = (
+        "stripe_customer_id",
+        "stripe_subscription_id",
+        "stripe_price_id",
+        "stripe_subscription_status",
+        "plan_grandfather_source",
+    )
+    if any(str(profile.get(key) or "").strip() for key in protected_billing_fields):
+        return False
+
+    created_at = _parse_timestamp(getattr(auth_user, "created_at", None))
+    if created_at is None:
+        return False
+    now = datetime.now(timezone.utc)
+    trial_end = created_at + timedelta(days=TRIAL_DAYS)
+    age = now - created_at
+    return timedelta(0) <= age < timedelta(days=TRIAL_DAYS) and trial_end > now
+
+
+def _repair_recent_default_trial_profile(
+    supabase: Any,
+    auth_user: Any,
+    profile: dict[str, Any],
+) -> dict[str, Any]:
+    """Promote a fresh trigger-created Starter row to its signup Trial once."""
+    if not _recent_default_trial_profile(auth_user, profile):
+        return profile
+
+    created_at = _parse_timestamp(getattr(auth_user, "created_at", None))
+    if created_at is None:
+        return profile
+    trial_end = (created_at + timedelta(days=TRIAL_DAYS)).isoformat()
+    payload = {"plan": "Trial", "trial_ends_at": trial_end}
+
+    try:
+        query = (
+            supabase.table("users")
+            .update(payload)
+            .eq("id", profile.get("id"))
+            .eq("plan", profile.get("plan"))
+        )
+        # These conditional filters make the repair safe if billing changes
+        # between the initial read and the update. Only filter columns present
+        # in this schema/profile so older deployments remain compatible.
+        for field in (
+            "trial_ends_at",
+            "stripe_customer_id",
+            "stripe_subscription_id",
+            "stripe_price_id",
+            "stripe_subscription_status",
+            "plan_grandfather_source",
+        ):
+            if field in profile and profile.get(field) in (None, ""):
+                query = query.is_(field, "null") if profile.get(field) is None else query.eq(field, "")
+        response = query.select("*").execute()
+        updated = getattr(response, "data", None)
+        if isinstance(updated, list) and updated and isinstance(updated[0], dict):
+            return updated[0]
+    except Exception:
+        # Profile recovery must not prevent a valid Auth session from opening.
+        return profile
+
+    # PostgREST may return no representation if the update was rejected by a
+    # concurrent change or RLS. Re-read so callers never assume a Trial that
+    # was not persisted.
+    try:
+        refreshed = _select_user_profile(
+            supabase,
+            _safe_text(profile.get("id")),
+            operation="ensure_user_profile_after_trial_repair",
+        )
+        if refreshed.data:
+            return refreshed.data[0]
+    except SupabaseReadTransportError:
+        pass
+    return profile
+
+
 def build_default_user_row(auth_user: Any) -> dict[str, Any]:
     """Return the smallest safe default row derived from Supabase auth metadata."""
     user_id = _safe_text(getattr(auth_user, "id", ""))
@@ -109,7 +223,9 @@ def ensure_user_profile(
         raise UserProvisioningError("Could not read user profile from Cadivor.") from exc
 
     if existing.data:
-        return existing.data[0], False
+        profile = existing.data[0]
+        repaired = _repair_recent_default_trial_profile(supabase, auth_user, profile)
+        return repaired, False
 
     row = build_default_user_row(auth_user)
     if row["id"] != session_user_id:
@@ -130,7 +246,9 @@ def ensure_user_profile(
                 "Cadivor could not create the user profile after a conflict."
             ) from read_exc
         if retry.data:
-            return retry.data[0], False
+            profile = retry.data[0]
+            repaired = _repair_recent_default_trial_profile(supabase, auth_user, profile)
+            return repaired, False
         raise UserProvisioningError("Cadivor could not create the user profile.") from exc
 
     if insert_response.data:
