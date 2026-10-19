@@ -22,6 +22,7 @@ def load_profile_for_opening(
     recent_profile: Callable[[Any, str], dict[str, Any] | None],
     remember_profile: Callable[[Any, Mapping[str, Any]], dict[str, Any] | None],
     run_with_budget: Callable[..., tuple[Any, str]],
+    repair_profile: Callable[[Any, Any, dict[str, Any]], dict[str, Any]] | None = None,
 ) -> tuple[dict[str, Any] | None, str]:
     """Read and cache the profile without exposing Streamlit state to a worker.
 
@@ -35,9 +36,20 @@ def load_profile_for_opening(
     if not access_token_fresh:
         return None, "refresh_required"
 
+    def _repair(profile: dict[str, Any]) -> dict[str, Any]:
+        if repair_profile is None:
+            return profile
+        try:
+            repaired = repair_profile(supabase, user, profile)
+        except Exception:
+            return profile
+        return repaired if isinstance(repaired, dict) else profile
+
     cached = recent_profile(session_state, user_id)
     if cached:
-        return cached, "ok"
+        repaired = _repair(cached)
+        remembered = remember_profile(session_state, repaired)
+        return remembered or repaired, "ok"
 
     def _read() -> dict[str, Any] | None:
         response = read_profile(user_id)
@@ -54,5 +66,6 @@ def load_profile_for_opening(
     profile, status = run_with_budget(_read)
     if status != "ok" or not isinstance(profile, dict) or not profile.get("id"):
         return None, status if status != "ok" else "error"
+    profile = _repair(profile)
     remembered = remember_profile(session_state, profile)
     return remembered or profile, "ok"
