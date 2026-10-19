@@ -50,6 +50,8 @@ class BomWorkflowNavigationTests(unittest.TestCase):
         self.navigation.consume_new_analysis_navigation()
         self.assertNotIn("analysis_id", self.streamlit.session_state)
         self.assertNotIn("new_analysis", self.streamlit.session_state["cadivor_nav_params"])
+        self.assertTrue(self.streamlit.session_state["cadivor_bom_upload_open"])
+        self.assertNotIn("cadivor_bom_catalog_requested", self.streamlit.session_state)
 
         # The next Streamlit rerun must keep the newly completed paid analysis.
         self.streamlit.session_state.update({"analysis_id": "paid-bom", "analysis_saved": True})

@@ -147,6 +147,7 @@ def prepare_new_approved_bom_analysis(state: MutableMapping[str, Any]) -> None:
         "cadivor_bom_pipeline_active",
         "cadivor_bom_catalog_requested",
         "cadivor_show_saved_boms",
+        "cadivor_preselect_saved_bom_id",
         "bom8_analysis_future",
         "bom8_analysis_pending",
         "bom8_analysis_in_progress",
