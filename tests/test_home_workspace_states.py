@@ -252,8 +252,14 @@ def test_paused_plan_does_not_change_saved_bom_identity():
     )[0]
     assert "render_first_run_dashboard(" in new_user
     assert "stop_authenticated_page()" in new_user
+    onboarding = (ROOT / "src/components/onboarding.py").read_text(encoding="utf-8")
     first_run_css = (ROOT / "src/assets/css/first_run_home.css").read_text(encoding="utf-8")
     assert ".cv-dashboard-page" in first_run_css
+    assert 'st.container(border=True, key="cv_home_first_run_hero")' in onboarding
+    assert ".st-key-cv_home_first_run_hero" in first_run_css
+    assert "max-width: 1540px" in first_run_css
+    assert "linear-gradient(108deg, #f3f8ff 0%, #edf5ff 54%, #e5f0ff 100%)" in first_run_css
+    assert ".cv-home-first-run-steps,\n.cv-home-first-run-empty" in first_run_css
     assert "display: none !important" in first_run_css
     assert ".cv-home-step-icon" in first_run_css
     assert "min-height: 190px" in first_run_css

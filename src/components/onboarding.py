@@ -225,7 +225,7 @@ def render_first_run_dashboard(*, current_user: dict[str, Any] | None, workspace
             unsafe_allow_html=True,
         )
 
-    with st.container(border=True):
+    with st.container(border=True, key="cv_home_first_run_hero"):
         copy_col, artwork_col = st.columns([1.08, 0.92], gap="large", vertical_alignment="center")
         with copy_col:
             st.markdown(

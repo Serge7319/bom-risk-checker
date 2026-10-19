@@ -7,14 +7,36 @@ section[data-testid="stMain"]:has(.cv-home-first-run-marker) .cv-dashboard-page 
   display: none !important;
 }
 
+/* Keep the first-run view aligned with the populated Home workspace. */
+.st-key-cv_home_first_run_hero {
+  width: 100% !important;
+  max-width: 1540px !important;
+  margin: 2px auto 0 !important;
+  box-sizing: border-box !important;
+}
+
 section[data-testid="stMain"]:has(.cv-home-first-run-marker)
-  div[data-testid="stVerticalBlockBorderWrapper"]:has(.cv-home-first-run-marker) {
+  div[data-testid="stVerticalBlockBorderWrapper"]:has(.cv-home-first-run-marker),
+.st-key-cv_home_first_run_hero [data-testid="stVerticalBlockBorderWrapper"],
+.st-key-cv_home_first_run_hero[data-testid="stVerticalBlockBorderWrapper"] {
   margin: 2px 0 0 !important;
   padding: 30px 34px !important;
-  border: 1px solid #d8e5f5 !important;
+  border: 1px solid #d6e5fa !important;
   border-radius: 16px !important;
-  background: linear-gradient(108deg, #f2f7ff 0%, #edf5ff 100%) !important;
-  box-shadow: 0 5px 20px rgba(25, 55, 95, .045) !important;
+  background:
+    radial-gradient(circle at 84% 48%, rgba(195, 220, 255, .44) 0, rgba(195, 220, 255, 0) 35%),
+    linear-gradient(108deg, #f3f8ff 0%, #edf5ff 54%, #e5f0ff 100%) !important;
+  box-shadow: 0 5px 20px rgba(25, 55, 95, .055) !important;
+  box-sizing: border-box !important;
+}
+
+.cv-home-first-run-steps,
+.cv-home-first-run-empty {
+  width: 100%;
+  max-width: 1540px;
+  margin-left: auto !important;
+  margin-right: auto !important;
+  box-sizing: border-box;
 }
 
 .cv-home-first-run-marker {
@@ -87,7 +109,7 @@ section[data-testid="stMain"]:has(.cv-home-first-run-marker)
 }
 
 .cv-home-first-run-steps {
-  margin: 28px 0 22px;
+  margin: 28px auto 22px;
 }
 
 .cv-home-first-run-section-heading {
@@ -260,7 +282,9 @@ section[data-testid="stMain"] .cv-home-first-run-section-heading h2 {
 
 @media (max-width: 900px) {
   section[data-testid="stMain"]:has(.cv-home-first-run-marker)
-    div[data-testid="stVerticalBlockBorderWrapper"]:has(.cv-home-first-run-marker) {
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.cv-home-first-run-marker),
+  .st-key-cv_home_first_run_hero [data-testid="stVerticalBlockBorderWrapper"],
+  .st-key-cv_home_first_run_hero[data-testid="stVerticalBlockBorderWrapper"] {
     padding: 22px !important;
   }
 
@@ -271,7 +295,9 @@ section[data-testid="stMain"] .cv-home-first-run-section-heading h2 {
 
 @media (max-width: 640px) {
   section[data-testid="stMain"]:has(.cv-home-first-run-marker)
-    div[data-testid="stVerticalBlockBorderWrapper"]:has(.cv-home-first-run-marker) {
+    div[data-testid="stVerticalBlockBorderWrapper"]:has(.cv-home-first-run-marker),
+  .st-key-cv_home_first_run_hero [data-testid="stVerticalBlockBorderWrapper"],
+  .st-key-cv_home_first_run_hero[data-testid="stVerticalBlockBorderWrapper"] {
     padding: 16px !important;
   }
 
