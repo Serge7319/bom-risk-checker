@@ -104,6 +104,11 @@ def test_runtime_owns_shared_route_body_host_without_rewriting_pages():
     assert "claim_authenticated_route_body(app_mode)" in runtime_src
     assert "enter_authenticated_route_body(app_mode)" in runtime_src
     assert "exit_authenticated_route_body()" in runtime_src
+    shell_src = _source("src/ui/unified_shell.py")
+    assert "claim_authenticated_route_body(current_page)" in shell_src
+    assert shell_src.index("inject_unified_shell_css()") < shell_src.index(
+        "claim_authenticated_route_body(current_page)"
+    ) < shell_src.index('with st.container(key="cv_foundation_profile_trigger")')
     assert runtime_src.count("with authenticated_route_body(") == 0
     assert 'st.query_params["page"] = app_mode' not in runtime_src
     detail = _source("src/pages/analysis_detail.py")
@@ -132,6 +137,8 @@ def test_route_body_uses_one_keyed_container_and_does_not_leak_rerun_context(mon
     claimed = claim_authenticated_route_body("Monitoring")
     first = claimed
     assert first.key == "cadivor_authenticated_route_body"
+    assert fake_st.container_keys == ["cadivor_authenticated_route_body"]
+    assert claim_authenticated_route_body("Monitoring") is first
     assert fake_st.container_keys == ["cadivor_authenticated_route_body"]
     enter_authenticated_route_body("Monitoring")
     assert first.entered == 1
