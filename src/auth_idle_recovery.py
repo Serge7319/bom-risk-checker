@@ -287,6 +287,7 @@ def load_workspace_profile(
     recent_profile,
     remember_profile,
     transport_error_type: type[BaseException],
+    repair_profile=None,
 ) -> dict[str, Any]:
     """Load the users profile with one idle-session refresh attempt.
 
@@ -305,11 +306,24 @@ def load_workspace_profile(
     refresh_token = str(session_state.get("refresh_token") or "").strip()
     session_refreshed = False
 
+    def _repair_profile_row(row):
+        if repair_profile is None or not isinstance(row, dict):
+            return row
+        try:
+            repaired = repair_profile(supabase, user, row)
+        except Exception:
+            return row
+        return repaired if isinstance(repaired, dict) else row
+
+    def _remember_profile_row(row):
+        repaired = _repair_profile_row(row)
+        return remember_profile(session_state, repaired) or repaired
+
     # Happy-path warm nav: reuse session profile while the access token is fresh.
     if access_token_is_fresh(access_token):
         cached_profile = recent_profile(session_state, user_id)
         if cached_profile:
-            return cached_profile
+            return _remember_profile_row(cached_profile)
 
     outcome, refreshed_user, new_access, new_refresh = refresh_authenticated_session(
         supabase,
@@ -405,7 +419,7 @@ def load_workspace_profile(
 
     if response is not None and getattr(response, "data", None):
         row = response.data[0]
-        return remember_profile(session_state, row) or row
+        return _remember_profile_row(row)
 
     if response is not None and not getattr(response, "data", None) and not session_refreshed:
         outcome, refreshed_user, new_access, new_refresh = refresh_authenticated_session(
@@ -474,7 +488,7 @@ def load_workspace_profile(
                 raise RuntimeError("retryable_profile_error")
             if response is not None and getattr(response, "data", None):
                 row = response.data[0]
-                return remember_profile(session_state, row) or row
+                return _remember_profile_row(row)
 
     cached_profile = recent_profile(session_state, user_id)
     if cached_profile:
