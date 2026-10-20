@@ -368,6 +368,8 @@ def _candidate_detail_html(row: dict[str, Any], original: dict[str, Any] | None 
     original_mpn = _part_field(original, "manufacturer_part_number", "mpn") or "Original"
     classification = _part_field(row, "Classification", "Category")
     verified = classification == "Verified direct substitute"
+    evidence_type = str(row.get("Evidence Type") or "").strip()
+    discovery_query = str(row.get("Discovery Query") or "").strip()
     comparison = build_datasheet_comparison(original, candidate)
     technical = []
     for item in comparison.get("rows") or []:
@@ -517,6 +519,20 @@ def _candidate_detail_html(row: dict[str, Any], original: dict[str, Any] | None 
         relationship = "Compatibility is not verified."
         if classification:
             relationship += f" Supplier classification: {classification}."
+    if evidence_type.casefold() == "distributor family search match":
+        query_note = f" for {_esc(discovery_query)}" if discovery_query else ""
+        evidence_html = (
+            "<p class='cv-candidate-evidence'><strong>Discovery evidence:</strong> "
+            f"DigiKey catalog family search{query_note}. This identifies a related family only; "
+            "it does not establish compatibility or a drop-in relationship.</p>"
+        )
+    elif evidence_type:
+        evidence_html = (
+            "<p class='cv-candidate-evidence'><strong>Discovery evidence:</strong> "
+            f"{_esc(evidence_type)}. This is not compatibility evidence.</p>"
+        )
+    else:
+        evidence_html = ""
     recommendation = _part_field(row, "Recommendation")
     next_step = recommendation or "Check the datasheet, footprint, and qualification before use."
 
@@ -606,6 +622,7 @@ def _candidate_detail_html(row: dict[str, Any], original: dict[str, Any] | None 
         f'<div class="cv-candidate-detail" data-candidate-mpn="{_esc(mpn)}">'
         f'<p class="cv-candidate-title">{_esc(mpn)} compared with {_esc(original_mpn)}</p>'
         f"<p class='cv-candidate-unverified'>{_esc(relationship)} {_esc(fit)}</p>"
+        f"{evidence_html}"
         f"{_compatibility_banner_html(compatibility)}"
         "<p class='cv-candidate-section'>Does it technically fit?</p>"
         f"{_comparison_table(technical, compatibility)}"
@@ -1187,6 +1204,7 @@ def begin_approved_page() -> None:
         .cv-compat-inline-critical{margin-top:4px;color:#991b1b;font-size:11px;font-weight:750;line-height:1.35}
         .cv-candidate-unverified{margin:0 0 10px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:8px 10px;font-size:13px}
         .cv-candidate-verified{margin:0 0 10px;color:#1e3a8a;background:#eff6ff;border:1px solid #dbeafe;border-radius:10px;padding:8px 10px;font-size:13px}
+        .cv-candidate-evidence{margin:0 0 10px;padding:8px 10px;border:1px solid #dbeafe;border-radius:9px;background:#eff6ff;color:#334155;font-size:12px;line-height:1.45}
         .cv-candidate-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 18px;margin:0}
         .cv-candidate-facts div{font-size:13px}
         .cv-candidate-facts span{display:block;color:#64748b;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}

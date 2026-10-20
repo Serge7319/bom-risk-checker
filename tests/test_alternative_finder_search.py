@@ -93,6 +93,57 @@ class AlternativeFinderSearchTests(unittest.TestCase):
         self.assertNotIn("HTTPSConnectionPool", detail)
         self.assertNotIn("read timeout=15", detail)
 
+    def test_empty_search_discloses_alternate_provider_coverage(self):
+        title, detail = self.search.replacement_search_empty_state(
+            {
+                "providers": {
+                    "DigiKey": {
+                        "substitutions": "ok",
+                        "catalog": "ok",
+                        "family_search": "ok",
+                        "lookup": "available",
+                    },
+                    "Mouser": {
+                        "substitutions": "not_supported",
+                        "catalog": "available",
+                        "lookup": "available",
+                    },
+                    "Newark": {
+                        "substitutions": "not_supported",
+                        "catalog": "available",
+                        "lookup": "available",
+                    },
+                },
+                "provider_failures": [],
+                "has_incomplete_evidence": False,
+            }
+        )
+
+        self.assertEqual(title, "No replacement candidates confirmed")
+        self.assertIn("DigiKey", detail)
+        self.assertIn("Mouser or Newark", detail)
+        self.assertIn("does not confirm that no replacement exists", detail)
+
+    def test_alternative_engine_can_disable_family_search_for_bom_sidecar(self):
+        captured = {}
+        self.engine.get_best_part_data = lambda _part: {
+            "manufacturer_part_number": "LM317DCYR",
+            "description": "Adjustable linear regulator",
+        }
+        self.engine._enrich_part_data_from_suppliers = lambda part: part
+
+        def discover(part, **kwargs):
+            captured.update(kwargs)
+            return {"original_mpn": part, "candidates": [], "retrieved_at": ""}
+
+        self.engine.discover_alternative_candidates = discover
+        self.engine.suggest_alternatives_v2(
+            "LM317DCYR",
+            include_family_search=False,
+        )
+
+        self.assertEqual(captured, {"include_family_search": False})
+
     def test_unconfigured_catalogs_are_reported_as_incomplete_coverage(self):
         title, detail = self.search.replacement_search_empty_state(
             {

@@ -24,7 +24,11 @@ except ImportError:
     def search_digikey_substitutions(part_number: str) -> list[dict]:
         return []
 
-    def search_digikey_catalog_candidates(part_number: str) -> list[dict]:
+    def search_digikey_catalog_candidates(
+        part_number: str,
+        *,
+        include_family_search: bool = True,
+    ) -> list[dict]:
         return []
 from src.alternative_classification import merge_discovery_candidates, utc_now_iso
 from src.secrets import get_secret
@@ -903,7 +907,11 @@ def _provider_discovery_status(source_name: str) -> dict:
     }
 
 
-def discover_alternative_candidates(part_number: str) -> dict:
+def discover_alternative_candidates(
+    part_number: str,
+    *,
+    include_family_search: bool = True,
+) -> dict:
     """Discover explicit substitutes and catalog candidates across configured sources."""
     requested = str(part_number or "").strip()
     retrieved_at = utc_now_iso()
@@ -923,19 +931,29 @@ def discover_alternative_candidates(part_number: str) -> dict:
     explicit_substitutes: list[dict] = []
     catalog_candidates: list[dict] = []
 
-    digikey_status = {"substitutions": "ok", "catalog": "ok", "lookup": "available", "message": ""}
+    digikey_status = {
+        "substitutions": "ok",
+        "catalog": "ok",
+        "family_search": "ok" if include_family_search else "not_requested",
+        "lookup": "available",
+        "message": "",
+    }
     try:
         if not _provider_configured("DIGIKEY_CLIENT_ID"):
             digikey_status = {
                 "substitutions": "not_configured",
                 "catalog": "not_configured",
+                "family_search": "not_configured",
                 "lookup": "not_configured",
                 "message": "DigiKey credentials are not configured.",
             }
             discovery["has_incomplete_evidence"] = True
         else:
             explicit_substitutes = search_digikey_substitutions(requested)
-            catalog_candidates = search_digikey_catalog_candidates(requested)
+            catalog_candidates = search_digikey_catalog_candidates(
+                requested,
+                include_family_search=include_family_search,
+            )
             digikey_status["explicit_count"] = len(explicit_substitutes)
             digikey_status["catalog_count"] = len(catalog_candidates)
     except Exception as error:
@@ -943,6 +961,7 @@ def discover_alternative_candidates(part_number: str) -> dict:
         digikey_status = {
             "substitutions": "error",
             "catalog": "error",
+            "family_search": "error" if include_family_search else "not_requested",
             "lookup": "error",
             "message": safe_message,
         }

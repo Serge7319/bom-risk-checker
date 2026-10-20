@@ -378,11 +378,40 @@ def search_digikey_substitutions(part_number: str) -> list[dict]:
     return results
 
 
-def _catalog_search_terms(part_number: str) -> list[str]:
-    """Return conservative MPN-family searches without treating them as proof.
+def _catalog_family_search_term(part_number: str) -> str:
+    """Return one conservative product-family stem for catalog discovery.
 
-    Distributor substitutions are authoritative when present.  These terms only
-    broaden discovery for ordering/package suffixes such as CT, TR, TU and DKR.
+    The stem is a search hint only. Results found through it are explicitly
+    labeled as family matches and never treated as verified substitutes.
+    """
+    compact = re.sub(r"[^A-Z0-9]", "", str(part_number or "").upper())
+    patterns = (
+        # Common product names such as LM317DCYR, LM7805ACT, and ATMEGA328P.
+        r"^([A-Z]{2,}\d{3,})",
+        # Multi-segment families such as STM32F103C8T6 -> STM32F103 and
+        # MC68HC11E1CFNE2 -> MC68HC11.
+        r"^([A-Z]{2,}\d{2,}[A-Z]+\d{2,})",
+        # Numeric-leading families such as 74HC595D and 6N137S-TA1.
+        r"^(\d{1,2}[A-Z]{1,}\d{2,})",
+    )
+    for pattern in patterns:
+        match = re.match(pattern, compact)
+        if match:
+            stem = match.group(1)
+            if len(stem) >= 5 and stem != compact:
+                return stem
+    return ""
+
+
+def _catalog_search_terms(
+    part_number: str,
+    *,
+    include_family_search: bool = True,
+) -> list[str]:
+    """Return bounded MPN-family searches without treating them as proof.
+
+    Existing ordering-suffix queries remain in place. A single broader model
+    family query can be added for discovery and labeled separately below.
     """
     requested = str(part_number or "").strip()
     terms = [requested]
@@ -390,6 +419,10 @@ def _catalog_search_terms(part_number: str) -> list[str]:
     for suffix in ("CT", "TR", "TU", "DKR"):
         if upper.endswith(suffix) and len(requested) > len(suffix) + 6:
             terms.append(requested[: -len(suffix)])
+    if include_family_search:
+        family_term = _catalog_family_search_term(requested)
+        if family_term:
+            terms.append(family_term)
     seen: set[str] = set()
     return [
         term
@@ -398,7 +431,12 @@ def _catalog_search_terms(part_number: str) -> list[str]:
     ]
 
 
-def search_digikey_catalog_candidates(part_number: str, *, limit: int = 12) -> list[dict]:
+def search_digikey_catalog_candidates(
+    part_number: str,
+    *,
+    limit: int = 12,
+    include_family_search: bool = True,
+) -> list[dict]:
     """Return catalog candidates when DigiKey has no explicit substitute mapping."""
     requested = str(part_number or "").strip()
     if not requested:
@@ -408,7 +446,12 @@ def search_digikey_catalog_candidates(part_number: str, *, limit: int = 12) -> l
     candidates = []
     seen_part_numbers: set[str] = set()
     retrieved_at = _utc_now_iso()
-    for search_term in _catalog_search_terms(requested):
+    search_terms = _catalog_search_terms(
+        requested,
+        include_family_search=include_family_search,
+    )
+    family_key = _mpn_key(_catalog_family_search_term(requested))
+    for search_term in search_terms:
         response = requests.post(
             "https://api.digikey.com/products/v4/search/keyword",
             headers=_digikey_headers(client_id, access_token),
@@ -432,9 +475,20 @@ def search_digikey_catalog_candidates(part_number: str, *, limit: int = 12) -> l
                 continue
             seen_part_numbers.add(mpn.casefold())
             fields = _digikey_evidence_fields(normalized)
+            is_family_match = bool(
+                include_family_search
+                and family_key
+                and _mpn_key(search_term) == family_key
+            )
             candidates.append({
                 "source": "DigiKey",
-                "evidence_type": "Distributor catalog match",
+                "evidence_type": (
+                    "Distributor family search match"
+                    if is_family_match
+                    else "Distributor catalog match"
+                ),
+                "discovery_scope": "family_search" if is_family_match else "catalog_search",
+                "discovery_query": search_term,
                 "substitute_type": "Similar",
                 "manufacturer_part_number": mpn,
                 "manufacturer": normalized.get("manufacturer", ""),

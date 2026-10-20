@@ -231,8 +231,9 @@ def replacement_search_empty_state(
         )
     return (
         "No replacement candidates confirmed",
-        "The checked supplier catalogs returned no candidates for this part. This does not "
-        "confirm that no replacement exists; try another MPN or check supplier catalogs directly.",
+        "DigiKey's explicit-substitute and product-family catalog searches returned no candidates. "
+        "The current alternate search does not search Mouser or Newark for replacement relationships, "
+        "so this does not confirm that no replacement exists.",
     )
 
 

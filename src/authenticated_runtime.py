@@ -2684,7 +2684,12 @@ def run_authenticated_app() -> None:
         part_data["quantity"] = row.get("quantity", 0)
 
         try:
-           alternative_part_numbers = suggest_alternatives_v2(normalized_part_number)
+           # Keep BOM-analysis latency stable. Broad family discovery runs
+           # when an engineer opens Find a Replacement, not for every BOM row.
+           alternative_part_numbers = suggest_alternatives_v2(
+               normalized_part_number,
+               include_family_search=False,
+           )
 
         except Exception:
             alternative_part_numbers = []
