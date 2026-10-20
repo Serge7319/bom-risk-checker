@@ -696,11 +696,12 @@ def begin_approved_page() -> None:
         .cv-ap-flow-step.complete .cv-ap-flow-node{border-color:#b9e4cc;background:#eaf8f0;color:#147a47}
         .cv-ap-flow-line{flex:1 1 36px;min-width:18px;height:2px;background:#d8e1ed}
         .cv-ap-flow-status{margin-left:auto;padding:6px 12px;border-radius:999px;background:#eef5ff;color:#2865ed;font-size:9px;font-weight:800;letter-spacing:.04em;white-space:nowrap}
-        .cv-ap-entry-heading{display:flex;align-items:center;gap:14px;margin:0 0 10px}
+        .cv-ap-entry-heading{display:flex;align-items:center;gap:12px;min-height:44px;margin:0 0 10px}
         .cv-ap-entry-icon{display:inline-flex;align-items:center;justify-content:center;flex:0 0 44px;width:44px;height:44px;border-radius:9px;background:#eef5ff;color:#2865ed}
         .cv-ap-entry-icon svg{width:23px;height:23px;display:block}
-        .cv-ap-entry-heading p{margin:0 0 4px;color:#8491a3;font-size:9px;font-weight:800;letter-spacing:.07em}
-        .cv-ap-entry-heading h2{margin:0;color:#172942;font-size:18px;line-height:1.25;font-weight:760;letter-spacing:-.02em}
+        .cv-ap-entry-heading>div{display:flex;flex-direction:column;justify-content:center;min-height:44px}
+        .cv-ap-entry-heading p{margin:0 0 4px!important;color:#8491a3;font-size:9px;font-weight:800;letter-spacing:.07em;line-height:1.1}
+        .cv-ap-entry-heading h2{margin:0!important;color:#172942;font-size:18px;line-height:1.2;font-weight:760;letter-spacing:-.02em}
         .cv-ap-entry-copy{margin:0 0 12px;color:#6d7d92;font-size:12px}
         .st-key-approved_replacement_search_card,.st-key-approved_datasheet_upload_card{box-sizing:border-box;width:100%;margin:0 0 16px;padding:18px 20px 14px;background:#fff;border:1px solid #dfe7f1;border-radius:12px}
         .st-key-approved_datasheet_search_card{box-sizing:border-box;width:100%;margin:0 0 14px;padding:15px 18px 13px;background:#fff;border:1px solid #dfe7f1;border-radius:12px}
@@ -711,11 +712,11 @@ def begin_approved_page() -> None:
         .st-key-approved_datasheet_search_card button[kind="primary"]{min-height:42px!important;height:42px!important;border-radius:8px!important;white-space:nowrap!important}
         .st-key-approved_replacement_search_card>[data-testid="stVerticalBlock"],.st-key-approved_datasheet_upload_card>[data-testid="stVerticalBlock"]{gap:.55rem}
         .st-key-approved_replacement_search_card [data-testid="stWidgetLabel"] p,.st-key-approved_datasheet_question_panel [data-testid="stWidgetLabel"] p{margin-bottom:4px;color:#728198;font-size:9px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
-        .st-key-approved_replacement_search_card [data-testid="stTextInput"] [data-baseweb="input"]{box-sizing:border-box!important;min-height:48px!important;background:#fff!important;border:1.5px solid #9aabc0!important;border-radius:9px!important;box-shadow:0 1px 2px rgba(20,40,70,.05)!important}
+        .st-key-approved_replacement_search_card [data-testid="stTextInput"] [data-baseweb="input"]{box-sizing:border-box!important;min-height:48px!important;background:#fff!important;border:1.5px solid #9aabc0!important;outline:1px solid #d3deeb!important;outline-offset:-1px!important;border-radius:9px!important;box-shadow:0 1px 2px rgba(20,40,70,.05)!important}
         .st-key-approved_replacement_search_card [data-testid="stTextInput"] [data-baseweb="input"]>div{background:transparent!important;border:0!important;box-shadow:none!important}
         .st-key-approved_replacement_search_card [data-testid="stTextInput"] input{min-height:46px!important;background:transparent!important;border:0!important;border-radius:8px!important;color:#172942!important;caret-color:#2865ed!important;font-size:14px!important}
         .st-key-approved_replacement_search_card [data-testid="stTextInput"] input::placeholder{color:#8a98aa!important;opacity:1!important}
-        .st-key-approved_replacement_search_card [data-testid="stTextInput"] [data-baseweb="input"]:focus-within{border-color:#2865ed!important;box-shadow:0 0 0 3px rgba(40,101,237,.13)!important}
+        .st-key-approved_replacement_search_card [data-testid="stTextInput"] [data-baseweb="input"]:focus-within{border-color:#2865ed!important;outline-color:#2865ed!important;box-shadow:0 0 0 3px rgba(40,101,237,.13)!important}
         .st-key-approved_replacement_search_card button[kind="primary"],.st-key-approved_datasheet_question_panel button[kind="primary"]{min-height:44px!important;height:44px!important;border-radius:8px!important}
         .cv-ap-replacement-note{margin:2px 0 8px;color:#8391a4;font-size:11px}
         .cv-ap-context-note{display:flex;align-items:flex-start;gap:9px;margin:3px 0 0;padding:11px 12px;border-top:1px solid #edf1f6;color:#65758b;font-size:11px;line-height:1.45}
@@ -774,6 +775,22 @@ def begin_approved_page() -> None:
         .cv-ap-evidence-head h2{margin:0;color:#172942;font-size:15px;font-weight:750}
         .cv-ap-evidence-head p{margin:0;color:#8391a4;font-size:10px;text-align:right}
         .cv-ap-evidence-panel .cv-ap-table th{background:#f8fafc}
+        .cv-ap-datasheet-statuses{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:12px 0}
+        .cv-ap-doc-status{display:flex;align-items:flex-start;gap:10px;min-width:0;padding:12px 14px;border:1px solid #dfe7f1;border-radius:10px;background:#fff}
+        .cv-ap-doc-status__icon{display:flex;align-items:center;justify-content:center;flex:0 0 28px;width:28px;height:28px;border-radius:8px;background:#eaf8f0;color:#147a47;font-size:14px;font-weight:800}
+        .cv-ap-doc-status.limited .cv-ap-doc-status__icon{background:#fff6df;color:#9a6500}
+        .cv-ap-doc-status__copy{min-width:0;flex:1}
+        .cv-ap-doc-status__copy strong{display:block;color:#273b57;font-size:11px;font-weight:760;overflow-wrap:anywhere}
+        .cv-ap-doc-status__copy p{margin:4px 0 0;color:#718096;font-size:10px;line-height:1.45;overflow-wrap:anywhere}
+        .cv-ap-doc-status__badge{flex:0 0 auto;padding:4px 7px;border-radius:999px;background:#eaf8f0;color:#147a47;font-size:8px;font-weight:850;letter-spacing:.035em;white-space:nowrap}
+        .cv-ap-doc-status.limited .cv-ap-doc-status__badge{background:#fff6df;color:#9a6500}
+        .cv-ap-no-text{margin:10px 0;padding:13px 15px;border:1px solid #f1d99a;border-radius:10px;background:#fffaf0;color:#705519;font-size:11px;line-height:1.5}
+        .cv-ap-no-text strong{display:block;margin-bottom:3px;color:#654b10;font-size:12px}
+        .cv-ap-field-table-wrap{overflow-x:auto;border:1px solid #dfe7f1;border-radius:10px;background:#fff}
+        .cv-ap-field-table-wrap .cv-ap-table{min-width:720px}
+        .cv-ap-field-table-wrap .cv-ap-table th{background:#f6f8fb;border-bottom:1px solid #dfe7f1}
+        .cv-ap-field-table-wrap .cv-ap-table td{color:#34445a}
+        @media(max-width:720px){.cv-ap-datasheet-statuses{grid-template-columns:1fr}}
         .cv-ap-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:0 0 18px}
         .cv-ap-kpis.three{grid-template-columns:repeat(3,minmax(0,1fr))}
         .cv-ap-kpis.five{grid-template-columns:repeat(5,minmax(0,1fr))}
@@ -4756,6 +4773,8 @@ def _render_datasheet_evidence_review(
             review_state = evidence
 
         if review_state:
+            document_status_cards: list[str] = []
+            has_extractable_text = False
             for label, side_key, docs_key in (
                 ("Source", "source_pdf", "source_documents"),
                 ("Candidate", "candidate_pdf", "candidate_documents"),
@@ -4766,24 +4785,56 @@ def _render_datasheet_evidence_review(
                 if documents:
                     for document in documents:
                         name = str(document.get("name") or "PDF")
-                        if document.get("available"):
-                            st.success(
-                                f"{label} · {name}: extracted readable text from {document.get('page_count') or 0} page(s)."
-                            )
-                        else:
-                            reason = str(document.get("reason") or "Open the document and review it directly.")
-                            st.warning(f"{label} · {name}: {reason}")
+                        readable = bool(document.get("available"))
+                        has_extractable_text = has_extractable_text or readable
+                        page_count = int(document.get("page_count") or 0)
+                        reason = str(
+                            document.get("reason")
+                            or "Open the linked PDF and review its package drawings directly."
+                        )
+                        detail = (
+                            f"Readable text extracted from {page_count} PDF page(s)."
+                            if readable
+                            else reason
+                        )
+                        status_class = "" if readable else " limited"
+                        badge = "TEXT EXTRACTED" if readable else "MANUAL REVIEW"
+                        icon = "✓" if readable else "!"
+                        document_status_cards.append(
+                            f"<article class='cv-ap-doc-status{status_class}'>"
+                            f"<span class='cv-ap-doc-status__icon'>{icon}</span>"
+                            f"<div class='cv-ap-doc-status__copy'><strong>{_esc(label)} · {_esc(name)}</strong>"
+                            f"<p>{_esc(detail)}</p></div>"
+                            f"<span class='cv-ap-doc-status__badge'>{badge}</span></article>"
+                        )
                 else:
                     document = review_state.get(side_key) or {}
-                    if document.get("available"):
-                        st.success(
-                            f"{label}: extracted readable text from {len(document.get('pages') or [])} PDF page(s)."
-                        )
-                    else:
-                        st.warning(f"{label}: no readable PDF text was extracted. Open the document and review it directly.")
+                    readable = bool(document.get("available"))
+                    page_count = len(document.get("pages") or [])
+                    has_extractable_text = has_extractable_text or readable
+                    detail = (
+                        f"Readable text extracted from {page_count} PDF page(s)."
+                        if readable
+                        else "No readable PDF text was extracted. Open the linked PDF and review its drawings directly."
+                    )
+                    document_status_cards.append(
+                        f"<article class='cv-ap-doc-status{' ' if readable else ' limited'}'>"
+                        f"<span class='cv-ap-doc-status__icon'>{'✓' if readable else '!'}</span>"
+                        f"<div class='cv-ap-doc-status__copy'><strong>{_esc(label)} datasheet</strong>"
+                        f"<p>{_esc(detail)}</p></div>"
+                        f"<span class='cv-ap-doc-status__badge'>{'TEXT EXTRACTED' if readable else 'MANUAL REVIEW'}</span></article>"
+                    )
+
+            if document_status_cards:
+                st.markdown(
+                    "<div class='cv-ap-datasheet-statuses'>"
+                    + "".join(document_status_cards)
+                    + "</div>",
+                    unsafe_allow_html=True,
+                )
 
             fields = review_state.get("field_evidence") or []
-            if fields:
+            if fields and has_extractable_text:
                 rows_html = []
                 for row in fields:
                     rows_html.append(
@@ -4796,31 +4847,41 @@ def _render_datasheet_evidence_review(
                         "</tr>"
                     )
                 st.markdown(
-                    "<div class='cv-ap-card'><table class='cv-ap-table'><thead><tr>"
+                    "<div class='cv-ap-field-table-wrap'><table class='cv-ap-table'><thead><tr>"
                     "<th>Attribute</th><th>Source datasheet</th><th>Candidate datasheet</th>"
                     f"<th>Document page</th><th>Finding</th></tr></thead><tbody>{''.join(rows_html)}"
                     "</tbody></table></div>",
                     unsafe_allow_html=True,
                 )
+            elif fields:
+                st.markdown(
+                    "<div class='cv-ap-no-text'><strong>Datasheets linked; evidence needs direct review</strong>"
+                    "Cadivor could not extract readable text from these PDFs, so it has no page-cited package or pin evidence to compare. "
+                    "Open each datasheet above and inspect the package outline, dimensions, pin pitch, and pinout before approving.</div>",
+                    unsafe_allow_html=True,
+                )
 
+            has_dimension_excerpts = False
             for label, document_key in (("Source", "source"), ("Candidate", "candidate")):
                 document_evidence = review_state.get(document_key) or {}
                 excerpts = document_evidence.get("dimension_evidence") or []
+                if not excerpts:
+                    continue
+                has_dimension_excerpts = True
                 with st.expander(
                     f"{label} package / dimension excerpts ({len(excerpts)})",
                     expanded=False,
                 ):
-                    if excerpts:
-                        for excerpt in excerpts:
-                            doc_label = str(excerpt.get("document") or "Datasheet")
-                            st.markdown(
-                                f"**{_esc(doc_label)} · page {_esc(excerpt.get('page') or '?')}** · "
-                                f"{_esc(excerpt.get('excerpt') or '')}"
-                            )
-                    else:
-                        st.caption(
-                            "No text-based package or dimension excerpt was found. Open the package-outline drawing in the PDF; drawings and scanned pages may not be extractable as text."
+                    for excerpt in excerpts:
+                        doc_label = str(excerpt.get("document") or "Datasheet")
+                        st.markdown(
+                            f"**{_esc(doc_label)} · page {_esc(excerpt.get('page') or '?')}** · "
+                            f"{_esc(excerpt.get('excerpt') or '')}"
                         )
+            if has_extractable_text and not has_dimension_excerpts:
+                st.caption(
+                    "No text-based package or dimension excerpt was found. Drawings or scanned pages may require direct visual review."
+                )
             st.caption(
                 "These citations point to extracted text; they are not an automatic fit verdict. Confirm the package-outline drawing, dimensions, pin pitch, and pinout in the original manufacturer documents. Image-only pages require direct visual review."
             )
@@ -5756,9 +5817,13 @@ def _render_replacement_search_waiting_state() -> None:
     )
 
 
-def _queue_replacement_search() -> None:
+def _queue_replacement_search(widget_key: str = "") -> None:
     """Capture the submitted MPN before the next Finder render starts."""
-    query = str(st.session_state.get("approved_replacement_query") or "").strip()
+    query = str(
+        st.session_state.get(widget_key)
+        or st.session_state.get("approved_replacement_query")
+        or ""
+    ).strip()
     if query:
         st.session_state["cadivor_replacement_search_pending"] = query
 
@@ -5771,6 +5836,7 @@ def render_replacement_search() -> None:
         toggle_comparison_candidate,
     )
     from src.alternative_finder_state import (
+        get_alternative_finder_original_part_input_config,
         has_durable_search_for_mpn,
         init_alternative_finder_state,
     )
@@ -5820,35 +5886,19 @@ def render_replacement_search() -> None:
             if navigation_context.get(context_key):
                 source_context[context_key] = navigation_context[context_key]
         st.session_state["alternative_prefill_source_context"] = source_context
-        # The approved renderer owns the visible input. Populate its key before
-        # constructing the widget so the clicked MPN appears on the first render.
-        clicked_mpn = str(navigation_context.get("mpn") or "").strip()
-        if clicked_mpn:
-            st.session_state["approved_replacement_query"] = clicked_mpn
-            st.session_state["cadivor_replacement_query"] = clicked_mpn
     source_context = st.session_state.get("alternative_prefill_source_context")
     source_context = source_context if isinstance(source_context, dict) else {}
     pending_query = str(
         st.session_state.pop("cadivor_replacement_search_pending", "") or ""
     ).strip()
-    query = pending_query or str(
-        st.session_state.get("approved_replacement_query") or ""
-    ).strip()
+    input_widget_key, _input_default = get_alternative_finder_original_part_input_config(
+        st.session_state
+    )
+    query = pending_query or str(st.session_state.get(input_widget_key) or "").strip()
     prefilled_search_pending = bool(
         st.session_state.pop("alternative_prefill_search_pending", False)
     )
     begin_approved_page()
-    if query and (pending_query or prefilled_search_pending):
-        # Keep the route cover mounted while supplier I/O blocks. Revealing here
-        # exposed the stale source page until the search rerun finished.
-        from src.alternative_finder_search import run_alternative_finder_search
-
-        with st.spinner(f"Searching supplier catalogs for {query}…"):
-            run_alternative_finder_search(st.session_state, query)
-        # Finish this loading-only run before painting the completed Finder.
-        # That lets Streamlit retire the previous body first instead of briefly
-        # stacking the new results page below the old search form.
-        st.rerun()
 
     return_target = str(source_context.get("source_page") or "")
     return_page = str(source_context.get("return_page") or "").strip()
@@ -5884,10 +5934,6 @@ def render_replacement_search() -> None:
     ):
         if _navigate_back_to_bom_review(source_context):
             st.rerun()
-    st.session_state.setdefault(
-        "approved_replacement_query",
-        str(st.session_state.get("cadivor_replacement_query") or ""),
-    )
     st.markdown(
         "<div class='cv-ap'><h1>Find a replacement</h1>"
         "<p class='cv-ap-sub'>Search a source part, then review supplier evidence and compare compatible candidates.</p></div>",
@@ -5915,7 +5961,7 @@ def render_replacement_search() -> None:
         with search_col:
             query = st.text_input(
                 "Manufacturer part number",
-                key="approved_replacement_query",
+                key=input_widget_key,
                 placeholder="e.g., LM7805ACT",
             )
         with button_col:
@@ -5924,6 +5970,7 @@ def render_replacement_search() -> None:
                 key="approved_replacement_search",
                 type="primary",
                 on_click=_queue_replacement_search,
+                args=(input_widget_key,),
             )
         st.markdown(
             "<p class='cv-ap-replacement-note'>Search results appear after the search completes.</p>"
@@ -5932,10 +5979,15 @@ def render_replacement_search() -> None:
             "</svg><span>Working from a saved BOM? Start from the component action menu to keep this search linked to that analysis.</span></div>",
             unsafe_allow_html=True,
         )
-    # Reveal the real Finder content before the blocking supplier lookup. The
-    # opaque route cover should not sit over the active page during later reruns.
+    # Mount the destination before supplier I/O. Deep links must show the selected
+    # MPN and the Finder workspace immediately while the catalog search runs.
     reveal_authenticated_page_body("Alternative Finder")
-    query = str(query or st.session_state.get("approved_replacement_query") or "").strip()
+    query = str(query or st.session_state.get(input_widget_key) or "").strip()
+    if query and (pending_query or prefilled_search_pending):
+        from src.alternative_finder_search import run_alternative_finder_search
+
+        with st.spinner(f"Searching supplier catalogs for {query}…"):
+            run_alternative_finder_search(st.session_state, query)
     result = st.session_state.get("alternative_finder_result")
     original = {}
     candidates: list[dict[str, Any]] = []

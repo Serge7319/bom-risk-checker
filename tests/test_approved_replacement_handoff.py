@@ -12,22 +12,38 @@ def test_approved_finder_consumes_clicked_part_before_mounting_search_input():
 
     assert "consume_alternative_finder_context(_query_param)" in renderer
     assert "apply_alternative_finder_prefill(navigation_context)" in renderer
-    assert renderer.index('st.session_state["approved_replacement_query"] = clicked_mpn') < renderer.index(
-        'key="approved_replacement_query"'
-    )
+    assert "get_alternative_finder_original_part_input_config" in renderer
+    assert "input_widget_key, _input_default" in renderer
+    assert 'key=input_widget_key' in renderer
     assert 'st.session_state.pop("alternative_prefill_search_pending", False)' in renderer
     assert 'on_click=_queue_replacement_search' in renderer
     assert 'st.session_state.pop("cadivor_replacement_search_pending", "")' in renderer
     search_call = renderer.index("run_alternative_finder_search(st.session_state, query)")
-    completed_search_rerun = renderer.index("st.rerun()", search_call)
-    assert search_call < renderer.index('"<div class=\'cv-ap\'><h1>Find a replacement')
-    assert completed_search_rerun < renderer.index('"<div class=\'cv-ap\'><h1>Find a replacement')
+    page_heading = renderer.index('"<div class=\'cv-ap\'><h1>Find a replacement')
+    reveal = renderer.index('reveal_authenticated_page_body("Alternative Finder")')
+    input_mount = renderer.index("key=input_widget_key")
+    assert page_heading < input_mount < reveal < search_call
+    assert "st.rerun()" not in renderer[search_call:search_call + 180]
     guard = renderer.index("search_completed = has_durable_search_for_mpn(st.session_state, query)")
     assert "if not search_completed:" in renderer[guard:]
     assert guard < renderer.index('fit_filter, life_filter, stock_filter, risk_filter, sort_by = st.columns(5)')
     assert guard < renderer.index("Replacement candidates</h2>")
     assert "        return\n    supplier_candidate_count = len(candidates)" in renderer[guard:]
     assert 'original["manufacturer_part_number"] = context_mpn' in renderer
+
+
+def test_datasheet_review_shows_document_status_and_avoids_empty_evidence_table():
+    source = (
+        Path(__file__).resolve().parents[1] / "src" / "ui" / "approved_pages.py"
+    ).read_text(encoding="utf-8")
+    review = source.split("def _render_datasheet_evidence_review", 1)[1].split(
+        "def _approval_evidence_for_comparison", 1
+    )[0]
+    assert "cv-ap-doc-status" in review
+    assert "MANUAL REVIEW" in review
+    assert "if fields and has_extractable_text:" in review
+    assert "Datasheets linked; evidence needs direct review" in review
+    assert "No text-based package or dimension excerpt was found." in review
 
 
 def test_approved_search_and_datasheet_mockup_keep_existing_processing_paths():
@@ -202,11 +218,11 @@ def test_finder_route_stops_after_the_approved_renderer_and_reveals_before_searc
     assert branch.index("stop_authenticated_page()") < branch.index(
         "from integrations.supplier_aggregator import get_best_part_data"
     )
-    first_reveal = renderer.index('reveal_authenticated_page_body("Alternative Finder")')
     search_call = renderer.index("run_alternative_finder_search(st.session_state, query)")
     heading = renderer.index("<h1>Find a replacement</h1>")
-    last_reveal = renderer.rindex('reveal_authenticated_page_body("Alternative Finder")')
-    assert first_reveal < search_call < heading < last_reveal
+    input_mount = renderer.index("key=input_widget_key")
+    reveal = renderer.index('reveal_authenticated_page_body("Alternative Finder")')
+    assert heading < input_mount < reveal < search_call
 
 
 def test_compare_handoff_is_staged_before_compare_widgets_and_can_save_approval():
