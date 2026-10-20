@@ -382,13 +382,14 @@ def inject_main_transition_css(transition_gen: int) -> None:
           pointer-events:none so no leftover overlay intercepts the account menu.
           Never target shared st-key alone (stale gen CSS would hide the next Opening).
         */
-        /* Only the live, unrevealed generation may sit over the page.
-           Older or already-revealed Opening layers must not swallow clicks. */
-        .cv-main-transition.cv-route-loading:not([data-cadivor-transition-gen="{gen}"]),
+        /* Retire only this generation after its own body marker arrives.
+           Older CSS blocks stay in the document during Streamlit reruns; a
+           cross-generation selector here lets yesterday's stylesheet hide
+           today's loading owner and expose partial route content. */
         [data-stale="true"] .cv-main-transition.cv-route-loading,
         [data-stale="true"][data-cadivor-main-transition="1"],
         body:has([data-cadivor-page-body][data-cadivor-transition-gen="{gen}"])
-          .cv-main-transition.cv-route-loading {{
+          .cv-main-transition.cv-route-loading[data-cadivor-transition-gen="{gen}"] {{
           display:none!important;visibility:hidden!important;pointer-events:none!important;
           opacity:0!important;z-index:-1!important
         }}

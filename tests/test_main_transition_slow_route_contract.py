@@ -91,6 +91,19 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
         self.assertIn("data-cadivor-page-body", reveal)
         self.assertNotIn("_remove_transition_portal", reveal)
 
+    def test_old_generation_css_cannot_hide_the_next_route_transition(self):
+        # Streamlit can retain prior style blocks across reruns. Every rule that
+        # hides an Opening layer must therefore be scoped to its own generation.
+        self.assertNotIn(
+            '.cv-main-transition.cv-route-loading:not([data-cadivor-transition-gen="{gen}"])',
+            SOURCE,
+        )
+        self.assertIn(
+            'body:has([data-cadivor-page-body][data-cadivor-transition-gen="{gen}"])\n'
+            '          .cv-main-transition.cv-route-loading[data-cadivor-transition-gen="{gen}"]',
+            SOURCE,
+        )
+
     def test_alternative_finder_is_visible_before_synchronous_supplier_lookup(self):
         approved_pages = (ROOT / "src" / "ui" / "approved_pages.py").read_text(
             encoding="utf-8"
