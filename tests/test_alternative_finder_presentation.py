@@ -228,6 +228,28 @@ class AlternativeFinderPresentationTests(unittest.TestCase):
 
 
 class ReplacementCandidateDecisionTests(unittest.TestCase):
+    def test_family_search_result_is_labeled_as_discovery_only(self):
+        from src.ui.approved_pages import _candidate_detail_html
+
+        html_text = _candidate_detail_html(
+            {
+                "Alternative Part": "LM317BS-TR",
+                "Classification": "Catalog candidate — insufficient evidence for compatibility",
+                "Evidence Type": "Distributor family search match",
+                "Discovery Query": "LM317",
+                "Supplier": "DigiKey",
+            },
+            {
+                "manufacturer_part_number": "LM317DCYR",
+                "description": "Adjustable linear regulator",
+                "source": "DigiKey",
+            },
+        )
+
+        self.assertIn("DigiKey catalog family search for LM317", html_text)
+        self.assertIn("related family only", html_text)
+        self.assertIn("does not establish compatibility", html_text)
+
     def test_detail_shows_package_conflict_and_does_not_qualify_catalog_candidate(self):
         from src.ui.approved_pages import _candidate_detail_html
 

@@ -189,6 +189,67 @@ class DigiKeySubstitutionTests(unittest.TestCase):
         self.assertEqual(results[0]["evidence_type"], "Distributor catalog match")
         self.assertEqual(results[0]["substitute_type"], "Similar")
 
+    def test_lm317_orderable_suffix_expands_to_labeled_family_catalog_search(self):
+        requested_terms = []
+
+        def post(_url, *, json, **_kwargs):
+            term = json["Keywords"]
+            requested_terms.append(term)
+            if term == "LM317":
+                return _Response({"Products": [{
+                    "ManufacturerProductNumber": "LM317BS-TR",
+                    "DigiKeyProductNumber": "497-LM317BS-TR-ND",
+                    "Manufacturer": {"Name": "STMicroelectronics"},
+                    "PrimaryCategory": {"Name": "Integrated Circuits (ICs)"},
+                    "Description": {"ProductDescription": "IC REG LINEAR ADJUSTABLE"},
+                    "ProductStatus": {"Name": "Active"},
+                    "QuantityAvailable": 500,
+                    "ProductUrl": "https://www.digikey.com/example/lm317bs-tr",
+                }]})
+            return _Response({"Products": []})
+
+        self.client.requests.post = post
+        results = self.client.search_digikey_catalog_candidates("LM317DCYR")
+
+        self.assertEqual(requested_terms, ["LM317DCYR", "LM317"])
+        self.assertEqual(self.client._catalog_search_terms("LM317DCYR"), ["LM317DCYR", "LM317"])
+        self.assertEqual(results[0]["manufacturer_part_number"], "LM317BS-TR")
+        self.assertEqual(results[0]["evidence_type"], "Distributor family search match")
+        self.assertEqual(results[0]["discovery_scope"], "family_search")
+        self.assertEqual(results[0]["discovery_query"], "LM317")
+        self.assertEqual(results[0]["substitute_type"], "Similar")
+
+    def test_bom_mode_can_skip_family_search_without_skipping_exact_catalog_search(self):
+        requested_terms = []
+
+        def post(_url, *, json, **_kwargs):
+            requested_terms.append(json["Keywords"])
+            return _Response({"Products": []})
+
+        self.client.requests.post = post
+        self.client.search_digikey_catalog_candidates(
+            "LM317DCYR",
+            include_family_search=False,
+        )
+
+        self.assertEqual(requested_terms, ["LM317DCYR"])
+
+    def test_family_search_stems_cover_mixed_and_numeric_leading_mpns(self):
+        cases = {
+            "MC68HC11E1CFNE2": "MC68HC11",
+            "STM32F103C8T6": "STM32F103",
+            "6N137S-TA1": "6N137",
+            "74HC595D": "74HC595",
+            "C0603C104K5RACTU": "",
+        }
+
+        for part_number, expected in cases.items():
+            with self.subTest(part_number=part_number):
+                self.assertEqual(
+                    self.client._catalog_family_search_term(part_number),
+                    expected,
+                )
+
     def test_lifecycle_parser_reads_common_digikey_enum_object_shapes(self):
         cases = (
             ({"ProductStatus": {"Id": 0, "Status": "Active"}}, "Active"),

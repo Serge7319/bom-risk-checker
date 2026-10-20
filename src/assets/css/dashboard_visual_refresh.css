@@ -800,18 +800,18 @@ section[data-testid="stMain"] .main .block-container {
 }
 .st-key-cv_foundation_profile_trigger {
   position: fixed !important;
-  top: auto !important;
-  right: auto !important;
-  bottom: 16px !important;
-  left: 18px !important;
+  top: 10px !important;
+  right: 18px !important;
+  bottom: auto !important;
+  left: auto !important;
   z-index: 1000010 !important;
 }
 .st-key-cv_foundation_profile_panel {
   position: fixed !important;
-  top: auto !important;
-  right: auto !important;
-  bottom: 64px !important;
-  left: 12px !important;
+  top: 60px !important;
+  right: 12px !important;
+  bottom: auto !important;
+  left: auto !important;
   width: 280px !important;
   z-index: 1000011 !important;
 }

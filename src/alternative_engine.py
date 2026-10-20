@@ -1602,7 +1602,11 @@ def apply_supplier_enrichment_to_candidate(
 
 
 @st.cache_data(ttl=300, show_spinner=False)
-def suggest_alternatives_v2(original_part_number: str) -> list:
+def suggest_alternatives_v2(
+    original_part_number: str,
+    *,
+    include_family_search: bool = True,
+) -> list:
     """
     Suggest candidate alternatives using supplier-derived metadata.
 
@@ -1626,7 +1630,13 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
             "searched_part_number": original_part_number,
             "supplier_data_verified": False,
         }
-    discovery = discover_alternative_candidates(canonical_part_number)
+    if include_family_search:
+        discovery = discover_alternative_candidates(canonical_part_number)
+    else:
+        discovery = discover_alternative_candidates(
+            canonical_part_number,
+            include_family_search=False,
+        )
     _LAST_ALTERNATIVE_DISCOVERY = discovery
     supplier_results = list(discovery.get("candidates") or [])
 
@@ -1697,6 +1707,8 @@ def suggest_alternatives_v2(original_part_number: str) -> list:
                 "Lifecycle": lifecycle,
                 **_candidate_risk_metadata(result),
                 "Evidence Type": evidence_type,
+                "Discovery Scope": str(result.get("discovery_scope") or "catalog_search"),
+                "Discovery Query": str(result.get("discovery_query") or ""),
                 "Substitute Type": substitute_type,
                 "Evidence Source": str(result.get("source") or "DigiKey"),
                 "Supplier Relationship Evidence": [
