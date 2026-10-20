@@ -287,6 +287,25 @@ def clear_datasheet_document(session_state: MutableMapping[str, Any]) -> None:
     session_state.pop(DATASHEET_QA_LAST_SUBMIT_AT_KEY, None)
 
 
+def datasheet_document_matches_part(
+    document: Mapping[str, Any] | None,
+    requested_mpn: object,
+) -> bool:
+    """Return true only when the active auto-found PDF is for this exact MPN.
+
+    Uploaded PDFs have no verified part identity and therefore do not match a
+    part-number lookup. The caller should clear them before switching the Q&A
+    context to a different requested component.
+    """
+    if not isinstance(document, Mapping):
+        return False
+    from src.normalizer import normalize_part_number
+
+    requested = normalize_part_number(str(requested_mpn or "").strip())
+    active = normalize_part_number(str(document.get("requested_mpn") or "").strip())
+    return bool(requested and active and requested == active)
+
+
 def datasheet_upload_signature(file_bytes: bytes, *, filename: str = "") -> str:
     """Return a non-reversible digest for de-duplicating an uploaded PDF."""
     digest = hashlib.sha256()

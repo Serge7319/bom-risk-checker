@@ -97,6 +97,19 @@ class RiskEngineEvidenceTests(unittest.TestCase):
         self.assertEqual(result["risk_score"], 15)
         self.assertEqual(len(result["risk_reasons"]), 1)
 
+    def test_lead_time_over_half_a_year_cannot_be_low_risk(self):
+        result = calculate_risk({
+            "lifecycle_status": "Active",
+            "lead_time_weeks": 31.4,
+        })
+
+        self.assertEqual(result["risk_score"], 30)
+        self.assertEqual(result["risk_level"], "Medium")
+        self.assertIn(
+            "Reported manufacturer lead time is 26 weeks or longer",
+            result["risk_reasons"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, Mapping
+from uuid import uuid4
 
 ENGINEERING_DECISION_BRIEF = "Engineering Decision Brief"
 PARTS_AND_RISK = "Parts & Risk"
@@ -357,6 +358,14 @@ def _select_saved_bom_more(analysis_id: str, choice: str) -> None:
             "Design Impact": "Design Impact Analyzer",
         }[choice]
         params = {"analysis_id": analysis_id, "return_analysis_id": analysis_id} if analysis_id else {}
+        if choice == "Datasheet Q&A" and analysis_id:
+            selected = selected_component_context(
+                state,
+                analysis_id=analysis_id,
+            )["selected_component"]
+            if selected:
+                params["mpn"] = selected
+                params["prefill_id"] = uuid4().hex
         navigate_to(route, _rerun=False, arm_opening=False, **params)
         return
     state[f"cadivor_bom_more_{analysis_id}"] = choice

@@ -9,7 +9,13 @@ from unittest.mock import MagicMock, patch
 
 import pandas as pd
 
-from src.bom_parser import clean_bom_data, normalize_bom_columns, validate_bom
+from src.bom_parser import (
+    aggregate_bom_rows,
+    bom_metadata_text,
+    clean_bom_data,
+    normalize_bom_columns,
+    validate_bom,
+)
 from src.plans import get_plan, validate_bom_against_plan
 from src.services.user_provisioning import build_default_user_row
 
@@ -141,6 +147,80 @@ class FirstBomJourneyTests(unittest.TestCase):
             user_id="user-b",
         )
         self.assertNotEqual(user_a["analysis"]["user_id"], user_b["analysis"]["user_id"])
+
+    def test_duplicate_mpn_rows_keep_bom_manufacturer_and_description(self):
+        df = pd.DataFrame(
+            [
+                {
+                    "Manufacturer Part Number": "DHT11",
+                    "Qty": 2,
+                    "Manufacturer Name": "Aosong",
+                    "Part Description": "Temperature and humidity sensor",
+                },
+                {
+                    "Manufacturer Part Number": "DHT11",
+                    "Qty": 3,
+                    "Manufacturer Name": "",
+                    "Part Description": None,
+                },
+            ]
+        )
+
+        normalized = normalize_bom_columns(df)
+        validate_bom(normalized)
+        aggregated = aggregate_bom_rows(normalized)
+
+        self.assertEqual(len(aggregated), 1)
+        self.assertEqual(aggregated.iloc[0]["mpn"], "DHT11")
+        self.assertEqual(aggregated.iloc[0]["quantity"], 5)
+        self.assertEqual(aggregated.iloc[0]["manufacturer"], "Aosong")
+        self.assertEqual(
+            aggregated.iloc[0]["description"],
+            "Temperature and humidity sensor",
+        )
+
+    def test_duplicate_column_aliases_are_coalesced_and_blank_metadata_is_ignored(self):
+        df = pd.DataFrame(
+            [{"MPN": "ESP32-WROOM-32E", "Manufacturer": None, "Manufacturer Name": "Espressif Systems", "Qty": 1}]
+        )
+        normalized = normalize_bom_columns(df)
+
+        self.assertFalse(normalized.columns.duplicated().any())
+        self.assertEqual(normalized.iloc[0]["manufacturer"], "Espressif Systems")
+        self.assertEqual(bom_metadata_text(None, "nan", "Espressif Systems"), "Espressif Systems")
+
+    def test_punctuated_manufacturer_headers_map_to_component_metadata(self):
+        df = pd.DataFrame(
+            [{
+                "Mfr. Part No.": "DHT11",
+                "Mfg. Name": "Aosong",
+                "Component Name": "Temperature and humidity sensor",
+                "Qty (#)": 4,
+            }]
+        )
+
+        normalized = normalize_bom_columns(df)
+
+        self.assertEqual(normalized.iloc[0]["mpn"], "DHT11")
+        self.assertEqual(normalized.iloc[0]["manufacturer"], "Aosong")
+        self.assertEqual(
+            normalized.iloc[0]["description"],
+            "Temperature and humidity sensor",
+        )
+        self.assertEqual(normalized.iloc[0]["quantity"], 4)
+
+    def test_blank_duplicate_quantity_does_not_erase_valid_bom_quantity(self):
+        df = pd.DataFrame(
+            [
+                {"MPN": "DHT11", "Qty": 3, "Description": "Humidity sensor"},
+                {"MPN": "DHT11", "Qty": None, "Description": None},
+            ]
+        )
+
+        aggregated = aggregate_bom_rows(normalize_bom_columns(df))
+
+        self.assertEqual(aggregated.iloc[0]["quantity"], 3)
+        self.assertEqual(aggregated.iloc[0]["description"], "Humidity sensor")
 
 
 if __name__ == "__main__":

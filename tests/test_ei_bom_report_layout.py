@@ -49,6 +49,16 @@ REPORT_SOURCE = (Path(__file__).resolve().parents[1] / "src" / "ui" / "ei_bom_re
 
 
 class EngineeringIntelligenceLayoutTests(unittest.TestCase):
+    def test_medium_risk_action_offers_monitoring_and_alternate_search_separately(self):
+        action = REPORT_SOURCE.split("def _alternative_action_link(", 1)[1].split(
+            "def ", 1
+        )[0]
+        self.assertIn('internal_app_href(\n        "Monitoring"', action)
+        self.assertIn("Monitor this part</a>", action)
+        self.assertIn("Find alternatives</a>", action)
+        self.assertIn('monitor_focus="active"', action)
+        self.assertIn('mpn=mpn', action)
+
     def test_detailed_risk_exposure_summary_uses_recorded_cost_and_lead_time(self):
         markup = _risk_exposure_markup([
             {
@@ -372,7 +382,7 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
         self.assertIn("Recommended action", html)
         self.assertIn("MPN-001", html)
 
-    def test_review_alternative_parts_action_is_a_prefilled_link(self):
+    def test_review_alternative_actions_are_separate_and_prefilled(self):
         report = engineering_intelligence_html(
             bom_name="Sample BOM",
             part_count=2,
@@ -380,7 +390,9 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
             parts=PARTS,
             analysis_id="analysis-1",
         )
-        self.assertIn("Review alternative parts</a>", report)
+        self.assertIn(">Find alternatives</a>", report)
+        self.assertIn(">Monitor this part</a>", report)
+        self.assertIn("monitor_focus=active", report)
         self.assertIn("page=Alternative%20Finder", report)
         self.assertIn("original_part=MPN-001", report)
         self.assertIn("analysis_id=analysis-1", report)

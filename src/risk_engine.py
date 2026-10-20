@@ -132,7 +132,10 @@ def calculate_risk(part_data: dict) -> dict:
             score += 35
             reasons.append("Reported manufacturer lead time is at least 52 weeks")
         elif lead_time >= 26:
-            score += 25
+            # A half-year replenishment interval is already meaningful
+            # schedule exposure. Keep it in Medium even when lifecycle is
+            # Active and the inventory fields are otherwise healthy.
+            score += 30
             reasons.append("Reported manufacturer lead time is 26 weeks or longer")
         elif lead_time >= 12:
             score += 15

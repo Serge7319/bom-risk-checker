@@ -79,6 +79,19 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
         self.assertIn("data-cadivor-page-body", reveal)
         self.assertNotIn("_remove_transition_portal", reveal)
 
+    def test_alternative_supplier_lookup_keeps_route_cover_until_results_render(self):
+        approved_pages = (ROOT / "src" / "ui" / "approved_pages.py").read_text(
+            encoding="utf-8"
+        )
+        finder = approved_pages.split("def render_replacement_search()", 1)[1]
+        lookup = finder.split(
+            "if query and (pending_query or prefilled_search_pending):", 1
+        )[1].split("return_label =", 1)[0]
+
+        self.assertIn("run_alternative_finder_search(st.session_state, query)", lookup)
+        self.assertIn("st.rerun()", lookup)
+        self.assertNotIn("reveal_authenticated_page_body", lookup)
+
     def test_dashboard_cover_is_released_after_dashboard_render(self):
         runtime = (ROOT / "src" / "authenticated_runtime.py").read_text(encoding="utf-8")
         start = runtime.index("# ---------- Dashboard ----------")

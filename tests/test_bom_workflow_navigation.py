@@ -89,6 +89,26 @@ class BomWorkflowNavigationTests(unittest.TestCase):
             "",
         )
 
+    def test_direct_part_link_wins_when_address_bar_is_ahead_of_session_snapshot(self):
+        self.streamlit.session_state["cadivor_nav_params"] = {
+            "page": "Engineering Intelligence",
+            "analysis_id": "bom-42",
+        }
+        self.streamlit.query_params.update(
+            {
+                "page": "Alternative Finder",
+                "original_part": "LM7805ACT",
+                "analysis_id": "bom-42",
+                "return_analysis_id": "bom-42",
+                "source_page": "engineering_intelligence_review",
+            }
+        )
+
+        self.assertEqual(
+            self.navigation.current_navigation_query_params(route="Alternative Finder"),
+            dict(self.streamlit.query_params),
+        )
+
     def test_intentional_in_page_replace_supersedes_pending_history_restore(self):
         self.streamlit.session_state.update({
             "cadivor_nav_params": {"page": "Analysis Details", "analysis_tab": "Overview"},

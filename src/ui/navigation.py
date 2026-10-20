@@ -105,11 +105,20 @@ def current_navigation_query_params(*, route: str | None = None) -> dict[str, st
         }
         expected_route = str(route or "").strip()
         if cleaned.get("page"):
-            return (
-                cleaned
-                if not expected_route or cleaned.get("page") == expected_route
-                else {}
-            )
+            if not expected_route or cleaned.get("page") == expected_route:
+                return cleaned
+            # A direct same-tab link can update the browser URL before
+            # Streamlit's session snapshot catches up. If the address bar is
+            # already on the route being rendered, its query is authoritative
+            # for this run. This is especially important for part-number
+            # deep-links into Alternative Finder and Monitoring.
+            address_bar = read_query_params()
+            if address_bar.get("page") == expected_route:
+                return address_bar
+            # On browser Back/Forward, the restored navigation snapshot remains
+            # authoritative when Streamlit's query state is still one route
+            # behind. Do not leak params from that stale address-bar route.
+            return {}
     return read_query_params()
 
 
@@ -990,6 +999,10 @@ def alternative_finder_href(
     part_id: str = "",
     source_page: str = "",
     return_analysis_id: str = "",
+    return_page: str = "",
+    return_mpn: str = "",
+    return_decision_id: str = "",
+    return_component: str = "",
     project_name: str = "",
     bom_name: str = "",
     prefill_id: str = "",
@@ -1006,6 +1019,10 @@ def alternative_finder_href(
         source_page=source_page,
         project_name=project_name,
         bom_name=bom_name,
+        return_analysis_id=return_analysis_id,
+        return_page=return_page,
+        return_mpn=return_mpn,
+        return_decision_id=return_decision_id,
         prefill_id=prefill_id or uuid4().hex,
     )
     params: dict[str, str] = {
@@ -1033,6 +1050,14 @@ def alternative_finder_href(
         params["project_name"] = context["project_name"]
     if context["bom_name"]:
         params["bom_name"] = context["bom_name"]
+    if context.get("return_page"):
+        params["return_page"] = context["return_page"]
+    if context.get("return_mpn"):
+        params["return_mpn"] = context["return_mpn"]
+    if context.get("return_decision_id"):
+        params["return_decision_id"] = context["return_decision_id"]
+    if return_component:
+        params["return_component"] = str(return_component).strip()
     return internal_app_href(ALTERNATIVE_FINDER_PAGE, **params)
 
 

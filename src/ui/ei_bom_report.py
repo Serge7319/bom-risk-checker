@@ -77,24 +77,48 @@ def _alternative_action_link(
 ) -> str:
     label = str(label_override or row.get("action") or "")
     if row.get("level") not in {"High", "Medium"}:
-        return label
+        return html.escape(label)
     from src.ui.navigation import alternative_finder_href
+    from src.urls import internal_app_href
 
+    mpn = str(row.get("mpn_raw") or "").strip()
+    if not mpn:
+        return html.escape(label)
     href = alternative_finder_href(
-        mpn=str(row.get("mpn_raw") or ""),
+        mpn=mpn,
         manufacturer=html.unescape(str(row.get("manufacturer") or "")),
         description=html.unescape(str(row.get("description") or "")),
         lifecycle=html.unescape(str(row.get("lifecycle") or "")),
         risk=str(row.get("level") or ""),
         analysis_id=analysis_id,
         return_analysis_id=analysis_id,
+        return_page="Engineering Intelligence" if analysis_id else "",
+        return_mpn=mpn if analysis_id else "",
         source_page=source_page,
         project_name=bom_name,
         bom_name=bom_name,
     )
-    return (
+    alternative_link = (
         f'<a class="cv-ei-action-link" href="{html.escape(href, quote=True)}" '
-        f'target="_self">{label}</a>'
+        f'target="_self">Find alternatives</a>'
+    )
+    if row.get("level") != "Medium":
+        return alternative_link
+
+    monitor_href = internal_app_href(
+        "Monitoring",
+        mpn=mpn,
+        part=mpn,
+        return_analysis_id=analysis_id,
+        monitor_focus="active",
+    )
+    monitor_link = (
+        f'<a class="cv-ei-action-link" href="{html.escape(monitor_href, quote=True)}" '
+        f'target="_self">Monitor this part</a>'
+    )
+    return (
+        '<div class="cv-ei-action-links">'
+        f"{monitor_link}{alternative_link}</div>"
     )
 
 
@@ -784,6 +808,7 @@ def report_styles() -> str:
       .cv-ei-action { color:#2563eb; font-weight:750; }
       .cv-ei-action-link{display:inline-flex;align-items:center;color:#2563eb;text-decoration:none;font-weight:800}
       .cv-ei-action-link:hover{text-decoration:underline;text-underline-offset:3px}
+      .cv-ei-action-links{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px}
       .cv-ei-action small { display:block; color:#64748b; font-weight:500; margin-top:3px; }
       .cv-ei-action .cv-ei-approved,.cv-ei-approved{display:inline-flex;align-items:center;width:max-content;max-width:100%;margin-top:6px;padding:4px 8px;border:1px solid #bbf7d0;border-radius:999px;background:#f0fdf4;color:#15803d;font-size:11px;font-weight:750;line-height:1.3}
       .cv-ei-table td small, .cv-ei-offer a { display:block; margin-top:4px; color:#64748b; font-size:12px; font-weight:500; line-height:1.35; }

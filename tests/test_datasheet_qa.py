@@ -16,6 +16,7 @@ from src.datasheet_qa import (
     answer_datasheet_question,
     claim_datasheet_question_submit,
     clear_datasheet_document,
+    datasheet_document_matches_part,
     compact_datasheet_history,
     extract_uploaded_datasheet,
     retrieve_relevant_chunks,
@@ -24,6 +25,9 @@ from src.datasheet_qa import (
     store_document_in_session,
     append_thread_turn,
 )
+
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def _text_pdf_bytes(pages: list[str]) -> bytes:
@@ -56,6 +60,39 @@ def _blank_pdf_bytes() -> bytes:
 
 
 class DatasheetQaCoreTests(unittest.TestCase):
+    def test_auto_found_datasheet_is_bound_to_the_requested_exact_part(self):
+        active = {
+            "requested_mpn": "ESP32-WROOM-32E",
+            "source_url": "https://manufacturer.example/datasheet.pdf",
+        }
+
+        self.assertTrue(datasheet_document_matches_part(active, "ESP32WROOM32E"))
+        self.assertFalse(datasheet_document_matches_part(active, "DHT11"))
+        self.assertFalse(
+            datasheet_document_matches_part(
+                {"filename": "uploaded.pdf", "available": True},
+                "DHT11",
+            )
+        )
+
+    def test_live_datasheet_page_has_search_and_exact_supplier_pdf_ingestion(self):
+        approved_pages = (ROOT / "src" / "ui" / "approved_pages.py").read_text(
+            encoding="utf-8"
+        )
+        renderer = approved_pages.split("def render_datasheet_live()", 1)[1]
+        for expected in (
+            "Find a datasheet by part number",
+            "if find_datasheet_clicked or route_prefill_changed:",
+            "get_first_exact_supplier_result(requested_mpn)",
+            "exact_supplier_evidence(requested_mpn, supplier_record)",
+            "extract_datasheet_text(datasheet_url)",
+            "store_document_in_session(st.session_state, document)",
+            "public_datasheet_search_url(requested_mpn)",
+            "datasheet_document_matches_part(",
+            '"Open PDF ↗"',
+        ):
+            self.assertIn(expected, renderer)
+
     def test_source_preview_renders_the_requested_pdf_page_without_storing_bytes(self):
         payload = _text_pdf_bytes(["First source page", "Second source page"])
         first = render_datasheet_page_png(payload, 1)

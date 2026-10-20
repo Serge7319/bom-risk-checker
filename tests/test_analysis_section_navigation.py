@@ -221,6 +221,28 @@ class AnalysisSectionNavigationTests(unittest.TestCase):
         self.assertEqual(active, "Timeline")
         self.assertEqual(st.session_state["cadivor_pending_analysis_section"], "Ask Cadivor")
 
+    def test_datasheet_qna_handoff_carries_the_selected_part_from_the_saved_bom(self):
+        st, _detail = self._load(
+            session_state={
+                "cadivor_route": "Analysis Details",
+                "cadivor_selected_component_analysis_id": "a-datasheet",
+                "cadivor_selected_component_mpn": "DHT11",
+            }
+        )
+        calls = []
+        sys.modules["src.ui.navigation"].navigate_to = (
+            lambda *args, **kwargs: calls.append((args, kwargs))
+        )
+
+        from src.ui.bom_navigation import _select_saved_bom_more
+
+        _select_saved_bom_more("a-datasheet", "Datasheet Q&A")
+
+        self.assertEqual(calls[0][0], ("Datasheet Q&A",))
+        self.assertEqual(calls[0][1]["mpn"], "DHT11")
+        self.assertEqual(calls[0][1]["return_analysis_id"], "a-datasheet")
+        self.assertEqual(len(calls[0][1]["prefill_id"]), 32)
+
     def test_pinned_ask_cadivor_overrides_stale_url_when_widget_unbound(self):
         st, detail = self._load(
             session_state={"cadivor_active_analysis_tab": "Ask Cadivor"},
