@@ -587,6 +587,12 @@ def update_user_profile_fields(user_id, updates):
     skipped = [k for k in updates.keys() if k not in existing]
     if allowed:
         supabase.table("users").update(allowed).eq("id", user_id).execute()
+        try:
+            from src.services.shell_profile_cache import clear_shell_profile_cache
+
+            clear_shell_profile_cache(st.session_state, user_id)
+        except Exception:
+            pass
     return allowed, skipped
 
 def load_alternative_history(user_id):
@@ -3553,7 +3559,28 @@ def run_authenticated_app() -> None:
             else current_user
         )
 
-    profile_for_shell = _quick_boot_read(_profile_for_shell, default=None)
+    from src.services.shell_profile_cache import (
+        clear_shell_profile_cache,
+        recent_shell_profile,
+        remember_shell_profile,
+    )
+
+    profile_for_shell = recent_shell_profile(st.session_state, _context_user_id)
+    _shell_profile_cache_status = "hit" if profile_for_shell is not None else "miss"
+    with timed_phase(
+        "runtime.shell_profile",
+        operation="load_user_data",
+        route=app_mode,
+        cache_status=_shell_profile_cache_status,
+    ):
+        if profile_for_shell is None:
+            profile_for_shell = _quick_boot_read(_profile_for_shell, default=None)
+            if isinstance(profile_for_shell, dict):
+                remember_shell_profile(
+                    st.session_state,
+                    _context_user_id,
+                    profile_for_shell,
+                )
     if not isinstance(profile_for_shell, dict):
         profile_for_shell = current_user if isinstance(current_user, dict) else {}
 
@@ -15205,6 +15232,7 @@ def run_authenticated_app() -> None:
                                 if save_error:
                                     st.error(f"Unable to save profile: {save_error}")
                                 else:
+                                    clear_shell_profile_cache(st.session_state, user_id)
                                     st.session_state["settings_profile_editing"] = False
                                     st.toast("Profile saved", icon="✅")
                                     st.rerun()
@@ -15318,6 +15346,7 @@ def run_authenticated_app() -> None:
                                     icon="ℹ️",
                                 )
                             else:
+                                clear_shell_profile_cache(st.session_state, user_id)
                                 st.toast("Account preferences saved", icon="✅")
 
                 overview_bottom_left, overview_bottom_right = st.columns(2, gap="small")
