@@ -2,8 +2,9 @@
 
 Continuity contract (login → first content, and every authenticated navigation):
 first admission or explicitly blocking work gets a readable progress surface;
-ordinary in-app navigation keeps the last ready page visible and frozen until
-the complete destination is ready, then swaps both pages in one browser paint.
+ordinary in-app navigation keeps a compact progress surface over the main
+panel until the complete destination is ready. It never exposes the empty or
+partially rendered workspace during a Streamlit rerun.
 
 This module owns ONLY the main-panel loading surface. Foundation topbar and
 sidebar must stay fully sharp and normal-opacity for the entire transition.
@@ -108,8 +109,8 @@ def should_paint_opening_overlay(
 ) -> bool:
     """Keep one transition owner until the destination body is ready.
 
-    The owner renders as a thin progress strip for in-app navigation, and as a
-    full cover only for first admission or explicitly blocking work.
+    The owner renders as a compact main-panel progress surface for in-app
+    navigation, and as a full loading card for first admission or blocking work.
     """
     del target_route, session_state
     return bool(needs_transition)
@@ -209,11 +210,11 @@ def inject_main_transition_css(transition_gen: int) -> None:
           display:block;height:100%;width:42%;border-radius:999px;background:#2563EB;
           animation:cv-main-transition-progress 1.1s ease-in-out infinite
         }}
-        /* Normal page hops keep the last ready page visible while Python
-           renders the destination. Hide only the new route's partial body;
-           the matching body marker releases it and retires the old body in
-           the same browser paint. This avoids a blank workspace between
-           pages without exposing half-rendered destination content. */
+        /* Normal page hops cover the main panel until the destination is
+           complete. Streamlit can remove the previous route's DOM while a
+           rerun is in progress, so a transparent cover exposed a blank panel
+           and partial destination fragments. Keep the sidebar interactive;
+           the route marker releases this one compact loading surface. */
         .cv-main-transition.cv-route-loading[data-cadivor-transition-kind="navigation"]{{
           box-sizing:border-box!important;position:fixed!important;
           left:var(--cv-foundation-rail,228px)!important;right:0!important;
@@ -223,13 +224,14 @@ def inject_main_transition_css(transition_gen: int) -> None:
           height:calc(100dvh - var(--cv-foundation-top,64px))!important;
           min-height:0!important;max-height:none!important;
           margin:0!important;padding:0!important;border:0!important;border-radius:0!important;
-          display:block!important;background:transparent!important;overflow:hidden!important;
-          box-shadow:none!important;pointer-events:none!important;opacity:1!important;
+          display:flex!important;align-items:center!important;justify-content:center!important;
+          background:#F5F7FB!important;overflow:hidden!important;
+          box-shadow:none!important;pointer-events:auto!important;opacity:1!important;
           visibility:visible!important;z-index:2147483000!important;clip-path:inset(0)!important
         }}
         body:has(.cv-main-transition.cv-route-loading[data-cadivor-transition-kind="navigation"][data-cadivor-transition-gen="{gen}"]):not(:has([data-cadivor-page-body][data-cadivor-transition-gen="{gen}"]))
           section[data-testid="stMain"] [class*="st-key-cadivor_authenticated_route_body"]{{
-          pointer-events:none!important
+          pointer-events:none!important;transition:none!important
         }}
         body:has(.cv-main-transition.cv-route-loading[data-cadivor-transition-kind="navigation"][data-cadivor-transition-gen="{gen}"]):not(:has([data-cadivor-page-body][data-cadivor-transition-gen="{gen}"]))
           section[data-testid="stMain"] [class*="st-key-cadivor_authenticated_route_body"]
@@ -238,15 +240,24 @@ def inject_main_transition_css(transition_gen: int) -> None:
           transition:none!important
         }}
         .cv-main-transition.cv-route-loading[data-cadivor-transition-kind="navigation"] .cv-main-transition-card{{
-          display:none!important
+          display:block!important;box-sizing:border-box!important;width:184px!important;
+          padding:16px!important;border:1px solid #E4EAF3!important;border-radius:16px!important;
+          background:#FFFFFF!important;box-shadow:0 8px 24px rgba(15,23,42,.06)!important;
+          text-align:center!important
+        }}
+        .cv-main-transition.cv-route-loading[data-cadivor-transition-kind="navigation"] .cv-main-transition-mark{{
+          display:grid!important;place-items:center!important;width:34px!important;height:34px!important;
+          margin:0 auto 12px!important;border-radius:10px!important;
+          background:linear-gradient(145deg,#2563EB,#1D4ED8)!important;color:#FFFFFF!important;
+          font-size:16px!important;font-weight:850!important;letter-spacing:-.02em!important
         }}
         .cv-main-transition.cv-route-loading[data-cadivor-transition-kind="navigation"] .cv-main-transition-progress{{
-          position:absolute!important;left:0!important;right:0!important;top:0!important;
+          position:relative!important;left:auto!important;right:auto!important;top:auto!important;
           display:block!important;width:100%!important;height:3px!important;
-          margin:0!important;border-radius:0!important;background:transparent!important;overflow:hidden!important
+          margin:0!important;border-radius:999px!important;background:#E8EEF7!important;overflow:hidden!important
         }}
         .cv-main-transition.cv-route-loading[data-cadivor-transition-kind="navigation"] .cv-main-transition-progress>i{{
-          display:block!important;width:18%!important;height:3px!important;border-radius:0!important;
+          display:block!important;width:35%!important;height:3px!important;border-radius:999px!important;
           background:#2563EB!important;animation:cv-main-transition-progress 1.1s ease-in-out infinite
         }}
         @keyframes cv-main-transition-progress{{
@@ -408,10 +419,7 @@ def route_loading_markup(target_route: str, transition_gen: int) -> str:
     ).strip().casefold()
     if transition_kind not in {"navigation", "blocking"}:
         transition_kind = "blocking"
-    if (
-        transition_kind == "navigation"
-        and str(st.session_state.get(MAIN_TRANSITION_PREVIOUS_ROUTE_KEY) or "").strip()
-    ):
+    if transition_kind == "navigation":
         return f"""
         <div data-cadivor-transition-host="cadivor-main-transition"
              data-cadivor-transition-gen="{gen}"
@@ -424,7 +432,10 @@ def route_loading_markup(target_route: str, transition_gen: int) -> str:
                data-cadivor-transition-gen="{gen}"
                data-testid="cadivor-route-loading"
                role="status" aria-label="Loading {safe_route}">
-            <div class="cv-main-transition-progress" aria-hidden="true"><i></i></div>
+            <div class="cv-main-transition-card" aria-hidden="true">
+              <div class="cv-main-transition-mark">C</div>
+              <div class="cv-main-transition-progress"><i></i></div>
+            </div>
           </div>
         </div>
         """

@@ -41,7 +41,7 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
         self.assertNotIn("window.parent", paint)
         self.assertNotIn("with container(key=owner_key)", paint)
 
-    def test_regular_navigation_holds_ready_page_until_destination_is_complete(self):
+    def test_regular_navigation_covers_partial_render_until_destination_is_complete(self):
         namespace = {
             "html": html,
             "BOM_ANALYSIS_TRANSITION_KEY": "cadivor_bom_analysis_transition",
@@ -61,14 +61,16 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
         markup = namespace["route_loading_markup"]("Portfolio Intelligence", 21)
         self.assertIn('data-cadivor-transition-kind="navigation"', markup)
         self.assertIn("cv-main-transition-progress", markup)
+        self.assertIn('class="cv-main-transition-mark">C</div>', markup)
         self.assertNotIn("Opening Portfolio Intelligence", markup)
         nav_css = SOURCE.split(
             '.cv-main-transition.cv-route-loading[data-cadivor-transition-kind="navigation"]{{',
             1,
         )[1].split("}}", 1)[0]
         self.assertIn("height:calc(100dvh - var(--cv-foundation-top,64px))!important", nav_css)
-        self.assertIn("background:transparent!important", nav_css)
-        self.assertIn("pointer-events:none!important", nav_css)
+        self.assertIn("background:#F5F7FB!important", nav_css)
+        self.assertIn("pointer-events:auto!important", nav_css)
+        self.assertIn("display:flex!important;align-items:center!important;justify-content:center!important", nav_css)
         self.assertIn("st-key-cadivor_authenticated_route_body", SOURCE)
         self.assertIn(
             '[data-testid="stElementContainer"]:not([data-stale="true"])',
@@ -78,7 +80,7 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
             "visibility:hidden!important;opacity:0!important;pointer-events:none!important",
             SOURCE,
         )
-        self.assertIn("the last ready page visible", SOURCE)
+        self.assertIn("partial destination fragments", SOURCE)
         self.assertIn(
             ':not([data-cadivor-transition-kind="navigation"]) {{\n          pointer-events:auto!important',
             SOURCE,
