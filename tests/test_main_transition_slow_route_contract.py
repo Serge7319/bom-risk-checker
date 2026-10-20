@@ -41,7 +41,7 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
         self.assertNotIn("window.parent", paint)
         self.assertNotIn("with container(key=owner_key)", paint)
 
-    def test_regular_navigation_covers_stale_page_without_capturing_clicks(self):
+    def test_regular_navigation_holds_ready_page_until_destination_is_complete(self):
         namespace = {
             "html": html,
             "BOM_ANALYSIS_TRANSITION_KEY": "cadivor_bom_analysis_transition",
@@ -67,8 +67,18 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
             1,
         )[1].split("}}", 1)[0]
         self.assertIn("height:calc(100dvh - var(--cv-foundation-top,64px))!important", nav_css)
-        self.assertIn("background:#F5F7FB!important", nav_css)
+        self.assertIn("background:transparent!important", nav_css)
         self.assertIn("pointer-events:none!important", nav_css)
+        self.assertIn("st-key-cadivor_authenticated_route_body", SOURCE)
+        self.assertIn(
+            '[data-testid="stElementContainer"]:not([data-stale="true"])',
+            SOURCE,
+        )
+        self.assertIn(
+            "visibility:hidden!important;opacity:0!important;pointer-events:none!important",
+            SOURCE,
+        )
+        self.assertIn("the last ready page visible", SOURCE)
         self.assertIn(
             ':not([data-cadivor-transition-kind="navigation"]) {{\n          pointer-events:auto!important',
             SOURCE,
@@ -79,18 +89,18 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
         self.assertIn("data-cadivor-page-body", reveal)
         self.assertNotIn("_remove_transition_portal", reveal)
 
-    def test_alternative_supplier_lookup_keeps_route_cover_until_results_render(self):
+    def test_alternative_finder_is_visible_before_synchronous_supplier_lookup(self):
         approved_pages = (ROOT / "src" / "ui" / "approved_pages.py").read_text(
             encoding="utf-8"
         )
-        finder = approved_pages.split("def render_replacement_search()", 1)[1]
-        lookup = finder.split(
-            "if query and (pending_query or prefilled_search_pending):", 1
-        )[1].split("return_label =", 1)[0]
-
-        self.assertIn("run_alternative_finder_search(st.session_state, query)", lookup)
-        self.assertIn("st.rerun()", lookup)
-        self.assertNotIn("reveal_authenticated_page_body", lookup)
+        finder = approved_pages.split("def render_replacement_search()", 1)[1].split(
+            "\ndef ", 1
+        )[0]
+        reveal_at = finder.index('reveal_authenticated_page_body("Alternative Finder")')
+        supplier_lookup_at = finder.index(
+            "run_alternative_finder_search(st.session_state, query)"
+        )
+        self.assertLess(reveal_at, supplier_lookup_at)
 
     def test_dashboard_cover_is_released_after_dashboard_render(self):
         runtime = (ROOT / "src" / "authenticated_runtime.py").read_text(encoding="utf-8")

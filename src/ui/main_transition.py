@@ -1,10 +1,9 @@
 """Single main-content transition owner for authenticated Cadivor routes.
 
 Continuity contract (login → first content, and every authenticated navigation):
-every visible frame shows exactly one of:
-- readable auth progress ("Signing you in…"),
-- a stable, text-free cover while the next route mounts,
-- distinctive content for that same target route.
+first admission or explicitly blocking work gets a readable progress surface;
+ordinary in-app navigation keeps the last ready page visible and frozen until
+the complete destination is ready, then swaps both pages in one browser paint.
 
 This module owns ONLY the main-panel loading surface. Foundation topbar and
 sidebar must stay fully sharp and normal-opacity for the entire transition.
@@ -210,9 +209,11 @@ def inject_main_transition_css(transition_gen: int) -> None:
           display:block;height:100%;width:42%;border-radius:999px;background:#2563EB;
           animation:cv-main-transition-progress 1.1s ease-in-out infinite
         }}
-        /* Normal page hops cover stale page content until the destination
-           body is ready. The cover is deliberately non-interactive: it must
-           never eat a navigation click, and the persistent rail stays clear. */
+        /* Normal page hops keep the last ready page visible while Python
+           renders the destination. Hide only the new route's partial body;
+           the matching body marker releases it and retires the old body in
+           the same browser paint. This avoids a blank workspace between
+           pages without exposing half-rendered destination content. */
         .cv-main-transition.cv-route-loading[data-cadivor-transition-kind="navigation"]{{
           box-sizing:border-box!important;position:fixed!important;
           left:var(--cv-foundation-rail,228px)!important;right:0!important;
@@ -222,9 +223,19 @@ def inject_main_transition_css(transition_gen: int) -> None:
           height:calc(100dvh - var(--cv-foundation-top,64px))!important;
           min-height:0!important;max-height:none!important;
           margin:0!important;padding:0!important;border:0!important;border-radius:0!important;
-          display:block!important;background:#F5F7FB!important;overflow:hidden!important;
+          display:block!important;background:transparent!important;overflow:hidden!important;
           box-shadow:none!important;pointer-events:none!important;opacity:1!important;
           visibility:visible!important;z-index:2147483000!important;clip-path:inset(0)!important
+        }}
+        body:has(.cv-main-transition.cv-route-loading[data-cadivor-transition-kind="navigation"][data-cadivor-transition-gen="{gen}"]):not(:has([data-cadivor-page-body][data-cadivor-transition-gen="{gen}"]))
+          section[data-testid="stMain"] [class*="st-key-cadivor_authenticated_route_body"]{{
+          pointer-events:none!important
+        }}
+        body:has(.cv-main-transition.cv-route-loading[data-cadivor-transition-kind="navigation"][data-cadivor-transition-gen="{gen}"]):not(:has([data-cadivor-page-body][data-cadivor-transition-gen="{gen}"]))
+          section[data-testid="stMain"] [class*="st-key-cadivor_authenticated_route_body"]
+          [data-testid="stElementContainer"]:not([data-stale="true"]){{
+          visibility:hidden!important;opacity:0!important;pointer-events:none!important;
+          transition:none!important
         }}
         .cv-main-transition.cv-route-loading[data-cadivor-transition-kind="navigation"] .cv-main-transition-card{{
           display:none!important
