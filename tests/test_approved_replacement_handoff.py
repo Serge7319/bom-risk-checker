@@ -454,3 +454,43 @@ def test_streamlit_stale_refresh_does_not_dim_current_page_or_duplicate_nav():
     assert 'opacity:1!important;filter:none!important' in source
     assert 'body:has([class*="st-key-cv_foundation_navigation"]:not([data-stale="true"]))' in source
     assert '[data-stale="true"]:has([class*="st-key-cv_foundation_navigation"])' in source
+    assert '[data-stale="true"]:has([class*="st-key-cv_foundation_nav_"])' in source
+    transition_source = (
+        Path(__file__).resolve().parents[1] / "src" / "ui" / "main_transition.py"
+    ).read_text(encoding="utf-8")
+    assert '[data-stale="true"]:has([class*="st-key-cv_foundation_nav_"])' in transition_source
+
+
+def test_approval_gate_names_missing_source_and_candidate_document_values():
+    source = (
+        Path(__file__).resolve().parents[1] / "src" / "ui" / "approved_pages.py"
+    ).read_text(encoding="utf-8")
+    approvals = source.split("def _render_bom_replacement_approvals", 1)[1].split(
+        "def render_replacement_search", 1
+    )[0]
+    assert '("source", "package / case", compatibility.get("source_package"))' in approvals
+    assert '("candidate", "package / case", compatibility.get("candidate_package"))' in approvals
+    assert '("source", "pin count", compatibility.get("source_pin_count"))' in approvals
+    assert '("candidate", "pin count", compatibility.get("candidate_pin_count"))' in approvals
+    assert "not compatibility.get(\"physical_missing\")" in approvals
+    assert "not compatibility.get(\"architecture_missing\")" in approvals
+    assert "candidate_lifecycle_is_approval_eligible(approval_candidate)" in approvals
+    assert "candidate_lifecycle_is_nrnd(approval_candidate)" in approvals
+    assert "or compatibility.get(\"physical_missing\")" in approvals
+    assert "or compatibility.get(\"architecture_missing\")" in approvals
+    assert "Open the exact candidate's official document or use the optional PDF fallback" in approvals
+    assert 'data-cadivor-layout-style="true"' in approvals
+
+
+def test_linked_datasheet_review_falls_back_to_exact_part_product_page():
+    source = (
+        Path(__file__).resolve().parents[1] / "src" / "ui" / "approved_pages.py"
+    ).read_text(encoding="utf-8")
+    review = source.split("def _render_datasheet_evidence_review", 1)[1].split(
+        "def _approval_evidence_for_comparison", 1
+    )[0]
+    assert "_datasheet_source_urls(original)" in review
+    assert "_datasheet_source_urls(candidate)" in review
+    assert "for index, document_url in enumerate(urls[:4])" in review
+    assert "extract_datasheet_text(document_url)" in review
+    assert "Open exact candidate product page" in review

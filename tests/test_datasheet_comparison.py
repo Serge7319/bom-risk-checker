@@ -1,10 +1,12 @@
 import sys
 import types
 import unittest
+from unittest import mock
 
 
 sys.modules.setdefault("requests", types.SimpleNamespace())
 
+from src import datasheet_comparison
 from src.datasheet_comparison import (
     build_recommendation_score_breakdown,
     build_datasheet_comparison,
@@ -88,8 +90,29 @@ class DatasheetComparisonTests(unittest.TestCase):
 
         self.assertEqual(row["Status"], "Needs data")
         self.assertEqual(row["Original PDF value"], "Not found")
-        self.assertIn("PowerPAD", row["Original PDF evidence"])
+        self.assertEqual(row["Original PDF evidence"], "Not found")
         self.assertIn("package-outline drawing", row["Evidence"])
+
+    def test_prose_about_package_ranges_and_pin_count_is_not_a_field_value(self):
+        pdf = {
+            "available": True,
+            "pages": [
+                {
+                    "page": 9,
+                    "text": "Package types: from 36 pins to 100 pins. Depending on the device chosen, different sets of implementation.",
+                },
+                {
+                    "page": 14,
+                    "text": "Pin count implementation, with a reduced pin count and low-power consumption, while delivering.",
+                },
+            ],
+        }
+        rows = build_pdf_field_evidence(pdf, {}, "MCU / processor")
+        values = {row["Key"]: row for row in rows}
+        self.assertEqual(values["package"]["Original PDF value"], "Not found")
+        self.assertEqual(values["pin_count"]["Original PDF value"], "Not found")
+        self.assertEqual(values["package"]["Status"], "Needs data")
+        self.assertEqual(values["pin_count"]["Status"], "Needs data")
 
     def test_explicit_hsoic_package_designation_is_preserved(self):
         pdf = {
@@ -143,6 +166,108 @@ class DatasheetComparisonTests(unittest.TestCase):
         self.assertEqual(excerpts[0]["page"], 12)
         self.assertIn("10.0 mm", excerpts[0]["excerpt"])
 
+    def test_dimension_evidence_deduplicates_repeated_geometry_lines(self):
+        excerpts = extract_datasheet_dimension_evidence(
+            {
+                "pages": [{
+                    "page": 12,
+                    "text": "Package outline dimensions\nBody length 10.0 mm\nBody length 10.0 mm",
+                }]
+            }
+        )
+        self.assertEqual(len(excerpts), 1)
+
+    def test_dimension_excerpts_exclude_prose_without_measured_geometry(self):
+        excerpts = extract_datasheet_dimension_evidence(
+            {
+                "pages": [{
+                    "page": 9,
+                    "text": "Package types: from 36 pins to 100 pins. Depending on the device chosen, different implementations.",
+                }]
+            }
+        )
+        self.assertEqual(excerpts, [])
+
+    def test_product_page_datasheet_link_is_followed_and_pdf_is_extracted(self):
+        import fitz
+
+        document = fitz.open()
+        page = document.new_page()
+        page.insert_text((72, 72), "Package: LQFP-48")
+        pdf_payload = document.tobytes()
+        document.close()
+
+        class Response:
+            def __init__(self, payload, content_type):
+                self.payload = payload
+                self.status_code = 200
+                self.headers = {"Content-Type": content_type}
+
+            def raise_for_status(self):
+                return None
+
+            def iter_content(self, chunk_size):
+                yield self.payload
+
+            def close(self):
+                return None
+
+        responses = [
+            Response(
+                b'<html><a href="/docs/stm32.pdf">Official datasheet PDF</a></html>',
+                "text/html",
+            ),
+            Response(pdf_payload, "application/pdf"),
+        ]
+        with (
+            mock.patch.object(datasheet_comparison, "_public_datasheet_url", return_value=True),
+            mock.patch.object(
+                datasheet_comparison.requests,
+                "get",
+                side_effect=responses,
+                create=True,
+            ),
+        ):
+            result = extract_datasheet_text("https://parts.example.com/stm32f103c8t6")
+
+        self.assertTrue(result["available"])
+        self.assertEqual(result["retrieval_path"], "product_page_pdf_link")
+        self.assertEqual(result["pages"][0]["text"], "Package: LQFP-48")
+        self.assertEqual(
+            result["final_url"],
+            "https://parts.example.com/docs/stm32.pdf",
+        )
+
+    def test_pdf_with_octet_stream_content_type_uses_pdf_size_limit(self):
+        import fitz
+
+        document = fitz.open()
+        page = document.new_page()
+        page.insert_text((72, 72), "Package: LQFP-48")
+        payload = document.tobytes() + (b"\n" * (2 * 1024 * 1024))
+        document.close()
+
+        class Response:
+            status_code = 200
+            headers = {"Content-Type": "application/octet-stream"}
+
+            def raise_for_status(self):
+                return None
+
+            def iter_content(self, chunk_size):
+                yield payload
+
+            def close(self):
+                return None
+
+        with (
+            mock.patch.object(datasheet_comparison, "_public_datasheet_url", return_value=True),
+            mock.patch.object(datasheet_comparison.requests, "get", return_value=Response(), create=True),
+        ):
+            result = extract_datasheet_text("https://parts.example.com/unknown-type")
+        self.assertTrue(result["available"])
+        self.assertIn("Package: LQFP-48", result["pages"][0]["text"])
+
     def test_matching_dimension_labels_with_different_values_flag_a_conflict(self):
         findings = compare_datasheet_dimension_evidence(
             [{"excerpt": "Package outline · Body length 10.0 mm · Lead pitch 0.8 mm"}],
@@ -167,6 +292,7 @@ class DatasheetComparisonTests(unittest.TestCase):
             "http://8.8.8.8/example.pdf",
             "https://127.0.0.1/example.pdf",
             "https://localhost/example.pdf",
+            "https://supplier.example:badport/datasheet.pdf",
             "file:///etc/passwd",
         ):
             with self.subTest(url=url):

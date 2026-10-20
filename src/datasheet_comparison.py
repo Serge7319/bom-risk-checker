@@ -12,6 +12,7 @@ uploads are parsed in the reviewer session.
 """
 from __future__ import annotations
 
+from html.parser import HTMLParser
 from io import BytesIO
 import ipaddress
 import re
@@ -39,6 +40,8 @@ from src.parametric_compare import (
 MAX_DATASHEET_BYTES = 8 * 1024 * 1024
 MAX_DATASHEET_PAGES = 40
 MAX_DATASHEET_REDIRECTS = 5
+MAX_DATASHEET_PAGE_BYTES = 2 * 1024 * 1024
+MAX_DATASHEET_URL_ATTEMPTS = 4
 
 USER_FACING_COMPARISON_COLUMNS = (
     "Attribute",
@@ -448,102 +451,197 @@ def build_recommendation_score_breakdown(
     }
 
 
-def extract_datasheet_text(url: str) -> dict:
-    """Retrieve a supplier-linked public HTTPS PDF and return cited text evidence.
+class _DatasheetLinkParser(HTMLParser):
+    """Collect clearly labeled PDF links from distributor product pages."""
 
-    Redirects are followed one hop at a time and every destination is checked.
-    Private, loopback, link-local, and local-network hosts are rejected. This
-    returns an unavailable state for non-PDF links or inaccessible files;
-    callers must never present that as successful evidence.
-    """
-    current_url = str(url or "").strip()
-    if not _public_datasheet_url(current_url):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.links: list[tuple[str, str]] = []
+        self._anchor: tuple[str, list[str]] | None = None
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        attributes = {key.casefold(): value or "" for key, value in attrs}
+        if tag.casefold() == "a" and attributes.get("href"):
+            self._anchor = (attributes["href"], [attributes.get("title", "")])
+
+    def handle_data(self, data: str) -> None:
+        if self._anchor is not None:
+            self._anchor[1].append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag.casefold() == "a" and self._anchor is not None:
+            href, labels = self._anchor
+            self.links.append((href, " ".join(labels)))
+            self._anchor = None
+
+
+def _datasheet_links_from_product_page(payload: bytes, page_url: str) -> list[str]:
+    parser = _DatasheetLinkParser()
+    try:
+        parser.feed(payload.decode("utf-8", errors="replace"))
+    except Exception:
+        return []
+    candidates: list[str] = []
+    for href, label in parser.links:
+        absolute = urljoin(page_url, href.strip())
+        path = urlparse(absolute).path.casefold()
+        description = f"{path} {label}".casefold()
+        if ".pdf" not in path and not (
+            "datasheet" in description or "data sheet" in description
+        ):
+            continue
+        if _public_datasheet_url(absolute) and absolute not in candidates:
+            candidates.append(absolute)
+        if len(candidates) >= MAX_DATASHEET_URL_ATTEMPTS - 1:
+            break
+    return candidates
+
+
+def _read_limited_response(response: Any, limit: int) -> bytes:
+    payload = bytearray()
+    for block in response.iter_content(65536):
+        if block:
+            payload.extend(block)
+            if len(payload) > limit:
+                raise ValueError("The linked document exceeds the safe analysis size limit.")
+    return bytes(payload)
+
+
+def _parse_datasheet_pdf(payload: bytes, current_url: str) -> dict[str, Any]:
+    if not payload.startswith(b"%PDF"):
         return {
             "available": False,
-            "reason": "Only public HTTPS datasheet links can be reviewed.",
+            "reason": "The link did not return a PDF. Cadivor is checking the linked product page for its datasheet.",
             "pages": [],
+            "is_product_page": True,
         }
-    try:
-        from pypdf import PdfReader
+    if len(payload) > MAX_DATASHEET_BYTES:
+        return {"available": False, "reason": "Datasheet exceeds the safe analysis size limit.", "pages": []}
+    from pypdf import PdfReader
 
+    reader = PdfReader(BytesIO(payload))
+    pages = []
+    for page_number, page in enumerate(reader.pages[:MAX_DATASHEET_PAGES], start=1):
+        text = (page.extract_text() or "").strip()
+        if text:
+            pages.append({"page": page_number, "text": text[:5000]})
+    return {
+        "available": bool(pages),
+        "reason": "" if pages else "The PDF was retrieved, but it contains no extractable text. Inspect the PDF drawings directly.",
+        "pages": pages,
+        "page_count": len(pages),
+        "final_url": current_url,
+    }
+
+
+def extract_datasheet_text(url: str) -> dict:
+    """Retrieve a PDF from a public HTTPS link or a linked product page.
+
+    Product pages returned by distributor catalogs often hold the PDF link one
+    click deeper. Cadivor follows only clearly labeled datasheet/PDF links,
+    validates each redirect and destination, and never treats HTML or a failed
+    request as evidence.
+    """
+    start_url = str(url or "").strip()
+    if not _public_datasheet_url(start_url):
+        return {"available": False, "reason": "Only public HTTPS datasheet links can be reviewed.", "pages": []}
+
+    pending = [start_url]
+    visited: set[str] = set()
+    last_reason = "Cadivor could not retrieve a readable official datasheet. Open the product page or use the optional PDF fallback."
+    headers = {
+        "Accept": "application/pdf, application/octet-stream, text/html;q=0.9, */*;q=0.7",
+        "User-Agent": "CadivorEngineeringReview/1.0 (+https://cadivor.com)",
+    }
+    while pending and len(visited) < MAX_DATASHEET_URL_ATTEMPTS:
+        current_url = pending.pop(0)
+        if current_url in visited:
+            continue
+        visited.add(current_url)
+        if not _public_datasheet_url(current_url):
+            last_reason = "A linked document used a non-public or insecure URL and was skipped."
+            continue
         response = None
-        for _ in range(MAX_DATASHEET_REDIRECTS + 1):
-            response = requests.get(
-                current_url,
-                timeout=(5, 20),
-                headers={"Accept": "application/pdf"},
-                stream=True,
-                allow_redirects=False,
-            )
-            if int(getattr(response, "status_code", 200) or 200) not in {301, 302, 303, 307, 308}:
-                break
-            location = str((getattr(response, "headers", {}) or {}).get("Location") or "").strip()
-            close = getattr(response, "close", None)
-            if callable(close):
-                close()
-            if not location:
-                return {
-                    "available": False,
-                    "reason": "The datasheet link redirected without a destination.",
-                    "pages": [],
-                }
-            current_url = urljoin(current_url, location)
-            if not _public_datasheet_url(current_url):
-                return {
-                    "available": False,
-                    "reason": "The datasheet redirected to a non-public or insecure URL.",
-                    "pages": [],
-                }
-        else:
-            return {
-                "available": False,
-                "reason": "The datasheet link redirected too many times.",
-                "pages": [],
-            }
-        if response is None:
-            return {"available": False, "reason": "No datasheet response was received.", "pages": []}
-        response.raise_for_status()
-        payload = bytearray()
         try:
-            for block in response.iter_content(65536):
-                if not block:
-                    continue
-                payload.extend(block)
-                if len(payload) > MAX_DATASHEET_BYTES:
-                    return {"available": False, "reason": "Datasheet exceeds the safe analysis size limit.", "pages": []}
+            for redirect_number in range(MAX_DATASHEET_REDIRECTS + 1):
+                response = requests.get(
+                    current_url,
+                    timeout=(5, 15),
+                    headers={**headers, "Referer": start_url},
+                    stream=True,
+                    allow_redirects=False,
+                )
+                status_code = int(getattr(response, "status_code", 200) or 200)
+                if status_code not in {301, 302, 303, 307, 308}:
+                    break
+                location = str((getattr(response, "headers", {}) or {}).get("Location") or "").strip()
+                close = getattr(response, "close", None)
+                if callable(close):
+                    close()
+                response = None
+                if not location:
+                    last_reason = "The datasheet link redirected without a destination."
+                    break
+                current_url = urljoin(current_url, location)
+                if not _public_datasheet_url(current_url):
+                    last_reason = "The datasheet redirected to a non-public or insecure URL."
+                    break
+            else:
+                last_reason = "The datasheet link redirected too many times."
+                continue
+            if response is None:
+                continue
+            response.raise_for_status()
+            content_type = str((getattr(response, "headers", {}) or {}).get("Content-Type") or "").casefold()
+            payload = _read_limited_response(response, MAX_DATASHEET_BYTES)
+            if not payload.startswith(b"%PDF") and len(payload) > MAX_DATASHEET_PAGE_BYTES:
+                raise ValueError("The linked product page exceeds the safe analysis size limit.")
+            result = _parse_datasheet_pdf(payload, current_url)
+            if result.get("available"):
+                result["requested_url"] = start_url
+                result["retrieval_path"] = "direct_pdf" if current_url == start_url else "product_page_pdf_link"
+                return result
+            if result.get("is_product_page") or "html" in content_type or payload.lstrip().lower().startswith((b"<!doctype html", b"<html")):
+                for discovered_url in _datasheet_links_from_product_page(payload, current_url):
+                    if discovered_url not in visited and discovered_url not in pending:
+                        pending.append(discovered_url)
+                if not pending:
+                    last_reason = "The product page loaded, but Cadivor found no clearly labeled datasheet PDF link. Use the optional PDF fallback if you have the official document."
+            else:
+                last_reason = str(result.get("reason") or last_reason)
+        except Exception as exc:
+            message = str(exc or "").strip()
+            if "403" in message:
+                last_reason = "The supplier blocked automated PDF retrieval (HTTP 403). Open the supplier page or use the optional PDF fallback."
+            elif "404" in message:
+                last_reason = "The linked datasheet was not found (HTTP 404). Cadivor will check another available product link."
+            elif "timed out" in message.casefold() or "timeout" in message.casefold():
+                last_reason = "The datasheet host timed out. Retry the analysis or use the optional PDF fallback."
+            elif isinstance(exc, ValueError):
+                last_reason = message
+            else:
+                last_reason = "Cadivor could not read this link as a PDF. Open the supplier page or use the optional PDF fallback."
         finally:
             close = getattr(response, "close", None)
             if callable(close):
                 close()
-        if not payload.startswith(b"%PDF"):
-            return {"available": False, "reason": "The supplier link did not return a PDF datasheet.", "pages": []}
-        reader = PdfReader(BytesIO(bytes(payload)))
-        pages = []
-        for page_number, page in enumerate(reader.pages[:MAX_DATASHEET_PAGES], start=1):
-            text = (page.extract_text() or "").strip()
-            if text:
-                pages.append({"page": page_number, "text": text[:5000]})
-        return {
-            "available": bool(pages),
-            "reason": "" if pages else "No readable text was extracted from the datasheet.",
-            "pages": pages,
-            "page_count": len(pages),
-            "final_url": current_url,
-        }
-    except Exception:
-        return {"available": False, "reason": "Cadivor could not retrieve a readable official datasheet right now.", "pages": []}
+    return {"available": False, "reason": last_reason, "pages": [], "attempted_urls": sorted(visited)}
 
 
 def _public_datasheet_url(url: str) -> bool:
     """Reject insecure and non-public destinations before making PDF requests."""
-    parsed = urlparse(str(url or "").strip())
-    hostname = str(parsed.hostname or "").rstrip(".").casefold()
+    try:
+        parsed = urlparse(str(url or "").strip())
+        hostname = str(parsed.hostname or "").rstrip(".").casefold()
+        port = parsed.port
+    except ValueError:
+        return False
     if (
         parsed.scheme.casefold() != "https"
         or not hostname
         or parsed.username
         or parsed.password
-        or parsed.port not in (None, 443)
+        or port not in (None, 443)
         or hostname == "localhost"
         or hostname.endswith((".localhost", ".local", ".internal", ".test"))
     ):
@@ -590,15 +688,25 @@ def extract_datasheet_dimension_evidence(pdf_result: Mapping[str, Any] | None) -
         for index, line in enumerate(lines):
             if not _DATASHEET_DIMENSION_TOPIC_RE.search(line):
                 continue
-            excerpt_lines = [line]
-            for following in lines[index + 1:index + 4]:
-                if _DATASHEET_DIMENSION_TOPIC_RE.search(following) and not _DATASHEET_DIMENSION_VALUE_RE.search(following):
+            excerpt_lines = []
+            for candidate_line in lines[index:index + 5]:
+                if candidate_line != line and _DATASHEET_DIMENSION_TOPIC_RE.search(candidate_line):
                     break
-                if _DATASHEET_DIMENSION_VALUE_RE.search(following) or re.search(r"\d", following):
-                    excerpt_lines.append(following)
+                if not _DATASHEET_DIMENSION_VALUE_RE.search(candidate_line):
+                    continue
+                if not re.search(
+                    r"\b(?:length|width|height|pitch|spacing|diameter|thickness|span|size|body|overall|terminal|lead)\b",
+                    candidate_line,
+                    re.IGNORECASE,
+                ) and not re.search(r"\bpackage\s+dimensions?\b", line, re.IGNORECASE):
+                    continue
+                excerpt_lines.append(candidate_line)
+            if not excerpt_lines:
+                continue
             excerpt = " · ".join(excerpt_lines)[:420]
-            if excerpt and excerpt.casefold() not in seen:
-                seen.add(excerpt.casefold())
+            if not excerpt or excerpt.casefold() in seen:
+                continue
+            seen.add(excerpt.casefold())
             output.append({
                 "document": str(page.get("document") or "").strip(),
                 "page": page.get("page", "?"),
@@ -765,11 +873,64 @@ def _is_specific_package_designation(value: str) -> bool:
     return bool(_PACKAGE_FAMILY_RE.search(" ".join(str(value or "").split())))
 
 
+def _is_specific_pdf_field_value(field_spec: Any, value: str) -> bool:
+    """Reject narrative fragments that happen to contain a field label."""
+    text = " ".join(str(value or "").split()).strip(" :;,.—–-")
+    if not text or len(text) > 140:
+        return False
+    if re.search(r"\b(?:depending|delivering|implementation|consumption|selecting|described|provides)\b", text, re.IGNORECASE):
+        return False
+    key = str(getattr(field_spec, "key", "") or "")
+    if key == "package":
+        return _is_specific_package_designation(text)
+    if key == "pin_count":
+        return bool(re.fullmatch(r"\d{1,3}(?:\s*[- ]?\s*(?:pins?|balls?))?", text, re.IGNORECASE))
+    if key == "mounting_style":
+        return bool(re.search(r"\b(?:surface[- ]mount|smd|through[- ]hole|tht|axial|radial)\b", text, re.IGNORECASE))
+    if key == "lifecycle_status":
+        return bool(re.fullmatch(
+            r"(?:active|in production|nrnd|not recommended for new designs|obsolete|discontinued|end of life|eol|ltb|last time buy)",
+            text,
+            re.IGNORECASE,
+        ))
+    if key == "temperature_range":
+        return bool(re.search(r"-?\d+(?:\.\d+)?\s*(?:°\s*[CF]|deg(?:rees?)?\s*[CF])", text, re.IGNORECASE))
+    if key in {"architecture", "device_type"}:
+        return bool(re.search(
+            r"\b(?:arm|cortex|8051|hc11|avr|pic\d*|risc[- ]?v|mips|powerpc|fpga|cpld|microcontroller|microprocessor|amplifier|comparator|regulator|transceiver|mosfet|npn|pnp|logic|diode|schottky|tvs)\b",
+            text,
+            re.IGNORECASE,
+        ))
+    if key == "memory_size":
+        return bool(re.search(r"\b\d+(?:\s*(?:or|to|[-–/])\s*\d+)?\s*(?:K|M|G)?\s*(?:B|bit|byte)s?\b", text, re.IGNORECASE))
+    if key == "io_count":
+        return bool(re.search(r"\b\d+\s*(?:fast\s*)?(?:I/O\s*)?(?:ports?|pins?)\b", text, re.IGNORECASE))
+    unit = str(getattr(field_spec, "unit", "") or "").strip()
+    if unit:
+        unit_aliases = {
+            "V": r"(?:V|mV|kV)",
+            "A": r"(?:A|mA|uA|µA)",
+            "F": r"(?:F|mF|uF|µF|nF|pF)",
+            "Ohm": r"(?:ohms?|Ω|mΩ|kΩ|MΩ)",
+            "W": r"(?:W|mW)",
+            "Hz": r"(?:Hz|kHz|MHz|GHz)",
+            "C": r"(?:°s*[CF]|deg(?:rees?)?s*[CF])",
+            "s": r"(?:s|ms|us|µs|ns)",
+        }
+        unit_pattern = unit_aliases.get(unit)
+        if unit_pattern:
+            return bool(re.search(rf"\d+(?:\.\d+)?\s*{unit_pattern}\b", text, re.IGNORECASE))
+    # Free-form engineering labels are accepted only when they yield a short
+    # value, not a sentence fragment from surrounding explanatory prose.
+    return not re.search(r"[.!?]{2,}|\b(?:the|this|these|with|from|while|which|that)\b", text, re.IGNORECASE)
+
+
 def _find_pdf_evidence(
     pdf_result: dict,
     labels: tuple[str, ...],
     *,
     require_specific_package: bool = False,
+    field_spec: Any = None,
 ) -> tuple[str, str, str]:
     generic_package_fallback: tuple[str, str, str] | None = None
     for page in pdf_result.get("pages") or []:
@@ -786,6 +947,8 @@ def _find_pdf_evidence(
                 continue
             value = _pdf_value_after_label(compact, labels)
             if not value:
+                continue
+            if field_spec is not None and not _is_specific_pdf_field_value(field_spec, value):
                 continue
             page_number = str(page.get("page", "?") or "?")
             document = str(page.get("document") or "").strip()
@@ -809,10 +972,16 @@ def build_pdf_field_evidence(original_pdf: dict, candidate_pdf: dict, family: st
     for spec in fields:
         aliases = tuple(alias.casefold() for alias in (spec.pdf_aliases or (spec.label.casefold(),)))
         original_value, original_page, original_excerpt = _find_pdf_evidence(
-            original_pdf, aliases, require_specific_package=spec.key == "package"
+            original_pdf,
+            aliases,
+            require_specific_package=spec.key == "package",
+            field_spec=spec,
         )
         candidate_value, candidate_page, candidate_excerpt = _find_pdf_evidence(
-            candidate_pdf, aliases, require_specific_package=spec.key == "package"
+            candidate_pdf,
+            aliases,
+            require_specific_package=spec.key == "package",
+            field_spec=spec,
         )
         original_package_specific = (
             spec.key != "package" or _is_specific_package_designation(original_value)

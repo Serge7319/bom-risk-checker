@@ -2,7 +2,9 @@ from src.approved_alternatives import (
     approval_candidate_options,
     approved_records_for_bom,
     approved_records_for_part,
+    candidate_lifecycle_is_approval_eligible,
     candidate_lifecycle_is_blocked,
+    candidate_lifecycle_is_nrnd,
     project_decision_context_key,
     report_alternative,
     toggle_comparison_candidate,
@@ -13,6 +15,17 @@ import unittest
 
 
 class ApprovedAlternativesTests(unittest.TestCase):
+    def test_only_explicit_eligible_lifecycle_labels_pass_approval(self):
+        for value in ("Active", "In Production", "NRND", "Not Recommended for New Designs"):
+            with self.subTest(value=value):
+                self.assertTrue(candidate_lifecycle_is_approval_eligible({"Lifecycle": value}))
+        for value in ("Unknown", "Inactive", "Not active", "Active-ish", "Active / EOL"):
+            with self.subTest(value=value):
+                self.assertFalse(candidate_lifecycle_is_approval_eligible({"Lifecycle": value}))
+        self.assertTrue(candidate_lifecycle_is_nrnd({"Lifecycle": "NRND"}))
+        self.assertFalse(candidate_lifecycle_is_nrnd({"Lifecycle": "Active"}))
+        self.assertTrue(candidate_lifecycle_is_blocked({"Lifecycle": "Inactive"}))
+
     def test_obsolete_candidates_cannot_be_treated_as_replacement_ready(self):
         self.assertTrue(candidate_lifecycle_is_blocked({"Lifecycle": "Obsolete"}))
         self.assertTrue(candidate_lifecycle_is_blocked({"Lifecycle Status": "Discontinued"}))

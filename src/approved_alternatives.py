@@ -12,6 +12,49 @@ def part_key(value: Any) -> str:
     return normalize_part_number(text) or text.upper()
 
 
+def candidate_lifecycle_values(candidate: Any) -> list[str]:
+    """Return normalized lifecycle labels from the candidate and catalog row."""
+    if not isinstance(candidate, dict):
+        return []
+    keys = (
+        "Lifecycle",
+        "Lifecycle Status",
+        "lifecycle_status",
+        "lifecycle",
+        "product_status",
+    )
+    mappings = [candidate]
+    discovery = candidate.get("_discovery_row")
+    if isinstance(discovery, dict):
+        mappings.append(discovery)
+    values: list[str] = []
+    for mapping in mappings:
+        for key in keys:
+            raw = str(mapping.get(key) or "").strip().casefold()
+            normalized = re.sub(r"[\s_-]+", " ", raw).strip()
+            if normalized and normalized not in values:
+                values.append(normalized)
+    return values
+
+
+def candidate_lifecycle_is_approval_eligible(candidate: Any) -> bool:
+    """Only explicit, recognized orderable lifecycle labels pass approval."""
+    eligible = {
+        "active",
+        "in production",
+        "nrnd",
+        "not recommended for new designs",
+    }
+    return any(value in eligible for value in candidate_lifecycle_values(candidate))
+
+
+def candidate_lifecycle_is_nrnd(candidate: Any) -> bool:
+    return any(
+        value in {"nrnd", "not recommended for new designs"}
+        for value in candidate_lifecycle_values(candidate)
+    )
+
+
 def candidate_lifecycle_is_blocked(candidate: Any) -> bool:
     """True when recorded lifecycle evidence says a candidate is not orderable.
 
@@ -20,31 +63,7 @@ def candidate_lifecycle_is_blocked(candidate: Any) -> bool:
     """
     if not isinstance(candidate, dict):
         return False
-    status_values = [
-        str(candidate.get(key) or "").strip().casefold()
-        for key in (
-            "Lifecycle",
-            "Lifecycle Status",
-            "lifecycle_status",
-            "lifecycle",
-            "product_status",
-        )
-        if str(candidate.get(key) or "").strip()
-    ]
-    discovery = candidate.get("_discovery_row")
-    if isinstance(discovery, dict):
-        status_values.extend(
-            str(discovery.get(key) or "").strip().casefold()
-            for key in (
-                "Lifecycle",
-                "Lifecycle Status",
-                "lifecycle_status",
-                "lifecycle",
-                "product_status",
-            )
-            if str(discovery.get(key) or "").strip()
-        )
-    for status in status_values:
+    for status in candidate_lifecycle_values(candidate):
         if re.search(
             r"\b(?:not\s+(?:eol|obsolete|discontinued|end[\s_-]+of[\s_-]+life)"
             r"|non[\s-]?(?:eol|obsolete|discontinued))\b",
@@ -55,6 +74,8 @@ def candidate_lifecycle_is_blocked(candidate: Any) -> bool:
             term in status
             for term in ("obsolete", "discontinued", "end of life", "end-of-life", "end_of_life")
         ):
+            return True
+        if status in {"inactive", "not active", "withdrawn", "not orderable"}:
             return True
     return False
 
