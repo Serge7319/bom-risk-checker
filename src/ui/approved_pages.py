@@ -4545,6 +4545,34 @@ def _datasheet_url(part: dict[str, Any] | None) -> str:
     return ""
 
 
+def _datasheet_source_urls(part: dict[str, Any] | None) -> list[str]:
+    """Return datasheet and exact-part product links in retrieval priority order."""
+    part = part if isinstance(part, dict) else {}
+    discovery = part.get("_discovery_row")
+    discovery = discovery if isinstance(discovery, dict) else {}
+    datasheet_keys = ("datasheet_url", "Datasheet URL", "datasheetUrl", "Data Sheet URL")
+    product_keys = (
+        "product_detail_url", "Product URL", "product_url", "product_page_url",
+        "source_url", "Source URL", "supplier_url",
+    )
+    datasheet_urls: list[str] = []
+    product_urls: list[str] = []
+    for mapping in (part, discovery):
+        for key in datasheet_keys:
+            value = _candidate_http_url(mapping.get(key))
+            if value and value not in datasheet_urls:
+                datasheet_urls.append(value)
+        for key in product_keys:
+            value = _candidate_http_url(mapping.get(key))
+            if value and value not in product_urls:
+                product_urls.append(value)
+    urls: list[str] = []
+    for value in (datasheet_urls[:1] + product_urls[:1] + datasheet_urls[1:2] + product_urls[1:2]):
+        if value and value not in urls:
+            urls.append(value)
+    return urls[:4]
+
+
 def _datasheet_evidence_key(
     source_mpn: str,
     candidate_mpn: str,
@@ -4583,6 +4611,8 @@ def _render_datasheet_evidence_review(
     """Automatically analyze linked manufacturer PDFs and collect reviewer citations."""
     source_url = _datasheet_url(original)
     candidate_url = _datasheet_url(candidate)
+    source_url_candidates = _datasheet_source_urls(original)
+    candidate_url_candidates = _datasheet_source_urls(candidate)
     source_upload = None
     candidate_upload = None
     source_upload_bytes = b""
@@ -4594,8 +4624,8 @@ def _render_datasheet_evidence_review(
     review_key = _datasheet_evidence_key(
         source_mpn,
         candidate_mpn,
-        source_url,
-        candidate_url,
+        " | ".join(source_url_candidates),
+        " | ".join(candidate_url_candidates),
     )
     review_request_key = f"cadivor_alt_datasheet_review_request_{key_suffix}"
     with st.expander("Datasheet & documentation review", expanded=True):
@@ -4604,14 +4634,32 @@ def _render_datasheet_evidence_review(
         )
         link_cols = st.columns(2)
         for column, label, url in (
-            (link_cols[0], "Open source datasheet", source_url),
-            (link_cols[1], "Open candidate datasheet", candidate_url),
+            (
+                link_cols[0],
+                "Open source datasheet" if source_url else "Open source supplier page",
+                source_url or (source_url_candidates[0] if source_url_candidates else ""),
+            ),
+            (
+                link_cols[1],
+                "Open candidate datasheet" if candidate_url else "Open candidate supplier page",
+                candidate_url or (candidate_url_candidates[0] if candidate_url_candidates else ""),
+            ),
         ):
             with column:
                 if url:
                     st.link_button(label, url, use_container_width=True)
                 else:
                     st.caption(label.replace("Open ", "") + " not supplied by the catalog.")
+
+        product_link_cols = st.columns(2)
+        for column, label, candidates, datasheet_link in (
+            (product_link_cols[0], "Open exact source product page", source_url_candidates, source_url),
+            (product_link_cols[1], "Open exact candidate product page", candidate_url_candidates, candidate_url),
+        ):
+            primary_link = datasheet_link or next(iter(candidates), "")
+            product_url = next((item for item in candidates if item and item != primary_link), "")
+            if product_url:
+                column.link_button(label, product_url, use_container_width=True)
 
         with st.expander("Optional: upload or replace a datasheet", expanded=False):
             st.caption(
@@ -4656,8 +4704,8 @@ def _render_datasheet_evidence_review(
         review_key = _datasheet_evidence_key(
             source_mpn,
             candidate_mpn,
-            source_url,
-            candidate_url,
+            " | ".join(source_url_candidates),
+            " | ".join(candidate_url_candidates),
             source_upload_fingerprint,
             candidate_upload_fingerprint,
         )
@@ -4665,11 +4713,11 @@ def _render_datasheet_evidence_review(
         if not isinstance(review_state, dict):
             review_state = {}
         has_documents = bool(
-            source_url or candidate_url or source_upload_bytes or candidate_upload_bytes
+            source_url_candidates or candidate_url_candidates or source_upload_bytes or candidate_upload_bytes
         )
         if not has_documents:
             st.info(
-                "No supplier/manufacturer PDF link was returned for this comparison. Cadivor cannot analyze an unlinked document automatically. You may optionally upload a PDF or cite the controlled documents you reviewed."
+                "No supplier datasheet or exact-part product link was returned. Cadivor cannot retrieve an unlinked document; use the optional PDF fallback or cite the controlled documents you reviewed."
             )
 
         review_state = review_state if isinstance(review_state, dict) else {}
@@ -4696,35 +4744,59 @@ def _render_datasheet_evidence_review(
             from src.datasheet_qa import extract_uploaded_datasheet
             from concurrent.futures import ThreadPoolExecutor
 
-            def extract_documents(url: str, uploaded: Any, upload_bytes: bytes, side: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+            def extract_documents(
+                urls: list[str], uploaded: Any, upload_bytes: bytes, side: str
+            ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
                 documents: list[dict[str, Any]] = []
-                results: list[tuple[str, dict[str, Any], str]] = []
-                if url:
-                    results.append(("Supplier-linked PDF", extract_datasheet_text(url), url))
-                if uploaded is not None and upload_bytes:
-                    filename = str(getattr(uploaded, "name", "manufacturer-datasheet.pdf") or "manufacturer-datasheet.pdf")
-                    results.append((filename, extract_uploaded_datasheet(upload_bytes, filename=filename), ""))
                 pages: list[dict[str, Any]] = []
                 reasons: list[str] = []
-                for label, result, document_url in results:
+                for index, document_url in enumerate(urls[:4]):
+                    label = "Supplier-linked datasheet" if index == 0 else "Additional supplier/catalog link"
+                    result = extract_datasheet_text(document_url)
                     result = result if isinstance(result, dict) else {}
                     readable = result.get("pages") if isinstance(result.get("pages"), list) else []
-                    page_count = len(readable)
                     documents.append(
                         {
                             "name": label,
                             "url": document_url,
+                            "resolved_url": str(result.get("final_url") or ""),
                             "available": bool(result.get("available")),
-                            "page_count": page_count,
+                            "page_count": len(readable),
+                            "reason": str(result.get("reason") or ""),
+                            "retrieval_path": str(result.get("retrieval_path") or ""),
+                            "side": side,
+                        }
+                    )
+                    if result.get("available"):
+                        pages.extend(
+                            {**page, "document": label}
+                            for page in readable
+                            if isinstance(page, dict)
+                        )
+                        break
+                    if result.get("reason"):
+                        reasons.append(f"{label}: {result['reason']}")
+                if uploaded is not None and upload_bytes:
+                    filename = str(getattr(uploaded, "name", "manufacturer-datasheet.pdf") or "manufacturer-datasheet.pdf")
+                    result = extract_uploaded_datasheet(upload_bytes, filename=filename)
+                    result = result if isinstance(result, dict) else {}
+                    readable = result.get("pages") if isinstance(result.get("pages"), list) else []
+                    documents.append(
+                        {
+                            "name": filename,
+                            "url": "",
+                            "resolved_url": "",
+                            "available": bool(result.get("available")),
+                            "page_count": len(readable),
                             "reason": str(result.get("reason") or ""),
                             "side": side,
                         }
                     )
                     for page in readable:
                         if isinstance(page, dict):
-                            pages.append({**page, "document": label})
+                            pages.append({**page, "document": filename})
                     if result.get("reason"):
-                        reasons.append(f"{label}: {result['reason']}")
+                        reasons.append(f"{filename}: {result['reason']}")
                 combined = {
                     "available": bool(pages),
                     "reason": "; ".join(reasons) if not pages else "",
@@ -4737,14 +4809,14 @@ def _render_datasheet_evidence_review(
                 with ThreadPoolExecutor(max_workers=2) as pool:
                     source_future = pool.submit(
                         extract_documents,
-                        source_url,
+                        source_url_candidates,
                         uploaded_source,
                         source_upload_bytes,
                         "Source",
                     )
                     candidate_future = pool.submit(
                         extract_documents,
-                        candidate_url,
+                        candidate_url_candidates,
                         uploaded_candidate,
                         candidate_upload_bytes,
                         "Candidate",
@@ -4833,26 +4905,55 @@ def _render_datasheet_evidence_review(
                     + "</div>",
                     unsafe_allow_html=True,
                 )
+            resolved_pdf_links = []
+            for label, docs_key in (("Source PDF analyzed", "source_documents"), ("Candidate PDF analyzed", "candidate_documents")):
+                resolved_url = next(
+                    (
+                        str(item.get("resolved_url") or "").strip()
+                        for item in review_state.get(docs_key) or []
+                        if isinstance(item, dict) and item.get("resolved_url")
+                    ),
+                    "",
+                )
+                if resolved_url:
+                    resolved_pdf_links.append((label, resolved_url))
+            if resolved_pdf_links:
+                resolved_cols = st.columns(2)
+                for index, (label, url) in enumerate(resolved_pdf_links[:2]):
+                    resolved_cols[index].link_button(label, url, use_container_width=True)
 
             fields = review_state.get("field_evidence") or []
             if fields and has_extractable_text:
                 rows_html = []
                 for row in fields:
+                    source_value = str(row.get("Original PDF value") or "").strip() or "Not found"
+                    candidate_value = str(row.get("Candidate PDF value") or "").strip() or "Not found"
+                    citation = " / ".join(
+                        value
+                        for value in (
+                            str(row.get("Original PDF page") or "").strip(),
+                            str(row.get("Candidate PDF page") or "").strip(),
+                        )
+                        if value and value != "Not available"
+                    ) or "Not available"
                     rows_html.append(
                         "<tr>"
                         f"<td>{_esc(row.get('Attribute') or '')}</td>"
-                        f"<td>{_esc(row.get('Original PDF evidence') or 'Not found')}</td>"
-                        f"<td>{_esc(row.get('Candidate PDF evidence') or 'Not found')}</td>"
-                        f"<td>{_esc(row.get('Source pages') or 'Not available')}</td>"
+                        f"<td>{_esc(source_value)}</td>"
+                        f"<td>{_esc(candidate_value)}</td>"
+                        f"<td>{_esc(citation)}</td>"
                         f"<td>{_esc(row.get('Status') or 'Needs data')}</td>"
                         "</tr>"
                     )
                 st.markdown(
                     "<div class='cv-ap-field-table-wrap'><table class='cv-ap-table'><thead><tr>"
-                    "<th>Attribute</th><th>Source datasheet</th><th>Candidate datasheet</th>"
-                    f"<th>Document page</th><th>Finding</th></tr></thead><tbody>{''.join(rows_html)}"
+                    "<th>Attribute</th><th>Source datasheet value</th><th>Candidate datasheet value</th>"
+                    f"<th>Document citations</th><th>Finding</th></tr></thead><tbody>{''.join(rows_html)}"
                     "</tbody></table></div>",
                     unsafe_allow_html=True,
+                )
+                st.caption(
+                    "Values appear only when the extracted text contains a field-specific value. Narrative text is not used as a package, pin-count, or compatibility result."
                 )
             elif fields:
                 st.markdown(
@@ -5172,6 +5273,8 @@ def _render_bom_replacement_approvals(
     from src.approved_alternatives import (
         approved_records_for_part,
         candidate_lifecycle_is_blocked,
+        candidate_lifecycle_is_approval_eligible,
+        candidate_lifecycle_is_nrnd,
         part_key,
         project_decision_context_key,
     )
@@ -5353,13 +5456,12 @@ def _render_bom_replacement_approvals(
     st.markdown(f"<div id='{approval_anchor}'></div>", unsafe_allow_html=True)
     st.markdown("#### Engineering approval")
     st.info(
-        "**What unlocks approval:** the candidate lifecycle must be verified as Active or NRND; "
-        "source and candidate package geometry and pin counts must be known and match; "
-        "processor family/ISA must be compatible when applicable; and the reviewer must inspect "
-        "the available documents, cite a document and PDF page number for each part, and confirm "
-        "the review below. An obsolete/EOL part or a physical/architecture mismatch cannot be "
-        "approved as a direct replacement. For NRND candidates, add a supply-continuity plan. "
-        "Stock and price help procurement decisions but do not unlock engineering approval."
+        "**Approval requires all of these:** candidate lifecycle verified as Active or NRND; "
+        "matching source/candidate package and pin count; compatible processor family/ISA when "
+        "applicable; an actual document identifier and PDF page citation for both parts; and your "
+        "review confirmation. An obsolete/EOL part or known physical/architecture mismatch cannot "
+        "be approved as a direct replacement. NRND also requires a supply-continuity plan. "
+        "Stock and price inform sourcing, but do not establish engineering compatibility."
     )
     st.caption(
         "Use the source and candidate citation fields above for the manufacturer document/part number and exact PDF page numbers. If Cadivor linked a datasheet, analyze it and inspect the PDF; upload is only a fallback when the link is missing or wrong."
@@ -5389,24 +5491,8 @@ def _render_bom_replacement_approvals(
         candidate_lifecycle_is_blocked(approval_candidate)
         or datasheet_lifecycle_blocked
     )
-    candidate_lifecycle_value = _part_field(
-        approval_candidate,
-        "Lifecycle",
-        "Lifecycle Status",
-        "lifecycle_status",
-        "lifecycle",
-        "product_status",
-    ).casefold()
-    lifecycle_verified = any(
-        token in candidate_lifecycle_value
-        for token in (
-            "active",
-            "in production",
-            "nrnd",
-            "not recommended for new designs",
-        )
-    )
-    lifecycle_nrnd = "nrnd" in candidate_lifecycle_value or "not recommended for new designs" in candidate_lifecycle_value
+    lifecycle_verified = candidate_lifecycle_is_approval_eligible(approval_candidate)
+    lifecycle_nrnd = candidate_lifecycle_is_nrnd(approval_candidate)
 
     context_key = project_decision_context_key(project_name, analysis_id)
     try:
@@ -5502,6 +5588,8 @@ def _render_bom_replacement_approvals(
         and lifecycle_verified
         and (not lifecycle_nrnd or bool(str(note_value or "").strip()))
         and not compatibility_blocked
+        and not compatibility.get("physical_missing")
+        and not compatibility.get("architecture_missing")
         and review_references_complete
         and linked_documents_reviewed
         and (current is not None or len(approved_names) < 3)
@@ -5525,9 +5613,42 @@ def _render_bom_replacement_approvals(
         missing_review_steps.append("remove one approved alternative; this BOM is at the three-part limit")
 
     blockers: list[str] = []
+    if review_state.get("review_completed"):
+        source_document_readable = bool((datasheet_review.get("source") or {}).get("available"))
+        candidate_document_readable = bool((datasheet_review.get("candidate") or {}).get("available"))
+        source_manual_values_missing = bool(
+            not compatibility.get("source_package")
+            or not compatibility.get("source_pin_count")
+            or (
+                compatibility.get("architecture_meaningful")
+                and not compatibility.get("source_architecture")
+            )
+        )
+        candidate_manual_values_missing = bool(
+            not compatibility.get("candidate_package")
+            or not compatibility.get("candidate_pin_count")
+            or (
+                compatibility.get("architecture_meaningful")
+                and not compatibility.get("candidate_architecture")
+            )
+        )
+        if not source_document_readable and (
+            source_manual_values_missing
+            or not has_document_page_citation(reviewer_attestation.get("source_reference"))
+        ):
+            blockers.append(
+                "Cadivor could not extract a readable source PDF. Open the official source document or use the optional PDF fallback, then enter its package, pin count, and page citation."
+            )
+        if not candidate_document_readable and (
+            candidate_manual_values_missing
+            or not has_document_page_citation(reviewer_attestation.get("candidate_reference"))
+        ):
+            blockers.append(
+                "Cadivor could not extract a readable candidate PDF. Open the exact candidate's official document or use the optional PDF fallback, then enter its package, pin count, processor family/ISA if applicable, and page citation."
+            )
     if lifecycle_blocked:
         blockers.append(
-            "This candidate is obsolete, discontinued, or end of life. Choose a different candidate."
+            "This candidate is obsolete, discontinued, end of life, or explicitly inactive. Choose a different candidate."
         )
     elif not lifecycle_verified:
         blockers.append(
@@ -5537,12 +5658,27 @@ def _render_bom_replacement_approvals(
         blockers.extend(compatibility.get("critical_warnings") or [
             "The physical package or processor architecture is incompatible. Choose another candidate."
         ])
-    elif comparison_conflicts or datasheet_conflicts:
+    else:
+        physical_blocker_start = len(blockers)
+        for side, label, field_value in (
+            ("source", "package / case", compatibility.get("source_package")),
+            ("candidate", "package / case", compatibility.get("candidate_package")),
+            ("source", "pin count", compatibility.get("source_pin_count")),
+            ("candidate", "pin count", compatibility.get("candidate_pin_count")),
+        ):
+            if not field_value:
+                blockers.append(
+                    f"Enter the {side} {label} from its official document; the source and candidate values must match."
+                )
+        if compatibility.get("architecture_missing"):
+            blockers.append(
+                "Enter the source and candidate processor family/ISA from their official documents and confirm firmware compatibility."
+            )
         blockers.extend(comparison_conflicts + datasheet_conflicts)
-    elif compatibility.get("requires_acknowledgement"):
-        blockers.extend(compatibility.get("review_warnings") or [
-            "Package, pin count, or processor architecture still needs verification."
-        ])
+        if compatibility.get("requires_acknowledgement") and len(blockers) == physical_blocker_start:
+            blockers.extend(compatibility.get("review_warnings") or [
+                "Package, pin count, or processor architecture still needs verification."
+            ])
     if not linked_documents_reviewed:
         blockers.append("Wait for the linked datasheet analysis, then inspect both documents.")
     blockers.extend(missing_review_steps)
@@ -5577,7 +5713,7 @@ def _render_bom_replacement_approvals(
 
         st.markdown(
             f"""
-            <style>
+            <style id="cadivor-approval-actions-style-{widget_suffix}" data-cadivor-layout-style="true">
             html body section[data-testid="stMain"] .st-key-cadivor_approval_actions_{widget_suffix} .stButton > button[kind="primary"]:disabled {{
               background:#e2e8f0 !important; background-color:#e2e8f0 !important;
               border:1px solid #cbd5e1 !important; color:#64748b !important;
@@ -5618,6 +5754,8 @@ def _render_bom_replacement_approvals(
         or not lifecycle_verified
         or (lifecycle_nrnd and not str(note_value or "").strip())
         or compatibility_blocked
+        or compatibility.get("physical_missing")
+        or compatibility.get("architecture_missing")
         or not review_references_complete
         or not linked_documents_reviewed
     ):

@@ -297,6 +297,18 @@ def inject_main_transition_css(transition_gen: int) -> None:
         )
           [data-stale="true"][class*="st-key-cv_foundation_navigation"],
         body:has([data-cadivor-main-transition="1"]):has(
+          [class*="st-key-cv_foundation_navigation"]:not([data-stale="true"])
+        )
+          [data-stale="true"]:has([class*="st-key-cv_foundation_nav_"]),
+        body:has([data-cadivor-main-transition="1"]):has(
+          [class*="st-key-cv_foundation_navigation"]:not([data-stale="true"])
+        )
+          [data-stale="true"] [class*="st-key-cv_foundation_nav_"],
+        body:has([data-cadivor-main-transition="1"]):has(
+          [class*="st-key-cv_foundation_navigation"]:not([data-stale="true"])
+        )
+          [data-stale="true"]:has(.cv-foundation-nav-group),
+        body:has([data-cadivor-main-transition="1"]):has(
           [data-testid="stElementContainer"][data-stale="false"]
             [data-cadivor-topbar-flow-host="1"]
         )

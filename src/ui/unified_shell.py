@@ -198,6 +198,19 @@ def _approved_shell_css() -> str:
           opacity:0!important;height:0!important;min-height:0!important;max-height:0!important;
           margin:0!important;padding:0!important;overflow:hidden!important
         }
+        /* Streamlit may mark only the stale nav rows or their wrapper during a
+           route rerun, leaving the rail heading and button stack in the main
+           document. Retire every stale row/group once the current rail exists. */
+        body:has([class*="st-key-cv_foundation_navigation"]:not([data-stale="true"]))
+          [data-stale="true"]:has([class*="st-key-cv_foundation_nav_"]),
+        body:has([class*="st-key-cv_foundation_navigation"]:not([data-stale="true"]))
+          [data-stale="true"] [class*="st-key-cv_foundation_nav_"],
+        body:has([class*="st-key-cv_foundation_navigation"]:not([data-stale="true"]))
+          [data-stale="true"]:has(.cv-foundation-nav-group){
+          display:none!important;visibility:hidden!important;pointer-events:none!important;
+          opacity:0!important;height:0!important;min-height:0!important;max-height:0!important;
+          margin:0!important;padding:0!important;overflow:hidden!important
+        }
         .cv-approved-brand,.cv-foundation-sidebar-brand{display:flex;align-items:center;gap:10px;padding:4px 8px 14px}
         .cv-approved-brand strong,.cv-foundation-sidebar-brand strong{display:block;color:#0f172a;font-size:16px;letter-spacing:-.02em}
         .cv-approved-brand small,.cv-foundation-sidebar-brand small{display:block;color:#94a3b8;font-size:9px;letter-spacing:.08em;font-weight:700}
