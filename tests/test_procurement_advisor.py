@@ -94,6 +94,26 @@ class ProcurementAdvisorTests(unittest.TestCase):
             branch.index('reveal_authenticated_page_body("Procurement Advisor")'),
         )
 
+    def test_procurement_advisor_explains_its_decision_and_hands_off_bom_context(self):
+        runtime = (
+            Path(__file__).resolve().parents[1] / "src" / "authenticated_runtime.py"
+        ).read_text(encoding="utf-8")
+        branch = runtime.split('if app_mode == "Procurement Advisor":', 1)[1].split(
+            'if app_mode == "Engineering Decisions":', 1
+        )[0]
+
+        self.assertIn("What to review here", branch)
+        self.assertIn("“Not recorded” means Cadivor", branch)
+        self.assertIn("does not have verified data", branch)
+        self.assertIn("does not place an order", branch)
+        self.assertIn('"Find qualified alternative"', branch)
+        self.assertIn('key="pa_find_qualified_alternative_top"', branch)
+        self.assertIn('analysis_id=str(focus.get("analysis_id") or focus_analysis.get("id") or "")', branch)
+        self.assertLess(
+            branch.index('key="pa_find_qualified_alternative_top"'),
+            branch.index('"<div class=\'cv-pa-section-head\'><div><h2>Supplier options</h2>'),
+        )
+
     def test_missing_supplier_defaults_are_not_presented_as_a_stockout(self):
         advisor = build_procurement_advisor(
             analyses=[],

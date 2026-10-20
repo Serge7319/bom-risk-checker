@@ -20,6 +20,7 @@ from src.bom_upload_flow import (
     should_render_approved_bom_upload_form,
     should_stop_approved_bom_renderer,
 )
+from src.approval_evidence import has_document_page_citation
 from src.saved_bom_project import (
     NEW_PROJECT_CHOICE,
     analysis_title_for_upload,
@@ -4969,18 +4970,22 @@ def _render_datasheet_evidence_review(
         citation_cols = st.columns(2)
         with citation_cols[0]:
             source_reference = st.text_input(
-                "Source citation · document / revision / pages",
-                placeholder="Manufacturer datasheet, Rev, package and pinout pages",
+                "Source citation · document and PDF page(s)",
+                placeholder=f"{source_mpn} datasheet, Rev. [revision], pp. [actual pages]",
                 key=f"cadivor_alt_source_reference_{key_suffix}",
-                help="Cite the pages where you reviewed the package outline, dimensions, pinout, and applicable requirements. Use the linked source PDF above.",
+                help="Enter the manufacturer document or part number, revision if shown, and actual PDF page numbers you reviewed. “NA”, blanks, and page numbers without a document identifier do not count.",
             )
+            if source_reference and not has_document_page_citation(source_reference):
+                st.caption("Add the source document or part number and exact PDF page number(s); “NA” is not a valid citation.")
         with citation_cols[1]:
             candidate_reference = st.text_input(
-                "Candidate citation · document / revision / pages",
-                placeholder="Manufacturer datasheet, Rev, package and pinout pages",
+                "Candidate citation · document and PDF page(s)",
+                placeholder=f"{candidate_mpn} datasheet, Rev. [revision], pp. [actual pages]",
                 key=f"cadivor_alt_candidate_reference_{key_suffix}",
-                help="Cite the pages where you reviewed the package outline, dimensions, pinout, and applicable requirements. Use the linked candidate PDF above.",
+                help="Enter the manufacturer document or part number, revision if shown, and actual PDF page numbers you reviewed. “NA”, blanks, and page numbers without a document identifier do not count.",
             )
+            if candidate_reference and not has_document_page_citation(candidate_reference):
+                st.caption("Add the candidate document or part number and exact PDF page number(s); “NA” is not a valid citation.")
 
     attested = bool(
         st.session_state.get(f"cadivor_alt_document_attestation_{key_suffix}", False)
@@ -5002,7 +5007,9 @@ def _render_datasheet_evidence_review(
         "recorded_at": datetime.now(timezone.utc).isoformat() if attested else "",
     }
     review_state["review_complete"] = bool(
-        attested and str(source_reference or "").strip() and str(candidate_reference or "").strip()
+        attested
+        and has_document_page_citation(source_reference)
+        and has_document_page_citation(candidate_reference)
     )
     review_state["review_completed"] = bool(review_state.get("review_completed"))
     review_state["datasheet_review_required"] = has_documents
@@ -5345,8 +5352,17 @@ def _render_bom_replacement_approvals(
     )
     st.markdown(f"<div id='{approval_anchor}'></div>", unsafe_allow_html=True)
     st.markdown("#### Engineering approval")
+    st.info(
+        "**What unlocks approval:** the candidate lifecycle must be verified as Active or NRND; "
+        "source and candidate package geometry and pin counts must be known and match; "
+        "processor family/ISA must be compatible when applicable; and the reviewer must inspect "
+        "the available documents, cite a document and PDF page number for each part, and confirm "
+        "the review below. An obsolete/EOL part or a physical/architecture mismatch cannot be "
+        "approved as a direct replacement. For NRND candidates, add a supply-continuity plan. "
+        "Stock and price help procurement decisions but do not unlock engineering approval."
+    )
     st.caption(
-        "Review the checks below, cite the pages you inspected, then confirm your review. The confirmation does not save the decision; use the approval button at the end."
+        "Use the source and candidate citation fields above for the manufacturer document/part number and exact PDF page numbers. If Cadivor linked a datasheet, analyze it and inspect the PDF; upload is only a fallback when the link is missing or wrong."
     )
     attested = st.checkbox(
         "I reviewed both documents, including package dimensions, pinout, and applicable electrical or firmware requirements.",
@@ -5361,8 +5377,8 @@ def _render_bom_replacement_approvals(
     datasheet_review["reviewer_attestation"] = reviewer_attestation
     datasheet_review["review_complete"] = bool(
         attested
-        and str(reviewer_attestation.get("source_reference") or "").strip()
-        and str(reviewer_attestation.get("candidate_reference") or "").strip()
+        and has_document_page_citation(reviewer_attestation.get("source_reference"))
+        and has_document_page_citation(reviewer_attestation.get("candidate_reference"))
     )
     review_references_complete = bool(datasheet_review.get("review_complete"))
     linked_documents_reviewed = bool(
@@ -5493,10 +5509,14 @@ def _render_bom_replacement_approvals(
     reviewer_attestation = datasheet_review.get("reviewer_attestation") or {}
     reviewer_attestation = reviewer_attestation if isinstance(reviewer_attestation, dict) else {}
     missing_review_steps = []
-    if not str(reviewer_attestation.get("source_reference") or "").strip():
-        missing_review_steps.append("add the source document revision and pages you checked")
-    if not str(reviewer_attestation.get("candidate_reference") or "").strip():
-        missing_review_steps.append("add the candidate document revision and pages you checked")
+    if not has_document_page_citation(reviewer_attestation.get("source_reference")):
+        missing_review_steps.append(
+            "cite the source document or part number and the actual PDF page(s) reviewed (for example, “part datasheet Rev. B, pp. 8–10”; “NA” does not count)"
+        )
+    if not has_document_page_citation(reviewer_attestation.get("candidate_reference")):
+        missing_review_steps.append(
+            "cite the candidate document or part number and the actual PDF page(s) reviewed (for example, “part datasheet Rev. A, pp. 5–7”; “NA” does not count)"
+        )
     if not reviewer_attestation.get("confirmed"):
         missing_review_steps.append("confirm your review in this approval section")
     if lifecycle_nrnd and not str(note_value or "").strip():

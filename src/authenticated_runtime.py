@@ -6980,6 +6980,22 @@ def run_authenticated_app() -> None:
                 unsafe_allow_html=True,
             )
             st.markdown(procurement_page_header_html(), unsafe_allow_html=True)
+            with st.container(border=True):
+                st.markdown("#### What to review here")
+                st.markdown(
+                    "1. **Start with the recommendation and evidence gaps.** Check lifecycle, stock, "
+                    "supplier coverage, lead time, and required quantity; “Not recorded” means Cadivor "
+                    "does not have verified data for that field.\n"
+                    "2. **Compare supplier options.** Use current quotes and comparable landed costs to "
+                    "decide where to source; a distributor listing alone is not engineering qualification.\n"
+                    "3. **If the part itself needs replacing, find and review an alternate.** The next "
+                    "button opens the selected part in Find a replacement and carries its saved BOM context."
+                )
+                st.caption(
+                    "Procurement Advisor supports sourcing decisions. It does not place an order or "
+                    "approve an engineering alternate; engineering sign-off happens after compatibility "
+                    "and documentation review in Find a replacement."
+                )
 
             mpn_options = []
             for row in procurement_recommendations:
@@ -7088,6 +7104,31 @@ def run_authenticated_app() -> None:
                     unsafe_allow_html=True,
                 )
                 reveal_authenticated_page_body("Procurement Advisor")
+
+                action_cols = st.columns([0.34, 0.66], vertical_alignment="center")
+                with action_cols[0]:
+                    internal_nav_button(
+                        "Find qualified alternative",
+                        "Alternative Finder",
+                        key="pa_find_qualified_alternative_top",
+                        type="secondary",
+                        use_container_width=True,
+                        original_part=focus_mpn,
+                        manufacturer=str(focus.get("manufacturer") or focus.get("Manufacturer") or ""),
+                        description=str(focus.get("description") or focus.get("Description") or ""),
+                        lifecycle=str((focus_recommendation or {}).get("Lifecycle Status") or ""),
+                        risk=str((focus_recommendation or {}).get("Priority Score") or ""),
+                        analysis_id=str(focus.get("analysis_id") or focus_analysis.get("id") or ""),
+                        part_id=str(focus.get("id") or ""),
+                        project_name=str(focus_analysis.get("project_name") or focus_analysis.get("project") or ""),
+                        bom_name=str(focus_analysis.get("filename") or focus_analysis.get("bom_name") or ""),
+                        source_page="procurement_advisor",
+                    )
+                with action_cols[1]:
+                    st.caption(
+                        "Use this when the recommendation calls for a replacement or a second source. "
+                        "The selected MPN is preloaded; the saved BOM stays attached for review and approval."
+                    )
 
                 insight_state_key = (
                     "pa_ai_supplier_insight_"
@@ -7389,7 +7430,7 @@ def run_authenticated_app() -> None:
                             f"Landed cost saved for {int(landed_saved_count)} component record(s). "
                             "The index updates when a second same-currency cost is recorded."
                         )
-                    action_cols = st.columns([1.25, 1.1, 2.1])
+                    action_cols = st.columns([1.25, 1.1])
                     with action_cols[0]:
                         if st.button(
                             "Use selected offer values",
@@ -7424,15 +7465,6 @@ def run_authenticated_app() -> None:
                                 selected_offer["product_url"],
                                 use_container_width=True,
                             )
-                    with action_cols[2]:
-                        internal_nav_button(
-                            "Find qualified alternative",
-                            "Alternative Finder",
-                            key="pa_find_qualified_alternative",
-                            use_container_width=True,
-                            original_part=focus_mpn,
-                            source_page="procurement_advisor",
-                        )
                     offer_saved_count = st.session_state.pop("pa_supplier_offer_saved_notice", None)
                     if offer_saved_count:
                         st.success(

@@ -335,6 +335,25 @@ def test_approval_explains_missing_citations_and_offers_pdf_review_at_the_gate()
     assert "review_requested or review_clicked" in datasheet_review
 
 
+def test_approval_citations_require_a_real_document_identifier_and_pdf_page():
+    source = (
+        Path(__file__).resolve().parents[1] / "src" / "ui" / "approved_pages.py"
+    ).read_text(encoding="utf-8")
+    approvals = source.split("def _render_bom_replacement_approvals", 1)[1].split(
+        "def render_replacement_search", 1
+    )[0]
+    datasheet_review = source.split("def _render_datasheet_evidence_review", 1)[1].split(
+        "def _approval_evidence_for_comparison", 1
+    )[0]
+
+    assert "has_document_page_citation(source_reference)" in datasheet_review
+    assert "has_document_page_citation(candidate_reference)" in datasheet_review
+    assert "has_document_page_citation(reviewer_attestation.get(\"source_reference\"))" in approvals
+    assert "has_document_page_citation(reviewer_attestation.get(\"candidate_reference\"))" in approvals
+    assert "“NA” does not count" in approvals
+    assert "PDF page number" in approvals
+
+
 def test_approval_review_is_easy_to_reach_and_disabled_action_looks_disabled():
     source = (
         Path(__file__).resolve().parents[1] / "src" / "ui" / "approved_pages.py"
