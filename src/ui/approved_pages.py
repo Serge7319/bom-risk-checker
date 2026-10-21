@@ -19,6 +19,7 @@ from src.bom_upload_flow import (
     prepare_new_approved_bom_analysis,
     should_render_approved_bom_upload_form,
     should_stop_approved_bom_renderer,
+    stage_approved_bom_submission,
 )
 from src.approval_evidence import has_document_page_citation
 from src.saved_bom_project import (
@@ -2660,16 +2661,23 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
                     with guidance_col:
                         if uploaded is None:
                             st.caption("Choose a CSV or Excel file to run the existing BOM analysis.")
-                if submitted and uploaded is not None:
-                    st.session_state["cadivor_bom_analysis_ready"] = True
-                    st.session_state["cadivor_pending_upload"] = uploaded
-                    st.session_state["cadivor_pending_project"] = resolve_project_choice(
-                        NEW_PROJECT_CHOICE,
-                        typed_project,
-                        blank_uses_general=True,
+                if submitted:
+                    staged = stage_approved_bom_submission(
+                        st.session_state,
+                        submitted=True,
+                        uploaded_file=uploaded,
+                        project_name=resolve_project_choice(
+                            NEW_PROJECT_CHOICE,
+                            typed_project,
+                            blank_uses_general=True,
+                        ),
+                        bom_name=bom_name,
                     )
-                    st.session_state["cadivor_pending_bom_name"] = bom_name
-                    return
+                    if staged:
+                        return
+                    st.error(st.session_state["cadivor_bom_submission_error"])
+                elif st.session_state.get("cadivor_bom_submission_error"):
+                    st.error(st.session_state["cadivor_bom_submission_error"])
 
     elif results_visible:
         pass

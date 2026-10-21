@@ -44,6 +44,41 @@ def consume_approved_bom_submission(
     return submitted, uploaded_file, project_name, bom_name
 
 
+def stage_approved_bom_submission(
+    state: MutableMapping[str, Any],
+    *,
+    submitted: bool,
+    uploaded_file: Any,
+    project_name: str,
+    bom_name: str,
+) -> bool:
+    """Stage a form submit from the returned value or keyed widget state.
+
+    If neither source contains a file, retain a visible error instead of
+    silently dropping Analyze.
+    """
+    if not submitted:
+        return False
+
+    upload = uploaded_file
+    if upload is None:
+        upload = state.get("bom_file_uploader")
+
+    if upload is None:
+        state["cadivor_bom_submission_error"] = (
+            "Analyze was received, but the selected file was not available. "
+            "Choose the CSV or Excel file again, then select Analyze BOM."
+        )
+        return False
+
+    state.pop("cadivor_bom_submission_error", None)
+    state["cadivor_bom_analysis_ready"] = True
+    state["cadivor_pending_upload"] = upload
+    state["cadivor_pending_project"] = str(project_name or "")
+    state["cadivor_pending_bom_name"] = str(bom_name or "")
+    return True
+
+
 def resume_approved_bom_submission(
     state: MutableMapping[str, Any],
 ) -> tuple[Any, str, str]:
@@ -81,6 +116,7 @@ def finish_approved_bom_submission(
 
 __all__ = [
     "consume_approved_bom_submission",
+    "stage_approved_bom_submission",
     "resume_approved_bom_submission",
     "finish_approved_bom_submission",
     "should_render_approved_bom_upload_form",
@@ -159,6 +195,7 @@ def prepare_new_approved_bom_analysis(state: MutableMapping[str, Any]) -> None:
         "cadivor_pending_upload",
         "cadivor_pending_project",
         "cadivor_pending_bom_name",
+        "cadivor_bom_submission_error",
         "approved_bom_project_name",
         "approved_bom_name",
         "bom_file_uploader",

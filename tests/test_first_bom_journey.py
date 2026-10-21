@@ -209,6 +209,24 @@ class FirstBomJourneyTests(unittest.TestCase):
         )
         self.assertEqual(normalized.iloc[0]["quantity"], 4)
 
+    def test_manufacturer_part_number_header_with_mpn_suffix_is_required_mpn(self):
+        df = pd.DataFrame(
+            [{
+                "Manufacturer Part Number (MPN)": "STM32F405RGT6",
+                "Quantity": 1,
+                "Description": "32-bit ARM Cortex-M4 Microcontroller",
+                "Manufacturer": "STMicroelectronics",
+            }]
+        )
+
+        normalized = normalize_bom_columns(df)
+        validate_bom(normalized)
+        cleaned = clean_bom_data(normalized)
+
+        self.assertEqual(cleaned.iloc[0]["mpn"], "STM32F405RGT6")
+        self.assertEqual(cleaned.iloc[0]["quantity"], 1)
+        self.assertEqual(cleaned.iloc[0]["manufacturer"], "STMicroelectronics")
+
     def test_blank_duplicate_quantity_does_not_erase_valid_bom_quantity(self):
         df = pd.DataFrame(
             [
