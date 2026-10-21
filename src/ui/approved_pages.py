@@ -2621,7 +2621,12 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
                 """,
                 unsafe_allow_html=True,
             )
-            with st.form(key="approved_bom_upload_form", clear_on_submit=False):
+            # Keep the file uploader outside a Streamlit form. Form widgets are
+            # submitted in one batch, which can leave the browser showing a
+            # selected file before the server has the UploadedFile object. A
+            # standalone uploader reruns as soon as the upload reaches the
+            # server, so Analyze is enabled only once the file is available.
+            with st.container(key="approved_bom_upload_form"):
                 with st.container(key="approved_bom_upload_fields"):
                     project_col, bom_col = st.columns(2, gap="large")
                     with project_col:
@@ -2649,17 +2654,22 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
                     help="CSV or Excel with MPN and Quantity columns.",
                     disabled=analysis_running,
                 )
+                upload_available = uploaded is not None or st.session_state.get(
+                    "bom_file_uploader"
+                ) is not None
+                if upload_available:
+                    st.session_state.pop("cadivor_bom_submission_error", None)
                 with st.container(key="approved_bom_submit_row"):
                     submit_col, guidance_col = st.columns([0.12, 0.88], gap="small", vertical_alignment="center")
                     with submit_col:
-                        submitted = st.form_submit_button(
+                        submitted = st.button(
                             "Analyzing BOM…" if analysis_running else "Analyze BOM",
                             key="approved_bom_analyze",
                             type="primary",
-                            disabled=analysis_running,
+                            disabled=analysis_running or not upload_available,
                         )
                     with guidance_col:
-                        if uploaded is None:
+                        if not upload_available:
                             st.caption("Choose a CSV or Excel file to run the existing BOM analysis.")
                 if submitted:
                     staged = stage_approved_bom_submission(
