@@ -107,10 +107,17 @@ def test_new_bom_analysis_matches_approved_full_width_upload_mockup():
 
 
 def test_bom_analysis_progress_reanchors_the_workspace_after_mount():
-    assert 'id="cadivor-bom-analysis-top-anchor"' in APPROVED_SOURCE
-    assert "anchor.scrollIntoView({ block: 'start'" in APPROVED_SOURCE
-    assert "[0, 80, 220, 500, 900, 1500, 2400]" in APPROVED_SOURCE
-    assert "userInteracted" in APPROVED_SOURCE
+    start = APPROVED_SOURCE.index("if analysis_running and not results_visible:")
+    end = APPROVED_SOURCE.index('with st.container(key="approved_bom_title")', start)
+    progress_reanchor = APPROVED_SOURCE[start:end]
+
+    assert 'id="cadivor-bom-analysis-top-anchor"' in progress_reanchor
+    assert "st.html(" in progress_reanchor
+    assert "components.html(" not in progress_reanchor
+    assert "const doc = document;" in progress_reanchor
+    assert "anchor?.scrollIntoView({ block: 'start'" in progress_reanchor
+    assert "[0, 80, 220, 500, 900, 1500, 2400, 3600]" in progress_reanchor
+    assert "userInteracted" in progress_reanchor
 
 
 def test_analysis_workspace_hides_duplicate_legacy_hero_and_caps_actions():
