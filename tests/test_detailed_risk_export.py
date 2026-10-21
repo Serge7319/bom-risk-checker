@@ -79,7 +79,7 @@ def _check_excel_export_has_summary_details_and_high_risk_views_without_private_
     )
     workbook = load_workbook(BytesIO(data), data_only=False)
 
-    assert workbook.sheetnames == ["Summary", "Component Details", "High Risk Parts"]
+    assert workbook.sheetnames == ["Summary", "Component Details", "High Risk Parts", "Alternative Candidates"]
     summary = workbook["Summary"]
     assert summary["A1"].value == "Cadivor BOM Risk Report"
     assert summary["A4"].value == "Project / BOM"
@@ -102,6 +102,9 @@ def _check_excel_export_has_summary_details_and_high_risk_views_without_private_
     assert "Evidence source" in headers
     assert "Lifecycle evidence" in headers
     assert "Supplier coverage" in headers
+    assert "Supplier product URL" in headers
+    assert "Datasheet URL" in headers
+    assert "Candidate MPNs" in headers
     assert not {"id", "user_id", "analysis_id", "workspace_id"}.intersection(headers)
     first = dict(zip(headers, [cell.value for cell in details[2]]))
     second = dict(zip(headers, [cell.value for cell in details[3]]))
@@ -177,10 +180,14 @@ class DetailedRiskExportTests(unittest.TestCase):
         self.assertEqual(metrics["Risk assessed"], 0)
         self.assertEqual(metrics["Risk coverage"], "0%")
         detail = workbook["Component Details"]
-        self.assertEqual(detail["N2"].value, "Not assessed")
-        self.assertEqual(detail["O2"].value, "Not assessed")
-        self.assertIn("Verify the full manufacturer part number and rerun", detail["P2"].value)
-        self.assertEqual(detail["N2"].fill.fgColor.rgb[-6:], "E2E8F0")
+        detail_headers = {cell.value: cell.column_letter for cell in detail[1]}
+        self.assertEqual(detail[f'{detail_headers["Risk"]}2'].value, "Not assessed")
+        self.assertEqual(detail[f'{detail_headers["Risk score"]}2'].value, "Not assessed")
+        self.assertIn(
+            "Verify the full manufacturer part number and rerun",
+            detail[f'{detail_headers["Why"]}2'].value,
+        )
+        self.assertEqual(detail[f'{detail_headers["Risk"]}2'].fill.fgColor.rgb[-6:], "E2E8F0")
         self.assertIn("1 of 1 part(s) were not assessed", workbook["High Risk Parts"]["A2"].value)
         self.assertIn("not proof of low risk", workbook["High Risk Parts"]["A2"].value)
 
@@ -274,6 +281,66 @@ class DetailedRiskExportTests(unittest.TestCase):
         self.assertIn("not a forecast of project delay", summary_text)
         self.assertIn("not a confirmed or approved cross", summary_text)
         self.assertIn("not total exposure", summary_text)
+
+    def test_candidate_and_source_evidence_are_saved_in_the_export_without_certifying_fit(self):
+        parts = [{
+            "mpn": "LM317DCYR",
+            "description": "Adjustable voltage regulator",
+            "manufacturer": "Texas Instruments",
+            "risk_level": "Medium",
+            "risk_score": 35,
+            "risk_reasons": "Reported manufacturer lead time is 26 weeks or longer",
+            "lifecycle_status": "Active",
+            "product_url": "https://supplier.example/LM317DCYR",
+            "datasheet_url": "https://ti.example/lm317.pdf",
+            "sourcing_updated_at": "2026-10-21T12:00:00Z",
+            "alternate_search_status": "Candidates returned",
+            "alternate_candidates": [{
+                "Alternative Part": "LM317BS-TR",
+                "Manufacturer": "STMicroelectronics",
+                "Supplier": "DigiKey",
+                "Classification": "Supplier-listed similar",
+                "Evidence Type": "Catalog search",
+                "package": "SOT-223",
+                "pin_count": 3,
+                "Lifecycle": "Active",
+                "Product URL": "https://supplier.example/LM317BS-TR",
+                "Datasheet URL": "https://st.example/lm317bs.pdf",
+                "Retrieved At": "2026-10-21T12:00:00Z",
+            }],
+        }]
+
+        rows = component_rows(parts)
+        self.assertEqual(rows[0]["Candidate MPNs"], "LM317BS-TR")
+        self.assertEqual(rows[0]["Supplier product URL"], "https://supplier.example/LM317DCYR")
+        self.assertEqual(rows[0]["Datasheet URL"], "https://ti.example/lm317.pdf")
+
+        workbook = load_workbook(BytesIO(detailed_risk_excel_bytes(parts, bom_name="Regulator")))
+        self.assertEqual(workbook.sheetnames[-1], "Alternative Candidates")
+        sheet = workbook["Alternative Candidates"]
+        headers = [cell.value for cell in sheet[4]]
+        candidate = dict(zip(headers, [cell.value for cell in sheet[5]]))
+        self.assertEqual(candidate["Source MPN"], "LM317DCYR")
+        self.assertEqual(candidate["Candidate MPN"], "LM317BS-TR")
+        self.assertEqual(candidate["Relationship label"], "Supplier-listed similar")
+        self.assertIn("not established", candidate["Approval status"])
+        self.assertEqual(sheet.cell(5, headers.index("Supplier product URL") + 1).hyperlink.target,
+                         "https://supplier.example/LM317BS-TR")
+        self.assertEqual(workbook["Component Details"].cell(2, 8).hyperlink.target,
+                         "https://supplier.example/LM317DCYR")
+        summary_text = " ".join(
+            str(cell.value) for row in workbook["Summary"] for cell in row if cell.value
+        )
+        self.assertIn("26+ weeks +30", summary_text)
+        self.assertIn("60–100 High", summary_text)
+        workbook.close()
+
+        csv_rows = list(csv.DictReader(StringIO(
+            detailed_risk_csv_bytes(parts).decode("utf-8-sig")
+        )))
+        self.assertEqual(csv_rows[0]["Candidate MPNs"], "LM317BS-TR")
+        self.assertEqual(csv_rows[0]["Risk score"], "35")
+        self.assertEqual(csv_rows[0]["Datasheet URL"], "https://ti.example/lm317.pdf")
 
     def test_saved_unit_price_currency_drives_financial_rollup(self):
         parts = [{
@@ -395,6 +462,7 @@ class DetailedRiskExportTests(unittest.TestCase):
         fake_streamlit = types.ModuleType("streamlit")
         fake_streamlit.session_state = {"cadivor_show_detailed_risk": True}
         fake_streamlit.markdown = lambda *_args, **_kwargs: None
+        fake_streamlit.html = lambda *_args, **_kwargs: None
         fake_streamlit.container = lambda **_kwargs: nullcontext()
         fake_streamlit.button = lambda *_args, **_kwargs: False
         fake_streamlit.columns = lambda count: [nullcontext() for _ in range(count)]
@@ -418,7 +486,7 @@ class DetailedRiskExportTests(unittest.TestCase):
         self.assertEqual([item[0] for item in downloads], ["Download Excel Report", "Download CSV Audit"])
         self.assertEqual(downloads[0][1]["file_name"], "cadivor-detailed-risk-report.xlsx")
         workbook = load_workbook(BytesIO(downloads[0][1]["data"]), data_only=True)
-        self.assertEqual(workbook.sheetnames, ["Summary", "Component Details", "High Risk Parts"])
+        self.assertEqual(workbook.sheetnames, ["Summary", "Component Details", "High Risk Parts", "Alternative Candidates"])
         self.assertEqual(downloads[1][1]["file_name"], "cadivor-detailed-risk-report.csv")
         self.assertTrue(downloads[1][1]["data"].startswith(b"\xef\xbb\xbf"))
 

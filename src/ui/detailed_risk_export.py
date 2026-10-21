@@ -19,9 +19,15 @@ CSV_COLUMNS = (
     "Lead time (weeks)",
     "Suppliers",
     "Evidence source",
+    "Supplier product URL",
+    "Datasheet URL",
+    "Sourcing checked at",
     "Mitigation status",
     "Approved alternatives",
+    "Alternate search status",
+    "Candidate MPNs",
     "Risk",
+    "Risk score",
     "Why",
     "Unit price",
     "Unit price currency",
@@ -37,6 +43,9 @@ DETAIL_COLUMNS = (
     "Lifecycle",
     "Stock",
     "Evidence source",
+    "Supplier product URL",
+    "Datasheet URL",
+    "Sourcing checked at",
     "Recorded supplier",
     "Stock coverage",
     "Lead time (weeks)",
@@ -49,6 +58,8 @@ DETAIL_COLUMNS = (
     "Lifecycle evidence",
     "Lifecycle conflict",
     "Alternate search status",
+    "Candidate MPNs",
+    "Candidate count",
     "Mitigation status",
     "Approved alternatives",
     "Unit price",
@@ -131,6 +142,11 @@ def _sources(record: dict[str, Any]) -> str:
     # the public stress-test field name. Do not substitute the preferred price
     # supplier: it does not prove that supplier returned an inventory count.
     return _text(_first(record, "sources", "Sources Available"))
+
+
+def _safe_http_url(value: Any) -> str:
+    url = str(value or "").strip()
+    return url if url.startswith(("https://", "http://")) else ""
 
 
 def _flag(value: Any) -> bool | None:
@@ -456,6 +472,24 @@ def component_rows(
         )
         description = _first(record, "description", "Description", "part_description")
         description_alternates = extract_description_alternates(description)
+        from src.alternate_candidate_evidence import normalize_candidate_evidence
+
+        candidates = normalize_candidate_evidence(
+            _first(record, "alternate_candidates", "Alternate Candidates", default=[]),
+            original_mpn=mpn,
+        )
+        alternate_status = _text(
+            _first(record, "alternate_search_status", "Alternate Search Status")
+        )
+        candidate_mpns = ", ".join(item["mpn"] for item in candidates)
+        if not candidate_mpns and "candidate" in alternate_status.casefold() and "returned" in alternate_status.casefold():
+            candidate_mpns = "Candidate details were not saved in this analysis snapshot"
+        product_url = _safe_http_url(
+            _first(record, "product_url", "Product URL", "product_detail_url", "source_url")
+        )
+        datasheet_url = _safe_http_url(
+            _first(record, "datasheet_url", "Datasheet URL", "datasheet", "datasheet_link")
+        )
         approvals = approved_by_part.get(
             part_key(_first(record, "mpn", "MPN", "part_number", "manufacturer_part_number")),
             [],
@@ -477,6 +511,11 @@ def component_rows(
             "Lifecycle": lifecycle,
             "Stock": _stock(record),
             "Evidence source": stock_sources,
+            "Supplier product URL": product_url or "—",
+            "Datasheet URL": datasheet_url or "—",
+            "Sourcing checked at": _text(
+                _first(record, "sourcing_updated_at", "retrieved_at", "updated_at")
+            ),
             "Mitigation status": (
                 "Approved alternative (BOM update pending)"
                 if approved_names
@@ -498,9 +537,9 @@ def component_rows(
                 _first(record, "lifecycle_evidence", "Lifecycle Evidence")
             ),
             "Lifecycle conflict": evidence_conflict,
-            "Alternate search status": _text(
-                _first(record, "alternate_search_status", "Alternate Search Status")
-            ),
+            "Alternate search status": alternate_status,
+            "Candidate MPNs": candidate_mpns or "—",
+            "Candidate count": len(candidates) if candidates else ("Not saved" if candidate_mpns else 0),
             "Unit price": price if price is not None and price > 0 else "—",
             "Unit price currency": price_currency or "Not reported",
             "Extended cost": extended if extended is not None else "—",
@@ -523,9 +562,15 @@ def detailed_risk_csv_bytes(
             "Lead time (weeks)": row["Lead time (weeks)"],
             "Suppliers": row["Supplier count"],
             "Evidence source": row["Evidence source"],
+            "Supplier product URL": row["Supplier product URL"],
+            "Datasheet URL": row["Datasheet URL"],
+            "Sourcing checked at": row["Sourcing checked at"],
             "Mitigation status": row["Mitigation status"],
             "Approved alternatives": row["Approved alternatives"],
+            "Alternate search status": row["Alternate search status"],
+            "Candidate MPNs": row["Candidate MPNs"],
             "Risk": row["Risk"],
+            "Risk score": row["Risk score"],
             "Why": row["Why"],
             "Unit price": row["Unit price"],
             "Unit price currency": row["Unit price currency"],
@@ -539,6 +584,43 @@ def detailed_risk_csv_bytes(
     writer.writeheader()
     writer.writerows({key: _safe_cell(row[key]) for key in CSV_COLUMNS} for row in rows)
     return buffer.getvalue().encode("utf-8-sig")
+
+
+def _candidate_rows(parts: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    from src.alternate_candidate_evidence import normalize_candidate_evidence
+
+    output = []
+    for record in parts or []:
+        if not isinstance(record, dict):
+            continue
+        source_mpn = _text(_first(record, "mpn", "MPN", "part_number", "manufacturer_part_number"))
+        for candidate in normalize_candidate_evidence(
+            _first(record, "alternate_candidates", "Alternate Candidates", default=[]),
+            original_mpn=source_mpn,
+        ):
+            output.append({
+                "Source MPN": source_mpn,
+                "Candidate MPN": candidate["mpn"],
+                "Manufacturer": candidate["manufacturer"] or "—",
+                "Supplier": candidate["supplier"] or "—",
+                "Relationship label": candidate["relationship"] or "Unclassified supplier lead",
+                "Evidence type": candidate["evidence_type"] or "—",
+                "Discovery scope": candidate["discovery_scope"] or "—",
+                "Primary category": candidate["primary_category"] or "—",
+                "Description": candidate["description"] or "—",
+                "Package": candidate["package"] or "—",
+                "Pin count": candidate["pin_count"] if candidate["pin_count"] is not None else "Not reported",
+                "Architecture": candidate["architecture"] or "—",
+                "Lifecycle": candidate["lifecycle"] or "Unknown",
+                "Candidate risk": candidate["risk_level"] or "Needs verification",
+                "Candidate risk score": candidate["risk_score"] if candidate["risk_score"] is not None else "Not assessed",
+                "Candidate risk reasons": candidate["risk_reasons"] or "—",
+                "Supplier product URL": candidate["product_url"] or "—",
+                "Datasheet URL": candidate["datasheet_url"] or "—",
+                "Retrieved at": candidate["retrieved_at"] or "—",
+                "Approval status": "Unapproved search lead; technical compatibility not established",
+            })
+    return output
 
 
 def _report_date(value: Any) -> str:
@@ -652,6 +734,13 @@ def detailed_risk_excel_bytes(
         ("Longest reported part lead time", exposure["longest_reported_lead_time"]),
         ("Components with lead-time data", exposure["components_with_lead_time_count"]),
         ("Description-mentioned replacement candidates", sum(row["Description-mentioned alternatives"] != "—" for row in rows)),
+        ("Components with a saved supplier product link", sum(row["Supplier product URL"] != "—" for row in rows)),
+        ("Components with a saved datasheet link", sum(row["Datasheet URL"] != "—" for row in rows)),
+        ("Components with named candidates saved", sum(isinstance(row["Candidate count"], int) and row["Candidate count"] > 0 for row in rows)),
+        ("Unapproved candidate records saved", len(_candidate_rows(parts))),
+        ("Searches reporting candidates without saved candidate details", sum(
+            row["Candidate count"] == "Not saved" for row in rows
+        )),
     ]
     unassessed_count = counts["Not assessed"]
     if not rows:
@@ -698,6 +787,8 @@ def detailed_risk_excel_bytes(
         "A dash (—) means the saved analysis did not include that optional value. Re-run the analysis to refresh supplier evidence.",
         "Approved alternatives are user-recorded engineering decisions. They do not independently certify electrical or mechanical compatibility, and the source BOM is unchanged until a revised BOM is uploaded.",
         "A replacement mentioned in a supplier description is an unverified search lead, not a confirmed or approved cross.",
+        "Rows on Alternative Candidates are unapproved catalog leads. A supplier similarity label, matching family, or datasheet link does not establish drop-in compatibility; engineers must compare electrical ratings, architecture, pinout, footprint, dimensions, and operating conditions.",
+        "The saved score is additive and capped at 100: lifecycle conflict +35; obsolete/EOL/discontinued +50; NRND +35; replacement suggested or factory special order +20; confirmed zero stock +45; stock below BOM quantity +15 to +35; sufficiently covered supplier concentration +5 to +25; lead time 8+ weeks +10, 12+ weeks +15, 26+ weeks +30, and 52+ weeks +35. Bands are 0–29 Low, 30–59 Medium, and 60–100 High. Without usable risk evidence, the result is Needs verification. Read the row reasons and evidence before acting; this score is a sourcing triage signal, not a technical compatibility verdict.",
         "Extended cost is recorded unit price × BOM quantity. Totals include only rows with an explicitly recorded currency and are grouped by currency. They are not inventory valuation or committed spend.",
         "Open priced high-risk / lifecycle cost excludes line items with a saved approved alternative; gross cost still includes those original BOM lines. Both figures use only rows with a usable unit price, BOM quantity, and currency. Rows without extended cost or currency are counted separately; these amounts are not total exposure.",
         "The longest reported component lead time is a possible sourcing bottleneck, not a forecast of project delay.",
@@ -709,7 +800,9 @@ def detailed_risk_excel_bytes(
         cell.alignment = Alignment(wrap_text=True, vertical="top")
         cell.font = Font(name="Aptos", size=10, color="52647A")
         summary.row_dimensions[note_row + offset].height = (
-            52 if "open priced high-risk / lifecycle cost" in note else 30
+            72 if "saved score is additive" in note else
+            52 if "open priced high-risk / lifecycle cost" in note else
+            48 if "Alternative Candidates" in note else 30
         )
     for row in summary.iter_rows(min_row=4, max_row=9 + len(metrics), min_col=1, max_col=2):
         for cell in row:
@@ -742,6 +835,9 @@ def detailed_risk_excel_bytes(
                     if fill:
                         cell.fill = PatternFill("solid", fgColor=fill)
                         cell.font = Font(name="Aptos", size=10, bold=True, color=navy)
+                if label in {"Supplier product URL", "Datasheet URL"} and _safe_http_url(value):
+                    cell.hyperlink = _safe_http_url(value)
+                    cell.font = Font(name="Aptos", size=10, color=blue, underline="single")
                 if label in {"Qty", "Stock", "Lead time (weeks)", "Supplier count", "Risk score", "Unit price", "Extended cost"} and isinstance(value, (int, float)):
                     cell.number_format = "#,##0.0000" if label == "Unit price" else "#,##0.00" if label == "Extended cost" else "#,##0.##"
         sheet.freeze_panes = "A2"
@@ -751,10 +847,12 @@ def detailed_risk_excel_bytes(
         widths = {
             "MPN": 24, "Description": 38, "Manufacturer": 24, "Qty": 10,
             "Lifecycle": 18, "Stock": 14, "Evidence source": 24, "Recorded supplier": 22,
+            "Supplier product URL": 34, "Datasheet URL": 34, "Sourcing checked at": 24,
             "Stock coverage": 18, "Lead time (weeks)": 17, "Lead-time source": 22,
             "Supplier count": 15, "Supplier coverage": 40, "Risk": 14,
             "Risk score": 13, "Mitigation status": 34, "Why": 58, "Lifecycle evidence": 44,
             "Lifecycle conflict": 22, "Alternate search status": 38,
+            "Candidate MPNs": 34, "Candidate count": 16,
             "Approved alternatives": 28, "Unit price": 14,
             "Unit price currency": 19, "Extended cost": 16,
             "Description-mentioned alternatives": 38,
@@ -791,6 +889,71 @@ def detailed_risk_excel_bytes(
         note.alignment = Alignment(wrap_text=True, vertical="center")
         high_sheet.row_dimensions[2].height = 42
         high_sheet.auto_filter.ref = f"A1:{last_column}1"
+
+    candidate_data = _candidate_rows(parts)
+    candidate_sheet = workbook.create_sheet("Alternative Candidates")
+    candidate_sheet.sheet_view.showGridLines = False
+    candidate_sheet.merge_cells("A1:T1")
+    candidate_sheet["A1"] = "Unapproved alternatives found during BOM analysis"
+    candidate_sheet["A1"].font = Font(name="Aptos Display", size=16, bold=True, color=white)
+    candidate_sheet["A1"].fill = PatternFill("solid", fgColor=navy)
+    candidate_sheet["A1"].alignment = Alignment(vertical="center")
+    candidate_sheet.row_dimensions[1].height = 30
+    candidate_sheet.merge_cells("A2:T2")
+    candidate_sheet["A2"] = (
+        "These are search leads, not approved replacements or drop-in certifications. "
+        "Validate the source and candidate datasheets, package dimensions, pinout, architecture, "
+        "electrical limits, and operating conditions before engineering approval."
+    )
+    candidate_sheet["A2"].font = Font(name="Aptos", size=10, color="7C2D12", bold=True)
+    candidate_sheet["A2"].fill = PatternFill("solid", fgColor="FFF7ED")
+    candidate_sheet["A2"].alignment = Alignment(wrap_text=True, vertical="center")
+    candidate_sheet.row_dimensions[2].height = 42
+    candidate_columns = (
+        "Source MPN", "Candidate MPN", "Manufacturer", "Supplier", "Relationship label",
+        "Evidence type", "Discovery scope", "Primary category", "Description", "Package",
+        "Pin count", "Architecture", "Lifecycle", "Candidate risk", "Candidate risk score",
+        "Candidate risk reasons", "Supplier product URL", "Datasheet URL", "Retrieved at", "Approval status",
+    )
+    for column_index, label in enumerate(candidate_columns, start=1):
+        cell = candidate_sheet.cell(4, column_index, label)
+        cell.font = Font(name="Aptos", size=10, bold=True, color=white)
+        cell.fill = PatternFill("solid", fgColor=navy)
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        cell.border = border
+    candidate_sheet.row_dimensions[4].height = 34
+    for row_index, record in enumerate(candidate_data, start=5):
+        for column_index, label in enumerate(candidate_columns, start=1):
+            value = _safe_cell(record.get(label, "—"))
+            cell = candidate_sheet.cell(row_index, column_index, value)
+            cell.font = Font(name="Aptos", size=10, color="1E293B")
+            cell.alignment = Alignment(vertical="top", wrap_text=True)
+            cell.border = border
+            if label in {"Supplier product URL", "Datasheet URL"} and _safe_http_url(value):
+                cell.hyperlink = _safe_http_url(value)
+                cell.font = Font(name="Aptos", size=10, color=blue, underline="single")
+    if not candidate_data:
+        candidate_sheet.merge_cells("A5:T5")
+        candidate_sheet["A5"] = "No named candidate evidence was saved with this analysis."
+        candidate_sheet["A5"].font = Font(name="Aptos", size=10, color="52647A", italic=True)
+        candidate_sheet["A5"].alignment = Alignment(vertical="center")
+    else:
+        candidate_sheet.auto_filter.ref = f"A4:T{len(candidate_data) + 4}"
+        table = Table(displayName="CadivorAlternativeCandidates", ref=f"A4:T{len(candidate_data) + 4}")
+        table.tableStyleInfo = TableStyleInfo(name="TableStyleMedium2", showRowStripes=True, showColumnStripes=False)
+        candidate_sheet.add_table(table)
+    candidate_sheet.freeze_panes = "A5"
+    candidate_sheet.print_title_rows = "1:4"
+    for index, label in enumerate(candidate_columns, start=1):
+        candidate_sheet.column_dimensions[get_column_letter(index)].width = {
+            "Source MPN": 24, "Candidate MPN": 24, "Manufacturer": 22, "Supplier": 18,
+            "Relationship label": 30, "Evidence type": 25, "Discovery scope": 24,
+            "Primary category": 28, "Description": 40, "Package": 20, "Pin count": 13,
+            "Architecture": 24, "Lifecycle": 18, "Candidate risk": 20,
+            "Candidate risk score": 21, "Candidate risk reasons": 48,
+            "Supplier product URL": 34, "Datasheet URL": 34, "Retrieved at": 24,
+            "Approval status": 56,
+        }[label]
 
     buffer = BytesIO()
     workbook.save(buffer)

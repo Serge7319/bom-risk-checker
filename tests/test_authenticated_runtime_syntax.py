@@ -62,6 +62,15 @@ class AuthenticatedRuntimeSyntaxTests(unittest.TestCase):
         self.assertIn("detailed_risk_excel_bytes(", report)
         self.assertIn("detailed_risk_csv_bytes(", report)
 
+    def test_bom_candidate_evidence_is_carried_into_saved_analysis_parts(self) -> None:
+        runtime = (ROOT / "src" / "authenticated_runtime.py").read_text(encoding="utf-8")
+        migration = (
+            ROOT / "supabase" / "migrations" / "20261021_analysis_part_alternate_candidates.sql"
+        ).read_text(encoding="utf-8")
+        self.assertIn('"Alternate Candidates": part_data.get("alternate_candidates") or []', runtime)
+        self.assertIn('"alternate_candidates": part_row.get("Alternate Candidates") or []', runtime)
+        self.assertIn("add column if not exists alternate_candidates jsonb", migration)
+
     def test_bom_workspace_keeps_only_primary_analysis_and_saved_manager(self) -> None:
         source = (ROOT / "src" / "authenticated_runtime.py").read_text(encoding="utf-8")
 
