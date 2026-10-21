@@ -2706,6 +2706,12 @@ def run_authenticated_app() -> None:
 
         part_data["has_alternates"] = len(alternative_part_numbers) > 0
         part_data["alternate_count"] = len(alternative_part_numbers)
+        from src.alternate_candidate_evidence import normalize_candidate_evidence
+
+        part_data["alternate_candidates"] = normalize_candidate_evidence(
+            alternative_part_numbers,
+            original_mpn=normalized_part_number,
+        )
         part_data["alternative_part_numbers"] = ", ".join(
             [
                 alt.get("Alternative Part", str(alt))
@@ -2852,6 +2858,7 @@ def run_authenticated_app() -> None:
             "Alternate Count": part_data.get("alternate_count", 0),
             "Alternate Search Status": part_data.get("alternate_search_status", "Not checked"),
             "Alternative Part Numbers": part_data.get("alternative_part_numbers", ""),
+            "Alternate Candidates": part_data.get("alternate_candidates") or [],
             "Supplier Data Verified": supplier_verified,
             "Sourcing Updated At": part_data.get("retrieved_at") or part_data.get("updated_at") or None,
             "Risk Score": risk_result["risk_score"],
@@ -23719,6 +23726,7 @@ def run_authenticated_app() -> None:
                             "lifecycle_conflict": bool(part_row.get("Lifecycle Conflict", False)),
                             "lead_time_source": str(part_row.get("Lead Time Source") or "").strip() or None,
                             "alternate_search_status": str(part_row.get("Alternate Search Status") or "").strip() or None,
+                            "alternate_candidates": part_row.get("Alternate Candidates") or [],
                             "quantity": cost_fields["quantity"],
                             "unit_price": cost_fields["unit_price"],
                             "unit_price_currency": cost_fields["unit_price_currency"],

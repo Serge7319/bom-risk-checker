@@ -58,6 +58,14 @@ class SavedBomCostPersistenceTests(unittest.TestCase):
         records = [{"mpn": "DHT11", "datasheet_url": "https://example.test/dht11.pdf"}]
         self.assertEqual(without_column(records, "datasheet_url"), [{"mpn": "DHT11"}])
 
+    def test_alternate_candidate_evidence_is_optional_until_database_migration_runs(self):
+        self.assertEqual(
+            omitted_optional_column("column alternate_candidates does not exist in schema cache"),
+            "alternate_candidates",
+        )
+        records = [{"mpn": "LM317DCYR", "alternate_candidates": [{"mpn": "LM317BS-TR"}]}]
+        self.assertEqual(without_column(records, "alternate_candidates"), [{"mpn": "LM317DCYR"}])
+
     def test_missing_inputs_are_not_invented(self):
         saved = analysis_part_cost_fields(
             {

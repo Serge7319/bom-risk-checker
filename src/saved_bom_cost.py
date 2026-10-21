@@ -30,6 +30,7 @@ OPTIONAL_SAVED_PART_COLUMNS = (
     "lifecycle_conflict",
     "lead_time_source",
     "alternate_search_status",
+    "alternate_candidates",
     "supplier_coverage",
 )
 
