@@ -106,6 +106,13 @@ def test_new_bom_analysis_matches_approved_full_width_upload_mockup():
     assert 'upload_available = uploaded is not None or st.session_state.get(' in upload_form
 
 
+def test_bom_analysis_progress_reanchors_the_workspace_after_mount():
+    assert 'id="cadivor-bom-analysis-top-anchor"' in APPROVED_SOURCE
+    assert "anchor.scrollIntoView({ block: 'start'" in APPROVED_SOURCE
+    assert "[0, 80, 220, 500, 900, 1500, 2400]" in APPROVED_SOURCE
+    assert "userInteracted" in APPROVED_SOURCE
+
+
 def test_analysis_workspace_hides_duplicate_legacy_hero_and_caps_actions():
     hero_start = RUNTIME_SOURCE.index('class="bom9-workspace-hero"')
     guard_start = RUNTIME_SOURCE.rfind('if should_render_legacy_bom_workspace(st.session_state):', 0, hero_start)
