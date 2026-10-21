@@ -80,11 +80,14 @@ def test_new_bom_upload_submits_names_and_file_together():
     end = APPROVED_SOURCE.index('    else:\n        from datetime import date', start)
     upload_form = APPROVED_SOURCE[start:end]
 
-    assert 'with st.form(key="approved_bom_upload_form", clear_on_submit=False)' in upload_form
-    assert 'st.form_submit_button(' in upload_form
+    assert 'with st.container(key="approved_bom_upload_form")' in upload_form
+    assert 'st.form_submit_button(' not in upload_form
+    assert 'st.button(' in upload_form
+    assert 'disabled=analysis_running or not upload_available' in upload_form
     assert 'autocomplete="off"' in upload_form
-    assert 'st.session_state["cadivor_pending_project"]' in upload_form
-    assert 'st.session_state["cadivor_pending_bom_name"] = bom_name' in upload_form
+    assert 'stage_approved_bom_submission(' in upload_form
+    assert 'project_name=resolve_project_choice(' in upload_form
+    assert 'bom_name=bom_name' in upload_form
     assert '[class*="st-key-approved_bom_analyze"] button{width:auto!important' in APPROVED_SOURCE
 
 
@@ -100,7 +103,7 @@ def test_new_bom_analysis_matches_approved_full_width_upload_mockup():
     assert 'placeholder="Example: Motor Controller Rev A"' in upload_form
     assert 'key="bom_file_uploader"' in upload_form
     assert 'key="approved_bom_analyze"' in upload_form
-    assert 'st.session_state["cadivor_pending_upload"] = uploaded' in upload_form
+    assert 'upload_available = uploaded is not None or st.session_state.get(' in upload_form
 
 
 def test_analysis_workspace_hides_duplicate_legacy_hero_and_caps_actions():
