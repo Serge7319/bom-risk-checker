@@ -1239,31 +1239,37 @@ def begin_approved_page() -> None:
         .st-key-approved_bom_toolbar [data-testid="stColumn"]:last-child [data-testid="stElementContainer"]{display:flex!important;justify-content:flex-end!important;width:100%!important}
         .st-key-approved_bom_title [data-testid="stColumn"]:last-child button{white-space:nowrap!important}
         .st-key-approved_bom_toolbar [data-testid="stColumn"]:last-child button{white-space:nowrap!important}
-        .st-key-approved_bom_upload_panel{box-sizing:border-box!important;width:100%!important;max-width:none!important;margin:22px auto 0!important;padding:24px 36px 38px!important;border:1px solid #dce5f0!important;border-radius:18px!important;background:#fff!important;box-shadow:0 4px 18px rgba(15,23,42,.055)!important}
-        .st-key-approved_bom_upload_panel>[data-testid="stVerticalBlock"]{gap:1rem!important}
-        .cv-bom-upload-heading{margin:0 0 2px!important;padding:0 0 18px!important;border-bottom:1px solid #e5ebf3!important}
+        .st-key-approved_bom_upload_panel{box-sizing:border-box!important;width:100%!important;max-width:none!important;margin:22px auto 0!important;padding:24px 36px 28px!important;border:1px solid #dce5f0!important;border-radius:18px!important;background:#fff!important;box-shadow:0 4px 18px rgba(15,23,42,.055)!important}
+        .st-key-approved_bom_upload_panel>[data-testid="stVerticalBlock"]{gap:.85rem!important}
+        .cv-bom-upload-heading{margin:0 0 1px!important;padding:0 0 15px!important;border-bottom:1px solid #e5ebf3!important}
         .cv-bom-upload-heading h2{margin:0 0 5px!important;color:#142239!important;font-size:23px!important;font-weight:750!important;letter-spacing:-.02em!important}
         .cv-bom-upload-heading p{margin:0!important;color:#64748b!important;font-size:14px!important;line-height:1.45!important}
         .st-key-approved_bom_upload_form{box-sizing:border-box!important;width:100%!important;padding:0!important;border:0!important;background:transparent!important}
-        .st-key-approved_bom_upload_form>[data-testid="stVerticalBlock"]{gap:1.1rem!important}
+        .st-key-approved_bom_upload_form>[data-testid="stVerticalBlock"]{gap:.82rem!important}
         .st-key-approved_bom_upload_form [data-testid="stWidgetLabel"] p{margin:0 0 6px!important;color:#34445d!important;font-size:13px!important;font-weight:700!important;line-height:1.3!important}
         .st-key-approved_bom_upload_form .st-key-approved_bom_project_name [data-testid="stWidgetLabel"] p:after{content:" (optional)";color:#8492a6;font-weight:500}
         .st-key-approved_bom_upload_form .st-key-approved_bom_name [data-testid="stWidgetLabel"] p:after{content:" *";color:#dc3545;font-weight:800}
-        .st-key-approved_bom_upload_form [data-testid="stTextInput"] input{box-sizing:border-box!important;min-height:52px!important;border:1px solid #b8c7dc!important;border-radius:10px!important;background:#fbfdff!important;color:#172942!important;font-size:14px!important;box-shadow:none!important}
+        .st-key-approved_bom_upload_form [data-testid="stTextInput"] input{box-sizing:border-box!important;min-height:46px!important;border:1px solid #b8c7dc!important;border-radius:10px!important;background:#fbfdff!important;color:#172942!important;font-size:14px!important;box-shadow:none!important}
         .st-key-approved_bom_upload_form [data-testid="stTextInput"] input:focus{border-color:#2865ed!important;box-shadow:0 0 0 3px rgba(40,101,237,.12)!important}
         .st-key-approved_bom_upload_form [data-testid="stCaptionContainer"] p{margin:0!important;color:#718198!important;font-size:12px!important;line-height:1.45!important}
         .st-key-approved_bom_upload_form .st-key-bom_file_uploader [data-testid="stWidgetLabel"] p{margin:0 0 9px!important;color:#34445d!important;font-size:13px!important;font-weight:700!important}
+        .st-key-approved_bom_upload_form .st-key-bom_file_uploader [data-testid="stFileUploader"]{box-sizing:border-box!important;margin:0!important;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important}
         .st-key-approved_bom_upload_form [data-testid="stFileUploader"]{margin:0!important}
-        .st-key-approved_bom_upload_form [data-testid="stFileUploaderDropzone"]{box-sizing:border-box!important;min-height:208px!important;border:2px dashed #5b8cff!important;border-radius:14px!important;background:#f8fbff!important;padding:30px 28px!important}
+        .st-key-approved_bom_upload_form [data-testid="stFileUploaderDropzone"]{box-sizing:border-box!important;display:flex!important;align-items:center!important;justify-content:center!important;min-height:108px!important;border:1.5px dashed #8aabf5!important;border-radius:12px!important;background:#f8fbff!important;padding:14px 22px!important}
+        .st-key-approved_bom_upload_form [data-testid="stFileUploaderDropzone"]>div{display:flex!important;flex-direction:row!important;align-items:center!important;justify-content:center!important;gap:18px!important;width:100%!important}
+        .st-key-approved_bom_upload_form [data-testid="stFileUploaderDropzoneInstructions"]{flex:0 1 auto!important;text-align:left!important}
         .st-key-approved_bom_upload_form [data-testid="stFileUploaderDropzone"] svg{color:#2865ed!important}
         .st-key-approved_bom_upload_form [data-testid="stFileUploaderDropzoneInstructions"]{color:#52647d!important}
         .st-key-approved_bom_upload_form [data-testid="stFileUploaderDropzoneInstructions"] p{margin:0!important;color:#34445d!important;font-size:15px!important;font-weight:700!important;line-height:1.4!important}
         .st-key-approved_bom_upload_form [data-testid="stFileUploaderDropzoneInstructions"] small{color:#718198!important;font-size:12px!important}
-        .st-key-approved_bom_upload_form [data-testid="stFileUploaderDropzone"] button{min-height:40px!important;height:40px!important;border:1px solid #c8d5e8!important;border-radius:9px!important;background:#fff!important;color:#225bd7!important;box-shadow:none!important;font-size:13px!important;font-weight:700!important}
+        .st-key-approved_bom_upload_form [data-testid="stFileUploaderDropzone"] button{flex:0 0 auto!important;min-height:40px!important;height:40px!important;border:1px solid #c8d5e8!important;border-radius:9px!important;background:#fff!important;color:#225bd7!important;box-shadow:none!important;font-size:13px!important;font-weight:700!important}
         .st-key-approved_bom_upload_form [data-testid="stFileUploaderDropzone"] button:hover{border-color:#8eafff!important;background:#f5f8ff!important}
         .st-key-approved_bom_submit_row [data-testid="stHorizontalBlock"]{align-items:center!important;gap:16px!important}
         .st-key-approved_bom_submit_row [data-testid="stCaptionContainer"] p{color:#718198!important;font-size:12px!important}
         [class*="st-key-approved_bom_analyze"] button{width:auto!important;min-width:148px!important;max-width:100%!important;min-height:44px!important}
+        [class*="st-key-approved_bom_analyze"] button:disabled{border:1px solid #d7dfeb!important;background:#e9eef6!important;color:#8996a8!important;box-shadow:none!important;opacity:1!important;cursor:not-allowed!important}
+        [class*="st-key-approved_bom_analyze"] button:disabled *{color:#8996a8!important}
+        [class*="st-key-approved_bom_analyze"] button:disabled:hover{transform:none!important;filter:none!important;box-shadow:none!important}
         /* Engineering decision cards and controls follow the approved light-tint dashboard style. */
         .st-key-approved_decision_cardwrap_open{background:#f2f7ff!important;border-color:#dbeafe!important}
         .st-key-approved_decision_cardwrap_overdue{background:#fff4f5!important;border-color:#ffe0e6!important}
@@ -1299,7 +1305,8 @@ def begin_approved_page() -> None:
           .st-key-approved_bom_submit_row [data-testid="stHorizontalBlock"]{flex-wrap:wrap!important;gap:10px!important}
           .st-key-approved_bom_upload_fields [data-testid="column"]{flex:1 1 100%!important;width:100%!important}
           .st-key-approved_bom_submit_row [data-testid="column"]{flex:1 1 100%!important;width:100%!important}
-          .st-key-approved_bom_upload_form [data-testid="stFileUploaderDropzone"]{min-height:176px!important;padding:22px 14px!important}
+          .st-key-approved_bom_upload_form [data-testid="stFileUploaderDropzone"]{min-height:96px!important;padding:12px 10px!important}
+          .st-key-approved_bom_upload_form [data-testid="stFileUploaderDropzone"]>div{gap:10px!important}
           .st-key-approved_decision_cards>[data-testid="stHorizontalBlock"]>[data-testid="column"]{flex:1 1 100%!important;min-width:0!important}
           .st-key-approved_bom_title [data-testid="stHorizontalBlock"]{flex-wrap:wrap!important;gap:10px!important}
           .st-key-approved_bom_title [data-testid="stColumn"]:first-child{flex:1 1 100%!important;width:100%!important}
@@ -2565,6 +2572,58 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
         and analysis_results is not None
         and not getattr(analysis_results, "empty", True)
     )
+    if analysis_running and not results_visible:
+        # The analysis pipeline is rendered after the shell and can otherwise
+        # inherit the browser's previous scroll anchor. Re-anchor this one
+        # blocking workflow after its progress surface mounts.
+        st.markdown(
+            '<div id="cadivor-bom-analysis-top-anchor" aria-hidden="true"></div>',
+            unsafe_allow_html=True,
+        )
+        import streamlit.components.v1 as components
+
+        components.html(
+            """
+            <script>
+            (() => {
+              const parentWindow = window.parent;
+              const doc = parentWindow.document;
+              let userInteracted = false;
+              const cancelReset = () => { userInteracted = true; };
+              ['wheel', 'touchstart', 'pointerdown', 'keydown'].forEach((eventName) => {
+                doc.addEventListener(eventName, cancelReset, { once: true, capture: true, passive: true });
+              });
+              const resetToAnalysis = () => {
+                if (userInteracted) return;
+                const anchor = doc.getElementById('cadivor-bom-analysis-top-anchor');
+                if (anchor) anchor.scrollIntoView({ block: 'start', inline: 'nearest', behavior: 'auto' });
+                const main = doc.querySelector('section[data-testid="stMain"]');
+                const candidates = [
+                  main && main.querySelector('[data-testid="stMainBlockContainer"]'),
+                  main,
+                  doc.querySelector('section.main'),
+                  doc.scrollingElement,
+                  doc.documentElement,
+                  doc.body
+                ].filter(Boolean);
+                for (const element of candidates) {
+                  try {
+                    element.scrollTop = 0;
+                    if (typeof element.scrollTo === 'function') element.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+                  } catch (error) {}
+                }
+                try { parentWindow.scrollTo({ top: 0, left: 0, behavior: 'auto' }); } catch (error) {}
+              };
+              [0, 80, 220, 500, 900, 1500, 2400].forEach((delay) => {
+                parentWindow.setTimeout(resetToAnalysis, delay);
+              });
+            })();
+            </script>
+            """,
+            height=0,
+            width=0,
+            scrolling=False,
+        )
     with st.container(key="approved_bom_title"):
         title_col, action_col = st.columns([5.2, 1.8], vertical_alignment="center")
         with title_col:
