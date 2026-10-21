@@ -36,6 +36,7 @@ def normalize_column_name(column_name: str) -> str:
         "mpn": "mpn",
         "part number": "mpn",
         "manufacturer part number": "mpn",
+        "manufacturer part number mpn": "mpn",
         "manufacturer part no": "mpn",
         "manufacturer part": "mpn",
         "manufacturer pn": "mpn",

@@ -5,6 +5,7 @@ from pathlib import Path
 from src.saved_bom_cost import analysis_part_cost_fields, json_safe_value
 from src.bom_upload_flow import (
     consume_approved_bom_submission,
+    stage_approved_bom_submission,
     finish_approved_bom_submission,
     resume_approved_bom_submission,
     should_render_approved_bom_upload_form,
@@ -118,6 +119,45 @@ class ApprovedBOMPageContractTests(unittest.TestCase):
 
 
 class ApprovedBOMSubmissionTests(unittest.TestCase):
+    def test_submit_recovers_file_from_uploader_widget_state(self):
+        upload = object()
+        state = {"bom_file_uploader": upload}
+
+        staged = stage_approved_bom_submission(
+            state,
+            submitted=True,
+            uploaded_file=None,
+            project_name="ATP Project",
+            bom_name="Cadivor Test BOM",
+        )
+
+        self.assertTrue(staged)
+        self.assertTrue(state["cadivor_bom_analysis_ready"])
+        self.assertIs(state["cadivor_pending_upload"], upload)
+        self.assertEqual(state["cadivor_pending_project"], "ATP Project")
+        self.assertEqual(state["cadivor_pending_bom_name"], "Cadivor Test BOM")
+        self.assertNotIn("cadivor_bom_submission_error", state)
+        submitted, consumed_upload, project, name = consume_approved_bom_submission(state)
+        self.assertTrue(submitted)
+        self.assertIs(consumed_upload, upload)
+        self.assertEqual((project, name), ("ATP Project", "Cadivor Test BOM"))
+        self.assertTrue(state["cadivor_bom_pipeline_active"])
+
+    def test_submit_without_file_shows_retryable_error_instead_of_silent_noop(self):
+        state = {}
+
+        staged = stage_approved_bom_submission(
+            state,
+            submitted=True,
+            uploaded_file=None,
+            project_name="ATP Project",
+            bom_name="Cadivor Test BOM",
+        )
+
+        self.assertFalse(staged)
+        self.assertNotIn("cadivor_bom_analysis_ready", state)
+        self.assertIn("selected file was not available", state["cadivor_bom_submission_error"])
+
     def test_approved_upload_hands_off_file_names_and_starts_analysis(self):
         upload = object()
         state = {
