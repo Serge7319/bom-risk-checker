@@ -2573,21 +2573,31 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
         and not getattr(analysis_results, "empty", True)
     )
     if analysis_running and not results_visible:
-        # The analysis pipeline is rendered after the shell and can otherwise
-        # inherit the browser's previous scroll anchor. Re-anchor this one
-        # blocking workflow after its progress surface mounts.
+        # The analysis pipeline can inherit the browser's previous scroll
+        # offset. Use st.html so this reset runs in the app document;
+        # components.html runs inside a sandboxed iframe and cannot reliably
+        # scroll the parent page.
+        try:
+            from src.ui.navigation import NAV_SCROLL_RESET_TOKEN_KEY
+
+            scroll_token = int(st.session_state.get(NAV_SCROLL_RESET_TOKEN_KEY) or 0)
+        except (ImportError, TypeError, ValueError):
+            scroll_token = 0
         st.markdown(
-            '<div id="cadivor-bom-analysis-top-anchor" aria-hidden="true"></div>',
+            '<div id="cadivor-bom-analysis-top-anchor" '
+            f'data-scroll-token="{scroll_token}" aria-hidden="true"></div>',
             unsafe_allow_html=True,
         )
-        import streamlit.components.v1 as components
-
-        components.html(
+        st.html(
             """
             <script>
             (() => {
-              const parentWindow = window.parent;
-              const doc = parentWindow.document;
+              const doc = document;
+              const anchor = doc.getElementById('cadivor-bom-analysis-top-anchor');
+              const token = anchor?.getAttribute('data-scroll-token') || '0';
+              const root = doc.documentElement;
+              if (root.getAttribute('data-cadivor-bom-scroll-token') === token) return;
+              root.setAttribute('data-cadivor-bom-scroll-token', token);
               let userInteracted = false;
               const cancelReset = () => { userInteracted = true; };
               ['wheel', 'touchstart', 'pointerdown', 'keydown'].forEach((eventName) => {
@@ -2595,13 +2605,15 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
               });
               const resetToAnalysis = () => {
                 if (userInteracted) return;
-                const anchor = doc.getElementById('cadivor-bom-analysis-top-anchor');
-                if (anchor) anchor.scrollIntoView({ block: 'start', inline: 'nearest', behavior: 'auto' });
                 const main = doc.querySelector('section[data-testid="stMain"]');
+                const canvas = doc.querySelector('.st-key-approved_page_canvas_standard_render_bom_catalog');
                 const candidates = [
                   main && main.querySelector('[data-testid="stMainBlockContainer"]'),
+                  main && main.querySelector('.main'),
                   main,
+                  canvas,
                   doc.querySelector('section.main'),
+                  doc.querySelector('[data-testid="stAppViewContainer"]'),
                   doc.scrollingElement,
                   doc.documentElement,
                   doc.body
@@ -2612,17 +2624,16 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
                     if (typeof element.scrollTo === 'function') element.scrollTo({ top: 0, left: 0, behavior: 'auto' });
                   } catch (error) {}
                 }
-                try { parentWindow.scrollTo({ top: 0, left: 0, behavior: 'auto' }); } catch (error) {}
+                try { window.scrollTo({ top: 0, left: 0, behavior: 'auto' }); } catch (error) {}
+                try { anchor?.scrollIntoView({ block: 'start', inline: 'nearest', behavior: 'auto' }); } catch (error) {}
               };
-              [0, 80, 220, 500, 900, 1500, 2400].forEach((delay) => {
-                parentWindow.setTimeout(resetToAnalysis, delay);
+              [0, 80, 220, 500, 900, 1500, 2400, 3600].forEach((delay) => {
+                window.setTimeout(resetToAnalysis, delay);
               });
             })();
             </script>
             """,
-            height=0,
-            width=0,
-            scrolling=False,
+            unsafe_allow_javascript=True,
         )
     with st.container(key="approved_bom_title"):
         title_col, action_col = st.columns([5.2, 1.8], vertical_alignment="center")
