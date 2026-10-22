@@ -54,7 +54,7 @@ class AlternativeSupplierEvidenceTests(unittest.TestCase):
         self.engine.get_best_part_data = lambda _part: {}
 
     def test_retains_direct_and_cross_manufacturer_supplier_candidates(self):
-        self.engine.discover_alternative_candidates = lambda _part: _discovery_payload([
+        self.engine.discover_alternative_candidates = lambda _part, **_kwargs: _discovery_payload([
             _digikey_direct_pair("C0603C104K5RAC3121"),
             _digikey_direct_pair(
                 "0603BB104K500YT", manufacturer="Knowles Novacap"
@@ -79,7 +79,7 @@ class AlternativeSupplierEvidenceTests(unittest.TestCase):
         }
         for original, candidate in cases.items():
             with self.subTest(original=original):
-                self.engine.discover_alternative_candidates = lambda _part, candidate=candidate: _discovery_payload([{
+                self.engine.discover_alternative_candidates = lambda _part, candidate=candidate, **_kwargs: _discovery_payload([{
                     "manufacturer_part_number": candidate,
                     "source": "DigiKey",
                     "substitute_type": "Upgrade",
@@ -89,11 +89,11 @@ class AlternativeSupplierEvidenceTests(unittest.TestCase):
                 self.assertEqual([row["Alternative Part"] for row in results], [candidate])
 
     def test_does_not_fabricate_hard_coded_candidates_without_supplier_evidence(self):
-        self.engine.discover_alternative_candidates = lambda _part: _discovery_payload([])
+        self.engine.discover_alternative_candidates = lambda _part, **_kwargs: _discovery_payload([])
         self.assertEqual(self.engine.suggest_alternatives_v2("LM358"), [])
 
     def test_catalog_candidate_is_visible_but_not_labeled_as_a_direct_substitute(self):
-        self.engine.discover_alternative_candidates = lambda _part: _discovery_payload([{
+        self.engine.discover_alternative_candidates = lambda _part, **_kwargs: _discovery_payload([{
             "manufacturer_part_number": "LM358DT",
             "source": "DigiKey",
             "substitute_type": "Similar",
@@ -108,7 +108,7 @@ class AlternativeSupplierEvidenceTests(unittest.TestCase):
         self.assertIn("catalog", result["Recommendation"].lower())
 
     def test_keeps_up_to_ten_lower_confidence_candidates(self):
-        self.engine.discover_alternative_candidates = lambda _part: _discovery_payload([
+        self.engine.discover_alternative_candidates = lambda _part, **_kwargs: _discovery_payload([
             {
                 "manufacturer_part_number": f"CANDIDATE-{index}",
                 "source": "DigiKey",

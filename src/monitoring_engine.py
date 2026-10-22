@@ -1,5 +1,6 @@
 import logging
 import math
+import re
 
 from src.saved_bom_cost import json_safe_value
 
@@ -81,6 +82,16 @@ def build_monitor_record(
         "unit_price": _optional_number(part_data.get("Unit Price")),
         "risk_level": _display_text(part_data.get("Risk Level", "")),
     })
+
+
+def resolve_monitoring_workspace_id(source_part, saved_analysis, active_workspace_id=None):
+    """Use the verified saved analysis as the authoritative monitoring scope."""
+    for record in (saved_analysis, source_part):
+        if isinstance(record, dict):
+            value = str(record.get("workspace_id") or "").strip()
+            if value:
+                return value
+    return str(active_workspace_id or "").strip() or None
 
 def build_alert_record(
     user_id,
@@ -251,6 +262,20 @@ def save_monitor_history(supabase, records) -> bool:
     )
 
 
+def save_monitor_history_with_diagnostic(supabase, records) -> tuple[bool, str]:
+    """Persist a baseline and return a safe, actionable database rejection reason."""
+    if not records:
+        return True, ""
+    result = _insert_monitor_rows(
+        supabase,
+        "part_monitor_history",
+        records,
+        optional_columns=("product_url", "datasheet_url"),
+        include_diagnostic=True,
+    )
+    return result
+
+
 def save_monitor_alerts(supabase, records) -> bool:
     """Persist alert evidence while tolerating a not-yet-applied URL migration."""
     if not records:
@@ -263,12 +288,39 @@ def save_monitor_alerts(supabase, records) -> bool:
     )
 
 
-def _insert_monitor_rows(supabase, table_name, records, *, optional_columns):
+def _monitor_persistence_diagnostic(exc):
+    """Summarize PostgREST failures without echoing submitted snapshot contents."""
+    raw = str(exc or "").strip()
+    folded = raw.casefold()
+    code_match = re.search(r"\b(?:PGRST\d{3}|\d{5})\b", raw, re.IGNORECASE)
+    code = code_match.group(0).upper() if code_match else ""
+    if "row-level security" in folded or "permission denied" in folded or code == "42501":
+        return "The database write policy rejected the monitoring baseline."
+    if "foreign key" in folded or code == "23503":
+        return "The saved BOM or workspace reference was rejected by the database."
+    if "not-null" in folded or "null value" in folded or code == "23502":
+        return "A required monitoring field is missing from the baseline."
+    if "duplicate key" in folded or code == "23505":
+        return "The database reports an existing baseline with the same unique key."
+    if "column" in folded or "schema cache" in folded or code.startswith("PGRST2"):
+        return "The monitoring database schema is missing a field. Apply the current monitoring migrations."
+    suffix = f" (database code {code})" if code else ""
+    return f"The database rejected the monitoring baseline{suffix}. Check the server log for its constraint."
+
+
+def _insert_monitor_rows(
+    supabase,
+    table_name,
+    records,
+    *,
+    optional_columns,
+    include_diagnostic=False,
+):
     pending = json_safe_value(records)
     while True:
         try:
             supabase.table(table_name).insert(pending).execute()
-            return True
+            return (True, "") if include_diagnostic else True
         except Exception as exc:
             folded = str(exc).casefold()
             missing_column = next(
@@ -287,12 +339,14 @@ def _insert_monitor_rows(supabase, table_name, records, *, optional_columns):
                     for row in pending
                 ]
                 continue
+            diagnostic = _monitor_persistence_diagnostic(exc)
             _logger.warning(
-                "Could not save %s monitoring data (%s)",
+                "Could not save %s monitoring data (%s): %s",
                 table_name,
                 type(exc).__name__,
+                diagnostic,
             )
-            return False
+            return (False, diagnostic) if include_diagnostic else False
 
 
 def detect_monitored_part_changes(

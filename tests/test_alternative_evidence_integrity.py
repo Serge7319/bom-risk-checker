@@ -94,7 +94,7 @@ class AlternativeEvidenceIntegrityTests(unittest.TestCase):
     def test_c0603_fixture_only_lists_exact_digikey_directs(self):
         explicit = self._c0603_fixture_rows()
 
-        def discover(_part):
+        def discover(_part, **_kwargs):
             merged = self.classification.merge_discovery_candidates(
                 explicit,
                 [],
@@ -166,7 +166,7 @@ class AlternativeEvidenceIntegrityTests(unittest.TestCase):
             }
         ]
 
-        def discover(_part):
+        def discover(_part, **_kwargs):
             return {
                 "original_mpn": self.original,
                 "candidates": self.classification.merge_discovery_candidates(
@@ -317,7 +317,7 @@ class AlternativeEvidenceIntegrityTests(unittest.TestCase):
                 )
             )
 
-        def discover(_part):
+        def discover(_part, **_kwargs):
             merged = self.classification.merge_discovery_candidates(
                 [],
                 [catalog_only],
@@ -449,7 +449,7 @@ class AlternativeEvidenceIntegrityTests(unittest.TestCase):
             original_mpn=original,
         )
 
-        def discover(_part):
+        def discover(_part, **_kwargs):
             return {
                 "original_mpn": original,
                 "candidates": merged,
@@ -674,7 +674,7 @@ class AlternativeEvidenceIntegrityTests(unittest.TestCase):
         )
         self.assertEqual(summary.count("DigiKey relationship: Direct."), 1)
 
-        def discover(_part):
+        def discover(_part, **_kwargs):
             merged = self.classification.merge_discovery_candidates(
                 [pair_3121],
                 [catalog_direct, sibling_leak],

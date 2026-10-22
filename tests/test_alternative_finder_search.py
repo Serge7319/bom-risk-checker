@@ -146,7 +146,10 @@ class AlternativeFinderSearchTests(unittest.TestCase):
             include_family_search=False,
         )
 
-        self.assertEqual(captured, {"include_family_search": False})
+        self.assertFalse(captured["include_family_search"])
+        self.assertEqual(
+            captured["original_data"]["manufacturer_part_number"], "LM317DCYR"
+        )
 
     def test_unconfigured_catalogs_are_reported_as_incomplete_coverage(self):
         title, detail = self.search.replacement_search_empty_state(
@@ -319,7 +322,7 @@ class AlternativeFinderSearchTests(unittest.TestCase):
             )
         ]
 
-        def discover(_part):
+        def discover(_part, **_kwargs):
             merged = self.classification.merge_discovery_candidates(
                 explicit,
                 [],
@@ -360,7 +363,7 @@ class AlternativeFinderSearchTests(unittest.TestCase):
             _digikey_direct_pair("C0603C104K5RAC3121", retrieval_status="ok")
         ]
 
-        def discover(_part):
+        def discover(_part, **_kwargs):
             merged = self.classification.merge_discovery_candidates(
                 explicit,
                 [],
@@ -447,7 +450,7 @@ class AlternativeFinderSearchTests(unittest.TestCase):
             for index in range(12)
         ]
 
-        def discover(_part):
+        def discover(_part, **_kwargs):
             merged = self.classification.merge_discovery_candidates(
                 explicit,
                 [],
@@ -526,7 +529,7 @@ class AlternativeFinderSearchTests(unittest.TestCase):
         self.engine.get_best_part_data = search_lookup
         self.aggregator.get_best_part_data = enrich_lookup
 
-        def discover(_part):
+        def discover(_part, **_kwargs):
             merged = self.classification.merge_discovery_candidates(
                 [_digikey_direct_pair("C0603C104K5RAC3121", description="")],
                 [],
@@ -667,7 +670,7 @@ class AlternativeFinderSearchTests(unittest.TestCase):
             _digikey_direct_pair("C0603C104K5RAC3121", retrieval_status="ok")
         ]
 
-        def discover(_part):
+        def discover(_part, **_kwargs):
             merged = self.classification.merge_discovery_candidates(
                 explicit,
                 [],
@@ -755,7 +758,7 @@ class AlternativeFinderOutcomeTests(unittest.TestCase):
         self.engine.suggest_alternatives_v2 = lambda _part: (_ for _ in ()).throw(
             RuntimeError("candidate engine exploded")
         )
-        self.engine.discover_alternative_candidates = lambda _part: {
+        self.engine.discover_alternative_candidates = lambda _part, **_kwargs: {
             "original_mpn": "C0603C104K5RACTU",
             "candidates": [],
             "provider_failures": [],
@@ -785,7 +788,7 @@ class AlternativeFinderOutcomeTests(unittest.TestCase):
 
         explicit = [self._verified_direct_candidate()]
 
-        def discover(_part):
+        def discover(_part, **_kwargs):
             merged = self.classification.merge_discovery_candidates(
                 explicit,
                 [],
@@ -945,7 +948,7 @@ class AlternativeFinderOutcomeTests(unittest.TestCase):
         )
         self.assertEqual(classification, self.classification.CLASS_VERIFIED_DIRECT)
 
-        def discover(_part):
+        def discover(_part, **_kwargs):
             return {
                 "original_mpn": "C0603C104K5RACTU",
                 "candidates": merged,

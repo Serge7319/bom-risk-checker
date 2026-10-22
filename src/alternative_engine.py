@@ -1634,11 +1634,15 @@ def suggest_alternatives_v2(
             "supplier_data_verified": False,
         }
     if include_family_search:
-        discovery = discover_alternative_candidates(canonical_part_number)
+        discovery = discover_alternative_candidates(
+            canonical_part_number,
+            original_data=original_data,
+        )
     else:
         discovery = discover_alternative_candidates(
             canonical_part_number,
             include_family_search=False,
+            original_data=original_data,
         )
     _LAST_ALTERNATIVE_DISCOVERY = discovery
     supplier_results = list(discovery.get("candidates") or [])

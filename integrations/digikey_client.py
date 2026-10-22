@@ -438,8 +438,14 @@ def search_digikey_catalog_candidates(
     *,
     limit: int = 12,
     include_family_search: bool = True,
+    additional_search_terms: list[str] | None = None,
 ) -> list[dict]:
-    """Return catalog candidates when DigiKey has no explicit substitute mapping."""
+    """Return catalog and targeted parametric discovery leads.
+
+    Supplemental queries are built from the verified source component's recorded
+    attributes. Their rows remain catalog leads; the search never promotes them
+    to distributor-listed Direct or Upgrade relationships.
+    """
     requested = str(part_number or "").strip()
     if not requested:
         return []
@@ -452,6 +458,15 @@ def search_digikey_catalog_candidates(
         requested,
         include_family_search=include_family_search,
     )
+    additional_terms = []
+    seen_terms = {term.casefold() for term in search_terms}
+    for value in additional_search_terms or []:
+        term = re.sub(r"\s+", " ", str(value or "")).strip()
+        if term and term.casefold() not in seen_terms:
+            additional_terms.append(term)
+            seen_terms.add(term.casefold())
+    search_terms.extend(additional_terms)
+    additional_term_keys = {term.casefold() for term in additional_terms}
     family_key = _mpn_key(_catalog_family_search_term(requested))
     for search_term in search_terms:
         response = requests.post(
@@ -477,19 +492,25 @@ def search_digikey_catalog_candidates(
                 continue
             seen_part_numbers.add(mpn.casefold())
             fields = _digikey_evidence_fields(normalized)
+            is_parametric_match = search_term.casefold() in additional_term_keys
             is_family_match = bool(
                 include_family_search
                 and family_key
                 and _mpn_key(search_term) == family_key
             )
+            if is_parametric_match:
+                evidence_type = "Distributor parametric keyword match"
+                discovery_scope = "parametric_search"
+            elif is_family_match:
+                evidence_type = "Distributor family search match"
+                discovery_scope = "family_search"
+            else:
+                evidence_type = "Distributor catalog match"
+                discovery_scope = "catalog_search"
             candidates.append({
                 "source": "DigiKey",
-                "evidence_type": (
-                    "Distributor family search match"
-                    if is_family_match
-                    else "Distributor catalog match"
-                ),
-                "discovery_scope": "family_search" if is_family_match else "catalog_search",
+                "evidence_type": evidence_type,
+                "discovery_scope": discovery_scope,
                 "discovery_query": search_term,
                 "substitute_type": "Similar",
                 "manufacturer_part_number": mpn,
@@ -745,7 +766,9 @@ def normalize_digikey_product(product: dict) -> dict:
 
 def _digikey_evidence_fields(normalized: dict) -> dict:
     """Keep supplier parametric values on a catalog candidate."""
-    keys = (
+    from src.component_family_profiles import digikey_parametric_map
+
+    keys = tuple(dict.fromkeys((
         "primary_category",
         "package",
         "pin_count",
@@ -760,7 +783,8 @@ def _digikey_evidence_fields(normalized: dict) -> dict:
         "input_bias_na",
         "quiescent_current_ma",
         "gbw_mhz",
-    )
+        *digikey_parametric_map().keys(),
+    )))
     fields = {}
     sources = {}
     for key in keys:

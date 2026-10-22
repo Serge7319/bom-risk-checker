@@ -120,7 +120,7 @@ class StockCoercionTests(unittest.TestCase):
             }
         ]
 
-        def discover(_part):
+        def discover(_part, **_kwargs):
             merged = self.classification.merge_discovery_candidates(
                 explicit,
                 [],
