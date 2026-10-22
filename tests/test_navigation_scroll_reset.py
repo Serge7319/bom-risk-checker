@@ -49,3 +49,12 @@ def test_long_bom_analysis_keeps_top_anchor_until_progress_finishes_or_user_scro
     )[1].split("def _esc", 1)[0]
     assert "request_main_scroll_reset()" in selector_callback
     assert "st.rerun()" in selector_callback
+
+
+def test_bom_analysis_resets_scroll_again_after_the_result_or_terminal_state_mounts():
+    active_fragment = RUNTIME.split("def _render_active_bom_analysis():", 1)[1].split(
+        "with st.container(key=\"bom8_analysis_progress_card\")", 1
+    )[0]
+    assert active_fragment.count("request_main_scroll_reset()") >= 3
+    success_path = active_fragment.split('st.session_state["results_df"] = results_df', 1)[1]
+    assert success_path.index("request_main_scroll_reset()") < success_path.index("st.rerun()")

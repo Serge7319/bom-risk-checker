@@ -6535,10 +6535,10 @@ def render_replacement_search() -> None:
 
         coverage_rows = supplier_search_coverage_rows(discovery)
         if coverage_rows:
-            with st.expander("Search coverage and evidence", expanded=False):
-                st.caption(
-                    "Direct substitute relationships are shown separately from catalog, family, "
-                    "and specification-led discovery leads. A catalog lead is not a compatibility approval."
+            with st.container(key="approved_replacement_search_coverage"):
+                st.markdown(
+                    "**Supplier search coverage**  \n"
+                    "Candidate rows identify suppliers that returned a part. This list also shows catalogs that were checked but returned no leads, failed, or are not configured. Catalog leads are not compatibility approvals."
                 )
                 for provider_name, coverage_detail in coverage_rows:
                     st.markdown(

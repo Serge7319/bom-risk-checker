@@ -925,8 +925,12 @@ def _provider_discovery_status(source_name: str) -> dict:
         _provider_configured(name) for name in secret_names
     )
     if not configured:
+        is_relationship_provider = source_name == "DigiKey"
         return {
-            "substitutions": "not_configured",
+            "substitutions": "not_configured" if is_relationship_provider else "not_supported",
+            "catalog": "not_configured",
+            "family_search": "not_configured",
+            "parametric_search": "not_configured" if is_relationship_provider else "not_requested",
             "lookup": "not_configured",
             "message": f"{source_name} credentials are not configured.",
         }

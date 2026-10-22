@@ -304,6 +304,8 @@ def _monitor_persistence_diagnostic(exc):
         return "The database reports an existing baseline with the same unique key."
     if "column" in folded or "schema cache" in folded or code.startswith("PGRST2"):
         return "The monitoring database schema is missing a field. Apply the current monitoring migrations."
+    if "check constraint" in folded or code == "23514":
+        return "The monitoring database rejected a field value. Apply the current monitoring migrations and retry."
     suffix = f" (database code {code})" if code else ""
     return f"The database rejected the monitoring baseline{suffix}. Check the server log for its constraint."
 

@@ -1,6 +1,7 @@
 import sys
 import types
 import unittest
+from pathlib import Path
 
 
 def _identity_cache(*_args, **_kwargs):
@@ -15,7 +16,10 @@ sys.modules.setdefault("requests", types.SimpleNamespace(get=None, post=None))
 
 from src.alternative_classification import CLASS_CATALOG_INSUFFICIENT, classification_sort_key
 from src.alternative_engine import _discovery_row_to_part_data, apply_supplier_enrichment_to_candidate
-from integrations.supplier_aggregator import _parametric_catalog_search_terms
+from integrations.supplier_aggregator import (
+    _parametric_catalog_search_terms,
+    _provider_discovery_status,
+)
 from src.alternative_finder_search import supplier_search_coverage_rows
 
 
@@ -120,6 +124,37 @@ class AlternativeParametricSearchTests(unittest.TestCase):
         self.assertIn("spec-led search: 4 leads", digikey)
         self.assertIn("not provided by this supplier", mouser)
         self.assertIn("not configured", mouser)
+
+    def test_unconfigured_catalog_provider_is_not_misreported_as_searched(self):
+        # This module-level helper uses the aggregator's shared credential check.
+        from integrations import supplier_aggregator
+
+        original = supplier_aggregator._provider_configured
+        supplier_aggregator._provider_configured = lambda _name: False
+        try:
+            status = _provider_discovery_status("Mouser")
+        finally:
+            supplier_aggregator._provider_configured = original
+
+        self.assertEqual(status["substitutions"], "not_supported")
+        self.assertEqual(status["catalog"], "not_configured")
+        self.assertEqual(status["family_search"], "not_configured")
+        coverage = dict(supplier_search_coverage_rows({"providers": {"Mouser": status}}))
+        self.assertIn("catalog search: not configured", coverage["Mouser"])
+        self.assertIn("family search: not configured", coverage["Mouser"])
+
+    def test_replacement_screen_discloses_supplier_coverage_without_a_collapsed_expander(self):
+        source = (
+            Path(__file__).resolve().parents[1]
+            / "src"
+            / "ui"
+            / "approved_pages.py"
+        ).read_text(encoding="utf-8")
+        coverage = source.split('with st.container(key="approved_replacement_search_coverage")', 1)[1]
+        coverage = coverage.split("if excluded_obsolete:", 1)[0]
+        self.assertIn("Supplier search coverage", coverage)
+        self.assertIn("not configured", coverage)
+        self.assertNotIn("st.expander", coverage)
 
 
 if __name__ == "__main__":
