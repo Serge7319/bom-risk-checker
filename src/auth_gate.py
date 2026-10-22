@@ -444,9 +444,9 @@ def retire_auth_gate_overlays() -> None:
     # The signed-out stylesheet is an old DOM rule, not a visual element. Merely
     # hiding its <style> node leaves its rules active; its hidden marker still
     # matches body:has(...), which can keep hiding the navigation rail and the
-    # main transition cover after sign-in. Remove that retired stylesheet and
-    # its Streamlit host only once the authenticated shell and page sentinel
-    # have mounted. This is deliberately scoped to the two signed-out markers.
+    # main transition cover after sign-in. Disable the retired stylesheet only
+    # after current authenticated content mounts. Keep Streamlit's element
+    # containers intact; removing a React-owned host can blank later reruns.
     st.html(
         """
         <script>
@@ -454,21 +454,19 @@ def retire_auth_gate_overlays() -> None:
           const doc = document;
           let attempts = 0;
           const cleanup = () => {
-            const shellReady = Boolean(
-              doc.querySelector('.cv-foundation-topbar, [class*="st-key-cv_foundation_navigation"]')
-              && doc.querySelector('[data-cadivor-page-content]')
-            );
-            if (!shellReady) return false;
-
-            const retired = Array.from(doc.querySelectorAll(
-              '#cadivor-authenticated-shell-retire, [data-cadivor-signed-out-surface="1"]'
+            const shellReady = Boolean(doc.querySelector(
+              '.cv-foundation-topbar, [class*="st-key-cv_foundation_navigation"]'
             ));
-            const hosts = new Set();
-            for (const node of retired) {
-              const host = node.closest('[data-testid="stElementContainer"]');
-              hosts.add(host || node);
-            }
-            for (const host of hosts) host.remove();
+            const currentPageReady = Array.from(doc.querySelectorAll(
+              '[data-cadivor-page-content]'
+            )).some((node) => !node.closest('[data-stale="true"]'));
+            if (!shellReady || !currentPageReady) return false;
+
+            const retiredStyles = Array.from(doc.querySelectorAll(
+              'style#cadivor-authenticated-shell-retire'
+            ));
+            if (!retiredStyles.length) return true;
+            for (const style of retiredStyles) style.disabled = true;
             return true;
           };
 

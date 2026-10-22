@@ -104,7 +104,7 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
             SOURCE,
         )
 
-    def test_transition_stylesheets_retire_old_generations_without_hiding_current_cover(self):
+    def test_transition_stylesheets_remain_generation_scoped_without_dom_cleanup(self):
         self.assertIn('id="cadivor-main-transition-css-{gen}"', SOURCE)
         self.assertIn("style[id^=\"cadivor-main-transition-css-\"]", SOURCE)
         core_css = (ROOT / "src" / "assets" / "css" / "core_premium_ui_final.css").read_text(
@@ -117,8 +117,6 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
         self.assertIn('style[id^="cadivor-main-transition-css-"]', core_ui)
         self.assertNotIn("style#cadivor-main-transition-css,", core_css)
         self.assertNotIn("style#cadivor-main-transition-css,", core_ui)
-        self.assertIn("const active = styles.filter", SOURCE)
-        self.assertIn("if (host && !host.contains(active)) host.remove();", SOURCE)
         self.assertIn(
             '[data-stale="true"] .cv-main-transition.cv-route-loading:not([data-cadivor-transition-gen="{gen}"])',
             SOURCE,
@@ -128,14 +126,15 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
             SOURCE,
         )
 
-    def test_old_transition_css_is_removed_after_current_stylesheet_is_inserted(self):
+    def test_transition_injection_disables_retired_styles_without_removing_streamlit_hosts(self):
         inject = SOURCE.split("def inject_main_transition_css", 1)[1].split(
             "def route_loading_markup", 1
         )[0]
-        css_at = inject.index("<style id=\"cadivor-main-transition-css-{gen}\"")
-        cleanup_at = inject.index("const active = styles.filter")
-        self.assertLess(css_at, cleanup_at)
+        self.assertIn("style.disabled = true", inject)
+        self.assertIn("style[id^=\"cadivor-main-transition-css-\"]", inject)
         self.assertIn("unsafe_allow_javascript=True", inject)
+        self.assertNotIn("host.remove()", inject)
+        self.assertNotIn("style.remove()", inject)
 
     def test_alternative_finder_is_visible_before_synchronous_supplier_lookup(self):
         approved_pages = (ROOT / "src" / "ui" / "approved_pages.py").read_text(
