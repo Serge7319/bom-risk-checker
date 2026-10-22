@@ -2738,9 +2738,11 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
                     help="CSV or Excel with MPN and Quantity columns.",
                     disabled=analysis_running,
                 )
-                upload_available = uploaded is not None or st.session_state.get(
+                upload_state_file = uploaded if uploaded is not None else st.session_state.get(
                     "bom_file_uploader"
-                ) is not None
+                )
+                upload_available = upload_state_file is not None
+                uploaded_name = str(getattr(upload_state_file, "name", "") or "")
                 if upload_available:
                     st.session_state.pop("cadivor_bom_submission_error", None)
                 with st.container(key="approved_bom_submit_row"):
@@ -2751,14 +2753,49 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
                             key="approved_bom_analyze",
                             type="primary",
                             disabled=should_disable_bom_analyze_button(
-                                analysis_running=analysis_running
+                                analysis_running=analysis_running,
+                                upload_available=upload_available,
                             ),
                         )
                     with guidance_col:
-                        if not upload_available:
+                        if upload_available:
                             st.caption(
-                                "Choose a CSV or Excel file. If a file is already listed above, "
-                                "select Analyze BOM to retry the upload check."
+                                f"✓ {uploaded_name or 'File'} is fully uploaded and ready. "
+                                "Select Analyze BOM to start."
+                            )
+                        else:
+                            st.markdown(
+                                """
+                                <div class="cadivor-bom-upload-waiting" role="status" aria-live="polite">
+                                  <span class="cadivor-bom-upload-spinner" aria-hidden="true"></span>
+                                  <span>Select a CSV or Excel file above. Cadivor is waiting for the complete upload; Analyze BOM activates when the file is ready.</span>
+                                </div>
+                                <style>
+                                @keyframes cadivor-bom-upload-spin { to { transform: rotate(360deg); } }
+                                .cadivor-bom-upload-waiting {
+                                  display: flex;
+                                  align-items: center;
+                                  gap: .45rem;
+                                  min-height: 1.2rem;
+                                  color: #5b6777;
+                                  font-size: .82rem;
+                                  line-height: 1.3;
+                                }
+                                .cadivor-bom-upload-spinner {
+                                  width: .75rem;
+                                  height: .75rem;
+                                  flex: 0 0 .75rem;
+                                  border: 2px solid #d6e1f0;
+                                  border-top-color: #2563eb;
+                                  border-radius: 50%;
+                                  animation: cadivor-bom-upload-spin .8s linear infinite;
+                                }
+                                @media (prefers-reduced-motion: reduce) {
+                                  .cadivor-bom-upload-spinner { animation: none; }
+                                }
+                                </style>
+                                """,
+                                unsafe_allow_html=True,
                             )
                 if submitted:
                     staged = stage_approved_bom_submission(
