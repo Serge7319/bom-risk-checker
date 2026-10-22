@@ -28,6 +28,17 @@ def _display_text(value, default=""):
     return default if text.casefold() in {"", "nan", "none", "nat", "null"} else text
 
 
+def monitoring_risk_level(part_data):
+    """Read the saved BOM risk field without inventing a status label."""
+    if not isinstance(part_data, dict) and not callable(getattr(part_data, "get", None)):
+        return "Needs verification"
+    for key in ("Risk Level", "risk_level", "risk"):
+        value = _display_text(part_data.get(key), "")
+        if value:
+            return value
+    return "Needs verification"
+
+
 def _exact_part_urls(requested_mpn, record):
     """Keep supplier/document links only when the returned MPN is exact."""
     if not isinstance(record, dict) and not callable(getattr(record, "get", None)):
@@ -80,7 +91,7 @@ def build_monitor_record(
         "lifecycle_status": _display_text(part_data.get("Lifecycle Status", "")),
         "stock": _optional_number(part_data.get("Stock Available")),
         "unit_price": _optional_number(part_data.get("Unit Price")),
-        "risk_level": _display_text(part_data.get("Risk Level", "")),
+        "risk_level": monitoring_risk_level(part_data),
     })
 
 
