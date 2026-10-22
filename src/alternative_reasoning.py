@@ -1,12 +1,13 @@
 """Cadivor Milestone 12.2 — Smarter Alternative Recommendation Reasoning."""
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, Iterable, List, Mapping
 
 from src.alternative_classification import CLASS_VERIFIED_DIRECT
 from src.datasheet_comparison import PASSIVE_FAMILIES, build_engineering_evidence_assessment, infer_component_family, normalize_mounting_style
 from src.component_family_profiles import DISCRETE_PARAMETRIC_FAMILY_IDS, get_family_profile
-from integrations.pin_count import effective_pin_count
+from integrations.pin_count import effective_footprint_pad_count
 
 VERIFIED_DIRECT_DISPOSITION = (
     "Supplier-listed direct replacement candidate — engineering qualification confirmation required"
@@ -61,6 +62,8 @@ def _normalize_package(value: Any) -> str:
     package = _text(value).upper().replace(" ", "-")
     if not package:
         return ""
+    if re.search(r"\b(?:SOT\s*-?\s*223|TO\s*-?\s*261)\b", package):
+        return "SOT-223"
     if any(term in package for term in ("PDIP", "NPDIP", "DIP")):
         for pin_count in ("16", "14", "8", "4"):
             if pin_count in package:
@@ -509,8 +512,8 @@ def build_alternative_reasoning(
         or candidate.get("Case Package")
     )
 
-    original_pins = effective_pin_count(original_data)
-    candidate_pins = effective_pin_count(candidate)
+    original_pins = effective_footprint_pad_count(original_data)
+    candidate_pins = effective_footprint_pad_count(candidate)
 
     original_architecture = _text(
         original_data.get("architecture")

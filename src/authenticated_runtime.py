@@ -1934,6 +1934,7 @@ def resolve_canonical_app_route(*, allow_admin: bool = True) -> str:
         LAST_HISTORY_PUSH_PARAMS_KEY,
         LAST_HISTORY_PUSH_PAGE_KEY,
         PENDING_NAVIGATION_CONTEXT_KEY,
+        PENDING_ROUTE_COMMIT_KEY,
         commit_navigation_query_params,
         read_query_params,
     )
@@ -2012,6 +2013,44 @@ def resolve_canonical_app_route(*, allow_admin: bool = True) -> str:
         raw_qp = ""
     query_page = _safe_text(raw_qp, "")
     session_page = previous_route
+    pending_route_commit = st.session_state.get(PENDING_ROUTE_COMMIT_KEY)
+    pending_route_commit = (
+        dict(pending_route_commit)
+        if isinstance(pending_route_commit, dict)
+        else {}
+    )
+    pending_route_params = _clean_query_state(
+        pending_route_commit.get("params")
+        if isinstance(pending_route_commit.get("params"), dict)
+        else {}
+    )
+    pending_route_page = _safe_text(
+        pending_route_commit.get("page") or pending_route_params.get("page"),
+        "",
+    )
+    pending_route_stale_page = _safe_text(
+        pending_route_commit.get("stale_page"),
+        "",
+    )
+    pending_route_commit_active = bool(
+        not browser_page
+        and pending_route_page
+        and pending_route_page == session_page
+        and pending_route_stale_page
+        and query_page in {pending_route_stale_page, pending_route_page}
+        and server_query_state != pending_route_params
+    )
+    if (
+        browser_page
+        or not pending_route_page
+        or pending_route_page != session_page
+        or query_page not in {pending_route_stale_page, pending_route_page}
+        or server_query_state == pending_route_params
+    ):
+        st.session_state.pop(PENDING_ROUTE_COMMIT_KEY, None)
+        pending_route_commit = {}
+        pending_route_params = {}
+        pending_route_commit_active = False
 
     restore_snapshot_raw = st.session_state.get(HISTORY_RESTORE_SNAPSHOT_KEY)
     restore_snapshot = (
@@ -2051,6 +2090,11 @@ def resolve_canonical_app_route(*, allow_admin: bool = True) -> str:
     query_diverged = bool(
         query_page and session_page and query_page != session_page
     )
+    if pending_route_commit_active:
+        # An intentional route push may arrive one script run before
+        # Streamlit's query snapshot. Keep the target page and its one-shot
+        # context (for example new_analysis=1) for that stale-snapshot run.
+        query_diverged = False
     # An explicit BOM Analyzer click can race a stale Analysis Details query.
     # That snapshot has no analysis id and paints the red empty-report error.
     # Keep the catalog until the user opens a saved BOM.
@@ -2073,6 +2117,8 @@ def resolve_canonical_app_route(*, allow_admin: bool = True) -> str:
 
     if browser_page:
         route = browser_page
+    elif pending_route_commit_active:
+        route = session_page
     elif query_diverged and not stale_query_after_restore:
         # When the bridge event is missed, a genuinely new query route can
         # still restore browser history. The exact stale query recorded by a
@@ -2155,6 +2201,10 @@ def resolve_canonical_app_route(*, allow_admin: bool = True) -> str:
         st.session_state["cadivor_nav_params"] = nav_params
         if server_query_state == pending_navigation_context:
             st.session_state.pop(PENDING_NAVIGATION_CONTEXT_KEY, None)
+    elif pending_route_commit_active:
+        nav_params = dict(pending_route_params)
+        nav_params["page"] = route
+        st.session_state["cadivor_nav_params"] = nav_params
     elif snapshot_active and restore_snapshot:
         nav_params = dict(snapshot_target_params or restore_snapshot.get("params") or {})
         nav_params["page"] = route
@@ -5208,31 +5258,150 @@ def run_authenticated_app() -> None:
                         )
 
         def _render_monitored_components():
+            def _start_monitoring_baseline():
+                from src.normalizer import normalize_part_number
+                from src.monitoring_engine import build_monitor_record, save_monitor_history
+
+                requested_mpn = str(focused_monitor_part or "").strip()
+                analysis_id = str(return_analysis_id or "").strip()
+                user_id = str((current_user or {}).get("id") or "").strip()
+                if not requested_mpn or not analysis_id or not user_id:
+                    st.warning(
+                        "Open this action from a selected saved BOM component so Cadivor can keep the monitoring baseline linked to its analysis."
+                    )
+                    return
+
+                if (
+                    not is_admin
+                    and monitoring_limit not in (None, 0)
+                    and monitored_count >= int(monitoring_limit)
+                ):
+                    st.error(
+                        f"Your plan has reached its {int(monitoring_limit):,}-part monitoring limit."
+                    )
+                    return
+
+                try:
+                    owned_analysis = any(
+                        isinstance(record, dict)
+                        and str(record.get("id") or "").strip() == analysis_id
+                        for record in (load_analysis_history(user_id) or [])
+                    )
+                    if not owned_analysis:
+                        st.error("The saved BOM could not be verified in this workspace. Reopen it from Home and try again.")
+                        return
+
+                    parts_query = (
+                        _workspace_query(supabase.table("analysis_parts").select("*"))
+                        .eq("analysis_id", analysis_id)
+                        .eq("user_id", user_id)
+                    )
+                    source_parts = parts_query.limit(5000).execute().data or []
+                    source_part = next(
+                        (
+                            row for row in source_parts
+                            if isinstance(row, dict)
+                            and normalize_part_number(str(
+                                row.get("MPN")
+                                or row.get("mpn")
+                                or row.get("Manufacturer Part Number")
+                                or row.get("manufacturer_part_number")
+                                or ""
+                            )) == normalize_part_number(requested_mpn)
+                        ),
+                        None,
+                    )
+                    if not source_part:
+                        st.error(
+                            f"{requested_mpn} is not present in the selected saved BOM. Reopen the BOM and use its Monitor this part action."
+                        )
+                        return
+
+                    with st.spinner(f"Verifying current supplier data for {requested_mpn}…"):
+                        from integrations.supplier_aggregator import get_best_part_data
+
+                        supplier_data = get_best_part_data(requested_mpn) or {}
+
+                    returned_mpn = str(
+                        supplier_data.get("manufacturer_part_number") or ""
+                    ).strip()
+                    if (
+                        not supplier_data.get("supplier_data_verified")
+                        or normalize_part_number(returned_mpn)
+                        != normalize_part_number(requested_mpn)
+                    ):
+                        st.error(
+                            "Cadivor did not receive an exact-MPN distributor record, so it cannot create a trustworthy monitoring baseline yet. Check the source link or try again after supplier data is available."
+                        )
+                        return
+
+                    baseline_data = {
+                        **source_part,
+                        "MPN": requested_mpn,
+                        "Manufacturer Part Number": returned_mpn,
+                        "manufacturer_part_number": returned_mpn,
+                        "Best Source": supplier_data.get("source") or "",
+                        "Lifecycle Status": supplier_data.get("lifecycle_status") or "Unknown",
+                        "Stock Available": supplier_data.get("stock_total"),
+                        "Unit Price": supplier_data.get("unit_price"),
+                        "Risk Level": source_part.get("Risk Level") or "Monitoring baseline",
+                        "Product URL": supplier_data.get("product_detail_url") or "",
+                        "Datasheet URL": supplier_data.get("datasheet_url") or "",
+                    }
+                    baseline = build_monitor_record(
+                        user_id,
+                        analysis_id,
+                        baseline_data,
+                        workspace_id=active_workspace_id,
+                    )
+                    if not save_monitor_history(supabase, [baseline]):
+                        st.error("Cadivor could not save the monitoring baseline. No monitoring was started.")
+                        return
+
+                    st.session_state[f"monitor_baseline_started_{analysis_id}_{normalize_part_number(requested_mpn)}"] = True
+                    st.success(
+                        f"Monitoring started for {requested_mpn}. Cadivor will compare the next scheduled supplier snapshot, which runs every six hours."
+                    )
+                    st.rerun()
+                except Exception as exc:
+                    st.error(f"Could not start monitoring for {requested_mpn}: {_safe_text(exc, 'Please retry from the saved BOM.')}")
+
             def _render_monitoring_baseline_empty_state():
                 if focused_monitor_part:
                     st.markdown("#### Monitoring baseline not found")
                     st.info(
-                        f"No saved monitoring snapshot is available for "
-                        f"**{focused_monitor_part}**."
+                        f"**{focused_monitor_part}** is not being monitored yet."
                     )
                     st.caption(
-                        "Cadivor records a component's first monitoring snapshot "
-                        "when a BOM analysis completes. This page displays saved "
-                        "snapshots and resulting changes; it does not start a "
-                        "monitoring baseline by itself."
+                        "Start monitoring to save an exact-MPN supplier baseline linked to this saved BOM. Cadivor compares later supplier snapshots and raises alerts when tracked values change."
                     )
+                    if return_analysis_id:
+                        safe_part_key = re.sub(r"[^a-zA-Z0-9_-]", "_", focused_monitor_part)[:48]
+                        if st.button(
+                            "Start monitoring this part",
+                            type="primary",
+                            key=f"m32_monitor_start_{safe_part_key}",
+                        ):
+                            _start_monitoring_baseline()
+                    elif st.button(
+                        "Open saved BOMs",
+                        type="primary",
+                        key="m32_monitor_open_saved_boms",
+                    ):
+                        navigate_to("BOM Analyzer", show_saved_analyses=1)
+                        st.caption("Open the saved BOM, then use Monitor this part on the component row.")
                 else:
                     st.info("No monitored component snapshots are available yet.")
                     st.caption(
-                        "A monitoring snapshot is recorded when a BOM analysis completes."
+                        "Open a saved BOM, choose a component, and select Monitor this part to create its first supplier baseline."
                     )
-                if st.button(
-                    "Run a new BOM analysis",
-                    type="primary",
-                    use_container_width=True,
-                    key="m32_monitoring_create_baseline",
-                ):
-                    navigate_to("BOM Analyzer")
+                    if st.button(
+                        "Open saved BOMs",
+                        type="primary",
+                        use_container_width=True,
+                        key="m32_monitoring_create_baseline",
+                    ):
+                        navigate_to("BOM Analyzer", show_saved_analyses=1)
 
             components = monitoring_center["latest_components"]
             if components.empty:
@@ -20041,6 +20210,8 @@ def run_authenticated_app() -> None:
                             original_pdf,
                             candidate_pdf,
                             datasheet_comparison["family"],
+                            original_mpn=original_part,
+                            candidate_mpn=selected_alternative,
                         )
                         cadivor_engineering_dataframe(
                             pd.DataFrame(user_facing_pdf_evidence_rows(pdf_field_rows))
@@ -21626,7 +21797,7 @@ def run_authenticated_app() -> None:
                 margin-right:auto!important;
             }
             .st-key-bom8_analysis_preview{max-width:1440px!important;}
-            .st-key-bom8_analysis_progress_card{max-width:960px!important;margin-bottom:16px!important;}
+            .st-key-bom8_analysis_progress_card{max-width:1440px!important;margin-bottom:16px!important;}
             .st-key-bom8_one_time_payment_action{max-width:760px!important;margin-top:12px!important;}
             .st-key-bom8_analysis_progress_card .stButton>button{width:auto!important;min-width:0!important;}
             .st-key-bom8_one_time_payment_action .stLinkButton>a{

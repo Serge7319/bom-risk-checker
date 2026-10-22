@@ -144,6 +144,20 @@ def test_approval_controls_are_inside_candidate_details_and_persist_per_bom():
     assert "payload.get(\"context_key\")" in runtime_source
 
 
+def test_unverified_source_leads_require_source_document_attestation_before_approval():
+    source = (
+        Path(__file__).resolve().parents[1] / "src" / "ui" / "approved_pages.py"
+    ).read_text(encoding="utf-8")
+    approval = source.split("def _render_bom_replacement_approvals", 1)[1].split(
+        "def _render_replacement_search_waiting_state", 1
+    )[0]
+
+    assert 'candidate.get("Source Identity Verified") is not False' in approval
+    assert "source_identity_attested and has_document_page_citation(source_reference)" in approval
+    assert "source_identity_verified\n        and not lifecycle_blocked" in approval
+    assert "current catalog results are discovery leads only" in approval
+
+
 def test_contextual_replacement_has_direct_return_to_bom_risk():
     root = Path(__file__).resolve().parents[1]
     page_source = (root / "src" / "ui" / "approved_pages.py").read_text(encoding="utf-8")

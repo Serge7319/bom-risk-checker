@@ -58,6 +58,29 @@ class BomWorkflowNavigationTests(unittest.TestCase):
         self.assertEqual(self.streamlit.session_state["analysis_id"], "paid-bom")
         self.assertNotIn("new_analysis", self.streamlit.session_state["cadivor_nav_params"])
 
+    def test_route_change_keeps_context_while_query_snapshot_catches_up(self):
+        self.streamlit.session_state.update({
+            "cadivor_route": "Dashboard",
+            "app_mode": "Dashboard",
+            "cadivor_nav_params": {"page": "Dashboard"},
+        })
+        self.streamlit.query_params.update({"page": "Dashboard"})
+
+        self.navigation.navigate_to(
+            "BOM Analyzer",
+            new_analysis="1",
+            _rerun=False,
+        )
+
+        self.assertEqual(
+            self.streamlit.session_state["cadivor_pending_route_commit"],
+            {
+                "page": "BOM Analyzer",
+                "stale_page": "Dashboard",
+                "params": {"page": "BOM Analyzer", "new_analysis": "1"},
+            },
+        )
+
     def test_restored_route_context_wins_over_stale_streamlit_query_snapshot(self):
         self.streamlit.session_state["cadivor_nav_params"] = {
             "page": "Analysis Details",

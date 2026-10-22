@@ -141,6 +141,25 @@ def replacement_search_empty_state(
     errors in the correlated server diagnostics.
     """
     if str(lookup_error or "").strip():
+        discovery = discovery_metadata if isinstance(discovery_metadata, Mapping) else {}
+        providers = discovery.get("providers")
+        providers = providers if isinstance(providers, Mapping) else {}
+        catalog_searches = []
+        for name, status in providers.items():
+            if not isinstance(status, Mapping):
+                continue
+            catalog_status = str(status.get("catalog") or "").strip().casefold()
+            if catalog_status not in {"ok", "available"}:
+                continue
+            family_status = str(status.get("family_search") or "").strip().casefold()
+            scope = "catalog and family" if family_status in {"ok", "available"} else "catalog"
+            catalog_searches.append(f"{name} {scope}")
+        if catalog_searches:
+            searched = ", ".join(catalog_searches)
+            return (
+                "Source part needs verification",
+                f"Supplier records could not verify the exact source MPN. Cadivor searched {searched} and found only discovery leads or no candidates; this does not validate the source identity or prove that no compatible replacement exists. Confirm the source part against its manufacturer documentation before approval.",
+            )
         return (
             "Source part needs verification",
             "Supplier records could not verify the source part. Confirm the MPN and try again; "
@@ -229,11 +248,35 @@ def replacement_search_empty_state(
             f"{detail}No candidates were confirmed. Retry after coverage is available or "
             "check supplier catalogs directly; this result does not confirm that no replacement exists.",
         )
+    searched_catalogs: list[str] = []
+    searched_relationships: list[str] = []
+    catalog_only_sources: list[str] = []
+    for name, raw_status in providers.items():
+        if not isinstance(raw_status, Mapping):
+            continue
+        catalog_status = str(raw_status.get("catalog") or "").strip().casefold()
+        family_status = str(raw_status.get("family_search") or "").strip().casefold()
+        relationship_status = str(raw_status.get("substitutions") or "").strip().casefold()
+        if catalog_status in {"ok", "available"}:
+            scope = "catalog and family" if family_status in {"ok", "available"} else "catalog"
+            searched_catalogs.append(f"{name} {scope}")
+            if relationship_status in {"not_supported", "available"}:
+                catalog_only_sources.append(str(name))
+        if relationship_status == "ok":
+            searched_relationships.append(f"{name} substitute relationships")
+
+    searched = searched_relationships + searched_catalogs
+    scope_text = ", ".join(searched) if searched else "the configured distributor sources"
+    relationship_note = (
+        f" Catalog hits from {', '.join(catalog_only_sources)} are discovery leads; "
+        "this workflow does not receive explicit substitute relationship evidence from those providers."
+        if catalog_only_sources
+        else " Catalog and family matches are discovery leads that still need engineering validation."
+    )
     return (
         "No replacement candidates confirmed",
-        "DigiKey's explicit-substitute and product-family catalog searches returned no candidates. "
-        "The current alternate search does not search Mouser or Newark for replacement relationships, "
-        "so this does not confirm that no replacement exists.",
+        f"No candidates were returned by {scope_text}.{relationship_note} "
+        "This does not confirm that no replacement exists or that any unlisted part is compatible.",
     )
 
 
@@ -477,6 +520,7 @@ def run_alternative_finder_search(
         get_alternative_discovery_metadata,
         suggest_alternatives_v2,
     )
+    from integrations.supplier_aggregator import discover_alternative_candidates
     from src.alternative_finder_state import (
         OUTCOME_PARTIAL_SUCCESS,
         TERMINAL_SEARCH_ERROR_MESSAGE,
@@ -567,22 +611,46 @@ def run_alternative_finder_search(
                 search_run.provider = "digikey"
                 candidates = suggest_alternatives_v2(entered_mpn) or []
             discovery = get_alternative_discovery_metadata() or {}
+            discovery["source_identity_verified"] = True
+            for candidate in candidates:
+                if isinstance(candidate, dict):
+                    candidate.setdefault("Source Identity Verified", True)
         else:
-            # A keyword-like or unmatched source can return unrelated catalog
-            # hits (e.g. products whose MPN merely contains the query). Do not
-            # present those as replacement choices until the source identity
-            # itself is verified by a supplier.
-            discovery = {
-                "original_mpn": entered_mpn,
-                "retrieved_at": "",
-                "providers": {},
-                "explicit_count": 0,
-                "catalog_count": 0,
-                "provider_failures": [],
-                "candidates": [],
-                "has_incomplete_evidence": True,
-                "candidate_status": safe_lookup_error,
-            }
+            # Missing an exact source listing should not suppress broader
+            # distributor discovery. Preserve catalog/family matches as leads,
+            # but make the identity gap explicit and keep approval disabled.
+            with search_run.stage(STAGE_CANDIDATE_ENGINE):
+                search_run.operation = "catalog_family_discovery"
+                search_run.provider = "aggregator"
+                discovery = discover_alternative_candidates(entered_mpn) or {}
+                discovery = dict(discovery)
+                discovery["source_identity_verified"] = False
+                discovery["candidate_status"] = (
+                    "Source MPN is not verified by an exact distributor listing. "
+                    "Catalog results are discovery leads only; verify the source part "
+                    "before drawing compatibility or approval conclusions."
+                )
+                candidates = build_salvage_candidates_from_discovery(
+                    discovery,
+                    canonical_mpn=entered_mpn,
+                    original_part_number=entered_mpn,
+                )
+                for candidate in candidates:
+                    candidate["Source Identity Verified"] = False
+                    candidate["Candidate Disposition"] = "Unverified source search lead"
+                    candidate["Recommendation"] = (
+                        "Discovery lead only. The original MPN has no exact distributor "
+                        "verification yet, so Cadivor cannot establish compatibility or "
+                        "approve this part. Verify the source, then review both datasheets."
+                    )
+            discovery["has_incomplete_evidence"] = True
+            if not candidates:
+                discovery["candidate_status"] = (
+                    f"{safe_lookup_error} Broader distributor catalog searches returned no candidates; "
+                    "this does not confirm that no replacement exists."
+                    if safe_lookup_error
+                    else _replacement_candidate_cause(discovery)
+                )
         discovery = merge_supplier_failures_into_discovery(discovery, safe_original)
         if not candidates and exact_source_match:
             discovery["candidate_status"] = _replacement_candidate_cause(discovery)

@@ -13,7 +13,7 @@ def test_scroll_reset_retries_until_the_route_has_had_time_to_mount():
     assert "if (marked && finalAttempt)" in reset
     assert "index === delays.length - 1" in reset
     assert "if (userInteracted) return" in reset
-    assert "[0, 40, 120, 280, 600, 1100]" in reset
+    assert "[0, 40, 120, 280, 600, 1100, 1800, 2600]" in reset
     assert "marked.setAttribute('data-cadivor-nav-scroll-done', '1')" in reset
 
 

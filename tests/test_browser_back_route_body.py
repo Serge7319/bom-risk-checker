@@ -416,6 +416,84 @@ def test_popstate_restore_survives_when_streamlit_query_snapshot_stays_stale(mon
     assert query.get("page") == "Monitoring"
 
 
+def test_new_bom_route_survives_stale_home_query_and_back_still_restores_home(monkeypatch):
+    target_params = {"page": "BOM Analyzer", "new_analysis": "1"}
+    session = _Session({
+        "cadivor_route": "BOM Analyzer",
+        "app_mode": "BOM Analyzer",
+        "cadivor_nav_params": dict(target_params),
+        "cadivor_pending_route_commit": {
+            "page": "BOM Analyzer",
+            "stale_page": "Dashboard",
+            "params": dict(target_params),
+        },
+        "user": types.SimpleNamespace(id="user-1"),
+        "access_token": "live-a",
+        "refresh_token": "live-r",
+        "cadivor_auth_status": "authenticated",
+    })
+    # Model a Streamlit run whose backend query still says Home after the
+    # user's explicit New BOM Analysis route push.
+    query = _DelayedQuery({"page": "Dashboard"})
+    _patch_runtime(monkeypatch, session, query)
+
+    assert runtime.resolve_canonical_app_route() == "BOM Analyzer"
+    assert session["cadivor_nav_params"] == target_params
+    assert session["cadivor_pending_route_commit"]["page"] == "BOM Analyzer"
+    assert query.writes == 0
+
+    # The browser Back event remains authoritative while the temporary
+    # in-app route handoff is pending.
+    query.clear()
+    query.update({"page": "Dashboard"})
+    events = [{
+        "href": "http://127.0.0.1:8581/?page=Dashboard",
+        "reason": "popstate",
+        "event_id": "new-analysis-back-1",
+    }]
+    _patch_runtime(
+        monkeypatch,
+        session,
+        query,
+        consume=lambda: events.pop(0) if events else None,
+    )
+    assert runtime.resolve_canonical_app_route() == "Dashboard"
+    assert "cadivor_pending_route_commit" not in session
+    assert query.writes == 0
+
+
+def test_new_bom_context_survives_a_partially_committed_target_query(monkeypatch):
+    target_params = {"page": "BOM Analyzer", "new_analysis": "1"}
+    session = _Session({
+        "cadivor_route": "BOM Analyzer",
+        "app_mode": "BOM Analyzer",
+        "cadivor_nav_params": dict(target_params),
+        "cadivor_pending_route_commit": {
+            "page": "BOM Analyzer",
+            "stale_page": "Dashboard",
+            "params": dict(target_params),
+        },
+        "user": types.SimpleNamespace(id="user-1"),
+        "access_token": "live-a",
+        "refresh_token": "live-r",
+        "cadivor_auth_status": "authenticated",
+    })
+    query = _DelayedQuery({"page": "BOM Analyzer"})
+    _patch_runtime(monkeypatch, session, query)
+
+    assert runtime.resolve_canonical_app_route() == "BOM Analyzer"
+    assert session["cadivor_nav_params"] == target_params
+    assert "cadivor_pending_route_commit" in session
+
+    # The handoff clears only after Streamlit reflects the complete target URL.
+    query.clear()
+    query.update(target_params)
+    _patch_runtime(monkeypatch, session, query)
+    assert runtime.resolve_canonical_app_route() == "BOM Analyzer"
+    assert session["cadivor_nav_params"] == target_params
+    assert "cadivor_pending_route_commit" not in session
+
+
 def test_url_change_echo_of_in_app_push_is_not_treated_as_restore(monkeypatch):
     session = _Session(
         {

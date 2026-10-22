@@ -30,6 +30,7 @@ class MouserKeywordFallbackTests(unittest.TestCase):
 
     def setUp(self):
         self.requests.post.reset_mock()
+        self.requests.post.side_effect = None
         self.client.get_secret = Mock(return_value="test-key")
 
     @staticmethod
@@ -133,6 +134,61 @@ class MouserKeywordFallbackTests(unittest.TestCase):
 
         self.assertEqual(result["manufacturer_part_number"], "DHT11")
         self.assertEqual(self.requests.post.call_count, 1)
+
+    def test_catalog_candidate_search_returns_family_leads_with_clear_scope(self):
+        self.requests.post.side_effect = [
+            self._response([self._part("LM317DCYR")]),
+            self._response([
+                self._part("LM317DCY"),
+                self._part("LM317MDCYR", lifecycle="Active"),
+            ]),
+        ]
+
+        rows = self.client.search_mouser_catalog_candidates("LM317DCYR")
+
+        self.assertEqual(
+            {row["manufacturer_part_number"] for row in rows},
+            {"LM317DCY", "LM317MDCYR"},
+        )
+        family_row = next(row for row in rows if row["manufacturer_part_number"] == "LM317MDCYR")
+        self.assertEqual(family_row["source"], "Mouser")
+        self.assertEqual(family_row["evidence_type"], "Distributor family search match")
+        self.assertEqual(family_row["discovery_query"], "LM317")
+        self.assertEqual(family_row["lifecycle_status"], "Active")
+        self.assertEqual(family_row["substitute_type"], "Similar")
+        self.assertEqual(self.requests.post.call_count, 2)
+        self.assertEqual(
+            [call.kwargs["json"]["SearchByKeywordRequest"]["keyword"] for call in self.requests.post.call_args_list],
+            ["LM317DCYR", "LM317"],
+        )
+
+    def test_catalog_candidate_search_bounds_records_and_skips_original(self):
+        self.requests.post.side_effect = [
+            self._response([self._part("LM317DCYR")]),
+            self._response([self._part("LM317MDCYR")]),
+        ]
+
+        rows = self.client.search_mouser_catalog_candidates("LM317DCYR", limit=100)
+
+        self.assertEqual(len(rows), 1)
+        request = self.requests.post.call_args_list[0].kwargs["json"]["SearchByKeywordRequest"]
+        self.assertEqual(request["records"], 25)
+
+    def test_catalog_family_search_covers_dht_sensor_series(self):
+        self.requests.post.side_effect = [
+            self._response([self._part("DHT11")]),
+            self._response([
+                self._part("DHT11"),
+                self._part("DHT22", lifecycle="Active"),
+            ]),
+        ]
+
+        rows = self.client.search_mouser_catalog_candidates("DHT11")
+
+        self.assertEqual([row["manufacturer_part_number"] for row in rows], ["DHT22"])
+        self.assertEqual(rows[0]["discovery_scope"], "family_search")
+        self.assertEqual(rows[0]["discovery_query"], "DHT")
+        self.assertEqual(self.requests.post.call_count, 2)
 
 
 if __name__ == "__main__":

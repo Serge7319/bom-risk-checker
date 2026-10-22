@@ -8,16 +8,39 @@ from integrations.digikey_client import normalize_digikey_product
 from integrations.mouser_client import extract_pin_count as mouser_extract_pin_count
 from integrations.mouser_client import normalize_mouser_part
 from integrations.pin_count import (
+    effective_footprint_pad_count,
     effective_pin_count,
     parse_pin_count_from_text,
     resolve_pin_count,
     sanitize_stored_pin_count,
 )
 from src.alternative_engine import calculate_drop_in_confidence
+from src.alternative_engine import normalize_package_name
 from src.datasheet_comparison import build_datasheet_comparison
+from src.alternative_reasoning import _normalize_package
 
 
 class PinCountParsingTests(unittest.TestCase):
+    def test_sot223_supplier_terminal_count_is_not_mistaken_for_pad_mismatch(self):
+        source = {"package": "SOT-223", "pin_count": 4}
+        candidate = {"package": "SOT-223", "pin_count": 3}
+
+        self.assertEqual(effective_pin_count(candidate), 3)
+        self.assertEqual(effective_footprint_pad_count(source), 4)
+        self.assertEqual(effective_footprint_pad_count(candidate), 4)
+        self.assertEqual(
+            build_datasheet_comparison(
+                {**source, "description": "adjustable linear regulator"},
+                {**candidate, "description": "adjustable linear regulator"},
+            )["rows"][1]["Status"],
+            "Match",
+        )
+
+    def test_sot223_and_to261_package_aliases_share_one_footprint_identity(self):
+        self.assertEqual(normalize_package_name("TO-261-4"), "SOT-223")
+        self.assertEqual(normalize_package_name("SOT223-4"), "SOT-223")
+        self.assertEqual(_normalize_package("TO-261"), "SOT-223")
+
     def test_mouser_preserves_currency_from_selected_price_break(self):
         result = normalize_mouser_part({
             "Manufacturer": "Texas Instruments",

@@ -62,6 +62,13 @@ _OUTLINE_FAMILY_NUM_RE = re.compile(
     r"(?i)\b(?:TO|SOT|SC|SOD|TSOT|TSOP)\s*-?\s*(\d+(?:\.\d+)?)\b"
 )
 
+# Some suppliers report only electrical terminals for SOT-223, while others
+# count the exposed tab as a fourth package contact. The PCB land pattern has
+# four solderable pads; keep that physical count distinct from BOM telemetry.
+_FOUR_PAD_SOT223_RE = re.compile(
+    r"(?i)\b(?:SOT\s*-?\s*223|TO\s*-?\s*261)\b"
+)
+
 
 def _segment_is_non_count(segment: str) -> bool:
     text = str(segment or "").strip()
@@ -217,3 +224,20 @@ def effective_pin_count(part: object) -> int:
     if sanitized > 0:
         return sanitized
     return parse_pin_count_from_text(package, allow_bare_integer=False)
+
+
+def effective_footprint_pad_count(part: object) -> int:
+    """Return the PCB pad count when the package drawing convention is known.
+
+    This is intentionally separate from ``effective_pin_count`` so BOM
+    telemetry and electrical terminal counts keep their existing meaning.
+    SOT-223/TO-261 regulators commonly have three functional leads plus the
+    exposed tab pad, which suppliers inconsistently report as three or four.
+    """
+    if not isinstance(part, dict):
+        return 0
+    package = str(part.get("package", part.get("Package", part.get("Case Package", ""))) or "")
+    count = effective_pin_count(part)
+    if _FOUR_PAD_SOT223_RE.search(package) and count in {0, 3, 4}:
+        return 4
+    return count

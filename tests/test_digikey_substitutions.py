@@ -240,6 +240,7 @@ class DigiKeySubstitutionTests(unittest.TestCase):
             "STM32F103C8T6": "STM32F103",
             "6N137S-TA1": "6N137",
             "74HC595D": "74HC595",
+            "DHT11": "DHT",
             "C0603C104K5RACTU": "",
         }
 

@@ -14,6 +14,16 @@ from integrations.provider_health import (
     summarize_provider_health,
 )
 from integrations.mouser_client import search_mouser_by_part_number
+try:
+    from integrations.mouser_client import search_mouser_catalog_candidates
+except ImportError:
+    def search_mouser_catalog_candidates(
+        part_number,
+        *,
+        limit=12,
+        include_family_search=True,
+    ):
+        return []
 from integrations.digikey_client import search_digikey_by_part_number
 try:
     from integrations.digikey_client import (
@@ -37,10 +47,28 @@ from src.normalizer import normalize_part_number
 
 try:
     from integrations.newark_client import search_newark_by_part_number
+    try:
+        from integrations.newark_client import search_newark_catalog_candidates
+    except ImportError:
+        def search_newark_catalog_candidates(
+            part_number,
+            *,
+            limit=12,
+            include_family_search=True,
+        ):
+            return []
 except ImportError as newark_import_error:
     _newark_import_error = newark_import_error
 
     def search_newark_by_part_number(part_number):
+        raise RuntimeError("Newark supplier integration could not be loaded.") from _newark_import_error
+
+    def search_newark_catalog_candidates(
+        part_number,
+        *,
+        limit=12,
+        include_family_search=True,
+    ):
         raise RuntimeError("Newark supplier integration could not be loaded.") from _newark_import_error
 
 
@@ -902,8 +930,10 @@ def _provider_discovery_status(source_name: str) -> dict:
         }
     return {
         "substitutions": "not_supported",
+        "catalog": "available",
+        "family_search": "available",
         "lookup": "available",
-        "message": f"{source_name} does not expose explicit substitute relationships.",
+        "message": "Catalog results are discovery leads, not confirmed substitutes.",
     }
 
 
@@ -931,49 +961,118 @@ def discover_alternative_candidates(
     explicit_substitutes: list[dict] = []
     catalog_candidates: list[dict] = []
 
-    digikey_status = {
-        "substitutions": "ok",
-        "catalog": "ok",
-        "family_search": "ok" if include_family_search else "not_requested",
-        "lookup": "available",
-        "message": "",
-    }
-    try:
+    def _search_digikey() -> tuple[str, dict, list[dict], list[dict]]:
+        status = {
+            "substitutions": "available",
+            "catalog": "available",
+            "family_search": "ok" if include_family_search else "not_requested",
+            "lookup": "available",
+            "message": "",
+        }
         if not _provider_configured("DIGIKEY_CLIENT_ID"):
-            digikey_status = {
+            status.update({
                 "substitutions": "not_configured",
                 "catalog": "not_configured",
                 "family_search": "not_configured",
                 "lookup": "not_configured",
                 "message": "DigiKey credentials are not configured.",
-            }
-            discovery["has_incomplete_evidence"] = True
-        else:
-            explicit_substitutes = search_digikey_substitutions(requested)
-            catalog_candidates = search_digikey_catalog_candidates(
+            })
+            return "DigiKey", status, [], []
+        explicit: list[dict] = []
+        catalog: list[dict] = []
+        errors: list[str] = []
+        try:
+            explicit = search_digikey_substitutions(requested)
+            status["substitutions"] = "ok"
+        except Exception as error:
+            status["substitutions"] = "error"
+            errors.append(sanitize_provider_message(error))
+        try:
+            catalog = search_digikey_catalog_candidates(
                 requested,
                 include_family_search=include_family_search,
             )
-            digikey_status["explicit_count"] = len(explicit_substitutes)
-            digikey_status["catalog_count"] = len(catalog_candidates)
-    except Exception as error:
-        safe_message = sanitize_provider_message(error)
-        digikey_status = {
-            "substitutions": "error",
-            "catalog": "error",
-            "family_search": "error" if include_family_search else "not_requested",
-            "lookup": "error",
-            "message": safe_message,
-        }
-        discovery["provider_failures"].append("DigiKey")
-        discovery["has_incomplete_evidence"] = True
-    discovery["providers"]["DigiKey"] = digikey_status
+            status["catalog"] = "ok"
+        except Exception as error:
+            status["catalog"] = "error"
+            if include_family_search:
+                status["family_search"] = "error"
+            errors.append(sanitize_provider_message(error))
+        if errors:
+            status["message"] = " ".join(dict.fromkeys(errors))
+        status["explicit_count"] = len(explicit)
+        status["catalog_count"] = len(catalog)
+        return "DigiKey", status, explicit, catalog
 
-    for source_name in ("Mouser", "Newark"):
+    def _search_catalog_provider(source_name: str, search_func) -> tuple[str, dict, list[dict]]:
         status = _provider_discovery_status(source_name)
-        discovery["providers"][source_name] = status
         if status.get("lookup") == "not_configured":
-            discovery["has_incomplete_evidence"] = True
+            return source_name, status, []
+        try:
+            candidates = search_func(
+                requested,
+                include_family_search=include_family_search,
+            )
+            status.update({
+                "catalog": "ok",
+                "family_search": "ok" if include_family_search else "not_requested",
+                "catalog_count": len(candidates),
+                "message": "Catalog results are discovery leads, not confirmed substitutes.",
+            })
+            return source_name, status, candidates
+        except Exception as error:
+            status.update({
+                "catalog": "error",
+                "family_search": "error" if include_family_search else "not_requested",
+                "lookup": "error",
+                "message": sanitize_provider_message(error),
+            })
+            return source_name, status, []
+
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        futures = {
+            executor.submit(_search_digikey): "DigiKey",
+            executor.submit(_search_catalog_provider, "Mouser", search_mouser_catalog_candidates): "Mouser",
+            executor.submit(_search_catalog_provider, "Newark", search_newark_catalog_candidates): "Newark",
+        }
+        for future in as_completed(futures):
+            try:
+                result = future.result()
+            except Exception as error:
+                safe_message = sanitize_provider_message(error)
+                # A provider failure is partial coverage; it never means that
+                # no compatible or market alternatives exist.
+                source_name = futures[future]
+                status = {
+                    "substitutions": "error",
+                    "catalog": "error",
+                    "family_search": "error" if include_family_search else "not_requested",
+                    "lookup": "error",
+                    "message": safe_message,
+                }
+                result = (source_name, status, [], [])
+            source_name = result[0]
+            status = result[1]
+            discovery["providers"][source_name] = status
+            if source_name == "DigiKey":
+                explicit, catalog = result[2], result[3]
+                explicit_substitutes.extend(explicit)
+                catalog_candidates.extend(catalog)
+            else:
+                candidates = result[2]
+                catalog_candidates.extend(candidates)
+            if (
+                status.get("lookup") in {"not_configured", "error"}
+                or status.get("catalog") == "error"
+                or status.get("substitutions") == "error"
+            ):
+                discovery["has_incomplete_evidence"] = True
+                if (
+                    status.get("lookup") == "error"
+                    or status.get("catalog") == "error"
+                    or status.get("substitutions") == "error"
+                ):
+                    discovery["provider_failures"].append(source_name)
 
     merged = merge_discovery_candidates(
         explicit_substitutes,

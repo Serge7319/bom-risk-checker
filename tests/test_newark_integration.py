@@ -89,6 +89,7 @@ class NewarkIntegrationTests(unittest.TestCase):
 
     def setUp(self):
         self.requests.get.reset_mock()
+        self.requests.get.side_effect = None
 
     def _product(self, mpn="LM358N", **overrides):
         product = {
@@ -122,6 +123,56 @@ class NewarkIntegrationTests(unittest.TestCase):
         self.assertEqual(result["unit_price_currency"], "USD")
         self.assertEqual(result["price_breaks"][0]["currency"], "USD")
         self.assertEqual(result["lead_time_weeks"], 2.0)
+
+    def test_catalog_candidate_search_uses_bounded_family_keywords(self):
+        exact_response = {
+            "keywordSearchReturn": {"products": [self._product("LM317DCYR")]}
+        }
+        family_response = {
+            "keywordSearchReturn": {"products": [
+                self._product("LM317DCYR"),
+                self._product("LM317MDCYR", primaryCategory="Integrated Circuits"),
+            ]}
+        }
+        self.requests.get.side_effect = [
+            Mock(json=Mock(return_value=exact_response), raise_for_status=Mock()),
+            Mock(json=Mock(return_value=family_response), raise_for_status=Mock()),
+        ]
+        with patch.object(self.newark, "get_secret", return_value="private-api-key"):
+            rows = self.newark.search_newark_catalog_candidates("LM317DCYR")
+
+        self.assertEqual([row["manufacturer_part_number"] for row in rows], ["LM317MDCYR"])
+        self.assertEqual(rows[0]["source"], "Newark")
+        self.assertEqual(rows[0]["discovery_scope"], "family_search")
+        self.assertEqual(rows[0]["discovery_query"], "LM317")
+        self.assertEqual(rows[0]["primary_category"], "Integrated Circuits")
+        self.assertEqual(rows[0]["lifecycle_status"], "Active")
+        self.assertEqual(self.requests.get.call_count, 2)
+        self.assertTrue(all("keyword:" in call.kwargs["params"]["term"] for call in self.requests.get.call_args_list))
+        self.assertEqual(
+            [call.kwargs["params"]["term"] for call in self.requests.get.call_args_list],
+            ["keyword:LM317DCYR", "keyword:LM317"],
+        )
+
+    def test_catalog_family_search_covers_dht_sensor_series(self):
+        self.requests.get.side_effect = [
+            Mock(json=Mock(return_value={
+                "keywordSearchReturn": {"products": [self._product("DHT11", primaryCategory="Sensors")]}
+            }), raise_for_status=Mock()),
+            Mock(json=Mock(return_value={
+                "keywordSearchReturn": {"products": [
+                    self._product("DHT11", primaryCategory="Sensors"),
+                    self._product("DHT22", primaryCategory="Sensors"),
+                ]}
+            }), raise_for_status=Mock()),
+        ]
+        with patch.object(self.newark, "get_secret", return_value="private-api-key"):
+            rows = self.newark.search_newark_catalog_candidates("DHT11")
+
+        self.assertEqual([row["manufacturer_part_number"] for row in rows], ["DHT22"])
+        self.assertEqual(rows[0]["discovery_scope"], "family_search")
+        self.assertEqual(rows[0]["discovery_query"], "DHT")
+        self.assertEqual(self.requests.get.call_count, 2)
 
     def test_part_match_is_case_insensitive_and_trims_outer_whitespace(self):
         self._response([self._product("lm358n")])
