@@ -420,10 +420,10 @@ def inject_main_transition_css(transition_gen: int) -> None:
         """,
         unsafe_allow_html=True,
     )
-    # Keep the active transition stylesheet in the app DOM and remove retired
-    # generations. Streamlit can preserve old HTML hosts across reruns; stale
-    # transition CSS has global stale-wrapper selectors, so leaving it attached
-    # can hide the next cover or expose a blank frame between pages.
+    # Streamlit owns the element containers that hold these styles. Retire old
+    # generations by disabling their stylesheets, never by removing a host (or
+    # a style node) from under React. Removing a host can corrupt Streamlit's
+    # DOM tree and leave the next route as a blank canvas.
     st.html(
         """
         <script>
@@ -437,9 +437,7 @@ def inject_main_transition_css(transition_gen: int) -> None:
           if (!active) return;
           for (const style of styles) {
             if (style === active) continue;
-            const host = style.closest('[data-testid="stElementContainer"]');
-            if (host && !host.contains(active)) host.remove();
-            else style.remove();
+            style.disabled = true;
           }
         })();
         </script>

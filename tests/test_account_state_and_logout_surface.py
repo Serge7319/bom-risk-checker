@@ -239,7 +239,7 @@ class SignedOutShellRetireTests(unittest.TestCase):
             gate.paint_auth_gate("error")
             retire.assert_called()
 
-    def test_retire_auth_gate_overlays_removes_signed_out_retirement_hosts(self):
+    def test_retire_auth_gate_overlays_disables_signed_out_styles_without_removing_hosts(self):
         import src.auth_gate as gate
 
         captured = []
@@ -253,9 +253,11 @@ class SignedOutShellRetireTests(unittest.TestCase):
         blob = "\n".join(captured)
         self.assertIn("data-cadivor-signed-out-surface", blob)
         cleanup = "\n".join(scripts)
-        self.assertIn("#cadivor-authenticated-shell-retire", cleanup)
-        self.assertIn("[data-cadivor-signed-out-surface=\"1\"]", cleanup)
-        self.assertIn("host.remove()", cleanup)
+        self.assertIn("style#cadivor-authenticated-shell-retire", cleanup)
+        self.assertIn("style.disabled = true", cleanup)
+        self.assertIn("!node.closest('[data-stale=\"true\"]')", cleanup)
+        self.assertNotIn("host.remove()", cleanup)
+        self.assertNotIn(".remove()", cleanup)
         self.assertIn("[data-cadivor-page-content]", cleanup)
 
     def test_begin_logout_clears_shell_cache_keys(self):
