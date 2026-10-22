@@ -4602,6 +4602,10 @@ def run_authenticated_app() -> None:
             )
             if st.button("View Professional plan", type="primary", key="monitoring_upgrade_plan"):
                 navigate_to("Pricing")
+            # Monitoring can be opened on plans without alert access too. This
+            # is the first real destination content on that path, so release
+            # the shared route cover before stopping the page branch.
+            reveal_authenticated_page_body("Monitoring")
             stop_authenticated_page()
 
         return_analysis_id = _resolved_qp_value("return_analysis_id")
@@ -4658,6 +4662,11 @@ def run_authenticated_app() -> None:
             description=str(monitoring_center["summary"]),
             icon="radar",
         )
+        # Unlike most routes, Monitoring builds its page header only after its
+        # alert and history reads. Explicitly release the shared route cover
+        # here once the destination has a visible, meaningful header. Without
+        # this call the route-loading surface remains over the whole page.
+        reveal_authenticated_page_body("Monitoring")
 
         active_queue = monitoring_center.get("active_queue")
         price_alerts = 0
