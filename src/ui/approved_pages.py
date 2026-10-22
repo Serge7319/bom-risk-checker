@@ -19,6 +19,7 @@ from src.bom_upload_flow import (
     prepare_new_approved_bom_analysis,
     should_render_approved_bom_upload_form,
     should_stop_approved_bom_renderer,
+    should_disable_bom_analyze_button,
     stage_approved_bom_submission,
 )
 from src.approval_evidence import has_document_page_citation
@@ -2736,11 +2737,16 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
                             "Analyzing BOM…" if analysis_running else "Analyze BOM",
                             key="approved_bom_analyze",
                             type="primary",
-                            disabled=analysis_running or not upload_available,
+                            disabled=should_disable_bom_analyze_button(
+                                analysis_running=analysis_running
+                            ),
                         )
                     with guidance_col:
                         if not upload_available:
-                            st.caption("Choose a CSV or Excel file to run the existing BOM analysis.")
+                            st.caption(
+                                "Choose a CSV or Excel file. If a file is already listed above, "
+                                "select Analyze BOM to retry the upload check."
+                            )
                 if submitted:
                     staged = stage_approved_bom_submission(
                         st.session_state,
