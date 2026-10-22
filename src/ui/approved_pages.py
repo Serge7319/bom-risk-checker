@@ -5719,7 +5719,7 @@ def _render_bom_replacement_approvals(
         missing_review_steps.append("remove one approved alternative; this BOM is at the three-part limit")
 
     blockers: list[str] = []
-    if review_state.get("review_completed"):
+    if datasheet_review.get("review_completed"):
         source_document_readable = bool((datasheet_review.get("source") or {}).get("available"))
         candidate_document_readable = bool((datasheet_review.get("candidate") or {}).get("available"))
         source_manual_values_missing = bool(
