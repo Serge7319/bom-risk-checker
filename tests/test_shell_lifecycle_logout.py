@@ -198,6 +198,7 @@ class MainTransitionMarkerTests(unittest.TestCase):
             "html": html,
             "st": SimpleNamespace(session_state={}),
             "BOM_ANALYSIS_TRANSITION_KEY": "cadivor_bom_analysis_transition",
+            "MAIN_TRANSITION_KIND_KEY": "cadivor_main_transition_kind",
         }
         exec(compile(ast.fix_missing_locations(ast.Module(body=[function], type_ignores=[])),
                      "<transition-markup-test>", "exec"), namespace)

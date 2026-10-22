@@ -95,7 +95,7 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
         # Streamlit can retain prior style blocks across reruns. Every rule that
         # hides an Opening layer must therefore be scoped to its own generation.
         self.assertNotIn(
-            '.cv-main-transition.cv-route-loading:not([data-cadivor-transition-gen="{gen}"])',
+            '[data-stale="true"] .cv-main-transition.cv-route-loading,',
             SOURCE,
         )
         self.assertIn(
@@ -103,6 +103,39 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
             '          .cv-main-transition.cv-route-loading[data-cadivor-transition-gen="{gen}"]',
             SOURCE,
         )
+
+    def test_transition_stylesheets_retire_old_generations_without_hiding_current_cover(self):
+        self.assertIn('id="cadivor-main-transition-css-{gen}"', SOURCE)
+        self.assertIn("style[id^=\"cadivor-main-transition-css-\"]", SOURCE)
+        core_css = (ROOT / "src" / "assets" / "css" / "core_premium_ui_final.css").read_text(
+            encoding="utf-8"
+        )
+        core_ui = (ROOT / "src" / "ui" / "core_premium_ui.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('style[id^="cadivor-main-transition-css-"]', core_css)
+        self.assertIn('style[id^="cadivor-main-transition-css-"]', core_ui)
+        self.assertNotIn("style#cadivor-main-transition-css,", core_css)
+        self.assertNotIn("style#cadivor-main-transition-css,", core_ui)
+        self.assertIn("const active = styles.filter", SOURCE)
+        self.assertIn("if (host && !host.contains(active)) host.remove();", SOURCE)
+        self.assertIn(
+            '[data-stale="true"] .cv-main-transition.cv-route-loading:not([data-cadivor-transition-gen="{gen}"])',
+            SOURCE,
+        )
+        self.assertIn(
+            '[data-stale="true"][data-cadivor-main-transition="1"]:not([data-cadivor-transition-gen="{gen}"])',
+            SOURCE,
+        )
+
+    def test_old_transition_css_is_removed_after_current_stylesheet_is_inserted(self):
+        inject = SOURCE.split("def inject_main_transition_css", 1)[1].split(
+            "def route_loading_markup", 1
+        )[0]
+        css_at = inject.index("<style id=\"cadivor-main-transition-css-{gen}\"")
+        cleanup_at = inject.index("const active = styles.filter")
+        self.assertLess(css_at, cleanup_at)
+        self.assertIn("unsafe_allow_javascript=True", inject)
 
     def test_alternative_finder_is_visible_before_synchronous_supplier_lookup(self):
         approved_pages = (ROOT / "src" / "ui" / "approved_pages.py").read_text(

@@ -441,6 +441,47 @@ def retire_auth_gate_overlays() -> None:
         """,
         unsafe_allow_html=True,
     )
+    # The signed-out stylesheet is an old DOM rule, not a visual element. Merely
+    # hiding its <style> node leaves its rules active; its hidden marker still
+    # matches body:has(...), which can keep hiding the navigation rail and the
+    # main transition cover after sign-in. Remove that retired stylesheet and
+    # its Streamlit host only once the authenticated shell and page sentinel
+    # have mounted. This is deliberately scoped to the two signed-out markers.
+    st.html(
+        """
+        <script>
+        (() => {
+          const doc = document;
+          let attempts = 0;
+          const cleanup = () => {
+            const shellReady = Boolean(
+              doc.querySelector('.cv-foundation-topbar, [class*="st-key-cv_foundation_navigation"]')
+              && doc.querySelector('[data-cadivor-page-content]')
+            );
+            if (!shellReady) return false;
+
+            const retired = Array.from(doc.querySelectorAll(
+              '#cadivor-authenticated-shell-retire, [data-cadivor-signed-out-surface="1"]'
+            ));
+            const hosts = new Set();
+            for (const node of retired) {
+              const host = node.closest('[data-testid="stElementContainer"]');
+              hosts.add(host || node);
+            }
+            for (const host of hosts) host.remove();
+            return true;
+          };
+
+          if (cleanup()) return;
+          const timer = window.setInterval(() => {
+            attempts += 1;
+            if (cleanup() || attempts >= 40) window.clearInterval(timer);
+          }, 50);
+        })();
+        </script>
+        """,
+        unsafe_allow_javascript=True,
+    )
 
 
 def mark_page_content_ready(page: str = "") -> None:

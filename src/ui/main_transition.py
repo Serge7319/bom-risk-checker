@@ -137,7 +137,7 @@ def inject_main_transition_css(transition_gen: int) -> None:
     gen = int(transition_gen)
     st.markdown(
         f"""
-        <style id="cadivor-main-transition-css"
+        <style id="cadivor-main-transition-css-{gen}"
                data-cadivor-layout-style="true"
                data-cadivor-transition-style-host="cadivor-main-transition-style"
                data-cadivor-transition-gen="{gen}">
@@ -368,7 +368,7 @@ def inject_main_transition_css(transition_gen: int) -> None:
         }}
         /* Style inject ElementContainer only — keep <style> active. */
         div[data-testid="stElementContainer"]:has(
-          style#cadivor-main-transition-css
+          style[id^="cadivor-main-transition-css-"]
         ),
         div[data-testid="stElementContainer"]:has(
           [data-cadivor-transition-style-host="cadivor-main-transition-style"]
@@ -383,11 +383,10 @@ def inject_main_transition_css(transition_gen: int) -> None:
           Never target shared st-key alone (stale gen CSS would hide the next Opening).
         */
         /* Retire only this generation after its own body marker arrives.
-           Older CSS blocks stay in the document during Streamlit reruns; a
-           cross-generation selector here lets yesterday's stylesheet hide
-           today's loading owner and expose partial route content. */
-        [data-stale="true"] .cv-main-transition.cv-route-loading,
-        [data-stale="true"][data-cadivor-main-transition="1"],
+           The live generation is kept while stale, older route owners are
+           hidden so yesterday's page cannot flash over the active cover. */
+        [data-stale="true"] .cv-main-transition.cv-route-loading:not([data-cadivor-transition-gen="{gen}"]),
+        [data-stale="true"][data-cadivor-main-transition="1"]:not([data-cadivor-transition-gen="{gen}"]),
         body:has([data-cadivor-page-body][data-cadivor-transition-gen="{gen}"])
           .cv-main-transition.cv-route-loading[data-cadivor-transition-gen="{gen}"] {{
           display:none!important;visibility:hidden!important;pointer-events:none!important;
@@ -420,6 +419,32 @@ def inject_main_transition_css(transition_gen: int) -> None:
         </style>
         """,
         unsafe_allow_html=True,
+    )
+    # Keep the active transition stylesheet in the app DOM and remove retired
+    # generations. Streamlit can preserve old HTML hosts across reruns; stale
+    # transition CSS has global stale-wrapper selectors, so leaving it attached
+    # can hide the next cover or expose a blank frame between pages.
+    st.html(
+        """
+        <script>
+        (() => {
+          const doc = document;
+          const currentId = '__CURRENT_ID__';
+          const styles = Array.from(doc.querySelectorAll(
+            'style[id^="cadivor-main-transition-css-"]'
+          ));
+          const active = styles.filter((style) => style.id === currentId).slice(-1)[0];
+          if (!active) return;
+          for (const style of styles) {
+            if (style === active) continue;
+            const host = style.closest('[data-testid="stElementContainer"]');
+            if (host && !host.contains(active)) host.remove();
+            else style.remove();
+          }
+        })();
+        </script>
+        """.replace("__CURRENT_ID__", f"cadivor-main-transition-css-{gen}"),
+        unsafe_allow_javascript=True,
     )
 
 
