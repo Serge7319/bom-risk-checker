@@ -2738,9 +2738,11 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
                     help="CSV or Excel with MPN and Quantity columns.",
                     disabled=analysis_running,
                 )
-                upload_available = uploaded is not None or st.session_state.get(
+                upload_state_file = uploaded if uploaded is not None else st.session_state.get(
                     "bom_file_uploader"
-                ) is not None
+                )
+                upload_available = upload_state_file is not None
+                uploaded_name = str(getattr(upload_state_file, "name", "") or "")
                 if upload_available:
                     st.session_state.pop("cadivor_bom_submission_error", None)
                 with st.container(key="approved_bom_submit_row"):
@@ -2751,14 +2753,20 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
                             key="approved_bom_analyze",
                             type="primary",
                             disabled=should_disable_bom_analyze_button(
-                                analysis_running=analysis_running
+                                analysis_running=analysis_running,
+                                upload_available=upload_available,
                             ),
                         )
                     with guidance_col:
-                        if not upload_available:
+                        if upload_available:
                             st.caption(
-                                "Choose a CSV or Excel file. If a file is already listed above, "
-                                "select Analyze BOM to retry the upload check."
+                                f"✓ {uploaded_name or 'File'} is fully uploaded and ready. "
+                                "Select Analyze BOM to start."
+                            )
+                        else:
+                            st.caption(
+                                "Choose a CSV or Excel file above. The file selector shows upload "
+                                "progress; Analyze BOM activates after Cadivor receives the complete file."
                             )
                 if submitted:
                     staged = stage_approved_bom_submission(
