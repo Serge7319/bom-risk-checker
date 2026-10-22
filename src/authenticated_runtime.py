@@ -23514,6 +23514,9 @@ def run_authenticated_app() -> None:
                     st.session_state.pop("bom8_analysis_progress", None)
                     finish_approved_bom_submission(st.session_state, reopen_upload=True)
                     st.session_state["cadivor_bom_analysis_error"] = True
+                    from src.ui.navigation import request_main_scroll_reset
+
+                    st.session_state["cadivor_bom_analysis_scroll_token"] = request_main_scroll_reset()
                     st.rerun()
 
                 st.session_state.pop("bom8_analysis_future", None)
@@ -23530,6 +23533,9 @@ def run_authenticated_app() -> None:
                             st.session_state.pop("cadivor_one_time_bom_order_id", None)
                     finish_approved_bom_submission(st.session_state, reopen_upload=True)
                     st.session_state["bom8_analysis_cancelled_notice"] = True
+                    from src.ui.navigation import request_main_scroll_reset
+
+                    st.session_state["cadivor_bom_analysis_scroll_token"] = request_main_scroll_reset()
                     st.rerun()
 
                 results_df, degraded = analysis_result
@@ -23543,6 +23549,13 @@ def run_authenticated_app() -> None:
                     if degraded
                     else ""
                 )
+                # The report replaces the progress fragment on this same route.
+                # Reset after the result is mounted as well as when analysis
+                # starts, otherwise a long run can preserve the upload form's
+                # old scroll offset and reveal the report below the fold.
+                from src.ui.navigation import request_main_scroll_reset
+
+                st.session_state["cadivor_bom_analysis_scroll_token"] = request_main_scroll_reset()
                 st.rerun()
 
             with st.container(key="bom8_analysis_progress_card", border=True):

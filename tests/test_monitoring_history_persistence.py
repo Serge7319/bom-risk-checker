@@ -172,6 +172,30 @@ class MonitoringHistoryPersistenceTests(unittest.TestCase):
         self.assertIn("saved BOM or workspace reference", diagnostic)
         self.assertNotIn("ABC123", diagnostic)
 
+    def test_monitoring_check_constraint_error_is_actionable(self):
+        client = _Supabase(
+            fail=True,
+            error_message="new row violates check constraint (23514)",
+        )
+        saved, diagnostic = save_monitor_history_with_diagnostic(
+            client,
+            [build_monitor_record("user-1", "analysis-1", {"MPN": "ABC123"})],
+        )
+        self.assertFalse(saved)
+        self.assertIn("rejected a field value", diagnostic)
+
+    def test_monitoring_scope_migration_adds_analysis_and_workspace_ids(self):
+        migration = (
+            Path(__file__).resolve().parents[1]
+            / "supabase"
+            / "migrations"
+            / "20261022_monitoring_baseline_scope.sql"
+        ).read_text(encoding="utf-8")
+        self.assertIn("public.part_monitor_history", migration)
+        self.assertIn("public.monitor_alerts", migration)
+        self.assertGreaterEqual(migration.count("add column if not exists analysis_id text"), 2)
+        self.assertGreaterEqual(migration.count("add column if not exists workspace_id text"), 2)
+
 
 if __name__ == "__main__":
     unittest.main()
