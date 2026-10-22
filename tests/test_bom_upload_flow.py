@@ -24,6 +24,14 @@ class ApprovedBOMPageContractTests(unittest.TestCase):
         self.assertIn("if _bom_new_analysis_context is not None:", source)
         self.assertIn("should_render_bom_analysis_body(", source)
 
+    def test_compare_approval_uses_defined_datasheet_review_state(self):
+        source = Path("src/ui/approved_pages.py").read_text(encoding="utf-8")
+        start = source.index("def _render_bom_replacement_approvals(")
+        end = source.index("\ndef ", start + 1)
+        approval_section = source[start:end]
+        self.assertIn('if datasheet_review.get("review_completed"):', approval_section)
+        self.assertNotIn('if review_state.get("review_completed"):', approval_section)
+
     def test_home_new_analysis_clears_old_context_before_navigation(self):
         source = Path("src/ui/approved_pages.py").read_text(encoding="utf-8")
         action_start = source.index('key="approved_home_new_bom"')
