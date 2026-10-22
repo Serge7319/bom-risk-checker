@@ -280,6 +280,64 @@ def replacement_search_empty_state(
     )
 
 
+def supplier_search_coverage_rows(discovery_metadata: Mapping[str, Any] | None) -> list[tuple[str, str]]:
+    """Summarize which relationship, catalog, and family searches actually ran."""
+    discovery = discovery_metadata if isinstance(discovery_metadata, Mapping) else {}
+    providers = discovery.get("providers")
+    if not isinstance(providers, Mapping):
+        return []
+
+    def _status_label(value: Any) -> str:
+        status = str(value or "not_requested").strip().casefold()
+        return {
+            "ok": "checked",
+            "available": "available",
+            "not_supported": "not provided by this supplier",
+            "not_configured": "not configured",
+            "not_requested": "not requested",
+            "error": "search failed",
+            "timeout": "timed out",
+            "failed": "search failed",
+            "rate_limited": "rate limited",
+        }.get(status, status.replace("_", " "))
+
+    rows: list[tuple[str, str]] = []
+    for provider in ("DigiKey", "Mouser", "Newark"):
+        status = providers.get(provider)
+        if not isinstance(status, Mapping):
+            continue
+        details = []
+        relationship_status = str(status.get("substitutions") or "").casefold()
+        if relationship_status == "ok":
+            count = int(status.get("explicit_count") or 0)
+            details.append(f"explicit substitute check: {count} returned")
+        elif relationship_status:
+            details.append(f"explicit substitute check: {_status_label(relationship_status)}")
+
+        catalog_status = str(status.get("catalog") or "").casefold()
+        if catalog_status in {"ok", "available"}:
+            count = int(status.get("catalog_count") or 0)
+            details.append(f"catalog search: {count} leads")
+        elif catalog_status:
+            details.append(f"catalog search: {_status_label(catalog_status)}")
+
+        family_status = str(status.get("family_search") or "").casefold()
+        if family_status and family_status != "not_requested":
+            details.append(f"family search: {_status_label(family_status)}")
+
+        parametric_status = str(status.get("parametric_search") or "").casefold()
+        if parametric_status and parametric_status != "not_requested":
+            count = int(status.get("parametric_count") or 0)
+            details.append(
+                f"spec-led search: {count} leads"
+                if parametric_status in {"ok", "available"}
+                else f"spec-led search: {_status_label(parametric_status)}"
+            )
+        if details:
+            rows.append((str(provider), "; ".join(details)))
+    return rows
+
+
 def _redact_secrets(message: str) -> str:
     text = str(message or "")
     text = _SECRET_PATTERN.sub(r"\1=<redacted>", text)

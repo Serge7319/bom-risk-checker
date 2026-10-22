@@ -2602,7 +2602,11 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
         try:
             from src.ui.navigation import NAV_SCROLL_RESET_TOKEN_KEY
 
-            scroll_token = int(st.session_state.get(NAV_SCROLL_RESET_TOKEN_KEY) or 0)
+            scroll_token = int(
+                st.session_state.get("cadivor_bom_analysis_scroll_token")
+                or st.session_state.get(NAV_SCROLL_RESET_TOKEN_KEY)
+                or 0
+            )
         except (ImportError, TypeError, ValueError):
             scroll_token = 0
         st.markdown(
@@ -2618,22 +2622,50 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
               const anchor = doc.getElementById('cadivor-bom-analysis-top-anchor');
               const token = anchor?.getAttribute('data-scroll-token') || '0';
               const root = doc.documentElement;
-              if (root.getAttribute('data-cadivor-bom-scroll-token') === token) return;
-              root.setAttribute('data-cadivor-bom-scroll-token', token);
-              let userInteracted = false;
-              const cancelReset = () => { userInteracted = true; };
-              ['wheel', 'touchstart', 'pointerdown', 'keydown'].forEach((eventName) => {
-                doc.addEventListener(eventName, cancelReset, { once: true, capture: true, passive: true });
-              });
-              const resetToAnalysis = () => {
-                if (userInteracted) return;
+              const activeKey = '__cadivorBomAnalysisScrollLock';
+              const existing = root[activeKey];
+              if (existing && existing.token === token && existing.timer) {
+                existing.reset();
+                return;
+              }
+              if (existing) existing.stop();
+
+              const state = { token, userInteracted: false, timer: null, missingSince: 0, startedAt: Date.now() };
+              const stop = () => {
+                if (state.timer) window.clearInterval(state.timer);
+                state.timer = null;
+                doc.removeEventListener('wheel', cancelOnScroll, true);
+                doc.removeEventListener('touchmove', cancelOnScroll, true);
+                doc.removeEventListener('keydown', cancelOnNavigationKey, true);
+                if (root[activeKey] === state) delete root[activeKey];
+              };
+              const cancelOnScroll = () => {
+                state.userInteracted = true;
+                stop();
+              };
+              const cancelOnNavigationKey = (event) => {
+                const target = event.target;
+                if (target && target.closest && target.closest('input, textarea, select, [contenteditable="true"]')) return;
+                if (['PageUp', 'PageDown', 'Home', 'End', 'ArrowUp', 'ArrowDown', ' '].includes(event.key)) cancelOnScroll();
+              };
+              state.stop = stop;
+              state.reset = () => {
+                if (state.userInteracted) return;
+                const progress = doc.querySelector('.st-key-bom8_analysis_progress_card');
+                const marker = doc.getElementById('cadivor-bom-analysis-top-anchor');
+                if (!progress || !marker) {
+                  if (!state.missingSince) state.missingSince = Date.now();
+                  // Streamlit can temporarily replace the progress subtree during
+                  // a full rerun. Keep the lock through that short unmount window.
+                  if (Date.now() - state.missingSince > 10000) stop();
+                  return;
+                }
+                state.missingSince = 0;
                 const main = doc.querySelector('section[data-testid="stMain"]');
-                const canvas = doc.querySelector('.st-key-approved_page_canvas_standard_render_bom_catalog');
                 const candidates = [
                   main && main.querySelector('[data-testid="stMainBlockContainer"]'),
                   main && main.querySelector('.main'),
                   main,
-                  canvas,
                   doc.querySelector('section.main'),
                   doc.querySelector('[data-testid="stAppViewContainer"]'),
                   doc.scrollingElement,
@@ -2642,16 +2674,22 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
                 ].filter(Boolean);
                 for (const element of candidates) {
                   try {
-                    element.scrollTop = 0;
-                    if (typeof element.scrollTo === 'function') element.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+                    if (Math.abs(element.scrollTop) > 24) element.scrollTop = 0;
                   } catch (error) {}
                 }
+                try {
+                  const rect = marker.getBoundingClientRect();
+                  if (rect.top < -24 || rect.top > 32) marker.scrollIntoView({ block: 'start', inline: 'nearest', behavior: 'auto' });
+                } catch (error) {}
                 try { window.scrollTo({ top: 0, left: 0, behavior: 'auto' }); } catch (error) {}
-                try { anchor?.scrollIntoView({ block: 'start', inline: 'nearest', behavior: 'auto' }); } catch (error) {}
+                if (Date.now() - state.startedAt > 600000) stop();
               };
-              [0, 80, 220, 500, 900, 1500, 2400, 3600].forEach((delay) => {
-                window.setTimeout(resetToAnalysis, delay);
-              });
+              root[activeKey] = state;
+              doc.addEventListener('wheel', cancelOnScroll, { capture: true, passive: true });
+              doc.addEventListener('touchmove', cancelOnScroll, { capture: true, passive: true });
+              doc.addEventListener('keydown', cancelOnNavigationKey, true);
+              state.reset();
+              state.timer = window.setInterval(state.reset, 350);
             })();
             </script>
             """,
@@ -6492,6 +6530,21 @@ def render_replacement_search() -> None:
         """,
         unsafe_allow_html=True,
     )
+    if discovery:
+        from src.alternative_finder_search import supplier_search_coverage_rows
+
+        coverage_rows = supplier_search_coverage_rows(discovery)
+        if coverage_rows:
+            with st.expander("Search coverage and evidence", expanded=False):
+                st.caption(
+                    "Direct substitute relationships are shown separately from catalog, family, "
+                    "and specification-led discovery leads. A catalog lead is not a compatibility approval."
+                )
+                for provider_name, coverage_detail in coverage_rows:
+                    st.markdown(
+                        f"**{_esc(provider_name)}** · {_esc(coverage_detail)}",
+                        unsafe_allow_html=True,
+                    )
     if excluded_obsolete:
         with st.expander(
             f"View {len(excluded_obsolete)} excluded obsolete / end-of-life record"

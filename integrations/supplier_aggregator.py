@@ -1,4 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import re
 
 import streamlit as st
 
@@ -38,6 +39,7 @@ except ImportError:
         part_number: str,
         *,
         include_family_search: bool = True,
+        additional_search_terms: list[str] | None = None,
     ) -> list[dict]:
         return []
 from src.alternative_classification import merge_discovery_candidates, utc_now_iso
@@ -937,10 +939,56 @@ def _provider_discovery_status(source_name: str) -> dict:
     }
 
 
+def _parametric_catalog_search_terms(source_part: dict | None) -> list[str]:
+    """Build a conservative distributor query from verified source attributes."""
+    part = source_part if isinstance(source_part, dict) else {}
+    from src.datasheet_comparison import infer_component_family
+
+    family = infer_component_family(part)
+    family_fields = {
+        "Capacitor": ("capacitance", "rated_voltage", "dielectric", "package"),
+        "Resistor": ("resistance", "tolerance", "power_rating", "package"),
+        "Inductor": ("inductance", "rated_current", "saturation_current", "package"),
+    }
+    keys = family_fields.get(family, ())
+    values: list[str] = []
+    for key in keys:
+        value = str(part.get(key) or "").strip()
+        if not value:
+            continue
+        value = (
+            value.replace("µ", "u")
+            .replace("μ", "u")
+            .replace("±", "")
+            .replace("Ω", "ohm")
+            .replace("Ω", "ohm")
+        )
+        if key == "package":
+            value = value.split()[0]
+        value = re.sub(
+            r"(?<=\d)\s+(?=(?:uF|mF|nF|pF|V|A|W|ohm|uH|mH|nH)\b)",
+            "",
+            value,
+            flags=re.IGNORECASE,
+        )
+        value = " ".join(value.split())
+        if value and value.casefold() not in {item.casefold() for item in values}:
+            values.append(value)
+    if len(values) < 2:
+        return []
+    family_query = {
+        "Capacitor": "ceramic capacitor",
+        "Resistor": "resistor",
+        "Inductor": "inductor",
+    }[family]
+    return [" ".join((*values, family_query))]
+
+
 def discover_alternative_candidates(
     part_number: str,
     *,
     include_family_search: bool = True,
+    original_data: dict | None = None,
 ) -> dict:
     """Discover explicit substitutes and catalog candidates across configured sources."""
     requested = str(part_number or "").strip()
@@ -966,6 +1014,7 @@ def discover_alternative_candidates(
             "substitutions": "available",
             "catalog": "available",
             "family_search": "ok" if include_family_search else "not_requested",
+            "parametric_search": "not_requested",
             "lookup": "available",
             "message": "",
         }
@@ -974,6 +1023,7 @@ def discover_alternative_candidates(
                 "substitutions": "not_configured",
                 "catalog": "not_configured",
                 "family_search": "not_configured",
+                "parametric_search": "not_configured",
                 "lookup": "not_configured",
                 "message": "DigiKey credentials are not configured.",
             })
@@ -988,13 +1038,22 @@ def discover_alternative_candidates(
             status["substitutions"] = "error"
             errors.append(sanitize_provider_message(error))
         try:
+            parametric_terms = _parametric_catalog_search_terms(original_data)
             catalog = search_digikey_catalog_candidates(
                 requested,
                 include_family_search=include_family_search,
+                additional_search_terms=parametric_terms,
             )
             status["catalog"] = "ok"
+            status["parametric_search"] = "ok" if parametric_terms else "not_requested"
+            status["parametric_count"] = sum(
+                1 for row in catalog
+                if isinstance(row, dict)
+                and str(row.get("discovery_scope") or "").casefold() == "parametric_search"
+            )
         except Exception as error:
             status["catalog"] = "error"
+            status["parametric_search"] = "error" if original_data else "not_requested"
             if include_family_search:
                 status["family_search"] = "error"
             errors.append(sanitize_provider_message(error))
@@ -1047,6 +1106,7 @@ def discover_alternative_candidates(
                     "substitutions": "error",
                     "catalog": "error",
                     "family_search": "error" if include_family_search else "not_requested",
+                    "parametric_search": "error" if original_data else "not_requested",
                     "lookup": "error",
                     "message": safe_message,
                 }

@@ -278,6 +278,48 @@ class DigiKeySubstitutionTests(unittest.TestCase):
         self.assertEqual(result["primary_category"], "Integrated Circuits (ICs)")
         self.assertEqual(result["stock_total"], 12140)
 
+    def test_parametric_keyword_search_preserves_attributes_for_candidate_ranking(self):
+        query = "0.1uF 50V X7R 0603 ceramic capacitor"
+        requested_terms = []
+
+        def post(_url, *, json, **_kwargs):
+            term = json["Keywords"]
+            requested_terms.append(term)
+            if term == query:
+                return _Response({"Products": [{
+                    "Manufacturer": {"Name": "Murata Electronics"},
+                    "ManufacturerProductNumber": "GRM188R72A104KA35D",
+                    "DigiKeyProductNumber": "490-GRM188R72A104KA35D-ND",
+                    "Description": {"ProductDescription": "CAP CER 0.1UF 100V X7R 0603"},
+                    "ProductStatus": {"Name": "Active"},
+                    "PrimaryCategory": {"Name": "Capacitors"},
+                    "Parameters": [
+                        {"ParameterText": "Capacitance", "ValueText": "0.1 µF"},
+                        {"ParameterText": "Voltage - Rated", "ValueText": "100V"},
+                        {"ParameterText": "Dielectric Material", "ValueText": "X7R"},
+                        {"ParameterText": "Temperature Coefficient", "ValueText": "X7R"},
+                        {"ParameterText": "Tolerance", "ValueText": "±10%"},
+                        {"ParameterText": "Package / Case", "ValueText": "0603 (1608 Metric)"},
+                    ],
+                }]})
+            return _Response({"Products": []})
+
+        self.client.requests.post = post
+        result = self.client.search_digikey_catalog_candidates(
+            "GRM188R71H104KA93D",
+            include_family_search=False,
+            additional_search_terms=[query],
+        )[0]
+
+        self.assertEqual(requested_terms, ["GRM188R71H104KA93D", query])
+        self.assertEqual(result["discovery_scope"], "parametric_search")
+        self.assertEqual(result["evidence_type"], "Distributor parametric keyword match")
+        self.assertEqual(result["capacitance"], "0.1 µF")
+        self.assertEqual(result["rated_voltage"], "100V")
+        self.assertEqual(result["dielectric"], "X7R")
+        self.assertEqual(result["package"], "0603 (1608 Metric)")
+        self.assertEqual(result["field_sources"]["capacitance"], "DigiKey")
+
     def test_category_parser_reads_nested_supplier_value_and_product_category_name(self):
         cases = (
             ({"CategoryId": 42, "Value": "Development Boards, Kits, Programmers"},

@@ -74,7 +74,7 @@ class AlternativeFinderSuitabilityTests(unittest.TestCase):
     def _mock_discovery(self, explicit, catalog=None):
         catalog = catalog or []
 
-        def discover(_part):
+        def discover(_part, **_kwargs):
             merged = self.classification.merge_discovery_candidates(
                 explicit,
                 catalog,

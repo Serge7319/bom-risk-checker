@@ -55,7 +55,7 @@ class AlternativeFinderReliabilityTests(unittest.TestCase):
         }
 
     def _mock_discovery(self, explicit, catalog=None):
-        def discover(_part):
+        def discover(_part, **_kwargs):
             merged = self.classification.merge_discovery_candidates(
                 explicit,
                 catalog or [],

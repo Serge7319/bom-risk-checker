@@ -117,8 +117,10 @@ def test_bom_analysis_progress_reanchors_the_workspace_after_mount():
     assert "components.html(" not in progress_reanchor
     assert "const doc = document;" in progress_reanchor
     assert "anchor?.scrollIntoView({ block: 'start'" in progress_reanchor
-    assert "[0, 80, 220, 500, 900, 1500, 2400, 3600]" in progress_reanchor
+    assert "window.setInterval(state.reset, 350)" in progress_reanchor
+    assert "Date.now() - state.missingSince > 10000" in progress_reanchor
     assert "userInteracted" in progress_reanchor
+    assert "touchmove" in progress_reanchor
 
 
 def test_analysis_workspace_hides_duplicate_legacy_hero_and_caps_actions():

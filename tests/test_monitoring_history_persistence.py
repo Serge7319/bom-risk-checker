@@ -6,8 +6,10 @@ import pandas as pd
 from src.monitoring_engine import (
     build_monitor_record,
     detect_monitor_alerts,
+    resolve_monitoring_workspace_id,
     save_monitor_alerts,
     save_monitor_history,
+    save_monitor_history_with_diagnostic,
 )
 
 
@@ -21,7 +23,7 @@ class _Insert:
 
     def execute(self):
         if self.owner.fail:
-            raise ValueError("simulated persistence failure")
+            raise ValueError(self.owner.error_message)
         return None
 
 
@@ -34,8 +36,9 @@ class _Table:
 
 
 class _Supabase:
-    def __init__(self, *, fail=False):
+    def __init__(self, *, fail=False, error_message="simulated persistence failure"):
         self.fail = fail
+        self.error_message = error_message
         self.records = None
 
     def table(self, name):
@@ -135,6 +138,39 @@ class MonitoringHistoryPersistenceTests(unittest.TestCase):
         self.assertTrue(save_monitor_alerts(alerts_db, [alert]))
         self.assertEqual(len(alerts_db.attempts), 2)
         self.assertNotIn("supplier", alerts_db.attempts[-1][0])
+
+    def test_monitoring_uses_the_saved_bom_workspace_scope(self):
+        self.assertEqual(
+            resolve_monitoring_workspace_id(
+                {"workspace_id": "workspace-from-part"},
+                {"workspace_id": "workspace-from-analysis"},
+                "active-workspace",
+            ),
+            "workspace-from-analysis",
+        )
+        self.assertEqual(
+            resolve_monitoring_workspace_id(
+                {}, {"workspace_id": "workspace-from-analysis"}, "active-workspace"
+            ),
+            "workspace-from-analysis",
+        )
+        self.assertEqual(
+            resolve_monitoring_workspace_id({}, {}, "active-workspace"),
+            "active-workspace",
+        )
+
+    def test_monitoring_baseline_write_returns_safe_database_diagnostic(self):
+        client = _Supabase(
+            fail=True,
+            error_message="insert violates foreign key constraint (23503)",
+        )
+        saved, diagnostic = save_monitor_history_with_diagnostic(
+            client,
+            [build_monitor_record("user-1", "analysis-1", {"MPN": "ABC123"})],
+        )
+        self.assertFalse(saved)
+        self.assertIn("saved BOM or workspace reference", diagnostic)
+        self.assertNotIn("ABC123", diagnostic)
 
 
 if __name__ == "__main__":

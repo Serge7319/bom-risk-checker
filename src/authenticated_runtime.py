@@ -5260,7 +5260,11 @@ def run_authenticated_app() -> None:
         def _render_monitored_components():
             def _start_monitoring_baseline():
                 from src.normalizer import normalize_part_number
-                from src.monitoring_engine import build_monitor_record, save_monitor_history
+                from src.monitoring_engine import (
+                    build_monitor_record,
+                    resolve_monitoring_workspace_id,
+                    save_monitor_history_with_diagnostic,
+                )
 
                 requested_mpn = str(focused_monitor_part or "").strip()
                 analysis_id = str(return_analysis_id or "").strip()
@@ -5282,12 +5286,16 @@ def run_authenticated_app() -> None:
                     return
 
                 try:
-                    owned_analysis = any(
-                        isinstance(record, dict)
-                        and str(record.get("id") or "").strip() == analysis_id
-                        for record in (load_analysis_history(user_id) or [])
+                    owned_analysis = next(
+                        (
+                            record
+                            for record in (load_analysis_history(user_id) or [])
+                            if isinstance(record, dict)
+                            and str(record.get("id") or "").strip() == analysis_id
+                        ),
+                        None,
                     )
-                    if not owned_analysis:
+                    if not isinstance(owned_analysis, dict):
                         st.error("The saved BOM could not be verified in this workspace. Reopen it from Home and try again.")
                         return
 
@@ -5352,10 +5360,20 @@ def run_authenticated_app() -> None:
                         user_id,
                         analysis_id,
                         baseline_data,
-                        workspace_id=active_workspace_id,
+                        workspace_id=resolve_monitoring_workspace_id(
+                            source_part,
+                            owned_analysis,
+                            active_workspace_id,
+                        ),
                     )
-                    if not save_monitor_history(supabase, [baseline]):
+                    saved, diagnostic = save_monitor_history_with_diagnostic(
+                        supabase,
+                        [baseline],
+                    )
+                    if not saved:
                         st.error("Cadivor could not save the monitoring baseline. No monitoring was started.")
+                        if diagnostic:
+                            st.caption(diagnostic)
                         return
 
                     st.session_state[f"monitor_baseline_started_{analysis_id}_{normalize_part_number(requested_mpn)}"] = True
@@ -23425,7 +23443,7 @@ def run_authenticated_app() -> None:
 
             st.session_state["bom8_analysis_in_progress"] = True
             st.session_state["bom8_analysis_pending"] = True
-            request_main_scroll_reset()
+            st.session_state["cadivor_bom_analysis_scroll_token"] = request_main_scroll_reset()
             arm_bom_analysis_transition(st.session_state, "start")
             st.rerun()
 
@@ -23558,7 +23576,7 @@ def run_authenticated_app() -> None:
             # page navigation so progress never opens halfway down the page.
             from src.ui.navigation import request_main_scroll_reset
 
-            request_main_scroll_reset()
+            st.session_state["cadivor_bom_analysis_scroll_token"] = request_main_scroll_reset()
             # A new analysis should be saved as a new database record.
             # These flags prevent old session state from blocking the new save.
             st.session_state.pop("analysis_saved", None)

@@ -343,7 +343,7 @@ class AlternativeFinderCrossFamilyTests(unittest.TestCase):
                     ),
                 ]
 
-                def discover(_part, rows=explicit, original=fixture["original"]):
+                def discover(_part, rows=explicit, original=fixture["original"], **_kwargs):
                     return {
                         "original_mpn": original,
                         "candidates": self.classification.merge_discovery_candidates(

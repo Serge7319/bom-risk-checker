@@ -27,6 +27,21 @@ def test_analysis_submission_and_report_switch_request_same_route_scroll_reset()
         "def request_main_scroll_reset", 1
     )[0]
 
+
+def test_long_bom_analysis_keeps_top_anchor_until_progress_finishes_or_user_scrolls():
+    progress = (ROOT / "src" / "ui" / "approved_pages.py").read_text(encoding="utf-8")
+    start = progress.index("if analysis_running and not results_visible:")
+    end = progress.index('with st.container(key="approved_bom_title")', start)
+    active_scroll = progress[start:end]
+
+    assert "window.setInterval(state.reset, 350)" in active_scroll
+    assert "const progress = doc.querySelector('.st-key-bom8_analysis_progress_card')" in active_scroll
+    assert "doc.addEventListener('wheel', cancelOnScroll" in active_scroll
+    assert "doc.addEventListener('touchmove', cancelOnScroll" in active_scroll
+    assert "Date.now() - state.startedAt > 600000" in active_scroll
+    assert "Date.now() - state.missingSince > 10000" in active_scroll
+    assert 'cadivor_bom_analysis_scroll_token' in active_scroll
+
     submit = RUNTIME.split("if _approved_bom_submitted and uploaded_file is not None:", 1)[1]
     assert "request_main_scroll_reset()" in submit.split("st.rerun()", 1)[0]
     selector_callback = EI_REPORT.split(
