@@ -66,8 +66,9 @@ def stage_approved_bom_submission(
 
     if upload is None:
         state["cadivor_bom_submission_error"] = (
-            "Analyze was received, but the selected file was not available. "
-            "Choose the CSV or Excel file again, then select Analyze BOM."
+            "Analyze was received, but the selected file was not available on Cadivor. "
+            "Remove it from the upload box, select it again, wait for the upload to finish, "
+            "then select Analyze BOM."
         )
         return False
 
@@ -139,6 +140,11 @@ def has_completed_saved_bom_results(state: MutableMapping[str, Any]) -> bool:
             state.get("analysis_id") or state.get("cadivor_active_analysis_id") or ""
         ).strip()
     )
+
+
+def should_disable_bom_analyze_button(*, analysis_running: bool) -> bool:
+    """Keep Analyze clickable so a missed upload can be retried from the click handler."""
+    return bool(analysis_running)
 
 
 def should_render_approved_bom_upload_form(

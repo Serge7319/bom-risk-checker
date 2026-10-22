@@ -14,6 +14,7 @@ from src.bom_upload_flow import (
     should_stop_approved_bom_renderer,
     prepare_new_approved_bom_analysis,
     has_completed_saved_bom_results,
+    should_disable_bom_analyze_button,
 )
 
 
@@ -127,6 +128,15 @@ class ApprovedBOMPageContractTests(unittest.TestCase):
 
 
 class ApprovedBOMSubmissionTests(unittest.TestCase):
+    def test_analyze_button_remains_clickable_when_upload_is_not_registered(self):
+        self.assertFalse(should_disable_bom_analyze_button(analysis_running=False))
+        self.assertTrue(should_disable_bom_analyze_button(analysis_running=True))
+
+    def test_upload_page_does_not_disable_analyze_on_missing_server_upload_state(self):
+        source = Path("src/ui/approved_pages.py").read_text(encoding="utf-8")
+        self.assertIn("disabled=should_disable_bom_analyze_button(", source)
+        self.assertNotIn("disabled=analysis_running or not upload_available", source)
+
     def test_submit_recovers_file_from_uploader_widget_state(self):
         upload = object()
         state = {"bom_file_uploader": upload}
