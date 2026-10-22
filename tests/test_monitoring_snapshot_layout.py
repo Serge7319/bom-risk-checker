@@ -22,6 +22,12 @@ class MonitoringSnapshotLayoutTests(unittest.TestCase):
         self.assertIn("Monitoring snapshot", self.branch)
         self.assertIn("Monitoring workspace", self.branch)
 
+    def test_monitoring_route_does_not_stop_in_legacy_alert_renderer(self):
+        self.assertNotIn("render_monitoring(", self.branch)
+        self.assertIn('monitor_view = _safe_text(', self.branch)
+        self.assertIn('if monitor_view == "components":', self.branch)
+        self.assertIn("_render_monitored_components()", self.branch)
+
     def test_snapshot_keeps_only_distinct_actionable_metrics(self):
         for card_key in (
             "monitor_snapshot_immediate",

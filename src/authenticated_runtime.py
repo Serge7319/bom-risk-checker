@@ -4573,6 +4573,9 @@ def run_authenticated_app() -> None:
                 )
             navigate_to("Analysis Details", **return_params)
 
+        # Keep Monitoring in this route renderer. The legacy approved-page
+        # renderer calls stop_authenticated_page() when it finishes, which
+        # prevents the actionable monitoring workspace below from rendering.
         def _monitor_query(table_name, columns="*"):
             return _workspace_query(supabase.table(table_name).select(columns)).eq("user_id", current_user["id"])
 
@@ -4582,10 +4585,6 @@ def run_authenticated_app() -> None:
         except Exception as exc:
             st.error(f"Monitoring alerts could not be loaded: {exc}")
             alert_df = pd.DataFrame()
-
-        from src.ui.approved_pages import render_monitoring
-
-        render_monitoring([] if alert_df.empty else alert_df.to_dict("records"))
 
         try:
             monitor_history = _monitor_query("part_monitor_history").order("created_at", desc=True).limit(5000).execute()

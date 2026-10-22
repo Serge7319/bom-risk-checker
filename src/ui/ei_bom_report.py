@@ -111,6 +111,7 @@ def _alternative_action_link(
         part=mpn,
         return_analysis_id=analysis_id,
         monitor_focus="active",
+        monitor_view="components",
     )
     monitor_link = (
         f'<a class="cv-ei-action-link" href="{html.escape(monitor_href, quote=True)}" '

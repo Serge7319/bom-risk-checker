@@ -57,6 +57,7 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
         self.assertIn("Monitor this part</a>", action)
         self.assertIn("Find alternatives</a>", action)
         self.assertIn('monitor_focus="active"', action)
+        self.assertIn('monitor_view="components"', action)
         self.assertIn('mpn=mpn', action)
 
     def test_detailed_risk_exposure_summary_uses_recorded_cost_and_lead_time(self):
@@ -393,6 +394,7 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
         self.assertIn(">Find alternatives</a>", report)
         self.assertIn(">Monitor this part</a>", report)
         self.assertIn("monitor_focus=active", report)
+        self.assertIn("monitor_view=components", report)
         self.assertIn("page=Alternative%20Finder", report)
         self.assertIn("original_part=MPN-001", report)
         self.assertIn("analysis_id=analysis-1", report)
