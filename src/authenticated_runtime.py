@@ -5262,6 +5262,7 @@ def run_authenticated_app() -> None:
                 from src.normalizer import normalize_part_number
                 from src.monitoring_engine import (
                     build_monitor_record,
+                    monitoring_risk_level,
                     resolve_monitoring_workspace_id,
                     save_monitor_history_with_diagnostic,
                 )
@@ -5352,7 +5353,7 @@ def run_authenticated_app() -> None:
                         "Lifecycle Status": supplier_data.get("lifecycle_status") or "Unknown",
                         "Stock Available": supplier_data.get("stock_total"),
                         "Unit Price": supplier_data.get("unit_price"),
-                        "Risk Level": source_part.get("Risk Level") or "Monitoring baseline",
+                        "Risk Level": monitoring_risk_level(source_part),
                         "Product URL": supplier_data.get("product_detail_url") or "",
                         "Datasheet URL": supplier_data.get("datasheet_url") or "",
                     }

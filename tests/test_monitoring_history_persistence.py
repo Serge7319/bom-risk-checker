@@ -6,6 +6,7 @@ import pandas as pd
 from src.monitoring_engine import (
     build_monitor_record,
     detect_monitor_alerts,
+    monitoring_risk_level,
     resolve_monitoring_workspace_id,
     save_monitor_alerts,
     save_monitor_history,
@@ -119,6 +120,17 @@ class MonitoringHistoryPersistenceTests(unittest.TestCase):
         )
         self.assertEqual(record["product_url"], "https://example.test/dht11")
         self.assertEqual(record["datasheet_url"], "https://example.test/dht11.pdf")
+
+    def test_monitor_baseline_reads_saved_bom_risk_level_without_inventing_a_label(self):
+        self.assertEqual(monitoring_risk_level({"risk_level": "High"}), "High")
+        self.assertEqual(monitoring_risk_level({"risk": "Medium"}), "Medium")
+        self.assertEqual(monitoring_risk_level({}), "Needs verification")
+        record = build_monitor_record(
+            "user-1",
+            "analysis-1",
+            {"MPN": "ABC123", "risk_level": "High"},
+        )
+        self.assertEqual(record["risk_level"], "High")
 
     def test_analysis_flow_keeps_monitoring_history_failure_nonblocking(self):
         source = (Path(__file__).resolve().parents[1] / "src" / "authenticated_runtime.py").read_text()
