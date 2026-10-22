@@ -142,9 +142,11 @@ def has_completed_saved_bom_results(state: MutableMapping[str, Any]) -> bool:
     )
 
 
-def should_disable_bom_analyze_button(*, analysis_running: bool) -> bool:
-    """Keep Analyze clickable so a missed upload can be retried from the click handler."""
-    return bool(analysis_running)
+def should_disable_bom_analyze_button(
+    *, analysis_running: bool, upload_available: bool = False
+) -> bool:
+    """Wait for the server-confirmed upload before allowing BOM analysis."""
+    return bool(analysis_running or not upload_available)
 
 
 def should_render_approved_bom_upload_form(

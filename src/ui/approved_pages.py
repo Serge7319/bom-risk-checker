@@ -1267,6 +1267,14 @@ def begin_approved_page() -> None:
         .st-key-approved_bom_upload_form [data-testid="stFileUploaderDropzone"] button:hover{border-color:#8eafff!important;background:#f5f8ff!important}
         .st-key-approved_bom_submit_row [data-testid="stHorizontalBlock"]{align-items:center!important;gap:16px!important}
         .st-key-approved_bom_submit_row [data-testid="stCaptionContainer"] p{color:#718198!important;font-size:12px!important}
+        .cv-bom-upload-state{box-sizing:border-box!important;display:flex!important;align-items:center!important;gap:10px!important;min-height:44px!important;padding:7px 12px!important;border:1px solid #dbe5f2!important;border-radius:10px!important;background:#f8fbff!important;color:#34445d!important}
+        .cv-bom-upload-state>span:last-child{display:flex!important;flex-direction:column!important;gap:2px!important;min-width:0!important}
+        .cv-bom-upload-state strong{color:#34445d!important;font-size:12px!important;font-weight:700!important;line-height:1.25!important}
+        .cv-bom-upload-state small{color:#718198!important;font-size:11px!important;line-height:1.35!important}
+        .cv-bom-upload-state__spinner{box-sizing:border-box!important;width:16px!important;height:16px!important;flex:0 0 16px!important;border:2px solid #cbd8ea!important;border-top-color:#2865ed!important;border-radius:50%!important;animation:cv-bom-upload-spin .8s linear infinite!important}
+        @keyframes cv-bom-upload-spin{to{transform:rotate(360deg)}}
+        .cv-bom-upload-state--ready{border-color:#b7e4c7!important;background:#f0fdf4!important}
+        .cv-bom-upload-state__check{display:flex!important;align-items:center!important;justify-content:center!important;width:18px!important;height:18px!important;flex:0 0 18px!important;border-radius:50%!important;background:#dcfce7!important;color:#15803d!important;font-size:12px!important;font-weight:800!important}
         [class*="st-key-approved_bom_analyze"] button{width:auto!important;min-width:148px!important;max-width:100%!important;min-height:44px!important}
         [class*="st-key-approved_bom_analyze"] button:disabled{border:1px solid #d7dfeb!important;background:#e9eef6!important;color:#8996a8!important;box-shadow:none!important;opacity:1!important;cursor:not-allowed!important}
         [class*="st-key-approved_bom_analyze"] button:disabled *{color:#8996a8!important}
@@ -2751,14 +2759,30 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
                             key="approved_bom_analyze",
                             type="primary",
                             disabled=should_disable_bom_analyze_button(
-                                analysis_running=analysis_running
+                                analysis_running=analysis_running,
+                                upload_available=upload_available,
                             ),
                         )
                     with guidance_col:
-                        if not upload_available:
-                            st.caption(
-                                "Choose a CSV or Excel file. If a file is already listed above, "
-                                "select Analyze BOM to retry the upload check."
+                        if upload_available:
+                            st.markdown(
+                                """
+                                <div class="cv-bom-upload-state cv-bom-upload-state--ready" role="status" aria-live="polite">
+                                  <span class="cv-bom-upload-state__check" aria-hidden="true">✓</span>
+                                  <span><strong>Upload complete</strong><small>Your BOM is ready to analyze.</small></span>
+                                </div>
+                                """,
+                                unsafe_allow_html=True,
+                            )
+                        else:
+                            st.markdown(
+                                """
+                                <div class="cv-bom-upload-state cv-bom-upload-state--waiting" role="status" aria-live="polite">
+                                  <span class="cv-bom-upload-state__spinner" aria-hidden="true"></span>
+                                  <span><strong>Waiting for upload confirmation</strong><small>Select a CSV or Excel file above. Analyze enables after Cadivor receives it.</small></span>
+                                </div>
+                                """,
+                                unsafe_allow_html=True,
                             )
                 if submitted:
                     staged = stage_approved_bom_submission(

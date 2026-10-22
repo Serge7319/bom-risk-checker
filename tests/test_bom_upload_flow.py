@@ -139,14 +139,34 @@ class ApprovedBOMPageContractTests(unittest.TestCase):
 
 
 class ApprovedBOMSubmissionTests(unittest.TestCase):
-    def test_analyze_button_remains_clickable_when_upload_is_not_registered(self):
-        self.assertFalse(should_disable_bom_analyze_button(analysis_running=False))
-        self.assertTrue(should_disable_bom_analyze_button(analysis_running=True))
+    def test_analyze_is_disabled_until_upload_is_available_and_analysis_is_idle(self):
+        self.assertTrue(
+            should_disable_bom_analyze_button(
+                analysis_running=False,
+                upload_available=False,
+            )
+        )
+        self.assertTrue(
+            should_disable_bom_analyze_button(
+                analysis_running=True,
+                upload_available=True,
+            )
+        )
+        self.assertFalse(
+            should_disable_bom_analyze_button(
+                analysis_running=False,
+                upload_available=True,
+            )
+        )
 
-    def test_upload_page_does_not_disable_analyze_on_missing_server_upload_state(self):
+    def test_upload_page_gates_analyze_on_server_upload_and_shows_readiness(self):
         source = Path("src/ui/approved_pages.py").read_text(encoding="utf-8")
         self.assertIn("disabled=should_disable_bom_analyze_button(", source)
-        self.assertNotIn("disabled=analysis_running or not upload_available", source)
+        self.assertIn("upload_available=upload_available", source)
+        self.assertIn("cv-bom-upload-state__spinner", source)
+        self.assertIn("Waiting for upload confirmation", source)
+        self.assertIn("Upload complete", source)
+        self.assertNotIn("select Analyze BOM to retry the upload check", source)
 
     def test_submit_recovers_file_from_uploader_widget_state(self):
         upload = object()
