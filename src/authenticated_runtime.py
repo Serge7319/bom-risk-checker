@@ -5209,9 +5209,35 @@ def run_authenticated_app() -> None:
                         )
 
         def _render_monitored_components():
+            def _render_monitoring_baseline_empty_state():
+                if focused_monitor_part:
+                    st.markdown("#### Monitoring baseline not found")
+                    st.info(
+                        f"No saved monitoring snapshot is available for "
+                        f"**{focused_monitor_part}**."
+                    )
+                    st.caption(
+                        "Cadivor records a component's first monitoring snapshot "
+                        "when a BOM analysis completes. This page displays saved "
+                        "snapshots and resulting changes; it does not start a "
+                        "monitoring baseline by itself."
+                    )
+                else:
+                    st.info("No monitored component snapshots are available yet.")
+                    st.caption(
+                        "A monitoring snapshot is recorded when a BOM analysis completes."
+                    )
+                if st.button(
+                    "Run a new BOM analysis",
+                    type="primary",
+                    use_container_width=True,
+                    key="m32_monitoring_create_baseline",
+                ):
+                    navigate_to("BOM Analyzer")
+
             components = monitoring_center["latest_components"]
             if components.empty:
-                st.info("No monitored component snapshots are available yet.")
+                _render_monitoring_baseline_empty_state()
             else:
                 def _component_stock_label(value, fallback="—"):
                     cleaned = _monitor_display(value, "")
@@ -5276,6 +5302,20 @@ def run_authenticated_app() -> None:
                     placeholder="Part number, supplier, lifecycle, or risk",
                     key=f"m32_component_search_{component_filter_key}",
                 )
+                focused_component_found = False
+                if focused_monitor_part and "Part Number" in components.columns:
+                    focused_component_found = components["Part Number"].astype(str).str.strip().str.casefold().eq(
+                        focused_monitor_part.strip().casefold()
+                    ).any()
+                if (
+                    focused_monitor_part
+                    and component_search.strip().casefold()
+                    == focused_monitor_part.strip().casefold()
+                    and not focused_component_found
+                ):
+                    _render_monitoring_baseline_empty_state()
+                    return
+
                 visible = components.copy()
                 if component_search.strip():
                     q = component_search.strip().lower()
