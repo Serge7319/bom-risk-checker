@@ -151,6 +151,107 @@ class DatasheetComparisonTests(unittest.TestCase):
         self.assertIn("p. 3", row["Original PDF page"])
         self.assertEqual(row["Status"], "Match")
 
+    def test_pdf_package_evidence_is_not_taken_from_an_ambiguous_family_datasheet(self):
+        pdf = {
+            "available": True,
+            "pages": [
+                {
+                    "page": 2,
+                    "text": "LM317DCYR Adjustable Regulator\nDCY Package 4-Pin SOT-223",
+                },
+                {
+                    "page": 7,
+                    "text": "LM317DCYR and LM317MDCYR ordering options\nDDA Package 8-Pin SOIC",
+                },
+            ],
+        }
+
+        row = next(
+            row for row in build_pdf_field_evidence(
+                pdf,
+                pdf,
+                "Regulator",
+                original_mpn="LM317DCYR",
+                candidate_mpn="LM317DCYR",
+            )
+            if row["Key"] == "package"
+        )
+
+        self.assertEqual(row["Original PDF value"], "Not found")
+        self.assertEqual(row["Candidate PDF value"], "Not found")
+        self.assertEqual(row["Status"], "Needs data")
+        self.assertIn("No unique package designation", row["Evidence"])
+
+    def test_pdf_package_requires_exact_mpn_identity_when_available(self):
+        pdf = {
+            "available": True,
+            "pages": [{
+                "page": 2,
+                "text": "LM317 family\nPackage: 4-Pin SOT-223",
+            }],
+        }
+
+        row = next(
+            row for row in build_pdf_field_evidence(
+                pdf,
+                pdf,
+                "Regulator",
+                original_mpn="LM317DCYR",
+                candidate_mpn="LM317DCYR",
+            )
+            if row["Key"] == "package"
+        )
+
+        self.assertEqual(row["Original PDF value"], "Not found")
+        self.assertEqual(row["Status"], "Needs data")
+
+    def test_pdf_mpn_identity_does_not_accept_a_longer_order_code_prefix(self):
+        pdf = {
+            "available": True,
+            "pages": [{
+                "page": 2,
+                "text": "LM317DCYR adjustable regulator, SOT-223 package",
+            }],
+        }
+
+        row = next(
+            row for row in build_pdf_field_evidence(
+                pdf,
+                pdf,
+                "Regulator",
+                original_mpn="LM317D",
+                candidate_mpn="LM317D",
+            )
+            if row["Key"] == "package"
+        )
+
+        self.assertEqual(row["Original PDF value"], "Not found")
+        self.assertEqual(row["Candidate PDF value"], "Not found")
+        self.assertEqual(row["Status"], "Needs data")
+
+    def test_pdf_mpn_identity_accepts_exact_code_with_surrounding_text(self):
+        pdf = {
+            "available": True,
+            "pages": [{
+                "page": 2,
+                "text": "LM317DCYR adjustable regulator\nPackage: 4-Pin SOT-223",
+            }],
+        }
+
+        row = next(
+            row for row in build_pdf_field_evidence(
+                pdf,
+                pdf,
+                "Regulator",
+                original_mpn="LM317DCYR",
+                candidate_mpn="LM317DCYR",
+            )
+            if row["Key"] == "package"
+        )
+
+        self.assertEqual(row["Original PDF value"], "4-Pin SOT-223")
+        self.assertEqual(row["Status"], "Match")
+
     def test_dimension_excerpts_keep_document_and_page_citations(self):
         pdf = {
             "available": True,

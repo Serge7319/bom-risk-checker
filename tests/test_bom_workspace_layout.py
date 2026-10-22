@@ -98,7 +98,8 @@ def test_new_bom_analysis_matches_approved_full_width_upload_mockup():
 
     assert '("render_bom_catalog", "standard")' in APPROVED_SOURCE
     assert '.st-key-approved_bom_upload_panel{box-sizing:border-box!important;width:100%!important;max-width:none!important' in APPROVED_SOURCE
-    assert 'with st.container(key="approved_bom_upload_fields")' in upload_form
+    assert 'with st.container(key="approved_bom_upload_fields")' in APPROVED_SOURCE
+    assert 'fragment(_render_approved_bom_upload_name_fields)()' in upload_form
     assert 'project_col, bom_col = st.columns(2, gap="large")' in upload_form
     assert 'placeholder="Example: Motor Controller Rev A"' in upload_form
     assert 'key="bom_file_uploader"' in upload_form
@@ -124,7 +125,7 @@ def test_analysis_workspace_hides_duplicate_legacy_hero_and_caps_actions():
     hero_start = RUNTIME_SOURCE.index('class="bom9-workspace-hero"')
     guard_start = RUNTIME_SOURCE.rfind('if should_render_legacy_bom_workspace(st.session_state):', 0, hero_start)
     assert guard_start >= 0
-    assert 'st-key-bom8_analysis_progress_card{max-width:960px!important' in RUNTIME_SOURCE
+    assert 'st-key-bom8_analysis_progress_card{max-width:1440px!important' in RUNTIME_SOURCE
     assert 'st-key-bom8_analysis_preview{max-width:1440px!important' in RUNTIME_SOURCE
     assert 'st-key-bom8_one_time_payment_action{max-width:760px!important' in RUNTIME_SOURCE
     payment_start = RUNTIME_SOURCE.index('key="bom8_one_time_payment_action"')

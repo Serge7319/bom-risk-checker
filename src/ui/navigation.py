@@ -29,6 +29,7 @@ _LOGOUT_QUERY_KEYS = ("cadivor_signed_out", "auth", "source")
 LAST_HISTORY_PUSH_PAGE_KEY = "cadivor_last_history_push_page"
 LAST_HISTORY_PUSH_PARAMS_KEY = "cadivor_last_history_push_params"
 PENDING_NAVIGATION_CONTEXT_KEY = "cadivor_pending_navigation_context"
+PENDING_ROUTE_COMMIT_KEY = "cadivor_pending_route_commit"
 HISTORY_RESTORE_EVENT_KEY = "cadivor_history_restore_event"
 HISTORY_RESTORE_SNAPSHOT_KEY = "cadivor_history_restore_snapshot"
 
@@ -342,6 +343,15 @@ def navigate_to(page: str, *, _rerun: bool = True, arm_opening: bool = True, **p
             nav_params[key] = str(value)
     previous_nav_params = st.session_state.get("cadivor_nav_params")
     st.session_state["cadivor_nav_params"] = nav_params
+    if current_page and current_page != page:
+        stale_page = read_query_params().get("page") or current_page
+        st.session_state[PENDING_ROUTE_COMMIT_KEY] = {
+            "page": page,
+            "stale_page": stale_page,
+            "params": dict(nav_params),
+        }
+    else:
+        st.session_state.pop(PENDING_ROUTE_COMMIT_KEY, None)
     if current_page == page and previous_nav_params != nav_params:
         # Streamlit can rerun a same-page widget callback before its query
         # parameter snapshot catches up with the browser URL. Keep this
@@ -453,7 +463,11 @@ def inject_nav_scroll_reset_if_needed() -> bool:
             }}
           }};
 
-          [0, 40, 120, 280, 600, 1100].forEach((delay, index, delays) => {{
+          // BOM analysis mounts its progress body after the first rerun and
+          // may then attach a fragment. Keep the reset alive through those
+          // commits so browser scroll restoration cannot leave progress below
+          // the fold. Any new pointer, key, wheel, or touch action cancels it.
+          [0, 40, 120, 280, 600, 1100, 1800, 2600].forEach((delay, index, delays) => {{
             parentWindow.setTimeout(() => resetTop(index === delays.length - 1), delay);
           }});
         }})();

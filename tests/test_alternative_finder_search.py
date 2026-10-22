@@ -105,12 +105,14 @@ class AlternativeFinderSearchTests(unittest.TestCase):
                     },
                     "Mouser": {
                         "substitutions": "not_supported",
-                        "catalog": "available",
+                        "catalog": "ok",
+                        "family_search": "ok",
                         "lookup": "available",
                     },
                     "Newark": {
                         "substitutions": "not_supported",
-                        "catalog": "available",
+                        "catalog": "ok",
+                        "family_search": "ok",
                         "lookup": "available",
                     },
                 },
@@ -120,8 +122,10 @@ class AlternativeFinderSearchTests(unittest.TestCase):
         )
 
         self.assertEqual(title, "No replacement candidates confirmed")
-        self.assertIn("DigiKey", detail)
-        self.assertIn("Mouser or Newark", detail)
+        self.assertIn("DigiKey substitute relationships", detail)
+        self.assertIn("Mouser catalog and family", detail)
+        self.assertIn("Newark catalog and family", detail)
+        self.assertIn("does not receive explicit substitute relationship evidence", detail)
         self.assertIn("does not confirm that no replacement exists", detail)
 
     def test_alternative_engine_can_disable_family_search_for_bom_sidecar(self):
@@ -176,6 +180,31 @@ class AlternativeFinderSearchTests(unittest.TestCase):
         self.assertNotIn("HTTPSConnectionPool", detail)
         self.assertNotIn("read timeout=15", detail)
 
+    def test_unverified_source_empty_state_reports_broader_catalog_coverage(self):
+        title, detail = self.search.replacement_search_empty_state(
+            {
+                "providers": {
+                    "Mouser": {
+                        "catalog": "ok",
+                        "family_search": "ok",
+                        "lookup": "available",
+                    },
+                    "Newark": {
+                        "catalog": "ok",
+                        "family_search": "ok",
+                        "lookup": "available",
+                    },
+                }
+            },
+            lookup_error="No exact supplier match was found for DHT11.",
+        )
+
+        self.assertEqual(title, "Source part needs verification")
+        self.assertIn("Mouser catalog and family", detail)
+        self.assertIn("Newark catalog and family", detail)
+        self.assertIn("does not validate the source identity", detail)
+        self.assertIn("prove that no compatible replacement exists", detail)
+
     def test_search_run_collects_stage_timings(self):
         run = self.search.AlternativeFinderSearchRun()
         with run.stage("original_lookup"):
@@ -187,7 +216,7 @@ class AlternativeFinderSearchTests(unittest.TestCase):
         self.assertIn("candidate_engine", breakdown["stages_ms"])
         self.assertGreaterEqual(breakdown["elapsed_ms"], breakdown["total_ms"])
 
-    def test_unverified_source_identity_does_not_surface_keyword_catalog_hits(self):
+    def test_unverified_source_identity_surfaces_catalog_leads_but_not_approval(self):
         session: dict = {}
         self.state.init_alternative_finder_state(session)
         self.aggregator.get_best_part_data = lambda _part: {
@@ -196,18 +225,49 @@ class AlternativeFinderSearchTests(unittest.TestCase):
             "supplier_data_verified": False,
             "all_supplier_results": [],
         }
-        self.engine.suggest_alternatives_v2 = lambda _part: self.fail(
-            "catalog search must not run without an exact supplier match for the source"
-        )
+        self.aggregator.discover_alternative_candidates = lambda part: {
+            "original_mpn": part,
+            "retrieved_at": "2026-10-22T00:00:00+00:00",
+            "providers": {
+                "Mouser": {
+                    "substitutions": "not_supported",
+                    "catalog": "ok",
+                    "family_search": "ok",
+                    "lookup": "available",
+                }
+            },
+            "explicit_count": 0,
+            "catalog_count": 1,
+            "provider_failures": [],
+            "candidates": [{
+                "manufacturer_part_number": "DHT22",
+                "manufacturer": "Aosong",
+                "description": "Digital humidity and temperature sensor",
+                "source": "Mouser",
+                "evidence_type": "Distributor family search match",
+                "discovery_scope": "family_search",
+                "substitute_type": "Similar",
+                "lifecycle_status": "Active",
+                "stock_total": 250,
+                "package": "Through Hole",
+                "pin_count": 4,
+                "primary_category": "Sensors",
+            }],
+            "has_incomplete_evidence": False,
+        }
 
         outcome = self.search.run_alternative_finder_search(session, "DHT11")
         result = session[self.state.ALT_FINDER_RESULT_KEY]
 
-        self.assertEqual(outcome["candidate_count"], 0)
-        self.assertEqual(result["candidates"], [])
+        self.assertEqual(outcome["candidate_count"], 1)
+        self.assertEqual(result["candidates"][0]["Alternative Part"], "DHT22")
+        self.assertFalse(result["candidates"][0]["Source Identity Verified"])
+        self.assertIn("Discovery lead only", result["candidates"][0]["Recommendation"])
         self.assertIn("No exact supplier match", result["lookup_error"])
-        self.assertEqual(result["discovery_metadata"]["catalog_count"], 0)
-        self.assertEqual(result["discovery_metadata"]["candidate_status"], result["lookup_error"])
+        self.assertEqual(result["discovery_metadata"]["catalog_count"], 1)
+        self.assertFalse(result["discovery_metadata"]["source_identity_verified"])
+        self.assertTrue(result["discovery_metadata"]["has_incomplete_evidence"])
+        self.assertEqual(outcome["search_outcome"], self.state.OUTCOME_PARTIAL_SUCCESS)
 
     def test_verified_distributor_order_code_still_allows_alternative_search(self):
         session: dict = {}
@@ -774,6 +834,102 @@ class AlternativeFinderOutcomeTests(unittest.TestCase):
         )
         discovery = self.aggregator.discover_alternative_candidates("C0603C104K5RACTU")
         self.assertEqual(set(discovery["providers"]), {"DigiKey", "Mouser", "Newark"})
+
+    def test_alternative_discovery_searches_all_configured_distributors(self):
+        originals = {
+            name: getattr(self.aggregator, name)
+            for name in (
+                "_provider_configured",
+                "search_digikey_substitutions",
+                "search_digikey_catalog_candidates",
+                "search_mouser_catalog_candidates",
+                "search_newark_catalog_candidates",
+            )
+        }
+        self.addCleanup(
+            lambda: [setattr(self.aggregator, key, value) for key, value in originals.items()]
+        )
+        self.aggregator._provider_configured = lambda _name: True
+        self.aggregator.search_digikey_substitutions = lambda _part: []
+        self.aggregator.search_digikey_catalog_candidates = lambda _part, **_kwargs: []
+        self.aggregator.search_mouser_catalog_candidates = lambda _part, **_kwargs: [
+            {
+                "source": "Mouser",
+                "evidence_type": "Distributor family search match",
+                "manufacturer_part_number": "LM317MDCYR",
+                "substitute_type": "Similar",
+                "lifecycle_status": "Active",
+                "description": "Adjustable linear regulator",
+                "primary_category": "Integrated Circuits",
+            },
+            {
+                "source": "Mouser",
+                "manufacturer_part_number": "LM317KIT",
+                "description": "Evaluation board kit",
+                "primary_category": "Kits",
+            },
+        ]
+        self.aggregator.search_newark_catalog_candidates = lambda _part, **_kwargs: [
+            {
+                "source": "Newark",
+                "evidence_type": "Distributor family search match",
+                "manufacturer_part_number": "LM317B",
+                "substitute_type": "Similar",
+                "lifecycle_status": "Active",
+                "description": "Adjustable regulator",
+                "primary_category": "Semiconductors",
+            }
+        ]
+
+        discovery = self.aggregator.discover_alternative_candidates("LM317DCYR")
+
+        self.assertEqual(set(discovery["providers"]), {"DigiKey", "Mouser", "Newark"})
+        self.assertEqual(discovery["providers"]["Mouser"]["catalog"], "ok")
+        self.assertEqual(discovery["providers"]["Newark"]["family_search"], "ok")
+        candidates = discovery["candidates"]
+        self.assertEqual(
+            {row["manufacturer_part_number"] for row in candidates},
+            {"LM317MDCYR", "LM317B"},
+        )
+        self.assertEqual(discovery["catalog_count"], 3)
+
+    def test_digikey_substitute_failure_does_not_discard_catalog_results(self):
+        originals = {
+            name: getattr(self.aggregator, name)
+            for name in (
+                "_provider_configured",
+                "search_digikey_substitutions",
+                "search_digikey_catalog_candidates",
+                "search_mouser_catalog_candidates",
+                "search_newark_catalog_candidates",
+            )
+        }
+        self.addCleanup(
+            lambda: [setattr(self.aggregator, key, value) for key, value in originals.items()]
+        )
+        self.aggregator._provider_configured = lambda _name: True
+        self.aggregator.search_digikey_substitutions = lambda _part: (_ for _ in ()).throw(
+            RuntimeError("substitution endpoint unavailable")
+        )
+        self.aggregator.search_digikey_catalog_candidates = lambda _part, **_kwargs: [{
+            "source": "DigiKey",
+            "manufacturer_part_number": "LM317MDCYR",
+            "evidence_type": "Distributor family search match",
+            "substitute_type": "Similar",
+        }]
+        self.aggregator.search_mouser_catalog_candidates = lambda _part, **_kwargs: []
+        self.aggregator.search_newark_catalog_candidates = lambda _part, **_kwargs: []
+
+        discovery = self.aggregator.discover_alternative_candidates("LM317DCYR")
+
+        self.assertEqual(discovery["providers"]["DigiKey"]["substitutions"], "error")
+        self.assertEqual(discovery["providers"]["DigiKey"]["catalog"], "ok")
+        self.assertTrue(discovery["has_incomplete_evidence"])
+        self.assertIn("DigiKey", discovery["provider_failures"])
+        self.assertEqual(
+            [row["manufacturer_part_number"] for row in discovery["candidates"]],
+            ["LM317MDCYR"],
+        )
 
     def test_c3121_classification_follows_verified_direct_evidence(self):
         explicit = [self._verified_direct_candidate()]

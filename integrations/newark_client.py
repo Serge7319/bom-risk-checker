@@ -74,6 +74,111 @@ def search_newark_by_part_number(part_number: str) -> dict:
     return default_newark_result(requested_part_number)
 
 
+def search_newark_catalog_candidates(
+    part_number: str,
+    *,
+    limit: int = 12,
+    include_family_search: bool = True,
+) -> list[dict]:
+    """Search Newark catalog terms and return review-only candidate leads."""
+    requested = str(part_number or "").strip()
+    if not requested:
+        return []
+    api_key = get_secret("NEWARK_API_KEY", required=True)
+    family = _catalog_family_search_term(requested) if include_family_search else ""
+    terms = [requested]
+    if family and family.casefold() != requested.casefold():
+        terms.append(family)
+
+    candidates: list[dict] = []
+    seen: set[str] = set()
+    had_error = False
+    from datetime import datetime, timezone
+
+    retrieved_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+    for term in terms:
+        params = {
+            "callInfo.apiKey": api_key,
+            "callInfo.responseDataFormat": "json",
+            "storeInfo.id": NEWARK_STORE_ID,
+            "resultsSettings.offset": 0,
+            "resultsSettings.numberOfResults": max(1, min(int(limit), 25)),
+            "resultsSettings.responseGroup": "large",
+            "term": f"keyword:{term}",
+        }
+        try:
+            response = requests.get(
+                "https://api.element14.com/catalog/products",
+                params=params,
+                timeout=15,
+            )
+            response.raise_for_status()
+            data = response.json() or {}
+        except Exception:
+            had_error = True
+            continue
+        search_return = data.get("keywordSearchReturn") or {}
+        products = search_return.get("products") or []
+        for product in products:
+            if not isinstance(product, dict):
+                continue
+            mpn = str(
+                product.get("translatedManufacturerPartNumber")
+                or product.get("manufacturerPartNumber")
+                or ""
+            ).strip()
+            key = normalize_part_number(mpn)
+            if not mpn or not key or key == normalize_part_number(requested) or key in seen:
+                continue
+            seen.add(key)
+            normalized = normalize_newark_product(product)
+            normalized["manufacturer_part_number"] = mpn
+            category = _newark_category_text(product)
+            candidates.append({
+                **normalized,
+                "source": "Newark",
+                "evidence_type": "Distributor family search match" if family and term.casefold() == family.casefold() else "Distributor catalog match",
+                "discovery_scope": "family_search" if family and term.casefold() == family.casefold() else "catalog_search",
+                "discovery_query": term,
+                "primary_category": category,
+                "retrieval_status": "ok",
+                "retrieved_at": retrieved_at,
+                "substitute_type": "Similar",
+                "supplier_relationship_evidence": [],
+            })
+    if had_error and not candidates:
+        raise RuntimeError("Newark catalog candidate search did not return a usable response.")
+    return candidates
+
+
+def _catalog_family_search_term(part_number: str) -> str:
+    compact = re.sub(r"[^A-Z0-9]", "", str(part_number or "").upper())
+    if compact.startswith(("DHT11", "DHT22", "DHT12")):
+        return "DHT"
+    for pattern in (
+        r"^([A-Z]{2,}\d{3,})",
+        r"^([A-Z]{2,}\d{2,}[A-Z]+\d{2,})",
+        r"^(\d{1,2}[A-Z]{1,}\d{2,})",
+    ):
+        match = re.match(pattern, compact)
+        if match and len(match.group(1)) >= 5 and match.group(1) != compact:
+            return match.group(1)
+    return ""
+
+
+def _newark_category_text(product: dict) -> str:
+    values = []
+    for key in ("primaryCategory", "categoryName", "category", "commodityName", "productCategory"):
+        value = product.get(key)
+        if isinstance(value, dict):
+            value = value.get("name") or value.get("displayName") or value.get("value")
+        if isinstance(value, (list, tuple)):
+            values.extend(str(item).strip() for item in value if str(item).strip())
+        elif value:
+            values.append(str(value).strip())
+    return " / ".join(dict.fromkeys(values))
+
+
 def normalize_newark_product(product: dict) -> dict:
     stock_total = extract_newark_stock(product)
     manufacturer = extract_nested_value(product, ["brandName"]) or ""

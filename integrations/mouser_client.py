@@ -52,6 +52,101 @@ def search_mouser_by_part_number(part_number: str) -> dict:
     return default_part_result()
 
 
+def search_mouser_catalog_candidates(
+    part_number: str,
+    *,
+    limit: int = 12,
+    include_family_search: bool = True,
+) -> list[dict]:
+    """Return Mouser catalog leads without implying a substitute relationship.
+
+    The full query can reveal package/order-code variants; an optional short
+    family query broadens discovery. Every result remains a catalog match and
+    must pass the normal engineering comparison before approval.
+    """
+    requested = str(part_number or "").strip()
+    if not requested:
+        return []
+    api_key = get_secret("MOUSER_API_KEY", required=True)
+    family = _catalog_family_search_term(requested) if include_family_search else ""
+    terms = [requested]
+    if family and family.casefold() != requested.casefold():
+        terms.append(family)
+
+    candidates: list[dict] = []
+    seen: set[str] = set()
+    had_error = False
+    retrieved_at = _utc_now_iso()
+    for term in terms:
+        payload = {
+            "SearchByKeywordRequest": {
+                "keyword": term,
+                "records": max(1, min(int(limit), 25)),
+                "startingRecord": 0,
+            }
+        }
+        parts, failed = _mouser_search_parts("keyword", payload, api_key)
+        had_error = had_error or failed
+        for part in parts:
+            mpn = str(part.get("ManufacturerPartNumber") or "").strip()
+            key = normalize_part_number(mpn)
+            if not mpn or not key or key == normalize_part_number(requested) or key in seen:
+                continue
+            seen.add(key)
+            normalized = normalize_mouser_part(part)
+            category = _mouser_category_text(part)
+            candidates.append({
+                **normalized,
+                "source": "Mouser",
+                "evidence_type": "Distributor family search match" if family and term.casefold() == family.casefold() else "Distributor catalog match",
+                "discovery_scope": "family_search" if family and term.casefold() == family.casefold() else "catalog_search",
+                "discovery_query": term,
+                "primary_category": category,
+                "manufacturer_part_number": mpn,
+                "retrieval_status": "ok",
+                "retrieved_at": retrieved_at,
+                "substitute_type": "Similar",
+                "supplier_relationship_evidence": [],
+            })
+    if had_error and not candidates:
+        raise RuntimeError("Mouser catalog candidate search did not return a usable response.")
+    return candidates
+
+
+def _catalog_family_search_term(part_number: str) -> str:
+    compact = re.sub(r"[^A-Z0-9]", "", str(part_number or "").upper())
+    if compact.startswith(("DHT11", "DHT22", "DHT12")):
+        return "DHT"
+    for pattern in (
+        r"^([A-Z]{2,}\d{3,})",
+        r"^([A-Z]{2,}\d{2,}[A-Z]+\d{2,})",
+        r"^(\d{1,2}[A-Z]{1,}\d{2,})",
+    ):
+        match = re.match(pattern, compact)
+        if match and len(match.group(1)) >= 5 and match.group(1) != compact:
+            return match.group(1)
+    return ""
+
+
+def _mouser_category_text(part: dict) -> str:
+    values = []
+    for key in ("PrimaryCategory", "ProductCategory", "Category", "CategoryName"):
+        value = part.get(key)
+        if isinstance(value, dict):
+            value = value.get("Name") or value.get("CategoryName") or value.get("DisplayName")
+        if isinstance(value, (list, tuple)):
+            values.extend(str(item).strip() for item in value if str(item).strip())
+        elif value:
+            values.append(str(value).strip())
+    return " / ".join(dict.fromkeys(value for value in values if value))
+
+
+def _utc_now_iso() -> str:
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
 def _mouser_search_parts(
     endpoint: str,
     payload: dict,

@@ -4,7 +4,7 @@ from typing import Any, Mapping, Optional
 
 import pandas as pd
 
-from integrations.pin_count import effective_pin_count
+from integrations.pin_count import effective_footprint_pad_count, effective_pin_count
 from integrations.stock_coercion import coerce_stock_total, parse_stock_total
 from integrations.supplier_aggregator import get_best_part_data
 from src.risk_engine import calculate_risk
@@ -654,7 +654,7 @@ def _discovery_row_to_part_data(row: dict) -> dict:
         "datasheet_url": str(row.get("datasheet_url") or "").strip(),
         "package": package or passive_fields.get("package", ""),
         "mounting_style": str(row.get("mounting_style") or passive_fields.get("mounting_style", "")).strip(),
-        "pin_count": effective_pin_count(
+        "pin_count": effective_footprint_pad_count(
             {
                 "pin_count": row.get("pin_count", 0),
                 "package": package or passive_fields.get("package", ""),
@@ -826,9 +826,9 @@ def calculate_drop_in_confidence(original: dict, candidate: dict) -> int:
         candidate.get("Package", candidate.get("package", ""))
     ).lower()
 
-    original_pin_count = effective_pin_count(original)
+    original_pin_count = effective_footprint_pad_count(original)
 
-    candidate_pin_count = effective_pin_count(candidate)
+    candidate_pin_count = effective_footprint_pad_count(candidate)
 
     original_channel_count = int(
         original.get("Channel Count", original.get("channel_count", 0)) or 0
@@ -1030,8 +1030,8 @@ def get_drop_in_reasons(original: dict, candidate: dict) -> str:
     original_package = str(original.get("Package", original.get("package", ""))).strip()
     candidate_package = str(candidate.get("Package", candidate.get("package", ""))).strip()
 
-    original_pin_count = effective_pin_count(original)
-    candidate_pin_count = effective_pin_count(candidate)
+    original_pin_count = effective_footprint_pad_count(original)
+    candidate_pin_count = effective_footprint_pad_count(candidate)
 
     original_channel_count = int(
     original.get("Channel Count", original.get("channel_count", 0)) or 0
@@ -1236,6 +1236,9 @@ def normalize_package_name(package: str) -> str:
 
     package = package.replace(" ", "-")
 
+    if re.search(r"\b(?:SOT\s*-?\s*223|TO\s*-?\s*261)\b", package):
+        return "SOT-223"
+
     if any(term in package for term in ["PDIP", "NPDIP", "DIP"]):
         if "16" in package:
             return "DIP-16"
@@ -1369,7 +1372,7 @@ def apply_supplier_enrichment_to_candidate(
     if supplier_data.get("channel_count") not in (None, "", 0):
         enriched["channel_count"] = supplier_data.get("channel_count")
 
-    enriched["Pin Count"] = effective_pin_count(
+    enriched["Pin Count"] = effective_footprint_pad_count(
         {
             "pin_count": enriched.get("Pin Count", 0),
             "package": enriched.get("Package", ""),
@@ -1416,7 +1419,7 @@ def apply_supplier_enrichment_to_candidate(
             and original_data.get("pin_count") == 8
             else ""
         ),
-        "Pin Count": effective_pin_count(original_data),
+        "Pin Count": effective_footprint_pad_count(original_data),
         "Voltage Range": original_data.get("voltage_range", ""),
         "Channel Count": original_data.get("channel_count", 0),
         "Supply Voltage Min": original_data.get("supply_voltage_min"),

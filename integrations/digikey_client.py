@@ -385,6 +385,8 @@ def _catalog_family_search_term(part_number: str) -> str:
     labeled as family matches and never treated as verified substitutes.
     """
     compact = re.sub(r"[^A-Z0-9]", "", str(part_number or "").upper())
+    if compact.startswith(("DHT11", "DHT22", "DHT12")):
+        return "DHT"
     patterns = (
         # Common product names such as LM317DCYR, LM7805ACT, and ATMEGA328P.
         r"^([A-Z]{2,}\d{3,})",

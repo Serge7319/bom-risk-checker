@@ -62,14 +62,25 @@ class ApprovedBOMPageContractTests(unittest.TestCase):
 
     def test_project_name_is_an_always_editable_text_field(self):
         source = Path("src/ui/approved_pages.py").read_text(encoding="utf-8")
+        fields = source.split("def _render_approved_bom_upload_name_fields", 1)[1].split(
+            "def render_bom_catalog", 1
+        )[0]
+
+        self.assertIn('st.text_input(\n                "Project name"', fields)
+        self.assertIn('st.text_input(\n                "BOM name"', fields)
+        self.assertNotIn('selected_project = st.selectbox(', fields)
+        self.assertIn('resolve_project_choice(', source)
+
+    def test_new_bom_name_entry_only_reruns_its_fragment(self):
+        source = Path("src/ui/approved_pages.py").read_text(encoding="utf-8")
         start = source.index('with st.container(key="approved_bom_upload_panel")')
         end = source.index('    else:\n        from datetime import date', start)
-        upload_form = source[start:end]
+        upload_panel = source[start:end]
 
-        self.assertIn('typed_project = st.text_input(', upload_form)
-        self.assertIn('"Project name"', upload_form)
-        self.assertNotIn('selected_project = st.selectbox(', upload_form)
-        self.assertIn('resolve_project_choice(', upload_form)
+        self.assertIn('fragment(_render_approved_bom_upload_name_fields)()', upload_panel)
+        self.assertIn('st.session_state.get("approved_bom_name")', upload_panel)
+        self.assertIn('key="bom_file_uploader"', upload_panel)
+        self.assertIn('key="approved_bom_analyze"', upload_panel)
 
     def test_one_time_checkout_discloses_unassessed_components(self):
         source = Path("src/authenticated_runtime.py").read_text(encoding="utf-8")

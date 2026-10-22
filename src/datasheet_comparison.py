@@ -155,9 +155,9 @@ def _display_value(value) -> str:
 
 
 def _display_pin_count(part: dict) -> str:
-    from integrations.pin_count import effective_pin_count
+    from integrations.pin_count import effective_footprint_pad_count
 
-    count = effective_pin_count(part)
+    count = effective_footprint_pad_count(part)
     return str(count) if count > 0 else ""
 
 
@@ -932,6 +932,7 @@ def _find_pdf_evidence(
     require_specific_package: bool = False,
     field_spec: Any = None,
 ) -> tuple[str, str, str]:
+    package_matches: dict[str, tuple[str, str, str]] = {}
     generic_package_fallback: tuple[str, str, str] | None = None
     for page in pdf_result.get("pages") or []:
         for line in str(page.get("text") or "").splitlines():
@@ -957,18 +958,65 @@ def _find_pdf_evidence(
                 if generic_package_fallback is None:
                     generic_package_fallback = (value, citation, compact[:280])
                 continue
+            if require_specific_package:
+                package_key = re.sub(r"[^a-z0-9]", "", value.casefold())
+                package_matches.setdefault(package_key, (value, citation, compact[:280]))
+                continue
             return value, citation, compact[:280]
+    if require_specific_package:
+        # Family datasheets often contain drawings for several packages. The
+        # first package mentioned is not evidence for the selected order code.
+        # Only expose a package when the extracted PDF names one unique option.
+        if len(package_matches) == 1:
+            return next(iter(package_matches.values()))
+        return "", "", ""
     if generic_package_fallback is not None:
         return generic_package_fallback
     return "", "", ""
 
 
+def _pdf_mentions_exact_part(pdf_result: Mapping[str, Any], part_number: str) -> bool:
+    key = re.sub(r"[^A-Z0-9]", "", str(part_number or "").upper())
+    if not key:
+        return False
+    for page in pdf_result.get("pages") or []:
+        text = str(page.get("text") or "")
+        for line in text.splitlines():
+            # Normalize punctuation so `LM317D-CYR` and `LM317DCYR` can be
+            # compared, but retain source offsets to reject a code that is
+            # merely the prefix of a longer orderable MPN.
+            normalized_chars = []
+            source_offsets = []
+            for offset, char in enumerate(line.upper()):
+                if char.isalnum():
+                    normalized_chars.append(char)
+                    source_offsets.append(offset)
+            normalized_line = "".join(normalized_chars)
+            for match in re.finditer(re.escape(key), normalized_line):
+                source_start = source_offsets[match.start()]
+                source_end = source_offsets[match.end() - 1] + 1
+                before = line[source_start - 1] if source_start > 0 else ""
+                after = line[source_end] if source_end < len(line) else ""
+                if before.isalnum() or after.isalnum():
+                    continue
+                return True
+    return False
 
-def build_pdf_field_evidence(original_pdf: dict, candidate_pdf: dict, family: str) -> list[dict]:
+
+def build_pdf_field_evidence(
+    original_pdf: dict,
+    candidate_pdf: dict,
+    family: str,
+    *,
+    original_mpn: str = "",
+    candidate_mpn: str = "",
+) -> list[dict]:
     """Extract page-cited relevant fields from two readable official PDFs."""
     profile = get_family_profile(family)
     fields = comparison_fields(profile)
     rows = []
+    original_has_exact_identity = _pdf_mentions_exact_part(original_pdf, original_mpn)
+    candidate_has_exact_identity = _pdf_mentions_exact_part(candidate_pdf, candidate_mpn)
     for spec in fields:
         aliases = tuple(alias.casefold() for alias in (spec.pdf_aliases or (spec.label.casefold(),)))
         original_value, original_page, original_excerpt = _find_pdf_evidence(
@@ -983,6 +1031,14 @@ def build_pdf_field_evidence(original_pdf: dict, candidate_pdf: dict, family: st
             require_specific_package=spec.key == "package",
             field_spec=spec,
         )
+        if spec.key == "package":
+            # A family-level PDF can contain package drawings for unrelated
+            # orderable variants. Do not attribute any outline to this exact
+            # MPN unless its code appears in the extracted PDF text.
+            if original_mpn and not original_has_exact_identity:
+                original_value = original_page = original_excerpt = ""
+            if candidate_mpn and not candidate_has_exact_identity:
+                candidate_value = candidate_page = candidate_excerpt = ""
         original_package_specific = (
             spec.key != "package" or _is_specific_package_designation(original_value)
         )
@@ -999,8 +1055,8 @@ def build_pdf_field_evidence(original_pdf: dict, candidate_pdf: dict, family: st
         status, note = compare_field_values(original_value, candidate_value, spec)
         if spec.key == "package" and (not original_package_specific or not candidate_package_specific):
             note = (
-                "No exact package designation was found in the extracted text. "
-                "Inspect the manufacturer package-outline drawing and confirm dimensions and pin pitch."
+                "No unique package designation tied to the exact orderable part was found in the extracted text. "
+                "A family PDF may contain outlines for multiple variants. Inspect the manufacturer package-outline drawing and confirm dimensions and pin pitch."
             )
         rows.append({
             "Attribute": spec.label,

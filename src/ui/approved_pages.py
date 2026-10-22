@@ -2526,6 +2526,27 @@ def render_home(
     end_approved_page()
 
 
+def _render_approved_bom_upload_name_fields() -> None:
+    """Keep text entry reruns inside a small fragment, away from page chrome."""
+    with st.container(key="approved_bom_upload_fields"):
+        project_col, bom_col = st.columns(2, gap="large")
+        with project_col:
+            st.text_input(
+                "Project name",
+                key="approved_bom_project_name",
+                placeholder="Example: Motor Controller",
+                help="Enter a new name or reuse an existing project name. Leave blank to use General.",
+                autocomplete="off",
+            )
+        with bom_col:
+            st.text_input(
+                "BOM name",
+                key="approved_bom_name",
+                placeholder="Example: Motor Controller Rev A",
+                autocomplete="off",
+            )
+
+
 def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") -> None:
     begin_approved_page()
     analysis_error = st.session_state.pop("cadivor_bom_analysis_error", "")
@@ -2698,25 +2719,17 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
             # standalone uploader reruns as soon as the upload reaches the
             # server, so Analyze is enabled only once the file is available.
             with st.container(key="approved_bom_upload_form"):
-                with st.container(key="approved_bom_upload_fields"):
-                    project_col, bom_col = st.columns(2, gap="large")
-                    with project_col:
-                        typed_project = st.text_input(
-                            "Project name",
-                            key="approved_bom_project_name",
-                            placeholder="Example: Motor Controller",
-                            help="Enter a new name or reuse an existing project name. Leave blank to use General.",
-                            autocomplete="off",
-                            disabled=analysis_running,
-                        )
-                    with bom_col:
-                        bom_name = st.text_input(
-                            "BOM name",
-                            key="approved_bom_name",
-                            placeholder="Example: Motor Controller Rev A",
-                            autocomplete="off",
-                            disabled=analysis_running,
-                        )
+                # Text inputs otherwise request a full Streamlit rerun on each
+                # keystroke. Keep their repaint local; the standalone uploader
+                # and Analyze action stay on the normal full-page workflow so
+                # the selected UploadedFile is available when submitted.
+                fragment = getattr(st, "fragment", None)
+                if callable(fragment):
+                    fragment(_render_approved_bom_upload_name_fields)()
+                else:
+                    _render_approved_bom_upload_name_fields()
+                typed_project = str(st.session_state.get("approved_bom_project_name") or "")
+                bom_name = str(st.session_state.get("approved_bom_name") or "")
                 st.caption("Use a project to group related BOM revisions. BOM name is required.")
                 uploaded = st.file_uploader(
                     "Upload your BOM file",
@@ -5565,10 +5578,11 @@ def _render_bom_replacement_approvals(
         or comparison_conflicts
         or datasheet_conflicts
     )
+    source_identity_verified = candidate.get("Source Identity Verified") is not False
     st.markdown(f"<div id='{approval_anchor}'></div>", unsafe_allow_html=True)
     st.markdown("#### Engineering approval")
     st.info(
-        "**Approval requires all of these:** candidate lifecycle verified as Active or NRND; "
+        "**Approval requires all of these:** the source MPN verified against an exact distributor record; candidate lifecycle verified as Active or NRND; "
         "matching source/candidate package and pin count; compatible processor family/ISA when "
         "applicable; an actual document identifier and PDF page citation for both parts; and your "
         "review confirmation. An obsolete/EOL part or known physical/architecture mismatch cannot "
@@ -5578,6 +5592,20 @@ def _render_bom_replacement_approvals(
     st.caption(
         "Use the source and candidate citation fields above for the manufacturer document/part number and exact PDF page numbers. If Cadivor linked a datasheet, analyze it and inspect the PDF; upload is only a fallback when the link is missing or wrong."
     )
+    if not source_identity_verified:
+        source_identity_attested = st.checkbox(
+            f"I confirmed {source_mpn} is the exact orderable part on the manufacturer document, not just a family-level match.",
+            key=f"cadivor_alt_source_identity_attestation_{widget_suffix}",
+        )
+        source_reference = str(
+            (datasheet_review.get("reviewer_attestation") or {}).get("source_reference") or ""
+        ).strip()
+        source_identity_verified = bool(
+            source_identity_attested and has_document_page_citation(source_reference)
+        )
+        if source_identity_attested and not has_document_page_citation(source_reference):
+            st.caption("Add the source manufacturer document and exact PDF page citation before this identity check can count.")
+
     attested = st.checkbox(
         "I reviewed both documents, including package dimensions, pinout, and applicable electrical or firmware requirements.",
         key=f"cadivor_alt_document_attestation_{widget_suffix}",
@@ -5696,7 +5724,8 @@ def _render_bom_replacement_approvals(
         key=f"cadivor_approved_alternative_note_{widget_suffix}",
     )
     can_approve = (
-        not lifecycle_blocked
+        source_identity_verified
+        and not lifecycle_blocked
         and lifecycle_verified
         and (not lifecycle_nrnd or bool(str(note_value or "").strip()))
         and not compatibility_blocked
@@ -5709,6 +5738,10 @@ def _render_bom_replacement_approvals(
     reviewer_attestation = datasheet_review.get("reviewer_attestation") or {}
     reviewer_attestation = reviewer_attestation if isinstance(reviewer_attestation, dict) else {}
     missing_review_steps = []
+    if not source_identity_verified:
+        missing_review_steps.append(
+            "verify the original MPN against an exact manufacturer or distributor record; current catalog results are discovery leads only"
+        )
     if not has_document_page_citation(reviewer_attestation.get("source_reference")):
         missing_review_steps.append(
             "cite the source document or part number and the actual PDF page(s) reviewed (for example, “part datasheet Rev. B, pp. 8–10”; “NA” does not count)"
@@ -5725,6 +5758,10 @@ def _render_bom_replacement_approvals(
         missing_review_steps.append("remove one approved alternative; this BOM is at the three-part limit")
 
     blockers: list[str] = []
+    if not source_identity_verified:
+        blockers.append(
+            "The source MPN is not verified against an exact manufacturer or distributor record. This catalog lead can be compared for investigation, but cannot be approved yet."
+        )
     if datasheet_review.get("review_completed"):
         source_document_readable = bool((datasheet_review.get("source") or {}).get("available"))
         candidate_document_readable = bool((datasheet_review.get("candidate") or {}).get("available"))
