@@ -2764,9 +2764,38 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
                                 "Select Analyze BOM to start."
                             )
                         else:
-                            st.caption(
-                                "Choose a CSV or Excel file above. The file selector shows upload "
-                                "progress; Analyze BOM activates after Cadivor receives the complete file."
+                            st.markdown(
+                                """
+                                <div class="cadivor-bom-upload-waiting" role="status" aria-live="polite">
+                                  <span class="cadivor-bom-upload-spinner" aria-hidden="true"></span>
+                                  <span>Select a CSV or Excel file above. Cadivor is waiting for the complete upload; Analyze BOM activates when the file is ready.</span>
+                                </div>
+                                <style>
+                                @keyframes cadivor-bom-upload-spin { to { transform: rotate(360deg); } }
+                                .cadivor-bom-upload-waiting {
+                                  display: flex;
+                                  align-items: center;
+                                  gap: .45rem;
+                                  min-height: 1.2rem;
+                                  color: #5b6777;
+                                  font-size: .82rem;
+                                  line-height: 1.3;
+                                }
+                                .cadivor-bom-upload-spinner {
+                                  width: .75rem;
+                                  height: .75rem;
+                                  flex: 0 0 .75rem;
+                                  border: 2px solid #d6e1f0;
+                                  border-top-color: #2563eb;
+                                  border-radius: 50%;
+                                  animation: cadivor-bom-upload-spin .8s linear infinite;
+                                }
+                                @media (prefers-reduced-motion: reduce) {
+                                  .cadivor-bom-upload-spinner { animation: none; }
+                                }
+                                </style>
+                                """,
+                                unsafe_allow_html=True,
                             )
                 if submitted:
                     staged = stage_approved_bom_submission(

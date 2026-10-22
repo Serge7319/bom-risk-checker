@@ -160,7 +160,8 @@ class ApprovedBOMSubmissionTests(unittest.TestCase):
         source = Path("src/ui/approved_pages.py").read_text(encoding="utf-8")
         self.assertIn("disabled=should_disable_bom_analyze_button(", source)
         self.assertIn("upload_available=upload_available", source)
-        self.assertIn("file selector shows upload", source)
+        self.assertIn("cadivor-bom-upload-spinner", source)
+        self.assertIn("waiting for the complete upload", source)
         self.assertIn("fully uploaded and ready", source)
         self.assertNotIn("select Analyze BOM to retry the upload check", source)
 
