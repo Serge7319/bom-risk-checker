@@ -66,7 +66,7 @@ def stage_approved_bom_submission(
 
     if upload is None:
         state["cadivor_bom_submission_error"] = (
-            "Analyze was received, but Cadivor did not receive the selected file. "
+            "Analyze was received, but the selected file was not available on Cadivor. "
             "Remove it from the upload box, select it again, wait for the upload to finish, "
             "then select Analyze BOM."
         )
