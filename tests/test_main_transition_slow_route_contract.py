@@ -159,6 +159,24 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
         self.assertIn("render_home(", dashboard)
         self.assertIn("stop_authenticated_page()", dashboard)
 
+    def test_monitoring_cover_is_released_for_both_access_paths(self):
+        runtime = (ROOT / "src" / "authenticated_runtime.py").read_text(encoding="utf-8")
+        start = runtime.index('if app_mode == "Monitoring":')
+        end = runtime.index('if app_mode == "Supply Risk Scenario":', start)
+        monitoring = runtime[start:end]
+        release = 'reveal_authenticated_page_body("Monitoring")'
+        self.assertEqual(monitoring.count(release), 2)
+
+        restricted = monitoring.split("if not monitoring_allowed:", 1)[1].split(
+            "return_analysis_id", 1
+        )[0]
+        self.assertLess(restricted.index(release), restricted.index("stop_authenticated_page()"))
+
+        header_start = monitoring.index("cadivor_section_header(")
+        content_release = monitoring.index(release, header_start)
+        self.assertLess(header_start, content_release)
+        self.assertLess(content_release, monitoring.index("active_queue =", header_start))
+
     def test_every_real_route_change_keeps_opening_owner_even_with_warm_cache(self):
         tree = ast.parse(SOURCE)
         helper = next(
