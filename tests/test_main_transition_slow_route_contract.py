@@ -175,7 +175,12 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
         header_start = monitoring.index("cadivor_section_header(")
         content_release = monitoring.index(release, header_start)
         self.assertLess(header_start, content_release)
+        self.assertLess(content_release, monitoring.index("def _monitor_query"))
         self.assertLess(content_release, monitoring.index("active_queue =", header_start))
+        self.assertIn("run_with_read_budget(", monitoring)
+        self.assertIn('budget_seconds=6.0', monitoring)
+        self.assertIn('key="monitoring_data_retry"', monitoring)
+        self.assertIn("monitoring_route_data_", monitoring)
 
     def test_every_real_route_change_keeps_opening_owner_even_with_warm_cache(self):
         tree = ast.parse(SOURCE)

@@ -4630,22 +4630,153 @@ def run_authenticated_app() -> None:
         # Keep Monitoring in this route renderer. The legacy approved-page
         # renderer calls stop_authenticated_page() when it finishes, which
         # prevents the actionable monitoring workspace below from rendering.
+        # Paint and reveal the destination before touching Supabase. The route
+        # cover must never wait on monitoring data: these reads are optional
+        # dashboard data and use a bounded background worker below.
+        cadivor_section_header(
+            "Alerts & Monitoring",
+            eyebrow="Alerts",
+            description="Review lifecycle, inventory, pricing, and supplier changes across monitored components.",
+            icon="radar",
+        )
+        reveal_authenticated_page_body("Monitoring")
+
+        monitoring_scope = (
+            f"{str(current_user.get('id') or '')}:"
+            f"{str(active_workspace_id or 'personal')}"
+        )
+        monitoring_user_id = str(current_user.get("id") or "")
+        monitoring_workspace_id = str(active_workspace_id or "")
+
         def _monitor_query(table_name, columns="*"):
-            return _workspace_query(supabase.table(table_name).select(columns)).eq("user_id", current_user["id"])
+            # Capture auth/workspace scope before entering the detached read
+            # worker; Streamlit session state is unavailable inside that thread.
+            query = (
+                supabase.table(table_name)
+                .select(columns)
+                .eq("user_id", monitoring_user_id)
+            )
+            if monitoring_workspace_id:
+                query = query.eq("workspace_id", monitoring_workspace_id)
+            return query
 
-        try:
-            alert_history = _monitor_query("monitor_alerts").order("created_at", desc=True).limit(500).execute()
-            alert_df = pd.DataFrame(alert_history.data or [])
-        except Exception as exc:
-            st.error(f"Monitoring alerts could not be loaded: {exc}")
-            alert_df = pd.DataFrame()
+        monitoring_cache_key = f"monitoring_route_data_{monitoring_scope}"
+        monitoring_loaded_at_key = f"{monitoring_cache_key}_loaded_at"
+        monitoring_load_status_key = f"{monitoring_cache_key}_load_status"
+        monitoring_cache = st.session_state.get(monitoring_cache_key)
+        monitoring_cache_age = time.time() - float(
+            st.session_state.get(monitoring_loaded_at_key) or 0
+        )
+        monitoring_cache_fresh = (
+            isinstance(monitoring_cache, dict)
+            and monitoring_cache_age < 20
+        )
+        monitoring_load_status = str(
+            st.session_state.get(monitoring_load_status_key) or ""
+        )
+        retry_monitoring_load = False
+        retry_button_rendered = False
+        monitoring_retry_notice = None
+        if monitoring_load_status in {"timeout", "error"}:
+            monitoring_retry_notice = st.empty()
+            with monitoring_retry_notice.container():
+                st.warning(
+                    "Monitoring data is taking longer than expected. "
+                    "Your workspace and navigation are available while you retry."
+                )
+                retry_monitoring_load = st.button(
+                    "Retry monitoring data",
+                    key="monitoring_data_retry",
+                    type="secondary",
+                )
+            retry_button_rendered = True
+            if retry_monitoring_load:
+                st.session_state.pop(monitoring_load_status_key, None)
+                st.session_state.pop(monitoring_cache_key, None)
+                st.session_state.pop(monitoring_loaded_at_key, None)
+                monitoring_cache = None
+                monitoring_cache_fresh = False
+            else:
+                monitoring_retry_notice.warning(
+                    "Monitoring data is taking longer than expected. "
+                    "Your workspace and navigation are available while you retry."
+                )
 
-        try:
-            monitor_history = _monitor_query("part_monitor_history").order("created_at", desc=True).limit(5000).execute()
-            monitor_df = pd.DataFrame(monitor_history.data or [])
-        except Exception as exc:
-            st.error(f"Monitoring history could not be loaded: {exc}")
-            monitor_df = pd.DataFrame()
+        if monitoring_cache_fresh and not retry_monitoring_load:
+            alert_rows = monitoring_cache.get("alerts", [])
+            monitor_rows = monitoring_cache.get("history", [])
+        elif monitoring_load_status in {"timeout", "error"} and not retry_monitoring_load:
+            # Keep showing the last successful snapshot if available. If there
+            # is no snapshot, stop before rendering empty-state metrics as if
+            # Cadivor had confirmed there are no alerts.
+            if isinstance(monitoring_cache, dict):
+                alert_rows = monitoring_cache.get("alerts", [])
+                monitor_rows = monitoring_cache.get("history", [])
+            else:
+                stop_authenticated_page()
+        else:
+            from src.boot_read_budget import run_with_read_budget
+
+            def _load_monitoring_rows():
+                alert_result = execute_supabase_read(
+                    _monitor_query("monitor_alerts")
+                    .order("created_at", desc=True)
+                    .limit(500),
+                    operation="monitoring.route_alerts",
+                    attempts=1,
+                )
+                history_result = execute_supabase_read(
+                    _monitor_query("part_monitor_history")
+                    .order("created_at", desc=True)
+                    .limit(5000),
+                    operation="monitoring.route_history",
+                    attempts=1,
+                )
+                return {
+                    "alerts": getattr(alert_result, "data", None) or [],
+                    "history": getattr(history_result, "data", None) or [],
+                }
+
+            with st.spinner("Loading monitoring activity…"):
+                monitoring_data, monitoring_status = run_with_read_budget(
+                    _load_monitoring_rows,
+                    budget_seconds=6.0,
+                    respect_first_page=False,
+                )
+            if monitoring_status == "ok" and isinstance(monitoring_data, dict):
+                monitoring_cache = monitoring_data
+                st.session_state[monitoring_cache_key] = monitoring_data
+                st.session_state[monitoring_loaded_at_key] = time.time()
+                st.session_state.pop(monitoring_load_status_key, None)
+                alert_rows = monitoring_data.get("alerts", [])
+                monitor_rows = monitoring_data.get("history", [])
+                if retry_monitoring_load and monitoring_retry_notice is not None:
+                    monitoring_retry_notice.empty()
+            else:
+                st.session_state[monitoring_load_status_key] = monitoring_status
+                if not retry_button_rendered:
+                    monitoring_retry_notice = st.empty()
+                    with monitoring_retry_notice.container():
+                        st.warning(
+                            "Monitoring data could not be refreshed right now. "
+                            "Use Retry monitoring data to try again."
+                        )
+                        st.button(
+                            "Retry monitoring data",
+                            key="monitoring_data_retry",
+                            type="secondary",
+                        )
+                if isinstance(monitoring_cache, dict):
+                    alert_rows = monitoring_cache.get("alerts", [])
+                    monitor_rows = monitoring_cache.get("history", [])
+                else:
+                    alert_rows = []
+                    monitor_rows = []
+                if not isinstance(monitoring_cache, dict):
+                    stop_authenticated_page()
+
+        alert_df = pd.DataFrame(alert_rows)
+        monitor_df = pd.DataFrame(monitor_rows)
 
         from src.monitoring_intelligence import (
             build_monitoring_action_center,
@@ -4655,18 +4786,6 @@ def run_authenticated_app() -> None:
         monitored_count = monitoring_center["monitored_components"]
         monitor_limit_label = "Unlimited" if monitoring_limit is None or is_admin else f"{int(monitoring_limit):,}"
         monitor_usage = 0 if monitoring_limit in (None, 0) or is_admin else min(100, round(monitored_count / int(monitoring_limit) * 100))
-
-        cadivor_section_header(
-            "Alerts & Monitoring",
-            eyebrow="Alerts",
-            description=str(monitoring_center["summary"]),
-            icon="radar",
-        )
-        # Unlike most routes, Monitoring builds its page header only after its
-        # alert and history reads. Explicitly release the shared route cover
-        # here once the destination has a visible, meaningful header. Without
-        # this call the route-loading surface remains over the whole page.
-        reveal_authenticated_page_body("Monitoring")
 
         active_queue = monitoring_center.get("active_queue")
         price_alerts = 0
