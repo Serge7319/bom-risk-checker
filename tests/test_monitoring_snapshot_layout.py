@@ -236,6 +236,17 @@ class MonitoringSnapshotLayoutTests(unittest.TestCase):
         self.assertIn('"component": focused_monitor_part', self.branch)
         self.assertIn('"focus": "component-risk"', self.branch)
 
+    def test_missing_monitor_baseline_explains_next_action(self):
+        component_view = self.branch.split(
+            "def _render_monitored_components", 1
+        )[1].split("def _render_monitoring_timeline", 1)[0]
+        self.assertIn("No saved monitoring snapshot is available for", component_view)
+        self.assertIn("Cadivor records a component's first monitoring snapshot", component_view)
+        self.assertIn("Run a new BOM analysis", component_view)
+        self.assertIn('navigate_to("BOM Analyzer")', component_view)
+        self.assertIn("focused_component_found", component_view)
+        self.assertIn("not focused_component_found", component_view)
+
 
 if __name__ == "__main__":
     unittest.main()
