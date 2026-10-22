@@ -245,7 +245,7 @@ def inject_workspace_geometry_final() -> None:
         section[data-testid="stMain"] [data-testid="stVerticalBlock"] > div[data-testid="stElementContainer"]:has(style#cadivor-core-premium-ui-final),
         section[data-testid="stMain"] [data-testid="stVerticalBlock"] > div[data-testid="stElementContainer"]:has(style#cadivor-saved-bom-nav),
         section[data-testid="stMain"] [data-testid="stVerticalBlock"] > div[data-testid="stElementContainer"]:has(style#cadivor-compact-content-inset),
-        section[data-testid="stMain"] [data-testid="stVerticalBlock"] > div[data-testid="stElementContainer"]:has(style#cadivor-main-transition-css),
+        section[data-testid="stMain"] [data-testid="stVerticalBlock"] > div[data-testid="stElementContainer"]:has(style[id^="cadivor-main-transition-css-"]),
         section[data-testid="stMain"] [data-testid="stVerticalBlock"] > div[data-testid="stElementContainer"]:has([data-cadivor-transition-style-host]) {
           position: absolute !important;
           left: 0 !important;
