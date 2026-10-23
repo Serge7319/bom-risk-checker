@@ -902,7 +902,7 @@ def begin_approved_page() -> None:
         .st-key-approved_home_recent_card{margin:0 0 16px!important;padding:0!important;border:1px solid #c5d1df!important;border-radius:16px!important;background:#fff!important;box-shadow:0 3px 12px rgba(15,23,42,.055)!important}
         .st-key-approved_home_recent_card [data-testid="stVerticalBlock"]{gap:0!important}
         .cv-ap-home-recent-heading{padding:18px 20px 14px}
-        .cv-ap-home-recent-heading h2{margin:0 0 4px!important;padding:0!important;color:#0f172a;font-size:21px;font-weight:760;letter-spacing:-.02em}
+        .st-key-approved_home_recent_card .cv-ap-home-recent-heading h2{margin:0 0 4px!important;padding:0!important;color:#0f172a;font-size:21px;font-weight:760;letter-spacing:-.02em}
         .cv-ap-home-recent-heading p{margin:0;color:#64748b;font-size:13px}
         [class*="st-key-approved_home_row_"]{min-height:66px!important;margin:0!important;padding:7px 20px!important;border-top:0!important;border-bottom:1px solid #e5ebf3!important;background:#fff!important}
         [class*="st-key-approved_home_row_"] [data-testid="stHorizontalBlock"]{align-items:center!important}
