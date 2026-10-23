@@ -46,7 +46,8 @@ jobs:
             tests.test_alternative_finder_comparison_scroll \
             tests.test_alternative_finder_search_submit \
             tests.test_alternative_finder_presentation \
-            tests.test_alternative_finder_admin_diagnostics
+            tests.test_alternative_finder_admin_diagnostics \
+            tests.test_main_transition_release_signal
 
       - name: Run Engineering Intelligence Layout Tests
         run: python -m unittest tests.test_ei_bom_report_layout
