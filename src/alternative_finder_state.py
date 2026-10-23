@@ -296,6 +296,35 @@ def get_alternative_finder_original_part_input_config(
     return widget_key, initial_value
 
 
+def restore_alternative_finder_input_from_result(
+    session_state: MutableMapping[str, Any],
+) -> str:
+    """Restore the completed query if Streamlit discarded its route widget.
+
+    Streamlit removes a widget's value after its page is absent for a rerun.
+    Finder results intentionally survive navigation, so restore their source
+    MPN before the input widget is mounted again. Preserve any current user
+    edit or an explicitly staged navigation prefill.
+    """
+    widget_key, initial_value = get_alternative_finder_original_part_input_config(
+        session_state
+    )
+    if widget_key in session_state:
+        return str(session_state.get(widget_key) or "").strip()
+    staged_value = str(initial_value or "").strip()
+    if staged_value:
+        session_state[widget_key] = staged_value
+        return staged_value
+
+    result = get_alternative_finder_durable_result(session_state)
+    entered_mpn = str((result or {}).get("entered_mpn") or "").strip()
+    if not entered_mpn:
+        return ""
+
+    session_state[widget_key] = entered_mpn
+    return entered_mpn
+
+
 def set_alternative_finder_prefill_input(
     session_state: MutableMapping[str, Any],
     *,

@@ -165,6 +165,16 @@ class ApprovedBOMSubmissionTests(unittest.TestCase):
         self.assertIn("fully uploaded and ready", source)
         self.assertNotIn("select Analyze BOM to retry the upload check", source)
 
+    def test_idle_upload_guidance_does_not_overlap_disabled_action(self):
+        source = Path("src/ui/approved_pages.py").read_text(encoding="utf-8")
+        start = source.index('with st.container(key="approved_bom_submit_row")')
+        end = source.index("if submitted:", start)
+        submit_row = source[start:end]
+
+        self.assertIn('[0.22, 0.78]', submit_row)
+        self.assertIn(".st-key-approved_bom_analyze button:disabled", submit_row)
+        self.assertIn("cursor: not-allowed", submit_row)
+
     def test_submit_recovers_file_from_uploader_widget_state(self):
         upload = object()
         state = {"bom_file_uploader": upload}

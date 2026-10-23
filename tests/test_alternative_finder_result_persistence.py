@@ -16,11 +16,14 @@ from src.alternative_finder_state import (
     has_durable_search_for_mpn,
     get_alternative_finder_candidates,
     get_alternative_finder_display_mpn,
+    get_alternative_finder_original_part_input_config,
     get_alternative_finder_original_data,
     get_alternative_finder_selected_candidate,
     init_alternative_finder_state,
     rearm_alternative_finder_navigation,
+    restore_alternative_finder_input_from_result,
     sanitize_for_session,
+    set_alternative_finder_prefill_input,
     set_alternative_finder_selected_candidate,
     sync_alternative_finder_candidate_record,
     sync_alternative_finder_selected_candidate_result,
@@ -109,6 +112,51 @@ class AlternativeFinderResultPersistenceTests(unittest.TestCase):
             get_alternative_finder_original_data(self.session)["package"],
             "0603",
         )
+
+    def test_completed_query_is_restored_when_route_prunes_input_widget(self):
+        complete_alternative_finder_search(
+            self.session,
+            entered_mpn="LM317DCYR",
+            canonical_mpn="LM317DCYR",
+            original_data={"manufacturer_part_number": "LM317DCYR"},
+            original_risk={},
+            candidates=_sample_candidates(2),
+        )
+        # Streamlit drops widget keys while Finder is not the active route.
+        self.session.pop(ALTERNATIVE_ORIGINAL_PART_WIDGET_KEY, None)
+
+        restored = restore_alternative_finder_input_from_result(self.session)
+        widget_key, default_value = get_alternative_finder_original_part_input_config(
+            self.session
+        )
+
+        self.assertEqual(restored, "LM317DCYR")
+        self.assertEqual(self.session[widget_key], "LM317DCYR")
+        self.assertEqual(default_value, "")
+        # After the user clears the input, the completed result must not
+        # overwrite that intentional blank on the next rerun.
+        self.session[widget_key] = ""
+        self.assertEqual(restore_alternative_finder_input_from_result(self.session), "")
+
+    def test_input_restoration_preserves_edits_and_staged_prefills(self):
+        self.session[ALTERNATIVE_ORIGINAL_PART_WIDGET_KEY] = "EDITED-MPN"
+        self.assertEqual(
+            restore_alternative_finder_input_from_result(self.session),
+            "EDITED-MPN",
+        )
+
+        prefilled: dict = {}
+        prefill_key = set_alternative_finder_prefill_input(
+            prefilled,
+            mpn="PREFILLED-MPN",
+            navigation_id="fresh-handoff",
+        )
+        prefilled.pop(prefill_key)
+        self.assertEqual(
+            restore_alternative_finder_input_from_result(prefilled),
+            "PREFILLED-MPN",
+        )
+        self.assertEqual(prefilled[prefill_key], "PREFILLED-MPN")
 
     def test_rearm_keeps_completed_result(self):
         complete_alternative_finder_search(

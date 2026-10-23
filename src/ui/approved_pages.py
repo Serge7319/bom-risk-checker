@@ -2784,7 +2784,13 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
                 if upload_available:
                     st.session_state.pop("cadivor_bom_submission_error", None)
                 with st.container(key="approved_bom_submit_row"):
-                    submit_col, guidance_col = st.columns([0.12, 0.88], gap="small", vertical_alignment="center")
+                    # Give the primary button its full width so the waiting
+                    # guidance never starts underneath it at laptop widths.
+                    submit_col, guidance_col = st.columns(
+                        [0.22, 0.78],
+                        gap="small",
+                        vertical_alignment="center",
+                    )
                     with submit_col:
                         submitted = st.button(
                             "Analyzing BOM…" if analysis_running else "Analyze BOM",
@@ -2815,6 +2821,18 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
                                   color: #5b6777;
                                   font-size: .82rem;
                                   line-height: 1.3;
+                                }
+                                .st-key-approved_bom_analyze button:disabled {
+                                  background: #e2e8f0 !important;
+                                  border-color: #cbd5e1 !important;
+                                  color: #64748b !important;
+                                  box-shadow: none !important;
+                                  cursor: not-allowed !important;
+                                  opacity: 1 !important;
+                                }
+                                .st-key-approved_bom_analyze button:disabled p,
+                                .st-key-approved_bom_analyze button:disabled span {
+                                  color: inherit !important;
                                 }
                                 </style>
                                 """,

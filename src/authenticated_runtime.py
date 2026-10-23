@@ -17728,6 +17728,7 @@ def run_authenticated_app() -> None:
             get_alternative_finder_original_risk,
             get_alternative_finder_selected_candidate,
             init_alternative_finder_state,
+            restore_alternative_finder_input_from_result,
             alternative_search_was_attempted,
             mark_alternative_finder_running,
             resolve_alternative_finder_submitted_mpn,
@@ -18989,6 +18990,9 @@ def run_authenticated_app() -> None:
             unsafe_allow_html=True,
         )
 
+        # Restore a completed query before init creates an empty widget key.
+        # Streamlit drops route-local widget values while Finder is unmounted.
+        restore_alternative_finder_input_from_result(st.session_state)
         init_alternative_finder_state(st.session_state)
 
         alt_nav_context = consume_alternative_finder_context(_qp_value)
