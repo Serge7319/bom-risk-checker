@@ -397,6 +397,15 @@ class ApprovedBOMSubmissionTests(unittest.TestCase):
             should_render_bom_analysis_body("High Risk Review", high_risk_review=True)
         )
 
+    def test_new_analysis_routes_to_saved_engineering_intelligence_after_persistence(self):
+        source = Path("src/authenticated_runtime.py").read_text(encoding="utf-8")
+        success = source.split('st.toast("Analysis complete. Opening your BOM analysis…"', 1)[1]
+        handoff = success.split('if _one_time_blocked_plan', 1)[0]
+        self.assertIn('navigate_to(\n                        "Analysis Details"', handoff)
+        self.assertIn('analysis_tab="Engineering Intelligence"', handoff)
+        self.assertIn('_rerun=False', handoff)
+        self.assertIn('st.rerun()', source[source.index('st.toast("Analysis complete. Opening your BOM analysis…"'):])
+
     def test_missing_upload_does_not_queue_analysis(self):
         state = {
             "cadivor_bom_analysis_ready": True,
