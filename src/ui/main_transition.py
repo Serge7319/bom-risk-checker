@@ -420,30 +420,10 @@ def inject_main_transition_css(transition_gen: int) -> None:
         """,
         unsafe_allow_html=True,
     )
-    # Streamlit owns the element containers that hold these styles. Retire old
-    # generations by disabling their stylesheets, never by removing a host (or
-    # a style node) from under React. Removing a host can corrupt Streamlit's
-    # DOM tree and leave the next route as a blank canvas.
-    st.html(
-        """
-        <script>
-        (() => {
-          const doc = document;
-          const currentId = '__CURRENT_ID__';
-          const styles = Array.from(doc.querySelectorAll(
-            'style[id^="cadivor-main-transition-css-"]'
-          ));
-          const active = styles.filter((style) => style.id === currentId).slice(-1)[0];
-          if (!active) return;
-          for (const style of styles) {
-            if (style === active) continue;
-            style.disabled = true;
-          }
-        })();
-        </script>
-        """.replace("__CURRENT_ID__", f"cadivor-main-transition-css-{gen}"),
-        unsafe_allow_javascript=True,
-    )
+    # Keep each stylesheet's selectors generation-scoped and let Streamlit's
+    # React tree retire stale style hosts. An async script that toggles
+    # CSSStyleSheet.disabled can run after a later generation is mounted and
+    # disable the current transition stylesheet, leaving its cover visible.
 
 
 def route_loading_markup(target_route: str, transition_gen: int) -> str:

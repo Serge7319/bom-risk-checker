@@ -50,6 +50,7 @@ class MainTransitionReleaseSignalTests(unittest.TestCase):
     def test_transition_css_uses_direct_document_marker_generation(self):
         state = {}
         markdown = []
+        html = []
 
         with (
             patch("src.ui.main_transition.st.session_state", state),
@@ -57,7 +58,10 @@ class MainTransitionReleaseSignalTests(unittest.TestCase):
                 "src.ui.main_transition.st.markdown",
                 side_effect=lambda value, **kwargs: markdown.append(value),
             ),
-            patch("src.ui.main_transition.st.html"),
+            patch(
+                "src.ui.main_transition.st.html",
+                side_effect=lambda value, **kwargs: html.append((value, kwargs)),
+            ),
         ):
             inject_main_transition_css(813)
 
@@ -65,6 +69,7 @@ class MainTransitionReleaseSignalTests(unittest.TestCase):
         self.assertIn('body:has([data-cadivor-page-body-gen="813"])', css)
         self.assertIn('body:not(:has([data-cadivor-page-body-gen="813"]))', css)
         self.assertNotIn('body[data-cadivor-page-body-gen="813"]', css)
+        self.assertEqual(html, [])
 
 
 if __name__ == "__main__":
