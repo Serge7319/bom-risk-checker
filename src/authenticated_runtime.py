@@ -2570,11 +2570,11 @@ def run_authenticated_app() -> None:
                     repair_profile=repair_recent_default_trial_profile,
                 )
                 if _profile_status == "error":
-                    # Preserve the established auth-expiry and retryable error
-                    # handling, but invoke it safely on Streamlit's script thread.
-                    _loaded_user = load_user_data()
-                    _profile_status = (
-                        "ok" if isinstance(_loaded_user, dict) else "error"
+                    # The bounded read already made the decision to fail open.
+                    # A synchronous retry here can pin the first authenticated
+                    # page behind its transition cover indefinitely.
+                    logger.info(
+                        "Opening profile read failed; using authenticated identity fallback"
                     )
             if (
                 _profile_status != "ok"
