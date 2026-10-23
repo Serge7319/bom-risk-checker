@@ -45,9 +45,18 @@ def load_profile_for_opening(
             return profile
         return repaired if isinstance(repaired, dict) else profile
 
+    def _repair_with_budget(profile: dict[str, Any]) -> dict[str, Any]:
+        if repair_profile is None:
+            return profile
+        repaired, status = run_with_budget(lambda: _repair(dict(profile)))
+        if status != "ok" or not isinstance(repaired, dict):
+            # A cache hit is usable even if the optional trial repair times out.
+            return profile
+        return repaired
+
     cached = recent_profile(session_state, user_id)
     if cached:
-        repaired = _repair(cached)
+        repaired = _repair_with_budget(cached)
         remembered = remember_profile(session_state, repaired)
         return remembered or repaired, "ok"
 
@@ -63,9 +72,14 @@ def load_profile_for_opening(
             profile = ensured
         return profile if isinstance(profile, dict) else None
 
-    profile, status = run_with_budget(_read)
+    def _read_and_repair() -> dict[str, Any] | None:
+        profile = _read()
+        if isinstance(profile, dict):
+            return _repair(dict(profile))
+        return profile
+
+    profile, status = run_with_budget(_read_and_repair)
     if status != "ok" or not isinstance(profile, dict) or not profile.get("id"):
         return None, status if status != "ok" else "error"
-    profile = _repair(profile)
     remembered = remember_profile(session_state, profile)
     return remembered or profile, "ok"

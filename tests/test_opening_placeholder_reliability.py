@@ -162,13 +162,20 @@ def test_opening_profile_read_does_not_run_session_aware_loader_in_worker():
         "def update_user_profile_fields(", 1
     )[0]
     helper = _source("src/services/opening_profile_read.py")
-    worker = helper.split("def _read()", 1)[1].split("profile, status = run_with_budget", 1)[0]
+    worker = helper.split("def _read_and_repair()", 1)[1].split(
+        "profile, status = run_with_budget", 1
+    )[0]
+    fresh_token_path = profile_branch.split(
+        "else:\n                from src.services.authenticated_profile_cache", 1
+    )[1].split("if (\n                _profile_status", 1)[0]
 
     assert "run_with_read_budget(load_user_data)" not in profile_branch
     assert "load_profile_for_opening(" in profile_branch
+    assert "load_user_data()" not in fresh_token_path
+    assert "logger.info(" in fresh_token_path
     assert "auth_user is _AUTH_USER_PROFILE_UNSET" in profile_method
     assert "st.session_state" not in worker
-    assert "run_with_budget(_read)" in helper
+    assert "run_with_budget(_read_and_repair)" in helper
 
 
 def test_detached_workspace_reads_use_script_thread_scope_snapshots():
