@@ -52,5 +52,8 @@ jobs:
       - name: Run Monitoring History Persistence Tests
         run: python -m unittest tests.test_monitoring_history_persistence
 
+      - name: Run Browser Route Recovery Tests
+        run: python -m unittest tests.test_browser_route_state
+
       - name: Run Engineering Intelligence Layout Tests
         run: python -m unittest tests.test_ei_bom_report_layout
