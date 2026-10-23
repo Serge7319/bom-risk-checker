@@ -102,7 +102,10 @@
   window.setInterval(emitPending, 200);
 
   post("streamlit:componentReady", {apiVersion: 1});
-  post("streamlit:setFrameHeight", {height: 0});
+  // A zero-height component can be hidden by Streamlit's element wrapper,
+  // which prevents the parent window's Back/Forward listener from mounting.
+  // Keep a 1px frame alive; auth_gate.py clips the wrapper off-screen.
+  post("streamlit:setFrameHeight", {height: 1});
 })();
 </script>
 </body>

@@ -560,6 +560,13 @@ class BomWorkflowNavigationTests(unittest.TestCase):
         self.assertNotIn("cadivor_dashboard_drilldown", workspace)
         self.assertNotIn("dashboard_drilldown", runtime)
 
+    def test_saved_bom_monitor_actions_keep_the_exact_return_context(self):
+        source = (ROOT / "src/pages/analysis_detail.py").read_text()
+
+        self.assertIn('return_analysis_id=analysis_id, monitor_view="components"', source)
+        self.assertIn('return_analysis_id=analysis_id,\n                                mpn=raw_part', source)
+        self.assertIn('monitor_view="components",', source)
+
 
 if __name__ == "__main__":
     unittest.main()

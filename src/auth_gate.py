@@ -430,6 +430,7 @@ def retire_auth_gate_overlays() -> None:
           .st-key-cadivor_browser_navigation_bridge,
         body:has(.st-key-cv_foundation_navigation):has([data-cadivor-page-content])
           [class*="st-key-cadivor_browser_navigation_bridge"]{
+          display:block!important;
           position:fixed!important;left:-10000px!important;top:0!important;
           width:1px!important;min-width:1px!important;max-width:1px!important;
           height:1px!important;min-height:1px!important;max-height:1px!important;

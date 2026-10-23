@@ -7,6 +7,7 @@ import pandas as pd
 
 from src.monitoring_intelligence import (
     build_monitoring_action_center,
+    monitoring_overview_alert_rows,
     monitoring_workflow_urgency,
 )
 
@@ -87,6 +88,41 @@ class MonitoringIntelligencePresentationTests(unittest.TestCase):
 
         self.assertNotIn("Analysis ID", center["latest_components"].columns)
         self.assertIn("Last Checked", center["latest_components"].columns)
+
+    def test_alert_overview_uses_active_rows_and_keeps_supplier_context(self):
+        alerts = pd.DataFrame(
+            [
+                {
+                    "id": "alert-open",
+                    "part_number": "SN74LVC2T45DCUR",
+                    "manufacturer": "Texas Instruments",
+                    "alert_type": "Lifecycle Change",
+                    "alert_message": "Lifecycle changed to NRND",
+                    "severity": "High",
+                    "created_at": "2026-10-22T09:14:00Z",
+                    "workflow_status": "Open",
+                },
+                {
+                    "id": "alert-resolved",
+                    "part_number": "TPS5430DDAR",
+                    "manufacturer": "Texas Instruments",
+                    "alert_type": "Inventory Update",
+                    "alert_message": "Inventory increased",
+                    "severity": "Low",
+                    "created_at": "2026-10-22T08:00:00Z",
+                    "workflow_status": "Resolved",
+                },
+            ]
+        )
+        center = build_monitoring_action_center(alerts, pd.DataFrame())
+
+        rows = monitoring_overview_alert_rows(alerts, center["active_queue"])
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["mpn"], "SN74LVC2T45DCUR")
+        self.assertEqual(rows[0]["manufacturer"], "Texas Instruments")
+        self.assertEqual(rows[0]["alert_type"], "Lifecycle Change")
+        self.assertEqual(rows[0]["workflow_status"], "Open")
 
 
 if __name__ == "__main__":

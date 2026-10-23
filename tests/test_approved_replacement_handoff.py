@@ -30,6 +30,9 @@ def test_approved_finder_consumes_clicked_part_before_mounting_search_input():
     assert guard < renderer.index("Replacement candidates</h2>")
     assert "        return\n    supplier_candidate_count = len(candidates)" in renderer[guard:]
     assert 'original["manufacturer_part_number"] = context_mpn' in renderer
+    assert "Candidate lifecycle is the status recorded in the supplier result." in renderer
+    assert "Fit verification is a separate technical check" in renderer
+    assert '"Candidate lifecycle"' in renderer
 
 
 def test_datasheet_review_shows_document_status_and_avoids_empty_evidence_table():

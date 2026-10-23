@@ -93,6 +93,53 @@ class ApprovedAlternativesTests(unittest.TestCase):
         self.assertEqual(approved[0]["alternative_part"], "LM358DR2G")
         self.assertEqual(approved[0]["engineering_note"], "Current approval")
 
+    def test_project_approval_survives_rerun_without_leaking_other_bom_decisions(self):
+        project = "Cooling Unit"
+        records = [
+            {
+                "analysis_id": "analysis-before-rerun",
+                "context_key": project_decision_context_key(
+                    project,
+                    "analysis-before-rerun",
+                ),
+                "original_part": "SN74LVC2T45DCUR",
+                "alternative_part": "SN74LVC2T45DCURG4",
+                "decision": "Approved",
+                "project_name": project,
+            },
+            {
+                "analysis_id": "other-bom-in-same-project",
+                "context_key": "other-bom-in-same-project",
+                "original_part": "SN74LVC2T45DCUR",
+                "alternative_part": "WRONG-SAME-PROJECT",
+                "decision": "Approved",
+                "project_name": project,
+            },
+            {
+                "analysis_id": "different-project-analysis",
+                "context_key": project_decision_context_key(
+                    "Other Project",
+                    "different-project-analysis",
+                ),
+                "original_part": "SN74LVC2T45DCUR",
+                "alternative_part": "WRONG-OTHER-PROJECT",
+                "decision": "Approved",
+                "project_name": "Other Project",
+            },
+        ]
+
+        approved = approved_records_for_part(
+            records,
+            "SN74-LVC2T45-DCUR",
+            project_name=project,
+            analysis_id="analysis-after-rerun",
+        )
+
+        self.assertEqual(
+            [row["alternative_part"] for row in approved],
+            ["SN74LVC2T45DCURG4"],
+        )
+
     def test_bom_approvals_and_report_row_include_the_approved_candidate(self):
         decision = {
             "original_part": "TPS5430DDA",

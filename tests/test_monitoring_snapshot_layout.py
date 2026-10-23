@@ -22,11 +22,37 @@ class MonitoringSnapshotLayoutTests(unittest.TestCase):
         self.assertIn("Monitoring snapshot", self.branch)
         self.assertIn("Monitoring workspace", self.branch)
 
-    def test_monitoring_route_does_not_stop_in_legacy_alert_renderer(self):
-        self.assertNotIn("render_monitoring(", self.branch)
+    def test_monitoring_route_uses_alert_overview_and_keeps_workflow_views(self):
+        self.assertIn('"overview": "Alert Overview"', self.branch)
+        self.assertIn(
+            'default_monitor_view = "components" if focused_monitor_part else "overview"',
+            self.branch,
+        )
+        self.assertIn("monitoring_overview_alert_rows(", self.branch)
+        self.assertIn("render_monitoring(", self.branch)
+        self.assertIn("include_header=False", self.branch)
         self.assertIn('monitor_view = _safe_text(', self.branch)
         self.assertIn('if monitor_view == "components":', self.branch)
         self.assertIn("_render_monitored_components()", self.branch)
+        self.assertIn("if not focused_monitor_part:", self.branch)
+
+    def test_part_baseline_state_has_a_cadivor_styled_monitor_action(self):
+        baseline = self.branch.split(
+            "def _render_monitoring_baseline_empty_state():", 1
+        )[1].split("components = monitoring_center[\"latest_components\"]", 1)[0]
+        self.assertIn('key="monitoring_part_baseline_empty"', baseline)
+        self.assertIn("cv-monitoring-part-baseline-title", baseline)
+        self.assertIn("cv-monitoring-part-baseline-copy", baseline)
+        self.assertIn("Start monitoring this part", baseline)
+        self.assertIn("exact-MPN supplier snapshot", baseline)
+
+    def test_alert_overview_stops_before_rendering_the_action_queue_layout(self):
+        overview = self.branch.split('if monitor_view == "overview":', 1)[1]
+        overview = overview.split(
+            "monitoring_workspace_col, monitoring_snapshot_col", 1
+        )[0]
+        self.assertIn("render_monitoring(", overview)
+        self.assertIn("stop_authenticated_page()", overview)
 
     def test_snapshot_keeps_only_distinct_actionable_metrics(self):
         for card_key in (
@@ -220,13 +246,15 @@ class MonitoringSnapshotLayoutTests(unittest.TestCase):
 
     def test_monitoring_views_are_directly_addressable(self):
         for token, label in (
+            ("overview", "Alert Overview"),
             ("queue", "Action Queue"),
             ("components", "Monitored Components"),
             ("timeline", "Timeline"),
             ("export", "Export"),
         ):
             self.assertIn(f'"{token}": "{label}"', self.branch)
-        self.assertIn('_qp_value("monitor_view", "queue")', self.branch)
+        self.assertIn('_resolved_qp_value("monitor_view", default_monitor_view)', self.branch)
+        self.assertIn('default_monitor_view = "components" if focused_monitor_part else "overview"', self.branch)
         self.assertIn('target_view="components"', self.branch)
 
     def test_component_routes_filter_expand_and_return_to_the_same_bom_row(self):
