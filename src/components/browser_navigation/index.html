@@ -36,6 +36,7 @@
       pending: null,
       lastHref: "",
       seq: 0,
+      recoverySeq: 0,
     };
     try {
       state.lastHref = w.location.href || "";
@@ -65,7 +66,63 @@
         reason,
         event_id: `${Date.now()}-${state.seq}-${Math.random().toString(36).slice(2, 8)}`,
       };
+      if (reason === "popstate") scheduleRouteRecovery(href);
     };
+
+    function routeStateFromHref(href) {
+      try {
+        const url = new URL(href, w.location.href);
+        const entries = Array.from(url.searchParams.entries())
+          .filter(([key, value]) =>
+            !["auth", "source", "cadivor_signed_out"].includes(key)
+            && String(value || "").trim() !== ""
+          );
+        if (!entries.some(([key]) => key === "page")) entries.push(["page", "Dashboard"]);
+        entries.sort((left, right) => {
+          const keyOrder = left[0].localeCompare(right[0]);
+          return keyOrder || left[1].localeCompare(right[1]);
+        });
+        return JSON.stringify(entries);
+      } catch (_) {
+        return "";
+      }
+    }
+
+    function scheduleRouteRecovery(targetHref) {
+      const token = ++state.recoverySeq;
+      const targetState = routeStateFromHref(targetHref);
+      if (!targetState) return;
+      const startedAt = Date.now();
+      const verify = () => {
+        if (token !== state.recoverySeq) return;
+        let currentHref = "";
+        try { currentHref = w.location.href || ""; } catch (_) {}
+        if (currentHref !== targetHref) return;
+
+        const marker = w.document.querySelector(
+          '[data-cadivor-route-root="1"][data-cadivor-route-state]'
+        );
+        const renderedState = marker && marker.getAttribute("data-cadivor-route-state");
+        if (renderedState === targetState) return;
+
+        const elapsed = Date.now() - startedAt;
+        if (!marker) {
+          if (elapsed >= 6000) return;
+          w.setTimeout(verify, 250);
+          return;
+        }
+        const targetPage = new URL(targetHref, w.location.href).searchParams.get("page") || "Dashboard";
+        const loading = w.document.querySelector("[data-cadivor-route-loading]");
+        const loadingPage = loading && loading.getAttribute("data-cadivor-route-loading");
+        const waitLimit = loadingPage === targetPage ? 8000 : 1800;
+        if (elapsed >= waitLimit) {
+          try { w.location.reload(); } catch (_) {}
+          return;
+        }
+        w.setTimeout(verify, 250);
+      };
+      w.setTimeout(verify, 1800);
+    }
     try {
       w.addEventListener("popstate", () => queue("popstate"));
       w.addEventListener("hashchange", () => queue("hashchange"));
