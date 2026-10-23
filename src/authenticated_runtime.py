@@ -4163,7 +4163,14 @@ def run_authenticated_app() -> None:
 
         release_saved_analysis_placeholder()
         inject_dashboard_workspace_styles()
-        render_dashboard_page_heading()
+        _dashboard_loading_placeholder = render_dashboard_page_heading(
+            "Preparing your workspace",
+            "Loading your saved BOMs and current risk signals.",
+        )
+        # Release the full-page transition once the stable Dashboard heading
+        # is mounted. Workspace data below is independently time-bounded; it
+        # must not keep the user trapped on Opening Dashboard while it loads.
+        reveal_authenticated_page_body("Dashboard")
         try:
             _command_cache = st.session_state.get("cadivor_workspace_command_cache")
             if not _workspace_commands_cache_fresh(current_user["id"]):
@@ -4362,6 +4369,11 @@ def run_authenticated_app() -> None:
         # existed only inside Portfolio Dashboard, so brand-new users always saw
         # the empty overview because Streamlit opens the first tab by default.
         real_overview_analyses = list(overview_analyses)
+
+        # Replace the temporary, visible loading heading with the real Home
+        # workspace (or its explicit empty/unavailable state) in this rerun.
+        if _dashboard_loading_placeholder is not None:
+            _dashboard_loading_placeholder.empty()
 
         if home["kind"] == "unknown":
             render_saved_boms_unavailable()

@@ -348,10 +348,15 @@ def _reveal_home_after_bounded_hang(session: dict, monkeypatch) -> float:
     assert session.get(OPENING_ROUTE_KEY) is None
     assert session.get("cadivor_presented_route") == "Dashboard"
     dashboard = _dashboard_source()
-    heading_at = dashboard.index("render_dashboard_page_heading()")
+    heading_at = dashboard.index(
+        'render_dashboard_page_heading(\n            "Preparing your workspace"'
+    )
     reveal_at = dashboard.index('reveal_authenticated_page_body("Dashboard")')
     secondary_at = dashboard.index("_load_dashboard_secondary,")
     assert heading_at < reveal_at < secondary_at
+    assert dashboard.index("_dashboard_loading_placeholder.empty()") < dashboard.index(
+        "render_home("
+    )
     assert "Opening Dashboard" not in dashboard[heading_at:reveal_at]
     return elapsed
 
@@ -365,7 +370,7 @@ def test_fresh_sign_in_hanging_workspace_read_reveals_home_within_budget(monkeyp
     _reveal_home_after_bounded_hang(session, monkeypatch)
     runtime = _source("src/authenticated_runtime.py")
     budget_at = runtime.index("begin_first_page_budget()")
-    assert budget_at < runtime.index("run_with_read_budget(load_user_data)")
+    assert budget_at < runtime.index("load_profile_for_opening(")
     assert runtime.index("def _bounded_boot_read") < runtime.index("runtime.workspace_init")
 
 

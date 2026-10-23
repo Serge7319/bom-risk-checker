@@ -149,12 +149,21 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
         )
         self.assertLess(reveal_at, supplier_lookup_at)
 
-    def test_dashboard_cover_is_released_after_dashboard_render(self):
+    def test_dashboard_cover_is_released_after_heading_before_workspace_reads(self):
         runtime = (ROOT / "src" / "authenticated_runtime.py").read_text(encoding="utf-8")
         start = runtime.index("# ---------- Dashboard ----------")
         end = runtime.index('if app_mode == "Analysis Details":', start)
         dashboard = runtime[start:end]
-        self.assertNotIn('reveal_authenticated_page_body("Dashboard")', dashboard)
+        heading_at = dashboard.index(
+            'render_dashboard_page_heading(\n            "Preparing your workspace"'
+        )
+        reveal_at = dashboard.index('reveal_authenticated_page_body("Dashboard")')
+        data_read_at = dashboard.index("_workspace_commands_cache_fresh(")
+        clear_at = dashboard.index("_dashboard_loading_placeholder.empty()")
+        home_at = dashboard.index("render_home(")
+        self.assertLess(heading_at, reveal_at)
+        self.assertLess(reveal_at, data_read_at)
+        self.assertLess(clear_at, home_at)
         self.assertIn("render_home(", dashboard)
         self.assertIn("stop_authenticated_page()", dashboard)
 
