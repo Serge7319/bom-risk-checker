@@ -1229,18 +1229,18 @@ def begin_approved_page() -> None:
         .cv-due-late{color:#be123c;font-weight:700}
         [class*="st-key-approved_decision_cardwrap_"] [data-testid="stHorizontalBlock"]{align-items:center}
         [class*="st-key-approved_decision_queue"]{border:1px solid #e6edf5;border-radius:16px;background:#fff;padding:10px 12px 6px;margin-top:8px}
-        /* Keep BOM list actions on the table's left edge and round the last row. */
+        /* Align BOM list actions to the table's right edge and round the last row. */
         .st-key-approved_bom_catalog_table{box-sizing:border-box!important;margin:14px 0 16px!important;padding:0!important;border:1px solid #cbd8e8!important;border-radius:16px!important;background:#fff!important;box-shadow:0 3px 12px rgba(15,23,42,.045)!important}
         .st-key-approved_bom_catalog_table>[data-testid="stVerticalBlock"]{gap:0!important}
         .st-key-approved_bom_catalog_table [data-testid="stElementContainer"]{margin:0!important;padding:0!important}
         .st-key-approved_bom_catalog_table .cv-ap-home-table-head{border-top:0!important;border-radius:15px 15px 0 0!important}
         .st-key-approved_bom_catalog_table .st-key-approved_home_row_last{box-sizing:border-box!important;border-radius:0 0 15px 15px!important;border-bottom:0!important;background:#fff!important}
         .st-key-approved_bom_title [data-testid="stVerticalBlock"]{align-items:flex-start!important}
-        .st-key-approved_bom_title [data-testid="stElementContainer"]:has(button){display:flex!important;justify-content:flex-start!important;width:100%!important}
+        .st-key-approved_bom_title [data-testid="stElementContainer"]:has(button){display:flex!important;justify-content:flex-end!important;width:100%!important}
         .st-key-approved_bom_title button{white-space:nowrap!important}
-        .st-key-approved_bom_toolbar [data-testid="stColumn"]:first-child [data-testid="stVerticalBlock"]{align-items:flex-start!important}
-        .st-key-approved_bom_toolbar [data-testid="stColumn"]:first-child [data-testid="stElementContainer"]{display:flex!important;justify-content:flex-start!important;width:100%!important}
-        .st-key-approved_bom_toolbar [data-testid="stColumn"]:first-child button{white-space:nowrap!important}
+        .st-key-approved_bom_toolbar [data-testid="stColumn"]:last-child [data-testid="stVerticalBlock"]{align-items:flex-end!important}
+        .st-key-approved_bom_toolbar [data-testid="stColumn"]:last-child [data-testid="stElementContainer"]{display:flex!important;justify-content:flex-end!important;width:100%!important}
+        .st-key-approved_bom_toolbar [data-testid="stColumn"]:last-child button{white-space:nowrap!important}
         .st-key-approved_bom_upload_panel{box-sizing:border-box!important;width:100%!important;max-width:none!important;margin:22px auto 0!important;padding:24px 36px 28px!important;border:1px solid #dce5f0!important;border-radius:18px!important;background:#fff!important;box-shadow:0 4px 18px rgba(15,23,42,.055)!important}
         .st-key-approved_bom_upload_panel>[data-testid="stVerticalBlock"]{gap:.85rem!important}
         .cv-bom-upload-heading{margin:0 0 1px!important;padding:0 0 15px!important;border-bottom:1px solid #e5ebf3!important}
@@ -2844,14 +2844,10 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
         if st.session_state.get(project_key) not in project_options and project_key in st.session_state:
             st.session_state[project_key] = "All projects"
         with st.container(key="approved_bom_toolbar"):
-            clear_col, search_col, project_col, health_col, date_col = st.columns(
-                [0.85, 1.7, 1.05, 1, 1.05],
+            search_col, project_col, health_col, date_col, clear_col = st.columns(
+                [1.7, 1.05, 1, 1.05, 0.85],
                 vertical_alignment="bottom",
             )
-            with clear_col:
-                if st.button("Clear filters", key="approved_bom_clear"):
-                    reset_catalog_filters(st.session_state)
-                    st.rerun()
             with search_col:
                 query = st.text_input(
                     "Search",
@@ -2873,6 +2869,10 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
                     ["Last 90 days", "Last 30 days", "All time"],
                     key=f"approved_bom_dates_{filter_nonce}",
                 )
+            with clear_col:
+                if st.button("Clear filters", key="approved_bom_clear"):
+                    reset_catalog_filters(st.session_state)
+                    st.rerun()
         needle = query.strip().casefold()
         today = date.today()
         visible = []
