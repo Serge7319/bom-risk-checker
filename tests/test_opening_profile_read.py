@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import threading
+import time
 from types import SimpleNamespace
 
 from src.services.opening_profile_read import load_profile_for_opening
@@ -20,7 +21,7 @@ class _ScriptThreadState(dict):
         return super().__setitem__(key, value)
 
 
-def _thread_budget(fn):
+def _thread_budget(fn, timeout_seconds=2):
     result = {}
 
     def worker():
@@ -30,9 +31,9 @@ def _thread_budget(fn):
         except Exception:
             result["status"] = "error"
 
-    thread = threading.Thread(target=worker)
+    thread = threading.Thread(target=worker, daemon=True)
     thread.start()
-    thread.join(timeout=2)
+    thread.join(timeout=timeout_seconds)
     if thread.is_alive():
         return None, "timeout"
     return result.get("value"), result.get("status", "error")
@@ -76,7 +77,7 @@ def test_existing_trigger_created_profile_is_repaired_before_caching():
     repair_calls = []
 
     def repair(_client, user, row):
-        assert threading.get_ident() == state.owner
+        assert threading.get_ident() != state.owner
         repair_calls.append((user.id, row["plan"]))
         return {**row, "plan": "Trial", "trial_ends_at": "2026-10-31T00:00:00+00:00"}
 
@@ -103,6 +104,12 @@ def test_cached_trigger_created_profile_is_repaired_on_warm_load():
     state = _ScriptThreadState()
     cached = {"id": "user-a", "email": "a@example.com", "plan": "Starter"}
 
+    repair_threads = []
+
+    def repair(_client, _user, row):
+        repair_threads.append(threading.get_ident())
+        return {**row, "plan": "Trial"}
+
     loaded, status = load_profile_for_opening(
         session_state=state,
         user=SimpleNamespace(id="user-a"),
@@ -112,13 +119,52 @@ def test_cached_trigger_created_profile_is_repaired_on_warm_load():
         ensure_profile=lambda *_: None,
         recent_profile=lambda _state, _uid: cached,
         remember_profile=lambda session_state, row: session_state.__setitem__("profile", dict(row)) or dict(row),
-        run_with_budget=lambda _fn: (_ for _ in ()).throw(AssertionError("unexpected worker")),
-        repair_profile=lambda _client, _user, row: {**row, "plan": "Trial"},
+        run_with_budget=_thread_budget,
+        repair_profile=repair,
     )
 
     assert status == "ok"
     assert loaded["plan"] == "Trial"
+    assert len(repair_threads) == 1
+    assert repair_threads[0] != state.owner
     assert state["profile"]["plan"] == "Trial"
+
+
+def test_slow_profile_repair_cannot_hold_first_page_open():
+    state = _ScriptThreadState()
+    profile = {"id": "user-a", "email": "a@example.com", "plan": "Starter"}
+    release = threading.Event()
+    repair_started = threading.Event()
+
+    def repair(_client, _user, row):
+        assert threading.get_ident() != state.owner
+        repair_started.set()
+        release.wait(timeout=1)
+        return {**row, "plan": "Trial"}
+
+    started = time.monotonic()
+    try:
+        loaded, status = load_profile_for_opening(
+            session_state=state,
+            user=SimpleNamespace(id="user-a"),
+            access_token_fresh=True,
+            supabase=object(),
+            read_profile=lambda _uid: SimpleNamespace(data=[profile]),
+            ensure_profile=lambda *_: None,
+            recent_profile=lambda _state, _uid: None,
+            remember_profile=lambda session_state, row: session_state.__setitem__(
+                "profile", dict(row)
+            ) or dict(row),
+            run_with_budget=lambda fn: _thread_budget(fn, timeout_seconds=0.02),
+            repair_profile=repair,
+        )
+        elapsed = time.monotonic() - started
+        assert status == "timeout"
+        assert loaded is None
+        assert repair_started.is_set()
+        assert elapsed < 0.2
+    finally:
+        release.set()
 
 
 def test_stale_token_defers_auth_recovery_to_script_thread():
