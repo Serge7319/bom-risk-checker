@@ -135,3 +135,16 @@ def test_analysis_workspace_hides_duplicate_legacy_hero_and_caps_actions():
     payment_action = RUNTIME_SOURCE[payment_start:payment_end]
     assert 'use_container_width=False' in payment_action
     assert 'use_container_width=True' not in payment_action
+\n\ndef test_bom_catalog_actions_align_to_the_left_edge_and_last_row_has_rounded_corners():
+    title_start = APPROVED_SOURCE.index('with st.container(key="approved_bom_title"):')
+    title_end = APPROVED_SOURCE.index('    if analysis_running and not results_visible:', title_start)
+    title = APPROVED_SOURCE[title_start:title_end]
+    toolbar_start = APPROVED_SOURCE.index('with st.container(key="approved_bom_toolbar"):')
+    toolbar_end = APPROVED_SOURCE.index('        needle = query.strip().casefold()', toolbar_start)
+    toolbar = APPROVED_SOURCE[toolbar_start:toolbar_end]
+
+    assert "title_col, action_col = st.columns" not in title
+    assert 'key="approved_bom_new"' in title
+    assert "clear_col, search_col, project_col, health_col, date_col = st.columns" in toolbar
+    assert "if st.button(\"Clear filters\", key=\"approved_bom_clear\")" in toolbar
+    assert ".st-key-approved_bom_catalog_table .st-key-approved_home_row_last" in APPROVED_SOURCE
