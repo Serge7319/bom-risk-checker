@@ -147,8 +147,13 @@ def test_bom_catalog_actions_align_to_the_right_edge_and_last_row_has_rounded_co
 
     assert 'key="approved_bom_new"' in title
     assert '.st-key-approved_bom_title [data-testid="stElementContainer"]:has(button){display:flex!important;justify-content:flex-end!important;width:100%!important}' in APPROVED_SOURCE
+    assert '.st-key-approved_bom_title [data-testid="stElementContainer"]:has(button) [data-testid="stButton"]{display:flex!important;justify-content:flex-end!important;width:100%!important}' in APPROVED_SOURCE
     assert "search_col, project_col, health_col, date_col, clear_col = st.columns" in toolbar
     assert toolbar.index("with clear_col:") > toolbar.index("with date_col:")
     assert "if st.button(\"Clear filters\", key=\"approved_bom_clear\")" in toolbar
     assert ".st-key-approved_bom_toolbar [data-testid=\"stColumn\"]:last-child [data-testid=\"stElementContainer\"]" in APPROVED_SOURCE
     assert ".st-key-approved_bom_catalog_table .st-key-approved_home_row_last" in APPROVED_SOURCE
+
+
+def test_home_recent_boms_heading_overrides_global_spacing():
+    assert ".cv-ap-home-recent-heading h2{margin:0 0 4px!important;padding:0!important}" in APPROVED_SOURCE
