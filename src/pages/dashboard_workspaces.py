@@ -41,11 +41,12 @@ WORKSPACE_HEADERS: Dict[str, tuple[str, str]] = {
 def render_dashboard_page_heading(
     title: str = "",
     subtitle: str = "",
-) -> None:
-    """Paint the Home title after identity is known. An empty title paints nothing."""
+) -> Any:
+    """Paint a Home heading in a clearable slot and return that slot."""
     if not str(title or "").strip():
-        return
-    st.markdown(
+        return None
+    heading = st.empty()
+    heading.markdown(
         f"""
         <div class="cv-page cv-dashboard-page">
           <header class="cv-page-header cv672-dashboard-heading">
@@ -60,6 +61,7 @@ def render_dashboard_page_heading(
         """,
         unsafe_allow_html=True,
     )
+    return heading
 
 
 def render_workspace_section_header(title: str, description: str) -> None:
