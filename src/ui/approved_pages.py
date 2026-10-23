@@ -944,9 +944,9 @@ def begin_approved_page() -> None:
         .cv-ap-home-table-head{display:grid!important;grid-template-columns:2.25fr 1.35fr .76fr .84fr 1fr 1.18fr .68fr!important;align-items:center!important;gap:16px!important;box-sizing:border-box!important;min-height:68px!important;padding:0 30px!important;background:#f7f9fc!important;border-top:1px solid #e5ebf3!important;border-bottom:1px solid #dce4ef!important}
         .cv-ap-home-table-head [role="columnheader"]{display:flex;align-items:center;min-width:0;min-height:48px;overflow:visible;color:#64748b;font-size:14px;font-weight:750;line-height:1.25;letter-spacing:.035em;text-transform:uppercase;white-space:normal;overflow-wrap:anywhere}
         .cv-ap-home-table-head [role="columnheader"]:nth-child(n+3){justify-content:center!important;text-align:center}
-        .st-key-approved_home_recent_heading{margin:0!important;padding:22px 26px 16px!important}
+        .st-key-approved_home_recent_heading{box-sizing:border-box!important;width:100%!important;min-height:0!important;margin:0!important;padding:12px 26px 12px!important}
         .st-key-approved_home_recent_heading [data-testid="stVerticalBlock"]{gap:0!important}
-        .st-key-approved_home_recent_heading [data-testid="stHorizontalBlock"]{align-items:center!important}
+        .st-key-approved_home_recent_heading [data-testid="stHorizontalBlock"]{box-sizing:border-box!important;align-items:flex-start!important;width:100%!important;margin-top:0!important;padding-top:0!important}
         .st-key-approved_home_recent_heading [data-testid="stHorizontalBlock"]>div:first-child{box-sizing:border-box!important;flex:1 1 0%!important;width:auto!important;min-width:0!important}
         .st-key-approved_home_recent_heading [data-testid="stHorizontalBlock"]>div:last-child{box-sizing:border-box!important;flex:0 0 128px!important;width:128px!important;min-width:128px!important}
         .st-key-approved_home_recent_heading [data-testid="stColumn"]:last-child [data-testid="stVerticalBlock"]{align-items:flex-end!important}
@@ -1230,15 +1230,24 @@ def begin_approved_page() -> None:
         [class*="st-key-approved_decision_cardwrap_"] [data-testid="stHorizontalBlock"]{align-items:center}
         [class*="st-key-approved_decision_queue"]{border:1px solid #e6edf5;border-radius:16px;background:#fff;padding:10px 12px 6px;margin-top:8px}
         /* Align BOM list actions to the table's right edge and round the last row. */
-        .st-key-approved_bom_catalog_table{box-sizing:border-box!important;margin:14px 0 16px!important;padding:0!important;border:1px solid #cbd8e8!important;border-radius:16px!important;background:#fff!important;box-shadow:0 3px 12px rgba(15,23,42,.045)!important}
+        .st-key-approved_bom_catalog_table{box-sizing:border-box!important;width:100%!important;max-width:none!important;margin:14px 0 16px!important;padding:0!important;overflow:hidden!important;border:1px solid #cbd8e8!important;border-radius:16px!important;background:#fff!important;box-shadow:0 3px 12px rgba(15,23,42,.045)!important}
         .st-key-approved_bom_catalog_table>[data-testid="stVerticalBlock"]{gap:0!important}
         .st-key-approved_bom_catalog_table [data-testid="stElementContainer"]{margin:0!important;padding:0!important}
         .st-key-approved_bom_catalog_table .cv-ap-home-table-head{border-top:0!important;border-radius:15px 15px 0 0!important}
-        .st-key-approved_bom_catalog_table .st-key-approved_home_row_last{box-sizing:border-box!important;border-radius:0 0 15px 15px!important;border-bottom:0!important;background:#fff!important}
-        .st-key-approved_bom_title [data-testid="stVerticalBlock"]{align-items:flex-start!important}
-        .st-key-approved_bom_title [data-testid="stElementContainer"]:has(button){display:flex!important;justify-content:flex-end!important;width:100%!important}
-        .st-key-approved_bom_title [data-testid="stElementContainer"]:has(button) [data-testid="stButton"]{display:flex!important;justify-content:flex-end!important;width:100%!important}
+        .st-key-approved_bom_catalog_table .st-key-approved_home_row_last{box-sizing:border-box!important;overflow:hidden!important;border-radius:0 0 15px 15px!important;border-bottom:0!important;background:#fff!important}
+        .st-key-approved_bom_catalog_table .st-key-approved_home_row_last [data-testid="stHorizontalBlock"]{border-radius:0 0 15px 15px!important}
+        .st-key-approved_bom_title{box-sizing:border-box!important;width:100%!important;max-width:none!important}
+        .st-key-approved_bom_title>[data-testid="stVerticalBlock"]{box-sizing:border-box!important;align-items:stretch!important;width:100%!important}
+        .st-key-approved_bom_title [data-testid="stHorizontalBlock"]{box-sizing:border-box!important;align-items:center!important;width:100%!important;max-width:none!important;flex-wrap:nowrap!important}
+        .st-key-approved_bom_title [data-testid="column"]:first-child{flex:1 1 auto!important;width:auto!important;min-width:0!important}
+        .st-key-approved_bom_title [data-testid="column"]:last-child{flex:0 0 260px!important;width:260px!important;min-width:0!important}
+        .st-key-approved_bom_title [data-testid="column"]:last-child [data-testid="stVerticalBlock"]{align-items:flex-end!important;width:100%!important}
+        .st-key-approved_bom_title [data-testid="column"]:last-child [data-testid="stElementContainer"]{display:flex!important;justify-content:flex-end!important;width:100%!important}
+        .st-key-approved_bom_title [data-testid="column"]:last-child [data-testid="stButton"]{display:flex!important;justify-content:flex-end!important;width:100%!important}
         .st-key-approved_bom_title button{white-space:nowrap!important}
+        .st-key-approved_bom_toolbar{box-sizing:border-box!important;width:100%!important;max-width:none!important}
+        .st-key-approved_bom_toolbar>[data-testid="stVerticalBlock"]{box-sizing:border-box!important;align-items:stretch!important;width:100%!important}
+        .st-key-approved_bom_toolbar [data-testid="stHorizontalBlock"]{box-sizing:border-box!important;width:100%!important;max-width:none!important}
         .st-key-approved_bom_toolbar [data-testid="stColumn"]:last-child [data-testid="stVerticalBlock"]{align-items:flex-end!important}
         .st-key-approved_bom_toolbar [data-testid="stColumn"]:last-child [data-testid="stElementContainer"]{display:flex!important;justify-content:flex-end!important;width:100%!important}
         .st-key-approved_bom_toolbar [data-testid="stColumn"]:last-child button{white-space:nowrap!important}
@@ -2695,37 +2704,41 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
             unsafe_allow_javascript=True,
         )
     with st.container(key="approved_bom_title"):
-        st.markdown(
-            f"""
-            <div class="cv-ap">
-              <h1>{_esc("Analyzing BOM" if analysis_running else ("BOM analysis results" if results_visible else "BOMs"))}</h1>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+        title_col, action_col = st.columns([1, 0.28], gap="small", vertical_alignment="center")
+        with title_col:
+            st.markdown(
+                f"""
+                <div class="cv-ap">
+                  <h1>{_esc("Analyzing BOM" if analysis_running else ("BOM analysis results" if results_visible else "BOMs"))}</h1>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
         if analysis_running:
             pass
         elif upload_mode and not results_visible:
-            if st.button(
-                "Manage saved BOMs",
-                key="approved_bom_manage",
-                type="tertiary",
-                disabled=analysis_running,
-            ):
-                st.session_state["cadivor_bom_upload_open"] = False
-                st.session_state["cadivor_manage_saved_boms"] = False
-                st.session_state.pop("cadivor_bom_pipeline_active", None)
-                st.session_state.pop("bom8_analysis_upload_file", None)
-                st.rerun()
+            with action_col:
+                if st.button(
+                    "Manage saved BOMs",
+                    key="approved_bom_manage",
+                    type="tertiary",
+                    disabled=analysis_running,
+                ):
+                    st.session_state["cadivor_bom_upload_open"] = False
+                    st.session_state["cadivor_manage_saved_boms"] = False
+                    st.session_state.pop("cadivor_bom_pipeline_active", None)
+                    st.session_state.pop("bom8_analysis_upload_file", None)
+                    st.rerun()
         else:
-            if st.button(
-                "+ New BOM analysis",
-                key="approved_bom_new",
-                type="primary",
-                disabled=analysis_running,
-            ):
-                prepare_new_approved_bom_analysis(st.session_state)
-                st.rerun()
+            with action_col:
+                if st.button(
+                    "+ New BOM analysis",
+                    key="approved_bom_new",
+                    type="primary",
+                    disabled=analysis_running,
+                ):
+                    prepare_new_approved_bom_analysis(st.session_state)
+                    st.rerun()
     if analysis_running and not results_visible:
         with st.container(key="approved_bom_upload_progress"):
             active_name = str(st.session_state.get("bom8_bom_name") or "this BOM").strip()

@@ -145,15 +145,21 @@ def test_bom_catalog_actions_align_to_the_right_edge_and_last_row_has_rounded_co
     toolbar_end = APPROVED_SOURCE.index('        needle = query.strip().casefold()', toolbar_start)
     toolbar = APPROVED_SOURCE[toolbar_start:toolbar_end]
 
+    assert 'title_col, action_col = st.columns([1, 0.28]' in title
     assert 'key="approved_bom_new"' in title
-    assert '.st-key-approved_bom_title [data-testid="stElementContainer"]:has(button){display:flex!important;justify-content:flex-end!important;width:100%!important}' in APPROVED_SOURCE
-    assert '.st-key-approved_bom_title [data-testid="stElementContainer"]:has(button) [data-testid="stButton"]{display:flex!important;justify-content:flex-end!important;width:100%!important}' in APPROVED_SOURCE
+    assert 'with action_col:' in title
+    assert '.st-key-approved_bom_title>[data-testid="stVerticalBlock"]{box-sizing:border-box!important;align-items:stretch!important;width:100%!important}' in APPROVED_SOURCE
+    assert '.st-key-approved_bom_title [data-testid="column"]:last-child [data-testid="stVerticalBlock"]{align-items:flex-end!important;width:100%!important}' in APPROVED_SOURCE
     assert "search_col, project_col, health_col, date_col, clear_col = st.columns" in toolbar
     assert toolbar.index("with clear_col:") > toolbar.index("with date_col:")
     assert "if st.button(\"Clear filters\", key=\"approved_bom_clear\")" in toolbar
+    assert '.st-key-approved_bom_toolbar [data-testid="stHorizontalBlock"]{box-sizing:border-box!important;width:100%!important;max-width:none!important}' in APPROVED_SOURCE
     assert ".st-key-approved_bom_toolbar [data-testid=\"stColumn\"]:last-child [data-testid=\"stElementContainer\"]" in APPROVED_SOURCE
-    assert ".st-key-approved_bom_catalog_table .st-key-approved_home_row_last" in APPROVED_SOURCE
+    assert "overflow:hidden!important;border:1px solid #cbd8e8!important;border-radius:16px!important" in APPROVED_SOURCE
+    assert '.st-key-approved_bom_catalog_table .st-key-approved_home_row_last [data-testid="stHorizontalBlock"]{border-radius:0 0 15px 15px!important}' in APPROVED_SOURCE
 
 
 def test_home_recent_boms_heading_overrides_global_spacing():
-    assert ".st-key-approved_home_recent_card .cv-ap-home-recent-heading h2{margin:0 0 4px!important;padding:0!important}" in APPROVED_SOURCE
+    assert ".st-key-approved_home_recent_card .cv-ap-home-recent-heading h2{margin:0 0 4px!important;padding:0!important" in APPROVED_SOURCE
+    assert ".st-key-approved_home_recent_heading{box-sizing:border-box!important;width:100%!important;min-height:0!important;margin:0!important;padding:12px 26px 12px!important}" in APPROVED_SOURCE
+    assert '.st-key-approved_home_recent_heading [data-testid="stHorizontalBlock"]{box-sizing:border-box!important;align-items:flex-start!important;width:100%!important;margin-top:0!important;padding-top:0!important}' in APPROVED_SOURCE
