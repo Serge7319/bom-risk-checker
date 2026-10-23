@@ -229,11 +229,11 @@ def inject_main_transition_css(transition_gen: int) -> None:
           box-shadow:none!important;pointer-events:auto!important;opacity:1!important;
           visibility:visible!important;z-index:2147483000!important;clip-path:inset(0)!important
         }}
-        body:has(.cv-main-transition.cv-route-loading[data-cadivor-transition-kind="navigation"][data-cadivor-transition-gen="{gen}"]):not([data-cadivor-page-body-gen="{gen}"])
+        body:has(.cv-main-transition.cv-route-loading[data-cadivor-transition-kind="navigation"][data-cadivor-transition-gen="{gen}"]):not(:has([data-cadivor-page-body-gen="{gen}"]))
           section[data-testid="stMain"] [class*="st-key-cadivor_authenticated_route_body"]{{
           pointer-events:none!important;transition:none!important
         }}
-        body:has(.cv-main-transition.cv-route-loading[data-cadivor-transition-kind="navigation"][data-cadivor-transition-gen="{gen}"]):not([data-cadivor-page-body-gen="{gen}"])
+        body:has(.cv-main-transition.cv-route-loading[data-cadivor-transition-kind="navigation"][data-cadivor-transition-gen="{gen}"]):not(:has([data-cadivor-page-body-gen="{gen}"]))
           section[data-testid="stMain"] [class*="st-key-cadivor_authenticated_route_body"]
           [data-testid="stElementContainer"]:not([data-stale="true"]){{
           visibility:hidden!important;opacity:0!important;pointer-events:none!important;
@@ -329,7 +329,7 @@ def inject_main_transition_css(transition_gen: int) -> None:
         }}
         /* Only after the destination body marker arrives may the old route
            wrappers be removed. This prevents a blank frame during reruns. */
-        body[data-cadivor-page-body-gen="{gen}"]
+        body:has([data-cadivor-page-body-gen="{gen}"])
           section[data-testid="stMain"] [data-stale="true"]:not(
             :has([data-cadivor-transition-host])
           ):not(:has([data-cadivor-topbar-flow-host])):not(
@@ -387,20 +387,20 @@ def inject_main_transition_css(transition_gen: int) -> None:
            hidden so yesterday's page cannot flash over the active cover. */
         [data-stale="true"] .cv-main-transition.cv-route-loading:not([data-cadivor-transition-gen="{gen}"]),
         [data-stale="true"][data-cadivor-main-transition="1"]:not([data-cadivor-transition-gen="{gen}"]),
-        body[data-cadivor-page-body-gen="{gen}"]
+        body:has([data-cadivor-page-body-gen="{gen}"])
           .cv-main-transition.cv-route-loading[data-cadivor-transition-gen="{gen}"] {{
           display:none!important;visibility:hidden!important;pointer-events:none!important;
           opacity:0!important;z-index:-1!important
         }}
-        body:not([data-cadivor-page-body-gen="{gen}"])
+        body:not(:has([data-cadivor-page-body-gen="{gen}"]))
           [data-cadivor-main-transition="1"][data-cadivor-transition-gen="{gen}"]:not([data-cadivor-transition-kind="navigation"]) {{
           pointer-events:auto!important
         }}
-        body[data-cadivor-page-body-gen="{gen}"]
+        body:has([data-cadivor-page-body-gen="{gen}"])
           [data-cadivor-main-transition="1"][data-cadivor-transition-gen="{gen}"],
-        body[data-cadivor-page-body-gen="{gen}"]
+        body:has([data-cadivor-page-body-gen="{gen}"])
           [data-cadivor-transition-host="cadivor-main-transition"][data-cadivor-transition-gen="{gen}"],
-        body[data-cadivor-page-body-gen="{gen}"]
+        body:has([data-cadivor-page-body-gen="{gen}"])
           div[data-testid="stElementContainer"]:has(
             [data-cadivor-main-transition="1"][data-cadivor-transition-gen="{gen}"]
           ):not(:has([data-cadivor-topbar-flow-host])):not(:has([class*="st-key-cv_foundation_"])){{
@@ -632,21 +632,18 @@ def reveal_main_transition(route: str = "") -> None:
     except (TypeError, ValueError):
         gen = 0
     try:
-        st.markdown(
+        # st.html inserts this marker directly into the application document.
+        # Keep the ready signal as a real DOM node instead of a JavaScript
+        # body mutation: the release selector can then observe it synchronously
+        # even when inline scripts are delayed or blocked by the browser.
+        # Its generation guard prevents an older route from dismissing a newer
+        # transition cover.
+        st.html(
             f'<div data-cadivor-page-body="{escaped}" '
+            f'data-cadivor-page-body-gen="{gen}" '
             f'data-cadivor-transition-gen="{gen}" aria-hidden="true" '
             'style="position:absolute;width:1px;height:1px;margin:-1px;border:0;'
-            'padding:0;overflow:hidden;clip:rect(0,0,0,0)"></div>',
-            unsafe_allow_html=True,
-        )
-        # Streamlit markdown can place custom HTML inside its own component
-        # boundary. Transition CSS lives at document scope, so also publish
-        # readiness directly on <body> instead of requiring :has() to cross
-        # that boundary. The generation guard keeps an older reveal from
-        # dismissing a newer route's loading surface.
-        st.html(
-            f'<script>document.body.setAttribute("data-cadivor-page-body-gen", "{gen}");</script>',
-            unsafe_allow_javascript=True,
+            'padding:0;overflow:hidden;clip:rect(0,0,0,0)"></div>'
         )
     except Exception:
         pass
