@@ -135,7 +135,9 @@ def test_analysis_workspace_hides_duplicate_legacy_hero_and_caps_actions():
     payment_action = RUNTIME_SOURCE[payment_start:payment_end]
     assert 'use_container_width=False' in payment_action
     assert 'use_container_width=True' not in payment_action
-\n\ndef test_bom_catalog_actions_align_to_the_left_edge_and_last_row_has_rounded_corners():
+
+
+def test_bom_catalog_actions_align_to_the_left_edge_and_last_row_has_rounded_corners():
     title_start = APPROVED_SOURCE.index('with st.container(key="approved_bom_title"):')
     title_end = APPROVED_SOURCE.index('    if analysis_running and not results_visible:', title_start)
     title = APPROVED_SOURCE[title_start:title_end]
