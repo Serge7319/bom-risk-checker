@@ -2451,7 +2451,7 @@ def render_home(
                 heading_col, view_all_col = st.columns([10, 1], vertical_alignment="center")
                 with heading_col:
                     st.markdown(
-                        "<div class='cv-ap-home-recent-heading'><h2>Recent BOMs</h2>"
+                        "<div class='cv-ap-home-recent-heading'><h2 style="margin:0!important;padding:0!important">Recent BOMs</h2>"
                         "<p>Your latest analyses and their current status.</p></div>",
                         unsafe_allow_html=True,
                     )
