@@ -1229,17 +1229,18 @@ def begin_approved_page() -> None:
         .cv-due-late{color:#be123c;font-weight:700}
         [class*="st-key-approved_decision_cardwrap_"] [data-testid="stHorizontalBlock"]{align-items:center}
         [class*="st-key-approved_decision_queue"]{border:1px solid #e6edf5;border-radius:16px;background:#fff;padding:10px 12px 6px;margin-top:8px}
-        /* BOM list frame and title/toolbar actions share the same right edge. */
+        /* Keep BOM list actions on the table's left edge and round the last row. */
         .st-key-approved_bom_catalog_table{box-sizing:border-box!important;margin:14px 0 16px!important;padding:0!important;border:1px solid #cbd8e8!important;border-radius:16px!important;background:#fff!important;box-shadow:0 3px 12px rgba(15,23,42,.045)!important}
         .st-key-approved_bom_catalog_table>[data-testid="stVerticalBlock"]{gap:0!important}
         .st-key-approved_bom_catalog_table [data-testid="stElementContainer"]{margin:0!important;padding:0!important}
         .st-key-approved_bom_catalog_table .cv-ap-home-table-head{border-top:0!important;border-radius:15px 15px 0 0!important}
-        .st-key-approved_bom_title [data-testid="stColumn"]:last-child [data-testid="stVerticalBlock"],
-        .st-key-approved_bom_toolbar [data-testid="stColumn"]:last-child [data-testid="stVerticalBlock"]{align-items:flex-end!important}
-        .st-key-approved_bom_title [data-testid="stColumn"]:last-child [data-testid="stElementContainer"],
-        .st-key-approved_bom_toolbar [data-testid="stColumn"]:last-child [data-testid="stElementContainer"]{display:flex!important;justify-content:flex-end!important;width:100%!important}
-        .st-key-approved_bom_title [data-testid="stColumn"]:last-child button{white-space:nowrap!important}
-        .st-key-approved_bom_toolbar [data-testid="stColumn"]:last-child button{white-space:nowrap!important}
+        .st-key-approved_bom_catalog_table .st-key-approved_home_row_last{box-sizing:border-box!important;border-radius:0 0 15px 15px!important;border-bottom:0!important;background:#fff!important}
+        .st-key-approved_bom_title [data-testid="stVerticalBlock"]{align-items:flex-start!important}
+        .st-key-approved_bom_title [data-testid="stElementContainer"]:has(button){display:flex!important;justify-content:flex-start!important;width:100%!important}
+        .st-key-approved_bom_title button{white-space:nowrap!important}
+        .st-key-approved_bom_toolbar [data-testid="stColumn"]:first-child [data-testid="stVerticalBlock"]{align-items:flex-start!important}
+        .st-key-approved_bom_toolbar [data-testid="stColumn"]:first-child [data-testid="stElementContainer"]{display:flex!important;justify-content:flex-start!important;width:100%!important}
+        .st-key-approved_bom_toolbar [data-testid="stColumn"]:first-child button{white-space:nowrap!important}
         .st-key-approved_bom_upload_panel{box-sizing:border-box!important;width:100%!important;max-width:none!important;margin:22px auto 0!important;padding:24px 36px 28px!important;border:1px solid #dce5f0!important;border-radius:18px!important;background:#fff!important;box-shadow:0 4px 18px rgba(15,23,42,.055)!important}
         .st-key-approved_bom_upload_panel>[data-testid="stVerticalBlock"]{gap:.85rem!important}
         .cv-bom-upload-heading{margin:0 0 1px!important;padding:0 0 15px!important;border-bottom:1px solid #e5ebf3!important}
@@ -1309,9 +1310,6 @@ def begin_approved_page() -> None:
           .st-key-approved_bom_upload_form [data-testid="stFileUploaderDropzone"]{min-height:96px!important;padding:12px 10px!important}
           .st-key-approved_bom_upload_form [data-testid="stFileUploaderDropzone"]>div{gap:10px!important}
           .st-key-approved_decision_cards>[data-testid="stHorizontalBlock"]>[data-testid="column"]{flex:1 1 100%!important;min-width:0!important}
-          .st-key-approved_bom_title [data-testid="stHorizontalBlock"]{flex-wrap:wrap!important;gap:10px!important}
-          .st-key-approved_bom_title [data-testid="stColumn"]:first-child{flex:1 1 100%!important;width:100%!important}
-          .st-key-approved_bom_title [data-testid="stColumn"]:last-child{flex:1 1 auto!important;width:auto!important}
           .st-key-approved_bom_upload_panel{padding:18px 16px 14px!important}
         }
         @media(max-width:900px){.cv-ap-kpis,.cv-ap-cards,.cv-ap-split{display:block}}
@@ -2696,40 +2694,37 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
             unsafe_allow_javascript=True,
         )
     with st.container(key="approved_bom_title"):
-        title_col, action_col = st.columns([5.2, 1.8], vertical_alignment="center")
-        with title_col:
-            st.markdown(
-                f"""
-                <div class="cv-ap">
-                  <h1>{_esc("Analyzing BOM" if analysis_running else ("BOM analysis results" if results_visible else "BOMs"))}</h1>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-        with action_col:
-            if analysis_running:
-                pass
-            elif upload_mode and not results_visible:
-                if st.button(
-                    "Manage saved BOMs",
-                    key="approved_bom_manage",
-                    type="tertiary",
-                    disabled=analysis_running,
-                ):
-                    st.session_state["cadivor_bom_upload_open"] = False
-                    st.session_state["cadivor_manage_saved_boms"] = False
-                    st.session_state.pop("cadivor_bom_pipeline_active", None)
-                    st.session_state.pop("bom8_analysis_upload_file", None)
-                    st.rerun()
-            else:
-                if st.button(
-                    "+ New BOM analysis",
-                    key="approved_bom_new",
-                    type="primary",
-                    disabled=analysis_running,
-                ):
-                    prepare_new_approved_bom_analysis(st.session_state)
-                    st.rerun()
+        st.markdown(
+            f"""
+            <div class="cv-ap">
+              <h1>{_esc("Analyzing BOM" if analysis_running else ("BOM analysis results" if results_visible else "BOMs"))}</h1>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        if analysis_running:
+            pass
+        elif upload_mode and not results_visible:
+            if st.button(
+                "Manage saved BOMs",
+                key="approved_bom_manage",
+                type="tertiary",
+                disabled=analysis_running,
+            ):
+                st.session_state["cadivor_bom_upload_open"] = False
+                st.session_state["cadivor_manage_saved_boms"] = False
+                st.session_state.pop("cadivor_bom_pipeline_active", None)
+                st.session_state.pop("bom8_analysis_upload_file", None)
+                st.rerun()
+        else:
+            if st.button(
+                "+ New BOM analysis",
+                key="approved_bom_new",
+                type="primary",
+                disabled=analysis_running,
+            ):
+                prepare_new_approved_bom_analysis(st.session_state)
+                st.rerun()
     if analysis_running and not results_visible:
         with st.container(key="approved_bom_upload_progress"):
             active_name = str(st.session_state.get("bom8_bom_name") or "this BOM").strip()
@@ -2849,10 +2844,14 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
         if st.session_state.get(project_key) not in project_options and project_key in st.session_state:
             st.session_state[project_key] = "All projects"
         with st.container(key="approved_bom_toolbar"):
-            search_col, project_col, health_col, date_col, clear_col = st.columns(
-                [1.7, 1.05, 1, 1.05, 0.85],
+            clear_col, search_col, project_col, health_col, date_col = st.columns(
+                [0.85, 1.7, 1.05, 1, 1.05],
                 vertical_alignment="bottom",
             )
+            with clear_col:
+                if st.button("Clear filters", key="approved_bom_clear"):
+                    reset_catalog_filters(st.session_state)
+                    st.rerun()
             with search_col:
                 query = st.text_input(
                     "Search",
@@ -2874,10 +2873,6 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
                     ["Last 90 days", "Last 30 days", "All time"],
                     key=f"approved_bom_dates_{filter_nonce}",
                 )
-            with clear_col:
-                if st.button("Clear filters", key="approved_bom_clear"):
-                    reset_catalog_filters(st.session_state)
-                    st.rerun()
         needle = query.strip().casefold()
         today = date.today()
         visible = []
@@ -2913,6 +2908,7 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
                     unsafe_allow_html=True,
                 )
             for index, (row, label, project_name, bom_name) in enumerate(visible[:12]):
+                row_key = "approved_home_row_last" if index == min(len(visible), 12) - 1 else f"approved_home_row_{index}"
                 kind = {"Healthy": "low", "Review": "medium", "At risk": "high"}[label]
                 analysis_id = str(row.get("id") or "")
                 high = _num(_first(row, "high_risk_count"))
@@ -2926,7 +2922,7 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
                     else "<span class='cv-home-risk-count clear'>0</span>"
                 )
                 analyzed = analyzed_label(_first(row, "created_at", "updated_at", fallback=""))
-                with st.container(key=f"approved_home_row_{index}"):
+                with st.container(key=row_key):
                     cells = st.columns(bom_widths, vertical_alignment="center")
                     cells[0].markdown(
                         f"<div class='cv-ap-home-bom'><span class='cv-ap-home-row-icon'>{lucide('file-text', 24)}</span>"
