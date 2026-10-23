@@ -2,10 +2,28 @@
 from __future__ import annotations
 
 from functools import lru_cache
+import json
 from pathlib import Path
 from typing import Any
 
 _COMPONENT_DIR = Path(__file__).resolve().parent / "components" / "browser_navigation"
+_ROUTE_STATE_IGNORED_PARAMS = frozenset({"auth", "source", "cadivor_signed_out"})
+
+
+def serialize_browser_route_state(params: Any, *, route: str = "") -> str:
+    """Serialize the non-auth URL state used to detect a missed Back/Forward rerun."""
+    values = params if isinstance(params, dict) else {}
+    cleaned = {
+        str(key): str(value).strip()
+        for key, value in values.items()
+        if str(key) not in _ROUTE_STATE_IGNORED_PARAMS
+        and value is not None
+        and str(value).strip()
+    }
+    safe_route = str(route or "").strip()
+    if safe_route:
+        cleaned["page"] = safe_route
+    return json.dumps(sorted(cleaned.items()), ensure_ascii=True, separators=(",", ":"))
 
 
 @lru_cache(maxsize=1)
