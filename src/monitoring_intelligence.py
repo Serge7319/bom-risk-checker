@@ -200,3 +200,42 @@ def build_monitoring_action_center(alert_df: pd.DataFrame, monitor_df: pd.DataFr
     return {"posture":posture,"posture_tone":tone,"summary":summary,"active_alerts":active_count,"immediate_actions":immediate,
             "lifecycle_alerts":lifecycle,"inventory_alerts":inventory,"supplier_alerts":supplier,"needs_review":needs_review,
             "monitored_components":monitored,"prioritized_alerts":prioritized,"active_queue":active,"action_records":records,"latest_components":latest}
+
+
+def monitoring_overview_alert_rows(
+    alert_rows: Any,
+    active_queue: Any,
+) -> List[Dict[str, Any]]:
+    """Adapt active action-center rows to the Alerts & Monitoring overview."""
+    source = (
+        alert_rows.to_dict("records")
+        if isinstance(alert_rows, pd.DataFrame)
+        else list(alert_rows or [])
+    )
+    active = (
+        active_queue.to_dict("records")
+        if isinstance(active_queue, pd.DataFrame)
+        else list(active_queue or [])
+    )
+    by_id = {
+        _text(row.get("id")): row
+        for row in source
+        if isinstance(row, dict) and _text(row.get("id"))
+    }
+    result: List[Dict[str, Any]] = []
+    for item in active:
+        if not isinstance(item, dict):
+            continue
+        source_row = by_id.get(_text(item.get("Alert ID")), {})
+        result.append(
+            {
+                **source_row,
+                "severity": _text(item.get("Severity"), "Unknown"),
+                "mpn": _text(item.get("Part Number"), "Unknown"),
+                "alert_type": _text(item.get("Alert Type"), "Change detected"),
+                "alert_message": _text(item.get("Change"), "Monitoring change detected"),
+                "created_at": _text(item.get("Detected At"), ""),
+                "workflow_status": _text(item.get("Status"), "Open"),
+            }
+        )
+    return result

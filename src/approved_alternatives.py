@@ -117,13 +117,34 @@ def project_decision_context_key(project_name: Any, analysis_id: Any = "") -> st
 
 def _same_project(record: dict[str, Any], *, project_name: str, analysis_id: str) -> bool:
     record_analysis = str(record.get("analysis_id") or "").strip()
-    if analysis_id and record_analysis == analysis_id:
+    record_context = str(record.get("context_key") or "").strip()
+    if analysis_id and (
+        record_analysis == analysis_id or record_context == analysis_id
+    ):
+        record_project = " ".join(
+            str(record.get("project_name") or "").strip().casefold().split()
+        )
+        expected_project = " ".join(project_name.strip().casefold().split())
+        if expected_project and record_project and record_project != expected_project:
+            return False
         return True
     if project_name:
-        return " ".join(str(record.get("project_name") or "").strip().casefold().split()) == " ".join(project_name.strip().casefold().split())
+        normalized_project = " ".join(project_name.strip().casefold().split())
+        if " ".join(str(record.get("project_name") or "").strip().casefold().split()) != normalized_project:
+            return False
+        expected_project_context = project_decision_context_key(
+            project_name,
+            analysis_id,
+        )
+        if record_context == expected_project_context:
+            return True
+        # Accept older project-only approvals that predate context_key. A
+        # decision attached to another analysis in the same project is still
+        # BOM-specific and must not leak into this alert packet.
+        return not record_context and not record_analysis
     if analysis_id:
         return False
-    return str(record.get("context_key") or "") == "standalone"
+    return record_context == "standalone"
 
 
 def approved_records_for_part(

@@ -2805,31 +2805,16 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
                             st.markdown(
                                 """
                                 <div class="cadivor-bom-upload-waiting" role="status" aria-live="polite">
-                                  <span class="cadivor-bom-upload-spinner" aria-hidden="true"></span>
                                   <span>Select a CSV or Excel file above. Cadivor is waiting for the complete upload; Analyze BOM activates when the file is ready.</span>
                                 </div>
                                 <style>
-                                @keyframes cadivor-bom-upload-spin { to { transform: rotate(360deg); } }
                                 .cadivor-bom-upload-waiting {
                                   display: flex;
                                   align-items: center;
-                                  gap: .45rem;
                                   min-height: 1.2rem;
                                   color: #5b6777;
                                   font-size: .82rem;
                                   line-height: 1.3;
-                                }
-                                .cadivor-bom-upload-spinner {
-                                  width: .75rem;
-                                  height: .75rem;
-                                  flex: 0 0 .75rem;
-                                  border: 2px solid #d6e1f0;
-                                  border-top-color: #2563eb;
-                                  border-radius: 50%;
-                                  animation: cadivor-bom-upload-spin .8s linear infinite;
-                                }
-                                @media (prefers-reduced-motion: reduce) {
-                                  .cadivor-bom-upload-spinner { animation: none; }
                                 }
                                 </style>
                                 """,
@@ -3425,18 +3410,24 @@ def _alert_detected_labels(row: dict[str, Any], now: datetime | None = None) -> 
     return relative, exact
 
 
-def render_monitoring(alerts: list[dict[str, Any]] | None) -> None:
+def render_monitoring(
+    alerts: list[dict[str, Any]] | None,
+    *,
+    include_header: bool = True,
+    finish_page: bool = True,
+) -> None:
     begin_approved_page()
     source = _records(alerts)
-    st.markdown(
-        """
-        <div class="cv-ap cv-ap-monitoring-page-header">
-          <h1>Alerts & monitoring</h1>
-          <p class="cv-ap-sub">Stay ahead of changes in component availability, lifecycle status, pricing and supplier activity.</p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    if include_header:
+        st.markdown(
+            """
+            <div class="cv-ap cv-ap-monitoring-page-header">
+              <h1>Alerts & monitoring</h1>
+              <p class="cv-ap-sub">Stay ahead of changes in component availability, lifecycle status, pricing and supplier activity.</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
     categories = ["All alerts", "Stock & supply", "Lifecycle", "Price movement", "Supplier", "Quality", "Regulatory"]
     period_options = ["Last 30 days", "Last 7 days", "Last 90 days", "All recorded"]
@@ -3685,7 +3676,8 @@ def render_monitoring(alerts: list[dict[str, Any]] | None) -> None:
                                 f"<small>{_esc(manufacturer or 'Manufacturer not recorded')} · {_esc(severity)}</small></div>",
                                 unsafe_allow_html=True,
                             )
-    end_approved_page()
+    if finish_page:
+        end_approved_page()
 
 
 def render_reports_list(records: list[dict[str, Any]] | None) -> None:
@@ -6597,10 +6589,14 @@ def render_replacement_search() -> None:
         return
     from src.part_images import part_image_markup
 
+    st.markdown(
+        "<p class='cv-ap-sub'>Candidate lifecycle is the status recorded in the supplier result. Fit verification is a separate technical check; open a candidate to review the source of each recorded attribute.</p>",
+        unsafe_allow_html=True,
+    )
     header = st.columns([2.4, 1.3, 1.8, 0.9, 0.8, 0.9, 0.7])
     for column, label in zip(
         header,
-        ("Candidate MPN", "Manufacturer", "Supplier relationship", "Lifecycle", "Stock", "Suppliers", "Risk"),
+        ("Candidate MPN", "Manufacturer", "Supplier relationship", "Candidate lifecycle", "Stock", "Suppliers", "Risk"),
     ):
         column.markdown(f"<div class='cv-ap-meta'>{label}</div>", unsafe_allow_html=True)
     selected = str(st.session_state.get("cadivor_replacement_open_mpn") or "")

@@ -4639,12 +4639,10 @@ def run_authenticated_app() -> None:
                 )
             navigate_to("Analysis Details", **return_params)
 
-        # Keep Monitoring in this route renderer. The legacy approved-page
-        # renderer calls stop_authenticated_page() when it finishes, which
-        # prevents the actionable monitoring workspace below from rendering.
-        # Paint and reveal the destination before touching Supabase. The route
-        # cover must never wait on monitoring data: these reads are optional
-        # dashboard data and use a bounded background worker below.
+        # Keep Monitoring data loading and part-specific actions in this route
+        # renderer. The alert-overview subview uses the approved visual renderer
+        # after this shared data is ready. Reveal the destination before reading
+        # optional dashboard data so the route cover never waits on Supabase.
         cadivor_section_header(
             "Alerts & Monitoring",
             eyebrow="Alerts",
@@ -5527,28 +5525,67 @@ def run_authenticated_app() -> None:
 
             def _render_monitoring_baseline_empty_state():
                 if focused_monitor_part:
-                    st.markdown("#### Monitoring baseline not found")
-                    st.info(
-                        f"**{focused_monitor_part}** is not being monitored yet."
-                    )
-                    st.caption(
-                        "Start monitoring to save an exact-MPN supplier baseline linked to this saved BOM. Cadivor compares later supplier snapshots and raises alerts when tracked values change."
-                    )
-                    if return_analysis_id:
-                        safe_part_key = re.sub(r"[^a-zA-Z0-9_-]", "_", focused_monitor_part)[:48]
-                        if st.button(
-                            "Start monitoring this part",
+                    safe_part_key = re.sub(
+                        r"[^a-zA-Z0-9_-]", "_", focused_monitor_part
+                    )[:48]
+                    part_label = html.escape(focused_monitor_part)
+                    with st.container(key="monitoring_part_baseline_empty"):
+                        st.markdown(
+                            """
+                            <style data-cadivor-layout-style="true">
+                              .st-key-monitoring_part_baseline_empty{
+                                box-sizing:border-box!important;margin:18px 0 0!important;
+                                padding:22px 24px!important;border:1px solid #dbe5f1!important;
+                                border-radius:14px!important;background:#fff!important;
+                                box-shadow:0 3px 12px rgba(15,23,42,.035)!important
+                              }
+                              .st-key-monitoring_part_baseline_empty>[data-testid="stVerticalBlock"]{gap:.65rem!important}
+                              .cv-monitoring-part-baseline-kicker{
+                                margin:0 0 5px;color:#2865ed;font-size:10px;font-weight:800;
+                                letter-spacing:.09em;text-transform:uppercase
+                              }
+                              .cv-monitoring-part-baseline-title{
+                                margin:0;color:#172942;font-size:20px;font-weight:760;
+                                line-height:1.25;letter-spacing:-.02em
+                              }
+                              .cv-monitoring-part-baseline-copy{
+                                margin:7px 0 0;color:#64748b;font-size:13px;line-height:1.55
+                              }
+                              .st-key-monitoring_part_baseline_empty .stButton button{
+                                min-height:44px!important;border-radius:9px!important;
+                                font-weight:700!important
+                              }
+                            </style>
+                            """,
+                            unsafe_allow_html=True,
+                        )
+                        st.markdown(
+                            f"<div class='cv-monitoring-part-baseline'>"
+                            f"<div class='cv-monitoring-part-baseline-kicker'>Part monitoring</div>"
+                            f"<h2 class='cv-monitoring-part-baseline-title'>{part_label}</h2>"
+                            "<p class='cv-monitoring-part-baseline-copy'>"
+                            "This part is not being monitored yet. No baseline has been saved. "
+                            "Starting monitoring records an exact-MPN supplier snapshot "
+                            "linked to this saved BOM, then compares later snapshots for changes."
+                            "</p></div>",
+                            unsafe_allow_html=True,
+                        )
+                        if return_analysis_id:
+                            if st.button(
+                                "Start monitoring this part",
+                                type="primary",
+                                key=f"m32_monitor_start_{safe_part_key}",
+                            ):
+                                _start_monitoring_baseline()
+                        elif st.button(
+                            "Open saved BOMs",
                             type="primary",
-                            key=f"m32_monitor_start_{safe_part_key}",
+                            key="m32_monitor_open_saved_boms",
                         ):
-                            _start_monitoring_baseline()
-                    elif st.button(
-                        "Open saved BOMs",
-                        type="primary",
-                        key="m32_monitor_open_saved_boms",
-                    ):
-                        navigate_to("BOM Analyzer", show_saved_analyses=1)
-                        st.caption("Open the saved BOM, then use Monitor this part on the component row.")
+                            navigate_to("BOM Analyzer", show_saved_analyses=1)
+                            st.caption(
+                                "Open the saved BOM, then use Monitor this part on the component row."
+                            )
                 else:
                     st.info("No monitored component snapshots are available yet.")
                     st.caption(
@@ -6796,17 +6833,32 @@ def run_authenticated_app() -> None:
                     )
 
         monitor_view_labels = {
+            "overview": "Alert Overview",
             "queue": "Action Queue",
             "components": "Monitored Components",
             "timeline": "Timeline",
             "export": "Export",
         }
+        default_monitor_view = "components" if focused_monitor_part else "overview"
         monitor_view = _safe_text(
-            _resolved_qp_value("monitor_view", "queue"),
-            "queue",
+            _resolved_qp_value("monitor_view", default_monitor_view),
+            default_monitor_view,
         ).strip().lower()
         if monitor_view not in monitor_view_labels:
-            monitor_view = "queue"
+            monitor_view = default_monitor_view
+
+        if monitor_view == "overview":
+            from src.monitoring_intelligence import monitoring_overview_alert_rows
+            from src.ui.approved_pages import render_monitoring
+
+            render_monitoring(
+                monitoring_overview_alert_rows(
+                    alert_rows,
+                    monitoring_center.get("active_queue"),
+                ),
+                include_header=False,
+            )
+            stop_authenticated_page()
 
         monitoring_workspace_col, monitoring_snapshot_col = st.columns(
             [0.66, 0.34],
@@ -6829,31 +6881,32 @@ def run_authenticated_app() -> None:
                 """,
                 unsafe_allow_html=True,
             )
-            with st.container(key="monitoring_view_navigation"):
-                navigation_columns = st.columns(
-                    [0.9, 1.3, 0.65, 0.6, 3.2],
-                    gap="small",
-                )[:4]
-                for navigation_column, (view_token, view_label) in zip(
-                    navigation_columns,
-                    monitor_view_labels.items(),
-                ):
-                    if navigation_column.button(
-                        view_label,
-                        key=f"monitoring_view_{view_token}",
-                        type="primary" if monitor_view == view_token else "secondary",
-                        use_container_width=True,
+            if not focused_monitor_part:
+                with st.container(key="monitoring_view_navigation"):
+                    navigation_columns = st.columns(
+                        [0.9, 1.3, 1.6, 0.8, 0.7],
+                        gap="small",
+                    )
+                    for navigation_column, (view_token, view_label) in zip(
+                        navigation_columns,
+                        monitor_view_labels.items(),
                     ):
-                        navigation_params = {"monitor_view": view_token}
-                        if return_analysis_id:
-                            navigation_params["return_analysis_id"] = return_analysis_id
-                        if focused_monitor_part:
-                            navigation_params["mpn"] = focused_monitor_part
-                        navigate_to(
-                            "Monitoring",
-                            arm_opening=False,
-                            **navigation_params,
-                        )
+                        if navigation_column.button(
+                            view_label,
+                            key=f"monitoring_view_{view_token}",
+                            type="primary" if monitor_view == view_token else "secondary",
+                            use_container_width=True,
+                        ):
+                            navigation_params = {"monitor_view": view_token}
+                            if return_analysis_id:
+                                navigation_params["return_analysis_id"] = return_analysis_id
+                            if focused_monitor_part:
+                                navigation_params["mpn"] = focused_monitor_part
+                            navigate_to(
+                                "Monitoring",
+                                arm_opening=False,
+                                **navigation_params,
+                            )
 
             if monitor_view == "components":
                 _render_monitored_components()
@@ -8628,6 +8681,7 @@ def run_authenticated_app() -> None:
 
             selected_decision_context_id = ""
             decision_bom_options = {}
+            decision_project_name = ""
             approved_alternative_records = []
             approved_alternative_load_error = False
             monitoring_component_decision = bool(
@@ -8640,7 +8694,7 @@ def run_authenticated_app() -> None:
                     selected_decision.get("analysis_id")
                     or selected_decision.get("context_analysis_id")
                     or ""
-                )
+                ).strip()
                 related_boms = selected_decision.get("related_boms") or []
                 if not selected_decision_context_id and len(related_boms) == 1:
                     selected_decision_context_id = str(related_boms[0].get("id") or "")
@@ -8655,32 +8709,67 @@ def run_authenticated_app() -> None:
                         context_widget_key = (
                             f"decision_bom_context_{selected_decision['decision_id']}"
                         )
-                        if monitoring_component_decision:
-                            selected_decision_context_id = str(
-                                st.session_state.get(context_widget_key)
-                                or next(iter(bom_by_id), "")
-                            )
-                            if selected_decision_context_id not in bom_by_id:
-                                selected_decision_context_id = next(
-                                    iter(bom_by_id), ""
-                                )
-                        else:
-                            selected_decision_context_id = st.selectbox(
+                        selected_decision_context_id = str(
+                            st.selectbox(
                                 "Saved BOM context for this monitoring alert",
-                                options=list(bom_by_id),
-                                format_func=lambda analysis_key: bom_by_id[analysis_key],
+                                options=["", *bom_by_id],
+                                format_func=lambda analysis_key: (
+                                    "Select a saved BOM"
+                                    if not analysis_key
+                                    else bom_by_id[analysis_key]
+                                ),
                                 key=context_widget_key,
                             )
+                            or ""
+                        ).strip()
+
+                matching_analysis = next(
+                    (
+                        analysis for analysis in decision_analyses
+                        if selected_decision_context_id
+                        and str(analysis.get("id") or "")
+                        == selected_decision_context_id
+                    ),
+                    {},
+                )
+                selected_related_bom = next(
+                    (
+                        bom for bom in related_boms
+                        if selected_decision_context_id
+                        and str(bom.get("id") or "")
+                        == selected_decision_context_id
+                    ),
+                    {},
+                )
+                decision_project_name = str(
+                    selected_decision.get("project_name")
+                    or matching_analysis.get("project_name")
+                    or selected_related_bom.get("project_name")
+                    or selected_related_bom.get("project")
+                    or ""
+                ).strip()
+
+                from src.normalizer import normalize_part_number as _normalize_decision_mpn
 
                 if selected_decision_context_id:
+                    from src.approved_alternatives import (
+                        approved_records_for_part,
+                        project_decision_context_key,
+                    )
+
                     decision_mpn = str(
                         selected_decision.get("mpn")
                         or selected_decision.get("part_number")
                         or ""
                     ).strip()
+                    decision_mpn_key = _normalize_decision_mpn(decision_mpn)
+                    project_context_key = project_decision_context_key(
+                        decision_project_name,
+                        selected_decision_context_id,
+                    )
                     alt_cache_key = (
-                        f"_ed_approved_alts_{selected_decision_context_id}_"
-                        f"{decision_mpn.casefold()}"
+                        f"_ed_scoped_approved_alts_v2_{project_context_key}_"
+                        f"{selected_decision_context_id}_{decision_mpn_key}"
                     )
                     cached_alternatives = st.session_state.get(alt_cache_key)
                     if (
@@ -8691,20 +8780,37 @@ def run_authenticated_app() -> None:
                         approved_alternative_records = cached_alternatives[1]
                     else:
                         try:
-                            candidate_records = load_analysis_decisions(
-                                current_user["id"],
-                                original_part=decision_mpn,
-                                analysis_id=selected_decision_context_id,
-                                limit=100,
+                            candidate_records = []
+                            decision_contexts = dict.fromkeys(
+                                (
+                                    project_context_key,
+                                    selected_decision_context_id,
+                                )
                             )
-                            approved_alternative_records = [
-                                record
-                                for record in candidate_records
-                                if str(record.get("decision") or "").casefold() == "approved"
-                                and str(record.get("original_part") or "").casefold()
-                                == decision_mpn.casefold()
-                                and str(record.get("alternative_part") or "").strip()
-                            ]
+                            for decision_context in decision_contexts:
+                                candidate_records.extend(
+                                    load_analysis_decisions(
+                                        current_user["id"],
+                                        analysis_id=decision_context,
+                                        limit=500,
+                                    )
+                                    or []
+                                )
+                            if decision_project_name:
+                                candidate_records.extend(
+                                    load_analysis_decisions(
+                                        current_user["id"],
+                                        project_name=decision_project_name,
+                                        limit=500,
+                                    )
+                                    or []
+                                )
+                            approved_alternative_records = approved_records_for_part(
+                                candidate_records,
+                                decision_mpn,
+                                project_name=decision_project_name,
+                                analysis_id=selected_decision_context_id,
+                            )
                             st.session_state[alt_cache_key] = (
                                 time.monotonic(),
                                 approved_alternative_records,
@@ -8811,8 +8917,6 @@ def run_authenticated_app() -> None:
                         if text.casefold() in {"", "nan", "none", "<na>"}
                         else text
                     )
-
-                from src.normalizer import normalize_part_number as _normalize_decision_mpn
 
                 matching_part_rows = [
                     row for row in decision_part_links
@@ -9318,6 +9422,17 @@ def run_authenticated_app() -> None:
                                             cadivor_engineering_dataframe(
                                                 pd.DataFrame(comparison_rows)
                                             )
+                            elif (
+                                len(related_boms) > 1
+                                and not selected_decision_context_id
+                            ):
+                                st.markdown(
+                                    '<div class="cv-dp-mitigation-empty">'
+                                    '<strong>Select a saved BOM context to review its approved alternatives.</strong>'
+                                    '<p>Cadivor keeps approvals linked to the BOM and project where they were recorded.</p>'
+                                    "</div>",
+                                    unsafe_allow_html=True,
+                                )
                             elif approved_alternative_load_error:
                                 st.warning(
                                     "Cadivor could not load approved alternatives for this BOM. "

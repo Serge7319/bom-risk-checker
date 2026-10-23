@@ -2964,7 +2964,7 @@ def render_analysis_detail(
                         if route == "alternative" and part_number:
                             internal_nav_button("Find alternatives", ALTERNATIVE_FINDER_PAGE, key=f"cv26_action_alt_{analysis_id}_{index}", use_container_width=True, original_part=part_number, analysis_id=analysis_id, return_analysis_id=analysis_id, source_page="risk_analytics")
                         elif route == "monitor" and part_number:
-                            internal_nav_button("Open monitoring", "Monitoring", key=f"cv26_action_monitor_{analysis_id}_{index}", use_container_width=True, mpn=part_number, analysis_id=analysis_id, return_analysis_id=analysis_id)
+                            internal_nav_button("Open monitoring", "Monitoring", key=f"cv26_action_monitor_{analysis_id}_{index}", use_container_width=True, mpn=part_number, analysis_id=analysis_id, return_analysis_id=analysis_id, monitor_view="components")
                         else:
                             internal_nav_button("Review component", "Analysis Details", key=f"cv26_action_component_{analysis_id}_{index}", use_container_width=True, analysis_id=analysis_id, analysis_tab="Components", component=part_number, focus="component-risk")
     render_overview = active_tab == "Overview" or stack_brief
@@ -3121,7 +3121,13 @@ def render_analysis_detail(
                             key=f"analysis_alert_monitor_{alert_index}",
                             use_container_width=True,
                         ):
-                            navigate_to("Monitoring", analysis_id=analysis_id, mpn=raw_part)
+                            navigate_to(
+                                "Monitoring",
+                                analysis_id=analysis_id,
+                                return_analysis_id=analysis_id,
+                                mpn=raw_part,
+                                monitor_view="components",
+                            )
                     with alert_actions[1]:
                         internal_nav_button(
                             "Find Replacement",

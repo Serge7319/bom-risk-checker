@@ -69,6 +69,25 @@ class DecisionPacketHeaderTests(unittest.TestCase):
 
 
 class DecisionPacketWorkflowTests(unittest.TestCase):
+    def test_monitoring_approvals_use_project_and_exact_bom_contexts(self):
+        lookup = RUNTIME.split(
+            'selected_decision_context_id = ""', 1
+        )[1].split("decision_load_error =", 1)[0]
+
+        self.assertIn("project_decision_context_key", lookup)
+        self.assertIn("approved_records_for_part", lookup)
+        self.assertIn("project_name=decision_project_name", lookup)
+        self.assertIn("decision_mpn_key = _normalize_decision_mpn(decision_mpn)", lookup)
+        self.assertIn('options=["", *bom_by_id]', lookup)
+        self.assertIn("_ed_scoped_approved_alts_v2_", lookup)
+        self.assertNotIn("next(iter(bom_by_id)", lookup)
+        self.assertLess(
+            RUNTIME.index(
+                "from src.normalizer import normalize_part_number as _normalize_decision_mpn"
+            ),
+            RUNTIME.index("decision_mpn_key = _normalize_decision_mpn(decision_mpn)"),
+        )
+
     def test_decision_packet_styles_are_loaded_before_route_body_paints(self):
         css_loader = CORE_PREMIUM.split("def inject_core_premium_ui()", 1)[1].split(
             "def inject_core_premium_ui_auth", 1

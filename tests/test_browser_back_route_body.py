@@ -700,6 +700,10 @@ def test_repeated_route_ownership_does_not_stack_back_controls():
     assert "st-key-cadivor_browser_navigation_bridge" in auth_gate
     assert "left:-10000px!important" in auth_gate
     assert "Keep the Back/Forward bridge mounted" in auth_gate
+    assert "display:block!important" in auth_gate.split(
+        "Keep the Back/Forward bridge mounted", 1
+    )[1].split("</style>", 1)[0]
+    assert 'post("streamlit:setFrameHeight", {height: 1})' in bridge
     assert "display:none can" in auth_gate
 
 

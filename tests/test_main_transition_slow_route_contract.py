@@ -99,7 +99,7 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
             SOURCE,
         )
         self.assertIn(
-            'body:has([data-cadivor-page-body][data-cadivor-transition-gen="{gen}"])\n'
+            'body:has([data-cadivor-page-body-gen="{gen}"])\n'
             '          .cv-main-transition.cv-route-loading[data-cadivor-transition-gen="{gen}"]',
             SOURCE,
         )
@@ -126,13 +126,13 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
             SOURCE,
         )
 
-    def test_transition_injection_disables_retired_styles_without_removing_streamlit_hosts(self):
+    def test_transition_injection_uses_scoped_css_without_mutating_streamlit_hosts(self):
         inject = SOURCE.split("def inject_main_transition_css", 1)[1].split(
             "def route_loading_markup", 1
         )[0]
-        self.assertIn("style.disabled = true", inject)
-        self.assertIn("style[id^=\"cadivor-main-transition-css-\"]", inject)
-        self.assertIn("unsafe_allow_javascript=True", inject)
+        self.assertIn('id="cadivor-main-transition-css-{gen}"', inject)
+        self.assertNotIn("style.disabled = true", inject)
+        self.assertNotIn("unsafe_allow_javascript=True", inject)
         self.assertNotIn("host.remove()", inject)
         self.assertNotIn("style.remove()", inject)
 
