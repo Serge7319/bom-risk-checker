@@ -156,4 +156,4 @@ def test_bom_catalog_actions_align_to_the_right_edge_and_last_row_has_rounded_co
 
 
 def test_home_recent_boms_heading_overrides_global_spacing():
-    assert ".cv-ap-home-recent-heading h2{margin:0 0 4px!important;padding:0!important}" in APPROVED_SOURCE
+    assert ".st-key-approved_home_recent_card .cv-ap-home-recent-heading h2{margin:0 0 4px!important;padding:0!important}" in APPROVED_SOURCE
