@@ -485,11 +485,22 @@ def retire_auth_gate_overlays() -> None:
 
 def mark_page_content_ready(page: str = "") -> None:
     """Emit the page-content / route-root marker that allows auth-gate retirement."""
-    safe_page = html_lib.escape(str(page or "").strip() or "workspace")
+    raw_page = str(page or "").strip() or "workspace"
+    safe_page = html_lib.escape(raw_page)
     try:
+        from src.browser_navigation import serialize_browser_route_state
+
+        navigation_params = st.session_state.get("cadivor_nav_params")
+        if not isinstance(navigation_params, dict):
+            navigation_params = {"page": safe_page}
+        route_state = html_lib.escape(
+            serialize_browser_route_state(navigation_params, route=raw_page),
+            quote=True,
+        )
         st.markdown(
             f'<div data-cadivor-page-content="1" data-cadivor-route-root="1" '
-            f'data-cadivor-page="{safe_page}" data-testid="cadivor-route-root" '
+            f'data-cadivor-page="{safe_page}" data-cadivor-route-state="{route_state}" '
+            f'data-testid="cadivor-route-root" '
             f'aria-hidden="true" style="position:absolute;width:1px;height:1px;margin:-1px;'
             f'border:0;padding:0;overflow:hidden;clip:rect(0,0,0,0)"></div>',
             unsafe_allow_html=True,
