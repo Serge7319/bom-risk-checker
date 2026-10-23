@@ -104,6 +104,29 @@ def resolve_monitoring_workspace_id(source_part, saved_analysis, active_workspac
                 return value
     return str(active_workspace_id or "").strip() or None
 
+
+def scope_monitoring_query(query, *, user_id, workspace_id=None, analysis_id=None):
+    """Scope monitoring reads to a user, workspace, and optional saved BOM.
+
+    Part-focused links pass an analysis ID so historical alerts from another
+    BOM cannot appear in the selected BOM's review. The main Monitoring page
+    omits that ID and keeps its intentional workspace-wide view.
+    """
+    scoped = query.eq("user_id", str(user_id or ""))
+    if workspace_id:
+        scoped = scoped.eq("workspace_id", str(workspace_id))
+    if analysis_id:
+        scoped = scoped.eq("analysis_id", str(analysis_id))
+    return scoped
+
+
+def monitoring_route_cache_key(*, user_id, workspace_id=None, analysis_id=None):
+    """Keep workspace-wide and saved-BOM monitoring snapshots in separate caches."""
+    scope = f"{str(user_id or '')}:{str(workspace_id or 'personal')}"
+    target = f"analysis:{str(analysis_id)}" if analysis_id else "workspace"
+    return f"monitoring_route_data_{scope}:{target}"
+
+
 def build_alert_record(
     user_id,
     analysis_id,

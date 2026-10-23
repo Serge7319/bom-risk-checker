@@ -11,6 +11,8 @@ from src.monitoring_engine import (
     save_monitor_alerts,
     save_monitor_history,
     save_monitor_history_with_diagnostic,
+    monitoring_route_cache_key,
+    scope_monitoring_query,
 )
 
 
@@ -65,6 +67,15 @@ class _OptionalColumnSupabase:
 
     def execute(self):
         return None
+
+
+class _QueryScope:
+    def __init__(self):
+        self.filters = []
+
+    def eq(self, column, value):
+        self.filters.append((column, value))
+        return self
 
 
 class MonitoringHistoryPersistenceTests(unittest.TestCase):
@@ -170,6 +181,62 @@ class MonitoringHistoryPersistenceTests(unittest.TestCase):
             resolve_monitoring_workspace_id({}, {}, "active-workspace"),
             "active-workspace",
         )
+
+    def test_part_focused_monitoring_query_is_scoped_to_the_saved_bom(self):
+        query = _QueryScope()
+        scoped = scope_monitoring_query(
+            query,
+            user_id="user-1",
+            workspace_id="workspace-1",
+            analysis_id="synthetic-analysis-1",
+        )
+        self.assertIs(scoped, query)
+        self.assertEqual(
+            query.filters,
+            [
+                ("user_id", "user-1"),
+                ("workspace_id", "workspace-1"),
+                ("analysis_id", "synthetic-analysis-1"),
+            ],
+        )
+
+    def test_workspace_monitoring_query_stays_workspace_wide_without_analysis_id(self):
+        query = _QueryScope()
+        scope_monitoring_query(
+            query,
+            user_id="user-1",
+            workspace_id="workspace-1",
+        )
+        self.assertEqual(
+            query.filters,
+            [("user_id", "user-1"), ("workspace_id", "workspace-1")],
+        )
+
+    def test_workspace_and_saved_bom_monitoring_caches_are_isolated(self):
+        workspace_key = monitoring_route_cache_key(
+            user_id="user-1",
+            workspace_id="workspace-1",
+        )
+        bom_key = monitoring_route_cache_key(
+            user_id="user-1",
+            workspace_id="workspace-1",
+            analysis_id="synthetic-analysis-1",
+        )
+        other_bom_key = monitoring_route_cache_key(
+            user_id="user-1",
+            workspace_id="workspace-1",
+            analysis_id="synthetic-analysis-2",
+        )
+        self.assertNotEqual(workspace_key, bom_key)
+        self.assertNotEqual(bom_key, other_bom_key)
+
+    def test_monitoring_route_supplies_part_handoff_analysis_id_to_query_scope(self):
+        runtime = (Path(__file__).resolve().parents[1] / "src" / "authenticated_runtime.py").read_text()
+        route = runtime.split('if app_mode == "Monitoring":', 1)[1].split(
+            'if app_mode == "Supply Risk Scenario":', 1
+        )[0]
+        self.assertIn("analysis_id=monitoring_analysis_id", route)
+        self.assertIn('monitoring_analysis_id = str(return_analysis_id or "").strip()', route)
 
     def test_monitoring_baseline_write_returns_safe_database_diagnostic(self):
         client = _Supabase(

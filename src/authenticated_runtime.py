@@ -4651,26 +4651,31 @@ def run_authenticated_app() -> None:
         )
         reveal_authenticated_page_body("Monitoring")
 
-        monitoring_scope = (
-            f"{str(current_user.get('id') or '')}:"
-            f"{str(active_workspace_id or 'personal')}"
-        )
         monitoring_user_id = str(current_user.get("id") or "")
         monitoring_workspace_id = str(active_workspace_id or "")
+        monitoring_analysis_id = str(return_analysis_id or "").strip()
 
         def _monitor_query(table_name, columns="*"):
             # Capture auth/workspace scope before entering the detached read
             # worker; Streamlit session state is unavailable inside that thread.
-            query = (
-                supabase.table(table_name)
-                .select(columns)
-                .eq("user_id", monitoring_user_id)
-            )
-            if monitoring_workspace_id:
-                query = query.eq("workspace_id", monitoring_workspace_id)
-            return query
+            # A part-level handoff from a saved BOM must also stay within that
+            # BOM. The workspace-wide route intentionally omits this filter.
+            from src.monitoring_engine import scope_monitoring_query
 
-        monitoring_cache_key = f"monitoring_route_data_{monitoring_scope}"
+            return scope_monitoring_query(
+                supabase.table(table_name).select(columns),
+                user_id=monitoring_user_id,
+                workspace_id=monitoring_workspace_id,
+                analysis_id=monitoring_analysis_id,
+            )
+
+        from src.monitoring_engine import monitoring_route_cache_key
+
+        monitoring_cache_key = monitoring_route_cache_key(
+            user_id=monitoring_user_id,
+            workspace_id=monitoring_workspace_id,
+            analysis_id=monitoring_analysis_id,
+        )
         monitoring_loaded_at_key = f"{monitoring_cache_key}_loaded_at"
         monitoring_load_status_key = f"{monitoring_cache_key}_load_status"
         monitoring_cache = st.session_state.get(monitoring_cache_key)
@@ -24433,11 +24438,16 @@ def run_authenticated_app() -> None:
                         arm_opening=False,
                     )
                 else:
-                    # A new upload opens its result directly. Saved-BOM reruns
-                    # return to their editor and leave report navigation explicit.
+                    # Take a new analysis straight into its saved engineering
+                    # review. A saved-BOM rerun returns to its editor instead.
                     st.toast("Analysis complete. Opening your BOM analysis…", icon="✅")
-                if _one_time_blocked_plan and not saved_bom_rerun_completed:
-                    navigate_to("Analysis Details", analysis_id=str(analysis_id))
+                    navigate_to(
+                        "Analysis Details",
+                        analysis_id=str(analysis_id),
+                        analysis_tab="Engineering Intelligence",
+                        _rerun=False,
+                        arm_opening=False,
+                    )
                 # The Saved BOM Manager was rendered earlier in this script run
                 # from pre-save history. Rebuild once after persistence so the
                 # new analysis appears immediately. analysis_saved prevents a
