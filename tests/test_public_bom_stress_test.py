@@ -86,6 +86,57 @@ class PublicBomStressTest(unittest.TestCase):
         self.assertTrue(any("rolling 24-hour window" in caption for caption in captions))
         self.assertNotIn("Retry audit", buttons)
 
+    def test_unverified_public_preview_is_static_and_does_not_expose_download_toolbar(self):
+        tables, dataframes = [], []
+        fake_st = types.ModuleType("streamlit")
+        fake_st.query_params = {"embed": "true"}
+        fake_st.session_state = {
+            "cv_stress_report": {
+                "id": "synthetic-report",
+                "row_count": 1,
+                "preview": [{
+                    "mpn": "TPS5430DDAR",
+                    "manufacturer": "Texas Instruments",
+                    "lifecycle": "Unknown",
+                    "stock": None,
+                    "stock_evidence": "Not reported",
+                    "lead_time_weeks": None,
+                    "lead_time_source": "Not reported",
+                    "supplier_count": 0,
+                    "sources": "Not reported",
+                    "supplier_coverage": "Unknown",
+                    "risk": "Needs verification",
+                }],
+                "remaining_count": 0,
+                "remaining_high_risk": 0,
+                "remaining_unverified": 0,
+            }
+        }
+        fake_st.markdown = lambda *_args, **_kwargs: None
+        fake_st.container = lambda **_kwargs: nullcontext()
+        fake_st.button = lambda *_args, **_kwargs: False
+        fake_st.success = lambda *_args, **_kwargs: None
+        fake_st.caption = lambda *_args, **_kwargs: None
+        fake_st.table = lambda value, **_kwargs: tables.append(value)
+        fake_st.dataframe = lambda value, **_kwargs: dataframes.append(value)
+        fake_st.info = lambda *_args, **_kwargs: None
+        fake_st.form = lambda *_args, **_kwargs: nullcontext()
+        fake_st.text_input = lambda *_args, **_kwargs: ""
+        fake_st.checkbox = lambda *_args, **_kwargs: False
+        fake_st.form_submit_button = lambda *_args, **_kwargs: False
+
+        filename = Path(__file__).resolve().parents[1] / "src/public_bom_stress_ui.py"
+        spec = importlib.util.spec_from_file_location("stress_preview_download_gate_test", filename)
+        module = importlib.util.module_from_spec(spec)
+        with patch.dict(sys.modules, {"streamlit": fake_st}):
+            spec.loader.exec_module(module)
+            with patch.object(module, "enabled", return_value=True):
+                module.render_public_bom_stress_test()
+
+        self.assertEqual(len(tables), 1)
+        self.assertEqual(dataframes, [])
+        self.assertEqual(tables[0].iloc[0]["MPN"], "TPS5430DDAR")
+
     def test_visitor_must_be_signed_by_ingress(self):
         secret = "a" * 48
         stamp = 1_000_000

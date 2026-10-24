@@ -32,6 +32,7 @@ def load_decision_state(
     *,
     user_id: str,
     workspace_id: str | None,
+    decision_keys: List[str] | None = None,
     deadline: float | None = None,
     budget_seconds: float | None = None,
 ) -> Tuple[Dict[str, Dict[str, Any]], str | None]:
@@ -42,6 +43,21 @@ def load_decision_state(
     instead of hanging the Engineering Decisions page indefinitely.
     """
     scope = _scope_key(workspace_id)
+    keys = sorted({str(key).strip() for key in (decision_keys or []) if str(key).strip()})
+    if decision_keys is not None and not keys:
+        return {}, None
+
+    def scoped_query(table_name: str) -> Any:
+        query = (
+            supabase.table(table_name)
+            .select("*")
+            .eq("user_id", user_id)
+            .eq("scope_key", scope)
+        )
+        if decision_keys is not None:
+            query = query.in_("decision_key", keys)
+        return query
+
     if deadline is None and budget_seconds is not None:
         deadline = time.monotonic() + max(0.1, float(budget_seconds))
     elif deadline is None:
@@ -63,10 +79,7 @@ def load_decision_state(
 
         decision_rows = _safe_rows(
             execute_supabase_read(
-                supabase.table("engineering_decisions")
-                .select("*")
-                .eq("user_id", user_id)
-                .eq("scope_key", scope),
+                scoped_query("engineering_decisions"),
                 operation="engineering_decisions.select",
                 attempts=2,
             )
@@ -76,11 +89,7 @@ def load_decision_state(
 
         note_rows = _safe_rows(
             execute_supabase_read(
-                supabase.table("engineering_decision_notes")
-                .select("*")
-                .eq("user_id", user_id)
-                .eq("scope_key", scope)
-                .order("created_at", desc=False),
+                scoped_query("engineering_decision_notes").order("created_at", desc=False),
                 operation="engineering_decision_notes.select",
                 attempts=2,
             )
@@ -90,11 +99,7 @@ def load_decision_state(
 
         event_rows = _safe_rows(
             execute_supabase_read(
-                supabase.table("engineering_decision_events")
-                .select("*")
-                .eq("user_id", user_id)
-                .eq("scope_key", scope)
-                .order("created_at", desc=False),
+                scoped_query("engineering_decision_events").order("created_at", desc=False),
                 operation="engineering_decision_events.select",
                 attempts=2,
             )
@@ -369,6 +374,7 @@ def add_decision_note(
                     or decision.get("owner")
                     or "Engineering"
                 ),
+                "due_date": decision.get("due_date") or None,
                 "priority_score": int(decision.get("priority_score") or 0),
                 "confidence": int(decision.get("confidence") or 0),
                 "decision_payload": decision,

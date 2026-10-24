@@ -2237,7 +2237,24 @@ def render_analysis_detail(
             render_engineering_workspace_evidence(decision_brief)
 
         if "Recommended Actions" in categories_to_render:
-            render_engineering_workspace_actions(decision_brief)
+            record_role = str(workspace_role or "viewer").lower()
+            record_context = {
+                "supabase": supabase,
+                "user_id": user_id,
+                "workspace_id": workspace_id,
+                "analysis_id": str(analysis_id),
+                "actor_name": str(
+                    current_user.get("full_name")
+                    or current_user.get("name")
+                    or "Current engineer"
+                ),
+                "can_edit": record_role in {"owner", "admin", "editor", "member"}
+                or not workspace_id,
+            }
+            render_engineering_workspace_actions(
+                decision_brief,
+                record_context=record_context,
+            )
             if st.session_state.get("cv26_priority_action_return_analysis") == analysis_id:
                 def _return_to_risk_analytics() -> None:
                     st.session_state[workspace_nav_key] = "Risk Analytics"

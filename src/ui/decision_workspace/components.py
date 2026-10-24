@@ -5,16 +5,12 @@ from typing import Any, Iterable, List, Mapping, Optional, Sequence
 
 from src.ui.decision_workspace._utils import INSUFFICIENT_EVIDENCE, esc, number, text
 from src.ui.decision_workspace.workflow_components import (
-    activity_feed,
     card_filter_attributes,
     decision_header,
     decision_health_meter,
-    discussion_panel,
-    engineering_notes,
     impact_summary,
     infer_status_badge,
     status_badge_class,
-    workflow_tracker,
 )
 
 
@@ -408,16 +404,10 @@ def recommendation_details(
     return f"""
     <div class="cv70-decision-shell cv70-view-engineering" data-cv70-detail-index="{index}">
       {decision_header(action, index=index)}
-      {workflow_tracker(index=index)}
       {impact_summary(action, brief)}
       {decision_health_meter(action)}
       <div class="cv70-decision-layout">
         <div class="cv70-decision-main cv70-s69-intelligence">{intelligence}</div>
-        <aside class="cv70-decision-sidebar cv71-defer">
-          {engineering_notes(index=index)}
-          {activity_feed(index=index, action=action)}
-          {discussion_panel(index=index)}
-        </aside>
       </div>
     </div>
     """

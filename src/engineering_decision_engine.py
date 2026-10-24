@@ -1596,7 +1596,11 @@ def render_engineering_workspace_findings(brief: Mapping[str, Any]) -> None:
     )
 
 
-def render_engineering_workspace_actions(brief: Mapping[str, Any]) -> None:
+def render_engineering_workspace_actions(
+    brief: Mapping[str, Any],
+    *,
+    record_context: Mapping[str, Any] | None = None,
+) -> None:
     import streamlit as st
 
     actions = brief.get("recommended_actions") or []
@@ -1612,7 +1616,7 @@ def render_engineering_workspace_actions(brief: Mapping[str, Any]) -> None:
         </section>
         """
     )
-    render_recommendation_workspace(actions, brief)
+    render_recommendation_workspace(actions, brief, record_context=record_context)
 
 
 def render_engineering_workspace_impact(brief: Mapping[str, Any]) -> None:
