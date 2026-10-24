@@ -530,6 +530,9 @@ def render_unified_shell(
     marker so only that wrapper is zeroed in-flow while the fixed topbar stays
     visible.
     """
+    from src.ui.navigation import restore_detailed_risk_view
+
+    restore_detailed_risk_view(current_page)
     inject_unified_shell_css()
 
     # Reserve the authenticated page body before profile controls, navigation

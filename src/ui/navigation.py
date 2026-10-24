@@ -32,6 +32,7 @@ PENDING_NAVIGATION_CONTEXT_KEY = "cadivor_pending_navigation_context"
 PENDING_ROUTE_COMMIT_KEY = "cadivor_pending_route_commit"
 HISTORY_RESTORE_EVENT_KEY = "cadivor_history_restore_event"
 HISTORY_RESTORE_SNAPSHOT_KEY = "cadivor_history_restore_snapshot"
+DETAILED_RISK_QUERY_PARAM = "detailed_risk"
 
 _ALT_NAV_KEYS = (
     "original_part",
@@ -341,6 +342,11 @@ def navigate_to(page: str, *, _rerun: bool = True, arm_opening: bool = True, **p
             continue
         if value is not None and str(value).strip() != "":
             nav_params[key] = str(value)
+    if page == "Analysis Details":
+        if st.session_state.get("cadivor_show_detailed_risk"):
+            nav_params[DETAILED_RISK_QUERY_PARAM] = "1"
+        else:
+            nav_params.pop(DETAILED_RISK_QUERY_PARAM, None)
     previous_nav_params = st.session_state.get("cadivor_nav_params")
     st.session_state["cadivor_nav_params"] = nav_params
     if current_page and current_page != page:
@@ -531,6 +537,21 @@ def begin_authenticated_page(route: str, *, reveal_body: bool = True) -> None:
     elif safe_route:
         # Lock chrome/URL to the target without collapsing the loading owner.
         st.session_state[PRESENTED_ROUTE_KEY] = safe_route
+
+
+def restore_detailed_risk_view(route: str) -> bool:
+    """Restore the report subview from the canonical URL before page content paints."""
+    safe_route = str(route or "").strip()
+    detailed = False
+    if safe_route == "Analysis Details":
+        value = current_navigation_query_value(
+            DETAILED_RISK_QUERY_PARAM,
+            "",
+            route=safe_route,
+        ).casefold()
+        detailed = value in {"1", "true", "yes", "on"}
+    st.session_state["cadivor_show_detailed_risk"] = detailed
+    return detailed
 
 
 def reveal_authenticated_page_body(route: str = "") -> None:

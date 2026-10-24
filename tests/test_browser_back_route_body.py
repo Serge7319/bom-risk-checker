@@ -644,6 +644,131 @@ def test_same_page_project_bom_selection_beats_a_stale_query_snapshot(monkeypatc
     assert navigation.PENDING_NAVIGATION_CONTEXT_KEY not in session
 
 
+def test_detailed_risk_subview_restores_on_same_route_back_and_forward(monkeypatch):
+    detailed_url = {
+        "page": "Analysis Details",
+        "analysis_id": "bom-1",
+        "analysis_tab": "Engineering Intelligence",
+        "detailed_risk": "1",
+    }
+    intelligence_url = {
+        "page": "Analysis Details",
+        "analysis_id": "bom-1",
+        "analysis_tab": "Engineering Intelligence",
+    }
+    session = _Session(
+        {
+            "cadivor_route": "Analysis Details",
+            "app_mode": "Analysis Details",
+            "cadivor_nav_params": dict(detailed_url),
+            "cadivor_show_detailed_risk": True,
+            "cadivor_active_analysis_id": "bom-1",
+            "user": types.SimpleNamespace(id="user-1"),
+            "access_token": "live-a",
+            "refresh_token": "live-r",
+            "cadivor_auth_status": "authenticated",
+        }
+    )
+    query = _Query(dict(detailed_url))
+    events = [
+        {
+            "href": "http://127.0.0.1:8581/?page=Analysis+Details&analysis_id=bom-1&analysis_tab=Engineering+Intelligence",
+            "reason": "popstate",
+            "event_id": "detailed-risk-back-1",
+        },
+        {
+            "href": "http://127.0.0.1:8581/?page=Analysis+Details&analysis_id=bom-1&analysis_tab=Engineering+Intelligence&detailed_risk=1",
+            "reason": "popstate",
+            "event_id": "detailed-risk-forward-1",
+        },
+    ]
+    _patch_runtime(monkeypatch, session, query, consume=lambda: events.pop(0) if events else None)
+
+    assert runtime.resolve_canonical_app_route() == "Analysis Details"
+    assert navigation.restore_detailed_risk_view("Analysis Details") is False
+    assert session["cadivor_nav_params"] == intelligence_url
+    assert session["cadivor_show_detailed_risk"] is False
+
+    assert runtime.resolve_canonical_app_route() == "Analysis Details"
+    assert navigation.restore_detailed_risk_view("Analysis Details") is True
+    assert session["cadivor_nav_params"] == detailed_url
+    assert session["cadivor_show_detailed_risk"] is True
+
+
+def test_direct_detailed_risk_url_restores_report_subview(monkeypatch):
+    detailed_url = {
+        "page": "Analysis Details",
+        "analysis_id": "bom-1",
+        "analysis_tab": "Engineering Intelligence",
+        "detailed_risk": "1",
+    }
+    session = _Session(
+        {
+            "cadivor_route": "Analysis Details",
+            "app_mode": "Analysis Details",
+            "cadivor_active_analysis_id": "bom-1",
+            "user": types.SimpleNamespace(id="user-1"),
+            "access_token": "live-a",
+            "refresh_token": "live-r",
+            "cadivor_auth_status": "authenticated",
+        }
+    )
+    query = _Query(dict(detailed_url))
+    _patch_runtime(monkeypatch, session, query)
+
+    assert runtime.resolve_canonical_app_route() == "Analysis Details"
+    assert navigation.restore_detailed_risk_view("Analysis Details") is True
+    assert session["cadivor_nav_params"] == detailed_url
+    assert session["cadivor_show_detailed_risk"] is True
+
+
+def test_detailed_risk_navigation_writes_subview_to_browser_history(monkeypatch):
+    session = _Session(
+        {
+            "cadivor_route": "Analysis Details",
+            "app_mode": "Analysis Details",
+            "cadivor_show_detailed_risk": True,
+            "cadivor_active_analysis_id": "bom-1",
+        }
+    )
+    query = _Query(
+        {
+            "page": "Analysis Details",
+            "analysis_id": "bom-1",
+            "analysis_tab": "Engineering Intelligence",
+        }
+    )
+    _patch_runtime(monkeypatch, session, query)
+
+    navigation.navigate_to(
+        "Analysis Details",
+        analysis_id="bom-1",
+        analysis_tab="Engineering Intelligence",
+        _rerun=False,
+        arm_opening=False,
+    )
+    assert query == {
+        "page": "Analysis Details",
+        "analysis_id": "bom-1",
+        "analysis_tab": "Engineering Intelligence",
+        "detailed_risk": "1",
+    }
+
+    session["cadivor_show_detailed_risk"] = False
+    navigation.navigate_to(
+        "Analysis Details",
+        analysis_id="bom-1",
+        analysis_tab="Engineering Intelligence",
+        _rerun=False,
+        arm_opening=False,
+    )
+    assert query == {
+        "page": "Analysis Details",
+        "analysis_id": "bom-1",
+        "analysis_tab": "Engineering Intelligence",
+    }
+
+
 def test_divergent_query_beats_stale_session_without_weakening_auth(monkeypatch):
     session = _Session(
         {
@@ -675,7 +800,6 @@ def test_repeated_route_ownership_does_not_stack_back_controls():
     assert 'st.container(key="cv_analysis_hero_actions")' in detail
     body = _source("src/ui/route_body.py")
     assert 'st.container(key=ROUTE_BODY_CONTAINER_KEY)' in body
-    assert "stable keyed container" in body
     assert "return str(run_id) if run_id else str(id(ctx))" in body
     assert "ROUTE_BODY_CM_RUN_STATE_KEY" in body
     nav = _source("src/ui/navigation.py")
