@@ -1,3 +1,4 @@
+import ast
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -216,6 +217,47 @@ class KnowledgeGraphSchemaColumnsTest(unittest.TestCase):
                 "project_name": "TEST - Synthetic QA BOM",
             }],
         )
+
+
+
+class AuthenticatedRuntimeSchemaColumnsTest(unittest.TestCase):
+    def test_authenticated_runtime_selects_match_production_inventory(self):
+        runtime_path = Path(__file__).resolve().parents[1] / "src" / "authenticated_runtime.py"
+        runtime_tree = ast.parse(runtime_path.read_text(encoding="utf-8"))
+        invalid_columns = {
+            "analysis_parts": {"part_number"},
+            "monitor_alerts": {"mpn"},
+        }
+        selections = {table: 0 for table in invalid_columns}
+
+        for node in ast.walk(runtime_tree):
+            if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+                continue
+            if node.func.attr != "select" or not isinstance(node.func.value, ast.Call):
+                continue
+            table_call = node.func.value
+            if not isinstance(table_call.func, ast.Attribute) or table_call.func.attr != "table":
+                continue
+            if not table_call.args or not isinstance(table_call.args[0], ast.Constant):
+                continue
+            table_name = table_call.args[0].value
+            if table_name not in invalid_columns or not node.args:
+                continue
+            selected = node.args[0]
+            if not isinstance(selected, ast.Constant) or not isinstance(selected.value, str):
+                continue
+            if selected.value.strip() == "*":
+                continue
+
+            columns = {column.strip() for column in selected.value.split(",")}
+            self.assertFalse(
+                invalid_columns[table_name].intersection(columns),
+                f"{table_name} selects columns absent from the production schema: {selected.value}",
+            )
+            selections[table_name] += 1
+
+        self.assertGreater(selections["analysis_parts"], 0)
+        self.assertGreater(selections["monitor_alerts"], 0)
 
 
 if __name__ == "__main__":
