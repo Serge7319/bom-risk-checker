@@ -1643,6 +1643,15 @@ def render_engineering_intelligence_report(
         if st.session_state.get("cadivor_show_detailed_risk"):
             if st.button("Back to Engineering Intelligence", key="ei_back_from_detailed_risk"):
                 st.session_state["cadivor_show_detailed_risk"] = False
+                from src.ui.navigation import navigate_to
+
+                navigate_to(
+                    "Analysis Details",
+                    analysis_id=str(analysis.get("id") or ""),
+                    analysis_tab="Engineering Intelligence",
+                    _rerun=False,
+                    arm_opening=False,
+                )
                 st.rerun()
             report_analyses = _detailed_report_analyses(saved_analyses, analysis)
             analysis_ids = [str(row.get("id") or "") for row in report_analyses]
@@ -1790,4 +1799,13 @@ def render_engineering_intelligence_report(
                 ):
                     st.session_state[f"cadivor_detailed_risk_mpn_{analysis_id or bom_name}"] = ""
                     st.session_state["cadivor_show_detailed_risk"] = True
+                    from src.ui.navigation import navigate_to
+
+                    navigate_to(
+                        "Analysis Details",
+                        analysis_id=analysis_id,
+                        analysis_tab="Engineering Intelligence",
+                        _rerun=False,
+                        arm_opening=False,
+                    )
                     st.rerun()
