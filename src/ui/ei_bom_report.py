@@ -466,7 +466,7 @@ def _priority_assessment(part: dict[str, Any]) -> tuple[str, float | None]:
             floors.append(85)
         elif quantity is not None and quantity > 0 and stock < quantity:
             floors.append(75)
-    if suppliers is not None:
+    if suppliers is not None and supplier_evidence:
         if suppliers <= 0:
             floors.append(75)
         elif suppliers == 1:
