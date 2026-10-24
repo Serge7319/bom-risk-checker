@@ -200,15 +200,15 @@ class KnowledgeGraphService:
         for start in range(0, len(ids), 100):
             chunk = ids[start:start + 100]
             try:
-                parts.extend(_rows(self.supabase.table("analysis_parts").select("analysis_id,mpn,part_number,manufacturer_part_number").in_("analysis_id", chunk).limit(10000)))
+                parts.extend(_rows(self.supabase.table("analysis_parts").select("analysis_id,mpn,manufacturer_part_number").in_("analysis_id", chunk).limit(10000)))
             except Exception:
                 for analysis_id in chunk:
-                    parts.extend(_rows(self.supabase.table("analysis_parts").select("analysis_id,mpn,part_number,manufacturer_part_number").eq("analysis_id", analysis_id).limit(5000)))
+                    parts.extend(_rows(self.supabase.table("analysis_parts").select("analysis_id,mpn,manufacturer_part_number").eq("analysis_id", analysis_id).limit(5000)))
 
         result: dict[str, list[dict[str, str]]] = {}
         seen: set[tuple[str, str]] = set()
         for row in parts:
-            part = _text(row.get("mpn") or row.get("part_number") or row.get("manufacturer_part_number")).upper()
+            part = _text(row.get("mpn") or row.get("manufacturer_part_number")).upper()
             analysis_id = _text(row.get("analysis_id"))
             if not part or analysis_id not in analysis_map or (part, analysis_id) in seen:
                 continue
