@@ -27,6 +27,17 @@ class _StructuredAPIError(Exception):
         super().__init__("")
 
 
+class _JSONAPIError(Exception):
+    """PostgREST-shaped exception exposing its error fields through json()."""
+
+    def __init__(self, payload):
+        self.payload = payload
+        super().__init__("")
+
+    def json(self):
+        return self.payload
+
+
 class _Insert:
     def __init__(self, owner):
         self.owner = owner
@@ -74,9 +85,11 @@ class _OptionalColumnSupabase:
     def insert(self, records):
         self.attempts.append(records)
         if any(self.missing_column in row for row in records):
-            raise _StructuredAPIError(
-                code="PGRST204",
-                message=f"Could not find the '{self.missing_column}' column in the schema cache",
+            raise _JSONAPIError(
+                {
+                    "code": "PGRST204",
+                    "message": f"Could not find the '{self.missing_column}' column in the schema cache",
+                }
             )
         return self
 
@@ -299,6 +312,27 @@ class MonitoringHistoryPersistenceTests(unittest.TestCase):
                 code="23514",
                 message='new row violates check constraint "part_monitor_history_scope_check"',
                 details="Failing row contains ABC123",
+            ),
+        )
+        saved, diagnostic = save_monitor_history_with_diagnostic(
+            client,
+            [build_monitor_record("user-1", "analysis-1", {"MPN": "ABC123"})],
+        )
+        self.assertFalse(saved)
+        self.assertIn("rejected a field value", diagnostic)
+        self.assertIn("database code 23514", diagnostic)
+        self.assertIn("constraint part_monitor_history_scope_check", diagnostic)
+        self.assertNotIn("ABC123", diagnostic)
+
+    def test_json_postgrest_errors_report_safe_code_and_constraint(self):
+        client = _Supabase(
+            fail=True,
+            error=_JSONAPIError(
+                {
+                    "code": "23514",
+                    "message": 'new row violates check constraint "part_monitor_history_scope_check"',
+                    "details": "Failing row contains ABC123",
+                }
             ),
         )
         saved, diagnostic = save_monitor_history_with_diagnostic(
