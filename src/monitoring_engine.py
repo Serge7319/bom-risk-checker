@@ -21,6 +21,14 @@ def _optional_number(value):
     return number if math.isfinite(number) else None
 
 
+def _optional_integer(value):
+    """Convert a whole-number snapshot count to an integer or None."""
+    number = _optional_number(value)
+    if number is None or not number.is_integer():
+        return None
+    return int(number)
+
+
 def _display_text(value, default=""):
     value = json_safe_value(value)
     if value is None:
@@ -90,7 +98,7 @@ def build_monitor_record(
         "product_url": product_url,
         "datasheet_url": datasheet_url,
         "lifecycle_status": _display_text(part_data.get("Lifecycle Status", "")),
-        "stock": _optional_number(part_data.get("Stock Available")),
+        "stock": _optional_integer(part_data.get("Stock Available")),
         "unit_price": _optional_number(part_data.get("Unit Price")),
         "risk_level": monitoring_risk_level(part_data),
     })
@@ -278,7 +286,7 @@ def build_updated_monitor_snapshot(
         "product_url": product_url,
         "datasheet_url": datasheet_url,
         "lifecycle_status": _display_text(fresh_data.get("lifecycle_status", "")),
-        "stock": _optional_number(fresh_data.get("stock_total")),
+        "stock": _optional_integer(fresh_data.get("stock_total")),
         "unit_price": _optional_number(fresh_data.get("unit_price")),
         "risk_level": _display_text(previous_snapshot.get("risk_level", "")),
     }
