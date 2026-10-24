@@ -7,12 +7,12 @@ import json
 import re
 from typing import Any, Mapping, Sequence
 
+from src.decision_engine import STATUSES as DECISION_RECORD_STATUSES
 from src.decision_repository import (
     add_decision_note,
     load_decision_state,
     save_decision_workflow,
 )
-from src.ui.decision_workspace.workflow_components import WORKFLOW_STATES
 
 
 def recommendation_decision_key(analysis_id: str, action: Mapping[str, Any]) -> str:
@@ -111,9 +111,11 @@ def render_recommendation_records(
         part_number = str(action.get("part_number") or "Component").strip()
         title = str(action.get("title") or action.get("action") or "Engineering action").strip()
         record = saved.get(decision_key) or {}
-        initial_status = str(record.get("status") or "Draft").strip()
-        if initial_status not in WORKFLOW_STATES:
-            initial_status = "Draft"
+        # This shared table uses the Milestone 13 decision-engine vocabulary.
+        # Do not persist the separate presentation-only labels from the card.
+        initial_status = str(record.get("status") or "New").strip()
+        if initial_status not in DECISION_RECORD_STATUSES:
+            initial_status = "New"
         initial_owner = str(record.get("owner") or action.get("owner") or "Component Engineering")
         initial_due_date = str(record.get("due_date") or "")
 
@@ -123,9 +125,9 @@ def render_recommendation_records(
             else:
                 with st.form(f"decision_record_form_{decision_key}"):
                     status = st.selectbox(
-                        "Workflow status",
-                        WORKFLOW_STATES,
-                        index=WORKFLOW_STATES.index(initial_status),
+                        "Decision status",
+                        DECISION_RECORD_STATUSES,
+                        index=DECISION_RECORD_STATUSES.index(initial_status),
                         key=f"decision_record_status_{decision_key}",
                     )
                     owner = st.text_input(

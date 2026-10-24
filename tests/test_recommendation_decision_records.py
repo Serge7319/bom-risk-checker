@@ -20,8 +20,10 @@ except ModuleNotFoundError:
         setattr(_httpx_stub, _name, type(_name, (Exception,), {}))
     sys.modules["httpx"] = _httpx_stub
 
+from src.decision_engine import STATUSES
 from src.decision_repository import load_decision_state
 from src.ui.decision_workspace.records import (
+    DECISION_RECORD_STATUSES,
     normalize_due_date,
     recommendation_decision_key,
     recommendation_record_payload,
@@ -159,7 +161,7 @@ class _FakeStreamlit(types.ModuleType):
         return nullcontext()
 
     def selectbox(self, _label, options, **_kwargs):
-        return "In Progress" if "In Progress" in options else options[0]
+        return "Engineering Review" if "Engineering Review" in options else options[0]
 
     def text_input(self, label, **_kwargs):
         if label == "Owner":
@@ -200,7 +202,7 @@ class RecommendationDecisionRecordTests(unittest.TestCase):
             "analysis-test",
             ACTION,
             decision_key=key,
-            status="In Progress",
+            status="Engineering Review",
             owner="QA Engineering",
             due_date="2026-10-26",
         )
@@ -214,6 +216,9 @@ class RecommendationDecisionRecordTests(unittest.TestCase):
         self.assertEqual(normalize_due_date("2026-10-26"), ("2026-10-26", None))
         self.assertIsNotNone(normalize_due_date("Monday")[1])
         self.assertEqual(normalize_due_date(""), (None, None))
+
+    def test_record_status_choices_match_persisted_decision_vocabulary(self):
+        self.assertEqual(DECISION_RECORD_STATUSES, STATUSES)
 
     def test_save_and_reopen_preserves_status_note_and_scoped_history(self):
         database = _Supabase()
@@ -237,7 +242,7 @@ class RecommendationDecisionRecordTests(unittest.TestCase):
             decision_keys=[key],
         )
         self.assertIsNone(error)
-        self.assertEqual(reopened_state[key]["status"], "In Progress")
+        self.assertEqual(reopened_state[key]["status"], "Engineering Review")
         self.assertEqual(reopened_state[key]["owner"], "QA Engineering")
         self.assertEqual(reopened_state[key]["due_date"], "2026-10-26")
         self.assertEqual(
