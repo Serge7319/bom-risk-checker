@@ -38,6 +38,14 @@ class AdminConsoleV2ContractTests(unittest.TestCase):
         self.assertNotIn("page_name", activity_migration)
         self.assertNotIn("bom", activity_migration.lower())
 
+    def test_failed_activity_heartbeat_does_not_abort_authenticated_render(self):
+        heartbeat = self.runtime.split("def _heartbeat():", 1)[1].split(
+            "if _quick_boot_read(_heartbeat", 1
+        )[0]
+        self.assertIn("try:", heartbeat)
+        self.assertIn("except Exception as exc:", heartbeat)
+        self.assertIn("return False", heartbeat)
+
     def test_console_exposes_presence_without_replacing_access_status(self):
         self.assertIn('metric_columns[1].metric("Online now"', self.runtime)
         self.assertIn('presence_filter = presence_column.selectbox("Presence"', self.runtime)
