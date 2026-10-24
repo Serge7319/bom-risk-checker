@@ -3,8 +3,6 @@ from __future__ import annotations
 
 from typing import Any, Mapping, Sequence
 
-import streamlit.components.v1 as components
-
 from src.ui.decision_workspace._utils import INSUFFICIENT_EVIDENCE, esc
 from src.ui.decision_workspace.components import (
     recommendation_card,
@@ -62,8 +60,6 @@ def recommendation_workspace_init_script() -> str:
       const win = window.parent;
       const doc = win.document;
 
-      const nowLabel = () => new Date().toLocaleString();
-
       const bindWorkspace = (root) => {
         if (!root || root.dataset.cv70Bound === '1') return;
         root.dataset.cv70Bound = '1';
@@ -82,109 +78,8 @@ def recommendation_workspace_init_script() -> str:
           const template = doc.getElementById('cv69-detail-template-' + index);
           if (template) {
             detailPanel.appendChild(template.content.cloneNode(true));
-            bindDetailInteractions(detailPanel, index);
           }
           detailPanel.dataset.cv69Active = String(index);
-        };
-
-        const bindDetailInteractions = (panel, index) => {
-          panel.querySelectorAll('[data-cv70-action]').forEach((btn) => {
-            btn.addEventListener('click', () => {
-              const action = btn.getAttribute('data-cv70-action');
-              const label = action.charAt(0).toUpperCase() + action.slice(1);
-              appendActivity(index, label, `${label} action recorded for this recommendation.`);
-              if (action === 'approve') {
-                setWorkflow(index, panel, 'Approved');
-                updateCardStatus(index, 'Approved');
-              }
-              if (action === 'assign') {
-                appendDiscussion(index, panel, 'Assignment requested — owner notified.');
-              }
-              if (action === 'comment') {
-                const input = panel.querySelector('.cv70-discussion-input');
-                if (input) input.focus();
-              }
-            });
-          });
-
-          panel.querySelectorAll('[data-cv70-workflow-state]').forEach((step) => {
-            step.addEventListener('click', () => {
-              const state = step.getAttribute('data-cv70-workflow-state');
-              setWorkflow(index, panel, state);
-              appendActivity(index, 'Workflow', `Status moved to ${state}.`);
-            });
-          });
-
-          const notesSave = panel.querySelector('[data-cv70-notes-save="' + index + '"]');
-          const notesInput = panel.querySelector('.cv70-notes-input');
-          if (notesSave && notesInput) {
-            notesSave.addEventListener('click', () => {
-              const body = notesInput.value.trim();
-              if (!body) return;
-              appendNote(index, panel, body);
-              notesInput.value = '';
-              appendActivity(index, 'Notes', 'Engineering note added.');
-            });
-          }
-
-          const discussPost = panel.querySelector('[data-cv70-discussion-post="' + index + '"]');
-          const discussInput = panel.querySelector('.cv70-discussion-input');
-          if (discussPost && discussInput) {
-            discussPost.addEventListener('click', () => {
-              const body = discussInput.value.trim();
-              if (!body) return;
-              appendDiscussion(index, panel, body);
-              discussInput.value = '';
-              appendActivity(index, 'Discussion', 'New discussion comment posted.');
-            });
-          }
-        };
-
-        const appendActivity = (index, type, message) => {
-          const list = doc.querySelector('[data-cv70-activity-list="' + index + '"]');
-          if (!list) return;
-          const item = doc.createElement('li');
-          item.className = 'cv70-activity-item cv70-activity-item--' + type.toLowerCase();
-          item.innerHTML = '<span><strong>' + type + '</strong> · ' + nowLabel() + '<br>' + message + '</span>';
-          list.prepend(item);
-        };
-
-        const appendNote = (index, panel, body) => {
-          const list = panel.querySelector('[data-cv70-notes-history="' + index + '"]');
-          if (!list) return;
-          const item = doc.createElement('li');
-          item.className = 'cv70-note-item';
-          item.innerHTML = '<strong>' + nowLabel() + '</strong><p>' + body.replace(/</g, '&lt;') + '</p>';
-          list.prepend(item);
-        };
-
-        const appendDiscussion = (index, panel, body) => {
-          const thread = panel.querySelector('[data-cv70-discussion-thread="' + index + '"]');
-          if (!thread) return;
-          const item = doc.createElement('article');
-          item.className = 'cv70-discussion-entry';
-          item.innerHTML = '<strong>Engineer</strong><p>' + body.replace(/</g, '&lt;') + '</p>';
-          thread.appendChild(item);
-        };
-
-        const setWorkflow = (index, panel, state) => {
-          const steps = panel.querySelectorAll('[data-cv70-workflow-state]');
-          const order = ['Draft','Needs Review','Approved','In Progress','Completed','Released'];
-          const activeIdx = order.indexOf(state);
-          steps.forEach((step) => {
-            const stepState = step.getAttribute('data-cv70-workflow-state');
-            const idx = order.indexOf(stepState);
-            step.classList.toggle('is-active', stepState === state);
-            step.classList.toggle('is-complete', idx >= 0 && idx < activeIdx);
-          });
-        };
-
-        const updateCardStatus = (index, status) => {
-          const card = cards.find((c) => c.getAttribute('data-cv70-index') === String(index));
-          if (!card) return;
-          card.setAttribute('data-status', status.toLowerCase().replace(/ /g, ' '));
-          const badge = card.querySelector('.cv70-status');
-          if (badge) badge.textContent = status;
         };
 
         const selectCard = (card, scroll) => {
@@ -317,8 +212,15 @@ def recommendation_workspace_init_script() -> str:
 def render_recommendation_workspace(
     actions: Sequence[Mapping[str, Any]],
     brief: Mapping[str, Any],
+    *,
+    record_context: Mapping[str, Any] | None = None,
 ) -> None:
     import streamlit as st
+    import streamlit.components.v1 as components
 
     st.html(render_recommendation_workspace_html(actions, brief))
     components.html(recommendation_workspace_init_script(), height=0)
+    if record_context:
+        from src.ui.decision_workspace.records import render_recommendation_records
+
+        render_recommendation_records(actions, **record_context)

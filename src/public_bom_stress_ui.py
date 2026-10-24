@@ -131,7 +131,10 @@ def render_public_bom_stress_test() -> None:
             "Supplier coverage": row.get("supplier_coverage"),
             "Risk": row["risk"],
         } for row in report["preview"]])
-        st.dataframe(preview, hide_index=True, use_container_width=True)
+        # This is a locked preview. The DataFrame toolbar exposes a CSV
+        # download affordance before email verification, so use a static table
+        # here and keep downloadable exports in the verified report flow.
+        st.table(preview)
         st.caption(
             "Blank stock or lead-time values mean the supplier did not report a usable figure. "
             "Lifecycle is shown only when a supplier provided a status; Unknown does not mean Active. "

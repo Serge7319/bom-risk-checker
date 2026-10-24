@@ -215,13 +215,6 @@ def decision_header(action: Mapping[str, Any], *, index: int) -> str:
           <span><em>Projected health</em>{int(number(health.get('before'), 0))} → {int(number(health.get('after'), 0))}</span>
         </div>
       </div>
-      <div class="cv70-decision-actions">
-        <button type="button" class="cv70-action-btn cv70-action-btn--primary" data-cv70-action="approve" data-cv70-index="{index}">Approve</button>
-        <button type="button" class="cv70-action-btn" data-cv70-action="assign" data-cv70-index="{index}">Assign</button>
-        <button type="button" class="cv70-action-btn" data-cv70-action="comment" data-cv70-index="{index}">Comment</button>
-        <button type="button" class="cv70-action-btn" data-cv70-action="export" data-cv70-index="{index}">Export</button>
-        <button type="button" class="cv70-action-btn" data-cv70-action="share" data-cv70-index="{index}">Share</button>
-      </div>
     </header>
     """
 
