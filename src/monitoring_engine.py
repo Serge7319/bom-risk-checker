@@ -340,8 +340,19 @@ def _monitor_persistence_diagnostic(exc):
         return "The monitoring database schema is missing a field. Apply the current monitoring migrations."
     if "check constraint" in folded or code == "23514":
         return "The monitoring database rejected a field value. Apply the current monitoring migrations and retry."
-    suffix = f" (database code {code})" if code else ""
-    return f"The database rejected the monitoring baseline{suffix}. Check the server log for its constraint."
+    error_type = re.sub(r"[^A-Za-z0-9_.]", "", type(exc).__name__) or "UnknownError"
+    metadata = [f"error type {error_type}"]
+    if code:
+        metadata.append(f"database code {code}")
+    constraint_match = re.search(
+        r'\\bconstraint\\s+["\\']?([A-Za-z_][A-Za-z0-9_$]*)',
+        raw,
+        re.IGNORECASE,
+    )
+    if constraint_match:
+        metadata.append(f"constraint {constraint_match.group(1)}")
+    suffix = f" ({'; '.join(metadata)})"
+    return f"The monitoring baseline could not be saved{suffix}. Check the server log for the database error."
 
 
 def _insert_monitor_rows(
