@@ -31,6 +31,8 @@
 
   function ensureParentBridge() {
     const w = host();
+    // Disable native history scroll restoration before the first Back/Forward.
+    try { w.history.scrollRestoration = "manual"; } catch (_) {}
     if (w.__cadivorNavBridgeV4) return w.__cadivorNavBridgeV4;
     const state = {
       pending: null,
@@ -93,12 +95,27 @@
 
     function resetMainScrollToTop() {
       const doc = w.document;
-      const candidates = [
-        doc.querySelector('section[data-testid="stMain"]'),
+      const main = doc.querySelector('[data-testid="stMain"]');
+      const candidates = new Set([
+        main,
         doc.scrollingElement,
         doc.documentElement,
         doc.body,
-      ].filter(Boolean);
+      ].filter(Boolean));
+      if (main) {
+        Array.from(main.querySelectorAll("*")).forEach((element) => {
+          try {
+            const style = w.getComputedStyle(element);
+            const overflowY = style && style.overflowY;
+            if (
+              ["auto", "scroll", "overlay"].includes(overflowY)
+              && element.scrollHeight > element.clientHeight + 1
+            ) {
+              candidates.add(element);
+            }
+          } catch (_) {}
+        });
+      }
       candidates.forEach((element) => {
         try {
           element.scrollTop = 0;
@@ -108,8 +125,12 @@
         } catch (_) {}
       });
       try { w.scrollTo({top: 0, left: 0, behavior: "auto"}); } catch (_) {}
+      const windowTop = Number(
+        w.scrollY || doc.documentElement.scrollTop || doc.body.scrollTop || 0
+      );
+      return windowTop <= 1
+        && Array.from(candidates).every((element) => Number(element.scrollTop || 0) <= 1);
     }
-
     function showHistoryTransition(targetHref) {
       const doc = w.document;
       let page = "workspace";
@@ -199,6 +220,7 @@
       const targetState = routeStateFromHref(targetHref);
       if (!targetState) return;
       const startedAt = Date.now();
+      let stableTopChecks = 0;
       const verify = () => {
         if (token !== state.recoverySeq) return;
         let currentHref = "";
@@ -209,13 +231,18 @@
           '[data-cadivor-route-root="1"][data-cadivor-route-state]'
         );
         const renderedState = marker && marker.getAttribute("data-cadivor-route-state");
+        const elapsed = Date.now() - startedAt;
         if (renderedState === targetState) {
-          resetMainScrollToTop();
-          finishHistoryTransition();
+          stableTopChecks = resetMainScrollToTop() ? stableTopChecks + 1 : 0;
+          if (stableTopChecks >= 2 && elapsed >= 100) {
+            finishHistoryTransition();
+            return;
+          }
+          w.setTimeout(verify, 50);
           return;
         }
+        stableTopChecks = 0;
 
-        const elapsed = Date.now() - startedAt;
         if (!marker) {
           if (elapsed >= 6000) {
             try { w.location.reload(); } catch (_) {}
@@ -238,6 +265,14 @@
     }
     try {
       w.addEventListener("popstate", () => queue("popstate"));
+      w.addEventListener("pageshow", (event) => {
+        if (!event || !event.persisted) return;
+        let href = "";
+        try { href = w.location.href || ""; } catch (_) {}
+        if (!href) return;
+        showHistoryTransition(href);
+        scheduleRouteRecovery(href);
+      });
       w.addEventListener("hashchange", () => queue("hashchange"));
     } catch (_) {}
     // Fallback when popstate is swallowed; Python ignores in-app push echoes.
