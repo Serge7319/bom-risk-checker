@@ -511,3 +511,28 @@ def test_linked_datasheet_review_falls_back_to_exact_part_product_page():
     assert "for index, document_url in enumerate(urls[:4])" in review
     assert "extract_datasheet_text(document_url)" in review
     assert "Open exact candidate product page" in review
+
+
+def test_required_approval_fields_are_marked_and_incompatible_candidates_stay_locked():
+    source = (
+        Path(__file__).resolve().parents[1] / "src" / "ui" / "approved_pages.py"
+    ).read_text(encoding="utf-8")
+    for label in (
+        "Source package / case (required)",
+        "Source pin count (required)",
+        "Candidate package / case (required)",
+        "Candidate pin count (required)",
+        "Candidate lifecycle status (required)",
+        "Source citation (required) · document and PDF page(s)",
+        "Candidate citation (required) · document and PDF page(s)",
+        "requirements (required)",
+    ):
+        assert label in source
+    assert "Required for approval: both citations must name the document or part number and exact PDF page(s)" in source
+
+    approval = source.split("def _render_bom_replacement_approvals", 1)[1].split(
+        "def render_replacement_search", 1
+    )[0]
+    assert "and not compatibility_blocked" in approval
+    assert "disabled=not can_approve" in approval
+    assert "not review_references_complete" in approval

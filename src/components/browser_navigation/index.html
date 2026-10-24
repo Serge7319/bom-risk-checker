@@ -66,7 +66,10 @@
         reason,
         event_id: `${Date.now()}-${state.seq}-${Math.random().toString(36).slice(2, 8)}`,
       };
-      if (reason === "popstate") scheduleRouteRecovery(href);
+      if (reason === "popstate") {
+        showHistoryTransition(href);
+        scheduleRouteRecovery(href);
+      }
     };
 
     function routeStateFromHref(href) {
@@ -88,6 +91,109 @@
       }
     }
 
+    function resetMainScrollToTop() {
+      const doc = w.document;
+      const candidates = [
+        doc.querySelector('section[data-testid="stMain"]'),
+        doc.scrollingElement,
+        doc.documentElement,
+        doc.body,
+      ].filter(Boolean);
+      candidates.forEach((element) => {
+        try {
+          element.scrollTop = 0;
+          if (typeof element.scrollTo === "function") {
+            element.scrollTo({top: 0, left: 0, behavior: "auto"});
+          }
+        } catch (_) {}
+      });
+      try { w.scrollTo({top: 0, left: 0, behavior: "auto"}); } catch (_) {}
+    }
+
+    function showHistoryTransition(targetHref) {
+      const doc = w.document;
+      let page = "workspace";
+      try {
+        page = new URL(targetHref, w.location.href).searchParams.get("page") || "Dashboard";
+      } catch (_) {}
+      try { w.history.scrollRestoration = "manual"; } catch (_) {}
+      resetMainScrollToTop();
+
+      if (!doc.getElementById("cadivor-history-transition-style")) {
+        const style = doc.createElement("style");
+        style.id = "cadivor-history-transition-style";
+        style.textContent = `
+          #cadivor-history-transition {
+            box-sizing: border-box !important;
+            position: fixed !important;
+            left: var(--cv-foundation-rail, 228px) !important;
+            right: 0 !important;
+            top: var(--cv-foundation-top, 64px) !important;
+            bottom: 0 !important;
+            z-index: 2147483001 !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            overflow: hidden !important;
+            background: #F5F7FB !important;
+            pointer-events: auto !important;
+            font-family: Inter, system-ui, sans-serif !important;
+          }
+          #cadivor-history-transition .cv-history-transition-card {
+            box-sizing: border-box;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            min-width: 190px;
+            padding: 14px 18px;
+            border: 1px solid #E4EAF3;
+            border-radius: 14px;
+            background: #FFFFFF;
+            box-shadow: 0 8px 24px rgba(15, 23, 42, .06);
+            color: #334155;
+            font-size: 13px;
+            font-weight: 650;
+          }
+          #cadivor-history-transition .cv-history-transition-mark {
+            box-sizing: border-box;
+            display: grid;
+            place-items: center;
+            flex: 0 0 32px;
+            width: 32px;
+            height: 32px;
+            border-radius: 9px;
+            background: #2563EB;
+            color: #FFFFFF;
+            font-size: 15px;
+            font-weight: 850;
+          }
+          @media (max-width: 720px) {
+            #cadivor-history-transition { left: 0 !important; }
+          }
+        `;
+        (doc.head || doc.documentElement).appendChild(style);
+      }
+
+      let overlay = doc.getElementById("cadivor-history-transition");
+      if (!overlay) {
+        overlay = doc.createElement("div");
+        overlay.id = "cadivor-history-transition";
+        overlay.setAttribute("data-cadivor-history-transition", "1");
+        overlay.setAttribute("role", "status");
+        overlay.setAttribute("aria-live", "polite");
+        overlay.innerHTML = '<div class="cv-history-transition-card"><span class="cv-history-transition-mark" aria-hidden="true">C</span><span data-cadivor-history-transition-label></span></div>';
+        doc.body.appendChild(overlay);
+      }
+      const label = overlay.querySelector("[data-cadivor-history-transition-label]");
+      if (label) label.textContent = `Opening ${page}…`;
+      overlay.setAttribute("aria-label", `Opening ${page}`);
+    }
+
+    function finishHistoryTransition() {
+      const overlay = w.document.getElementById("cadivor-history-transition");
+      if (overlay) overlay.remove();
+    }
+
     function scheduleRouteRecovery(targetHref) {
       const token = ++state.recoverySeq;
       const targetState = routeStateFromHref(targetHref);
@@ -103,12 +209,19 @@
           '[data-cadivor-route-root="1"][data-cadivor-route-state]'
         );
         const renderedState = marker && marker.getAttribute("data-cadivor-route-state");
-        if (renderedState === targetState) return;
+        if (renderedState === targetState) {
+          resetMainScrollToTop();
+          finishHistoryTransition();
+          return;
+        }
 
         const elapsed = Date.now() - startedAt;
         if (!marker) {
-          if (elapsed >= 6000) return;
-          w.setTimeout(verify, 250);
+          if (elapsed >= 6000) {
+            try { w.location.reload(); } catch (_) {}
+            return;
+          }
+          w.setTimeout(verify, 50);
           return;
         }
         const targetPage = new URL(targetHref, w.location.href).searchParams.get("page") || "Dashboard";
@@ -119,9 +232,9 @@
           try { w.location.reload(); } catch (_) {}
           return;
         }
-        w.setTimeout(verify, 250);
+        w.setTimeout(verify, 50);
       };
-      w.setTimeout(verify, 1800);
+      w.setTimeout(verify, 0);
     }
     try {
       w.addEventListener("popstate", () => queue("popstate"));

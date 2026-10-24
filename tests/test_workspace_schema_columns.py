@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 
 from src.core.workspace_search import build_workspace_commands
@@ -219,3 +220,24 @@ class KnowledgeGraphSchemaColumnsTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AnalysisDecisionRlsMigrationTest(unittest.TestCase):
+    def test_authenticated_decision_policy_is_user_and_workspace_scoped(self):
+        migration = (
+            Path(__file__).resolve().parents[1]
+            / "supabase"
+            / "migrations"
+            / "20261024_analysis_decisions_workspace_rls.sql"
+        ).read_text(encoding="utf-8").lower()
+
+        self.assertIn("create table if not exists public.analysis_decisions", migration)
+        self.assertIn("alter table public.analysis_decisions enable row level security", migration)
+        self.assertIn("for select to authenticated", migration)
+        self.assertIn("for insert to authenticated", migration)
+        self.assertIn("for update to authenticated", migration)
+        self.assertIn("user_id::text = auth.uid()::text", migration)
+        self.assertIn("wm.user_id::text = auth.uid()::text", migration)
+        self.assertIn("wm.status = 'active'", migration)
+        self.assertIn("workspace_id is null", migration)
+        self.assertIn("revoke all on table public.analysis_decisions from anon", migration)

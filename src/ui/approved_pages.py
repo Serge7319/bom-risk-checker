@@ -5201,21 +5201,21 @@ def _render_datasheet_evidence_review(
         source_columns = st.columns(2)
         with source_columns[0]:
             source_package = st.text_input(
-                "Source package / case",
+                "Source package / case (required)",
                 value=recorded_value(original, "package", "Package", "Package / Case"),
                 key=f"cadivor_alt_source_package_{key_suffix}",
                 disabled=bool(recorded_value(original, "package", "Package", "Package / Case")),
                 help="A recorded value is locked so a known mismatch cannot be edited away.",
             )
             source_pins = st.text_input(
-                "Source pin count",
+                "Source pin count (required)",
                 value=recorded_value(original, "pin_count", "Pin Count", "Number of Pins", "pins"),
                 key=f"cadivor_alt_source_pins_{key_suffix}",
                 disabled=bool(recorded_value(original, "pin_count", "Pin Count", "Number of Pins", "pins")),
                 help="A recorded value is locked so a known mismatch cannot be edited away.",
             )
             source_architecture = st.text_input(
-                "Source processor family / ISA (if applicable)",
+                "Source processor family / ISA (required when applicable)",
                 value=recorded_value(original, "architecture", "Device family / architecture", "device_family", "core", "ISA"),
                 key=f"cadivor_alt_source_architecture_{key_suffix}",
                 disabled=bool(recorded_value(original, "architecture", "Device family / architecture", "device_family", "core", "ISA")),
@@ -5223,21 +5223,21 @@ def _render_datasheet_evidence_review(
             )
         with source_columns[1]:
             candidate_package = st.text_input(
-                "Candidate package / case",
+                "Candidate package / case (required)",
                 value=recorded_value(candidate, "package", "Package", "Package / Case"),
                 key=f"cadivor_alt_candidate_package_{key_suffix}",
                 disabled=bool(recorded_value(candidate, "package", "Package", "Package / Case")),
                 help="A recorded value is locked so a known mismatch cannot be edited away.",
             )
             candidate_pins = st.text_input(
-                "Candidate pin count",
+                "Candidate pin count (required)",
                 value=recorded_value(candidate, "pin_count", "Pin Count", "Number of Pins", "pins"),
                 key=f"cadivor_alt_candidate_pins_{key_suffix}",
                 disabled=bool(recorded_value(candidate, "pin_count", "Pin Count", "Number of Pins", "pins")),
                 help="A recorded value is locked so a known mismatch cannot be edited away.",
             )
             candidate_architecture = st.text_input(
-                "Candidate processor family / ISA (if applicable)",
+                "Candidate processor family / ISA (required when applicable)",
                 value=recorded_value(candidate, "architecture", "Device family / architecture", "device_family", "core", "ISA"),
                 key=f"cadivor_alt_candidate_architecture_{key_suffix}",
                 disabled=bool(recorded_value(candidate, "architecture", "Device family / architecture", "device_family", "core", "ISA")),
@@ -5263,7 +5263,7 @@ def _render_datasheet_evidence_review(
             )
             candidate_lifecycle_default = recorded_candidate_lifecycle or extracted_candidate_lifecycle
             candidate_lifecycle = st.text_input(
-                "Candidate lifecycle status",
+                "Candidate lifecycle status (required)",
                 value=candidate_lifecycle_default,
                 key=f"cadivor_alt_candidate_lifecycle_{key_suffix}",
                 disabled=bool(recorded_candidate_lifecycle),
@@ -5273,7 +5273,7 @@ def _render_datasheet_evidence_review(
         citation_cols = st.columns(2)
         with citation_cols[0]:
             source_reference = st.text_input(
-                "Source citation · document and PDF page(s)",
+                "Source citation (required) · document and PDF page(s)",
                 placeholder=f"{source_mpn} datasheet, Rev. [revision], pp. [actual pages]",
                 key=f"cadivor_alt_source_reference_{key_suffix}",
                 help="Enter the manufacturer document or part number, revision if shown, and actual PDF page numbers you reviewed. “NA”, blanks, and page numbers without a document identifier do not count.",
@@ -5282,13 +5282,16 @@ def _render_datasheet_evidence_review(
                 st.caption("Add the source document or part number and exact PDF page number(s); “NA” is not a valid citation.")
         with citation_cols[1]:
             candidate_reference = st.text_input(
-                "Candidate citation · document and PDF page(s)",
+                "Candidate citation (required) · document and PDF page(s)",
                 placeholder=f"{candidate_mpn} datasheet, Rev. [revision], pp. [actual pages]",
                 key=f"cadivor_alt_candidate_reference_{key_suffix}",
                 help="Enter the manufacturer document or part number, revision if shown, and actual PDF page numbers you reviewed. “NA”, blanks, and page numbers without a document identifier do not count.",
             )
             if candidate_reference and not has_document_page_citation(candidate_reference):
                 st.caption("Add the candidate document or part number and exact PDF page number(s); “NA” is not a valid citation.")
+        st.caption(
+            "Required for approval: both citations must name the document or part number and exact PDF page(s); the review confirmation below is also required."
+        )
 
     attested = bool(
         st.session_state.get(f"cadivor_alt_document_attestation_{key_suffix}", False)
@@ -5671,7 +5674,7 @@ def _render_bom_replacement_approvals(
     )
     if not source_identity_verified:
         source_identity_attested = st.checkbox(
-            f"I confirmed {source_mpn} is the exact orderable part on the manufacturer document, not just a family-level match.",
+            f"I confirmed {source_mpn} is the exact orderable part on the manufacturer document, not just a family-level match (required).",
             key=f"cadivor_alt_source_identity_attestation_{widget_suffix}",
         )
         source_reference = str(
@@ -5684,7 +5687,7 @@ def _render_bom_replacement_approvals(
             st.caption("Add the source manufacturer document and exact PDF page citation before this identity check can count.")
 
     attested = st.checkbox(
-        "I reviewed both documents, including package dimensions, pinout, and applicable electrical or firmware requirements.",
+        "I reviewed both documents, including package dimensions, pinout, and applicable electrical or firmware requirements (required).",
         key=f"cadivor_alt_document_attestation_{widget_suffix}",
     )
     st.caption("This checkbox records your review. It does not approve the part by itself.")
