@@ -41,6 +41,11 @@ class BrowserRouteStateTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
 
         self.assertIn('data-cadivor-route-state="{route_state}"', auth_gate)
-        self.assertIn('if (reason === "popstate") scheduleRouteRecovery(href);', bridge)
+        self.assertIn('if (reason === "popstate") {', bridge)
+        self.assertIn("showHistoryTransition(href);", bridge)
+        self.assertIn("scheduleRouteRecovery(href);", bridge)
         self.assertIn('marker.getAttribute("data-cadivor-route-state")', bridge)
+        self.assertIn('w.history.scrollRestoration = "manual"', bridge)
+        self.assertIn('data-cadivor-history-transition', bridge)
+        self.assertIn("finishHistoryTransition();", bridge)
         self.assertIn("w.location.reload()", bridge)

@@ -47,7 +47,8 @@ jobs:
             tests.test_alternative_finder_search_submit \
             tests.test_alternative_finder_presentation \
             tests.test_alternative_finder_admin_diagnostics \
-            tests.test_main_transition_release_signal
+            tests.test_main_transition_release_signal \
+            tests.test_approved_replacement_handoff
 
       - name: Run Monitoring History Persistence Tests
         run: python -m unittest tests.test_monitoring_history_persistence
