@@ -4273,7 +4273,7 @@ def run_authenticated_app() -> None:
                     # Home's risk action needs only these stable fields. Keep
                     # the optional image_url migration out of this read.
                     supabase.table("analysis_parts").select(
-                        "analysis_id,mpn,part_number,risk_level,risk_score"
+                        "analysis_id,mpn,risk_level,risk_score"
                     ),
                     _saved_workspace_id,
                 )
@@ -4284,7 +4284,7 @@ def run_authenticated_app() -> None:
             alerts_response = execute_supabase_read(
                 _scoped_saved_query(
                     supabase.table("monitor_alerts").select(
-                        "id,analysis_id,part_number,mpn,alert_type,alert_message,previous_value,current_value,created_at,status,severity,user_id"
+                        "id,analysis_id,part_number,alert_type,alert_message,previous_value,current_value,created_at,status,severity,user_id"
                     ),
                     _saved_workspace_id,
                 )
@@ -7159,7 +7159,7 @@ def run_authenticated_app() -> None:
         impact_monitoring_rows = []
         try:
             impact_monitoring_rows = (
-                _workspace_query(supabase.table("monitor_alerts").select("part_number,mpn"))
+                _workspace_query(supabase.table("monitor_alerts").select("part_number"))
                 .eq("user_id", current_user["id"])
                 .limit(1000)
                 .execute()
@@ -7308,7 +7308,7 @@ def run_authenticated_app() -> None:
 
         try:
             portfolio_alert_response = (
-                _workspace_query(supabase.table("monitor_alerts").select("part_number,mpn,created_at"))
+                _workspace_query(supabase.table("monitor_alerts").select("part_number,created_at"))
                 .eq("user_id", current_user["id"])
                 .order("created_at", desc=True)
                 .limit(500)
