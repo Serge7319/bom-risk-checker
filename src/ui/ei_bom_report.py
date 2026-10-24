@@ -423,7 +423,59 @@ def _first(row: dict[str, Any], *keys: str, fallback: Any = None) -> Any:
     return fallback
 
 
+def _priority_assessment(part: dict[str, Any]) -> tuple[str, float | None]:
+    """Align the report rating with saved risk and confirmed supply evidence."""
+    raw_score = _recorded_number(_first(part, "risk_score", "Risk Score"))
+    if raw_score is None or (raw_score == 0 and not _supplier_evidence(part)):
+        return "Needs verification", raw_score
+
+    stored_score = max(0.0, min(100.0, raw_score))
+    stored_label = str(_first(part, "risk_level", "Risk Level", fallback="") or "").strip().casefold()
+    floors: list[float] = []
+    if stored_label == "critical":
+        floors.append(90)
+    elif stored_label in {"high", "high risk"}:
+        floors.append(75)
+    elif stored_label in {"medium", "moderate"}:
+        floors.append(50)
+
+    lifecycle = str(_first(part, "lifecycle_status", "Lifecycle Status", fallback="") or "").strip().casefold()
+    if any(token in lifecycle for token in ("obsolete", "end of life", "eol", "replacement", "not recommended", "nrnd")):
+        floors.append(85)
+    elif lifecycle in {"", "unknown", "not available", "—"}:
+        floors.append(50)
+
+    stock = _stock_value(part)
+    quantity = _recorded_number(_first(part, "quantity", "Quantity"))
+    suppliers = _recorded_number(_first(part, "supplier_count", "Supplier Count"))
+    lead_time = _recorded_number(_first(part, "lead_time_weeks", "Lead Time Weeks"))
+    if stock is not None:
+        if stock <= 0:
+            floors.append(85)
+        elif quantity is not None and quantity > 0 and stock < quantity:
+            floors.append(75)
+    if suppliers is not None:
+        if suppliers <= 0:
+            floors.append(75)
+        elif suppliers == 1:
+            floors.append(60)
+    if lead_time is not None and lead_time >= 12:
+        floors.append(60)
+
+    score = max([stored_score, *floors])
+    if score >= 90:
+        return "Critical", score
+    if score >= 75:
+        return "High", score
+    if score >= 50:
+        return "Medium", score
+    return "Low", score
+
+
 def _level(part: dict[str, Any]) -> str:
+    return _priority_assessment(part)[0]
+
+
     label = str(_first(part, "risk_level", "Risk Level", fallback="") or "").strip()
     folded = label.casefold()
     if "high" in folded or "critical" in folded:
@@ -653,7 +705,7 @@ def _part_rows(parts: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for part in parts or []:
         if not isinstance(part, dict):
             continue
-        level = _level(part)
+        level, effective_score = _priority_assessment(part)
         title, detail = _action(level)
         raw_mpn = str(_first(part, "mpn", "MPN", "part_number", fallback="Part") or "Part")
         ranked.append(
@@ -685,8 +737,8 @@ def _part_rows(parts: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 ),
                 "manufacturer": _esc(_first(part, "manufacturer", "Manufacturer", fallback="—")),
                 "level": level,
-                "score": _recorded_number(_first(part, "risk_score", "Risk Score")),
-                "score_display": _display_score(_recorded_number(_first(part, "risk_score", "Risk Score"))),
+                "score": effective_score,
+                "score_display": _display_score(effective_score),
                 "stock": _stock_value(part),
                 "stock_display": _display_count(_stock_value(part)),
                 "suppliers": _recorded_number(_first(part, "supplier_count", "Supplier Count")),
