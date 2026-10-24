@@ -982,7 +982,7 @@ def engineering_intelligence_html(
                   <div class="cv-ei-icon warn">!</div>
                   <div>
                     <h2>Engineering review required</h2>
-                    <p>{len(open_high)} components with high source risk still need a mitigation decision. Approved replacements are tracked separately; the original BOM rating remains in the report until the BOM is revised. {f'{len(unassessed)} additional components could not be risk-rated; verify their manufacturer part numbers and rerun.' if unassessed else ''}</p>
+                    <p>{len(open_high)} components with high source risk still need a mitigation decision. Approved replacements are tracked separately; the original BOM rating remains in the report until the BOM is revised. {f'{len(unassessed)} additional components could not be risk-rated; verify their manufacturer part numbers and rerun. Supplier evidence incomplete.' if unassessed else ''}</p>
                   </div>
                 </section>
                 """
