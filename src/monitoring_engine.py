@@ -322,7 +322,17 @@ def save_monitor_alerts(supabase, records) -> bool:
     )
 
 
-def _monitor_exception_text(exc):
+def _monitor_exception_payload(exc):
+    """Read an allowlisted PostgREST payload without exposing its raw contents."""
+    try:
+        json_method = getattr(exc, "json", None)
+        payload = json_method() if callable(json_method) else None
+    except Exception:
+        payload = None
+    return payload if isinstance(payload, dict) else {}
+
+
+def _monitor_exception_text(exc, payload=None):
     """Read structured PostgREST fields for internal classification only."""
     parts = []
     try:
@@ -338,15 +348,26 @@ def _monitor_exception_text(exc):
             value = None
         if isinstance(value, str) and value.strip():
             parts.append(value.strip())
+    payload = payload if isinstance(payload, dict) else _monitor_exception_payload(exc)
+    for field in ("message", "details", "hint"):
+        value = payload.get(field)
+        if isinstance(value, str) and value.strip():
+            parts.append(value.strip())
     return "\n".join(parts)
 
 
 def _monitor_persistence_diagnostic(exc):
     """Summarize PostgREST failures without echoing submitted snapshot contents."""
-    raw = _monitor_exception_text(exc)
+    payload = _monitor_exception_payload(exc)
+    raw = _monitor_exception_text(exc, payload)
     folded = raw.casefold()
 
-    code_value = getattr(exc, "code", None)
+    try:
+        code_value = getattr(exc, "code", None)
+    except Exception:
+        code_value = None
+    if code_value is None:
+        code_value = payload.get("code")
     code = ""
     if isinstance(code_value, (str, int)) and not isinstance(code_value, bool):
         structured_code = re.fullmatch(
