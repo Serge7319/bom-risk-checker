@@ -263,6 +263,20 @@ class MonitoringHistoryPersistenceTests(unittest.TestCase):
         self.assertFalse(saved)
         self.assertIn("rejected a field value", diagnostic)
 
+    def test_unclassified_monitoring_failure_reports_safe_error_metadata(self):
+        client = _Supabase(
+            fail=True,
+            error_message='constraint "part_monitor_history_scope_check" rejected ABC123',
+        )
+        saved, diagnostic = save_monitor_history_with_diagnostic(
+            client,
+            [build_monitor_record("user-1", "analysis-1", {"MPN": "ABC123"})],
+        )
+        self.assertFalse(saved)
+        self.assertIn("error type ValueError", diagnostic)
+        self.assertIn("constraint part_monitor_history_scope_check", diagnostic)
+        self.assertNotIn("ABC123", diagnostic)
+
     def test_monitoring_scope_migration_adds_analysis_and_workspace_ids(self):
         migration = (
             Path(__file__).resolve().parents[1]
