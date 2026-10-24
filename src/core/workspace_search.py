@@ -152,7 +152,7 @@ def build_workspace_commands(supabase, user_id: str, *, limit_per_source: int = 
         try:
             parts = _rows(
                 supabase.table("analysis_parts")
-                .select("analysis_id,mpn,part_number,manufacturer_part_number,manufacturer,risk_level,risk,lifecycle_status,lifecycle")
+                .select("analysis_id,mpn,manufacturer_part_number,manufacturer,risk_level,risk,lifecycle_status,lifecycle")
                 .in_("analysis_id", analysis_ids)
                 .order("created_at", desc=True)
                 .limit(max(limit_per_source * 5, 300))
@@ -165,14 +165,14 @@ def build_workspace_commands(supabase, user_id: str, *, limit_per_source: int = 
     if not parts:
         parts = _rows(
             supabase.table("analysis_parts")
-            .select("analysis_id,mpn,part_number,manufacturer_part_number,manufacturer,risk_level,risk,lifecycle_status,lifecycle,user_id")
+            .select("analysis_id,mpn,manufacturer_part_number,manufacturer,risk_level,risk,lifecycle_status,lifecycle,user_id")
             .eq("user_id", user_id)
             .order("created_at", desc=True)
             .limit(max(limit_per_source * 5, 300))
         )
     seen_parts: set[tuple[str, str]] = set()
     for index, row in enumerate(parts):
-        mpn = _text(row.get("mpn") or row.get("part_number") or row.get("manufacturer_part_number"))
+        mpn = _text(row.get("mpn") or row.get("manufacturer_part_number"))
         if not mpn:
             continue
         analysis_id = _text(row.get("analysis_id"))
@@ -226,13 +226,13 @@ def build_workspace_commands(supabase, user_id: str, *, limit_per_source: int = 
 
     alerts = _rows(
         supabase.table("monitor_alerts")
-        .select("id,part_number,mpn,alert_type,change_type,event_type,message,alert_message,summary,status,analysis_id,created_at")
+        .select("id,part_number,alert_type,change_type,event_type,message,alert_message,summary,status,analysis_id,created_at")
         .eq("user_id", user_id)
         .order("created_at", desc=True)
         .limit(limit_per_source)
     )
     for index, row in enumerate(alerts):
-        part = _text(row.get("part_number") or row.get("mpn"), "Monitoring alert")
+        part = _text(row.get("part_number"), "Monitoring alert")
         alert_type = _text(row.get("alert_type") or row.get("change_type") or row.get("event_type"), "Risk change")
         message = _text(row.get("message") or row.get("alert_message") or row.get("summary"), alert_type)
         status = _text(row.get("status"), "Open")
@@ -253,13 +253,13 @@ def build_workspace_commands(supabase, user_id: str, *, limit_per_source: int = 
 
     decisions = _rows(
         supabase.table("engineering_decisions")
-        .select("id,part_number,original_part,mpn,decision,status,decision_status,rationale,reason,notes,updated_at")
+        .select("id,part_number,mpn,decision,status,decision_status,rationale,reason,notes,updated_at")
         .eq("user_id", user_id)
         .order("updated_at", desc=True)
         .limit(limit_per_source)
     )
     for index, row in enumerate(decisions):
-        part = _text(row.get("part_number") or row.get("original_part") or row.get("mpn"), "Engineering decision")
+        part = _text(row.get("part_number") or row.get("mpn"), "Engineering decision")
         decision = _text(row.get("decision") or row.get("status") or row.get("decision_status"), "Review")
         rationale = _text(row.get("rationale") or row.get("reason") or row.get("notes"), "Open the engineering decision record")
         commands.append(
@@ -278,13 +278,13 @@ def build_workspace_commands(supabase, user_id: str, *, limit_per_source: int = 
 
     alternatives = _rows(
         supabase.table("alternative_recommendations")
-        .select("id,original_part,original_mpn,alternative_part,alternative_mpn,supplier,recommendation_score,score,created_at")
+        .select("id,original_part,alternative_part,alternative_mpn,supplier,recommendation_score,score,created_at")
         .eq("user_id", user_id)
         .order("created_at", desc=True)
         .limit(limit_per_source)
     )
     for index, row in enumerate(alternatives):
-        original = _text(row.get("original_part") or row.get("original_mpn"))
+        original = _text(row.get("original_part"))
         alternative = _text(row.get("alternative_part") or row.get("alternative_mpn"))
         if not original and not alternative:
             continue
