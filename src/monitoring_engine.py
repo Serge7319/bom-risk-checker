@@ -322,35 +322,82 @@ def save_monitor_alerts(supabase, records) -> bool:
     )
 
 
+def _monitor_exception_text(exc):
+    """Read structured PostgREST fields for internal classification only."""
+    parts = []
+    try:
+        text = str(exc or "").strip()
+    except Exception:
+        text = ""
+    if text:
+        parts.append(text)
+    for field in ("message", "details", "hint"):
+        try:
+            value = getattr(exc, field, None)
+        except Exception:
+            value = None
+        if isinstance(value, str) and value.strip():
+            parts.append(value.strip())
+    return "\n".join(parts)
+
+
 def _monitor_persistence_diagnostic(exc):
     """Summarize PostgREST failures without echoing submitted snapshot contents."""
-    raw = str(exc or "").strip()
+    raw = _monitor_exception_text(exc)
     folded = raw.casefold()
-    code_match = re.search(r"\b(?:PGRST\d{3}|\d{5})\b", raw, re.IGNORECASE)
-    code = code_match.group(0).upper() if code_match else ""
+
+    code_value = getattr(exc, "code", None)
+    code = ""
+    if isinstance(code_value, (str, int)) and not isinstance(code_value, bool):
+        structured_code = re.fullmatch(
+            r"(?:PGRST\d{3}|\d{5})",
+            str(code_value).strip(),
+            re.IGNORECASE,
+        )
+        if structured_code:
+            code = structured_code.group(0).upper()
+    if not code:
+        code_match = re.search(r"\b(?:PGRST\d{3}|\d{5})\b", raw, re.IGNORECASE)
+        code = code_match.group(0).upper() if code_match else ""
+
+    constraint_match = re.search(
+        r'\bconstraint\s+["\']([A-Za-z_][A-Za-z0-9_$]*)["\']',
+        raw,
+        re.IGNORECASE,
+    )
+    constraint = constraint_match.group(1) if constraint_match else ""
+
+    def with_metadata(message):
+        metadata = []
+        if code:
+            metadata.append(f"database code {code}")
+        if constraint:
+            metadata.append(f"constraint {constraint}")
+        suffix = f" ({'; '.join(metadata)})" if metadata else ""
+        return f"{message}{suffix}"
+
     if "row-level security" in folded or "permission denied" in folded or code == "42501":
-        return "The database write policy rejected the monitoring baseline."
+        return with_metadata("The database write policy rejected the monitoring baseline.")
     if "foreign key" in folded or code == "23503":
-        return "The saved BOM or workspace reference was rejected by the database."
+        return with_metadata("The saved BOM or workspace reference was rejected by the database.")
     if "not-null" in folded or "null value" in folded or code == "23502":
-        return "A required monitoring field is missing from the baseline."
+        return with_metadata("A required monitoring field is missing from the baseline.")
     if "duplicate key" in folded or code == "23505":
-        return "The database reports an existing baseline with the same unique key."
+        return with_metadata("The database reports an existing baseline with the same unique key.")
     if "column" in folded or "schema cache" in folded or code.startswith("PGRST2"):
-        return "The monitoring database schema is missing a field. Apply the current monitoring migrations."
+        return with_metadata(
+            "The monitoring database schema is missing a field. Apply the current monitoring migrations."
+        )
     if "check constraint" in folded or code == "23514":
-        return "The monitoring database rejected a field value. Apply the current monitoring migrations and retry."
+        return with_metadata(
+            "The monitoring database rejected a field value. Apply the current monitoring migrations and retry."
+        )
     error_type = re.sub(r"[^A-Za-z0-9_.]", "", type(exc).__name__) or "UnknownError"
     metadata = [f"error type {error_type}"]
     if code:
         metadata.append(f"database code {code}")
-    constraint_match = re.search(
-        r'\bconstraint\s+["\']?([A-Za-z_][A-Za-z0-9_$]*)',
-        raw,
-        re.IGNORECASE,
-    )
-    if constraint_match:
-        metadata.append(f"constraint {constraint_match.group(1)}")
+    if constraint:
+        metadata.append(f"constraint {constraint}")
     suffix = f" ({'; '.join(metadata)})"
     return f"The monitoring baseline could not be saved{suffix}. Check the server log for the database error."
 
@@ -369,7 +416,7 @@ def _insert_monitor_rows(
             supabase.table(table_name).insert(pending).execute()
             return (True, "") if include_diagnostic else True
         except Exception as exc:
-            folded = str(exc).casefold()
+            folded = _monitor_exception_text(exc).casefold()
             missing_column = next(
                 (
                     column
