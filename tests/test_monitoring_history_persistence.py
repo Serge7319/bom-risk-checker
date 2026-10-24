@@ -5,6 +5,7 @@ import pandas as pd
 
 from src.monitoring_engine import (
     build_monitor_record,
+    build_updated_monitor_snapshot,
     detect_monitor_alerts,
     monitoring_risk_level,
     resolve_monitoring_workspace_id,
@@ -151,6 +152,39 @@ class MonitoringHistoryPersistenceTests(unittest.TestCase):
             current,
         )
         self.assertEqual(alerts, [])
+
+    def test_monitor_stock_count_is_serialized_as_integer(self):
+        record = build_monitor_record(
+            "user-1",
+            "analysis-1",
+            {
+                "MPN": "ABC123",
+                "Stock Available": 0.0,
+                "Unit Price": 0.75,
+            },
+        )
+        self.assertEqual(record["stock"], 0)
+        self.assertIsInstance(record["stock"], int)
+        self.assertEqual(record["unit_price"], 0.75)
+        self.assertIsInstance(record["unit_price"], float)
+
+        fractional_count = build_monitor_record(
+            "user-1",
+            "analysis-1",
+            {"MPN": "ABC123", "Stock Available": 0.5},
+        )
+        self.assertIsNone(fractional_count["stock"])
+
+        refreshed = build_updated_monitor_snapshot(
+            "user-1",
+            "ABC123",
+            {},
+            {"stock_total": 0.0, "unit_price": 0.75},
+        )
+        self.assertEqual(refreshed["stock"], 0)
+        self.assertIsInstance(refreshed["stock"], int)
+        self.assertEqual(refreshed["unit_price"], 0.75)
+        self.assertIsInstance(refreshed["unit_price"], float)
 
     def test_monitor_history_persistence_strictly_serializes_and_is_nonfatal(self):
         client = _Supabase()
