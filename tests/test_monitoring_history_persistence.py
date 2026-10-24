@@ -16,6 +16,17 @@ from src.monitoring_engine import (
 )
 
 
+class _StructuredAPIError(Exception):
+    """PostgREST-shaped exception whose useful fields are not in str(exc)."""
+
+    def __init__(self, *, code=None, message="", details=None, hint=None):
+        self.code = code
+        self.message = message
+        self.details = details
+        self.hint = hint
+        super().__init__("")
+
+
 class _Insert:
     def __init__(self, owner):
         self.owner = owner
@@ -26,6 +37,8 @@ class _Insert:
 
     def execute(self):
         if self.owner.fail:
+            if self.owner.error is not None:
+                raise self.owner.error
             raise ValueError(self.owner.error_message)
         return None
 
@@ -39,9 +52,10 @@ class _Table:
 
 
 class _Supabase:
-    def __init__(self, *, fail=False, error_message="simulated persistence failure"):
+    def __init__(self, *, fail=False, error_message="simulated persistence failure", error=None):
         self.fail = fail
         self.error_message = error_message
+        self.error = error
         self.records = None
 
     def table(self, name):
@@ -60,8 +74,9 @@ class _OptionalColumnSupabase:
     def insert(self, records):
         self.attempts.append(records)
         if any(self.missing_column in row for row in records):
-            raise ValueError(
-                f"Could not find the '{self.missing_column}' column in the schema cache"
+            raise _StructuredAPIError(
+                code="PGRST204",
+                message=f"Could not find the '{self.missing_column}' column in the schema cache",
             )
         return self
 
@@ -274,6 +289,25 @@ class MonitoringHistoryPersistenceTests(unittest.TestCase):
         )
         self.assertFalse(saved)
         self.assertIn("error type ValueError", diagnostic)
+        self.assertIn("constraint part_monitor_history_scope_check", diagnostic)
+        self.assertNotIn("ABC123", diagnostic)
+
+    def test_structured_postgrest_errors_are_actionable_without_echoing_row_data(self):
+        client = _Supabase(
+            fail=True,
+            error=_StructuredAPIError(
+                code="23514",
+                message='new row violates check constraint "part_monitor_history_scope_check"',
+                details="Failing row contains ABC123",
+            ),
+        )
+        saved, diagnostic = save_monitor_history_with_diagnostic(
+            client,
+            [build_monitor_record("user-1", "analysis-1", {"MPN": "ABC123"})],
+        )
+        self.assertFalse(saved)
+        self.assertIn("rejected a field value", diagnostic)
+        self.assertIn("database code 23514", diagnostic)
         self.assertIn("constraint part_monitor_history_scope_check", diagnostic)
         self.assertNotIn("ABC123", diagnostic)
 
