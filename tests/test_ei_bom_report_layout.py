@@ -13,6 +13,7 @@ from src.ui.ei_bom_report import (
     _detailed_report_analyses,
     _detailed_report_analysis_label,
     _detailed_report_metadata_html,
+    _part_rows,
     _format_detailed_report_date,
     _format_snapshot_timestamp,
     _navigate_to_detailed_report_analysis,
@@ -184,6 +185,47 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
         fake_streamlit.rerun.assert_called_once_with()
         self.assertTrue(session["cadivor_show_detailed_risk"])
         self.assertNotIn("ei_report_choice", session)
+
+    def test_confirmed_zero_stock_elevates_saved_medium_risk_in_report(self):
+        part = {
+            "mpn": "TEST-ONLY-TPS5430DDAR",
+            "risk_score": 50,
+            "risk_level": "Medium",
+            "quantity": 1,
+            "stock_available": 0,
+            "stock_data_sources": ["DigiKey"],
+            "supplier_count": 3,
+            "lead_time_weeks": 13,
+            "lifecycle_status": "Conflicting supplier data",
+        }
+
+        row = _part_rows([part])[0]
+        html = engineering_intelligence_html(
+            bom_name="Synthetic QA BOM",
+            part_count=1,
+            tab="BOM Risk",
+            parts=[part],
+        )
+
+        self.assertEqual(row["level"], "High")
+        self.assertEqual(row["score"], 85)
+        self.assertEqual(row["score_display"], "85")
+        self.assertIn("Engineering review required", html)
+        self.assertNotIn("No high-risk components found", html)
+
+    def test_unconfirmed_legacy_zero_stock_does_not_elevate_report_risk(self):
+        part = {
+            "mpn": "TEST-ONLY-LEGACY-PART",
+            "risk_score": 50,
+            "risk_level": "Medium",
+            "stock_available": 0,
+            "supplier_count": 2,
+        }
+
+        row = _part_rows([part])[0]
+
+        self.assertEqual(row["level"], "Medium")
+        self.assertEqual(row["score"], 50)
 
     def test_bom_risk_uses_the_approved_review_structure(self):
         html = engineering_intelligence_html(
