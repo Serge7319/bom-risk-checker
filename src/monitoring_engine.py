@@ -345,7 +345,7 @@ def _monitor_persistence_diagnostic(exc):
     if code:
         metadata.append(f"database code {code}")
     constraint_match = re.search(
-        r'\\bconstraint\\s+["\\']?([A-Za-z_][A-Za-z0-9_$]*)',
+        r'\bconstraint\s+["\']?([A-Za-z_][A-Za-z0-9_$]*)',
         raw,
         re.IGNORECASE,
     )
