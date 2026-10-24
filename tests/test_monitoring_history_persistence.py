@@ -362,6 +362,24 @@ class MonitoringHistoryPersistenceTests(unittest.TestCase):
         self.assertIn("constraint part_monitor_history_scope_check", diagnostic)
         self.assertNotIn("ABC123", diagnostic)
 
+    def test_three_digit_postgrest_code_is_reported_as_http_status(self):
+        client = _Supabase(
+            fail=True,
+            error=_StructuredAPIError(
+                code=400,
+                message="JSON could not be generated",
+                details="Upstream body contains ABC123",
+            ),
+        )
+        saved, diagnostic = save_monitor_history_with_diagnostic(
+            client,
+            [build_monitor_record("user-1", "analysis-1", {"MPN": "ABC123"})],
+        )
+        self.assertFalse(saved)
+        self.assertIn("HTTP status 400", diagnostic)
+        self.assertNotIn("database code 400", diagnostic)
+        self.assertNotIn("ABC123", diagnostic)
+
     def test_nested_http_response_errors_report_safe_database_fields(self):
         client = _Supabase(
             fail=True,

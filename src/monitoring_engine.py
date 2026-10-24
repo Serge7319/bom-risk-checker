@@ -408,6 +408,17 @@ def _monitor_exception_status(exc):
                 value = int(value)
             if isinstance(value, int) and not isinstance(value, bool) and 100 <= value <= 599:
                 return value
+
+    try:
+        code_value = getattr(exc, "code", None)
+    except Exception:
+        code_value = None
+    if code_value is None:
+        code_value = _monitor_exception_payload(exc).get("code")
+    if isinstance(code_value, str) and code_value.isdigit():
+        code_value = int(code_value)
+    if isinstance(code_value, int) and not isinstance(code_value, bool) and 100 <= code_value <= 599:
+        return code_value
     return None
 
 
