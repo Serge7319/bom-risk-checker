@@ -57,3 +57,6 @@ jobs:
 
       - name: Run Engineering Intelligence Layout Tests
         run: python -m unittest tests.test_ei_bom_report_layout
+
+      - name: Run Supabase query schema compatibility tests
+        run: python -m unittest tests.test_workspace_schema_columns
