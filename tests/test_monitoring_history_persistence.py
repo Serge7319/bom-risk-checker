@@ -38,6 +38,23 @@ class _JSONAPIError(Exception):
         return self.payload
 
 
+class _HTTPResponse:
+    def __init__(self, payload, status_code):
+        self.payload = payload
+        self.status_code = status_code
+
+    def json(self):
+        return self.payload
+
+
+class _WrappedAPIError(Exception):
+    """API error whose structured response is nested under response."""
+
+    def __init__(self, payload, status_code):
+        self.response = _HTTPResponse(payload, status_code)
+        super().__init__("")
+
+
 class _Insert:
     def __init__(self, owner):
         self.owner = owner
@@ -343,6 +360,43 @@ class MonitoringHistoryPersistenceTests(unittest.TestCase):
         self.assertIn("rejected a field value", diagnostic)
         self.assertIn("database code 23514", diagnostic)
         self.assertIn("constraint part_monitor_history_scope_check", diagnostic)
+        self.assertNotIn("ABC123", diagnostic)
+
+    def test_nested_http_response_errors_report_safe_database_fields(self):
+        client = _Supabase(
+            fail=True,
+            error=_WrappedAPIError(
+                {
+                    "error": {
+                        "code": "23514",
+                        "message": 'new row violates check constraint "part_monitor_history_scope_check"',
+                        "details": "Failing row contains ABC123",
+                    }
+                },
+                400,
+            ),
+        )
+        saved, diagnostic = save_monitor_history_with_diagnostic(
+            client,
+            [build_monitor_record("user-1", "analysis-1", {"MPN": "ABC123"})],
+        )
+        self.assertFalse(saved)
+        self.assertIn("database code 23514", diagnostic)
+        self.assertIn("constraint part_monitor_history_scope_check", diagnostic)
+        self.assertNotIn("ABC123", diagnostic)
+
+    def test_opaque_http_error_reports_safe_status_without_response_body(self):
+        client = _Supabase(
+            fail=True,
+            error=_WrappedAPIError({}, 503),
+        )
+        saved, diagnostic = save_monitor_history_with_diagnostic(
+            client,
+            [build_monitor_record("user-1", "analysis-1", {"MPN": "ABC123"})],
+        )
+        self.assertFalse(saved)
+        self.assertIn("HTTP status 503", diagnostic)
+        self.assertIn("structured response fields unavailable", diagnostic)
         self.assertNotIn("ABC123", diagnostic)
 
     def test_monitoring_scope_migration_adds_analysis_and_workspace_ids(self):
