@@ -2619,8 +2619,17 @@ def run_authenticated_app() -> None:
     heartbeat_key = "cadivor_last_activity_heartbeat"
     if time.time() - float(st.session_state.get(heartbeat_key, 0.0)) >= 60:
         def _heartbeat():
-            supabase.rpc("cadivor_record_user_activity").execute()
-            return True
+            try:
+                supabase.rpc("cadivor_record_user_activity").execute()
+                return True
+            except Exception as exc:
+                # Activity presence is optional; a failed heartbeat must
+                # not prevent the authenticated page from rendering.
+                logger.warning(
+                    "Authenticated activity heartbeat failed (%s)",
+                    type(exc).__name__,
+                )
+                return False
 
         if _quick_boot_read(_heartbeat, default=False):
             st.session_state[heartbeat_key] = time.time()
