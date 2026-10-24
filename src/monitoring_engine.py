@@ -1,3 +1,4 @@
+import json
 import logging
 import math
 import re
@@ -323,13 +324,91 @@ def save_monitor_alerts(supabase, records) -> bool:
 
 
 def _monitor_exception_payload(exc):
-    """Read an allowlisted PostgREST payload without exposing its raw contents."""
+    """Read allowlisted PostgREST fields from common exception response shapes."""
+    candidates = [exc]
     try:
-        json_method = getattr(exc, "json", None)
-        payload = json_method() if callable(json_method) else None
+        response = getattr(exc, "response", None)
     except Exception:
-        payload = None
-    return payload if isinstance(payload, dict) else {}
+        response = None
+    if response is not None:
+        candidates.append(response)
+        try:
+            response_text = getattr(response, "text", None)
+        except Exception:
+            response_text = None
+        if isinstance(response_text, str):
+            candidates.append(response_text)
+    try:
+        args = getattr(exc, "args", ())
+    except Exception:
+        args = ()
+    if isinstance(args, (tuple, list)):
+        candidates.extend(args)
+
+    def decode(candidate):
+        if isinstance(candidate, dict):
+            return candidate
+        if isinstance(candidate, bytes):
+            try:
+                candidate = candidate.decode("utf-8")
+            except UnicodeDecodeError:
+                return {}
+        if isinstance(candidate, str):
+            try:
+                parsed = json.loads(candidate)
+            except (TypeError, ValueError):
+                return {}
+            return parsed if isinstance(parsed, dict) else {}
+        try:
+            json_method = getattr(candidate, "json", None)
+            payload = json_method() if callable(json_method) else None
+        except Exception:
+            payload = None
+        return payload if isinstance(payload, dict) else {}
+
+    for candidate in candidates:
+        payload = decode(candidate)
+        if not payload:
+            continue
+        sources = [payload]
+        for container in ("error", "data", "body"):
+            nested = payload.get(container)
+            if isinstance(nested, dict):
+                sources.append(nested)
+        fields = {}
+        for source in sources:
+            for field in ("code", "message", "details", "hint"):
+                value = source.get(field)
+                if field == "code":
+                    if isinstance(value, (str, int)) and not isinstance(value, bool):
+                        fields.setdefault(field, value)
+                elif isinstance(value, str) and value.strip():
+                    fields.setdefault(field, value.strip())
+        if fields:
+            return fields
+    return {}
+
+
+def _monitor_exception_status(exc):
+    """Return a safe HTTP status code without exposing response content."""
+    sources = [exc]
+    try:
+        response = getattr(exc, "response", None)
+    except Exception:
+        response = None
+    if response is not None:
+        sources.append(response)
+    for source in sources:
+        for field in ("status_code", "status"):
+            try:
+                value = getattr(source, field, None)
+            except Exception:
+                value = None
+            if isinstance(value, str) and value.isdigit():
+                value = int(value)
+            if isinstance(value, int) and not isinstance(value, bool) and 100 <= value <= 599:
+                return value
+    return None
 
 
 def _monitor_exception_text(exc, payload=None):
@@ -413,12 +492,22 @@ def _monitor_persistence_diagnostic(exc):
         return with_metadata(
             "The monitoring database rejected a field value. Apply the current monitoring migrations and retry."
         )
-    error_type = re.sub(r"[^A-Za-z0-9_.]", "", type(exc).__name__) or "UnknownError"
+    error_class = type(exc)
+    qualified_type = ".".join(
+        part for part in (getattr(error_class, "__module__", ""), getattr(error_class, "__qualname__", error_class.__name__))
+        if part and part != "builtins"
+    )
+    error_type = re.sub(r"[^A-Za-z0-9_.]", "", qualified_type) or "UnknownError"
     metadata = [f"error type {error_type}"]
+    status = _monitor_exception_status(exc)
+    if status:
+        metadata.append(f"HTTP status {status}")
     if code:
         metadata.append(f"database code {code}")
     if constraint:
         metadata.append(f"constraint {constraint}")
+    if not raw and not payload:
+        metadata.append("structured response fields unavailable")
     suffix = f" ({'; '.join(metadata)})"
     return f"The monitoring baseline could not be saved{suffix}. Check the server log for the database error."
 
