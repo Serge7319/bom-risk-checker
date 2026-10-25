@@ -7,14 +7,18 @@ RUNTIME = (ROOT / "src" / "authenticated_runtime.py").read_text(encoding="utf-8"
 EI_REPORT = (ROOT / "src" / "ui" / "ei_bom_report.py").read_text(encoding="utf-8")
 
 
-def test_scroll_reset_retries_until_the_route_has_had_time_to_mount():
+def test_scroll_reset_runs_in_app_document_until_destination_mounts():
     reset = NAVIGATION.split("def inject_nav_scroll_reset_if_needed", 1)[1]
 
-    assert "if (marked && finalAttempt)" in reset
-    assert "index === delays.length - 1" in reset
-    assert "if (userInteracted) return" in reset
-    assert "[0, 40, 120, 280, 600, 1100, 1800, 2600]" in reset
-    assert "marked.setAttribute('data-cadivor-nav-scroll-done', '1')" in reset
+    assert "st.html(" in reset
+    assert "unsafe_allow_javascript=True" in reset
+    assert "const doc = document;" in reset
+    assert 'main.querySelector(\'[data-testid="stMainBlockContainer"]\')' in reset
+    assert "data-cadivor-page-body" in reset
+    assert "state.timer = window.setInterval(state.reset, 100)" in reset
+    assert "state.settled >= 3" in reset
+    assert "Date.now() - state.startedAt > 10000" in reset
+    assert "components.html" not in reset
 
 
 def test_analysis_submission_and_report_switch_request_same_route_scroll_reset():
