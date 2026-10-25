@@ -41,6 +41,26 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
         self.assertNotIn("window.parent", paint)
         self.assertNotIn("with container(key=owner_key)", paint)
 
+    def test_unarmed_route_change_infers_compact_navigation_kind(self):
+        helper = next(
+            node for node in ast.parse(SOURCE).body
+            if isinstance(node, ast.FunctionDef)
+            and node.name == "_infer_unarmed_transition_kind"
+        )
+        module = ast.Module(body=[helper], type_ignores=[])
+        namespace = {}
+        exec(compile(ast.fix_missing_locations(module), "<transition-kind>", "exec"), namespace)
+        infer_kind = namespace["_infer_unarmed_transition_kind"]
+        self.assertEqual(infer_kind("Monitoring", "Analysis Details"), "navigation")
+        self.assertEqual(infer_kind("BOM Analyzer", ""), "")
+
+        prepare = SOURCE.split("def prepare_main_transition", 1)[1].split(
+            "def _paint_main_transition_markup", 1
+        )[0]
+        self.assertIn("if not state.get(MAIN_TRANSITION_ACTIVE_KEY):", prepare)
+        self.assertIn("_infer_unarmed_transition_kind(route, previous_route)", prepare)
+        self.assertIn("state[MAIN_TRANSITION_KIND_KEY] = inferred_kind", prepare)
+
     def test_regular_navigation_covers_partial_render_until_destination_is_complete(self):
         namespace = {
             "html": html,
