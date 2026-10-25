@@ -12,15 +12,38 @@ from tests.test_auth_cookie_read_bridge import _install_streamlit_stub
 
 class SignupConfirmationPendingTests(unittest.TestCase):
     def setUp(self):
-        self.st = _install_streamlit_stub({})
+        self.st, restore_streamlit = _install_streamlit_stub({})
+        self.addCleanup(restore_streamlit)
+        for mod in (
+            "src.auth",
+            "src.auth_state",
+            "src.auth_recovery",
+            "src.auth_signup_confirmation",
+            "src.auth_bootstrap",
+            "src.auth_gate",
+            "src.auth_cookies",
+        ):
+            sys.modules.pop(mod, None)
+        self.addCleanup(
+            lambda: [
+                sys.modules.pop(mod, None)
+                for mod in (
+                    "src.auth",
+                    "src.auth_state",
+                    "src.auth_recovery",
+                    "src.auth_signup_confirmation",
+                    "src.auth_bootstrap",
+                    "src.auth_gate",
+                    "src.auth_cookies",
+                )
+            ]
+        )
         self.st.markdown = MagicMock()
         self.st.button = MagicMock(return_value=False)
         self.st.success = MagicMock()
         self.st.error = MagicMock()
         self.st.rerun = MagicMock()
         self.st.warning = MagicMock()
-        for mod in ("src.auth", "src.auth_state", "src.auth_recovery"):
-            sys.modules.pop(mod, None)
 
     def _load_auth(self):
         return importlib.import_module("src.auth")
