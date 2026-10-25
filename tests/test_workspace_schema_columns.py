@@ -260,6 +260,51 @@ class AuthenticatedRuntimeSchemaColumnsTest(unittest.TestCase):
         self.assertGreater(selections["monitor_alerts"], 0)
 
 
+class RepositorySchemaColumnContractTest(unittest.TestCase):
+    def test_literal_supabase_selectors_match_known_production_columns(self):
+        invalid_columns = {
+            "analysis_parts": {"part_number"},
+            "monitor_alerts": {"mpn"},
+            "alternative_recommendations": {"original_mpn"},
+            "engineering_decisions": {"original_part"},
+        }
+        violations = []
+        source_root = Path(__file__).resolve().parents[1] / "src"
+
+        for source_path in sorted(source_root.rglob("*.py")):
+            tree = ast.parse(source_path.read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+                    continue
+                if node.func.attr != "select" or not isinstance(node.func.value, ast.Call):
+                    continue
+                table_call = node.func.value
+                if not isinstance(table_call.func, ast.Attribute) or table_call.func.attr != "table":
+                    continue
+                if not table_call.args or not isinstance(table_call.args[0], ast.Constant):
+                    continue
+                table_name = table_call.args[0].value
+                if table_name not in invalid_columns or not node.args:
+                    continue
+                selection = node.args[0]
+                if not isinstance(selection, ast.Constant) or not isinstance(selection.value, str):
+                    continue
+                if selection.value.strip() == "*":
+                    continue
+                columns = {
+                    column.strip().split(" as ", 1)[0].strip().casefold()
+                    for column in selection.value.split(",")
+                }
+                missing = invalid_columns[table_name].intersection(columns)
+                if missing:
+                    violations.append(
+                        f"{source_path.relative_to(Path(__file__).resolve().parents[1])}: "
+                        f"{table_name} selects absent columns {sorted(missing)}"
+                    )
+
+        self.assertEqual(violations, [], "\\n".join(violations))
+
+
 if __name__ == "__main__":
     unittest.main()
 
