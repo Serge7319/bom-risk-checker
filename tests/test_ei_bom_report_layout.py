@@ -51,8 +51,13 @@ REPORT_SOURCE = (Path(__file__).resolve().parents[1] / "src" / "ui" / "ei_bom_re
 
 class EngineeringIntelligenceLayoutTests(unittest.TestCase):
     def test_monitoring_workspace_matches_home_centered_width(self):
-        css = (Path(__file__).resolve().parents[1] / "src" / "assets" / "css" / "monitoring_home_alignment.css").read_text(encoding="utf-8")
-        approved_pages = (Path(__file__).resolve().parents[1] / "src" / "ui" / "approved_pages.py").read_text(encoding="utf-8")
+        root = Path(__file__).resolve().parents[1]
+        css = (root / "src" / "assets" / "css" / "monitoring_home_alignment.css").read_text(
+            encoding="utf-8"
+        )
+        approved_pages = (root / "src" / "ui" / "approved_pages.py").read_text(
+            encoding="utf-8"
+        )
         home_rule = approved_pages.split(".st-key-approved_home_page{", 1)[1].split("}", 1)[0]
         monitoring_canvas = css.split(
             "/* Monitoring matches Home's centered 1,440px workspace canvas. */",
