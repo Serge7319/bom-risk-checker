@@ -59,6 +59,9 @@ jobs:
       - name: Run Monitoring History Persistence Tests
         run: python -m unittest tests.test_monitoring_history_persistence
 
+      - name: Run On-demand Monitoring Supplier Refresh Tests
+        run: python -m unittest tests.test_monitoring_refresh
+
       - name: Run Browser Route Recovery Tests
         run: python -m unittest tests.test_browser_route_state
 
