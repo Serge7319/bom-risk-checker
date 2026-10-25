@@ -436,6 +436,9 @@ def route_loading_markup(target_route: str, transition_gen: int) -> str:
     if transition_kind not in {"navigation", "blocking"}:
         transition_kind = "blocking"
     if transition_kind == "navigation":
+        # Give the route cover its complete viewport geometry inline. The
+        # shared stylesheet still refines it, but a slow stylesheet delta can
+        # no longer expose the outgoing or partially mounted page.
         return f"""
         <div data-cadivor-transition-host="cadivor-main-transition"
              data-cadivor-transition-gen="{gen}"
@@ -447,10 +450,16 @@ def route_loading_markup(target_route: str, transition_gen: int) -> str:
                data-cadivor-transition-kind="navigation"
                data-cadivor-transition-gen="{gen}"
                data-testid="cadivor-route-loading"
-               role="status" aria-label="Loading {safe_route}">
-            <div class="cv-main-transition-card" aria-hidden="true">
-              <div class="cv-main-transition-mark">C</div>
-              <div class="cv-main-transition-progress"><i></i></div>
+               style="box-sizing:border-box;position:fixed;left:var(--cv-foundation-rail,228px);right:0;top:var(--cv-foundation-top,64px);bottom:0;width:calc(100vw - var(--cv-foundation-rail,228px));height:calc(100dvh - var(--cv-foundation-top,64px));min-height:calc(100vh - var(--cv-foundation-top,64px));max-width:none;z-index:2147483000;display:flex;align-items:center;justify-content:center;margin:0;padding:0;background:#F5F7FB;overflow:hidden;font-family:Inter,system-ui,sans-serif"
+               role="status" aria-label="Loading {safe_route}" aria-live="polite">
+            <div class="cv-main-transition-card"
+                 style="box-sizing:border-box;width:184px;padding:16px;border:1px solid #E4EAF3;border-radius:16px;background:#FFFFFF;box-shadow:0 8px 24px rgba(15,23,42,.06);text-align:center">
+              <div class="cv-main-transition-mark" aria-hidden="true"
+                   style="display:grid;place-items:center;width:34px;height:34px;margin:0 auto 12px;border-radius:10px;background:linear-gradient(145deg,#2563EB,#1D4ED8);color:#FFFFFF;font-size:16px;font-weight:850;letter-spacing:-.02em">C</div>
+              <div class="cv-main-transition-progress" aria-hidden="true"
+                   style="position:relative;display:block;width:100%;height:3px;margin:0;border-radius:999px;background:#E8EEF7;overflow:hidden">
+                <i style="display:block;width:35%;height:3px;border-radius:999px;background:#2563EB"></i>
+              </div>
             </div>
           </div>
         </div>
