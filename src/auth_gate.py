@@ -528,9 +528,17 @@ def paint_auth_gate(state: AuthGateState, *, progress_message: str = "") -> None
         )
         return
     if state == "authenticating":
+        resolved_progress_message = str(progress_message or "").strip()
+        if not resolved_progress_message:
+            try:
+                from src.auth_bootstrap import login_handoff_message
+
+                resolved_progress_message = login_handoff_message()
+            except Exception:
+                resolved_progress_message = "Signing you in…"
         render_full_page_gate_surface(
             title="Cadivor",
-            message=progress_message or "Signing you in…",
+            message=resolved_progress_message,
             kind="authenticating",
             show_progress=True,
         )

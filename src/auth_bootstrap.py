@@ -316,6 +316,8 @@ def login_handoff_message() -> str:
         return AUTHENTICATED_STARTUP_SHELL_MESSAGE
     if login_handoff_active():
         return AUTHENTICATED_STARTUP_SHELL_MESSAGE
+    if str(st.session_state.get("cadivor_auth_status") or "") == AUTH_AUTHENTICATED:
+        return AUTHENTICATED_STARTUP_SHELL_MESSAGE
     return "Signing you in…"
 
 
@@ -683,12 +685,16 @@ def _ensure_authenticated_or_stop_impl() -> None:
     # Already-authenticated workspace navigation: never paint boot/authenticating
     # over the durable shell — admit runtime with zero gate paint once shell exists.
     if gate_state == "ready" and already_authenticated and not has_pending_credentials():
-        clear_login_handoff()
-        # First post-login run: foundation shell is not mounted yet. Keep the
-        # branded Signing-you-in surface through runtime import so the viewport
-        # never goes white between Login and the authenticated shell.
-        if not st.session_state.get("cadivor_foundation_shell_mounted"):
-            paint_auth_gate("authenticating")
+        shell_mounted = bool(st.session_state.get("cadivor_foundation_shell_mounted"))
+        if shell_mounted:
+            clear_login_handoff()
+        # Keep the handoff stage until the authenticated shell starts. The gate
+        # can then distinguish credential verification from workspace setup.
+        if not shell_mounted:
+            paint_auth_gate(
+                "authenticating",
+                progress_message=login_handoff_message(),
+            )
         log_startup_phase("auth_boundary_passed")
         emit_timing(
             "auth.boundary",
@@ -775,10 +781,12 @@ def _ensure_authenticated_or_stop_impl() -> None:
             ok = execute_password_login(supabase, cookie_manager, email, password)
             if ok:
                 set_auth_gate_state("ready", reason="provider_login_success")
-                # Drop handoff so authenticated navigations cannot remount the gate.
-                clear_login_handoff()
-                # Keep Signing-you-in visible until this same run mounts the shell.
-                paint_auth_gate("authenticating")
+                # Keep the initializing handoff until the authenticated runtime
+                # loads the workspace and clears it.
+                paint_auth_gate(
+                    "authenticating",
+                    progress_message=login_handoff_message(),
+                )
             else:
                 set_auth_gate_state(
                     "login",
@@ -815,11 +823,14 @@ def _ensure_authenticated_or_stop_impl() -> None:
             persist_session_auth_cookie(cookie_manager)
         except Exception:
             pass
-        clear_login_handoff()
         # Keep authenticating/boot surface visible until authenticated chrome paints.
+        # The authenticated runtime clears the handoff after its workspace load.
         # Premature retire_auth_gate_overlays() caused blank white frames.
         if not st.session_state.get("cadivor_foundation_shell_mounted"):
-            paint_auth_gate("authenticating")
+            paint_auth_gate(
+                "authenticating",
+                progress_message=login_handoff_message(),
+            )
         log_startup_phase("auth_boundary_passed")
         emit_timing(
             "auth.boundary",
