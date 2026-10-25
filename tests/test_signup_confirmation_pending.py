@@ -12,15 +12,38 @@ from tests.test_auth_cookie_read_bridge import _install_streamlit_stub
 
 class SignupConfirmationPendingTests(unittest.TestCase):
     def setUp(self):
-        self.st = _install_streamlit_stub({})
+        self.st, restore_streamlit = _install_streamlit_stub({})
+        self.addCleanup(restore_streamlit)
+        for mod in (
+            "src.auth",
+            "src.auth_state",
+            "src.auth_recovery",
+            "src.auth_signup_confirmation",
+            "src.auth_bootstrap",
+            "src.auth_gate",
+            "src.auth_cookies",
+        ):
+            sys.modules.pop(mod, None)
+        self.addCleanup(
+            lambda: [
+                sys.modules.pop(mod, None)
+                for mod in (
+                    "src.auth",
+                    "src.auth_state",
+                    "src.auth_recovery",
+                    "src.auth_signup_confirmation",
+                    "src.auth_bootstrap",
+                    "src.auth_gate",
+                    "src.auth_cookies",
+                )
+            ]
+        )
         self.st.markdown = MagicMock()
         self.st.button = MagicMock(return_value=False)
         self.st.success = MagicMock()
         self.st.error = MagicMock()
         self.st.rerun = MagicMock()
         self.st.warning = MagicMock()
-        for mod in ("src.auth", "src.auth_state", "src.auth_recovery"):
-            sys.modules.pop(mod, None)
 
     def _load_auth(self):
         return importlib.import_module("src.auth")
@@ -48,6 +71,31 @@ class SignupConfirmationPendingTests(unittest.TestCase):
         self.assertNotIn("cadivor_auth_notice", self.st.session_state)
         self.st.rerun.assert_called_once()
         self.st.success.assert_not_called()
+
+    def test_pending_signup_clears_signin_gate_and_routes_to_confirmation_surface(self):
+        auth = self._load_auth()
+        gate = importlib.import_module("src.auth_gate")
+        bootstrap = importlib.import_module("src.auth_bootstrap")
+        state = self._load_state()
+        confirmation = auth._auth_signup_confirmation()
+
+        bootstrap.begin_login_handoff("authenticating")
+        gate.stash_pending_credentials("stale@cadivor.com", "stale-password")
+        gate.set_auth_gate_state("authenticating", reason="test_stale_signin")
+        gate.st.session_state[gate.AUTH_GATE_ERROR_KEY] = "stale sign-in error"
+
+        auth._enter_signup_confirmation_pending("new@cadivor.com")
+
+        self.assertFalse(bootstrap.login_handoff_active())
+        self.assertFalse(gate.has_pending_credentials())
+        self.assertEqual(gate.get_auth_gate_state(), "login")
+        self.assertNotIn(gate.AUTH_GATE_ERROR_KEY, gate.st.session_state)
+        self.assertEqual(
+            gate.st.session_state["cadivor_root_state"],
+            state.APP_SIGNUP_CONFIRMATION_PENDING,
+        )
+        self.assertTrue(confirmation.signup_confirmation_surface_active())
+        self.assertNotIn("stale-password", str(gate.st.session_state))
 
     def test_duplicate_signup_enters_safe_pending_state(self):
         auth = self._load_auth()
@@ -150,16 +198,16 @@ class SignupConfirmationPendingTests(unittest.TestCase):
         auth._render_signup_confirmation_pending()
         joined = "\n".join(bodies)
         self.assertIn("Signup request received", joined)
-        self.assertIn("Check your email", joined)
-        self.assertIn("Next step", joined)
+        self.assertIn("Check your email to continue", joined)
+        self.assertIn("Next steps", joined)
         self.assertIn("We’ve received your signup request for:", joined)
         self.assertIn("pending@cadivor.com", joined)
         self.assertIn("If this address is eligible for account creation", joined)
-        self.assertIn("Already have a Cadivor account? Return to login or reset your password.", joined)
+        self.assertIn("Return to login", [call.args[0] for call in self.st.button.call_args_list])
         self.assertIn("auth-confirm-guidance", joined)
-        self.assertIn("New account? Check your inbox, spam, and promotions folders.", joined)
+        self.assertIn("If you receive one, open it and follow the confirmation link to activate your account.", joined)
         self.assertNotIn("auth-confirm-checklist", joined)
-        self.assertIn("Check your inbox, spam, and promotions folders.", joined)
+        self.assertIn("Check your inbox, spam, and promotions folders for a Cadivor confirmation email.", joined)
         self.assertNotIn("Confirmation email sent", joined)
         self.assertNotIn("We sent a confirmation link", joined)
         self.assertNotIn("Email confirmation required", joined)
