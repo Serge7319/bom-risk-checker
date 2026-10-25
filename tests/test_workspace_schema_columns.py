@@ -261,45 +261,77 @@ class AuthenticatedRuntimeSchemaColumnsTest(unittest.TestCase):
 
 
 class RepositorySchemaColumnContractTest(unittest.TestCase):
-    def test_literal_supabase_selectors_match_known_production_columns(self):
+    def test_literal_supabase_queries_avoid_known_missing_columns(self):
         invalid_columns = {
             "analysis_parts": {"part_number"},
             "monitor_alerts": {"mpn"},
             "alternative_recommendations": {"original_mpn"},
             "engineering_decisions": {"original_part"},
         }
+        column_methods = {
+            "eq", "neq", "gt", "gte", "lt", "lte", "like", "ilike",
+            "ilike_any", "in_", "is_", "filter", "order", "contains",
+            "contained_by",
+        }
+        write_methods = {"insert", "upsert", "update", "match"}
         violations = []
         source_root = Path(__file__).resolve().parents[1] / "src"
+
+        def table_name_for_query(call):
+            query = call.func.value if isinstance(call.func, ast.Attribute) else None
+            while isinstance(query, ast.Call) and isinstance(query.func, ast.Attribute):
+                if query.func.attr == "table" and query.args:
+                    table_arg = query.args[0]
+                    if isinstance(table_arg, ast.Constant) and isinstance(table_arg.value, str):
+                        return table_arg.value
+                    return ""
+                query = query.func.value
+            return ""
+
+        def selected_columns(method, call):
+            if method == "select":
+                if not call.args or not isinstance(call.args[0], ast.Constant):
+                    return set()
+                selection = call.args[0].value
+                if not isinstance(selection, str) or selection.strip() == "*":
+                    return set()
+                return {
+                    column.strip().split(" as ", 1)[0].strip().casefold()
+                    for column in selection.split(",")
+                }
+            if method in column_methods:
+                if not call.args or not isinstance(call.args[0], ast.Constant):
+                    return set()
+                value = call.args[0].value
+                return {value.strip().casefold()} if isinstance(value, str) else set()
+            if method in write_methods:
+                if not call.args or not isinstance(call.args[0], ast.Dict):
+                    return set()
+                return {
+                    key.value.strip().casefold()
+                    for key in call.args[0].keys
+                    if isinstance(key, ast.Constant) and isinstance(key.value, str)
+                }
+            return set()
 
         for source_path in sorted(source_root.rglob("*.py")):
             tree = ast.parse(source_path.read_text(encoding="utf-8"))
             for node in ast.walk(tree):
                 if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
                     continue
-                if node.func.attr != "select" or not isinstance(node.func.value, ast.Call):
+                method = node.func.attr
+                if method != "select" and method not in column_methods and method not in write_methods:
                     continue
-                table_call = node.func.value
-                if not isinstance(table_call.func, ast.Attribute) or table_call.func.attr != "table":
+                table_name = table_name_for_query(node)
+                if table_name not in invalid_columns:
                     continue
-                if not table_call.args or not isinstance(table_call.args[0], ast.Constant):
-                    continue
-                table_name = table_call.args[0].value
-                if table_name not in invalid_columns or not node.args:
-                    continue
-                selection = node.args[0]
-                if not isinstance(selection, ast.Constant) or not isinstance(selection.value, str):
-                    continue
-                if selection.value.strip() == "*":
-                    continue
-                columns = {
-                    column.strip().split(" as ", 1)[0].strip().casefold()
-                    for column in selection.value.split(",")
-                }
-                missing = invalid_columns[table_name].intersection(columns)
+                missing = invalid_columns[table_name].intersection(
+                    selected_columns(method, node)
+                )
                 if missing:
                     violations.append(
                         f"{source_path.relative_to(Path(__file__).resolve().parents[1])}: "
-                        f"{table_name} selects absent columns {sorted(missing)}"
+                        f"{table_name}.{method} references absent columns {sorted(missing)}"
                     )
 
         self.assertEqual(violations, [], "\\n".join(violations))
