@@ -22142,6 +22142,7 @@ def run_authenticated_app() -> None:
         from src.bom_upload_flow import (
             consume_approved_bom_submission,
             finish_approved_bom_submission,
+            fail_approved_bom_summary_save,
             resume_approved_bom_submission,
             should_render_legacy_bom_workspace,
             should_render_bom_analysis_body,
@@ -24192,9 +24193,28 @@ def run_authenticated_app() -> None:
                     if _one_time_reserved:
                         if release_one_time_credit(_one_time_user_id, _one_time_order_id):
                             st.session_state.pop("cadivor_one_time_bom_order_id", None)
-                        st.session_state.pop("results_df", None)
-                    st.error(f"Could not save analysis summary: {e}")
-                    stop_authenticated_page()
+                    error_code = str(getattr(e, "code", "") or "")
+                    error_text = str(e)
+                    if error_code == "42501" or "42501" in error_text:
+                        save_error_message = (
+                            "Cadivor could not save this analysis to the active workspace (42501). "
+                            "The insert policy requires the saved row to belong to the signed-in user "
+                            "and that user to have an active owner, admin, or engineer role in this workspace. "
+                            "No saved analysis was created. Confirm workspace access, then retry."
+                        )
+                    else:
+                        save_error_message = (
+                            "Cadivor could not confirm that the analysis summary was saved. "
+                            "Check Saved BOMs before retrying to avoid creating a duplicate."
+                        )
+                    fail_approved_bom_summary_save(
+                        st.session_state,
+                        message=save_error_message,
+                    )
+                    from src.ui.navigation import request_main_scroll_reset
+
+                    st.session_state["cadivor_bom_analysis_scroll_token"] = request_main_scroll_reset()
+                    st.rerun()
 
                 from src.part_images import normalize_supplier_image_url
                 from src.saved_bom_cost import (
