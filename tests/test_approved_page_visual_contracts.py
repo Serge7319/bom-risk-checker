@@ -51,12 +51,23 @@ class ApprovedPageVisualContractTests(unittest.TestCase):
         self.assertNotIn('category_columns = st.columns', monitoring_renderer)
         self.assertNotIn('key=f"approved_monitoring_category_', monitoring_renderer)
 
-    def test_monitoring_uses_home_width_canvas_and_card_shell(self):
+    def test_monitoring_uses_fluid_workspace_canvas_like_bom_analysis(self):
         self.assertIn(
             '[data-testid="stMainBlockContainer"]:has(.st-key-approved_page_canvas_standard_render_monitoring)',
             MONITORING_HOME_CSS,
         )
-        self.assertIn('max-width: 1440px !important;', MONITORING_HOME_CSS)
+        monitoring_canvas = MONITORING_HOME_CSS.split(
+            "/* Monitoring shares the fluid workspace canvas used by BOM analysis. */",
+            1,
+        )[1].split("/* Match the larger, card-based Monitoring mockup", 1)[0]
+        self.assertIn("max-width: none !important;", monitoring_canvas)
+        self.assertIn("width: 100% !important;", monitoring_canvas)
+        self.assertIn("margin-left: 0 !important;", monitoring_canvas)
+        self.assertNotIn("1440px", monitoring_canvas)
+        self.assertIn(
+            '.st-key-approved_bom_upload_panel{box-sizing:border-box!important;width:100%!important;max-width:none!important',
+            APPROVED_PAGES,
+        )
         self.assertIn('("render_monitoring", "standard")', APPROVED_PAGES)
         self.assertIn('.st-key-approved_monitoring_alert_card {', MONITORING_HOME_CSS)
 
