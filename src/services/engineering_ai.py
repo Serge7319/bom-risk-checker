@@ -384,6 +384,79 @@ def _mentioned_components(question: str, components: list[dict[str, Any]]) -> li
     found.sort(key=lambda item: (item[0], item[1]))
     return [row for _, _, row in found]
 
+def _component_scoped_context(
+    question: str,
+    context: dict[str, Any],
+    history: list[dict[str, str]] | None = None,
+) -> dict[str, Any] | None:
+    """Restrict a part-specific answer to the explicitly referenced BOM components."""
+    source = context or {}
+    if source.get("datasheet_qa"):
+        return None
+
+    resolved_question = _conversation_question(question, history)
+    question_text = resolved_question.strip().lower()
+    recommendation_terms = (
+        "why",
+        "risk",
+        "recommend",
+        "should",
+        "priority",
+        "rank",
+        "review",
+        "qualify",
+        "replace",
+        "alternative",
+        "mitigate",
+        "lifecycle",
+        "stock",
+        "supplier",
+        "lead time",
+        "release",
+        "schedule",
+        "evidence",
+    )
+    if not any(term in question_text for term in recommendation_terms):
+        return None
+
+    components = list(source.get("components") or [])
+    matched = _mentioned_components(resolved_question, components)
+    if not matched:
+        return None
+
+    identifiers = {
+        str(value or "").strip().casefold()
+        for row in matched
+        for value in (row.get("part_number"), row.get("mpn"))
+        if str(value or "").strip()
+    }
+    scoped = dict(source)
+    scoped["components"] = matched
+    # Overall coverage and summary totals cannot support a part-specific confidence.
+    scoped["summary"] = {}
+    scoped["coverage"] = {"score": 0}
+
+    row_fields = {
+        "alternatives": ("original_part", "part_number", "mpn"),
+        "saved_alternatives": ("original_part", "part_number", "mpn"),
+        "monitoring": ("part_number", "mpn"),
+        "decisions": ("part_number", "mpn", "original_part"),
+        "engineering_decisions": ("part_number", "mpn", "original_part"),
+    }
+    for collection, fields in row_fields.items():
+        if collection not in source:
+            continue
+        rows = list(source.get(collection) or [])
+        scoped[collection] = [
+            row
+            for row in rows
+            if any(
+                str(row.get(field) or "").strip().casefold() in identifiers
+                for field in fields
+            )
+        ]
+    return scoped
+
 
 def _mentioned_component(question: str, components: list[dict[str, Any]]) -> dict[str, Any] | None:
     """Return the component explicitly referenced in a user question, if any."""
@@ -1486,6 +1559,23 @@ class EngineeringAI:
         clean_question = str(question or "").strip()
         if not clean_question:
             raise EngineeringAIError("Enter an engineering question first.", code="validation")
+        component_scoped_context = _component_scoped_context(
+            clean_question,
+            context,
+            history,
+        )
+        if component_scoped_context is not None:
+            return EngineeringAIResponse(
+                answer=_fallback_answer(
+                    clean_question,
+                    component_scoped_context,
+                    history,
+                ),
+                provider="cadivor-grounded",
+                model="local-advisory",
+                grounded=True,
+            )
+
         if not self.configured:
             log_ai_provider_event(
                 "request_skipped",
