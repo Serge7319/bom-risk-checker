@@ -271,6 +271,11 @@ from src.workspace_service import (
     set_active_workspace_preference,
     create_organization_workspace,
 )
+from src.workspace_write_scope import (
+    build_workspace_payload as _build_workspace_payload,
+    can_create_analysis as _can_create_analysis,
+    sync_active_workspace_context as _sync_active_workspace_context,
+)
 try:
     import extra_streamlit_components as stx
 except Exception:
@@ -624,10 +629,15 @@ def load_analysis_history(user_id):
     return response.data if response.data else []
 
 
-def _workspace_query(query):
-    workspace_id = str(st.session_state.get("active_workspace_id") or "")
-    if workspace_id:
-        return query.eq("workspace_id", workspace_id)
+def _workspace_query(query, workspace_id=None):
+    scope_id = (
+        st.session_state.get("active_workspace_id")
+        if workspace_id is None
+        else workspace_id
+    )
+    scope_id = str(scope_id or "").strip()
+    if scope_id:
+        return query.eq("workspace_id", scope_id)
     return query
 
 
@@ -655,12 +665,8 @@ def _workspace_commands_cache_fresh(user_id):
     )
 
 
-def _workspace_payload(payload):
-    result = dict(payload or {})
-    workspace_id = str(st.session_state.get("active_workspace_id") or "")
-    if workspace_id:
-        result["workspace_id"] = workspace_id
-    return result
+def _workspace_payload(payload, workspace_id):
+    return _build_workspace_payload(payload, workspace_id)
 
 
 def _decision_context_key(analysis_id=None):
@@ -726,10 +732,21 @@ def _make_json_safe(value, _seen=None):
     return str(value)
 
 
-def save_analysis_decision(user_id, payload):
+def save_analysis_decision(user_id, payload, workspace_id=None):
     """Insert or update a persistent Alternative Finder engineering decision."""
     if not user_id:
         raise ValueError("A signed-in user is required to save a decision.")
+
+    resolved_workspace_id = (
+        st.session_state.get("active_workspace_id")
+        if workspace_id is None
+        else workspace_id
+    )
+    resolved_workspace_id = str(resolved_workspace_id or "").strip()
+    if not resolved_workspace_id:
+        raise ValueError(
+            "An active workspace could not be verified. Refresh workspace access before saving this decision."
+        )
 
     original_part = str(payload.get("original_part", "")).strip()
     alternative_part = str(payload.get("alternative_part", "")).strip()
@@ -744,7 +761,7 @@ def save_analysis_decision(user_id, payload):
 
     record = {
         "user_id": user_id,
-        "workspace_id": st.session_state.get("active_workspace_id") or None,
+        "workspace_id": resolved_workspace_id,
         "analysis_id": str(analysis_id).strip() if analysis_id else None,
         "context_key": context_key,
         "project_name": str(payload.get("project_name", "")).strip(),
@@ -780,7 +797,8 @@ def save_analysis_decision(user_id, payload):
     existing = (
         _workspace_query(
             supabase.table("analysis_decisions")
-            .select("id")
+            .select("id"),
+            workspace_id=resolved_workspace_id,
         )
         .eq("user_id", user_id)
         .eq("context_key", context_key)
@@ -797,6 +815,7 @@ def save_analysis_decision(user_id, payload):
             .update(record)
             .eq("id", decision_id)
             .eq("user_id", user_id)
+            .eq("workspace_id", resolved_workspace_id)
             .execute()
         )
     else:
@@ -3420,19 +3439,11 @@ def run_authenticated_app() -> None:
             _preferred_context_workspace_id = _cached_admit.get("preferred_workspace_id")
             _context_preference_error = _cached_admit.get("preference_error")
             active_workspace = dict(_cached_admit.get("active_workspace") or {})
-            active_workspace_id = str(active_workspace.get("id") or "")
-            active_workspace_name = _safe_text(
-                active_workspace.get("name"),
-                "Cadivor Workspace",
-            )
-            active_workspace_role = _safe_text(
-                active_workspace.get("current_role"),
-                "owner",
-            ).lower()
-            if active_workspace_id:
-                st.session_state["active_workspace_id"] = active_workspace_id
-                st.session_state["active_workspace_name"] = active_workspace_name
-                st.session_state["active_workspace_role"] = active_workspace_role
+            (
+                active_workspace_id,
+                active_workspace_name,
+                active_workspace_role,
+            ) = _sync_active_workspace_context(st.session_state, active_workspace)
             saved_bom_count = int(_cached_admit.get("saved_bom_count") or 0)
         else:
             _admit_degraded = False
@@ -3505,20 +3516,11 @@ def run_authenticated_app() -> None:
                 )
 
             active_workspace = active_workspace or {}
-            active_workspace_id = str(active_workspace.get("id") or "")
-            active_workspace_name = _safe_text(
-                active_workspace.get("name"),
-                "Cadivor Workspace",
-            )
-            active_workspace_role = _safe_text(
-                active_workspace.get("current_role"),
-                "owner",
-            ).lower()
-
-            if active_workspace_id:
-                st.session_state["active_workspace_id"] = active_workspace_id
-                st.session_state["active_workspace_name"] = active_workspace_name
-                st.session_state["active_workspace_role"] = active_workspace_role
+            (
+                active_workspace_id,
+                active_workspace_name,
+                active_workspace_role,
+            ) = _sync_active_workspace_context(st.session_state, active_workspace)
 
             _saved_bom_workspace_id = str(active_workspace_id or "")
             _saved_bom_user_id = _context_user_id
@@ -20720,6 +20722,7 @@ def run_authenticated_app() -> None:
                     saved_record = save_analysis_decision(
                         current_user["id"],
                         persistent_payload,
+                        workspace_id=active_workspace_id,
                     )
                     for cache_key in list(st.session_state.keys()):
                         if str(cache_key).startswith("_ed_approved_alts_"):
@@ -24162,6 +24165,13 @@ def run_authenticated_app() -> None:
                 st.session_state["health_status"] = health_status
 
                 try:
+                    if not _can_create_analysis(
+                        active_workspace_id, active_workspace_role
+                    ):
+                        raise PermissionError(
+                            "This BOM was not saved. An active workspace with owner, admin, or engineer access could not be verified. Switch to an active writable workspace, then retry."
+                        )
+
                     if _one_time_reserved:
                         from uuid import uuid4
                         analysis_id = str(uuid4())
@@ -24180,7 +24190,8 @@ def run_authenticated_app() -> None:
                                 "medium_risk_count": medium_count,
                                 "low_risk_count": low_count,
                                 "health_score": health_score,
-                            }
+                            },
+                            workspace_id=active_workspace_id,
                         )
                     ).execute()
 
@@ -24195,7 +24206,9 @@ def run_authenticated_app() -> None:
                             st.session_state.pop("cadivor_one_time_bom_order_id", None)
                     error_code = str(getattr(e, "code", "") or "")
                     error_text = str(e)
-                    if error_code == "42501" or "42501" in error_text:
+                    if isinstance(e, PermissionError) and error_text.strip():
+                        save_error_message = error_text.strip()
+                    elif error_code == "42501" or "42501" in error_text:
                         save_error_message = (
                             "Cadivor could not save this analysis to the active workspace (42501). "
                             "The insert policy requires the saved row to belong to the signed-in user "
