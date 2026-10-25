@@ -107,3 +107,14 @@ def validate_review_decision(
     if decision == "Approve" and (risk_score >= 70 or risky_lifecycle):
         return True, None, "Approval overrides elevated recorded risk. Confirm the supporting evidence in the notes."
     return True, None, None
+
+
+def should_persist_review_decision(
+    *,
+    save_requested: bool,
+    changed: bool,
+    disabled: bool,
+    can_save_decision: bool,
+) -> bool:
+    """Persist a review item only after an explicit valid save action."""
+    return bool(save_requested and changed and not disabled and can_save_decision)

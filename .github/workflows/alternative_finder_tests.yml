@@ -50,6 +50,9 @@ jobs:
             tests.test_main_transition_release_signal \
             tests.test_approved_replacement_handoff
 
+      - name: Run Engineering Review Explicit Save Tests
+        run: python -m unittest tests.test_engineering_review_explicit_save
+
       - name: Run Monitoring History Persistence Tests
         run: python -m unittest tests.test_monitoring_history_persistence
 

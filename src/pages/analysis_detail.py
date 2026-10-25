@@ -59,6 +59,7 @@ from src.components.engineering_assistant import render_engineering_assistant
 from src.components.review import (
     is_unresolved_review,
     parse_due_date,
+    should_persist_review_decision,
     summarize_review_workflow,
     validate_review_decision,
 )
@@ -2614,8 +2615,14 @@ def render_analysis_detail(
                             key=f"cv271_notes_{analysis_id}_{part_key}",
                             disabled=disabled,
                         )
+                        save_requested = st.button(
+                            "Save review decision",
+                            key=f"cv273_save_review_decision_{analysis_id}_{part_key}",
+                            disabled=disabled,
+                        )
+                        st.caption("Changes are saved only when you select Save review decision.")
 
-                        # Streamlit reruns after widget changes. Persist only when values differ.
+                        # Streamlit reruns after widget changes. Keep edits local until explicit save.
                         changed = (
                             decision_value != saved.get("decision")
                             or owner_value != saved.get("owner")
@@ -2633,12 +2640,17 @@ def render_analysis_detail(
                             risk_score=risk_score,
                             lifecycle=lifecycle_value,
                         )
-                        if validation_error and changed and not disabled:
+                        if validation_error and save_requested and not disabled:
                             st.warning(validation_error)
-                        elif validation_warning and changed and not disabled:
+                        elif validation_warning and save_requested and not disabled:
                             st.warning(validation_warning)
 
-                        if changed and not disabled and can_save_decision:
+                        if should_persist_review_decision(
+                            save_requested=save_requested,
+                            changed=changed,
+                            disabled=disabled,
+                            can_save_decision=can_save_decision,
+                        ):
                             st.caption("Saving…")
                             saved_item, save_error = save_review_item(
                                 supabase,
