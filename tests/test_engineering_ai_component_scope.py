@@ -93,6 +93,27 @@ class EngineeringAIComponentScopeTests(unittest.TestCase):
         provider_request.assert_not_called()
 
 
+    def test_component_mention_requires_a_complete_identifier(self):
+        ai = _load_engineering_ai()
+        context = {
+            "components": [
+                {"part_number": "U1", "risk_score": 98},
+                {"part_number": "U10", "risk_score": 32},
+            ],
+            "analysis": {"project_name": "TEST - Synthetic QA BOM"},
+        }
+
+        scoped = ai._component_scoped_context(
+            "Why is U10 ranked first?",
+            context,
+        )
+
+        self.assertIsNotNone(scoped)
+        self.assertEqual(
+            [row["part_number"] for row in scoped["components"]],
+            ["U10"],
+        )
+
     def test_component_fact_question_keeps_provider_path(self):
         ai = _load_engineering_ai()
         client = ai.EngineeringAI(
