@@ -375,7 +375,7 @@ def _identifier_mention(text: str, identifier: Any) -> tuple[int, int] | None:
     compact = "".join(character for character in token if character.isalnum())
     if not compact:
         return None
-    separators = r"[\\s._/+\\-]*"
+    separators = r"[\s._/+\-]*"
     pattern = (
         r"(?<![A-Z0-9])"
         + separators.join(re.escape(character) for character in compact)
