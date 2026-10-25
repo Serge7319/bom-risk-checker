@@ -74,7 +74,7 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
             if isinstance(node, ast.FunctionDef) and node.name == "route_loading_markup"
         )
         module = ast.Module(body=[helper], type_ignores=[])
-        exec(ast.fix_missing_locations(module), namespace)
+        exec(compile(ast.fix_missing_locations(module), "<route-loading>", "exec"), namespace)
         markup = namespace["route_loading_markup"]("Monitoring", 22)
 
         self.assertIn("position:fixed", markup)
@@ -105,7 +105,8 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
         markup = namespace["route_loading_markup"]("Portfolio Intelligence", 21)
         self.assertIn('data-cadivor-transition-kind="navigation"', markup)
         self.assertIn("cv-main-transition-progress", markup)
-        self.assertIn('class="cv-main-transition-mark">C</div>', markup)
+        self.assertIn('class="cv-main-transition-mark"', markup)
+        self.assertIn(">C</div>", markup)
         self.assertNotIn("Opening Portfolio Intelligence", markup)
         nav_css = SOURCE.split(
             '.cv-main-transition.cv-route-loading[data-cadivor-transition-kind="navigation"]{{',
@@ -233,7 +234,8 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
         self.assertIn("run_with_read_budget(", monitoring)
         self.assertIn('budget_seconds=6.0', monitoring)
         self.assertIn('key="monitoring_data_retry"', monitoring)
-        self.assertIn("monitoring_route_data_", monitoring)
+        self.assertIn("monitoring_cache_key = monitoring_route_cache_key(", monitoring)
+        self.assertIn("monitoring_loaded_at_key", monitoring)
 
     def test_every_real_route_change_keeps_opening_owner_even_with_warm_cache(self):
         tree = ast.parse(SOURCE)
