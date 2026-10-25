@@ -61,6 +61,30 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
         self.assertIn("_infer_unarmed_transition_kind(route, previous_route)", prepare)
         self.assertIn("state[MAIN_TRANSITION_KIND_KEY] = inferred_kind", prepare)
 
+    def test_navigation_cover_has_inline_first_paint_fallback(self):
+        namespace = {
+            "html": html,
+            "BOM_ANALYSIS_TRANSITION_KEY": "cadivor_bom_analysis_transition",
+            "MAIN_TRANSITION_KIND_KEY": "cadivor_main_transition_kind",
+            "MAIN_TRANSITION_PREVIOUS_ROUTE_KEY": "cadivor_main_transition_previous_route",
+            "st": SimpleNamespace(session_state={"cadivor_main_transition_kind": "navigation"}),
+        }
+        helper = next(
+            node for node in ast.parse(SOURCE).body
+            if isinstance(node, ast.FunctionDef) and node.name == "route_loading_markup"
+        )
+        module = ast.Module(body=[helper], type_ignores=[])
+        exec(ast.fix_missing_locations(module), namespace)
+        markup = namespace["route_loading_markup"]("Monitoring", 22)
+
+        self.assertIn("position:fixed", markup)
+        self.assertIn("left:var(--cv-foundation-rail,228px)", markup)
+        self.assertIn("width:calc(100vw - var(--cv-foundation-rail,228px))", markup)
+        self.assertIn("z-index:2147483000", markup)
+        self.assertIn("background:#F5F7FB", markup)
+        self.assertIn('role="status" aria-label="Loading Monitoring" aria-live="polite"', markup)
+        self.assertIn("box-sizing:border-box;width:184px", markup)
+
     def test_regular_navigation_covers_partial_render_until_destination_is_complete(self):
         namespace = {
             "html": html,
