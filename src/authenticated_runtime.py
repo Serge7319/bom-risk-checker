@@ -6658,103 +6658,104 @@ def run_authenticated_app() -> None:
                                 gap="small",
                             )
                             action_position = 0
-                            if st.button(
-                                "Refresh live supplier data",
-                                key=f"m32_component_refresh_{selected_component_key}",
-                                type="secondary",
-                                help=(
-                                    "Poll configured DigiKey, Mouser, and Newark APIs "
-                                    "for this exact MPN and save a new monitoring snapshot."
-                                ),
-                                use_container_width=True,
-                            ):
-                                from src.monitoring_refresh import refresh_monitored_part
-
-                                with st.spinner(
-                                    f"Checking current supplier data for {selected_component_mpn}…"
+                            with component_action_columns[action_position]:
+                                if st.button(
+                                    "Refresh live supplier data",
+                                    key=f"m32_component_refresh_{selected_component_key}",
+                                    type="secondary",
+                                    help=(
+                                        "Poll configured DigiKey, Mouser, and Newark APIs "
+                                        "for this exact MPN and save a new monitoring snapshot."
+                                    ),
+                                    use_container_width=True,
                                 ):
-                                    refresh_result = refresh_monitored_part(
-                                        supabase,
-                                        user_id=monitoring_user_id,
-                                        workspace_id=monitoring_workspace_id or None,
-                                        part_number=selected_component_mpn,
-                                        analysis_id=monitoring_analysis_id or None,
-                                    )
-                                refresh_status = str(
-                                    refresh_result.get("status") or ""
-                                )
-                                if refresh_status in {"updated", "alert_save_failed"}:
-                                    matched_sources = (
-                                        str(refresh_result.get("sources_available") or "").strip()
-                                        or str(refresh_result.get("supplier") or "").strip()
-                                        or "configured distributor APIs"
-                                    )
-                                    checked_at = str(
-                                        refresh_result.get("checked_at") or "now"
-                                    )
-                                    refresh_message = (
-                                        f"Live supplier data for {selected_component_mpn} "
-                                        f"was saved at {checked_at} UTC. Exact MPN returned by: "
-                                        f"{matched_sources}."
-                                    )
-                                    alert_count = int(
-                                        refresh_result.get("alert_count") or 0
-                                    )
-                                    if alert_count:
-                                        refresh_message += (
-                                            f" {alert_count} change alert(s) were recorded."
+                                    from src.monitoring_refresh import refresh_monitored_part
+
+                                    with st.spinner(
+                                        f"Checking current supplier data for {selected_component_mpn}…"
+                                    ):
+                                        refresh_result = refresh_monitored_part(
+                                            supabase,
+                                            user_id=monitoring_user_id,
+                                            workspace_id=monitoring_workspace_id or None,
+                                            part_number=selected_component_mpn,
+                                            analysis_id=monitoring_analysis_id or None,
                                         )
-                                    if refresh_status == "alert_save_failed":
+                                    refresh_status = str(
+                                        refresh_result.get("status") or ""
+                                    )
+                                    if refresh_status in {"updated", "alert_save_failed"}:
+                                        matched_sources = (
+                                            str(refresh_result.get("sources_available") or "").strip()
+                                            or str(refresh_result.get("supplier") or "").strip()
+                                            or "configured distributor APIs"
+                                        )
+                                        checked_at = str(
+                                            refresh_result.get("checked_at") or "now"
+                                        )
+                                        refresh_message = (
+                                            f"Live supplier data for {selected_component_mpn} "
+                                            f"was saved at {checked_at} UTC. Exact MPN returned by: "
+                                            f"{matched_sources}."
+                                        )
+                                        alert_count = int(
+                                            refresh_result.get("alert_count") or 0
+                                        )
+                                        if alert_count:
+                                            refresh_message += (
+                                                f" {alert_count} change alert(s) were recorded."
+                                            )
+                                        if refresh_status == "alert_save_failed":
+                                            diagnostic = str(
+                                                refresh_result.get("diagnostic") or ""
+                                            ).strip()
+                                            if diagnostic:
+                                                refresh_message += f" {diagnostic}"
+                                        st.session_state["monitoring_live_refresh_notice"] = {
+                                            "kind": (
+                                                "warning"
+                                                if refresh_status == "alert_save_failed"
+                                                else "success"
+                                            ),
+                                            "message": refresh_message,
+                                        }
+                                        st.session_state.pop(monitoring_cache_key, None)
+                                        st.session_state.pop(monitoring_loaded_at_key, None)
+                                        st.session_state.pop(monitoring_load_status_key, None)
+                                        st.rerun()
+                                    else:
+                                        refresh_messages = {
+                                            "invalid_scope": (
+                                                "Cadivor could not verify the signed-in workspace. "
+                                                "The saved monitoring snapshot is unchanged."
+                                            ),
+                                            "no_baseline": (
+                                                "This component has no saved monitoring baseline. "
+                                                "Start monitoring it from a saved BOM first."
+                                            ),
+                                            "supplier_unavailable": (
+                                                "No configured distributor returned fresh data. "
+                                                "The saved snapshot is unchanged."
+                                            ),
+                                            "exact_supplier_match_unavailable": (
+                                                "No exact-MPN supplier record was confirmed. "
+                                                "The saved snapshot is unchanged."
+                                            ),
+                                            "snapshot_save_failed": (
+                                                "Fresh supplier data was found, but its snapshot "
+                                                "could not be saved. The saved baseline is unchanged."
+                                            ),
+                                        }
+                                        refresh_message = refresh_messages.get(
+                                            refresh_status,
+                                            "Supplier data could not be refreshed. The saved snapshot is unchanged.",
+                                        )
                                         diagnostic = str(
                                             refresh_result.get("diagnostic") or ""
                                         ).strip()
                                         if diagnostic:
                                             refresh_message += f" {diagnostic}"
-                                    st.session_state["monitoring_live_refresh_notice"] = {
-                                        "kind": (
-                                            "warning"
-                                            if refresh_status == "alert_save_failed"
-                                            else "success"
-                                        ),
-                                        "message": refresh_message,
-                                    }
-                                    st.session_state.pop(monitoring_cache_key, None)
-                                    st.session_state.pop(monitoring_loaded_at_key, None)
-                                    st.session_state.pop(monitoring_load_status_key, None)
-                                    st.rerun()
-                                else:
-                                    refresh_messages = {
-                                        "invalid_scope": (
-                                            "Cadivor could not verify the signed-in workspace. "
-                                            "The saved monitoring snapshot is unchanged."
-                                        ),
-                                        "no_baseline": (
-                                            "This component has no saved monitoring baseline. "
-                                            "Start monitoring it from a saved BOM first."
-                                        ),
-                                        "supplier_unavailable": (
-                                            "No configured distributor returned fresh data. "
-                                            "The saved snapshot is unchanged."
-                                        ),
-                                        "exact_supplier_match_unavailable": (
-                                            "No exact-MPN supplier record was confirmed. "
-                                            "The saved snapshot is unchanged."
-                                        ),
-                                        "snapshot_save_failed": (
-                                            "Fresh supplier data was found, but its snapshot "
-                                            "could not be saved. The saved baseline is unchanged."
-                                        ),
-                                    }
-                                    refresh_message = refresh_messages.get(
-                                        refresh_status,
-                                        "Supplier data could not be refreshed. The saved snapshot is unchanged.",
-                                    )
-                                    diagnostic = str(
-                                        refresh_result.get("diagnostic") or ""
-                                    ).strip()
-                                    if diagnostic:
-                                        refresh_message += f" {diagnostic}"
-                                    st.warning(refresh_message)
+                                        st.warning(refresh_message)
                             action_position += 1
                             if requires_alternative:
                                 with component_action_columns[action_position]:

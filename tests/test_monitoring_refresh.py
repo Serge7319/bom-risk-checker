@@ -167,6 +167,10 @@ class MonitoringRefreshTests(unittest.TestCase):
         runtime = Path(__file__).resolve().parents[1] / "src" / "authenticated_runtime.py"
         source = runtime.read_text(encoding="utf-8")
 
+        self.assertIn(
+            "with component_action_columns[action_position]:\n                                if st.button(\n                                    \"Refresh live supplier data\"",
+            source,
+        )
         self.assertIn("Refresh live supplier data", source)
         self.assertIn("refresh_monitored_part(", source)
         self.assertIn("The automatic supplier check runs every six hours", source)
