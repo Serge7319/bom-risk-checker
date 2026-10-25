@@ -410,12 +410,7 @@ def request_main_scroll_reset() -> int:
 
 
 def inject_nav_scroll_reset_if_needed() -> bool:
-    """Scroll the main workspace to top until the destination body is mounted.
-
-    Run in the app document so the reset can reach Streamlit's main block
-    container directly; a components.html iframe can miss its scroll owner.
-    No-op for ordinary question submit/reruns.
-    """
+    """Reset the active route's real scroll owner before releasing navigation."""
     if not st.session_state.pop(NAV_SCROLL_RESET_PENDING_KEY, False):
         return False
     try:
@@ -424,6 +419,22 @@ def inject_nav_scroll_reset_if_needed() -> bool:
         token = 0
     target_route = str(st.session_state.get("cadivor_route") or "").strip()
     target_route_json = json.dumps(target_route, ensure_ascii=True)
+    transition_gen = 0
+    try:
+        from src.ui.main_transition import (
+            MAIN_TRANSITION_ACTIVE_KEY,
+            MAIN_TRANSITION_GEN_KEY,
+            MAIN_TRANSITION_KIND_KEY,
+        )
+
+        if (
+            st.session_state.get(MAIN_TRANSITION_ACTIVE_KEY)
+            and str(st.session_state.get(MAIN_TRANSITION_KIND_KEY) or "").strip().casefold()
+            == "navigation"
+        ):
+            transition_gen = int(st.session_state.get(MAIN_TRANSITION_GEN_KEY) or 0)
+    except (ImportError, TypeError, ValueError):
+        transition_gen = 0
 
     st.html(
         f"""
@@ -431,6 +442,7 @@ def inject_nav_scroll_reset_if_needed() -> bool:
         (() => {{
           const token = {token};
           const targetRoute = {target_route_json};
+          const transitionGen = {transition_gen};
           const doc = document;
           const root = doc.documentElement;
           const activeKey = '__cadivorNavScrollReset';
@@ -440,6 +452,7 @@ def inject_nav_scroll_reset_if_needed() -> bool:
           const state = {{
             token,
             targetRoute,
+            transitionGen,
             userInteracted: false,
             timer: null,
             settled: 0,
@@ -448,6 +461,11 @@ def inject_nav_scroll_reset_if_needed() -> bool:
           const marker = () => doc.querySelector(
             '[data-cadivor-nav-scroll-token="' + token + '"]'
           );
+          const destinationBody = () => state.transitionGen > 0
+            ? doc.querySelector(
+                '[data-cadivor-page-body-gen="' + state.transitionGen + '"]'
+              )
+            : null;
           const stop = (completed = false) => {{
             if (state.timer) window.clearInterval(state.timer);
             state.timer = null;
@@ -456,20 +474,57 @@ def inject_nav_scroll_reset_if_needed() -> bool:
             doc.removeEventListener('pointerdown', cancelOnInteraction, true);
             doc.removeEventListener('keydown', cancelOnInteraction, true);
             if (completed) {{
+              const body = destinationBody();
+              if (body && state.transitionGen > 0) {{
+                body.setAttribute(
+                  'data-cadivor-page-body-release-gen',
+                  String(state.transitionGen)
+                );
+              }}
               const node = marker();
               if (node) node.setAttribute('data-cadivor-nav-scroll-done', '1');
             }}
             if (root[activeKey] === state) delete root[activeKey];
           }};
-          const cancelOnInteraction = () => {{
+          const cancelOnInteraction = (event) => {{
+            const target = event && event.target;
+            if (
+              target
+              && target.closest
+              && target.closest('[data-cadivor-main-transition="1"]')
+            ) return;
+            if (state.transitionGen > 0 && !destinationBody()) return;
             state.userInteracted = true;
-            stop();
+            stop(state.transitionGen > 0);
+          }};
+          const scrollAncestors = (origin) => {{
+            const parents = [];
+            for (
+              let element = origin;
+              element && element !== doc.documentElement;
+              element = element.parentElement
+            ) {{
+              try {{
+                const overflowY = String(
+                  window.getComputedStyle(element).overflowY || ''
+                ).toLowerCase();
+                if (
+                  element.scrollHeight > element.clientHeight + 2
+                  || ['auto', 'scroll', 'overlay'].includes(overflowY)
+                ) {{
+                  parents.push(element);
+                }}
+              }} catch (error) {{}}
+            }}
+            return parents;
           }};
           state.stop = stop;
           state.reset = () => {{
             if (state.userInteracted) return;
             const main = doc.querySelector('section[data-testid="stMain"]');
+            const body = destinationBody();
             const candidates = [
+              ...scrollAncestors(body || main || doc.body),
               main && main.querySelector('[data-testid="stMainBlockContainer"]'),
               doc.querySelector('[data-testid="stMainBlockContainer"]'),
               main,
@@ -478,7 +533,7 @@ def inject_nav_scroll_reset_if_needed() -> bool:
               doc.scrollingElement,
               doc.documentElement,
               doc.body
-            ].filter(Boolean);
+            ].filter((element, index, all) => element && all.indexOf(element) === index);
             for (const element of candidates) {{
               try {{
                 element.scrollTop = 0;
@@ -488,22 +543,32 @@ def inject_nav_scroll_reset_if_needed() -> bool:
               }} catch (error) {{}}
             }}
             try {{ window.scrollTo({{ top: 0, left: 0, behavior: 'auto' }}); }} catch (error) {{}}
-            const destinationMounted = !targetRoute || Array.from(
-              doc.querySelectorAll('[data-cadivor-page-body]')
-            ).some((node) => node.getAttribute('data-cadivor-page-body') === targetRoute);
-            const atTop = candidates.every((element) => Math.abs(element.scrollTop || 0) <= 2);
+            const destinationMounted = state.transitionGen > 0
+              ? Boolean(body)
+              : (
+                  !targetRoute
+                  || Array.from(doc.querySelectorAll('[data-cadivor-page-body]'))
+                    .some((node) => node.getAttribute('data-cadivor-page-body') === targetRoute)
+                );
+            const atTop = candidates.every(
+              (element) => Math.abs(element.scrollTop || 0) <= 2
+            );
             state.settled = destinationMounted && atTop ? state.settled + 1 : 0;
             if (state.settled >= 3) {{
               stop(true);
             }} else if (Date.now() - state.startedAt > 10000) {{
-              stop();
+              stop(state.transitionGen <= 0 || Boolean(body));
             }}
           }};
 
           root[activeKey] = state;
           try {{ window.history.scrollRestoration = 'manual'; }} catch (error) {{}}
           ['wheel', 'touchstart', 'pointerdown', 'keydown'].forEach((eventName) => {{
-            doc.addEventListener(eventName, cancelOnInteraction, {{ capture: true, passive: true }});
+            doc.addEventListener(
+              eventName,
+              cancelOnInteraction,
+              {{ capture: true, passive: true }}
+            );
           }});
           state.reset();
           state.timer = window.setInterval(state.reset, 100);
@@ -514,7 +579,6 @@ def inject_nav_scroll_reset_if_needed() -> bool:
         unsafe_allow_javascript=True,
     )
     return True
-
 
 # Re-export transition keys/helpers so existing imports keep working.
 from src.ui.main_transition import (  # noqa: E402

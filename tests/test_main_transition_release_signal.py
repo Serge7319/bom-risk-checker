@@ -44,8 +44,32 @@ class MainTransitionReleaseSignalTests(unittest.TestCase):
         self.assertEqual(markdown, [])
         self.assertEqual(len(html), 1)
         self.assertIn('data-cadivor-page-body-gen="812"', html[0][0])
+        self.assertIn('data-cadivor-page-body-release-gen="812"', html[0][0])
         self.assertNotIn("<script", html[0][0])
         self.assertEqual(html[0][1], {})
+
+    def test_navigation_reveal_defers_release_until_scroll_reset(self):
+        state = {
+            MAIN_TRANSITION_GEN_KEY: 814,
+            MAIN_TRANSITION_ROUTE_KEY: "Monitoring",
+            MAIN_TRANSITION_ACTIVE_KEY: True,
+            MAIN_TRANSITION_KIND_KEY: "navigation",
+            DELAY_ROUTE_BODY_REVEAL_KEY: True,
+        }
+        html = []
+
+        with (
+            patch("src.ui.main_transition.st.session_state", state),
+            patch("src.ui.main_transition.st.markdown"),
+            patch(
+                "src.ui.main_transition.st.html",
+                side_effect=lambda value, **kwargs: html.append((value, kwargs)),
+            ),
+        ):
+            reveal_main_transition("Monitoring")
+
+        self.assertIn('data-cadivor-page-body-gen="814"', html[0][0])
+        self.assertNotIn('data-cadivor-page-body-release-gen="814"', html[0][0])
 
     def test_transition_css_uses_direct_document_marker_generation(self):
         state = {}
@@ -66,7 +90,10 @@ class MainTransitionReleaseSignalTests(unittest.TestCase):
             inject_main_transition_css(813)
 
         css = markdown[0]
-        self.assertIn('body:has([data-cadivor-page-body-gen="813"])', css)
+        self.assertIn(
+            'body:has([data-cadivor-page-body-gen="813"][data-cadivor-page-body-release-gen="813"])',
+            css,
+        )
         self.assertIn('body:not(:has([data-cadivor-page-body-gen="813"]))', css)
         self.assertNotIn('body[data-cadivor-page-body-gen="813"]', css)
         self.assertEqual(html, [])

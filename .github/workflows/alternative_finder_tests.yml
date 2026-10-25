@@ -48,6 +48,8 @@ jobs:
             tests.test_alternative_finder_presentation \
             tests.test_alternative_finder_admin_diagnostics \
             tests.test_main_transition_release_signal \
+            tests.test_main_transition_slow_route_contract \
+            tests.test_navigation_scroll_reset \
             tests.test_approved_replacement_handoff
 
       - name: Run component-scoped Ask Cadivor evidence tests

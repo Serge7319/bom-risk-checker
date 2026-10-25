@@ -133,6 +133,7 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
     def test_reveal_marker_hides_the_matching_transition_generation(self):
         reveal = SOURCE.split("def reveal_main_transition", 1)[1]
         self.assertIn("data-cadivor-page-body", reveal)
+        self.assertIn("data-cadivor-page-body-release-gen", reveal)
         self.assertNotIn("_remove_transition_portal", reveal)
 
     def test_old_generation_css_cannot_hide_the_next_route_transition(self):
@@ -143,7 +144,7 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
             SOURCE,
         )
         self.assertIn(
-            'body:has([data-cadivor-page-body-gen="{gen}"])\n'
+            'body:has([data-cadivor-page-body-gen="{gen}"][data-cadivor-page-body-release-gen="{gen}"])\n'
             '          .cv-main-transition.cv-route-loading[data-cadivor-transition-gen="{gen}"]',
             SOURCE,
         )
