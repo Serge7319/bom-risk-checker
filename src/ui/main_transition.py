@@ -382,12 +382,11 @@ def inject_main_transition_css(transition_gen: int) -> None:
           pointer-events:none so no leftover overlay intercepts the account menu.
           Never target shared st-key alone (stale gen CSS would hide the next Opening).
         */
-        /* Retire only this generation after its own body marker arrives.
-           The live generation is kept while stale, older route owners are
-           hidden so yesterday's page cannot flash over the active cover. */
+        /* Retire this generation only after its body is ready and navigation scroll has settled.
+           Older route owners remain generation-scoped so stale CSS cannot release a new cover. */
         [data-stale="true"] .cv-main-transition.cv-route-loading:not([data-cadivor-transition-gen="{gen}"]),
         [data-stale="true"][data-cadivor-main-transition="1"]:not([data-cadivor-transition-gen="{gen}"]),
-        body:has([data-cadivor-page-body-gen="{gen}"])
+        body:has([data-cadivor-page-body-gen="{gen}"][data-cadivor-page-body-release-gen="{gen}"])
           .cv-main-transition.cv-route-loading[data-cadivor-transition-gen="{gen}"] {{
           display:none!important;visibility:hidden!important;pointer-events:none!important;
           opacity:0!important;z-index:-1!important
@@ -396,11 +395,11 @@ def inject_main_transition_css(transition_gen: int) -> None:
           [data-cadivor-main-transition="1"][data-cadivor-transition-gen="{gen}"]:not([data-cadivor-transition-kind="navigation"]) {{
           pointer-events:auto!important
         }}
-        body:has([data-cadivor-page-body-gen="{gen}"])
+        body:has([data-cadivor-page-body-gen="{gen}"][data-cadivor-page-body-release-gen="{gen}"])
           [data-cadivor-main-transition="1"][data-cadivor-transition-gen="{gen}"],
-        body:has([data-cadivor-page-body-gen="{gen}"])
+        body:has([data-cadivor-page-body-gen="{gen}"][data-cadivor-page-body-release-gen="{gen}"])
           [data-cadivor-transition-host="cadivor-main-transition"][data-cadivor-transition-gen="{gen}"],
-        body:has([data-cadivor-page-body-gen="{gen}"])
+        body:has([data-cadivor-page-body-gen="{gen}"][data-cadivor-page-body-release-gen="{gen}"])
           div[data-testid="stElementContainer"]:has(
             [data-cadivor-main-transition="1"][data-cadivor-transition-gen="{gen}"]
           ):not(:has([data-cadivor-topbar-flow-host])):not(:has([class*="st-key-cv_foundation_"])){{
@@ -609,6 +608,9 @@ def mount_main_transition_loading(target_route: str, *, paint_markup: bool = Fal
 
 def reveal_main_transition(route: str = "") -> None:
     """Reveal distinctive target content and collapse the main transition owner."""
+    transition_kind = str(
+        st.session_state.get(MAIN_TRANSITION_KIND_KEY) or ""
+    ).strip().casefold()
     safe_route = str(
         route or st.session_state.get(MAIN_TRANSITION_ROUTE_KEY) or get_presented_route() or ""
     ).strip()
@@ -636,6 +638,11 @@ def reveal_main_transition(route: str = "") -> None:
         gen = int(st.session_state.get(MAIN_TRANSITION_GEN_KEY) or 0)
     except (TypeError, ValueError):
         gen = 0
+    release_attr = (
+        f'data-cadivor-page-body-release-gen="{gen}" '
+        if transition_kind != "navigation"
+        else ""
+    )
     try:
         # st.html inserts this marker directly into the application document.
         # Keep the ready signal as a real DOM node instead of a JavaScript
@@ -646,6 +653,7 @@ def reveal_main_transition(route: str = "") -> None:
         st.html(
             f'<div data-cadivor-page-body="{escaped}" '
             f'data-cadivor-page-body-gen="{gen}" '
+            f'{release_attr}'
             f'data-cadivor-transition-gen="{gen}" aria-hidden="true" '
             'style="position:absolute;width:1px;height:1px;margin:-1px;border:0;'
             'padding:0;overflow:hidden;clip:rect(0,0,0,0)"></div>'
