@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import json
 import os
+import re
 import time
 import uuid
 from typing import Any
@@ -368,19 +369,46 @@ def _classify_question(question: str) -> str:
 
 
 
+def _identifier_mention(text: str, identifier: Any) -> tuple[int, int] | None:
+    """Find a complete part identifier, allowing common separator formatting."""
+    token = str(identifier or "").strip()
+    compact = "".join(character for character in token if character.isalnum())
+    if not compact:
+        return None
+    separators = r"[\\s._/+\\-]*"
+    pattern = (
+        r"(?<![A-Z0-9])"
+        + separators.join(re.escape(character) for character in compact)
+        + r"(?![A-Z0-9])"
+    )
+    match = re.search(pattern, str(text or ""), flags=re.IGNORECASE)
+    return (match.start(), len(compact)) if match else None
+
+
 def _mentioned_components(question: str, components: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Return all explicitly named components, ordered by first appearance."""
-    text = str(question or "").strip().lower()
+    text = str(question or "").strip()
     found: list[tuple[int, int, dict[str, Any]]] = []
     seen: set[str] = set()
     for row in components:
-        token = _part_name(row).strip()
-        if not token or token.upper() in seen:
+        identifiers = tuple(dict.fromkeys(
+            str(value or "").strip()
+            for value in (row.get("part_number"), row.get("mpn"))
+            if str(value or "").strip()
+        ))
+        keys = {identifier.casefold() for identifier in identifiers}
+        if not identifiers or keys & seen:
             continue
-        position = text.find(token.lower())
-        if position >= 0:
-            found.append((position, -len(token), row))
-            seen.add(token.upper())
+        mentions = [
+            mention
+            for identifier in identifiers
+            if (mention := _identifier_mention(text, identifier)) is not None
+        ]
+        if mentions:
+            position = min(mention[0] for mention in mentions)
+            longest = max(mention[1] for mention in mentions)
+            found.append((position, -longest, row))
+            seen.update(keys)
     found.sort(key=lambda item: (item[0], item[1]))
     return [row for _, _, row in found]
 
@@ -460,21 +488,20 @@ def _component_scoped_context(
 
 def _mentioned_component(question: str, components: list[dict[str, Any]]) -> dict[str, Any] | None:
     """Return the component explicitly referenced in a user question, if any."""
-    text = str(question or "").strip().lower()
+    text = str(question or "").strip()
     if not text:
         return None
-    # Match longest identifiers first so a precise MPN wins over a short alias.
-    candidates: list[tuple[str, dict[str, Any]]] = []
+    mentions: list[tuple[int, int, dict[str, Any]]] = []
     for row in components:
         for value in (row.get("part_number"), row.get("mpn")):
-            token = str(value or "").strip()
-            if token:
-                candidates.append((token, row))
-    candidates.sort(key=lambda item: len(item[0]), reverse=True)
-    for token, row in candidates:
-        if token.lower() in text:
-            return row
-    return None
+            mention = _identifier_mention(text, value)
+            if mention is not None:
+                position, identifier_length = mention
+                mentions.append((position, -identifier_length, row))
+    if not mentions:
+        return None
+    mentions.sort(key=lambda item: (item[0], item[1]))
+    return mentions[0][2]
 
 
 def _component_priority_answer(row: dict[str, Any], project: str, context: dict[str, Any]) -> str:
