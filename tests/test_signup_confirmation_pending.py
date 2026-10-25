@@ -207,7 +207,7 @@ class SignupConfirmationPendingTests(unittest.TestCase):
         self.assertIn("auth-confirm-guidance", joined)
         self.assertIn("If you receive one, open it and follow the confirmation link to activate your account.", joined)
         self.assertNotIn("auth-confirm-checklist", joined)
-        self.assertIn("Check your inbox, spam, and promotions folders.", joined)
+        self.assertIn("Check your inbox, spam, and promotions folders for a Cadivor confirmation email.", joined)
         self.assertNotIn("Confirmation email sent", joined)
         self.assertNotIn("We sent a confirmation link", joined)
         self.assertNotIn("Email confirmation required", joined)
