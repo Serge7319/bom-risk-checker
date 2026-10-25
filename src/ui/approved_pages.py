@@ -2559,7 +2559,10 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
     begin_approved_page()
     analysis_error = st.session_state.pop("cadivor_bom_analysis_error", "")
     if analysis_error:
-        st.error("The BOM analysis could not complete. Your upload is still here; review it and try again.")
+        if isinstance(analysis_error, str) and analysis_error.strip():
+            st.error(analysis_error)
+        else:
+            st.error("The BOM analysis could not complete. Your upload is still here; review it and try again.")
     from src.pages.home_workspace import remember_saved_analyses_for_session
 
     remember_saved_analyses_for_session(

@@ -115,11 +115,39 @@ def finish_approved_bom_submission(
         state["cadivor_bom_upload_open"] = True
 
 
+def fail_approved_bom_summary_save(
+    state: MutableMapping[str, Any], *, message: str
+) -> None:
+    """Clear unsaved analysis state and reopen the BOM form after a summary-save failure."""
+    finish_approved_bom_submission(state, reopen_upload=True)
+    for key in (
+        "results_df",
+        "analysis_saved",
+        "analysis_id",
+        "health_score",
+        "health_status",
+        "show_analysis_success_29b",
+        "cadivor_active_analysis_id",
+        "cadivor_active_analysis_tab",
+        "cadivor_show_detailed_risk",
+        "cadivor_saved_bom_rerun_active",
+        "cadivor_one_time_pending_source_filename",
+        "cadivor_one_time_pending_project_name",
+        "cadivor_one_time_pending_bom_name",
+        "cadivor_one_time_pending_component_count",
+    ):
+        state.pop(key, None)
+    state["cadivor_bom_analysis_error"] = str(message or "").strip() or (
+        "Cadivor could not save the analysis summary. Check workspace access and retry."
+    )
+
+
 __all__ = [
     "consume_approved_bom_submission",
     "stage_approved_bom_submission",
     "resume_approved_bom_submission",
     "finish_approved_bom_submission",
+    "fail_approved_bom_summary_save",
     "should_render_approved_bom_upload_form",
     "should_render_legacy_bom_workspace",
     "should_render_bom_analysis_body",
