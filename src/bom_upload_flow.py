@@ -114,6 +114,7 @@ def finish_approved_bom_submission(
     if reopen_upload:
         state["cadivor_bom_upload_open"] = True
 
+
 def fail_approved_bom_summary_save(
     state: MutableMapping[str, Any], *, message: str
 ) -> None:
