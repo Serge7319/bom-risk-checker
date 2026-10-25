@@ -498,6 +498,15 @@ def mark_opening_started(route: str) -> None:
     st.session_state[OPENING_ROUTE_KEY] = str(route or "").strip()
 
 
+def _infer_unarmed_transition_kind(target_route: str, presented_route: str) -> str:
+    """Use the compact navigation cover when an existing route changes unarmed."""
+    target = str(target_route or "").strip()
+    presented = str(presented_route or "").strip()
+    if target and presented and target != presented:
+        return "navigation"
+    return ""
+
+
 def prepare_main_transition(target_route: str) -> int:
     """Arm session keys + stylesheet; reuse an active transition generation."""
     route = str(target_route or "").strip()
@@ -524,6 +533,13 @@ def prepare_main_transition(target_route: str) -> int:
         state[MAIN_TRANSITION_ROUTE_KEY] = route
         state[DELAY_ROUTE_BODY_REVEAL_KEY] = True
         return current_gen
+
+    if not state.get(MAIN_TRANSITION_ACTIVE_KEY):
+        previous_route = get_presented_route(state)
+        inferred_kind = _infer_unarmed_transition_kind(route, previous_route)
+        if inferred_kind:
+            state[MAIN_TRANSITION_KIND_KEY] = inferred_kind
+            state[MAIN_TRANSITION_PREVIOUS_ROUTE_KEY] = previous_route
 
     mark_opening_started(route)
     gen = _next_transition_gen()
