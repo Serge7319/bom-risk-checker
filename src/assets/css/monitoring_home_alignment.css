@@ -32,19 +32,23 @@ html body section[data-testid="stMain"] .st-key-approved_home_header [class*="st
   min-width: 0 !important;
 }
 
-/* Monitoring follows the same centered 1,440px workspace canvas as Home. */
+/* Monitoring shares the fluid workspace canvas used by BOM analysis. */
 section[data-testid="stMain"] [data-testid="stMainBlockContainer"]:has(.st-key-approved_page_canvas_standard_render_monitoring),
 section[data-testid="stMain"] .main .block-container:has(.st-key-approved_page_canvas_standard_render_monitoring) {
-  max-width: 1440px !important;
+  box-sizing: border-box !important;
+  width: 100% !important;
+  max-width: none !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
 }
 
 html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring {
   box-sizing: border-box !important;
   width: 100% !important;
-  max-width: 1440px !important;
+  max-width: none !important;
   min-width: 0 !important;
-  margin-left: auto !important;
-  margin-right: auto !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
 }
 
 html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring > [data-testid="stVerticalBlock"] {
