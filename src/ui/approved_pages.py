@@ -1239,15 +1239,16 @@ def begin_approved_page() -> None:
         .st-key-approved_bom_title{box-sizing:border-box!important;width:100%!important;max-width:none!important}
         .st-key-approved_bom_title>[data-testid="stVerticalBlock"]{box-sizing:border-box!important;align-items:stretch!important;width:100%!important}
         .st-key-approved_bom_title [data-testid="stHorizontalBlock"]{box-sizing:border-box!important;align-items:center!important;width:100%!important;max-width:none!important;flex-wrap:nowrap!important}
-        .st-key-approved_bom_title [data-testid="column"]:first-child{flex:1 1 auto!important;width:auto!important;min-width:0!important}
-        .st-key-approved_bom_title [data-testid="column"]:last-child{flex:0 0 260px!important;width:260px!important;min-width:0!important}
-        .st-key-approved_bom_title [data-testid="column"]:last-child [data-testid="stVerticalBlock"]{align-items:flex-end!important;width:100%!important}
-        .st-key-approved_bom_title [data-testid="column"]:last-child [data-testid="stElementContainer"]{display:flex!important;justify-content:flex-end!important;width:100%!important}
-        .st-key-approved_bom_title [data-testid="column"]:last-child [data-testid="stButton"]{display:flex!important;justify-content:flex-end!important;width:100%!important}
+        .st-key-approved_bom_title [data-testid="stColumn"]:first-child{flex:1 1 auto!important;width:auto!important;min-width:0!important}
+        .st-key-approved_bom_title [data-testid="stColumn"]:last-child{flex:0 0 260px!important;width:260px!important;min-width:0!important}
+        .st-key-approved_bom_title [data-testid="stColumn"]:last-child [data-testid="stVerticalBlock"]{align-items:flex-end!important;width:100%!important}
+        .st-key-approved_bom_title [data-testid="stColumn"]:last-child [data-testid="stElementContainer"]{display:flex!important;justify-content:flex-end!important;width:100%!important}
+        .st-key-approved_bom_title [data-testid="stColumn"]:last-child [data-testid="stButton"]{display:flex!important;justify-content:flex-end!important;width:100%!important}
         .st-key-approved_bom_title button{white-space:nowrap!important}
         .st-key-approved_bom_toolbar{box-sizing:border-box!important;width:100%!important;max-width:none!important}
         .st-key-approved_bom_toolbar>[data-testid="stVerticalBlock"]{box-sizing:border-box!important;align-items:stretch!important;width:100%!important}
         .st-key-approved_bom_toolbar [data-testid="stHorizontalBlock"]{box-sizing:border-box!important;width:100%!important;max-width:none!important}
+        .st-key-approved_bom_toolbar [data-testid="stColumn"]:last-child{box-sizing:border-box!important;flex:0 0 140px!important;width:140px!important;min-width:140px!important;margin-left:auto!important}
         .st-key-approved_bom_toolbar [data-testid="stColumn"]:last-child [data-testid="stVerticalBlock"]{align-items:flex-end!important}
         .st-key-approved_bom_toolbar [data-testid="stColumn"]:last-child [data-testid="stElementContainer"]{display:flex!important;justify-content:flex-end!important;width:100%!important}
         .st-key-approved_bom_toolbar [data-testid="stColumn"]:last-child button{white-space:nowrap!important}
@@ -1304,6 +1305,7 @@ def begin_approved_page() -> None:
         @media(max-width:1100px){
           [class*="st-key-approved_bom_toolbar"] [data-testid="stHorizontalBlock"]{flex-wrap:wrap}
           [class*="st-key-approved_bom_toolbar"] [data-testid="stColumn"]{flex:1 1 180px !important;width:auto !important;min-width:160px}
+          [class*="st-key-approved_bom_toolbar"] [data-testid="stColumn"]:last-child{flex:1 1 180px!important;width:auto!important;min-width:160px!important;margin-left:0!important}
           .st-key-approved_decision_cards>[data-testid="stHorizontalBlock"]{flex-wrap:wrap!important;gap:12px!important}
           .st-key-approved_decision_cards>[data-testid="stHorizontalBlock"]>[data-testid="column"]{flex:1 1 calc(50% - 12px)!important;width:auto!important;min-width:245px!important}
           .st-key-approved_decision_toolbar [data-testid="stHorizontalBlock"]{flex-wrap:wrap!important}

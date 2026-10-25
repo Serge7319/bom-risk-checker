@@ -149,11 +149,13 @@ def test_bom_catalog_actions_align_to_the_right_edge_and_last_row_has_rounded_co
     assert 'key="approved_bom_new"' in title
     assert 'with action_col:' in title
     assert '.st-key-approved_bom_title>[data-testid="stVerticalBlock"]{box-sizing:border-box!important;align-items:stretch!important;width:100%!important}' in APPROVED_SOURCE
-    assert '.st-key-approved_bom_title [data-testid="column"]:last-child [data-testid="stVerticalBlock"]{align-items:flex-end!important;width:100%!important}' in APPROVED_SOURCE
+    assert '.st-key-approved_bom_title [data-testid="stColumn"]:last-child [data-testid="stVerticalBlock"]{align-items:flex-end!important;width:100%!important}' in APPROVED_SOURCE
     assert "search_col, project_col, health_col, date_col, clear_col = st.columns" in toolbar
     assert toolbar.index("with clear_col:") > toolbar.index("with date_col:")
     assert "if st.button(\"Clear filters\", key=\"approved_bom_clear\")" in toolbar
     assert '.st-key-approved_bom_toolbar [data-testid="stHorizontalBlock"]{box-sizing:border-box!important;width:100%!important;max-width:none!important}' in APPROVED_SOURCE
+    assert '.st-key-approved_bom_toolbar [data-testid="stColumn"]:last-child{box-sizing:border-box!important;flex:0 0 140px!important;width:140px!important;min-width:140px!important;margin-left:auto!important}' in APPROVED_SOURCE
+    assert '          [class*="st-key-approved_bom_toolbar"] [data-testid="stColumn"]:last-child{flex:1 1 180px!important;width:auto!important;min-width:160px!important;margin-left:0!important}' in APPROVED_SOURCE
     assert ".st-key-approved_bom_toolbar [data-testid=\"stColumn\"]:last-child [data-testid=\"stElementContainer\"]" in APPROVED_SOURCE
     assert "overflow:hidden!important;border:1px solid #cbd8e8!important;border-radius:16px!important" in APPROVED_SOURCE
     assert '.st-key-approved_bom_catalog_table .st-key-approved_home_row_last [data-testid="stHorizontalBlock"]{border-radius:0 0 15px 15px!important}' in APPROVED_SOURCE
