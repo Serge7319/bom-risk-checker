@@ -589,7 +589,22 @@ def _clear_signup_password_state() -> None:
 
 
 def _enter_signup_confirmation_pending(email: str) -> None:
-    """Enter the durable UI-only confirmation handoff and rerun."""
+    """Enter the durable email-confirmation handoff and rerun."""
+    # A previous auth handoff can otherwise keep the full-page
+    # "Signing you in" gate above the pending-signup instructions.
+    from src.auth_bootstrap import clear_login_handoff
+    from src.auth_gate import (
+        AUTH_GATE_ERROR_KEY,
+        AUTH_GATE_PENDING_EMAIL_KEY,
+        AUTH_GATE_PENDING_PASSWORD_KEY,
+        set_auth_gate_state,
+    )
+
+    clear_login_handoff()
+    st.session_state.pop(AUTH_GATE_PENDING_EMAIL_KEY, None)
+    st.session_state.pop(AUTH_GATE_PENDING_PASSWORD_KEY, None)
+    st.session_state.pop(AUTH_GATE_ERROR_KEY, None)
+    set_auth_gate_state("login", reason="signup_confirmation_pending")
     st.session_state.pop("cadivor_manual_login_in_progress", None)
     st.session_state["cadivor_auth_status"] = AUTH_SIGNED_OUT
     st.session_state.pop("cadivor_auth_notice", None)
@@ -624,7 +639,7 @@ def _submit_manual_signup(supabase, cookie_manager, email: str, password: str) -
     transition_message = (
         "Creating your report account… Next, check your email for the confirmation link."
         if report_purchase
-        else "Creating your secure workspace…"
+        else "Creating your account…"
     )
     render_auth_transition(transition_message)
 
@@ -760,12 +775,18 @@ def _render_signup_confirmation_pending() -> None:
         _html(
             f"""
 <div class="auth-confirm-status" role="status">Signup request received</div>
-<div class="auth-heading">Check your email</div>
+<div class="auth-heading">Check your email to continue</div>
 <p class="auth-copy">We’ve received your signup request for:</p>
 <div class="auth-confirm-email">{safe_email}</div>
-<p class="auth-copy">If this address is eligible for account creation, Cadivor will send a confirmation link. Delivery may take a few minutes.</p>
-<p class="auth-copy">Already have a Cadivor account? Return to login or reset your password.</p>
-<div class="auth-confirm-guidance">New account? Check your inbox, spam, and promotions folders. If a confirmation email arrives, open the link to activate your account.</div>
+<div class="auth-confirm-guidance">
+  <strong>Next steps</strong>
+  <ol>
+    <li>Check your inbox, spam, and promotions folders for a Cadivor confirmation email. Delivery may take a few minutes.</li>
+    <li>If you receive one, open it and follow the confirmation link to activate your account.</li>
+    <li>Return to Cadivor and sign in if the link does not open your workspace.</li>
+  </ol>
+</div>
+<p class="auth-copy">If this address is eligible for account creation, Cadivor will send a confirmation link. If no email arrives, try signing in or resetting your password.</p>
 """
         )
         login_label = "Return to login"
