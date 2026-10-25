@@ -14,6 +14,7 @@ import streamlit as st
 from src.auth_state import (
     APP_LOGIN,
     APP_SIGNUP,
+    APP_SIGNUP_CONFIRMATION_PENDING,
     APP_SIGNUP_CONFIRMATION_LINK_READY,
     APP_SIGNUP_CONFIRMATION_INVALID,
     APP_SIGNUP_CONFIRMATION_SUCCESS,
@@ -106,6 +107,7 @@ def signup_and_recovery_markers_conflict() -> bool:
 def signup_confirmation_surface_active() -> bool:
     state = str(st.session_state.get("cadivor_root_state") or "")
     return state in {
+        APP_SIGNUP_CONFIRMATION_PENDING,
         APP_SIGNUP_CONFIRMATION_LINK_READY,
         APP_SIGNUP_CONFIRMATION_SUCCESS,
         APP_SIGNUP_CONFIRMATION_INVALID,
