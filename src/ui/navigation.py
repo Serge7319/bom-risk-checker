@@ -410,10 +410,11 @@ def request_main_scroll_reset() -> int:
 
 
 def inject_nav_scroll_reset_if_needed() -> bool:
-    """Scroll the main workspace to top once after a sidebar page change.
+    """Scroll the main workspace to top until the destination body is mounted.
 
-    No-op for ordinary question submit/reruns. Safe to call from the shell on
-    every authenticated render.
+    Run in the app document so the reset can reach Streamlit's main block
+    container directly; a components.html iframe can miss its scroll owner.
+    No-op for ordinary question submit/reruns.
     """
     if not st.session_state.pop(NAV_SCROLL_RESET_PENDING_KEY, False):
         return False
@@ -421,31 +422,57 @@ def inject_nav_scroll_reset_if_needed() -> bool:
         token = int(st.session_state.get(NAV_SCROLL_RESET_TOKEN_KEY) or 0)
     except (TypeError, ValueError):
         token = 0
-    import streamlit.components.v1 as components
+    target_route = str(st.session_state.get("cadivor_route") or "").strip()
+    target_route_json = json.dumps(target_route, ensure_ascii=True)
 
-    components.html(
+    st.html(
         f"""
         <script>
-        (function () {{
+        (() => {{
           const token = {token};
-          const parentWindow = window.parent;
-          const doc = parentWindow.document;
-          try {{ parentWindow.history.scrollRestoration = 'manual'; }} catch (error) {{}}
+          const targetRoute = {target_route_json};
+          const doc = document;
+          const root = doc.documentElement;
+          const activeKey = '__cadivorNavScrollReset';
+          const existing = root[activeKey];
+          if (existing && existing.stop) existing.stop();
 
-          let userInteracted = false;
-          const cancelPendingReset = () => {{ userInteracted = true; }};
-          ['wheel', 'touchstart', 'pointerdown', 'keydown'].forEach((eventName) => {{
-            doc.addEventListener(eventName, cancelPendingReset, {{ once: true, capture: true, passive: true }});
-          }});
-
-          const resetTop = (finalAttempt) => {{
-            if (userInteracted) return;
-            const marked = doc.querySelector('[data-cadivor-nav-scroll-token="' + token + '"]');
-            if (marked && marked.getAttribute('data-cadivor-nav-scroll-done') === '1') {{
-              return;
+          const state = {{
+            token,
+            targetRoute,
+            userInteracted: false,
+            timer: null,
+            settled: 0,
+            startedAt: Date.now()
+          }};
+          const marker = () => doc.querySelector(
+            '[data-cadivor-nav-scroll-token="' + token + '"]'
+          );
+          const stop = (completed = false) => {{
+            if (state.timer) window.clearInterval(state.timer);
+            state.timer = null;
+            doc.removeEventListener('wheel', cancelOnInteraction, true);
+            doc.removeEventListener('touchstart', cancelOnInteraction, true);
+            doc.removeEventListener('pointerdown', cancelOnInteraction, true);
+            doc.removeEventListener('keydown', cancelOnInteraction, true);
+            if (completed) {{
+              const node = marker();
+              if (node) node.setAttribute('data-cadivor-nav-scroll-done', '1');
             }}
+            if (root[activeKey] === state) delete root[activeKey];
+          }};
+          const cancelOnInteraction = () => {{
+            state.userInteracted = true;
+            stop();
+          }};
+          state.stop = stop;
+          state.reset = () => {{
+            if (state.userInteracted) return;
+            const main = doc.querySelector('section[data-testid="stMain"]');
             const candidates = [
-              doc.querySelector('[data-testid="stMain"]'),
+              main && main.querySelector('[data-testid="stMainBlockContainer"]'),
+              doc.querySelector('[data-testid="stMainBlockContainer"]'),
+              main,
               doc.querySelector('section.main'),
               doc.querySelector('[data-testid="stAppViewContainer"]'),
               doc.scrollingElement,
@@ -460,28 +487,31 @@ def inject_nav_scroll_reset_if_needed() -> bool:
                 }}
               }} catch (error) {{}}
             }}
-            try {{ parentWindow.scrollTo({{ top: 0, left: 0, behavior: 'auto' }}); }} catch (error) {{}}
-            // Keep retrying through late Streamlit/browser restoration. The
-            // first call can run before the route body has mounted, so marking
-            // the reset complete there leaves some destinations half-scrolled.
-            if (marked && finalAttempt) {{
-              try {{ marked.setAttribute('data-cadivor-nav-scroll-done', '1'); }} catch (error) {{}}
+            try {{ window.scrollTo({{ top: 0, left: 0, behavior: 'auto' }}); }} catch (error) {{}}
+            const destinationMounted = !targetRoute || Array.from(
+              doc.querySelectorAll('[data-cadivor-page-body]')
+            ).some((node) => node.getAttribute('data-cadivor-page-body') === targetRoute);
+            const atTop = candidates.every((element) => Math.abs(element.scrollTop || 0) <= 2);
+            state.settled = destinationMounted && atTop ? state.settled + 1 : 0;
+            if (state.settled >= 3) {{
+              stop(true);
+            }} else if (Date.now() - state.startedAt > 10000) {{
+              stop();
             }}
           }};
 
-          // BOM analysis mounts its progress body after the first rerun and
-          // may then attach a fragment. Keep the reset alive through those
-          // commits so browser scroll restoration cannot leave progress below
-          // the fold. Any new pointer, key, wheel, or touch action cancels it.
-          [0, 40, 120, 280, 600, 1100, 1800, 2600].forEach((delay, index, delays) => {{
-            parentWindow.setTimeout(() => resetTop(index === delays.length - 1), delay);
+          root[activeKey] = state;
+          try {{ window.history.scrollRestoration = 'manual'; }} catch (error) {{}}
+          ['wheel', 'touchstart', 'pointerdown', 'keydown'].forEach((eventName) => {{
+            doc.addEventListener(eventName, cancelOnInteraction, {{ capture: true, passive: true }});
           }});
+          state.reset();
+          state.timer = window.setInterval(state.reset, 100);
         }})();
         </script>
         <div data-cadivor-nav-scroll-token="{token}" style="display:none"></div>
         """,
-        height=0,
-        width=0,
+        unsafe_allow_javascript=True,
     )
     return True
 
