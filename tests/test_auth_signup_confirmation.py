@@ -111,7 +111,7 @@ class SignupConfirmationSourceGuards(unittest.TestCase):
         self.assertIn("use this email and the password you created", pending)
         self.assertIn("Creating your report account", self.auth)
         self.assertIn("Next, check your email", self.auth)
-        self.assertIn("New account? Check your inbox, spam, and promotions folders.", pending)
+        self.assertIn("Check your inbox, spam, and promotions folders for a Cadivor confirmation email.", pending)
 
     def test_implementation_does_not_depend_on_a1_recovery_reorder(self):
         # Committed/candidate auth.py must keep HEAD recovery order (after LOGIN/SIGNUP).
