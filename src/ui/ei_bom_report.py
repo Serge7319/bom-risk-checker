@@ -1792,13 +1792,14 @@ def render_engineering_intelligence_report(
                     for part in parts or []
                     if isinstance(part, dict)
                 )
-                if approved_count and st.button(
-                    f"View approved alternatives ({approved_count})",
-                    key=f"ei_view_approved_alternatives_{analysis_id or 'saved'}",
-                    type="secondary",
-                ):
-                    st.session_state[tab_state_key] = "Alternatives"
-                    st.rerun()
+                if approved_count:
+                    st.button(
+                        f"View approved alternatives ({approved_count})",
+                        key=f"ei_view_approved_alternatives_{analysis_id or 'saved'}",
+                        type="secondary",
+                        on_click=_select_ei_report_tab,
+                        args=("Alternatives",),
+                    )
             with st.container(key="ei_refresh_saved_analysis", border=True):
                 st.markdown("#### Refresh supplier data")
                 st.caption(

@@ -14,6 +14,7 @@ MONITORING_FINAL_CSS = (
     ROOT / "src" / "assets" / "css" / "monitoring_table_final.css"
 ).read_text(encoding="utf-8")
 CORE_UI = (ROOT / "src" / "ui" / "core_premium_ui.py").read_text(encoding="utf-8")
+EI_BOM_REPORT = (ROOT / "src" / "ui" / "ei_bom_report.py").read_text(encoding="utf-8")
 MARKETING_SITE = (ROOT / "src" / "marketing_site.py").read_text(encoding="utf-8")
 MARKETING_WEB = (ROOT / "marketing-web" / "index.html").read_text(encoding="utf-8")
 MARKETING_JS = (ROOT / "marketing-web" / "app.js").read_text(encoding="utf-8")
@@ -70,6 +71,18 @@ class ApprovedPageVisualContractTests(unittest.TestCase):
         )
         self.assertIn('("render_monitoring", "standard")', APPROVED_PAGES)
         self.assertIn('.st-key-approved_monitoring_alert_card {', MONITORING_HOME_CSS)
+
+    def test_approved_alternatives_shortcut_uses_widget_callback(self):
+        shortcut = EI_BOM_REPORT.split(
+            'f"View approved alternatives ({approved_count})"',
+            1,
+        )[1].split(
+            'with st.container(key="ei_refresh_saved_analysis"',
+            1,
+        )[0]
+        self.assertIn("on_click=_select_ei_report_tab", shortcut)
+        self.assertIn('args=("Alternatives",)', shortcut)
+        self.assertNotIn('st.session_state[tab_state_key] = "Alternatives"', shortcut)
 
     def test_home_primary_action_starts_the_trial_and_keeps_audit_separate(self):
         self.assertIn('data-auth="signup" data-intent="trial">Start 14-day trial</a>', MARKETING_WEB)
