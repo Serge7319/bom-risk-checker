@@ -3,6 +3,12 @@ from __future__ import annotations
 import unittest
 from unittest.mock import patch
 
+from src.ui.navigation import (
+    NAV_SCROLL_RESET_PENDING_KEY,
+    NAV_SCROLL_RESET_TOKEN_KEY,
+    inject_nav_scroll_reset_if_needed,
+)
+
 from src.ui.main_transition import (
     DELAY_ROUTE_BODY_REVEAL_KEY,
     MAIN_TRANSITION_ACTIVE_KEY,
@@ -97,6 +103,34 @@ class MainTransitionReleaseSignalTests(unittest.TestCase):
         self.assertIn('body:not(:has([data-cadivor-page-body-gen="813"]))', css)
         self.assertNotIn('body[data-cadivor-page-body-gen="813"]', css)
         self.assertEqual(html, [])
+
+
+    def test_active_navigation_requeues_a_missing_scroll_reset(self):
+        state = {
+            MAIN_TRANSITION_GEN_KEY: 815,
+            MAIN_TRANSITION_ROUTE_KEY: "Dashboard",
+            MAIN_TRANSITION_ACTIVE_KEY: True,
+            MAIN_TRANSITION_KIND_KEY: "navigation",
+            "cadivor_route": "Dashboard",
+        }
+        rendered = []
+
+        with (
+            patch("src.ui.navigation.st.session_state", state),
+            patch(
+                "src.ui.navigation.st.html",
+                side_effect=lambda value, **kwargs: rendered.append((value, kwargs)),
+            ),
+        ):
+            self.assertTrue(inject_nav_scroll_reset_if_needed())
+
+        self.assertEqual(state[NAV_SCROLL_RESET_TOKEN_KEY], 1)
+        self.assertNotIn(NAV_SCROLL_RESET_PENDING_KEY, state)
+        self.assertEqual(len(rendered), 1)
+        script, kwargs = rendered[0]
+        self.assertIn("const transitionGen = 815;", script)
+        self.assertIn('data-cadivor-nav-scroll-token="1"', script)
+        self.assertEqual(kwargs.get("unsafe_allow_javascript"), True)
 
 
 if __name__ == "__main__":
