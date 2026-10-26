@@ -250,6 +250,36 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
         self.assertEqual(row["level"], "Medium")
         self.assertEqual(row["score"], 50)
 
+    def test_bom_risk_puts_component_findings_before_summary_and_snapshot(self):
+        report = engineering_intelligence_html(
+            bom_name="Synthetic BOM",
+            part_count=2,
+            tab="BOM Risk",
+            parts=PARTS,
+            health_score=72,
+        )
+
+        self.assertLess(
+            report.index("Review these components first"),
+            report.index("Engineering review required"),
+        )
+        self.assertLess(
+            report.index("Review these components first"),
+            report.index("Health"),
+        )
+
+        renderer = REPORT_SOURCE.split(
+            "with tab_panels[EI_TABS.index(tab)]:",
+            1,
+        )[1].split(
+            'with st.container(key="cv_ei_detailed_report_action"):',
+            1,
+        )[0]
+        self.assertLess(
+            renderer.index("engineering_intelligence_html("),
+            renderer.index('with st.container(key="ei_refresh_saved_analysis", border=True):'),
+        )
+
     def test_bom_risk_uses_the_approved_review_structure(self):
         html = engineering_intelligence_html(
             bom_name="Sample BOM",
