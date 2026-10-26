@@ -4850,6 +4850,10 @@ def run_authenticated_app() -> None:
             [data-testid="stExpander"]{border-radius:14px!important;border-color:#dbe3ef!important;background:#fbfdff!important}[data-testid="stExpander"] summary{font-weight:850!important}.stButton>button,.stDownloadButton>button{min-height:42px!important;border-radius:10px!important;font-weight:850!important}
             @media(max-width:800px){.cv-monitor-workspace-head{display:block}.cv-monitor-active-badge{display:inline-block;margin-top:9px}.cv320-cardhead{display:block}.cv320-score{display:inline-block;margin-top:9px}.cv320-evidence{grid-template-columns:1fr 1fr}.cv320-recommendation{grid-template-columns:auto 1fr}.cv320-confidence{grid-column:2;text-align:left;border-left:0;padding-left:0}.cv-monitor-current-filter{display:block}.cv-monitor-current-filter__summary{text-align:left;margin-top:7px}.cv-monitor-queue-caption{display:block}.cv-monitor-queue-caption span{display:block;margin-top:4px}.cv-monitor-component-head{display:block}.cv-monitor-component-head .cv320-score{margin-top:9px}.cv-monitor-component-evidence{grid-template-columns:1fr 1fr}.cv-monitor-component-alert{grid-template-columns:1fr}.cv-monitor-component-alert span{white-space:normal}.cv-monitor-history-grid{grid-template-columns:1fr}}
             @media(prefers-reduced-motion:reduce){[class*="st-key-monitor_alert_detail_"]{animation:none!important}}
+            .st-key-monitoring_snapshot{box-sizing:border-box!important;width:100%!important;min-width:0!important}
+            .st-key-monitoring_snapshot [data-testid="stHorizontalBlock"]{display:flex!important;flex-flow:row wrap!important;align-items:stretch!important;gap:12px!important;width:100%!important}
+            .st-key-monitoring_snapshot [data-testid="stColumn"]{box-sizing:border-box!important;flex:1 1 210px!important;min-width:210px!important;max-width:none!important;width:auto!important}
+            .st-key-monitoring_snapshot [data-testid="stColumn"]>[data-testid="stVerticalBlock"]{height:100%!important}
             </style>
             """,
             unsafe_allow_html=True,
@@ -6987,83 +6991,30 @@ def run_authenticated_app() -> None:
             )
             stop_authenticated_page()
 
-        monitoring_workspace_col, monitoring_snapshot_col = st.columns(
-            [0.66, 0.34],
-            gap="large",
-        )
-
-        with monitoring_workspace_col:
+        with st.container(key="monitoring_snapshot"):
+            active_snapshot_focus = ""
+            if monitor_view == "queue":
+                active_snapshot_focus = st.session_state.get(
+                    "monitoring_effective_focus",
+                    monitor_focus or "active",
+                )
+            elif monitor_view == "components":
+                active_snapshot_focus = "components"
             st.markdown(
                 f"""
-                <div class="cv-monitor-workspace-head">
-                  <div>
-                    <span class="cv-monitor-workspace-eyebrow">Monitoring workspace</span>
-                    <span class="cv-monitor-workspace-title">Act on supplier and lifecycle changes</span>
-                    <p>Filter the active queue, inspect evidence, and document the engineering response.</p>
-                  </div>
-                  <span class="cv-monitor-active-badge">
-                    {int(monitoring_center['active_alerts']):,} active
-                  </span>
+                <div class="cv-monitor-snapshot-head">
+                  <span class="cv-monitor-snapshot-eyebrow">Monitoring overview</span>
+                  <span class="cv-monitor-snapshot-title">Monitoring snapshot</span>
+                  <p>{int(monitoring_center['active_alerts']):,} active alerts. Use these shortcuts to move from signal to action.</p>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
-            if not focused_monitor_part:
-                with st.container(key="monitoring_view_navigation"):
-                    navigation_columns = st.columns(
-                        [0.9, 1.3, 1.6, 0.8, 0.7],
-                        gap="small",
-                    )
-                    for navigation_column, (view_token, view_label) in zip(
-                        navigation_columns,
-                        monitor_view_labels.items(),
-                    ):
-                        if navigation_column.button(
-                            view_label,
-                            key=f"monitoring_view_{view_token}",
-                            type="primary" if monitor_view == view_token else "secondary",
-                            use_container_width=True,
-                        ):
-                            navigation_params = {"monitor_view": view_token}
-                            if return_analysis_id:
-                                navigation_params["return_analysis_id"] = return_analysis_id
-                            if focused_monitor_part:
-                                navigation_params["mpn"] = focused_monitor_part
-                            navigate_to(
-                                "Monitoring",
-                                arm_opening=False,
-                                **navigation_params,
-                            )
-
-            if monitor_view == "components":
-                _render_monitored_components()
-            elif monitor_view == "timeline":
-                _render_monitoring_timeline()
-            elif monitor_view == "export":
-                _render_monitoring_exports()
-            else:
-                _render_monitor_action_queue()
-
-        with monitoring_snapshot_col:
-            with st.container(key="monitoring_snapshot"):
-                active_snapshot_focus = ""
-                if monitor_view == "queue":
-                    active_snapshot_focus = st.session_state.get(
-                        "monitoring_effective_focus",
-                        monitor_focus or "active",
-                    )
-                elif monitor_view == "components":
-                    active_snapshot_focus = "components"
-                st.markdown(
-                    f"""
-                    <div class="cv-monitor-snapshot-head">
-                      <span class="cv-monitor-snapshot-eyebrow">Monitoring overview</span>
-                      <span class="cv-monitor-snapshot-title">Monitoring snapshot</span>
-                      <p>{int(monitoring_center['active_alerts']):,} active alerts. Use these shortcuts to move from signal to action.</p>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
+            snapshot_columns = st.columns(
+                5 if price_alerts > 0 else 4,
+                gap="small",
+            )
+            with snapshot_columns[0]:
                 _render_monitoring_snapshot_card(
                     card_key="monitor_snapshot_immediate",
                     eyebrow="Priority",
@@ -7077,6 +7028,7 @@ def run_authenticated_app() -> None:
                     focus="immediate",
                     is_active=active_snapshot_focus == "immediate",
                 )
+            with snapshot_columns[1]:
                 _render_monitoring_snapshot_card(
                     card_key="monitor_snapshot_lifecycle",
                     eyebrow="Lifecycle",
@@ -7090,6 +7042,7 @@ def run_authenticated_app() -> None:
                     focus="lifecycle",
                     is_active=active_snapshot_focus == "lifecycle",
                 )
+            with snapshot_columns[2]:
                 _render_monitoring_snapshot_card(
                     card_key="monitor_snapshot_inventory",
                     eyebrow="Supply",
@@ -7103,7 +7056,8 @@ def run_authenticated_app() -> None:
                     focus="inventory",
                     is_active=active_snapshot_focus == "inventory",
                 )
-                if price_alerts > 0:
+            if price_alerts > 0:
+                with snapshot_columns[3]:
                     _render_monitoring_snapshot_card(
                         card_key="monitor_snapshot_pricing",
                         eyebrow="Cost",
@@ -7117,6 +7071,7 @@ def run_authenticated_app() -> None:
                         focus="pricing",
                         is_active=active_snapshot_focus == "pricing",
                     )
+            with snapshot_columns[-1]:
                 _render_monitoring_snapshot_card(
                     card_key="monitor_snapshot_components",
                     eyebrow="Coverage",
@@ -7129,31 +7084,83 @@ def run_authenticated_app() -> None:
                     target_view="components",
                     is_active=active_snapshot_focus == "components",
                 )
-                if (
-                    monitoring_limit is not None
-                    and not is_admin
-                    and monitor_usage >= 80
-                ):
-                    with st.container(key="monitoring_plan_usage"):
-                        st.markdown(
-                            f"""
-                            <div class="cv320-limitrow">
-                              <span>{html.escape(str(selected_plan_name))} monitoring usage</span>
-                              <span>{monitored_count:,} / {monitor_limit_label}</span>
-                            </div>
-                            <div class="cv320-bar"><i style="width:{monitor_usage}%"></i></div>
-                            """,
-                            unsafe_allow_html=True,
+            if (
+                monitoring_limit is not None
+                and not is_admin
+                and monitor_usage >= 80
+            ):
+                with st.container(key="monitoring_plan_usage"):
+                    st.markdown(
+                        f"""
+                        <div class="cv320-limitrow">
+                          <span>{html.escape(str(selected_plan_name))} monitoring usage</span>
+                          <span>{monitored_count:,} / {monitor_limit_label}</span>
+                        </div>
+                        <div class="cv320-bar"><i style="width:{monitor_usage}%"></i></div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+                    if st.button(
+                        "Open billing settings",
+                        key="monitoring_plan_usage_action",
+                        use_container_width=True,
+                    ):
+                        navigate_to(
+                            "Settings",
+                            settings_tab="Billing",
                         )
-                        if st.button(
-                            "Open billing settings",
-                            key="monitoring_plan_usage_action",
-                            use_container_width=True,
-                        ):
-                            navigate_to(
-                                "Settings",
-                                settings_tab="Billing",
-                            )
+
+        st.markdown(
+            f"""
+            <div class="cv-monitor-workspace-head">
+              <div>
+                <span class="cv-monitor-workspace-eyebrow">Monitoring workspace</span>
+                <span class="cv-monitor-workspace-title">Act on supplier and lifecycle changes</span>
+                <p>Filter the active queue, inspect evidence, and document the engineering response.</p>
+              </div>
+              <span class="cv-monitor-active-badge">
+                {int(monitoring_center['active_alerts']):,} active
+              </span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        if not focused_monitor_part:
+            with st.container(key="monitoring_view_navigation"):
+                navigation_columns = st.columns(
+                    [0.9, 1.3, 1.6, 0.8, 0.7],
+                    gap="small",
+                )
+                for navigation_column, (view_token, view_label) in zip(
+                    navigation_columns,
+                    monitor_view_labels.items(),
+                ):
+                    if navigation_column.button(
+                        view_label,
+                        key=f"monitoring_view_{view_token}",
+                        type="primary" if monitor_view == view_token else "secondary",
+                        use_container_width=True,
+                    ):
+                        navigation_params = {"monitor_view": view_token}
+                        if return_analysis_id:
+                            navigation_params["return_analysis_id"] = return_analysis_id
+                        if focused_monitor_part:
+                            navigation_params["mpn"] = focused_monitor_part
+                        navigate_to(
+                            "Monitoring",
+                            arm_opening=False,
+                            **navigation_params,
+                        )
+
+        if monitor_view == "components":
+            _render_monitored_components()
+        elif monitor_view == "timeline":
+            _render_monitoring_timeline()
+        elif monitor_view == "export":
+            _render_monitoring_exports()
+        else:
+            _render_monitor_action_queue()
+
 
         stop_authenticated_page()
 
