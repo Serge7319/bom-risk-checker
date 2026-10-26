@@ -68,6 +68,11 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
         self.assertIn("margin-left: auto !important;", monitoring_canvas)
         self.assertIn("margin-right: auto !important;", monitoring_canvas)
 
+    def test_shell_reserves_scrollbar_gutter_for_route_consistency(self):
+        root = Path(__file__).resolve().parents[1]
+        css = (root / "src" / "assets" / "css" / "app_shell.css").read_text(encoding="utf-8")
+        self.assertIn("html {\n  scrollbar-gutter: stable;\n}", css)
+
     def test_medium_risk_action_offers_monitoring_and_alternate_search_separately(self):
         action = REPORT_SOURCE.split("def _alternative_action_link(", 1)[1].split(
             "def ", 1
