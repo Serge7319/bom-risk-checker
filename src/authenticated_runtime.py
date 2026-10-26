@@ -4608,7 +4608,7 @@ def run_authenticated_app() -> None:
         stop_authenticated_page()
 
     if app_mode == "Monitoring":
-        with st.container(key="approved_page_canvas_standard_render_monitoring"):
+        with st.container(key="monitoring_home_width_marker"):
             st.markdown(
                 '<span class="cv-monitoring-canvas-marker" aria-hidden="true"></span>',
                 unsafe_allow_html=True,

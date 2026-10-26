@@ -13,10 +13,13 @@ APPROVED_PAGES = (ROOT / "src" / "ui" / "approved_pages.py").read_text(encoding=
 
 class MonitoringSnapshotLayoutTests(unittest.TestCase):
     def test_monitoring_canvas_matches_the_home_workspace_width(self):
-        marker = 'with st.container(key="approved_page_canvas_standard_render_monitoring"):'
+        marker = 'with st.container(key="monitoring_home_width_marker"):'
         self.assertIn(marker, self.branch)
         self.assertLess(self.branch.index(marker), self.branch.index("monitoring_allowed = "))
+        self.assertNotEqual("monitoring_home_width_marker", "approved_page_canvas_standard_render_monitoring")
+        self.assertIn(":has(.st-key-monitoring_home_width_marker)", MONITORING_LAYOUT)
         self.assertIn(":has(.st-key-approved_page_canvas_standard_render_monitoring)", MONITORING_LAYOUT)
+        self.assertIn('key = f"approved_page_canvas_{width_variant}_{renderer.__name__}"', APPROVED_PAGES)
         self.assertIn("max-width: 1440px !important;", MONITORING_LAYOUT)
         self.assertIn("display: none !important;", MONITORING_LAYOUT)
         self.assertIn(".st-key-approved_home_page{", APPROVED_PAGES)
