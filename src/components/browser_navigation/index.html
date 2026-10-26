@@ -39,6 +39,8 @@
       lastHref: "",
       seq: 0,
       recoverySeq: 0,
+      routeReleaseGen: "",
+      routeReleaseStableChecks: 0,
     };
     try {
       state.lastHref = w.location.href || "";
@@ -131,6 +133,54 @@
       return windowTop <= 1
         && Array.from(candidates).every((element) => Number(element.scrollTop || 0) <= 1);
     }
+    function releaseNavigationCoverAfterScrollReset() {
+      const doc = w.document;
+      const coverSelector =
+        '.cv-main-transition.cv-route-loading'
+        + '[data-cadivor-transition-kind="navigation"]'
+        + '[data-cadivor-transition-gen]';
+      const covers = Array.from(doc.querySelectorAll(coverSelector));
+      let destination = null;
+      for (let index = covers.length - 1; index >= 0; index -= 1) {
+        const cover = covers[index];
+        const gen = String(cover.getAttribute("data-cadivor-transition-gen") || "").trim();
+        if (!gen) continue;
+        const body = doc.querySelector(
+          '[data-cadivor-page-body-gen="' + gen + '"]'
+        );
+        if (body) {
+          destination = {gen, body};
+          break;
+        }
+      }
+
+      if (!destination) {
+        state.routeReleaseGen = "";
+        state.routeReleaseStableChecks = 0;
+        return;
+      }
+
+      const {gen, body} = destination;
+      if (body.getAttribute("data-cadivor-page-body-release-gen") === gen) {
+        state.routeReleaseGen = gen;
+        state.routeReleaseStableChecks = 0;
+        return;
+      }
+      if (state.routeReleaseGen !== gen) {
+        state.routeReleaseGen = gen;
+        state.routeReleaseStableChecks = 0;
+      }
+
+      const atTop = resetMainScrollToTop();
+      state.routeReleaseStableChecks = atTop
+        ? state.routeReleaseStableChecks + 1
+        : 0;
+      if (state.routeReleaseStableChecks >= 3) {
+        body.setAttribute("data-cadivor-page-body-release-gen", gen);
+        state.routeReleaseStableChecks = 0;
+      }
+    }
+
     function showHistoryTransition(targetHref) {
       const doc = w.document;
       let page = "workspace";
@@ -276,7 +326,10 @@
       w.addEventListener("hashchange", () => queue("hashchange"));
     } catch (_) {}
     // Fallback when popstate is swallowed; Python ignores in-app push echoes.
-    w.setInterval(() => queue("url-change"), 300);
+    w.setInterval(() => {
+      queue("url-change");
+      releaseNavigationCoverAfterScrollReset();
+    }, 300);
     w.__cadivorNavBridgeV4 = state;
     return state;
   }

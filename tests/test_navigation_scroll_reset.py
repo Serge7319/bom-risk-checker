@@ -5,6 +5,7 @@ ROOT = Path(__file__).resolve().parents[1]
 NAVIGATION = (ROOT / "src" / "ui" / "navigation.py").read_text(encoding="utf-8")
 RUNTIME = (ROOT / "src" / "authenticated_runtime.py").read_text(encoding="utf-8")
 EI_REPORT = (ROOT / "src" / "ui" / "ei_bom_report.py").read_text(encoding="utf-8")
+BROWSER_NAVIGATION = (ROOT / "src" / "components" / "browser_navigation" / "index.html").read_text(encoding="utf-8")
 
 
 def test_scroll_reset_runs_in_app_document_until_destination_mounts():
@@ -67,3 +68,19 @@ def test_bom_analysis_resets_scroll_again_after_the_result_or_terminal_state_mou
     assert active_fragment.count("request_main_scroll_reset()") >= 3
     success_path = active_fragment.split('st.session_state["results_df"] = results_df', 1)[1]
     assert success_path.index("request_main_scroll_reset()") < success_path.index("st.rerun()")
+
+
+def test_browser_bridge_releases_navigation_cover_only_after_scroll_is_stable():
+    bridge = BROWSER_NAVIGATION
+    helper = bridge.split(
+        "function releaseNavigationCoverAfterScrollReset()", 1
+    )[1].split("function showHistoryTransition", 1)[0]
+
+    assert "data-cadivor-transition-kind=\"navigation\"" in helper
+    assert "data-cadivor-page-body-gen" in helper
+    assert "const atTop = resetMainScrollToTop();" in helper
+    assert helper.index("resetMainScrollToTop();") < helper.index(
+        'body.setAttribute("data-cadivor-page-body-release-gen", gen)'
+    )
+    assert "routeReleaseStableChecks >= 3" in helper
+    assert "releaseNavigationCoverAfterScrollReset();" in bridge
