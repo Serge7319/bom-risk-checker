@@ -1606,8 +1606,6 @@ def _render_saved_bom_actions(column, analysis_id: str, *, scope: str, row_key: 
                 ):
                     _queue_saved_bom_action(target, "delete")
 
-
-
 def _delete_saved_bom(analysis_id: str, user_id: str) -> None:
     """Delete one user-owned analysis and its associated saved records."""
     from src.authenticated_runtime import supabase
@@ -2752,6 +2750,14 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
                     st.session_state["cadivor_manage_saved_boms"] = False
                     st.session_state.pop("cadivor_bom_pipeline_active", None)
                     st.session_state.pop("bom8_analysis_upload_file", None)
+                    from src.ui.main_transition import arm_main_transition
+
+                    arm_main_transition(
+                        st.session_state,
+                        "BOM Analyzer",
+                        kind="navigation",
+                        previous_route="BOM Analyzer",
+                    )
                     st.rerun()
         else:
             with action_col:

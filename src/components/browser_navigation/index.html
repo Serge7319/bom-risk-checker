@@ -39,6 +39,10 @@
       '[class*="st-key-approved_home_menu_"]',
       '[class*="st-key-approved_home_action_review_"]',
       '[class*="st-key-approved_decision_action_risk_"]',
+      '[class*="st-key-approved_decision_action_open_"]',
+      '[class*="st-key-approved_decision_action_report_"]',
+      '[class*="st-key-approved_home_view_all"]',
+      '[class*="st-key-approved_bom_manage"]',
       '[class*="st-key-cadivor_bom_more_btn_"]',
     ].join(",");
     const state = {checkQueued: false};
@@ -61,7 +65,10 @@
         return label;
       }
       const savedBomTabs = button.closest('[class*="st-key-cv_analysis_section_nav"]');
-      if (savedBomTabs) return label;
+      if (savedBomTabs) {
+        if (/^More(?:\s|$)/i.test(label)) return "";
+        return label;
+      }
       const newAnalysis = button.closest(
         '[class*="st-key-approved_bom_new"], [class*="st-key-approved_home_new_bom"]'
       );
@@ -96,11 +103,6 @@
             return false;
           }
         });
-    }
-
-    function removeImmediateCover() {
-      const cover = doc.getElementById("cadivor-instant-navigation-transition");
-      if (cover) cover.remove();
     }
 
     function queueReleaseCheck() {
