@@ -240,6 +240,18 @@ def prepare_new_approved_bom_analysis(state: MutableMapping[str, Any]) -> None:
     state["cadivor_bom_upload_open"] = True
     state["cadivor_manage_saved_boms"] = False
 
+    from src.ui.main_transition import arm_main_transition
+
+    previous_route = str(
+        state.get("cadivor_route") or state.get("app_mode") or "BOM Analyzer"
+    ).strip() or "BOM Analyzer"
+    arm_main_transition(
+        state,
+        "BOM Analyzer",
+        kind="navigation",
+        previous_route=previous_route,
+    )
+
 
 def should_render_legacy_bom_workspace(state: MutableMapping[str, Any]) -> bool:
     """Avoid rendering a second upload form while the approved BOM form is active."""

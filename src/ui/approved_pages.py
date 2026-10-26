@@ -941,7 +941,7 @@ def begin_approved_page() -> None:
         .st-key-approved_home_recent_card{margin:26px 0 0!important;padding:0!important;border:1px solid #cbd8e8!important;border-radius:16px!important;background:#fff!important;box-shadow:0 3px 12px rgba(15,23,42,.045)!important}
         .st-key-approved_home_recent_card [data-testid="stVerticalBlock"]{gap:0!important}
         .st-key-approved_home_recent_card [data-testid="stElementContainer"]{margin:0!important;padding:0!important}
-        .cv-ap-home-table-head{display:grid!important;grid-template-columns:2.25fr 1.35fr .76fr .84fr 1fr 1.18fr .68fr!important;align-items:center!important;gap:16px!important;box-sizing:border-box!important;min-height:68px!important;padding:0 30px!important;background:#f7f9fc!important;border-top:1px solid #e5ebf3!important;border-bottom:1px solid #dce4ef!important}
+        .cv-ap-home-table-head{display:grid!important;grid-template-columns:2.15fr 1.25fr .72fr .8fr .95fr 1.05fr 1.35fr!important;align-items:center!important;gap:16px!important;box-sizing:border-box!important;min-height:68px!important;padding:0 30px!important;background:#f7f9fc!important;border-top:1px solid #e5ebf3!important;border-bottom:1px solid #dce4ef!important}
         .cv-ap-home-table-head [role="columnheader"]{display:flex;align-items:center;min-width:0;min-height:48px;overflow:visible;color:#64748b;font-size:14px;font-weight:750;line-height:1.25;letter-spacing:.035em;text-transform:uppercase;white-space:normal;overflow-wrap:anywhere}
         .cv-ap-home-table-head [role="columnheader"]:nth-child(n+3){justify-content:center!important;text-align:center}
         .st-key-approved_home_recent_heading{box-sizing:border-box!important;width:100%!important;min-height:0!important;margin:0!important;padding:12px 26px 12px!important}
@@ -985,6 +985,8 @@ def begin_approved_page() -> None:
         .cv-home-risk-count.clear{background:#dcfce7;color:#15803d}
         [class*="st-key-approved_home_menu_"] [data-testid="stPopover"] button[aria-expanded]{display:inline-flex!important;align-items:center!important;justify-content:center!important;width:44px!important;min-width:44px!important;height:44px!important;min-height:44px!important;padding:0!important;border:0!important;border-radius:10px!important;background:transparent!important;color:#64748b!important;box-shadow:none!important;font-size:22px!important;font-weight:750!important;line-height:1!important}
         [class*="st-key-approved_home_menu_"] [data-testid="stPopover"] button[aria-expanded] svg,[class*="st-key-approved_home_menu_"] [data-testid="stPopover"] button[aria-expanded] [data-testid="stIconMaterial"]{display:none!important}
+        [class*="st-key-approved_home_menu_"] [data-testid="stVerticalBlock"]{gap:4px!important}
+        [class*="st-key-approved_home_action_review_"] button{box-sizing:border-box!important;width:100%!important;min-width:0!important;height:36px!important;min-height:36px!important;padding:0 6px!important;border-radius:8px!important;font-size:12px!important;font-weight:700!important;white-space:nowrap!important}
         [class*="st-key-approved_home_row_"] [data-testid="stColumn"]:last-child{text-align:right}
         .cv-ap-home-empty{padding:26px 24px;color:#64748b;font-size:16px}
         @media(max-width:1600px){
@@ -1519,7 +1521,26 @@ def _queue_saved_bom_action(analysis_id: str, action: str) -> None:
         "BOM Settings",
         saved_bom_id=target,
         saved_bom_action=action,
-        arm_opening=False,
+        arm_opening=True,
+    )
+
+
+def _open_saved_bom_engineering_intelligence(analysis_id: str) -> None:
+    """Open Parts & Risk for one explicitly selected saved BOM."""
+    target = str(analysis_id or "").strip()
+    if not target:
+        return
+    st.session_state["cadivor_show_detailed_risk"] = False
+    st.session_state["cadivor_ei_report_tab"] = "BOM Risk"
+    st.session_state["cadivor_active_analysis_id"] = target
+    st.session_state["analysis_id"] = target
+    st.session_state["cadivor_pending_analysis_section"] = "Engineering Intelligence"
+    st.session_state["cadivor_pending_analysis_section_id"] = target
+    navigate_to(
+        "Analysis Details",
+        analysis_id=target,
+        analysis_tab="Engineering Intelligence",
+        arm_opening=True,
     )
 
 
@@ -1529,7 +1550,15 @@ def _render_saved_bom_actions(column, analysis_id: str, *, scope: str, row_key: 
         return
     with column:
         with st.container(key=f"approved_{scope}_menu_{row_key}"):
-            with st.popover("⋯", help="Open, view the detailed risk report, edit, or delete this BOM."):
+            if st.button(
+                "Parts & Risk",
+                key=f"approved_{scope}_action_review_{row_key}",
+                type="primary",
+                width="stretch",
+                help="Open Parts & Risk and the saved release evidence for this BOM.",
+            ):
+                _open_saved_bom_engineering_intelligence(target)
+            with st.popover("⋯", help="Open, edit, delete, or view the detailed risk report for this BOM."):
                 if st.button(
                     "Open",
                     key=f"approved_{scope}_action_open_{row_key}",
@@ -1539,25 +1568,14 @@ def _render_saved_bom_actions(column, analysis_id: str, *, scope: str, row_key: 
                         "BOM Settings",
                         saved_bom_id=target,
                         saved_bom_action="open",
-                        arm_opening=False,
+                        arm_opening=True,
                     )
                 if st.button(
                     "Engineering Intelligence",
                     key=f"approved_{scope}_action_bom_risk_{row_key}",
                     use_container_width=True,
                 ):
-                    st.session_state["cadivor_show_detailed_risk"] = False
-                    st.session_state["cadivor_ei_report_tab"] = "BOM Risk"
-                    st.session_state["cadivor_active_analysis_id"] = target
-                    st.session_state["analysis_id"] = target
-                    st.session_state["cadivor_pending_analysis_section"] = "Engineering Intelligence"
-                    st.session_state["cadivor_pending_analysis_section_id"] = target
-                    navigate_to(
-                        "Analysis Details",
-                        analysis_id=target,
-                        analysis_tab="Engineering Intelligence",
-                        arm_opening=False,
-                    )
+                    _open_saved_bom_engineering_intelligence(target)
                 if st.button(
                     "Detailed Risk Report",
                     key=f"approved_{scope}_action_risk_report_{row_key}",
@@ -1573,7 +1591,7 @@ def _render_saved_bom_actions(column, analysis_id: str, *, scope: str, row_key: 
                         "Analysis Details",
                         analysis_id=target,
                         analysis_tab="Engineering Intelligence",
-                        arm_opening=False,
+                        arm_opening=True,
                     )
                 if st.button(
                     "Edit project and file name",
@@ -1587,6 +1605,7 @@ def _render_saved_bom_actions(column, analysis_id: str, *, scope: str, row_key: 
                     use_container_width=True,
                 ):
                     _queue_saved_bom_action(target, "delete")
+
 
 
 def _delete_saved_bom(analysis_id: str, user_id: str) -> None:
@@ -2457,7 +2476,7 @@ def render_home(
             unsafe_allow_html=True,
         )
 
-        home_widths = [2.25, 1.35, 0.76, 0.84, 1.0, 1.18, 0.68]
+        home_widths = [2.15, 1.25, 0.72, 0.8, 0.95, 1.05, 1.35]
         with st.container(key="approved_home_recent_card"):
             with st.container(key="approved_home_recent_heading"):
                 heading_col, view_all_col = st.columns([10, 1], vertical_alignment="center")
@@ -2910,7 +2929,7 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
             if not within_analyzed_range(_first(row, "created_at", "updated_at", fallback=""), date_filter, today):
                 continue
             visible.append((row, label, project_name, bom_name))
-        bom_widths = [2.25, 1.35, 0.76, 0.84, 1.0, 1.18, 0.68]
+        bom_widths = [2.15, 1.25, 0.72, 0.8, 0.95, 1.05, 1.35]
         with st.container(key="approved_bom_catalog_table"):
             header_labels = ("Name", "Project", "Part count", "Health", "High-risk parts", "Last analyzed", "Actions")
             header_cells = "".join(

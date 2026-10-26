@@ -329,11 +329,26 @@ def render_saved_bom_section_nav(
     return area_clicked, more_clicked
 
 
+def _arm_saved_bom_section_transition(state) -> None:
+    """Cover the report body while a saved-BOM section is replaced."""
+    from src.ui.main_transition import arm_main_transition
+
+    route = str(state.get("cadivor_route") or state.get("app_mode") or "Analysis Details").strip()
+    route = route or "Analysis Details"
+    arm_main_transition(
+        state,
+        route,
+        kind="navigation",
+        previous_route=route,
+    )
+
+
 def _select_saved_bom_area(analysis_id: str, area: str) -> None:
     """Commit a saved-BOM section before Streamlit reruns the page."""
     import streamlit as st
 
     state = st.session_state
+    _arm_saved_bom_section_transition(state)
     state[f"cadivor_bom_area_{analysis_id}"] = area
     state[f"cadivor_bom_more_{analysis_id}"] = "More"
     section = section_for_choice(area)
@@ -366,8 +381,9 @@ def _select_saved_bom_more(analysis_id: str, choice: str) -> None:
             if selected:
                 params["mpn"] = selected
                 params["prefill_id"] = uuid4().hex
-        navigate_to(route, _rerun=False, arm_opening=False, **params)
+        navigate_to(route, _rerun=False, **params)
         return
+    _arm_saved_bom_section_transition(state)
     state[f"cadivor_bom_more_{analysis_id}"] = choice
     section = section_for_choice(choice)
     state[f"cadivor_analysis_section_{analysis_id or 'default'}"] = section
