@@ -430,7 +430,7 @@ def component_rows(
     approved_alternatives: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Convert stored component records to an explicitly whitelisted report schema."""
-    from src.ui.ei_bom_report import _description_text
+    from src.ui.ei_bom_report import _description_text, _priority_assessment
     from src.approved_alternatives import approved_mpn_map, part_key
     from src.alternate_reference_parser import extract_description_alternates
     from src.saved_bom_cost import extended_cost
@@ -441,6 +441,9 @@ def component_rows(
         if not isinstance(record, dict):
             continue
         risk, score = _risk(record)
+        report_risk, report_score = _priority_assessment(record)
+        if report_risk != "Needs verification":
+            risk, score = report_risk, report_score
         lifecycle = _text(_first(record, "lifecycle_status", "Lifecycle Status", "lifecycle"), "Unknown")
         stock_sources = _sources(record)
         complete = _flag(_first(record, "stock_data_complete", "Stock Data Complete"))
