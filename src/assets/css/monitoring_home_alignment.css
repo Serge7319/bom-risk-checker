@@ -32,6 +32,11 @@ html body section[data-testid="stMain"] .st-key-approved_home_header [class*="st
   min-width: 0 !important;
 }
 
+/* The route marker activates the Home-width canvas without adding visible content. */
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring {
+  display: none !important;
+}
+
 /* Monitoring matches Home's centered 1,440px workspace canvas. */
 section[data-testid="stMain"] [data-testid="stMainBlockContainer"]:has(.st-key-approved_page_canvas_standard_render_monitoring),
 section[data-testid="stMain"] .main .block-container:has(.st-key-approved_page_canvas_standard_render_monitoring) {
