@@ -1053,8 +1053,8 @@ def engineering_intelligence_html(
     return (
         '<div class="cv-ei-report">'
         + heading
-        + banner
         + body
+        + banner
         + "</div>"
     )
 
@@ -1800,6 +1800,20 @@ def render_engineering_intelligence_report(
                         on_click=_select_ei_report_tab,
                         args=("Alternatives",),
                     )
+            st.markdown(
+                engineering_intelligence_html(
+                    bom_name=bom_name,
+                    part_count=len(parts or []),
+                    tab=str(tab or "BOM Risk"),
+                    parts=parts or [],
+                    alternatives=alternatives or [],
+                    health_score=health_score,
+                    include_heading=False,
+                    analysis_id=str(analysis.get("id") or ""),
+                    approved_alternatives=approved_alternatives or [],
+                ),
+                unsafe_allow_html=True,
+            )
             with st.container(key="ei_refresh_saved_analysis", border=True):
                 st.markdown("#### Refresh supplier data")
                 st.caption(
@@ -1824,20 +1838,6 @@ def render_engineering_intelligence_report(
                         saved_bom_action="open",
                         arm_opening=False,
                     )
-            st.markdown(
-                engineering_intelligence_html(
-                    bom_name=bom_name,
-                    part_count=len(parts or []),
-                    tab=str(tab or "BOM Risk"),
-                    parts=parts or [],
-                    alternatives=alternatives or [],
-                    health_score=health_score,
-                    include_heading=False,
-                    analysis_id=str(analysis.get("id") or ""),
-                    approved_alternatives=approved_alternatives or [],
-                ),
-                unsafe_allow_html=True,
-            )
             with st.container(key="cv_ei_detailed_report_action"):
                 if st.button(
                     "Open detailed risk report",
