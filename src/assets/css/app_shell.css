@@ -15,7 +15,7 @@
   --cv-foundation-rail-active-accent:var(--cv-primary,#2563eb);
 }
 
-html,body,.stApp,[data-testid="stAppViewContainer"]{
+html {\n  scrollbar-gutter: stable;\n}\n\nhtml,body,.stApp,[data-testid="stAppViewContainer"]{
   background:var(--cv-foundation-bg)!important;
   overflow-x:hidden!important;
 }
