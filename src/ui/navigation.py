@@ -411,15 +411,9 @@ def request_main_scroll_reset() -> int:
 
 def inject_nav_scroll_reset_if_needed() -> bool:
     """Reset the active route's real scroll owner before releasing navigation."""
-    if not st.session_state.pop(NAV_SCROLL_RESET_PENDING_KEY, False):
-        return False
-    try:
-        token = int(st.session_state.get(NAV_SCROLL_RESET_TOKEN_KEY) or 0)
-    except (TypeError, ValueError):
-        token = 0
-    target_route = str(st.session_state.get("cadivor_route") or "").strip()
-    target_route_json = json.dumps(target_route, ensure_ascii=True)
+    pending = bool(st.session_state.pop(NAV_SCROLL_RESET_PENDING_KEY, False))
     transition_gen = 0
+    active_navigation_transition = False
     try:
         from src.ui.main_transition import (
             MAIN_TRANSITION_ACTIVE_KEY,
@@ -427,15 +421,32 @@ def inject_nav_scroll_reset_if_needed() -> bool:
             MAIN_TRANSITION_KIND_KEY,
         )
 
-        if (
-            st.session_state.get(MAIN_TRANSITION_ACTIVE_KEY)
+        active_navigation_transition = (
+            bool(st.session_state.get(MAIN_TRANSITION_ACTIVE_KEY))
             and str(st.session_state.get(MAIN_TRANSITION_KIND_KEY) or "").strip().casefold()
             == "navigation"
-        ):
+        )
+        if active_navigation_transition:
             transition_gen = int(st.session_state.get(MAIN_TRANSITION_GEN_KEY) or 0)
     except (ImportError, TypeError, ValueError):
         transition_gen = 0
+        active_navigation_transition = False
 
+    if not pending:
+        if not active_navigation_transition:
+            return False
+        # Some authenticated route changes are inferred by the shell after the
+        # navigation callback. Keep the destination cover up, but ensure its
+        # scroll-to-top release work is actually queued for this generation.
+        request_main_scroll_reset()
+        st.session_state.pop(NAV_SCROLL_RESET_PENDING_KEY, None)
+
+    try:
+        token = int(st.session_state.get(NAV_SCROLL_RESET_TOKEN_KEY) or 0)
+    except (TypeError, ValueError):
+        token = 0
+    target_route = str(st.session_state.get("cadivor_route") or "").strip()
+    target_route_json = json.dumps(target_route, ensure_ascii=True)
     st.html(
         f"""
         <script>
