@@ -1,4 +1,4 @@
-"""Contracts for the actionable full-width Alerts & Monitoring workspace."""
+"""Contracts for the Home-width centered Alerts & Monitoring workspace."""
 from __future__ import annotations
 
 import unittest
@@ -7,9 +7,21 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNTIME = (ROOT / "src" / "authenticated_runtime.py").read_text(encoding="utf-8")
+MONITORING_LAYOUT = (ROOT / "src" / "assets" / "css" / "monitoring_home_alignment.css").read_text(encoding="utf-8")
+APPROVED_PAGES = (ROOT / "src" / "ui" / "approved_pages.py").read_text(encoding="utf-8")
 
 
 class MonitoringSnapshotLayoutTests(unittest.TestCase):
+    def test_monitoring_canvas_matches_the_home_workspace_width(self):
+        marker = 'with st.container(key="approved_page_canvas_standard_render_monitoring"):'
+        self.assertIn(marker, self.branch)
+        self.assertLess(self.branch.index(marker), self.branch.index("monitoring_allowed = "))
+        self.assertIn(":has(.st-key-approved_page_canvas_standard_render_monitoring)", MONITORING_LAYOUT)
+        self.assertIn("max-width: 1440px !important;", MONITORING_LAYOUT)
+        self.assertIn("display: none !important;", MONITORING_LAYOUT)
+        self.assertIn(".st-key-approved_home_page{", APPROVED_PAGES)
+        self.assertIn("max-width:1440px!important", APPROVED_PAGES)
+
     @classmethod
     def setUpClass(cls):
         cls.branch = RUNTIME.split('if app_mode == "Monitoring":', 1)[1]

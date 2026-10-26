@@ -4608,6 +4608,11 @@ def run_authenticated_app() -> None:
         stop_authenticated_page()
 
     if app_mode == "Monitoring":
+        with st.container(key="approved_page_canvas_standard_render_monitoring"):
+            st.markdown(
+                '<span class="cv-monitoring-canvas-marker" aria-hidden="true"></span>',
+                unsafe_allow_html=True,
+            )
         monitoring_allowed = is_admin or selected_plan_name in {"Trial", "Professional", "Business", "Enterprise"}
         monitoring_limit = selected_plan.get("monitored_parts_limit")
         if not monitoring_allowed:
