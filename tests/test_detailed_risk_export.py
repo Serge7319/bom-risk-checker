@@ -191,6 +191,31 @@ class DetailedRiskExportTests(unittest.TestCase):
         self.assertIn("1 of 1 part(s) were not assessed", workbook["High Risk Parts"]["A2"].value)
         self.assertIn("not proof of low risk", workbook["High Risk Parts"]["A2"].value)
 
+    def test_csv_risk_matches_the_saved_report_priority_assessment(self):
+        from src.ui.ei_bom_report import _part_rows
+
+        part = {
+            "mpn": "TEST-ONLY-LIFECYCLE-PART",
+            "risk_level": "Medium",
+            "risk_score": 55,
+            "lifecycle_status": "Obsolete",
+            "supplier_count": 2,
+            "stock_data_sources": ["Mouser"],
+        }
+
+        report_row = _part_rows([part])[0]
+        exported_row = component_rows([part])[0]
+        self.assertEqual(report_row["level"], "High")
+        self.assertEqual(report_row["score"], 85)
+        self.assertEqual(exported_row["Risk"], report_row["level"])
+        self.assertEqual(exported_row["Risk score"], report_row["score"])
+
+        csv_row = next(csv.DictReader(StringIO(
+            detailed_risk_csv_bytes([part]).decode("utf-8-sig")
+        )))
+        self.assertEqual(csv_row["Risk"], report_row["level"])
+        self.assertEqual(csv_row["Risk score"], str(report_row["score"]))
+
     def test_zero_score_without_supplier_match_is_not_a_low_risk_rating(self):
         row = component_rows(
             [{
