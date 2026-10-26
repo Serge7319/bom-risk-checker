@@ -1,4 +1,4 @@
-"""Contracts for the actionable Alerts & Monitoring two-column workspace."""
+"""Contracts for the actionable full-width Alerts & Monitoring workspace."""
 from __future__ import annotations
 
 import unittest
@@ -15,10 +15,18 @@ class MonitoringSnapshotLayoutTests(unittest.TestCase):
         cls.branch = RUNTIME.split('if app_mode == "Monitoring":', 1)[1]
         cls.branch = cls.branch.split('if app_mode == "Supply Risk Scenario":', 1)[0]
 
-    def test_page_uses_two_column_action_workspace(self):
-        self.assertIn("monitoring_workspace_col, monitoring_snapshot_col", self.branch)
-        self.assertIn("[0.66, 0.34]", self.branch)
-        self.assertIn('key="monitoring_snapshot"', self.branch)
+    def test_page_stacks_kpis_above_a_full_width_action_workspace(self):
+        self.assertIn('with st.container(key="monitoring_snapshot"):', self.branch)
+        self.assertIn("snapshot_columns = st.columns(", self.branch)
+        self.assertIn("5 if price_alerts > 0 else 4", self.branch)
+        self.assertIn("flex-flow:row wrap", self.branch)
+        self.assertIn("min-width:210px", self.branch)
+        self.assertLess(
+            self.branch.index('with st.container(key="monitoring_snapshot"):'),
+            self.branch.index('"cv-monitor-workspace-head"'),
+        )
+        self.assertNotIn("monitoring_workspace_col, monitoring_snapshot_col", self.branch)
+        self.assertNotIn("[0.66, 0.34]", self.branch)
         self.assertIn("Monitoring snapshot", self.branch)
         self.assertIn("Monitoring workspace", self.branch)
 
