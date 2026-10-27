@@ -429,6 +429,28 @@ def procurement_page_header_html() -> str:
     )
 
 
+def _procurement_icon_svg(name: str, size: int = 24) -> str:
+    """Return a small, consistent line icon for the Procurement Advisor."""
+    paths = {
+        "star": '<path d="m12 2.75 2.82 5.72 6.31.92-4.56 4.45 1.08 6.28L12 17.16 6.35 20.12l1.08-6.28-4.56-4.45 6.31-.92L12 2.75Z" fill="currentColor" stroke="currentColor"/>',
+        "shield": '<path d="M12 22s8-4 8-11V5l-8-3-8 3v6c0 7 8 11 8 11Z"/>',
+        "chart": '<path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/>',
+        "clock": '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
+        "layers": '<path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 12 9 5 9-5"/><path d="m3 16 9 5 9-5"/>',
+        "calculator": '<rect x="4" y="2" width="16" height="20" rx="2"/><path d="M8 6h8"/><path d="M8 11h.01M12 11h.01M16 11h.01M8 16h.01M12 16h.01M16 16h.01"/>',
+        "check": '<circle cx="12" cy="12" r="10"/><path d="m8 12 2.5 2.5L16 9"/>',
+    }
+    path = paths.get(str(name or "").strip().casefold())
+    if not path:
+        return ""
+    return (
+        f"<svg viewBox='0 0 24 24' width='{int(size)}' height='{int(size)}' "
+        "fill='none' stroke='currentColor' stroke-width='1.8' "
+        "stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'>"
+        f"{path}</svg>"
+    )
+
+
 def procurement_part_summary_html(
     part: Mapping[str, Any],
     recommendation: Mapping[str, Any] | None = None,
@@ -471,7 +493,7 @@ def procurement_part_summary_html(
     required_by = first("required_by", "required_date", "need_by_date", "required_at")
     bom_label = first("bom_name", "filename", "project_name", default="Not recorded")
     revision = first("bom_revision", "revision", "rev", default="")
-    bom_value = bom_label + (f" · Rev {revision}" if revision and revision != "Not recorded" else "")
+    bom_value = f"BOM: Rev {revision}" if revision and revision != "Not recorded" else f"BOM: {bom_label}
     action = _t(recommendation.get("Recommendation"), "Complete sourcing data")
     lifecycle_key = lifecycle.casefold()
     lifecycle_tone = (
@@ -513,7 +535,7 @@ def procurement_part_summary_html(
         ".cv-pa-summary{display:grid;grid-template-columns:120px minmax(280px,1.6fr) repeat(4,minmax(135px,1fr));gap:18px;align-items:center;padding:24px 26px;margin:0 0 20px;background:#fff;border:1px solid #e2e8f0;border-radius:14px;box-shadow:0 3px 10px rgba(15,23,42,.035)}"
         ".cv-pa-summary-image{width:120px;height:120px;display:flex;align-items:center;justify-content:center;border-radius:10px;background:#f1f5f9;overflow:hidden}.cv-pa-summary-image img{max-width:100%;max-height:100%;object-fit:contain}"
         ".cv-pa-summary-identity{min-width:0}.cv-pa-summary-mpn{font-size:14px;color:#64748b;font-weight:750;letter-spacing:.045em;margin-bottom:6px}.cv-pa-summary-identity h2{font-size:23px;line-height:1.22;color:#0f172a;margin:0 0 6px;font-weight:780}.cv-pa-summary-identity p{font-size:16px;line-height:1.4;color:#64748b;margin:0 0 10px;overflow-wrap:anywhere}"
-        ".cv-pa-chip{display:inline-flex;align-items:center;border-radius:999px;background:#eff6ff;color:#475569;padding:6px 11px;margin:0 6px 3px 0;font-size:13px;font-weight:700}.cv-pa-chip--good{background:#dcfce7;color:#15803d}.cv-pa-chip--warn{background:#fef3c7;color:#92400e}"
+        ".cv-pa-chip{display:inline-flex;align-items:center;max-width:100%;min-height:32px;box-sizing:border-box;border-radius:8px;background:#eef2f7;color:#475569;padding:6px 10px;margin:0 6px 3px 0;font-size:13px;font-weight:700;line-height:1.2;white-space:nowrap}.cv-pa-chip--good{background:#dcfce7;color:#15803d}.cv-pa-chip--warn{background:#fef3c7;color:#92400e}.cv-pa-chip--bom{max-width:250px;overflow:hidden;text-overflow:ellipsis}"
         ".cv-pa-summary-fact{min-height:62px;padding-left:16px;border-left:1px solid #e2e8f0;min-width:0}.cv-pa-summary-fact span{display:block;color:#64748b;font-size:13px;font-weight:700;margin-bottom:7px}.cv-pa-summary-fact strong{display:block;color:#0f172a;font-size:17px;line-height:1.35;overflow-wrap:anywhere}.cv-pa-summary-fact small{display:block;color:#64748b;font-size:12px;margin-top:4px}"
         "@media(max-width:1100px){.cv-pa-summary{grid-template-columns:100px minmax(220px,1fr) repeat(2,minmax(130px,1fr))}.cv-pa-summary-image{width:100px;height:100px}.cv-pa-summary-fact{padding:10px 0 0;border:0;border-top:1px solid #e2e8f0}}"
         "@media(max-width:650px){.cv-pa-summary{grid-template-columns:68px 1fr;gap:10px;padding:14px}.cv-pa-summary-image{width:68px;height:68px}.cv-pa-summary-identity h2{font-size:18px}.cv-pa-summary-fact{grid-column:span 1}.cv-pa-summary-fact:nth-last-child(2){grid-column:span 2}}"
@@ -522,8 +544,8 @@ def procurement_part_summary_html(
         f"<div class='cv-pa-summary-identity'><div class='cv-pa-summary-mpn'>{html_escape(part_number)} · {html_escape(manufacturer)}</div>"
         f"<h2>{html_escape(description if description != 'Not recorded' else part_number)}</h2>"
         f"<p>{html_escape(first('component_type','category','device_type','part_type'))}</p>"
-        f"<span class='cv-pa-chip cv-pa-chip--{lifecycle_tone}'>{html_escape(lifecycle)}</span>"
-        f"<span class='cv-pa-chip'>{html_escape(bom_value)}</span></div>{cells}</div>"
+        f"<span class='cv-pa-chip cv-pa-chip--{lifecycle_tone}'>{html_escape(f'Lifecycle: {lifecycle}')}</span>"
+        f"<span class='cv-pa-chip cv-pa-chip--bom' title='{html_escape(bom_label)}'>{html_escape(bom_value)}</span></div>{cells}</div>"
     )
 
 
