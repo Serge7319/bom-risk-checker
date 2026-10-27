@@ -418,8 +418,7 @@ def inject_nav_scroll_reset_if_needed() -> bool:
         from src.ui.main_transition import (
             MAIN_TRANSITION_ACTIVE_KEY,
             MAIN_TRANSITION_GEN_KEY,
-            MAIN_TRANSITION_KIND_KEY,
-        )
+                )
 
         active_navigation_transition = (
             bool(st.session_state.get(MAIN_TRANSITION_ACTIVE_KEY))
