@@ -7582,6 +7582,22 @@ def run_authenticated_app() -> None:
                 .cv-pa-section-head{display:flex;justify-content:space-between;align-items:flex-end;gap:18px;margin:10px 0 8px}
                 .cv-pa-section-head h2{font-size:26px;line-height:1.2;color:#102341;font-weight:800;margin:0 0 6px;letter-spacing:-.02em}
                 .cv-pa-section-head p{font-size:15px;line-height:1.5;color:#64748b;margin:0}
+                .st-key-cv_pa_supplier_toprow [data-testid="stHorizontalBlock"]{align-items:flex-end!important;gap:18px!important}
+                .st-key-cv_pa_supplier_toprow [data-testid="column"]{min-width:0!important}
+                .st-key-cv_pa_supplier_controls [data-testid="stHorizontalBlock"]{align-items:flex-end!important;gap:12px!important}
+                .st-key-cv_pa_supplier_controls label{font-size:12px!important;color:#64748b!important;font-weight:750!important}
+                .st-key-cv_pa_next_steps{box-sizing:border-box!important;width:100%!important;margin:14px 0 18px!important;padding:22px!important;border:1px solid #dfe7f1!important;border-radius:14px!important;background:#fff!important;box-shadow:0 3px 12px rgba(15,23,42,.035)!important}
+                .st-key-cv_pa_next_steps>[data-testid="stVerticalBlock"]{gap:12px!important}
+                .cv-pa-next-heading{margin:0 0 2px}
+                .cv-pa-next-heading span{display:block;margin-bottom:5px;color:#2563eb;font-size:10px;font-weight:850;letter-spacing:.12em}
+                .cv-pa-next-heading h2{margin:0 0 5px;color:#102341;font-size:21px;font-weight:800;line-height:1.2}
+                .cv-pa-next-heading p{margin:0;color:#64748b;font-size:14px;line-height:1.45}
+                .st-key-cv_pa_next_steps [data-testid="stHorizontalBlock"]{align-items:stretch!important;gap:16px!important}
+                .st-key-cv_pa_next_steps [data-testid="column"]{box-sizing:border-box!important;min-width:0!important;padding:16px!important;border:1px solid #e2e8f0!important;border-radius:12px!important;background:#f8fafc!important}
+                .cv-pa-next-action{min-height:60px;margin:0 0 10px}
+                .cv-pa-next-action strong{display:block;color:#172b4d;font-size:15px;font-weight:800;line-height:1.3}
+                .cv-pa-next-action p{margin:5px 0 0;color:#64748b;font-size:13px;line-height:1.45}
+                .st-key-cv_pa_next_steps [data-testid="stMarkdownContainer"] p{font-size:13px;line-height:1.45}
                 @media(max-width:700px){
                   .st-key-cv_pa_supplier_options{padding:14px!important}
                   .st-key-cv_pa_supplier_controls [data-testid="stHorizontalBlock"]{display:grid!important;grid-template-columns:1fr!important}
