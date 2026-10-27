@@ -3,6 +3,11 @@ from pathlib import Path
 import unittest
 
 from src.ui.ei_bom_report import engineering_intelligence_html
+from src.ui.main_transition import (
+    DELAY_ROUTE_BODY_REVEAL_KEY,
+    MAIN_TRANSITION_KIND_KEY,
+    should_defer_navigation_reveal,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -94,6 +99,36 @@ class ApprovedPageVisualContractTests(unittest.TestCase):
         self.assertIn("intent: a.dataset.intent || 'trial'", MARKETING_JS)
         self.assertIn('st.button("Start 14-Day Trial", key="cv_public_signup"', MARKETING_SITE)
 
+
+    def test_navigation_cover_waits_for_the_complete_destination_render(self):
+        navigation_state = {
+            DELAY_ROUTE_BODY_REVEAL_KEY: True,
+            MAIN_TRANSITION_KIND_KEY: "navigation",
+        }
+        self.assertTrue(should_defer_navigation_reveal(navigation_state))
+        self.assertFalse(should_defer_navigation_reveal(navigation_state, force=True))
+        self.assertFalse(
+            should_defer_navigation_reveal(
+                {
+                    DELAY_ROUTE_BODY_REVEAL_KEY: True,
+                    MAIN_TRANSITION_KIND_KEY: "blocking",
+                }
+            )
+        )
+        navigation_source = (ROOT / "src" / "ui" / "navigation.py").read_text(
+            encoding="utf-8"
+        )
+        runtime_source = (ROOT / "src" / "authenticated_runtime.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn(
+            "if should_defer_navigation_reveal(st.session_state, force=force):",
+            navigation_source,
+        )
+        stop_wrapper = runtime_source.split("def stop_authenticated_page", 1)[1].split(
+            "from src.ui.executive_workspace", 1
+        )[0]
+        self.assertIn("force=True", stop_wrapper)
 
     def test_bom_risk_summary_and_metrics_precede_component_review_table(self):
         markup = engineering_intelligence_html(
