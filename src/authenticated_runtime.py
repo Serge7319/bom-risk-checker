@@ -7900,6 +7900,7 @@ def run_authenticated_app() -> None:
                                             index=offer_suppliers.index(selected_supplier),
                                             key=offer_selection_key,
                                         )
+                    if offers:
                         st.markdown(
                             supplier_comparison_table_html(
                                 focus,
