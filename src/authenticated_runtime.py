@@ -7568,33 +7568,27 @@ def run_authenticated_app() -> None:
         with st.container(key="cv_procurement_workspace"):
             st.markdown(
                 """<style data-cadivor-layout-style="true">
-                .st-key-cv_procurement_workspace{display:flex!important;flex-direction:column!important;gap:12px!important;width:100%!important;max-width:1440px!important;margin:0 auto!important;box-sizing:border-box!important}
-                .st-key-cv_procurement_workspace>[data-testid="stVerticalBlock"]{gap:12px!important}
+                section[data-testid="stMain"] [data-testid="stMainBlockContainer"]:has(.st-key-cv_procurement_workspace),
+                section[data-testid="stMain"] .main .block-container:has(.st-key-cv_procurement_workspace){
+                  box-sizing:border-box!important;width:100%!important;max-width:1440px!important;
+                  margin-left:auto!important;margin-right:auto!important
+                }
+                .st-key-cv_procurement_workspace{display:flex!important;flex-direction:column!important;gap:12px!important;width:100%!important;max-width:1440px!important;margin:0 auto!important;box-sizing:border-box!important;min-width:0!important}
+                .st-key-cv_procurement_workspace>[data-testid="stVerticalBlock"]{width:100%!important;max-width:100%!important;min-width:0!important;gap:12px!important}
+                .st-key-cv_pa_supplier_options{box-sizing:border-box!important;width:100%!important;max-width:100%!important;margin:8px 0 14px!important;padding:22px!important;border:1px solid #dfe7f1!important;border-radius:14px!important;background:#fff!important;box-shadow:0 8px 24px rgba(15,23,42,.045)!important}
+                .st-key-cv_pa_supplier_options>[data-testid="stVerticalBlock"]{gap:12px!important}
+                .st-key-cv_pa_supplier_options .cv-pa-section-head{margin:0 0 6px}
                 .cv-pa-section-head{display:flex;justify-content:space-between;align-items:flex-end;gap:18px;margin:10px 0 8px}
                 .cv-pa-section-head h2{font-size:20px;line-height:1.25;color:#102341;font-weight:800;margin:0 0 4px;letter-spacing:-.02em}
                 .cv-pa-section-head p{font-size:12px;line-height:1.5;color:#64748b;margin:0}
-                @media(max-width:700px){.cv-pa-section-head{display:block}.cv-pa-section-head h2{font-size:18px}}
+                @media(max-width:700px){
+                  .st-key-cv_pa_supplier_options{padding:14px!important}
+                  .cv-pa-section-head{display:block}.cv-pa-section-head h2{font-size:18px}
+                }
                 </style>""",
                 unsafe_allow_html=True,
             )
             st.markdown(procurement_page_header_html(), unsafe_allow_html=True)
-            with st.container(border=True):
-                st.markdown("#### What to review here")
-                st.markdown(
-                    "1. **Start with the recommendation and evidence gaps.** Check lifecycle, stock, "
-                    "supplier coverage, lead time, and required quantity; “Not recorded” means Cadivor "
-                    "does not have verified data for that field.\n"
-                    "2. **Compare supplier options.** Use current quotes and comparable landed costs to "
-                    "decide where to source; a distributor listing alone is not engineering qualification.\n"
-                    "3. **If the part itself needs replacing, find and review an alternate.** The next "
-                    "button opens the selected part in Find a replacement and carries its saved BOM context."
-                )
-                st.caption(
-                    "Procurement Advisor supports sourcing decisions. It does not place an order or "
-                    "approve an engineering alternate; engineering sign-off happens after compatibility "
-                    "and documentation review in Find a replacement."
-                )
-
             mpn_options = []
             for row in procurement_recommendations:
                 mpn = str(row.get("Part Number") or "").strip()
@@ -7664,10 +7658,10 @@ def run_authenticated_app() -> None:
             )
 
             if mpn_options:
-                selector_col, edit_col = st.columns([0.76, 0.24], vertical_alignment="bottom")
+                selector_col, edit_col = st.columns([0.84, 0.16], vertical_alignment="bottom")
                 with selector_col:
                     st.selectbox(
-                        "Select a component for its sourcing recommendation",
+                        "Component",
                         options=mpn_options,
                         key=selected_mpn_key,
                         format_func=lambda value: next(
@@ -7702,79 +7696,6 @@ def run_authenticated_app() -> None:
                     unsafe_allow_html=True,
                 )
                 reveal_authenticated_page_body("Procurement Advisor")
-
-                action_cols = st.columns([0.34, 0.66], vertical_alignment="center")
-                with action_cols[0]:
-                    internal_nav_button(
-                        "Find qualified alternative",
-                        "Alternative Finder",
-                        key="pa_find_qualified_alternative_top",
-                        type="secondary",
-                        use_container_width=True,
-                        original_part=focus_mpn,
-                        manufacturer=str(focus.get("manufacturer") or focus.get("Manufacturer") or ""),
-                        description=str(focus.get("description") or focus.get("Description") or ""),
-                        lifecycle=str((focus_recommendation or {}).get("Lifecycle Status") or ""),
-                        risk=str((focus_recommendation or {}).get("Priority Score") or ""),
-                        analysis_id=str(focus.get("analysis_id") or focus_analysis.get("id") or ""),
-                        part_id=str(focus.get("id") or ""),
-                        project_name=str(focus_analysis.get("project_name") or focus_analysis.get("project") or ""),
-                        bom_name=str(focus_analysis.get("filename") or focus_analysis.get("bom_name") or ""),
-                        source_page="procurement_advisor",
-                    )
-                with action_cols[1]:
-                    st.caption(
-                        "Use this when the recommendation calls for a replacement or a second source. "
-                        "The selected MPN is preloaded; the saved BOM stays attached for review and approval."
-                    )
-
-                insight_state_key = (
-                    "pa_ai_supplier_insight_"
-                    + __import__('hashlib').sha1(focus_mpn.encode()).hexdigest()[:12]
-                )
-                insight_fingerprint = procurement_insight_fingerprint(
-                    focus, focus_recommendation, comparison
-                )
-                insight_cols = st.columns([0.34, 0.66], vertical_alignment="center")
-                with insight_cols[0]:
-                    generate_insight = st.button(
-                        "Generate AI supplier insights",
-                        key="pa_generate_supplier_insight",
-                        type="secondary",
-                        use_container_width=True,
-                    )
-                with insight_cols[1]:
-                    st.caption(
-                        "Reviews saved prices, availability, lead times, lifecycle, and missing evidence. "
-                        "It ranks total cost only when comparable landed unit costs are entered; unknown supplier facts stay unknown."
-                    )
-                if generate_insight:
-                    try:
-                        with st.spinner("Reviewing supplier and sourcing evidence…"):
-                            insight_result = generate_procurement_supplier_insight(
-                                focus, focus_recommendation, comparison
-                            )
-                        if not insight_result.get("answer"):
-                            st.error("Cadivor could not produce a supplier insight from the saved evidence. Try again.")
-                        else:
-                            st.session_state[insight_state_key] = {
-                                "fingerprint": insight_fingerprint,
-                                **insight_result,
-                            }
-                    except Exception as exc:
-                        st.error(
-                            "Supplier insight generation is unavailable. Review the recorded sourcing evidence below."
-                        )
-                saved_insight = st.session_state.get(insight_state_key) or {}
-                if saved_insight.get("fingerprint") == insight_fingerprint and saved_insight.get("answer"):
-                    with st.container(border=True):
-                        provider_label = (
-                            "AI-assisted review"
-                            if bool(saved_insight.get("ai_assisted"))
-                            else "Grounded evidence summary · AI provider not configured"
-                        )
-                        st.caption(provider_label)
-                        st.markdown(saved_insight["answer"])
 
                 if editor_open:
                     st.markdown(
@@ -7908,137 +7829,102 @@ def run_authenticated_app() -> None:
                     saved_count = int(saved_count)
                     st.success(f"Sourcing details saved for {saved_count} saved BOM component record(s).")
 
-                st.markdown(
-                    "<div class='cv-pa-section-head'><div><h2>Supplier options</h2>"
-                    "<p>Compare price, availability, lead time, risk, and total landed cost for this part.</p></div></div>",
-                    unsafe_allow_html=True,
-                )
-                offers = normalize_supplier_offer_records(focus)
-                if offers:
-                    offer_suppliers = list(dict.fromkeys(row["supplier"] for row in offers))
-                    offer_selection_key = (
-                        "pa_selected_supplier_offer_"
-                        + __import__("hashlib").sha1(focus_mpn.encode()).hexdigest()[:12]
-                    )
-                    selected_supplier = str(st.session_state.get(offer_selection_key) or "")
-                    if selected_supplier not in offer_suppliers:
-                        current_supplier = str(
-                            focus.get("primary_supplier") or focus.get("best_source") or ""
-                        )
-                        selected_supplier = next(
-                            (name for name in offer_suppliers if name.casefold() == current_supplier.casefold()),
-                            offer_suppliers[0],
-                        )
-                        st.session_state[offer_selection_key] = selected_supplier
-
-                    view_col, supplier_col = st.columns([0.34, 0.66])
-                    with view_col:
-                        comparison_view = st.selectbox(
-                            "View",
-                            ["Key comparison", "All evidence"],
-                            key="pa_supplier_comparison_view",
-                        )
-                    with supplier_col:
-                        selected_supplier = st.selectbox(
-                            "Selected supplier",
-                            offer_suppliers,
-                            index=offer_suppliers.index(selected_supplier),
-                            key=offer_selection_key,
-                        )
+                with st.container(key="cv_pa_supplier_options"):
                     st.markdown(
-                        supplier_comparison_table_html(
-                            focus,
-                            selected_supplier=selected_supplier,
-                            view=comparison_view,
-                            required_quantity=(focus_recommendation or {}).get("Required Quantity"),
-                        ),
+                        "<div class='cv-pa-section-head'><div><h2>Supplier options</h2>"
+                        "<p>Compare price, availability, lead time, risk, and total landed cost for this part.</p></div></div>",
                         unsafe_allow_html=True,
                     )
-                    selected_offer = next(
-                        (row for row in offers if row["supplier"].casefold() == selected_supplier.casefold()),
-                        None,
-                    )
-                    st.caption(
-                        "Saved distributor offers are quote evidence; they do not by themselves confirm authorization or engineering qualification. "
-                        "Total cost index uses entered landed unit costs in the same currency and needs at least two comparable suppliers."
-                    )
-                    landed_entry = normalize_supplier_landed_costs(
-                        focus.get("supplier_landed_costs")
-                    ).get(selected_supplier.casefold(), {})
-                    landed_form_key = (
-                        "pa_landed_cost_form_"
-                        + __import__("hashlib").sha1(
-                            f"{focus_mpn}:{selected_supplier}".encode()
-                        ).hexdigest()[:12]
-                    )
-                    with st.form(landed_form_key):
-                        landed_cost_col, landed_currency_col = st.columns([0.72, 0.28])
-                        with landed_cost_col:
-                            edited_landed_cost = st.text_input(
-                                "Total landed unit cost",
-                                value=(
-                                    "" if landed_entry.get("unit_cost") is None
-                                    else str(landed_entry["unit_cost"])
-                                ),
-                                placeholder="Unit price + allocated freight, tax/duty, and MOQ",
-                                help="Use a supplier-confirmed delivered cost per unit. The table compares only costs entered in the same currency.",
-                            )
-                        with landed_currency_col:
-                            edited_landed_currency = st.text_input(
-                                "Currency",
-                                value=(
-                                    str(landed_entry.get("currency") or selected_offer.get("currency") or "")
-                                    if selected_offer else str(landed_entry.get("currency") or "")
-                                ),
-                                placeholder="USD",
-                            )
-                        save_landed_cost = st.form_submit_button(
-                            "Save landed cost", type="secondary"
+                    offers = normalize_supplier_offer_records(focus)
+                    if offers:
+                        offer_suppliers = list(dict.fromkeys(row["supplier"] for row in offers))
+                        offer_selection_key = (
+                            "pa_selected_supplier_offer_"
+                            + __import__("hashlib").sha1(focus_mpn.encode()).hexdigest()[:12]
                         )
-                    if save_landed_cost:
-                        try:
-                            landed_override = supplier_landed_cost_override(
+                        selected_supplier = str(st.session_state.get(offer_selection_key) or "")
+                        if selected_supplier not in offer_suppliers:
+                            current_supplier = str(
+                                focus.get("primary_supplier") or focus.get("best_source") or ""
+                            )
+                            selected_supplier = next(
+                                (name for name in offer_suppliers if name.casefold() == current_supplier.casefold()),
+                                offer_suppliers[0],
+                            )
+                            st.session_state[offer_selection_key] = selected_supplier
+
+                        view_col, supplier_col = st.columns([0.34, 0.66])
+                        with view_col:
+                            comparison_view = st.selectbox(
+                                "View",
+                                ["Key comparison", "All evidence"],
+                                key="pa_supplier_comparison_view",
+                            )
+                        with supplier_col:
+                            selected_supplier = st.selectbox(
+                                "Selected supplier",
+                                offer_suppliers,
+                                index=offer_suppliers.index(selected_supplier),
+                                key=offer_selection_key,
+                            )
+                        st.markdown(
+                            supplier_comparison_table_html(
                                 focus,
-                                selected_supplier,
-                                edited_landed_cost,
-                                edited_landed_currency,
-                            )
-                            saved_count = persist_sourcing_update(
-                                supabase,
-                                user_id=str(current_user.get("id") or ""),
-                                mpn=focus_mpn,
-                                workspace_id=str(active_workspace_id or ""),
-                                description=str(focus.get("description") or ""),
-                                category=str(focus.get("category") or ""),
-                                sourcing_override=landed_override,
-                                updated_at=datetime.now(timezone.utc).isoformat(),
-                            )
-                            st.session_state["pa_landed_cost_saved_notice"] = saved_count
-                            st.rerun()
-                        except ValueError as exc:
-                            st.error(str(exc))
-                        except Exception:
-                            st.error(
-                                "Landed cost could not be saved. Apply the Procurement Advisor database migration, "
-                                "then retry; the existing supplier quotes were not overwritten."
-                            )
-                    landed_saved_count = st.session_state.pop("pa_landed_cost_saved_notice", None)
-                    if landed_saved_count:
-                        st.success(
-                            f"Landed cost saved for {int(landed_saved_count)} component record(s). "
-                            "The index updates when a second same-currency cost is recorded."
+                                selected_supplier=selected_supplier,
+                                view=comparison_view,
+                                required_quantity=(focus_recommendation or {}).get("Required Quantity"),
+                            ),
+                            unsafe_allow_html=True,
                         )
-                    action_cols = st.columns([1.25, 1.1])
-                    with action_cols[0]:
-                        if st.button(
-                            "Use selected offer values",
-                            key="pa_apply_selected_offer",
-                            type="primary",
-                            use_container_width=True,
-                            disabled=selected_offer is None,
-                        ):
+                        selected_offer = next(
+                            (row for row in offers if row["supplier"].casefold() == selected_supplier.casefold()),
+                            None,
+                        )
+                        st.caption(
+                            "Saved distributor offers are quote evidence; they do not by themselves confirm authorization or engineering qualification. "
+                            "Total cost index uses entered landed unit costs in the same currency and needs at least two comparable suppliers."
+                        )
+                        landed_entry = normalize_supplier_landed_costs(
+                            focus.get("supplier_landed_costs")
+                        ).get(selected_supplier.casefold(), {})
+                        landed_form_key = (
+                            "pa_landed_cost_form_"
+                            + __import__("hashlib").sha1(
+                                f"{focus_mpn}:{selected_supplier}".encode()
+                            ).hexdigest()[:12]
+                        )
+                        with st.form(landed_form_key):
+                            landed_cost_col, landed_currency_col = st.columns([0.72, 0.28])
+                            with landed_cost_col:
+                                edited_landed_cost = st.text_input(
+                                    "Total landed unit cost",
+                                    value=(
+                                        "" if landed_entry.get("unit_cost") is None
+                                        else str(landed_entry["unit_cost"])
+                                    ),
+                                    placeholder="Unit price + allocated freight, tax/duty, and MOQ",
+                                    help="Use a supplier-confirmed delivered cost per unit. The table compares only costs entered in the same currency.",
+                                )
+                            with landed_currency_col:
+                                edited_landed_currency = st.text_input(
+                                    "Currency",
+                                    value=(
+                                        str(landed_entry.get("currency") or selected_offer.get("currency") or "")
+                                        if selected_offer else str(landed_entry.get("currency") or "")
+                                    ),
+                                    placeholder="USD",
+                                )
+                            save_landed_cost = st.form_submit_button(
+                                "Save landed cost", type="secondary"
+                            )
+                        if save_landed_cost:
                             try:
-                                selected_override = supplier_offer_override(focus, selected_supplier)
+                                landed_override = supplier_landed_cost_override(
+                                    focus,
+                                    selected_supplier,
+                                    edited_landed_cost,
+                                    edited_landed_currency,
+                                )
                                 saved_count = persist_sourcing_update(
                                     supabase,
                                     user_id=str(current_user.get("id") or ""),
@@ -8046,33 +7932,145 @@ def run_authenticated_app() -> None:
                                     workspace_id=str(active_workspace_id or ""),
                                     description=str(focus.get("description") or ""),
                                     category=str(focus.get("category") or ""),
-                                    sourcing_override=selected_override,
+                                    sourcing_override=landed_override,
                                     updated_at=datetime.now(timezone.utc).isoformat(),
                                 )
-                                st.session_state["pa_supplier_offer_saved_notice"] = saved_count
+                                st.session_state["pa_landed_cost_saved_notice"] = saved_count
                                 st.rerun()
+                            except ValueError as exc:
+                                st.error(str(exc))
                             except Exception:
                                 st.error(
-                                    "This offer could not be saved. Apply the Procurement Advisor database migration, "
-                                    "then retry; the existing sourcing record has not been overwritten."
+                                    "Landed cost could not be saved. Apply the Procurement Advisor database migration, "
+                                    "then retry; the existing supplier quotes were not overwritten."
                                 )
-                    with action_cols[1]:
-                        if selected_offer and selected_offer.get("product_url", "").startswith(("https://", "http://")):
-                            st.link_button(
-                                "Open supplier page",
-                                selected_offer["product_url"],
-                                use_container_width=True,
+                        landed_saved_count = st.session_state.pop("pa_landed_cost_saved_notice", None)
+                        if landed_saved_count:
+                            st.success(
+                                f"Landed cost saved for {int(landed_saved_count)} component record(s). "
+                                "The index updates when a second same-currency cost is recorded."
                             )
-                    offer_saved_count = st.session_state.pop("pa_supplier_offer_saved_notice", None)
-                    if offer_saved_count:
-                        st.success(
-                            f"Offer values saved for {int(offer_saved_count)} component record(s). "
-                            "Supplier qualification still requires review."
+                        action_cols = st.columns([1.25, 1.1])
+                        with action_cols[0]:
+                            if st.button(
+                                "Use selected offer values",
+                                key="pa_apply_selected_offer",
+                                type="primary",
+                                use_container_width=True,
+                                disabled=selected_offer is None,
+                            ):
+                                try:
+                                    selected_override = supplier_offer_override(focus, selected_supplier)
+                                    saved_count = persist_sourcing_update(
+                                        supabase,
+                                        user_id=str(current_user.get("id") or ""),
+                                        mpn=focus_mpn,
+                                        workspace_id=str(active_workspace_id or ""),
+                                        description=str(focus.get("description") or ""),
+                                        category=str(focus.get("category") or ""),
+                                        sourcing_override=selected_override,
+                                        updated_at=datetime.now(timezone.utc).isoformat(),
+                                    )
+                                    st.session_state["pa_supplier_offer_saved_notice"] = saved_count
+                                    st.rerun()
+                                except Exception:
+                                    st.error(
+                                        "This offer could not be saved. Apply the Procurement Advisor database migration, "
+                                        "then retry; the existing sourcing record has not been overwritten."
+                                    )
+                        with action_cols[1]:
+                            if selected_offer and selected_offer.get("product_url", "").startswith(("https://", "http://")):
+                                st.link_button(
+                                    "Open supplier page",
+                                    selected_offer["product_url"],
+                                    use_container_width=True,
+                                )
+                        offer_saved_count = st.session_state.pop("pa_supplier_offer_saved_notice", None)
+                        if offer_saved_count:
+                            st.success(
+                                f"Offer values saved for {int(offer_saved_count)} component record(s). "
+                                "Supplier qualification still requires review."
+                            )
+                    else:
+                        st.info(
+                            "No supplier quotes are saved for this part yet. Add verified sourcing details or rerun the BOM analysis to refresh supplier offers."
                         )
-                else:
-                    st.info(
-                        "No supplier quotes are saved for this part yet. Add verified sourcing details or rerun the BOM analysis to refresh supplier offers."
+
+                action_cols = st.columns([0.34, 0.66], vertical_alignment="center")
+                with action_cols[0]:
+                    internal_nav_button(
+                        "Find qualified alternative",
+                        "Alternative Finder",
+                        key="pa_find_qualified_alternative_top",
+                        type="secondary",
+                        use_container_width=True,
+                        original_part=focus_mpn,
+                        manufacturer=str(focus.get("manufacturer") or focus.get("Manufacturer") or ""),
+                        description=str(focus.get("description") or focus.get("Description") or ""),
+                        lifecycle=str((focus_recommendation or {}).get("Lifecycle Status") or ""),
+                        risk=str((focus_recommendation or {}).get("Priority Score") or ""),
+                        analysis_id=str(focus.get("analysis_id") or focus_analysis.get("id") or ""),
+                        part_id=str(focus.get("id") or ""),
+                        project_name=str(focus_analysis.get("project_name") or focus_analysis.get("project") or ""),
+                        bom_name=str(focus_analysis.get("filename") or focus_analysis.get("bom_name") or ""),
+                        source_page="procurement_advisor",
                     )
+                with action_cols[1]:
+                    st.caption(
+                        "Use this when the recommendation calls for a replacement or a second source. "
+                        "The selected MPN is preloaded; the saved BOM stays attached for review and approval."
+                    )
+
+                insight_state_key = (
+                    "pa_ai_supplier_insight_"
+                    + __import__('hashlib').sha1(focus_mpn.encode()).hexdigest()[:12]
+                )
+                insight_fingerprint = procurement_insight_fingerprint(
+                    focus, focus_recommendation, comparison
+                )
+                insight_cols = st.columns([0.34, 0.66], vertical_alignment="center")
+                with insight_cols[0]:
+                    generate_insight = st.button(
+                        "Generate AI supplier insights",
+                        key="pa_generate_supplier_insight",
+                        type="secondary",
+                        use_container_width=True,
+                    )
+                with insight_cols[1]:
+                    st.caption(
+                        "Reviews saved prices, availability, lead times, lifecycle, and missing evidence. "
+                        "It ranks total cost only when comparable landed unit costs are entered; unknown supplier facts stay unknown."
+                    )
+                if generate_insight:
+                    try:
+                        with st.spinner("Reviewing supplier and sourcing evidence…"):
+                            insight_result = generate_procurement_supplier_insight(
+                                focus, focus_recommendation, comparison
+                            )
+                        if not insight_result.get("answer"):
+                            st.error("Cadivor could not produce a supplier insight from the saved evidence. Try again.")
+                        else:
+                            st.session_state[insight_state_key] = {
+                                "fingerprint": insight_fingerprint,
+                                **insight_result,
+                            }
+                    except Exception as exc:
+                        st.error(
+                            "Supplier insight generation is unavailable. Review the recorded sourcing evidence below."
+                        )
+                saved_insight = st.session_state.get(insight_state_key) or {}
+                if saved_insight.get("fingerprint") == insight_fingerprint and saved_insight.get("answer"):
+                    with st.container(border=True):
+                        provider_label = (
+                            "AI-assisted review"
+                            if bool(saved_insight.get("ai_assisted"))
+                            else "Grounded evidence summary · AI provider not configured"
+                        )
+                        st.caption(provider_label)
+                        st.markdown(saved_insight["answer"])
+                st.caption(
+                    "“Not recorded” means Cadivor does not have verified data for that field. Procurement Advisor does not place an order or approve an engineering alternate; engineering sign-off happens after compatibility and documentation review in Find a replacement."
+                )
             else:
                 reveal_authenticated_page_body("Procurement Advisor")
                 st.info("Upload or open a saved BOM to add components to procurement review.")
