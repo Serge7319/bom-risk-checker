@@ -94,6 +94,8 @@ class ProcurementAdvisorTests(unittest.TestCase):
         self.assertIn(":has(.st-key-cv_procurement_workspace)", branch)
         self.assertIn('with st.container(key="cv_pa_supplier_options"):', branch)
         self.assertIn("st.columns([0.5, 0.25, 0.25])", branch)
+        self.assertIn('with st.container(key="cv_pa_supplier_controls"):', branch)
+        self.assertIn("grid-template-columns:1fr!important", branch)
         self.assertLess(
             branch.index("procurement_workspace_panels_html("),
             branch.index("<h2>Supplier options</h2>"),
