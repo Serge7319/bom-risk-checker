@@ -100,6 +100,16 @@ class ProcurementAdvisorTests(unittest.TestCase):
         self.assertIn("[0.85, 1.15]", branch)
         self.assertIn('with st.container(key="cv_pa_supplier_controls"):', branch)
         self.assertIn("cv_pa_next_steps", branch)
+        self.assertIn('key="cv_pa_table_actions"', branch)
+        self.assertLess(
+            branch.index("supplier_comparison_table_html("),
+            branch.index('key="cv_pa_table_actions"'),
+        )
+        self.assertLess(
+            branch.index('key="cv_pa_table_actions"'),
+            branch.index('key="cv_pa_next_steps"'),
+        )
+        self.assertIn("max-width:min(1440px,100%)!important", branch)
         self.assertIn("grid-template-columns:1fr!important", branch)
         self.assertLess(
             branch.index("procurement_workspace_panels_html("),

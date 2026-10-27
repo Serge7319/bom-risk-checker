@@ -7574,7 +7574,7 @@ def run_authenticated_app() -> None:
                   box-sizing:border-box!important;width:100%!important;max-width:1440px!important;
                   margin-left:auto!important;margin-right:auto!important
                 }
-                .st-key-cv_procurement_workspace{display:flex!important;flex-direction:column!important;gap:12px!important;width:100%!important;max-width:1440px!important;margin:0 auto!important;box-sizing:border-box!important;min-width:0!important}
+                .st-key-cv_procurement_workspace{display:flex!important;flex-direction:column!important;gap:12px!important;width:100%!important;max-width:min(1440px,100%)!important;margin:0 auto!important;box-sizing:border-box!important;min-width:0!important}
                 .st-key-cv_procurement_workspace>[data-testid="stVerticalBlock"]{width:100%!important;max-width:100%!important;min-width:0!important;gap:12px!important}
                 .st-key-cv_pa_supplier_options{box-sizing:border-box!important;width:100%!important;max-width:100%!important;margin:8px 0 14px!important;padding:22px!important;border:1px solid #dfe7f1!important;border-radius:14px!important;background:#fff!important;box-shadow:0 8px 24px rgba(15,23,42,.045)!important}
                 .st-key-cv_pa_supplier_options>[data-testid="stVerticalBlock"]{gap:12px!important}
@@ -7599,6 +7599,14 @@ def run_authenticated_app() -> None:
                 .cv-pa-next-action strong{display:block;color:#172b4d;font-size:15px;font-weight:800;line-height:1.3}
                 .cv-pa-next-action p{margin:5px 0 0;color:#64748b;font-size:13px;line-height:1.45}
                 .st-key-cv_pa_next_steps [data-testid="stMarkdownContainer"] p{font-size:13px;line-height:1.45}
+                .cv-pa-summary,.cv-pa-table-shell,.cv-pa-table-scroll,.st-key-cv_pa_supplier_options{max-width:100%!important;min-width:0!important}
+                .cv-pa-summary{grid-template-columns:96px minmax(0,1.4fr) repeat(4,minmax(0,1fr))!important}
+                .cv-pa-table-scroll{overflow-x:auto!important}
+                .st-key-cv_pa_table_actions{box-sizing:border-box!important;width:100%!important;margin-top:8px!important;padding:16px 0 2px!important;border-top:1px solid #e2e8f0!important}
+                .st-key-cv_pa_table_actions>[data-testid="stVerticalBlock"]{gap:12px!important;width:100%!important}
+                .cv-pa-table-actions-label{margin:0;color:#64748b;font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
+                .st-key-cv_pa_table_actions [data-testid="stHorizontalBlock"]{display:flex!important;justify-content:flex-end!important;align-items:center!important;gap:12px!important;width:100%!important}
+                .st-key-cv_pa_table_actions [data-testid="column"],.st-key-cv_pa_table_actions [data-testid="stColumn"]{flex:0 1 240px!important;width:auto!important;max-width:280px!important;min-width:180px!important}
                 @media(max-width:700px){
                   .st-key-cv_pa_supplier_options{padding:14px!important}
                   .st-key-cv_pa_supplier_controls [data-testid="stHorizontalBlock"]{display:grid!important;grid-template-columns:1fr!important}
@@ -7914,87 +7922,56 @@ def run_authenticated_app() -> None:
                             (row for row in offers if row["supplier"].casefold() == selected_supplier.casefold()),
                             None,
                         )
-                        st.caption(
-                            "Saved distributor offers are quote evidence; they do not by themselves confirm authorization or engineering qualification. "
-                            "Total cost index uses entered landed unit costs in the same currency and needs at least two comparable suppliers."
-                        )
-                        landed_entry = normalize_supplier_landed_costs(
-                            focus.get("supplier_landed_costs")
-                        ).get(selected_supplier.casefold(), {})
-                        landed_form_key = (
-                            "pa_landed_cost_form_"
-                            + __import__("hashlib").sha1(
-                                f"{focus_mpn}:{selected_supplier}".encode()
-                            ).hexdigest()[:12]
-                        )
-                        with st.form(landed_form_key):
-                            landed_cost_col, landed_currency_col = st.columns([0.72, 0.28])
-                            with landed_cost_col:
-                                edited_landed_cost = st.text_input(
-                                    "Total landed unit cost",
-                                    value=(
-                                        "" if landed_entry.get("unit_cost") is None
-                                        else str(landed_entry["unit_cost"])
-                                    ),
-                                    placeholder="Unit price + allocated freight, tax/duty, and MOQ",
-                                    help="Use a supplier-confirmed delivered cost per unit. The table compares only costs entered in the same currency.",
-                                )
-                            with landed_currency_col:
-                                edited_landed_currency = st.text_input(
-                                    "Currency",
-                                    value=(
-                                        str(landed_entry.get("currency") or selected_offer.get("currency") or "")
-                                        if selected_offer else str(landed_entry.get("currency") or "")
-                                    ),
-                                    placeholder="USD",
-                                )
-                            save_landed_cost = st.form_submit_button(
-                                "Save landed cost", type="secondary"
+                        with st.container(key="cv_pa_table_actions"):
+                            st.markdown(
+                                "<div class='cv-pa-table-actions-label'>Selected supplier</div>",
+                                unsafe_allow_html=True,
                             )
-                        if save_landed_cost:
-                            try:
-                                landed_override = supplier_landed_cost_override(
-                                    focus,
-                                    selected_supplier,
-                                    edited_landed_cost,
-                                    edited_landed_currency,
-                                )
-                                saved_count = persist_sourcing_update(
-                                    supabase,
-                                    user_id=str(current_user.get("id") or ""),
-                                    mpn=focus_mpn,
-                                    workspace_id=str(active_workspace_id or ""),
-                                    description=str(focus.get("description") or ""),
-                                    category=str(focus.get("category") or ""),
-                                    sourcing_override=landed_override,
-                                    updated_at=datetime.now(timezone.utc).isoformat(),
-                                )
-                                st.session_state["pa_landed_cost_saved_notice"] = saved_count
-                                st.rerun()
-                            except ValueError as exc:
-                                st.error(str(exc))
-                            except Exception:
-                                st.error(
-                                    "Landed cost could not be saved. Apply the Procurement Advisor database migration, "
-                                    "then retry; the existing supplier quotes were not overwritten."
-                                )
-                        landed_saved_count = st.session_state.pop("pa_landed_cost_saved_notice", None)
-                        if landed_saved_count:
-                            st.success(
-                                f"Landed cost saved for {int(landed_saved_count)} component record(s). "
-                                "The index updates when a second same-currency cost is recorded."
+                            st.caption(
+                                "Saved distributor offers are quote evidence; they do not by themselves confirm authorization or engineering qualification. "
+                                "Total cost index uses entered landed unit costs in the same currency and needs at least two comparable suppliers."
                             )
-                        action_cols = st.columns([1.25, 1.1])
-                        with action_cols[0]:
-                            if st.button(
-                                "Use selected offer values",
-                                key="pa_apply_selected_offer",
-                                type="primary",
-                                use_container_width=True,
-                                disabled=selected_offer is None,
-                            ):
+                            landed_entry = normalize_supplier_landed_costs(
+                                focus.get("supplier_landed_costs")
+                            ).get(selected_supplier.casefold(), {})
+                            landed_form_key = (
+                                "pa_landed_cost_form_"
+                                + __import__("hashlib").sha1(
+                                    f"{focus_mpn}:{selected_supplier}".encode()
+                                ).hexdigest()[:12]
+                            )
+                            with st.form(landed_form_key):
+                                landed_cost_col, landed_currency_col = st.columns([0.72, 0.28])
+                                with landed_cost_col:
+                                    edited_landed_cost = st.text_input(
+                                        "Total landed unit cost",
+                                        value=(
+                                            "" if landed_entry.get("unit_cost") is None
+                                            else str(landed_entry["unit_cost"])
+                                        ),
+                                        placeholder="Unit price + allocated freight, tax/duty, and MOQ",
+                                        help="Use a supplier-confirmed delivered cost per unit. The table compares only costs entered in the same currency.",
+                                    )
+                                with landed_currency_col:
+                                    edited_landed_currency = st.text_input(
+                                        "Currency",
+                                        value=(
+                                            str(landed_entry.get("currency") or selected_offer.get("currency") or "")
+                                            if selected_offer else str(landed_entry.get("currency") or "")
+                                        ),
+                                        placeholder="USD",
+                                    )
+                                save_landed_cost = st.form_submit_button(
+                                    "Save landed cost", type="secondary"
+                                )
+                            if save_landed_cost:
                                 try:
-                                    selected_override = supplier_offer_override(focus, selected_supplier)
+                                    landed_override = supplier_landed_cost_override(
+                                        focus,
+                                        selected_supplier,
+                                        edited_landed_cost,
+                                        edited_landed_currency,
+                                    )
                                     saved_count = persist_sourcing_update(
                                         supabase,
                                         user_id=str(current_user.get("id") or ""),
@@ -8002,29 +7979,65 @@ def run_authenticated_app() -> None:
                                         workspace_id=str(active_workspace_id or ""),
                                         description=str(focus.get("description") or ""),
                                         category=str(focus.get("category") or ""),
-                                        sourcing_override=selected_override,
+                                        sourcing_override=landed_override,
                                         updated_at=datetime.now(timezone.utc).isoformat(),
                                     )
-                                    st.session_state["pa_supplier_offer_saved_notice"] = saved_count
+                                    st.session_state["pa_landed_cost_saved_notice"] = saved_count
                                     st.rerun()
+                                except ValueError as exc:
+                                    st.error(str(exc))
                                 except Exception:
                                     st.error(
-                                        "This offer could not be saved. Apply the Procurement Advisor database migration, "
-                                        "then retry; the existing sourcing record has not been overwritten."
+                                        "Landed cost could not be saved. Apply the Procurement Advisor database migration, "
+                                        "then retry; the existing supplier quotes were not overwritten."
                                     )
-                        with action_cols[1]:
-                            if selected_offer and selected_offer.get("product_url", "").startswith(("https://", "http://")):
-                                st.link_button(
-                                    "Open supplier page",
-                                    selected_offer["product_url"],
-                                    use_container_width=True,
+                            landed_saved_count = st.session_state.pop("pa_landed_cost_saved_notice", None)
+                            if landed_saved_count:
+                                st.success(
+                                    f"Landed cost saved for {int(landed_saved_count)} component record(s). "
+                                    "The index updates when a second same-currency cost is recorded."
                                 )
-                        offer_saved_count = st.session_state.pop("pa_supplier_offer_saved_notice", None)
-                        if offer_saved_count:
-                            st.success(
-                                f"Offer values saved for {int(offer_saved_count)} component record(s). "
-                                "Supplier qualification still requires review."
-                            )
+                            action_cols = st.columns([1.25, 1.1])
+                            with action_cols[0]:
+                                if st.button(
+                                    "Use selected offer values",
+                                    key="pa_apply_selected_offer",
+                                    type="primary",
+                                    use_container_width=True,
+                                    disabled=selected_offer is None,
+                                ):
+                                    try:
+                                        selected_override = supplier_offer_override(focus, selected_supplier)
+                                        saved_count = persist_sourcing_update(
+                                            supabase,
+                                            user_id=str(current_user.get("id") or ""),
+                                            mpn=focus_mpn,
+                                            workspace_id=str(active_workspace_id or ""),
+                                            description=str(focus.get("description") or ""),
+                                            category=str(focus.get("category") or ""),
+                                            sourcing_override=selected_override,
+                                            updated_at=datetime.now(timezone.utc).isoformat(),
+                                        )
+                                        st.session_state["pa_supplier_offer_saved_notice"] = saved_count
+                                        st.rerun()
+                                    except Exception:
+                                        st.error(
+                                            "This offer could not be saved. Apply the Procurement Advisor database migration, "
+                                            "then retry; the existing sourcing record has not been overwritten."
+                                        )
+                            with action_cols[1]:
+                                if selected_offer and selected_offer.get("product_url", "").startswith(("https://", "http://")):
+                                    st.link_button(
+                                        "Open supplier page",
+                                        selected_offer["product_url"],
+                                        use_container_width=True,
+                                    )
+                            offer_saved_count = st.session_state.pop("pa_supplier_offer_saved_notice", None)
+                            if offer_saved_count:
+                                st.success(
+                                    f"Offer values saved for {int(offer_saved_count)} component record(s). "
+                                    "Supplier qualification still requires review."
+                                )
                     else:
                         st.info(
                             "No supplier quotes are saved for this part yet. Add verified sourcing details or rerun the BOM analysis to refresh supplier offers."
@@ -17851,7 +17864,19 @@ def run_authenticated_app() -> None:
     if app_mode == "Compare Parts":
         from src.ui.approved_pages import render_compare_live
 
-        render_compare_live()
+        try:
+            render_compare_live()
+        except BaseException as exc:
+            # A failed destination must still publish its body marker. Leaving
+            # the marker out keeps the instant "Opening Compare parts…" cover
+            # over an empty main pane. Streamlit stop/rerun already owns the
+            # next script run, so those must not paint this route's marker
+            # onto a newer generation.
+            if type(exc).__name__ not in {"RerunException", "StopException"} and (
+                st.session_state.get(DELAY_ROUTE_BODY_REVEAL_KEY)
+            ):
+                reveal_authenticated_page_body("Compare Parts", force=True)
+            raise
         reveal_authenticated_page_body("Compare Parts")
         stop_authenticated_page()
 
@@ -22249,7 +22274,10 @@ def run_authenticated_app() -> None:
                 margin-right:auto!important;
             }
             .st-key-bom8_analysis_preview{max-width:1440px!important;}
-            .st-key-bom8_analysis_progress_card{max-width:1440px!important;margin-bottom:16px!important;}
+            .st-key-bom8_analysis_progress_card{max-width:1440px!important;margin:0 auto 16px!important;}
+            section[data-testid="stMain"] [data-testid="stMainBlockContainer"]:has(.st-key-bom8_analysis_progress_card){
+              padding-top:28px!important;
+            }
             .st-key-bom8_one_time_payment_action{max-width:760px!important;margin-top:12px!important;}
             .st-key-bom8_analysis_progress_card .stButton>button{width:auto!important;min-width:0!important;}
             .st-key-bom8_one_time_payment_action .stLinkButton>a{
@@ -23792,7 +23820,7 @@ def run_authenticated_app() -> None:
 
         deduped_row_count = len(bom_df)
 
-        if deduped_row_count < original_row_count:
+        if deduped_row_count < original_row_count and not analysis_in_progress:
             st.info(
                 f"Duplicate part numbers were merged: {original_row_count} rows reduced to {deduped_row_count} unique parts."
             )

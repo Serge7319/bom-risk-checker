@@ -84,8 +84,10 @@
     }
 
     function bodyGeneration() {
-      const marker = doc.querySelector("[data-cadivor-page-body-gen]");
-      return marker ? String(marker.getAttribute("data-cadivor-page-body-gen") || "").trim() : "";
+      const markers = doc.querySelectorAll("[data-cadivor-page-body-gen]");
+      if (!markers.length) return "";
+      const marker = markers[markers.length - 1];
+      return String(marker.getAttribute("data-cadivor-page-body-gen") || "").trim();
     }
 
     function hasVisiblePythonCover() {
@@ -93,12 +95,20 @@
         .some((cover) => {
           try {
             const style = w.getComputedStyle(cover);
+            if (
+              style.display === "none"
+              || style.visibility === "hidden"
+              || Number(style.opacity || 1) <= 0
+            ) {
+              return false;
+            }
             const rect = cover.getBoundingClientRect();
-            return style.display !== "none"
-              && style.visibility !== "hidden"
-              && Number(style.opacity || 1) > 0
-              && rect.width > 0
-              && rect.height > 0;
+            if (rect.width > 0 && rect.height > 0) return true;
+            const gen = String(cover.getAttribute("data-cadivor-transition-gen") || "").trim();
+            return Boolean(
+              gen
+              && doc.querySelector('[data-cadivor-page-body-gen="' + gen + '"]')
+            );
           } catch (_) {
             return false;
           }
@@ -308,7 +318,14 @@
         w.scrollY || doc.documentElement.scrollTop || doc.body.scrollTop || 0
       );
       return windowTop <= 1
-        && Array.from(candidates).every((element) => Number(element.scrollTop || 0) <= 1);
+        && Array.from(candidates).every((element) => {
+          try {
+            const overflows = element.scrollHeight > element.clientHeight + 1;
+            return !overflows || Number(element.scrollTop || 0) <= 1;
+          } catch (_) {
+            return true;
+          }
+        });
     }
     function releaseNavigationCoverAfterScrollReset() {
       const doc = w.document;

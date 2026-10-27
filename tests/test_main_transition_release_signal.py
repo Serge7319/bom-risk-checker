@@ -128,9 +128,36 @@ class MainTransitionReleaseSignalTests(unittest.TestCase):
         self.assertNotIn(NAV_SCROLL_RESET_PENDING_KEY, state)
         self.assertEqual(len(rendered), 1)
         script, kwargs = rendered[0]
-        self.assertIn("const transitionGen = 815;", script)
+        self.assertIn('const transitionGen = "815";', script)
+        self.assertNotIn("const transitionGen = 815;", script)
+        self.assertIn("body.getAttribute(\n                  'data-cadivor-page-body-gen'\n                )", script)
         self.assertIn('data-cadivor-nav-scroll-token="1"', script)
         self.assertEqual(kwargs.get("unsafe_allow_javascript"), True)
+
+    def test_navigation_release_keeps_a_generation_past_the_js_safe_integer(self):
+        huge = 1_761_560_000_000_000_019
+        state = {
+            MAIN_TRANSITION_GEN_KEY: huge,
+            MAIN_TRANSITION_ROUTE_KEY: "Compare Parts",
+            MAIN_TRANSITION_ACTIVE_KEY: True,
+            MAIN_TRANSITION_KIND_KEY: "navigation",
+            "cadivor_route": "Compare Parts",
+        }
+        rendered = []
+
+        with (
+            patch("src.ui.navigation.st.session_state", state),
+            patch(
+                "src.ui.navigation.st.html",
+                side_effect=lambda value, **kwargs: rendered.append(value),
+            ),
+        ):
+            self.assertTrue(inject_nav_scroll_reset_if_needed())
+
+        script = rendered[0]
+        self.assertIn(f'const transitionGen = "{huge}";', script)
+        self.assertNotIn(f"const transitionGen = {huge};", script)
+        self.assertNotIn("String(state.transitionGen)", script)
 
 
 if __name__ == "__main__":
