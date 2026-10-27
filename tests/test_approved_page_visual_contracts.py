@@ -2,6 +2,8 @@
 from pathlib import Path
 import unittest
 
+from src.ui.ei_bom_report import engineering_intelligence_html
+
 
 ROOT = Path(__file__).resolve().parents[1]
 APPROVED_PAGES = (ROOT / "src" / "ui" / "approved_pages.py").read_text(
@@ -92,6 +94,17 @@ class ApprovedPageVisualContractTests(unittest.TestCase):
         self.assertIn("intent: a.dataset.intent || 'trial'", MARKETING_JS)
         self.assertIn('st.button("Start 14-Day Trial", key="cv_public_signup"', MARKETING_SITE)
 
+
+    def test_bom_risk_summary_and_metrics_precede_component_review_table(self):
+        markup = engineering_intelligence_html(
+            bom_name="Synthetic BOM",
+            part_count=0,
+            tab="BOM Risk",
+            parts=[],
+            health_score=88,
+        )
+        self.assertLess(markup.index("cv-ei-banner"), markup.index("cv-ei-kpis"))
+        self.assertLess(markup.index("cv-ei-kpis"), markup.index("cv-ei-table"))
 
     def test_home_saved_bom_actions_align_with_the_actions_column(self):
         home = APPROVED_PAGES.split("def render_home(", 1)[1].split(
