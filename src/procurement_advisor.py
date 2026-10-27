@@ -451,6 +451,29 @@ def _procurement_icon_svg(name: str, size: int = 24) -> str:
     )
 
 
+def lifecycle_disagreement_note(part: Mapping[str, Any], lifecycle: str) -> str:
+    """Name saved lifecycle sources when the status says they disagree."""
+    if "conflict" not in str(lifecycle or "").casefold() and not part.get("lifecycle_conflict"):
+        return ""
+    evidence = part.get("lifecycle_evidence") or part.get("Lifecycle Evidence") or []
+    bits: list[str] = []
+    if isinstance(evidence, list):
+        for item in evidence:
+            if not isinstance(item, Mapping):
+                continue
+            source = _t(item.get("source") or item.get("supplier"))
+            status = _t(item.get("status") or item.get("lifecycle"))
+            when = _t(item.get("retrieved_at") or item.get("timestamp"))[:19]
+            detail = " · ".join(bit for bit in (source, status, when) if bit)
+            if detail:
+                bits.append(detail)
+    if bits:
+        text = "Sources disagree: " + "; ".join(bits[:4])
+    else:
+        text = "Saved records disagree. This analysis did not keep each source and timestamp."
+    return f"<span class='cv-pa-lifecycle-note'>{html_escape(text)}</span>"
+
+
 def procurement_part_summary_html(
     part: Mapping[str, Any],
     recommendation: Mapping[str, Any] | None = None,
@@ -481,16 +504,21 @@ def procurement_part_summary_html(
     annual_demand = number_label(
         _first(part, "annual_demand", "annual_quantity", "yearly_demand"), " units"
     )
+    if annual_demand == "Not recorded":
+        annual_demand = "Not provided"
     currency = _t(
         _first(part, "target_currency", "target_price_currency", default="")
     ).upper() or _part_currency(part)
     target_price = _maybe_n(_first(part, "target_unit_price", "target_price"))
-    target_price_label = (
-        f"{target_price:,.4g} {currency}".strip()
-        if target_price is not None
-        else "Not recorded"
+    if target_price is None:
+        target_price_label = "Not provided"
+    elif currency:
+        target_price_label = f"{target_price:,.4g} {currency}"
+    else:
+        target_price_label = f"{target_price:,.4g} (currency not recorded)"
+    required_by = first(
+        "required_by", "required_date", "need_by_date", "required_at", default="Not provided"
     )
-    required_by = first("required_by", "required_date", "need_by_date", "required_at")
     bom_label = first("bom_name", "filename", "project_name", default="Not recorded")
     revision = first("bom_revision", "revision", "rev", default="")
     bom_value = f"BOM: Rev {revision}" if revision and revision != "Not recorded" else f"BOM: {bom_label}"
@@ -509,16 +537,23 @@ def procurement_part_summary_html(
         size=120,
         part=dict(part),
     )
+    offers = normalize_supplier_offer_records(part)
     supplier_count = _maybe_n(recommendation.get("Supplier Sources"))
+    if supplier_count is None and offers:
+        supplier_count = float(len({row["supplier"].casefold() for row in offers}))
+    offer_rows = len(offers)
     if supplier_count is None:
-        offers = normalize_supplier_offer_records(part)
-        supplier_count = float(len({row["supplier"].casefold() for row in offers})) if offers else None
-    if supplier_count is None:
-        sourcing_status = "Not recorded"
-    elif supplier_count <= 1:
-        sourcing_status = "Single source"
+        sourcing_status = "Not reported by supplier"
+    elif int(supplier_count) <= 1:
+        sourcing_status = "Single source" if int(supplier_count) == 1 else "Not reported by supplier"
+        if offer_rows > 1:
+            sourcing_status += f" · {offer_rows} offer rows in the table"
     else:
-        sourcing_status = f"{int(supplier_count)} sources"
+        sourcing_status = f"{int(supplier_count)} recorded sources"
+        if offer_rows and offer_rows != int(supplier_count):
+            sourcing_status += (
+                f" · {offer_rows} offer row{'s' if offer_rows != 1 else ''} in the table"
+            )
     fields = (
         ("Annual demand", annual_demand),
         ("Target unit price", target_price_label),
@@ -532,10 +567,11 @@ def procurement_part_summary_html(
     )
     return (
         "<style>"
-        ".cv-pa-summary{display:grid;grid-template-columns:120px minmax(280px,1.6fr) repeat(4,minmax(135px,1fr));gap:18px;align-items:center;padding:24px 26px;margin:0 0 20px;background:#fff;border:1px solid #e2e8f0;border-radius:14px;box-shadow:0 3px 10px rgba(15,23,42,.035)}"
-        ".cv-pa-summary-image{width:120px;height:120px;display:flex;align-items:center;justify-content:center;border-radius:10px;background:#f1f5f9;overflow:hidden}.cv-pa-summary-image img{max-width:100%;max-height:100%;object-fit:contain}"
-        ".cv-pa-summary-identity{min-width:0}.cv-pa-summary-mpn{font-size:14px;color:#64748b;font-weight:750;letter-spacing:.045em;margin-bottom:6px}.cv-pa-summary-identity h2{font-size:23px;line-height:1.22;color:#0f172a;margin:0 0 6px;font-weight:780}.cv-pa-summary-identity p{font-size:16px;line-height:1.4;color:#64748b;margin:0 0 10px;overflow-wrap:anywhere}"
-        ".cv-pa-chip{display:inline-flex;align-items:center;max-width:100%;min-height:32px;box-sizing:border-box;border-radius:8px;background:#eef2f7;color:#475569;padding:6px 10px;margin:0 6px 3px 0;font-size:13px;font-weight:700;line-height:1.2;white-space:nowrap}.cv-pa-chip--good{background:#dcfce7;color:#15803d}.cv-pa-chip--warn{background:#fef3c7;color:#92400e}.cv-pa-chip--bom{max-width:250px;overflow:hidden;text-overflow:ellipsis}"
+        ".cv-pa-summary{display:grid;grid-template-columns:120px minmax(280px,1.6fr) repeat(4,minmax(135px,1fr));gap:22px;align-items:start;padding:24px 26px;margin:0 0 20px;background:#fff;border:1px solid #e2e8f0;border-radius:14px;box-shadow:0 3px 10px rgba(15,23,42,.035)}"
+        ".cv-pa-summary-image{width:120px;height:120px;display:flex;align-items:center;justify-content:center;border-radius:10px;background:#f1f5f9;overflow:hidden;margin-right:4px}.cv-pa-summary-image img{max-width:100%;max-height:100%;object-fit:contain}"
+        ".cv-pa-summary-identity{min-width:0;padding-left:8px}.cv-pa-summary-mpn{font-size:14px;color:#64748b;font-weight:750;letter-spacing:.045em;margin-bottom:6px}.cv-pa-summary-identity h2{font-size:23px;line-height:1.22;color:#0f172a;margin:0 0 6px;font-weight:780}.cv-pa-summary-identity p{font-size:16px;line-height:1.4;color:#64748b;margin:0 0 10px;overflow-wrap:anywhere}"
+        ".cv-pa-chip{display:inline-flex;align-items:center;max-width:100%;min-height:32px;box-sizing:border-box;border-radius:8px;background:#eef2f7;color:#475569;padding:6px 10px;margin:0 6px 6px 0;font-size:13px;font-weight:700;line-height:1.25;white-space:normal}.cv-pa-chip--good{background:#dcfce7;color:#15803d}.cv-pa-chip--warn{background:#fef3c7;color:#92400e}.cv-pa-chip--bom{max-width:100%;overflow-wrap:anywhere}"
+        ".cv-pa-lifecycle-note{display:block;margin-top:8px;color:#64748b;font-size:12px;line-height:1.4}"
         ".cv-pa-summary-fact{min-height:62px;padding-left:16px;border-left:1px solid #e2e8f0;min-width:0}.cv-pa-summary-fact span{display:block;color:#64748b;font-size:13px;font-weight:700;margin-bottom:7px}.cv-pa-summary-fact strong{display:block;color:#0f172a;font-size:17px;line-height:1.35;overflow-wrap:anywhere}.cv-pa-summary-fact small{display:block;color:#64748b;font-size:12px;margin-top:4px}"
         "@media(max-width:1100px){.cv-pa-summary{grid-template-columns:100px minmax(220px,1fr) repeat(2,minmax(130px,1fr))}.cv-pa-summary-image{width:100px;height:100px}.cv-pa-summary-fact{padding:10px 0 0;border:0;border-top:1px solid #e2e8f0}}"
         "@media(max-width:650px){.cv-pa-summary{grid-template-columns:68px 1fr;gap:10px;padding:14px}.cv-pa-summary-image{width:68px;height:68px}.cv-pa-summary-identity h2{font-size:18px}.cv-pa-summary-fact{grid-column:span 1}.cv-pa-summary-fact:nth-last-child(2){grid-column:span 2}}"
@@ -545,6 +581,7 @@ def procurement_part_summary_html(
         f"<h2>{html_escape(description if description != 'Not recorded' else part_number)}</h2>"
         f"<p>{html_escape(first('component_type','category','device_type','part_type'))}</p>"
         f"<span class='cv-pa-chip cv-pa-chip--{lifecycle_tone}'>{html_escape(f'Lifecycle: {lifecycle}')}</span>"
+        f"{lifecycle_disagreement_note(part, lifecycle)}"
         f"<span class='cv-pa-chip cv-pa-chip--bom' title='{html_escape(bom_label)}'>{html_escape(bom_value)}</span></div>{cells}</div>"
     )
 
@@ -677,10 +714,10 @@ def supplier_comparison_dataframe(
         price = row.get("unit_price")
         row_currency = row.get("currency")
         same_currency = bool(currency and row_currency == currency)
-        if price is not None and row_currency:
-            price_label = f"{price:,.4g} {row_currency}"
+        if price is not None:
+            price_label = money_label(price, row_currency)
         else:
-            price_label = "Not recorded"
+            price_label = "Not reported by supplier"
         delta = "—"
         if price is not None and current_price is not None and same_currency and current_price > 0:
             pct = (price / current_price - 1) * 100
@@ -769,10 +806,7 @@ def supplier_comparison_table_html(
         headers.extend(["Price break", "Landed unit cost", "Quote updated", "Product link"])
 
     def money(value: Any, currency: str) -> str:
-        number = _maybe_n(value)
-        if number is None:
-            return "Not recorded"
-        return f"{number:,.4g} {currency}".strip()
+        return money_label(value, currency)
 
     def date_label(value: Any) -> str:
         raw = _t(value)
@@ -818,11 +852,11 @@ def supplier_comparison_table_html(
 
         stock = _maybe_n(row.get("stock"))
         if stock is None:
-            stock_value, stock_detail, stock_tone = "Not recorded", "Confirm live availability", "neutral"
+            stock_value, stock_detail, stock_tone = "Not reported by supplier", "The saved quote has no stock figure", "neutral"
         else:
             stock_text = f"{stock:,.0f}" if stock.is_integer() else f"{stock:,.2f}".rstrip("0").rstrip(".")
             if stock <= 0:
-                stock_detail, stock_tone = "No stock reported", "warn"
+                stock_detail, stock_tone = "Confirmed zero in the saved quote", "warn"
             elif required is not None and required > 0 and stock < required:
                 stock_detail, stock_tone = f"Short by {required - stock:,.0f} for BOM", "warn"
             elif required is not None and required > 0:
@@ -875,7 +909,7 @@ def supplier_comparison_table_html(
             "<td class='cv-pa-supplier-cell'>"
             f"<strong>{html_escape(supplier)}</strong><div class='cv-pa-quote-badges'>{badge}</div>"
             f"<small>{html_escape(quote_copy)}</small></td>",
-            f"<td><strong>{html_escape(money(price, currency))}</strong>{price_delta}</td>",
+            f"<td><strong>{html_escape(money(price, row.get('currency') or currency))}</strong>{price_delta}</td>",
             f"<td><strong>{html_escape(stock_value)}</strong><small class='tone-{stock_tone}'>{html_escape(stock_detail)}</small></td>",
             f"<td><strong>{html_escape(lead_value)}</strong><small class='tone-{lead_tone}'>{html_escape(lead_detail)}</small></td>",
             f"<td>{html_escape(_t(row.get('region'), 'Not recorded'))}</td>",
@@ -1086,7 +1120,12 @@ def _procurement_evidence_summary(context: Mapping[str, Any]) -> str:
 
 def money_label(value: Any, currency: Any) -> str:
     number = _maybe_n(value)
-    return f"{number:,.4g} {str(currency or '').upper()}".strip() if number is not None else "Not recorded"
+    if number is None:
+        return "Not reported by supplier"
+    unit = str(currency or "").strip().upper()
+    if unit:
+        return f"{number:,.4g} {unit}"
+    return f"{number:,.4g} (currency not recorded)"
 
 
 def generate_procurement_supplier_insight(
@@ -1198,16 +1237,25 @@ def procurement_recommendation_html(
     if supplier_count is not None:
         coverage_value = f"{int(supplier_count)} recorded source{'s' if supplier_count != 1 else ''}"
         coverage_detail = "Supplier count in the saved sourcing record"
+        if offers and len(offers) != int(supplier_count):
+            coverage_detail = (
+                f"The table shows {len(offers)} offer row{'s' if len(offers) != 1 else ''}"
+            )
     elif offers:
         coverage_value = f"{len({row['supplier'].casefold() for row in offers})} offer source{'s' if len(offers) != 1 else ''}"
         coverage_detail = "Recorded offers; qualification is not recorded"
     else:
-        coverage_value = "Not recorded"
-        coverage_detail = "Add verified supplier coverage"
+        coverage_value = "Not reported by supplier"
+        coverage_detail = "No saved supplier coverage"
 
     savings = price_comparison.get("savings_per_unit")
     if savings is not None:
-        price_value = f"{savings:,.4g} {price_comparison.get('currency') or ''} / unit".strip()
+        quote_currency = str(price_comparison.get("currency") or "").strip()
+        price_value = (
+            f"{savings:,.4g} {quote_currency} / unit"
+            if quote_currency
+            else f"{savings:,.4g} (currency not recorded)"
+        )
         price_detail = f"Lower quote from {price_comparison.get('lower_distributor') or 'saved offers'}"
     else:
         price_value = "No comparable quotes"
@@ -1225,7 +1273,7 @@ def procurement_recommendation_html(
     action_title = {
         "Add a second source": "Add a second source to improve supply coverage",
         "Qualify a replacement": "Qualify a replacement for lifecycle continuity",
-        "Resolve supply gap": "Resolve the verified supply gap",
+        "Resolve supply gap": "Review the recorded supply gap",
         "Buy now": "Secure the units needed for the next build",
         "Order earlier": "Move procurement ahead of the long lead time",
         "Monitor closely": "Monitor supply before the next build",
@@ -1270,11 +1318,17 @@ def procurement_summary_cards_html(
         coverage_value = f"{quote_count} quote source{'s' if quote_count != 1 else ''}"
         coverage_detail = "Saved offers; qualification is not recorded"
     elif supplier_count is None:
-        coverage_value, coverage_detail = "Not recorded", "Confirm authorized supplier coverage"
+        coverage_value, coverage_detail = "Not reported by supplier", "No saved source count"
     elif supplier_count <= 1:
-        coverage_value, coverage_detail = f"{int(supplier_count)} → 2", "If a second source is qualified"
+        coverage_value, coverage_detail = f"{int(supplier_count)} recorded source", "A second source is not recorded"
     else:
-        coverage_value, coverage_detail = f"{int(supplier_count)} sources", "Recorded in current sourcing data"
+        coverage_value = f"{int(supplier_count)} recorded sources"
+        coverage_detail = "Saved sourcing count"
+        if offers and len(offers) != int(supplier_count):
+            coverage_detail = (
+                f"The comparison table shows {len(offers)} offer row"
+                f"{'s' if len(offers) != 1 else ''}, not {int(supplier_count)} separate quotes"
+            )
 
     annual_demand = _maybe_n(_first(part, "annual_demand", "annual_quantity", "yearly_demand"))
     annual_comparison = {}
@@ -1319,7 +1373,7 @@ def procurement_summary_cards_html(
                 f"Unit-price estimate at {annual_demand:,.0f} units/year; excludes freight, tax/duty, and MOQ"
             )
         else:
-            annual_savings_value = "Not recorded"
+            annual_savings_value = "Calculation unavailable"
             annual_savings_detail = "Annual demand and comparable same-currency supplier quotes are required"
 
     risk = _t(_first(part, "blended_supply_risk", "supply_risk", default=""))

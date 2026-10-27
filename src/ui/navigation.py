@@ -523,13 +523,7 @@ def inject_nav_scroll_reset_if_needed() -> bool:
               element = element.parentElement
             ) {{
               try {{
-                const overflowY = String(
-                  window.getComputedStyle(element).overflowY || ''
-                ).toLowerCase();
-                if (
-                  element.scrollHeight > element.clientHeight + 2
-                  || ['auto', 'scroll', 'overlay'].includes(overflowY)
-                ) {{
+                if (element.scrollHeight > element.clientHeight + 2) {{
                   parents.push(element);
                 }}
               }} catch (error) {{}}
@@ -577,7 +571,7 @@ def inject_nav_scroll_reset_if_needed() -> bool:
               }}
             }});
             state.settled = destinationMounted && atTop ? state.settled + 1 : 0;
-            if (state.settled >= 3) {{
+            if (state.settled >= 1) {{
               stop(true);
             }} else if (Date.now() - state.startedAt > 10000) {{
               stop(state.transitionGen <= 0 || Boolean(body));

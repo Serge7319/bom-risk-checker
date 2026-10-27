@@ -78,10 +78,10 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
         markup = namespace["route_loading_markup"]("Monitoring", 22)
 
         self.assertIn("position:fixed", markup)
-        self.assertIn("left:var(--cv-foundation-rail,228px)", markup)
-        self.assertIn("width:calc(100vw - var(--cv-foundation-rail,228px))", markup)
+        self.assertIn("left:calc(var(--cv-foundation-rail,296px) + 28px)", markup)
+        self.assertIn("background:transparent", markup)
+        self.assertNotIn("background:#F5F7FB", markup)
         self.assertIn("z-index:2147483000", markup)
-        self.assertIn("background:#F5F7FB", markup)
         self.assertIn('role="status" aria-label="Loading Monitoring" aria-live="polite"', markup)
         self.assertIn("box-sizing:border-box;width:184px", markup)
 
@@ -112,20 +112,14 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
             '.cv-main-transition.cv-route-loading[data-cadivor-transition-kind="navigation"]{{',
             1,
         )[1].split("}}", 1)[0]
-        self.assertIn("height:calc(100dvh - var(--cv-foundation-top,64px))!important", nav_css)
-        self.assertIn("background:#F5F7FB!important", nav_css)
-        self.assertIn("pointer-events:auto!important", nav_css)
-        self.assertIn("display:flex!important;align-items:center!important;justify-content:center!important", nav_css)
-        self.assertIn("st-key-cadivor_authenticated_route_body", SOURCE)
-        self.assertIn(
-            '[data-testid="stElementContainer"]:not([data-stale="true"])',
+        self.assertIn("background:transparent!important", nav_css)
+        self.assertIn("pointer-events:none!important", nav_css)
+        self.assertNotIn("height:calc(100dvh - var(--cv-foundation-top,64px))!important", nav_css)
+        self.assertNotIn(
+            "visibility:hidden!important;opacity:0!important;pointer-events:none!important;\n          transition:none!important",
             SOURCE,
         )
-        self.assertIn(
-            "visibility:hidden!important;opacity:0!important;pointer-events:none!important",
-            SOURCE,
-        )
-        self.assertIn("partial destination fragments", SOURCE)
+        self.assertIn("does not paint an opaque", SOURCE)
         self.assertIn(
             ':not([data-cadivor-transition-kind="navigation"]) {{\n          pointer-events:auto!important',
             SOURCE,

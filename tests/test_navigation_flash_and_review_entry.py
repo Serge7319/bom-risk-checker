@@ -32,7 +32,8 @@ class NavigationFlashAndReviewEntryTests(unittest.TestCase):
         actions = APPROVED_PAGES.split(
             "def _render_saved_bom_actions", 1
         )[1].split("\n\ndef _delete_saved_bom", 1)[0]
-        self.assertIn('"Parts & Risk"', actions)
+        self.assertIn('"Engineering Intelligence"', actions)
+        self.assertNotIn('"Parts & Risk"', actions)
         self.assertIn('key=f"approved_{scope}_action_review_{row_key}"', actions)
         self.assertIn("_open_saved_bom_engineering_intelligence(target)", actions)
         self.assertIn("1.35", APPROVED_PAGES.split("home_widths =", 1)[1].split("\n", 1)[0])

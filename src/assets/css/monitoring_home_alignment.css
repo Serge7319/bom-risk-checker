@@ -38,16 +38,6 @@ html body section[data-testid="stMain"] .st-key-monitoring_home_width_marker {
 }
 
 /* Monitoring matches Home's centered 1,440px workspace canvas. */
-section[data-testid="stMain"] [data-testid="stMainBlockContainer"]:has(.st-key-approved_page_canvas_standard_render_monitoring),
-section[data-testid="stMain"] .main .block-container:has(.st-key-approved_page_canvas_standard_render_monitoring),
-section[data-testid="stMain"] [data-testid="stMainBlockContainer"]:has(.st-key-monitoring_home_width_marker),
-section[data-testid="stMain"] .main .block-container:has(.st-key-monitoring_home_width_marker) {
-  box-sizing: border-box !important;
-  width: 100% !important;
-  max-width: 1440px !important;
-  margin-left: auto !important;
-  margin-right: auto !important;
-}
 
 html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring {
   box-sizing: border-box !important;
@@ -128,7 +118,7 @@ html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_re
 }
 
 html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_alert_heading {
-  padding: 18px 20px 14px !important;
+  padding: 8px 20px 2px !important;
 }
 
 html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-heading h2 {

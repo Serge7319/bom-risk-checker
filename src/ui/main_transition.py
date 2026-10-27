@@ -210,34 +210,27 @@ def inject_main_transition_css(transition_gen: int) -> None:
           display:block;height:100%;width:42%;border-radius:999px;background:#2563EB;
           animation:cv-main-transition-progress 1.1s ease-in-out infinite
         }}
-        /* Normal page hops cover the main panel until the destination is
-           complete. Streamlit can remove the previous route's DOM while a
-           rerun is in progress, so a transparent cover exposed a blank panel
-           and partial destination fragments. Keep the sidebar interactive;
-           the route marker releases this one compact loading surface. */
+        /* Route changes keep the shell and the workspace width. The status
+           chip sits at the top of the workspace and does not paint an opaque
+           mask over the page. Hiding every new element until the body marker
+           left a blank workspace for the whole rerun. */
         .cv-main-transition.cv-route-loading[data-cadivor-transition-kind="navigation"]{{
           box-sizing:border-box!important;position:fixed!important;
-          left:var(--cv-foundation-rail,228px)!important;right:0!important;
-          top:var(--cv-foundation-top,64px)!important;bottom:0!important;
-          width:calc(100vw - var(--cv-foundation-rail,228px))!important;
-          height:calc(100vh - var(--cv-foundation-top,64px))!important;
-          height:calc(100dvh - var(--cv-foundation-top,64px))!important;
+          left:calc(var(--cv-foundation-rail,296px) + 28px)!important;
+          right:auto!important;bottom:auto!important;
+          top:calc(var(--cv-foundation-top,64px) + 16px)!important;
+          width:auto!important;height:auto!important;
           min-height:0!important;max-height:none!important;
           margin:0!important;padding:0!important;border:0!important;border-radius:0!important;
-          display:flex!important;align-items:center!important;justify-content:center!important;
-          background:#F5F7FB!important;overflow:hidden!important;
-          box-shadow:none!important;pointer-events:auto!important;opacity:1!important;
-          visibility:visible!important;z-index:2147483000!important;clip-path:inset(0)!important
+          display:flex!important;align-items:flex-start!important;justify-content:flex-start!important;
+          background:transparent!important;overflow:visible!important;
+          box-shadow:none!important;pointer-events:none!important;opacity:1!important;
+          visibility:visible!important;z-index:2147483000!important;clip-path:none!important
         }}
-        body:has(.cv-main-transition.cv-route-loading[data-cadivor-transition-kind="navigation"][data-cadivor-transition-gen="{gen}"]):not(:has([data-cadivor-page-body-gen="{gen}"]))
-          section[data-testid="stMain"] [class*="st-key-cadivor_authenticated_route_body"]{{
-          pointer-events:none!important;transition:none!important
-        }}
-        body:has(.cv-main-transition.cv-route-loading[data-cadivor-transition-kind="navigation"][data-cadivor-transition-gen="{gen}"]):not(:has([data-cadivor-page-body-gen="{gen}"]))
-          section[data-testid="stMain"] [class*="st-key-cadivor_authenticated_route_body"]
-          [data-testid="stElementContainer"]:not([data-stale="true"]){{
-          visibility:hidden!important;opacity:0!important;pointer-events:none!important;
-          transition:none!important
+        @media(max-width:700px){{
+          .cv-main-transition.cv-route-loading[data-cadivor-transition-kind="navigation"]{{
+            left:16px!important
+          }}
         }}
         .cv-main-transition.cv-route-loading[data-cadivor-transition-kind="navigation"] .cv-main-transition-card{{
           display:block!important;box-sizing:border-box!important;width:184px!important;
@@ -449,7 +442,7 @@ def route_loading_markup(target_route: str, transition_gen: int) -> str:
                data-cadivor-transition-kind="navigation"
                data-cadivor-transition-gen="{gen}"
                data-testid="cadivor-route-loading"
-               style="box-sizing:border-box;position:fixed;left:var(--cv-foundation-rail,228px);right:0;top:var(--cv-foundation-top,64px);bottom:0;width:calc(100vw - var(--cv-foundation-rail,228px));height:calc(100dvh - var(--cv-foundation-top,64px));min-height:calc(100vh - var(--cv-foundation-top,64px));max-width:none;z-index:2147483000;display:flex;align-items:center;justify-content:center;margin:0;padding:0;background:#F5F7FB;overflow:hidden;font-family:Inter,system-ui,sans-serif"
+               style="box-sizing:border-box;position:fixed;left:calc(var(--cv-foundation-rail,296px) + 28px);top:calc(var(--cv-foundation-top,64px) + 16px);right:auto;bottom:auto;width:auto;height:auto;z-index:2147483000;display:flex;align-items:flex-start;justify-content:flex-start;margin:0;padding:0;background:transparent;overflow:visible;pointer-events:none;font-family:Inter,system-ui,sans-serif"
                role="status" aria-label="Loading {safe_route}" aria-live="polite">
             <div class="cv-main-transition-card"
                  style="box-sizing:border-box;width:184px;padding:16px;border:1px solid #E4EAF3;border-radius:16px;background:#FFFFFF;box-shadow:0 8px 24px rgba(15,23,42,.06);text-align:center">

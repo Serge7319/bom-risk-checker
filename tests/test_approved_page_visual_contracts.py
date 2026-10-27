@@ -61,6 +61,10 @@ class ApprovedPageVisualContractTests(unittest.TestCase):
 
     def test_monitoring_matches_home_centered_workspace_width(self):
         self.assertIn(
+            ".st-key-approved_page_canvas_standard_render_monitoring",
+            MONITORING_HOME_CSS,
+        )
+        self.assertNotIn(
             '[data-testid="stMainBlockContainer"]:has(.st-key-approved_page_canvas_standard_render_monitoring)',
             MONITORING_HOME_CSS,
         )
