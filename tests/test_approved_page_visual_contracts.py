@@ -2,6 +2,13 @@
 from pathlib import Path
 import unittest
 
+from src.ui.ei_bom_report import engineering_intelligence_html
+from src.ui.main_transition import (
+    DELAY_ROUTE_BODY_REVEAL_KEY,
+    MAIN_TRANSITION_KIND_KEY,
+    should_defer_navigation_reveal,
+)
+
 
 ROOT = Path(__file__).resolve().parents[1]
 APPROVED_PAGES = (ROOT / "src" / "ui" / "approved_pages.py").read_text(
@@ -92,6 +99,60 @@ class ApprovedPageVisualContractTests(unittest.TestCase):
         self.assertIn("intent: a.dataset.intent || 'trial'", MARKETING_JS)
         self.assertIn('st.button("Start 14-Day Trial", key="cv_public_signup"', MARKETING_SITE)
 
+
+    def test_navigation_cover_waits_for_the_complete_destination_render(self):
+        navigation_state = {
+            DELAY_ROUTE_BODY_REVEAL_KEY: True,
+            MAIN_TRANSITION_KIND_KEY: "navigation",
+        }
+        self.assertTrue(should_defer_navigation_reveal(navigation_state))
+        self.assertFalse(should_defer_navigation_reveal(navigation_state, force=True))
+        self.assertFalse(
+            should_defer_navigation_reveal(
+                {
+                    DELAY_ROUTE_BODY_REVEAL_KEY: True,
+                    MAIN_TRANSITION_KIND_KEY: "blocking",
+                }
+            )
+        )
+        navigation_source = (ROOT / "src" / "ui" / "navigation.py").read_text(
+            encoding="utf-8"
+        )
+        runtime_source = (ROOT / "src" / "authenticated_runtime.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn(
+            "if should_defer_navigation_reveal(st.session_state, force=force):",
+            navigation_source,
+        )
+        stop_wrapper = runtime_source.split("def stop_authenticated_page", 1)[1].split(
+            "from src.ui.executive_workspace", 1
+        )[0]
+        self.assertIn("force=True", stop_wrapper)
+
+    def test_bom_risk_summary_and_metrics_precede_component_review_table(self):
+        markup = engineering_intelligence_html(
+            bom_name="Synthetic BOM",
+            part_count=0,
+            tab="BOM Risk",
+            parts=[],
+            health_score=88,
+        )
+        self.assertLess(markup.index("cv-ei-banner"), markup.index("cv-ei-kpis"))
+        self.assertLess(markup.index("cv-ei-kpis"), markup.index("cv-ei-table"))
+
+    def test_home_saved_bom_actions_align_with_the_actions_column(self):
+        home = APPROVED_PAGES.split("def render_home(", 1)[1].split(
+            "def _render_approved_bom_upload_name_fields()", 1
+        )[0]
+        self.assertIn(
+            'header_labels = ("Name", "Project", "Part count", "Health", "High-risk parts", "Last analyzed", "Actions")',
+            home,
+        )
+        self.assertIn('cells = st.columns(home_widths, gap="small"', home)
+        self.assertIn('_render_saved_bom_actions(cells[6],', home)
+        self.assertIn("flex-direction:row!important", APPROVED_PAGES)
+        self.assertIn("justify-content:center!important;gap:6px!important", APPROVED_PAGES)
 
     def test_monitoring_period_has_no_overlapping_date_caption(self):
         monitoring_renderer = APPROVED_PAGES.split("def render_monitoring(", 1)[1]

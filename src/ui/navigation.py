@@ -418,8 +418,7 @@ def inject_nav_scroll_reset_if_needed() -> bool:
         from src.ui.main_transition import (
             MAIN_TRANSITION_ACTIVE_KEY,
             MAIN_TRANSITION_GEN_KEY,
-            MAIN_TRANSITION_KIND_KEY,
-        )
+                )
 
         active_navigation_transition = (
             bool(st.session_state.get(MAIN_TRANSITION_ACTIVE_KEY))
@@ -594,11 +593,13 @@ def inject_nav_scroll_reset_if_needed() -> bool:
 # Re-export transition keys/helpers so existing imports keep working.
 from src.ui.main_transition import (  # noqa: E402
     DELAY_ROUTE_BODY_REVEAL_KEY,
+    MAIN_TRANSITION_KIND_KEY,
     PRESENTED_ROUTE_KEY,
     get_presented_route,
     inject_main_transition_css,
     mount_main_transition_loading,
     reveal_main_transition,
+    should_defer_navigation_reveal,
     route_loading_markup,
     route_needs_main_transition,
     should_paint_opening_overlay,
@@ -659,8 +660,10 @@ def restore_detailed_risk_view(route: str) -> bool:
     return detailed
 
 
-def reveal_authenticated_page_body(route: str = "") -> None:
-    """Collapse the main transition owner after distinctive target content exists."""
+def reveal_authenticated_page_body(route: str = "", *, force: bool = False) -> None:
+    """Collapse the route cover after the target content is ready to display."""
+    if should_defer_navigation_reveal(st.session_state, force=force):
+        return
     reveal_main_transition(route)
 
 

@@ -180,7 +180,8 @@ def stop_authenticated_page(*args, **kwargs):
                 st.session_state.get("cadivor_route")
                 or st.session_state.get("app_mode")
                 or ""
-            )
+            ),
+            force=True,
         )
     exit_authenticated_route_body()
     return _stop_authenticated_page_impl(*args, **kwargs)
@@ -7582,6 +7583,22 @@ def run_authenticated_app() -> None:
                 .cv-pa-section-head{display:flex;justify-content:space-between;align-items:flex-end;gap:18px;margin:10px 0 8px}
                 .cv-pa-section-head h2{font-size:26px;line-height:1.2;color:#102341;font-weight:800;margin:0 0 6px;letter-spacing:-.02em}
                 .cv-pa-section-head p{font-size:15px;line-height:1.5;color:#64748b;margin:0}
+                .st-key-cv_pa_supplier_toprow [data-testid="stHorizontalBlock"]{align-items:flex-end!important;gap:18px!important}
+                .st-key-cv_pa_supplier_toprow [data-testid="column"]{min-width:0!important}
+                .st-key-cv_pa_supplier_controls [data-testid="stHorizontalBlock"]{align-items:flex-end!important;gap:12px!important}
+                .st-key-cv_pa_supplier_controls label{font-size:12px!important;color:#64748b!important;font-weight:750!important}
+                .st-key-cv_pa_next_steps{box-sizing:border-box!important;width:100%!important;margin:14px 0 18px!important;padding:22px!important;border:1px solid #dfe7f1!important;border-radius:14px!important;background:#fff!important;box-shadow:0 3px 12px rgba(15,23,42,.035)!important}
+                .st-key-cv_pa_next_steps>[data-testid="stVerticalBlock"]{gap:12px!important}
+                .cv-pa-next-heading{margin:0 0 2px}
+                .cv-pa-next-heading span{display:block;margin-bottom:5px;color:#2563eb;font-size:10px;font-weight:850;letter-spacing:.12em}
+                .cv-pa-next-heading h2{margin:0 0 5px;color:#102341;font-size:21px;font-weight:800;line-height:1.2}
+                .cv-pa-next-heading p{margin:0;color:#64748b;font-size:14px;line-height:1.45}
+                .st-key-cv_pa_next_steps [data-testid="stHorizontalBlock"]{align-items:stretch!important;gap:16px!important}
+                .st-key-cv_pa_next_steps [data-testid="column"]{box-sizing:border-box!important;min-width:0!important;padding:16px!important;border:1px solid #e2e8f0!important;border-radius:12px!important;background:#f8fafc!important}
+                .cv-pa-next-action{min-height:60px;margin:0 0 10px}
+                .cv-pa-next-action strong{display:block;color:#172b4d;font-size:15px;font-weight:800;line-height:1.3}
+                .cv-pa-next-action p{margin:5px 0 0;color:#64748b;font-size:13px;line-height:1.45}
+                .st-key-cv_pa_next_steps [data-testid="stMarkdownContainer"] p{font-size:13px;line-height:1.45}
                 @media(max-width:700px){
                   .st-key-cv_pa_supplier_options{padding:14px!important}
                   .st-key-cv_pa_supplier_controls [data-testid="stHorizontalBlock"]{display:grid!important;grid-template-columns:1fr!important}
@@ -7836,11 +7853,6 @@ def run_authenticated_app() -> None:
                     st.success(f"Sourcing details saved for {saved_count} saved BOM component record(s).")
 
                 with st.container(key="cv_pa_supplier_options"):
-                    st.markdown(
-                        "<div class='cv-pa-section-head'><div><h2>Supplier options</h2>"
-                        "<p>Compare price, availability, lead time, risk, and total landed cost for this part.</p></div></div>",
-                        unsafe_allow_html=True,
-                    )
                     offers = normalize_supplier_offer_records(focus)
                     if offers:
                         offer_suppliers = list(dict.fromkeys(row["supplier"] for row in offers))
@@ -7859,23 +7871,36 @@ def run_authenticated_app() -> None:
                             )
                             st.session_state[offer_selection_key] = selected_supplier
 
-                        with st.container(key="cv_pa_supplier_controls"):
-                            controls_spacer, view_col, supplier_col = st.columns([0.5, 0.25, 0.25])
-                            with controls_spacer:
-                                st.empty()
-                            with view_col:
-                                comparison_view = st.selectbox(
-                                    "View",
-                                    ["Key comparison", "All evidence"],
-                                    key="pa_supplier_comparison_view",
-                                )
-                            with supplier_col:
-                                selected_supplier = st.selectbox(
-                                    "Selected supplier",
-                                    offer_suppliers,
-                                    index=offer_suppliers.index(selected_supplier),
-                                    key=offer_selection_key,
-                                )
+                    with st.container(key="cv_pa_supplier_toprow"):
+                        heading_col, control_col = st.columns(
+                            [0.6, 0.4], gap="medium", vertical_alignment="bottom"
+                        )
+                        with heading_col:
+                            st.markdown(
+                                "<div class='cv-pa-section-head'><div><h2>Supplier options</h2>"
+                                "<p>Compare price, availability, lead time, risk, and total landed cost for this part.</p></div></div>",
+                                unsafe_allow_html=True,
+                            )
+                        if offers:
+                            with control_col:
+                                with st.container(key="cv_pa_supplier_controls"):
+                                    view_col, supplier_col = st.columns(
+                                        [0.85, 1.15], gap="small", vertical_alignment="bottom"
+                                    )
+                                    with view_col:
+                                        comparison_view = st.selectbox(
+                                            "View",
+                                            ["Key comparison", "All evidence"],
+                                            key="pa_supplier_comparison_view",
+                                        )
+                                    with supplier_col:
+                                        selected_supplier = st.selectbox(
+                                            "Selected supplier",
+                                            offer_suppliers,
+                                            index=offer_suppliers.index(selected_supplier),
+                                            key=offer_selection_key,
+                                        )
+                    if offers:
                         st.markdown(
                             supplier_comparison_table_html(
                                 focus,
@@ -8005,81 +8030,87 @@ def run_authenticated_app() -> None:
                             "No supplier quotes are saved for this part yet. Add verified sourcing details or rerun the BOM analysis to refresh supplier offers."
                         )
 
-                action_cols = st.columns([0.34, 0.66], vertical_alignment="center")
-                with action_cols[0]:
-                    internal_nav_button(
-                        "Find qualified alternative",
-                        "Alternative Finder",
-                        key="pa_find_qualified_alternative_top",
-                        type="secondary",
-                        use_container_width=True,
-                        original_part=focus_mpn,
-                        manufacturer=str(focus.get("manufacturer") or focus.get("Manufacturer") or ""),
-                        description=str(focus.get("description") or focus.get("Description") or ""),
-                        lifecycle=str((focus_recommendation or {}).get("Lifecycle Status") or ""),
-                        risk=str((focus_recommendation or {}).get("Priority Score") or ""),
-                        analysis_id=str(focus.get("analysis_id") or focus_analysis.get("id") or ""),
-                        part_id=str(focus.get("id") or ""),
-                        project_name=str(focus_analysis.get("project_name") or focus_analysis.get("project") or ""),
-                        bom_name=str(focus_analysis.get("filename") or focus_analysis.get("bom_name") or ""),
-                        source_page="procurement_advisor",
+
+                with st.container(key="cv_pa_next_steps"):
+                    st.markdown(
+                        "<div class='cv-pa-next-heading'><span>DECISION SUPPORT</span>"
+                        "<h2>Next steps</h2><p>Move from supplier evidence to a reviewable engineering action.</p></div>",
+                        unsafe_allow_html=True,
                     )
-                with action_cols[1]:
+                    action_cols = st.columns(2, gap="large", vertical_alignment="top")
+                    with action_cols[0]:
+                        st.markdown(
+                            "<div class='cv-pa-next-action'><strong>Review an alternate or second source</strong>"
+                            "<p>Open the selected part in Find a replacement with its saved BOM context.</p></div>",
+                            unsafe_allow_html=True,
+                        )
+                        internal_nav_button(
+                            "Find qualified alternative",
+                            "Alternative Finder",
+                            key="pa_find_qualified_alternative_top",
+                            type="secondary",
+                            use_container_width=True,
+                            original_part=focus_mpn,
+                            manufacturer=str(focus.get("manufacturer") or focus.get("Manufacturer") or ""),
+                            description=str(focus.get("description") or focus.get("Description") or ""),
+                            lifecycle=str((focus_recommendation or {}).get("Lifecycle Status") or ""),
+                            risk=str((focus_recommendation or {}).get("Priority Score") or ""),
+                            analysis_id=str(focus.get("analysis_id") or focus_analysis.get("id") or ""),
+                            part_id=str(focus.get("id") or ""),
+                            project_name=str(focus_analysis.get("project_name") or focus_analysis.get("project") or ""),
+                            bom_name=str(focus_analysis.get("filename") or focus_analysis.get("bom_name") or ""),
+                            source_page="procurement_advisor",
+                        )
+                    insight_state_key = (
+                        "pa_ai_supplier_insight_"
+                        + __import__('hashlib').sha1(focus_mpn.encode()).hexdigest()[:12]
+                    )
+                    insight_fingerprint = procurement_insight_fingerprint(
+                        focus, focus_recommendation, comparison
+                    )
+                    with action_cols[1]:
+                        st.markdown(
+                            "<div class='cv-pa-next-action'><strong>Assemble supplier evidence</strong>"
+                            "<p>Review recorded prices, stock, lead times, lifecycle, and evidence gaps.</p></div>",
+                            unsafe_allow_html=True,
+                        )
+                        generate_insight = st.button(
+                            "Generate AI supplier insights",
+                            key="pa_generate_supplier_insight",
+                            type="secondary",
+                            use_container_width=True,
+                        )
+                    if generate_insight:
+                        try:
+                            with st.spinner("Reviewing supplier and sourcing evidence…"):
+                                insight_result = generate_procurement_supplier_insight(
+                                    focus, focus_recommendation, comparison
+                                )
+                            if not insight_result.get("answer"):
+                                st.error("Cadivor could not produce a supplier insight from the saved evidence. Try again.")
+                            else:
+                                st.session_state[insight_state_key] = {
+                                    "fingerprint": insight_fingerprint,
+                                    **insight_result,
+                                }
+                        except Exception:
+                            st.error(
+                                "Supplier insight generation is unavailable. Review the recorded sourcing evidence below."
+                            )
+                    saved_insight = st.session_state.get(insight_state_key) or {}
+                    if saved_insight.get("fingerprint") == insight_fingerprint and saved_insight.get("answer"):
+                        with st.container(border=True):
+                            provider_label = (
+                                "AI-assisted review"
+                                if bool(saved_insight.get("ai_assisted"))
+                                else "Grounded evidence summary · AI provider not configured"
+                            )
+                            st.caption(provider_label)
+                            st.markdown(saved_insight["answer"])
                     st.caption(
-                        "Use this when the recommendation calls for a replacement or a second source. "
-                        "The selected MPN is preloaded; the saved BOM stays attached for review and approval."
+                        "“Not recorded” means Cadivor has no verified value for that field. Procurement Advisor does not place orders or approve alternates; engineering sign-off follows compatibility and documentation review in Find a replacement."
                     )
 
-                insight_state_key = (
-                    "pa_ai_supplier_insight_"
-                    + __import__('hashlib').sha1(focus_mpn.encode()).hexdigest()[:12]
-                )
-                insight_fingerprint = procurement_insight_fingerprint(
-                    focus, focus_recommendation, comparison
-                )
-                insight_cols = st.columns([0.34, 0.66], vertical_alignment="center")
-                with insight_cols[0]:
-                    generate_insight = st.button(
-                        "Generate AI supplier insights",
-                        key="pa_generate_supplier_insight",
-                        type="secondary",
-                        use_container_width=True,
-                    )
-                with insight_cols[1]:
-                    st.caption(
-                        "Reviews saved prices, availability, lead times, lifecycle, and missing evidence. "
-                        "It ranks total cost only when comparable landed unit costs are entered; unknown supplier facts stay unknown."
-                    )
-                if generate_insight:
-                    try:
-                        with st.spinner("Reviewing supplier and sourcing evidence…"):
-                            insight_result = generate_procurement_supplier_insight(
-                                focus, focus_recommendation, comparison
-                            )
-                        if not insight_result.get("answer"):
-                            st.error("Cadivor could not produce a supplier insight from the saved evidence. Try again.")
-                        else:
-                            st.session_state[insight_state_key] = {
-                                "fingerprint": insight_fingerprint,
-                                **insight_result,
-                            }
-                    except Exception as exc:
-                        st.error(
-                            "Supplier insight generation is unavailable. Review the recorded sourcing evidence below."
-                        )
-                saved_insight = st.session_state.get(insight_state_key) or {}
-                if saved_insight.get("fingerprint") == insight_fingerprint and saved_insight.get("answer"):
-                    with st.container(border=True):
-                        provider_label = (
-                            "AI-assisted review"
-                            if bool(saved_insight.get("ai_assisted"))
-                            else "Grounded evidence summary · AI provider not configured"
-                        )
-                        st.caption(provider_label)
-                        st.markdown(saved_insight["answer"])
-                st.caption(
-                    "“Not recorded” means Cadivor does not have verified data for that field. Procurement Advisor does not place an order or approve an engineering alternate; engineering sign-off happens after compatibility and documentation review in Find a replacement."
-                )
             else:
                 reveal_authenticated_page_body("Procurement Advisor")
                 st.info("Upload or open a saved BOM to add components to procurement review.")

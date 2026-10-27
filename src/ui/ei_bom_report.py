@@ -1053,8 +1053,8 @@ def engineering_intelligence_html(
     return (
         '<div class="cv-ei-report">'
         + heading
-        + body
         + banner
+        + body
         + "</div>"
     )
 
