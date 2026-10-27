@@ -260,8 +260,8 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
         )
 
         self.assertLess(
-            report.index("Review these components first"),
             report.index("Engineering review required"),
+            report.index("Review these components first"),
         )
         self.assertLess(
             report.index("Health"),
