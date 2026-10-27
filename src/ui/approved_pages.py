@@ -987,7 +987,13 @@ def begin_approved_page() -> None:
         [class*="st-key-approved_home_menu_"] [data-testid="stPopover"] button[aria-expanded] svg,[class*="st-key-approved_home_menu_"] [data-testid="stPopover"] button[aria-expanded] [data-testid="stIconMaterial"]{display:none!important}
         [class*="st-key-approved_home_menu_"] [data-testid="stVerticalBlock"]{gap:4px!important}
         [class*="st-key-approved_home_action_review_"] button{box-sizing:border-box!important;width:100%!important;min-width:0!important;height:36px!important;min-height:36px!important;padding:0 6px!important;border-radius:8px!important;font-size:12px!important;font-weight:700!important;white-space:nowrap!important}
-        [class*="st-key-approved_home_row_"] [data-testid="stColumn"]:last-child{text-align:right}
+        [class*="st-key-approved_home_row_"] [data-testid="stColumn"]:last-child{text-align:center}
+        .st-key-approved_home_recent_card [class*="st-key-approved_home_menu_"]>[data-testid="stVerticalBlock"]{display:flex!important;flex-direction:row!important;align-items:center!important;justify-content:center!important;gap:6px!important;width:100%!important;min-height:44px!important}
+        .st-key-approved_home_recent_card [class*="st-key-approved_home_menu_"]>[data-testid="stVerticalBlock"]>[data-testid="stElementContainer"]{width:auto!important;flex:0 0 auto!important}
+        .st-key-approved_home_recent_card [class*="st-key-approved_home_action_review_"]{flex:0 1 auto!important;min-width:0!important}
+        .st-key-approved_home_recent_card [class*="st-key-approved_home_action_review_"] button{box-sizing:border-box!important;width:auto!important;min-width:96px!important;max-width:100%!important;height:36px!important;min-height:36px!important;padding:0 9px!important;white-space:nowrap!important}
+        .st-key-approved_home_recent_card [class*="st-key-approved_home_menu_"] [data-testid="stPopover"]{flex:0 0 36px!important;width:36px!important}
+        .st-key-approved_home_recent_card [class*="st-key-approved_home_menu_"] [data-testid="stPopover"] button[aria-expanded]{width:36px!important;min-width:36px!important;height:36px!important;min-height:36px!important}
         .cv-ap-home-empty{padding:26px 24px;color:#64748b;font-size:16px}
         @media(max-width:1600px){
           .st-key-approved_home_page{padding:36px 0 24px!important}
@@ -2525,7 +2531,7 @@ def render_home(
                     display_bom_name = display_bom_name[:-4]
                 row_key = "approved_home_row_last" if index == min(len(rows), 3) - 1 else f"approved_home_row_{index}"
                 with st.container(key=row_key):
-                    cells = st.columns(home_widths, vertical_alignment="center")
+                    cells = st.columns(home_widths, gap="small", vertical_alignment="center")
                     cells[0].markdown(
                         f"<div class='cv-ap-home-bom'><span class='cv-ap-home-row-icon'>{lucide('file-text', 24)}</span>"
                         f"<span class='cv-ap-home-bom-copy'><strong class='cv-ap-name'>{_esc(display_bom_name)}</strong></span></div>",
