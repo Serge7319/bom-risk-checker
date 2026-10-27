@@ -986,12 +986,12 @@ def begin_approved_page() -> None:
         [class*="st-key-approved_home_menu_"] [data-testid="stPopover"] button[aria-expanded]{display:inline-flex!important;align-items:center!important;justify-content:center!important;width:44px!important;min-width:44px!important;height:44px!important;min-height:44px!important;padding:0!important;border:0!important;border-radius:10px!important;background:transparent!important;color:#64748b!important;box-shadow:none!important;font-size:22px!important;font-weight:750!important;line-height:1!important}
         [class*="st-key-approved_home_menu_"] [data-testid="stPopover"] button[aria-expanded] svg,[class*="st-key-approved_home_menu_"] [data-testid="stPopover"] button[aria-expanded] [data-testid="stIconMaterial"]{display:none!important}
         [class*="st-key-approved_home_menu_"] [data-testid="stVerticalBlock"]{gap:4px!important}
-        [class*="st-key-approved_home_action_review_"] button{box-sizing:border-box!important;width:100%!important;min-width:0!important;height:36px!important;min-height:36px!important;padding:0 6px!important;border-radius:8px!important;font-size:12px!important;font-weight:700!important;white-space:nowrap!important}
+        [class*="st-key-approved_home_action_review_"] button{box-sizing:border-box!important;width:auto!important;min-width:0!important;height:auto!important;min-height:36px!important;padding:6px 9px!important;border-radius:8px!important;font-size:12px!important;font-weight:700!important;white-space:normal!important;line-height:1.2!important}
         [class*="st-key-approved_home_row_"] [data-testid="stColumn"]:last-child,[class*="st-key-approved_home_row_"] [data-testid="column"]:last-child{display:flex!important;align-items:center!important;justify-content:center!important;min-width:168px!important;overflow:visible!important;text-align:center}
         .st-key-approved_home_recent_card [class*="st-key-approved_home_menu_"]>[data-testid="stVerticalBlock"]{display:flex!important;flex-direction:row!important;align-items:center!important;justify-content:center!important;gap:6px!important;width:100%!important;min-height:44px!important}
         .st-key-approved_home_recent_card [class*="st-key-approved_home_menu_"]>[data-testid="stVerticalBlock"]>[data-testid="stElementContainer"]{width:auto!important;flex:0 0 auto!important}
         .st-key-approved_home_recent_card [class*="st-key-approved_home_action_review_"]{flex:0 1 auto!important;min-width:0!important}
-        .st-key-approved_home_recent_card [class*="st-key-approved_home_action_review_"] button{box-sizing:border-box!important;width:auto!important;min-width:96px!important;max-width:100%!important;height:36px!important;min-height:36px!important;padding:0 9px!important;white-space:nowrap!important}
+        .st-key-approved_home_recent_card [class*="st-key-approved_home_action_review_"] button{box-sizing:border-box!important;width:auto!important;min-width:96px!important;max-width:100%!important;height:auto!important;min-height:36px!important;padding:6px 9px!important;white-space:normal!important;line-height:1.2!important}
         .st-key-approved_home_recent_card [class*="st-key-approved_home_menu_"] [data-testid="stPopover"]{flex:0 0 36px!important;width:36px!important}
         .st-key-approved_home_recent_card [class*="st-key-approved_home_menu_"] [data-testid="stPopover"] button[aria-expanded]{width:36px!important;min-width:36px!important;height:36px!important;min-height:36px!important}
         .cv-ap-home-empty{padding:26px 24px;color:#64748b;font-size:16px}
@@ -1104,7 +1104,7 @@ def begin_approved_page() -> None:
         .st-key-approved_monitoring_filters>[data-testid="stVerticalBlock"]{gap:0!important}
         .st-key-approved_monitoring_filters [data-testid="stHorizontalBlock"]{align-items:center!important;gap:10px!important}
         .st-key-approved_monitoring_filters [data-testid="stWidgetLabel"] p{margin:0 0 5px!important;color:#52647b!important;font-size:12px!important;font-weight:700!important}
-        .cv-ap-monitoring-show-label{display:flex;align-items:center;min-height:42px;color:#52647b;font-size:12px;font-weight:700}
+        .cv-ap-monitoring-show-label{display:flex;align-items:center;min-height:42px;color:#52647b;font-size:14px;font-weight:650;white-space:nowrap}
         .cv-ap-monitoring-period-label{display:flex;align-items:center;min-height:42px;color:#52647b;font-size:14px;font-weight:650;white-space:nowrap}
         .st-key-approved_monitoring_category_row{box-sizing:border-box!important;width:100%!important;min-width:0!important}
         .st-key-approved_monitoring_category_row [data-testid="stPills"],.st-key-approved_monitoring_category_row [role="radiogroup"],.st-key-approved_monitoring_category_row [data-baseweb="button-group"]{display:flex!important;flex-flow:row wrap!important;justify-content:flex-start!important;align-items:center!important;gap:8px!important;width:100%!important;min-width:0!important}
@@ -1116,7 +1116,7 @@ def begin_approved_page() -> None:
         .cv-ap-monitoring-calendar{display:flex;align-items:center;justify-content:center;min-height:42px;color:#52647b}
         .cv-ap-monitoring-calendar svg{width:18px;height:18px}
         .st-key-approved_monitoring_filters [data-testid="stSelectbox"] [data-baseweb="select"]>div{min-height:42px!important;border:1px solid #d9e2ee!important;border-radius:9px!important;background:#fff!important}
-        .st-key-approved_monitoring_alert_heading{box-sizing:border-box!important;width:100%!important;margin:0!important;padding:18px 20px 12px!important}
+        .st-key-approved_monitoring_alert_heading{box-sizing:border-box!important;width:100%!important;margin:0!important;padding:8px 20px 2px!important}
         .st-key-approved_monitoring_alert_heading>[data-testid="stVerticalBlock"]{gap:0!important}
         .cv-ap-monitoring-heading h2{margin:0!important;color:#14233d!important;font-size:20px!important;font-weight:760!important;line-height:1.25!important;letter-spacing:-.02em!important}
         .cv-ap-monitoring-heading p{margin:4px 0 0!important;color:#64748b!important;font-size:12px!important}
@@ -1152,7 +1152,7 @@ def begin_approved_page() -> None:
           .st-key-approved_monitoring_filters [data-testid="column"]:has(.st-key-approved_monitoring_category_row){grid-column:2!important;grid-row:1!important}
           .st-key-approved_monitoring_filters [data-testid="column"]:has(.st-key-approved_monitoring_period_control){grid-column:1 / -1!important;grid-row:2!important}
           .st-key-approved_monitoring_period_control{width:340px!important;max-width:100%!important;margin-left:auto!important}
-          .cv-ap-monitoring-show-label{font-size:11px!important}
+          .cv-ap-monitoring-show-label{font-size:14px!important}
         }
         @media(max-width:900px){.st-key-approved_monitoring_filters{padding:12px!important}.st-key-approved_monitoring_alert_heading{padding:14px 14px 10px!important}.cv-ap-monitoring-heading h2{font-size:18px!important}}
         @media(max-width:640px){.st-key-approved_monitoring_period_control{width:100%!important}.st-key-approved_monitoring_filters [data-testid="column"]:has(.cv-ap-monitoring-show-label){align-self:start!important}.st-key-approved_monitoring_category_row button,.st-key-approved_monitoring_category_row [role="radio"],.st-key-approved_monitoring_category_row [role="option"]{min-height:38px!important;height:38px!important;padding:0 10px!important;font-size:11px!important}}
@@ -1557,14 +1557,13 @@ def _render_saved_bom_actions(column, analysis_id: str, *, scope: str, row_key: 
     with column:
         with st.container(key=f"approved_{scope}_menu_{row_key}"):
             if st.button(
-                "Parts & Risk",
+                "Engineering Intelligence",
                 key=f"approved_{scope}_action_review_{row_key}",
                 type="primary",
                 width="content",
-                help="Open Parts & Risk and the saved release evidence for this BOM.",
             ):
                 _open_saved_bom_engineering_intelligence(target)
-            with st.popover("⋯", help="Open, edit, delete, or view the detailed risk report for this BOM."):
+            with st.popover("⋯"):
                 if st.button(
                     "Open",
                     key=f"approved_{scope}_action_open_{row_key}",
@@ -1576,12 +1575,6 @@ def _render_saved_bom_actions(column, analysis_id: str, *, scope: str, row_key: 
                         saved_bom_action="open",
                         arm_opening=True,
                     )
-                if st.button(
-                    "Engineering Intelligence",
-                    key=f"approved_{scope}_action_bom_risk_{row_key}",
-                    use_container_width=True,
-                ):
-                    _open_saved_bom_engineering_intelligence(target)
                 if st.button(
                     "Detailed Risk Report",
                     key=f"approved_{scope}_action_risk_report_{row_key}",
@@ -2397,6 +2390,24 @@ def risk_mix_chart(parts: list[dict[str, Any]] | None) -> str:
     )
 
 
+def bom_needs_report_review(row: dict[str, Any]) -> bool:
+    """BOM-level form of the Engineering Intelligence "Needs review" count.
+
+    The report counts parts that are high risk, medium risk, or not risk-rated.
+    Home counts a saved BOM when its stored summary has any of those parts.
+    A health score by itself is not that count: a BOM can be 80/100 and still
+    have medium-risk parts the report lists as needing review.
+    """
+    high = _num(_first(row, "high_risk_count"))
+    medium = _num(_first(row, "medium_risk_count"))
+    low_raw = _first(row, "low_risk_count", fallback=None)
+    total = _num(_first(row, "total_parts"))
+    unassessed = 0
+    if low_raw is not None and total:
+        unassessed = max(0, total - high - medium - _num(low_raw))
+    return high + medium + unassessed > 0
+
+
 def render_home(
     *,
     name: str,
@@ -2416,7 +2427,7 @@ def render_home(
     )
     rows = _rows_with_project_edits(_records(analyses))
     high = sum(_num(_first(row, "high_risk_count")) for row in rows)
-    review = sum(1 for row in rows if _num(_first(row, "high_risk_count")) or _num(_first(row, "health_score"), 100) < 80)
+    review = sum(1 for row in rows if bom_needs_report_review(row))
     health_values = [_num(_first(row, "health_score")) for row in rows]
     average = round(sum(health_values) / len(health_values)) if health_values else 0
     greeting = name or "there"
@@ -2466,7 +2477,7 @@ def render_home(
               </article>
               <article class="cv-ap-kpi cv-ap-home-kpi">
                 <span class="cv-ap-ico cv-ap-home-icon warn">{ICO_WARN}</span>
-                <div class="cv-ap-home-kpi-copy"><span class="cv-ap-home-kpi-label">BOMs needing review</span><strong>{review}</strong>{review_delta}</div>
+                <div class="cv-ap-home-kpi-copy"><span class="cv-ap-home-kpi-label" title="BOMs with at least one part the Engineering Intelligence report counts as needing review: high risk, medium risk, or not risk-rated. The report shows that part count.">BOMs needing review</span><strong>{review}</strong>{review_delta}</div>
               </article>
               <article class="cv-ap-kpi cv-ap-home-kpi">
                 <span class="cv-ap-ico cv-ap-home-icon risk">{ICO_RISK}</span>
@@ -3598,7 +3609,7 @@ def render_monitoring(
             st.session_state["approved_alert_severity"] = "All"
 
         label_col, show_col, period_col = st.columns(
-            [0.42, 8.45, 3.1],
+            [0.7, 8.17, 3.1],
             vertical_alignment="center",
             gap="small",
         )
@@ -4383,19 +4394,12 @@ def _home_weekly_delta(
         detail = "BOMs analyzed in the latest 7 days compared with the 7 days before"
         higher_is_better = True
     elif metric == "needs_review":
-        current_value = sum(
-            1
-            for row in current_rows
-            if _num(_first(row, "high_risk_count")) > 0
-            or _num(_first(row, "health_score"), 100) < 80
+        current_value = sum(1 for row in current_rows if bom_needs_report_review(row))
+        previous_value = sum(1 for row in previous_rows if bom_needs_report_review(row))
+        detail = (
+            "BOMs with parts the Engineering Intelligence report counts as needing review "
+            "(high risk, medium risk, or not risk-rated), latest 7 days versus the 7 days before"
         )
-        previous_value = sum(
-            1
-            for row in previous_rows
-            if _num(_first(row, "high_risk_count")) > 0
-            or _num(_first(row, "health_score"), 100) < 80
-        )
-        detail = "BOMs needing review in the latest 7 days compared with the 7 days before"
         higher_is_better = False
     elif metric == "high_risk_parts":
         current_value = sum(_num(_first(row, "high_risk_count")) for row in current_rows)
@@ -8050,7 +8054,7 @@ for _renderer_name, _width_variant in (
     ("render_reports_list", "wide"),
     ("render_simple_workspace", "wide"),
     ("render_replacement_search", "wide"),
-    ("render_compare_live", "wide"),
+    ("render_compare_live", "standard"),
     ("render_datasheet_live", "standard"),
     ("render_settings_workspace", "standard"),
 ):

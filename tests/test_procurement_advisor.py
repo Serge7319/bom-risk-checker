@@ -655,7 +655,7 @@ class ProcurementAdvisorTests(unittest.TestCase):
             {"mpn": "TPS54331D", "quantity": 100},
             {"Recommendation": "Complete sourcing data", "Supplier Sources": None},
         )
-        self.assertIn("Annual demand</span><strong>Not recorded", html)
+        self.assertIn("Annual demand</span><strong>Not provided", html)
         self.assertNotIn("100 units", html)
 
     def test_sourcing_updates_are_scoped_to_user_and_active_workspace(self):

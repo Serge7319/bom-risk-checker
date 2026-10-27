@@ -523,7 +523,9 @@ def _drivers(part: dict[str, Any]) -> list[str]:
     if lead is not None and _num(lead, 0) >= 26:
         notes.append(f"Long lead time ({_num(lead)}+ weeks)")
     if not notes:
-        notes.append("No material exception is recorded in the saved analysis")
+        notes.append(
+            "This saved analysis does not record a part-specific exception or supplier evidence for this component"
+        )
     return notes[:3]
 
 
@@ -701,7 +703,18 @@ def _part_rows(parts: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if not isinstance(part, dict):
             continue
         level, effective_score = _priority_assessment(part)
-        title, detail = _action(level)
+        driver_notes = _drivers(part)
+        specific_notes = [
+            note for note in driver_notes
+            if not note.startswith("This saved analysis does not record")
+        ]
+        if specific_notes:
+            title, detail = _action(level)
+        else:
+            title, detail = (
+                "No part-specific recommendation",
+                "The saved analysis has no recorded exception or supplier evidence for this part, so Cadivor is not recommending a substitute or sourcing action.",
+            )
         raw_mpn = str(_first(part, "mpn", "MPN", "part_number", fallback="Part") or "Part")
         ranked.append(
             {

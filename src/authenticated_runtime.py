@@ -2971,6 +2971,9 @@ def run_authenticated_app() -> None:
             executor.submit(analyze_single_part, row): row
             for row in rows
         }
+        if progress_queue is not None:
+            first_mpn = str(rows[0].get("mpn") or "") if rows else ""
+            progress_queue.put((0, total_parts, first_mpn))
 
         try:
             for future in as_completed(future_to_row):
@@ -7576,7 +7579,7 @@ def run_authenticated_app() -> None:
                 }
                 .st-key-cv_procurement_workspace{display:flex!important;flex-direction:column!important;gap:12px!important;width:100%!important;max-width:min(1440px,100%)!important;margin:0 auto!important;box-sizing:border-box!important;min-width:0!important}
                 .st-key-cv_procurement_workspace>[data-testid="stVerticalBlock"]{width:100%!important;max-width:100%!important;min-width:0!important;gap:12px!important}
-                .st-key-cv_pa_supplier_options{box-sizing:border-box!important;width:100%!important;max-width:100%!important;margin:8px 0 14px!important;padding:22px!important;border:1px solid #dfe7f1!important;border-radius:14px!important;background:#fff!important;box-shadow:0 8px 24px rgba(15,23,42,.045)!important}
+                .st-key-cv_pa_supplier_options{box-sizing:border-box!important;width:100%!important;max-width:100%!important;margin:4px 0 8px!important;padding:8px 0 0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important}
                 .st-key-cv_pa_supplier_options>[data-testid="stVerticalBlock"]{gap:12px!important}
                 .st-key-cv_pa_supplier_controls>[data-testid="stVerticalBlock"]{gap:0!important}
                 .st-key-cv_pa_supplier_options .cv-pa-section-head{margin:0 0 6px}
@@ -23954,10 +23957,18 @@ def run_authenticated_app() -> None:
                     st.rerun()
 
                 if not current_future.done():
+                    if completed <= 0 and current_mpn:
+                        step = f"Checking {current_mpn}"
+                    elif completed < total_parts:
+                        step = "Checking the remaining components"
+                    else:
+                        step = "Saving the analysis"
+                    st.markdown(
+                        "<div class='cv-ap'><h1 style='margin:0 0 8px'>Analyzing BOM</h1></div>",
+                        unsafe_allow_html=True,
+                    )
                     st.info(
-                        "**Analysis in progress** — "
-                        f"{completed} of {total_parts} components complete"
-                        + (f" · Checking {current_mpn}" if current_mpn else "…")
+                        f"**{step}** — {completed} of {total_parts} components complete"
                     )
                     st.progress(completed / total_parts if total_parts else 0)
                     return
