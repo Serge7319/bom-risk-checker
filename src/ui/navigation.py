@@ -446,13 +446,18 @@ def inject_nav_scroll_reset_if_needed() -> bool:
         token = 0
     target_route = str(st.session_state.get("cadivor_route") or "").strip()
     target_route_json = json.dumps(target_route, ensure_ascii=True)
+    # Generations come from time.time_ns(), which is larger than
+    # Number.MAX_SAFE_INTEGER. A bare JS number rounds those digits, so the
+    # release attribute no longer matches the CSS selector and the cover stays
+    # mounted after the destination has rendered. Keep the exact decimal text.
+    transition_gen_json = json.dumps(str(int(transition_gen)))
     st.html(
         f"""
         <script>
         (() => {{
           const token = {token};
           const targetRoute = {target_route_json};
-          const transitionGen = {transition_gen};
+          const transitionGen = {transition_gen_json};
           const doc = document;
           const root = doc.documentElement;
           const activeKey = '__cadivorNavScrollReset';
@@ -486,9 +491,12 @@ def inject_nav_scroll_reset_if_needed() -> bool:
             if (completed) {{
               const body = destinationBody();
               if (body && state.transitionGen > 0) {{
+                const releaseGeneration = body.getAttribute(
+                  'data-cadivor-page-body-gen'
+                ) || state.transitionGen;
                 body.setAttribute(
                   'data-cadivor-page-body-release-gen',
-                  String(state.transitionGen)
+                  releaseGeneration
                 );
               }}
               const node = marker();
@@ -560,9 +568,14 @@ def inject_nav_scroll_reset_if_needed() -> bool:
                   || Array.from(doc.querySelectorAll('[data-cadivor-page-body]'))
                     .some((node) => node.getAttribute('data-cadivor-page-body') === targetRoute)
                 );
-            const atTop = candidates.every(
-              (element) => Math.abs(element.scrollTop || 0) <= 2
-            );
+            const atTop = candidates.every((element) => {{
+              try {{
+                const overflows = element.scrollHeight > element.clientHeight + 2;
+                return !overflows || Math.abs(element.scrollTop || 0) <= 2;
+              }} catch (error) {{
+                return true;
+              }}
+            }});
             state.settled = destinationMounted && atTop ? state.settled + 1 : 0;
             if (state.settled >= 3) {{
               stop(true);

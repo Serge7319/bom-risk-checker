@@ -964,7 +964,7 @@ def begin_approved_page() -> None:
         .st-key-approved_home_recent_card .st-key-approved_home_row_last{border-radius:0 0 15px 15px!important;border-bottom:0!important;background:#fff!important}
         [class*="st-key-approved_home_row_"] [data-testid="stVerticalBlock"]{display:flex!important;flex-direction:column!important;gap:0!important;justify-content:center!important;min-height:84px!important}
         [class*="st-key-approved_home_row_"] [data-testid="stElementContainer"]{margin:0!important;padding:0!important}
-        [class*="st-key-approved_home_row_"] [data-testid="stHorizontalBlock"]{align-items:stretch!important;min-height:84px!important}
+        [class*="st-key-approved_home_row_"] [data-testid="stHorizontalBlock"]{align-items:stretch!important;gap:16px!important;width:100%!important;min-height:84px!important}
         [class*="st-key-approved_home_row_"] [data-testid="column"]{align-self:stretch!important;display:flex!important;align-items:center!important;justify-content:center!important;min-height:84px!important}
         [class*="st-key-approved_home_row_"] [data-testid="column"]:nth-child(-n+2){justify-content:flex-start!important}
         [class*="st-key-approved_home_row_"] [data-testid="column"] [data-testid="stMarkdownContainer"]{width:100%!important}
@@ -987,7 +987,7 @@ def begin_approved_page() -> None:
         [class*="st-key-approved_home_menu_"] [data-testid="stPopover"] button[aria-expanded] svg,[class*="st-key-approved_home_menu_"] [data-testid="stPopover"] button[aria-expanded] [data-testid="stIconMaterial"]{display:none!important}
         [class*="st-key-approved_home_menu_"] [data-testid="stVerticalBlock"]{gap:4px!important}
         [class*="st-key-approved_home_action_review_"] button{box-sizing:border-box!important;width:100%!important;min-width:0!important;height:36px!important;min-height:36px!important;padding:0 6px!important;border-radius:8px!important;font-size:12px!important;font-weight:700!important;white-space:nowrap!important}
-        [class*="st-key-approved_home_row_"] [data-testid="stColumn"]:last-child{text-align:center}
+        [class*="st-key-approved_home_row_"] [data-testid="stColumn"]:last-child,[class*="st-key-approved_home_row_"] [data-testid="column"]:last-child{display:flex!important;align-items:center!important;justify-content:center!important;min-width:168px!important;overflow:visible!important;text-align:center}
         .st-key-approved_home_recent_card [class*="st-key-approved_home_menu_"]>[data-testid="stVerticalBlock"]{display:flex!important;flex-direction:row!important;align-items:center!important;justify-content:center!important;gap:6px!important;width:100%!important;min-height:44px!important}
         .st-key-approved_home_recent_card [class*="st-key-approved_home_menu_"]>[data-testid="stVerticalBlock"]>[data-testid="stElementContainer"]{width:auto!important;flex:0 0 auto!important}
         .st-key-approved_home_recent_card [class*="st-key-approved_home_action_review_"]{flex:0 1 auto!important;min-width:0!important}
@@ -1077,7 +1077,7 @@ def begin_approved_page() -> None:
         .st-key-approved_saved_bom_settings_page>[data-testid="stVerticalBlock"]{gap:12px!important}
         .st-key-approved_saved_bom_edit_screen,.st-key-approved_saved_bom_delete_screen{box-sizing:border-box!important;width:100%!important;max-width:none!important;margin:0 auto!important;padding:22px!important;border:1px solid #d7e0eb!important;border-radius:16px!important;background:#fff!important}
         .st-key-approved_saved_bom_delete_screen button[kind="primary"]{background:#be123c!important;border-color:#be123c!important}
-        .st-key-approved_monitoring_kpi_grid{box-sizing:border-box!important;width:100%!important;margin:0 0 20px!important}
+        .st-key-approved_monitoring_kpi_grid{box-sizing:border-box!important;width:100%!important;max-width:100%!important;min-width:0!important;margin:0 0 20px!important;overflow:hidden!important}
         .st-key-approved_monitoring_kpi_grid>[data-testid="stVerticalBlock"]{gap:0!important}
         .st-key-approved_monitoring_kpi_grid [data-testid="stHorizontalBlock"]{display:flex!important;flex-flow:row nowrap!important;justify-content:flex-start!important;gap:16px!important;align-items:stretch!important}
         .st-key-approved_monitoring_kpi_grid [data-testid="column"]{box-sizing:border-box!important;display:flex!important;flex:1 1 0!important;width:0!important;max-width:none!important;min-width:0!important;padding:0!important}
@@ -1560,7 +1560,7 @@ def _render_saved_bom_actions(column, analysis_id: str, *, scope: str, row_key: 
                 "Parts & Risk",
                 key=f"approved_{scope}_action_review_{row_key}",
                 type="primary",
-                width="stretch",
+                width="content",
                 help="Open Parts & Risk and the saved release evidence for this BOM.",
             ):
                 _open_saved_bom_engineering_intelligence(target)
@@ -2732,6 +2732,10 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
             """,
             unsafe_allow_javascript=True,
         )
+        # The live progress card below is the only analysis title. Painting
+        # "Analyzing BOM" here as well puts a second heading above it and
+        # pushes the progress surface down the workspace.
+        return
     with st.container(key="approved_bom_title"):
         title_col, action_col = st.columns([1, 0.28], gap="small", vertical_alignment="center")
         with title_col:

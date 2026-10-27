@@ -305,6 +305,31 @@ def inject_workspace_geometry_final() -> None:
         """,
         unsafe_allow_html=True,
     )
+    # The rail width is a CSS variable, but older sheets also hard-code 296px
+    # while the main column can keep a smaller left offset. Lock both to the
+    # same variable after those sheets so summary cards cannot paint under the
+    # sidebar. Viewports that collapse the rail stay on their own rule.
+    st.markdown(
+        """
+        <style id="cadivor-rail-content-lock" data-cadivor-layout-style="true">
+        @media (min-width: 701px) {
+          html body section[data-testid="stMain"] {
+            box-sizing: border-box !important;
+            margin-left: var(--cv-foundation-rail, 296px) !important;
+            width: calc(100% - var(--cv-foundation-rail, 296px)) !important;
+            max-width: none !important;
+            padding-left: 0 !important;
+          }
+          html body .st-key-cv_foundation_navigation {
+            width: var(--cv-foundation-rail, 296px) !important;
+            min-width: var(--cv-foundation-rail, 296px) !important;
+            max-width: var(--cv-foundation-rail, 296px) !important;
+          }
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def _inject_approved_visual_overrides() -> None:
