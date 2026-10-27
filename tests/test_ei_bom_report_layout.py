@@ -250,7 +250,7 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
         self.assertEqual(row["level"], "Medium")
         self.assertEqual(row["score"], 50)
 
-    def test_bom_risk_puts_component_findings_before_summary_and_snapshot(self):
+    def test_bom_risk_puts_summary_and_snapshot_before_component_findings(self):
         report = engineering_intelligence_html(
             bom_name="Synthetic BOM",
             part_count=2,
@@ -264,8 +264,8 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
             report.index("Engineering review required"),
         )
         self.assertLess(
-            report.index("Review these components first"),
             report.index("Health"),
+            report.index("Review these components first"),
         )
 
         renderer = REPORT_SOURCE.split(
