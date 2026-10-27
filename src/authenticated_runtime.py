@@ -180,7 +180,8 @@ def stop_authenticated_page(*args, **kwargs):
                 st.session_state.get("cadivor_route")
                 or st.session_state.get("app_mode")
                 or ""
-            )
+            ),
+            force=True,
         )
     exit_authenticated_route_body()
     return _stop_authenticated_page_impl(*args, **kwargs)
