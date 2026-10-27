@@ -35,19 +35,25 @@ class ProcurementAdvisorTests(unittest.TestCase):
             "Supplier Sources": None,
         }
         self.assertIn("<h1>Procurement advisor</h1>", procurement_page_header_html())
+        self.assertIn("font-size:52px", procurement_page_header_html())
+        self.assertIn("font-size:19px", procurement_page_header_html())
         self.assertIn("<div class='cv-pa-page-head'>", procurement_page_header_html())
         self.assertNotIn("<header", procurement_page_header_html())
 
         part_html = procurement_part_summary_html(part, recommendation)
         self.assertIn("<div class='cv-pa-summary'>", part_html)
+        self.assertIn("grid-template-columns:120px", part_html)
+        self.assertIn("font-size:23px", part_html)
         self.assertNotIn("<section", part_html)
 
         recommendation_html = procurement_recommendation_html(part, recommendation)
         self.assertIn("<div class='cv-pa-recommendation-v2'>", recommendation_html)
+        self.assertIn("font-size:30px", recommendation_html)
         self.assertNotIn("<section", recommendation_html)
 
         cards_html = procurement_summary_cards_html(part, recommendation)
         self.assertIn("<div class='cv-pa-metric-grid'>", cards_html)
+        self.assertIn("font-size:28px", cards_html)
         self.assertIn("<div class='cv-pa-metric cv-pa-metric--", cards_html)
         self.assertNotIn("<article", cards_html)
 
@@ -84,15 +90,34 @@ class ProcurementAdvisorTests(unittest.TestCase):
         branch = runtime.split('if app_mode == "Procurement Advisor":', 1)[1].split(
             'if app_mode == "Engineering Decisions":', 1
         )[0]
-        self.assertIn("max-width:1440px", branch)
+        self.assertIn("max-width:1440px!important", branch)
+        self.assertIn(":has(.st-key-cv_procurement_workspace)", branch)
+        self.assertIn('with st.container(key="cv_pa_supplier_options"):', branch)
+        self.assertIn("st.columns([0.5, 0.25, 0.25])", branch)
+        self.assertIn('with st.container(key="cv_pa_supplier_controls"):', branch)
+        self.assertIn("grid-template-columns:1fr!important", branch)
         self.assertLess(
             branch.index("procurement_workspace_panels_html("),
             branch.index("<h2>Supplier options</h2>"),
         )
         self.assertLess(
-            branch.index("procurement_workspace_panels_html("),
-            branch.index('reveal_authenticated_page_body("Procurement Advisor")'),
+            branch.index("<h2>Supplier options</h2>"),
+            branch.index('key="pa_find_qualified_alternative_top"'),
         )
+        self.assertLess(
+            branch.index("<h2>Supplier options</h2>"),
+            branch.index('key="pa_generate_supplier_insight"'),
+        )
+        for retained_action in (
+            'key="pa_edit_sourcing_details"',
+            '"Find qualified alternative"',
+            '"Generate AI supplier insights"',
+            '"Selected supplier"',
+            '"Save landed cost"',
+            '"Use selected offer values"',
+            '"More procurement actions and all components"',
+        ):
+            self.assertIn(retained_action, branch)
 
     def test_procurement_advisor_explains_its_decision_and_hands_off_bom_context(self):
         runtime = (
@@ -102,16 +127,15 @@ class ProcurementAdvisorTests(unittest.TestCase):
             'if app_mode == "Engineering Decisions":', 1
         )[0]
 
-        self.assertIn("What to review here", branch)
-        self.assertIn("“Not recorded” means Cadivor", branch)
-        self.assertIn("does not have verified data", branch)
-        self.assertIn("does not place an order", branch)
+        self.assertNotIn("What to review here", branch)
+        self.assertIn("“Not recorded” means Cadivor does not have verified data", branch)
+        self.assertIn("does not place an order or approve an engineering alternate", branch)
         self.assertIn('"Find qualified alternative"', branch)
         self.assertIn('key="pa_find_qualified_alternative_top"', branch)
         self.assertIn('analysis_id=str(focus.get("analysis_id") or focus_analysis.get("id") or "")', branch)
-        self.assertLess(
+        self.assertGreater(
             branch.index('key="pa_find_qualified_alternative_top"'),
-            branch.index('"<div class=\'cv-pa-section-head\'><div><h2>Supplier options</h2>'),
+            branch.index("<h2>Supplier options</h2>"),
         )
 
     def test_missing_supplier_defaults_are_not_presented_as_a_stockout(self):
@@ -352,6 +376,7 @@ class ProcurementAdvisorTests(unittest.TestCase):
             required_quantity=100,
         )
         self.assertIn("cv-pa-supplier-table", markup)
+        self.assertIn("font-size:13px;font-weight:850", markup)
         self.assertIn("is-selected", markup)
         self.assertIn("&lt;script&gt;", markup)
         self.assertNotIn("<script>", markup)
