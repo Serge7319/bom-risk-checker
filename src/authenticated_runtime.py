@@ -7579,11 +7579,11 @@ def run_authenticated_app() -> None:
                 .st-key-cv_pa_supplier_options>[data-testid="stVerticalBlock"]{gap:12px!important}
                 .st-key-cv_pa_supplier_options .cv-pa-section-head{margin:0 0 6px}
                 .cv-pa-section-head{display:flex;justify-content:space-between;align-items:flex-end;gap:18px;margin:10px 0 8px}
-                .cv-pa-section-head h2{font-size:20px;line-height:1.25;color:#102341;font-weight:800;margin:0 0 4px;letter-spacing:-.02em}
-                .cv-pa-section-head p{font-size:12px;line-height:1.5;color:#64748b;margin:0}
+                .cv-pa-section-head h2{font-size:26px;line-height:1.2;color:#102341;font-weight:800;margin:0 0 6px;letter-spacing:-.02em}
+                .cv-pa-section-head p{font-size:15px;line-height:1.5;color:#64748b;margin:0}
                 @media(max-width:700px){
                   .st-key-cv_pa_supplier_options{padding:14px!important}
-                  .cv-pa-section-head{display:block}.cv-pa-section-head h2{font-size:18px}
+                  .cv-pa-section-head{display:block}.cv-pa-section-head h2{font-size:20px}
                 }
                 </style>""",
                 unsafe_allow_html=True,
@@ -7853,7 +7853,9 @@ def run_authenticated_app() -> None:
                             )
                             st.session_state[offer_selection_key] = selected_supplier
 
-                        view_col, supplier_col = st.columns([0.34, 0.66])
+                        controls_spacer, view_col, supplier_col = st.columns([0.5, 0.25, 0.25])
+                        with controls_spacer:
+                            st.empty()
                         with view_col:
                             comparison_view = st.selectbox(
                                 "View",
