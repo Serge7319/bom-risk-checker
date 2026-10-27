@@ -71,6 +71,8 @@ def test_saved_bom_action_routes_are_separate_and_editor_reruns_updated_rows():
     editor = pages.split("def _render_saved_bom_open_page", 1)[1].split("def _render_saved_bom_delete_page", 1)[0]
     assert '"cadivor_saved_bom_rerun_pending"' in editor
     assert '"cadivor_bom_upload_open"] = False' in editor
+    assert 'navigate_to("BOM Analyzer", arm_opening=False)' in editor
+    assert 'navigate_to("BOM Analyzer", new_analysis="1", arm_opening=False)' not in editor
     route = runtime.split('if app_mode in {"BOM Analyzer", "High Risk Review"}:', 1)[1]
     consume_handoff = route.index('st.session_state.pop("cadivor_saved_bom_rerun_pending", False)')
     catalog_render = route.index("render_bom_catalog(")
