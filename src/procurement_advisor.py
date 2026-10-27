@@ -493,7 +493,7 @@ def procurement_part_summary_html(
     required_by = first("required_by", "required_date", "need_by_date", "required_at")
     bom_label = first("bom_name", "filename", "project_name", default="Not recorded")
     revision = first("bom_revision", "revision", "rev", default="")
-    bom_value = f"BOM: Rev {revision}" if revision and revision != "Not recorded" else f"BOM: {bom_label}
+    bom_value = f"BOM: Rev {revision}" if revision and revision != "Not recorded" else f"BOM: {bom_label}"
     action = _t(recommendation.get("Recommendation"), "Complete sourcing data")
     lifecycle_key = lifecycle.casefold()
     lifecycle_tone = (
