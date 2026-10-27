@@ -1837,7 +1837,8 @@ def _render_saved_bom_open_page(
                 from src.ui.main_transition import arm_bom_analysis_transition
 
                 arm_bom_analysis_transition(st.session_state, "rerun")
-                navigate_to("BOM Analyzer", new_analysis="1", arm_opening=False)
+                # Keep the staged file intact. The new_analysis handoff clears pending upload state.
+                navigate_to("BOM Analyzer", arm_opening=False)
 
 
 def _render_saved_bom_delete_page(row: dict[str, Any], user_id: str) -> None:
