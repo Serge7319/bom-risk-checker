@@ -606,6 +606,28 @@ def mount_main_transition_loading(target_route: str, *, paint_markup: bool = Fal
         _paint_main_transition_markup(route, gen)
 
 
+def should_defer_navigation_reveal(
+    session_state: MutableMapping[str, Any],
+    *,
+    force: bool = False,
+) -> bool:
+    """Keep a navigation cover until the destination renderer finishes.
+
+    Early reveal calls identify a distinctive page body, but Streamlit emits
+    subsequent widgets as the script continues. During navigation, defer those
+    calls so the user sees one stable loading surface until the route reaches
+    its final page stop. Blocking and first-admission flows keep their existing
+    early-reveal behavior.
+    """
+    if force:
+        return False
+    return bool(
+        session_state.get(DELAY_ROUTE_BODY_REVEAL_KEY)
+        and str(session_state.get(MAIN_TRANSITION_KIND_KEY) or "").strip().casefold()
+        == "navigation"
+    )
+
+
 def reveal_main_transition(route: str = "") -> None:
     """Reveal distinctive target content and collapse the main transition owner."""
     transition_kind = str(
