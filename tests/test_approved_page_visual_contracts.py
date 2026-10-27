@@ -93,6 +93,19 @@ class ApprovedPageVisualContractTests(unittest.TestCase):
         self.assertIn('st.button("Start 14-Day Trial", key="cv_public_signup"', MARKETING_SITE)
 
 
+    def test_home_saved_bom_actions_align_with_the_actions_column(self):
+        home = APPROVED_PAGES.split("def render_home(", 1)[1].split(
+            "def _render_approved_bom_upload_name_fields()", 1
+        )[0]
+        self.assertIn(
+            'header_labels = ("Name", "Project", "Part count", "Health", "High-risk parts", "Last analyzed", "Actions")',
+            home,
+        )
+        self.assertIn('cells = st.columns(home_widths, gap="small"', home)
+        self.assertIn('_render_saved_bom_actions(cells[6],', home)
+        self.assertIn("flex-direction:row!important", APPROVED_PAGES)
+        self.assertIn("justify-content:center!important;gap:6px!important", APPROVED_PAGES)
+
     def test_monitoring_period_has_no_overlapping_date_caption(self):
         monitoring_renderer = APPROVED_PAGES.split("def render_monitoring(", 1)[1]
         self.assertNotIn("cv-ap-monitoring-period-range", monitoring_renderer)
