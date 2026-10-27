@@ -7852,11 +7852,6 @@ def run_authenticated_app() -> None:
                     st.success(f"Sourcing details saved for {saved_count} saved BOM component record(s).")
 
                 with st.container(key="cv_pa_supplier_options"):
-                    st.markdown(
-                        "<div class='cv-pa-section-head'><div><h2>Supplier options</h2>"
-                        "<p>Compare price, availability, lead time, risk, and total landed cost for this part.</p></div></div>",
-                        unsafe_allow_html=True,
-                    )
                     offers = normalize_supplier_offer_records(focus)
                     if offers:
                         offer_suppliers = list(dict.fromkeys(row["supplier"] for row in offers))
@@ -7875,23 +7870,35 @@ def run_authenticated_app() -> None:
                             )
                             st.session_state[offer_selection_key] = selected_supplier
 
-                        with st.container(key="cv_pa_supplier_controls"):
-                            controls_spacer, view_col, supplier_col = st.columns([0.5, 0.25, 0.25])
-                            with controls_spacer:
-                                st.empty()
-                            with view_col:
-                                comparison_view = st.selectbox(
-                                    "View",
-                                    ["Key comparison", "All evidence"],
-                                    key="pa_supplier_comparison_view",
-                                )
-                            with supplier_col:
-                                selected_supplier = st.selectbox(
-                                    "Selected supplier",
-                                    offer_suppliers,
-                                    index=offer_suppliers.index(selected_supplier),
-                                    key=offer_selection_key,
-                                )
+                    with st.container(key="cv_pa_supplier_toprow"):
+                        heading_col, control_col = st.columns(
+                            [0.6, 0.4], gap="medium", vertical_alignment="bottom"
+                        )
+                        with heading_col:
+                            st.markdown(
+                                "<div class='cv-pa-section-head'><div><h2>Supplier options</h2>"
+                                "<p>Compare price, availability, lead time, risk, and total landed cost for this part.</p></div></div>",
+                                unsafe_allow_html=True,
+                            )
+                        if offers:
+                            with control_col:
+                                with st.container(key="cv_pa_supplier_controls"):
+                                    view_col, supplier_col = st.columns(
+                                        [0.85, 1.15], gap="small", vertical_alignment="bottom"
+                                    )
+                                    with view_col:
+                                        comparison_view = st.selectbox(
+                                            "View",
+                                            ["Key comparison", "All evidence"],
+                                            key="pa_supplier_comparison_view",
+                                        )
+                                    with supplier_col:
+                                        selected_supplier = st.selectbox(
+                                            "Selected supplier",
+                                            offer_suppliers,
+                                            index=offer_suppliers.index(selected_supplier),
+                                            key=offer_selection_key,
+                                        )
                         st.markdown(
                             supplier_comparison_table_html(
                                 focus,
