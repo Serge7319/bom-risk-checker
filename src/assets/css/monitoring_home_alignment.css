@@ -32,9 +32,50 @@ html body section[data-testid="stMain"] .st-key-approved_home_header [class*="st
   min-width: 0 !important;
 }
 
+/* The main column scrolls. A classic scrollbar is about 11px and was making
+   the Monitoring canvas narrower than Home. Keep the scroll behavior and
+   let both canvases use the same content box. */
+html body section[data-testid="stMain"] {
+  scrollbar-width: none !important;
+}
+html body section[data-testid="stMain"]::-webkit-scrollbar {
+  width: 0 !important;
+  height: 0 !important;
+}
+
 /* A unique hidden marker activates the Home-width canvas without duplicating the approved-page wrapper. */
 html body section[data-testid="stMain"] .st-key-monitoring_home_width_marker {
   display: none !important;
+}
+
+html body section[data-testid="stMain"] :is([data-testid="stElementContainer"], [data-testid="stLayoutWrapper"]):has(> .st-key-monitoring_home_width_marker) {
+  position: absolute !important;
+  width: 0 !important;
+  height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  overflow: hidden !important;
+  flex: 0 0 0 !important;
+}
+
+/* Monitoring and Home share the same content box inside the 1,440px main column. */
+html body section[data-testid="stMain"] [data-testid="stMainBlockContainer"]:has(.st-key-monitoring_home_width_marker) .st-key-approved_page_canvas_standard_render_monitoring,
+html body section[data-testid="stMain"]:has(.st-key-approved_page_canvas_standard_render_monitoring) [data-testid="stElementContainer"]:has(> .st-key-approved_page_canvas_standard_render_monitoring) {
+  box-sizing: border-box !important;
+  width: 100% !important;
+  max-width: 1440px !important;
+  min-width: 0 !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+  border-left: 0 !important;
+  border-right: 0 !important;
+}
+
+html body section[data-testid="stMain"]:has(.st-key-approved_page_canvas_standard_render_monitoring) .st-key-approved_page_canvas_standard_render_monitoring {
+  align-self: stretch !important;
 }
 
 /* Monitoring matches Home's centered 1,440px workspace canvas. */
@@ -71,11 +112,17 @@ html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_re
   line-height: 1.5 !important;
 }
 
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_kpi_grid {
+  overflow: visible !important;
+}
+
 html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-kpi {
-  grid-template-columns: minmax(0, 1fr) 104px !important;
-  grid-template-rows: 60px auto !important;
-  min-height: 190px !important;
-  padding: 20px 22px !important;
+  grid-template-columns: minmax(0, 1fr) 96px !important;
+  grid-template-rows: auto auto !important;
+  height: auto !important;
+  min-height: 0 !important;
+  overflow: visible !important;
+  padding: 16px 16px 14px !important;
 }
 
 html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-icon {
@@ -161,8 +208,10 @@ html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_re
 @media (max-width: 1100px) {
   html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-kpi {
     grid-template-columns: minmax(0, 1fr) 76px !important;
-    min-height: 180px !important;
-    padding: 18px !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    padding: 14px !important;
   }
 
   html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-icon {
@@ -171,7 +220,13 @@ html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_re
   }
 
   html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-copy > span {
-    font-size: 16px !important;
+    font-size: 14px !important;
+    overflow-wrap: normal !important;
+    word-break: normal !important;
+  }
+
+  html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-kpi .cv-ap-spark {
+    width: 48px !important;
   }
 
   html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-copy strong {
@@ -181,7 +236,9 @@ html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_re
 
 @media (max-width: 640px) {
   html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-kpi {
-    min-height: 160px !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
     padding: 14px !important;
   }
 
@@ -239,4 +296,57 @@ html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_re
 html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring [class*="st-key-approved_alert_action_"] .stButton > button:hover {
   border-color: #4f8df5 !important;
   background: #f4f8ff !important;
+}
+
+/* The shared menu-button rule sizes every button in the Home actions cell to
+   the overflow icon. The Engineering Intelligence action needs its own width. */
+html body section[data-testid="stMain"] [class*="st-key-approved_home_action_review_"] button[kind="primary"] {
+  box-sizing: border-box !important;
+  width: auto !important;
+  min-width: max-content !important;
+  max-width: none !important;
+  height: auto !important;
+  min-height: 36px !important;
+  padding: 6px 10px !important;
+  white-space: nowrap !important;
+}
+
+/* BOM analysis progress sits after the upload shell in the main column.
+   Hide that shell and every other element container, then keep the progress
+   card and its own contents. The card stays at the top of the scrollport. */
+html body:has(.st-key-bom8_analysis_progress_card) section[data-testid="stMain"] [data-testid="stElementContainer"]:not(:has(.st-key-bom8_analysis_progress_card)) {
+  display: none !important;
+  height: 0 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  flex: 0 0 0 !important;
+}
+
+html body:has(.st-key-bom8_analysis_progress_card) section[data-testid="stMain"] [data-testid="stElementContainer"]:has(.st-key-bom8_analysis_progress_card),
+html body:has(.st-key-bom8_analysis_progress_card) section[data-testid="stMain"] .st-key-bom8_analysis_progress_card [data-testid="stElementContainer"],
+html body:has(.st-key-bom8_analysis_progress_card) .st-key-cv_foundation_navigation [data-testid="stElementContainer"],
+html body:has(.st-key-bom8_analysis_progress_card) .st-key-cv_foundation_profile_menu [data-testid="stElementContainer"] {
+  display: flex !important;
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  margin-top: 0 !important;
+  overflow: visible !important;
+  flex: none !important;
+}
+
+html body:has(.st-key-bom8_analysis_progress_card) section[data-testid="stMain"] [data-testid="stVerticalBlock"]:has(.st-key-bom8_analysis_progress_card) {
+  gap: 0 !important;
+  row-gap: 0 !important;
+}
+
+html body section[data-testid="stMain"] .st-key-bom8_analysis_progress_card {
+  position: sticky !important;
+  top: 76px !important;
+  z-index: 4 !important;
+  width: 100% !important;
+  max-width: 1440px !important;
+  margin: 8px auto 16px !important;
 }

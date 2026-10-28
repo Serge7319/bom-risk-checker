@@ -142,12 +142,45 @@ def fail_approved_bom_summary_save(
     )
 
 
+def confirmed_inserted_id(
+    response_rows: Any,
+    *,
+    sent_id: str,
+    fetched_rows: Any = None,
+) -> str:
+    """Return the id that was actually stored for an analysis insert.
+
+    PostgREST returns the inserted row by default. The one-time path and the
+    normal path both send a client id so the saved order and the summary can
+    refer to the same row. Use the id in that representation when the database
+    echoes one, including when it assigns a different id. If the representation
+    omits the id, accept the id only when a follow-up read returns that exact
+    stored row. A missing row is a failed save.
+    """
+    rows = list(response_rows or [])
+    returned = ""
+    if rows and isinstance(rows[0], dict):
+        returned = str(rows[0].get("id") or "").strip()
+    if returned:
+        return returned
+    sent = str(sent_id or "").strip()
+    matches = [
+        row
+        for row in list(fetched_rows or [])
+        if isinstance(row, dict) and sent and str(row.get("id") or "").strip() == sent
+    ]
+    if len(matches) == 1:
+        return sent
+    raise KeyError("id")
+
+
 __all__ = [
     "consume_approved_bom_submission",
     "stage_approved_bom_submission",
     "resume_approved_bom_submission",
     "finish_approved_bom_submission",
     "fail_approved_bom_summary_save",
+    "confirmed_inserted_id",
     "should_render_approved_bom_upload_form",
     "should_render_legacy_bom_workspace",
     "should_render_bom_analysis_body",

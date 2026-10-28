@@ -41,6 +41,9 @@ from src.ui.cadivor_design_system import (
     render_subsection_header,
 )
 
+COMPARE_PARTS_DATASHEET_A_KEY = "compare_parts_datasheet_a"
+COMPARE_PARTS_DATASHEET_B_KEY = "compare_parts_datasheet_b"
+
 
 def _esc(value: object) -> str:
     return html.escape(str(value or ""))
@@ -70,6 +73,11 @@ def _inject_compare_parts_styles() -> None:
         .cp-legend .warn{border-color:#FDE68A;background:#FFFBEB;color:#B45309}
         .cp-legend .need{border-color:#BFDBFE;background:#EFF6FF;color:#1D4ED8}
         .cp-assessment-card{border:1px solid var(--cv64-border,#E2E8F0);border-radius:16px;background:linear-gradient(180deg,#FFFFFF 0%,#F8FAFC 100%);padding:18px 18px 14px;box-shadow:0 10px 28px rgba(15,23,42,.04);margin-bottom:14px}
+        .cp-review-warnings{margin:10px 0 0;padding:10px 12px;border:1px solid #FDE68A;border-radius:12px;background:#FFFBEB;color:#92400E;font-size:12px;line-height:1.45}
+        .cp-review-warnings ul{margin:6px 0 0;padding-left:18px}
+        .cp-review-warnings li{margin:0 0 4px}
+        .cp-evidence-note{margin:10px 0 0;padding:10px 12px;border:1px solid #BFDBFE;border-radius:12px;background:#EFF6FF;color:#1E3A8A;font-size:12px;line-height:1.45}
+        .cp-fixture-note{margin:10px 0 0;padding:10px 12px;border:1px solid #E2E8F0;border-radius:12px;background:#F8FAFC;color:#475569;font-size:12px;line-height:1.45}
         section[data-testid="stMain"] .cp-workspace .stFormSubmitButton>button{
           min-width:160px!important;width:auto!important;max-width:220px!important
         }
@@ -194,6 +202,27 @@ def render_compare_parts_page(*, is_admin: bool = False, role: str | None = None
                 use_container_width=False,
             )
             cadivor_button_wrap_end()
+    with st.expander("Optional: upload exact-MPN datasheet", expanded=False):
+        st.caption(
+            "Use this when a manufacturer or authorized-distributor link is missing "
+            "or blocked. Values are shown only after the uploaded PDF names the "
+            "entered manufacturer and exact MPN."
+        )
+        upload_cols = st.columns(2)
+        with upload_cols[0]:
+            uploaded_a = st.file_uploader(
+                "Optional Part A PDF",
+                type=["pdf"],
+                key=COMPARE_PARTS_DATASHEET_A_KEY,
+                help="Exact-MPN datasheet for Part A when live sources are unavailable.",
+            )
+        with upload_cols[1]:
+            uploaded_b = st.file_uploader(
+                "Optional Part B PDF",
+                type=["pdf"],
+                key=COMPARE_PARTS_DATASHEET_B_KEY,
+                help="Exact-MPN datasheet for Part B when live sources are unavailable.",
+            )
     cadivor_panel_end()
 
     if submitted:
@@ -214,9 +243,20 @@ def render_compare_parts_page(*, is_admin: bool = False, role: str | None = None
                 "part_b": part_b,
             }
             try:
+                uploads: dict[str, Any] = {}
+                file_a = uploaded_a or st.session_state.get(COMPARE_PARTS_DATASHEET_A_KEY)
+                file_b = uploaded_b or st.session_state.get(COMPARE_PARTS_DATASHEET_B_KEY)
+                if file_a is not None:
+                    uploads["a"] = file_a
+                if file_b is not None:
+                    uploads["b"] = file_b
                 with st.status("Retrieving both parts and comparing attributes…", expanded=True):
                     st.write("Looking up Part A and Part B from configured suppliers…")
-                    result = run_compare_parts(part_a, part_b)
+                    result = run_compare_parts(
+                        part_a,
+                        part_b,
+                        datasheet_uploads=uploads or None,
+                    )
                     st.write("Building the family-aware comparison matrix…")
                 st.session_state[COMPARE_PARTS_RESULT_KEY] = result
             except Exception:
@@ -291,6 +331,87 @@ def render_compare_parts_page(*, is_admin: bool = False, role: str | None = None
         ],
         columns=3,
     )
+    review_warnings = [
+        str(item).strip()
+        for item in (comparison.get("review_warnings") or [])
+        if str(item).strip()
+    ]
+    if review_warnings:
+        st.markdown(
+            '<div class="cp-review-warnings" role="status">'
+            "<strong>Review warnings</strong>"
+            "<ul>"
+            + "".join(f"<li>{_esc(item)}</li>" for item in review_warnings)
+            + "</ul></div>",
+            unsafe_allow_html=True,
+        )
+    asymmetry = str(comparison.get("evidence_asymmetry_note") or "").strip()
+    if asymmetry:
+        st.markdown(
+            f'<div class="cp-evidence-note" role="status"><strong>Evidence coverage</strong><br/>{_esc(asymmetry)}</div>',
+            unsafe_allow_html=True,
+        )
+    access_blockers = (
+        comparison.get("access_blockers")
+        if isinstance(comparison.get("access_blockers"), dict)
+        else {}
+    )
+    blocker_rows = [
+        row
+        for row in (access_blockers.get("blockers") or [])
+        if isinstance(row, Mapping) and str(row.get("detail") or "").strip()
+    ]
+    if blocker_rows:
+        unique_details: list[str] = []
+        seen_details: set[str] = set()
+        for row in blocker_rows:
+            detail = str(row.get("detail") or "").strip()
+            if detail and detail not in seen_details:
+                seen_details.add(detail)
+                unique_details.append(detail)
+        config_names = sorted(
+            {
+                str(name).strip()
+                for row in blocker_rows
+                for name in (row.get("required_configuration") or [])
+                if str(name).strip()
+            }
+        )
+        config_note = (
+            f" Required product configuration (do not paste secrets into chat): "
+            f"{', '.join(config_names)}."
+            if config_names
+            else ""
+        )
+        st.markdown(
+            '<div class="cp-evidence-note" role="status">'
+            "<strong>Exact-MPN access blockers</strong>"
+            "<ul>"
+            + "".join(f"<li>{_esc(item)}</li>" for item in unique_details)
+            + "</ul>"
+            + (_esc(config_note) if config_note else "")
+            + "</div>",
+            unsafe_allow_html=True,
+        )
+    fixture_kpi = comparison.get("fixture_kpi") if isinstance(comparison.get("fixture_kpi"), dict) else {}
+    fixture_note = str(fixture_kpi.get("note") or "").strip()
+    if fixture_note:
+        isolation = (
+            comparison.get("fixture_production_isolation")
+            if isinstance(comparison.get("fixture_production_isolation"), dict)
+            else {}
+        )
+        isolation_note = str(isolation.get("note") or "").strip()
+        st.markdown(
+            f'<div class="cp-fixture-note" role="status"><strong>Test fixtures and KPI totals</strong><br/>'
+            f"{_esc(fixture_note)} "
+            f"Visible rows: {compatible + material + needs}. "
+            f"KPI sum Compatible ({compatible}) + Material ({material}) + Needs validation ({needs}) "
+            f"= {compatible + material + needs}."
+            + (f" {_esc(isolation_note)}" if isolation_note else "")
+            + "</div>",
+            unsafe_allow_html=True,
+        )
     st.markdown("</div>", unsafe_allow_html=True)
     cadivor_panel_end()
 
@@ -303,7 +424,8 @@ def render_compare_parts_page(*, is_admin: bool = False, role: str | None = None
     st.markdown(
         f'<div class="cp-matrix-note">Component type: {_esc(component_type)}. '
         "Engineering compatibility is separate from any supplier substitute relationship. "
-        "Cadivor never labels either part as a Direct substitute here.</div>",
+        "Cadivor never labels either part as a Direct substitute here. "
+        "[Test fixture] values are stubs for this review, not live manufacturer evidence.</div>",
         unsafe_allow_html=True,
     )
 

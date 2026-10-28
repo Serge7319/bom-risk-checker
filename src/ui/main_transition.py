@@ -80,12 +80,21 @@ def arm_bom_analysis_transition(
     session_state: MutableMapping[str, Any],
     mode: str = "start",
 ) -> None:
-    """Keep one stable loading surface while a new BOM run is being prepared."""
+    """Keep analysis progress on the page instead of covering the workspace.
+
+    The progress card near the top of BOM Analyzer is the loading surface.
+    A blocking full-workspace cover hides that card and recenters a second
+    "Starting BOM analysis…" message.
+    """
     normalized_mode = str(mode or "start").strip().casefold()
     if normalized_mode not in {"start", "rerun"}:
         normalized_mode = "start"
-    arm_main_transition(session_state, "BOM Analyzer", kind="blocking")
     session_state[BOM_ANALYSIS_TRANSITION_KEY] = normalized_mode
+    session_state[MAIN_TRANSITION_ACTIVE_KEY] = False
+    session_state[MAIN_TRANSITION_KIND_KEY] = ""
+    session_state.pop(DELAY_ROUTE_BODY_REVEAL_KEY, None)
+    session_state.pop(OPENING_STARTED_AT_KEY, None)
+    session_state.pop(OPENING_ROUTE_KEY, None)
 
 
 def route_needs_main_transition(target_route: str, presented_route: str = "") -> bool:
@@ -457,15 +466,12 @@ def route_loading_markup(target_route: str, transition_gen: int) -> str:
         </div>
         """
     mode = str(st.session_state.get(BOM_ANALYSIS_TRANSITION_KEY) or "").strip().casefold()
-    if safe_route == "BOM Analyzer" and mode == "rerun":
-        title = "Rerunning BOM analysis…"
-        description = "Refreshing supplier, lifecycle, lead-time, and pricing evidence."
-    elif safe_route == "BOM Analyzer" and mode == "start":
-        title = "Starting BOM analysis…"
-        description = "Preparing your components and checking configured supplier sources."
-    else:
-        title = f"Opening {safe_route}…"
-        description = "Preparing this page in your Cadivor workspace."
+    if safe_route == "BOM Analyzer" and mode in {"start", "rerun"}:
+        # Analysis progress stays in the page card. Do not paint the
+        # full-workspace cover for the start or rerun handoff.
+        return ""
+    title = f"Opening {safe_route}…"
+    description = "Preparing this page in your Cadivor workspace."
     return f"""
         <div data-cadivor-transition-host="cadivor-main-transition"
              data-cadivor-transition-gen="{gen}"
@@ -560,7 +566,9 @@ def _paint_main_transition_markup(route: str, gen: int) -> None:
     inserts this static HTML directly into the app DOM, so the cover and its
     inline fallback styles arrive in the same Streamlit delta.
     """
-    st.html(route_loading_markup(route, gen))
+    markup = route_loading_markup(route, gen)
+    if str(markup or "").strip():
+        st.html(route_loading_markup(route, gen))
 
 
 def paint_prepared_main_transition(target_route: str) -> None:

@@ -291,20 +291,52 @@ class ComparePartsCoreTests(unittest.TestCase):
         self.assertNotIn("ValueRole", text)
 
     def test_run_compare_parts_uses_lookup(self):
-        with patch("src.parts_compare.lookup_part_for_compare", side_effect=[_cap(), _cap(mpn="ALT")]):
+        empty_evidence = {
+            "sources": [],
+            "documents": [],
+            "verified_documents": [],
+            "primary_document": None,
+            "identity": {
+                "attached": False,
+                "verified": False,
+                "mpn_verified": False,
+                "manufacturer_verified": False,
+                "reason": "No datasheet was attached for this part.",
+            },
+        }
+        with (
+            patch("src.parts_compare.lookup_part_for_compare", side_effect=[_cap(), _cap(mpn="ALT")]),
+            patch("src.compare_evidence_search.gather_part_evidence", return_value=empty_evidence),
+        ):
             result = run_compare_parts("C0603C104K5RACTU", "ALT")
         self.assertEqual(result["status"], "completed")
         self.assertEqual(result["comparison"]["family"], "Capacitor")
 
     def test_run_compare_parts_many_builds_a_third_column_and_retrieves_once(self):
-        with patch(
-            "src.parts_compare.lookup_part_for_compare",
-            side_effect=[
-                _cap(),
-                _cap(mpn="ALT-B"),
-                _cap(v="25V", mpn="ALT-C"),
-            ],
-        ) as lookup:
+        empty_evidence = {
+            "sources": [],
+            "documents": [],
+            "verified_documents": [],
+            "primary_document": None,
+            "identity": {
+                "attached": False,
+                "verified": False,
+                "mpn_verified": False,
+                "manufacturer_verified": False,
+                "reason": "No datasheet was attached for this part.",
+            },
+        }
+        with (
+            patch(
+                "src.parts_compare.lookup_part_for_compare",
+                side_effect=[
+                    _cap(),
+                    _cap(mpn="ALT-B"),
+                    _cap(v="25V", mpn="ALT-C"),
+                ],
+            ) as lookup,
+            patch("src.compare_evidence_search.gather_part_evidence", return_value=empty_evidence),
+        ):
             result = run_compare_parts_many(["C0603C104K5RACTU", "ALT-B", "ALT-C"])
 
         comparison = result["comparison"]
@@ -360,6 +392,17 @@ class ComparePartsUiWiringTests(unittest.TestCase):
         self.assertIn("user_may_view_comparison_diagnostics", page)
         self.assertTrue(user_may_view_comparison_diagnostics(is_admin=True))
         self.assertFalse(user_may_view_comparison_diagnostics(is_admin=False, role="engineer"))
+
+    def test_compare_parts_page_wires_exact_mpn_datasheet_upload(self):
+        root = Path(__file__).resolve().parents[1]
+        page = (root / "src" / "pages" / "compare_parts.py").read_text(encoding="utf-8")
+        self.assertIn("Optional: upload exact-MPN datasheet", page)
+        self.assertIn('COMPARE_PARTS_DATASHEET_A_KEY = "compare_parts_datasheet_a"', page)
+        self.assertIn('COMPARE_PARTS_DATASHEET_B_KEY = "compare_parts_datasheet_b"', page)
+        self.assertIn("key=COMPARE_PARTS_DATASHEET_A_KEY", page)
+        self.assertIn("key=COMPARE_PARTS_DATASHEET_B_KEY", page)
+        self.assertIn("datasheet_uploads=", page)
+        self.assertIn("access_blockers", page)
 
     def test_approved_compare_page_wires_the_add_part_slot(self):
         root = Path(__file__).resolve().parents[1]

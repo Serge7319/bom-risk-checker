@@ -102,6 +102,21 @@ class WorkspaceEvidenceContractTests(unittest.TestCase):
         self.assertIn("does not record a part-specific exception", " ".join(rows[0]["drivers"]))
         self.assertEqual(rows[0]["action"], "No part-specific recommendation")
 
+    def test_lm358_versus_ne555_keeps_the_red_incompatibility_warning(self):
+        from src.compatibility_gate import assess_part_compatibility
+
+        assessment = assess_part_compatibility(
+            {"manufacturer_part_number": "LM358DR", "package": "SOIC-8", "pin_count": 8, "description": "Dual operational amplifier"},
+            {"manufacturer_part_number": "NE555P", "package": "PDIP-8", "pin_count": 8, "description": "Precision timer"},
+        )
+        self.assertTrue(assessment["critical_warnings"])
+        self.assertEqual(assessment["drop_in_status"], "Not a drop-in replacement")
+        self.assertIn("footprint", " ".join(assessment["critical_warnings"]).casefold())
+        renderer = (ROOT / "src" / "ui" / "approved_pages.py").read_text(encoding="utf-8")
+        compare = renderer.split("def render_compare_live", 1)[1].split("\ndef render_datasheet_live", 1)[0]
+        self.assertIn("cv-compat-banner critical", compare)
+        self.assertIn("NOT A DROP-IN REPLACEMENT", compare)
+
     def test_synthetic_compare_without_supplier_evidence_returns_a_clear_failure(self):
         from src.parts_compare import run_compare_parts_many
 

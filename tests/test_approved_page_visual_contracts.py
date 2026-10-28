@@ -35,15 +35,15 @@ class ApprovedPageVisualContractTests(unittest.TestCase):
 
     def test_monitoring_kpis_override_streamlit_column_sizing(self):
         self.assertIn(
-            '.st-key-approved_monitoring_kpi_grid [data-testid="stHorizontalBlock"]{display:flex!important;flex-flow:row nowrap!important;justify-content:flex-start!important;',
+            '.st-key-approved_monitoring_kpi_grid [data-testid="stHorizontalBlock"]{display:grid!important;grid-template-columns:repeat(4,minmax(0,240px))!important;justify-content:start!important;',
             APPROVED_PAGES,
         )
         self.assertIn(
-            '.st-key-approved_monitoring_kpi_grid [data-testid="column"]{box-sizing:border-box!important;display:flex!important;flex:1 1 0!important;width:0!important;max-width:none!important;',
+            '.st-key-approved_monitoring_kpi_grid{box-sizing:border-box!important;width:100%!important;max-width:100%!important;min-width:0!important;margin:0 0 20px!important;overflow:visible!important}',
             APPROVED_PAGES,
         )
         self.assertNotIn(
-            '.st-key-approved_monitoring_kpi_grid [data-testid="stHorizontalBlock"]{display:grid!',
+            '.st-key-approved_monitoring_kpi_grid [data-testid="column"]{box-sizing:border-box!important;display:flex!important;flex:1 1 0!important;width:0!important;max-width:none!important;',
             APPROVED_PAGES,
         )
 
@@ -198,10 +198,12 @@ class ApprovedPageVisualContractTests(unittest.TestCase):
 
     def test_monitoring_filter_pills_wrap_before_the_period_control_can_overlap(self):
         self.assertIn(
-            "grid-template-columns: 42px minmax(0, 1fr) 356px !important;",
+            "grid-template-columns: minmax(4.5rem, max-content) minmax(0, 1fr) 356px !important;",
             MONITORING_FINAL_CSS,
         )
-        self.assertIn("grid-template-columns: 42px minmax(0, 1fr) !important;", MONITORING_FINAL_CSS)
+        self.assertIn("grid-template-columns: minmax(4.5rem, max-content) minmax(0, 1fr) !important;", MONITORING_FINAL_CSS)
+        self.assertIn(".cv-ap-monitoring-show-label", MONITORING_FINAL_CSS)
+        self.assertIn("min-width: 4.5rem !important;", MONITORING_FINAL_CSS)
         self.assertIn("flex-flow: row wrap !important;", MONITORING_FINAL_CSS)
         self.assertIn("max-width: 100% !important;", MONITORING_FINAL_CSS)
         self.assertIn("border-radius: 999px !important;", MONITORING_FINAL_CSS)

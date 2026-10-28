@@ -252,6 +252,12 @@ def _architecture_is_meaningful(original: Mapping[str, Any], *values: str) -> bo
     return any(_recognized_isa(value) for value in values) or bool(_infer_isa_from_part(original))
 
 
+def _interface_profile(part: Mapping[str, Any]):
+    from src.component_family_profiles import get_family_profile, infer_family_id
+
+    return get_family_profile(infer_family_id(part))
+
+
 def assess_part_compatibility(
     original: Mapping[str, Any] | None,
     candidate: Mapping[str, Any] | None,
@@ -259,10 +265,18 @@ def assess_part_compatibility(
     """Assess known physical/ISA blockers without inferring missing evidence."""
     source = dict(original or {})
     alternate = dict(candidate or {})
+    source_profile = _interface_profile(source)
+    candidate_profile = _interface_profile(alternate)
+    # Leave the package and pin-count gate in place unless both parts are in a
+    # family that explicitly uses a different mechanical interface.
+    semiconductor_interface = bool(
+        source_profile.uses_semiconductor_interface
+        or candidate_profile.uses_semiconductor_interface
+    )
     source_package = _first(source, _PACKAGE_KEYS)
     candidate_package = _first(alternate, _PACKAGE_KEYS)
-    source_pins = _pin_count(source, source_package)
-    candidate_pins = _pin_count(alternate, candidate_package)
+    source_pins = _pin_count(source, source_package) if semiconductor_interface else 0
+    candidate_pins = _pin_count(alternate, candidate_package) if semiconductor_interface else 0
 
     package_mismatch = bool(
         source_package
@@ -272,10 +286,39 @@ def assess_part_compatibility(
     pin_mismatch = bool(source_pins and candidate_pins and source_pins != candidate_pins)
     physical_mismatch = package_mismatch or pin_mismatch
     physical_missing = []
-    if not source_package or not candidate_package:
-        physical_missing.append("package")
-    if not source_pins or not candidate_pins:
-        physical_missing.append("pin count")
+    interface_checks: list[dict[str, str]] = []
+    if semiconductor_interface:
+        if not source_package or not candidate_package:
+            physical_missing.append("package")
+        if not source_pins or not candidate_pins:
+            physical_missing.append("pin count")
+        interface_checks = [
+            {"label": "package / case", "source": source_package, "candidate": candidate_package},
+            {
+                "label": "pin count",
+                "source": str(source_pins or ""),
+                "candidate": str(candidate_pins or ""),
+            },
+        ]
+    else:
+        # Panel rheostats and potentiometers are not checked as IC packages.
+        package_mismatch = False
+        pin_mismatch = False
+        physical_mismatch = False
+        for label, keys in (
+            ("mounting", ("mounting_style", "Mounting", "Mounting Style", "mounting")),
+            ("terminal style", ("terminal_style", "Terminal style", "termination", "Termination Style")),
+            ("shaft", ("shaft", "Shaft", "shaft_diameter", "Shaft Diameter")),
+        ):
+            source_value = _first(source, keys)
+            candidate_value = _first(alternate, keys)
+            interface_checks.append(
+                {"label": label, "source": source_value, "candidate": candidate_value}
+            )
+            if not source_value or not candidate_value:
+                physical_missing.append(label)
+            elif _clean(source_value).casefold() != _clean(candidate_value).casefold():
+                physical_mismatch = True
 
     source_architecture = _architecture_value(source)
     candidate_architecture = _architecture_value(alternate)
@@ -304,22 +347,43 @@ def assess_part_compatibility(
     )
     architecture_missing = bool(
         architecture_meaningful
+        and semiconductor_interface
         and (
             not (source_recognized_isa and candidate_recognized_isa)
             or ambiguous_arm_detail
         )
     )
+    if not semiconductor_interface:
+        architecture_meaningful = False
+        architecture_mismatch = False
+        architecture_missing = False
 
     critical_warnings = []
-    if physical_mismatch:
+    if physical_mismatch and semiconductor_interface:
         critical_warnings.append(CRITICAL_PHYSICAL_WARNING)
+    elif physical_mismatch:
+        critical_warnings.append(
+            "CRITICAL: The recorded mechanical interface does not match. "
+            "Do not treat this as a drop-in replacement."
+        )
     if architecture_mismatch:
         critical_warnings.append(CRITICAL_FIRMWARE_WARNING)
 
     review_warnings = []
-    if physical_missing:
+    if physical_missing and semiconductor_interface:
         review_warnings.append(
             "Drop-in fit is unverified: package and pin-count evidence must match before approval."
+        )
+    elif physical_missing:
+        if len(physical_missing) == 1:
+            missing_text = physical_missing[0]
+        elif len(physical_missing) == 2:
+            missing_text = f"{physical_missing[0]} and {physical_missing[1]}"
+        else:
+            missing_text = ", ".join(physical_missing[:-1]) + ", and " + physical_missing[-1]
+        review_warnings.append(
+            "Drop-in fit is unverified: "
+            f"{missing_text} evidence must be cited from the datasheet or manufacturer record before approval."
         )
     if architecture_missing:
         review_warnings.append(
@@ -334,6 +398,10 @@ def assess_part_compatibility(
         drop_in_status = "Not verified — engineering review required"
     elif architecture_meaningful:
         drop_in_status = "Package, pin count, and processor family match; pinout/electrical review still required"
+    elif not semiconductor_interface:
+        drop_in_status = (
+            "Recorded mechanical interface matches; electrical and remaining datasheet review still required"
+        )
     else:
         drop_in_status = "Package and pin count match; electrical review still required"
 
@@ -346,6 +414,9 @@ def assess_part_compatibility(
         "pin_count_mismatch": pin_mismatch,
         "physical_mismatch": physical_mismatch,
         "physical_missing": physical_missing,
+        "pin_count_applicable": semiconductor_interface,
+        "package_applicable": semiconductor_interface,
+        "interface_checks": interface_checks,
         "source_architecture": source_architecture,
         "candidate_architecture": candidate_architecture,
         "architecture_meaningful": architecture_meaningful,
@@ -371,6 +442,15 @@ def comparison_row_part_values(rows: list[dict[str, Any]], slot: str) -> dict[st
         if not label:
             continue
         value = _clean(row.get(slot))
+        if value.casefold() in {
+            "not stated in retrieved evidence",
+            "not stated in this datasheet",
+            "not available",
+            "not found",
+            "not recorded",
+            "lifecycle conflict — underlying supplier records were not retained",
+        }:
+            continue
         if label in {"package", "package / case", "case package", "package/case"}:
             result["package"] = value
         elif label in {"pin count", "number of pins", "pins"}:
@@ -379,5 +459,11 @@ def comparison_row_part_values(rows: list[dict[str, Any]], slot: str) -> dict[st
             result["architecture"] = value
         elif "lifecycle" in label or "product status" in label:
             result["lifecycle_status"] = value
+        elif label in {"mounting", "mounting style"}:
+            result["mounting_style"] = value
+        elif label in {"terminal style", "termination", "termination style"}:
+            result["terminal_style"] = value
+        elif label in {"shaft", "shaft diameter", "shaft length"}:
+            result["shaft"] = value
     return result
 

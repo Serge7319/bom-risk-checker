@@ -313,6 +313,27 @@ def _comparison_table(
         label, original, original_source, candidate, candidate_source, status = row[:6]
         note = row[6] if len(row) > 6 else ""
         evidence = row[7] if len(row) > 7 else ""
+
+        def _blank_if_unrecorded(value: object) -> str:
+            text = str(value or "").strip()
+            if text.casefold() in {
+                "not stated in retrieved evidence",
+                "not stated in this datasheet",
+                "not available",
+                "not found",
+                "not recorded",
+                "n/a",
+                "none",
+                "nan",
+                "—",
+                "-",
+                "–",
+            }:
+                return ""
+            return text
+
+        original = _blank_if_unrecorded(original)
+        candidate = _blank_if_unrecorded(candidate)
         finding, why = _finding_label(status, original, candidate, evidence)
         if finding == "Unknown":
             why = (
@@ -938,10 +959,10 @@ def begin_approved_page() -> None:
         .cv-ap-home-kpi .cv-ap-home-kpi-label{display:block!important;color:#64748b!important;font-size:16px!important;font-weight:650!important;line-height:1.3!important;white-space:nowrap}
         .cv-ap-home-kpi-copy strong{display:block!important;margin-top:8px!important;color:#0f172a!important;font-size:36px!important;font-weight:780!important;line-height:1.05!important;letter-spacing:-.04em!important;white-space:nowrap}
         .cv-ap-home-kpi-copy em{display:block!important;margin-top:auto!important;padding-top:14px!important;font-size:15px!important;line-height:1.25!important}
-        .st-key-approved_home_recent_card{margin:26px 0 0!important;padding:0!important;border:1px solid #cbd8e8!important;border-radius:16px!important;background:#fff!important;box-shadow:0 3px 12px rgba(15,23,42,.045)!important}
+        .st-key-approved_home_recent_card{margin:26px 0 0!important;padding:0!important;overflow-x:auto!important;border:1px solid #cbd8e8!important;border-radius:16px!important;background:#fff!important;box-shadow:0 3px 12px rgba(15,23,42,.045)!important}
         .st-key-approved_home_recent_card [data-testid="stVerticalBlock"]{gap:0!important}
         .st-key-approved_home_recent_card [data-testid="stElementContainer"]{margin:0!important;padding:0!important}
-        .cv-ap-home-table-head{display:grid!important;grid-template-columns:2.15fr 1.25fr .72fr .8fr .95fr 1.05fr 1.35fr!important;align-items:center!important;gap:16px!important;box-sizing:border-box!important;min-height:68px!important;padding:0 30px!important;background:#f7f9fc!important;border-top:1px solid #e5ebf3!important;border-bottom:1px solid #dce4ef!important}
+        .cv-ap-home-table-head{display:grid!important;grid-template-columns:2.15fr 1.25fr .72fr .8fr .95fr 1.05fr 2.05fr!important;align-items:center!important;gap:16px!important;box-sizing:border-box!important;width:100%!important;min-width:1240px!important;min-height:68px!important;padding:0 30px!important;background:#f7f9fc!important;border-top:1px solid #e5ebf3!important;border-bottom:1px solid #dce4ef!important}
         .cv-ap-home-table-head [role="columnheader"]{display:flex;align-items:center;min-width:0;min-height:48px;overflow:visible;color:#64748b;font-size:14px;font-weight:750;line-height:1.25;letter-spacing:.035em;text-transform:uppercase;white-space:normal;overflow-wrap:anywhere}
         .cv-ap-home-table-head [role="columnheader"]:nth-child(n+3){justify-content:center!important;text-align:center}
         .st-key-approved_home_recent_heading{box-sizing:border-box!important;width:100%!important;min-height:0!important;margin:0!important;padding:12px 26px 12px!important}
@@ -960,13 +981,13 @@ def begin_approved_page() -> None:
         [class*="st-key-approved_home_view_all"] button *,[class*="st-key-approved_home_view_all"] button p,[class*="st-key-approved_home_view_all"] button span{color:#2563eb!important}
         [class*="st-key-approved_home_view_all"] button:hover{background:#dbeafe!important;border-color:#93b4ee!important}
         [class*="st-key-approved_home_new_bom"] button,[class*="st-key-approved_home_new_bom"] button p,[class*="st-key-approved_home_new_bom"] button span{white-space:nowrap!important}
-        [class*="st-key-approved_home_row_"]{box-sizing:border-box!important;min-height:120px!important;margin:0!important;padding:18px 30px!important;border-top:0!important;border-bottom:1px solid #e5ebf3!important;background:#fff!important}
+        [class*="st-key-approved_home_row_"]{box-sizing:border-box!important;width:100%!important;min-width:1240px!important;min-height:120px!important;margin:0!important;padding:18px 30px!important;border-top:0!important;border-bottom:1px solid #e5ebf3!important;background:#fff!important}
         .st-key-approved_home_recent_card .st-key-approved_home_row_last{border-radius:0 0 15px 15px!important;border-bottom:0!important;background:#fff!important}
         [class*="st-key-approved_home_row_"] [data-testid="stVerticalBlock"]{display:flex!important;flex-direction:column!important;gap:0!important;justify-content:center!important;min-height:84px!important}
         [class*="st-key-approved_home_row_"] [data-testid="stElementContainer"]{margin:0!important;padding:0!important}
-        [class*="st-key-approved_home_row_"] [data-testid="stHorizontalBlock"]{align-items:stretch!important;gap:16px!important;width:100%!important;min-height:84px!important}
-        [class*="st-key-approved_home_row_"] [data-testid="column"]{align-self:stretch!important;display:flex!important;align-items:center!important;justify-content:center!important;min-height:84px!important}
-        [class*="st-key-approved_home_row_"] [data-testid="column"]:nth-child(-n+2){justify-content:flex-start!important}
+        [class*="st-key-approved_home_row_"] [data-testid="stHorizontalBlock"]{display:grid!important;grid-template-columns:2.15fr 1.25fr .72fr .8fr .95fr 1.05fr 2.05fr!important;align-items:center!important;gap:16px!important;width:100%!important;min-height:84px!important}
+        [class*="st-key-approved_home_row_"] [data-testid="stColumn"],[class*="st-key-approved_home_row_"] [data-testid="column"]{align-self:stretch!important;justify-self:stretch!important;display:flex!important;align-items:center!important;justify-content:center!important;box-sizing:border-box!important;width:100%!important;max-width:100%!important;min-width:0!important;flex:none!important;min-height:84px!important}
+        [class*="st-key-approved_home_row_"] [data-testid="stColumn"]:nth-child(-n+2),[class*="st-key-approved_home_row_"] [data-testid="column"]:nth-child(-n+2){justify-content:flex-start!important}
         [class*="st-key-approved_home_row_"] [data-testid="column"] [data-testid="stMarkdownContainer"]{width:100%!important}
         [class*="st-key-approved_home_row_"] [data-testid="column"]:nth-child(n+3) [data-testid="stVerticalBlock"]{align-items:center!important}
         .cv-ap-home-cell-center{display:flex;align-items:center;justify-content:center;width:100%;min-height:38px;text-align:center;line-height:1.25}
@@ -985,13 +1006,13 @@ def begin_approved_page() -> None:
         .cv-home-risk-count.clear{background:#dcfce7;color:#15803d}
         [class*="st-key-approved_home_menu_"] [data-testid="stPopover"] button[aria-expanded]{display:inline-flex!important;align-items:center!important;justify-content:center!important;width:44px!important;min-width:44px!important;height:44px!important;min-height:44px!important;padding:0!important;border:0!important;border-radius:10px!important;background:transparent!important;color:#64748b!important;box-shadow:none!important;font-size:22px!important;font-weight:750!important;line-height:1!important}
         [class*="st-key-approved_home_menu_"] [data-testid="stPopover"] button[aria-expanded] svg,[class*="st-key-approved_home_menu_"] [data-testid="stPopover"] button[aria-expanded] [data-testid="stIconMaterial"]{display:none!important}
-        [class*="st-key-approved_home_menu_"] [data-testid="stVerticalBlock"]{gap:4px!important}
+        [class*="st-key-approved_home_row_"] [class*="st-key-approved_home_menu_"]{display:flex!important;flex-direction:row!important;flex-wrap:nowrap!important;align-items:center!important;justify-content:center!important;gap:6px!important;width:100%!important;min-height:0!important}
         [class*="st-key-approved_home_action_review_"] button{box-sizing:border-box!important;width:auto!important;min-width:0!important;height:auto!important;min-height:36px!important;padding:6px 9px!important;border-radius:8px!important;font-size:12px!important;font-weight:700!important;white-space:normal!important;line-height:1.2!important}
-        [class*="st-key-approved_home_row_"] [data-testid="stColumn"]:last-child,[class*="st-key-approved_home_row_"] [data-testid="column"]:last-child{display:flex!important;align-items:center!important;justify-content:center!important;min-width:168px!important;overflow:visible!important;text-align:center}
-        .st-key-approved_home_recent_card [class*="st-key-approved_home_menu_"]>[data-testid="stVerticalBlock"]{display:flex!important;flex-direction:row!important;align-items:center!important;justify-content:center!important;gap:6px!important;width:100%!important;min-height:44px!important}
+        [class*="st-key-approved_home_row_"] [data-testid="stColumn"]:last-child,[class*="st-key-approved_home_row_"] [data-testid="column"]:last-child{display:flex!important;align-items:center!important;justify-content:center!important;min-width:0!important;overflow:visible!important;text-align:center}
+        .st-key-approved_home_recent_card [class*="st-key-approved_home_menu_"]>[data-testid="stVerticalBlock"]{display:flex!important;flex-direction:row!important;flex-wrap:nowrap!important;align-items:center!important;justify-content:flex-end!important;gap:6px!important;width:100%!important;min-height:44px!important}
         .st-key-approved_home_recent_card [class*="st-key-approved_home_menu_"]>[data-testid="stVerticalBlock"]>[data-testid="stElementContainer"]{width:auto!important;flex:0 0 auto!important}
-        .st-key-approved_home_recent_card [class*="st-key-approved_home_action_review_"]{flex:0 1 auto!important;min-width:0!important}
-        .st-key-approved_home_recent_card [class*="st-key-approved_home_action_review_"] button{box-sizing:border-box!important;width:auto!important;min-width:96px!important;max-width:100%!important;height:auto!important;min-height:36px!important;padding:6px 9px!important;white-space:normal!important;line-height:1.2!important}
+        .st-key-approved_home_recent_card [class*="st-key-approved_home_action_review_"]{flex:0 0 auto!important;min-width:max-content!important}
+        .st-key-approved_home_recent_card [class*="st-key-approved_home_action_review_"] button{box-sizing:border-box!important;width:auto!important;max-width:none!important;height:auto!important;min-height:36px!important;padding:6px 9px!important;white-space:nowrap!important;line-height:1.2!important}
         .st-key-approved_home_recent_card [class*="st-key-approved_home_menu_"] [data-testid="stPopover"]{flex:0 0 36px!important;width:36px!important}
         .st-key-approved_home_recent_card [class*="st-key-approved_home_menu_"] [data-testid="stPopover"] button[aria-expanded]{width:36px!important;min-width:36px!important;height:36px!important;min-height:36px!important}
         .cv-ap-home-empty{padding:26px 24px;color:#64748b;font-size:16px}
@@ -1077,14 +1098,14 @@ def begin_approved_page() -> None:
         .st-key-approved_saved_bom_settings_page>[data-testid="stVerticalBlock"]{gap:12px!important}
         .st-key-approved_saved_bom_edit_screen,.st-key-approved_saved_bom_delete_screen{box-sizing:border-box!important;width:100%!important;max-width:none!important;margin:0 auto!important;padding:22px!important;border:1px solid #d7e0eb!important;border-radius:16px!important;background:#fff!important}
         .st-key-approved_saved_bom_delete_screen button[kind="primary"]{background:#be123c!important;border-color:#be123c!important}
-        .st-key-approved_monitoring_kpi_grid{box-sizing:border-box!important;width:100%!important;max-width:100%!important;min-width:0!important;margin:0 0 20px!important;overflow:hidden!important}
+        .st-key-approved_monitoring_kpi_grid{box-sizing:border-box!important;width:100%!important;max-width:100%!important;min-width:0!important;margin:0 0 20px!important;overflow:visible!important}
         .st-key-approved_monitoring_kpi_grid>[data-testid="stVerticalBlock"]{gap:0!important}
-        .st-key-approved_monitoring_kpi_grid [data-testid="stHorizontalBlock"]{display:flex!important;flex-flow:row nowrap!important;justify-content:flex-start!important;gap:16px!important;align-items:stretch!important}
-        .st-key-approved_monitoring_kpi_grid [data-testid="column"]{box-sizing:border-box!important;display:flex!important;flex:1 1 0!important;width:0!important;max-width:none!important;min-width:0!important;padding:0!important}
+        .st-key-approved_monitoring_kpi_grid [data-testid="stHorizontalBlock"]{display:grid!important;grid-template-columns:repeat(4,minmax(0,240px))!important;justify-content:start!important;align-items:stretch!important;gap:16px!important;width:100%!important;overflow:visible!important}
+        .st-key-approved_monitoring_kpi_grid [data-testid="stColumn"],.st-key-approved_monitoring_kpi_grid [data-testid="column"]{box-sizing:border-box!important;display:flex!important;flex:none!important;justify-self:stretch!important;width:100%!important;max-width:240px!important;min-width:0!important;padding:0!important}
         .st-key-approved_monitoring_kpi_grid [data-testid="column"]>[data-testid="stVerticalBlock"]{box-sizing:border-box!important;width:100%!important;max-width:none!important;min-width:0!important}
         .st-key-approved_monitoring_kpi_active,.st-key-approved_monitoring_kpi_high,.st-key-approved_monitoring_kpi_lifecycle,.st-key-approved_monitoring_kpi_inventory{position:relative!important;box-sizing:border-box!important;display:block!important;flex:1 1 0!important;width:100%!important;max-width:none!important;min-width:0!important}
-        .st-key-approved_monitoring_kpi_active>[data-testid="stVerticalBlock"],.st-key-approved_monitoring_kpi_high>[data-testid="stVerticalBlock"],.st-key-approved_monitoring_kpi_lifecycle>[data-testid="stVerticalBlock"],.st-key-approved_monitoring_kpi_inventory>[data-testid="stVerticalBlock"]{box-sizing:border-box!important;position:relative!important;display:block!important;width:100%!important;max-width:none!important;min-width:0!important;min-height:188px!important;gap:0!important}
-        .cv-ap-monitoring-kpi{display:grid!important;grid-template-columns:minmax(0,1fr) 116px!important;grid-template-rows:58px auto!important;align-items:center!important;column-gap:12px!important;row-gap:12px!important;box-sizing:border-box!important;width:100%!important;min-width:0!important;min-height:188px!important;padding:20px 24px!important;border:1px solid #e3ebf6!important;border-radius:14px!important;background:linear-gradient(135deg,#fbfdff 0%,#f7faff 100%)!important;box-shadow:0 2px 7px rgba(15,23,42,.035)!important}
+        .st-key-approved_monitoring_kpi_active>[data-testid="stVerticalBlock"],.st-key-approved_monitoring_kpi_high>[data-testid="stVerticalBlock"],.st-key-approved_monitoring_kpi_lifecycle>[data-testid="stVerticalBlock"],.st-key-approved_monitoring_kpi_inventory>[data-testid="stVerticalBlock"]{box-sizing:border-box!important;position:relative!important;display:block!important;width:100%!important;max-width:none!important;min-width:0!important;height:auto!important;min-height:0!important;overflow:visible!important;gap:0!important}
+        .cv-ap-monitoring-kpi{display:grid!important;grid-template-columns:minmax(0,1fr) 96px!important;grid-template-rows:auto auto!important;align-items:start!important;column-gap:12px!important;row-gap:8px!important;box-sizing:border-box!important;width:100%!important;min-width:0!important;height:auto!important;min-height:0!important;overflow:visible!important;padding:16px 16px 14px!important;border:1px solid #e3ebf6!important;border-radius:14px!important;background:linear-gradient(135deg,#fbfdff 0%,#f7faff 100%)!important;box-shadow:0 2px 7px rgba(15,23,42,.035)!important}
         .cv-ap-monitoring-icon{grid-column:1;grid-row:1;display:inline-flex!important;align-items:center!important;justify-content:center!important;width:52px!important;height:52px!important;border-radius:50%!important}
         .cv-ap-monitoring-icon svg{width:28px!important;height:28px!important;display:block!important}
         .cv-ap-monitoring-kpi--blue .cv-ap-monitoring-icon{background:#e6f0ff!important;color:#2563eb!important}
@@ -1092,7 +1113,7 @@ def begin_approved_page() -> None:
         .cv-ap-monitoring-kpi--violet .cv-ap-monitoring-icon{background:#f1eaff!important;color:#8b5cf6!important}
         .cv-ap-monitoring-kpi--green .cv-ap-monitoring-icon{background:#e3f8ed!important;color:#16a34a!important}
         .cv-ap-monitoring-copy{grid-column:1;grid-row:2;min-width:0;align-self:start}
-        .cv-ap-monitoring-copy>span{display:block;overflow:hidden;color:#52647b!important;font-size:18px!important;font-weight:600!important;line-height:1.3!important;text-overflow:ellipsis;white-space:nowrap}
+        .cv-ap-monitoring-copy>span{display:block;overflow:visible;color:#52647b!important;font-size:16px!important;font-weight:600!important;line-height:1.3!important;white-space:normal}
         .cv-ap-monitoring-copy strong{display:flex!important;align-items:center!important;gap:12px!important;margin-top:5px;color:#12213b!important;font-size:40px!important;font-weight:650!important;line-height:1!important;letter-spacing:-.035em!important}
         .cv-ap-monitoring-chevron{color:#64748b!important;font-size:34px!important;font-weight:400!important;line-height:1!important}
         .cv-ap-monitoring-kpi .cv-ap-spark{grid-column:2;grid-row:1/3;align-self:center;width:112px!important;max-width:100%!important;height:56px!important}
@@ -1104,7 +1125,7 @@ def begin_approved_page() -> None:
         .st-key-approved_monitoring_filters>[data-testid="stVerticalBlock"]{gap:0!important}
         .st-key-approved_monitoring_filters [data-testid="stHorizontalBlock"]{align-items:center!important;gap:10px!important}
         .st-key-approved_monitoring_filters [data-testid="stWidgetLabel"] p{margin:0 0 5px!important;color:#52647b!important;font-size:12px!important;font-weight:700!important}
-        .cv-ap-monitoring-show-label{display:flex;align-items:center;min-height:42px;color:#52647b;font-size:14px;font-weight:650;white-space:nowrap}
+        .cv-ap-monitoring-show-label{display:flex;align-items:center;min-height:42px;min-width:4.5rem;color:#1e293b;font-size:15px;font-weight:700;line-height:1.2;white-space:nowrap;overflow:visible}
         .cv-ap-monitoring-period-label{display:flex;align-items:center;min-height:42px;color:#52647b;font-size:14px;font-weight:650;white-space:nowrap}
         .st-key-approved_monitoring_category_row{box-sizing:border-box!important;width:100%!important;min-width:0!important}
         .st-key-approved_monitoring_category_row [data-testid="stPills"],.st-key-approved_monitoring_category_row [role="radiogroup"],.st-key-approved_monitoring_category_row [data-baseweb="button-group"]{display:flex!important;flex-flow:row wrap!important;justify-content:flex-start!important;align-items:center!important;gap:8px!important;width:100%!important;min-width:0!important}
@@ -1144,9 +1165,9 @@ def begin_approved_page() -> None:
         .cv-ap-alert-popover small{color:#8794a7;font-size:10px}
         .cv-ap-table-center{width:100%;display:flex;align-items:center;justify-content:center;text-align:center}
         @media(max-width:1100px){[class*="st-key-approved_home_new_bom"],[class*="st-key-approved_home_open_reports"]{left:0!important}}
-        @media(max-width:1100px){.st-key-approved_monitoring_kpi_grid [data-testid="stHorizontalBlock"]{gap:12px!important}.st-key-approved_monitoring_kpi_grid [data-testid="column"]{flex:1 1 0!important;width:0!important;max-width:none!important}.cv-ap-monitoring-kpi{min-height:164px!important;padding:16px!important;grid-template-columns:minmax(0,1fr) 76px!important}.cv-ap-monitoring-copy>span{font-size:14px!important}.cv-ap-monitoring-copy strong{font-size:32px!important;gap:8px!important}.cv-ap-monitoring-chevron{font-size:26px!important}.st-key-approved_monitoring_kpi_active>[data-testid="stVerticalBlock"],.st-key-approved_monitoring_kpi_high>[data-testid="stVerticalBlock"],.st-key-approved_monitoring_kpi_lifecycle>[data-testid="stVerticalBlock"],.st-key-approved_monitoring_kpi_inventory>[data-testid="stVerticalBlock"]{min-height:164px!important}.st-key-approved_monitoring_kpi_active [class*="st-key-approved_monitoring_action_"] button,.st-key-approved_monitoring_kpi_high [class*="st-key-approved_monitoring_action_"] button,.st-key-approved_monitoring_kpi_lifecycle [class*="st-key-approved_monitoring_action_"] button,.st-key-approved_monitoring_kpi_inventory [class*="st-key-approved_monitoring_action_"] button{min-height:164px!important}.cv-ap-monitoring-kpi .cv-ap-spark{width:76px!important}.st-key-approved_monitoring_filters [data-testid="stHorizontalBlock"]{gap:8px!important}}
+        @media(max-width:1100px){.st-key-approved_monitoring_kpi_grid [data-testid="stHorizontalBlock"]{gap:12px!important;grid-template-columns:repeat(2,minmax(0,240px))!important}.st-key-approved_monitoring_kpi_grid [data-testid="stColumn"],.st-key-approved_monitoring_kpi_grid [data-testid="column"]{flex:none!important;width:100%!important;max-width:240px!important}.cv-ap-monitoring-kpi{height:auto!important;min-height:0!important;overflow:visible!important;padding:14px!important;grid-template-columns:minmax(72px,1fr) 48px!important}.cv-ap-monitoring-copy>span{font-size:14px!important;white-space:normal!important;overflow-wrap:normal!important;word-break:normal!important}.cv-ap-monitoring-kpi .cv-ap-spark{width:48px!important}.cv-ap-monitoring-copy strong{font-size:32px!important;gap:8px!important}.cv-ap-monitoring-chevron{font-size:26px!important}.st-key-approved_monitoring_kpi_active>[data-testid="stVerticalBlock"],.st-key-approved_monitoring_kpi_high>[data-testid="stVerticalBlock"],.st-key-approved_monitoring_kpi_lifecycle>[data-testid="stVerticalBlock"],.st-key-approved_monitoring_kpi_inventory>[data-testid="stVerticalBlock"]{height:auto!important;min-height:0!important;overflow:visible!important}.cv-ap-monitoring-kpi .cv-ap-spark{width:76px!important}.st-key-approved_monitoring_filters [data-testid="stHorizontalBlock"]{gap:8px!important}}
         @media(max-width:1200px){
-          .st-key-approved_monitoring_filters [data-testid="stHorizontalBlock"]:has(.st-key-approved_monitoring_category_row){display:grid!important;grid-template-columns:42px minmax(0,1fr)!important;align-items:start!important;gap:8px!important}
+          .st-key-approved_monitoring_filters [data-testid="stHorizontalBlock"]:has(.st-key-approved_monitoring_category_row){display:grid!important;grid-template-columns:minmax(4.5rem,max-content) minmax(0,1fr)!important;align-items:start!important;gap:8px!important}
           .st-key-approved_monitoring_filters [data-testid="stHorizontalBlock"]:has(.st-key-approved_monitoring_category_row)>[data-testid="column"]{box-sizing:border-box!important;width:auto!important;max-width:none!important;min-width:0!important;flex:none!important;padding:0!important}
           .st-key-approved_monitoring_filters [data-testid="column"]:has(.cv-ap-monitoring-show-label){grid-column:1!important;grid-row:1!important;align-self:start!important}
           .st-key-approved_monitoring_filters [data-testid="column"]:has(.st-key-approved_monitoring_category_row){grid-column:2!important;grid-row:1!important}
@@ -1156,7 +1177,7 @@ def begin_approved_page() -> None:
         }
         @media(max-width:900px){.st-key-approved_monitoring_filters{padding:12px!important}.st-key-approved_monitoring_alert_heading{padding:14px 14px 10px!important}.cv-ap-monitoring-heading h2{font-size:18px!important}}
         @media(max-width:640px){.st-key-approved_monitoring_period_control{width:100%!important}.st-key-approved_monitoring_filters [data-testid="column"]:has(.cv-ap-monitoring-show-label){align-self:start!important}.st-key-approved_monitoring_category_row button,.st-key-approved_monitoring_category_row [role="radio"],.st-key-approved_monitoring_category_row [role="option"]{min-height:38px!important;height:38px!important;padding:0 10px!important;font-size:11px!important}}
-        @media(max-width:640px){.st-key-approved_monitoring_kpi_grid [data-testid="stHorizontalBlock"]{flex-wrap:wrap!important}.st-key-approved_monitoring_kpi_grid [data-testid="column"]{flex:1 1 calc(50% - 8px)!important;width:auto!important}.cv-ap-monitoring-kpi{min-height:150px!important}.st-key-approved_monitoring_alert_heading{padding:14px 14px 10px!important}.cv-ap-monitoring-heading h2{font-size:18px!important}}
+        @media(max-width:640px){.st-key-approved_monitoring_kpi_grid [data-testid="stHorizontalBlock"]{grid-template-columns:1fr!important}.st-key-approved_monitoring_kpi_grid [data-testid="column"]{flex:none!important;width:100%!important;max-width:100%!important}.cv-ap-monitoring-kpi{height:auto!important;min-height:0!important;overflow:visible!important}.st-key-approved_monitoring_alert_heading{padding:14px 14px 10px!important}.cv-ap-monitoring-heading h2{font-size:18px!important}}
         @media(max-width:1100px){
           .cv-ap-monitoring-table-head{gap:8px!important;padding:0 12px!important;margin-left:14px!important;margin-right:14px!important}
           [class*="st-key-approved_monitoring_alert_row_"]{padding:8px 12px!important;margin-left:14px!important;margin-right:14px!important}
@@ -2678,7 +2699,7 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
               }
               if (existing) existing.stop();
 
-              const state = { token, userInteracted: false, timer: null, missingSince: 0, startedAt: Date.now() };
+              const state = { token, userInteracted: false, timer: null, missingSince: 0, startedAt: Date.now(), lastTop: null };
               const stop = () => {
                 if (state.timer) window.clearInterval(state.timer);
                 state.timer = null;
@@ -2722,15 +2743,16 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
                 ].filter(Boolean);
                 for (const element of candidates) {
                   try {
-                    if (Math.abs(element.scrollTop) > 24) element.scrollTop = 0;
+                    if (Math.abs(element.scrollTop) > 1) element.scrollTop = 0;
                   } catch (error) {}
                 }
-                try {
-                  const rect = marker.getBoundingClientRect();
-                  if (rect.top < -24 || rect.top > 32) marker.scrollIntoView({ block: 'start', inline: 'nearest', behavior: 'auto' });
-                } catch (error) {}
-                try { window.scrollTo({ top: 0, left: 0, behavior: 'auto' }); } catch (error) {}
-                if (Date.now() - state.startedAt > 600000) stop();
+                try { window.scrollTo(0, 0); } catch (error) {}
+                const cardTop = progress.getBoundingClientRect().top;
+                if (state.lastTop != null && Math.abs(cardTop - state.lastTop) > 24) {
+                  state.startedAt = Date.now();
+                }
+                state.lastTop = cardTop;
+                if (Date.now() - state.startedAt > 2500) stop();
               };
               root[activeKey] = state;
               doc.addEventListener('wheel', cancelOnScroll, { capture: true, passive: true });
@@ -3609,7 +3631,7 @@ def render_monitoring(
             st.session_state["approved_alert_severity"] = "All"
 
         label_col, show_col, period_col = st.columns(
-            [0.7, 8.17, 3.1],
+            [1.15, 7.72, 3.1],
             vertical_alignment="center",
             gap="small",
         )
@@ -4986,7 +5008,7 @@ def _render_datasheet_evidence_review(
             from src.datasheet_comparison import (
                 build_datasheet_review_evidence,
                 extract_datasheet_text,
-                infer_component_family,
+                family_for_datasheet_review,
             )
             from src.datasheet_qa import extract_uploaded_datasheet
             from concurrent.futures import ThreadPoolExecutor
@@ -5073,7 +5095,7 @@ def _render_datasheet_evidence_review(
             evidence = build_datasheet_review_evidence(
                 source_pdf,
                 candidate_pdf,
-                infer_component_family(original or candidate),
+                family_for_datasheet_review(original or candidate, source_pdf, candidate_pdf),
             )
             evidence.update(
                 {
@@ -5107,16 +5129,9 @@ def _render_datasheet_evidence_review(
                         name = str(document.get("name") or "PDF")
                         readable = bool(document.get("available"))
                         has_extractable_text = has_extractable_text or readable
-                        page_count = int(document.get("page_count") or 0)
-                        reason = str(
-                            document.get("reason")
-                            or "Open the linked PDF and review its package drawings directly."
-                        )
-                        detail = (
-                            f"Readable text extracted from {page_count} PDF page(s)."
-                            if readable
-                            else reason
-                        )
+                        from src.datasheet_comparison import datasheet_extraction_summary
+
+                        detail = datasheet_extraction_summary(document)
                         status_class = "" if readable else " limited"
                         badge = "TEXT EXTRACTED" if readable else "MANUAL REVIEW"
                         icon = "✓" if readable else "!"
@@ -5130,13 +5145,10 @@ def _render_datasheet_evidence_review(
                 else:
                     document = review_state.get(side_key) or {}
                     readable = bool(document.get("available"))
-                    page_count = len(document.get("pages") or [])
                     has_extractable_text = has_extractable_text or readable
-                    detail = (
-                        f"Readable text extracted from {page_count} PDF page(s)."
-                        if readable
-                        else "No readable PDF text was extracted. Open the linked PDF and review its drawings directly."
-                    )
+                    from src.datasheet_comparison import datasheet_extraction_summary
+
+                    detail = datasheet_extraction_summary(document)
                     document_status_cards.append(
                         f"<article class='cv-ap-doc-status{' ' if readable else ' limited'}'>"
                         f"<span class='cv-ap-doc-status__icon'>{'✓' if readable else '!'}</span>"
@@ -5243,77 +5255,127 @@ def _render_datasheet_evidence_review(
         def recorded_value(part: dict[str, Any], *keys: str) -> str:
             return _part_field(part, *keys)
 
+        from src.component_family_profiles import get_family_profile, infer_family_id
+
+        def _semiconductor_part(part: dict[str, Any]) -> bool:
+            return bool(get_family_profile(infer_family_id(part or {})).uses_semiconductor_interface)
+
+        semiconductor_form = _semiconductor_part(original) or _semiconductor_part(candidate)
         source_columns = st.columns(2)
-        with source_columns[0]:
-            source_package = st.text_input(
-                "Source package / case (required)",
-                value=recorded_value(original, "package", "Package", "Package / Case"),
-                key=f"cadivor_alt_source_package_{key_suffix}",
-                disabled=bool(recorded_value(original, "package", "Package", "Package / Case")),
-                help="A recorded value is locked so a known mismatch cannot be edited away.",
-            )
-            source_pins = st.text_input(
-                "Source pin count (required)",
-                value=recorded_value(original, "pin_count", "Pin Count", "Number of Pins", "pins"),
-                key=f"cadivor_alt_source_pins_{key_suffix}",
-                disabled=bool(recorded_value(original, "pin_count", "Pin Count", "Number of Pins", "pins")),
-                help="A recorded value is locked so a known mismatch cannot be edited away.",
-            )
-            source_architecture = st.text_input(
-                "Source processor family / ISA (required when applicable)",
-                value=recorded_value(original, "architecture", "Device family / architecture", "device_family", "core", "ISA"),
-                key=f"cadivor_alt_source_architecture_{key_suffix}",
-                disabled=bool(recorded_value(original, "architecture", "Device family / architecture", "device_family", "core", "ISA")),
-                help="A recorded value is locked so a known mismatch cannot be edited away.",
-            )
-        with source_columns[1]:
-            candidate_package = st.text_input(
-                "Candidate package / case (required)",
-                value=recorded_value(candidate, "package", "Package", "Package / Case"),
-                key=f"cadivor_alt_candidate_package_{key_suffix}",
-                disabled=bool(recorded_value(candidate, "package", "Package", "Package / Case")),
-                help="A recorded value is locked so a known mismatch cannot be edited away.",
-            )
-            candidate_pins = st.text_input(
-                "Candidate pin count (required)",
-                value=recorded_value(candidate, "pin_count", "Pin Count", "Number of Pins", "pins"),
-                key=f"cadivor_alt_candidate_pins_{key_suffix}",
-                disabled=bool(recorded_value(candidate, "pin_count", "Pin Count", "Number of Pins", "pins")),
-                help="A recorded value is locked so a known mismatch cannot be edited away.",
-            )
-            candidate_architecture = st.text_input(
-                "Candidate processor family / ISA (required when applicable)",
-                value=recorded_value(candidate, "architecture", "Device family / architecture", "device_family", "core", "ISA"),
-                key=f"cadivor_alt_candidate_architecture_{key_suffix}",
-                disabled=bool(recorded_value(candidate, "architecture", "Device family / architecture", "device_family", "core", "ISA")),
-                help="A recorded value is locked so a known mismatch cannot be edited away.",
-            )
-            extracted_candidate_lifecycle = next(
-                (
-                    str(row.get("Candidate PDF value") or "").strip()
-                    for row in review_state.get("field_evidence") or []
-                    if isinstance(row, dict) and str(row.get("Key") or "") == "lifecycle_status"
-                ),
-                "",
-            )
-            if extracted_candidate_lifecycle.casefold() in _CANDIDATE_BLANK:
-                extracted_candidate_lifecycle = ""
-            recorded_candidate_lifecycle = _part_field(
-                candidate,
-                "Lifecycle",
-                "Lifecycle Status",
-                "lifecycle_status",
-                "lifecycle",
-                "product_status",
-            )
-            candidate_lifecycle_default = recorded_candidate_lifecycle or extracted_candidate_lifecycle
-            candidate_lifecycle = st.text_input(
-                "Candidate lifecycle status (required)",
-                value=candidate_lifecycle_default,
-                key=f"cadivor_alt_candidate_lifecycle_{key_suffix}",
-                disabled=bool(recorded_candidate_lifecycle),
-                help="Unknown lifecycle is not treated as Active. Enter the manufacturer-confirmed status and cite its document/page.",
-            )
+        if semiconductor_form:
+            with source_columns[0]:
+                source_package = st.text_input(
+                    "Source package / case (required)",
+                    value=recorded_value(original, "package", "Package", "Package / Case"),
+                    key=f"cadivor_alt_source_package_{key_suffix}",
+                    disabled=bool(recorded_value(original, "package", "Package", "Package / Case")),
+                    help="A recorded value is locked so a known mismatch cannot be edited away.",
+                )
+                source_pins = st.text_input(
+                    "Source pin count (required)",
+                    value=recorded_value(original, "pin_count", "Pin Count", "Number of Pins", "pins"),
+                    key=f"cadivor_alt_source_pins_{key_suffix}",
+                    disabled=bool(recorded_value(original, "pin_count", "Pin Count", "Number of Pins", "pins")),
+                    help="A recorded value is locked so a known mismatch cannot be edited away.",
+                )
+                source_architecture = st.text_input(
+                    "Source processor family / ISA (required when applicable)",
+                    value=recorded_value(original, "architecture", "Device family / architecture", "device_family", "core", "ISA"),
+                    key=f"cadivor_alt_source_architecture_{key_suffix}",
+                    disabled=bool(recorded_value(original, "architecture", "Device family / architecture", "device_family", "core", "ISA")),
+                    help="A recorded value is locked so a known mismatch cannot be edited away.",
+                )
+            with source_columns[1]:
+                candidate_package = st.text_input(
+                    "Candidate package / case (required)",
+                    value=recorded_value(candidate, "package", "Package", "Package / Case"),
+                    key=f"cadivor_alt_candidate_package_{key_suffix}",
+                    disabled=bool(recorded_value(candidate, "package", "Package", "Package / Case")),
+                    help="A recorded value is locked so a known mismatch cannot be edited away.",
+                )
+                candidate_pins = st.text_input(
+                    "Candidate pin count (required)",
+                    value=recorded_value(candidate, "pin_count", "Pin Count", "Number of Pins", "pins"),
+                    key=f"cadivor_alt_candidate_pins_{key_suffix}",
+                    disabled=bool(recorded_value(candidate, "pin_count", "Pin Count", "Number of Pins", "pins")),
+                    help="A recorded value is locked so a known mismatch cannot be edited away.",
+                )
+                candidate_architecture = st.text_input(
+                    "Candidate processor family / ISA (required when applicable)",
+                    value=recorded_value(candidate, "architecture", "Device family / architecture", "device_family", "core", "ISA"),
+                    key=f"cadivor_alt_candidate_architecture_{key_suffix}",
+                    disabled=bool(recorded_value(candidate, "architecture", "Device family / architecture", "device_family", "core", "ISA")),
+                    help="A recorded value is locked so a known mismatch cannot be edited away.",
+                )
+            source_mounting = source_terminal = source_shaft = ""
+            candidate_mounting = candidate_terminal = candidate_shaft = ""
+        else:
+            source_package = source_pins = source_architecture = ""
+            candidate_package = candidate_pins = candidate_architecture = ""
+            with source_columns[0]:
+                source_mounting = st.text_input(
+                    "Source mounting (required)",
+                    value=recorded_value(original, "mounting_style", "Mounting", "Mounting Style"),
+                    key=f"cadivor_alt_source_mounting_{key_suffix}",
+                    disabled=bool(recorded_value(original, "mounting_style", "Mounting", "Mounting Style")),
+                )
+                source_terminal = st.text_input(
+                    "Source terminal style (required)",
+                    value=recorded_value(original, "terminal_style", "Terminal style", "Termination Style"),
+                    key=f"cadivor_alt_source_terminal_{key_suffix}",
+                    disabled=bool(recorded_value(original, "terminal_style", "Terminal style", "Termination Style")),
+                )
+                source_shaft = st.text_input(
+                    "Source shaft (required)",
+                    value=recorded_value(original, "shaft", "Shaft", "Shaft Diameter"),
+                    key=f"cadivor_alt_source_shaft_{key_suffix}",
+                    disabled=bool(recorded_value(original, "shaft", "Shaft", "Shaft Diameter")),
+                )
+            with source_columns[1]:
+                candidate_mounting = st.text_input(
+                    "Candidate mounting (required)",
+                    value=recorded_value(candidate, "mounting_style", "Mounting", "Mounting Style"),
+                    key=f"cadivor_alt_candidate_mounting_{key_suffix}",
+                    disabled=bool(recorded_value(candidate, "mounting_style", "Mounting", "Mounting Style")),
+                )
+                candidate_terminal = st.text_input(
+                    "Candidate terminal style (required)",
+                    value=recorded_value(candidate, "terminal_style", "Terminal style", "Termination Style"),
+                    key=f"cadivor_alt_candidate_terminal_{key_suffix}",
+                    disabled=bool(recorded_value(candidate, "terminal_style", "Terminal style", "Termination Style")),
+                )
+                candidate_shaft = st.text_input(
+                    "Candidate shaft (required)",
+                    value=recorded_value(candidate, "shaft", "Shaft", "Shaft Diameter"),
+                    key=f"cadivor_alt_candidate_shaft_{key_suffix}",
+                    disabled=bool(recorded_value(candidate, "shaft", "Shaft", "Shaft Diameter")),
+                )
+        extracted_candidate_lifecycle = next(
+            (
+                str(row.get("Candidate PDF value") or "").strip()
+                for row in review_state.get("field_evidence") or []
+                if isinstance(row, dict) and str(row.get("Key") or "") == "lifecycle_status"
+            ),
+            "",
+        )
+        if extracted_candidate_lifecycle.casefold() in _CANDIDATE_BLANK:
+            extracted_candidate_lifecycle = ""
+        recorded_candidate_lifecycle = _part_field(
+            candidate,
+            "Lifecycle",
+            "Lifecycle Status",
+            "lifecycle_status",
+            "lifecycle",
+            "product_status",
+        )
+        candidate_lifecycle_default = recorded_candidate_lifecycle or extracted_candidate_lifecycle
+        candidate_lifecycle = st.text_input(
+            "Candidate lifecycle status (required)",
+            value=candidate_lifecycle_default,
+            key=f"cadivor_alt_candidate_lifecycle_{key_suffix}",
+            disabled=bool(recorded_candidate_lifecycle),
+            help="Unknown lifecycle is not treated as Active. Enter the manufacturer-confirmed status and cite its document/page.",
+        )
 
         citation_cols = st.columns(2)
         with citation_cols[0]:
@@ -5350,6 +5412,12 @@ def _render_datasheet_evidence_review(
         "candidate_pin_count": candidate_pins,
         "candidate_architecture": candidate_architecture,
         "candidate_lifecycle_status": candidate_lifecycle,
+        "source_mounting": source_mounting,
+        "source_terminal_style": source_terminal,
+        "source_shaft": source_shaft,
+        "candidate_mounting": candidate_mounting,
+        "candidate_terminal_style": candidate_terminal,
+        "candidate_shaft": candidate_shaft,
     }
     review_state["reviewer_attestation"] = {
         "confirmed": bool(attested),
@@ -5598,7 +5666,8 @@ def _render_bom_replacement_approvals(
 
     def _missing_approval_value(value: Any) -> bool:
         return str(value or "").strip().casefold() in {
-            "", "—", "-", "–", "unknown", "not recorded", "not available", "not found", "n/a", "none", "nan", "unavailable", "0", "0.0"
+            "", "—", "-", "–", "unknown", "not recorded", "not available", "not found",
+            "not stated in retrieved evidence", "n/a", "none", "nan", "unavailable", "0", "0.0"
         }
 
     for target, side in ((approval_original, "source"), (approval_candidate, "candidate")):
@@ -5606,6 +5675,9 @@ def _render_bom_replacement_approvals(
             ("package", f"{side}_package"),
             ("pin_count", f"{side}_pin_count"),
             ("architecture", f"{side}_architecture"),
+            ("mounting_style", f"{side}_mounting"),
+            ("terminal_style", f"{side}_terminal_style"),
+            ("shaft", f"{side}_shaft"),
         ):
             if _missing_approval_value(target.get(field)) and not _missing_approval_value(verified_values.get(verified_key)):
                 target[field] = verified_values[verified_key]
@@ -5706,14 +5778,26 @@ def _render_bom_replacement_approvals(
     source_identity_verified = candidate.get("Source Identity Verified") is not False
     st.markdown(f"<div id='{approval_anchor}'></div>", unsafe_allow_html=True)
     st.markdown("#### Engineering approval")
-    st.info(
-        "**Approval requires all of these:** the source MPN verified against an exact distributor record; candidate lifecycle verified as Active or NRND; "
-        "matching source/candidate package and pin count; compatible processor family/ISA when "
-        "applicable; an actual document identifier and PDF page citation for both parts; and your "
-        "review confirmation. An obsolete/EOL part or known physical/architecture mismatch cannot "
-        "be approved as a direct replacement. NRND also requires a supply-continuity plan. "
-        "Stock and price inform sourcing, but do not establish engineering compatibility."
-    )
+    if compatibility.get("pin_count_applicable", True):
+        approval_requirements = (
+            "**Approval requires all of these:** the source MPN verified against an exact distributor record; candidate lifecycle verified as Active or NRND; "
+            "matching source/candidate package and pin count; compatible processor family/ISA when "
+            "applicable; an actual document identifier and PDF page citation for both parts; and your "
+            "review confirmation. An obsolete/EOL part or known physical/architecture mismatch cannot "
+            "be approved as a direct replacement. NRND also requires a supply-continuity plan. "
+            "Stock and price inform sourcing, but do not establish engineering compatibility."
+        )
+    else:
+        approval_requirements = (
+            "**Approval requires all of these:** the source MPN verified against an exact manufacturer or distributor record; "
+            "candidate lifecycle verified as Active or NRND; matching mounting, terminal style, and shaft evidence cited from the datasheets; "
+            "an actual document identifier and PDF page citation for both parts; and your review confirmation. "
+            "Package, pin count, and processor family are not the interface for this part. "
+            "A distributor cross-reference is not a drop-in approval. "
+            "An obsolete/EOL part or a conflicting mechanical interface cannot be approved as a direct replacement. "
+            "NRND also requires a supply-continuity plan."
+        )
+    st.info(approval_requirements)
     st.caption(
         "Use the source and candidate citation fields above for the manufacturer document/part number and exact PDF page numbers. If Cadivor linked a datasheet, analyze it and inspect the PDF; upload is only a fallback when the link is missing or wrong."
     )
@@ -5890,36 +5974,43 @@ def _render_bom_replacement_approvals(
     if datasheet_review.get("review_completed"):
         source_document_readable = bool((datasheet_review.get("source") or {}).get("available"))
         candidate_document_readable = bool((datasheet_review.get("candidate") or {}).get("available"))
-        source_manual_values_missing = bool(
-            not compatibility.get("source_package")
-            or not compatibility.get("source_pin_count")
-            or (
-                compatibility.get("architecture_meaningful")
-                and not compatibility.get("source_architecture")
+        if compatibility.get("pin_count_applicable", True):
+            source_manual_values_missing = bool(
+                not compatibility.get("source_package")
+                or not compatibility.get("source_pin_count")
+                or (
+                    compatibility.get("architecture_meaningful")
+                    and not compatibility.get("source_architecture")
+                )
             )
-        )
-        candidate_manual_values_missing = bool(
-            not compatibility.get("candidate_package")
-            or not compatibility.get("candidate_pin_count")
-            or (
-                compatibility.get("architecture_meaningful")
-                and not compatibility.get("candidate_architecture")
+            candidate_manual_values_missing = bool(
+                not compatibility.get("candidate_package")
+                or not compatibility.get("candidate_pin_count")
+                or (
+                    compatibility.get("architecture_meaningful")
+                    and not compatibility.get("candidate_architecture")
+                )
             )
-        )
+        else:
+            interface_checks = compatibility.get("interface_checks") or []
+            source_manual_values_missing = any(not check.get("source") for check in interface_checks)
+            candidate_manual_values_missing = any(not check.get("candidate") for check in interface_checks)
+        if compatibility.get("pin_count_applicable", True):
+            unreadable_source = "Cadivor could not extract a readable source PDF. Open the official source document or use the optional PDF fallback, then enter its package, pin count, and page citation."
+            unreadable_candidate = "Cadivor could not extract a readable candidate PDF. Open the exact candidate's official document or use the optional PDF fallback, then enter its package, pin count, processor family/ISA if applicable, and page citation."
+        else:
+            unreadable_source = "Cadivor could not extract a readable source PDF. Open the official source document or use the optional PDF fallback, then enter its mounting, terminal style, shaft, and page citation."
+            unreadable_candidate = "Cadivor could not extract a readable candidate PDF. Open the exact candidate's official document or use the optional PDF fallback, then enter its mounting, terminal style, shaft, and page citation."
         if not source_document_readable and (
             source_manual_values_missing
             or not has_document_page_citation(reviewer_attestation.get("source_reference"))
         ):
-            blockers.append(
-                "Cadivor could not extract a readable source PDF. Open the official source document or use the optional PDF fallback, then enter its package, pin count, and page citation."
-            )
+            blockers.append(unreadable_source)
         if not candidate_document_readable and (
             candidate_manual_values_missing
             or not has_document_page_citation(reviewer_attestation.get("candidate_reference"))
         ):
-            blockers.append(
-                "Cadivor could not extract a readable candidate PDF. Open the exact candidate's official document or use the optional PDF fallback, then enter its package, pin count, processor family/ISA if applicable, and page citation."
-            )
+            blockers.append(unreadable_candidate)
     if lifecycle_blocked:
         blockers.append(
             "This candidate is obsolete, discontinued, end of life, or explicitly inactive. Choose a different candidate."
@@ -5934,12 +6025,19 @@ def _render_bom_replacement_approvals(
         ])
     else:
         physical_blocker_start = len(blockers)
-        for side, label, field_value in (
-            ("source", "package / case", compatibility.get("source_package")),
-            ("candidate", "package / case", compatibility.get("candidate_package")),
-            ("source", "pin count", compatibility.get("source_pin_count")),
-            ("candidate", "pin count", compatibility.get("candidate_pin_count")),
-        ):
+        if compatibility.get("pin_count_applicable", True):
+            required_interface = (
+                ("source", "package / case", compatibility.get("source_package")),
+                ("candidate", "package / case", compatibility.get("candidate_package")),
+                ("source", "pin count", compatibility.get("source_pin_count")),
+                ("candidate", "pin count", compatibility.get("candidate_pin_count")),
+            )
+        else:
+            required_interface = []
+            for check in compatibility.get("interface_checks") or []:
+                required_interface.append(("source", check.get("label") or "interface", check.get("source")))
+                required_interface.append(("candidate", check.get("label") or "interface", check.get("candidate")))
+        for side, label, field_value in required_interface:
             if not field_value:
                 blockers.append(
                     f"Enter the {side} {label} from its official document; the source and candidate values must match."
@@ -7077,6 +7175,7 @@ def render_compare_live() -> None:
             "manufacturer": card.get("manufacturer") or "",
             "description": card.get("description") or "",
             "package": card.get("package") or "",
+            "category": comparison.get("family") or "",
         }
         part.update(
             {
@@ -7113,25 +7212,36 @@ def render_compare_live() -> None:
                 "Do not approve this as a drop-in replacement. A physical redesign and/or firmware rewrite may be required."
                 "</div>"
             )
-        elif assessment.get("review_warnings"):
-            compatibility_notices.append(
-                "<div class='cv-compat-banner review' role='status'>"
-                f"<strong>{slot} · {mpn_label} — DROP-IN FIT NOT VERIFIED</strong>"
-                f"<ul>{''.join(f'<li>{_esc(item)}</li>' for item in assessment['review_warnings'])}</ul>"
-                "</div>"
-            )
+        else:
+            review_items = list(assessment.get("review_warnings") or [])
+            for item in comparison.get("review_warnings") or []:
+                if item not in review_items:
+                    review_items.append(item)
+            if review_items:
+                compatibility_notices.append(
+                    "<div class='cv-compat-banner review' role='status'>"
+                    f"<strong>{slot} · {mpn_label} — DROP-IN FIT NOT VERIFIED</strong>"
+                    f"<ul>{''.join(f'<li>{_esc(item)}</li>' for item in review_items)}</ul>"
+                    "</div>"
+                )
 
-    for row in rows[:24]:
+    for row in rows:
         if not isinstance(row, dict):
             continue
         label = _recorded(row, "Attribute", "label", "parameter", "field")
         if not label or label.casefold() == "parameter":
             continue
-        raw_a = _recorded(row, "Part A", "part_a", "a", "value_a", "Original")
-        raw_b = _recorded(row, "Part B", "part_b", "b", "value_b", "Candidate")
-        raw_c = _recorded(row, "Part C", "part_c", "c", "value_c")
-        if not raw_a and not raw_b and not raw_c:
-            continue
+
+        def _shown(value: str) -> str:
+            text = str(value or "").strip()
+            if not text or text.casefold() in missing:
+                return "Not stated in retrieved evidence"
+            return text
+
+        raw_a = _shown(_recorded(row, "Part A", "part_a", "a", "value_a", "Original") or str(row.get("Part A") or row.get("Original") or ""))
+        raw_b = _shown(_recorded(row, "Part B", "part_b", "b", "value_b", "Candidate") or str(row.get("Part B") or row.get("Candidate") or ""))
+        raw_c = _shown(_recorded(row, "Part C", "part_c", "c", "value_c") or str(row.get("Part C") or ""))
+        evidence = _shown(str(row.get("Evidence") or row.get("evidence") or ""))
         label_key = label.casefold()
 
         def critical_for(slot: str) -> bool:
@@ -7158,6 +7268,7 @@ def render_compare_live() -> None:
         ]
         if has_part_c:
             cells.append(compare_cell(raw_c, "Part C", raw_a))
+        cells.append(f"<td>{_esc(evidence)}</td>")
         body.append(f"<tr><td>{_esc(label)}</td>{''.join(cells)}</tr>")
         rendered_compatibility_labels.add(label_key)
     compatibility_fields = (
@@ -7207,6 +7318,7 @@ def render_compare_live() -> None:
                 else f"<td>{_esc(part_c_value)}</td>"
             )
             cells.append(part_c_cell)
+        cells.append("<td>Recorded by the compatibility check. No datasheet page is cited here.</td>")
         body.append(f"<tr><td>{_esc(label)}</td>{''.join(cells)}</tr>")
     ran = isinstance(result, dict) and str(result.get("status") or "") in {"completed", "failed"}
     error = str(result.get("error") if isinstance(result, dict) else "").strip()
@@ -7231,6 +7343,7 @@ def render_compare_live() -> None:
     headers = f"<th>Parameter</th><th>{name_a}</th><th>{name_b}</th>"
     if has_part_c:
         headers += f"<th>{name_c}</th>"
+    headers += "<th>Evidence</th>"
     table = (
         f"<p class='cv-ap-sub'>{_esc(empty)}</p>"
         if empty

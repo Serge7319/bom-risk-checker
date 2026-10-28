@@ -22,7 +22,7 @@ def test_scroll_reset_runs_in_app_document_until_destination_mounts():
     assert "const scrollAncestors = (origin) =>" in reset
     assert "element.scrollHeight > element.clientHeight + 2" in reset
     assert "state.timer = window.setInterval(state.reset, 100)" in reset
-    assert "state.settled >= 1" in reset
+    assert "state.settled >= 2" in reset
     assert "Date.now() - state.startedAt > 10000" in reset
     assert "components.html" not in reset
 
