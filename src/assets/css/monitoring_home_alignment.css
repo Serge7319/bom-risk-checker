@@ -194,7 +194,34 @@ html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_re
 }
 
 html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_kpi_grid {
+  box-sizing: border-box !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
   overflow: visible !important;
+}
+
+/* Give all four KPI cards the same full-width tracks as the alerts table. */
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_kpi_grid [data-testid="stHorizontalBlock"] {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  justify-content: stretch !important;
+  align-items: stretch !important;
+  gap: 16px !important;
+  width: 100% !important;
+  overflow: visible !important;
+}
+
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_kpi_grid [data-testid="stColumn"],
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_kpi_grid [data-testid="column"] {
+  box-sizing: border-box !important;
+  display: flex !important;
+  flex: none !important;
+  justify-self: stretch !important;
+  width: 100% !important;
+  max-width: none !important;
+  min-width: 0 !important;
+  padding: 0 !important;
 }
 
 html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-kpi {
@@ -325,25 +352,37 @@ html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_re
 }
 
 @media (max-width: 1100px) {
+  html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_kpi_grid [data-testid="stHorizontalBlock"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 12px !important;
+  }
+
   html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-kpi {
-    grid-template-columns: 44px minmax(0, 1fr) !important;
-    grid-template-rows: 44px minmax(0, 1fr) !important;
+    grid-template-columns: 40px minmax(0, 1fr) !important;
+    grid-template-rows: 40px minmax(0, 1fr) !important;
     height: 144px !important;
     min-height: 144px !important;
     overflow: visible !important;
-    padding: 12px 14px !important;
+    padding: 12px !important;
   }
 
   html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-icon {
-    width: 44px !important;
-    height: 44px !important;
+    width: 40px !important;
+    height: 40px !important;
   }
 
   html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-copy > span {
+    grid-column: 2 !important;
+    grid-row: 1 !important;
     font-size: 13px !important;
     overflow-wrap: normal !important;
     word-break: normal !important;
     white-space: nowrap !important;
+  }
+
+  html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-copy strong {
+    grid-column: 1 !important;
+    grid-row: 2 !important;
   }
 
   html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-kpi .cv-ap-spark {
@@ -360,6 +399,10 @@ html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_re
 }
 
 @media (max-width: 640px) {
+  html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_kpi_grid [data-testid="stHorizontalBlock"] {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
   html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-kpi {
     height: 144px !important;
     min-height: 144px !important;

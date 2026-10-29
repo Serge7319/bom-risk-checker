@@ -41,6 +41,15 @@ class MonitoringSnapshotLayoutTests(unittest.TestCase):
         self.assertIn("max-width: 1440px !important;", MONITORING_LAYOUT)
 
     def test_monitoring_kpis_share_height_and_keep_labels_out_of_sparkline_column(self):
+        self.assertIn(
+            "grid-template-columns: repeat(4, minmax(0, 1fr)) !important;",
+            MONITORING_LAYOUT,
+        )
+        self.assertIn("max-width: none !important;", MONITORING_LAYOUT)
+        self.assertIn(
+            "grid-template-columns: repeat(2, minmax(0, 1fr)) !important;",
+            MONITORING_LAYOUT,
+        )
         self.assertIn("grid-template-columns: 48px minmax(0, 1fr) !important;", MONITORING_LAYOUT)
         self.assertIn("height: 144px !important;", MONITORING_LAYOUT)
         self.assertIn("display: contents !important;", MONITORING_LAYOUT)
