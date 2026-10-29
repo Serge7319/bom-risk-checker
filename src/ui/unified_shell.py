@@ -187,6 +187,13 @@ def _approved_shell_css() -> str:
           opacity:1!important;filter:none!important;backdrop-filter:none!important;
           -webkit-backdrop-filter:none!important
         }
+        /* Hide the previous route body once the new shell is mounted. The
+           rail itself stays. This avoids a second set of sidebar controls
+           and a stale narrow workspace without covering the page in a mask. */
+        body:has([class*="st-key-cv_foundation_navigation"]:not([data-stale="true"]))
+          [class*="st-key-cadivor_authenticated_route_body"] [data-stale="true"]{
+          display:none!important;visibility:hidden!important;pointer-events:none!important
+        }
         /* Retired Streamlit shell containers can sit above or around the old
            rail, depending on which block was replaced. Hide every stale wrapper
            containing a navigation rail, not only stElementContainer wrappers. */

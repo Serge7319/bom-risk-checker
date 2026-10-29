@@ -352,17 +352,25 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
         exec(compile(ast.fix_missing_locations(module), "<transition-copy>", "exec"), namespace)
         render = namespace["route_loading_markup"]
 
+        namespace["st"].session_state["cadivor_main_transition_kind"] = "blocking"
         namespace["st"].session_state["cadivor_bom_analysis_transition"] = "start"
         start = render("BOM Analyzer", 1)
-        self.assertIn("Starting BOM analysis…", start)
+        self.assertNotIn("Starting BOM analysis…", start)
+        self.assertNotIn("position:fixed", start)
+        self.assertEqual(start, "")
 
         namespace["st"].session_state["cadivor_bom_analysis_transition"] = "rerun"
         rerun = render("BOM Analyzer", 2)
-        self.assertIn("Rerunning BOM analysis…", rerun)
-        self.assertIn("Refreshing supplier, lifecycle, lead-time, and pricing evidence", rerun)
-        self.assertIn("position:fixed;left:var(--cv-foundation-rail,0px)", rerun)
-        self.assertIn("display:flex;align-items:center;justify-content:center", rerun)
-        self.assertIn("width:min(420px,calc(100% - 48px))", rerun)
+        self.assertNotIn("Rerunning BOM analysis…", rerun)
+        self.assertNotIn("position:fixed", rerun)
+        self.assertEqual(rerun, "")
+
+        namespace["st"].session_state["cadivor_bom_analysis_transition"] = ""
+        other = render("Dashboard", 3)
+        self.assertIn("Opening Dashboard…", other)
+        self.assertIn("position:fixed;left:var(--cv-foundation-rail,0px)", other)
+        self.assertIn("display:flex;align-items:center;justify-content:center", other)
+        self.assertIn("width:min(420px,calc(100% - 48px))", other)
 
 
 if __name__ == "__main__":

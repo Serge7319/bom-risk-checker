@@ -43,6 +43,9 @@ class FamilyProfile:
     requires_pinout_for_dropin: bool = False
     architecture_meaningful: bool = False
     aliases: tuple[str, ...] = ()
+    # Semiconductors use package and pin count. Rheostats and other panel
+    # parts use their own mechanical interface and must not inherit that gate.
+    uses_semiconductor_interface: bool = True
 
 
 COMMON_FIELD_SPECS: tuple[FieldSpec, ...] = (
@@ -141,6 +144,55 @@ _register(FamilyProfile(
            pdf=("ripple current",), role="max", digikey=("Ripple Current",), mouser=("Ripple Current",)),
         _f("polarity", "Polarity", compare=COMPARE_TYPE, pdf=("polarity",),
            digikey=("Polarization", "Polarity"), mouser=("Polarity",)),
+    ),
+))
+
+_register(FamilyProfile(
+    id="Potentiometer / rheostat",
+    display_name="Potentiometer / rheostat",
+    markers=("rheostat", "potentiometer", "wirewound pot", "panel pot"),
+    omit_common=("package", "pin_count", "voltage_range"),
+    scoring_mode="parametric_matrix",
+    architecture_meaningful=False,
+    uses_semiconductor_interface=False,
+    fields=(
+        _f("resistance", "Resistance", compare=COMPARE_NOMINAL, required=True, unit="Ohm",
+           pdf=("resistance", "nominal resistance", "resistance value", "ohms value", "ohms"),
+           digikey=("Resistance",), mouser=("Resistance",)),
+        _f("tolerance", "Tolerance", pdf=("tolerance", "resistance tolerance"),
+           digikey=("Tolerance",), mouser=("Tolerance",)),
+        _f("power_rating", "Power rating", compare=COMPARE_LIMIT_GE, required=True, unit="W",
+           pdf=("power rating", "rated power", "power dissipation", "watts"), role="max",
+           digikey=("Power (Watts)", "Power Rating"), mouser=("Power Rating",)),
+        # Product pages often label this "Volts" without claiming maximum/RMS.
+        # Keep the UI label aligned with that source wording unless an authoritative
+        # mapping to "Maximum working voltage" / RMS is cited.
+        # UI stays "Volts". Distributor labels like "Maximum Voltage Rating (V)" may
+        # be searched, but citation keeps the source field wording and never adds RMS.
+        _f("max_working_voltage", "Volts", compare=COMPARE_LIMIT_GE, unit="V",
+           pdf=("maximum voltage rating", "voltage rating", "volts"), role="max",
+           digikey=("Voltage Rating",), mouser=("Voltage Rating",)),
+        _f("taper", "Taper", compare=COMPARE_TYPE,
+           pdf=("taper", "resistance taper", "linear or logarithmic"),
+           digikey=("Taper",), mouser=("Taper",)),
+        _f("element_type", "Element type", compare=COMPARE_TYPE,
+           pdf=("element", "element type", "resistive element", "construction", "technology"),
+           digikey=("Composition", "Resistive Material"), mouser=("Element Type",)),
+        _f("turns", "Turns", pdf=("number of turns", "turns"),
+           digikey=("Number of Turns",), mouser=("Number of Turns",)),
+        _f("rotation_angle", "Rotation",
+           pdf=("rotation", "mechanical rotation", "angle of rotation", "mechanical rotation angle")),
+        _f("terminal_style", "Terminal style", required=True,
+           pdf=("terminal", "terminals", "terminal style", "termination style"),
+           digikey=("Termination Style", "Termination"), mouser=("Termination Style",)),
+        _f("terminal_count", "Terminal count",
+           pdf=("number of terminals", "terminal count")),
+        _f("shaft", "Shaft", pdf=("shaft", "shaft diameter", "shaft length"),
+           digikey=("Shaft Diameter", "Shaft Length"), mouser=("Shaft Diameter",)),
+        _f("bushing", "Bushing", pdf=("bushing", "bushing thread", "mounting bushing")),
+        # Diameter stays its own attribute. Never alias bare diameter onto Body.
+        _f("diameter", "Diameter", compare=COMPARE_NOMINAL, pdf=("diameter",)),
+        _f("body_dimensions", "Body", pdf=("body diameter", "body dimensions", "body size")),
     ),
 ))
 
@@ -570,8 +622,8 @@ _register(FamilyProfile(
 _INFERENCE_ORDER: tuple[str, ...] = (
     "FPGA / CPLD", "MCU / processor", "Operational amplifier", "Logic / interface IC",
     "Regulator", "MOSFET", "Bipolar transistor", "Diode / protection", "Capacitor",
-    "Resistor", "Inductor", "Transformer", "Oscillator / crystal", "Sensor", "Relay",
-    "Switch", "Connector / electromechanical",
+    "Potentiometer / rheostat", "Resistor", "Inductor", "Transformer",
+    "Oscillator / crystal", "Sensor", "Relay", "Switch", "Connector / electromechanical",
 )
 
 
@@ -590,8 +642,8 @@ def infer_family_id(part: Mapping) -> str:
     text = " ".join(
         str(part.get(key) or "")
         for key in (
-            "description", "architecture", "manufacturer_part_number",
-            "device_type", "Category", "category",
+            "description", "Description", "architecture", "manufacturer_part_number",
+            "device_type", "Category", "category", "product_type",
         )
     ).casefold()
     for family_id in _INFERENCE_ORDER:

@@ -1793,6 +1793,8 @@ def render_engineering_intelligence_report(
         with tab_panels[EI_TABS.index(tab)]:
             if approval_load_failed:
                 st.warning("Saved replacement approvals could not be loaded. They may be missing from this view until the connection is restored.")
+            elif not approved_alternatives and tab != "Alternatives":
+                st.caption("No saved replacement approvals for this BOM.")
             analysis_id = str(analysis.get("id") or "")
             if tab == "BOM Risk" and approved_alternatives:
                 from src.approved_alternatives import approved_mpn_map, part_key

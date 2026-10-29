@@ -850,8 +850,16 @@ def load_analysis_decisions(
             .select("*")
         )
         .eq("user_id", user_id)
-        .is_("archived_at", "null")
     )
+    # Active rows are those with no archived_at. PostgREST expresses that with
+    # is_(). A client without that method can still return the rows; filter
+    # archived records after a successful read. A failed read still raises.
+    filter_archived_locally = False
+    archived_filter = getattr(query, "is_", None)
+    if callable(archived_filter):
+        query = archived_filter("archived_at", "null")
+    else:
+        filter_archived_locally = True
 
     if project_name:
         query = query.eq("project_name", str(project_name).strip())
@@ -866,7 +874,13 @@ def load_analysis_decisions(
         .limit(limit)
         .execute()
     )
-    return response.data if response.data else []
+    rows = list(response.data or [])
+    if filter_archived_locally:
+        rows = [
+            row for row in rows
+            if not (isinstance(row, dict) and row.get("archived_at"))
+        ]
+    return rows
 
 
 def archive_analysis_decision(user_id, decision_id):
@@ -7590,8 +7604,8 @@ def run_authenticated_app() -> None:
                 .st-key-cv_pa_supplier_toprow [data-testid="column"]{min-width:0!important}
                 .st-key-cv_pa_supplier_controls [data-testid="stHorizontalBlock"]{align-items:flex-end!important;gap:12px!important}
                 .st-key-cv_pa_supplier_controls label{font-size:12px!important;color:#64748b!important;font-weight:750!important}
-                .st-key-cv_pa_next_steps{box-sizing:border-box!important;width:100%!important;margin:14px 0 18px!important;padding:22px!important;border:1px solid #dfe7f1!important;border-radius:14px!important;background:#fff!important;box-shadow:0 3px 12px rgba(15,23,42,.035)!important}
-                .st-key-cv_pa_next_steps>[data-testid="stVerticalBlock"]{gap:12px!important}
+                .st-key-cv_pa_next_steps{box-sizing:border-box!important;width:100%!important;margin:8px 0 0!important;padding:14px 16px!important;border:1px solid #dfe7f1!important;border-radius:14px!important;background:#fff!important;box-shadow:none!important}
+                .st-key-cv_pa_next_steps>[data-testid="stVerticalBlock"]{gap:8px!important}
                 .cv-pa-next-heading{margin:0 0 2px}
                 .cv-pa-next-heading span{display:block;margin-bottom:5px;color:#2563eb;font-size:10px;font-weight:850;letter-spacing:.12em}
                 .cv-pa-next-heading h2{margin:0 0 5px;color:#102341;font-size:21px;font-weight:800;line-height:1.2}
@@ -7605,8 +7619,8 @@ def run_authenticated_app() -> None:
                 .cv-pa-summary,.cv-pa-table-shell,.cv-pa-table-scroll,.st-key-cv_pa_supplier_options{max-width:100%!important;min-width:0!important}
                 .cv-pa-summary{grid-template-columns:96px minmax(0,1.4fr) repeat(4,minmax(0,1fr))!important}
                 .cv-pa-table-scroll{overflow-x:auto!important}
-                .st-key-cv_pa_table_actions{box-sizing:border-box!important;width:100%!important;margin-top:8px!important;padding:16px 0 2px!important;border-top:1px solid #e2e8f0!important}
-                .st-key-cv_pa_table_actions>[data-testid="stVerticalBlock"]{gap:12px!important;width:100%!important}
+                .st-key-cv_pa_table_actions{box-sizing:border-box!important;width:100%!important;margin-top:4px!important;padding:12px 14px!important;border:1px solid #e2e8f0!important;border-radius:12px!important;background:#fff!important}
+                .st-key-cv_pa_table_actions>[data-testid="stVerticalBlock"]{gap:8px!important;width:100%!important}
                 .cv-pa-table-actions-label{margin:0;color:#64748b;font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
                 .st-key-cv_pa_table_actions [data-testid="stHorizontalBlock"]{display:flex!important;justify-content:flex-end!important;align-items:center!important;gap:12px!important;width:100%!important}
                 .st-key-cv_pa_table_actions [data-testid="column"],.st-key-cv_pa_table_actions [data-testid="stColumn"]{flex:0 1 240px!important;width:auto!important;max-width:280px!important;min-width:180px!important}
@@ -22277,9 +22291,24 @@ def run_authenticated_app() -> None:
                 margin-right:auto!important;
             }
             .st-key-bom8_analysis_preview{max-width:1440px!important;}
-            .st-key-bom8_analysis_progress_card{max-width:1440px!important;margin:0 auto 16px!important;}
+            .st-key-bom8_analysis_progress_card{max-width:1440px!important;margin:8px auto 16px!important;}
             section[data-testid="stMain"] [data-testid="stMainBlockContainer"]:has(.st-key-bom8_analysis_progress_card){
-              padding-top:28px!important;
+              padding-top:calc(var(--cv-foundation-top, 64px) + 12px)!important;
+            }
+            body:has(.st-key-bom8_analysis_progress_card) section[data-testid="stMain"] [data-testid="stVerticalBlock"]:has(.st-key-bom8_analysis_progress_card){
+              gap:0!important;
+              row-gap:0!important;
+            }
+            body:has(.st-key-bom8_analysis_progress_card) section[data-testid="stMain"] [data-testid="stVerticalBlock"]:has(.st-key-bom8_analysis_progress_card) > :not(:has(.st-key-bom8_analysis_progress_card)):not(:has([class*="st-key-cv_foundation_navigation"])):not(:has([class*="st-key-cv_foundation_profile"])):not(:has(.cv-foundation-topbar)){
+              display:none!important;
+              height:0!important;
+              min-height:0!important;
+              max-height:0!important;
+              margin:0!important;
+              padding:0!important;
+              overflow:hidden!important;
+              flex:0 0 0!important;
+              border:0!important;
             }
             .st-key-bom8_one_time_payment_action{max-width:760px!important;margin-top:12px!important;}
             .st-key-bom8_analysis_progress_card .stButton>button{width:auto!important;min-width:0!important;}
@@ -23895,6 +23924,7 @@ def run_authenticated_app() -> None:
             not _approved_bom_pipeline_active
             and not _resume_pending_one_time_analysis
             and not _has_completed_saved_results
+            and st.session_state.get("bom8_analysis_future") is None
         ):
             analyze_clicked = st.button(
                 "Analyzing BOM…" if analysis_in_progress else ("Analyze Sample BOM" if sample_mode else "Analyze BOM"),
@@ -24032,6 +24062,24 @@ def run_authenticated_app() -> None:
                 st.session_state["cadivor_bom_analysis_scroll_token"] = request_main_scroll_reset()
                 st.rerun()
 
+            st.markdown(
+                """
+                <style data-cadivor-layout-style="true">
+                body:has(.st-key-bom8_analysis_progress_card) .st-key-bom9_workspace_grid,
+                body:has(.st-key-bom8_analysis_progress_card) .st-key-approved_bom_title,
+                body:has(.st-key-bom8_analysis_progress_card) #cadivor-bom-analysis-top-anchor {
+                  display:none !important;
+                  height:0 !important;
+                  margin:0 !important;
+                  padding:0 !important;
+                }
+                .st-key-bom8_analysis_progress_card {
+                  margin-top: 8px !important;
+                }
+                </style>
+                """,
+                unsafe_allow_html=True,
+            )
             with st.container(key="bom8_analysis_progress_card", border=True):
                 _render_active_bom_analysis()
             st.stop()
@@ -24372,16 +24420,25 @@ def run_authenticated_app() -> None:
                             "This BOM was not saved. An active workspace with owner, admin, or engineer access could not be verified. Switch to an active writable workspace, then retry."
                         )
 
+                    from uuid import uuid4
+
+                    from src.bom_upload_flow import confirmed_inserted_id
+
                     if _one_time_reserved:
-                        from uuid import uuid4
                         analysis_id = str(uuid4())
                         attach_one_time_analysis(
                             _one_time_user_id, _one_time_order_id, analysis_id
                         )
+                    else:
+                        # The normal insert used to omit id and require the
+                        # representation to invent one. Send the id that will be
+                        # stored, then accept only the id the insert echoes or
+                        # a follow-up read of that same row.
+                        analysis_id = str(uuid4())
                     analysis_response = supabase.table("analyses").insert(
                         _workspace_payload(
                             {
-                                **({"id": analysis_id} if _one_time_reserved else {}),
+                                "id": analysis_id,
                                 "user_id": current_user["id"],
                                 "project_name": analysis_name,
                                 "filename": source_filename,
@@ -24395,7 +24452,26 @@ def run_authenticated_app() -> None:
                         )
                     ).execute()
 
-                    analysis_id = analysis_response.data[0]["id"]
+                    response_rows = list(getattr(analysis_response, "data", None) or [])
+                    echoed_id = ""
+                    if response_rows and isinstance(response_rows[0], dict):
+                        echoed_id = str(response_rows[0].get("id") or "").strip()
+                    fetched_rows: list = []
+                    if not echoed_id:
+                        fetched = (
+                            supabase.table("analyses")
+                            .select("id")
+                            .eq("id", analysis_id)
+                            .eq("user_id", current_user["id"])
+                            .limit(1)
+                            .execute()
+                        )
+                        fetched_rows = list(getattr(fetched, "data", None) or [])
+                    analysis_id = confirmed_inserted_id(
+                        response_rows,
+                        sent_id=analysis_id,
+                        fetched_rows=fetched_rows,
+                    )
                     st.session_state["analysis_id"] = analysis_id
                     st.session_state["cadivor_active_analysis_id"] = str(analysis_id)
                     st.session_state["cadivor_active_analysis_tab"] = "Engineering Intelligence"

@@ -7,7 +7,7 @@ from pathlib import Path
 import unittest
 
 from src.browser_navigation import serialize_browser_route_state
-from src.bom_upload_flow import fail_approved_bom_summary_save
+from src.bom_upload_flow import confirmed_inserted_id, fail_approved_bom_summary_save
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -105,6 +105,34 @@ class BrowserRouteStateTests(unittest.TestCase):
         )[1].split("from src.part_images import normalize_supplier_image_url", 1)[0]
         self.assertIn("fail_approved_bom_summary_save(", save_block)
         self.assertIn("st.rerun()", save_block)
+        self.assertIn('"id": analysis_id', save_block)
+        self.assertIn("confirmed_inserted_id(", save_block)
+        self.assertNotIn(
+            '**({"id": analysis_id} if _one_time_reserved else {})',
+            save_block,
+        )
+
+    def test_saved_analysis_id_must_be_echoed_or_read_back(self):
+        self.assertEqual(
+            confirmed_inserted_id([{"id": "persisted-1"}], sent_id="sent-1"),
+            "persisted-1",
+        )
+        self.assertEqual(
+            confirmed_inserted_id(
+                [{}],
+                sent_id="sent-2",
+                fetched_rows=[{"id": "sent-2"}],
+            ),
+            "sent-2",
+        )
+        with self.assertRaises(KeyError):
+            confirmed_inserted_id([{}], sent_id="sent-3", fetched_rows=[])
+        with self.assertRaises(KeyError):
+            confirmed_inserted_id(
+                [],
+                sent_id="sent-4",
+                fetched_rows=[{"id": "someone-else"}],
+            )
 
         approved_pages = (ROOT / "src" / "ui" / "approved_pages.py").read_text(encoding="utf-8")
         catalog = approved_pages.split("def render_bom_catalog(", 1)[1].split(

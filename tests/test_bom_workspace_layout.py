@@ -116,7 +116,9 @@ def test_bom_analysis_progress_reanchors_the_workspace_after_mount():
     assert "st.html(" in progress_reanchor
     assert "components.html(" not in progress_reanchor
     assert "const doc = document;" in progress_reanchor
-    assert "anchor?.scrollIntoView({ block: 'start'" in progress_reanchor
+    assert "scrollIntoView" not in progress_reanchor
+    assert "element.scrollTop = 0" in progress_reanchor
+    assert "window.scrollTo(0, 0)" in progress_reanchor
     assert "window.setInterval(state.reset, 350)" in progress_reanchor
     assert "Date.now() - state.missingSince > 10000" in progress_reanchor
     assert "userInteracted" in progress_reanchor

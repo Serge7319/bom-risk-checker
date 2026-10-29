@@ -571,7 +571,7 @@ def inject_nav_scroll_reset_if_needed() -> bool:
               }}
             }});
             state.settled = destinationMounted && atTop ? state.settled + 1 : 0;
-            if (state.settled >= 1) {{
+            if (state.settled >= 2) {{
               stop(true);
             }} else if (Date.now() - state.startedAt > 10000) {{
               stop(state.transitionGen <= 0 || Boolean(body));
