@@ -44,6 +44,16 @@ class NavigationFlashAndReviewEntryTests(unittest.TestCase):
 
     def test_old_transition_cover_cannot_release_a_new_navigation_chip(self):
         self.assertIn("cover.closest('[data-stale=\"true\"]')", BROWSER_BRIDGE)
+        self.assertIn("body:has(#cadivor-instant-navigation-transition)", BROWSER_BRIDGE)
+
+    def test_history_navigation_uses_a_nonblocking_chip(self):
+        history = BROWSER_BRIDGE.split("function showHistoryTransition", 1)[1].split(
+            "function finishHistoryTransition", 1
+        )[0]
+        self.assertIn("background: transparent !important", history)
+        self.assertIn("pointer-events: none !important", history)
+        self.assertNotIn("background: #F5F7FB", history)
+        self.assertIn("Opening ${page}…", history)
 
     def test_new_analysis_arms_a_route_cover_before_the_form_rerenders(self):
         prepare = BOM_UPLOAD_FLOW.split(

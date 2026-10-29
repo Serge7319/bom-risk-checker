@@ -272,7 +272,7 @@ def inject_main_transition_css(transition_gen: int) -> None:
           0%{{transform:translateX(-120%)}}
           100%{{transform:translateX(280%)}}
         }}
-        /* Keep sidebar glyphs at their normal size while the route CSS and
+        /* Keep rail glyphs at their normal size while route styles and the
            destination DOM are being swapped during a Streamlit rerun. */
         body:has([data-cadivor-main-transition="1"])
           [class*="st-key-cv_foundation_navigation"] .stButton>button::before{{
@@ -356,7 +356,8 @@ def inject_main_transition_css(transition_gen: int) -> None:
           ):not(:has([data-cadivor-topbar-flow-host])):not(
             :has([class*="st-key-cv_foundation_"])
           ){{
-          visibility:hidden!important;opacity:0!important;pointer-events:none!important
+          display:none!important;visibility:hidden!important;opacity:0!important;
+          pointer-events:none!important
         }}
         /*
           Active transition wrappers: zero in-flow height; fixed Opening still paints.

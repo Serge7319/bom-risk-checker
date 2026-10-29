@@ -11,6 +11,7 @@ from typing import Any, MutableMapping
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = (ROOT / "src" / "ui" / "main_transition.py").read_text(encoding="utf-8")
+UNIFIED_SHELL = (ROOT / "src" / "ui" / "unified_shell.py").read_text(encoding="utf-8")
 
 
 class MainTransitionSlowRouteContractTests(unittest.TestCase):
@@ -31,6 +32,20 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
         )
         role_lookup = runtime.index("def _read_users_role_for_shell")
         self.assertLess(cover, role_lookup)
+
+    def test_outgoing_route_stays_visible_until_destination_body_marker(self):
+        stale_hide_rule = UNIFIED_SHELL.split(
+            "/* Keep the outgoing route visible under the compact transition chip.",
+            1,
+        )[1].split("/* Retired Streamlit shell containers", 1)[0]
+        self.assertIn(':not(:has([data-cadivor-main-transition="1"]))', stale_hide_rule)
+        self.assertIn(':not(:has(#cadivor-instant-navigation-transition))', stale_hide_rule)
+        self.assertIn(':not(:has(#cadivor-history-transition))', stale_hide_rule)
+
+        destination_release_rule = SOURCE.split(
+            'body:has([data-cadivor-page-body-gen="{gen}"])', 1
+        )[1].split("/*", 1)[0]
+        self.assertIn("display:none!important", destination_release_rule)
 
     def test_transition_cover_uses_synchronous_non_iframe_html(self):
         paint = SOURCE.split("def _paint_main_transition_markup", 1)[1].split(
