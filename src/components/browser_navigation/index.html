@@ -46,6 +46,41 @@
       '[class*="st-key-cadivor_bom_more_btn_"]',
     ].join(",");
     const state = {checkQueued: false};
+    function syncShellGeometry() {
+      const root = doc.documentElement;
+      if (!root || !root.style) return;
+      const signedOut = doc.querySelector('[data-cadivor-signed-out-surface="1"]');
+      const signedOutStyle = signedOut ? w.getComputedStyle(signedOut) : null;
+      if (
+        signedOut
+        && !signedOut.closest('[data-stale="true"]')
+        && signedOutStyle.display !== "none"
+        && signedOutStyle.visibility !== "hidden"
+      ) {
+        root.removeAttribute("data-cadivor-shell-locked");
+        return;
+      }
+      const activeTopNavigation = Array.from(
+        doc.querySelectorAll('[class*="st-key-cv_foundation_top_navigation"]')
+      ).some((element) => {
+        if (element.closest('[data-stale="true"]')) return false;
+        const rect = element.getBoundingClientRect();
+        return rect.width > 1 && rect.height > 1;
+      });
+      const rails = Array.from(
+        doc.querySelectorAll('[class*="st-key-cv_foundation_navigation"]')
+      );
+      const activeRail = rails.find((element) => {
+        if (element.closest('[data-stale="true"]')) return false;
+        const rect = element.getBoundingClientRect();
+        return rect.width > 1 && rect.height > 1;
+      });
+      if (activeTopNavigation && !activeRail) {
+        root.removeAttribute("data-cadivor-shell-locked");
+      } else if (activeRail) {
+        root.setAttribute("data-cadivor-shell-locked", "1");
+      }
+    }
 
     function cleanLabel(button) {
       return String(button.innerText || button.textContent || "")
@@ -90,10 +125,17 @@
       return String(marker.getAttribute("data-cadivor-page-body-gen") || "").trim();
     }
 
-    function hasVisiblePythonCover() {
+    function hasVisiblePythonCover(afterGeneration = "") {
       return Array.from(doc.querySelectorAll(".cv-main-transition.cv-route-loading"))
         .some((cover) => {
           try {
+            if (cover.closest('[data-stale="true"]')) return false;
+            const generation = String(
+              cover.getAttribute("data-cadivor-transition-gen") || ""
+            ).trim();
+            if (afterGeneration && (!generation || generation === afterGeneration)) {
+              return false;
+            }
             const style = w.getComputedStyle(cover);
             if (
               style.display === "none"
@@ -130,7 +172,7 @@
         ).trim();
         const currentGeneration = bodyGeneration();
         if (
-          hasVisiblePythonCover()
+          hasVisiblePythonCover(previousGeneration)
           || (currentGeneration && currentGeneration !== previousGeneration)
         ) {
           raf(() => {
@@ -138,7 +180,7 @@
             if (!liveCover) return;
             const liveGeneration = bodyGeneration();
             if (
-              hasVisiblePythonCover()
+              hasVisiblePythonCover(previousGeneration)
               || (liveGeneration && liveGeneration !== previousGeneration)
             ) {
               liveCover.remove();
@@ -154,12 +196,15 @@
         shell.id = "cadivor-shell-geometry-lock";
         shell.textContent = [
           "@media (min-width:701px){",
-          "section[data-testid='stMain']{box-sizing:border-box!important;margin:0 0 0 var(--cv-foundation-rail,296px)!important;width:calc(100% - var(--cv-foundation-rail,296px))!important;max-width:none!important;padding-left:0!important;}",
-          "section[data-testid='stMain'] [data-testid='stMainBlockContainer'],section[data-testid='stMain'] .main .block-container{box-sizing:border-box!important;width:100%!important;max-width:none!important;margin-left:0!important;margin-right:0!important;}",
+          "html[data-cadivor-shell-locked='1'] body section[data-testid='stMain']:not([data-stale='true']){box-sizing:border-box!important;margin:0 0 0 var(--cv-foundation-rail,296px)!important;width:calc(100% - var(--cv-foundation-rail,296px))!important;max-width:none!important;min-width:0!important;padding-left:0!important;}",
+          "html[data-cadivor-shell-locked='1'] body section[data-testid='stMain']:not([data-stale='true']) [data-testid='stMainBlockContainer'],html[data-cadivor-shell-locked='1'] body section[data-testid='stMain']:not([data-stale='true']) .main .block-container{box-sizing:border-box!important;width:100%!important;min-width:0!important;max-width:none!important;margin-left:0!important;margin-right:0!important;}",
+          "html[data-cadivor-shell-locked='1'] body [class*='st-key-cv_foundation_navigation']:not([data-stale='true']){box-sizing:border-box!important;position:fixed!important;left:0!important;top:0!important;bottom:0!important;width:var(--cv-foundation-rail,296px)!important;min-width:var(--cv-foundation-rail,296px)!important;max-width:var(--cv-foundation-rail,296px)!important;}",
+          "html[data-cadivor-shell-locked='1'] body [class*='st-key-cv_foundation_navigation']:not([data-stale='true']) .stButton>button::before{box-sizing:border-box!important;flex:0 0 16px!important;width:16px!important;height:16px!important;max-width:16px!important;max-height:16px!important;background-size:16px 16px!important;}",
+          "html[data-cadivor-shell-locked='1'] body [class*='st-key-cv_foundation_navigation']:not([data-stale='true']) .stButton>button svg{box-sizing:border-box!important;flex:0 0 16px!important;width:16px!important;height:16px!important;max-width:16px!important;max-height:16px!important;}",
           "}",
           "@media (max-width:700px){",
-          "section[data-testid='stMain']{margin-left:0!important;width:100%!important;padding-left:0!important;}",
-          "section[data-testid='stMain'] [data-testid='stMainBlockContainer'],section[data-testid='stMain'] .main .block-container{width:100%!important;max-width:none!important;margin-left:0!important;}",
+          "html body section[data-testid='stMain']{margin-left:0!important;width:100%!important;padding-left:0!important;}",
+          "html body section[data-testid='stMain'] [data-testid='stMainBlockContainer'],html body section[data-testid='stMain'] .main .block-container{width:100%!important;max-width:none!important;margin-left:0!important;}",
           ".cv-ap-home-kpis{grid-template-columns:1fr!important;}",
           ".cv-ap-home-kpi .cv-ap-home-kpi-label,.cv-ap-home-kpi-copy strong{white-space:normal!important;}",
           ".cv-ap-home-kpi .cv-ap-home-icon{flex:0 0 48px!important;width:48px!important;height:48px!important;}",
@@ -168,6 +213,7 @@
         ].join("");
         (doc.head || doc.documentElement).appendChild(shell);
       }
+      syncShellGeometry();
       if (doc.getElementById("cadivor-instant-navigation-transition-style")) return;
       const style = doc.createElement("style");
       style.id = "cadivor-instant-navigation-transition-style";
@@ -223,16 +269,25 @@
     doc.addEventListener("pointerdown", handleTransitionClick, true);
     doc.addEventListener("click", handleTransitionClick, true);
     if (typeof w.MutationObserver === "function") {
-      const observer = new w.MutationObserver(queueReleaseCheck);
+      const observer = new w.MutationObserver(() => {
+        syncShellGeometry();
+        queueReleaseCheck();
+      });
       observer.observe(doc.documentElement, {
         childList: true,
         subtree: true,
         attributes: true,
-        attributeFilter: ["data-cadivor-page-body-gen", "data-cadivor-page-body-release-gen"],
+        attributeFilter: [
+          "class",
+          "data-stale",
+          "data-cadivor-page-body-gen",
+          "data-cadivor-page-body-release-gen",
+        ],
       });
       w.__cadivorImmediateNavigationObserver = observer;
     }
     installStyle();
+    syncShellGeometry();
   }
 
   function ensureParentBridge() {

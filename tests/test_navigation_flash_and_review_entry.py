@@ -9,6 +9,7 @@ BROWSER_BRIDGE = (
 BOM_UPLOAD_FLOW = (ROOT / "src" / "bom_upload_flow.py").read_text(encoding="utf-8")
 BOM_NAVIGATION = (ROOT / "src" / "ui" / "bom_navigation.py").read_text(encoding="utf-8")
 APPROVED_PAGES = (ROOT / "src" / "ui" / "approved_pages.py").read_text(encoding="utf-8")
+MAIN_TRANSITION = (ROOT / "src" / "ui" / "main_transition.py").read_text(encoding="utf-8")
 
 
 class NavigationFlashAndReviewEntryTests(unittest.TestCase):
@@ -19,6 +20,30 @@ class NavigationFlashAndReviewEntryTests(unittest.TestCase):
         self.assertIn('id = "cadivor-instant-navigation-transition"', BROWSER_BRIDGE)
         self.assertIn(".cv-main-transition.cv-route-loading", BROWSER_BRIDGE)
         self.assertIn("data-cadivor-page-body-gen", BROWSER_BRIDGE)
+        self.assertIn("min-width:190px!important", BROWSER_BRIDGE)
+        self.assertIn("flex:0 0 32px!important", BROWSER_BRIDGE)
+        self.assertIn('"Opening " + normalized + "…"', BROWSER_BRIDGE)
+
+    def test_transition_chip_waits_for_a_new_server_generation(self):
+        self.assertIn("function hasVisiblePythonCover(afterGeneration = \"\")", BROWSER_BRIDGE)
+        self.assertIn("generation === afterGeneration", BROWSER_BRIDGE)
+        self.assertIn("hasVisiblePythonCover(previousGeneration)", BROWSER_BRIDGE)
+
+    def test_runtime_geometry_lock_survives_reruns_without_measuring_the_rail(self):
+        self.assertIn('root.setAttribute("data-cadivor-shell-locked", "1")', BROWSER_BRIDGE)
+        self.assertIn('[data-cadivor-signed-out-surface="1"]', BROWSER_BRIDGE)
+        self.assertIn("html[data-cadivor-shell-locked='1']", BROWSER_BRIDGE)
+        self.assertIn("var(--cv-foundation-rail,296px)", BROWSER_BRIDGE)
+        self.assertNotIn("getBoundingClientRect().width", BROWSER_BRIDGE)
+        self.assertNotIn("ResizeObserver", BROWSER_BRIDGE)
+        self.assertIn("max-width:16px!important;max-height:16px!important", BROWSER_BRIDGE)
+
+    def test_python_transition_also_clamps_sidebar_glyphs_while_rerendering(self):
+        self.assertIn('body:has([data-cadivor-main-transition="1"])', MAIN_TRANSITION)
+        self.assertIn("max-width:16px!important;max-height:16px!important", MAIN_TRANSITION)
+
+    def test_old_transition_cover_cannot_release_a_new_navigation_chip(self):
+        self.assertIn("cover.closest('[data-stale=\"true\"]')", BROWSER_BRIDGE)
 
     def test_new_analysis_arms_a_route_cover_before_the_form_rerenders(self):
         prepare = BOM_UPLOAD_FLOW.split(
