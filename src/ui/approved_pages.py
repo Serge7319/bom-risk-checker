@@ -2861,7 +2861,6 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
                     type=["csv", "xlsx"],
                     key="bom_file_uploader",
                     on_change=remember_approved_bom_upload,
-                    args=(st.session_state,),
                     help="CSV or Excel with MPN and Quantity columns.",
                     disabled=analysis_running,
                 )
@@ -2900,7 +2899,7 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
                             st.markdown(
                                 """
                                 <div class="cadivor-bom-upload-waiting" role="status" aria-live="polite">
-                                  <span>Select a CSV or Excel file above. Analyze BOM will check that the upload reached Cadivor and explain how to retry if it is still transferring.</span>
+                                  <span>Select a CSV or Excel file above. Analyze BOM will be available when Cadivor has received it. If the upload does not finish, remove the file and select it again.</span>
                                 </div>
                                 <style>
                                 .cadivor-bom-upload-waiting {

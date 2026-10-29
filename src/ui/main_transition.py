@@ -242,29 +242,48 @@ def inject_main_transition_css(transition_gen: int) -> None:
           }}
         }}
         .cv-main-transition.cv-route-loading[data-cadivor-transition-kind="navigation"] .cv-main-transition-card{{
-          display:block!important;box-sizing:border-box!important;width:184px!important;
-          padding:16px!important;border:1px solid #E4EAF3!important;border-radius:16px!important;
+          display:flex!important;align-items:center!important;gap:12px!important;
+          box-sizing:border-box!important;width:auto!important;min-width:190px!important;
+          padding:14px 18px!important;border:1px solid #E4EAF3!important;border-radius:14px!important;
           background:#FFFFFF!important;box-shadow:0 8px 24px rgba(15,23,42,.06)!important;
-          text-align:center!important
+          color:#334155!important;font-size:13px!important;font-weight:650!important;
+          text-align:left!important
         }}
         .cv-main-transition.cv-route-loading[data-cadivor-transition-kind="navigation"] .cv-main-transition-mark{{
-          display:grid!important;place-items:center!important;width:34px!important;height:34px!important;
-          margin:0 auto 12px!important;border-radius:10px!important;
-          background:linear-gradient(145deg,#2563EB,#1D4ED8)!important;color:#FFFFFF!important;
-          font-size:16px!important;font-weight:850!important;letter-spacing:-.02em!important
+          box-sizing:border-box!important;display:grid!important;place-items:center!important;
+          flex:0 0 32px!important;width:32px!important;height:32px!important;
+          margin:0!important;border-radius:9px!important;
+          background:#2563EB!important;color:#FFFFFF!important;
+          font-size:15px!important;font-weight:850!important;letter-spacing:-.02em!important
+        }}
+        .cv-main-transition.cv-route-loading[data-cadivor-transition-kind="navigation"] .cv-main-transition-label{{
+          flex:1 1 auto!important;min-width:0!important;white-space:nowrap!important
         }}
         .cv-main-transition.cv-route-loading[data-cadivor-transition-kind="navigation"] .cv-main-transition-progress{{
           position:relative!important;left:auto!important;right:auto!important;top:auto!important;
-          display:block!important;width:100%!important;height:3px!important;
+          display:block!important;flex:0 0 44px!important;width:44px!important;height:3px!important;
           margin:0!important;border-radius:999px!important;background:#E8EEF7!important;overflow:hidden!important
         }}
         .cv-main-transition.cv-route-loading[data-cadivor-transition-kind="navigation"] .cv-main-transition-progress>i{{
-          display:block!important;width:35%!important;height:3px!important;border-radius:999px!important;
+          display:block!important;width:42%!important;height:3px!important;border-radius:999px!important;
           background:#2563EB!important;animation:cv-main-transition-progress 1.1s ease-in-out infinite
         }}
         @keyframes cv-main-transition-progress{{
           0%{{transform:translateX(-120%)}}
           100%{{transform:translateX(280%)}}
+        }}
+        /* Keep sidebar glyphs at their normal size while the route CSS and
+           destination DOM are being swapped during a Streamlit rerun. */
+        body:has([data-cadivor-main-transition="1"])
+          [class*="st-key-cv_foundation_navigation"] .stButton>button::before{{
+          box-sizing:border-box!important;flex:0 0 16px!important;width:16px!important;
+          height:16px!important;max-width:16px!important;max-height:16px!important;
+          background-size:16px 16px!important
+        }}
+        body:has([data-cadivor-main-transition="1"])
+          [class*="st-key-cv_foundation_navigation"] .stButton>button svg{{
+          box-sizing:border-box!important;flex:0 0 16px!important;width:16px!important;
+          height:16px!important;max-width:16px!important;max-height:16px!important
         }}
         body:has([data-cadivor-main-transition="1"]) .cv-foundation-topbar,
         body:has([data-cadivor-main-transition="1"]) .cv-foundation-topbar *,
@@ -410,13 +429,6 @@ def inject_main_transition_css(transition_gen: int) -> None:
           height:0!important;min-height:0!important;max-height:0!important;
           margin:0!important;padding:0!important;border:0!important;overflow:hidden!important
         }}
-        @media (max-width:1100px){{
-          .cv-main-transition.cv-route-loading{{left:0!important;width:100vw!important}}
-          .cv-main-transition.cv-route-loading[data-cadivor-transition-kind="navigation"]{{
-            left:var(--cv-foundation-rail,0px)!important;
-            right:0!important;width:calc(100vw - var(--cv-foundation-rail,0px))!important
-          }}
-        }}
         </style>
         """,
         unsafe_allow_html=True,
@@ -452,14 +464,15 @@ def route_loading_markup(target_route: str, transition_gen: int) -> str:
                data-cadivor-transition-gen="{gen}"
                data-testid="cadivor-route-loading"
                style="box-sizing:border-box;position:fixed;left:calc(var(--cv-foundation-rail,296px) + 28px);top:calc(var(--cv-foundation-top,64px) + 16px);right:auto;bottom:auto;width:auto;height:auto;z-index:2147483000;display:flex;align-items:flex-start;justify-content:flex-start;margin:0;padding:0;background:transparent;overflow:visible;pointer-events:none;font-family:Inter,system-ui,sans-serif"
-               role="status" aria-label="Loading {safe_route}" aria-live="polite">
+               role="status" aria-label="Opening {safe_route}" aria-live="polite">
             <div class="cv-main-transition-card"
-                 style="box-sizing:border-box;width:184px;padding:16px;border:1px solid #E4EAF3;border-radius:16px;background:#FFFFFF;box-shadow:0 8px 24px rgba(15,23,42,.06);text-align:center">
-              <div class="cv-main-transition-mark" aria-hidden="true"
-                   style="display:grid;place-items:center;width:34px;height:34px;margin:0 auto 12px;border-radius:10px;background:linear-gradient(145deg,#2563EB,#1D4ED8);color:#FFFFFF;font-size:16px;font-weight:850;letter-spacing:-.02em">C</div>
+                 style="box-sizing:border-box;display:flex;align-items:center;gap:12px;min-width:190px;padding:14px 18px;border:1px solid #E4EAF3;border-radius:14px;background:#FFFFFF;box-shadow:0 8px 24px rgba(15,23,42,.06);color:#334155;font-size:13px;font-weight:650;text-align:left">
+              <span class="cv-main-transition-mark" aria-hidden="true"
+                   style="box-sizing:border-box;display:grid;place-items:center;flex:0 0 32px;width:32px;height:32px;margin:0;border-radius:9px;background:#2563EB;color:#FFFFFF;font-size:15px;font-weight:850;letter-spacing:-.02em">C</span>
+              <span class="cv-main-transition-label">Opening {safe_route}…</span>
               <div class="cv-main-transition-progress" aria-hidden="true"
-                   style="position:relative;display:block;width:100%;height:3px;margin:0;border-radius:999px;background:#E8EEF7;overflow:hidden">
-                <i style="display:block;width:35%;height:3px;border-radius:999px;background:#2563EB"></i>
+                   style="position:relative;display:block;flex:0 0 44px;width:44px;height:3px;margin:0;border-radius:999px;background:#E8EEF7;overflow:hidden">
+                <i style="display:block;width:42%;height:3px;border-radius:999px;background:#2563EB"></i>
               </div>
             </div>
           </div>

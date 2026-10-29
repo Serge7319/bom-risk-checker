@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import unittest
+from threading import Barrier
 from pathlib import Path
 from unittest.mock import patch
 
@@ -329,11 +330,11 @@ class ComparePartsCoreTests(unittest.TestCase):
         with (
             patch(
                 "src.parts_compare.lookup_part_for_compare",
-                side_effect=[
-                    _cap(),
-                    _cap(mpn="ALT-B"),
-                    _cap(v="25V", mpn="ALT-C"),
-                ],
+                side_effect=lambda mpn: {
+                    "C0603C104K5RACTU": _cap(),
+                    "ALT-B": _cap(mpn="ALT-B"),
+                    "ALT-C": _cap(v="25V", mpn="ALT-C"),
+                }[mpn],
             ) as lookup,
             patch("src.compare_evidence_search.gather_part_evidence", return_value=empty_evidence),
         ):
@@ -349,6 +350,37 @@ class ComparePartsCoreTests(unittest.TestCase):
         self.assertEqual(voltage["Part C"], "25V")
         self.assertIn("Part C:", voltage["Assessment"])
         self.assertEqual(lookup.call_count, 3)
+
+    def test_run_compare_parts_many_retrieves_each_part_concurrently_in_input_order(self):
+        barrier = Barrier(2)
+        empty_evidence = {
+            "sources": [],
+            "documents": [],
+            "verified_documents": [],
+            "primary_document": None,
+            "identity": {
+                "attached": False,
+                "verified": False,
+                "mpn_verified": False,
+                "manufacturer_verified": False,
+                "reason": "No datasheet was attached for this part.",
+            },
+        }
+
+        def lookup(mpn):
+            barrier.wait(timeout=2)
+            return _cap(mpn=mpn)
+
+        with (
+            patch("src.parts_compare.lookup_part_for_compare", side_effect=lookup) as lookup_mock,
+            patch("src.compare_evidence_search.gather_part_evidence", return_value=empty_evidence),
+        ):
+            result = run_compare_parts_many(["BASE", "CANDIDATE"])
+
+        self.assertEqual(lookup_mock.call_count, 2)
+        self.assertEqual(result["part_numbers"], ["BASE", "CANDIDATE"])
+        self.assertEqual(result["comparison"]["part_a"]["mpn"], "BASE")
+        self.assertEqual(result["comparison"]["part_b"]["mpn"], "CANDIDATE")
 
     def test_run_compare_parts_many_keeps_fail_closed_matrix_when_all_lookups_miss(self):
         empty_evidence = {

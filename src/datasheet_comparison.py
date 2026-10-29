@@ -170,7 +170,7 @@ def family_for_datasheet_review(part: Mapping[str, Any] | None, *documents: Mapp
 
 
 _NOT_STATED = "Not stated in retrieved evidence"
-_CATALOG_SOURCE = " Source type: supplier catalog record. No datasheet page is cited for this value."
+_CATALOG_SOURCE = " Supplier listings are used where available; no manufacturer document is cited."
 
 
 def _display_value(value) -> str:
@@ -317,16 +317,23 @@ def _evidence_source_label(document: Mapping[str, Any] | None) -> str:
         return "manufacturer product page"
     if source_type.endswith("_authorized_product_page"):
         name = str(data.get("source_name") or "").strip()
-        return name.casefold() or "authorized distributor product page"
+        return f"{name} product page" if name else "supplier product page"
     if source_type in {"manufacturer_pdf", "datasheet_pdf", "uploaded_datasheet"}:
         return "datasheet" if source_type != "uploaded_datasheet" else "uploaded datasheet"
+    if "authorized_distributor_api" in source_type:
+        name = str(data.get("source_name") or "supplier").strip()
+        supplier = name.split()[0] if name else "Supplier"
+        return f"{supplier} product record"
     method = str(data.get("extraction_method") or "").casefold()
     if method in {"native_pdf_text", "native pdf text", ""} and data.get("pages"):
         # Attached PDF fixtures and legacy documents default to datasheet wording.
         if "product" not in str(data.get("source_name") or "").casefold():
             return "datasheet"
     name = str(data.get("source_name") or "").strip()
-    return name.casefold() or "datasheet"
+    if "api" in name.casefold():
+        supplier = name.split()[0] if name else "Supplier"
+        return f"{supplier} product record"
+    return name or "datasheet"
 
 
 def _evidence_extraction_method(document: Mapping[str, Any] | None) -> str:
@@ -383,26 +390,30 @@ def merge_verified_datasheet_rows(
     pdf_by_key = {str(row.get("Key") or ""): row for row in pdf_rows if isinstance(row, dict)}
     label_a = _evidence_source_label(document_a)
     label_b = _evidence_source_label(document_b)
-    method_a = _evidence_extraction_method(document_a)
-    method_b = _evidence_extraction_method(document_b)
-    url_a = str((document_a or {}).get("source_url") or (document_a or {}).get("final_url") or "").strip()
-    url_b = str((document_b or {}).get("source_url") or (document_b or {}).get("final_url") or "").strip()
+    def _citation_note(side: str, *, label: str, page: str, excerpt: str) -> str:
+        page_text = str(page or "").strip()
+        if "api" in page_text.casefold():
+            page_text = ""
+        if re.fullmatch(r"\d+", page_text):
+            citation = f"{label}, p. {page_text}"
+        elif re.search(r"\bp\.\s*\d+", page_text, flags=re.IGNORECASE):
+            citation = page_text
+        elif page_text and page_text.casefold() not in {"product page", "listing", "record"}:
+            citation = f"{label}, {page_text}"
+        else:
+            citation = label
+        note = f"{side}: {citation}"
+        excerpt_text = " ".join(str(excerpt or "").split())
+        if excerpt_text:
+            note += f" — “{excerpt_text[:280]}”"
+        return note + "."
 
-    def _citation_note(side: str, *, label: str, page: str, excerpt: str, method: str, url: str) -> str:
-        cite = page or label
-        if page and label not in page.casefold():
-            cite = f"{label} {page}"
-        source_field = ""
-        if ":" in excerpt:
-            source_field = excerpt.split(":", 1)[0].strip()
-        parts = [f"{side} {cite}"]
-        if url:
-            parts.append(f"Source URL: {url}")
-        if source_field:
-            parts.append(f"Source field label: {source_field}")
-        parts.append(f"Excerpt: {excerpt}")
-        parts.append(f"Extraction method: {method}")
-        return ". ".join(parts) + "."
+    def _identity_gap(identity_row: Mapping[str, Any], *, manufacturer: str, mpn: str) -> str:
+        if not identity_row.get("mpn_verified"):
+            return f"The document does not name the exact part number {mpn}."
+        if manufacturer and not identity_row.get("manufacturer_verified"):
+            return f"The document does not name {manufacturer}."
+        return "The document could not be verified for this part."
 
     merged: list[dict] = []
     for row in rows or []:
@@ -441,25 +452,25 @@ def merge_verified_datasheet_rows(
                     label=label_a,
                     page=page_a,
                     excerpt=excerpt_a,
-                    method=method_a,
-                    url=url_a,
                 )
             )
             if catalog_a and spec is not None:
                 side_status, _side_note = compare_field_values(pdf_a, catalog_a, spec)
                 if side_status == "Different":
                     conflict = True
-                    notes.append(f"Part A supplier catalog value differs: {catalog_a}.")
+                    notes.append(f"Supplier listing also reports {catalog_a}; it differs from the cited document.")
             elif catalog_a:
-                notes.append(f"Part A supplier catalog also records {catalog_a}.")
+                notes.append(f"Supplier listing also reports {catalog_a}.")
         elif identity["part_a"]["attached"] and identity["part_a"]["verified"]:
-            notes.append(f"Part A {label_a} does not state this field.")
+            notes.append(f"Part A: {label_a} does not list this field.")
             if catalog_a:
-                notes.append(f"Part A value is from the supplier catalog. No {label_a} citation.")
+                notes.append(f"Supplier listing reports {catalog_a}; the document does not confirm it.")
         elif identity["part_a"]["attached"]:
-            notes.append(f"Part A {label_a} was not used. {identity['part_a']['reason']}")
+            notes.append(
+                f"Part A: {_identity_gap(identity['part_a'], manufacturer=manufacturer_a, mpn=mpn_a)}"
+            )
         elif catalog_a:
-            notes.append("Part A value is from the supplier catalog. No manufacturer evidence page is cited.")
+            notes.append(f"Part A: supplier listing reports {catalog_a}; no manufacturer document is cited.")
 
         if pdf_b:
             display_b = pdf_b
@@ -470,25 +481,25 @@ def merge_verified_datasheet_rows(
                     label=label_b,
                     page=page_b,
                     excerpt=excerpt_b,
-                    method=method_b,
-                    url=url_b,
                 )
             )
             if catalog_b and spec is not None:
                 side_status, _side_note = compare_field_values(pdf_b, catalog_b, spec)
                 if side_status == "Different":
                     conflict = True
-                    notes.append(f"Part B supplier catalog value differs: {catalog_b}.")
+                    notes.append(f"Supplier listing also reports {catalog_b}; it differs from the cited document.")
             elif catalog_b:
-                notes.append(f"Part B supplier catalog also records {catalog_b}.")
+                notes.append(f"Supplier listing also reports {catalog_b}.")
         elif identity["part_b"]["attached"] and identity["part_b"]["verified"]:
-            notes.append(f"Part B {label_b} does not state this field.")
+            notes.append(f"Part B: {label_b} does not list this field.")
             if catalog_b:
-                notes.append(f"Part B value is from the supplier catalog. No {label_b} citation.")
+                notes.append(f"Supplier listing reports {catalog_b}; the document does not confirm it.")
         elif identity["part_b"]["attached"]:
-            notes.append(f"Part B {label_b} was not used. {identity['part_b']['reason']}")
+            notes.append(
+                f"Part B: {_identity_gap(identity['part_b'], manufacturer=manufacturer_b, mpn=mpn_b)}"
+            )
         elif catalog_b:
-            notes.append("Part B value is from the supplier catalog. No manufacturer evidence page is cited.")
+            notes.append(f"Part B: supplier listing reports {catalog_b}; no manufacturer document is cited.")
 
         if spec is not None:
             status, compare_note = compare_field_values(display_a, display_b, spec)
