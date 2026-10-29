@@ -419,6 +419,20 @@ class ComparePartsCoreTests(unittest.TestCase):
 
 
 class ComparePartsUiWiringTests(unittest.TestCase):
+    def test_background_compare_submit_returns_without_running_the_search_inline(self):
+        from src.parts_compare import submit_compare_parts_many
+
+        future = object()
+        with patch(
+            "src.parts_compare._COMPARE_PARTS_EXECUTOR.submit",
+            return_value=future,
+        ) as submit:
+            returned = submit_compare_parts_many(["LM358DR", "NE555P"])
+        self.assertIs(returned, future)
+        args, kwargs = submit.call_args
+        self.assertEqual(args[1], ["LM358DR", "NE555P"])
+        self.assertEqual(kwargs, {})
+
     def test_nav_and_runtime_wire_compare_parts(self):
         root = Path(__file__).resolve().parents[1]
         shell = (root / "src" / "ui" / "unified_shell.py").read_text(encoding="utf-8")
@@ -426,7 +440,7 @@ class ComparePartsUiWiringTests(unittest.TestCase):
         page = (root / "src" / "pages" / "compare_parts.py").read_text(encoding="utf-8")
         self.assertIn('"Compare Parts"', shell)
         self.assertIn('"Compare Parts"', runtime)
-        self.assertIn("render_compare_parts_page", runtime)
+        self.assertIn("render_compare_live", runtime)
         self.assertIn("compare_parts_form", page)
         self.assertIn("cadivor_comparison_matrix_dataframe", page)
         self.assertIn("user_may_view_comparison_diagnostics", page)
@@ -455,13 +469,16 @@ class ComparePartsUiWiringTests(unittest.TestCase):
         )[0]
         self.assertIn('"＋ Add part"', renderer)
         self.assertIn('st.text_input("Part C"', renderer)
-        self.assertIn("run_compare_parts_many(requested_parts)", renderer)
+        self.assertIn("submit_compare_parts_many(", renderer)
+        self.assertIn("cadivor_compare_future", renderer)
+        self.assertIn("_render_compare_parts_job_status()", renderer)
         self.assertIn('"Add to comparison"', finder)
         self.assertIn("<h3>Compare up to 3 parts</h3>", finder)
         self.assertIn('"Compare part numbers manually"', finder)
-        self.assertIn('st.session_state["approved_compare_b"] = candidate_b', finder)
-        self.assertIn('st.session_state["approved_compare_c"] = candidate_c', finder)
-        self.assertIn('st.session_state["approved_compare_auto_run_pending"] = True', finder)
+        self.assertIn('st.session_state["cadivor_compare_part_b"] = candidate_b', finder)
+        self.assertIn('st.session_state["cadivor_compare_part_c"] = candidate_c', finder)
+        self.assertIn('st.session_state["cadivor_compare_pending_handoff"] = {', finder)
+        self.assertIn('"auto_run": True', finder)
 
     def test_approved_compare_hides_unused_part_and_row_assessment_copy(self):
         root = Path(__file__).resolve().parents[1]

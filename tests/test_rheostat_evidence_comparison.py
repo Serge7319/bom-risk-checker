@@ -6,6 +6,7 @@ this worktree, so the test does not open stored BOM records.
 
 import unittest
 from io import BytesIO
+from threading import Barrier
 
 from src.compatibility_gate import assess_part_compatibility
 from src.datasheet_comparison import (
@@ -1159,6 +1160,24 @@ class RheostatEvidenceComparisonTests(unittest.TestCase):
                 and row.get("status") == PROVIDER_HTTP_BLOCKED
                 for row in evidence["sources"]
             )
+        )
+
+
+    def test_independent_evidence_probes_run_concurrently_and_keep_input_order(self):
+        from src.compare_evidence_search import _parallel_ordered
+
+        barrier = Barrier(3)
+
+        def probe(value):
+            try:
+                barrier.wait(timeout=1.5)
+                return value
+            except Exception:
+                return None
+
+        self.assertEqual(
+            _parallel_ordered(["a", "b", "c"], probe, limit=3),
+            ["a", "b", "c"],
         )
 
 

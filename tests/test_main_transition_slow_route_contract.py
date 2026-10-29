@@ -199,7 +199,7 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
         reveal_at = compare.index(
             'reveal_authenticated_page_body("Compare Parts", force=True)'
         )
-        search_at = compare.index("run_compare_parts_many(requested_parts)")
+        search_at = compare.index("submit_compare_parts_many(")
         self.assertLess(reveal_at, search_at)
 
     def test_report_and_procurement_routes_release_after_the_full_page_renders(self):

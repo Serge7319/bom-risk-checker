@@ -6,6 +6,7 @@ diagnostics to customers.
 """
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 import time
 from typing import Any, Mapping, MutableMapping
 
@@ -40,6 +41,13 @@ STATUS_RUNNING = "running"
 STATUS_COMPLETED = "completed"
 STATUS_FAILED = "failed"
 
+# A comparison must never hold a Streamlit script run open while public supplier
+# and datasheet sources are checked. The authenticated page polls this bounded
+# worker pool and renders the result when the search finishes.
+_COMPARE_PARTS_EXECUTOR = ThreadPoolExecutor(
+    max_workers=3, thread_name_prefix="cadivor-compare"
+)
+
 USER_FACING_COMPARE_COLUMNS = (
     "Attribute",
     "Part A",
@@ -64,6 +72,11 @@ def resolve_compare_parts_submitted_mpn(*values: Any) -> str:
         if text:
             return text
     return ""
+
+
+def submit_compare_parts_many(part_mpns: list[str] | tuple[str, ...]):
+    """Start a comparison without blocking the Streamlit page render."""
+    return _COMPARE_PARTS_EXECUTOR.submit(run_compare_parts_many, list(part_mpns))
 
 
 def claim_compare_parts_submit(
@@ -813,12 +826,33 @@ def build_parts_comparison(
     """Build a neutral family-aware comparison between two retrieved parts."""
     mpn_a = part_a_mpn or str(part_a.get("manufacturer_part_number") or "")
     mpn_b = part_b_mpn or str(part_b.get("manufacturer_part_number") or "")
-    document_a = _comparison_document(
-        part_a, datasheet_a, extract_linked=extract_linked_datasheets, mpn=mpn_a
+    document_inputs = (
+        (part_a, datasheet_a, mpn_a),
+        (part_b, datasheet_b, mpn_b),
     )
-    document_b = _comparison_document(
-        part_b, datasheet_b, extract_linked=extract_linked_datasheets, mpn=mpn_b
-    )
+    if extract_linked_datasheets:
+        with ThreadPoolExecutor(
+            max_workers=2, thread_name_prefix="compare-part-document"
+        ) as executor:
+            documents = list(
+                executor.map(
+                    lambda item: _comparison_document(
+                        item[0],
+                        item[1],
+                        extract_linked=True,
+                        mpn=item[2],
+                    ),
+                    document_inputs,
+                )
+            )
+        document_a, document_b = documents
+    else:
+        document_a = _comparison_document(
+            part_a, datasheet_a, extract_linked=False, mpn=mpn_a
+        )
+        document_b = _comparison_document(
+            part_b, datasheet_b, extract_linked=False, mpn=mpn_b
+        )
     part_a = _part_for_verified_datasheet(part_a, document_a, mpn=mpn_a)
     part_b = _part_for_verified_datasheet(part_b, document_b, mpn=mpn_b)
     family_meta = resolve_comparison_family(part_a, part_b)
@@ -1412,7 +1446,7 @@ def run_compare_parts_many(
         "part_numbers": parts,
         "comparison": comparison_result,
         "error": (
-            "No supplier record was returned for these parts. The comparison below shows the fields that still need evidence; it does not infer compatibility."
+            "Cadivor could not retrieve supplier data for these parts. The comparison below shows the fields that still need evidence; it does not infer compatibility."
             if supplier_data_missing
             else ""
         ),
