@@ -52,6 +52,9 @@ class MonitoringSnapshotLayoutTests(unittest.TestCase):
         self.assertIn("padding: 4px 20px 2px !important;", MONITORING_LAYOUT)
         self.assertIn("min-height: 36px !important;", MONITORING_LAYOUT)
         self.assertIn("padding: 4px 12px 2px !important;", MONITORING_LAYOUT)
+        heading_rule = MONITORING_LAYOUT.split(".cv-ap-monitoring-heading h2 {", 1)[1].split("}", 1)[0]
+        self.assertIn("margin: 0 !important;", heading_rule)
+        self.assertIn("padding: 0 !important;", heading_rule)
 
     @classmethod
     def setUpClass(cls):

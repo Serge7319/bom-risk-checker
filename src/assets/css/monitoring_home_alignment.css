@@ -285,7 +285,10 @@ html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_re
 }
 
 html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-heading h2 {
+  margin: 0 !important;
+  padding: 0 !important;
   font-size: 21px !important;
+  line-height: 1.25 !important;
 }
 
 html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-count {
