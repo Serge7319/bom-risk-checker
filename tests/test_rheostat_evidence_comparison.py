@@ -17,6 +17,7 @@ from src.datasheet_comparison import (
     classify_distributor_cross_reference,
     datasheet_extraction_summary,
     family_for_datasheet_review,
+    merge_verified_datasheet_rows,
     mpn_search_plan,
 )
 from src.parts_compare import build_parts_comparison, run_compare_parts
@@ -125,7 +126,7 @@ class RheostatEvidenceComparisonTests(unittest.TestCase):
 
         mounting = next(row for row in comparison["rows"] if row["Attribute"] == "Mounting")
         self.assertEqual(mounting["Assessment"], "Compatible on available evidence")
-        self.assertIn("supplier catalog", mounting["Evidence"].lower())
+        self.assertIn("supplier listing", mounting["Evidence"].lower())
         self.assertNotIn("p. ", mounting["Evidence"])
 
         matrix = build_datasheet_comparison(original, candidate)
@@ -263,7 +264,7 @@ class RheostatEvidenceComparisonTests(unittest.TestCase):
         self.assertEqual(by_name["Terminal style"]["Assessment"], "Compatible on available evidence")
         self.assertIn("Supplier A: Active (2024-01-02)", by_name["Lifecycle"]["Part A"])
         self.assertIn("Supplier B: Obsolete (2024-03-04)", by_name["Lifecycle"]["Part A"])
-        self.assertIn("supplier catalog", by_name["Lifecycle"]["Evidence"].lower())
+        self.assertIn("supplier listing", by_name["Lifecycle"]["Evidence"].lower())
         self.assertNotIn("p. ", by_name["Lifecycle"]["Evidence"])
         self.assertEqual(by_name["Taper"]["Part A"], "Not stated in this datasheet")
         warning = " ".join(comparison["review_warnings"])
@@ -353,8 +354,8 @@ class RheostatEvidenceComparisonTests(unittest.TestCase):
         resistance = next(row for row in swapped["rows"] if row["Attribute"] == "Resistance")
         self.assertNotEqual(resistance["Part A"], "10 kOhm")
         self.assertNotEqual(resistance["Part B"], "10 kOhm")
-        self.assertIn("does not name the exact MPN RES10K", resistance["Evidence"])
-        self.assertIn("does not name the exact MPN RES10KE", resistance["Evidence"])
+        self.assertIn("does not name the exact part number RES10K", resistance["Evidence"])
+        self.assertIn("does not name the exact part number RES10KE", resistance["Evidence"])
         self.assertFalse(swapped["datasheet_identity"]["part_a"]["verified"])
 
         unnamed = [
@@ -371,7 +372,7 @@ class RheostatEvidenceComparisonTests(unittest.TestCase):
         )
         rejected_resistance = next(row for row in rejected["rows"] if row["Attribute"] == "Resistance")
         self.assertNotEqual(rejected_resistance["Part A"], "10 kOhm")
-        self.assertIn("does not name the manufacturer Ohmite", rejected_resistance["Evidence"])
+        self.assertIn("does not name Ohmite", rejected_resistance["Evidence"])
         self.assertFalse(rejected["datasheet_identity"]["part_a"]["manufacturer_verified"])
 
     def test_semiconductor_gate_still_requires_package_and_pins(self):
@@ -981,8 +982,16 @@ class RheostatEvidenceComparisonTests(unittest.TestCase):
         volts = next(row for row in compare["rows"] if row["Attribute"] == "Volts")
         self.assertEqual(resistance["Part A"], "10K")
         self.assertEqual(resistance["Part B"], "10000")
-        self.assertIn("Source field label:", resistance["Evidence"])
-        self.assertIn("arrow.com", resistance["Evidence"].casefold())
+        self.assertIn("Resistance Value (Ohm)", resistance["Evidence"])
+        for internal_term in (
+            "api",
+            "source field label",
+            "source url",
+            "extraction method",
+            "native pdf text",
+            "supplier catalog",
+        ):
+            self.assertNotIn(internal_term, " ".join(row["Evidence"] for row in compare["rows"]).casefold())
         self.assertEqual(volts["Part A"], "305")
         self.assertEqual(volts["Part B"], "305.000")
         self.assertNotIn("RMS", volts["Evidence"])
@@ -1179,6 +1188,45 @@ class RheostatEvidenceComparisonTests(unittest.TestCase):
             _parallel_ordered(["a", "b", "c"], probe, limit=3),
             ["a", "b", "c"],
         )
+
+    def test_customer_evidence_uses_plain_source_citations_without_internal_terms(self):
+        document = {
+            "available": True,
+            "source_type": "authorized_distributor_api",
+            "source_name": "DigiKey authorized API",
+            "extraction_method": "authorized_distributor_api",
+            "pages": [{
+                "page": "DigiKey API",
+                "document": "DigiKey authorized API",
+                "text": "Manufacturer: Ohmite\nModel: RES10KE\nMounting style: Panel Mount",
+            }],
+        }
+        rows = [{
+            "Key": "mounting_style",
+            "Attribute": "Mounting",
+            "Original": "Panel Mount",
+            "Candidate": "Panel Mount",
+            "Status": "Match",
+            "Evidence": "Panel Mount matches.",
+        }]
+
+        merged, identity, _warnings = merge_verified_datasheet_rows(
+            rows,
+            family="Potentiometer / rheostat",
+            document_a=document,
+            document_b=None,
+            manufacturer_a="Ohmite",
+            mpn_a="RES10KE",
+            manufacturer_b="Ohmite",
+            mpn_b="RES10K",
+        )
+
+        evidence = merged[0]["Evidence"].casefold()
+        self.assertTrue(identity["part_a"]["verified"])
+        self.assertIn("digikey product record", evidence)
+        self.assertIn("mounting style: panel mount", evidence)
+        for internal_term in ("api", "extraction method", "source field label", "source url"):
+            self.assertNotIn(internal_term, evidence)
 
 
 if __name__ == "__main__":

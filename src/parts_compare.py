@@ -1336,7 +1336,15 @@ def run_compare_parts_many(
             "part_numbers": parts,
         }
 
-    retrieved = [lookup_part_for_compare(mpn) for mpn in parts]
+    # Independent part lookups were serialized before document search started.
+    # Supplier integrations already use bounded HTTP requests and their own
+    # per-supplier concurrency, so compare the selected two or three parts in
+    # parallel while retaining the entered order in the returned matrix.
+    with ThreadPoolExecutor(
+        max_workers=min(len(parts), 3),
+        thread_name_prefix="compare-part-lookup",
+    ) as executor:
+        retrieved = list(executor.map(lookup_part_for_compare, parts))
     supplied_documents = list(datasheets or [])
     pair_comparisons = [
         build_parts_comparison(

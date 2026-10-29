@@ -82,8 +82,10 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
         self.assertIn("background:transparent", markup)
         self.assertNotIn("background:#F5F7FB", markup)
         self.assertIn("z-index:2147483000", markup)
-        self.assertIn('role="status" aria-label="Loading Monitoring" aria-live="polite"', markup)
-        self.assertIn("box-sizing:border-box;width:184px", markup)
+        self.assertIn('role="status" aria-label="Opening Monitoring" aria-live="polite"', markup)
+        self.assertIn("min-width:190px", markup)
+        self.assertIn("flex:0 0 32px", markup)
+        self.assertIn("Opening Monitoring…", markup)
 
     def test_regular_navigation_covers_partial_render_until_destination_is_complete(self):
         namespace = {
@@ -106,14 +108,18 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
         self.assertIn('data-cadivor-transition-kind="navigation"', markup)
         self.assertIn("cv-main-transition-progress", markup)
         self.assertIn('class="cv-main-transition-mark"', markup)
-        self.assertIn(">C</div>", markup)
-        self.assertNotIn("Opening Portfolio Intelligence", markup)
+        self.assertIn(">C</span>", markup)
+        self.assertIn("Opening Portfolio Intelligence…", markup)
         nav_css = SOURCE.split(
             '.cv-main-transition.cv-route-loading[data-cadivor-transition-kind="navigation"]{{',
             1,
         )[1].split("}}", 1)[0]
         self.assertIn("background:transparent!important", nav_css)
         self.assertIn("pointer-events:none!important", nav_css)
+        self.assertIn("min-width:190px!important", SOURCE)
+        self.assertIn("width:32px!important;height:32px!important", SOURCE)
+        self.assertIn("cv-main-transition-label", SOURCE)
+        self.assertNotIn("@media (max-width:1100px){{", SOURCE)
         self.assertNotIn("height:calc(100dvh - var(--cv-foundation-top,64px))!important", nav_css)
         self.assertNotIn(
             "visibility:hidden!important;opacity:0!important;pointer-events:none!important;\n          transition:none!important",

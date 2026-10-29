@@ -139,8 +139,8 @@ class ApprovedBOMPageContractTests(unittest.TestCase):
 
 
 class ApprovedBOMSubmissionTests(unittest.TestCase):
-    def test_analyze_button_stays_available_to_refresh_a_stale_upload_render(self):
-        self.assertFalse(
+    def test_analyze_button_waits_for_server_confirmed_upload(self):
+        self.assertTrue(
             should_disable_bom_analyze_button(
                 analysis_running=False, upload_available=False
             )
@@ -156,15 +156,16 @@ class ApprovedBOMSubmissionTests(unittest.TestCase):
             )
         )
 
-    def test_upload_page_remembers_upload_and_keeps_analyze_recoverable(self):
+    def test_upload_page_disables_analyze_until_server_has_file(self):
         source = Path("src/ui/approved_pages.py").read_text(encoding="utf-8")
         self.assertIn("disabled=should_disable_bom_analyze_button(", source)
         self.assertIn("on_change=remember_approved_bom_upload", source)
+        self.assertNotIn("args=(st.session_state,)", source)
         self.assertIn('st.session_state.get("cadivor_uploaded_bom_file")', source)
         self.assertIn("uploaded_file=upload_state_file", source)
         self.assertIn("upload_available=upload_available", source)
         self.assertNotIn("cadivor-bom-upload-spinner", source)
-        self.assertIn("explain how to retry", source)
+        self.assertIn("Analyze BOM will be available when Cadivor has received it", source)
         self.assertIn("fully uploaded and ready", source)
 
     def test_completed_uploader_value_is_remembered_and_can_be_staged(self):

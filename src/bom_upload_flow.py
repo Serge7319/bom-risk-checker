@@ -211,18 +211,18 @@ def has_completed_saved_bom_results(state: MutableMapping[str, Any]) -> bool:
 def should_disable_bom_analyze_button(
     *, analysis_running: bool, upload_available: bool
 ) -> bool:
-    """Keep Analyze recoverable when browser and server upload state briefly diverge.
-
-    The submit handler validates that an UploadedFile is actually available and
-    shows a retryable message when it is not. Disabling the button based on a
-    stale render can otherwise prevent the click that refreshes Streamlit state.
-    """
-    del upload_available
-    return bool(analysis_running)
+    """Only allow analysis after Streamlit has received the uploaded file."""
+    return bool(analysis_running or not upload_available)
 
 
-def remember_approved_bom_upload(state: MutableMapping[str, Any]) -> None:
+def remember_approved_bom_upload(
+    state: MutableMapping[str, Any] | None = None,
+) -> None:
     """Persist the completed uploader value across a form rerun."""
+    if state is None:
+        import streamlit as st
+
+        state = st.session_state
     upload = state.get("bom_file_uploader")
     if upload is None:
         state.pop("cadivor_uploaded_bom_file", None)
