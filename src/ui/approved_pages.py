@@ -17,6 +17,7 @@ import streamlit as st
 
 from src.bom_upload_flow import (
     prepare_new_approved_bom_analysis,
+    start_new_approved_bom_analysis_from_home,
     should_render_approved_bom_upload_form,
     should_stop_approved_bom_renderer,
     should_disable_bom_analyze_button,
@@ -2475,16 +2476,22 @@ def render_home(
                 )
             with action_col:
                 if pause_new_analyses:
-                    if st.button("Open reports", key="approved_home_open_reports", type="primary"):
-                        navigate_to("Reports")
-                elif st.button(
-                    "+ New BOM analysis",
-                    key="approved_home_new_bom",
-                    type="primary",
-                    width="stretch",
-                ):
-                    prepare_new_approved_bom_analysis(st.session_state)
-                    navigate_to("BOM Analyzer", new_analysis="1")
+                    st.button(
+                        "Open reports",
+                        key="approved_home_open_reports",
+                        type="primary",
+                        on_click=navigate_to,
+                        args=("Reports",),
+                        kwargs={"_rerun": False},
+                    )
+                else:
+                    st.button(
+                        "+ New BOM analysis",
+                        key="approved_home_new_bom",
+                        type="primary",
+                        width="stretch",
+                        on_click=start_new_approved_bom_analysis_from_home,
+                    )
 
         saved_delta = _home_weekly_delta(rows, "saved_boms")
         review_delta = _home_weekly_delta(rows, "needs_review")

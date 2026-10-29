@@ -15,6 +15,7 @@ from src.bom_upload_flow import (
     prepare_new_approved_bom_analysis,
     has_completed_saved_bom_results,
     should_disable_bom_analyze_button,
+    start_new_approved_bom_analysis_from_home,
 )
 
 
@@ -33,16 +34,37 @@ class ApprovedBOMPageContractTests(unittest.TestCase):
         self.assertIn('if datasheet_review.get("review_completed"):', approval_section)
         self.assertNotIn('if review_state.get("review_completed"):', approval_section)
 
-    def test_home_new_analysis_clears_old_context_before_navigation(self):
+    def test_home_new_analysis_uses_pre_rerun_callback(self):
         source = Path("src/ui/approved_pages.py").read_text(encoding="utf-8")
         action_start = source.index('key="approved_home_new_bom"')
         home_action = source[action_start : action_start + 600]
-        self.assertIn("prepare_new_approved_bom_analysis(st.session_state)", home_action)
-        self.assertIn('navigate_to("BOM Analyzer", new_analysis="1")', home_action)
+        home_button_prefix = source[max(0, action_start - 220) : action_start]
+        self.assertIn("on_click=start_new_approved_bom_analysis_from_home", home_action)
+        self.assertNotIn("if st.button(", home_button_prefix)
         workspace_source = Path("src/pages/home_workspace.py").read_text(encoding="utf-8")
-        workspace_action = workspace_source[workspace_source.index('key="home_new_bom"') :]
-        self.assertIn("prepare_new_approved_bom_analysis(st.session_state)", workspace_action)
-        self.assertIn('navigate_to("BOM Analyzer", new_analysis="1", arm_opening=False)', workspace_action)
+        workspace_action_start = workspace_source.index('key="home_new_bom"')
+        workspace_action = workspace_source[workspace_action_start : workspace_action_start + 250]
+        workspace_button_prefix = workspace_source[max(0, workspace_action_start - 220) : workspace_action_start]
+        self.assertIn("on_click=start_new_approved_bom_analysis_from_home", workspace_action)
+        self.assertNotIn("if st.button(", workspace_button_prefix)
+
+    def test_home_new_analysis_callback_prepares_route_before_script_rerun(self):
+        state = {"cadivor_route": "Dashboard", "analysis_id": "old-analysis"}
+        calls = []
+
+        def navigate(page, **kwargs):
+            calls.append((page, kwargs))
+            state["cadivor_route"] = page
+
+        start_new_approved_bom_analysis_from_home(state, navigate=navigate)
+
+        self.assertTrue(state["cadivor_bom_upload_open"])
+        self.assertNotIn("analysis_id", state)
+        self.assertEqual(state["cadivor_route"], "BOM Analyzer")
+        self.assertEqual(
+            calls,
+            [("BOM Analyzer", {"_rerun": False, "new_analysis": "1"})],
+        )
 
     def test_completed_saved_results_render_without_reopening_the_upload(self):
         source = Path("src/authenticated_runtime.py").read_text(encoding="utf-8")

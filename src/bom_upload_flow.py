@@ -312,6 +312,30 @@ def prepare_new_approved_bom_analysis(state: MutableMapping[str, Any]) -> None:
     )
 
 
+def start_new_approved_bom_analysis_from_home(
+    state: MutableMapping[str, Any] | None = None,
+    *,
+    navigate: Any = None,
+) -> None:
+    """Prepare the upload route in the button callback, before Home rerenders.
+
+    Streamlit runs button callbacks before the next full script pass. Navigating
+    from the button's return-value branch makes the entire Dashboard (including
+    its slow data reads and loading placeholder) rerun first, which can briefly
+    squeeze the Home layout into the navigation rail.
+    """
+    if state is None:
+        import streamlit as st
+
+        state = st.session_state
+    prepare_new_approved_bom_analysis(state)
+    if navigate is None:
+        from src.ui.navigation import navigate_to
+
+        navigate = navigate_to
+    navigate("BOM Analyzer", _rerun=False, new_analysis="1")
+
+
 def should_render_legacy_bom_workspace(state: MutableMapping[str, Any]) -> bool:
     """Avoid rendering a second upload form while the approved BOM form is active."""
     return not (
