@@ -104,9 +104,8 @@ html body section[data-testid="stMain"] .cv-ap-home-icon svg {
   }
 }
 
-/* The live Monitoring renderer is not wrapped in the approved-page canvas.
-   Its marker is at the start of the route, so constrain the actual Streamlit
-   block container that owns the hero, KPI row, filters, and alerts together. */
+/* Legacy Monitoring views start at this route marker. Keep their direct
+   Streamlit content on the same centered workspace canvas. */
 html body section[data-testid="stMain"]:has(.st-key-monitoring_home_width_marker) [data-testid="stMainBlockContainer"],
 html body section[data-testid="stMain"]:has(.st-key-monitoring_home_width_marker) .main .block-container {
   box-sizing: border-box !important;
@@ -117,6 +116,17 @@ html body section[data-testid="stMain"]:has(.st-key-monitoring_home_width_marker
   margin-right: auto !important;
   padding-left: 0 !important;
   padding-right: 0 !important;
+}
+
+/* The overview hero is emitted by the shared runtime before its approved-page
+   canvas. Constrain the hero itself so it lines up with that canvas. */
+html body section[data-testid="stMain"]:has(.st-key-monitoring_home_width_marker) .cv64-section {
+  box-sizing: border-box !important;
+  width: 100% !important;
+  max-width: 1440px !important;
+  min-width: 0 !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
 }
 
 html body section[data-testid="stMain"] :is([data-testid="stElementContainer"], [data-testid="stLayoutWrapper"]):has(> .st-key-monitoring_home_width_marker) {
@@ -188,17 +198,21 @@ html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_re
 }
 
 html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-kpi {
-  grid-template-columns: minmax(0, 1fr) 96px !important;
-  grid-template-rows: auto auto !important;
-  height: auto !important;
-  min-height: 0 !important;
+  grid-template-columns: 48px minmax(0, 1fr) !important;
+  grid-template-rows: 48px minmax(0, 1fr) !important;
+  column-gap: 12px !important;
+  row-gap: 8px !important;
+  height: 144px !important;
+  min-height: 144px !important;
   overflow: visible !important;
-  padding: 16px 16px 14px !important;
+  padding: 14px 16px !important;
 }
 
 html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-icon {
-  width: 58px !important;
-  height: 58px !important;
+  grid-column: 1 !important;
+  grid-row: 1 !important;
+  width: 48px !important;
+  height: 48px !important;
 }
 
 html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-icon svg {
@@ -207,16 +221,33 @@ html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_re
 }
 
 html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-copy > span {
-  font-size: 18px !important;
+  grid-column: 2 !important;
+  grid-row: 1 !important;
+  align-self: center !important;
+  font-size: 14px !important;
+  line-height: 1.2 !important;
+  white-space: nowrap !important;
 }
 
 html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-copy strong {
-  font-size: 40px !important;
+  grid-column: 1 !important;
+  grid-row: 2 !important;
+  align-self: center !important;
+  margin-top: 0 !important;
+  font-size: 32px !important;
 }
 
 html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-kpi .cv-ap-spark {
-  width: 100px !important;
-  height: 58px !important;
+  grid-column: 2 !important;
+  grid-row: 2 !important;
+  justify-self: end !important;
+  align-self: center !important;
+  width: 76px !important;
+  height: 40px !important;
+}
+
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-copy {
+  display: contents !important;
 }
 
 html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_alert_card {
@@ -236,7 +267,21 @@ html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_re
 }
 
 html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_alert_heading {
-  padding: 8px 20px 2px !important;
+  box-sizing: border-box !important;
+  margin: 0 !important;
+  padding: 4px 20px 2px !important;
+}
+
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_alert_heading [data-testid="stHorizontalBlock"] {
+  min-height: 36px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_alert_heading [data-testid="stColumn"],
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_alert_heading [data-testid="column"] {
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
 }
 
 html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-heading h2 {
@@ -278,43 +323,49 @@ html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_re
 
 @media (max-width: 1100px) {
   html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-kpi {
-    grid-template-columns: minmax(0, 1fr) 76px !important;
-    height: auto !important;
-    min-height: 0 !important;
+    grid-template-columns: 44px minmax(0, 1fr) !important;
+    grid-template-rows: 44px minmax(0, 1fr) !important;
+    height: 144px !important;
+    min-height: 144px !important;
     overflow: visible !important;
-    padding: 14px !important;
+    padding: 12px 14px !important;
   }
 
   html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-icon {
-    width: 52px !important;
-    height: 52px !important;
+    width: 44px !important;
+    height: 44px !important;
   }
 
   html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-copy > span {
-    font-size: 14px !important;
+    font-size: 13px !important;
     overflow-wrap: normal !important;
     word-break: normal !important;
+    white-space: nowrap !important;
   }
 
   html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-kpi .cv-ap-spark {
-    width: 48px !important;
+    width: 64px !important;
   }
 
   html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-copy strong {
-    font-size: 34px !important;
+    font-size: 30px !important;
+  }
+
+  html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-copy {
+    display: contents !important;
   }
 }
 
 @media (max-width: 640px) {
   html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-kpi {
-    height: auto !important;
-    min-height: 0 !important;
+    height: 144px !important;
+    min-height: 144px !important;
     overflow: visible !important;
-    padding: 14px !important;
+    padding: 12px 14px !important;
   }
 
   html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_alert_heading {
-    padding: 16px 14px 12px !important;
+    padding: 4px 12px 2px !important;
   }
 
   html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-table-head,

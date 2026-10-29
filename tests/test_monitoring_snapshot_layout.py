@@ -19,7 +19,7 @@ class MonitoringSnapshotLayoutTests(unittest.TestCase):
         self.assertNotEqual("monitoring_home_width_marker", "approved_page_canvas_standard_render_monitoring")
         self.assertIn(":has(.st-key-monitoring_home_width_marker)", MONITORING_LAYOUT)
         live_canvas_rule = MONITORING_LAYOUT.split(
-            "/* The live Monitoring renderer is not wrapped in the approved-page canvas.",
+            "/* Legacy Monitoring views start at this route marker.",
             1,
         )[1].split("\n}\n", 1)[0]
         self.assertIn('[data-testid="stMainBlockContainer"]', live_canvas_rule)
@@ -31,6 +31,27 @@ class MonitoringSnapshotLayoutTests(unittest.TestCase):
         self.assertIn("display: none !important;", MONITORING_LAYOUT)
         self.assertIn(".st-key-approved_home_page{", APPROVED_PAGES)
         self.assertIn("max-width:1440px!important", APPROVED_PAGES)
+
+    def test_overview_header_shares_the_centered_workspace_canvas(self):
+        self.assertIn('cadivor_section_header(', self.branch)
+        self.assertIn(
+            ':has(.st-key-monitoring_home_width_marker) .cv64-section',
+            MONITORING_LAYOUT,
+        )
+        self.assertIn("max-width: 1440px !important;", MONITORING_LAYOUT)
+
+    def test_monitoring_kpis_share_height_and_keep_labels_out_of_sparkline_column(self):
+        self.assertIn("grid-template-columns: 48px minmax(0, 1fr) !important;", MONITORING_LAYOUT)
+        self.assertIn("height: 144px !important;", MONITORING_LAYOUT)
+        self.assertIn("display: contents !important;", MONITORING_LAYOUT)
+        self.assertIn("white-space: nowrap !important;", MONITORING_LAYOUT)
+        self.assertIn("grid-column: 2 !important;", MONITORING_LAYOUT)
+        self.assertIn("grid-row: 2 !important;", MONITORING_LAYOUT)
+
+    def test_recent_alerts_heading_does_not_reintroduce_large_top_padding(self):
+        self.assertIn("padding: 4px 20px 2px !important;", MONITORING_LAYOUT)
+        self.assertIn("min-height: 36px !important;", MONITORING_LAYOUT)
+        self.assertIn("padding: 4px 12px 2px !important;", MONITORING_LAYOUT)
 
     @classmethod
     def setUpClass(cls):
