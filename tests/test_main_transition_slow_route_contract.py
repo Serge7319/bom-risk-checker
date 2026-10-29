@@ -189,6 +189,41 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
         )
         self.assertLess(reveal_at, supplier_lookup_at)
 
+    def test_compare_form_releases_navigation_cover_before_supplier_and_datasheet_search(self):
+        approved_pages = (ROOT / "src" / "ui" / "approved_pages.py").read_text(
+            encoding="utf-8"
+        )
+        compare = approved_pages.split("def render_compare_live", 1)[1].split(
+            "def render_datasheet_live", 1
+        )[0]
+        reveal_at = compare.index(
+            'reveal_authenticated_page_body("Compare Parts", force=True)'
+        )
+        search_at = compare.index("run_compare_parts_many(requested_parts)")
+        self.assertLess(reveal_at, search_at)
+
+    def test_report_and_procurement_routes_release_after_the_full_page_renders(self):
+        analysis_detail = (ROOT / "src" / "pages" / "analysis_detail.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertNotIn(
+            'reveal_authenticated_page_body("Analysis Details")',
+            analysis_detail,
+        )
+        runtime = (ROOT / "src" / "authenticated_runtime.py").read_text(
+            encoding="utf-8"
+        )
+        procurement = runtime.split(
+            'if app_mode == "Procurement Advisor":', 1
+        )[1].split('if app_mode == "Cost Optimization":', 1)[0]
+        self.assertNotIn('reveal_authenticated_page_body("Procurement Advisor")', procurement)
+        self.assertIn("force=True", runtime.split("def stop_authenticated_page", 1)[1].split(
+            "from src.ui.executive_workspace", 1
+        )[0])
+        self.assertIn("font-size:13px!important", procurement)
+        self.assertIn("font-size:28px!important", procurement)
+        self.assertIn("font-size:18px!important", procurement)
+
     def test_dashboard_cover_is_released_after_heading_before_workspace_reads(self):
         runtime = (ROOT / "src" / "authenticated_runtime.py").read_text(encoding="utf-8")
         start = runtime.index("# ---------- Dashboard ----------")

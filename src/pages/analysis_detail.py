@@ -1772,14 +1772,12 @@ def render_analysis_detail(
     )
     if focused_mpn and focused_section == "Engineering Decisions":
         from src.pages.saved_analysis_control import release_saved_analysis_placeholder
-        from src.ui.navigation import reveal_authenticated_page_body
 
         _consume_pending_analysis_section(analysis_id=analysis_id)
         st.session_state["cadivor_active_analysis_tab"] = "Engineering Decisions"
         st.session_state[_analysis_section_nav_key(analysis_id)] = "Engineering Decisions"
         _sync_bom_area_widgets(analysis_id=analysis_id, section="Engineering Decisions")
         release_saved_analysis_placeholder()
-        reveal_authenticated_page_body("Analysis Details")
         _render_focused_component_review(
             analysis=analysis,
             parts=parts,
@@ -1913,10 +1911,8 @@ def render_analysis_detail(
         unsafe_allow_html=True,
         )
     from src.pages.saved_analysis_control import release_saved_analysis_placeholder
-    from src.ui.navigation import reveal_authenticated_page_body
 
     release_saved_analysis_placeholder()
-    reveal_authenticated_page_body("Analysis Details")
     if show_legacy_analysis_header:
         with st.container(key="cv_analysis_hero_actions"):
             if st.button("Back to BOMs", key="analysis_back_to_boms", type="secondary"):

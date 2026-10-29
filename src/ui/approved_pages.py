@@ -2513,7 +2513,10 @@ def render_home(
             unsafe_allow_html=True,
         )
 
-        home_widths = [2.15, 1.25, 0.72, 0.8, 0.95, 1.05, 1.35]
+        # Keep the live Streamlit row tracks identical to the CSS header.
+        # A narrower final row track shifted the Engineering Intelligence and
+        # overflow actions left of the Actions heading.
+        home_widths = [2.15, 1.25, 0.72, 0.8, 0.95, 1.05, 2.05]
         with st.container(key="approved_home_recent_card"):
             with st.container(key="approved_home_recent_heading"):
                 heading_col, view_all_col = st.columns([10, 1], vertical_alignment="center")
@@ -2979,7 +2982,9 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
             if not within_analyzed_range(_first(row, "created_at", "updated_at", fallback=""), date_filter, today):
                 continue
             visible.append((row, label, project_name, bom_name))
-        bom_widths = [2.15, 1.25, 0.72, 0.8, 0.95, 1.05, 1.35]
+        # The BOM catalog reuses the Home header, including its 2.05fr Actions
+        # track. Keep the row's action controls on that same track as well.
+        bom_widths = [2.15, 1.25, 0.72, 0.8, 0.95, 1.05, 2.05]
         with st.container(key="approved_bom_catalog_table"):
             header_labels = ("Name", "Project", "Part count", "Health", "High-risk parts", "Last analyzed", "Actions")
             header_cells = "".join(
@@ -7089,7 +7094,7 @@ def render_compare_live() -> None:
         )
     # The compare form is now visibly mounted. Close the navigation cover before
     # supplier lookups begin so progress does not dim the full page.
-    reveal_authenticated_page_body("Compare Parts")
+    reveal_authenticated_page_body("Compare Parts", force=True)
     part_a = resolve_compare_parts_submitted_mpn(
         entered_a,
         st.session_state.get("approved_compare_a"),
@@ -7340,6 +7345,15 @@ def render_compare_live() -> None:
     submitted_c = str(result.get("part_c") or "") if isinstance(result, dict) else ""
     name_c = _esc(card_c.get("mpn") or submitted_c or part_c or "Part C")
     notice = "".join(compatibility_notices)
+    lookup_error = str(result.get("error") or "").strip() if isinstance(result, dict) else ""
+    lookup_notice = (
+        "<div class='cv-compare-data-warning' role='status' "
+        "style='margin:12px 0;padding:12px 16px;border:1px solid #f4c873;"
+        "border-radius:12px;background:#fff9e8;color:#754208;font-size:14px;line-height:1.45'>"
+        f"{_esc(lookup_error)}</div>"
+        if lookup_error
+        else ""
+    )
     headers = f"<th>Parameter</th><th>{name_a}</th><th>{name_b}</th>"
     if has_part_c:
         headers += f"<th>{name_c}</th>"
@@ -7366,6 +7380,7 @@ def render_compare_live() -> None:
         f"""
         <div class="cv-ap">
           {notice}
+          {lookup_notice}
           {figures}
         </div>
         """,

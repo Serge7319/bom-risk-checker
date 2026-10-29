@@ -350,6 +350,46 @@ class ComparePartsCoreTests(unittest.TestCase):
         self.assertIn("Part C:", voltage["Assessment"])
         self.assertEqual(lookup.call_count, 3)
 
+    def test_run_compare_parts_many_keeps_fail_closed_matrix_when_all_lookups_miss(self):
+        empty_evidence = {
+            "sources": [],
+            "documents": [],
+            "verified_documents": [],
+            "primary_document": None,
+            "identity": {
+                "attached": False,
+                "verified": False,
+                "mpn_verified": False,
+                "manufacturer_verified": False,
+                "reason": "No datasheet was attached for this part.",
+            },
+        }
+        with (
+            patch("src.parts_compare.lookup_part_for_compare", return_value={}) as lookup,
+            patch("src.compare_evidence_search.gather_part_evidence", return_value=empty_evidence),
+        ):
+            result = run_compare_parts_many(
+                ["LM358DR", "NE555P"],
+                extract_linked_datasheets=False,
+            )
+
+        comparison = result.get("comparison")
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["part_numbers"], ["LM358DR", "NE555P"])
+        self.assertIn("does not infer compatibility", result["error"])
+        self.assertIsInstance(comparison, dict)
+        self.assertEqual(comparison["part_a"]["mpn"], "LM358DR")
+        self.assertEqual(comparison["part_b"]["mpn"], "NE555P")
+        self.assertTrue(comparison["rows"])
+        self.assertEqual(
+            sum(comparison["counts"].values()),
+            len(comparison["rows"]),
+        )
+        self.assertTrue(
+            all(FINDING_NEEDS_DATA in row["Assessment"] for row in comparison["rows"])
+        )
+        self.assertEqual(lookup.call_count, 2)
+
     def test_run_compare_parts_many_rejects_duplicates_and_more_than_three(self):
         with patch("src.parts_compare.lookup_part_for_compare") as lookup:
             duplicate = run_compare_parts_many(["abc", " ABC "])

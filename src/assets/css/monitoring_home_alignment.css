@@ -48,6 +48,77 @@ html body section[data-testid="stMain"] .st-key-monitoring_home_width_marker {
   display: none !important;
 }
 
+/* The Home page's full visual stylesheet arrives with the route renderer.
+   Keep KPI icons bounded from the first frame so a navigation rerun cannot
+   briefly turn an inline SVG into a page-sized icon. */
+html body section[data-testid="stMain"] .cv-ap-home-kpis {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 16px !important;
+  min-width: 0 !important;
+}
+html body section[data-testid="stMain"] .cv-ap-home-kpi {
+  display: flex !important;
+  align-items: flex-start !important;
+  min-width: 0 !important;
+}
+html body section[data-testid="stMain"] .cv-ap-home-kpi .cv-ap-home-icon {
+  display: flex !important;
+  flex: 0 0 60px !important;
+  width: 60px !important;
+  min-width: 60px !important;
+  height: 60px !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+html body section[data-testid="stMain"] .cv-ap-home-icon svg {
+  display: block !important;
+  width: 30px !important;
+  min-width: 30px !important;
+  max-width: 30px !important;
+  height: 30px !important;
+  max-height: 30px !important;
+}
+@media (max-width: 1100px) {
+  html body section[data-testid="stMain"] .cv-ap-home-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+  html body section[data-testid="stMain"] .cv-ap-home-kpi .cv-ap-home-icon {
+    flex-basis: 40px !important;
+    width: 40px !important;
+    min-width: 40px !important;
+    height: 40px !important;
+  }
+  html body section[data-testid="stMain"] .cv-ap-home-icon svg {
+    width: 20px !important;
+    min-width: 20px !important;
+    max-width: 20px !important;
+    height: 20px !important;
+    max-height: 20px !important;
+  }
+}
+@media (max-width: 700px) {
+  html body section[data-testid="stMain"] .cv-ap-home-kpis {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 12px !important;
+  }
+}
+
+/* The live Monitoring renderer is not wrapped in the approved-page canvas.
+   Its marker is at the start of the route, so constrain the actual Streamlit
+   block container that owns the hero, KPI row, filters, and alerts together. */
+html body section[data-testid="stMain"]:has(.st-key-monitoring_home_width_marker) [data-testid="stMainBlockContainer"],
+html body section[data-testid="stMain"]:has(.st-key-monitoring_home_width_marker) .main .block-container {
+  box-sizing: border-box !important;
+  width: calc(100% - 48px) !important;
+  max-width: 1440px !important;
+  min-width: 0 !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
 html body section[data-testid="stMain"] :is([data-testid="stElementContainer"], [data-testid="stLayoutWrapper"]):has(> .st-key-monitoring_home_width_marker) {
   position: absolute !important;
   width: 0 !important;

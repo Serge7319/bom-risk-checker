@@ -36,8 +36,8 @@ class NavigationFlashAndReviewEntryTests(unittest.TestCase):
         self.assertNotIn('"Parts & Risk"', actions)
         self.assertIn('key=f"approved_{scope}_action_review_{row_key}"', actions)
         self.assertIn("_open_saved_bom_engineering_intelligence(target)", actions)
-        self.assertIn("1.35", APPROVED_PAGES.split("home_widths =", 1)[1].split("\n", 1)[0])
-        self.assertIn("1.35", APPROVED_PAGES.split("bom_widths =", 1)[1].split("\n", 1)[0])
+        self.assertIn("2.05", APPROVED_PAGES.split("home_widths =", 1)[1].split("\n", 1)[0])
+        self.assertIn("2.05", APPROVED_PAGES.split("bom_widths =", 1)[1].split("\n", 1)[0])
 
     def test_saved_bom_tabs_and_more_routes_arm_transitions(self):
         self.assertIn("_arm_saved_bom_section_transition(state)", BOM_NAVIGATION)

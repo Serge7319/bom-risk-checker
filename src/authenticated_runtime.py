@@ -7607,15 +7607,15 @@ def run_authenticated_app() -> None:
                 .st-key-cv_pa_next_steps{box-sizing:border-box!important;width:100%!important;margin:8px 0 0!important;padding:14px 16px!important;border:1px solid #dfe7f1!important;border-radius:14px!important;background:#fff!important;box-shadow:none!important}
                 .st-key-cv_pa_next_steps>[data-testid="stVerticalBlock"]{gap:8px!important}
                 .cv-pa-next-heading{margin:0 0 2px}
-                .cv-pa-next-heading span{display:block;margin-bottom:5px;color:#2563eb;font-size:10px;font-weight:850;letter-spacing:.12em}
-                .cv-pa-next-heading h2{margin:0 0 5px;color:#102341;font-size:21px;font-weight:800;line-height:1.2}
-                .cv-pa-next-heading p{margin:0;color:#64748b;font-size:14px;line-height:1.45}
+                .cv-pa-next-heading span{display:block;margin-bottom:7px;color:#2563eb;font-size:13px!important;font-weight:850;letter-spacing:.1em}
+                .cv-pa-next-heading h2{margin:0 0 7px;color:#102341;font-size:28px!important;font-weight:800;line-height:1.2}
+                .cv-pa-next-heading p{margin:0;color:#64748b;font-size:16px!important;line-height:1.5}
                 .st-key-cv_pa_next_steps [data-testid="stHorizontalBlock"]{align-items:stretch!important;gap:16px!important}
                 .st-key-cv_pa_next_steps [data-testid="column"]{box-sizing:border-box!important;min-width:0!important;padding:16px!important;border:1px solid #e2e8f0!important;border-radius:12px!important;background:#f8fafc!important}
                 .cv-pa-next-action{min-height:60px;margin:0 0 10px}
-                .cv-pa-next-action strong{display:block;color:#172b4d;font-size:15px;font-weight:800;line-height:1.3}
-                .cv-pa-next-action p{margin:5px 0 0;color:#64748b;font-size:13px;line-height:1.45}
-                .st-key-cv_pa_next_steps [data-testid="stMarkdownContainer"] p{font-size:13px;line-height:1.45}
+                .cv-pa-next-action strong{display:block;color:#172b4d;font-size:18px!important;font-weight:800;line-height:1.35}
+                .cv-pa-next-action p{margin:6px 0 0;color:#64748b;font-size:15px!important;line-height:1.5}
+                .st-key-cv_pa_next_steps [data-testid="stMarkdownContainer"] p{font-size:15px!important;line-height:1.5}
                 .cv-pa-summary,.cv-pa-table-shell,.cv-pa-table-scroll,.st-key-cv_pa_supplier_options{max-width:100%!important;min-width:0!important}
                 .cv-pa-summary{grid-template-columns:96px minmax(0,1.4fr) repeat(4,minmax(0,1fr))!important}
                 .cv-pa-table-scroll{overflow-x:auto!important}
@@ -7743,8 +7743,6 @@ def run_authenticated_app() -> None:
                     ),
                     unsafe_allow_html=True,
                 )
-                reveal_authenticated_page_body("Procurement Advisor")
-
                 if editor_open:
                     st.markdown(
                         "Enter details from a current authorized supplier quote or manufacturer record. "
@@ -8142,7 +8140,6 @@ def run_authenticated_app() -> None:
                     )
 
             else:
-                reveal_authenticated_page_body("Procurement Advisor")
                 st.info("Upload or open a saved BOM to add components to procurement review.")
 
             with st.expander("More procurement actions and all components", expanded=False):

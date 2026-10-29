@@ -18,6 +18,13 @@ class MonitoringSnapshotLayoutTests(unittest.TestCase):
         self.assertLess(self.branch.index(marker), self.branch.index("monitoring_allowed = "))
         self.assertNotEqual("monitoring_home_width_marker", "approved_page_canvas_standard_render_monitoring")
         self.assertIn(":has(.st-key-monitoring_home_width_marker)", MONITORING_LAYOUT)
+        live_canvas_rule = MONITORING_LAYOUT.split(
+            "/* The live Monitoring renderer is not wrapped in the approved-page canvas.",
+            1,
+        )[1].split("\n}\n", 1)[0]
+        self.assertIn('[data-testid="stMainBlockContainer"]', live_canvas_rule)
+        self.assertIn("max-width: 1440px !important;", live_canvas_rule)
+        self.assertIn("width: calc(100% - 48px) !important;", live_canvas_rule)
         self.assertIn(":has(.st-key-approved_page_canvas_standard_render_monitoring)", MONITORING_LAYOUT)
         self.assertIn('key = f"approved_page_canvas_{width_variant}_{renderer.__name__}"', APPROVED_PAGES)
         self.assertIn("max-width: 1440px !important;", MONITORING_LAYOUT)

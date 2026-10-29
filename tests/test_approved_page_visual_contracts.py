@@ -33,6 +33,15 @@ class ApprovedPageVisualContractTests(unittest.TestCase):
         self.assertIn('justify-content: flex-end !important;', MONITORING_HOME_CSS)
         self.assertIn('st-key-approved_home_new_bom"] button', MONITORING_HOME_CSS)
 
+    def test_route_geometry_is_loaded_before_the_destination_first_paint(self):
+        self.assertIn('id="cadivor-workspace-geometry-prepaint"', CORE_UI)
+        self.assertIn('_load_css("monitoring_home_alignment.css")', CORE_UI)
+        self.assertIn("inject_navigation_recovery_css(prepaint=True)", CORE_UI)
+        self.assertIn("inject_workspace_geometry_final()", CORE_UI)
+        self.assertIn(".cv-ap-home-kpi .cv-ap-home-icon", MONITORING_HOME_CSS)
+        self.assertIn("max-width: 30px !important;", MONITORING_HOME_CSS)
+        self.assertIn("grid-template-columns: minmax(0, 1fr) !important;", MONITORING_HOME_CSS)
+
     def test_monitoring_kpis_override_streamlit_column_sizing(self):
         self.assertIn(
             '.st-key-approved_monitoring_kpi_grid [data-testid="stHorizontalBlock"]{display:grid!important;grid-template-columns:repeat(4,minmax(0,240px))!important;justify-content:start!important;',
@@ -152,6 +161,14 @@ class ApprovedPageVisualContractTests(unittest.TestCase):
         self.assertIn(
             'header_labels = ("Name", "Project", "Part count", "Health", "High-risk parts", "Last analyzed", "Actions")',
             home,
+        )
+        self.assertIn(
+            "home_widths = [2.15, 1.25, 0.72, 0.8, 0.95, 1.05, 2.05]",
+            home,
+        )
+        self.assertIn(
+            "grid-template-columns:2.15fr 1.25fr .72fr .8fr .95fr 1.05fr 2.05fr!important",
+            APPROVED_PAGES,
         )
         self.assertIn('cells = st.columns(home_widths, gap="small"', home)
         self.assertIn('_render_saved_bom_actions(cells[6],', home)

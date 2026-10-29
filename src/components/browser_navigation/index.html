@@ -307,6 +307,10 @@
       const main = doc.querySelector('[data-testid="stMain"]');
       const candidates = new Set([
         main,
+        main && main.querySelector('[data-testid="stMainBlockContainer"]'),
+        doc.querySelector('[data-testid="stMainBlockContainer"]'),
+        doc.querySelector('section.main'),
+        doc.querySelector('[data-testid="stAppViewContainer"]'),
         doc.scrollingElement,
         doc.documentElement,
         doc.body,
@@ -389,7 +393,7 @@
       state.routeReleaseStableChecks = atTop
         ? state.routeReleaseStableChecks + 1
         : 0;
-      if (state.routeReleaseStableChecks >= 1) {
+      if (state.routeReleaseStableChecks >= 3) {
         body.setAttribute("data-cadivor-page-body-release-gen", gen);
         state.routeReleaseStableChecks = 0;
       }

@@ -1323,12 +1323,7 @@ def run_compare_parts_many(
     cards = [pair_comparisons[0]["part_a"]] + [
         comparison["part_b"] for comparison in pair_comparisons
     ]
-    if not any(card.get("found") for card in cards):
-        return {
-            "status": STATUS_FAILED,
-            "error": "Cadivor could not retrieve supplier data for these parts.",
-            "part_numbers": parts,
-        }
+    supplier_data_missing = not any(card.get("found") for card in cards)
 
     by_pair: list[dict[str, dict[str, Any]]] = []
     attribute_order: list[str] = []
@@ -1407,13 +1402,20 @@ def run_compare_parts_many(
         ],
     }
     return {
-        "status": STATUS_COMPLETED,
+        # Keep the completed matrix even when every supplier lookup misses.
+        # The UI needs to show the requested MPNs, evidence gaps, and a
+        # fail-closed assessment instead of returning to an empty form.
+        "status": STATUS_FAILED if supplier_data_missing else STATUS_COMPLETED,
         "part_a": parts[0],
         "part_b": parts[1],
         "part_c": parts[2] if len(parts) > 2 else "",
         "part_numbers": parts,
         "comparison": comparison_result,
-        "error": "",
+        "error": (
+            "No supplier record was returned for these parts. The comparison below shows the fields that still need evidence; it does not infer compatibility."
+            if supplier_data_missing
+            else ""
+        ),
     }
 
 
