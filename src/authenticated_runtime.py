@@ -4196,10 +4196,9 @@ def run_authenticated_app() -> None:
             "Preparing your workspace",
             "Loading your saved BOMs and current risk signals.",
         )
-        # Release the full-page transition once the stable Dashboard heading
-        # is mounted. Workspace data below is independently time-bounded; it
-        # must not keep the user trapped on Opening Dashboard while it loads.
-        reveal_authenticated_page_body("Dashboard")
+        # Keep the previous route visible under the transition chip while the
+        # bounded Home reads complete. Releasing on this placeholder made the
+        # Dashboard replace the outgoing page with an empty/skeleton workspace.
         try:
             _command_cache = st.session_state.get("cadivor_workspace_command_cache")
             if not _workspace_commands_cache_fresh(current_user["id"]):

@@ -29,6 +29,16 @@ class NavigationFlashAndReviewEntryTests(unittest.TestCase):
         self.assertIn("generation === afterGeneration", BROWSER_BRIDGE)
         self.assertIn("hasVisiblePythonCover(previousGeneration)", BROWSER_BRIDGE)
 
+    def test_route_transition_preserves_the_outgoing_surface_until_new_body_marker(self):
+        self.assertIn("function captureTransitionSnapshot()", BROWSER_BRIDGE)
+        self.assertIn("source.cloneNode(true)", BROWSER_BRIDGE)
+        self.assertIn('snapshot.setAttribute("aria-hidden", "true")', BROWSER_BRIDGE)
+        self.assertIn("snapshot.inert = true", BROWSER_BRIDGE)
+        self.assertIn('showImmediateCover(label, preserveCurrentPage = false)', BROWSER_BRIDGE)
+        self.assertIn("clearTransitionSnapshot();", BROWSER_BRIDGE)
+        self.assertIn("liveGeneration !== previousGeneration", BROWSER_BRIDGE)
+        self.assertIn("[data-cadivor-transition-snapshot='1']", BROWSER_BRIDGE)
+
     def test_runtime_geometry_lock_survives_reruns_without_measuring_the_rail(self):
         self.assertIn('root.setAttribute("data-cadivor-shell-locked", "1")', BROWSER_BRIDGE)
         self.assertIn('[data-cadivor-signed-out-surface="1"]', BROWSER_BRIDGE)
