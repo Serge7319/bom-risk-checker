@@ -8,6 +8,8 @@ row that includes that exact MPN).
 from __future__ import annotations
 
 import re
+from concurrent.futures import ThreadPoolExecutor
+from contextvars import ContextVar, copy_context
 from datetime import datetime, timezone
 from typing import Any, Mapping
 from urllib.parse import quote, urljoin
@@ -31,6 +33,10 @@ PROVIDER_TIMEOUT = "timeout"
 PROVIDER_REDIRECT_LOOP = "redirect_loop"
 PROVIDER_SKIPPED = "skipped"
 PROVIDER_DISCOVERY_LEAD = "discovery_lead"
+
+_PREFETCHED_COMPARE_FETCHES: ContextVar[dict[tuple[str, str], tuple[str, bytes | str, str]] | None] = ContextVar(
+    "cadivor_prefetched_compare_fetches", default=None
+)
 
 # Indexed DigiKey detail URLs found during discovery. Recorded as leads only.
 # Attribute values require the permitted DigiKey API (or another authorized
@@ -77,6 +83,22 @@ _RS_GROUP_SEARCH_LISTING_LEADS: dict[tuple[str, str], str] = {
 
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _parallel_ordered(items: list[Any], worker: Any, *, limit: int = 8) -> list[Any]:
+    """Run independent public-source checks concurrently, preserving source order."""
+    values = list(items or [])
+    if len(values) < 2:
+        return [worker(value) for value in values]
+    with ThreadPoolExecutor(
+        max_workers=min(max(1, int(limit)), len(values)),
+        thread_name_prefix="compare-source",
+    ) as executor:
+        futures = [
+            executor.submit(copy_context().run, worker, value)
+            for value in values
+        ]
+        return [future.result() for future in futures]
 
 
 def _status_row(
@@ -312,6 +334,10 @@ def _fetch_public_https(url: str, *, referer: str = "") -> tuple[str, bytes | st
     """Return (status, payload_or_reason, final_url). status is ok|blocked|error|..."""
     if not _public_datasheet_url(url):
         return PROVIDER_SKIPPED, "URL is not a public HTTPS destination.", url
+    prefetched = _PREFETCHED_COMPARE_FETCHES.get()
+    cache_key = (_canonical_datasheet_url(url), str(referer or ""))
+    if prefetched is not None and cache_key in prefetched:
+        return prefetched[cache_key]
     headers = {
         "Accept": "text/html,application/xhtml+xml,application/pdf;q=0.9,*/*;q=0.8",
         "User-Agent": "CadivorEngineeringReview/1.0 (+https://cadivor.com)",
@@ -894,7 +920,7 @@ def _source_field_labels(text: str) -> list[str]:
     return labels
 
 
-def gather_part_evidence(
+def _gather_part_evidence_from_sources(
     *,
     mpn: str,
     manufacturer: str = "",
@@ -949,12 +975,18 @@ def gather_part_evidence(
         )
 
     # 2) Manufacturer product / order-code pages.
-    for source_type, url in _manufacturer_product_candidates(
+    product_candidates = _manufacturer_product_candidates(
         manufacturer=requested_manufacturer,
         mpn=requested_mpn,
         product_detail_url=product_detail_url,
+    )
+    product_fetches = _parallel_ordered(
+        product_candidates,
+        lambda candidate: _fetch_public_https(candidate[1], referer=candidate[1]),
+    )
+    for (source_type, url), (status, payload, final_url) in zip(
+        product_candidates, product_fetches
     ):
-        status, payload, final_url = _fetch_public_https(url, referer=url)
         if status != PROVIDER_AVAILABLE:
             sources.append(
                 _status_row(
@@ -1008,10 +1040,16 @@ def gather_part_evidence(
             documents.append(doc)
 
     # 2b) Manufacturer site search pages (exact-MPN still required in body).
-    for source_type, url in _manufacturer_search_candidates(
+    manufacturer_search_candidates = _manufacturer_search_candidates(
         manufacturer=requested_manufacturer, mpn=requested_mpn
+    )
+    manufacturer_search_fetches = _parallel_ordered(
+        manufacturer_search_candidates,
+        lambda candidate: _fetch_public_https(candidate[1]),
+    )
+    for (source_type, url), (status, payload, final_url) in zip(
+        manufacturer_search_candidates, manufacturer_search_fetches
     ):
-        status, payload, final_url = _fetch_public_https(url)
         identity_ok = False
         detail = str(payload)
         if status == PROVIDER_AVAILABLE and isinstance(payload, str):
@@ -1046,17 +1084,23 @@ def gather_part_evidence(
             for row in sources
             if row.get("url")
         }
+        catalog_candidates = []
         for source_type, url in _ohmite_order_code_catalog_candidates(requested_mpn):
             key = _canonical_datasheet_url(url)
             if key in seen_urls:
                 continue
             seen_urls.add(key)
-            row, doc = _probe_exact_mpn_source(
-                source_type=source_type,
-                url=url,
+            catalog_candidates.append((source_type, url))
+        catalog_results = _parallel_ordered(
+            catalog_candidates,
+            lambda candidate: _probe_exact_mpn_source(
+                source_type=candidate[0],
+                url=candidate[1],
                 manufacturer=requested_manufacturer,
                 mpn=requested_mpn,
             )
+        )
+        for row, doc in catalog_results:
             sources.append(row)
             if doc is not None:
                 documents.append(doc)
@@ -1076,19 +1120,26 @@ def gather_part_evidence(
             for row in sources
             if row.get("url")
         }
-        for source_type, url in _authorized_distributor_product_candidates(
+        authorized_candidates = _authorized_distributor_product_candidates(
             manufacturer=requested_manufacturer, mpn=requested_mpn
-        ):
+        )
+        filtered_authorized_candidates = []
+        for source_type, url in authorized_candidates:
             key = _canonical_datasheet_url(url)
             if key in seen_auth_urls:
                 continue
             seen_auth_urls.add(key)
-            row, doc = _probe_authorized_distributor_product_page(
-                source_type=source_type,
-                url=url,
+            filtered_authorized_candidates.append((source_type, url))
+        authorized_results = _parallel_ordered(
+            filtered_authorized_candidates,
+            lambda candidate: _probe_authorized_distributor_product_page(
+                source_type=candidate[0],
+                url=candidate[1],
                 manufacturer=requested_manufacturer,
                 mpn=requested_mpn,
             )
+        )
+        for row, doc in authorized_results:
             sources.append(row)
             if doc is not None:
                 documents.append(doc)
@@ -1111,8 +1162,16 @@ def gather_part_evidence(
 
     # 5) Other public distributor product pages — record access; never use 403 bodies.
     if probe_distributor_pages:
-        for source_type, url in _distributor_public_candidates(requested_mpn, requested_manufacturer):
-            status, payload, final_url = _fetch_public_https(url)
+        distributor_candidates = _distributor_public_candidates(
+            requested_mpn, requested_manufacturer
+        )
+        distributor_fetches = _parallel_ordered(
+            distributor_candidates,
+            lambda candidate: _fetch_public_https(candidate[1]),
+        )
+        for (source_type, url), (status, payload, final_url) in zip(
+            distributor_candidates, distributor_fetches
+        ):
             detail = str(payload) if status != PROVIDER_AVAILABLE else "Page retrieved."
             identity_ok = False
             if status == PROVIDER_AVAILABLE and isinstance(payload, str):
@@ -1153,10 +1212,16 @@ def gather_part_evidence(
             )
 
     # 6) Parts aggregators — coverage only; never attribute compare values from them.
-    for source_type, url in _aggregator_listing_candidates(
+    aggregator_candidates = _aggregator_listing_candidates(
         manufacturer=requested_manufacturer, mpn=requested_mpn
+    )
+    aggregator_fetches = _parallel_ordered(
+        aggregator_candidates,
+        lambda candidate: _fetch_public_https(candidate[1]),
+    )
+    for (source_type, url), (status, payload, final_url) in zip(
+        aggregator_candidates, aggregator_fetches
     ):
-        status, payload, final_url = _fetch_public_https(url)
         detail = str(payload) if status != PROVIDER_AVAILABLE else (
             "Aggregator listing retrieved. It is not an authorized distributor source; "
             "no attribute values were taken."
@@ -1217,6 +1282,96 @@ def gather_part_evidence(
         "primary_document": primary,
         "identity": primary_identity,
     }
+
+
+def gather_part_evidence(
+    *,
+    mpn: str,
+    manufacturer: str = "",
+    datasheet_url: str = "",
+    product_detail_url: str = "",
+    probe_distributor_pages: bool = True,
+) -> dict[str, Any]:
+    """Fetch independent source pages together, then apply the normal evidence gates.
+
+    Every source still gets its own status and identity check. Prefetching removes
+    serial source-group timeouts without changing which sources are searched or
+    which documents are allowed to contribute values.
+    """
+    requested_mpn = str(mpn or "").strip()
+    requested_manufacturer = str(manufacturer or "").strip()
+    candidates: list[tuple[str, str]] = []
+    candidates.extend(
+        (url, url)
+        for _, url in _manufacturer_product_candidates(
+            manufacturer=requested_manufacturer,
+            mpn=requested_mpn,
+            product_detail_url=product_detail_url,
+        )
+    )
+    candidates.extend(
+        (url, "")
+        for _, url in _manufacturer_search_candidates(
+            manufacturer=requested_manufacturer, mpn=requested_mpn
+        )
+    )
+    maker_key = re.sub(r"[^a-z0-9]+", "", requested_manufacturer.casefold())
+    if maker_key == "ohmite":
+        candidates.extend(
+            (url, url)
+            for _, url in _ohmite_order_code_catalog_candidates(requested_mpn)
+        )
+    if probe_distributor_pages:
+        candidates.extend(
+            (url, "")
+            for _, url in _authorized_distributor_product_candidates(
+                manufacturer=requested_manufacturer, mpn=requested_mpn
+            )
+        )
+        candidates.extend(
+            (url, "")
+            for _, url in _distributor_public_candidates(
+                requested_mpn, requested_manufacturer
+            )
+        )
+    candidates.extend(
+        (url, "")
+        for _, url in _aggregator_listing_candidates(
+            manufacturer=requested_manufacturer, mpn=requested_mpn
+        )
+    )
+
+    unique: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for url, referer in candidates:
+        key = (_canonical_datasheet_url(url), referer)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append((url, referer))
+
+    fetched = _parallel_ordered(
+        unique,
+        lambda candidate: _fetch_public_https(
+            candidate[0], referer=candidate[1]
+        ),
+        limit=10,
+    )
+    cache = {
+        (_canonical_datasheet_url(url), referer): result
+        for (url, referer), result in zip(unique, fetched)
+    }
+    token = _PREFETCHED_COMPARE_FETCHES.set(cache)
+    try:
+        return _gather_part_evidence_from_sources(
+            mpn=requested_mpn,
+            manufacturer=requested_manufacturer,
+            datasheet_url=datasheet_url,
+            product_detail_url=product_detail_url,
+            probe_distributor_pages=probe_distributor_pages,
+        )
+    finally:
+        _PREFETCHED_COMPARE_FETCHES.reset(token)
 
 
 def prefer_verified_document(*documents: Mapping[str, Any] | None) -> dict[str, Any] | None:

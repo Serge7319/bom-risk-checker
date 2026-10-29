@@ -139,8 +139,8 @@ class ApprovedBOMPageContractTests(unittest.TestCase):
 
 
 class ApprovedBOMSubmissionTests(unittest.TestCase):
-    def test_analyze_button_waits_for_server_confirmed_upload(self):
-        self.assertTrue(
+    def test_analyze_button_stays_available_to_refresh_a_stale_upload_render(self):
+        self.assertFalse(
             should_disable_bom_analyze_button(
                 analysis_running=False, upload_available=False
             )
@@ -156,14 +156,35 @@ class ApprovedBOMSubmissionTests(unittest.TestCase):
             )
         )
 
-    def test_upload_page_disables_analyze_until_upload_is_ready(self):
+    def test_upload_page_remembers_upload_and_keeps_analyze_recoverable(self):
         source = Path("src/ui/approved_pages.py").read_text(encoding="utf-8")
         self.assertIn("disabled=should_disable_bom_analyze_button(", source)
+        self.assertIn("on_change=remember_approved_bom_upload", source)
+        self.assertIn('st.session_state.get("cadivor_uploaded_bom_file")', source)
+        self.assertIn("uploaded_file=upload_state_file", source)
         self.assertIn("upload_available=upload_available", source)
         self.assertNotIn("cadivor-bom-upload-spinner", source)
-        self.assertIn("waiting for the complete upload", source)
+        self.assertIn("explain how to retry", source)
         self.assertIn("fully uploaded and ready", source)
-        self.assertNotIn("select Analyze BOM to retry the upload check", source)
+
+    def test_completed_uploader_value_is_remembered_and_can_be_staged(self):
+        from src.bom_upload_flow import remember_approved_bom_upload
+
+        upload = type("Uploaded", (), {"name": "synthetic.csv"})()
+        state = {"bom_file_uploader": upload}
+        remember_approved_bom_upload(state)
+        self.assertIs(state["cadivor_uploaded_bom_file"], upload)
+        self.assertEqual(state["cadivor_uploaded_bom_filename"], "synthetic.csv")
+        state.pop("bom_file_uploader")
+        staged = stage_approved_bom_submission(
+            state,
+            submitted=True,
+            uploaded_file=None,
+            project_name="Synthetic project",
+            bom_name="Synthetic BOM",
+        )
+        self.assertTrue(staged)
+        self.assertIs(state["cadivor_pending_upload"], upload)
 
     def test_submit_recovers_file_from_uploader_widget_state(self):
         upload = object()
@@ -202,7 +223,7 @@ class ApprovedBOMSubmissionTests(unittest.TestCase):
 
         self.assertFalse(staged)
         self.assertNotIn("cadivor_bom_analysis_ready", state)
-        self.assertIn("selected file was not available", state["cadivor_bom_submission_error"])
+        self.assertIn("has not received the selected file yet", state["cadivor_bom_submission_error"])
 
     def test_approved_upload_hands_off_file_names_and_starts_analysis(self):
         upload = object()
@@ -378,6 +399,8 @@ class ApprovedBOMSubmissionTests(unittest.TestCase):
             "show_analysis_success_29b": True,
             "approved_bom_project_name": "Old project",
             "cadivor_bom_pipeline_active": True,
+            "cadivor_uploaded_bom_file": object(),
+            "cadivor_uploaded_bom_filename": "old.csv",
         }
 
         prepare_new_approved_bom_analysis(state)
@@ -386,6 +409,8 @@ class ApprovedBOMSubmissionTests(unittest.TestCase):
         self.assertNotIn("analysis_id", state)
         self.assertNotIn("approved_bom_project_name", state)
         self.assertNotIn("cadivor_bom_pipeline_active", state)
+        self.assertNotIn("cadivor_uploaded_bom_file", state)
+        self.assertNotIn("cadivor_uploaded_bom_filename", state)
         self.assertTrue(state["cadivor_bom_upload_open"])
 
     def test_analysis_body_renders_on_bom_analyzer_without_review_flag(self):

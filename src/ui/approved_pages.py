@@ -20,6 +20,7 @@ from src.bom_upload_flow import (
     should_render_approved_bom_upload_form,
     should_stop_approved_bom_renderer,
     should_disable_bom_analyze_button,
+    remember_approved_bom_upload,
     stage_approved_bom_submission,
 )
 from src.approval_evidence import has_document_page_citation
@@ -2859,14 +2860,22 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
                     "Upload your BOM file",
                     type=["csv", "xlsx"],
                     key="bom_file_uploader",
+                    on_change=remember_approved_bom_upload,
+                    args=(st.session_state,),
                     help="CSV or Excel with MPN and Quantity columns.",
                     disabled=analysis_running,
                 )
-                upload_state_file = uploaded if uploaded is not None else st.session_state.get(
-                    "bom_file_uploader"
-                )
+                upload_state_file = uploaded
+                if upload_state_file is None:
+                    upload_state_file = st.session_state.get("bom_file_uploader")
+                if upload_state_file is None:
+                    upload_state_file = st.session_state.get("cadivor_uploaded_bom_file")
                 upload_available = upload_state_file is not None
-                uploaded_name = str(getattr(upload_state_file, "name", "") or "")
+                uploaded_name = str(
+                    getattr(upload_state_file, "name", "")
+                    or st.session_state.get("cadivor_uploaded_bom_filename")
+                    or ""
+                )
                 if upload_available:
                     st.session_state.pop("cadivor_bom_submission_error", None)
                 with st.container(key="approved_bom_submit_row"):
@@ -2891,7 +2900,7 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
                             st.markdown(
                                 """
                                 <div class="cadivor-bom-upload-waiting" role="status" aria-live="polite">
-                                  <span>Select a CSV or Excel file above. Cadivor is waiting for the complete upload; Analyze BOM activates when the file is ready.</span>
+                                  <span>Select a CSV or Excel file above. Analyze BOM will check that the upload reached Cadivor and explain how to retry if it is still transferring.</span>
                                 </div>
                                 <style>
                                 .cadivor-bom-upload-waiting {
@@ -2910,7 +2919,7 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
                     staged = stage_approved_bom_submission(
                         st.session_state,
                         submitted=True,
-                        uploaded_file=uploaded,
+                        uploaded_file=upload_state_file,
                         project_name=resolve_project_choice(
                             NEW_PROJECT_CHOICE,
                             typed_project,
@@ -6978,12 +6987,70 @@ def render_replacement_search() -> None:
 
 
 
+def _collect_compare_parts_job() -> bool:
+    """Move a finished comparison future into session state."""
+    future = st.session_state.get("cadivor_compare_future")
+    if future is None or not future.done():
+        return False
+    job_parts = list(st.session_state.get("cadivor_compare_job_parts") or [])
+    try:
+        result = future.result()
+        if not isinstance(result, dict):
+            raise TypeError("comparison worker returned an invalid result")
+    except Exception:
+        result = {
+            "status": "failed",
+            "part_a": job_parts[0] if job_parts else "",
+            "part_b": job_parts[1] if len(job_parts) > 1 else "",
+            "part_c": job_parts[2] if len(job_parts) > 2 else "",
+            "part_numbers": job_parts,
+            "error": "Cadivor could not complete this comparison right now. Please try again.",
+        }
+    st.session_state["cadivor_compare_result"] = result
+    st.session_state["cadivor_compare_part_c"] = (
+        job_parts[2] if len(job_parts) > 2 else ""
+    )
+    st.session_state.pop("cadivor_compare_future", None)
+    st.session_state.pop("cadivor_compare_job_parts", None)
+    st.session_state.pop("cadivor_compare_started_at", None)
+    return True
+
+
+@st.fragment(run_every="2s")
+def _render_compare_parts_job_status() -> None:
+    """Poll the evidence search without blocking navigation or page rendering."""
+    future = st.session_state.get("cadivor_compare_future")
+    if future is None:
+        return
+    if _collect_compare_parts_job():
+        st.rerun()
+        return
+    try:
+        started_at = float(st.session_state.get("cadivor_compare_started_at") or 0.0)
+    except (TypeError, ValueError):
+        started_at = 0.0
+    elapsed = max(0, int(datetime.now().timestamp() - started_at)) if started_at else 0
+    st.info(
+        "Searching supplier records, manufacturer pages, and available datasheets. "
+        "Cadivor will show the comparison as soon as the evidence checks finish.",
+        icon="🔎",
+    )
+    if elapsed >= 45:
+        st.caption(
+            f"Search time: {elapsed}s. Some sources are responding slowly; the search is still running."
+        )
+
+
 def render_compare_live() -> None:
     """Compare up to three parts, with each candidate checked against Part A."""
     begin_approved_page()
     from src.approved_alternatives import part_key
-    from src.parts_compare import resolve_compare_parts_submitted_mpn, run_compare_parts_many
+    from src.parts_compare import resolve_compare_parts_submitted_mpn, submit_compare_parts_many
     from src.ui.navigation import reveal_authenticated_page_body
+
+    _collect_compare_parts_job()
+    compare_future = st.session_state.get("cadivor_compare_future")
+    compare_running = compare_future is not None and not compare_future.done()
 
     pending_handoff = st.session_state.pop("cadivor_compare_pending_handoff", None)
     if isinstance(pending_handoff, dict):
@@ -7080,17 +7147,18 @@ def render_compare_live() -> None:
         else:
             input_cols = st.columns(2)
         with input_cols[0]:
-            entered_a = st.text_input("Part A", key="approved_compare_a", placeholder="Manufacturer part number")
+            entered_a = st.text_input("Part A", key="approved_compare_a", placeholder="Manufacturer part number", disabled=compare_running)
         with input_cols[1]:
-            entered_b = st.text_input("Part B", key="approved_compare_b", placeholder="Manufacturer part number")
+            entered_b = st.text_input("Part B", key="approved_compare_b", placeholder="Manufacturer part number", disabled=compare_running)
         entered_c = ""
         if st.session_state.get("approved_compare_show_c"):
             with input_cols[2]:
-                entered_c = st.text_input("Part C", key="approved_compare_c", placeholder="Manufacturer part number")
+                entered_c = st.text_input("Part C", key="approved_compare_c", placeholder="Manufacturer part number", disabled=compare_running)
         submitted = st.form_submit_button(
             "Compare parts",
             type="primary",
             key="approved_compare_run",
+            disabled=compare_running,
         )
     # The compare form is now visibly mounted. Close the navigation cover before
     # supplier lookups begin so progress does not dim the full page.
@@ -7115,19 +7183,13 @@ def render_compare_live() -> None:
     auto_run = bool(st.session_state.pop("approved_compare_auto_run_pending", False))
     if submitted or auto_run:
         if len(requested_parts) >= 2:
-            try:
-                with st.spinner("Comparing recorded supplier and datasheet evidence…"):
-                    st.session_state["cadivor_compare_result"] = run_compare_parts_many(requested_parts)
-                st.session_state["cadivor_compare_part_c"] = part_c
-            except Exception:
-                st.session_state["cadivor_compare_result"] = {
-                    "status": "failed",
-                    "part_a": part_a,
-                    "part_b": part_b,
-                    "part_c": part_c,
-                    "part_numbers": requested_parts,
-                    "error": "Cadivor could not complete this comparison right now. Please try again.",
-                }
+            st.session_state.pop("cadivor_compare_result", None)
+            st.session_state["cadivor_compare_job_parts"] = requested_parts
+            st.session_state["cadivor_compare_started_at"] = datetime.now().timestamp()
+            st.session_state["cadivor_compare_future"] = submit_compare_parts_many(
+                requested_parts
+            )
+            compare_running = True
         else:
             st.session_state["cadivor_compare_result"] = {
                 "status": "failed",
@@ -7138,16 +7200,26 @@ def render_compare_live() -> None:
                 "error": "Enter Part A and Part B manufacturer part numbers.",
             }
     if st.session_state.get("approved_compare_show_c"):
-        st.button("Remove Part C", key="approved_compare_remove_c", on_click=_remove_third_part)
+        st.button(
+            "Remove Part C",
+            key="approved_compare_remove_c",
+            on_click=_remove_third_part,
+            disabled=compare_running,
+        )
     else:
         st.button(
             "＋ Add part",
             key="approved_compare_add_c",
             type="secondary",
             on_click=_show_third_part,
+            disabled=compare_running,
         )
 
+    _render_compare_parts_job_status()
+
     result = st.session_state.get("cadivor_compare_result")
+    future = st.session_state.get("cadivor_compare_future")
+    compare_running = compare_running or (future is not None and not future.done())
     if isinstance(result, dict):
         result_parts = result.get("part_numbers")
         if result_parts is None:
@@ -7332,6 +7404,8 @@ def render_compare_live() -> None:
             empty = error
         elif ran or comparison:
             empty = "No comparable attributes were recorded for these parts."
+        elif compare_running:
+            empty = "Comparison search is running. Results will appear here when the evidence checks finish."
         elif part_a.strip() and part_b.strip():
             empty = "No comparison is available yet. Run Compare parts to load recorded attributes."
         else:

@@ -37,6 +37,8 @@ def consume_approved_bom_submission(
             state["bom8_analysis_upload_file"] = uploaded_file
             state["cadivor_bom_pipeline_active"] = True
             state["bom8_analysis_pending"] = True
+        state.pop("cadivor_uploaded_bom_file", None)
+        state.pop("cadivor_uploaded_bom_filename", None)
 
     if uploaded_file is not None:
         state.pop("bom8_sample_mode", None)
@@ -63,12 +65,13 @@ def stage_approved_bom_submission(
     upload = uploaded_file
     if upload is None:
         upload = state.get("bom_file_uploader")
+    if upload is None:
+        upload = state.get("cadivor_uploaded_bom_file")
 
     if upload is None:
         state["cadivor_bom_submission_error"] = (
-            "Analyze was received, but the selected file was not available on Cadivor. "
-            "Remove it from the upload box, select it again, wait for the upload to finish, "
-            "then select Analyze BOM."
+            "Cadivor has not received the selected file yet. Wait for the upload to finish, "
+            "then select Analyze BOM again. If it still does not start, remove the file and upload it again."
         )
         return False
 
@@ -109,6 +112,8 @@ def finish_approved_bom_submission(
         "bom8_analysis_cancel_event",
         "bom8_analysis_progress",
         "cadivor_bom_analysis_transition",
+        "cadivor_uploaded_bom_file",
+        "cadivor_uploaded_bom_filename",
     ):
         state.pop(key, None)
     if reopen_upload:
@@ -206,8 +211,27 @@ def has_completed_saved_bom_results(state: MutableMapping[str, Any]) -> bool:
 def should_disable_bom_analyze_button(
     *, analysis_running: bool, upload_available: bool
 ) -> bool:
-    """Enable Analyze only after the server confirms the complete upload is available."""
-    return bool(analysis_running or not upload_available)
+    """Keep Analyze recoverable when browser and server upload state briefly diverge.
+
+    The submit handler validates that an UploadedFile is actually available and
+    shows a retryable message when it is not. Disabling the button based on a
+    stale render can otherwise prevent the click that refreshes Streamlit state.
+    """
+    del upload_available
+    return bool(analysis_running)
+
+
+def remember_approved_bom_upload(state: MutableMapping[str, Any]) -> None:
+    """Persist the completed uploader value across a form rerun."""
+    upload = state.get("bom_file_uploader")
+    if upload is None:
+        state.pop("cadivor_uploaded_bom_file", None)
+        state.pop("cadivor_uploaded_bom_filename", None)
+        return
+    state["cadivor_uploaded_bom_file"] = upload
+    state["cadivor_uploaded_bom_filename"] = str(
+        getattr(upload, "name", "") or ""
+    )
 
 
 def should_render_approved_bom_upload_form(
@@ -268,6 +292,8 @@ def prepare_new_approved_bom_analysis(state: MutableMapping[str, Any]) -> None:
         "approved_bom_project_name",
         "approved_bom_name",
         "bom_file_uploader",
+        "cadivor_uploaded_bom_file",
+        "cadivor_uploaded_bom_filename",
     ):
         state.pop(key, None)
     state["cadivor_bom_upload_open"] = True
