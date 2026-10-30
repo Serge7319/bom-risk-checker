@@ -106,7 +106,9 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
         self.assertIn("pointer-events:auto", markup)
         self.assertIn("z-index:2147483000", markup)
         self.assertIn('role="status" aria-label="Opening Monitoring" aria-live="polite"', markup)
-        self.assertIn("width:min(420px,calc(100% - 48px))", markup)
+        self.assertIn('class="cv-main-transition-layout"', markup)
+        self.assertIn('class="cv-main-transition-skeleton"', markup)
+        self.assertIn('class="cv-transition-table"', markup)
         self.assertIn("Preparing this page in your Cadivor workspace.", markup)
         self.assertIn("Opening Monitoring…", markup)
 
@@ -130,6 +132,7 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
         markup = namespace["route_loading_markup"]("Portfolio Intelligence", 21)
         self.assertIn('data-cadivor-transition-kind="navigation"', markup)
         self.assertIn("cv-main-transition-progress", markup)
+        self.assertIn("cv-main-transition-skeleton", markup)
         self.assertIn('class="cv-main-transition-mark"', markup)
         self.assertIn(">C</span>", markup)
         self.assertIn("Opening Portfolio Intelligence…", markup)
@@ -139,7 +142,7 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
         )[1].split("}}", 1)[0]
         self.assertIn("background:#F5F7FB!important", nav_css)
         self.assertIn("pointer-events:auto!important", nav_css)
-        self.assertIn("width:40px!important;height:40px!important", SOURCE)
+        self.assertIn("width:36px!important;height:36px!important", SOURCE)
         self.assertIn("cv-main-transition-label", SOURCE)
         self.assertNotIn("@media (max-width:1100px){{", SOURCE)
         self.assertIn("height:calc(100dvh - var(--cv-foundation-top,64px))!important", nav_css)

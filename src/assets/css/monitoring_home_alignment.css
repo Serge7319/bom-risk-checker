@@ -167,6 +167,30 @@ html body section[data-testid="stMain"]:has(.st-key-monitoring_home_width_marker
   margin-right: auto !important;
 }
 
+/* Stretch the actual Monitoring page wrappers. This route is mounted directly
+   in stMainBlockContainer and does not use the generic approved-page canvas. */
+html body section[data-testid="stMain"]:has(.st-key-monitoring_home_width_marker)
+  [data-testid="stMainBlockContainer"] > [data-testid="stVerticalBlock"] {
+  align-items: stretch !important;
+}
+
+html body section[data-testid="stMain"]:has(.st-key-monitoring_home_width_marker)
+  [data-testid="stElementContainer"]:has(.st-key-approved_monitoring_kpi_grid),
+html body section[data-testid="stMain"]:has(.st-key-monitoring_home_width_marker)
+  [data-testid="stElementContainer"]:has(.st-key-approved_monitoring_filters),
+html body section[data-testid="stMain"]:has(.st-key-monitoring_home_width_marker)
+  [data-testid="stElementContainer"]:has(.st-key-approved_monitoring_alert_card) {
+  box-sizing: border-box !important;
+  display: block !important;
+  flex: 1 1 100% !important;
+  align-self: stretch !important;
+  width: 100% !important;
+  max-width: 1440px !important;
+  min-width: 0 !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
 html body section[data-testid="stMain"]:has(.st-key-approved_monitoring_kpi_grid) .st-key-approved_monitoring_kpi_grid,
 html body section[data-testid="stMain"]:has(.st-key-approved_monitoring_kpi_grid) .st-key-approved_monitoring_filters {
   margin-bottom: 0 !important;
@@ -210,6 +234,7 @@ html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_re
   width: 100% !important;
   max-width: 100% !important;
   min-width: 0 !important;
+  align-items: stretch !important;
 }
 
 /* Match the larger, card-based Monitoring mockup while retaining live data. */

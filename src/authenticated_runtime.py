@@ -70,6 +70,7 @@ from src.plans import (
 )
 from src.auth_bootstrap import get_supabase_client, log_startup_phase, qp_value as _qp_value
 from src.supabase_read import SupabaseReadTransportError, execute_supabase_read
+from src.safe_diagnostics import safe_exception_frames
 from src.auth_state import (
     AUTH_AUTHENTICATED,
     AUTH_SIGNED_OUT,
@@ -23974,6 +23975,17 @@ def run_authenticated_app() -> None:
                 try:
                     analysis_result = current_future.result()
                 except Exception as e:
+                    from uuid import uuid4
+
+                    failure_ref = uuid4().hex[:8].upper()
+                    # Keep logs useful for correlation without recording the
+                    # uploaded BOM, part numbers, credentials, or exception text.
+                    logger.warning(
+                        "BOM analysis failed ref=%s stage=worker_result exception_type=%s frames=%s",
+                        failure_ref,
+                        type(e).__name__,
+                        safe_exception_frames(e),
+                    )
                     if _one_time_reserved:
                         if release_one_time_credit(_one_time_user_id, _one_time_order_id):
                             st.session_state.pop("cadivor_one_time_bom_order_id", None)
@@ -23985,7 +23997,10 @@ def run_authenticated_app() -> None:
                     st.session_state.pop("bom8_analysis_cancel_event", None)
                     st.session_state.pop("bom8_analysis_progress", None)
                     finish_approved_bom_submission(st.session_state, reopen_upload=True)
-                    st.session_state["cadivor_bom_analysis_error"] = True
+                    st.session_state["cadivor_bom_analysis_error"] = (
+                        "The analysis could not complete. Your upload is still available. "
+                        f"Please retry; if it fails again, share reference {failure_ref} with support."
+                    )
                     from src.ui.navigation import request_main_scroll_reset
 
                     st.session_state["cadivor_bom_analysis_scroll_token"] = request_main_scroll_reset()
@@ -24455,6 +24470,16 @@ def run_authenticated_app() -> None:
                     st.session_state["cadivor_active_analysis_tab"] = "Engineering Intelligence"
 
                 except Exception as e:
+                    from uuid import uuid4
+
+                    failure_ref = uuid4().hex[:8].upper()
+                    logger.warning(
+                        "BOM summary save failed ref=%s stage=analysis_insert exception_type=%s code=%s frames=%s",
+                        failure_ref,
+                        type(e).__name__,
+                        str(getattr(e, "code", "") or "")[:12],
+                        safe_exception_frames(e),
+                    )
                     if _one_time_reserved:
                         if release_one_time_credit(_one_time_user_id, _one_time_order_id):
                             st.session_state.pop("cadivor_one_time_bom_order_id", None)
@@ -24474,6 +24499,7 @@ def run_authenticated_app() -> None:
                             "Cadivor could not confirm that the analysis summary was saved. "
                             "Check Saved BOMs before retrying to avoid creating a duplicate."
                         )
+                    save_error_message += f" Reference: {failure_ref}."
                     fail_approved_bom_summary_save(
                         st.session_state,
                         message=save_error_message,

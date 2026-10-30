@@ -9,11 +9,16 @@ from __future__ import annotations
 import html
 import hashlib
 import io
+import logging
 from functools import wraps
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
+from uuid import uuid4
 
 import streamlit as st
+from src.safe_diagnostics import safe_exception_frames
+
+logger = logging.getLogger(__name__)
 
 from src.bom_upload_flow import (
     prepare_new_approved_bom_analysis,
@@ -1101,6 +1106,8 @@ def begin_approved_page() -> None:
         .st-key-approved_saved_bom_edit_screen,.st-key-approved_saved_bom_delete_screen{box-sizing:border-box!important;width:100%!important;max-width:none!important;margin:0 auto!important;padding:22px!important;border:1px solid #d7e0eb!important;border-radius:16px!important;background:#fff!important}
         .st-key-approved_saved_bom_delete_screen button[kind="primary"]{background:#be123c!important;border-color:#be123c!important}
         .st-key-approved_monitoring_kpi_grid,.st-key-approved_monitoring_filters,.st-key-approved_monitoring_alert_card{box-sizing:border-box!important;display:block!important;align-self:stretch!important;width:100%!important;max-width:100%!important;min-width:0!important;margin-left:0!important;margin-right:0!important}
+        section[data-testid="stMain"]:has(.st-key-monitoring_home_width_marker) [data-testid="stMainBlockContainer"]>[data-testid="stVerticalBlock"]{align-items:stretch!important}
+        section[data-testid="stMain"]:has(.st-key-monitoring_home_width_marker) [data-testid="stElementContainer"]:has(.st-key-approved_monitoring_kpi_grid),section[data-testid="stMain"]:has(.st-key-monitoring_home_width_marker) [data-testid="stElementContainer"]:has(.st-key-approved_monitoring_filters),section[data-testid="stMain"]:has(.st-key-monitoring_home_width_marker) [data-testid="stElementContainer"]:has(.st-key-approved_monitoring_alert_card){box-sizing:border-box!important;display:block!important;flex:1 1 100%!important;align-self:stretch!important;width:100%!important;max-width:1440px!important;min-width:0!important;margin-left:auto!important;margin-right:auto!important}
         .st-key-approved_monitoring_kpi_grid{margin:0!important;overflow:visible!important}
         .st-key-approved_monitoring_kpi_grid>[data-testid="stVerticalBlock"]{display:block!important;width:100%!important;max-width:100%!important;min-width:0!important;gap:0!important}
         .st-key-approved_monitoring_kpi_grid [data-testid="stHorizontalBlock"]{box-sizing:border-box!important;display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;justify-content:stretch!important;align-items:stretch!important;gap:16px!important;width:100%!important;max-width:100%!important;min-width:0!important;overflow:visible!important}
@@ -7006,14 +7013,24 @@ def _collect_compare_parts_job() -> bool:
         result = future.result()
         if not isinstance(result, dict):
             raise TypeError("comparison worker returned an invalid result")
-    except Exception:
+    except Exception as exc:
+        failure_ref = uuid4().hex[:8].upper()
+        logger.warning(
+            "Compare Parts failed ref=%s stage=worker_result exception_type=%s frames=%s",
+            failure_ref,
+            type(exc).__name__,
+            safe_exception_frames(exc),
+        )
         result = {
             "status": "failed",
             "part_a": job_parts[0] if job_parts else "",
             "part_b": job_parts[1] if len(job_parts) > 1 else "",
             "part_c": job_parts[2] if len(job_parts) > 2 else "",
             "part_numbers": job_parts,
-            "error": "Cadivor could not complete this comparison right now. Please try again.",
+            "error": (
+                "Cadivor could not complete this comparison right now. Please try again. "
+                f"Reference: {failure_ref}."
+            ),
         }
     st.session_state["cadivor_compare_result"] = result
     st.session_state["cadivor_compare_part_c"] = (
@@ -7054,7 +7071,11 @@ def render_compare_live() -> None:
     """Compare up to three parts, with each candidate checked against Part A."""
     begin_approved_page()
     from src.approved_alternatives import part_key
-    from src.parts_compare import resolve_compare_parts_submitted_mpn, submit_compare_parts_many
+    from src.parts_compare import (
+        customer_facing_evidence_text,
+        resolve_compare_parts_submitted_mpn,
+        submit_compare_parts_many,
+    )
     from src.ui.navigation import request_main_scroll_reset, reveal_authenticated_page_body
 
     _collect_compare_parts_job()
@@ -7329,7 +7350,11 @@ def render_compare_live() -> None:
         raw_a = _shown(_recorded(row, "Part A", "part_a", "a", "value_a", "Original") or str(row.get("Part A") or row.get("Original") or ""))
         raw_b = _shown(_recorded(row, "Part B", "part_b", "b", "value_b", "Candidate") or str(row.get("Part B") or row.get("Candidate") or ""))
         raw_c = _shown(_recorded(row, "Part C", "part_c", "c", "value_c") or str(row.get("Part C") or ""))
-        evidence = _shown(str(row.get("Evidence") or row.get("evidence") or ""))
+        evidence = _shown(
+            customer_facing_evidence_text(
+                row.get("Evidence") or row.get("evidence") or ""
+            )
+        )
         label_key = label.casefold()
 
         def critical_for(slot: str) -> bool:

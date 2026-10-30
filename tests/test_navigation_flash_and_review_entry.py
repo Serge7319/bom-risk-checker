@@ -31,15 +31,15 @@ class NavigationFlashAndReviewEntryTests(unittest.TestCase):
         self.assertIn("releasedGeneration === generation", BROWSER_BRIDGE)
         self.assertNotIn("hasVisiblePythonCover", BROWSER_BRIDGE)
 
-    def test_route_transition_preserves_the_outgoing_surface_until_new_body_marker(self):
-        self.assertIn("function captureTransitionSnapshot()", BROWSER_BRIDGE)
-        self.assertIn("source.cloneNode(true)", BROWSER_BRIDGE)
-        self.assertIn('snapshot.setAttribute("aria-hidden", "true")', BROWSER_BRIDGE)
-        self.assertIn("snapshot.inert = true", BROWSER_BRIDGE)
-        self.assertIn('showImmediateCover(label, preserveCurrentPage = false)', BROWSER_BRIDGE)
-        self.assertIn("clearTransitionSnapshot();", BROWSER_BRIDGE)
+    def test_route_transition_never_clones_the_outgoing_page_or_open_menus(self):
+        self.assertNotIn("captureTransitionSnapshot", BROWSER_BRIDGE)
+        self.assertNotIn("source.cloneNode(true)", BROWSER_BRIDGE)
+        self.assertNotIn("data-cadivor-transition-snapshot", BROWSER_BRIDGE)
+        self.assertIn("function showImmediateCover(label)", BROWSER_BRIDGE)
+        self.assertIn("const pythonCover = Array.from(doc.querySelectorAll(", BROWSER_BRIDGE)
+        self.assertIn("if (pythonCover) {", BROWSER_BRIDGE)
+        self.assertIn("cover.remove();", BROWSER_BRIDGE)
         self.assertIn("hasReleasedDestination(previousGeneration)", BROWSER_BRIDGE)
-        self.assertIn("[data-cadivor-transition-snapshot='1']", BROWSER_BRIDGE)
 
     def test_runtime_geometry_lock_survives_reruns_without_measuring_the_rail(self):
         self.assertIn('root.setAttribute("data-cadivor-shell-locked", "1")', BROWSER_BRIDGE)
@@ -79,6 +79,8 @@ class NavigationFlashAndReviewEntryTests(unittest.TestCase):
         self.assertIn("pointer-events:auto", style)
         self.assertNotIn("background:transparent", style)
         self.assertIn("hasReleasedDestination(previousGeneration)", release)
+        self.assertIn("if (pythonCover)", release)
+        self.assertIn("cover.remove()", release)
         self.assertNotIn("currentGeneration !== previousGeneration", release)
 
     def test_bom_progress_slot_precedes_the_full_width_upload_form(self):

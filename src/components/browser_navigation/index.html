@@ -46,100 +46,7 @@
       '[class*="st-key-cadivor_bom_more_btn_"]',
     ].join(",");
     const state = {checkQueued: false};
-    const transitionSnapshotId = "cadivor-route-transition-snapshot";
 
-    function clearTransitionSnapshot() {
-      const snapshot = doc.getElementById(transitionSnapshotId);
-      if (snapshot) snapshot.remove();
-    }
-
-    function captureTransitionSnapshot() {
-      if (doc.getElementById(transitionSnapshotId)) return;
-      const source = doc.querySelector('section[data-testid="stMain"]');
-      if (!source || !source.cloneNode) return;
-
-      // Streamlit can replace the outgoing route DOM before the destination's
-      // first delta arrives. Keep a noninteractive copy of the visible app
-      // surface outside React's tree so that interval never paints blank.
-      const snapshot = doc.createElement("div");
-      snapshot.id = transitionSnapshotId;
-      snapshot.setAttribute("data-cadivor-transition-snapshot", "1");
-      snapshot.setAttribute("data-cadivor-prior-body-gen", bodyGeneration());
-      snapshot.setAttribute("aria-hidden", "true");
-      snapshot.inert = true;
-      snapshot.style.cssText = [
-        "box-sizing:border-box",
-        "position:fixed",
-        "inset:0",
-        "width:100vw",
-        "height:100vh",
-        "overflow:hidden",
-        "z-index:2147482999",
-        "pointer-events:none",
-        "background:#F8FAFC",
-      ].join(";");
-
-      const clone = source.cloneNode(true);
-      clone.removeAttribute("data-stale");
-      clone.setAttribute("data-cadivor-transition-snapshot-content", "1");
-      clone.style.setProperty("position", "absolute", "important");
-      clone.style.setProperty("top", "0", "important");
-      clone.style.setProperty("left", "0", "important");
-      clone.style.setProperty("height", "100vh", "important");
-      clone.style.setProperty("max-height", "100vh", "important");
-      clone.style.setProperty("overflow", "hidden", "important");
-      clone.style.setProperty("pointer-events", "none", "important");
-      clone.scrollTop = source.scrollTop || 0;
-      clone.scrollLeft = source.scrollLeft || 0;
-      const sourceBlock = source.querySelector('[data-testid="stMainBlockContainer"]');
-      const clonedBlock = clone.querySelector('[data-testid="stMainBlockContainer"]');
-      if (sourceBlock && clonedBlock) {
-        clonedBlock.scrollTop = sourceBlock.scrollTop || 0;
-        clonedBlock.scrollLeft = sourceBlock.scrollLeft || 0;
-      }
-
-      // Snapshot-only DOM must not impersonate the current route or keep an
-      // old transition generation alive for the release observer.
-      clone.querySelectorAll("[data-stale]").forEach((element) => {
-        element.removeAttribute("data-stale");
-      });
-      clone.querySelectorAll(
-        "[data-cadivor-page-body-gen], [data-cadivor-page-body-release-gen], [data-cadivor-route-root]"
-      ).forEach((element) => {
-        element.removeAttribute("data-cadivor-page-body-gen");
-        element.removeAttribute("data-cadivor-page-body-release-gen");
-        element.removeAttribute("data-cadivor-route-root");
-      });
-      clone.querySelectorAll(
-        "[data-cadivor-main-transition], [data-cadivor-transition-host], .cv-route-loading"
-      ).forEach((element) => element.remove());
-      clone.querySelectorAll("img[src], source[src], source[srcset]").forEach((media) => {
-        const sources = [media.getAttribute("src"), media.getAttribute("srcset")]
-          .filter(Boolean);
-        const allLocal = sources.every((value) => {
-          if (String(value).trim().startsWith("data:")) return true;
-          try {
-            return new URL(value, w.location.href).origin === w.location.origin;
-          } catch (_) {
-            return false;
-          }
-        });
-        if (!allLocal) {
-          media.removeAttribute("src");
-          media.removeAttribute("srcset");
-        }
-      });
-      clone.querySelectorAll("iframe, video, audio").forEach((media) => {
-        media.removeAttribute("src");
-        media.removeAttribute("srcdoc");
-        media.querySelectorAll("source").forEach((source) => {
-          source.removeAttribute("src");
-          source.removeAttribute("srcset");
-        });
-      });
-      snapshot.appendChild(clone);
-      doc.body.appendChild(snapshot);
-    }
     function syncShellGeometry() {
       const root = doc.documentElement;
       if (!root || !root.style) return;
@@ -213,8 +120,7 @@
     }
 
     function bodyGeneration() {
-      const markers = Array.from(doc.querySelectorAll("[data-cadivor-page-body-gen]"))
-        .filter((marker) => !marker.closest("[data-cadivor-transition-snapshot='1']"));
+      const markers = Array.from(doc.querySelectorAll("[data-cadivor-page-body-gen]"));
       if (!markers.length) return "";
       const marker = markers[markers.length - 1];
       return String(marker.getAttribute("data-cadivor-page-body-gen") || "").trim();
@@ -223,10 +129,7 @@
     function hasReleasedDestination(previousGeneration = "") {
       const markers = Array.from(doc.querySelectorAll(
         "[data-cadivor-page-body-gen][data-cadivor-page-body-release-gen]"
-      )).filter((marker) => (
-        !marker.closest("[data-cadivor-transition-snapshot='1']")
-        && !marker.closest('[data-stale="true"]')
-      ));
+      )).filter((marker) => !marker.closest('[data-stale="true"]'));
       for (let index = markers.length - 1; index >= 0; index -= 1) {
         const marker = markers[index];
         const generation = String(
@@ -253,20 +156,26 @@
       raf(() => {
         state.checkQueued = false;
         const cover = doc.getElementById("cadivor-instant-navigation-transition");
-        const snapshot = doc.getElementById(transitionSnapshotId);
-        if (!cover && !snapshot) return;
+        if (!cover) return;
+
+        // The immediate bridge owns only the gap before Streamlit paints its
+        // route loader. Hand off as soon as that loader exists so two full-page
+        // covers cannot race and flash a blank workspace.
+        const pythonCover = Array.from(doc.querySelectorAll(
+          '[data-cadivor-main-transition="1"]'
+        )).find((element) => !element.closest('[data-stale="true"]'));
+        if (pythonCover) {
+          cover.remove();
+          return;
+        }
+
         const previousGeneration = String(
-          (cover && cover.getAttribute("data-cadivor-prior-body-gen"))
-          || (snapshot && snapshot.getAttribute("data-cadivor-prior-body-gen"))
-          || ""
+          cover.getAttribute("data-cadivor-prior-body-gen") || ""
         ).trim();
         if (hasReleasedDestination(previousGeneration)) {
           raf(() => {
             const liveCover = doc.getElementById("cadivor-instant-navigation-transition");
-            if (hasReleasedDestination(previousGeneration)) {
-              clearTransitionSnapshot();
-              if (liveCover) liveCover.remove();
-            }
+            if (hasReleasedDestination(previousGeneration) && liveCover) liveCover.remove();
           });
         }
       });
@@ -314,8 +223,7 @@
       (doc.head || doc.documentElement).appendChild(style);
     }
 
-    function showImmediateCover(label, preserveCurrentPage = false) {
-      if (preserveCurrentPage) captureTransitionSnapshot();
+    function showImmediateCover(label) {
       installStyle();
       let cover = doc.getElementById("cadivor-instant-navigation-transition");
       if (!cover) {
@@ -350,21 +258,7 @@
       if (!button || button.disabled) return;
       const label = intentFor(button);
       if (!label) return;
-      const sidebar = button.closest('[class*="st-key-cv_foundation_navigation"]');
-      const savedBomTabs = button.closest('[class*="st-key-cv_analysis_section_nav"]');
-      const newAnalysis = button.closest(
-        '[class*="st-key-approved_bom_new"], [class*="st-key-approved_home_new_bom"]'
-      );
-      const savedBomAction = button.closest(reportActionSelector);
-      const savedBomRouteAction = Boolean(
-        savedBomAction
-        && /^(Open|Engineering Intelligence|Detailed Risk Report|Parts & Risk|View all)$/i.test(label)
-      );
-      const explicitRouteAction = /^(Watch this BOM|Datasheet Q&A|Compare parts|Design Impact)$/i.test(label);
-      showImmediateCover(
-        label,
-        Boolean(sidebar || savedBomTabs || newAnalysis || savedBomRouteAction || explicitRouteAction)
-      );
+      showImmediateCover(label);
     }
 
     doc.addEventListener("pointerdown", handleTransitionClick, true);
@@ -372,6 +266,13 @@
     if (typeof w.MutationObserver === "function") {
       const observer = new w.MutationObserver(() => {
         syncShellGeometry();
+        const pythonCover = Array.from(doc.querySelectorAll(
+          '[data-cadivor-main-transition="1"]'
+        )).find((element) => !element.closest('[data-stale="true"]'));
+        if (pythonCover) {
+          const historyCover = doc.getElementById("cadivor-history-transition");
+          if (historyCover) historyCover.remove();
+        }
         queueReleaseCheck();
       });
       observer.observe(doc.documentElement, {
@@ -561,7 +462,6 @@
       try {
         page = new URL(targetHref, w.location.href).searchParams.get("page") || "Dashboard";
       } catch (_) {}
-      captureTransitionSnapshot();
       try { w.history.scrollRestoration = "manual"; } catch (_) {}
       resetMainScrollToTop();
 
@@ -645,7 +545,6 @@
     function finishHistoryTransition() {
       const overlay = w.document.getElementById("cadivor-history-transition");
       if (overlay) overlay.remove();
-      clearTransitionSnapshot();
     }
 
     function scheduleRouteRecovery(targetHref) {

@@ -58,12 +58,25 @@ class ApprovedPageVisualContractTests(unittest.TestCase):
             '.st-key-approved_monitoring_kpi_grid{margin:0!important;overflow:visible!important}',
             APPROVED_PAGES,
         )
+        self.assertIn(
+            'section[data-testid="stMain"]:has(.st-key-monitoring_home_width_marker) [data-testid="stElementContainer"]:has(.st-key-approved_monitoring_kpi_grid)',
+            APPROVED_PAGES,
+        )
+        self.assertIn("flex:1 1 100%!important", APPROVED_PAGES)
+        self.assertIn("align-items: stretch !important;", MONITORING_HOME_CSS)
         self.assertIn('min-height:0!important;cursor:pointer!important', APPROVED_PAGES)
         self.assertNotIn('min-height:188px!important', APPROVED_PAGES)
         self.assertNotIn(
             '.st-key-approved_monitoring_kpi_grid [data-testid="column"]{box-sizing:border-box!important;display:flex!important;flex:1 1 0!important;width:0!important;max-width:none!important;',
             APPROVED_PAGES,
         )
+
+    def test_compare_parts_renders_customer_safe_evidence(self):
+        compare = APPROVED_PAGES.split("def render_compare_live", 1)[1].split(
+            "def render_datasheet_live", 1
+        )[0]
+        self.assertIn("customer_facing_evidence_text", compare)
+        self.assertIn("customer_facing_evidence_text(\n                row.get(\"Evidence\")", compare)
 
     def test_monitoring_category_filter_is_one_stateful_required_pills_widget(self):
         monitoring_renderer = APPROVED_PAGES.split("def render_monitoring(", 1)[1]
