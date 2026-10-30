@@ -187,12 +187,9 @@ def _approved_shell_css() -> str:
           opacity:1!important;filter:none!important;backdrop-filter:none!important;
           -webkit-backdrop-filter:none!important
         }
-        /* Keep the outgoing route visible under the compact transition chip.
-           Hiding stale body nodes as soon as the new rail mounts exposed the
-           destination skeleton/empty canvas for the entire Streamlit rerun.
-           The generation-scoped transition stylesheet retires those nodes
-           only after the destination body marker arrives. */
-        body:has([class*="st-key-cv_foundation_navigation"]:not([data-stale="true"])):not(:has([data-cadivor-main-transition="1"])):not(:has(#cadivor-instant-navigation-transition)):not(:has(#cadivor-history-transition))
+        /* Once the new shell mounts, retire the old route body. The opaque
+           transition surface covers the workspace until the new body is ready. */
+        body:has([class*="st-key-cv_foundation_navigation"]:not([data-stale="true"]))
           [class*="st-key-cadivor_authenticated_route_body"] [data-stale="true"]{
           display:none!important;visibility:hidden!important;pointer-events:none!important
         }

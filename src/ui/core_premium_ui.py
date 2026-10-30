@@ -73,21 +73,15 @@ def inject_core_premium_ui() -> None:
             f'<style id="cadivor-core-premium-ui" data-cadivor-layout-style="true">{css}</style>',
             unsafe_allow_html=True,
         )
-    # Apply route geometry before the first destination widgets paint. Loading
-    # these scoped rules only in the final pass lets a rerun briefly show the
-    # old full-width blocks and unconstrained SVG icons over the new route.
-    geometry_css = _load_css("monitoring_home_alignment.css")
-    if geometry_css.strip():
-        st.markdown(
-            '<style id="cadivor-workspace-geometry-prepaint" '
-            'data-cadivor-layout-style="true">'
-            f"{geometry_css}</style>",
-            unsafe_allow_html=True,
-        )
-    # The foundation rail is shared by every authenticated route. Inject its
-    # fixed icon slots and button geometry before destination content paints;
-    # the late pass below still owns final cascade precedence.
-    inject_navigation_recovery_css(prepaint=True)
+    route = str(
+        st.session_state.get("cadivor_route")
+        or st.session_state.get("app_mode")
+        or ""
+    ).strip()
+    if route == "Engineering Decisions":
+        # The review packet needs its workspace geometry before its first
+        # paint; other routes install shared geometry once in the final pass.
+        inject_navigation_recovery_css(prepaint=True)
 
 
 def inject_core_premium_ui_auth() -> None:

@@ -14,6 +14,7 @@ from src.component_family_profiles import get_family_profile, infer_family_id
 from src.datasheet_comparison import (
     build_datasheet_comparison,
     build_engineering_evidence_assessment,
+    customer_facing_evidence_text,
     diagnostic_comparison_rows,
     family_for_datasheet_review,
     merge_verified_datasheet_rows,
@@ -32,6 +33,7 @@ FINDING_NEEDS_DATA = "Needs data / engineering validation"
 COMPARE_PARTS_PART_A_WIDGET_KEY = "compare_parts_part_a"
 COMPARE_PARTS_PART_B_WIDGET_KEY = "compare_parts_part_b"
 COMPARE_PARTS_RESULT_KEY = "compare_parts_result"
+COMPARE_PARTS_FUTURE_KEY = "compare_parts_future"
 COMPARE_PARTS_LAST_SUBMIT_KEY = "compare_parts_last_submit"
 COMPARE_PARTS_LAST_SUBMIT_AT_KEY = "compare_parts_last_submit_at"
 COMPARE_PARTS_SUBMIT_DEBOUNCE_SECONDS = 2.0
@@ -95,9 +97,7 @@ def claim_compare_parts_submit(
     token = f"{a}|{b}"
     result = session_state.get(COMPARE_PARTS_RESULT_KEY)
     if isinstance(result, dict) and str(result.get("status") or "") == STATUS_RUNNING:
-        prior = f"{_normalize_mpn(result.get('part_a'))}|{_normalize_mpn(result.get('part_b'))}"
-        if prior == token:
-            return False
+        return False
     current = float(time.time() if now is None else now)
     last_token = str(session_state.get(COMPARE_PARTS_LAST_SUBMIT_KEY) or "")
     try:
@@ -135,7 +135,7 @@ def user_facing_compare_rows(rows: list | None) -> list[dict]:
                 row.get("Part B", row.get("Selected Alternative", "")),
             ),
             "Assessment": map_status_to_assessment(status),
-            "Evidence": row.get("Evidence", ""),
+            "Evidence": customer_facing_evidence_text(row.get("Evidence", "")),
         }
         if row.get("FixtureRow"):
             item["FixtureRow"] = True
@@ -1244,8 +1244,8 @@ def run_compare_parts(
             "part_a": a,
             "part_b": b,
         }
-    data_a = lookup_part_for_compare(a)
-    data_b = lookup_part_for_compare(b)
+    with ThreadPoolExecutor(max_workers=2, thread_name_prefix="compare-part-lookup") as executor:
+        data_a, data_b = list(executor.map(lookup_part_for_compare, (a, b)))
     supplied: dict[str, Any] = {}
     if isinstance(datasheets, Mapping):
         if isinstance(datasheets.get("a"), Mapping):
@@ -1269,30 +1269,60 @@ def run_compare_parts(
         )
         if built is not None:
             supplied["b"] = built
+    document_inputs = (
+        (data_a, supplied.get("a"), a),
+        (data_b, supplied.get("b"), b),
+    )
+    with ThreadPoolExecutor(max_workers=2, thread_name_prefix="compare-part-document") as executor:
+        documents = list(
+            executor.map(
+                lambda item: _comparison_document(
+                    item[0],
+                    item[1] if isinstance(item[1], Mapping) else None,
+                    extract_linked=extract_linked_datasheets,
+                    mpn=item[2],
+                ),
+                document_inputs,
+            )
+        )
     comparison = build_parts_comparison(
         data_a,
         data_b,
         part_a_mpn=a,
         part_b_mpn=b,
-        datasheet_a=supplied.get("a") if isinstance(supplied.get("a"), Mapping) else None,
-        datasheet_b=supplied.get("b") if isinstance(supplied.get("b"), Mapping) else None,
-        extract_linked_datasheets=extract_linked_datasheets,
+        datasheet_a=documents[0],
+        datasheet_b=documents[1],
+        extract_linked_datasheets=False,
     )
-    if not comparison["part_a"]["found"] and not comparison["part_b"]["found"]:
-        return {
-            "status": STATUS_FAILED,
-            "error": "Cadivor could not retrieve supplier data for either part.",
-            "part_a": a,
-            "part_b": b,
-            "comparison": comparison,
-        }
+    supplier_data_missing = not comparison["part_a"]["found"] and not comparison["part_b"]["found"]
     return {
-        "status": STATUS_COMPLETED,
+        "status": STATUS_FAILED if supplier_data_missing else STATUS_COMPLETED,
         "part_a": a,
         "part_b": b,
         "comparison": comparison,
-        "error": "",
+        "error": (
+            "Cadivor could not retrieve supplier data for these parts. The comparison below shows the fields that still need evidence; it does not infer compatibility."
+            if supplier_data_missing
+            else ""
+        ),
     }
+
+
+def submit_compare_parts(
+    part_a_mpn: str,
+    part_b_mpn: str,
+    *,
+    datasheets: Mapping[str, Any] | None = None,
+    datasheet_uploads: Mapping[str, Any] | None = None,
+):
+    """Run the two-part lookup and document search outside Streamlit's UI run."""
+    return _COMPARE_PARTS_EXECUTOR.submit(
+        run_compare_parts,
+        part_a_mpn,
+        part_b_mpn,
+        datasheets=datasheets,
+        datasheet_uploads=datasheet_uploads,
+    )
 
 
 def run_compare_parts_many(
@@ -1346,19 +1376,47 @@ def run_compare_parts_many(
     ) as executor:
         retrieved = list(executor.map(lookup_part_for_compare, parts))
     supplied_documents = list(datasheets or [])
+
+    def supplied_document(index: int) -> Mapping[str, Any] | None:
+        if index < len(supplied_documents) and isinstance(supplied_documents[index], Mapping):
+            return supplied_documents[index]
+        return None
+
+    # Resolve linked evidence once per entered part. In a three-part compare,
+    # Part A is shared by both pairwise matrices; searching its linked pages
+    # again for Part C needlessly doubled its network latency.
+    if extract_linked_datasheets:
+        document_inputs = [
+            (retrieved[index], supplied_document(index), parts[index])
+            for index in range(len(parts))
+        ]
+        with ThreadPoolExecutor(
+            max_workers=min(len(parts), 3),
+            thread_name_prefix="compare-part-document",
+        ) as executor:
+            resolved_documents = list(
+                executor.map(
+                    lambda item: _comparison_document(
+                        item[0],
+                        item[1],
+                        extract_linked=True,
+                        mpn=item[2],
+                    ),
+                    document_inputs,
+                )
+            )
+    else:
+        resolved_documents = [supplied_document(index) for index in range(len(parts))]
+
     pair_comparisons = [
         build_parts_comparison(
             retrieved[0],
             retrieved[index],
             part_a_mpn=parts[0],
             part_b_mpn=parts[index],
-            datasheet_a=supplied_documents[0] if supplied_documents and isinstance(supplied_documents[0], Mapping) else None,
-            datasheet_b=(
-                supplied_documents[index]
-                if index < len(supplied_documents) and isinstance(supplied_documents[index], Mapping)
-                else None
-            ),
-            extract_linked_datasheets=extract_linked_datasheets,
+            datasheet_a=resolved_documents[0],
+            datasheet_b=resolved_documents[index],
+            extract_linked_datasheets=False,
         )
         for index in range(1, len(parts))
     ]

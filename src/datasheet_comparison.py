@@ -170,7 +170,44 @@ def family_for_datasheet_review(part: Mapping[str, Any] | None, *documents: Mapp
 
 
 _NOT_STATED = "Not stated in retrieved evidence"
-_CATALOG_SOURCE = " Supplier listings are used where available; no manufacturer document is cited."
+_CATALOG_SOURCE = " Supplier listings are used where available; no manufacturer datasheet is cited."
+
+
+def customer_facing_evidence_text(value: Any) -> str:
+    """Show source evidence in plain language while keeping its citations."""
+    text = " ".join(str(value or "").split())
+    if not text:
+        return ""
+    text = re.sub(
+        r"(?i)\bPart\s+([ABC])\s+(DigiKey)\s+authorized\s+API\s+does not state this field",
+        r"Part \1: The \2 listing does not provide this field",
+        text,
+    )
+    text = re.sub(
+        r"(?i)\bPart\s+([ABC])\s+value is from the supplier catalog",
+        r"Part \1 value comes from the supplier listing",
+        text,
+    )
+    text = re.sub(
+        r"(?i)\bNo\s+(DigiKey\s+)?authorized\s+API\s+citation\b",
+        r"No \1source citation is available",
+        text,
+    )
+    text = re.sub(r"(?i)\b(DigiKey)\s+authorized\s+API\b", r"\1 listing", text)
+    text = re.sub(r"(?i)\bauthorized\s+API\b", "supplier source", text)
+    text = re.sub(r"(?i)\bAPIs?\b", "supplier sources", text)
+    text = re.sub(r"(?i)\bsupplier catalogs?\b", "supplier listings", text)
+    text = re.sub(r"(?i)\bsource URL:\s*https?://\S+", "", text)
+    text = re.sub(r"(?i)\bsource field label:\s*", "Source label: ", text)
+    text = re.sub(
+        r"(?i)\bextraction method:\s*[^.]*\.?\s*(?:OCR is not supported\.?\s*)?",
+        "",
+        text,
+    )
+    text = re.sub(r"(?i)\bnative PDF text\b", "datasheet text", text)
+    text = re.sub(r"\s+([.,;:])", r"\1", text)
+    text = re.sub(r"(?:[;,.]\s*){2,}", ". ", text)
+    return " ".join(text.split()).strip(" ;,.")
 
 
 def _display_value(value) -> str:

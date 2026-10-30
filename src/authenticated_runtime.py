@@ -4672,17 +4672,9 @@ def run_authenticated_app() -> None:
                 )
             navigate_to("Analysis Details", **return_params)
 
-        # Keep Monitoring data loading and part-specific actions in this route
-        # renderer. The alert-overview subview uses the approved visual renderer
-        # after this shared data is ready. Reveal the destination before reading
-        # optional dashboard data so the route cover never waits on Supabase.
-        cadivor_section_header(
-            "Alerts & Monitoring",
-            eyebrow="Alerts",
-            description="Review lifecycle, inventory, pricing, and supplier changes across monitored components.",
-            icon="radar",
-        )
-        reveal_authenticated_page_body("Monitoring")
+        # Keep the route cover until the selected Monitoring view is mounted.
+        # The overview renders its header with the KPI/table canvas; the other
+        # views render the Monitoring snapshot as their single page header.
         live_refresh_notice = st.session_state.pop(
             "monitoring_live_refresh_notice", None
         )
@@ -4839,6 +4831,7 @@ def run_authenticated_app() -> None:
         from src.monitoring_intelligence import (
             build_monitoring_action_center,
             monitoring_workflow_urgency,
+            monitoring_preview_parts,
         )
         monitoring_center = build_monitoring_action_center(alert_df, monitor_df)
         monitored_count = monitoring_center["monitored_components"]
@@ -6884,49 +6877,7 @@ def run_authenticated_app() -> None:
             e2.download_button("Download monitored component snapshot", data=components.to_csv(index=False).encode("utf-8"), file_name="cadivor_monitored_components.csv", mime="text/csv", use_container_width=True, key="m32_components_export")
 
         def _monitor_preview_parts(focus: str) -> str:
-            if not isinstance(active_queue, pd.DataFrame) or active_queue.empty:
-                return "No active components"
-            focused = active_queue.copy()
-            alert_types = focused["Alert Type"].astype(str)
-            if focus == "immediate":
-                scores = pd.to_numeric(
-                    focused["Priority Score"],
-                    errors="coerce",
-                ).fillna(0)
-                focused = focused[scores >= 75]
-            elif focus == "lifecycle":
-                focused = focused[
-                    alert_types.str.contains(
-                        "lifecycle|eol|obsolete",
-                        case=False,
-                        regex=True,
-                    )
-                ]
-            elif focus == "inventory":
-                focused = focused[
-                    alert_types.str.contains(
-                        "stock|inventory",
-                        case=False,
-                        regex=True,
-                    )
-                ]
-            elif focus == "pricing":
-                focused = focused[
-                    alert_types.str.contains("price", case=False, regex=True)
-                ]
-            if focused.empty or "Part Number" not in focused.columns:
-                return "No active components"
-            parts = []
-            for raw_part in focused["Part Number"].tolist():
-                part = _monitor_display(raw_part, "")
-                if part and part not in parts:
-                    parts.append(part)
-            if not parts:
-                return "No active components"
-            visible_parts = parts[:3]
-            remaining = len(parts) - len(visible_parts)
-            preview = " · ".join(visible_parts)
-            return f"{preview} · +{remaining} more" if remaining else preview
+            return monitoring_preview_parts(active_queue, focus)
 
         def _render_monitoring_snapshot_card(
             *,
@@ -7009,8 +6960,9 @@ def run_authenticated_app() -> None:
                     alert_rows,
                     monitoring_center.get("active_queue"),
                 ),
-                include_header=False,
+                include_header=True,
             )
+            reveal_authenticated_page_body("Monitoring")
             stop_authenticated_page()
 
         with st.container(key="monitoring_snapshot"):
@@ -7183,7 +7135,9 @@ def run_authenticated_app() -> None:
         else:
             _render_monitor_action_queue()
 
-
+        # Release the route cover only after the selected view and its data
+        # controls are in the document, avoiding a half-painted snapshot.
+        reveal_authenticated_page_body("Monitoring")
         stop_authenticated_page()
 
 
@@ -7606,14 +7560,14 @@ def run_authenticated_app() -> None:
                 .st-key-cv_pa_next_steps{box-sizing:border-box!important;width:100%!important;margin:8px 0 0!important;padding:14px 16px!important;border:1px solid #dfe7f1!important;border-radius:14px!important;background:#fff!important;box-shadow:none!important}
                 .st-key-cv_pa_next_steps>[data-testid="stVerticalBlock"]{gap:8px!important}
                 .cv-pa-next-heading{margin:0 0 2px}
-                .cv-pa-next-heading span{display:block;margin-bottom:7px;color:#2563eb;font-size:13px!important;font-weight:850;letter-spacing:.1em}
-                .cv-pa-next-heading h2{margin:0 0 7px;color:#102341;font-size:28px!important;font-weight:800;line-height:1.2}
-                .cv-pa-next-heading p{margin:0;color:#64748b;font-size:16px!important;line-height:1.5}
+                .cv-pa-next-heading span{display:block;margin-bottom:7px;color:#2563eb;font-size:14px!important;font-weight:850;letter-spacing:.1em}
+                .cv-pa-next-heading h2{margin:0 0 7px;color:#102341;font-size:30px!important;font-weight:800;line-height:1.2}
+                .cv-pa-next-heading p{margin:0;color:#64748b;font-size:17px!important;line-height:1.5}
                 .st-key-cv_pa_next_steps [data-testid="stHorizontalBlock"]{align-items:stretch!important;gap:16px!important}
                 .st-key-cv_pa_next_steps [data-testid="column"]{box-sizing:border-box!important;min-width:0!important;padding:16px!important;border:1px solid #e2e8f0!important;border-radius:12px!important;background:#f8fafc!important}
                 .cv-pa-next-action{min-height:60px;margin:0 0 10px}
-                .cv-pa-next-action strong{display:block;color:#172b4d;font-size:18px!important;font-weight:800;line-height:1.35}
-                .cv-pa-next-action p{margin:6px 0 0;color:#64748b;font-size:15px!important;line-height:1.5}
+                .cv-pa-next-action strong{display:block;color:#172b4d;font-size:20px!important;font-weight:800;line-height:1.35}
+                .cv-pa-next-action p{margin:6px 0 0;color:#64748b;font-size:16px!important;line-height:1.5}
                 .st-key-cv_pa_next_steps [data-testid="stMarkdownContainer"] p{font-size:15px!important;line-height:1.5}
                 .cv-pa-summary,.cv-pa-table-shell,.cv-pa-table-scroll,.st-key-cv_pa_supplier_options{max-width:100%!important;min-width:0!important}
                 .cv-pa-summary{grid-template-columns:96px minmax(0,1.4fr) repeat(4,minmax(0,1fr))!important}
@@ -21983,8 +21937,22 @@ def run_authenticated_app() -> None:
             }
             .st-key-bom9_workspace_grid{margin-top:2px;}
             div[data-testid="stHorizontalBlock"]:has(.st-key-bom9_upload_panel):has(.st-key-bom9_saved_panel){
+                display:grid!important;
+                grid-template-columns:minmax(0,1fr)!important;
                 align-items:flex-start!important;
-                gap:18px!important;
+                gap:16px!important;
+                width:100%!important;
+                max-width:none!important;
+            }
+            div[data-testid="stHorizontalBlock"]:has(.st-key-bom9_upload_panel):has(.st-key-bom9_saved_panel) > [data-testid="column"],
+            div[data-testid="stHorizontalBlock"]:has(.st-key-bom9_upload_panel):has(.st-key-bom9_saved_panel) > [data-testid="stColumn"]{
+                box-sizing:border-box!important;
+                grid-column:1!important;
+                width:100%!important;
+                max-width:none!important;
+                min-width:0!important;
+                flex:none!important;
+                padding:0!important;
             }
             div[data-testid="stVerticalBlockBorderWrapper"]:has(.bom9-upload-marker),
             div[data-testid="stVerticalBlockBorderWrapper"]:has(.bom9-saved-marker){
@@ -22287,24 +22255,10 @@ def run_authenticated_app() -> None:
                 margin-right:auto!important;
             }
             .st-key-bom8_analysis_preview{max-width:1440px!important;}
-            .st-key-bom8_analysis_progress_card{max-width:1440px!important;margin:8px auto 16px!important;}
+            .st-key-bom8_analysis_progress_card,
+            .st-key-bom8_analysis_preparing_card{box-sizing:border-box!important;width:100%!important;max-width:1440px!important;margin:8px auto 16px!important;}
             section[data-testid="stMain"] [data-testid="stMainBlockContainer"]:has(.st-key-bom8_analysis_progress_card){
-              padding-top:calc(var(--cv-foundation-top, 64px) + 12px)!important;
-            }
-            body:has(.st-key-bom8_analysis_progress_card) section[data-testid="stMain"] [data-testid="stVerticalBlock"]:has(.st-key-bom8_analysis_progress_card){
-              gap:0!important;
-              row-gap:0!important;
-            }
-            body:has(.st-key-bom8_analysis_progress_card) section[data-testid="stMain"] [data-testid="stVerticalBlock"]:has(.st-key-bom8_analysis_progress_card) > :not(:has(.st-key-bom8_analysis_progress_card)):not(:has([class*="st-key-cv_foundation_navigation"])):not(:has([class*="st-key-cv_foundation_profile"])):not(:has(.cv-foundation-topbar)){
-              display:none!important;
-              height:0!important;
-              min-height:0!important;
-              max-height:0!important;
-              margin:0!important;
-              padding:0!important;
-              overflow:hidden!important;
-              flex:0 0 0!important;
-              border:0!important;
+              padding-top:12px!important;
             }
             .st-key-bom8_one_time_payment_action{max-width:760px!important;margin-top:12px!important;}
             .st-key-bom8_analysis_progress_card .stButton>button{width:auto!important;min-width:0!important;}
@@ -22613,10 +22567,28 @@ def run_authenticated_app() -> None:
                                         st.caption("This component's saved BOM is not available in the current workspace.")
                 stop_authenticated_page()
 
-            # Reserve the primary workflow at the top of the BOM page. The saved
-            # manager is rendered next, then the new-analysis workflow fills this
-            # slot below; Streamlit keeps the slot in its original top position.
+            # Put the progress/status surface first so it occupies the top of
+            # the workspace during upload and analysis reruns. The upload form
+            # follows in its stable slot; saved analyses remain below it.
+            bom_analysis_status_slot = st.empty()
             bom_new_analysis_slot = st.empty()
+            if (
+                (_approved_bom_pipeline_active or analysis_in_progress)
+                and st.session_state.get("bom8_analysis_future") is None
+            ):
+                with bom_analysis_status_slot.container():
+                    with st.container(
+                        key="bom8_analysis_preparing_card",
+                        border=True,
+                    ):
+                        st.markdown(
+                            "<div class='cv-ap'><h1 style='margin:0 0 8px'>Preparing your BOM analysis</h1></div>",
+                            unsafe_allow_html=True,
+                        )
+                        st.caption(
+                            "Reading the uploaded file and starting component checks."
+                        )
+                        st.progress(0, text="Preparing the first component check…")
 
             def _render_saved_bom_manager() -> None:
                 """Render saved analyses beside the new-BOM workflow on desktop."""
@@ -24061,23 +24033,33 @@ def run_authenticated_app() -> None:
             st.markdown(
                 """
                 <style data-cadivor-layout-style="true">
-                body:has(.st-key-bom8_analysis_progress_card) .st-key-bom9_workspace_grid,
-                body:has(.st-key-bom8_analysis_progress_card) .st-key-approved_bom_title,
-                body:has(.st-key-bom8_analysis_progress_card) #cadivor-bom-analysis-top-anchor {
+                body:has(.st-key-bom8_analysis_progress_card, .st-key-bom8_analysis_preparing_card) .st-key-bom9_workspace_grid,
+                body:has(.st-key-bom8_analysis_progress_card, .st-key-bom8_analysis_preparing_card) .st-key-approved_bom_title,
+                body:has(.st-key-bom8_analysis_progress_card, .st-key-bom8_analysis_preparing_card) .st-key-approved_bom_upload_panel,
+                body:has(.st-key-bom8_analysis_progress_card, .st-key-bom8_analysis_preparing_card) .st-key-bom9_upload_panel,
+                body:has(.st-key-bom8_analysis_progress_card, .st-key-bom8_analysis_preparing_card) #cadivor-bom-analysis-top-anchor {
                   display:none !important;
                   height:0 !important;
+                  max-height:0 !important;
                   margin:0 !important;
                   padding:0 !important;
                 }
-                .st-key-bom8_analysis_progress_card {
-                  margin-top: 8px !important;
+                .st-key-bom8_analysis_progress_card,
+                .st-key-bom8_analysis_preparing_card {
+                  box-sizing:border-box!important;
+                  position:relative!important;
+                  top:auto!important;
+                  margin:8px auto 16px!important;
+                  width:100%!important;
+                  max-width:1440px!important;
                 }
                 </style>
                 """,
                 unsafe_allow_html=True,
             )
-            with st.container(key="bom8_analysis_progress_card", border=True):
-                _render_active_bom_analysis()
+            with bom_analysis_status_slot.container():
+                with st.container(key="bom8_analysis_progress_card", border=True):
+                    _render_active_bom_analysis()
             st.stop()
 
         has_completed_results = bool(

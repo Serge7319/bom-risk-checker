@@ -27,6 +27,32 @@ from src.procurement_advisor import (
 
 
 class ProcurementAdvisorTests(unittest.TestCase):
+    def test_supplier_coverage_distinguishes_source_count_from_visible_offer_rows(self):
+        part = {
+            "mpn": "TPS54331D",
+            "supplier_offers": [
+                {
+                    "distributor": "Newark",
+                    "unit_price": 1.25,
+                    "currency": "USD",
+                }
+            ],
+        }
+        recommendation = {
+            "Recommendation": "Review sourcing",
+            "Supplier Sources": 2,
+        }
+
+        rendered = (
+            procurement_part_summary_html(part, recommendation),
+            procurement_recommendation_html(part, recommendation),
+            procurement_summary_cards_html(part, recommendation),
+        )
+        for markup in rendered:
+            self.assertIn("2 recorded sources", markup)
+            self.assertIn("1 saved offer row shown", markup)
+        self.assertNotIn("not 2 separate quotes", " ".join(rendered).casefold())
+
     def test_sourcing_recommendation_markup_uses_visible_streamlit_containers(self):
         part = {"mpn": "TPS54331D", "description": "Power controller"}
         recommendation = {
@@ -100,6 +126,10 @@ class ProcurementAdvisorTests(unittest.TestCase):
         self.assertIn("[0.85, 1.15]", branch)
         self.assertIn('with st.container(key="cv_pa_supplier_controls"):', branch)
         self.assertIn("cv_pa_next_steps", branch)
+        self.assertIn("font-size:14px!important;font-weight:850;letter-spacing:.1em", branch)
+        self.assertIn("font-size:30px!important;font-weight:800;line-height:1.2", branch)
+        self.assertIn("font-size:17px!important;line-height:1.5", branch)
+        self.assertIn("font-size:20px!important;font-weight:800;line-height:1.35", branch)
         self.assertIn('key="cv_pa_table_actions"', branch)
         self.assertLess(
             branch.index("supplier_comparison_table_html("),

@@ -538,22 +538,11 @@ def procurement_part_summary_html(
         part=dict(part),
     )
     offers = normalize_supplier_offer_records(part)
-    supplier_count = _maybe_n(recommendation.get("Supplier Sources"))
-    if supplier_count is None and offers:
-        supplier_count = float(len({row["supplier"].casefold() for row in offers}))
-    offer_rows = len(offers)
-    if supplier_count is None:
-        sourcing_status = "Not reported by supplier"
-    elif int(supplier_count) <= 1:
-        sourcing_status = "Single source" if int(supplier_count) == 1 else "Not reported by supplier"
-        if offer_rows > 1:
-            sourcing_status += f" · {offer_rows} offer rows in the table"
-    else:
-        sourcing_status = f"{int(supplier_count)} recorded sources"
-        if offer_rows and offer_rows != int(supplier_count):
-            sourcing_status += (
-                f" · {offer_rows} offer row{'s' if offer_rows != 1 else ''} in the table"
-            )
+    sourcing_status, _coverage_detail, offer_row_summary = _supplier_coverage_copy(
+        recommendation.get("Supplier Sources"), offers
+    )
+    if offer_row_summary:
+        sourcing_status = f"{sourcing_status} · {offer_row_summary}"
     fields = (
         ("Annual demand", annual_demand),
         ("Target unit price", target_price_label),
@@ -691,6 +680,39 @@ def normalize_supplier_offer_records(part: Mapping[str, Any]) -> list[dict[str, 
             if match.get("lead_time_weeks") is None:
                 match["lead_time_weeks"] = current_lead
     return rows
+
+
+def _supplier_coverage_copy(
+    supplier_count: Any,
+    offers: list[Mapping[str, Any]],
+) -> tuple[str, str, str]:
+    """Explain saved supplier counts separately from saved offer rows."""
+    count = _maybe_n(supplier_count)
+    offer_rows = len(offers)
+    if count is None and offers:
+        count = float(len({str(row.get("supplier") or "").casefold() for row in offers}))
+        coverage = (
+            f"{int(count)} supplier source{'s' if int(count) != 1 else ''} represented"
+        )
+        detail_prefix = "Supplier count is inferred from saved offers"
+    elif count is None:
+        coverage = "Not reported by supplier"
+        detail_prefix = "No saved supplier count is available"
+    else:
+        coverage = (
+            "Single source"
+            if int(count) == 1
+            else f"{int(count)} recorded sources"
+        )
+        detail_prefix = "Saved supplier source count"
+
+    if offer_rows:
+        row_summary = f"{offer_rows} saved offer row{'s' if offer_rows != 1 else ''} shown"
+        detail = f"{detail_prefix}; {row_summary} in the comparison table."
+    else:
+        row_summary = ""
+        detail = f"{detail_prefix}; no saved offer rows are available to compare."
+    return coverage, detail, row_summary
 
 
 def supplier_comparison_dataframe(
@@ -1233,20 +1255,9 @@ def procurement_recommendation_html(
     recommendation = recommendation or _recommend(dict(part))
     price_comparison = price_comparison or {}
     offers = normalize_supplier_offer_records(part)
-    supplier_count = _maybe_n(recommendation.get("Supplier Sources"))
-    if supplier_count is not None:
-        coverage_value = f"{int(supplier_count)} recorded source{'s' if supplier_count != 1 else ''}"
-        coverage_detail = "Supplier count in the saved sourcing record"
-        if offers and len(offers) != int(supplier_count):
-            coverage_detail = (
-                f"The table shows {len(offers)} offer row{'s' if len(offers) != 1 else ''}"
-            )
-    elif offers:
-        coverage_value = f"{len({row['supplier'].casefold() for row in offers})} offer source{'s' if len(offers) != 1 else ''}"
-        coverage_detail = "Recorded offers; qualification is not recorded"
-    else:
-        coverage_value = "Not reported by supplier"
-        coverage_detail = "No saved supplier coverage"
+    coverage_value, coverage_detail, _offer_row_summary = _supplier_coverage_copy(
+        recommendation.get("Supplier Sources"), offers
+    )
 
     savings = price_comparison.get("savings_per_unit")
     if savings is not None:
@@ -1312,23 +1323,9 @@ def procurement_summary_cards_html(
     recommendation = recommendation or _recommend(dict(part))
     price_comparison = price_comparison or {}
     offers = normalize_supplier_offer_records(part)
-    supplier_count = _maybe_n(recommendation.get("Supplier Sources"))
-    if supplier_count is None and offers:
-        quote_count = len({row["supplier"].casefold() for row in offers})
-        coverage_value = f"{quote_count} quote source{'s' if quote_count != 1 else ''}"
-        coverage_detail = "Saved offers; qualification is not recorded"
-    elif supplier_count is None:
-        coverage_value, coverage_detail = "Not reported by supplier", "No saved source count"
-    elif supplier_count <= 1:
-        coverage_value, coverage_detail = f"{int(supplier_count)} recorded source", "A second source is not recorded"
-    else:
-        coverage_value = f"{int(supplier_count)} recorded sources"
-        coverage_detail = "Saved sourcing count"
-        if offers and len(offers) != int(supplier_count):
-            coverage_detail = (
-                f"The comparison table shows {len(offers)} offer row"
-                f"{'s' if len(offers) != 1 else ''}, not {int(supplier_count)} separate quotes"
-            )
+    coverage_value, coverage_detail, _offer_row_summary = _supplier_coverage_copy(
+        recommendation.get("Supplier Sources"), offers
+    )
 
     annual_demand = _maybe_n(_first(part, "annual_demand", "annual_quantity", "yearly_demand"))
     annual_comparison = {}
