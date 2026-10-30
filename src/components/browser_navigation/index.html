@@ -220,37 +220,28 @@
       return String(marker.getAttribute("data-cadivor-page-body-gen") || "").trim();
     }
 
-    function hasVisiblePythonCover(afterGeneration = "") {
-      return Array.from(doc.querySelectorAll(".cv-main-transition.cv-route-loading"))
-        .some((cover) => {
-          try {
-            if (cover.closest("[data-cadivor-transition-snapshot='1']")) return false;
-            if (cover.closest('[data-stale="true"]')) return false;
-            const generation = String(
-              cover.getAttribute("data-cadivor-transition-gen") || ""
-            ).trim();
-            if (afterGeneration && (!generation || generation === afterGeneration)) {
-              return false;
-            }
-            const style = w.getComputedStyle(cover);
-            if (
-              style.display === "none"
-              || style.visibility === "hidden"
-              || Number(style.opacity || 1) <= 0
-            ) {
-              return false;
-            }
-            const rect = cover.getBoundingClientRect();
-            if (rect.width > 0 && rect.height > 0) return true;
-            const gen = String(cover.getAttribute("data-cadivor-transition-gen") || "").trim();
-            return Boolean(
-              gen
-              && doc.querySelector('[data-cadivor-page-body-gen="' + gen + '"]')
-            );
-          } catch (_) {
-            return false;
-          }
-        });
+    function hasReleasedDestination(previousGeneration = "") {
+      const markers = Array.from(doc.querySelectorAll(
+        "[data-cadivor-page-body-gen][data-cadivor-page-body-release-gen]"
+      )).filter((marker) => (
+        !marker.closest("[data-cadivor-transition-snapshot='1']")
+        && !marker.closest('[data-stale="true"]')
+      ));
+      for (let index = markers.length - 1; index >= 0; index -= 1) {
+        const marker = markers[index];
+        const generation = String(
+          marker.getAttribute("data-cadivor-page-body-gen") || ""
+        ).trim();
+        const releasedGeneration = String(
+          marker.getAttribute("data-cadivor-page-body-release-gen") || ""
+        ).trim();
+        if (
+          generation
+          && generation !== previousGeneration
+          && releasedGeneration === generation
+        ) return true;
+      }
+      return false;
     }
 
     function queueReleaseCheck() {
@@ -269,19 +260,12 @@
           || (snapshot && snapshot.getAttribute("data-cadivor-prior-body-gen"))
           || ""
         ).trim();
-        const currentGeneration = bodyGeneration();
-        if (
-          (currentGeneration && currentGeneration !== previousGeneration)
-          || (cover && hasVisiblePythonCover(previousGeneration))
-        ) {
+        if (hasReleasedDestination(previousGeneration)) {
           raf(() => {
             const liveCover = doc.getElementById("cadivor-instant-navigation-transition");
-            const liveGeneration = bodyGeneration();
-            if (liveGeneration && liveGeneration !== previousGeneration) {
+            if (hasReleasedDestination(previousGeneration)) {
               clearTransitionSnapshot();
               if (liveCover) liveCover.remove();
-            } else if (liveCover && hasVisiblePythonCover(previousGeneration)) {
-              liveCover.remove();
             }
           });
         }
@@ -319,13 +303,13 @@
       const style = doc.createElement("style");
       style.id = "cadivor-instant-navigation-transition-style";
       style.textContent = [
-        '#cadivor-instant-navigation-transition{box-sizing:border-box!important;position:fixed!important;left:calc(var(--cv-foundation-rail,296px) + 28px)!important;right:auto!important;top:calc(var(--cv-foundation-top,64px) + 16px)!important;bottom:auto!important;width:auto!important;height:auto!important;z-index:2147483001!important;display:flex!important;align-items:flex-start!important;justify-content:flex-start!important;overflow:visible!important;background:transparent!important;pointer-events:none!important;font-family:Inter,system-ui,sans-serif!important}',
-        '#cadivor-instant-navigation-transition .cv-instant-navigation-card{box-sizing:border-box!important;display:flex!important;align-items:center!important;gap:12px!important;min-width:190px!important;padding:14px 18px!important;border:1px solid #E4EAF3!important;border-radius:14px!important;background:#FFFFFF!important;box-shadow:0 8px 24px rgba(15,23,42,.06)!important;color:#334155!important;font-size:13px!important;font-weight:650!important}',
+        '#cadivor-instant-navigation-transition{box-sizing:border-box!important;position:fixed!important;left:var(--cv-foundation-rail,296px)!important;right:0!important;top:var(--cv-foundation-top,64px)!important;bottom:0!important;width:calc(100vw - var(--cv-foundation-rail,296px))!important;height:calc(100vh - var(--cv-foundation-top,64px))!important;height:calc(100dvh - var(--cv-foundation-top,64px))!important;z-index:2147483001!important;display:flex!important;align-items:center!important;justify-content:center!important;overflow:hidden!important;background:#F5F7FB!important;pointer-events:auto!important;font-family:Inter,system-ui,sans-serif!important}',
+        '#cadivor-instant-navigation-transition .cv-instant-navigation-card{box-sizing:border-box!important;display:flex!important;align-items:center!important;gap:12px!important;min-width:190px!important;max-width:min(480px,calc(100% - 48px))!important;padding:18px 22px!important;border:1px solid #E4EAF3!important;border-radius:14px!important;background:#FFFFFF!important;box-shadow:0 8px 24px rgba(15,23,42,.06)!important;color:#334155!important;font-size:13px!important;font-weight:650!important}',
         '#cadivor-instant-navigation-transition .cv-instant-navigation-mark{box-sizing:border-box!important;display:grid!important;place-items:center!important;flex:0 0 32px!important;width:32px!important;height:32px!important;border-radius:9px!important;background:#2563EB!important;color:#FFFFFF!important;font-size:15px!important;font-weight:850!important}',
         '#cadivor-instant-navigation-transition .cv-instant-navigation-progress{flex:0 0 44px!important;height:3px!important;border-radius:999px!important;background:#E8EEF7!important;overflow:hidden!important}',
         '#cadivor-instant-navigation-transition .cv-instant-navigation-progress i{display:block!important;width:42%!important;height:100%!important;border-radius:999px!important;background:#2563EB!important;animation:cv-instant-navigation-progress 1.1s ease-in-out infinite!important}',
         '@keyframes cv-instant-navigation-progress{0%{transform:translateX(-130%)}100%{transform:translateX(280%)}}',
-        '@media(max-width:700px){#cadivor-instant-navigation-transition{left:16px!important}}',
+        '@media(max-width:700px){#cadivor-instant-navigation-transition{left:0!important;right:0!important;width:100vw!important;}}',
       ].join("\n");
       (doc.head || doc.documentElement).appendChild(style);
     }
@@ -588,20 +572,21 @@
           #cadivor-history-transition {
             box-sizing: border-box !important;
             position: fixed !important;
-            left: calc(var(--cv-foundation-rail, 296px) + 28px) !important;
-            right: auto !important;
-            top: calc(var(--cv-foundation-top, 64px) + 16px) !important;
-            bottom: auto !important;
+            left: var(--cv-foundation-rail, 296px) !important;
+            right: 0 !important;
+            top: var(--cv-foundation-top, 64px) !important;
+            bottom: 0 !important;
             z-index: 2147483001 !important;
             display: flex !important;
-            align-items: flex-start !important;
-            justify-content: flex-start !important;
-            width: auto !important;
-            height: auto !important;
+            align-items: center !important;
+            justify-content: center !important;
+            width: calc(100vw - var(--cv-foundation-rail, 296px)) !important;
+            height: calc(100vh - var(--cv-foundation-top, 64px)) !important;
+            height: calc(100dvh - var(--cv-foundation-top, 64px)) !important;
             min-height: 0 !important;
-            overflow: visible !important;
-            background: transparent !important;
-            pointer-events: none !important;
+            overflow: hidden !important;
+            background: #F5F7FB !important;
+            pointer-events: auto !important;
             font-family: Inter, system-ui, sans-serif !important;
           }
           body:has(#cadivor-history-transition) section[data-testid="stMain"] {
@@ -636,7 +621,7 @@
             font-weight: 850;
           }
           @media (max-width: 720px) {
-            #cadivor-history-transition { left: 16px !important; }
+            #cadivor-history-transition { left: 0 !important; right: 0 !important; width: 100vw !important; }
           }
         `;
         (doc.head || doc.documentElement).appendChild(style);

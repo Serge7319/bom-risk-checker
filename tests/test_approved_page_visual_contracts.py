@@ -33,24 +33,33 @@ class ApprovedPageVisualContractTests(unittest.TestCase):
         self.assertIn('justify-content: flex-end !important;', MONITORING_HOME_CSS)
         self.assertIn('st-key-approved_home_new_bom"] button', MONITORING_HOME_CSS)
 
-    def test_route_geometry_is_loaded_before_the_destination_first_paint(self):
-        self.assertIn('id="cadivor-workspace-geometry-prepaint"', CORE_UI)
+    def test_route_geometry_has_one_final_workspace_owner(self):
         self.assertIn('_load_css("monitoring_home_alignment.css")', CORE_UI)
-        self.assertIn("inject_navigation_recovery_css(prepaint=True)", CORE_UI)
         self.assertIn("inject_workspace_geometry_final()", CORE_UI)
+        self.assertNotIn('id="cadivor-workspace-geometry-prepaint"', CORE_UI)
         self.assertIn(".cv-ap-home-kpi .cv-ap-home-icon", MONITORING_HOME_CSS)
         self.assertIn("max-width: 30px !important;", MONITORING_HOME_CSS)
         self.assertIn("grid-template-columns: minmax(0, 1fr) !important;", MONITORING_HOME_CSS)
 
     def test_monitoring_kpis_override_streamlit_column_sizing(self):
         self.assertIn(
-            '.st-key-approved_monitoring_kpi_grid [data-testid="stHorizontalBlock"]{display:grid!important;grid-template-columns:repeat(4,minmax(0,240px))!important;justify-content:start!important;',
+            '.st-key-approved_monitoring_kpi_grid [data-testid="stHorizontalBlock"]{box-sizing:border-box!important;display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;justify-content:stretch!important;',
             APPROVED_PAGES,
         )
         self.assertIn(
-            '.st-key-approved_monitoring_kpi_grid{box-sizing:border-box!important;width:100%!important;max-width:100%!important;min-width:0!important;margin:0 0 20px!important;overflow:visible!important}',
+            '.st-key-approved_monitoring_kpi_grid [data-testid="stHorizontalBlock"]>[data-testid="column"]{box-sizing:border-box!important;display:flex!important;flex:none!important;justify-self:stretch!important;width:100%!important;max-width:none!important;',
             APPROVED_PAGES,
         )
+        self.assertIn(
+            'grid-template-columns:repeat(2,minmax(0,1fr))!important',
+            APPROVED_PAGES,
+        )
+        self.assertIn(
+            '.st-key-approved_monitoring_kpi_grid{margin:0!important;overflow:visible!important}',
+            APPROVED_PAGES,
+        )
+        self.assertIn('min-height:0!important;cursor:pointer!important', APPROVED_PAGES)
+        self.assertNotIn('min-height:188px!important', APPROVED_PAGES)
         self.assertNotIn(
             '.st-key-approved_monitoring_kpi_grid [data-testid="column"]{box-sizing:border-box!important;display:flex!important;flex:1 1 0!important;width:0!important;max-width:none!important;',
             APPROVED_PAGES,
@@ -92,6 +101,33 @@ class ApprovedPageVisualContractTests(unittest.TestCase):
         )
         self.assertIn('("render_monitoring", "standard")', APPROVED_PAGES)
         self.assertIn('.st-key-approved_monitoring_alert_card {', MONITORING_HOME_CSS)
+        self.assertIn('max-width: 1440px !important;', MONITORING_HOME_CSS)
+        self.assertIn('> [data-testid="stElementContainer"]:not(:has(> .st-key-monitoring_home_width_marker))', MONITORING_HOME_CSS)
+
+    def test_monitoring_has_one_header_and_reveals_after_selected_view_mounts(self):
+        runtime = (ROOT / "src" / "authenticated_runtime.py").read_text(
+            encoding="utf-8"
+        )
+        monitoring = runtime.split('if app_mode == "Monitoring":', 1)[1].split(
+            'if app_mode == "Supply Risk Scenario":', 1
+        )[0]
+        overview = monitoring.split('if monitor_view == "overview":', 1)[1].split(
+            'with st.container(key="monitoring_snapshot"):', 1
+        )[0]
+        snapshot = monitoring.split(
+            'with st.container(key="monitoring_snapshot"):', 1
+        )[1]
+        self.assertNotIn("cadivor_section_header(", monitoring)
+        self.assertIn("include_header=True", overview)
+        self.assertIn('reveal_authenticated_page_body("Monitoring")', snapshot)
+        self.assertGreater(
+            snapshot.index('reveal_authenticated_page_body("Monitoring")'),
+            snapshot.index("_render_monitor_action_queue()"),
+        )
+        self.assertLess(
+            snapshot.index('reveal_authenticated_page_body("Monitoring")'),
+            snapshot.index("stop_authenticated_page()"),
+        )
 
     def test_approved_alternatives_shortcut_uses_widget_callback(self):
         shortcut = EI_BOM_REPORT.split(

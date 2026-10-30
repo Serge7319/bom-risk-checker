@@ -33,7 +33,12 @@ class MonitoringSnapshotLayoutTests(unittest.TestCase):
         self.assertIn("max-width:1440px!important", APPROVED_PAGES)
 
     def test_overview_header_shares_the_centered_workspace_canvas(self):
-        self.assertIn('cadivor_section_header(', self.branch)
+        overview = self.branch.split('if monitor_view == "overview":', 1)[1].split(
+            'with st.container(key="monitoring_snapshot"):', 1
+        )[0]
+        self.assertIn("render_monitoring(", overview)
+        self.assertIn("include_header=True", overview)
+        self.assertNotIn('cadivor_section_header(', self.branch)
         self.assertIn(
             ':has(.st-key-monitoring_home_width_marker) .cv64-section',
             MONITORING_LAYOUT,
@@ -60,7 +65,7 @@ class MonitoringSnapshotLayoutTests(unittest.TestCase):
     def test_recent_alerts_heading_does_not_reintroduce_large_top_padding(self):
         self.assertIn("padding: 4px 20px 2px !important;", MONITORING_LAYOUT)
         self.assertIn("min-height: 36px !important;", MONITORING_LAYOUT)
-        self.assertIn("padding: 4px 12px 2px !important;", MONITORING_LAYOUT)
+        self.assertIn("padding: 2px 12px !important;", MONITORING_LAYOUT)
         heading_rule = MONITORING_LAYOUT.split(".cv-ap-monitoring-heading h2 {", 1)[1].split("}", 1)[0]
         self.assertIn("margin: 0 !important;", heading_rule)
         self.assertIn("padding: 0 !important;", heading_rule)
@@ -93,7 +98,7 @@ class MonitoringSnapshotLayoutTests(unittest.TestCase):
         )
         self.assertIn("monitoring_overview_alert_rows(", self.branch)
         self.assertIn("render_monitoring(", self.branch)
-        self.assertIn("include_header=False", self.branch)
+        self.assertIn("include_header=True", self.branch)
         self.assertIn('monitor_view = _safe_text(', self.branch)
         self.assertIn('if monitor_view == "components":', self.branch)
         self.assertIn("_render_monitored_components()", self.branch)
@@ -344,7 +349,7 @@ class MonitoringSnapshotLayoutTests(unittest.TestCase):
         self.assertIn("normalize_part_number(returned_mpn)", component_view)
         self.assertIn("save_monitor_history_with_diagnostic", component_view)
         self.assertIn("resolve_monitoring_workspace_id(", component_view)
-        self.assertIn("next scheduled supplier snapshot", component_view)
+        self.assertIn("compares later snapshots for changes", component_view)
         self.assertIn('navigate_to("BOM Analyzer", show_saved_analyses=1)', component_view)
         self.assertIn("focused_component_found", component_view)
         self.assertIn("not focused_component_found", component_view)

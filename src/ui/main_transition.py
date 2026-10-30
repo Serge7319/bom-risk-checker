@@ -2,9 +2,9 @@
 
 Continuity contract (login → first content, and every authenticated navigation):
 first admission or explicitly blocking work gets a readable progress surface;
-ordinary in-app navigation keeps a compact progress surface over the main
-panel until the complete destination is ready. It never exposes the empty or
-partially rendered workspace during a Streamlit rerun.
+ordinary in-app navigation fully covers the workspace until the complete
+destination is ready. It never exposes the outgoing, empty, or partially
+rendered workspace during a Streamlit rerun.
 
 This module owns ONLY the main-panel loading surface. Foundation topbar and
 sidebar must stay fully sharp and normal-opacity for the entire transition.
@@ -118,8 +118,8 @@ def should_paint_opening_overlay(
 ) -> bool:
     """Keep one transition owner until the destination body is ready.
 
-    The owner renders as a compact main-panel progress surface for in-app
-    navigation, and as a full loading card for first admission or blocking work.
+    The owner covers the main workspace for in-app navigation and renders as a
+    full loading card for first admission or blocking work.
     """
     del target_route, session_state
     return bool(needs_transition)
@@ -219,53 +219,55 @@ def inject_main_transition_css(transition_gen: int) -> None:
           display:block;height:100%;width:42%;border-radius:999px;background:#2563EB;
           animation:cv-main-transition-progress 1.1s ease-in-out infinite
         }}
-        /* Route changes keep the shell and the workspace width. The status
-           chip sits at the top of the workspace and does not paint an opaque
-           mask over the page. Hiding every new element until the body marker
-           left a blank workspace for the whole rerun. */
+        /* Keep the persistent rail and topbar visible, but fully cover the
+           workspace while the destination DOM is being replaced. A small
+           transparent chip left the outgoing route readable underneath it. */
         .cv-main-transition.cv-route-loading[data-cadivor-transition-kind="navigation"]{{
           box-sizing:border-box!important;position:fixed!important;
-          left:calc(var(--cv-foundation-rail,296px) + 28px)!important;
-          right:auto!important;bottom:auto!important;
-          top:calc(var(--cv-foundation-top,64px) + 16px)!important;
-          width:auto!important;height:auto!important;
+          left:var(--cv-foundation-rail,228px)!important;right:0!important;
+          top:var(--cv-foundation-top,64px)!important;bottom:0!important;
+          width:calc(100vw - var(--cv-foundation-rail,228px))!important;
+          height:calc(100vh - var(--cv-foundation-top,64px))!important;
+          height:calc(100dvh - var(--cv-foundation-top,64px))!important;
           min-height:0!important;max-height:none!important;
           margin:0!important;padding:0!important;border:0!important;border-radius:0!important;
-          display:flex!important;align-items:flex-start!important;justify-content:flex-start!important;
-          background:transparent!important;overflow:visible!important;
-          box-shadow:none!important;pointer-events:none!important;opacity:1!important;
+          display:flex!important;align-items:center!important;justify-content:center!important;
+          background:#F5F7FB!important;overflow:hidden!important;
+          box-shadow:none!important;pointer-events:auto!important;opacity:1!important;
           visibility:visible!important;z-index:2147483000!important;clip-path:none!important
         }}
         @media(max-width:700px){{
           .cv-main-transition.cv-route-loading[data-cadivor-transition-kind="navigation"]{{
-            left:16px!important
+            left:0!important;width:100vw!important
           }}
         }}
         .cv-main-transition.cv-route-loading[data-cadivor-transition-kind="navigation"] .cv-main-transition-card{{
-          display:flex!important;align-items:center!important;gap:12px!important;
-          box-sizing:border-box!important;width:auto!important;min-width:190px!important;
-          padding:14px 18px!important;border:1px solid #E4EAF3!important;border-radius:14px!important;
-          background:#FFFFFF!important;box-shadow:0 8px 24px rgba(15,23,42,.06)!important;
-          color:#334155!important;font-size:13px!important;font-weight:650!important;
-          text-align:left!important
+          display:block!important;box-sizing:border-box!important;
+          width:min(420px,calc(100% - 48px))!important;min-width:0!important;
+          padding:28px 28px 24px!important;border:1px solid #D6E3F5!important;
+          border-radius:18px!important;background:#FFFFFF!important;
+          box-shadow:0 12px 28px rgba(15,23,42,.06)!important;
+          color:#334155!important;text-align:center!important
         }}
         .cv-main-transition.cv-route-loading[data-cadivor-transition-kind="navigation"] .cv-main-transition-mark{{
           box-sizing:border-box!important;display:grid!important;place-items:center!important;
-          flex:0 0 32px!important;width:32px!important;height:32px!important;
-          margin:0!important;border-radius:9px!important;
+          width:40px!important;height:40px!important;margin:0 auto 14px!important;border-radius:12px!important;
           background:#2563EB!important;color:#FFFFFF!important;
-          font-size:15px!important;font-weight:850!important;letter-spacing:-.02em!important
+          font-size:18px!important;font-weight:850!important;letter-spacing:-.02em!important
         }}
         .cv-main-transition.cv-route-loading[data-cadivor-transition-kind="navigation"] .cv-main-transition-label{{
-          flex:1 1 auto!important;min-width:0!important;white-space:nowrap!important
+          display:block!important;min-width:0!important;margin:0 0 6px!important;
+          color:#0F172A!important;font-size:18px!important;font-weight:850!important;
+          line-height:1.25!important;letter-spacing:-.02em!important;text-align:center!important
         }}
         .cv-main-transition.cv-route-loading[data-cadivor-transition-kind="navigation"] .cv-main-transition-progress{{
           position:relative!important;left:auto!important;right:auto!important;top:auto!important;
-          display:block!important;flex:0 0 44px!important;width:44px!important;height:3px!important;
-          margin:0!important;border-radius:999px!important;background:#E8EEF7!important;overflow:hidden!important
+          display:block!important;width:100%!important;height:4px!important;
+          margin:14px 0 0!important;border-radius:999px!important;
+          background:#E8EEF7!important;overflow:hidden!important
         }}
         .cv-main-transition.cv-route-loading[data-cadivor-transition-kind="navigation"] .cv-main-transition-progress>i{{
-          display:block!important;width:42%!important;height:3px!important;border-radius:999px!important;
+          display:block!important;width:42%!important;height:4px!important;border-radius:999px!important;
           background:#2563EB!important;animation:cv-main-transition-progress 1.1s ease-in-out infinite
         }}
         @keyframes cv-main-transition-progress{{
@@ -450,9 +452,8 @@ def route_loading_markup(target_route: str, transition_gen: int) -> str:
     if transition_kind not in {"navigation", "blocking"}:
         transition_kind = "blocking"
     if transition_kind == "navigation":
-        # Give the route cover its complete viewport geometry inline. The
-        # shared stylesheet still refines it, but a slow stylesheet delta can
-        # no longer expose the outgoing or partially mounted page.
+        # Give the route cover a complete workspace surface inline so a slow
+        # stylesheet delta cannot expose the outgoing or partially mounted page.
         return f"""
         <div data-cadivor-transition-host="cadivor-main-transition"
              data-cadivor-transition-gen="{gen}"
@@ -464,16 +465,17 @@ def route_loading_markup(target_route: str, transition_gen: int) -> str:
                data-cadivor-transition-kind="navigation"
                data-cadivor-transition-gen="{gen}"
                data-testid="cadivor-route-loading"
-               style="box-sizing:border-box;position:fixed;left:calc(var(--cv-foundation-rail,296px) + 28px);top:calc(var(--cv-foundation-top,64px) + 16px);right:auto;bottom:auto;width:auto;height:auto;z-index:2147483000;display:flex;align-items:flex-start;justify-content:flex-start;margin:0;padding:0;background:transparent;overflow:visible;pointer-events:none;font-family:Inter,system-ui,sans-serif"
+               style="box-sizing:border-box;position:fixed;left:var(--cv-foundation-rail,228px);right:0;top:var(--cv-foundation-top,64px);bottom:0;width:calc(100vw - var(--cv-foundation-rail,228px));height:calc(100dvh - var(--cv-foundation-top,64px));z-index:2147483000;display:flex;align-items:center;justify-content:center;margin:0;padding:0;background:#F5F7FB;overflow:hidden;pointer-events:auto;font-family:Inter,system-ui,sans-serif"
                role="status" aria-label="Opening {safe_route}" aria-live="polite">
             <div class="cv-main-transition-card"
-                 style="box-sizing:border-box;display:flex;align-items:center;gap:12px;min-width:190px;padding:14px 18px;border:1px solid #E4EAF3;border-radius:14px;background:#FFFFFF;box-shadow:0 8px 24px rgba(15,23,42,.06);color:#334155;font-size:13px;font-weight:650;text-align:left">
+                 style="box-sizing:border-box;display:block;width:min(420px,calc(100% - 48px));padding:28px 28px 24px;border:1px solid #D6E3F5;border-radius:18px;background:#FFFFFF;box-shadow:0 12px 28px rgba(15,23,42,.06);color:#334155;text-align:center">
               <span class="cv-main-transition-mark" aria-hidden="true"
-                   style="box-sizing:border-box;display:grid;place-items:center;flex:0 0 32px;width:32px;height:32px;margin:0;border-radius:9px;background:#2563EB;color:#FFFFFF;font-size:15px;font-weight:850;letter-spacing:-.02em">C</span>
-              <span class="cv-main-transition-label">Opening {safe_route}…</span>
+                   style="box-sizing:border-box;display:grid;place-items:center;width:40px;height:40px;margin:0 auto 14px;border-radius:12px;background:#2563EB;color:#FFFFFF;font-size:18px;font-weight:850;letter-spacing:-.02em">C</span>
+              <strong class="cv-main-transition-label">Opening {safe_route}…</strong>
+              <p style="margin:0;color:#64748B;font-size:13px;line-height:1.45;font-weight:650">Preparing this page in your Cadivor workspace.</p>
               <div class="cv-main-transition-progress" aria-hidden="true"
-                   style="position:relative;display:block;flex:0 0 44px;width:44px;height:3px;margin:0;border-radius:999px;background:#E8EEF7;overflow:hidden">
-                <i style="display:block;width:42%;height:3px;border-radius:999px;background:#2563EB"></i>
+                   style="position:relative;display:block;width:100%;height:4px;margin:14px 0 0;border-radius:999px;background:#E8EEF7;overflow:hidden">
+                <i style="display:block;width:42%;height:4px;border-radius:999px;background:#2563EB"></i>
               </div>
             </div>
           </div>

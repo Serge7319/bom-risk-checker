@@ -38,6 +38,17 @@ def test_analysis_submission_and_report_switch_request_same_route_scroll_reset()
     )[0]
 
 
+def test_compare_parts_submission_keeps_form_and_result_at_the_top():
+    pages = (ROOT / "src" / "ui" / "approved_pages.py").read_text(encoding="utf-8")
+    compare = pages.split("def render_compare_live()", 1)[1].split(
+        "def render_datasheet_live()", 1
+    )[0]
+    assert "request_main_scroll_reset()" in compare
+    assert compare.index("request_main_scroll_reset()") < compare.index(
+        "run_compare_parts_many(requested_parts)"
+    )
+
+
 def test_long_bom_analysis_keeps_top_anchor_until_progress_finishes_or_user_scrolls():
     progress = (ROOT / "src" / "ui" / "approved_pages.py").read_text(encoding="utf-8")
     start = progress.index("if analysis_running and not results_visible:")
@@ -83,4 +94,27 @@ def test_browser_bridge_releases_navigation_cover_only_after_scroll_is_stable():
         'body.setAttribute("data-cadivor-page-body-release-gen", gen)'
     )
     assert "routeReleaseStableChecks >= 3" in helper
+    assert "function mainLayoutSignature()" in bridge
+    assert "routeReleaseStableSignature" in helper
+    assert "block.scrollHeight" in bridge
     assert "releaseNavigationCoverAfterScrollReset();" in bridge
+
+
+def test_bom_progress_uses_the_reserved_top_slot_without_hiding_the_workspace():
+    styles = (ROOT / "src" / "assets" / "css" / "monitoring_home_alignment.css").read_text(
+        encoding="utf-8"
+    )
+    source = RUNTIME
+    slot = source.index("bom_analysis_status_slot = st.empty()")
+    progress = source.index('with st.container(key="bom8_analysis_progress_card", border=True):')
+    progress_branch = source[progress - 1800 : progress + 250]
+
+    assert slot < progress
+    assert "Preparing your BOM analysis" in source[slot : slot + 1100]
+    assert "with bom_analysis_status_slot.container():" in progress_branch
+    assert ".st-key-bom9_workspace_grid" in styles
+    assert ".st-key-bom8_analysis_preparing_card" in styles
+    assert "st-key-bom8_analysis_progress_card, .st-key-bom8_analysis_preparing_card" in styles
+    assert "[data-testid=\"stElementContainer\"]:not(:has(.st-key-bom8_analysis_progress_card))" not in styles
+    assert "position: relative !important;" in styles
+    assert "position: sticky !important;" not in styles
