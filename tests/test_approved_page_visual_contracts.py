@@ -264,12 +264,12 @@ class ApprovedPageVisualContractTests(unittest.TestCase):
 
     def test_monitoring_filter_pills_wrap_before_the_period_control_can_overlap(self):
         self.assertIn(
-            "grid-template-columns: minmax(4.5rem, max-content) minmax(0, 1fr) 356px !important;",
+            "grid-template-columns: minmax(5.5rem, max-content) minmax(0, 1fr) 356px !important;",
             MONITORING_FINAL_CSS,
         )
-        self.assertIn("grid-template-columns: minmax(4.5rem, max-content) minmax(0, 1fr) !important;", MONITORING_FINAL_CSS)
+        self.assertIn("grid-template-columns: minmax(5.5rem, max-content) minmax(0, 1fr) !important;", MONITORING_FINAL_CSS)
         self.assertIn(".cv-ap-monitoring-show-label", MONITORING_FINAL_CSS)
-        self.assertIn("min-width: 4.5rem !important;", MONITORING_FINAL_CSS)
+        self.assertIn("min-width: 5.5rem !important;", MONITORING_FINAL_CSS)
         self.assertIn("flex-flow: row wrap !important;", MONITORING_FINAL_CSS)
         self.assertIn("max-width: 100% !important;", MONITORING_FINAL_CSS)
         self.assertIn("border-radius: 999px !important;", MONITORING_FINAL_CSS)

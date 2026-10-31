@@ -81,7 +81,7 @@ html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_re
 @media (min-width: 1201px) {
   html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_filters > [data-testid="stVerticalBlock"] > [data-testid="stHorizontalBlock"] {
     display: grid !important;
-    grid-template-columns: minmax(4.5rem, max-content) minmax(0, 1fr) 356px !important;
+    grid-template-columns: minmax(5.5rem, max-content) minmax(0, 1fr) 356px !important;
     align-items: center !important;
     column-gap: 16px !important;
     width: 100% !important;
@@ -99,17 +99,17 @@ html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_re
 }
 
 html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_filters > [data-testid="stVerticalBlock"] > [data-testid="stHorizontalBlock"] > :is([data-testid="stColumn"], [data-testid="column"]):has(.cv-ap-monitoring-show-label) {
-  min-width: 4.5rem !important;
+  min-width: 5.5rem !important;
   overflow: visible !important;
 }
 
 html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-show-label {
   display: flex !important;
   align-items: center !important;
-  min-width: 4.5rem !important;
+  min-width: 5.5rem !important;
   color: #1e293b !important;
-  font-size: 15px !important;
-  font-weight: 700 !important;
+  font-size: 16px !important;
+  font-weight: 750 !important;
   line-height: 1.2 !important;
   white-space: nowrap !important;
   overflow: visible !important;
@@ -173,7 +173,7 @@ html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_re
 @media (max-width: 1200px) {
   html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_filters > [data-testid="stVerticalBlock"] > [data-testid="stHorizontalBlock"] {
     display: grid !important;
-    grid-template-columns: minmax(4.5rem, max-content) minmax(0, 1fr) !important;
+    grid-template-columns: minmax(5.5rem, max-content) minmax(0, 1fr) !important;
     align-items: start !important;
     gap: 10px 12px !important;
     width: 100% !important;

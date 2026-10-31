@@ -6956,6 +6956,8 @@ def run_authenticated_app() -> None:
             from src.monitoring_intelligence import monitoring_overview_alert_rows
             from src.ui.approved_pages import render_monitoring
 
+            # Overview is the approved Alerts & Monitoring page only. Do not
+            # also paint the Monitoring snapshot cards on this path.
             render_monitoring(
                 monitoring_overview_alert_rows(
                     alert_rows,
@@ -6966,6 +6968,9 @@ def run_authenticated_app() -> None:
             reveal_authenticated_page_body("Monitoring")
             stop_authenticated_page()
 
+        # Non-overview Monitoring views use the snapshot cards as the page
+        # header. Keep this behind the overview stop so both layouts never
+        # compete in one script run.
         with st.container(key="monitoring_snapshot"):
             active_snapshot_focus = ""
             if monitor_view == "queue":
@@ -7591,6 +7596,12 @@ def run_authenticated_app() -> None:
                 unsafe_allow_html=True,
             )
             st.markdown(procurement_page_header_html(), unsafe_allow_html=True)
+            from src.ui.navigation import request_main_scroll_reset
+
+            # Reveal as soon as the page header is mounted so the navigation
+            # loader cannot sit over live Procurement Advisor content.
+            request_main_scroll_reset()
+            reveal_authenticated_page_body("Procurement Advisor", force=True)
             mpn_options = []
             for row in procurement_recommendations:
                 mpn = str(row.get("Part Number") or "").strip()

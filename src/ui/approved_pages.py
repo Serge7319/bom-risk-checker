@@ -1136,7 +1136,7 @@ def begin_approved_page() -> None:
         .st-key-approved_monitoring_filters>[data-testid="stVerticalBlock"]{gap:0!important}
         .st-key-approved_monitoring_filters [data-testid="stHorizontalBlock"]{align-items:center!important;gap:10px!important}
         .st-key-approved_monitoring_filters [data-testid="stWidgetLabel"] p{margin:0 0 5px!important;color:#52647b!important;font-size:12px!important;font-weight:700!important}
-        .cv-ap-monitoring-show-label{display:flex;align-items:center;min-height:42px;min-width:4.5rem;color:#1e293b;font-size:15px;font-weight:700;line-height:1.2;white-space:nowrap;overflow:visible}
+        .cv-ap-monitoring-show-label{display:flex;align-items:center;min-height:42px;min-width:5.5rem;color:#1e293b;font-size:16px;font-weight:750;line-height:1.2;white-space:nowrap;overflow:visible}
         .cv-ap-monitoring-period-label{display:flex;align-items:center;min-height:42px;color:#52647b;font-size:14px;font-weight:650;white-space:nowrap}
         .st-key-approved_monitoring_category_row{box-sizing:border-box!important;width:100%!important;min-width:0!important}
         .st-key-approved_monitoring_category_row [data-testid="stPills"],.st-key-approved_monitoring_category_row [role="radiogroup"],.st-key-approved_monitoring_category_row [data-baseweb="button-group"]{display:flex!important;flex-flow:row wrap!important;justify-content:flex-start!important;align-items:center!important;gap:8px!important;width:100%!important;min-width:0!important}
@@ -1179,7 +1179,7 @@ def begin_approved_page() -> None:
         @media(max-width:1100px){[class*="st-key-approved_home_new_bom"],[class*="st-key-approved_home_open_reports"]{left:0!important}}
         @media(max-width:1100px){.st-key-approved_monitoring_kpi_grid [data-testid="stHorizontalBlock"]{gap:12px!important;grid-template-columns:repeat(2,minmax(0,1fr))!important}.st-key-approved_monitoring_kpi_grid [data-testid="stColumn"],.st-key-approved_monitoring_kpi_grid [data-testid="column"]{flex:none!important;width:100%!important;max-width:none!important}.cv-ap-monitoring-kpi{height:auto!important;min-height:0!important;overflow:visible!important;padding:14px!important;grid-template-columns:minmax(72px,1fr) 48px!important}.cv-ap-monitoring-copy>span{font-size:14px!important;white-space:normal!important;overflow-wrap:normal!important;word-break:normal!important}.cv-ap-monitoring-kpi .cv-ap-spark{width:48px!important}.cv-ap-monitoring-copy strong{font-size:32px!important;gap:8px!important}.cv-ap-monitoring-chevron{font-size:26px!important}.st-key-approved_monitoring_kpi_active>[data-testid="stVerticalBlock"],.st-key-approved_monitoring_kpi_high>[data-testid="stVerticalBlock"],.st-key-approved_monitoring_kpi_lifecycle>[data-testid="stVerticalBlock"],.st-key-approved_monitoring_kpi_inventory>[data-testid="stVerticalBlock"]{height:auto!important;min-height:0!important;overflow:visible!important}.cv-ap-monitoring-kpi .cv-ap-spark{width:76px!important}.st-key-approved_monitoring_filters [data-testid="stHorizontalBlock"]{gap:8px!important}}
         @media(max-width:1200px){
-          .st-key-approved_monitoring_filters [data-testid="stHorizontalBlock"]:has(.st-key-approved_monitoring_category_row){display:grid!important;grid-template-columns:minmax(4.5rem,max-content) minmax(0,1fr)!important;align-items:start!important;gap:8px!important}
+          .st-key-approved_monitoring_filters [data-testid="stHorizontalBlock"]:has(.st-key-approved_monitoring_category_row){display:grid!important;grid-template-columns:minmax(5.5rem,max-content) minmax(0,1fr)!important;align-items:start!important;gap:8px!important}
           .st-key-approved_monitoring_filters [data-testid="stHorizontalBlock"]:has(.st-key-approved_monitoring_category_row)>[data-testid="column"]{box-sizing:border-box!important;width:auto!important;max-width:none!important;min-width:0!important;flex:none!important;padding:0!important}
           .st-key-approved_monitoring_filters [data-testid="column"]:has(.cv-ap-monitoring-show-label){grid-column:1!important;grid-row:1!important;align-self:start!important}
           .st-key-approved_monitoring_filters [data-testid="column"]:has(.st-key-approved_monitoring_category_row){grid-column:2!important;grid-row:1!important}
@@ -7042,6 +7042,9 @@ def _collect_compare_parts_job() -> bool:
     return True
 
 
+COMPARE_PARTS_JOB_TIMEOUT_SECONDS = 90
+
+
 @st.fragment(run_every="2s")
 def _render_compare_parts_job_status() -> None:
     """Poll the evidence search without blocking navigation or page rendering."""
@@ -7056,14 +7059,41 @@ def _render_compare_parts_job_status() -> None:
     except (TypeError, ValueError):
         started_at = 0.0
     elapsed = max(0, int(datetime.now().timestamp() - started_at)) if started_at else 0
+    if elapsed >= COMPARE_PARTS_JOB_TIMEOUT_SECONDS:
+        job_parts = list(st.session_state.get("cadivor_compare_job_parts") or [])
+        try:
+            future.cancel()
+        except Exception:
+            pass
+        st.session_state["cadivor_compare_result"] = {
+            "status": "failed",
+            "part_a": job_parts[0] if job_parts else "",
+            "part_b": job_parts[1] if len(job_parts) > 1 else "",
+            "part_c": job_parts[2] if len(job_parts) > 2 else "",
+            "part_numbers": job_parts,
+            "error": (
+                "Cadivor stopped this comparison after 90 seconds because one or more "
+                "evidence sources did not respond in time. Entered part numbers are "
+                "unchanged. Try again, or review the sources that remain unavailable."
+            ),
+            "elapsed_seconds": elapsed,
+        }
+        st.session_state.pop("cadivor_compare_future", None)
+        st.session_state.pop("cadivor_compare_job_parts", None)
+        st.session_state.pop("cadivor_compare_started_at", None)
+        st.rerun()
+        return
     st.info(
         "Searching supplier records, manufacturer pages, and available datasheets. "
         "Cadivor will show the comparison as soon as the evidence checks finish.",
         icon="🔎",
     )
+    if elapsed > 0:
+        st.caption(f"Search time: {elapsed}s.")
     if elapsed >= 45:
         st.caption(
-            f"Search time: {elapsed}s. Some sources are responding slowly; the search is still running."
+            "Some sources are responding slowly. Cadivor will stop this search at 90 seconds "
+            "and report which evidence could not be retrieved."
         )
 
 
