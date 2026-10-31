@@ -567,6 +567,7 @@ html body section[data-testid="stMain"] [class*="st-key-approved_home_action_rev
    the empty chrome and narrow-strip flashes seen during analysis. */
 html body:has(.st-key-bom8_analysis_progress_card, .st-key-bom8_analysis_preparing_card) section[data-testid="stMain"] .st-key-bom9_workspace_grid,
 html body:has(.st-key-bom8_analysis_progress_card, .st-key-bom8_analysis_preparing_card) section[data-testid="stMain"] .st-key-approved_bom_title,
+html body:has(.st-key-bom8_analysis_progress_card, .st-key-bom8_analysis_preparing_card) section[data-testid="stMain"] .st-key-approved_bom_toolbar,
 html body:has(.st-key-bom8_analysis_progress_card, .st-key-bom8_analysis_preparing_card) section[data-testid="stMain"] .st-key-approved_bom_upload_panel,
 html body:has(.st-key-bom8_analysis_progress_card, .st-key-bom8_analysis_preparing_card) section[data-testid="stMain"] .st-key-bom9_upload_panel,
 html body:has(.st-key-bom8_analysis_progress_card, .st-key-bom8_analysis_preparing_card) section[data-testid="stMain"] #cadivor-bom-analysis-top-anchor {
