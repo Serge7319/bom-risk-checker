@@ -16,10 +16,11 @@ UNIFIED_SHELL = (ROOT / "src" / "ui" / "unified_shell.py").read_text(encoding="u
 
 class MainTransitionSlowRouteContractTests(unittest.TestCase):
     def test_opening_clips_the_complete_main_viewport(self):
-        self.assertIn(
-            "width:calc(100vw - var(--cv-foundation-rail,228px))!important",
-            SOURCE,
-        )
+        # Navigation cover fills the already rail-offset stMain containing block.
+        # Re-adding the rail inset caused the production narrow-strip collapse.
+        self.assertIn("left:0!important", SOURCE)
+        self.assertIn("right:0!important", SOURCE)
+        self.assertIn("width:auto!important", SOURCE)
         self.assertIn("clip-path:inset(0)!important", SOURCE)
         self.assertIn("z-index:2147483000!important", SOURCE)
         self.assertIn("pointer-events:auto!important", SOURCE)
@@ -100,8 +101,10 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
         markup = namespace["route_loading_markup"]("Monitoring", 22)
 
         self.assertIn("position:fixed", markup)
-        self.assertIn("left:var(--cv-foundation-rail,228px)", markup)
+        self.assertIn("left:0", markup)
         self.assertIn("right:0", markup)
+        self.assertIn("top:0", markup)
+        self.assertIn("width:auto", markup)
         self.assertIn("background:#F5F7FB", markup)
         self.assertIn("pointer-events:auto", markup)
         self.assertIn("z-index:2147483000", markup)
@@ -145,7 +148,9 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
         self.assertIn("width:36px!important;height:36px!important", SOURCE)
         self.assertIn("cv-main-transition-label", SOURCE)
         self.assertNotIn("@media (max-width:1100px){{", SOURCE)
-        self.assertIn("height:calc(100dvh - var(--cv-foundation-top,64px))!important", nav_css)
+        self.assertIn("height:auto!important", nav_css)
+        self.assertIn("left:0!important", nav_css)
+        self.assertIn("width:auto!important", nav_css)
         self.assertNotIn(
             "visibility:hidden!important;opacity:0!important;pointer-events:none!important;\n          transition:none!important",
             SOURCE,
@@ -213,7 +218,7 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
         finder = approved_pages.split("def render_replacement_search()", 1)[1].split(
             "\ndef ", 1
         )[0]
-        reveal_at = finder.index('reveal_authenticated_page_body("Alternative Finder")')
+        reveal_at = finder.index('reveal_authenticated_page_body("Alternative Finder", force=True)')
         supplier_lookup_at = finder.index(
             "run_alternative_finder_search(st.session_state, query)"
         )
@@ -251,7 +256,7 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
             "from src.ui.executive_workspace", 1
         )[0])
         self.assertIn("font-size:13px!important", procurement)
-        self.assertIn("font-size:30px!important", procurement)
+        self.assertIn("font-size:26px!important", procurement)
         self.assertIn("font-size:20px!important", procurement)
 
     def test_dashboard_does_not_release_transition_on_temporary_loading_heading(self):
@@ -278,8 +283,8 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
         start = runtime.index('if app_mode == "Monitoring":')
         end = runtime.index('if app_mode == "Supply Risk Scenario":', start)
         monitoring = runtime[start:end]
-        release = 'reveal_authenticated_page_body("Monitoring")'
-        self.assertEqual(monitoring.count(release), 3)
+        release = 'reveal_authenticated_page_body("Monitoring", force=True)'
+        self.assertEqual(monitoring.count(release), 4)
 
         restricted = monitoring.split("if not monitoring_allowed:", 1)[1].split(
             "return_analysis_id", 1

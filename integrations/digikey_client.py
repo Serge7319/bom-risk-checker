@@ -1,4 +1,6 @@
 import re
+import threading
+import time
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -19,7 +21,22 @@ from src.parsing.electrical_extractors import (
 )
 
 
+_DIGIKEY_TOKEN_LOCK = threading.Lock()
+_DIGIKEY_CACHED_TOKEN: str | None = None
+_DIGIKEY_TOKEN_EXPIRES_AT: float = 0.0
+
+
 def get_digikey_access_token() -> str:
+    """Return a DigiKey access token, reusing one until shortly before expiry."""
+    global _DIGIKEY_CACHED_TOKEN, _DIGIKEY_TOKEN_EXPIRES_AT
+    now = time.monotonic()
+    with _DIGIKEY_TOKEN_LOCK:
+        if (
+            _DIGIKEY_CACHED_TOKEN
+            and _DIGIKEY_TOKEN_EXPIRES_AT > now + 60.0
+        ):
+            return _DIGIKEY_CACHED_TOKEN
+
     client_id = get_secret("DIGIKEY_CLIENT_ID", required=True)
     client_secret = get_secret("DIGIKEY_CLIENT_SECRET", required=True)
 
@@ -33,8 +50,18 @@ def get_digikey_access_token() -> str:
 
     response = requests.post(url, data=data, timeout=15)
     response.raise_for_status()
-
-    return response.json()["access_token"]
+    payload = response.json()
+    token = str(payload.get("access_token") or "").strip()
+    if not token:
+        raise RuntimeError("DigiKey token response did not include an access token.")
+    try:
+        expires_in = float(payload.get("expires_in") or 3600)
+    except (TypeError, ValueError):
+        expires_in = 3600.0
+    with _DIGIKEY_TOKEN_LOCK:
+        _DIGIKEY_CACHED_TOKEN = token
+        _DIGIKEY_TOKEN_EXPIRES_AT = time.monotonic() + max(60.0, expires_in)
+    return token
 
 
 _DIGIKEY_SITE = "US"

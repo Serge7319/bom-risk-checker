@@ -132,13 +132,13 @@ class ApprovedPageVisualContractTests(unittest.TestCase):
         )[1]
         self.assertNotIn("cadivor_section_header(", monitoring)
         self.assertIn("include_header=True", overview)
-        self.assertIn('reveal_authenticated_page_body("Monitoring")', snapshot)
+        self.assertIn('reveal_authenticated_page_body("Monitoring", force=True)', snapshot)
         self.assertGreater(
-            snapshot.index('reveal_authenticated_page_body("Monitoring")'),
+            snapshot.index('reveal_authenticated_page_body("Monitoring", force=True)'),
             snapshot.index("_render_monitor_action_queue()"),
         )
         self.assertLess(
-            snapshot.index('reveal_authenticated_page_body("Monitoring")'),
+            snapshot.index('reveal_authenticated_page_body("Monitoring", force=True)'),
             snapshot.index("stop_authenticated_page()"),
         )
 
@@ -162,12 +162,14 @@ class ApprovedPageVisualContractTests(unittest.TestCase):
         self.assertIn('st.button("Start 14-Day Trial", key="cv_public_signup"', MARKETING_SITE)
 
 
-    def test_navigation_cover_waits_for_the_complete_destination_render(self):
+    def test_navigation_cover_releases_when_destination_shell_is_ready(self):
         navigation_state = {
             DELAY_ROUTE_BODY_REVEAL_KEY: True,
             MAIN_TRANSITION_KIND_KEY: "navigation",
         }
-        self.assertTrue(should_defer_navigation_reveal(navigation_state))
+        # Shell-ready pages must be able to release Opening… without waiting for
+        # stop_authenticated_page(); force remains an explicit release path.
+        self.assertFalse(should_defer_navigation_reveal(navigation_state))
         self.assertFalse(should_defer_navigation_reveal(navigation_state, force=True))
         self.assertFalse(
             should_defer_navigation_reveal(
@@ -191,6 +193,14 @@ class ApprovedPageVisualContractTests(unittest.TestCase):
             "from src.ui.executive_workspace", 1
         )[0]
         self.assertIn("force=True", stop_wrapper)
+        self.assertIn(
+            'reveal_authenticated_page_body("Procurement Advisor", force=True)',
+            runtime_source,
+        )
+        self.assertIn(
+            'reveal_authenticated_page_body("Compare Parts", force=True)',
+            APPROVED_PAGES,
+        )
 
     def test_bom_risk_summary_and_metrics_precede_component_review_table(self):
         markup = engineering_intelligence_html(
@@ -212,11 +222,11 @@ class ApprovedPageVisualContractTests(unittest.TestCase):
             home,
         )
         self.assertIn(
-            "home_widths = [2.15, 1.25, 0.72, 0.8, 0.95, 1.05, 2.05]",
+            "home_widths = [2.0, 1.15, 0.7, 0.75, 0.9, 1.0, 1.7]",
             home,
         )
         self.assertIn(
-            "grid-template-columns:2.15fr 1.25fr .72fr .8fr .95fr 1.05fr 2.05fr!important",
+            "grid-template-columns:2.0fr 1.15fr .7fr .75fr .9fr 1.0fr 1.7fr!important",
             APPROVED_PAGES,
         )
         self.assertIn('cells = st.columns(home_widths, gap="small"', home)

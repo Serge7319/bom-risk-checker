@@ -127,7 +127,7 @@ class DecisionPacketWorkflowTests(unittest.TestCase):
         )[1].split("if selected_decision:", 1)[0]
         panel_at = packet.find('key="cadivor_decision_packet_shell"')
         reveal_at = packet.rfind(
-            'reveal_authenticated_page_body("Engineering Decisions")'
+            'reveal_authenticated_page_body("Engineering Decisions", force=True)'
         )
         stop_at = packet.rfind("stop_authenticated_page()")
 

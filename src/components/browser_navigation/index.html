@@ -59,6 +59,7 @@
         && signedOutStyle.visibility !== "hidden"
       ) {
         root.removeAttribute("data-cadivor-shell-locked");
+        try { w.sessionStorage.removeItem("cadivor_shell_locked"); } catch (_) {}
         return;
       }
       const activeTopNavigation = Array.from(
@@ -78,8 +79,25 @@
       });
       if (activeTopNavigation && !activeRail) {
         root.removeAttribute("data-cadivor-shell-locked");
+        try { w.sessionStorage.removeItem("cadivor_shell_locked"); } catch (_) {}
       } else if (activeRail) {
+        // Authenticated rail geometry: lock stMain to the workspace column.
         root.setAttribute("data-cadivor-shell-locked", "1");
+        try { w.sessionStorage.setItem("cadivor_shell_locked", "1"); } catch (_) {}
+      } else {
+        // Keep the workspace width stable while Streamlit remounts the rail
+        // during a route change (URL handoff or click). Clearing the lock made
+        // stMain jump from full viewport (~1363) to rail-offset (~1067).
+        let persisted = false;
+        try { persisted = w.sessionStorage.getItem("cadivor_shell_locked") === "1"; } catch (_) {}
+        if (
+          persisted
+          || root.getAttribute("data-cadivor-shell-locked") === "1"
+          || doc.getElementById("cadivor-instant-navigation-transition")
+          || doc.querySelector('[data-cadivor-main-transition="1"]')
+        ) {
+          root.setAttribute("data-cadivor-shell-locked", "1");
+        }
       }
     }
 
@@ -147,6 +165,61 @@
       return false;
     }
 
+    function releasedForTransitionGen(transitionGen) {
+      const gen = String(transitionGen || "").trim();
+      if (!gen) return false;
+      const marker = doc.querySelector(
+        '[data-cadivor-page-body-gen="' + gen + '"][data-cadivor-page-body-release-gen="' + gen + '"]'
+      );
+      return !!(marker && !marker.closest('[data-stale="true"]'));
+    }
+
+    function liveDestination(selector) {
+      return Array.from(doc.querySelectorAll(selector)).find(
+        (element) => !element.closest('[data-stale="true"]')
+      );
+    }
+
+    function destinationSurfaceReady(cover) {
+      // Cover is only useful while the destination is loading. Once the target
+      // page body (or New BOM upload controls) is mounted, release even when a
+      // reused transition generation matched the prior-body marker.
+      const label = String(
+        (cover && cover.getAttribute("aria-label"))
+        || (cover && cover.innerText)
+        || ""
+      );
+      if (/new BOM analysis/i.test(label)) {
+        return !!(
+          liveDestination('input[type="file"]')
+          || liveDestination('[class*="st-key-approved_bom_upload"]')
+          || liveDestination('[class*="st-key-approved_bom_analyze"]')
+        );
+      }
+      return !!(
+        liveDestination('[class*="st-key-approved_home_page"]')
+        || liveDestination('[class*="st-key-approved_monitoring"]')
+        || liveDestination('[class*="st-key-approved_bom_upload"]')
+        || liveDestination('[class*="st-key-cv_pa_"]')
+        || liveDestination('[data-testid="stFileUploader"]')
+      );
+    }
+
+    function shouldRemoveInstantCover(cover, pythonCover) {
+      const previousGeneration = String(
+        cover.getAttribute("data-cadivor-prior-body-gen") || ""
+      ).trim();
+      const pythonGen = pythonCover
+        ? String(pythonCover.getAttribute("data-cadivor-transition-gen") || "").trim()
+        : "";
+      if (hasReleasedDestination(previousGeneration)) return true;
+      if (releasedForTransitionGen(pythonGen)) return true;
+      // Destination widgets are live and the Python Opening owner is gone —
+      // do not keep a body cover over a ready page.
+      if (destinationSurfaceReady(cover) && !pythonCover) return true;
+      return false;
+    }
+
     function queueReleaseCheck() {
       if (state.checkQueued) return;
       state.checkQueued = true;
@@ -158,24 +231,27 @@
         const cover = doc.getElementById("cadivor-instant-navigation-transition");
         if (!cover) return;
 
-        // The immediate bridge owns only the gap before Streamlit paints its
-        // route loader. Hand off as soon as that loader exists so two full-page
-        // covers cannot race and flash a blank workspace.
+        // Keep the body-level cover for the whole navigation. The in-tree
+        // Python cover is fixed inside already rail-offset stMain and can
+        // double-apply the rail inset (narrow left strip). Hide that layer
+        // and wait for release-gen before removing this viewport cover.
         const pythonCover = Array.from(doc.querySelectorAll(
           '[data-cadivor-main-transition="1"]'
         )).find((element) => !element.closest('[data-stale="true"]'));
         if (pythonCover) {
-          cover.remove();
-          return;
+          pythonCover.style.setProperty("visibility", "hidden", "important");
+          pythonCover.style.setProperty("pointer-events", "none", "important");
+          pythonCover.style.setProperty("opacity", "0", "important");
         }
 
-        const previousGeneration = String(
-          cover.getAttribute("data-cadivor-prior-body-gen") || ""
-        ).trim();
-        if (hasReleasedDestination(previousGeneration)) {
+        if (shouldRemoveInstantCover(cover, pythonCover)) {
           raf(() => {
             const liveCover = doc.getElementById("cadivor-instant-navigation-transition");
-            if (hasReleasedDestination(previousGeneration) && liveCover) liveCover.remove();
+            if (!liveCover) return;
+            const livePython = Array.from(doc.querySelectorAll(
+              '[data-cadivor-main-transition="1"]'
+            )).find((element) => !element.closest('[data-stale="true"]'));
+            if (shouldRemoveInstantCover(liveCover, livePython)) liveCover.remove();
           });
         }
       });
@@ -187,9 +263,9 @@
         shell.id = "cadivor-shell-geometry-lock";
         shell.textContent = [
           "@media (min-width:701px){",
-          "html[data-cadivor-shell-locked='1'] body section[data-testid='stMain']:not([data-stale='true']){box-sizing:border-box!important;margin:0 0 0 var(--cv-foundation-rail,296px)!important;width:calc(100% - var(--cv-foundation-rail,296px))!important;max-width:none!important;min-width:0!important;padding-left:0!important;}",
-          "html[data-cadivor-shell-locked='1'] body section[data-testid='stMain']:not([data-stale='true']) [data-testid='stMainBlockContainer'],html[data-cadivor-shell-locked='1'] body section[data-testid='stMain']:not([data-stale='true']) .main .block-container{box-sizing:border-box!important;width:100%!important;min-width:0!important;max-width:none!important;margin-left:0!important;margin-right:0!important;}",
-          "html[data-cadivor-shell-locked='1'] body [class*='st-key-cv_foundation_navigation']:not([data-stale='true']){box-sizing:border-box!important;position:fixed!important;left:0!important;top:0!important;bottom:0!important;width:var(--cv-foundation-rail,296px)!important;min-width:var(--cv-foundation-rail,296px)!important;max-width:var(--cv-foundation-rail,296px)!important;}",
+          "html[data-cadivor-shell-locked='1'] body section[data-testid='stMain']:not([data-stale='true']),body:has(#cadivor-instant-navigation-transition) section[data-testid='stMain']:not([data-stale='true']),body:has([data-cadivor-main-transition='1']) section[data-testid='stMain']:not([data-stale='true']){box-sizing:border-box!important;margin:0 0 0 var(--cv-foundation-rail,296px)!important;width:calc(100% - var(--cv-foundation-rail,296px))!important;max-width:none!important;min-width:0!important;padding-left:0!important;}",
+          "html[data-cadivor-shell-locked='1'] body section[data-testid='stMain']:not([data-stale='true']) [data-testid='stMainBlockContainer'],html[data-cadivor-shell-locked='1'] body section[data-testid='stMain']:not([data-stale='true']) .main .block-container,body:has(#cadivor-instant-navigation-transition) section[data-testid='stMain']:not([data-stale='true']) [data-testid='stMainBlockContainer'],body:has([data-cadivor-main-transition='1']) section[data-testid='stMain']:not([data-stale='true']) [data-testid='stMainBlockContainer']{box-sizing:border-box!important;width:100%!important;min-width:0!important;max-width:none!important;margin-left:0!important;margin-right:0!important;}",
+          "html[data-cadivor-shell-locked='1'] body [class*='st-key-cv_foundation_navigation']:not([data-stale='true']),body:has(#cadivor-instant-navigation-transition) [class*='st-key-cv_foundation_navigation']:not([data-stale='true']){box-sizing:border-box!important;position:fixed!important;left:0!important;top:0!important;bottom:0!important;width:var(--cv-foundation-rail,296px)!important;min-width:var(--cv-foundation-rail,296px)!important;max-width:var(--cv-foundation-rail,296px)!important;}",
           "html[data-cadivor-shell-locked='1'] body [class*='st-key-cv_foundation_navigation']:not([data-stale='true']) .stButton>button::before{box-sizing:border-box!important;flex:0 0 16px!important;width:16px!important;height:16px!important;max-width:16px!important;max-height:16px!important;background-size:16px 16px!important;}",
           "html[data-cadivor-shell-locked='1'] body [class*='st-key-cv_foundation_navigation']:not([data-stale='true']) .stButton>button svg{box-sizing:border-box!important;flex:0 0 16px!important;width:16px!important;height:16px!important;max-width:16px!important;max-height:16px!important;}",
           "}",
@@ -261,7 +337,11 @@
       showImmediateCover(label);
     }
 
-    doc.addEventListener("pointerdown", handleTransitionClick, true);
+    // Do not mount the cover on pointerdown. A full-workspace cover with
+    // pointer-events:auto would sit under the later click and steal it from
+    // Streamlit (New BOM stayed on Dashboard forever with "Preparing…").
+    // Capture-phase click still paints the cover before paint, but the same
+    // click event keeps the original button target so navigation runs.
     doc.addEventListener("click", handleTransitionClick, true);
     if (typeof w.MutationObserver === "function") {
       const observer = new w.MutationObserver(() => {

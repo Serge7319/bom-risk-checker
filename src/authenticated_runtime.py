@@ -4651,7 +4651,7 @@ def run_authenticated_app() -> None:
             # Monitoring can be opened on plans without alert access too. This
             # is the first real destination content on that path, so release
             # the shared route cover before stopping the page branch.
-            reveal_authenticated_page_body("Monitoring")
+            reveal_authenticated_page_body("Monitoring", force=True)
             stop_authenticated_page()
 
         return_analysis_id = _resolved_qp_value("return_analysis_id")
@@ -4690,6 +4690,22 @@ def run_authenticated_app() -> None:
         monitoring_user_id = str(current_user.get("id") or "")
         monitoring_workspace_id = str(active_workspace_id or "")
         monitoring_analysis_id = str(return_analysis_id or "").strip()
+
+        # Shell-first: release Opening… before bounded Supabase reads so the
+        # full-screen cover cannot sit over a 6s+ monitoring budget.
+        st.markdown(
+            """
+            <section class="cv123-monitor-hero" data-cadivor-destination-shell="Monitoring">
+              <div class="cv123-monitor-top"><div>
+                <div class="cv123-monitor-eyebrow">Monitoring Intelligence Center</div>
+                <div class="cv123-monitor-title">Loading monitoring activity…</div>
+                <div class="cv123-monitor-copy">Sidebar and account controls stay available while Cadivor refreshes alerts for this workspace.</div>
+              </div><span class="cv123-monitor-badge">Loading</span></div>
+            </section>
+            """,
+            unsafe_allow_html=True,
+        )
+        reveal_authenticated_page_body("Monitoring", force=True)
 
         def _monitor_query(table_name, columns="*"):
             # Capture auth/workspace scope before entering the detached read
@@ -6965,7 +6981,7 @@ def run_authenticated_app() -> None:
                 ),
                 include_header=True,
             )
-            reveal_authenticated_page_body("Monitoring")
+            reveal_authenticated_page_body("Monitoring", force=True)
             stop_authenticated_page()
 
         # Non-overview Monitoring views use the snapshot cards as the page
@@ -6980,12 +6996,26 @@ def run_authenticated_app() -> None:
                 )
             elif monitor_view == "components":
                 active_snapshot_focus = "components"
+            if focused_monitor_part:
+                snapshot_eyebrow = "Component monitoring"
+                snapshot_title = html.escape(str(focused_monitor_part))
+                snapshot_copy = (
+                    "Supplier baseline and filtered component table for this part. "
+                    f"{int(monitoring_center['active_alerts']):,} active alerts remain available in Alert Overview."
+                )
+            else:
+                snapshot_eyebrow = "Monitoring overview"
+                snapshot_title = "Monitoring snapshot"
+                snapshot_copy = (
+                    f"{int(monitoring_center['active_alerts']):,} active alerts. "
+                    "Use these shortcuts to move from signal to action."
+                )
             st.markdown(
                 f"""
                 <div class="cv-monitor-snapshot-head">
-                  <span class="cv-monitor-snapshot-eyebrow">Monitoring overview</span>
-                  <span class="cv-monitor-snapshot-title">Monitoring snapshot</span>
-                  <p>{int(monitoring_center['active_alerts']):,} active alerts. Use these shortcuts to move from signal to action.</p>
+                  <span class="cv-monitor-snapshot-eyebrow">{snapshot_eyebrow}</span>
+                  <span class="cv-monitor-snapshot-title">{snapshot_title}</span>
+                  <p>{snapshot_copy}</p>
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -7090,13 +7120,25 @@ def run_authenticated_app() -> None:
                             settings_tab="Billing",
                         )
 
+        if focused_monitor_part:
+            workspace_eyebrow = "Filtered component view"
+            workspace_title = f"Monitoring {html.escape(str(focused_monitor_part))}"
+            workspace_copy = (
+                "Snapshot context stays above this table. Search is prefilled for the selected part."
+            )
+        else:
+            workspace_eyebrow = "Monitoring workspace"
+            workspace_title = "Act on supplier and lifecycle changes"
+            workspace_copy = (
+                "Filter the active queue, inspect evidence, and document the engineering response."
+            )
         st.markdown(
             f"""
             <div class="cv-monitor-workspace-head">
               <div>
-                <span class="cv-monitor-workspace-eyebrow">Monitoring workspace</span>
-                <span class="cv-monitor-workspace-title">Act on supplier and lifecycle changes</span>
-                <p>Filter the active queue, inspect evidence, and document the engineering response.</p>
+                <span class="cv-monitor-workspace-eyebrow">{workspace_eyebrow}</span>
+                <span class="cv-monitor-workspace-title">{workspace_title}</span>
+                <p>{workspace_copy}</p>
               </div>
               <span class="cv-monitor-active-badge">
                 {int(monitoring_center['active_alerts']):,} active
@@ -7143,27 +7185,39 @@ def run_authenticated_app() -> None:
 
         # Release the route cover only after the selected view and its data
         # controls are in the document, avoiding a half-painted snapshot.
-        reveal_authenticated_page_body("Monitoring")
+        reveal_authenticated_page_body("Monitoring", force=True)
         stop_authenticated_page()
 
 
     # ---------- Supply Risk Scenario ----------
     if app_mode == "Supply Risk Scenario":
-        try:
-            scenario_analyses = load_analysis_history(current_user["id"]) or []
-        except Exception:
-            scenario_analyses = []
+        st.markdown(
+            """
+            <div class="cv-ap" data-cadivor-destination-shell="Supply Risk Scenario">
+              <p class="cv-ap-kicker">SUPPLY</p>
+              <h1>Supply Risk Scenario</h1>
+              <p class="cv-ap-sub">Loading scenario data for this workspace…</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        reveal_authenticated_page_body("Supply Risk Scenario", force=True)
+        with st.spinner("Loading supply risk data…"):
+            try:
+                scenario_analyses = load_analysis_history(current_user["id"]) or []
+            except Exception:
+                scenario_analyses = []
 
-        try:
-            scenario_parts_response = (
-                _workspace_query(supabase.table("analysis_parts").select("*"))
-                .eq("user_id", current_user["id"])
-                .limit(10000)
-                .execute()
-            )
-            scenario_parts = scenario_parts_response.data or []
-        except Exception:
-            scenario_parts = []
+            try:
+                scenario_parts_response = (
+                    _workspace_query(supabase.table("analysis_parts").select("*"))
+                    .eq("user_id", current_user["id"])
+                    .limit(10000)
+                    .execute()
+                )
+                scenario_parts = scenario_parts_response.data or []
+            except Exception:
+                scenario_parts = []
 
         from src.supply_risk_scenario import render_supply_scenario_dashboard
 
@@ -7178,21 +7232,33 @@ def run_authenticated_app() -> None:
 
     # ---------- Cost Optimization ----------
     if app_mode == "Cost Optimization":
-        try:
-            cost_analyses = load_analysis_history(current_user["id"]) or []
-        except Exception:
-            cost_analyses = []
+        st.markdown(
+            """
+            <div class="cv-ap" data-cadivor-destination-shell="Cost Optimization">
+              <p class="cv-ap-kicker">COST</p>
+              <h1>Cost Optimization</h1>
+              <p class="cv-ap-sub">Loading cost models for this workspace…</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        reveal_authenticated_page_body("Cost Optimization", force=True)
+        with st.spinner("Loading cost optimization data…"):
+            try:
+                cost_analyses = load_analysis_history(current_user["id"]) or []
+            except Exception:
+                cost_analyses = []
 
-        try:
-            cost_parts_response = (
-                _workspace_query(supabase.table("analysis_parts").select("*"))
-                .eq("user_id", current_user["id"])
-                .limit(10000)
-                .execute()
-            )
-            cost_parts = cost_parts_response.data or []
-        except Exception:
-            cost_parts = []
+            try:
+                cost_parts_response = (
+                    _workspace_query(supabase.table("analysis_parts").select("*"))
+                    .eq("user_id", current_user["id"])
+                    .limit(10000)
+                    .execute()
+                )
+                cost_parts = cost_parts_response.data or []
+            except Exception:
+                cost_parts = []
 
         build_quantity = int(st.session_state.get("cost_build_quantity", 100) or 100)
 
@@ -7224,21 +7290,33 @@ def run_authenticated_app() -> None:
 
     # ---------- Design Impact Analyzer ----------
     if app_mode == "Design Impact Analyzer":
-        try:
-            impact_analyses = load_analysis_history(current_user["id"]) or []
-        except Exception:
-            impact_analyses = []
+        st.markdown(
+            """
+            <div class="cv-ap" data-cadivor-destination-shell="Design Impact Analyzer">
+              <p class="cv-ap-kicker">DESIGN</p>
+              <h1>Design Impact Analyzer</h1>
+              <p class="cv-ap-sub">Loading design-impact evidence for this workspace…</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        reveal_authenticated_page_body("Design Impact Analyzer", force=True)
+        with st.spinner("Loading design impact data…"):
+            try:
+                impact_analyses = load_analysis_history(current_user["id"]) or []
+            except Exception:
+                impact_analyses = []
 
-        try:
-            impact_parts_response = (
-                _workspace_query(supabase.table("analysis_parts").select("*"))
-                .eq("user_id", current_user["id"])
-                .limit(10000)
-                .execute()
-            )
-            impact_parts = impact_parts_response.data or []
-        except Exception:
-            impact_parts = []
+            try:
+                impact_parts_response = (
+                    _workspace_query(supabase.table("analysis_parts").select("*"))
+                    .eq("user_id", current_user["id"])
+                    .limit(10000)
+                    .execute()
+                )
+                impact_parts = impact_parts_response.data or []
+            except Exception:
+                impact_parts = []
 
         requested_impact_mpn = (
             st.session_state.get("design_impact_mpn")
@@ -7565,10 +7643,14 @@ def run_authenticated_app() -> None:
                 .st-key-cv_pa_supplier_controls label{font-size:12px!important;color:#64748b!important;font-weight:750!important}
                 .st-key-cv_pa_next_steps{box-sizing:border-box!important;width:100%!important;margin:8px 0 0!important;padding:14px 16px!important;border:1px solid #dfe7f1!important;border-radius:14px!important;background:#fff!important;box-shadow:none!important}
                 .st-key-cv_pa_next_steps>[data-testid="stVerticalBlock"]{gap:8px!important}
-                .cv-pa-next-heading{margin:0 0 2px}
-                .cv-pa-next-heading span{display:block;margin-bottom:7px;color:#2563eb;font-size:14px!important;font-weight:850;letter-spacing:.1em}
-                .cv-pa-next-heading h2{margin:0 0 7px;color:#102341;font-size:30px!important;font-weight:800;line-height:1.2}
-                .cv-pa-next-heading p{margin:0;color:#64748b;font-size:17px!important;line-height:1.5}
+                .cv-pa-next-heading{margin:0 0 8px}
+                .st-key-cv_pa_next_steps .cv-pa-next-heading>span,
+                .st-key-cv_pa_next_steps [data-testid="stMarkdownContainer"] .cv-pa-next-heading>span{display:block!important;margin:0 0 8px!important;color:#2563eb!important;font-size:13px!important;font-weight:850!important;letter-spacing:.08em!important;text-transform:uppercase!important;line-height:1.3!important}
+                .st-key-cv_pa_next_steps .cv-pa-next-heading>h2,
+                .st-key-cv_pa_next_steps [data-testid="stMarkdownContainer"] .cv-pa-next-heading>h2,
+                .st-key-cv_pa_next_steps [data-testid="stMarkdownContainer"] h2{margin:0 0 8px!important;color:#102341!important;font-size:26px!important;font-weight:800!important;line-height:1.2!important;letter-spacing:-.02em!important}
+                .st-key-cv_pa_next_steps .cv-pa-next-heading>p,
+                .st-key-cv_pa_next_steps [data-testid="stMarkdownContainer"] .cv-pa-next-heading>p{margin:0!important;color:#64748b!important;font-size:15px!important;line-height:1.5!important}
                 .st-key-cv_pa_next_steps [data-testid="stHorizontalBlock"]{align-items:stretch!important;gap:16px!important}
                 .st-key-cv_pa_next_steps [data-testid="column"]{box-sizing:border-box!important;min-width:0!important;padding:16px!important;border:1px solid #e2e8f0!important;border-radius:12px!important;background:#f8fafc!important}
                 .cv-pa-next-action{min-height:60px;margin:0 0 10px}
@@ -8727,7 +8809,7 @@ def run_authenticated_app() -> None:
                 _clear_engineering_decision_caches()
                 st.rerun()
             cadivor_button_wrap_end()
-            reveal_authenticated_page_body("Engineering Decisions")
+            reveal_authenticated_page_body("Engineering Decisions", force=True)
             stop_authenticated_page()
         elif needs_decision_hydrate:
             # Pass 1: paint shell + in-page loader, then defer IO to the next run.
@@ -8735,6 +8817,9 @@ def run_authenticated_app() -> None:
             _render_ed_inline_loading(
                 detail="Preparing decision data for this workspace. Sidebar and account menu remain available."
             )
+            # Release Opening… as soon as the Decisions shell/loader is mounted.
+            # Pass 2 hydrate IO must not hold the full-screen cover.
+            reveal_authenticated_page_body("Engineering Decisions", force=True)
             # st.stop() never returns — call st.rerun() directly so Pass 2 can hydrate.
             if st.session_state.get("_cadivor_authenticated_surface_ready"):
                 inject_workspace_geometry_final()
@@ -8758,7 +8843,7 @@ def run_authenticated_app() -> None:
                 icon="clipboard-check",
                 test_id="ed-page-hero",
             )
-            reveal_authenticated_page_body("Engineering Decisions")
+            reveal_authenticated_page_body("Engineering Decisions", force=True)
 
         if ed_body_ready:
             decision_alert_df = st.session_state.get(decision_alerts_key)
@@ -8835,7 +8920,7 @@ def run_authenticated_app() -> None:
                         type="secondary",
                     ):
                         _return_to_engineering_decisions_queue()
-                    reveal_authenticated_page_body("Engineering Decisions")
+                    reveal_authenticated_page_body("Engineering Decisions", force=True)
             elif focus_part:
                 selected_decision = next(
                     (
@@ -10198,7 +10283,7 @@ def run_authenticated_app() -> None:
                             else:
                                 st.caption("No saved BOM is linked to this alert.")
 
-                reveal_authenticated_page_body("Engineering Decisions")
+                reveal_authenticated_page_body("Engineering Decisions", force=True)
                 stop_authenticated_page()
 
             if selected_decision:
@@ -22282,7 +22367,61 @@ def run_authenticated_app() -> None:
             unsafe_allow_html=True,
         )
 
-        history_data = load_analysis_history(current_user["id"]) or []
+        # Honest analysis start: if Analyze already armed the pipeline, paint
+        # the preparing surface before catalog/history work so progress is
+        # visible within ~1s of the click rather than after CSV parse.
+        _analysis_start_armed = bool(
+            st.session_state.get("cadivor_bom_pipeline_active")
+            or st.session_state.get("bom8_analysis_pending")
+            or st.session_state.get("bom8_analysis_in_progress")
+            or st.session_state.get("bom8_analysis_future")
+            or st.session_state.get("cadivor_bom_analysis_ready")
+        )
+        _bom_preparing_painted = False
+        if _analysis_start_armed and st.session_state.get("bom8_analysis_future") is None:
+            with st.container(key="bom8_analysis_preparing_card", border=True):
+                st.markdown(
+                    "<div class='cv-ap'><h1 style='margin:0 0 8px'>Preparing your BOM analysis</h1></div>",
+                    unsafe_allow_html=True,
+                )
+                st.caption(
+                    "Reading the uploaded file and starting component checks."
+                )
+                st.progress(0, text="Preparing the first component check…")
+            _bom_preparing_painted = True
+            reveal_authenticated_page_body("BOM Analyzer", force=True)
+            import time as _phase_time
+            _t0 = float(st.session_state.get("cadivor_analysis_phase_t0") or 0.0)
+            if _t0:
+                _elapsed = (_phase_time.perf_counter() - _t0) * 1000.0
+                print(
+                    f"CADIVOR_PHASE preparing_card_painted elapsed_ms={int(_elapsed)}",
+                    flush=True,
+                )
+                log = list(st.session_state.get("cadivor_analysis_phase_log") or [])
+                log.append(("preparing_card_painted", round(_elapsed, 1)))
+                st.session_state["cadivor_analysis_phase_log"] = log
+
+        # New BOM upload is the destination surface. Do not block the file
+        # input behind a catalog history round-trip — reuse session rows when
+        # available and load history only for catalog / results destinations.
+        _prefer_upload_form = bool(
+            st.session_state.get("cadivor_bom_upload_open")
+        ) and not bool(
+            st.session_state.get("cadivor_bom_catalog_requested")
+            or st.session_state.get("cadivor_show_saved_boms")
+            or st.session_state.get("bom81_high_risk_review")
+        )
+        if _prefer_upload_form:
+            history_data = list(
+                st.session_state.get("cadivor_saved_analyses_rows")
+                or st.session_state.get("saved_analyses")
+                or []
+            )
+            if not isinstance(history_data, list):
+                history_data = []
+        else:
+            history_data = load_analysis_history(current_user["id"]) or []
         history_df = pd.DataFrame(history_data)
 
         if not history_df.empty:
@@ -22371,19 +22510,56 @@ def run_authenticated_app() -> None:
                 user_id=str((current_user or {}).get("id") or ""),
             )
             # Keep the transition owner over a submitted upload until the next
-            # run paints its single analysis-progress surface.
+            # run paints its single analysis-progress surface. The New BOM
+            # upload form is already the destination — force-release Opening
+            # so the file input is usable immediately (90s on Opening is a
+            # failure, not an acceptable transition).
+            _upload_form_ready = bool(
+                st.session_state.get("cadivor_bom_upload_open")
+            ) and not bool(
+                st.session_state.get("cadivor_bom_catalog_requested")
+                or st.session_state.get("cadivor_show_saved_boms")
+                or st.session_state.get("cadivor_bom_analysis_ready")
+                or st.session_state.get("cadivor_bom_pipeline_active")
+                or st.session_state.get("bom8_analysis_future")
+                or st.session_state.get("bom8_analysis_pending")
+                or st.session_state.get("bom8_analysis_in_progress")
+            )
             if not st.session_state.get("cadivor_bom_analysis_ready"):
-                reveal_authenticated_page_body("BOM Analyzer")
+                reveal_authenticated_page_body(
+                    "BOM Analyzer",
+                    force=_upload_form_ready,
+                )
             _approved_bom_submitted, uploaded_file, project_name, bom_name = (
                 consume_approved_bom_submission(st.session_state)
             )
             if _approved_bom_submitted and uploaded_file is not None:
-                # Let the upload form disappear before parsing and starting the
-                # long-running analysis. Otherwise its submitted state is
-                # painted alongside the progress/results transition.
+                # Honest starting state within the same click run: show preparing
+                # before any CSV parse / supplier work, then continue on rerun.
                 from src.ui.main_transition import arm_bom_analysis_transition
                 from src.ui.navigation import request_main_scroll_reset
+                import time as _phase_time
 
+                print(
+                    f"CADIVOR_PHASE analyze_click_consumed "
+                    f"ts={_phase_time.time():.3f}",
+                    flush=True,
+                )
+                st.session_state["cadivor_analysis_phase_t0"] = _phase_time.perf_counter()
+                st.session_state["cadivor_analysis_phase_log"] = [
+                    ("analyze_click_consumed", 0.0)
+                ]
+                with st.container(key="bom8_analysis_preparing_card", border=True):
+                    st.markdown(
+                        "<div class='cv-ap'><h1 style='margin:0 0 8px'>Preparing your BOM analysis</h1></div>",
+                        unsafe_allow_html=True,
+                    )
+                    st.caption(
+                        "Reading the uploaded file and starting component checks."
+                    )
+                    st.progress(0, text="Preparing the first component check…")
+                _bom_preparing_painted = True
+                reveal_authenticated_page_body("BOM Analyzer", force=True)
                 request_main_scroll_reset()
                 arm_bom_analysis_transition(st.session_state, "start")
                 st.rerun()
@@ -22587,6 +22763,7 @@ def run_authenticated_app() -> None:
             if (
                 (_approved_bom_pipeline_active or analysis_in_progress)
                 and st.session_state.get("bom8_analysis_future") is None
+                and not _bom_preparing_painted
             ):
                 with bom_analysis_status_slot.container():
                     with st.container(
@@ -22601,6 +22778,7 @@ def run_authenticated_app() -> None:
                             "Reading the uploaded file and starting component checks."
                         )
                         st.progress(0, text="Preparing the first component check…")
+                    _bom_preparing_painted = True
 
             def _render_saved_bom_manager() -> None:
                 """Render saved analyses beside the new-BOM workflow on desktop."""
@@ -23973,6 +24151,19 @@ def run_authenticated_app() -> None:
                         step = "Checking the remaining components"
                     else:
                         step = "Saving the analysis"
+                    if not st.session_state.get("cadivor_analysis_first_progress_logged"):
+                        import time as _phase_time
+                        _t0 = float(st.session_state.get("cadivor_analysis_phase_t0") or 0.0)
+                        _elapsed = (_phase_time.perf_counter() - _t0) * 1000.0 if _t0 else 0.0
+                        print(
+                            f"CADIVOR_PHASE first_progress_ui "
+                            f"elapsed_ms={int(_elapsed)} step={step}",
+                            flush=True,
+                        )
+                        log = list(st.session_state.get("cadivor_analysis_phase_log") or [])
+                        log.append(("first_progress_ui", round(_elapsed, 1)))
+                        st.session_state["cadivor_analysis_phase_log"] = log
+                        st.session_state["cadivor_analysis_first_progress_logged"] = True
                     st.markdown(
                         "<div class='cv-ap'><h1 style='margin:0 0 8px'>Analyzing BOM</h1></div>",
                         unsafe_allow_html=True,
@@ -24205,13 +24396,32 @@ def run_authenticated_app() -> None:
             st.session_state["bom8_analysis_progress_queue"] = progress_queue
             st.session_state["bom8_analysis_cancel_event"] = cancel_event
             st.session_state["bom8_analysis_executor"] = executor
+            # Seed progress immediately so the next run shows a real starting
+            # state before the first supplier callback arrives.
+            first_mpn = ""
+            try:
+                first_mpn = str(bom_df.iloc[0].get("mpn") or "") if len(bom_df) else ""
+            except Exception:
+                first_mpn = ""
+            progress_queue.put((0, len(bom_df), first_mpn or "Starting"))
+            st.session_state["bom8_analysis_progress"] = (0, len(bom_df), first_mpn or "Starting")
+            import time as _phase_time
+            _t0 = float(st.session_state.get("cadivor_analysis_phase_t0") or 0.0)
+            _elapsed = (_phase_time.perf_counter() - _t0) * 1000.0 if _t0 else 0.0
+            print(
+                f"CADIVOR_PHASE worker_start parts={len(bom_df)} "
+                f"elapsed_ms={int(_elapsed)}",
+                flush=True,
+            )
+            log = list(st.session_state.get("cadivor_analysis_phase_log") or [])
+            log.append(("worker_start", round(_elapsed, 1)))
+            st.session_state["cadivor_analysis_phase_log"] = log
             st.session_state["bom8_analysis_future"] = executor.submit(
                 analyze_bom,
                 bom_df.copy(deep=True),
                 progress_queue,
                 cancel_event,
             )
-            st.session_state["bom8_analysis_progress"] = (0, len(bom_df), "")
             st.rerun()
 
         if st.session_state.get("show_upgrade_checkout") and not is_admin:

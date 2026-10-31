@@ -15,7 +15,10 @@ RUNTIME = (ROOT / "src" / "authenticated_runtime.py").read_text(encoding="utf-8"
 
 class NavigationFlashAndReviewEntryTests(unittest.TestCase):
     def test_immediate_cover_starts_before_sidebar_and_report_tab_reruns(self):
-        self.assertIn('doc.addEventListener("pointerdown", handleTransitionClick, true)', BROWSER_BRIDGE)
+        # Cover mounts on click only — pointerdown + pointer-events:auto stole
+        # the Streamlit button click and left New BOM stuck on Preparing…
+        self.assertNotIn('doc.addEventListener("pointerdown", handleTransitionClick, true)', BROWSER_BRIDGE)
+        self.assertIn('doc.addEventListener("click", handleTransitionClick, true)', BROWSER_BRIDGE)
         self.assertIn('[class*="st-key-cv_foundation_navigation"]', BROWSER_BRIDGE)
         self.assertIn('[class*="st-key-cv_analysis_section_nav"]', BROWSER_BRIDGE)
         self.assertIn('id = "cadivor-instant-navigation-transition"', BROWSER_BRIDGE)
@@ -38,7 +41,8 @@ class NavigationFlashAndReviewEntryTests(unittest.TestCase):
         self.assertIn("function showImmediateCover(label)", BROWSER_BRIDGE)
         self.assertIn("const pythonCover = Array.from(doc.querySelectorAll(", BROWSER_BRIDGE)
         self.assertIn("if (pythonCover) {", BROWSER_BRIDGE)
-        self.assertIn("cover.remove();", BROWSER_BRIDGE)
+        self.assertIn("liveCover.remove()", BROWSER_BRIDGE)
+        self.assertIn("shouldRemoveInstantCover", BROWSER_BRIDGE)
         self.assertIn("hasReleasedDestination(previousGeneration)", BROWSER_BRIDGE)
 
     def test_runtime_geometry_lock_survives_reruns_without_measuring_the_rail(self):
@@ -78,9 +82,10 @@ class NavigationFlashAndReviewEntryTests(unittest.TestCase):
         self.assertIn("background:#F5F7FB", style)
         self.assertIn("pointer-events:auto", style)
         self.assertNotIn("background:transparent", style)
-        self.assertIn("hasReleasedDestination(previousGeneration)", release)
+        self.assertIn("shouldRemoveInstantCover(cover, pythonCover)", release)
         self.assertIn("if (pythonCover)", release)
-        self.assertIn("cover.remove()", release)
+        self.assertIn("liveCover.remove()", release)
+        self.assertIn("destinationSurfaceReady", BROWSER_BRIDGE)
         self.assertNotIn("currentGeneration !== previousGeneration", release)
 
     def test_bom_progress_slot_precedes_the_full_width_upload_form(self):
@@ -94,13 +99,18 @@ class NavigationFlashAndReviewEntryTests(unittest.TestCase):
         self.assertIn("grid-template-columns:minmax(0,1fr)!important", workspace_layout)
         self.assertIn("width:100%!important", workspace_layout)
 
-    def test_new_analysis_arms_a_route_cover_before_the_form_rerenders(self):
+    def test_new_analysis_opens_upload_form_without_prearming_opening(self):
         prepare = BOM_UPLOAD_FLOW.split(
             "def prepare_new_approved_bom_analysis", 1
+        )[1].split("\n\ndef start_new_approved_bom_analysis_from_home", 1)[0]
+        # Instant click cover + navigate_to own the transition; pre-arming Opening
+        # here left New BOM stuck before the file input painted.
+        self.assertNotIn("arm_main_transition(", prepare)
+        self.assertIn('state["cadivor_bom_upload_open"] = True', prepare)
+        start = BOM_UPLOAD_FLOW.split(
+            "def start_new_approved_bom_analysis_from_home", 1
         )[1].split("\n\ndef should_render_legacy_bom_workspace", 1)[0]
-        self.assertIn("arm_main_transition(", prepare)
-        self.assertIn('"BOM Analyzer"', prepare)
-        self.assertIn('kind="navigation"', prepare)
+        self.assertIn('navigate("BOM Analyzer", _rerun=False, new_analysis="1")', start)
 
     def test_saved_bom_review_is_a_visible_direct_parts_and_risk_action(self):
         actions = APPROVED_PAGES.split(
@@ -110,8 +120,11 @@ class NavigationFlashAndReviewEntryTests(unittest.TestCase):
         self.assertNotIn('"Parts & Risk"', actions)
         self.assertIn('key=f"approved_{scope}_action_review_{row_key}"', actions)
         self.assertIn("_open_saved_bom_engineering_intelligence(target)", actions)
-        self.assertIn("2.05", APPROVED_PAGES.split("home_widths =", 1)[1].split("\n", 1)[0])
-        self.assertIn("2.05", APPROVED_PAGES.split("bom_widths =", 1)[1].split("\n", 1)[0])
+        self.assertIn("1.7", APPROVED_PAGES.split("home_widths =", 1)[1].split("\n", 1)[0])
+        self.assertIn(
+            "home_widths = [2.0, 1.15, 0.7, 0.75, 0.9, 1.0, 1.7]",
+            APPROVED_PAGES,
+        )
 
     def test_saved_bom_tabs_and_more_routes_arm_transitions(self):
         self.assertIn("_arm_saved_bom_section_transition(state)", BOM_NAVIGATION)

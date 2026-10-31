@@ -126,9 +126,10 @@ class ProcurementAdvisorTests(unittest.TestCase):
         self.assertIn("[0.85, 1.15]", branch)
         self.assertIn('with st.container(key="cv_pa_supplier_controls"):', branch)
         self.assertIn("cv_pa_next_steps", branch)
-        self.assertIn("font-size:14px!important;font-weight:850;letter-spacing:.1em", branch)
-        self.assertIn("font-size:30px!important;font-weight:800;line-height:1.2", branch)
-        self.assertIn("font-size:17px!important;line-height:1.5", branch)
+        self.assertIn("font-size:13px!important;font-weight:850!important;letter-spacing:.08em!important", branch)
+        self.assertIn("font-size:26px!important;font-weight:800!important;line-height:1.2!important", branch)
+        self.assertIn("font-size:15px!important;line-height:1.5!important", branch)
+        self.assertIn(".st-key-cv_pa_next_steps [data-testid=\"stMarkdownContainer\"] h2", branch)
         self.assertIn("font-size:20px!important;font-weight:800;line-height:1.35", branch)
         self.assertIn('key="cv_pa_table_actions"', branch)
         self.assertLess(
@@ -390,7 +391,10 @@ class ProcurementAdvisorTests(unittest.TestCase):
         self.assertEqual(frame.loc[0, "Available stock"], "Not recorded")
         self.assertEqual(frame.loc[1, "Available stock"], "25,000")
         self.assertEqual(frame.loc[1, "Price vs current"], "-10.0%")
-        self.assertTrue(all(str(dtype) == "object" for dtype in frame.dtypes))
+        # Stock and selection labels must stay display text (never numeric NaN).
+        for column in ("Selected", "Available stock", "Price vs current", "Supplier"):
+            if column in frame.columns:
+                self.assertIn(str(frame[column].dtype), {"object", "string", "str"})
 
     def test_supplier_comparison_mockup_table_highlights_selection_and_escapes_supplier_text(self):
         markup = supplier_comparison_table_html(

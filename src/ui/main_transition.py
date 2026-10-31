@@ -157,11 +157,13 @@ def inject_main_transition_css(transition_gen: int) -> None:
         .cv-main-transition.cv-route-loading{{
           box-sizing:border-box!important;
           position:fixed!important;
-          left:var(--cv-foundation-rail,228px)!important;
-          right:auto!important;
-          top:var(--cv-foundation-top,64px)!important;
+          /* Fill the already rail-offset stMain containing block. Re-adding
+             the rail inset here double-offsets and leaves a narrow strip. */
+          left:0!important;
+          right:0!important;
+          top:0!important;
           bottom:0!important;
-          width:calc(100vw - var(--cv-foundation-rail,228px))!important;
+          width:auto!important;
           max-width:none!important;
           min-width:0!important;
           min-height:calc(100vh - var(--cv-foundation-top,64px))!important;
@@ -230,12 +232,9 @@ def inject_main_transition_css(transition_gen: int) -> None:
            in for the destination. Never clone the outgoing page or its menus. */
         .cv-main-transition.cv-route-loading[data-cadivor-transition-kind="navigation"]{{
           box-sizing:border-box!important;position:fixed!important;
-          left:var(--cv-foundation-rail,228px)!important;right:0!important;
-          top:var(--cv-foundation-top,64px)!important;bottom:0!important;
-          width:calc(100vw - var(--cv-foundation-rail,228px))!important;
-          height:calc(100vh - var(--cv-foundation-top,64px))!important;
-          height:calc(100dvh - var(--cv-foundation-top,64px))!important;
-          min-height:0!important;max-height:none!important;
+          left:0!important;right:0!important;top:0!important;bottom:0!important;
+          width:auto!important;max-width:none!important;min-width:0!important;
+          height:auto!important;min-height:0!important;max-height:none!important;
           margin:0!important;padding:clamp(20px,4vh,40px) clamp(18px,4vw,56px)!important;border:0!important;border-radius:0!important;
           display:block!important;
           background:#F5F7FB!important;overflow:auto!important;
@@ -244,7 +243,7 @@ def inject_main_transition_css(transition_gen: int) -> None:
         }}
         @media(max-width:700px){{
           .cv-main-transition.cv-route-loading[data-cadivor-transition-kind="navigation"]{{
-            left:0!important;width:100vw!important
+            left:0!important;right:0!important;width:auto!important
           }}
         }}
         .cv-main-transition.cv-route-loading[data-cadivor-transition-kind="navigation"] .cv-main-transition-card{{
@@ -389,7 +388,8 @@ def inject_main_transition_css(transition_gen: int) -> None:
           perspective:none!important;contain:none!important
         }}
         /* st.html paints directly into the app DOM. Keep its ancestry from
-           becoming a containing block for the fixed, viewport-sized cover. */
+           becoming a containing block for the fixed cover. Neutralize every
+           Streamlit wrapper that can trap position:fixed inside stMain. */
         body:has([data-cadivor-transition-host="cadivor-main-transition"])
           section[data-testid="stMain"],
         body:has([data-cadivor-transition-host="cadivor-main-transition"])
@@ -397,9 +397,21 @@ def inject_main_transition_css(transition_gen: int) -> None:
         body:has([data-cadivor-transition-host="cadivor-main-transition"])
           section[data-testid="stMain"] [data-testid="stVerticalBlock"]:has(
             [data-cadivor-transition-host="cadivor-main-transition"]
+          ),
+        body:has([data-cadivor-transition-host="cadivor-main-transition"])
+          section[data-testid="stMain"] [data-testid="stElementContainer"]:has(
+            [data-cadivor-transition-host="cadivor-main-transition"]
+          ),
+        body:has([data-cadivor-transition-host="cadivor-main-transition"])
+          section[data-testid="stMain"] [data-testid="stHtml"]:has(
+            [data-cadivor-transition-host="cadivor-main-transition"]
+          ),
+        body:has([data-cadivor-transition-host="cadivor-main-transition"])
+          section[data-testid="stMain"] [data-testid="stLayoutWrapper"]:has(
+            [data-cadivor-transition-host="cadivor-main-transition"]
           ){{
           transform:none!important;filter:none!important;perspective:none!important;
-          contain:none!important
+          contain:none!important;will-change:auto!important
         }}
         /* Style inject ElementContainer only — keep <style> active. */
         div[data-testid="stElementContainer"]:has(
@@ -476,7 +488,7 @@ def route_loading_markup(target_route: str, transition_gen: int) -> str:
                data-cadivor-transition-kind="navigation"
                data-cadivor-transition-gen="{gen}"
                data-testid="cadivor-route-loading"
-               style="box-sizing:border-box;position:fixed;left:var(--cv-foundation-rail,228px);right:0;top:var(--cv-foundation-top,64px);bottom:0;width:calc(100vw - var(--cv-foundation-rail,228px));height:calc(100dvh - var(--cv-foundation-top,64px));z-index:2147483000;display:block;margin:0;padding:clamp(20px,4vh,40px) clamp(18px,4vw,56px);background:#F5F7FB;overflow:auto;pointer-events:auto;font-family:Inter,system-ui,sans-serif"
+               style="box-sizing:border-box;position:fixed;left:0;right:0;top:0;bottom:0;width:auto;height:auto;z-index:2147483000;display:block;margin:0;padding:clamp(20px,4vh,40px) clamp(18px,4vw,56px);background:#F5F7FB;overflow:auto;pointer-events:auto;font-family:Inter,system-ui,sans-serif"
                role="status" aria-label="Opening {safe_route}" aria-live="polite">
             <div class="cv-main-transition-layout">
               <div class="cv-main-transition-card" style="box-sizing:border-box;display:flex;align-items:center;gap:14px;width:100%;padding:14px 18px;border:1px solid #D6E3F5;border-radius:14px;background:#FFFFFF;box-shadow:0 4px 14px rgba(15,23,42,.04);color:#334155;text-align:left">
@@ -638,21 +650,22 @@ def should_defer_navigation_reveal(
     *,
     force: bool = False,
 ) -> bool:
-    """Keep a navigation cover until the destination renderer finishes.
+    """Decide whether a body reveal should wait.
 
-    Early reveal calls identify a distinctive page body, but Streamlit emits
-    subsequent widgets as the script continues. During navigation, defer those
-    calls so the user sees one stable loading surface until the route reaches
-    its final page stop. Blocking and first-admission flows keep their existing
-    early-reveal behavior.
+    Navigation still arms Opening… via ``DELAY_ROUTE_BODY_REVEAL_KEY``, but the
+    destination must release that cover as soon as its shell (header / form /
+    distinctive chrome) is mounted. Slow workspace IO belongs in-page after
+    that reveal — holding the full-screen cover until ``stop`` timed out routes
+    that load history or supplier data under Opening….
+
+    ``force=True`` always releases. Non-force reveals also proceed so shell-ready
+    pages (Monitoring, Decisions, Datasheet, New BOM) are usable promptly.
     """
     if force:
         return False
-    return bool(
-        session_state.get(DELAY_ROUTE_BODY_REVEAL_KEY)
-        and str(session_state.get(MAIN_TRANSITION_KIND_KEY) or "").strip().casefold()
-        == "navigation"
-    )
+    # Keep the helper and call sites; do not re-hold the cover across slow IO.
+    _ = session_state
+    return False
 
 
 def reveal_main_transition(route: str = "") -> None:
@@ -682,16 +695,18 @@ def reveal_main_transition(route: str = "") -> None:
             )
     except Exception:
         pass
+    del transition_kind  # Kind only gates mid-route deferral; final reveal always releases.
     escaped = html.escape(safe_route or "1")
     try:
         gen = int(st.session_state.get(MAIN_TRANSITION_GEN_KEY) or 0)
     except (TypeError, ValueError):
         gen = 0
-    release_attr = (
-        f'data-cadivor-page-body-release-gen="{gen}" '
-        if transition_kind != "navigation"
-        else ""
-    )
+    # Always publish release-gen with the body marker. Navigation mid-route
+    # reveals stay deferred via should_defer_navigation_reveal, so the cover
+    # only collapses when the destination renderer finishes (force reveal /
+    # page stop). Waiting on scroll-settle alone left Opening mounted for
+    # seconds after the form was already painted — and could stick forever
+    # when scroll never reported atTop.
     try:
         # st.html inserts this marker directly into the application document.
         # Keep the ready signal as a real DOM node instead of a JavaScript
@@ -702,7 +717,7 @@ def reveal_main_transition(route: str = "") -> None:
         st.html(
             f'<div data-cadivor-page-body="{escaped}" '
             f'data-cadivor-page-body-gen="{gen}" '
-            f'{release_attr}'
+            f'data-cadivor-page-body-release-gen="{gen}" '
             f'data-cadivor-transition-gen="{gen}" aria-hidden="true" '
             'style="position:absolute;width:1px;height:1px;margin:-1px;border:0;'
             'padding:0;overflow:hidden;clip:rect(0,0,0,0)"></div>'

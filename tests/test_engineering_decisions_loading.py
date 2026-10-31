@@ -26,7 +26,7 @@ class EngineeringDecisionsLoadingContractTests(unittest.TestCase):
         hero_at = branch.find('test_id="ed-page-hero"')
         queue_render_at = branch.find("render_decision_queue(decision_rows)")
         reveal_at = branch.find(
-            'reveal_authenticated_page_body("Engineering Decisions")',
+            'reveal_authenticated_page_body("Engineering Decisions", force=True)',
             queue_render_at,
         )
         pass2_io_at = branch.find('decision_hydrate_key) == "loading"')
@@ -43,7 +43,7 @@ class EngineeringDecisionsLoadingContractTests(unittest.TestCase):
         timeout_at = branch.find("if st.session_state.get(decision_timeout_key):")
         timeout_error_at = branch.find('data-testid="ed-load-timeout"', timeout_at)
         timeout_reveal_at = branch.find(
-            'reveal_authenticated_page_body("Engineering Decisions")', timeout_at
+            'reveal_authenticated_page_body("Engineering Decisions", force=True)', timeout_at
         )
         self.assertGreater(timeout_reveal_at, timeout_error_at)
         self.assertGreater(stop_at, hydrate_arm_at)
@@ -90,7 +90,7 @@ class EngineeringDecisionsLoadingContractTests(unittest.TestCase):
     def test_opened_alert_shows_its_packet_and_explicit_mitigation_action(self):
         branch = RUNTIME.split('if app_mode == "Engineering Decisions":', 1)[1]
         branch = branch.split('if app_mode == "Reports":', 1)[0]
-        self.assertIn('else _qp_value("decision_id")', branch)
+        self.assertIn('else _resolved_qp_value("decision_id")', branch)
         self.assertIn("if ed_body_ready and not requested_decision_id:", branch)
         self.assertIn('key="decision_packet_back"', branch)
         self.assertIn('st.session_state[return_to_queue_pending_key] = True', branch)

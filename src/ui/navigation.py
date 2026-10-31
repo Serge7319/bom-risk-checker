@@ -573,6 +573,10 @@ def inject_nav_scroll_reset_if_needed() -> bool:
             state.settled = destinationMounted && atTop ? state.settled + 1 : 0;
             if (state.settled >= 2) {{
               stop(true);
+            }} else if (destinationMounted && Date.now() - state.startedAt > 250) {{
+              // Destination body is ready. Do not keep Opening for flaky
+              // scrollHeight/atTop settle — release as soon as content exists.
+              stop(true);
             }} else if (Date.now() - state.startedAt > 10000) {{
               stop(state.transitionGen <= 0 || Boolean(body));
             }}
