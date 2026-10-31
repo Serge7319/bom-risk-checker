@@ -51,20 +51,26 @@ def test_compare_parts_submission_keeps_form_and_result_at_the_top():
 
 
 def test_long_bom_analysis_keeps_top_anchor_until_progress_finishes_or_user_scrolls():
-    progress = (ROOT / "src" / "ui" / "approved_pages.py").read_text(encoding="utf-8")
-    start = progress.index("if analysis_running and not results_visible:")
-    end = progress.index('with st.container(key="approved_bom_title")', start)
-    active_scroll = progress[start:end]
+    pages = (ROOT / "src" / "ui" / "approved_pages.py").read_text(encoding="utf-8")
+    runtime = (ROOT / "src" / "authenticated_runtime.py").read_text(encoding="utf-8")
+    start = pages.index("if analysis_running and not results_visible:")
+    end = pages.index('with st.container(key="approved_bom_title")', start)
+    catalog_during_analysis = pages[start:end]
 
-    assert "window.setInterval(state.reset, 350)" in active_scroll
-    assert "const progress = doc.querySelector('.st-key-bom8_analysis_progress_card')" in active_scroll
-    assert "doc.addEventListener('wheel', cancelOnScroll" in active_scroll
-    assert "doc.addEventListener('touchmove', cancelOnScroll" in active_scroll
-    assert "Date.now() - state.startedAt > 600000" in active_scroll
-    assert "Date.now() - state.missingSince > 10000" in active_scroll
-    assert 'cadivor_bom_analysis_scroll_token' in active_scroll
+    # Catalog must not paint filters/table/anchor above the live progress card.
+    assert "Progress owns the workspace" in catalog_during_analysis
+    assert "return" in catalog_during_analysis
+    assert "window.setInterval(state.reset, 350)" not in catalog_during_analysis
+    assert 'cadivor-bom-analysis-top-anchor' not in catalog_during_analysis
 
-    submit = RUNTIME.split("if _approved_bom_submitted and uploaded_file is not None:", 1)[1]
+    # Scroll reset is owned by the early progress path + fragment completion.
+    early = runtime.split("Active analysis: paint progress before BOM CSS/catalog", 1)[1]
+    assert "request_main_scroll_reset()" in early.split("def _render_active_bom_analysis():", 1)[0]
+    assert early.split("def _render_active_bom_analysis():", 1)[1].count(
+        "request_main_scroll_reset()"
+    ) >= 3
+
+    submit = runtime.split("if _approved_bom_submitted and uploaded_file is not None:", 1)[1]
     assert "request_main_scroll_reset()" in submit.split("st.rerun()", 1)[0]
     selector_callback = EI_REPORT.split(
         "def _navigate_to_detailed_report_analysis", 1
@@ -105,14 +111,25 @@ def test_bom_progress_uses_the_reserved_top_slot_without_hiding_the_workspace():
     styles = (ROOT / "src" / "assets" / "css" / "monitoring_home_alignment.css").read_text(
         encoding="utf-8"
     )
-    source = RUNTIME
-    slot = source.index("bom_analysis_status_slot = st.empty()")
+    source = (ROOT / "src" / "authenticated_runtime.py").read_text(encoding="utf-8")
     progress = source.index('with st.container(key="bom8_analysis_progress_card", border=True):')
     progress_branch = source[progress - 1800 : progress + 250]
+    early_progress = source.index(
+        "Active analysis: paint progress before BOM CSS/catalog"
+    )
+    preparing_slot = source.index(
+        "Honest analysis start: reserve the top workspace slot before catalog"
+    )
+    preparing_empty = source.index(
+        "bom_analysis_status_slot = st.empty()", preparing_slot
+    )
 
-    assert slot < progress
-    assert "Preparing your BOM analysis" in source[slot : slot + 1100]
+    # Active-future progress paints at BOM Analyzer entry, before catalog CSS.
+    assert early_progress < progress
+    assert "bom_analysis_status_slot = st.empty()" in source[early_progress:progress]
     assert "with bom_analysis_status_slot.container():" in progress_branch
+    # Preparing still uses a reserved top slot before catalog chrome.
+    assert "Preparing your BOM analysis" in source[preparing_empty : preparing_empty + 1100]
     assert ".st-key-bom9_workspace_grid" in styles
     assert ".st-key-bom8_analysis_preparing_card" in styles
     assert "st-key-bom8_analysis_progress_card, .st-key-bom8_analysis_preparing_card" in styles
