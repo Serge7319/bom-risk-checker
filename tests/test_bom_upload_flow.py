@@ -187,7 +187,8 @@ class ApprovedBOMSubmissionTests(unittest.TestCase):
         self.assertIn("uploaded_file=upload_state_file", source)
         self.assertIn("upload_available=upload_available", source)
         self.assertNotIn("cadivor-bom-upload-spinner", source)
-        self.assertIn("Analyze BOM will be available when Cadivor has received it", source)
+        self.assertIn("Analyze BOM enables within about 2 seconds after Cadivor receives it", source)
+        self.assertIn("Receiving file", source)
         self.assertIn("fully uploaded and ready", source)
 
     def test_completed_uploader_value_is_remembered_and_can_be_staged(self):
@@ -355,8 +356,9 @@ class ApprovedBOMSubmissionTests(unittest.TestCase):
         source = Path("src/authenticated_runtime.py").read_text(encoding="utf-8")
         render = source.index("            render_bom_catalog(", source.index("saved_bom_rerun_handoff"))
         consume = source.index("consume_approved_bom_submission(st.session_state)", render)
-        transition = source[consume : consume + 700]
+        transition = source[consume : consume + 1800]
         self.assertIn("if _approved_bom_submitted and uploaded_file is not None:", transition)
+        self.assertIn("bom8_analysis_preparing_card", transition)
         self.assertIn("st.rerun()", transition)
         self.assertIn(
             "if not analysis_in_progress and not _has_completed_saved_results:\n            render_upload_detected(",

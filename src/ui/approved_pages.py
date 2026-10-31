@@ -969,9 +969,9 @@ def begin_approved_page() -> None:
         .st-key-approved_home_recent_card{margin:26px 0 0!important;padding:0!important;overflow-x:auto!important;border:1px solid #cbd8e8!important;border-radius:16px!important;background:#fff!important;box-shadow:0 3px 12px rgba(15,23,42,.045)!important}
         .st-key-approved_home_recent_card [data-testid="stVerticalBlock"]{gap:0!important}
         .st-key-approved_home_recent_card [data-testid="stElementContainer"]{margin:0!important;padding:0!important}
-        .cv-ap-home-table-head{display:grid!important;grid-template-columns:2.15fr 1.25fr .72fr .8fr .95fr 1.05fr 2.05fr!important;align-items:center!important;gap:16px!important;box-sizing:border-box!important;width:100%!important;min-width:1240px!important;min-height:68px!important;padding:0 30px!important;background:#f7f9fc!important;border-top:1px solid #e5ebf3!important;border-bottom:1px solid #dce4ef!important}
+        .cv-ap-home-table-head{display:grid!important;grid-template-columns:2.0fr 1.15fr .7fr .75fr .9fr 1.0fr 1.7fr!important;align-items:center!important;gap:12px!important;box-sizing:border-box!important;width:100%!important;min-width:0!important;min-height:68px!important;padding:0 30px!important;background:#f7f9fc!important;border-top:1px solid #e5ebf3!important;border-bottom:1px solid #dce4ef!important}
         .cv-ap-home-table-head [role="columnheader"]{display:flex;align-items:center;min-width:0;min-height:48px;overflow:visible;color:#64748b;font-size:14px;font-weight:750;line-height:1.25;letter-spacing:.035em;text-transform:uppercase;white-space:normal;overflow-wrap:anywhere}
-        .cv-ap-home-table-head [role="columnheader"]:nth-child(n+3){justify-content:center!important;text-align:center}
+        .cv-ap-home-table-head [role="columnheader"]:nth-child(n+3){justify-content:center!important;text-align:center}.cv-ap-home-table-head [role="columnheader"]:last-child{justify-content:flex-end!important;position:sticky!important;right:0!important;z-index:2!important;background:#f7f9fc!important;min-width:168px!important;padding-left:8px!important}
         .st-key-approved_home_recent_heading{box-sizing:border-box!important;width:100%!important;min-height:0!important;margin:0!important;padding:12px 26px 12px!important}
         .st-key-approved_home_recent_heading [data-testid="stVerticalBlock"]{gap:0!important}
         .st-key-approved_home_recent_heading [data-testid="stHorizontalBlock"]{box-sizing:border-box!important;align-items:flex-start!important;width:100%!important;margin-top:0!important;padding-top:0!important}
@@ -988,11 +988,11 @@ def begin_approved_page() -> None:
         [class*="st-key-approved_home_view_all"] button *,[class*="st-key-approved_home_view_all"] button p,[class*="st-key-approved_home_view_all"] button span{color:#2563eb!important}
         [class*="st-key-approved_home_view_all"] button:hover{background:#dbeafe!important;border-color:#93b4ee!important}
         [class*="st-key-approved_home_new_bom"] button,[class*="st-key-approved_home_new_bom"] button p,[class*="st-key-approved_home_new_bom"] button span{white-space:nowrap!important}
-        [class*="st-key-approved_home_row_"]{box-sizing:border-box!important;width:100%!important;min-width:1240px!important;min-height:120px!important;margin:0!important;padding:18px 30px!important;border-top:0!important;border-bottom:1px solid #e5ebf3!important;background:#fff!important}
+        [class*="st-key-approved_home_row_"]{box-sizing:border-box!important;width:100%!important;min-width:0!important;min-height:120px!important;margin:0!important;padding:18px 30px!important;border-top:0!important;border-bottom:1px solid #e5ebf3!important;background:#fff!important}
         .st-key-approved_home_recent_card .st-key-approved_home_row_last{border-radius:0 0 15px 15px!important;border-bottom:0!important;background:#fff!important}
         [class*="st-key-approved_home_row_"] [data-testid="stVerticalBlock"]{display:flex!important;flex-direction:column!important;gap:0!important;justify-content:center!important;min-height:84px!important}
         [class*="st-key-approved_home_row_"] [data-testid="stElementContainer"]{margin:0!important;padding:0!important}
-        [class*="st-key-approved_home_row_"] [data-testid="stHorizontalBlock"]{display:grid!important;grid-template-columns:2.15fr 1.25fr .72fr .8fr .95fr 1.05fr 2.05fr!important;align-items:center!important;gap:16px!important;width:100%!important;min-height:84px!important}
+        [class*="st-key-approved_home_row_"] [data-testid="stHorizontalBlock"]{display:grid!important;grid-template-columns:2.0fr 1.15fr .7fr .75fr .9fr 1.0fr 1.7fr!important;align-items:center!important;gap:12px!important;width:100%!important;min-height:84px!important}
         [class*="st-key-approved_home_row_"] [data-testid="stColumn"],[class*="st-key-approved_home_row_"] [data-testid="column"]{align-self:stretch!important;justify-self:stretch!important;display:flex!important;align-items:center!important;justify-content:center!important;box-sizing:border-box!important;width:100%!important;max-width:100%!important;min-width:0!important;flex:none!important;min-height:84px!important}
         [class*="st-key-approved_home_row_"] [data-testid="stColumn"]:nth-child(-n+2),[class*="st-key-approved_home_row_"] [data-testid="column"]:nth-child(-n+2){justify-content:flex-start!important}
         [class*="st-key-approved_home_row_"] [data-testid="column"] [data-testid="stMarkdownContainer"]{width:100%!important}
@@ -1015,7 +1015,7 @@ def begin_approved_page() -> None:
         [class*="st-key-approved_home_menu_"] [data-testid="stPopover"] button[aria-expanded] svg,[class*="st-key-approved_home_menu_"] [data-testid="stPopover"] button[aria-expanded] [data-testid="stIconMaterial"]{display:none!important}
         [class*="st-key-approved_home_row_"] [class*="st-key-approved_home_menu_"]{display:flex!important;flex-direction:row!important;flex-wrap:nowrap!important;align-items:center!important;justify-content:center!important;gap:6px!important;width:100%!important;min-height:0!important}
         [class*="st-key-approved_home_action_review_"] button{box-sizing:border-box!important;width:auto!important;min-width:0!important;height:auto!important;min-height:36px!important;padding:6px 9px!important;border-radius:8px!important;font-size:12px!important;font-weight:700!important;white-space:normal!important;line-height:1.2!important}
-        [class*="st-key-approved_home_row_"] [data-testid="stColumn"]:last-child,[class*="st-key-approved_home_row_"] [data-testid="column"]:last-child{display:flex!important;align-items:center!important;justify-content:center!important;min-width:0!important;overflow:visible!important;text-align:center}
+        [class*="st-key-approved_home_row_"] [data-testid="stColumn"]:last-child,[class*="st-key-approved_home_row_"] [data-testid="column"]:last-child{display:flex!important;align-items:center!important;justify-content:flex-end!important;min-width:168px!important;overflow:visible!important;text-align:center;position:sticky!important;right:0!important;z-index:2!important;background:#fff!important;padding-left:8px!important}
         .st-key-approved_home_recent_card [class*="st-key-approved_home_menu_"]>[data-testid="stVerticalBlock"]{display:flex!important;flex-direction:row!important;flex-wrap:nowrap!important;align-items:center!important;justify-content:flex-end!important;gap:6px!important;width:100%!important;min-height:44px!important}
         .st-key-approved_home_recent_card [class*="st-key-approved_home_menu_"]>[data-testid="stVerticalBlock"]>[data-testid="stElementContainer"]{width:auto!important;flex:0 0 auto!important}
         .st-key-approved_home_recent_card [class*="st-key-approved_home_action_review_"]{flex:0 0 auto!important;min-width:max-content!important}
@@ -1318,8 +1318,12 @@ def begin_approved_page() -> None:
         .st-key-approved_bom_upload_form [data-testid="stFileUploaderDropzoneInstructions"] small{color:#718198!important;font-size:12px!important}
         .st-key-approved_bom_upload_form [data-testid="stFileUploaderDropzone"] button{flex:0 0 auto!important;min-height:40px!important;height:40px!important;border:1px solid #c8d5e8!important;border-radius:9px!important;background:#fff!important;color:#225bd7!important;box-shadow:none!important;font-size:13px!important;font-weight:700!important}
         .st-key-approved_bom_upload_form [data-testid="stFileUploaderDropzone"] button:hover{border-color:#8eafff!important;background:#f5f8ff!important}
-        .st-key-approved_bom_submit_row [data-testid="stHorizontalBlock"]{align-items:center!important;gap:16px!important}
-        .st-key-approved_bom_submit_row [data-testid="stCaptionContainer"] p{color:#718198!important;font-size:12px!important}
+        .st-key-approved_bom_submit_row [data-testid="stHorizontalBlock"]{align-items:flex-start!important;gap:18px!important;flex-wrap:nowrap!important}
+        .st-key-approved_bom_submit_row [data-testid="column"]:first-child{flex:0 0 168px!important;width:168px!important;min-width:168px!important;max-width:168px!important}
+        .st-key-approved_bom_submit_row [data-testid="column"]:last-child{flex:1 1 auto!important;min-width:0!important;padding-left:4px!important}
+        .st-key-approved_bom_submit_row [data-testid="stCaptionContainer"]{margin:8px 0 0!important}
+        .st-key-approved_bom_submit_row [data-testid="stCaptionContainer"] p{color:#718198!important;font-size:12px!important;line-height:1.45!important}
+        .st-key-approved_bom_submit_row .cadivor-bom-upload-waiting{margin:8px 0 0!important}
         [class*="st-key-approved_bom_analyze"] button{width:auto!important;min-width:148px!important;max-width:100%!important;min-height:44px!important}
         [class*="st-key-approved_bom_analyze"] button:disabled{border:1px solid #d7dfeb!important;background:#e9eef6!important;color:#8996a8!important;box-shadow:none!important;opacity:1!important;cursor:not-allowed!important}
         [class*="st-key-approved_bom_analyze"] button:disabled *{color:#8996a8!important}
@@ -2534,7 +2538,7 @@ def render_home(
         # Keep the live Streamlit row tracks identical to the CSS header.
         # A narrower final row track shifted the Engineering Intelligence and
         # overflow actions left of the Actions heading.
-        home_widths = [2.15, 1.25, 0.72, 0.8, 0.95, 1.05, 2.05]
+        home_widths = [2.0, 1.15, 0.7, 0.75, 0.9, 1.0, 1.7]
         with st.container(key="approved_home_recent_card"):
             with st.container(key="approved_home_recent_heading"):
                 heading_col, view_all_col = st.columns([10, 1], vertical_alignment="center")
@@ -2894,8 +2898,55 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
                 )
                 if upload_available:
                     st.session_state.pop("cadivor_bom_submission_error", None)
+                    st.session_state.pop("cadivor_bom_upload_receiving", None)
+                # Client-visible receiving state while Streamlit finishes ingesting
+                # the selected file (Analyze stays disabled until upload_available).
+                st.markdown(
+                    """
+                    <div id="cadivor-bom-upload-receiving" class="cadivor-bom-upload-receiving"
+                         role="status" aria-live="polite" hidden>
+                      Receiving file… Analyze BOM will enable when Cadivor has the upload.
+                    </div>
+                    <style>
+                    .cadivor-bom-upload-receiving{
+                      margin:8px 0 0;padding:10px 12px;border:1px solid #bfdbfe;
+                      border-radius:10px;background:#eff6ff;color:#1d4ed8;
+                      font-size:.86rem;line-height:1.35;font-weight:600;
+                    }
+                    </style>
+                    <script>
+                    (function(){
+                      const root = window.parent && window.parent.document
+                        ? window.parent.document : document;
+                      const markReceiving = () => {
+                        const banner = root.querySelector('#cadivor-bom-upload-receiving');
+                        if (banner) banner.hidden = false;
+                      };
+                      const bind = () => {
+                        root.querySelectorAll(
+                          '.st-key-bom_file_uploader input[type="file"],'
+                          + ' [data-testid="stFileUploaderDropzone"] input[type="file"]'
+                        ).forEach((input) => {
+                          if (input.dataset.cadivorReceivingBound === '1') return;
+                          input.dataset.cadivorReceivingBound = '1';
+                          input.addEventListener('change', markReceiving);
+                        });
+                      };
+                      bind();
+                      try {
+                        new MutationObserver(bind).observe(root.body, {childList:true, subtree:true});
+                      } catch (e) {}
+                    })();
+                    </script>
+                    """,
+                    unsafe_allow_html=True,
+                )
                 with st.container(key="approved_bom_submit_row"):
-                    submit_col, guidance_col = st.columns([0.12, 0.88], gap="small", vertical_alignment="center")
+                    # Keep Analyze and helper text in separate tracks so the
+                    # helper cannot overlap the button at ~1360px viewports.
+                    submit_col, guidance_col = st.columns(
+                        [0.22, 0.78], gap="medium", vertical_alignment="top"
+                    )
                     with submit_col:
                         submitted = st.button(
                             "Analyzing BOM…" if analysis_running else "Analyze BOM",
@@ -2916,7 +2967,7 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
                             st.markdown(
                                 """
                                 <div class="cadivor-bom-upload-waiting" role="status" aria-live="polite">
-                                  <span>Select a CSV or Excel file above. Analyze BOM will be available when Cadivor has received it. If the upload does not finish, remove the file and select it again.</span>
+                                  <span>Select a CSV or Excel file above. Analyze BOM enables within about 2 seconds after Cadivor receives it. While the file is uploading you will see a Receiving file… state. If that does not finish, remove the file and select it again.</span>
                                 </div>
                                 <style>
                                 .cadivor-bom-upload-waiting {
@@ -6541,7 +6592,7 @@ def render_replacement_search() -> None:
         )
     # Mount the destination before supplier I/O. Deep links must show the selected
     # MPN and the Finder workspace immediately while the catalog search runs.
-    reveal_authenticated_page_body("Alternative Finder")
+    reveal_authenticated_page_body("Alternative Finder", force=True)
     query = str(query or st.session_state.get(input_widget_key) or "").strip()
     if query and (pending_query or prefilled_search_pending):
         from src.alternative_finder_search import run_alternative_finder_search
@@ -7701,13 +7752,15 @@ def render_datasheet_live() -> None:
             st.error(str(extracted.get("reason") or "Could not read this PDF."))
         st.markdown(
             '<div class="dq-marker" aria-hidden="true"></div>'
-            "<header class='dq-hero'>"
+            "<header class='dq-hero' data-cadivor-destination-shell='Datasheet Q&A'>"
             "<p class='dq-breadcrumb'>Engineering Intelligence / Datasheet Q&amp;A</p>"
             "<h1 class='dq-title'>Datasheet Q&amp;A</h1>"
             "<p class='dq-sub'>Ask precise questions about technical documents and inspect the supporting source pages.</p>"
             "</header>",
             unsafe_allow_html=True,
         )
+        from src.ui.navigation import reveal_authenticated_page_body as _reveal_datasheet_shell
+        _reveal_datasheet_shell("Datasheet Q&A", force=True)
 
         # A part-number lookup makes this workflow discoverable and retrieves
         # exact supplier-linked PDFs when available. A public web search is

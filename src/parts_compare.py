@@ -725,6 +725,7 @@ def _comparison_document(
 
     from src.compare_evidence_search import gather_part_evidence
 
+    # Reuse Phase-A supplier listing fields when DigiKey already verified the MPN.
     evidence = gather_part_evidence(
         mpn=requested_mpn,
         manufacturer=manufacturer,
@@ -736,6 +737,7 @@ def _comparison_document(
             or ""
         ).strip(),
         probe_distributor_pages=True,
+        supplier_record=part if isinstance(part, dict) or hasattr(part, "get") else None,
     )
     sources = list(evidence.get("sources") or [])
     if explicit_doc is not None:

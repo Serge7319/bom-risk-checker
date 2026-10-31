@@ -80,6 +80,11 @@ def stage_approved_bom_submission(
     state["cadivor_pending_upload"] = upload
     state["cadivor_pending_project"] = str(project_name or "")
     state["cadivor_pending_bom_name"] = str(bom_name or "")
+    # Arm progress ownership on the click run so the next paint can show an
+    # honest preparing state before CSV parse / supplier work begins.
+    state["cadivor_bom_pipeline_active"] = True
+    state["bom8_analysis_pending"] = True
+    state["bom8_analysis_in_progress"] = True
     return True
 
 
@@ -299,17 +304,12 @@ def prepare_new_approved_bom_analysis(state: MutableMapping[str, Any]) -> None:
     state["cadivor_bom_upload_open"] = True
     state["cadivor_manage_saved_boms"] = False
 
-    from src.ui.main_transition import arm_main_transition
-
-    previous_route = str(
-        state.get("cadivor_route") or state.get("app_mode") or "BOM Analyzer"
-    ).strip() or "BOM Analyzer"
-    arm_main_transition(
-        state,
-        "BOM Analyzer",
-        kind="navigation",
-        previous_route=previous_route,
-    )
+    # The upload form is a fast local destination. Arming a full Opening cover
+    # here raced the Home→BOM navigation cover and could leave "Opening BOM
+    # Analyzer…" mounted after the form was ready (or before the file input
+    # ever painted). Let navigate_to() own the route cover when the page
+    # actually changes; same-route New BOM relies on the instant click cover
+    # plus the force-reveal after the form mounts.
 
 
 def start_new_approved_bom_analysis_from_home(
