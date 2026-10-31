@@ -21463,16 +21463,128 @@ def run_authenticated_app() -> None:
         )
         from src.bom_upload_flow import has_completed_saved_bom_results
 
-        # Active analysis: paint progress before BOM CSS/catalog so the card sits
-        # at the top of the workspace (no blank chrome above it).
-        if st.session_state.get("bom8_analysis_future") is not None:
-            print("CADIVOR_PHASE progress_top_path", flush=True)
+        # Unified analysis surface: preparing and component progress share one
+        # top-aligned card before BOM CSS/catalog. This prevents the mid-page
+        # preparing → top progress jump and the post-complete Preparing flash.
+        _early_analysis_surface_painted = False
+        _bom_preparing_painted = False
+        _analysis_surface_active = bool(
+            st.session_state.get("bom8_analysis_future") is not None
+            or st.session_state.get("cadivor_bom_pipeline_active")
+            or st.session_state.get("bom8_analysis_pending")
+            or st.session_state.get("bom8_analysis_in_progress")
+            or st.session_state.get("cadivor_bom_analysis_ready")
+            or st.session_state.get("cadivor_bom_component_progress_started")
+        )
+        _results_ready = bool(
+            st.session_state.get("results_df") is not None
+            and not getattr(st.session_state.get("results_df"), "empty", True)
+        )
+        if _analysis_surface_active and not _results_ready:
             bom_analysis_status_slot = st.empty()
             from src.ui.navigation import request_main_scroll_reset
 
             st.session_state["cadivor_bom_analysis_scroll_token"] = (
                 request_main_scroll_reset()
             )
+            _future = st.session_state.get("bom8_analysis_future")
+            _progress_started = bool(
+                st.session_state.get("cadivor_bom_component_progress_started")
+                or st.session_state.get("bom8_analysis_progress")
+            )
+
+            def _bootstrap_bom_analysis_worker() -> bool:
+                """Parse the staged upload and start the worker before painting.
+
+                Starting after a Preparing paint required a second remount and
+                let Streamlit briefly show Preparing below leftover upload
+                chrome (cardTop ~700px) before progress remounted at the top.
+                """
+                if st.session_state.get("bom8_analysis_future") is not None:
+                    return True
+                from concurrent.futures import ThreadPoolExecutor
+                import queue
+                import threading
+
+                from src.bom_parser import (
+                    aggregate_bom_rows as _agg_early_bom,
+                    normalize_bom_columns as _norm_early_bom,
+                )
+                from src.bom_upload_flow import resume_approved_bom_submission
+                from src.ui.main_transition import arm_bom_analysis_transition
+
+                early_upload, early_project, early_bom = (
+                    resume_approved_bom_submission(st.session_state)
+                )
+                if early_upload is None:
+                    early_upload = st.session_state.get("bom_file_uploader")
+                if early_upload is None:
+                    return False
+                name = str(getattr(early_upload, "name", "") or "")
+                early_upload.seek(0)
+                if name.lower().endswith(".csv"):
+                    early_df = pd.read_csv(early_upload)
+                else:
+                    early_df = pd.read_excel(early_upload)
+                early_df = _agg_early_bom(_norm_early_bom(early_df))
+                progress_queue = queue.Queue()
+                cancel_event = threading.Event()
+                executor = ThreadPoolExecutor(max_workers=1)
+                first_mpn = ""
+                try:
+                    first_mpn = (
+                        str(early_df.iloc[0].get("mpn") or "")
+                        if len(early_df)
+                        else ""
+                    )
+                except Exception:
+                    first_mpn = ""
+                progress_queue.put((0, len(early_df), first_mpn or "Starting"))
+                st.session_state["bom8_analysis_progress_queue"] = progress_queue
+                st.session_state["bom8_analysis_cancel_event"] = cancel_event
+                st.session_state["bom8_analysis_executor"] = executor
+                st.session_state["bom8_analysis_progress"] = (
+                    0,
+                    len(early_df),
+                    first_mpn or "Starting",
+                )
+                st.session_state["bom8_analysis_total_parts"] = len(early_df)
+                st.session_state["cadivor_bom_component_progress_started"] = True
+                st.session_state.pop("bom8_analysis_pending", None)
+                st.session_state["bom8_analysis_in_progress"] = True
+                if early_project:
+                    st.session_state["bom8_project_name"] = early_project
+                if early_bom:
+                    st.session_state["bom8_bom_name"] = early_bom
+                arm_bom_analysis_transition(st.session_state, "start")
+                import time as _phase_time
+
+                t0 = float(st.session_state.get("cadivor_analysis_phase_t0") or 0.0)
+                elapsed = (_phase_time.perf_counter() - t0) * 1000.0 if t0 else 0.0
+                print(
+                    f"CADIVOR_PHASE worker_start parts={len(early_df)} "
+                    f"elapsed_ms={int(elapsed)} via=bootstrap_before_paint",
+                    flush=True,
+                )
+                log = list(st.session_state.get("cadivor_analysis_phase_log") or [])
+                log.append(("worker_start", round(elapsed, 1)))
+                st.session_state["cadivor_analysis_phase_log"] = log
+                st.session_state["bom8_analysis_future"] = executor.submit(
+                    analyze_bom,
+                    early_df.copy(deep=True),
+                    progress_queue,
+                    cancel_event,
+                )
+                return True
+
+            if _future is None and not _progress_started:
+                try:
+                    if _bootstrap_bom_analysis_worker():
+                        _future = st.session_state.get("bom8_analysis_future")
+                        _progress_started = True
+                except Exception as early_exc:
+                    st.session_state["cadivor_bom_bootstrap_error"] = str(early_exc)
+
             @st.fragment(run_every=1.0)
             def _render_active_bom_analysis():
                 current_future = st.session_state.get("bom8_analysis_future")
@@ -21547,82 +21659,73 @@ def run_authenticated_app() -> None:
                     elif completed < total_parts:
                         step = "Checking the remaining components"
                     else:
-                        step = "Saving the analysis"
-                    if not st.session_state.get("cadivor_analysis_first_progress_logged"):
-                        import time as _phase_time
-                        _t0 = float(st.session_state.get("cadivor_analysis_phase_t0") or 0.0)
-                        _elapsed = (_phase_time.perf_counter() - _t0) * 1000.0 if _t0 else 0.0
-                        print(
-                            f"CADIVOR_PHASE first_progress_ui "
-                            f"elapsed_ms={int(_elapsed)} step={step}",
-                            flush=True,
-                        )
-                        log = list(st.session_state.get("cadivor_analysis_phase_log") or [])
-                        log.append(("first_progress_ui", round(_elapsed, 1)))
-                        st.session_state["cadivor_analysis_phase_log"] = log
-                        st.session_state["cadivor_analysis_first_progress_logged"] = True
+                        step = "Finishing supplier checks"
                     st.markdown(
                         "<div class='cv-ap'><h1 style='margin:0 0 8px'>Analyzing BOM</h1></div>",
                         unsafe_allow_html=True,
                     )
-                    st.info(
-                        f"**{step}** — {completed} of {total_parts} components complete"
-                    )
-                    st.progress(completed / total_parts if total_parts else 0)
+                    st.info(f"**{step}** — {completed} of {total_parts} components complete")
+                    st.progress(completed / total_parts if total_parts else 0.0)
+                    if completed > 0 and not st.session_state.get(
+                        "cadivor_analysis_first_progress_logged"
+                    ):
+                        st.session_state["cadivor_analysis_first_progress_logged"] = True
+                        import time as _phase_time
+
+                        _t0 = float(st.session_state.get("cadivor_analysis_phase_t0") or 0.0)
+                        _elapsed = (
+                            (_phase_time.perf_counter() - _t0) * 1000.0 if _t0 else 0.0
+                        )
+                        print(
+                            f"CADIVOR_PHASE first_progress_ui elapsed_ms={int(_elapsed)} "
+                            f"step={step}",
+                            flush=True,
+                        )
                     return
 
-                try:
-                    analysis_result = current_future.result()
-                except Exception as e:
-                    from uuid import uuid4
+                # Keep the same top card painted while we mount results on the
+                # next full run — clearing the fragment first let the card jump.
+                st.markdown(
+                    "<div class='cv-ap'><h1 style='margin:0 0 8px'>Analyzing BOM</h1></div>",
+                    unsafe_allow_html=True,
+                )
+                st.info(
+                    f"**Saving the analysis** — {completed} of {total_parts} components complete"
+                )
+                st.progress(completed / total_parts if total_parts else 1.0)
 
-                    failure_ref = uuid4().hex[:8].upper()
-                    # Keep logs useful for correlation without recording the
-                    # uploaded BOM, part numbers, credentials, or exception text.
-                    logger.warning(
-                        "BOM analysis failed ref=%s stage=worker_result exception_type=%s frames=%s",
-                        failure_ref,
-                        type(e).__name__,
-                        safe_exception_frames(e),
-                    )
-                    if _one_time_reserved:
-                        if release_one_time_credit(_one_time_user_id, _one_time_order_id):
-                            st.session_state.pop("cadivor_one_time_bom_order_id", None)
-                    st.session_state.pop("bom8_analysis_future", None)
-                    failed_executor = st.session_state.pop("bom8_analysis_executor", None)
-                    if failed_executor is not None:
-                        failed_executor.shutdown(wait=False, cancel_futures=True)
-                    st.session_state.pop("bom8_analysis_progress_queue", None)
-                    st.session_state.pop("bom8_analysis_cancel_event", None)
-                    st.session_state.pop("bom8_analysis_progress", None)
-                    finish_approved_bom_submission(st.session_state, reopen_upload=True)
-                    st.session_state["cadivor_bom_analysis_error"] = (
-                        "The analysis could not complete. Your upload is still available. "
-                        f"Please retry; if it fails again, share reference {failure_ref} with support."
-                    )
-                    from src.ui.navigation import request_main_scroll_reset
-
-                    st.session_state["cadivor_bom_analysis_scroll_token"] = request_main_scroll_reset()
-                    st.rerun()
-
+                # Future finished — mount result or terminal state once.
                 st.session_state.pop("bom8_analysis_future", None)
+                st.session_state.pop("bom8_analysis_progress_queue", None)
+                st.session_state.pop("bom8_analysis_cancel_event", None)
                 executor = st.session_state.pop("bom8_analysis_executor", None)
                 if executor is not None:
                     executor.shutdown(wait=False, cancel_futures=True)
-                st.session_state.pop("bom8_analysis_progress_queue", None)
-                st.session_state.pop("bom8_analysis_cancel_event", None)
                 st.session_state.pop("bom8_analysis_progress", None)
 
-                if analysis_result is None:
-                    if _one_time_reserved:
-                        if release_one_time_credit(_one_time_user_id, _one_time_order_id):
-                            st.session_state.pop("cadivor_one_time_bom_order_id", None)
+                try:
+                    analysis_result = current_future.result()
+                except Exception as exc:
                     finish_approved_bom_submission(st.session_state, reopen_upload=True)
-                    st.session_state["bom8_analysis_cancelled_notice"] = True
+                    st.error(f"BOM analysis failed: {exc}")
                     from src.ui.navigation import request_main_scroll_reset
 
-                    st.session_state["cadivor_bom_analysis_scroll_token"] = request_main_scroll_reset()
+                    st.session_state["cadivor_bom_analysis_scroll_token"] = (
+                        request_main_scroll_reset()
+                    )
                     st.rerun()
+                    return
+
+                if analysis_result is None:
+                    finish_approved_bom_submission(st.session_state, reopen_upload=True)
+                    st.warning("Analysis canceled. No BOM analysis was saved.")
+                    from src.ui.navigation import request_main_scroll_reset
+
+                    st.session_state["cadivor_bom_analysis_scroll_token"] = (
+                        request_main_scroll_reset()
+                    )
+                    st.rerun()
+                    return
 
                 results_df, degraded = analysis_result
                 st.session_state["results_df"] = results_df
@@ -21635,10 +21738,11 @@ def run_authenticated_app() -> None:
                     if degraded
                     else ""
                 )
-                # The report replaces the progress fragment on this same route.
-                # Reset after the result is mounted as well as when analysis
-                # starts, otherwise a long run can preserve the upload form's
-                # old scroll offset and reveal the report below the fold.
+                # Clear pipeline flags with the result mount so the next run
+                # opens the report once — never regresses to Preparing.
+                finish_approved_bom_submission(st.session_state, reopen_upload=False)
+                st.session_state.pop("cadivor_bom_component_progress_started", None)
+                st.session_state.pop("cadivor_analysis_first_progress_logged", None)
                 from src.ui.navigation import request_main_scroll_reset
 
                 st.session_state["cadivor_bom_analysis_scroll_token"] = request_main_scroll_reset()
@@ -21652,6 +21756,7 @@ def run_authenticated_app() -> None:
                 body:has(.st-key-bom8_analysis_progress_card, .st-key-bom8_analysis_preparing_card) .st-key-approved_bom_toolbar,
                 body:has(.st-key-bom8_analysis_progress_card, .st-key-bom8_analysis_preparing_card) .st-key-approved_bom_upload_panel,
                 body:has(.st-key-bom8_analysis_progress_card, .st-key-bom8_analysis_preparing_card) .st-key-bom9_upload_panel,
+                body:has(.st-key-bom8_analysis_progress_card, .st-key-bom8_analysis_preparing_card) .st-key-approved_bom_catalog_table,
                 body:has(.st-key-bom8_analysis_progress_card, .st-key-bom8_analysis_preparing_card) #cadivor-bom-analysis-top-anchor {
                   display:none !important;
                   height:0 !important;
@@ -21672,9 +21777,58 @@ def run_authenticated_app() -> None:
                 """,
                 unsafe_allow_html=True,
             )
+            # Same container key for preparing and progress so Streamlit does
+            # not remount the card at a new workspace position.
             with bom_analysis_status_slot.container():
                 with st.container(key="bom8_analysis_progress_card", border=True):
-                    _render_active_bom_analysis()
+                    if _future is not None:
+                        print("CADIVOR_PHASE progress_top_path", flush=True)
+                        st.session_state["cadivor_bom_component_progress_started"] = True
+                        _render_active_bom_analysis()
+                    elif _progress_started:
+                        print("CADIVOR_PHASE progress_hold_path", flush=True)
+                        completed, total_parts, current_mpn = st.session_state.get(
+                            "bom8_analysis_progress",
+                            (0, int(st.session_state.get("bom8_analysis_total_parts") or 0), ""),
+                        )
+                        st.markdown(
+                            "<div class='cv-ap'><h1 style='margin:0 0 8px'>Analyzing BOM</h1></div>",
+                            unsafe_allow_html=True,
+                        )
+                        st.info(
+                            f"**Saving the analysis** — {completed} of {total_parts} components complete"
+                        )
+                        st.progress(completed / total_parts if total_parts else 1.0)
+                    else:
+                        print("CADIVOR_PHASE preparing_top_path", flush=True)
+                        bootstrap_error = str(
+                            st.session_state.pop("cadivor_bom_bootstrap_error", "") or ""
+                        )
+                        st.markdown(
+                            "<div class='cv-ap'><h1 style='margin:0 0 8px'>Preparing your BOM analysis</h1></div>",
+                            unsafe_allow_html=True,
+                        )
+                        if bootstrap_error:
+                            st.error(
+                                f"Could not start the BOM analysis: {bootstrap_error}"
+                            )
+                        else:
+                            st.caption(
+                                "Reading the uploaded file and starting component checks."
+                            )
+                            st.progress(0, text="Preparing the first component check…")
+                        import time as _phase_time
+
+                        _t0 = float(st.session_state.get("cadivor_analysis_phase_t0") or 0.0)
+                        if _t0:
+                            _elapsed = (_phase_time.perf_counter() - _t0) * 1000.0
+                            print(
+                                f"CADIVOR_PHASE preparing_card_painted elapsed_ms={int(_elapsed)}",
+                                flush=True,
+                            )
+                            log = list(st.session_state.get("cadivor_analysis_phase_log") or [])
+                            log.append(("preparing_card_painted", round(_elapsed, 1)))
+                            st.session_state["cadivor_analysis_phase_log"] = log
             reveal_authenticated_page_body("BOM Analyzer", force=True)
             stop_authenticated_page()
 
@@ -22582,45 +22736,21 @@ def run_authenticated_app() -> None:
             unsafe_allow_html=True,
         )
 
-        # Honest analysis start: reserve the top workspace slot before catalog
-        # chrome so preparing is visible immediately. Active-future progress is
-        # painted even earlier (before BOM CSS) and stops the route body.
+        # Preparing already painted on the early surface (and may fall through
+        # to start the worker). Progress/hold stopped above. Never paint a
+        # second analysis card or recreate the top slot mid-page.
         _analysis_start_armed = bool(
             st.session_state.get("cadivor_bom_pipeline_active")
             or st.session_state.get("bom8_analysis_pending")
             or st.session_state.get("bom8_analysis_in_progress")
             or st.session_state.get("bom8_analysis_future")
             or st.session_state.get("cadivor_bom_analysis_ready")
+            or st.session_state.get("cadivor_bom_component_progress_started")
         )
-        _bom_preparing_painted = False
-        bom_analysis_status_slot = None
+        if not _early_analysis_surface_painted:
+            _bom_preparing_painted = bool(_analysis_start_armed)
+            bom_analysis_status_slot = None
         bom_new_analysis_slot = None
-        if _analysis_start_armed and st.session_state.get("bom8_analysis_future") is None:
-            bom_analysis_status_slot = st.empty()
-            bom_new_analysis_slot = st.empty()
-            with bom_analysis_status_slot.container():
-                with st.container(key="bom8_analysis_preparing_card", border=True):
-                    st.markdown(
-                        "<div class='cv-ap'><h1 style='margin:0 0 8px'>Preparing your BOM analysis</h1></div>",
-                        unsafe_allow_html=True,
-                    )
-                    st.caption(
-                        "Reading the uploaded file and starting component checks."
-                    )
-                    st.progress(0, text="Preparing the first component check…")
-            _bom_preparing_painted = True
-            reveal_authenticated_page_body("BOM Analyzer", force=True)
-            import time as _phase_time
-            _t0 = float(st.session_state.get("cadivor_analysis_phase_t0") or 0.0)
-            if _t0:
-                _elapsed = (_phase_time.perf_counter() - _t0) * 1000.0
-                print(
-                    f"CADIVOR_PHASE preparing_card_painted elapsed_ms={int(_elapsed)}",
-                    flush=True,
-                )
-                log = list(st.session_state.get("cadivor_analysis_phase_log") or [])
-                log.append(("preparing_card_painted", round(_elapsed, 1)))
-                st.session_state["cadivor_analysis_phase_log"] = log
 
 
         # New BOM upload is the destination surface. Do not block the file
@@ -22770,15 +22900,8 @@ def run_authenticated_app() -> None:
                 st.session_state["cadivor_analysis_phase_log"] = [
                     ("analyze_click_consumed", 0.0)
                 ]
-                with st.container(key="bom8_analysis_preparing_card", border=True):
-                    st.markdown(
-                        "<div class='cv-ap'><h1 style='margin:0 0 8px'>Preparing your BOM analysis</h1></div>",
-                        unsafe_allow_html=True,
-                    )
-                    st.caption(
-                        "Reading the uploaded file and starting component checks."
-                    )
-                    st.progress(0, text="Preparing the first component check…")
+                # Rerun into the top analysis surface — do not paint preparing
+                # under the upload form (that caused the mid-page jump).
                 _bom_preparing_painted = True
                 reveal_authenticated_page_body("BOM Analyzer", force=True)
                 request_main_scroll_reset()
@@ -22978,29 +23101,12 @@ def run_authenticated_app() -> None:
 
             # Top status slot is reserved earlier when analysis is armed so the
             # progress card is not pushed below catalog/anchor chrome.
+            # Preparing/progress already painted on the unified early surface
+            # (or stopped there). Never paint a second mid-page Preparing card.
             if bom_analysis_status_slot is None:
                 bom_analysis_status_slot = st.empty()
             if bom_new_analysis_slot is None:
                 bom_new_analysis_slot = st.empty()
-            if (
-                (_approved_bom_pipeline_active or analysis_in_progress)
-                and st.session_state.get("bom8_analysis_future") is None
-                and not _bom_preparing_painted
-            ):
-                with bom_analysis_status_slot.container():
-                    with st.container(
-                        key="bom8_analysis_preparing_card",
-                        border=True,
-                    ):
-                        st.markdown(
-                            "<div class='cv-ap'><h1 style='margin:0 0 8px'>Preparing your BOM analysis</h1></div>",
-                            unsafe_allow_html=True,
-                        )
-                        st.caption(
-                            "Reading the uploaded file and starting component checks."
-                        )
-                        st.progress(0, text="Preparing the first component check…")
-                    _bom_preparing_painted = True
 
             def _render_saved_bom_manager() -> None:
                 """Render saved analyses beside the new-BOM workflow on desktop."""
@@ -24453,6 +24559,7 @@ def run_authenticated_app() -> None:
             progress_queue.put((0, len(bom_df), first_mpn or "Starting"))
             st.session_state["bom8_analysis_progress"] = (0, len(bom_df), first_mpn or "Starting")
             st.session_state["bom8_analysis_total_parts"] = len(bom_df)
+            st.session_state["cadivor_bom_component_progress_started"] = True
             import time as _phase_time
             _t0 = float(st.session_state.get("cadivor_analysis_phase_t0") or 0.0)
             _elapsed = (_phase_time.perf_counter() - _t0) * 1000.0 if _t0 else 0.0

@@ -358,8 +358,12 @@ class ApprovedBOMSubmissionTests(unittest.TestCase):
         consume = source.index("consume_approved_bom_submission(st.session_state)", render)
         transition = source[consume : consume + 1800]
         self.assertIn("if _approved_bom_submitted and uploaded_file is not None:", transition)
-        self.assertIn("bom8_analysis_preparing_card", transition)
+        # Analyze click must not paint Preparing under the upload form; the
+        # unified early surface owns preparing/progress on the next run.
+        self.assertNotIn("bom8_analysis_preparing_card", transition)
         self.assertIn("st.rerun()", transition)
+        self.assertIn("Unified analysis surface:", source)
+        self.assertIn("preparing_top_path", source)
         self.assertIn(
             "if not analysis_in_progress and not _has_completed_saved_results:\n            render_upload_detected(",
             source,

@@ -63,8 +63,8 @@ def test_long_bom_analysis_keeps_top_anchor_until_progress_finishes_or_user_scro
     assert "window.setInterval(state.reset, 350)" not in catalog_during_analysis
     assert 'cadivor-bom-analysis-top-anchor' not in catalog_during_analysis
 
-    # Scroll reset is owned by the early progress path + fragment completion.
-    early = runtime.split("Active analysis: paint progress before BOM CSS/catalog", 1)[1]
+    # Scroll reset is owned by the unified early analysis surface + fragment completion.
+    early = runtime.split("Unified analysis surface:", 1)[1]
     assert "request_main_scroll_reset()" in early.split("def _render_active_bom_analysis():", 1)[0]
     assert early.split("def _render_active_bom_analysis():", 1)[1].count(
         "request_main_scroll_reset()"
@@ -112,24 +112,23 @@ def test_bom_progress_uses_the_reserved_top_slot_without_hiding_the_workspace():
         encoding="utf-8"
     )
     source = (ROOT / "src" / "authenticated_runtime.py").read_text(encoding="utf-8")
-    progress = source.index('with st.container(key="bom8_analysis_progress_card", border=True):')
-    progress_branch = source[progress - 1800 : progress + 250]
-    early_progress = source.index(
-        "Active analysis: paint progress before BOM CSS/catalog"
-    )
-    preparing_slot = source.index(
-        "Honest analysis start: reserve the top workspace slot before catalog"
-    )
-    preparing_empty = source.index(
-        "bom_analysis_status_slot = st.empty()", preparing_slot
+    early_surface = source.index("Unified analysis surface:")
+    surface_end = source.index("stop_authenticated_page()", early_surface)
+    surface = source[early_surface:surface_end]
+    progress = source.index(
+        'with st.container(key="bom8_analysis_progress_card", border=True):',
+        early_surface,
     )
 
-    # Active-future progress paints at BOM Analyzer entry, before catalog CSS.
-    assert early_progress < progress
-    assert "bom_analysis_status_slot = st.empty()" in source[early_progress:progress]
-    assert "with bom_analysis_status_slot.container():" in progress_branch
-    # Preparing still uses a reserved top slot before catalog chrome.
-    assert "Preparing your BOM analysis" in source[preparing_empty : preparing_empty + 1100]
+    # Preparing and progress share one top card before catalog CSS.
+    assert early_surface < progress < surface_end
+    assert "bom_analysis_status_slot = st.empty()" in surface
+    assert "with bom_analysis_status_slot.container():" in surface
+    assert "preparing_top_path" in surface
+    assert "progress_top_path" in surface
+    assert "progress_hold_path" in surface
+    assert "Preparing your BOM analysis" in surface
+    assert "display:none !important" in surface
     assert ".st-key-bom9_workspace_grid" in styles
     assert ".st-key-bom8_analysis_preparing_card" in styles
     assert "st-key-bom8_analysis_progress_card, .st-key-bom8_analysis_preparing_card" in styles
