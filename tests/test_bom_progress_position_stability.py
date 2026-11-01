@@ -120,9 +120,15 @@ def test_handoff_defers_analysis_details_navigation_one_frame():
         "elif _future is not None and not _results_ready:", 1
     )[0]
     assert "cadivor_bom_navigate_details_id" in hold
-    assert "bom_analysis_status_slot.empty()" in hold
+    assert "finish_approved_bom_submission(st.session_state)" not in hold
     assert "st.rerun()" in hold
     assert 'navigate_to(\n                        "Analysis Details"' not in hold
+    bridge = RUNTIME.split("via=bridge_rerun", 1)[0]
+    assert bridge.rfind("finish_approved_bom_submission(st.session_state)") > bridge.rfind(
+        "cadivor_bom_navigate_details_id"
+    ) or "finish_approved_bom_submission(st.session_state)" in RUNTIME.split(
+        "_pending_details_nav", 1
+    )[1].split("Unified analysis surface:", 1)[0]
     details = RUNTIME.split('if app_mode == "Analysis Details":', 1)[1].split(
         'if app_mode == "BOM Settings":', 1
     )[0]

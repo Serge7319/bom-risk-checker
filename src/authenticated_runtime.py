@@ -21698,12 +21698,16 @@ def run_authenticated_app() -> None:
             st.session_state.pop("cadivor_bom_navigate_details_id", "") or ""
         ).strip()
         if _pending_details_nav:
+            from src.bom_upload_flow import finish_approved_bom_submission
             from src.ui.main_transition import (
                 DELAY_ROUTE_BODY_REVEAL_KEY as _delay_reveal_bridge,
                 MAIN_TRANSITION_KIND_KEY as _transition_kind_bridge,
                 PRESENTED_ROUTE_KEY as _presented_route_bridge,
             )
 
+            # Finish only now — after the Saving card held its top position.
+            finish_approved_bom_submission(st.session_state)
+            st.session_state.pop("cadivor_bom_analysis_ready", None)
             st.session_state.pop("cadivor_bom_nav_bridge", None)
             st.session_state.pop("cadivor_bom_analysis_handoff", None)
             st.session_state.pop("cadivor_bom_open_details_after_save", None)
@@ -22097,17 +22101,9 @@ def run_authenticated_app() -> None:
                     import time as _handoff_hold_time
 
                     _handoff_hold_time.sleep(0.75)
-                    from src.bom_upload_flow import finish_approved_bom_submission
-
-                    # Clear progress widgets first, then bridge-rerun into Details.
-                    # Same-run navigate remounted Saving under Analysis Details
-                    # chrome (cardTop ~246) before the report replaced it.
-                    try:
-                        bom_analysis_status_slot.empty()
-                    except Exception:
-                        pass
-                    finish_approved_bom_submission(st.session_state)
-                    st.session_state.pop("cadivor_bom_analysis_ready", None)
+                    # Keep handoff/catalog suppression through the bridge rerun.
+                    # finish() here unhid catalog chrome under the still-visible
+                    # Saving card and pushed cardTop ~246 before Details opened.
                     st.session_state["cadivor_bom_navigate_details_id"] = str(
                         _handoff_analysis_id
                     )
@@ -22298,18 +22294,11 @@ def run_authenticated_app() -> None:
                 import time as _handoff_hold_time
 
                 _handoff_hold_time.sleep(0.75)
-                from src.bom_upload_flow import finish_approved_bom_submission
-
                 _open_id = str(
-                    st.session_state.pop("cadivor_bom_open_details_after_save", "")
+                    st.session_state.get("cadivor_bom_open_details_after_save")
                     or _handoff_analysis_id
+                    or ""
                 ).strip()
-                try:
-                    bom_analysis_status_slot.empty()
-                except Exception:
-                    pass
-                finish_approved_bom_submission(st.session_state)
-                st.session_state.pop("cadivor_bom_analysis_ready", None)
                 st.session_state["cadivor_bom_navigate_details_id"] = _open_id
                 st.session_state["cadivor_bom_nav_bridge"] = True
                 print(
