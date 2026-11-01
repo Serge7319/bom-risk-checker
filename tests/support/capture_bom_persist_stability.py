@@ -176,15 +176,29 @@ def main() -> dict:
         if "report" in labeled:
             sidebar_ok = sidebar_ok and bool(labeled["report"].get("sidebarVisible"))
 
+        saving_tops = [
+            s.get("cardTop")
+            for s in samples
+            if s.get("kind") == "saving" and s.get("cardTop") is not None
+        ]
+        saving_all_range = (
+            (max(saving_tops) - min(saving_tops)) if saving_tops else None
+        )
         defects = {
             "card_drift_gt_8px": bool(stability.get("range") is not None and stability["range"] > MAX_DRIFT_PX),
+            "saving_navigate_drift_gt_8px": bool(
+                saving_all_range is not None and saving_all_range > MAX_DRIFT_PX
+            ),
             "sidebar_missing_before_report": not sidebar_ok,
             "missing_stages": [k for k in ("progress_0", "progress_mid", "progress_4", "saving", "report") if k not in labeled],
             "saving_without_sidebar": bool(labeled.get("saving") and not labeled["saving"].get("sidebarVisible")),
             "report_without_sidebar": bool(labeled.get("report") and not labeled["report"].get("sidebarVisible")),
         }
+        stability["saving_all_tops"] = saving_tops
+        stability["saving_all_range"] = saving_all_range
         passed = (
             not defects["card_drift_gt_8px"]
+            and not defects["saving_navigate_drift_gt_8px"]
             and not defects["sidebar_missing_before_report"]
             and not defects["missing_stages"]
             and report_ok

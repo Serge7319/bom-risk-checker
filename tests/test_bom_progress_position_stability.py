@@ -108,10 +108,20 @@ def test_handoff_skips_catalog_chrome_before_save():
     assert "render_bom_catalog(" not in handoff_branch
 
 def test_handoff_defers_analysis_details_navigation_one_frame():
-    """Saving stays on BOM Analyzer one frame so cardTop does not jump with the shell."""
+    """Saving stays on BOM Analyzer, then bridge-reruns into Details without remounting the card."""
     assert "cadivor_bom_open_details_after_save" in RUNTIME
     assert "handoff_saved_hold_saving" in RUNTIME
+    assert "handoff_navigate_bridge" in RUNTIME
+    assert "cadivor_bom_navigate_details_id" in RUNTIME
+    assert "via=bridge_rerun" in RUNTIME
     assert "handoff_navigate_analysis_details" in RUNTIME
+    # Same-run navigate after Saving remounted the card under Analysis Details.
+    hold = RUNTIME.split("handoff_hold_armed", 1)[1].split(
+        "elif _future is not None and not _results_ready:", 1
+    )[0]
+    assert "cadivor_bom_navigate_details_id" in hold
+    assert "st.rerun()" in hold
+    assert 'navigate_to(\n                        "Analysis Details"' not in hold
 
 
 
@@ -124,7 +134,8 @@ def test_handoff_persists_inline_without_catalog_fallthrough():
     assert "_persist_bom_handoff_analysis(" in surface
     assert "handoff_hold_armed" in surface
     assert "sleep(" in surface
-    assert "handoff_navigate_analysis_details" in surface
+    assert "handoff_navigate_bridge" in surface
+    assert "cadivor_bom_navigate_details_id" in surface
     # Must not resume catalog painting on this path.
     assert "render_bom_catalog(" not in surface
 
@@ -132,18 +143,24 @@ def test_handoff_persists_inline_without_catalog_fallthrough():
 def test_persist_keeps_shell_until_report_contract():
     """Saving must persist inline and only then navigate, keeping one saving frame."""
     assert "handoff_saved_hold_saving" in RUNTIME
+    assert "handoff_navigate_bridge" in RUNTIME
     assert "handoff_navigate_analysis_details" in RUNTIME
     assert "_persist_bom_handoff_analysis" in RUNTIME
-    # Inline persist happens before the hold/navigate rerun.
+    # Inline persist happens before the hold/bridge rerun.
     fall = RUNTIME.split("handoff_fallthrough_to_save", 1)[1]
     assert fall.index("_persist_bom_handoff_analysis(") < fall.index("handoff_saved_hold_saving")
+    assert fall.index("handoff_saved_hold_saving") < fall.index("handoff_navigate_bridge")
 
 
 def test_handoff_armed_does_not_remount_via_rerun():
-    """Worker completion must keep the Saving card in the progress fragment tree."""
+    """Worker completion persists inline; only the post-hold bridge uses st.rerun()."""
     armed = RUNTIME.split("CADIVOR_PHASE handoff_armed", 1)[1].split(
-        "return", 1
+        "handoff_hold_armed", 1
     )[0]
     assert "st.rerun()" not in armed
     assert "_persist_bom_handoff_analysis(" in armed
-    assert "handoff_navigate_analysis_details" in armed
+    hold = RUNTIME.split("handoff_hold_armed", 1)[1].split(
+        "elif _future is not None and not _results_ready:", 1
+    )[0]
+    assert "handoff_navigate_bridge" in hold
+    assert "st.rerun()" in hold

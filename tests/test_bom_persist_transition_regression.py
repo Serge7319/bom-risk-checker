@@ -13,4 +13,5 @@ def test_persist_stability_harness_measures_required_stages():
     assert "sidebarVisible" in source
     assert "MAX_DRIFT_PX = 8" in source
     assert "card_drift_gt_8px" in source
+    assert "saving_navigate_drift_gt_8px" in source
     assert "report_without_sidebar" in source

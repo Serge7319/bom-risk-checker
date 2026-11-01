@@ -21681,6 +21681,40 @@ def run_authenticated_app() -> None:
         )
         from src.bom_upload_flow import has_completed_saved_bom_results
 
+        # Bridge rerun after saving: open Analysis Details only once the progress
+        # card is already cleared from the widget tree. Navigating in the same
+        # run that painted Saving remounted that card ~200px lower under
+        # Analysis Details chrome before the EI report mounted.
+        _pending_details_nav = str(
+            st.session_state.pop("cadivor_bom_navigate_details_id", "") or ""
+        ).strip()
+        if _pending_details_nav:
+            from src.ui.main_transition import (
+                DELAY_ROUTE_BODY_REVEAL_KEY as _delay_reveal_bridge,
+                MAIN_TRANSITION_KIND_KEY as _transition_kind_bridge,
+                PRESENTED_ROUTE_KEY as _presented_route_bridge,
+            )
+
+            st.session_state.pop("cadivor_bom_nav_bridge", None)
+            st.session_state.pop("cadivor_bom_analysis_handoff", None)
+            st.session_state.pop("cadivor_bom_open_details_after_save", None)
+            st.session_state[_presented_route_bridge] = "Analysis Details"
+            st.session_state[_delay_reveal_bridge] = False
+            st.session_state.pop("cadivor_main_transition_active", None)
+            st.session_state.pop(_transition_kind_bridge, None)
+            print(
+                "CADIVOR_PHASE handoff_navigate_analysis_details "
+                f"route='Analysis Details' analysis_id={_pending_details_nav!r} "
+                "via=bridge_rerun",
+                flush=True,
+            )
+            navigate_to(
+                "Analysis Details",
+                analysis_id=_pending_details_nav,
+                analysis_tab="Engineering Intelligence",
+                arm_opening=False,
+            )
+
         # Unified analysis surface: preparing and component progress share one
         # top-aligned card before BOM CSS/catalog. This prevents the mid-page
         # preparing → top progress jump and the post-complete Preparing flash.
@@ -22054,32 +22088,22 @@ def run_authenticated_app() -> None:
                     import time as _handoff_hold_time
 
                     _handoff_hold_time.sleep(0.75)
-                    from src.ui.main_transition import (
-                        DELAY_ROUTE_BODY_REVEAL_KEY as _delay_reveal_hold,
-                        MAIN_TRANSITION_KIND_KEY as _transition_kind_hold,
-                        PRESENTED_ROUTE_KEY as _presented_route_hold,
-                    )
                     from src.bom_upload_flow import finish_approved_bom_submission
 
-                    st.session_state.pop("cadivor_bom_open_details_after_save", None)
-                    st.session_state.pop("cadivor_bom_handoff_hold_armed", None)
-                    st.session_state[_presented_route_hold] = "Analysis Details"
-                    st.session_state[_delay_reveal_hold] = False
-                    st.session_state.pop("cadivor_main_transition_active", None)
-                    st.session_state.pop(_transition_kind_hold, None)
-                    st.session_state.pop("cadivor_bom_analysis_handoff", None)
+                    # Clear progress widgets first, then bridge-rerun into Details.
+                    # Same-run navigate remounted Saving under Analysis Details
+                    # chrome (cardTop ~246) before the report replaced it.
                     finish_approved_bom_submission(st.session_state)
+                    st.session_state["cadivor_bom_navigate_details_id"] = str(
+                        _handoff_analysis_id
+                    )
+                    st.session_state["cadivor_bom_nav_bridge"] = True
                     print(
-                        "CADIVOR_PHASE handoff_navigate_analysis_details "
-                        f"route='Analysis Details' analysis_id={_handoff_analysis_id!r}",
+                        "CADIVOR_PHASE handoff_navigate_bridge "
+                        f"analysis_id={_handoff_analysis_id!r}",
                         flush=True,
                     )
-                    navigate_to(
-                        "Analysis Details",
-                        analysis_id=str(_handoff_analysis_id),
-                        analysis_tab="Engineering Intelligence",
-                        arm_opening=False,
-                    )
+                    st.rerun()
                 return
 
             st.markdown(
@@ -22260,35 +22284,21 @@ def run_authenticated_app() -> None:
                 import time as _handoff_hold_time
 
                 _handoff_hold_time.sleep(0.75)
-                from src.ui.main_transition import (
-                    DELAY_ROUTE_BODY_REVEAL_KEY as _delay_reveal_hold,
-                    MAIN_TRANSITION_KIND_KEY as _transition_kind_hold,
-                    PRESENTED_ROUTE_KEY as _presented_route_hold,
-                )
                 from src.bom_upload_flow import finish_approved_bom_submission
 
                 _open_id = str(
                     st.session_state.pop("cadivor_bom_open_details_after_save", "")
                     or _handoff_analysis_id
                 ).strip()
-                st.session_state.pop("cadivor_bom_handoff_hold_armed", None)
-                st.session_state[_presented_route_hold] = "Analysis Details"
-                st.session_state[_delay_reveal_hold] = False
-                st.session_state.pop("cadivor_main_transition_active", None)
-                st.session_state.pop(_transition_kind_hold, None)
-                st.session_state.pop("cadivor_bom_analysis_handoff", None)
                 finish_approved_bom_submission(st.session_state)
+                st.session_state["cadivor_bom_navigate_details_id"] = _open_id
+                st.session_state["cadivor_bom_nav_bridge"] = True
                 print(
-                    "CADIVOR_PHASE handoff_navigate_analysis_details "
-                    f"route='Analysis Details' analysis_id={_open_id!r}",
+                    "CADIVOR_PHASE handoff_navigate_bridge "
+                    f"analysis_id={_open_id!r}",
                     flush=True,
                 )
-                navigate_to(
-                    "Analysis Details",
-                    analysis_id=_open_id,
-                    analysis_tab="Engineering Intelligence",
-                    arm_opening=False,
-                )
+                st.rerun()
             elif _future is not None and not _results_ready:
                 stop_authenticated_page()
             else:

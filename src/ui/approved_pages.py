@@ -2677,6 +2677,7 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
         or st.session_state.get("bom8_analysis_in_progress")
         or st.session_state.get("cadivor_bom_pipeline_active")
         or st.session_state.get("cadivor_bom_analysis_handoff")
+        or st.session_state.get("cadivor_bom_nav_bridge")
     )
     catalog_requested = bool(
         st.session_state.get("cadivor_bom_catalog_requested")
