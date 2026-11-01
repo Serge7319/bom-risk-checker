@@ -2676,6 +2676,7 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
         or st.session_state.get("bom8_analysis_pending")
         or st.session_state.get("bom8_analysis_in_progress")
         or st.session_state.get("cadivor_bom_pipeline_active")
+        or st.session_state.get("cadivor_bom_analysis_handoff")
     )
     catalog_requested = bool(
         st.session_state.get("cadivor_bom_catalog_requested")
@@ -2687,12 +2688,12 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
         not catalog_requested
         and analysis_results is not None
         and not getattr(analysis_results, "empty", True)
+        and not analysis_running
     )
-    if analysis_running and not results_visible:
-        # Progress owns the workspace. Do not paint catalog title, filters,
-        # table, or scroll-anchor chrome here — those sat above the progress
-        # card after sibling-hiding was narrowed to upload keys only.
-        # Scroll reset is requested by the analysis progress path itself.
+    if analysis_running:
+        # Progress/handoff owns the workspace — including after results exist
+        # but before Analysis Details mounts. Painting results chrome here left
+        # only "Review uploaded components" over a blank shell.
         return
     with st.container(key="approved_bom_title"):
         title_col, action_col = st.columns([1, 0.28], gap="small", vertical_alignment="center")

@@ -53,13 +53,14 @@ def test_compare_parts_submission_keeps_form_and_result_at_the_top():
 def test_long_bom_analysis_keeps_top_anchor_until_progress_finishes_or_user_scrolls():
     pages = (ROOT / "src" / "ui" / "approved_pages.py").read_text(encoding="utf-8")
     runtime = (ROOT / "src" / "authenticated_runtime.py").read_text(encoding="utf-8")
-    start = pages.index("if analysis_running and not results_visible:")
+    start = pages.index("if analysis_running:")
     end = pages.index('with st.container(key="approved_bom_title")', start)
     catalog_during_analysis = pages[start:end]
 
     # Catalog must not paint filters/table/anchor above the live progress card.
-    assert "Progress owns the workspace" in catalog_during_analysis
+    assert "Progress/handoff owns the workspace" in catalog_during_analysis
     assert "return" in catalog_during_analysis
+    assert 'cadivor_bom_analysis_handoff' in pages
     assert "window.setInterval(state.reset, 350)" not in catalog_during_analysis
     assert 'cadivor-bom-analysis-top-anchor' not in catalog_during_analysis
 
@@ -126,7 +127,7 @@ def test_bom_progress_uses_the_reserved_top_slot_without_hiding_the_workspace():
     assert "with bom_analysis_status_slot.container():" in surface
     assert "preparing_top_path" in surface
     assert "progress_top_path" in surface
-    assert "progress_hold_path" in surface
+    assert "progress_handoff_path" in surface
     assert "Preparing your BOM analysis" in surface
     assert "display:none !important" in surface
     assert ".st-key-bom9_workspace_grid" in styles
