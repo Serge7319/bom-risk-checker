@@ -120,8 +120,14 @@ def test_handoff_defers_analysis_details_navigation_one_frame():
         "elif _future is not None and not _results_ready:", 1
     )[0]
     assert "cadivor_bom_navigate_details_id" in hold
+    assert "bom_analysis_status_slot.empty()" in hold
     assert "st.rerun()" in hold
     assert 'navigate_to(\n                        "Analysis Details"' not in hold
+    details = RUNTIME.split('if app_mode == "Analysis Details":', 1)[1].split(
+        'if app_mode == "BOM Settings":', 1
+    )[0]
+    assert ".st-key-bom8_analysis_progress_card" in details
+    assert "display:none!important" in details
 
 
 

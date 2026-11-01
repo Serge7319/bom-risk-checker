@@ -20,8 +20,18 @@ BASE = __import__("os").environ.get(
 MAX_DRIFT_PX = 8
 
 MEASURE = """() => {
-  const card = document.querySelector('.st-key-bom8_analysis_progress_card, .st-key-bom8_analysis_preparing_card');
-  const main = document.querySelector('section[data-testid="stMain"]');
+  const visible = (el) => {
+    if (!el) return false;
+    const s = getComputedStyle(el);
+    const r = el.getBoundingClientRect();
+    return s.display !== 'none' && s.visibility !== 'hidden' && r.height > 2 && r.width > 2;
+  };
+  // Prefer a visible progress card. Hidden leftovers on Analysis Details
+  // (display:none) must not count toward saving drift.
+  const cardCandidates = Array.from(document.querySelectorAll(
+    '.st-key-bom8_analysis_progress_card, .st-key-bom8_analysis_preparing_card'
+  ));
+  const card = cardCandidates.find(visible) || null;
   const sidebar = document.querySelector(
     '.cv-foundation-sidebar, .cv-app-sidebar, [class*="foundation_navigation"], [class*="st-key-cv_foundation"], [data-testid="stSidebar"], section[data-testid="stSidebar"]'
   );
@@ -37,12 +47,6 @@ MEASURE = """() => {
     }
     return null;
   })();
-  const visible = (el) => {
-    if (!el) return false;
-    const s = getComputedStyle(el);
-    const r = el.getBoundingClientRect();
-    return s.display !== 'none' && s.visibility !== 'hidden' && r.height > 2 && r.width > 2;
-  };
   const bodyText = document.body.innerText || '';
   const url = location.href || '';
   const onAnalysisDetails = url.includes('Analysis') && url.includes('Details');
@@ -55,11 +59,11 @@ MEASURE = """() => {
   const report = hasReportCanvas || (onAnalysisDetails && hasReportBody) || (!bodyText.includes('+ New BOM analysis') && hasReportBody);
   const text = card ? (card.innerText || '') : '';
   const m = text.match(/(\\d+)\\s+of\\s+(\\d+)/);
-  const preparing = bodyText.includes('Preparing your BOM analysis');
-  const saving = bodyText.includes('Saving the analysis');
+  const preparing = Boolean(card) && bodyText.includes('Preparing your BOM analysis');
+  const saving = Boolean(card) && text.includes('Saving the analysis');
   const kind = preparing ? 'preparing'
     : (saving ? 'saving'
-    : (text.includes('Analyzing BOM') ? 'progress'
+    : ((card && text.includes('Analyzing BOM')) ? 'progress'
     : (report ? 'report' : 'other')));
   return {
     kind,

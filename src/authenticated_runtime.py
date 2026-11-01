@@ -4731,9 +4731,18 @@ def run_authenticated_app() -> None:
         )
         # Give the saved-BOM workspace and every section/tab the same centered
         # 1440px canvas used by Home and the other standard workspaces.
+        # Also hide any leftover BOM progress card from the prior Analyzer run —
+        # Streamlit can briefly keep that fragment DOM under Details chrome
+        # (cardTop ~246) before the Engineering Intelligence report mounts.
         st.html(
             """
             <style id="cadivor-analysis-workspace-canvas" data-cadivor-layout-style="true">
+            .st-key-bom8_analysis_progress_card,
+            .st-key-bom8_analysis_preparing_card{
+              display:none!important;height:0!important;max-height:0!important;
+              margin:0!important;padding:0!important;overflow:hidden!important;
+              border:0!important;visibility:hidden!important
+            }
             section[data-testid="stMain"] .st-key-approved_page_canvas_standard_analysis_detail{
               box-sizing:border-box!important;width:100%!important;max-width:1440px!important;
               min-width:0!important;margin-left:auto!important;margin-right:auto!important;
@@ -22093,7 +22102,12 @@ def run_authenticated_app() -> None:
                     # Clear progress widgets first, then bridge-rerun into Details.
                     # Same-run navigate remounted Saving under Analysis Details
                     # chrome (cardTop ~246) before the report replaced it.
+                    try:
+                        bom_analysis_status_slot.empty()
+                    except Exception:
+                        pass
                     finish_approved_bom_submission(st.session_state)
+                    st.session_state.pop("cadivor_bom_analysis_ready", None)
                     st.session_state["cadivor_bom_navigate_details_id"] = str(
                         _handoff_analysis_id
                     )
@@ -22290,7 +22304,12 @@ def run_authenticated_app() -> None:
                     st.session_state.pop("cadivor_bom_open_details_after_save", "")
                     or _handoff_analysis_id
                 ).strip()
+                try:
+                    bom_analysis_status_slot.empty()
+                except Exception:
+                    pass
                 finish_approved_bom_submission(st.session_state)
+                st.session_state.pop("cadivor_bom_analysis_ready", None)
                 st.session_state["cadivor_bom_navigate_details_id"] = _open_id
                 st.session_state["cadivor_bom_nav_bridge"] = True
                 print(
