@@ -113,7 +113,7 @@ def test_handoff_defers_analysis_details_navigation_one_frame():
     assert "handoff_saved_hold_saving" in RUNTIME
     assert "handoff_navigate_bridge" in RUNTIME
     assert "cadivor_bom_navigate_details_id" in RUNTIME
-    assert "via=bridge_rerun" in RUNTIME
+    assert "via=bridge_rerun_early" in RUNTIME
     assert "handoff_navigate_analysis_details" in RUNTIME
     # Same-run navigate after Saving remounted the card under Analysis Details.
     hold = RUNTIME.split("handoff_hold_armed", 1)[1].split(
@@ -122,13 +122,14 @@ def test_handoff_defers_analysis_details_navigation_one_frame():
     assert "cadivor_bom_navigate_details_id" in hold
     assert "finish_approved_bom_submission(st.session_state)" not in hold
     assert "st.rerun()" in hold
-    assert 'navigate_to(\n                        "Analysis Details"' not in hold
-    bridge = RUNTIME.split("via=bridge_rerun", 1)[0]
-    assert bridge.rfind("finish_approved_bom_submission(st.session_state)") > bridge.rfind(
-        "cadivor_bom_navigate_details_id"
-    ) or "finish_approved_bom_submission(st.session_state)" in RUNTIME.split(
-        "_pending_details_nav", 1
-    )[1].split("Unified analysis surface:", 1)[0]
+    early_bridge = RUNTIME.split("_pending_details_nav_early", 1)[1].split(
+        "def _resolved_qp_value", 1
+    )[0]
+    assert "finish_approved_bom_submission(st.session_state)" in early_bridge
+    assert "via=bridge_rerun_early" in early_bridge
+    assert RUNTIME.index("_pending_details_nav_early") < RUNTIME.index(
+        "Paint the durable foundation shell"
+    )
     details = RUNTIME.split('if app_mode == "Analysis Details":', 1)[1].split(
         'if app_mode == "BOM Settings":', 1
     )[0]

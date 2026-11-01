@@ -2592,6 +2592,43 @@ def run_authenticated_app() -> None:
     _shell_route = resolve_canonical_app_route(allow_admin=True)
     app_mode = _shell_route
 
+    # BOM save→Details bridge must run before foundation shell paint. Waiting
+    # until the BOM Analyzer branch remounted shell chrome under the Saving
+    # card and pushed cardTop ~200px before Engineering Intelligence opened.
+    _pending_details_nav_early = str(
+        st.session_state.pop("cadivor_bom_navigate_details_id", "") or ""
+    ).strip()
+    if _pending_details_nav_early and st.session_state.get("cadivor_bom_nav_bridge"):
+        from src.bom_upload_flow import finish_approved_bom_submission
+        from src.ui.main_transition import (
+            DELAY_ROUTE_BODY_REVEAL_KEY as _delay_reveal_bridge_early,
+            MAIN_TRANSITION_KIND_KEY as _transition_kind_bridge_early,
+            PRESENTED_ROUTE_KEY as _presented_route_bridge_early,
+        )
+        from src.ui.navigation import navigate_to as _navigate_to_bridge_early
+
+        finish_approved_bom_submission(st.session_state)
+        st.session_state.pop("cadivor_bom_analysis_ready", None)
+        st.session_state.pop("cadivor_bom_nav_bridge", None)
+        st.session_state.pop("cadivor_bom_analysis_handoff", None)
+        st.session_state.pop("cadivor_bom_open_details_after_save", None)
+        st.session_state[_presented_route_bridge_early] = "Analysis Details"
+        st.session_state[_delay_reveal_bridge_early] = False
+        st.session_state.pop("cadivor_main_transition_active", None)
+        st.session_state.pop(_transition_kind_bridge_early, None)
+        print(
+            "CADIVOR_PHASE handoff_navigate_analysis_details "
+            f"route='Analysis Details' analysis_id={_pending_details_nav_early!r} "
+            "via=bridge_rerun_early",
+            flush=True,
+        )
+        _navigate_to_bridge_early(
+            "Analysis Details",
+            analysis_id=_pending_details_nav_early,
+            analysis_tab="Engineering Intelligence",
+            arm_opening=False,
+        )
+
     def _resolved_qp_value(name: str, default: str = "") -> str:
         from src.ui.navigation import current_navigation_query_value as _current_navigation_query_value
 
@@ -21689,44 +21726,6 @@ def run_authenticated_app() -> None:
             reserved_credit as one_time_credit_reserved,
         )
         from src.bom_upload_flow import has_completed_saved_bom_results
-
-        # Bridge rerun after saving: open Analysis Details only once the progress
-        # card is already cleared from the widget tree. Navigating in the same
-        # run that painted Saving remounted that card ~200px lower under
-        # Analysis Details chrome before the EI report mounted.
-        _pending_details_nav = str(
-            st.session_state.pop("cadivor_bom_navigate_details_id", "") or ""
-        ).strip()
-        if _pending_details_nav:
-            from src.bom_upload_flow import finish_approved_bom_submission
-            from src.ui.main_transition import (
-                DELAY_ROUTE_BODY_REVEAL_KEY as _delay_reveal_bridge,
-                MAIN_TRANSITION_KIND_KEY as _transition_kind_bridge,
-                PRESENTED_ROUTE_KEY as _presented_route_bridge,
-            )
-
-            # Finish only now — after the Saving card held its top position.
-            finish_approved_bom_submission(st.session_state)
-            st.session_state.pop("cadivor_bom_analysis_ready", None)
-            st.session_state.pop("cadivor_bom_nav_bridge", None)
-            st.session_state.pop("cadivor_bom_analysis_handoff", None)
-            st.session_state.pop("cadivor_bom_open_details_after_save", None)
-            st.session_state[_presented_route_bridge] = "Analysis Details"
-            st.session_state[_delay_reveal_bridge] = False
-            st.session_state.pop("cadivor_main_transition_active", None)
-            st.session_state.pop(_transition_kind_bridge, None)
-            print(
-                "CADIVOR_PHASE handoff_navigate_analysis_details "
-                f"route='Analysis Details' analysis_id={_pending_details_nav!r} "
-                "via=bridge_rerun",
-                flush=True,
-            )
-            navigate_to(
-                "Analysis Details",
-                analysis_id=_pending_details_nav,
-                analysis_tab="Engineering Intelligence",
-                arm_opening=False,
-            )
 
         # Unified analysis surface: preparing and component progress share one
         # top-aligned card before BOM CSS/catalog. This prevents the mid-page
