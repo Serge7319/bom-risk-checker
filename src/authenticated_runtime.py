@@ -2607,6 +2607,20 @@ def run_authenticated_app() -> None:
         )
         from src.ui.navigation import navigate_to as _navigate_to_bridge_early
 
+        # Hide any retained Saving card before route chrome swaps so Details
+        # cannot paint it at a lower cardTop for a frame.
+        st.html(
+            """
+            <style id="cadivor-bom-progress-bridge-hide" data-cadivor-layout-style="true">
+            .st-key-bom8_analysis_progress_card,
+            .st-key-bom8_analysis_preparing_card{
+              display:none!important;visibility:hidden!important;height:0!important;
+              max-height:0!important;margin:0!important;padding:0!important;
+              overflow:hidden!important;border:0!important;opacity:0!important
+            }
+            </style>
+            """
+        )
         finish_approved_bom_submission(st.session_state)
         st.session_state.pop("cadivor_bom_analysis_ready", None)
         st.session_state.pop("cadivor_bom_nav_bridge", None)
