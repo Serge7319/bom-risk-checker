@@ -1,0 +1,129 @@
+{
+  "wrong_manufacturer": {
+    "identity": {
+      "part_a": {
+        "attached": true,
+        "verified": false,
+        "mpn_verified": false,
+        "manufacturer_verified": false,
+        "reason": "The extracted text does not name the exact MPN RES10K."
+      },
+      "part_b": {
+        "attached": true,
+        "verified": false,
+        "mpn_verified": false,
+        "manufacturer_verified": true,
+        "reason": "The extracted text does not name the exact MPN RES10KE."
+      }
+    },
+    "resistance": {
+      "Attribute": "Resistance",
+      "Part A": "Not stated in retrieved evidence",
+      "Part B": "Not stated in retrieved evidence",
+      "Assessment": "Needs data / engineering validation",
+      "Evidence": "Part A datasheet was not used. The extracted text does not name the exact MPN RES10K. Part B datasheet was not used. The extracted text does not name the exact MPN RES10KE."
+    }
+  },
+  "exact_mpn_absent_in_family_pdf": {
+    "identity": {
+      "part_a": {
+        "attached": true,
+        "verified": false,
+        "mpn_verified": false,
+        "manufacturer_verified": true,
+        "reason": "The extracted text does not name the exact MPN RES10K."
+      },
+      "part_b": {
+        "attached": true,
+        "verified": false,
+        "mpn_verified": false,
+        "manufacturer_verified": true,
+        "reason": "The extracted text does not name the exact MPN RES10KE."
+      }
+    },
+    "sample_evidence": "Part A datasheet was not used. The extracted text does not name the exact MPN RES10K. Part B datasheet was not used. The extracted text does not name the exact MPN RES10KE."
+  },
+  "missing_pdf": {
+    "identity": {
+      "part_a": {
+        "attached": false,
+        "verified": false,
+        "mpn_verified": false,
+        "manufacturer_verified": false,
+        "reason": "No datasheet was attached for this part."
+      },
+      "part_b": {
+        "attached": false,
+        "verified": false,
+        "mpn_verified": false,
+        "manufacturer_verified": false,
+        "reason": "No datasheet was attached for this part."
+      }
+    },
+    "warnings": []
+  },
+  "failed_pdf": {
+    "identity": {
+      "part_a": {
+        "attached": true,
+        "verified": false,
+        "mpn_verified": false,
+        "manufacturer_verified": false,
+        "reason": "The PDF was retrieved, but it contains no extractable text. Inspect the PDF drawings directly. OCR is not supported."
+      },
+      "part_b": {
+        "attached": true,
+        "verified": false,
+        "mpn_verified": false,
+        "manufacturer_verified": true,
+        "reason": "The extracted text does not name the exact MPN RES10KE."
+      }
+    },
+    "warnings_head": [
+      "Part A: The PDF was retrieved, but it contains no extractable text. Inspect the PDF drawings directly. OCR is not supported.",
+      "Part B: The extracted text does not name the exact MPN RES10KE.",
+      "Drop-in fit is unverified: Temperature range, Resistance, Tolerance, Power rating, Maximum working voltage, Taper, Element type, Turns, Rotation, Terminal style, Terminal count, Shaft, Bushing, and Body are not stated in the retrieved evidence. Those values were not inferred."
+    ]
+  },
+  "wrong_mpn_swapped_documents": {
+    "identity": {
+      "part_a": {
+        "attached": true,
+        "verified": false,
+        "mpn_verified": false,
+        "manufacturer_verified": true,
+        "reason": "The extracted text does not name the exact MPN RES10K."
+      },
+      "part_b": {
+        "attached": true,
+        "verified": false,
+        "mpn_verified": false,
+        "manufacturer_verified": true,
+        "reason": "The extracted text does not name the exact MPN RES10KE."
+      }
+    },
+    "resistance": {
+      "Attribute": "Resistance",
+      "Part A": "Not stated in retrieved evidence",
+      "Part B": "Not stated in retrieved evidence",
+      "Assessment": "Needs data / engineering validation",
+      "Evidence": "Part A datasheet was not used. The extracted text does not name the exact MPN RES10K. Part B datasheet was not used. The extracted text does not name the exact MPN RES10KE."
+    }
+  },
+  "wrong_manufacturer_named_mpn": {
+    "identity_a": {
+      "attached": true,
+      "verified": false,
+      "mpn_verified": true,
+      "manufacturer_verified": false,
+      "reason": "The extracted text does not name the manufacturer Ohmite."
+    },
+    "resistance": {
+      "Attribute": "Resistance",
+      "Part A": "Not stated in retrieved evidence",
+      "Part B": "10 kOhm",
+      "Assessment": "Needs data / engineering validation",
+      "Evidence": "Part A datasheet was not used. The extracted text does not name the manufacturer Ohmite. Part B datasheet RES10KE-synthetic.pdf p. 1. Excerpt: Resistance 10 kOhm. Extraction method: native PDF text."
+    }
+  }
+}

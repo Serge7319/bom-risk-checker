@@ -1,0 +1,212 @@
+{
+  "objective": "Recheck RES10K via Ohmite-authorized distributor pages (Galco, Arrow) before API/upload",
+  "live_retrieval": {
+    "res10k_identity_verified": false,
+    "res10ke_identity_verified": true,
+    "arrow": {
+      "source": "Arrow",
+      "source_type": "arrow_authorized_product_page",
+      "url": "https://www.arrow.com/en/products/res10k/ohmite",
+      "status": "timeout",
+      "detail": "The source timed out.",
+      "identity_verified": false,
+      "retrieved_at": "2026-10-28T22:40:49Z"
+    },
+    "galco_statuses": [
+      {
+        "source": "Galco",
+        "source_type": "galco_authorized_product_page",
+        "url": "https://www.galco.com/buy/Ohmite/RES10K",
+        "status": "http_blocked",
+        "detail": "HTTP access challenge / Cloudflare interstitial. The body was not used as evidence.",
+        "identity_verified": false,
+        "retrieved_at": "2026-10-28T22:40:49Z"
+      },
+      {
+        "source": "Galco",
+        "source_type": "galco_authorized_product_page",
+        "url": "https://www.galco.com/res10k-ohm.html",
+        "status": "http_blocked",
+        "detail": "HTTP access challenge / Cloudflare interstitial. The body was not used as evidence.",
+        "identity_verified": false,
+        "retrieved_at": "2026-10-28T22:40:49Z"
+      }
+    ],
+    "notable_sources": [
+      {
+        "source": "Ohmite",
+        "source_type": "manufacturer_catalog_path",
+        "status": "redirect_loop",
+        "url": "https://www.ohmite.com/catalog/rheostats/RES10K",
+        "identity_verified": false,
+        "detail": "The manufacturer page redirected too many times.",
+        "retrieved_at": "2026-10-28T22:40:26Z"
+      },
+      {
+        "source": "Arrow",
+        "source_type": "arrow_authorized_product_page",
+        "status": "timeout",
+        "url": "https://www.arrow.com/en/products/res10k/ohmite",
+        "identity_verified": false,
+        "detail": "The source timed out.",
+        "retrieved_at": "2026-10-28T22:40:49Z"
+      },
+      {
+        "source": "Galco",
+        "source_type": "galco_authorized_product_page",
+        "status": "http_blocked",
+        "url": "https://www.galco.com/buy/Ohmite/RES10K",
+        "identity_verified": false,
+        "detail": "HTTP access challenge / Cloudflare interstitial. The body was not used as evidence.",
+        "retrieved_at": "2026-10-28T22:40:49Z"
+      },
+      {
+        "source": "Galco",
+        "source_type": "galco_authorized_product_page",
+        "status": "http_blocked",
+        "url": "https://www.galco.com/res10k-ohm.html",
+        "identity_verified": false,
+        "detail": "HTTP access challenge / Cloudflare interstitial. The body was not used as evidence.",
+        "retrieved_at": "2026-10-28T22:40:49Z"
+      },
+      {
+        "source": "Mouser",
+        "source_type": "authorized_distributor_api",
+        "status": "not_configured",
+        "url": "",
+        "identity_verified": false,
+        "detail": "Mouser API credentials are not configured in this environment.",
+        "retrieved_at": "2026-10-28T22:40:50Z"
+      },
+      {
+        "source": "DigiKey",
+        "source_type": "authorized_distributor_api",
+        "status": "not_configured",
+        "url": "",
+        "identity_verified": false,
+        "detail": "DigiKey API credentials are not configured in this environment.",
+        "retrieved_at": "2026-10-28T22:40:50Z"
+      },
+      {
+        "source": "Newark",
+        "source_type": "authorized_distributor_api",
+        "status": "not_configured",
+        "url": "",
+        "identity_verified": false,
+        "detail": "Newark API credentials are not configured in this environment.",
+        "retrieved_at": "2026-10-28T22:40:50Z"
+      },
+      {
+        "source": "DigiKey",
+        "source_type": "digikey_indexed_listing_lead",
+        "status": "discovery_lead",
+        "url": "https://www.digikey.com/en/products/detail/ohmite/RES10K/258353",
+        "identity_verified": false,
+        "detail": "Indexed DigiKey product listing recorded as a discovery lead only. Public HTML access is HTTP 403-blocked and is not used. Values are taken only if the permitted DigiKey API integration retrieves and cites this exact MPN.",
+        "retrieved_at": "2026-10-28T22:40:50Z"
+      },
+      {
+        "source": "DigiKey",
+        "source_type": "authorized_distributor_api_lookup",
+        "status": "not_configured",
+        "url": "",
+        "identity_verified": false,
+        "detail": "DigiKey API credentials are not configured. Required product secrets: DIGIKEY_CLIENT_ID and DIGIKEY_CLIENT_SECRET. The indexed listing remains a discovery lead only; public DigiKey HTML is HTTP 403-blocked and is not used. RES10K values stay unverified until the API retrieves this exact MPN or an exact-MPN datasheet is uploaded through Compare Parts.",
+        "retrieved_at": "2026-10-28T22:40:50Z"
+      }
+    ],
+    "blockers": {
+      "arrow": "Product CadivorEngineeringReview fetcher times out against https://www.arrow.com/en/products/res10k/ohmite (no browser-UA spoofing; body not used).",
+      "galco": "Galco returns Cloudflare / HTTP 403 challenge; body not used as evidence.",
+      "next_after_page_blockers": "DigiKey API (DIGIKEY_CLIENT_ID + DIGIKEY_CLIENT_SECRET) or Compare Parts exact-MPN PDF upload."
+    }
+  },
+  "fixture_compare_when_arrow_accessible": {
+    "note": "Uses captured Arrow field labels/values against Ohmite RES10KE manufacturer page to validate citation rules once a page is accessible.",
+    "part_a_verified": true,
+    "part_b_verified": true,
+    "counts": {
+      "compatible": 4,
+      "material_difference": 0,
+      "needs_data": 13
+    },
+    "finding": "Needs data / engineering validation",
+    "rows": [
+      {
+        "Attribute": "Mounting",
+        "Part A": "Panel Mount",
+        "Part B": "Not stated in this manufacturer product page",
+        "Assessment": "Needs data / engineering validation",
+        "Evidence": "Part A Arrow authorized product page p. attributes. Source URL: https://www.arrow.com/en/products/res10k/ohmite. Source field label: Mounting. Excerpt: Mounting: Panel Mount. Extraction method: authorized distributor product HTML. Part B manufacturer product page does not state this field."
+      },
+      {
+        "Attribute": "Resistance",
+        "Part A": "10K",
+        "Part B": "10000",
+        "Assessment": "Compatible on available evidence",
+        "Evidence": "Part A Arrow authorized product page p. attributes. Source URL: https://www.arrow.com/en/products/res10k/ohmite. Source field label: Resistance Value (Ohm). Excerpt: Resistance Value (Ohm): 10K. Extraction method: authorized distributor product HTML. Part B Manufacturer product page p. attributes. Source URL: https://www.ohmite.com/catalog/rheostats/RES10KE/. Source field label: Ohms Value. Excerpt: Ohms Value: 10000. Extraction method: manufacturer product HTML."
+      },
+      {
+        "Attribute": "Tolerance",
+        "Part A": "10%",
+        "Part B": "Not stated in this manufacturer product page",
+        "Assessment": "Needs data / engineering validation",
+        "Evidence": "Part A Arrow authorized product page p. attributes. Source URL: https://www.arrow.com/en/products/res10k/ohmite. Source field label: Tolerance. Excerpt: Tolerance: 10%. Extraction method: authorized distributor product HTML. Part B manufacturer product page does not state this field."
+      },
+      {
+        "Attribute": "Power rating",
+        "Part A": "12.5",
+        "Part B": "12.50",
+        "Assessment": "Compatible on available evidence",
+        "Evidence": "Part A Arrow authorized product page p. attributes. Source URL: https://www.arrow.com/en/products/res10k/ohmite. Source field label: Power Rating (W). Excerpt: Power Rating (W): 12.5. Extraction method: authorized distributor product HTML. Part B Manufacturer product page p. attributes. Source URL: https://www.ohmite.com/catalog/rheostats/RES10KE/. Source field label: Watts. Excerpt: Watts: 12.50. Extraction method: manufacturer product HTML."
+      },
+      {
+        "Attribute": "Volts",
+        "Part A": "305",
+        "Part B": "305.000",
+        "Assessment": "Compatible on available evidence",
+        "Evidence": "Part A Arrow authorized product page p. attributes. Source URL: https://www.arrow.com/en/products/res10k/ohmite. Source field label: Maximum Voltage Rating (V). Excerpt: Maximum Voltage Rating (V): 305. Extraction method: authorized distributor product HTML. Part B Manufacturer product page p. attributes. Source URL: https://www.ohmite.com/catalog/rheostats/RES10KE/. Source field label: Volts. Excerpt: Volts: 305.000. Extraction method: manufacturer product HTML."
+      },
+      {
+        "Attribute": "Taper",
+        "Part A": "Not stated in this arrow authorized product page",
+        "Part B": "Not stated in this manufacturer product page",
+        "Assessment": "Needs data / engineering validation",
+        "Evidence": "Part A arrow authorized product page does not state this field. Part B manufacturer product page does not state this field."
+      },
+      {
+        "Attribute": "Element type",
+        "Part A": "Wirewound",
+        "Part B": "Wirewound",
+        "Assessment": "Compatible on available evidence",
+        "Evidence": "Part A Arrow authorized product page p. attributes. Source URL: https://www.arrow.com/en/products/res10k/ohmite. Source field label: Technology. Excerpt: Technology: Wirewound. Extraction method: authorized distributor product HTML. Part B Manufacturer product page p. attributes. Source URL: https://www.ohmite.com/catalog/rheostats/RES10KE/. Source field label: Construction. Excerpt: Construction: Wirewound. Extraction method: manufacturer product HTML."
+      },
+      {
+        "Attribute": "Terminal style",
+        "Part A": "Solder Lug",
+        "Part B": "Not stated in this manufacturer product page",
+        "Assessment": "Needs data / engineering validation",
+        "Evidence": "Part A Arrow authorized product page p. attributes. Source URL: https://www.arrow.com/en/products/res10k/ohmite. Source field label: Termination Style. Excerpt: Termination Style: Solder Lug. Extraction method: authorized distributor product HTML. Part B manufacturer product page does not state this field."
+      },
+      {
+        "Attribute": "Diameter",
+        "Part A": "Not stated in this arrow authorized product page",
+        "Part B": "0.875",
+        "Assessment": "Needs data / engineering validation",
+        "Evidence": "Part A arrow authorized product page does not state this field. Part B Manufacturer product page p. attributes. Source URL: https://www.ohmite.com/catalog/rheostats/RES10KE/. Source field label: Diameter. Excerpt: Diameter: 0.875. Extraction method: manufacturer product HTML."
+      },
+      {
+        "Attribute": "Body",
+        "Part A": "Not stated in this arrow authorized product page",
+        "Part B": "Not stated in this manufacturer product page",
+        "Assessment": "Needs data / engineering validation",
+        "Evidence": "Part A arrow authorized product page does not state this field. Part B manufacturer product page does not state this field."
+      }
+    ],
+    "kpi_row_sum_matches_visible_rows": true
+  },
+  "tests": {
+    "suite": "tests.test_rheostat_evidence_comparison",
+    "result": "14 passed"
+  }
+}

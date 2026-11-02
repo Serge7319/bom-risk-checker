@@ -1,0 +1,74 @@
+{
+  "objective": "Probe RS Group (stock 70585847) for Ohmite RES10K before DigiKey credentials / upload",
+  "digikey_credentials": {
+    "DIGIKEY_CLIENT_ID": "missing",
+    "DIGIKEY_CLIENT_SECRET": "missing"
+  },
+  "rs_group": {
+    "search_listing_lead": {
+      "source": "RS Group",
+      "source_type": "rs_group_search_listing_lead",
+      "url": "https://uk.rs-online.com/web/c/?searchTerm=70585847",
+      "status": "discovery_lead",
+      "detail": "RS Group search/stock listing (70585847) recorded as a discovery lead only. Search snippets are not evidence. Values require a retrieved RS product-detail page that names Ohmite and exact MPN RES10K.",
+      "identity_verified": false,
+      "retrieved_at": "2026-10-28T23:07:45Z"
+    },
+    "uk_detail_probe": {
+      "source": "RS Group",
+      "source_type": "rs_group_authorized_product_page",
+      "url": "https://uk.rs-online.com/web/p/potentiometers/70585847",
+      "status": "http_blocked",
+      "detail": "HTTP 403. The body was not used as evidence.",
+      "identity_verified": false,
+      "retrieved_at": "2026-10-28T23:07:46Z"
+    },
+    "us_detail_probe": {
+      "source": "RS Group",
+      "source_type": "rs_group_authorized_product_page",
+      "url": "https://us.rs-online.com/product/ohmite/res10k/70585847/",
+      "status": "http_blocked",
+      "detail": "HTTP 403. The body was not used as evidence.",
+      "identity_verified": false,
+      "retrieved_at": "2026-10-28T23:07:46Z"
+    },
+    "uk_document": null,
+    "us_document": null,
+    "gather_sources": [
+      {
+        "source": "RS Group",
+        "source_type": "rs_group_search_listing_lead",
+        "status": "discovery_lead",
+        "url": "https://uk.rs-online.com/web/c/?searchTerm=70585847",
+        "identity_verified": false,
+        "detail": "RS Group search/stock listing (70585847) recorded as a discovery lead only. Search snippets are not evidence. Values require a retrieved RS product-detail page that names Ohmite and exact MPN RES10K.",
+        "retrieved_at": "2026-10-28T23:07:57Z"
+      },
+      {
+        "source": "RS Group",
+        "source_type": "rs_group_authorized_product_page",
+        "status": "http_blocked",
+        "url": "https://uk.rs-online.com/web/p/potentiometers/70585847",
+        "identity_verified": false,
+        "detail": "HTTP 403. The body was not used as evidence.",
+        "retrieved_at": "2026-10-28T23:07:57Z"
+      },
+      {
+        "source": "RS Group",
+        "source_type": "rs_group_authorized_product_page",
+        "status": "http_blocked",
+        "url": "https://us.rs-online.com/product/ohmite/res10k/70585847/",
+        "identity_verified": false,
+        "detail": "HTTP 403. The body was not used as evidence.",
+        "retrieved_at": "2026-10-28T23:07:58Z"
+      }
+    ]
+  },
+  "res10k_identity_verified": false,
+  "synthetic_compare_run": false,
+  "stop_reason": "Exact RS Group product-detail pages returned HTTP 403 via the permitted Cadivor product-fetch path. Search listing remains a discovery lead only (snippets not used). No RES10K values were taken. Synthetic RES10K vs RES10KE comparison was not run.",
+  "next_steps_after_rs_blocker": [
+    "Configure DIGIKEY_CLIENT_ID and DIGIKEY_CLIENT_SECRET in the product secrets store, or",
+    "Upload an exact-MPN datasheet via Compare Parts that names Ohmite and RES10K"
+  ]
+}

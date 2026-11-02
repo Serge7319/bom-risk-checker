@@ -1,0 +1,10 @@
+url=https://www.ohmite.com/assets/files/Datasheets/rheostats.pdf?r=false
+final=https://www.ohmite.com/assets/files/Datasheets/rheostats.pdf?r=false
+available=True
+document_page_count=3
+pages_examined=3
+text_page_count=3
+page_cap_applied=False
+search_complete=True
+image_only=0
+summary=Readable text extracted from 3 PDF page(s). Extraction method: native PDF text. OCR is not supported.

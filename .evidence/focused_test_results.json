@@ -1,0 +1,32 @@
+{
+  "commands": [
+    "/tmp/cadivor-st160/bin/python -m unittest tests.test_rheostat_evidence_comparison -q",
+    "/tmp/cadivor-st160/bin/python -m unittest tests.test_compare_parts -q"
+  ],
+  "rheostat": {
+    "testsRun": 12,
+    "failures": [],
+    "ok": true
+  },
+  "compare_parts": {
+    "testsRun": 21,
+    "failures": [
+      "test_approved_compare_page_wires_the_add_part_slot",
+      "test_nav_and_runtime_wire_compare_parts"
+    ],
+    "ok": false
+  },
+  "baseline_failure_methods": [
+    "test_approved_compare_page_wires_the_add_part_slot",
+    "test_nav_and_runtime_wire_compare_parts"
+  ],
+  "observed_failure_methods": [
+    "test_approved_compare_page_wires_the_add_part_slot",
+    "test_nav_and_runtime_wire_compare_parts"
+  ],
+  "baseline_reproducing": [
+    "test_approved_compare_page_wires_the_add_part_slot",
+    "test_nav_and_runtime_wire_compare_parts"
+  ],
+  "new_failures": []
+}

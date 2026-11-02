@@ -1,0 +1,339 @@
+===== PAGE 1 =====
+1-866-9-OHMITE • Int’l 1-847-258-0300 •   www.ohmite.com • info@ohmite.com 187
+Rheostats
+(Potentiometers) Wirewound
+D
+enclosed
+unenclosed
+standard
+shaft
+3.18mm B
+C
+shaft
+locking
+nut
+B
+D
+REL
+locking
+shaft
+Max. 
+Ohmic  Voltage  Behind panel “B"  Diameter “D"  Dimension “C"  Shaft Rotation 
+ Model  Type Watts range Core  (RMS)*  (mm./in Ref.)   (mm./in Ref.)  (mm./in Ref.)  torque  (±5°)
+ C RCS/RCL  7.5 10.0-5K enclosed 305 0.875/22.23 0.515/  13.08  — 0.25-3 oz. in. 300°
+• See Catalog #203 for complete details.
+Max. 
+Ohmic  Voltage  Behind panel “B" Diameter “D"  Dimension “C"  Shaft Rotation 
+ Model Type Watts range Core  (RMS)*   (mm./in Ref.)   (mm./in Ref.)  (mm./in Ref.)  torque  (±5°)
+ E RES/REL  12.5 1.0-15K open 305 17.46/0.688 22.23/0.875 15.08/0.594 1-6 oz. in. 300°
+ E REE  12.5 1.0-15K enclosed 305 30.96/1.219 26.59/1.047 — 1-6 oz. in. 300°
+• See Catalog #203 for complete details.
+D
+6.4 mm
+3.18 mm
+15.88 mm 15.88 mm
+B
+6.4 mm 2.78 mm
+13.49 mm
+6.4 mm
+Standard
+shaft
+Locking
+shaft
+Mounting: Panels to 
+ 3.18mm (0.125") thick with
+ 1/4-32 bushing and 
+hex nut (1/16" thick).
+Mounting: Panels 
+to  3.18mm thick
+ with 1/4-32 bushing
+ and hex nut  1/16" thick
+ 
+Dimensions for reference only; consult factory for details.
+Since all rheostats/potentiometers are electro-mechanical devices, they are subject to mechanical wear and, therefore, have a ﬁnite life.
+Models H, J, K, L and N are listed under UL File No. E-10946 and CSA File No. 21309 unless noted otherwise.
+All rheostats are 10% tolerance.
+MOD EL C
+mm/(in.)
+MOD EL E
+(0.125")
+15.88mm
+(0.625")
+6.35mm
+(0.25")
+1.98mm
+(0.078")
+6.35mm
+(0.25")
+13.49mm
+(0.531")
+10.32mm
+(0.406")
+2.38mm
+(0.094")
+
+===== PAGE 2 =====
+1-866-9-OHMITE • Int’l 1-847-258-0300  •    www.ohmite.com • info@ohmite.com188
+ounting: Panels to 6.35mm 
+thick with bushing and hex nut
+6.35mm (0.25) thick with 3/8-32
+(3/32" thick) (or with 10-32 
+x 0.75 ﬂat-head screws 
+for model L only).
+12.7 mm
+holes for:
+no. 2 screws (model H)
+no. 8 screws (J, G, K, L) mounting
+bracket on
+model L only
+44.5 mm
+D
+6.35 mm
+0.79 mm
+8.73 mm
+0.79 mm
+1.59 mm
+9.53 mm
+22.23 mm B
+C
+19.05 mm
+bushing
+projection
+15.88 mm
+shaft
+locking
+nut
+standard shaft
+(models H, J, G, K, L)
+locking shaft
+(only model H
+stocked)
+drill 4.76 mm(0.188) hole in 
+panel. Washer not 
+included in model L
+ 
+Rheostats
+(Potentiometers) Wirewound
+Max. 
+Ohmic  Voltage  Behind panel “B" Diameter “D"  Dimension “C"  Shaft Rotation 
+ Model Type Watts range Core  (RMS)*   (mm./in Ref.)   (mm./in Ref.)  (mm./in Ref.)  torque  (±5°)
+ H RHS/RHL 25 1.0-25K open 500 34.93/1.375 39.62/1.560 23.88/0.940  0.25-0.5 lb. in. 300°
+ J RJS 50 0.5-50K open 750 34.93/1.375 58.67/2.31  39.62/1.56 0.25-2 lb. in. 300°
+ G RGS  75 0.5-50K open 900 44.45/1.750 69.25/2.75  45.21/1.78 0.5-2 lb. in. 300°
+ K RKS  100 0.5-50K open 1000 44.45/1.750 79.38/3.125 48.51/1.91 0.5-2 lb. in. 300°
+ L RLS 150 0.5-50K open 1200 50.8/2.000 101.60/4.00 57.91/2.28 0.5-3 lb. in. 300°
+• Models H, J, G, and K also available in enclosed versions.
+• See Catalog #203 for complete details.
+D
+M M
+1/4 - 20 thread for
+mounting screws
+B
+C
+holes for
+no. 8 screws
+ Dimension “M"
+P 0.875"22.23 mm
+N 1.188"30.16 mm
+R 1.5"38.1 mm
+U 3"76.2 mm
+Mounting: Panels 
+to 31.75mm (1.25) thick  
+1/4-20 ﬂat-head 
+screws.
+Max. 
+Ohmic  Voltage  Behind panel “B" Diameter “D"  Dimension “C"  Shaft Rotation 
+ Model Type Watts range Core  (RMS)*   (mm./in Ref.)   (mm./in Ref.) (mm./in Ref.)  torque  (±5°)
+ P RPS  225 1.0-30K open 1300 53.98/2.125 127.00/5.00 75.44/2.97  2.5-4 lb. in. 310°
+ N RNS 300 1.0-50K open 1225 60.33/2.375 152.40/6.00 87.38/3.44 2.5-5 lb. in. 320°
+ R RRS  500 1.0-20K open 1450 53.98/2.125 203.20/8.00  106.47/4.31 4.5-7 lb. in. 325°
+ U RUS 1000 1.0-20K open 1600 76.2/3.000 304.80/12.00 162.05/6.38 3.5-7 lb. in. 335°
+• See Catalog #203 for complete details.
+(continued)
+MODELS H, J, G, K, L
+MOD ELS P, N, R, U
+Mounting: Panels to
+9.53 mm
+0.79 mm
+39.7 mm
+51 mm
+(0.5")
+(1.75")
+(0.031")
+(0.375")
+(0.25")
+(0.031")
+(0.344")
+(0.875")
+(0.063")
+(0.75")
+(0.625")
+(0.375")
+(0.031")
+(1.563")
+(2")
+
+===== PAGE 3 =====
+1-866-9-OHMITE • Int’l 1-847-258-0300 •  www.ohmite.com • info@ohmite.com 189
+ =  Standard values; check availability
+Rheostats are silicone-ceramic coated at and 
+above the following ohmic values: 
+Model C: all Model G: 5000Ω
+Model E: 750Ω Model K: 5000Ω
+Model H: 2000Ω Model L: 7500Ω
+Model J: 5000Ω 
+ 0.5 –––R50  10.0 12.3  14.1 17.3
+ 1 –––1R0  3.53   5.00 7.07 8.66  10 12.3  15.0  17.32 22.3 31.6
+ 1.5 –––1R5 18.2 25.8
+ 2 –––2R0  2.50   3.54  5.00 6.12  7.07 8.65  10.6  12.24 15.8 22.4
+ 2.5 –––2R5  2.24 14.1 20.0
+ 3 –––3R0 2.04 2.88 5.00 5.75 7.07 8.66 10.00 12.9 18.3
+ 4 –––4R0 3.53 7.50 8.66 11.2 15.8
+ 5 –––5R0 1.58 3.88 4.47 5.48 6.71 7.75 10.0 14.1
+ 6 –––6R0 1.44 2.04 2.88
+ 7.5 –––7R5 3.16 3.65 4.47 5.49 6.32
+ 8 –––8R0 1.25 1.77 2.50 7.90 11.2
+ 10 –––10R 0.86 1.12 1.58 2.74 3.16 3.88 4.74 5.48 10.0
+ 12 –––12R 2.04
+ 12.5 –––12R5 6.30 8.95
+ 15 –––15R 0.71 0.91 1.29 3.163 3.87 4.47
+ 16 –––16R 1.76 2.17 2.50 5.60 7.90
+ 22 –––22R 1.50
+ 25 –––25R 0.55 0.71 1.00 1.73 2.0 2.450 3.00 3.46 4.47 6.33
+ 35 –––35R 0.46 0.60 0.845 1.19 2.070
+ 40 –––40R 3.54
+ 50 –––50R 0.39 0.50 0.707 1.00 1.23 1.41 1.735 2.12 2.45 3.16 4.47
+ 75 –––75R 0.32 0.40 0.575 1.00 1.15 1.415 1.73 2.00 3.65
+ 80 –––80R 0.790 2.52
+ 100 –––100 0.27 0.36 0.500 0.866 1.00 1.225 1.50 1.73 3.16
+ 125 –––125 0.32 0.445 0.630 2.00
+ 150 –––150 0.22 0.29 0.575 1.000 1.22 1.41
+ 160 –––160
+ 175 –––175 0.27 0.375 1.69 2.39
+ 200 –––200 0.19 0.25 0.612 0.707 0.865 1.06 1.22
+ 225 –––225 0.470 2.11
+ 250 –––250 0.17 0.22 0.316 0.775 1.41
+ 300 –––300 0.408 0.500 0.575 0.866 1.00 1.83
+ 325 –––325 1.24
+ 350 –––350 0.15 0.19 0.267 0.655
+ 400 –––400 0.433 0.500 0.750 0.866 1.48
+ 500 –––500 0.12 0.16 0.222 0.316 0.388 0.447 0.548 1.00 1.41
+ 600 –––600
+ 700 –––700 0.567 0.655
+ 750 –––750 0.10 0.13 0.182 0.316 0.365 0.447 0.817 1.15
+ 800 –––800 0.250
+ 900 –––900 0.500 0.578
+ 1000 –––1K0 0.086 0.10 0.155 0.224 0.274 0.316 0.707 1.00
+ 1200 –––1K2 0.433 0.500
+ 1250 –––1K25 0.346
+ 1500 –––1K5 0.071 0.090 0.129 0.224 0.258 0.387 0.447 0.577 0.816
+ 1600 –––1K6 0.176
+ 1750 –––1K75 0.358 0.414
+ 1800 –––1K8 0.288
+ 2000 –––2K0 0.194 0.224 0.336 0.387 0.500
+ 2250 –––2K25 0.259
+ 2500 –––2K5 0.055 0.070 0.100 0.141 0.173 0.200 0.300 0.346 0.447 0.633
+ 3000 –––3K0 0.224
+ 3500 –––3K5 0.046 0.060 0.084 0.119
+ 4500 –––4K5 0.182
+ 5000 –––5K0 0.039 0.050 0.070 0.100 0.123 0.141
+ 7500 –––7K5 0.041 0.058 0.100 0.115 0.141        
+ 8000 –––8K0 0.079
+ 10000 –––10K 0.035 0.050 0.070 0.087 0.100 0.122        
+ 12500 –––12K5 0.031
+ 15000 –––15K 0.029 0.041 0.058
+ 20000 –––20K 0.035 0.050
+ 25000 –––25K 0.032 0.045
+ 30000 –––30K 0.041
+ 40000 –––40K 0.035
+ 50000 –––50K 0.032
+Ohmic value
+RCS–––  Std. shaft 7.5W Model C
+Part No.
+Preﬁx 
+Suﬃx 
+RCL–––  Locking
+Amps max.
+REL–––  Locking
+12.5W Model E
+REE–––  Enclosed
+Amps max.
+RES–––  Std. shaft  
+RHS–––  Std. shaft  25W Model H
+RHL–––  Locking
+Amps max.
+RJS––– 
+Amps max.
+RGS––– 
+Amps max.
+RKS ––– 
+Amps max.
+RLS ––– 
+Amps max.
+RPS ––– 
+Amps max.
+RNS––– 
+Amps max.
+RRS ––– 
+Amps max.
+RUS––– 
+Amps max.
+50W  
+Model J
+75W  
+Model G
+100W  
+Model K
+150W  
+Model L
+225W  
+Model P
+300W  
+Model N
+500W  
+Model R
+1000W  
+Model U
+Rheostats
+(Potentiometers) Wirewound
+• RoHS compliant product available. Add 
+“E" suﬃx to part number to specify. 
+• Made-to-order rheostats available:  
+Contact nearest Ohmite sales oﬃce.
+* Voltage rating dependent on resistance 
+value.
+Series
+Rheostats
+Wirewound
+Potentiometers
+Resistance Value*
+Example:
+R50 = 0.50Ω
+1R0 = 1Ω
+7R5 = 7.5Ω
+250 = 250Ω
+1K0 = 1,000Ω
+1K75 = 1,750Ω
+4K5 = 4,500Ω
+50K = 50,000Ω
+RCSR5 0 E
+Code Watts Model Shaft Core
+CL = 7.5 C Locking Enclosed
+CS = 7.5 C Standard Enclosed
+EE = 12.5 E  Standard Enclosed
+EL = 12.5 E Locking Open
+ES = 12.5 E Standard Open
+GS = 75 G Standard Open
+HL = 25 H Locking Open
+HS = 25 H Standard Open
+JS = 50 J Standard Open
+KS = 100 K Standard Open
+LS = 150 L Standard Open
+NS = 300 N Standard Open
+PS = 225 P Standard Open
+RS = 500 R Standard Open
+US = 1000 U Standard Open
+E = RoHS compliant
+values and maximum current values
+ORDERING INF ORMATION
+*Check table for standard resistance

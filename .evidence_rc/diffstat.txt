@@ -1,0 +1,24 @@
+ src/assets/css/monitoring_home_alignment.css      |  126 ++-
+ src/assets/css/monitoring_table_final.css         |   21 +-
+ src/authenticated_runtime.py                      |   98 +-
+ src/bom_upload_flow.py                            |   33 +
+ src/compare_evidence_search.py                    | 1227 +++++++++++++++++++++
+ src/compatibility_gate.py                         |  102 +-
+ src/component_family_profiles.py                  |   60 +-
+ src/datasheet_comparison.py                       |  600 +++++++++-
+ src/pages/compare_parts.py                        |  126 ++-
+ src/parts_compare.py                              |  880 ++++++++++++++-
+ src/ui/approved_pages.py                          |  445 +++++---
+ src/ui/ei_bom_report.py                           |    2 +
+ src/ui/main_transition.py                         |   32 +-
+ src/ui/navigation.py                              |    2 +-
+ src/ui/unified_shell.py                           |    7 +
+ tests/test_approved_page_visual_contracts.py      |   12 +-
+ tests/test_bom_workspace_layout.py                |    4 +-
+ tests/test_browser_route_state.py                 |   30 +-
+ tests/test_compare_parts.py                       |   61 +-
+ tests/test_main_transition_slow_route_contract.py |   20 +-
+ tests/test_navigation_scroll_reset.py             |    2 +-
+ tests/test_rheostat_evidence_comparison.py        | 1166 ++++++++++++++++++++
+ tests/test_workspace_evidence_contract.py         |   15 +
+ 23 files changed, 4789 insertions(+), 282 deletions(-)

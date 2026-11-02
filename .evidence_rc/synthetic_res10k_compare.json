@@ -1,0 +1,60 @@
+{
+  "kind": "FIXTURE_SYNTHETIC_NOT_LIVE",
+  "identity_a": true,
+  "identity_b": true,
+  "finding": "Needs data / engineering validation",
+  "counts": {
+    "compatible": 4,
+    "material_difference": 0,
+    "needs_data": 13
+  },
+  "visible_rows": 17,
+  "kpi_equals_visible_rows": true,
+  "rms_invented": false,
+  "populated_with_citation": 12,
+  "populated_total": 12,
+  "sample_rows": [
+    {
+      "Attribute": "Mounting",
+      "Part A": "Panel Mount",
+      "Part B": "Not stated in this manufacturer product page",
+      "Assessment": "Needs data / engineering validation",
+      "Evidence": "Part A Arrow authorized product page p. attributes. Source URL: https://www.arrow.com/en/products/res10k/ohmite. Source field label: Mounting. Excerpt: Mounting: Panel Mount. Extraction method: authorized distributor pro"
+    },
+    {
+      "Attribute": "Resistance",
+      "Part A": "10K",
+      "Part B": "10000",
+      "Assessment": "Compatible on available evidence",
+      "Evidence": "Part A Arrow authorized product page p. attributes. Source URL: https://www.arrow.com/en/products/res10k/ohmite. Source field label: Resistance Value (Ohm). Excerpt: Resistance Value (Ohm): 10K. Extraction method: author"
+    },
+    {
+      "Attribute": "Tolerance",
+      "Part A": "10%",
+      "Part B": "Not stated in this manufacturer product page",
+      "Assessment": "Needs data / engineering validation",
+      "Evidence": "Part A Arrow authorized product page p. attributes. Source URL: https://www.arrow.com/en/products/res10k/ohmite. Source field label: Tolerance. Excerpt: Tolerance: 10%. Extraction method: authorized distributor product H"
+    },
+    {
+      "Attribute": "Power rating",
+      "Part A": "12.5",
+      "Part B": "12.50",
+      "Assessment": "Compatible on available evidence",
+      "Evidence": "Part A Arrow authorized product page p. attributes. Source URL: https://www.arrow.com/en/products/res10k/ohmite. Source field label: Power Rating (W). Excerpt: Power Rating (W): 12.5. Extraction method: authorized distri"
+    },
+    {
+      "Attribute": "Volts",
+      "Part A": "305",
+      "Part B": "305.000",
+      "Assessment": "Compatible on available evidence",
+      "Evidence": "Part A Arrow authorized product page p. attributes. Source URL: https://www.arrow.com/en/products/res10k/ohmite. Source field label: Maximum Voltage Rating (V). Excerpt: Maximum Voltage Rating (V): 305. Extraction method"
+    },
+    {
+      "Attribute": "Diameter",
+      "Part A": "Not stated in this arrow authorized product page",
+      "Part B": "0.875",
+      "Assessment": "Needs data / engineering validation",
+      "Evidence": "Part A arrow authorized product page does not state this field. Part B Manufacturer product page p. attributes. Source URL: https://www.ohmite.com/catalog/rheostats/RES10KE/. Source field label: Diameter. Excerpt: Diamet"
+    }
+  ]
+}

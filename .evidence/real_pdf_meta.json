@@ -1,0 +1,29 @@
+{
+  "manufacturer_source": "Ohmite Mfg Co",
+  "product_page_res10ke": "https://www.ohmite.com/catalog/rheostats/RES10KE",
+  "datasheet_url_linked": "https://www.ohmite.com/assets/files/Datasheets/rheostats.pdf",
+  "datasheet_url_retrieved": "https://www.ohmite.com/assets/files/Datasheets/rheostats.pdf?r=false",
+  "retrieval_path": "direct_pdf",
+  "requested_url": "https://www.ohmite.com/assets/files/Datasheets/rheostats.pdf",
+  "document_page_count": 3,
+  "pages_examined": 3,
+  "text_page_count": 3,
+  "page_cap_applied": false,
+  "search_complete": true,
+  "image_only_page_count": 0,
+  "extraction_summary": "Readable text extracted from 3 PDF page(s). Extraction method: native PDF text. OCR is not supported.",
+  "identity_res10k": {
+    "attached": true,
+    "verified": false,
+    "mpn_verified": false,
+    "manufacturer_verified": true,
+    "reason": "The extracted text does not name the exact MPN RES10K."
+  },
+  "identity_res10ke": {
+    "attached": true,
+    "verified": false,
+    "mpn_verified": false,
+    "manufacturer_verified": true,
+    "reason": "The extracted text does not name the exact MPN RES10KE."
+  }
+}

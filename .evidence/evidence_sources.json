@@ -1,0 +1,294 @@
+{
+  "part_a": [
+    {
+      "source": "linked_datasheet",
+      "source_type": "manufacturer_or_supplier_datasheet",
+      "url": "https://www.ohmite.com/assets/files/Datasheets/rheostats.pdf?r=false",
+      "status": "available",
+      "detail": "The extracted text does not name the exact MPN RES10K.",
+      "identity_verified": false
+    },
+    {
+      "source": "Ohmite",
+      "source_type": "manufacturer_product_page",
+      "url": "https://www.ohmite.com/catalog/rheostats/RES10K",
+      "status": "redirect_loop",
+      "detail": "The manufacturer page redirected too many times.",
+      "identity_verified": false
+    },
+    {
+      "source": "Ohmite",
+      "source_type": "manufacturer_site_search",
+      "url": "https://www.ohmite.com/catalog/?search=RES10K",
+      "status": "not_found",
+      "detail": "Search page retrieved, but extractable text did not verify the exact MPN. No values were taken.",
+      "identity_verified": false
+    },
+    {
+      "source": "Ohmite",
+      "source_type": "manufacturer_site_search",
+      "url": "https://www.ohmite.com/?s=RES10K",
+      "status": "not_found",
+      "detail": "Search page retrieved, but extractable text did not verify the exact MPN. No values were taken.",
+      "identity_verified": false
+    },
+    {
+      "source": "Ohmite",
+      "source_type": "manufacturer_series_pdf",
+      "url": "https://www.ohmite.com/assets/images/res-10.pdf?r=false",
+      "status": "available",
+      "detail": "The extracted text does not name the exact MPN RES10K. Exact MPN RES10K was not verified in this Ohmite catalog/order-code material; no values were taken.",
+      "identity_verified": false
+    },
+    {
+      "source": "Ohmite",
+      "source_type": "manufacturer_series_page",
+      "url": "https://www.ohmite.com/res-10/",
+      "status": "available",
+      "detail": "The extracted text does not name the exact MPN RES10K. Exact MPN RES10K was not verified in this Ohmite catalog/order-code material; no values were taken.",
+      "identity_verified": false
+    },
+    {
+      "source": "Ohmite",
+      "source_type": "manufacturer_rheostat_guide",
+      "url": "https://www.ohmite.com/guide-to-rheostats/",
+      "status": "available",
+      "detail": "The extracted text does not name the exact MPN RES10K. Exact MPN RES10K was not verified in this Ohmite catalog/order-code material; no values were taken.",
+      "identity_verified": false
+    },
+    {
+      "source": "Mouser",
+      "source_type": "authorized_distributor_api",
+      "url": "",
+      "status": "not_configured",
+      "detail": "Mouser API credentials are not configured in this environment.",
+      "identity_verified": false
+    },
+    {
+      "source": "DigiKey",
+      "source_type": "authorized_distributor_api",
+      "url": "",
+      "status": "not_configured",
+      "detail": "DigiKey API credentials are not configured in this environment.",
+      "identity_verified": false
+    },
+    {
+      "source": "Newark",
+      "source_type": "authorized_distributor_api",
+      "url": "",
+      "status": "not_configured",
+      "detail": "Newark API credentials are not configured in this environment.",
+      "identity_verified": false
+    },
+    {
+      "source": "DigiKey",
+      "source_type": "digikey_indexed_listing_lead",
+      "url": "https://www.digikey.com/en/products/detail/ohmite/RES10K/258353",
+      "status": "discovery_lead",
+      "detail": "Indexed DigiKey product listing recorded as a discovery lead only. Public HTML access is HTTP 403-blocked and is not used. Values are taken only if the permitted DigiKey API integration retrieves and cites this exact MPN.",
+      "identity_verified": false
+    },
+    {
+      "source": "DigiKey",
+      "source_type": "authorized_distributor_api_lookup",
+      "url": "",
+      "status": "not_configured",
+      "detail": "DigiKey API credentials are not configured. The indexed listing remains a discovery lead; RES10K values stay unverified.",
+      "identity_verified": false
+    },
+    {
+      "source": "digikey",
+      "source_type": "digikey_product_search",
+      "url": "https://www.digikey.com/en/products/result?keywords=RES10K",
+      "status": "http_blocked",
+      "detail": "HTTP 403. The body was not used as evidence.",
+      "identity_verified": false
+    },
+    {
+      "source": "digikey",
+      "source_type": "digikey_indexed_listing_probe",
+      "url": "https://www.digikey.com/en/products/detail/ohmite/RES10K/258353",
+      "status": "http_blocked",
+      "detail": "HTTP 403. The body was not used as evidence.",
+      "identity_verified": false
+    },
+    {
+      "source": "digikey",
+      "source_type": "digikey_product_page",
+      "url": "https://www.digikey.com/en/products/detail/ohmite/RES10K",
+      "status": "http_blocked",
+      "detail": "HTTP 403. The body was not used as evidence.",
+      "identity_verified": false
+    },
+    {
+      "source": "mouser",
+      "source_type": "mouser_product_search",
+      "url": "https://www.mouser.com/c/?q=RES10K",
+      "status": "timeout",
+      "detail": "The source timed out.",
+      "identity_verified": false
+    },
+    {
+      "source": "mouser",
+      "source_type": "mouser_product_page",
+      "url": "https://www.mouser.com/ProductDetail/Ohmite/RES10K",
+      "status": "timeout",
+      "detail": "The source timed out.",
+      "identity_verified": false
+    },
+    {
+      "source": "newark",
+      "source_type": "newark_product_search",
+      "url": "https://www.newark.com/search?st=RES10K",
+      "status": "timeout",
+      "detail": "The source timed out.",
+      "identity_verified": false
+    },
+    {
+      "source": "octopart",
+      "source_type": "parts_aggregator_search",
+      "url": "https://octopart.com/search?q=RES10K+Ohmite",
+      "status": "available",
+      "detail": "Aggregator listing names the manufacturer and exact MPN, but aggregator pages are not used as authorized evidence for attribute values.",
+      "identity_verified": false
+    }
+  ],
+  "part_b": [
+    {
+      "source": "linked_datasheet",
+      "source_type": "manufacturer_or_supplier_datasheet",
+      "url": "https://www.ohmite.com/assets/files/Datasheets/rheostats.pdf?r=false",
+      "status": "available",
+      "detail": "The extracted text does not name the exact MPN RES10KE.",
+      "identity_verified": false
+    },
+    {
+      "source": "Ohmite",
+      "source_type": "manufacturer_product_page",
+      "url": "https://www.ohmite.com/catalog/rheostats/RES10KE",
+      "status": "available",
+      "detail": "Extracted text names Ohmite RES10KE. Source field labels: Model, Category, Diameter, Ohms Value, Watts, Volts, Construction, Manufacturer.",
+      "identity_verified": true
+    },
+    {
+      "source": "Ohmite",
+      "source_type": "manufacturer_site_search",
+      "url": "https://www.ohmite.com/catalog/?search=RES10KE",
+      "status": "not_found",
+      "detail": "Search page retrieved, but extractable text did not verify the exact MPN. No values were taken.",
+      "identity_verified": false
+    },
+    {
+      "source": "Ohmite",
+      "source_type": "manufacturer_site_search",
+      "url": "https://www.ohmite.com/?s=RES10KE",
+      "status": "not_found",
+      "detail": "Search page retrieved, but extractable text did not verify the exact MPN. No values were taken.",
+      "identity_verified": false
+    },
+    {
+      "source": "Ohmite",
+      "source_type": "manufacturer_series_pdf",
+      "url": "https://www.ohmite.com/assets/images/res-10.pdf?r=false",
+      "status": "available",
+      "detail": "The extracted text does not name the exact MPN RES10KE. Exact MPN RES10KE was not verified in this Ohmite catalog/order-code material; no values were taken.",
+      "identity_verified": false
+    },
+    {
+      "source": "Ohmite",
+      "source_type": "manufacturer_series_page",
+      "url": "https://www.ohmite.com/res-10/",
+      "status": "available",
+      "detail": "The extracted text does not name the exact MPN RES10KE. Exact MPN RES10KE was not verified in this Ohmite catalog/order-code material; no values were taken.",
+      "identity_verified": false
+    },
+    {
+      "source": "Ohmite",
+      "source_type": "manufacturer_rheostat_guide",
+      "url": "https://www.ohmite.com/guide-to-rheostats/",
+      "status": "available",
+      "detail": "The extracted text does not name the exact MPN RES10KE. Exact MPN RES10KE was not verified in this Ohmite catalog/order-code material; no values were taken.",
+      "identity_verified": false
+    },
+    {
+      "source": "Mouser",
+      "source_type": "authorized_distributor_api",
+      "url": "",
+      "status": "not_configured",
+      "detail": "Mouser API credentials are not configured in this environment.",
+      "identity_verified": false
+    },
+    {
+      "source": "DigiKey",
+      "source_type": "authorized_distributor_api",
+      "url": "",
+      "status": "not_configured",
+      "detail": "DigiKey API credentials are not configured in this environment.",
+      "identity_verified": false
+    },
+    {
+      "source": "Newark",
+      "source_type": "authorized_distributor_api",
+      "url": "",
+      "status": "not_configured",
+      "detail": "Newark API credentials are not configured in this environment.",
+      "identity_verified": false
+    },
+    {
+      "source": "DigiKey",
+      "source_type": "authorized_distributor_api_lookup",
+      "url": "",
+      "status": "not_configured",
+      "detail": "DigiKey API credentials are not configured. Exact-MPN API lookup was not available.",
+      "identity_verified": false
+    },
+    {
+      "source": "digikey",
+      "source_type": "digikey_product_search",
+      "url": "https://www.digikey.com/en/products/result?keywords=RES10KE",
+      "status": "http_blocked",
+      "detail": "HTTP 403. The body was not used as evidence.",
+      "identity_verified": false
+    },
+    {
+      "source": "digikey",
+      "source_type": "digikey_product_page",
+      "url": "https://www.digikey.com/en/products/detail/ohmite/RES10KE",
+      "status": "http_blocked",
+      "detail": "HTTP 403. The body was not used as evidence.",
+      "identity_verified": false
+    },
+    {
+      "source": "mouser",
+      "source_type": "mouser_product_search",
+      "url": "https://www.mouser.com/c/?q=RES10KE",
+      "status": "timeout",
+      "detail": "The source timed out.",
+      "identity_verified": false
+    },
+    {
+      "source": "mouser",
+      "source_type": "mouser_product_page",
+      "url": "https://www.mouser.com/ProductDetail/Ohmite/RES10KE",
+      "status": "timeout",
+      "detail": "The source timed out.",
+      "identity_verified": false
+    },
+    {
+      "source": "newark",
+      "source_type": "newark_product_search",
+      "url": "https://www.newark.com/search?st=RES10KE",
+      "status": "timeout",
+      "detail": "The source timed out.",
+      "identity_verified": false
+    },
+    {
+      "source": "octopart",
+      "source_type": "parts_aggregator_search",
+      "url": "https://octopart.com/search?q=RES10KE+Ohmite",
+      "status": "available",
+      "detail": "Aggregator listing names the manufacturer and exact MPN, but aggregator pages are not used as authorized evidence for attribute values.",
+      "identity_verified": false
+    }
+  ]
+}

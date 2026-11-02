@@ -1,0 +1,25 @@
+ M src/assets/css/monitoring_home_alignment.css
+ M src/assets/css/monitoring_table_final.css
+ M src/authenticated_runtime.py
+ M src/bom_upload_flow.py
+A  src/compare_evidence_search.py
+ M src/compatibility_gate.py
+ M src/component_family_profiles.py
+ M src/datasheet_comparison.py
+ M src/pages/compare_parts.py
+ M src/parts_compare.py
+ M src/ui/approved_pages.py
+ M src/ui/ei_bom_report.py
+ M src/ui/main_transition.py
+ M src/ui/navigation.py
+ M src/ui/unified_shell.py
+ M tests/test_approved_page_visual_contracts.py
+ M tests/test_bom_workspace_layout.py
+ M tests/test_browser_route_state.py
+ M tests/test_compare_parts.py
+ M tests/test_main_transition_slow_route_contract.py
+ M tests/test_navigation_scroll_reset.py
+A  tests/test_rheostat_evidence_comparison.py
+ M tests/test_workspace_evidence_contract.py
+?? .evidence/
+?? .evidence_rc/

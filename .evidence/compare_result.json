@@ -1,0 +1,583 @@
+{
+  "status": "completed",
+  "part_a": "RES10K",
+  "part_b": "RES10KE",
+  "comparison": {
+    "part_a": {
+      "mpn": "RES10K",
+      "manufacturer": "Ohmite",
+      "description": "Ohmite rheostat RES10K",
+      "family": "Potentiometer / rheostat",
+      "family_display_name": "Potentiometer / rheostat",
+      "image_url": "",
+      "package": "",
+      "lifecycle_status": "Unknown",
+      "datasheet_url": "",
+      "supplier_url": "",
+      "found": true
+    },
+    "part_b": {
+      "mpn": "RES10KE",
+      "manufacturer": "Ohmite",
+      "description": "Ohmite rheostat RES10KE",
+      "family": "Potentiometer / rheostat",
+      "family_display_name": "Potentiometer / rheostat",
+      "image_url": "",
+      "package": "",
+      "lifecycle_status": "Unknown",
+      "datasheet_url": "",
+      "supplier_url": "",
+      "found": true
+    },
+    "family": "Potentiometer / rheostat",
+    "family_display_name": "Potentiometer / rheostat",
+    "family_mismatch": false,
+    "finding": "Needs data / engineering validation",
+    "engineering_evidence_summary": "Engineering evidence: incomplete \u2014 0 confirmed matches, 17 fields need verification; 4 required family fields lack data",
+    "engineering_evidence_status": "incomplete",
+    "counts": {
+      "compatible": 0,
+      "material_difference": 0,
+      "needs_data": 17
+    },
+    "rows": [
+      {
+        "Attribute": "Mounting",
+        "Part A": "Not stated in retrieved evidence",
+        "Part B": "Not stated in retrieved evidence",
+        "Assessment": "Needs data / engineering validation",
+        "Evidence": "Part A datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN. Part B datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN."
+      },
+      {
+        "Attribute": "Temperature range",
+        "Part A": "Not stated in retrieved evidence",
+        "Part B": "Not stated in retrieved evidence",
+        "Assessment": "Needs data / engineering validation",
+        "Evidence": "Part A datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN. Part B datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN."
+      },
+      {
+        "Attribute": "Lifecycle",
+        "Part A": "Not stated in retrieved evidence",
+        "Part B": "Not stated in retrieved evidence",
+        "Assessment": "Needs data / engineering validation",
+        "Evidence": "Part A datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN. Part B datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN."
+      },
+      {
+        "Attribute": "Resistance",
+        "Part A": "Not stated in retrieved evidence",
+        "Part B": "Not stated in retrieved evidence",
+        "Assessment": "Needs data / engineering validation",
+        "Evidence": "Part A datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN. Part B datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN."
+      },
+      {
+        "Attribute": "Tolerance",
+        "Part A": "Not stated in retrieved evidence",
+        "Part B": "Not stated in retrieved evidence",
+        "Assessment": "Needs data / engineering validation",
+        "Evidence": "Part A datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN. Part B datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN."
+      },
+      {
+        "Attribute": "Power rating",
+        "Part A": "Not stated in retrieved evidence",
+        "Part B": "Not stated in retrieved evidence",
+        "Assessment": "Needs data / engineering validation",
+        "Evidence": "Part A datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN. Part B datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN."
+      },
+      {
+        "Attribute": "Volts",
+        "Part A": "Not stated in retrieved evidence",
+        "Part B": "Not stated in retrieved evidence",
+        "Assessment": "Needs data / engineering validation",
+        "Evidence": "Part A datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN. Part B datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN."
+      },
+      {
+        "Attribute": "Taper",
+        "Part A": "Not stated in retrieved evidence",
+        "Part B": "Not stated in retrieved evidence",
+        "Assessment": "Needs data / engineering validation",
+        "Evidence": "Part A datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN. Part B datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN."
+      },
+      {
+        "Attribute": "Element type",
+        "Part A": "Not stated in retrieved evidence",
+        "Part B": "Not stated in retrieved evidence",
+        "Assessment": "Needs data / engineering validation",
+        "Evidence": "Part A datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN. Part B datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN."
+      },
+      {
+        "Attribute": "Turns",
+        "Part A": "Not stated in retrieved evidence",
+        "Part B": "Not stated in retrieved evidence",
+        "Assessment": "Needs data / engineering validation",
+        "Evidence": "Part A datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN. Part B datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN."
+      },
+      {
+        "Attribute": "Rotation",
+        "Part A": "Not stated in retrieved evidence",
+        "Part B": "Not stated in retrieved evidence",
+        "Assessment": "Needs data / engineering validation",
+        "Evidence": "Part A datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN. Part B datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN."
+      },
+      {
+        "Attribute": "Terminal style",
+        "Part A": "Not stated in retrieved evidence",
+        "Part B": "Not stated in retrieved evidence",
+        "Assessment": "Needs data / engineering validation",
+        "Evidence": "Part A datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN. Part B datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN."
+      },
+      {
+        "Attribute": "Terminal count",
+        "Part A": "Not stated in retrieved evidence",
+        "Part B": "Not stated in retrieved evidence",
+        "Assessment": "Needs data / engineering validation",
+        "Evidence": "Part A datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN. Part B datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN."
+      },
+      {
+        "Attribute": "Shaft",
+        "Part A": "Not stated in retrieved evidence",
+        "Part B": "Not stated in retrieved evidence",
+        "Assessment": "Needs data / engineering validation",
+        "Evidence": "Part A datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN. Part B datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN."
+      },
+      {
+        "Attribute": "Bushing",
+        "Part A": "Not stated in retrieved evidence",
+        "Part B": "Not stated in retrieved evidence",
+        "Assessment": "Needs data / engineering validation",
+        "Evidence": "Part A datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN. Part B datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN."
+      },
+      {
+        "Attribute": "Diameter",
+        "Part A": "Not stated in retrieved evidence",
+        "Part B": "Not stated in retrieved evidence",
+        "Assessment": "Needs data / engineering validation",
+        "Evidence": "Part A datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN. Part B datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN."
+      },
+      {
+        "Attribute": "Body",
+        "Part A": "Not stated in retrieved evidence",
+        "Part B": "Not stated in retrieved evidence",
+        "Assessment": "Needs data / engineering validation",
+        "Evidence": "Part A datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN. Part B datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN."
+      }
+    ],
+    "diagnostic_rows": [
+      {
+        "Attribute": "Mounting",
+        "Key": "mounting_style",
+        "Required": true,
+        "CompareMode": "mounting",
+        "ValueRole": "text",
+        "Original": "Not stated in retrieved evidence",
+        "Candidate": "Not stated in retrieved evidence",
+        "Status": "Needs data",
+        "Evidence": "Part A datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN. Part B datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN.",
+        "OriginalSource": "none",
+        "CandidateSource": "none"
+      },
+      {
+        "Attribute": "Temperature range",
+        "Key": "temperature_range",
+        "Required": false,
+        "CompareMode": "exact",
+        "ValueRole": "range",
+        "Original": "Not stated in retrieved evidence",
+        "Candidate": "Not stated in retrieved evidence",
+        "Status": "Needs data",
+        "Evidence": "Part A datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN. Part B datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN.",
+        "OriginalSource": "none",
+        "CandidateSource": "none"
+      },
+      {
+        "Attribute": "Lifecycle",
+        "Key": "lifecycle_status",
+        "Required": false,
+        "CompareMode": "exact",
+        "ValueRole": "text",
+        "Original": "Not stated in retrieved evidence",
+        "Candidate": "Not stated in retrieved evidence",
+        "Status": "Needs data",
+        "Evidence": "Part A datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN. Part B datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN.",
+        "OriginalSource": "none",
+        "CandidateSource": "none"
+      },
+      {
+        "Attribute": "Resistance",
+        "Key": "resistance",
+        "Required": true,
+        "CompareMode": "nominal",
+        "ValueRole": "nominal",
+        "Original": "Not stated in retrieved evidence",
+        "Candidate": "Not stated in retrieved evidence",
+        "Status": "Needs data",
+        "Evidence": "Part A datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN. Part B datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN.",
+        "OriginalSource": "none",
+        "CandidateSource": "none"
+      },
+      {
+        "Attribute": "Tolerance",
+        "Key": "tolerance",
+        "Required": false,
+        "CompareMode": "exact",
+        "ValueRole": "nominal",
+        "Original": "Not stated in retrieved evidence",
+        "Candidate": "Not stated in retrieved evidence",
+        "Status": "Needs data",
+        "Evidence": "Part A datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN. Part B datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN.",
+        "OriginalSource": "none",
+        "CandidateSource": "none"
+      },
+      {
+        "Attribute": "Power rating",
+        "Key": "power_rating",
+        "Required": true,
+        "CompareMode": "limit_ge",
+        "ValueRole": "max",
+        "Original": "Not stated in retrieved evidence",
+        "Candidate": "Not stated in retrieved evidence",
+        "Status": "Needs data",
+        "Evidence": "Part A datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN. Part B datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN.",
+        "OriginalSource": "none",
+        "CandidateSource": "none"
+      },
+      {
+        "Attribute": "Volts",
+        "Key": "max_working_voltage",
+        "Required": false,
+        "CompareMode": "limit_ge",
+        "ValueRole": "max",
+        "Original": "Not stated in retrieved evidence",
+        "Candidate": "Not stated in retrieved evidence",
+        "Status": "Needs data",
+        "Evidence": "Part A datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN. Part B datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN.",
+        "OriginalSource": "none",
+        "CandidateSource": "none"
+      },
+      {
+        "Attribute": "Taper",
+        "Key": "taper",
+        "Required": false,
+        "CompareMode": "type",
+        "ValueRole": "nominal",
+        "Original": "Not stated in retrieved evidence",
+        "Candidate": "Not stated in retrieved evidence",
+        "Status": "Needs data",
+        "Evidence": "Part A datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN. Part B datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN.",
+        "OriginalSource": "none",
+        "CandidateSource": "none"
+      },
+      {
+        "Attribute": "Element type",
+        "Key": "element_type",
+        "Required": false,
+        "CompareMode": "type",
+        "ValueRole": "nominal",
+        "Original": "Not stated in retrieved evidence",
+        "Candidate": "Not stated in retrieved evidence",
+        "Status": "Needs data",
+        "Evidence": "Part A datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN. Part B datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN.",
+        "OriginalSource": "none",
+        "CandidateSource": "none"
+      },
+      {
+        "Attribute": "Turns",
+        "Key": "turns",
+        "Required": false,
+        "CompareMode": "exact",
+        "ValueRole": "nominal",
+        "Original": "Not stated in retrieved evidence",
+        "Candidate": "Not stated in retrieved evidence",
+        "Status": "Needs data",
+        "Evidence": "Part A datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN. Part B datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN.",
+        "OriginalSource": "none",
+        "CandidateSource": "none"
+      },
+      {
+        "Attribute": "Rotation",
+        "Key": "rotation_angle",
+        "Required": false,
+        "CompareMode": "exact",
+        "ValueRole": "nominal",
+        "Original": "Not stated in retrieved evidence",
+        "Candidate": "Not stated in retrieved evidence",
+        "Status": "Needs data",
+        "Evidence": "Part A datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN. Part B datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN.",
+        "OriginalSource": "none",
+        "CandidateSource": "none"
+      },
+      {
+        "Attribute": "Terminal style",
+        "Key": "terminal_style",
+        "Required": true,
+        "CompareMode": "exact",
+        "ValueRole": "nominal",
+        "Original": "Not stated in retrieved evidence",
+        "Candidate": "Not stated in retrieved evidence",
+        "Status": "Needs data",
+        "Evidence": "Part A datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN. Part B datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN.",
+        "OriginalSource": "none",
+        "CandidateSource": "none"
+      },
+      {
+        "Attribute": "Terminal count",
+        "Key": "terminal_count",
+        "Required": false,
+        "CompareMode": "exact",
+        "ValueRole": "nominal",
+        "Original": "Not stated in retrieved evidence",
+        "Candidate": "Not stated in retrieved evidence",
+        "Status": "Needs data",
+        "Evidence": "Part A datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN. Part B datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN.",
+        "OriginalSource": "none",
+        "CandidateSource": "none"
+      },
+      {
+        "Attribute": "Shaft",
+        "Key": "shaft",
+        "Required": false,
+        "CompareMode": "exact",
+        "ValueRole": "nominal",
+        "Original": "Not stated in retrieved evidence",
+        "Candidate": "Not stated in retrieved evidence",
+        "Status": "Needs data",
+        "Evidence": "Part A datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN. Part B datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN.",
+        "OriginalSource": "none",
+        "CandidateSource": "none"
+      },
+      {
+        "Attribute": "Bushing",
+        "Key": "bushing",
+        "Required": false,
+        "CompareMode": "exact",
+        "ValueRole": "nominal",
+        "Original": "Not stated in retrieved evidence",
+        "Candidate": "Not stated in retrieved evidence",
+        "Status": "Needs data",
+        "Evidence": "Part A datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN. Part B datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN.",
+        "OriginalSource": "none",
+        "CandidateSource": "none"
+      },
+      {
+        "Attribute": "Diameter",
+        "Key": "diameter",
+        "Required": false,
+        "CompareMode": "nominal",
+        "ValueRole": "nominal",
+        "Original": "Not stated in retrieved evidence",
+        "Candidate": "Not stated in retrieved evidence",
+        "Status": "Needs data",
+        "Evidence": "Part A datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN. Part B datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN.",
+        "OriginalSource": "none",
+        "CandidateSource": "none"
+      },
+      {
+        "Attribute": "Body",
+        "Key": "body_dimensions",
+        "Required": false,
+        "CompareMode": "exact",
+        "ValueRole": "nominal",
+        "Original": "Not stated in retrieved evidence",
+        "Candidate": "Not stated in retrieved evidence",
+        "Status": "Needs data",
+        "Evidence": "Part A datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN. Part B datasheet was not used. No manufacturer or authorized distributor source verified this exact MPN.",
+        "OriginalSource": "none",
+        "CandidateSource": "none"
+      }
+    ],
+    "datasheet_identity": {
+      "part_a": {
+        "attached": true,
+        "verified": false,
+        "mpn_verified": false,
+        "manufacturer_verified": false,
+        "reason": "No manufacturer or authorized distributor source verified this exact MPN."
+      },
+      "part_b": {
+        "attached": true,
+        "verified": false,
+        "mpn_verified": false,
+        "manufacturer_verified": false,
+        "reason": "No manufacturer or authorized distributor source verified this exact MPN."
+      }
+    },
+    "evidence_sources": {
+      "part_a": [
+        {
+          "source": "DigiKey",
+          "source_type": "authorized_distributor_api_lookup",
+          "status": "not_configured",
+          "detail": "DigiKey API credentials are not configured. Required product secrets: DIGIKEY_CLIENT_ID and DIGIKEY_CLIENT_SECRET.",
+          "identity_verified": false,
+          "url": ""
+        },
+        {
+          "source": "DigiKey",
+          "source_type": "digikey_indexed_listing_lead",
+          "status": "discovery_lead",
+          "detail": "Indexed DigiKey product listing recorded as a discovery lead only.",
+          "identity_verified": false,
+          "url": "https://www.digikey.com/en/products/detail/ohmite/RES10K/258353"
+        }
+      ],
+      "part_b": [
+        {
+          "source": "DigiKey",
+          "source_type": "authorized_distributor_api_lookup",
+          "status": "not_configured",
+          "detail": "DigiKey API credentials are not configured. Required product secrets: DIGIKEY_CLIENT_ID and DIGIKEY_CLIENT_SECRET.",
+          "identity_verified": false,
+          "url": ""
+        },
+        {
+          "source": "DigiKey",
+          "source_type": "digikey_indexed_listing_lead",
+          "status": "discovery_lead",
+          "detail": "Indexed DigiKey product listing recorded as a discovery lead only.",
+          "identity_verified": false,
+          "url": "https://www.digikey.com/en/products/detail/ohmite/RES10K/258353"
+        }
+      ]
+    },
+    "access_blockers": {
+      "unverified_mpns": [
+        "RES10K",
+        "RES10KE"
+      ],
+      "blockers": [
+        {
+          "mpn": "RES10K",
+          "side": "part_a",
+          "provider": "DigiKey API",
+          "status": "not_configured",
+          "required_configuration": [
+            "DIGIKEY_CLIENT_ID",
+            "DIGIKEY_CLIENT_SECRET"
+          ],
+          "detail": "DigiKey API credentials are not configured. Required product secrets: DIGIKEY_CLIENT_ID and DIGIKEY_CLIENT_SECRET.",
+          "discovery_lead": "https://www.digikey.com/en/products/detail/ohmite/RES10K/258353"
+        },
+        {
+          "mpn": "RES10K",
+          "side": "part_a",
+          "provider": "Exact-MPN datasheet upload",
+          "status": "not_provided",
+          "required_configuration": [],
+          "detail": "No exact-MPN datasheet was uploaded for this part. Use Compare Parts \u2192 Optional: upload exact-MPN datasheet when authorized APIs are unavailable."
+        },
+        {
+          "mpn": "RES10K",
+          "side": "part_a",
+          "provider": "manufacturer_or_authorized_distributor",
+          "status": "unverified",
+          "required_configuration": [
+            "DIGIKEY_CLIENT_ID",
+            "DIGIKEY_CLIENT_SECRET"
+          ],
+          "detail": "RES10K remains unverified. No accessible Ohmite product page named this exact MPN, DigiKey public HTML is HTTP 403-blocked (not used), and DigiKey API credentials are not configured. Configure DIGIKEY_CLIENT_ID and DIGIKEY_CLIENT_SECRET in the product secrets store, or upload an exact-MPN datasheet that names Ohmite and RES10K.",
+          "discovery_lead": "https://www.digikey.com/en/products/detail/ohmite/RES10K/258353"
+        },
+        {
+          "mpn": "RES10KE",
+          "side": "part_b",
+          "provider": "DigiKey API",
+          "status": "not_configured",
+          "required_configuration": [
+            "DIGIKEY_CLIENT_ID",
+            "DIGIKEY_CLIENT_SECRET"
+          ],
+          "detail": "DigiKey API credentials are not configured. Required product secrets: DIGIKEY_CLIENT_ID and DIGIKEY_CLIENT_SECRET.",
+          "discovery_lead": ""
+        },
+        {
+          "mpn": "RES10KE",
+          "side": "part_b",
+          "provider": "Exact-MPN datasheet upload",
+          "status": "not_provided",
+          "required_configuration": [],
+          "detail": "No exact-MPN datasheet was uploaded for this part. Use Compare Parts \u2192 Optional: upload exact-MPN datasheet when authorized APIs are unavailable."
+        }
+      ],
+      "permitted_paths": [
+        {
+          "provider": "DigiKey API",
+          "integration": "integrations/digikey_client.py",
+          "required_configuration": [
+            "DIGIKEY_CLIENT_ID",
+            "DIGIKEY_CLIENT_SECRET"
+          ],
+          "discovery_lead": "https://www.digikey.com/en/products/detail/ohmite/RES10K/258353",
+          "note": "Configure DigiKey OAuth client credentials in the product secrets store or environment. Public DigiKey HTML is HTTP 403-blocked and is never used. Do not paste secrets into chat."
+        },
+        {
+          "provider": "Mouser API",
+          "integration": "integrations/mouser_client.py",
+          "required_configuration": [
+            "MOUSER_API_KEY"
+          ],
+          "note": "Configure the Mouser API key in the product secrets store or environment when DigiKey is unavailable."
+        },
+        {
+          "provider": "Newark / element14 API",
+          "integration": "integrations/newark_client.py",
+          "required_configuration": [
+            "NEWARK_API_KEY"
+          ],
+          "note": "Configure the Newark/element14 API key in the product secrets store or environment when DigiKey is unavailable."
+        },
+        {
+          "provider": "Exact-MPN datasheet upload",
+          "path": "Compare Parts \u2192 Optional: upload exact-MPN datasheet",
+          "required_configuration": [],
+          "note": "Upload a text-based PDF through the Compare Parts upload control. Values are shown only after the file names the entered manufacturer and exact MPN."
+        }
+      ]
+    },
+    "review_warnings": [
+      "Part A: No manufacturer or authorized distributor source verified this exact MPN.",
+      "Part B: No manufacturer or authorized distributor source verified this exact MPN.",
+      "Drop-in fit is unverified: Mounting, Temperature range, Lifecycle, Resistance, Tolerance, Power rating, Volts, Taper, Element type, Turns, Rotation, Terminal style, Terminal count, Shaft, Bushing, Diameter, and Body are not stated in the retrieved evidence. Those values were not inferred."
+    ],
+    "fixture_kpi": {
+      "fixture_row_count": 0,
+      "fixture_attributes": [],
+      "contributes_to_kpi_totals": true,
+      "compatible_from_fixtures": 0,
+      "material_difference_from_fixtures": 0,
+      "needs_data_from_fixtures": 0,
+      "note": "No [Test fixture] rows are present in this comparison."
+    },
+    "evidence_asymmetry_note": "",
+    "fixture_production_isolation": {
+      "production_lookup_strips_fixture_flags": true,
+      "production_lookup_clears_fixture_mounting_lifecycle": true,
+      "fixture_flags": [
+        "catalog_fixture",
+        "evidence_fixture",
+        "test_fixture",
+        "FixtureRow"
+      ],
+      "fixture_value_fields": [
+        "mounting_style",
+        "Mounting Style",
+        "Mounting",
+        "mounting",
+        "lifecycle_status",
+        "Lifecycle",
+        "lifecycle",
+        "lifecycle_evidence",
+        "lifecycle_conflict"
+      ],
+      "note": "Mounting and Lifecycle [Test fixture] stubs contribute to visible KPI totals only when explicitly flagged on in-process test parts. lookup_part_for_compare strips fixture flags and clears fixture Mounting/Lifecycle values so synthetic stubs cannot enter the normal production evidence path as unlabeled catalog data."
+    },
+    "supplier_substitute_claim": false,
+    "notes": [
+      "Engineering compatibility is separate from any supplier substitute relationship.",
+      "Missing attributes stay missing; Cadivor does not infer a match.",
+      "Values are used only when a retrieved source names the entered manufacturer and exact MPN.",
+      "No [Test fixture] rows are present in this comparison.",
+      "Synthetic [Test fixture] markers are applied only when a part record explicitly sets catalog_fixture/evidence_fixture. The production lookup_part_for_compare path strips those flags and clears fixture Mounting/Lifecycle values, so stubs cannot enter the normal supplier-evidence path as live catalog data.",
+      "Exact-MPN values stay unverified until a permitted manufacturer page, authorized-distributor API, or identity-verified upload cites them. See access_blockers for the remaining configuration path."
+    ]
+  },
+  "error": ""
+}
