@@ -99,6 +99,17 @@ class RouteLoadingTitleHandoffTests(unittest.TestCase):
         )
         self.assertIn("width:calc(100% - 48px)!important", RUNTIME)
 
+    def test_always_on_css_hides_details_chrome_during_saving(self):
+        css = (ROOT / "src" / "assets" / "css" / "monitoring_home_alignment.css").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn(
+            "body:has(.st-key-bom8_analysis_progress_card):not(:has(.cv-ei-report))",
+            css,
+        )
+        self.assertIn("st-key-approved_page_canvas_standard_analysis_detail", css)
+        self.assertIn("padding-top: 30px !important;", css)
+
 
 if __name__ == "__main__":
     unittest.main()
