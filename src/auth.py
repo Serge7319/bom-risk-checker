@@ -466,18 +466,52 @@ def _submit_manual_login(supabase, cookie_manager, email: str, password: str) ->
     st.rerun()
 
 
+PROVIDER_LOGIN_BUDGET_SECONDS = 20.0
+
+
 def execute_password_login(supabase, cookie_manager, email: str, password: str) -> bool:
     """Run provider sign-in after the authenticating gate surface is already painted."""
-    from src.auth_bootstrap import LOGIN_HANDOFF_STAGE_INITIALIZING, advance_login_handoff
+    from src.auth_bootstrap import (
+        LOGIN_HANDOFF_STAGE_INITIALIZING,
+        LOGIN_HANDOFF_TIMEOUT_MESSAGE,
+        advance_login_handoff,
+    )
     from src.auth_gate import set_auth_gate_state
+    from src.boot_read_budget import run_with_read_budget
 
     _log_manual_login_event("manual_login_provider_started", cookie_manager)
     try:
-        response = supabase.auth.sign_in_with_password({
-            "email": email,
-            "password": password,
-        })
+        def _sign_in():
+            return supabase.auth.sign_in_with_password({
+                "email": email,
+                "password": password,
+            })
+
+        # Bound the provider call on the worker thread so a hung auth request
+        # cannot pin Signing-you-in without a recoverable failure path.
+        response, status = run_with_read_budget(
+            _sign_in,
+            budget_seconds=PROVIDER_LOGIN_BUDGET_SECONDS,
+            respect_first_page=False,
+        )
     except Exception:
+        _fail_manual_login_and_rerun(
+            cookie_manager,
+            event="manual_login_provider_exception",
+            message=MANUAL_LOGIN_FAILURE_MESSAGE,
+            email=email,
+        )
+        return False
+
+    if status == "timeout":
+        _fail_manual_login_and_rerun(
+            cookie_manager,
+            event="manual_login_provider_timeout",
+            message=LOGIN_HANDOFF_TIMEOUT_MESSAGE,
+            email=email,
+        )
+        return False
+    if status != "ok" or response is None:
         _fail_manual_login_and_rerun(
             cookie_manager,
             event="manual_login_provider_exception",

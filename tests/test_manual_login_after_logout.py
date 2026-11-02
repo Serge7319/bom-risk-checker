@@ -337,8 +337,9 @@ class ManualLoginAfterLogoutTests(unittest.TestCase):
             / "auth_bootstrap.py"
         ).read_text(encoding="utf-8")
         self.assertIn("manual_login_in_flight", bootstrap_source)
-        self.assertIn('auth_ui_reason = "manual_login_in_flight"', bootstrap_source)
-        self.assertIn("if auth_status == AUTH_SIGNING_IN:", bootstrap_source)
+        self.assertIn("if auth_status == AUTH_SIGNING_IN or manual_login_in_flight()", bootstrap_source)
+        self.assertIn('reason=f"resolved_{auth_status}_keep"', bootstrap_source)
+        self.assertNotIn("auth_boundary_failed", bootstrap_source)
 
     def test_bootstrap_skips_hydration_rerun_during_manual_login(self):
         bootstrap_source = (
@@ -347,13 +348,25 @@ class ManualLoginAfterLogoutTests(unittest.TestCase):
             / "auth_bootstrap.py"
         ).read_text(encoding="utf-8")
         self.assertIn("not manual_login_in_flight()", bootstrap_source)
-        self.assertIn("hydration_wait_rerun", bootstrap_source)
+        # Manual login must not enter the boot hydration wait/rerun loop.
+        cold_login = bootstrap_source.split(
+            "# Cold signed-out visitors:", 1
+        )[1].split("# Authenticating:", 1)[0]
+        self.assertIn("not manual_login_in_flight()", cold_login)
 
-    def test_bootstrap_routes_signing_in_to_show_auth_ui_without_boundary_failed(self):
+    def test_bootstrap_routes_signing_in_keeps_authenticating_without_boundary_failed(self):
         st, restore_streamlit = _install_streamlit_stub(
             {
                 "cadivor_manual_login_in_progress": True,
                 "cadivor_root_state": "signing_in",
+                "cadivor_login_handoff_active": True,
+                "cadivor_login_handoff_stage": "authenticating",
+                "cadivor_login_handoff_started_at": __import__("time").monotonic(),
+                "cadivor_auth_gate_state": "authenticating",
+                # Another script run owns the provider call; this run must wait.
+                "cadivor_auth_gate_login_claim_run": "run-owner",
+                "cadivor_auth_gate_pending_email": "user@example.com",
+                "cadivor_auth_gate_pending_password": "secret",
             }
         )
         self.addCleanup(restore_streamlit)
@@ -366,6 +379,8 @@ class ManualLoginAfterLogoutTests(unittest.TestCase):
         st.cache_resource = cache_resource
         st.stop = MagicMock()
         st.caption = MagicMock()
+        st.button = MagicMock(return_value=False)
+        st.markdown = MagicMock()
         auth_cookies, auth_state, restore_secrets = _install_auth_modules(st)
         self.addCleanup(restore_secrets)
 
@@ -383,10 +398,13 @@ class ManualLoginAfterLogoutTests(unittest.TestCase):
             (checkpoint, kwargs.get("transition_reason"))
         )
         auth_diagnostics.log_auth_bounce = lambda event, **kwargs: None
+        auth_diagnostics.current_script_run_id = lambda: "run-waiter"
+        auth_diagnostics.hash_session_id = lambda: "hash-test"
         sys.modules["src.auth_diagnostics"] = auth_diagnostics
 
         auth = types.ModuleType("src.auth")
         auth.show_auth_ui = MagicMock()
+        auth.execute_password_login = MagicMock(return_value=False)
         sys.modules["src.auth"] = auth
 
         supabase_mod = types.ModuleType("supabase")
@@ -399,10 +417,15 @@ class ManualLoginAfterLogoutTests(unittest.TestCase):
         auth_cookies.hydrate_session_from_auth_cookie = lambda cookie_manager=None: False
         auth_cookies.log_auth_restore = MagicMock()
         auth_cookies.read_auth_cookie_tokens = lambda cookie_manager=None: None
+        auth_cookies.read_auth_cookie_tokens_with_source = lambda cookie_manager=None: (None, "none")
         auth_cookies.record_auth_hydration_attempt = lambda: 1
+        auth_cookies.native_cookie_api_available = lambda: False
+        auth_cookies.manager_fallback_hydration_pending = lambda cookie_manager=None: False
+        auth_cookies.persist_session_auth_cookie = MagicMock()
         sys.modules["src.auth_cookies"] = auth_cookies
 
         sys.modules.pop("src.auth_bootstrap", None)
+        sys.modules.pop("src.auth_gate", None)
         import importlib
 
         bootstrap = importlib.import_module("src.auth_bootstrap")
@@ -413,17 +436,16 @@ class ManualLoginAfterLogoutTests(unittest.TestCase):
             except RuntimeError:
                 pass
 
-        auth.show_auth_ui.assert_called_once()
+        # Keep branded authenticating progress — do not bounce to Login/show_auth_ui.
+        auth.show_auth_ui.assert_not_called()
+        auth.execute_password_login.assert_not_called()
         boundary_failed = [
             call
             for call in auth_cookies.log_auth_restore.call_args_list
             if call.args and call.args[0] == "auth_boundary_failed"
         ]
         self.assertEqual(boundary_failed, [])
-        self.assertIn(
-            ("before_show_auth_ui", "manual_login_in_flight"),
-            correlation_calls,
-        )
+        self.assertEqual(st.session_state.get("cadivor_auth_gate_state"), "authenticating")
 
 
 if __name__ == "__main__":

@@ -494,10 +494,16 @@ def fail_login_handoff(
 ) -> None:
     """Clear handoff state and restore an enabled Login form with an error."""
     from src.auth_state import APP_LOGIN, AUTH_SIGNED_OUT
-    from src.auth_gate import set_auth_gate_state
+    from src.auth_gate import (
+        clear_pending_credentials,
+        release_login_provider_claim,
+        set_auth_gate_state,
+    )
 
     draft = str(email or st.session_state.get(LOGIN_HANDOFF_EMAIL_KEY) or "").strip()
     clear_login_handoff()
+    clear_pending_credentials()
+    release_login_provider_claim()
     st.session_state.pop("cadivor_manual_login_in_progress", None)
     st.session_state["cadivor_auth_status"] = AUTH_SIGNED_OUT
     st.session_state["cadivor_root_state"] = APP_LOGIN
@@ -576,6 +582,9 @@ def ensure_authenticated_or_stop() -> None:
         name = type(exc).__name__
         if name in {"RerunException", "StopException", "RerunData"}:
             raise
+        # Unit tests mock st.stop/st.rerun with RuntimeError("stop"|"rerun").
+        if name == "RuntimeError" and str(exc) in {"stop", "rerun"}:
+            raise
         # Never log tokens/passwords/email/profile — type + correlation only.
         try:
             from src.auth_diagnostics import log_auth_correlation
@@ -609,7 +618,6 @@ def _ensure_authenticated_or_stop_impl() -> None:
         get_auth_gate_state,
         has_pending_credentials,
         paint_auth_gate,
-        pop_pending_credentials,
         resolve_initial_gate_state,
         set_auth_gate_state,
     )
@@ -773,12 +781,49 @@ def _ensure_authenticated_or_stop_impl() -> None:
         st.stop()
 
     # Authenticating: process stashed credentials after the branded surface painted.
+    # Peek + claim so a concurrent Streamlit rerun cannot steal credentials while
+    # the provider call is still in flight (that left production on Signing you in…).
+    from src.auth_gate import (
+        clear_pending_credentials,
+        login_provider_claim_active,
+        peek_pending_credentials,
+        release_login_provider_claim,
+        try_claim_login_provider,
+    )
+
     if get_auth_gate_state() == "authenticating" and has_pending_credentials():
-        email, password = pop_pending_credentials()
+        if not try_claim_login_provider():
+            if login_handoff_timed_out():
+                draft = str(st.session_state.get(LOGIN_HANDOFF_EMAIL_KEY) or "").strip()
+                clear_pending_credentials()
+                release_login_provider_claim()
+                fail_login_handoff(
+                    message=LOGIN_HANDOFF_TIMEOUT_MESSAGE,
+                    email=draft,
+                )
+                set_auth_gate_state(
+                    "error",
+                    reason="login_handoff_timeout_waiting_claim",
+                    error_message=LOGIN_HANDOFF_TIMEOUT_MESSAGE,
+                )
+                paint_auth_gate("error")
+                if st.button("Back to Login", key="auth_gate_error_retry_timeout_claim"):
+                    set_auth_gate_state("login", reason="error_retry")
+                    st.rerun()
+                st.stop()
+            paint_auth_gate(
+                "authenticating",
+                progress_message=login_handoff_message(),
+            )
+            st.stop()
+
+        email, password = peek_pending_credentials()
         try:
             from src.auth import execute_password_login
 
             ok = execute_password_login(supabase, cookie_manager, email, password)
+            clear_pending_credentials()
+            release_login_provider_claim()
             if ok:
                 set_auth_gate_state("ready", reason="provider_login_success")
                 # Keep the initializing handoff until the authenticated runtime
@@ -798,6 +843,8 @@ def _ensure_authenticated_or_stop_impl() -> None:
                 )
                 st.rerun()
         except Exception:
+            clear_pending_credentials()
+            release_login_provider_claim()
             fail_login_handoff(
                 message="Sign-in could not be completed. Please try again.",
                 email=email,
@@ -809,6 +856,52 @@ def _ensure_authenticated_or_stop_impl() -> None:
             )
             paint_auth_gate("error")
             if st.button("Back to Login", key="auth_gate_error_retry"):
+                set_auth_gate_state("login", reason="error_retry")
+                st.rerun()
+            st.stop()
+
+    # Orphaned authenticating handoff: claim/credentials gone, no session yet.
+    # Do not bounce through cookie hydrate → login → Signing you in forever.
+    if (
+        get_auth_gate_state() == "authenticating"
+        and not has_pending_credentials()
+        and (login_handoff_active() or manual_login_in_flight())
+    ):
+        access = str(st.session_state.get("access_token") or "").strip()
+        refresh = str(st.session_state.get("refresh_token") or "").strip()
+        already_authed = (
+            str(st.session_state.get("cadivor_auth_status") or "") == AUTH_AUTHENTICATED
+            and bool(access and refresh)
+        )
+        if already_authed:
+            set_auth_gate_state("ready", reason="orphan_handoff_already_authenticated")
+        elif login_provider_claim_active() and not login_handoff_timed_out():
+            paint_auth_gate(
+                "authenticating",
+                progress_message=login_handoff_message(),
+            )
+            st.stop()
+        else:
+            draft = str(st.session_state.get(LOGIN_HANDOFF_EMAIL_KEY) or "").strip()
+            release_login_provider_claim()
+            fail_login_handoff(
+                message=(
+                    LOGIN_HANDOFF_TIMEOUT_MESSAGE
+                    if login_handoff_timed_out()
+                    else "Sign-in could not be completed. Please try again."
+                ),
+                email=draft,
+            )
+            set_auth_gate_state(
+                "error",
+                reason="orphan_authenticating_handoff",
+                error_message=str(
+                    st.session_state.get("cadivor_auth_error")
+                    or "Sign-in could not be completed. Please try again."
+                ),
+            )
+            paint_auth_gate("error")
+            if st.button("Back to Login", key="auth_gate_error_retry_orphan"):
                 set_auth_gate_state("login", reason="error_retry")
                 st.rerun()
             st.stop()
@@ -977,6 +1070,29 @@ def _ensure_authenticated_or_stop_impl() -> None:
             event="boundary",
         )
         return
+
+    # In-flight manual login must not bounce authenticating → login → Signing you in.
+    # Keep the branded progress surface (or fail recoverably) until tokens exist.
+    if auth_status == AUTH_SIGNING_IN or manual_login_in_flight() or login_handoff_active():
+        if login_handoff_timed_out():
+            draft = str(st.session_state.get(LOGIN_HANDOFF_EMAIL_KEY) or "").strip()
+            fail_login_handoff(message=LOGIN_HANDOFF_TIMEOUT_MESSAGE, email=draft)
+            set_auth_gate_state(
+                "error",
+                reason="resolved_signing_in_timeout",
+                error_message=LOGIN_HANDOFF_TIMEOUT_MESSAGE,
+            )
+            paint_auth_gate("error")
+            if st.button("Back to Login", key="auth_gate_error_retry_signing_timeout"):
+                set_auth_gate_state("login", reason="error_retry")
+                st.rerun()
+            st.stop()
+        set_auth_gate_state("authenticating", reason=f"resolved_{auth_status}_keep")
+        paint_auth_gate(
+            "authenticating",
+            progress_message=login_handoff_message(),
+        )
+        st.stop()
 
     # Signed-out / failed resolve → exclusive login surface.
     set_auth_gate_state("login", reason=f"resolved_{auth_status}")
