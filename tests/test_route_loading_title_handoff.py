@@ -82,6 +82,7 @@ class RouteLoadingTitleHandoffTests(unittest.TestCase):
         )
         self.assertIn("width:calc(100% - 48px)!important", branch)
         self.assertIn("max-width:1440px!important", branch)
+        self.assertIn("padding-top:30px!important", branch)
 
     def test_bom_analyzer_widens_form_progress_and_report_canvas(self):
         self.assertIn(

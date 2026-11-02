@@ -4825,7 +4825,9 @@ def run_authenticated_app() -> None:
                   min-width:0!important;
                   margin-left:auto!important;
                   margin-right:auto!important;
-                  padding-top:12px!important
+                  /* Analyzer paints the card near y≈38; keep Details Saving there
+                     instead of collapsing to y≈20 after the bridge remount. */
+                  padding-top:30px!important
                 }
                 .st-key-bom8_analysis_progress_card,
                 .st-key-bom8_analysis_preparing_card{
