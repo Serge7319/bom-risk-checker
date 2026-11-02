@@ -4785,6 +4785,21 @@ def run_authenticated_app() -> None:
                   margin:0!important;padding:0!important;overflow:hidden!important;
                   visibility:hidden!important
                 }
+                /* While Saving owns the workspace, hide remounting Details chrome
+                   (section nav lists / empty canvas fragments) so the progress
+                   card stays alone at the Analyzer top slot. */
+                body:has(.st-key-bom8_analysis_progress_card):not(:has(.cv-ei-report))
+                  section[data-testid="stMain"] .st-key-approved_page_canvas_standard_analysis_detail,
+                body:has(.st-key-bom8_analysis_progress_card):not(:has(.cv-ei-report))
+                  section[data-testid="stMain"] [class*="st-key-cv_analysis_section_nav"],
+                body:has(.st-key-bom8_analysis_progress_card):not(:has(.cv-ei-report))
+                  section[data-testid="stMain"] [data-testid="stMainBlockContainer"]
+                  > [data-testid="stVerticalBlock"]
+                  > [data-testid="stElementContainer"]:not(:has(.st-key-bom8_analysis_progress_card)):not(:has(.st-key-bom8_analysis_preparing_card)):not(:has([class*="st-key-cv_foundation"])){
+                  display:none!important;height:0!important;max-height:0!important;
+                  margin:0!important;padding:0!important;overflow:hidden!important;
+                  visibility:hidden!important;border:0!important
+                }
                 body:has(.cv-ei-report) .st-key-bom8_analysis_progress_card,
                 body:has(.cv-ei-report) .st-key-bom8_analysis_preparing_card{
                   display:none!important;height:0!important;max-height:0!important;
@@ -4802,7 +4817,14 @@ def run_authenticated_app() -> None:
                 }
                 /* Match Analyzer progress geometry so Saving does not jump ~40px
                    when the Details bridge remounts the same card key. */
-                section[data-testid="stMain"] [data-testid="stMainBlockContainer"]:has(.st-key-bom8_analysis_progress_card){
+                section[data-testid="stMain"] [data-testid="stMainBlockContainer"]:has(.st-key-bom8_analysis_progress_card),
+                section[data-testid="stMain"] [data-testid="stMainBlockContainer"]:has(.cv-ei-report){
+                  box-sizing:border-box!important;
+                  width:calc(100% - 48px)!important;
+                  max-width:1440px!important;
+                  min-width:0!important;
+                  margin-left:auto!important;
+                  margin-right:auto!important;
                   padding-top:12px!important
                 }
                 .st-key-bom8_analysis_progress_card,
@@ -5032,19 +5054,23 @@ def run_authenticated_app() -> None:
         monitoring_analysis_id = str(return_analysis_id or "").strip()
 
         # Shell-first: release Opening… before bounded Supabase reads so the
-        # full-screen cover cannot sit over a 6s+ monitoring budget.
-        st.markdown(
-            """
-            <section class="cv123-monitor-hero" data-cadivor-destination-shell="Monitoring">
-              <div class="cv123-monitor-top"><div>
-                <div class="cv123-monitor-eyebrow">Monitoring Intelligence Center</div>
-                <div class="cv123-monitor-title">Loading monitoring activity…</div>
-                <div class="cv123-monitor-copy">Sidebar and account controls stay available while Cadivor refreshes alerts for this workspace.</div>
-              </div><span class="cv123-monitor-badge">Loading</span></div>
-            </section>
-            """,
-            unsafe_allow_html=True,
-        )
+        # full-screen cover cannot sit over a 6s+ monitoring budget. Keep the
+        # temporary loading hero in an empty slot so real Alerts & Monitoring
+        # content does not stack underneath a stale "Loading…" title.
+        _monitoring_loading_placeholder = st.empty()
+        with _monitoring_loading_placeholder.container():
+            st.markdown(
+                """
+                <section class="cv123-monitor-hero" data-cadivor-destination-shell="Monitoring">
+                  <div class="cv123-monitor-top"><div>
+                    <div class="cv123-monitor-eyebrow">Monitoring Intelligence Center</div>
+                    <div class="cv123-monitor-title">Loading monitoring activity…</div>
+                    <div class="cv123-monitor-copy">Sidebar and account controls stay available while Cadivor refreshes alerts for this workspace.</div>
+                  </div><span class="cv123-monitor-badge">Loading</span></div>
+                </section>
+                """,
+                unsafe_allow_html=True,
+            )
         reveal_authenticated_page_body("Monitoring", force=True)
 
         def _monitor_query(table_name, columns="*"):
@@ -5120,6 +5146,7 @@ def run_authenticated_app() -> None:
                 alert_rows = monitoring_cache.get("alerts", [])
                 monitor_rows = monitoring_cache.get("history", [])
             else:
+                _monitoring_loading_placeholder.empty()
                 stop_authenticated_page()
         else:
             from src.boot_read_budget import run_with_read_budget
@@ -5180,7 +5207,11 @@ def run_authenticated_app() -> None:
                     alert_rows = []
                     monitor_rows = []
                 if not isinstance(monitoring_cache, dict):
+                    _monitoring_loading_placeholder.empty()
                     stop_authenticated_page()
+
+        # Replace the temporary loading hero before any real Monitoring chrome.
+        _monitoring_loading_placeholder.empty()
 
         alert_df = pd.DataFrame(alert_rows)
         monitor_df = pd.DataFrame(monitor_rows)
@@ -7531,16 +7562,18 @@ def run_authenticated_app() -> None:
 
     # ---------- Supply Risk Scenario ----------
     if app_mode == "Supply Risk Scenario":
-        st.markdown(
-            """
-            <div class="cv-ap" data-cadivor-destination-shell="Supply Risk Scenario">
-              <p class="cv-ap-kicker">SUPPLY</p>
-              <h1>Supply Risk Scenario</h1>
-              <p class="cv-ap-sub">Loading scenario data for this workspace…</p>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+        _supply_loading_placeholder = st.empty()
+        with _supply_loading_placeholder.container():
+            st.markdown(
+                """
+                <div class="cv-ap" data-cadivor-destination-shell="Supply Risk Scenario">
+                  <p class="cv-ap-kicker">SUPPLY</p>
+                  <h1>Supply Risk Scenario</h1>
+                  <p class="cv-ap-sub">Loading scenario data for this workspace…</p>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
         reveal_authenticated_page_body("Supply Risk Scenario", force=True)
         with st.spinner("Loading supply risk data…"):
             try:
@@ -7561,6 +7594,8 @@ def run_authenticated_app() -> None:
 
         from src.supply_risk_scenario import render_supply_scenario_dashboard
 
+        # Drop the temporary route heading once the real page title mounts.
+        _supply_loading_placeholder.empty()
         with st.container(key="approved_page_canvas_standard_supply_risk_scenario"):
             render_supply_scenario_dashboard(
                 analyses=scenario_analyses,
@@ -7572,16 +7607,18 @@ def run_authenticated_app() -> None:
 
     # ---------- Cost Optimization ----------
     if app_mode == "Cost Optimization":
-        st.markdown(
-            """
-            <div class="cv-ap" data-cadivor-destination-shell="Cost Optimization">
-              <p class="cv-ap-kicker">COST</p>
-              <h1>Cost Optimization</h1>
-              <p class="cv-ap-sub">Loading cost models for this workspace…</p>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+        _cost_loading_placeholder = st.empty()
+        with _cost_loading_placeholder.container():
+            st.markdown(
+                """
+                <div class="cv-ap" data-cadivor-destination-shell="Cost Optimization">
+                  <p class="cv-ap-kicker">COST</p>
+                  <h1>Cost Optimization</h1>
+                  <p class="cv-ap-sub">Loading cost models for this workspace…</p>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
         reveal_authenticated_page_body("Cost Optimization", force=True)
         with st.spinner("Loading cost optimization data…"):
             try:
@@ -7620,6 +7657,7 @@ def run_authenticated_app() -> None:
                 help="Cadivor multiplies recorded BOM quantities and unit prices by this production quantity.",
             )
 
+        _cost_loading_placeholder.empty()
         render_cost_optimization(
             intelligence=cost_intelligence,
             internal_nav_button=internal_nav_button,
@@ -7630,16 +7668,18 @@ def run_authenticated_app() -> None:
 
     # ---------- Design Impact Analyzer ----------
     if app_mode == "Design Impact Analyzer":
-        st.markdown(
-            """
-            <div class="cv-ap" data-cadivor-destination-shell="Design Impact Analyzer">
-              <p class="cv-ap-kicker">DESIGN</p>
-              <h1>Design Impact Analyzer</h1>
-              <p class="cv-ap-sub">Loading design-impact evidence for this workspace…</p>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+        _impact_loading_placeholder = st.empty()
+        with _impact_loading_placeholder.container():
+            st.markdown(
+                """
+                <div class="cv-ap" data-cadivor-destination-shell="Design Impact Analyzer">
+                  <p class="cv-ap-kicker">DESIGN</p>
+                  <h1>Design Impact Analyzer</h1>
+                  <p class="cv-ap-sub">Loading design-impact evidence for this workspace…</p>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
         reveal_authenticated_page_body("Design Impact Analyzer", force=True)
         with st.spinner("Loading design impact data…"):
             try:
@@ -7737,6 +7777,7 @@ def run_authenticated_app() -> None:
             lifecycle=str(impact_intelligence.get("lifecycle") or ""),
         )
 
+        _impact_loading_placeholder.empty()
         render_design_impact(
             intelligence=impact_intelligence,
             impact_map_markup=impact_map_markup,
@@ -23289,7 +23330,19 @@ def run_authenticated_app() -> None:
             .st-key-bom8_analysis_preview{max-width:1440px!important;}
             .st-key-bom8_analysis_progress_card,
             .st-key-bom8_analysis_preparing_card{box-sizing:border-box!important;width:100%!important;max-width:1440px!important;margin:8px auto 16px!important;}
-            section[data-testid="stMain"] [data-testid="stMainBlockContainer"]:has(.st-key-bom8_analysis_progress_card){
+            /* Match Home/Monitoring canvas: Streamlit's default block-container
+               can leave New BOM / progress / report surfaces unnecessarily narrow. */
+            section[data-testid="stMain"] [data-testid="stMainBlockContainer"]:has(.st-key-bom8_analysis_progress_card),
+            section[data-testid="stMain"] [data-testid="stMainBlockContainer"]:has(.st-key-bom8_analysis_preparing_card),
+            section[data-testid="stMain"] [data-testid="stMainBlockContainer"]:has(.st-key-approved_bom_upload_panel),
+            section[data-testid="stMain"] [data-testid="stMainBlockContainer"]:has(.st-key-approved_bom_title),
+            section[data-testid="stMain"] [data-testid="stMainBlockContainer"]:has(.cv-ei-report){
+              box-sizing:border-box!important;
+              width:calc(100% - 48px)!important;
+              max-width:1440px!important;
+              min-width:0!important;
+              margin-left:auto!important;
+              margin-right:auto!important;
               padding-top:12px!important;
             }
             .st-key-bom8_one_time_payment_action{max-width:760px!important;margin-top:12px!important;}

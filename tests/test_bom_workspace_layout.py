@@ -129,9 +129,12 @@ def test_analysis_workspace_hides_duplicate_legacy_hero_and_caps_actions():
     hero_start = RUNTIME_SOURCE.index('class="bom9-workspace-hero"')
     guard_start = RUNTIME_SOURCE.rfind('if should_render_legacy_bom_workspace(st.session_state):', 0, hero_start)
     assert guard_start >= 0
-    assert 'st-key-bom8_analysis_progress_card{max-width:1440px!important' in RUNTIME_SOURCE
-    assert 'st-key-bom8_analysis_preview{max-width:1440px!important' in RUNTIME_SOURCE
-    assert 'st-key-bom8_one_time_payment_action{max-width:760px!important' in RUNTIME_SOURCE
+    assert 'max-width:1440px!important;margin:8px auto 16px!important;}' in RUNTIME_SOURCE
+    assert '.st-key-bom8_analysis_progress_card,' in RUNTIME_SOURCE
+    assert '.st-key-bom8_analysis_preview{max-width:1440px!important;}' in RUNTIME_SOURCE
+    assert '.st-key-bom8_one_time_payment_action{max-width:760px!important' in RUNTIME_SOURCE
+    assert 'stMainBlockContainer"]:has(.st-key-approved_bom_upload_panel)' in RUNTIME_SOURCE
+    assert 'width:calc(100% - 48px)!important' in RUNTIME_SOURCE
     payment_start = RUNTIME_SOURCE.index('key="bom8_one_time_payment_action"')
     payment_end = RUNTIME_SOURCE.index('except OneTimeBOMError as exc:', payment_start)
     payment_action = RUNTIME_SOURCE[payment_start:payment_end]
