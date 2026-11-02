@@ -122,9 +122,13 @@ def finish_approved_bom_submission(
         "cadivor_bom_analysis_handoff",
         "cadivor_bom_open_details_after_save",
         "cadivor_bom_handoff_hold_armed",
+        "cadivor_bom_report_handoff_active",
+        "cadivor_bom_nav_bridge",
+        "cadivor_bom_navigate_details_id",
         "cadivor_bom_analysis_transition",
         "cadivor_uploaded_bom_file",
         "cadivor_uploaded_bom_filename",
+        "cadivor_bom_upload_receiving",
     ):
         state.pop(key, None)
     if reopen_upload:
@@ -238,7 +242,11 @@ def remember_approved_bom_upload(
     if upload is None:
         state.pop("cadivor_uploaded_bom_file", None)
         state.pop("cadivor_uploaded_bom_filename", None)
+        state.pop("cadivor_bom_upload_receiving", None)
         return
+    # Mark receiving before the widget remount so the BOM form can show a
+    # durable "Receiving file…" surface instead of an empty workspace.
+    state["cadivor_bom_upload_receiving"] = True
     state["cadivor_uploaded_bom_file"] = upload
     state["cadivor_uploaded_bom_filename"] = str(
         getattr(upload, "name", "") or ""

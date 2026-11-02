@@ -2599,7 +2599,6 @@ def run_authenticated_app() -> None:
         st.session_state.pop("cadivor_bom_navigate_details_id", "") or ""
     ).strip()
     if _pending_details_nav_early and st.session_state.get("cadivor_bom_nav_bridge"):
-        from src.bom_upload_flow import finish_approved_bom_submission
         from src.ui.main_transition import (
             DELAY_ROUTE_BODY_REVEAL_KEY as _delay_reveal_bridge_early,
             MAIN_TRANSITION_KIND_KEY as _transition_kind_bridge_early,
@@ -2607,25 +2606,13 @@ def run_authenticated_app() -> None:
         )
         from src.ui.navigation import navigate_to as _navigate_to_bridge_early
 
-        # Hide any retained Saving card before route chrome swaps so Details
-        # cannot paint it at a lower cardTop for a frame.
-        st.html(
-            """
-            <style id="cadivor-bom-progress-bridge-hide" data-cadivor-layout-style="true">
-            .st-key-bom8_analysis_progress_card,
-            .st-key-bom8_analysis_preparing_card{
-              display:none!important;visibility:hidden!important;height:0!important;
-              max-height:0!important;margin:0!important;padding:0!important;
-              overflow:hidden!important;border:0!important;opacity:0!important
-            }
-            </style>
-            """
-        )
-        finish_approved_bom_submission(st.session_state)
+        # Keep Saving ownership through the Details mount. Finishing or hiding
+        # the progress card here left a blank workspace + clipped section nav
+        # for 2–3s while Analysis Details loaded the EI report.
+        st.session_state["cadivor_bom_report_handoff_active"] = True
+        st.session_state["cadivor_bom_analysis_handoff"] = True
         st.session_state.pop("cadivor_bom_analysis_ready", None)
         st.session_state.pop("cadivor_bom_nav_bridge", None)
-        st.session_state.pop("cadivor_bom_analysis_handoff", None)
-        st.session_state.pop("cadivor_bom_open_details_after_save", None)
         st.session_state[_presented_route_bridge_early] = "Analysis Details"
         st.session_state[_delay_reveal_bridge_early] = False
         st.session_state.pop("cadivor_main_transition_active", None)
@@ -4780,38 +4767,113 @@ def run_authenticated_app() -> None:
             f"analysis_id={st.session_state.get('analysis_id') or st.session_state.get('cadivor_active_analysis_id')!r}",
             flush=True,
         )
+        _report_handoff_active = bool(
+            st.session_state.get("cadivor_bom_report_handoff_active")
+            or st.session_state.get("cadivor_bom_analysis_handoff")
+        )
         # Give the saved-BOM workspace and every section/tab the same centered
         # 1440px canvas used by Home and the other standard workspaces.
-        # Also hide any leftover BOM progress card from the prior Analyzer run —
-        # Streamlit can briefly keep that fragment DOM under Details chrome
-        # (cardTop ~246) before the Engineering Intelligence report mounts.
-        st.html(
-            """
-            <style id="cadivor-analysis-workspace-canvas" data-cadivor-layout-style="true">
-            .st-key-bom8_analysis_progress_card,
-            .st-key-bom8_analysis_preparing_card{
-              display:none!important;height:0!important;max-height:0!important;
-              margin:0!important;padding:0!important;overflow:hidden!important;
-              border:0!important;visibility:hidden!important
-            }
-            section[data-testid="stMain"] .st-key-approved_page_canvas_standard_analysis_detail{
-              box-sizing:border-box!important;width:100%!important;max-width:1440px!important;
-              min-width:0!important;margin-left:auto!important;margin-right:auto!important;
-              padding:36px 0 24px!important
-            }
-            section[data-testid="stMain"] .st-key-approved_page_canvas_standard_analysis_detail>[data-testid="stVerticalBlock"]{
-              box-sizing:border-box!important;width:100%!important;max-width:100%!important;min-width:0!important;
-              gap:22px!important
-            }
-            @media(max-width:1250px){
-              section[data-testid="stMain"] .st-key-approved_page_canvas_standard_analysis_detail{padding:22px 0 20px!important}
-            }
-            @media(max-width:700px){
-              section[data-testid="stMain"] .st-key-approved_page_canvas_standard_analysis_detail{padding:24px 0!important}
-            }
-            </style>
-            """
-        )
+        # During the BOM save→report handoff, keep the Saving card visible and
+        # hide section nav until the EI report paints (avoids blank workspace +
+        # clipped right-edge view buttons). After handoff, hide leftover cards.
+        if _report_handoff_active:
+            st.html(
+                """
+                <style id="cadivor-analysis-workspace-canvas" data-cadivor-layout-style="true">
+                [class*="st-key-cv_analysis_section_nav"]{
+                  display:none!important;height:0!important;max-height:0!important;
+                  margin:0!important;padding:0!important;overflow:hidden!important;
+                  visibility:hidden!important
+                }
+                body:has(.cv-ei-report) .st-key-bom8_analysis_progress_card,
+                body:has(.cv-ei-report) .st-key-bom8_analysis_preparing_card{
+                  display:none!important;height:0!important;max-height:0!important;
+                  margin:0!important;padding:0!important;overflow:hidden!important;
+                  border:0!important;visibility:hidden!important
+                }
+                section[data-testid="stMain"] .st-key-approved_page_canvas_standard_analysis_detail{
+                  box-sizing:border-box!important;width:100%!important;max-width:1440px!important;
+                  min-width:0!important;margin-left:auto!important;margin-right:auto!important;
+                  padding:36px 0 24px!important
+                }
+                section[data-testid="stMain"] .st-key-approved_page_canvas_standard_analysis_detail>[data-testid="stVerticalBlock"]{
+                  box-sizing:border-box!important;width:100%!important;max-width:100%!important;min-width:0!important;
+                  gap:22px!important
+                }
+                /* Match Analyzer progress geometry so Saving does not jump ~40px
+                   when the Details bridge remounts the same card key. */
+                section[data-testid="stMain"] [data-testid="stMainBlockContainer"]:has(.st-key-bom8_analysis_progress_card){
+                  padding-top:12px!important
+                }
+                .st-key-bom8_analysis_progress_card,
+                .st-key-bom8_analysis_preparing_card{
+                  box-sizing:border-box!important;position:relative!important;
+                  top:auto!important;margin:8px auto 16px!important;
+                  width:100%!important;max-width:1440px!important
+                }
+                section[data-testid="stMain"] .st-key-approved_page_canvas_standard_analysis_detail{
+                  padding-top:0!important
+                }
+                @media(max-width:1250px){
+                  section[data-testid="stMain"] .st-key-approved_page_canvas_standard_analysis_detail{padding:0 0 20px!important}
+                }
+                @media(max-width:700px){
+                  section[data-testid="stMain"] .st-key-approved_page_canvas_standard_analysis_detail{padding:0 0 20px!important}
+                }
+                </style>
+                """
+            )
+            _handoff_completed, _handoff_total, _ = st.session_state.get(
+                "bom8_analysis_progress",
+                (0, int(st.session_state.get("bom8_analysis_total_parts") or 0), ""),
+            )
+            with st.container(key="bom8_analysis_progress_card", border=True):
+                st.button(
+                    "Cancel analysis",
+                    key="bom8_cancel_analysis",
+                    type="secondary",
+                    disabled=True,
+                )
+                st.markdown(
+                    "<div class='cv-ap'><h1 style='margin:0 0 8px'>Analyzing BOM</h1></div>",
+                    unsafe_allow_html=True,
+                )
+                st.info(
+                    f"**Saving the analysis** — {_handoff_completed} of {_handoff_total} "
+                    "components complete. Opening Engineering Intelligence…"
+                )
+                st.progress(
+                    (_handoff_completed / _handoff_total) if _handoff_total else 1.0
+                )
+            print("CADIVOR_PHASE analysis_details_handoff_saving_surface", flush=True)
+        else:
+            st.html(
+                """
+                <style id="cadivor-analysis-workspace-canvas" data-cadivor-layout-style="true">
+                .st-key-bom8_analysis_progress_card,
+                .st-key-bom8_analysis_preparing_card{
+                  display:none!important;height:0!important;max-height:0!important;
+                  margin:0!important;padding:0!important;overflow:hidden!important;
+                  border:0!important;visibility:hidden!important
+                }
+                section[data-testid="stMain"] .st-key-approved_page_canvas_standard_analysis_detail{
+                  box-sizing:border-box!important;width:100%!important;max-width:1440px!important;
+                  min-width:0!important;margin-left:auto!important;margin-right:auto!important;
+                  padding:36px 0 24px!important
+                }
+                section[data-testid="stMain"] .st-key-approved_page_canvas_standard_analysis_detail>[data-testid="stVerticalBlock"]{
+                  box-sizing:border-box!important;width:100%!important;max-width:100%!important;min-width:0!important;
+                  gap:22px!important
+                }
+                @media(max-width:1250px){
+                  section[data-testid="stMain"] .st-key-approved_page_canvas_standard_analysis_detail{padding:22px 0 20px!important}
+                }
+                @media(max-width:700px){
+                  section[data-testid="stMain"] .st-key-approved_page_canvas_standard_analysis_detail{padding:24px 0!important}
+                }
+                </style>
+                """
+            )
         with st.container(key="approved_page_canvas_standard_analysis_detail"):
             from src.pages.analysis_detail import render_analysis_detail
             render_analysis_detail(

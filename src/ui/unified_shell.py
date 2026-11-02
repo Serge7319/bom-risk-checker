@@ -187,9 +187,11 @@ def _approved_shell_css() -> str:
           opacity:1!important;filter:none!important;backdrop-filter:none!important;
           -webkit-backdrop-filter:none!important
         }
-        /* Once the new shell mounts, retire the old route body. The opaque
-           transition surface covers the workspace until the new body is ready. */
-        body:has([class*="st-key-cv_foundation_navigation"]:not([data-stale="true"]))
+        /* Retire the old route body only while a route Opening cover owns the
+           workspace. Same-page remounts (CSV upload on New BOM) must keep the
+           prior form visible — hiding stale route-body widgets left a blank
+           page with only a skeleton bar until the uploader remounted. */
+        body:has([data-cadivor-main-transition="1"])
           [class*="st-key-cadivor_authenticated_route_body"] [data-stale="true"]{
           display:none!important;visibility:hidden!important;pointer-events:none!important
         }

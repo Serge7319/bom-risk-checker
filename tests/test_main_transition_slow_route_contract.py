@@ -36,11 +36,12 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
 
     def test_outgoing_route_is_hidden_under_opaque_cover_until_destination_release(self):
         stale_hide_rule = UNIFIED_SHELL.split(
-            "/* Once the new shell mounts, retire the old route body.",
+            "Same-page remounts (CSV upload on New BOM)",
             1,
         )[1].split("/* Retired Streamlit shell containers", 1)[0]
         self.assertIn('[data-stale="true"]', stale_hide_rule)
         self.assertIn("display:none!important", stale_hide_rule)
+        self.assertIn('data-cadivor-main-transition="1"', stale_hide_rule)
         self.assertIn("opaque", UNIFIED_SHELL)
 
         cover_css = SOURCE.split(
@@ -101,9 +102,9 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
         markup = namespace["route_loading_markup"]("Monitoring", 22)
 
         self.assertIn("position:fixed", markup)
-        self.assertIn("left:0", markup)
+        self.assertIn("left:var(--cv-foundation-rail,228px)", markup)
         self.assertIn("right:0", markup)
-        self.assertIn("top:0", markup)
+        self.assertIn("top:var(--cv-foundation-top,64px)", markup)
         self.assertIn("width:auto", markup)
         self.assertIn("background:#F5F7FB", markup)
         self.assertIn("pointer-events:auto", markup)
@@ -149,7 +150,8 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
         self.assertIn("cv-main-transition-label", SOURCE)
         self.assertNotIn("@media (max-width:1100px){{", SOURCE)
         self.assertIn("height:auto!important", nav_css)
-        self.assertIn("left:0!important", nav_css)
+        self.assertIn("left:var(--cv-foundation-rail,228px)!important", nav_css)
+        self.assertIn("top:var(--cv-foundation-top,64px)!important", nav_css)
         self.assertIn("width:auto!important", nav_css)
         self.assertNotIn(
             "visibility:hidden!important;opacity:0!important;pointer-events:none!important;\n          transition:none!important",

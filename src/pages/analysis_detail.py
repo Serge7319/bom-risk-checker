@@ -1918,7 +1918,29 @@ def render_analysis_detail(
             if st.button("Back to BOMs", key="analysis_back_to_boms", type="secondary"):
                 return_to_saved_bom_list(arm_opening=False)
     _sync_cadivor_active_analysis_tab(analysis_id=analysis_id)
-    active_tab = _render_analysis_section_navigation(analysis_id=analysis_id)
+    # BOM save→report handoff: data is ready — clear Saving ownership once and
+    # skip section nav for this first EI paint so clipped right-edge controls
+    # never flash over a blank workspace.
+    _bom_report_handoff = bool(
+        st.session_state.get("cadivor_bom_report_handoff_active")
+        or st.session_state.get("cadivor_bom_analysis_handoff")
+    )
+    if _bom_report_handoff:
+        from src.bom_upload_flow import finish_approved_bom_submission
+
+        finish_approved_bom_submission(st.session_state)
+        st.session_state.pop("cadivor_bom_report_handoff_active", None)
+        st.session_state.pop("cadivor_bom_analysis_handoff", None)
+        st.session_state.pop("cadivor_bom_open_details_after_save", None)
+        st.session_state["cadivor_active_analysis_tab"] = "Engineering Intelligence"
+        active_tab = "Engineering Intelligence"
+        print(
+            "CADIVOR_PHASE analysis_details_handoff_report_ready "
+            f"analysis_id={analysis_id!r}",
+            flush=True,
+        )
+    else:
+        active_tab = _render_analysis_section_navigation(analysis_id=analysis_id)
 
     lifecycle_exposed_parts = []
     no_stock_parts = []

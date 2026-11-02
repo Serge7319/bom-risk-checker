@@ -2801,44 +2801,48 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
                 if upload_available:
                     st.session_state.pop("cadivor_bom_submission_error", None)
                     st.session_state.pop("cadivor_bom_upload_receiving", None)
-                # Client-visible receiving state while Streamlit finishes ingesting
-                # the selected file (Analyze stays disabled until upload_available).
+                upload_receiving = bool(
+                    st.session_state.get("cadivor_bom_upload_receiving")
+                ) and not upload_available
+                # Server-visible receiving state for the upload rerun. Client JS
+                # still unhides the banner on the change event before the rerun.
+                receiving_hidden = "" if upload_receiving else " hidden"
                 st.markdown(
-                    """
+                    f"""
                     <div id="cadivor-bom-upload-receiving" class="cadivor-bom-upload-receiving"
-                         role="status" aria-live="polite" hidden>
+                         role="status" aria-live="polite"{receiving_hidden}>
                       Receiving file… Analyze BOM will enable when Cadivor has the upload.
                     </div>
                     <style>
-                    .cadivor-bom-upload-receiving{
+                    .cadivor-bom-upload-receiving{{
                       margin:8px 0 0;padding:10px 12px;border:1px solid #bfdbfe;
                       border-radius:10px;background:#eff6ff;color:#1d4ed8;
                       font-size:.86rem;line-height:1.35;font-weight:600;
-                    }
+                    }}
                     </style>
                     <script>
-                    (function(){
+                    (function(){{
                       const root = window.parent && window.parent.document
                         ? window.parent.document : document;
-                      const markReceiving = () => {
+                      const markReceiving = () => {{
                         const banner = root.querySelector('#cadivor-bom-upload-receiving');
                         if (banner) banner.hidden = false;
-                      };
-                      const bind = () => {
+                      }};
+                      const bind = () => {{
                         root.querySelectorAll(
                           '.st-key-bom_file_uploader input[type="file"],'
                           + ' [data-testid="stFileUploaderDropzone"] input[type="file"]'
-                        ).forEach((input) => {
+                        ).forEach((input) => {{
                           if (input.dataset.cadivorReceivingBound === '1') return;
                           input.dataset.cadivorReceivingBound = '1';
                           input.addEventListener('change', markReceiving);
-                        });
-                      };
+                        }});
+                      }};
                       bind();
-                      try {
-                        new MutationObserver(bind).observe(root.body, {childList:true, subtree:true});
-                      } catch (e) {}
-                    })();
+                      try {{
+                        new MutationObserver(bind).observe(root.body, {{childList:true, subtree:true}});
+                      }} catch (e) {{}}
+                    }})();
                     </script>
                     """,
                     unsafe_allow_html=True,

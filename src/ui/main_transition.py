@@ -229,10 +229,12 @@ def inject_main_transition_css(transition_gen: int) -> None:
           animation:cv-main-transition-progress 1.1s ease-in-out infinite
         }}
         /* Keep the rail and topbar stable while a neutral page skeleton stands
-           in for the destination. Never clone the outgoing page or its menus. */
+           in for the destination. Fixed cover is viewport-relative, so inset
+           by the foundation rail/top — never cover the sidebar on New BOM. */
         .cv-main-transition.cv-route-loading[data-cadivor-transition-kind="navigation"]{{
           box-sizing:border-box!important;position:fixed!important;
-          left:0!important;right:0!important;top:0!important;bottom:0!important;
+          left:var(--cv-foundation-rail,228px)!important;right:0!important;
+          top:var(--cv-foundation-top,64px)!important;bottom:0!important;
           width:auto!important;max-width:none!important;min-width:0!important;
           height:auto!important;min-height:0!important;max-height:none!important;
           margin:0!important;padding:clamp(20px,4vh,40px) clamp(18px,4vw,56px)!important;border:0!important;border-radius:0!important;
@@ -243,7 +245,7 @@ def inject_main_transition_css(transition_gen: int) -> None:
         }}
         @media(max-width:700px){{
           .cv-main-transition.cv-route-loading[data-cadivor-transition-kind="navigation"]{{
-            left:0!important;right:0!important;width:auto!important
+            left:0!important;right:0!important;top:var(--cv-foundation-top,64px)!important;width:auto!important
           }}
         }}
         .cv-main-transition.cv-route-loading[data-cadivor-transition-kind="navigation"] .cv-main-transition-card{{
@@ -488,7 +490,7 @@ def route_loading_markup(target_route: str, transition_gen: int) -> str:
                data-cadivor-transition-kind="navigation"
                data-cadivor-transition-gen="{gen}"
                data-testid="cadivor-route-loading"
-               style="box-sizing:border-box;position:fixed;left:0;right:0;top:0;bottom:0;width:auto;height:auto;z-index:2147483000;display:block;margin:0;padding:clamp(20px,4vh,40px) clamp(18px,4vw,56px);background:#F5F7FB;overflow:auto;pointer-events:auto;font-family:Inter,system-ui,sans-serif"
+               style="box-sizing:border-box;position:fixed;left:var(--cv-foundation-rail,228px);right:0;top:var(--cv-foundation-top,64px);bottom:0;width:auto;height:auto;z-index:2147483000;display:block;margin:0;padding:clamp(20px,4vh,40px) clamp(18px,4vw,56px);background:#F5F7FB;overflow:auto;pointer-events:auto;font-family:Inter,system-ui,sans-serif"
                role="status" aria-label="Opening {safe_route}" aria-live="polite">
             <div class="cv-main-transition-layout">
               <div class="cv-main-transition-card" style="box-sizing:border-box;display:flex;align-items:center;gap:14px;width:100%;padding:14px 18px;border:1px solid #D6E3F5;border-radius:14px;background:#FFFFFF;box-shadow:0 4px 14px rgba(15,23,42,.04);color:#334155;text-align:left">

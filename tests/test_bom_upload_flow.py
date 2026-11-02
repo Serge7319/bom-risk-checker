@@ -71,7 +71,10 @@ class ApprovedBOMPageContractTests(unittest.TestCase):
         self.assertIn("has_completed_saved_bom_results(", source)
         self.assertIn("st.session_state\n        )", source)
         self.assertIn("and not _has_completed_saved_results", source)
-        self.assertIn("if _has_completed_saved_results and uploaded_file is None:", source)
+        self.assertIn(
+            "if (_has_completed_saved_results or _handoff_save_active) and uploaded_file is None:",
+            source,
+        )
         self.assertIn("cadivor_bom_catalog_requested", source)
 
     def test_bom_analyzer_menu_returns_to_the_saved_catalog(self):
@@ -453,12 +456,16 @@ class ApprovedBOMSubmissionTests(unittest.TestCase):
 
     def test_new_analysis_routes_to_saved_engineering_intelligence_after_persistence(self):
         source = Path("src/authenticated_runtime.py").read_text(encoding="utf-8")
-        success = source.split('st.toast("Analysis complete. Opening your BOM analysis…"', 1)[1]
-        handoff = success.split('if _one_time_blocked_plan', 1)[0]
-        self.assertIn('navigate_to(\n                        "Analysis Details"', handoff)
-        self.assertIn('analysis_tab="Engineering Intelligence"', handoff)
-        self.assertIn('_rerun=False', handoff)
-        self.assertIn('st.rerun()', source[source.index('st.toast("Analysis complete. Opening your BOM analysis…"'):])
+        # Persist arms a bridge rerun; early bridge navigates to Analysis Details.
+        self.assertIn("handoff_navigate_bridge", source)
+        self.assertIn("cadivor_bom_navigate_details_id", source)
+        early_bridge = source.split("_pending_details_nav_early", 1)[1].split(
+            "def _resolved_qp_value", 1
+        )[0]
+        self.assertIn('"Analysis Details"', early_bridge)
+        self.assertIn('analysis_tab="Engineering Intelligence"', early_bridge)
+        self.assertIn("arm_opening=False", early_bridge)
+        self.assertIn("via=bridge_rerun_early", early_bridge)
 
     def test_missing_upload_does_not_queue_analysis(self):
         state = {
