@@ -601,3 +601,31 @@ html body section[data-testid="stMain"] :is(.st-key-bom8_analysis_progress_card,
   max-width: 1440px !important;
   margin: 8px auto 16px !important;
 }
+
+/* Always-on handoff rules so the first Analysis Details paint cannot flash
+   section-nav / empty canvas above the Saving card before route-local CSS
+   injects. Keep the card near the Analyzer y≈38 slot. */
+html body:has(.st-key-bom8_analysis_progress_card):not(:has(.cv-ei-report))
+  section[data-testid="stMain"] .st-key-approved_page_canvas_standard_analysis_detail,
+html body:has(.st-key-bom8_analysis_progress_card):not(:has(.cv-ei-report))
+  section[data-testid="stMain"] [class*="st-key-cv_analysis_section_nav"] {
+  display: none !important;
+  height: 0 !important;
+  max-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  visibility: hidden !important;
+  border: 0 !important;
+}
+
+html body:has(.st-key-bom8_analysis_progress_card):not(:has(.cv-ei-report))
+  section[data-testid="stMain"] [data-testid="stMainBlockContainer"]:has(.st-key-bom8_analysis_progress_card) {
+  box-sizing: border-box !important;
+  width: calc(100% - 48px) !important;
+  max-width: 1440px !important;
+  min-width: 0 !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+  padding-top: 30px !important;
+}
