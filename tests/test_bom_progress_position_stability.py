@@ -108,14 +108,13 @@ def test_handoff_skips_catalog_chrome_before_save():
     assert "render_bom_catalog(" not in handoff_branch
 
 def test_handoff_defers_analysis_details_navigation_one_frame():
-    """Saving stays on BOM Analyzer, then bridge-reruns into Details without remounting the card."""
+    """Saving stays on Analyzer through persist; bridge paints Details report in one run."""
     assert "cadivor_bom_open_details_after_save" in RUNTIME
     assert "handoff_saved_hold_saving" in RUNTIME
     assert "handoff_navigate_bridge" in RUNTIME
     assert "cadivor_bom_navigate_details_id" in RUNTIME
-    assert "via=bridge_rerun_early" in RUNTIME
+    assert "via=bridge_same_run" in RUNTIME
     assert "handoff_navigate_analysis_details" in RUNTIME
-    # Same-run navigate after Saving remounted the card under Analysis Details.
     hold = RUNTIME.split("handoff_hold_armed", 1)[1].split(
         "elif _future is not None and not _results_ready:", 1
     )[0]
@@ -128,8 +127,10 @@ def test_handoff_defers_analysis_details_navigation_one_frame():
     # Finish is deferred until Details has loaded report data — not on bridge.
     assert "finish_approved_bom_submission(st.session_state)" not in early_bridge
     assert 'st.session_state["cadivor_bom_report_handoff_active"] = True' in early_bridge
-    assert "via=bridge_rerun_early" in early_bridge
-    assert "arm_opening=True" in early_bridge
+    assert "via=bridge_same_run" in early_bridge
+    assert "arm_opening=False" in early_bridge
+    assert "_rerun=False" in early_bridge
+    assert 'cadivor_bom_details_paint_report_only"] = True' in early_bridge
     assert RUNTIME.index("_pending_details_nav_early") < RUNTIME.index(
         "Paint the durable foundation shell"
     )
@@ -137,9 +138,8 @@ def test_handoff_defers_analysis_details_navigation_one_frame():
         'if app_mode == "BOM Settings":', 1
     )[0]
     assert "cadivor_bom_report_handoff_active" in details
-    assert "analysis_details_handoff_saving_surface" in details
-    assert ".st-key-bom8_analysis_progress_card" in details
-    assert 'key="bom8_analysis_progress_card"' in details
+    assert "analysis_details_handoff_report_only" in details
+    assert "analysis_details_handoff_saving_surface" not in details
 
 
 

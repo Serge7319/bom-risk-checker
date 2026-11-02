@@ -74,11 +74,42 @@ def apply_streamlit_public_origin_patches(
     return applied
 
 
+def apply_light_boot_splash() -> bool:
+    """Force a light canvas before Streamlit's JS theme hydrates.
+
+    Marketing → app cold loads otherwise flash Streamlit's dark skeleton
+    (#0e1117) for a blank frame before the Login card mounts.
+    """
+    try:
+        import streamlit
+        from pathlib import Path
+
+        index = Path(streamlit.__file__).resolve().parent / "static" / "index.html"
+        if not index.is_file():
+            return False
+        text = index.read_text(encoding="utf-8")
+        marker = 'id="cadivor-light-boot"'
+        if marker in text:
+            return False
+        inject = (
+            f'<style {marker}>'
+            "html,body,#root{background:#F5F7FB!important;color-scheme:light!important}"
+            "</style>"
+        )
+        if "</head>" not in text:
+            return False
+        index.write_text(text.replace("</head>", inject + "</head>", 1), encoding="utf-8")
+        return True
+    except Exception:
+        return False
+
+
 def main() -> None:
     if "PORT" not in os.environ or not str(os.environ.get("PORT") or "").strip():
         raise SystemExit("Missing required environment variable: PORT")
 
     apply_streamlit_public_origin_patches()
+    apply_light_boot_splash()
 
     from streamlit.web.cli import main as streamlit_main
 

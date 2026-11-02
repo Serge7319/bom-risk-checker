@@ -17,6 +17,15 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
+# Local/dev boots that skip railway_start still need the light splash patch so
+# marketing → login never flashes Streamlit's dark skeleton.
+try:
+    from scripts.cadivor_streamlit_boot import apply_light_boot_splash
+
+    apply_light_boot_splash()
+except Exception:
+    pass
+
 st.markdown(
     """
     <style id="cadivor-root-chrome">

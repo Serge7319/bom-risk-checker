@@ -72,17 +72,16 @@ class RouteLoadingTitleHandoffTests(unittest.TestCase):
             'if app_mode == "Analysis Details":',
             'if app_mode == "Monitoring":',
         )
-        self.assertIn(
-            "body:has(.st-key-bom8_analysis_progress_card):not(:has(.cv-ei-report))",
-            branch,
-        )
-        self.assertIn(
-            "st-key-approved_page_canvas_standard_analysis_detail",
-            branch.split("body:has(.st-key-bom8_analysis_progress_card):not(:has(.cv-ei-report))", 1)[1],
-        )
-        self.assertIn("width:calc(100% - 48px)!important", branch)
+        # Report-only handoff: hide leftover Analyzer progress cards, paint EI
+        # canvas — do not remount a second Saving surface under Details.
+        self.assertIn("analysis_details_handoff_report_only", branch)
+        self.assertIn("cadivor_bom_details_paint_report_only", branch)
+        self.assertIn("st-key-bom8_analysis_progress_card", branch)
+        self.assertIn("display:none!important", branch)
+        self.assertIn("st-key-approved_page_canvas_standard_analysis_detail", branch)
         self.assertIn("max-width:1440px!important", branch)
-        self.assertIn("padding-top:30px!important", branch)
+        self.assertNotIn("analysis_details_handoff_saving_surface", branch)
+        self.assertNotIn('key="bom8_analysis_progress_card"', branch)
 
     def test_bom_analyzer_widens_form_progress_and_report_canvas(self):
         self.assertIn(

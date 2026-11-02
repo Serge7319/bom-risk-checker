@@ -48,25 +48,26 @@ def test_upload_receiving_flag_keeps_form_receiving_surface():
 
 
 def test_report_handoff_keeps_saving_until_ei_ready():
-    """Bridge must not finish/hide Saving; Details paints Saving then finishes when report ready."""
+    """Persist under Analyzer Saving; Details paints EI only (no mixed Opening/Saving)."""
     early_bridge = RUNTIME.split("_pending_details_nav_early", 1)[1].split(
         "def _resolved_qp_value", 1
     )[0]
     assert "cadivor-bom-progress-bridge-hide" not in early_bridge
     assert "finish_approved_bom_submission(st.session_state)" not in early_bridge
     assert 'st.session_state["cadivor_bom_report_handoff_active"] = True' in early_bridge
-    # Pre-claiming presented + arm_opening=False remounted foundation nav in the
-    # open main canvas (duplicate vertical lists). Keep a navigation cover.
+    assert 'st.session_state["cadivor_bom_details_paint_report_only"] = True' in early_bridge
     assert '[_presented_route_bridge_early] = "Analysis Details"' not in early_bridge
-    assert "arm_opening=True" in early_bridge
-    assert "arm_opening=False" not in early_bridge
+    assert "arm_opening=False" in early_bridge
+    assert "arm_opening=True" not in early_bridge
 
     details = RUNTIME.split('if app_mode == "Analysis Details":', 1)[1].split(
         'if app_mode == "BOM Settings":', 1
     )[0]
-    assert "analysis_details_handoff_saving_surface" in details
-    assert 'key="bom8_analysis_progress_card"' in details
-    assert "st-key-cv_analysis_section_nav" in details
+    assert "analysis_details_handoff_report_only" in details
+    assert "analysis_details_handoff_saving_surface" not in details
+    assert 'key="bom8_analysis_progress_card"' not in details.split(
+        "with st.container(key=\"approved_page_canvas_standard_analysis_detail\")", 1
+    )[0]
 
     assert "analysis_details_handoff_report_ready" in DETAIL
     assert "finish_approved_bom_submission(st.session_state)" in DETAIL
@@ -77,8 +78,13 @@ def test_report_handoff_keeps_saving_until_ei_ready():
     assert "finish_approved_bom_submission" in handoff
 
 
-def test_report_handoff_freezes_foundation_nav_active_keys():
-    """Saving→EI must not swap active/idle rail keys (in-flow nav remount leak)."""
+def test_report_handoff_suppresses_opening_and_freezes_nav_keys():
+    """No Opening Analysis Details during handoff; freeze Analyzer rail keys."""
+    startup = RUNTIME.split("inject_premium_css()", 1)[1].split(
+        "def _read_users_role_for_shell", 1
+    )[0]
+    assert "cadivor_bom_report_handoff_active" in startup
+    assert "_paint_opening = False" in startup
     render = SHELL.split("def render_unified_shell", 1)[1]
     assert 'highlight_label = "BOM Analyzer"' in render
     assert "cadivor_bom_report_handoff_active" in render

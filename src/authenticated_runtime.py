@@ -2601,28 +2601,32 @@ def run_authenticated_app() -> None:
     if _pending_details_nav_early and st.session_state.get("cadivor_bom_nav_bridge"):
         from src.ui.navigation import navigate_to as _navigate_to_bridge_early
 
-        # Keep Saving ownership through the Details mount. Do not pre-claim the
-        # presented route or disarm Opening here — that left foundation nav
-        # remounting uncovered in the main canvas (duplicate vertical button
-        # lists + clipped right-edge fragments) until the EI report painted.
-        # Arm a navigation cover so shell remount stays under Opening while
-        # Analysis Details still paints the Saving card as destination owner.
+        # Persistence already finished on BOM Analyzer under the Saving card.
+        # Commit Details in this same run (no extra empty rerun) without Opening
+        # so we never mix "Opening Analysis Details…" with Saving or remount
+        # foundation nav uncovered. Details paints the EI report only.
         st.session_state["cadivor_bom_report_handoff_active"] = True
         st.session_state["cadivor_bom_analysis_handoff"] = True
+        st.session_state["cadivor_bom_details_paint_report_only"] = True
         st.session_state.pop("cadivor_bom_analysis_ready", None)
         st.session_state.pop("cadivor_bom_nav_bridge", None)
         print(
             "CADIVOR_PHASE handoff_navigate_analysis_details "
             f"route='Analysis Details' analysis_id={_pending_details_nav_early!r} "
-            "via=bridge_rerun_early",
+            "via=bridge_same_run",
             flush=True,
         )
         _navigate_to_bridge_early(
             "Analysis Details",
             analysis_id=_pending_details_nav_early,
             analysis_tab="Engineering Intelligence",
-            arm_opening=True,
+            arm_opening=False,
+            _rerun=False,
         )
+        # navigate_to updated session route after app_mode was resolved above —
+        # re-bind dispatch so this run owns Analysis Details content only.
+        _shell_route = "Analysis Details"
+        app_mode = _shell_route
 
     def _resolved_qp_value(name: str, default: str = "") -> str:
         from src.ui.navigation import current_navigation_query_value as _current_navigation_query_value
@@ -2713,6 +2717,14 @@ def run_authenticated_app() -> None:
         needs_transition=_needs_main_transition,
         target_route=_shell_route,
     )
+    # BOM save→report: Saving already owned the Analyzer surface through
+    # persistence. Do not infer an unarmed Opening cover for Details — that
+    # painted "Opening Analysis Details…" over/alongside Saving and leaked a
+    # second navigation stack into the main canvas.
+    if st.session_state.get("cadivor_bom_report_handoff_active") or st.session_state.get(
+        "cadivor_bom_details_paint_report_only"
+    ):
+        _paint_opening = False
     st.session_state[DELAY_ROUTE_BODY_REVEAL_KEY] = bool(_paint_opening)
     if _paint_opening:
         from src.boot_read_budget import begin_first_page_budget
@@ -4785,133 +4797,43 @@ def run_authenticated_app() -> None:
             st.session_state.get("cadivor_bom_report_handoff_active")
             or st.session_state.get("cadivor_bom_analysis_handoff")
         )
+        _paint_report_only = bool(
+            st.session_state.pop("cadivor_bom_details_paint_report_only", None)
+        ) or bool(_report_handoff_active)
         # Give the saved-BOM workspace and every section/tab the same centered
         # 1440px canvas used by Home and the other standard workspaces.
-        # During the BOM save→report handoff, keep the Saving card visible and
-        # hide section nav until the EI report paints (avoids blank workspace +
-        # clipped right-edge view buttons). After handoff, hide leftover cards.
-        if _report_handoff_active:
-            st.html(
-                """
-                <style id="cadivor-analysis-workspace-canvas" data-cadivor-layout-style="true">
-                [class*="st-key-cv_analysis_section_nav"]{
-                  display:none!important;height:0!important;max-height:0!important;
-                  margin:0!important;padding:0!important;overflow:hidden!important;
-                  visibility:hidden!important
-                }
-                /* While Saving owns the workspace, hide remounting Details chrome
-                   (section nav lists / empty canvas fragments) so the progress
-                   card stays alone at the Analyzer top slot. */
-                body:has(.st-key-bom8_analysis_progress_card):not(:has(.cv-ei-report))
-                  section[data-testid="stMain"] .st-key-approved_page_canvas_standard_analysis_detail,
-                body:has(.st-key-bom8_analysis_progress_card):not(:has(.cv-ei-report))
-                  section[data-testid="stMain"] [class*="st-key-cv_analysis_section_nav"],
-                body:has(.st-key-bom8_analysis_progress_card):not(:has(.cv-ei-report))
-                  section[data-testid="stMain"] [data-testid="stMainBlockContainer"]
-                  > [data-testid="stVerticalBlock"]
-                  > [data-testid="stElementContainer"]:not(:has(.st-key-bom8_analysis_progress_card)):not(:has(.st-key-bom8_analysis_preparing_card)):not(:has([class*="st-key-cv_foundation"])){
-                  display:none!important;height:0!important;max-height:0!important;
-                  margin:0!important;padding:0!important;overflow:hidden!important;
-                  visibility:hidden!important;border:0!important
-                }
-                body:has(.cv-ei-report) .st-key-bom8_analysis_progress_card,
-                body:has(.cv-ei-report) .st-key-bom8_analysis_preparing_card{
-                  display:none!important;height:0!important;max-height:0!important;
-                  margin:0!important;padding:0!important;overflow:hidden!important;
-                  border:0!important;visibility:hidden!important
-                }
-                section[data-testid="stMain"] .st-key-approved_page_canvas_standard_analysis_detail{
-                  box-sizing:border-box!important;width:100%!important;max-width:1440px!important;
-                  min-width:0!important;margin-left:auto!important;margin-right:auto!important;
-                  padding:36px 0 24px!important
-                }
-                section[data-testid="stMain"] .st-key-approved_page_canvas_standard_analysis_detail>[data-testid="stVerticalBlock"]{
-                  box-sizing:border-box!important;width:100%!important;max-width:100%!important;min-width:0!important;
-                  gap:22px!important
-                }
-                /* Match Analyzer progress geometry so Saving does not jump ~40px
-                   when the Details bridge remounts the same card key. */
-                section[data-testid="stMain"] [data-testid="stMainBlockContainer"]:has(.st-key-bom8_analysis_progress_card),
-                section[data-testid="stMain"] [data-testid="stMainBlockContainer"]:has(.cv-ei-report){
-                  box-sizing:border-box!important;
-                  width:calc(100% - 48px)!important;
-                  max-width:1440px!important;
-                  min-width:0!important;
-                  margin-left:auto!important;
-                  margin-right:auto!important;
-                  /* Analyzer paints the card near y≈38; keep Details Saving there
-                     instead of collapsing to y≈20 after the bridge remount. */
-                  padding-top:30px!important
-                }
-                .st-key-bom8_analysis_progress_card,
-                .st-key-bom8_analysis_preparing_card{
-                  box-sizing:border-box!important;position:relative!important;
-                  top:auto!important;margin:8px auto 16px!important;
-                  width:100%!important;max-width:1440px!important
-                }
-                section[data-testid="stMain"] .st-key-approved_page_canvas_standard_analysis_detail{
-                  padding-top:0!important
-                }
-                @media(max-width:1250px){
-                  section[data-testid="stMain"] .st-key-approved_page_canvas_standard_analysis_detail{padding:0 0 20px!important}
-                }
-                @media(max-width:700px){
-                  section[data-testid="stMain"] .st-key-approved_page_canvas_standard_analysis_detail{padding:0 0 20px!important}
-                }
-                </style>
-                """
-            )
-            _handoff_completed, _handoff_total, _ = st.session_state.get(
-                "bom8_analysis_progress",
-                (0, int(st.session_state.get("bom8_analysis_total_parts") or 0), ""),
-            )
-            with st.container(key="bom8_analysis_progress_card", border=True):
-                st.button(
-                    "Cancel analysis",
-                    key="bom8_cancel_analysis",
-                    type="secondary",
-                    disabled=True,
-                )
-                st.markdown(
-                    "<div class='cv-ap'><h1 style='margin:0 0 8px'>Analyzing BOM</h1></div>",
-                    unsafe_allow_html=True,
-                )
-                st.info(
-                    f"**Saving the analysis** — {_handoff_completed} of {_handoff_total} "
-                    "components complete. Opening Engineering Intelligence…"
-                )
-                st.progress(
-                    (_handoff_completed / _handoff_total) if _handoff_total else 1.0
-                )
-            print("CADIVOR_PHASE analysis_details_handoff_saving_surface", flush=True)
-        else:
-            st.html(
-                """
-                <style id="cadivor-analysis-workspace-canvas" data-cadivor-layout-style="true">
-                .st-key-bom8_analysis_progress_card,
-                .st-key-bom8_analysis_preparing_card{
-                  display:none!important;height:0!important;max-height:0!important;
-                  margin:0!important;padding:0!important;overflow:hidden!important;
-                  border:0!important;visibility:hidden!important
-                }
-                section[data-testid="stMain"] .st-key-approved_page_canvas_standard_analysis_detail{
-                  box-sizing:border-box!important;width:100%!important;max-width:1440px!important;
-                  min-width:0!important;margin-left:auto!important;margin-right:auto!important;
-                  padding:36px 0 24px!important
-                }
-                section[data-testid="stMain"] .st-key-approved_page_canvas_standard_analysis_detail>[data-testid="stVerticalBlock"]{
-                  box-sizing:border-box!important;width:100%!important;max-width:100%!important;min-width:0!important;
-                  gap:22px!important
-                }
-                @media(max-width:1250px){
-                  section[data-testid="stMain"] .st-key-approved_page_canvas_standard_analysis_detail{padding:22px 0 20px!important}
-                }
-                @media(max-width:700px){
-                  section[data-testid="stMain"] .st-key-approved_page_canvas_standard_analysis_detail{padding:24px 0!important}
-                }
-                </style>
-                """
-            )
+        # After persistence, Details owns the surface with the EI report only —
+        # do not remount the Analyzer Saving card under an Analysis Details URL
+        # (that mixed routes and leaked a clipped second nav stack).
+        if _paint_report_only:
+            print("CADIVOR_PHASE analysis_details_handoff_report_only", flush=True)
+        st.html(
+            """
+            <style id="cadivor-analysis-workspace-canvas" data-cadivor-layout-style="true">
+            .st-key-bom8_analysis_progress_card,
+            .st-key-bom8_analysis_preparing_card{
+              display:none!important;height:0!important;max-height:0!important;
+              margin:0!important;padding:0!important;overflow:hidden!important;
+              border:0!important;visibility:hidden!important
+            }
+            section[data-testid="stMain"] .st-key-approved_page_canvas_standard_analysis_detail{
+              box-sizing:border-box!important;width:100%!important;max-width:1440px!important;
+              min-width:0!important;margin-left:auto!important;margin-right:auto!important;
+              padding:36px 0 24px!important
+            }
+            section[data-testid="stMain"] .st-key-approved_page_canvas_standard_analysis_detail>[data-testid="stVerticalBlock"]{
+              box-sizing:border-box!important;width:100%!important;max-width:100%!important;min-width:0!important;
+              gap:22px!important
+            }
+            @media(max-width:1250px){
+              section[data-testid="stMain"] .st-key-approved_page_canvas_standard_analysis_detail{padding:22px 0 20px!important}
+            }
+            @media(max-width:700px){
+              section[data-testid="stMain"] .st-key-approved_page_canvas_standard_analysis_detail{padding:24px 0!important}
+            }
+            </style>
+            """
+        )
         with st.container(key="approved_page_canvas_standard_analysis_detail"):
             from src.pages.analysis_detail import render_analysis_detail
             render_analysis_detail(

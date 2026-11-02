@@ -44,19 +44,35 @@ def test_approved_shell_css_restates_fixed_rail_geometry():
     assert "left:0!important" in approved
 
 
-def test_saving_bridge_does_not_disarm_opening_or_preclaim_presented():
-    """Uncovered foundation remount produced duplicate vertical nav lists."""
+def test_saving_bridge_paints_details_report_only_without_opening():
+    """Mixed Opening+Saving+clipped nav came from arm_opening and Details Saving."""
     early_bridge = RUNTIME.split("_pending_details_nav_early", 1)[1].split(
         "def _resolved_qp_value", 1
     )[0]
     assert '[_presented_route_bridge_early] = "Analysis Details"' not in early_bridge
-    assert "pop(_transition_kind_bridge_early" not in early_bridge
-    assert "pop(\"cadivor_main_transition_active\"" not in early_bridge
-    assert "arm_opening=True" in early_bridge
-    assert "arm_opening=False" not in early_bridge
+    assert "arm_opening=False" in early_bridge
+    assert "arm_opening=True" not in early_bridge
+    assert 'cadivor_bom_details_paint_report_only"] = True' in early_bridge
+    startup = RUNTIME.split("inject_premium_css()", 1)[1].split(
+        "def _read_users_role_for_shell", 1
+    )[0]
+    assert "_paint_opening = False" in startup
+    details = RUNTIME.split('if app_mode == "Analysis Details":', 1)[1].split(
+        'if app_mode == "BOM Settings":', 1
+    )[0]
+    assert "analysis_details_handoff_report_only" in details
+    assert "analysis_details_handoff_saving_surface" not in details
 
 
 def test_navigation_opening_keeps_rail_inset_fallback():
     """First-admit navigation cover must reserve rail width before CSS vars land."""
     assert "left:var(--cv-foundation-rail,228px)" in MAIN_TRANSITION
     assert 'data-cadivor-transition-kind="navigation"' in MAIN_TRANSITION
+
+
+def test_light_boot_splash_patches_streamlit_index():
+    boot = (ROOT / "scripts" / "cadivor_streamlit_boot.py").read_text(encoding="utf-8")
+    assert "def apply_light_boot_splash" in boot
+    assert "cadivor-light-boot" in boot
+    assert "color-scheme:light" in boot
+    assert "apply_light_boot_splash()" in boot.split("def main", 1)[1]
