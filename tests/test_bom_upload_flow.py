@@ -464,7 +464,7 @@ class ApprovedBOMSubmissionTests(unittest.TestCase):
         )[0]
         self.assertIn('"Analysis Details"', early_bridge)
         self.assertIn('analysis_tab="Engineering Intelligence"', early_bridge)
-        self.assertIn("arm_opening=False", early_bridge)
+        self.assertIn("arm_opening=True", early_bridge)
         self.assertIn("via=bridge_rerun_early", early_bridge)
 
     def test_missing_upload_does_not_queue_analysis(self):

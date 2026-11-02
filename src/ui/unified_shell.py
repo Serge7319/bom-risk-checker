@@ -177,9 +177,20 @@ def _approved_shell_css() -> str:
         <style id="cadivor-approved-shell" data-cadivor-layout-style="true">
         :root{--cv-foundation-rail:296px;--cv-foundation-top:8px;--cv-foundation-bg:#f8fafc}
         .cv-foundation-topbar{display:none!important}
-        .st-key-cv_foundation_navigation{
-          top:0!important;height:100vh!important;background:#f8fafc!important;
-          border-right:1px solid #e6edf5!important;padding:18px 12px 24px!important
+        /* Restate fixed geometry here: approved overrides can land before
+           app_shell.css finishes applying, and a non-fixed zeroed host made
+           Home paint without a visible left rail until the next remount. */
+        .st-key-cv_foundation_navigation,
+        [class*="st-key-cv_foundation_navigation"]{
+          display:block!important;visibility:visible!important;
+          position:fixed!important;left:0!important;top:0!important;bottom:0!important;
+          width:var(--cv-foundation-rail,296px)!important;
+          min-width:var(--cv-foundation-rail,296px)!important;
+          max-width:var(--cv-foundation-rail,296px)!important;
+          height:100vh!important;height:100dvh!important;z-index:1000005!important;
+          background:#f8fafc!important;border-right:1px solid #e6edf5!important;
+          padding:18px 12px 24px!important;box-sizing:border-box!important;
+          overflow-x:hidden!important;overflow-y:auto!important
         }
         /* Keep the current page steady while Streamlit handles a same-page
            interaction. Route changes have their own opaque Opening cover. */
@@ -701,11 +712,19 @@ def render_unified_shell(
                     mode = "intelligence"
                 else:
                     mode = ""
-                is_active = label == active_label
                 # Give active and inactive rows distinct container identities.
                 # The parent class controls visual state; all button widgets use
                 # the same kind so Streamlit cannot leave Home's old primary
                 # styling behind when the route changes.
+                # During BOM save→report handoff, keep Analyzer active/idle keys
+                # so the rail does not remount in-flow when Details becomes the
+                # session route under the Saving card.
+                highlight_label = active_label
+                if st.session_state.get("cadivor_bom_report_handoff_active") or (
+                    st.session_state.get("cadivor_bom_analysis_handoff")
+                ):
+                    highlight_label = "BOM Analyzer"
+                is_active = label == highlight_label
                 item_state = "active" if is_active else "idle"
                 with st.container(key=f"cv_foundation_nav_{item_state}_{slug}"):
                     st.button(

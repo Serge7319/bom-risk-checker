@@ -55,6 +55,11 @@ def test_report_handoff_keeps_saving_until_ei_ready():
     assert "cadivor-bom-progress-bridge-hide" not in early_bridge
     assert "finish_approved_bom_submission(st.session_state)" not in early_bridge
     assert 'st.session_state["cadivor_bom_report_handoff_active"] = True' in early_bridge
+    # Pre-claiming presented + arm_opening=False remounted foundation nav in the
+    # open main canvas (duplicate vertical lists). Keep a navigation cover.
+    assert '[_presented_route_bridge_early] = "Analysis Details"' not in early_bridge
+    assert "arm_opening=True" in early_bridge
+    assert "arm_opening=False" not in early_bridge
 
     details = RUNTIME.split('if app_mode == "Analysis Details":', 1)[1].split(
         'if app_mode == "BOM Settings":', 1
@@ -70,6 +75,13 @@ def test_report_handoff_keeps_saving_until_ei_ready():
     )[0]
     assert 'active_tab = "Engineering Intelligence"' in handoff
     assert "finish_approved_bom_submission" in handoff
+
+
+def test_report_handoff_freezes_foundation_nav_active_keys():
+    """Saving→EI must not swap active/idle rail keys (in-flow nav remount leak)."""
+    render = SHELL.split("def render_unified_shell", 1)[1]
+    assert 'highlight_label = "BOM Analyzer"' in render
+    assert "cadivor_bom_report_handoff_active" in render
 
 
 def test_finish_clears_report_handoff_keys():

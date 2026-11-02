@@ -26,7 +26,12 @@ st.markdown(
         height: 0 !important;
         min-height: 0 !important;
     }
-    .stApp { background: #F6F8FB !important; }
+    /* Force light canvas before Streamlit's default dark frame can paint on
+       marketing → app handoff (?auth=login) and cold first paint. */
+    html, body, .stApp, [data-testid="stAppViewContainer"] {
+        background: #F5F7FB !important;
+        color-scheme: light !important;
+    }
     .main .block-container, [data-testid="stAppViewContainer"] .main .block-container {
         padding-top: 0 !important;
     }

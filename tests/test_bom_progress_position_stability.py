@@ -129,6 +129,7 @@ def test_handoff_defers_analysis_details_navigation_one_frame():
     assert "finish_approved_bom_submission(st.session_state)" not in early_bridge
     assert 'st.session_state["cadivor_bom_report_handoff_active"] = True' in early_bridge
     assert "via=bridge_rerun_early" in early_bridge
+    assert "arm_opening=True" in early_bridge
     assert RUNTIME.index("_pending_details_nav_early") < RUNTIME.index(
         "Paint the durable foundation shell"
     )

@@ -2599,24 +2599,18 @@ def run_authenticated_app() -> None:
         st.session_state.pop("cadivor_bom_navigate_details_id", "") or ""
     ).strip()
     if _pending_details_nav_early and st.session_state.get("cadivor_bom_nav_bridge"):
-        from src.ui.main_transition import (
-            DELAY_ROUTE_BODY_REVEAL_KEY as _delay_reveal_bridge_early,
-            MAIN_TRANSITION_KIND_KEY as _transition_kind_bridge_early,
-            PRESENTED_ROUTE_KEY as _presented_route_bridge_early,
-        )
         from src.ui.navigation import navigate_to as _navigate_to_bridge_early
 
-        # Keep Saving ownership through the Details mount. Finishing or hiding
-        # the progress card here left a blank workspace + clipped section nav
-        # for 2–3s while Analysis Details loaded the EI report.
+        # Keep Saving ownership through the Details mount. Do not pre-claim the
+        # presented route or disarm Opening here — that left foundation nav
+        # remounting uncovered in the main canvas (duplicate vertical button
+        # lists + clipped right-edge fragments) until the EI report painted.
+        # Arm a navigation cover so shell remount stays under Opening while
+        # Analysis Details still paints the Saving card as destination owner.
         st.session_state["cadivor_bom_report_handoff_active"] = True
         st.session_state["cadivor_bom_analysis_handoff"] = True
         st.session_state.pop("cadivor_bom_analysis_ready", None)
         st.session_state.pop("cadivor_bom_nav_bridge", None)
-        st.session_state[_presented_route_bridge_early] = "Analysis Details"
-        st.session_state[_delay_reveal_bridge_early] = False
-        st.session_state.pop("cadivor_main_transition_active", None)
-        st.session_state.pop(_transition_kind_bridge_early, None)
         print(
             "CADIVOR_PHASE handoff_navigate_analysis_details "
             f"route='Analysis Details' analysis_id={_pending_details_nav_early!r} "
@@ -2627,7 +2621,7 @@ def run_authenticated_app() -> None:
             "Analysis Details",
             analysis_id=_pending_details_nav_early,
             analysis_tab="Engineering Intelligence",
-            arm_opening=False,
+            arm_opening=True,
         )
 
     def _resolved_qp_value(name: str, default: str = "") -> str:
@@ -2704,6 +2698,13 @@ def run_authenticated_app() -> None:
         begin_logout(supabase, cookie_manager)
 
     inject_premium_css()
+    # Rail geometry CSS must land before Opening markup. First-admit Opening
+    # previously painted with --cv-foundation-rail unset (0px fallback) and the
+    # foundation host zeroed, so Home appeared without a visible left rail until
+    # a later in-app navigation remounted shell CSS.
+    from src.ui.unified_shell import inject_unified_shell_css as _inject_shell_css_early
+
+    _inject_shell_css_early()
     _presented_route = get_presented_route()
     # First admit AND every chrome-changing navigation need the in-main owner.
     # Skipping first-admit loading left Dashboard chrome with an empty canvas.
@@ -2722,6 +2723,19 @@ def run_authenticated_app() -> None:
     # main pane during slow route changes. The shell and persistent navigation
     # mount beneath the cover; the page-body marker releases it after content.
     if _paint_opening:
+        # First admit used blocking Opening (rail fallback 0px) and painted
+        # before shell CSS — a lone centered card on an empty canvas. Arm the
+        # compact navigation cover so Opening insets to the rail while the
+        # durable shell mounts beneath.
+        if not str(_presented_route or "").strip():
+            from src.ui.main_transition import arm_main_transition as _arm_first_admit
+
+            _arm_first_admit(
+                st.session_state,
+                _shell_route,
+                kind="navigation",
+                previous_route="",
+            )
         mount_main_transition_loading(_shell_route, paint_markup=True)
     # Verified public.users.role BEFORE first shell paint — never trust a stale
     # cadivor_shell_cache is_admin=False for Admin Console entitlement.
