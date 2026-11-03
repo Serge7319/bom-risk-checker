@@ -124,6 +124,7 @@ def finish_approved_bom_submission(
         "cadivor_bom_handoff_hold_armed",
         "cadivor_bom_report_handoff_active",
         "cadivor_bom_details_paint_report_only",
+        "cadivor_bom_shell_nav_hold",
         "cadivor_bom_nav_bridge",
         "cadivor_bom_navigate_details_id",
         "cadivor_bom_analysis_transition",

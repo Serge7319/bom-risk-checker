@@ -2778,8 +2778,20 @@ def run_authenticated_app() -> None:
             )
     except Exception:
         pass
+    # During BOM save→Details, keep the shell's claimed route on Analyzer so
+    # Streamlit does not remount foundation navigation/workspace hosts in the
+    # main document flow beside the fixed rail.
+    _shell_page_for_chrome = _shell_route
+    if (
+        st.session_state.get("cadivor_bom_report_handoff_active")
+        or st.session_state.get("cadivor_bom_analysis_handoff")
+        or st.session_state.get("cadivor_bom_details_paint_report_only")
+        or st.session_state.get("cadivor_bom_nav_bridge")
+        or st.session_state.get("cadivor_bom_shell_nav_hold")
+    ):
+        _shell_page_for_chrome = "BOM Analyzer"
     render_unified_shell(
-        current_page=_shell_route,
+        current_page=_shell_page_for_chrome,
         profile=_shell_profile,
         workspace_name=str(
             _shell_cache.get("workspace_name") or "Cadivor Workspace"

@@ -1932,6 +1932,10 @@ def render_analysis_detail(
         st.session_state.pop("cadivor_bom_report_handoff_active", None)
         st.session_state.pop("cadivor_bom_analysis_handoff", None)
         st.session_state.pop("cadivor_bom_open_details_after_save", None)
+        st.session_state.pop("cadivor_bom_details_paint_report_only", None)
+        # Keep foundation nav row-set frozen through the first post-report rerun
+        # so thawing analysis-report shortcuts cannot remount the rail in-flow.
+        st.session_state["cadivor_bom_shell_nav_hold"] = True
         st.session_state["cadivor_active_analysis_tab"] = "Engineering Intelligence"
         active_tab = "Engineering Intelligence"
         print(

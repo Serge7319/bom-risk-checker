@@ -47,6 +47,27 @@ MEASURE = r"""() => {
   const main = document.querySelector('section[data-testid="stMain"]');
   const mainText = (main && main.innerText) || '';
   const bodyText = document.body.innerText || '';
+  // Duplicate workspace selector / button stack painted in the main column
+  // (6:44 recording) — count workspace hosts outside the fixed rail.
+  const workspaceHosts = Array.from(document.querySelectorAll(
+    '.cv-foundation-workspace, [aria-label="Current workspace"]'
+  )).filter(visible);
+  const workspaceInMain = workspaceHosts.filter((el) => {
+    const s = getComputedStyle(el);
+    if (s.position === 'fixed' || s.position === 'sticky') return false;
+    const rail = el.closest('[class*="st-key-cv_foundation_navigation"]');
+    if (rail && getComputedStyle(rail).position === 'fixed') return false;
+    const r = el.getBoundingClientRect();
+    return r.left > 280;
+  });
+  const mainButtons = main
+    ? Array.from(main.querySelectorAll('button')).filter(visible)
+    : [];
+  const mainNavLabels = ['Home','BOM Analyzer','Engineering Decisions','Monitoring','Portfolio Intelligence'];
+  const mainNavHits = mainNavLabels.filter((label) =>
+    mainButtons.some((b) => (b.innerText || '').trim() === label
+      && b.getBoundingClientRect().left > 280)
+  );
   const card = Array.from(document.querySelectorAll(
     '.st-key-bom8_analysis_progress_card, .st-key-bom8_analysis_preparing_card'
   )).find(visible) || null;
@@ -90,6 +111,10 @@ MEASURE = r"""() => {
     url: location.href,
     navRails: navHosts.length,
     navInFlow: navInFlow.length,
+    workspaceSelectors: workspaceHosts.length,
+    workspaceInMain: workspaceInMain.length,
+    mainNavHits: mainNavHits.length,
+    duplicateMainNav: workspaceInMain.length > 0 || mainNavHits.length >= 4,
     sidebarVisible: navHosts.length > 0,
     openingVisible: opening,
     cardTop,
@@ -254,6 +279,7 @@ def main() -> dict:
 
             deadline = time.time() + 180
             nav_leak_frames = []
+            duplicate_main_nav_frames = []
             premature_details_frames = []
             blank_handoff_frames = []
             while time.time() < deadline:
@@ -263,7 +289,14 @@ def main() -> dict:
                 if isinstance(m.get("completed"), int):
                     if not progress_series or progress_series[-1] != m["completed"]:
                         progress_series.append(int(m["completed"]))
-                if m.get("completed") == 0 and m.get("total"):
+                # Active progress owns the Analyzer top slot (y≈38). Ignore
+                # scrolled leftover cards from a prior remount when labeling 0/N.
+                if (
+                    m.get("completed") == 0
+                    and m.get("total")
+                    and m.get("cardTop") is not None
+                    and int(m.get("cardTop") or 999) < 160
+                ):
                     labeled.setdefault("progress_0", m)
                     page.screenshot(path=str(OUT / "04_progress_0.png"), full_page=True)
                 total_parts = int((labeled.get("progress_0") or {}).get("total") or 0)
@@ -283,10 +316,21 @@ def main() -> dict:
                 if m.get("saving"):
                     labeled.setdefault("saving", m)
                     page.screenshot(path=str(OUT / "06_saving.png"), full_page=True)
-                    if int(m.get("navInFlow") or 0) > 0 or int(m.get("navRails") or 0) > 1:
-                        nav_leak_frames.append(m)
                     if "Opening Analysis Details" in (m.get("preview") or ""):
                         defects["opening_analysis_details_during_saving"] = True
+                # Every handoff frame: exactly one fixed rail, no in-flow clone.
+                if m.get("saving") or m.get("analysisDetailsUrl") or m.get("report"):
+                    if (
+                        int(m.get("navInFlow") or 0) > 0
+                        or int(m.get("navRails") or 0) > 1
+                        or int(m.get("workspaceSelectors") or 0) > 1
+                        or m.get("duplicateMainNav")
+                    ):
+                        nav_leak_frames.append(m)
+                        duplicate_main_nav_frames.append(m)
+                        page.screenshot(
+                            path=str(OUT / "06b_duplicate_nav.png"), full_page=True
+                        )
                 if m.get("prematureDetailsSkeleton"):
                     premature_details_frames.append(m)
                 if (
@@ -299,10 +343,29 @@ def main() -> dict:
                 if m.get("report"):
                     labeled["report"] = m
                     page.screenshot(path=str(OUT / "07_report.png"), full_page=True)
+                    # Keep sampling a few frames after report paint for late nav leaks.
+                    settle_deadline = time.time() + 2.5
+                    while time.time() < settle_deadline:
+                        page.wait_for_timeout(100)
+                        settle = page.evaluate(MEASURE)
+                        samples.append({"phase": "report_settle", **settle})
+                        if (
+                            int(settle.get("navInFlow") or 0) > 0
+                            or int(settle.get("navRails") or 0) > 1
+                            or int(settle.get("workspaceSelectors") or 0) > 1
+                            or settle.get("duplicateMainNav")
+                        ):
+                            nav_leak_frames.append(settle)
+                            duplicate_main_nav_frames.append(settle)
+                            page.screenshot(
+                                path=str(OUT / "07b_duplicate_nav_settle.png"),
+                                full_page=True,
+                            )
                     break
 
             defects.setdefault("opening_analysis_details_during_saving", False)
             defects["nav_leak_during_saving"] = len(nav_leak_frames) > 0
+            defects["duplicate_main_navigation"] = len(duplicate_main_nav_frames) > 0
             defects["premature_analysis_details_skeleton"] = len(premature_details_frames) > 0
             defects["blank_handoff"] = len(blank_handoff_frames) > 0
             defects["missing_progress_0"] = "progress_0" not in labeled

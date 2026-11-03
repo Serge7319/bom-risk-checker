@@ -225,7 +225,45 @@ def _approved_shell_css() -> str:
         body:has([class*="st-key-cv_foundation_navigation"]:not([data-stale="true"]))
           [data-stale="true"] [class*="st-key-cv_foundation_nav_"],
         body:has([class*="st-key-cv_foundation_navigation"]:not([data-stale="true"]))
-          [data-stale="true"]:has(.cv-foundation-nav-group){
+          [data-stale="true"]:has(.cv-foundation-nav-group),
+        body:has([class*="st-key-cv_foundation_navigation"]:not([data-stale="true"]))
+          [data-stale="true"]:has(.cv-foundation-workspace),
+        body:has([class*="st-key-cv_foundation_navigation"]:not([data-stale="true"]))
+          [data-stale="true"]:has(.cv-foundation-sidebar-brand){
+          display:none!important;visibility:hidden!important;pointer-events:none!important;
+          opacity:0!important;height:0!important;min-height:0!important;max-height:0!important;
+          margin:0!important;padding:0!important;overflow:hidden!important
+        }
+        /* BOM Analyzer→Details remount can orphan brand/workspace/nav rows
+           outside the rail host (6:44 recording: second workspace selector +
+           white default nav buttons in the main column). Retire only chrome
+           that is not a descendant of the foundation navigation host — never
+           the live fixed rail. */
+        body:has([class*="st-key-cv_foundation_navigation"])
+          section[data-testid="stMain"]
+          [data-testid="stElementContainer"]:has(.cv-foundation-workspace):not(
+            [class*="st-key-cv_foundation_navigation"] *
+          ),
+        body:has([class*="st-key-cv_foundation_navigation"])
+          section[data-testid="stMain"]
+          [data-testid="stElementContainer"]:has(.cv-foundation-sidebar-brand):not(
+            [class*="st-key-cv_foundation_navigation"] *
+          ),
+        body:has([class*="st-key-cv_foundation_navigation"])
+          section[data-testid="stMain"]
+          [data-testid="stElementContainer"]:has(.cv-foundation-nav-group):not(
+            [class*="st-key-cv_foundation_navigation"] *
+          ),
+        body:has([class*="st-key-cv_foundation_navigation"])
+          section[data-testid="stMain"]
+          [class*="st-key-cv_foundation_nav_"]:not(
+            [class*="st-key-cv_foundation_navigation"] *
+          ),
+        body:has([class*="st-key-cv_foundation_navigation"])
+          section[data-testid="stMain"]
+          [data-testid="stElementContainer"]:has(
+            > [class*="st-key-cv_foundation_nav_"]
+          ):not([class*="st-key-cv_foundation_navigation"] *){
           display:none!important;visibility:hidden!important;pointer-events:none!important;
           opacity:0!important;height:0!important;min-height:0!important;max-height:0!important;
           margin:0!important;padding:0!important;overflow:hidden!important
@@ -634,6 +672,19 @@ def render_unified_shell(
         or current_page
         or ""
     ).strip()
+    # BOM save→Details: keep the rail's Streamlit identity identical to the
+    # Analyzer Saving frame. Changing route / analysis-report rows remounts
+    # cv_foundation_navigation in document flow beside the fixed rail (duplicate
+    # workspace selector + full nav button stack in the main body).
+    _bom_shell_handoff = bool(
+        st.session_state.get("cadivor_bom_report_handoff_active")
+        or st.session_state.get("cadivor_bom_analysis_handoff")
+        or st.session_state.get("cadivor_bom_details_paint_report_only")
+        or st.session_state.get("cadivor_bom_nav_bridge")
+        or st.session_state.get("cadivor_bom_shell_nav_hold")
+    )
+    if _bom_shell_handoff:
+        active_route = "BOM Analyzer"
     detailed_risk = bool(st.session_state.get("cadivor_show_detailed_risk"))
     active_label = active_nav_label(active_route, detailed_risk=detailed_risk)
     nav_params = st.session_state.get("cadivor_nav_params")
@@ -644,6 +695,9 @@ def render_unified_shell(
         or nav_params.get("analysis_id")
         or ""
     ).strip()
+    # Freeze report shortcuts out of the rail until handoff clears — adding
+    # those rows is what remounted the parent navigation host in-flow.
+    include_analysis_reports = bool(active_analysis_id) and not _bom_shell_handoff
 
     with st.container(key="cv_foundation_navigation"):
         st.markdown(
@@ -683,7 +737,7 @@ def render_unified_shell(
             )
 
         source_groups = shared_nav_groups(
-            include_analysis_reports=bool(active_analysis_id)
+            include_analysis_reports=include_analysis_reports
         )
         for group_name, configured_rows in source_groups:
             rows = configured_rows
@@ -719,11 +773,7 @@ def render_unified_shell(
                 # During BOM save→report handoff, keep Analyzer active/idle keys
                 # so the rail does not remount in-flow when Details becomes the
                 # session route under the Saving card.
-                highlight_label = active_label
-                if st.session_state.get("cadivor_bom_report_handoff_active") or (
-                    st.session_state.get("cadivor_bom_analysis_handoff")
-                ):
-                    highlight_label = "BOM Analyzer"
+                highlight_label = "BOM Analyzer" if _bom_shell_handoff else active_label
                 is_active = label == highlight_label
                 item_state = "active" if is_active else "idle"
                 with st.container(key=f"cv_foundation_nav_{item_state}_{slug}"):
@@ -735,6 +785,15 @@ def render_unified_shell(
                         on_click=_open_rail_item,
                         args=(destination, mode),
                     )
+
+    # Release the post-report hold only after this frozen rail paint completes.
+    if st.session_state.get("cadivor_bom_shell_nav_hold") and not (
+        st.session_state.get("cadivor_bom_report_handoff_active")
+        or st.session_state.get("cadivor_bom_analysis_handoff")
+        or st.session_state.get("cadivor_bom_details_paint_report_only")
+        or st.session_state.get("cadivor_bom_nav_bridge")
+    ):
+        st.session_state.pop("cadivor_bom_shell_nav_hold", None)
 
     # After chrome paints: reset scroll only when sidebar navigation changed pages.
     inject_nav_scroll_reset_if_needed()
