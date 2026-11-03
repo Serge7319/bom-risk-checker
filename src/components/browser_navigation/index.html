@@ -32,7 +32,7 @@
   // Bump when cover/rail settle logic changes so long-lived parent tabs
   // replace the previous click/observer handlers instead of keeping Nov-3
   // mid-viewport release behavior after a deploy.
-  const IMMEDIATE_NAV_COVER_VERSION = "nov3-426-rail-v3";
+  const IMMEDIATE_NAV_COVER_VERSION = "nov3-548-cover-v4";
 
   function ensureImmediateNavigationCover(w) {
     if (w.__cadivorImmediateNavigationCoverInstalled === IMMEDIATE_NAV_COVER_VERSION) {
@@ -52,6 +52,13 @@
       ) {
         w.__cadivorImmediateNavigationObserver.disconnect();
       }
+      // Stale toast/transparent cover CSS must be replaced — early-return on the
+      // style id left Nov 3 5:48 recordings with a tiny Opening chip over a
+      // blank remount instead of a full opaque workspace cover.
+      const staleStyle = doc.getElementById("cadivor-instant-navigation-transition-style");
+      if (staleStyle) staleStyle.remove();
+      const staleShell = doc.getElementById("cadivor-shell-geometry-lock");
+      if (staleShell) staleShell.remove();
     } catch (_) {}
     w.__cadivorImmediateNavigationCoverInstalled = IMMEDIATE_NAV_COVER_VERSION;
 
@@ -225,49 +232,67 @@
       );
     }
 
-    function titleBandSettled(cover) {
-      // After release-gen, titles can still jump (shell remount / deferred
-      // blocks). Keep the opaque cover until the visible h1 rests in the
-      // header band for a few frames.
+    function titleYStable(cover) {
+      // Soft dwell only — never require a fixed Y band. Pages settle titles at
+      // different heights; the Nov 3 5:48 recording hung Opening for 30s+ when
+      // titleBandSettled demanded 48–180px and Engineering Decisions never matched.
       const heading = doc.querySelector("h1");
-      if (!heading) {
-        cover.setAttribute("data-cadivor-title-stable", "0");
-        return false;
-      }
+      if (!heading) return true;
       const y = Math.round(heading.getBoundingClientRect().top);
       const prev = Number(cover.getAttribute("data-cadivor-title-y") || "NaN");
       const stable = Number(cover.getAttribute("data-cadivor-title-stable") || "0");
       cover.setAttribute("data-cadivor-title-y", String(y));
-      const inBand = y >= 48 && y <= 180;
-      if (!inBand) {
-        cover.setAttribute("data-cadivor-title-stable", "0");
-        return false;
-      }
-      if (Number.isFinite(prev) && Math.abs(prev - y) <= 2) {
+      if (Number.isFinite(prev) && Math.abs(prev - y) <= 3) {
         const next = stable + 1;
         cover.setAttribute("data-cadivor-title-stable", String(next));
-        return next >= 3;
+        return next >= 2;
       }
       cover.setAttribute("data-cadivor-title-stable", "1");
       return false;
     }
 
     function shouldRemoveInstantCover(cover, pythonCover) {
+      const now = Date.now();
+      const shownAt = Number(cover.getAttribute("data-cadivor-cover-shown-at") || "0");
       const previousGeneration = String(
         cover.getAttribute("data-cadivor-prior-body-gen") || ""
       ).trim();
       const pythonGen = pythonCover
         ? String(pythonCover.getAttribute("data-cadivor-transition-gen") || "").trim()
         : "";
+      // Hard ceiling: never trap the workspace under Opening (Nov 3 5:48).
+      // Also force-publish release-gen so Python Opening CSS clears with us.
+      if (shownAt && now - shownAt >= 1600) {
+        const markers = Array.from(doc.querySelectorAll(
+          "[data-cadivor-page-body-gen]"
+        )).filter((marker) => !marker.closest('[data-stale="true"]'));
+        const latest = markers[markers.length - 1];
+        if (latest) {
+          const gen = String(latest.getAttribute("data-cadivor-page-body-gen") || "").trim();
+          if (gen && latest.getAttribute("data-cadivor-page-body-release-gen") !== gen) {
+            latest.setAttribute("data-cadivor-page-body-release-gen", gen);
+          }
+        }
+        return true;
+      }
+
       // Only release after scroll/body release-gen. DestinationSurfaceReady alone
       // removed the cover while titles were still mid-viewport (Nov 3 4:26).
       const released = hasReleasedDestination(previousGeneration)
         || releasedForTransitionGen(pythonGen);
       if (!released) {
         cover.setAttribute("data-cadivor-title-stable", "0");
+        cover.removeAttribute("data-cadivor-released-at");
         return false;
       }
-      return titleBandSettled(cover);
+      const releasedAt = Number(cover.getAttribute("data-cadivor-released-at") || "0");
+      if (!releasedAt) {
+        cover.setAttribute("data-cadivor-released-at", String(now));
+        return false;
+      }
+      // Brief post-release dwell for title settle; never exceed 350ms.
+      if (now - releasedAt >= 350) return true;
+      return titleYStable(cover);
     }
 
     function queueReleaseCheck() {
@@ -344,9 +369,11 @@
         (doc.head || doc.documentElement).appendChild(shell);
       }
       syncShellGeometry();
-      if (doc.getElementById("cadivor-instant-navigation-transition-style")) return;
-      const style = doc.createElement("style");
+      let style = doc.getElementById("cadivor-instant-navigation-transition-style");
+      if (style) style.remove();
+      style = doc.createElement("style");
       style.id = "cadivor-instant-navigation-transition-style";
+      style.setAttribute("data-cadivor-cover-style-version", IMMEDIATE_NAV_COVER_VERSION);
       style.textContent = [
         '#cadivor-rail-continuity{box-sizing:border-box!important;position:fixed!important;left:0!important;top:0!important;bottom:0!important;width:var(--cv-foundation-rail,296px)!important;min-width:var(--cv-foundation-rail,296px)!important;max-width:var(--cv-foundation-rail,296px)!important;z-index:2147482995!important;background:#f8fafc!important;border-right:1px solid #e6edf5!important;pointer-events:none!important;}',
         '#cadivor-instant-navigation-transition{box-sizing:border-box!important;position:fixed!important;left:var(--cv-foundation-rail,296px)!important;right:0!important;top:0!important;bottom:0!important;width:calc(100vw - var(--cv-foundation-rail,296px))!important;height:100vh!important;height:100dvh!important;z-index:2147483001!important;display:flex!important;align-items:center!important;justify-content:center!important;overflow:hidden!important;background:#F5F7FB!important;pointer-events:auto!important;font-family:Inter,system-ui,sans-serif!important}',
@@ -382,6 +409,9 @@
         doc.body.appendChild(cover);
       }
       cover.setAttribute("data-cadivor-prior-body-gen", bodyGeneration());
+      cover.setAttribute("data-cadivor-cover-shown-at", String(Date.now()));
+      cover.removeAttribute("data-cadivor-released-at");
+      cover.setAttribute("data-cadivor-title-stable", "0");
       const normalized = /^\+?\s*New BOM analysis$/i.test(label)
         ? "New BOM analysis"
         : label;

@@ -33,11 +33,15 @@ def test_instant_cover_preserves_rail_strip_during_remount():
 
 
 def test_cover_installer_is_versioned_so_deploys_replace_stale_handlers():
-    assert 'IMMEDIATE_NAV_COVER_VERSION = "nov3-426-rail-v3"' in BRIDGE
+    assert 'IMMEDIATE_NAV_COVER_VERSION = "nov3-548-cover-v4"' in BRIDGE
     assert "__cadivorImmediateNavigationClick" in BRIDGE
     assert "removeEventListener(\"click\", w.__cadivorImmediateNavigationClick, true)" in BRIDGE
-    assert "titleBandSettled" in BRIDGE
+    assert "titleYStable" in BRIDGE
+    assert "function titleBandSettled" not in BRIDGE
     assert "__cadivorQueueNavigationCoverRelease" in BRIDGE
+    assert 'staleStyle.remove()' in BRIDGE or "staleStyle) staleStyle.remove()" in BRIDGE
+    assert "data-cadivor-cover-shown-at" in BRIDGE
+    assert "now - shownAt >= 1600" in BRIDGE
 
 
 def test_navigation_re_reveal_keeps_deferred_release_gen():
