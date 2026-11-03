@@ -24,6 +24,9 @@ MAIN_TRANSITION_ROUTE_KEY = "cadivor_main_transition_route"
 MAIN_TRANSITION_GEN_KEY = "cadivor_main_transition_gen"
 MAIN_TRANSITION_KIND_KEY = "cadivor_main_transition_kind"
 MAIN_TRANSITION_PREVIOUS_ROUTE_KEY = "cadivor_main_transition_previous_route"
+# Sticky: navigation gens must not re-publish release-gen on later reveals after
+# MAIN_TRANSITION_KIND_KEY is cleared. Scroll reset owns that attribute.
+NAV_RELEASE_DEFER_GEN_KEY = "cadivor_nav_release_defer_gen"
 OPENING_STARTED_AT_KEY = "cadivor_opening_started_at"
 OPENING_ROUTE_KEY = "cadivor_opening_route"
 BOM_ANALYSIS_TRANSITION_KEY = "cadivor_bom_analysis_transition"
@@ -594,6 +597,11 @@ def prepare_main_transition(target_route: str) -> int:
     state[MAIN_TRANSITION_ACTIVE_KEY] = True
     state[MAIN_TRANSITION_ROUTE_KEY] = route
     state[DELAY_ROUTE_BODY_REVEAL_KEY] = True
+    kind = str(state.get(MAIN_TRANSITION_KIND_KEY) or "").strip().casefold()
+    if kind == "navigation" and gen > 0:
+        state[NAV_RELEASE_DEFER_GEN_KEY] = gen
+    elif kind == "blocking":
+        state.pop(NAV_RELEASE_DEFER_GEN_KEY, None)
     return gen
 
 
@@ -708,9 +716,23 @@ def reveal_main_transition(route: str = "") -> None:
     # scroll-to-top settled. Browser/nav scroll reset owns release-gen after
     # atTop is stable (with a bounded timeout). Blocking/first-admit reveals
     # still publish release-gen immediately so Login→Home is not stuck.
+    #
+    # reveal() clears MAIN_TRANSITION_KIND_KEY. A later reveal of the same gen
+    # (Streamlit remount / shell retry) would otherwise look like blocking and
+    # publish release-gen early — cover drops, then title jumps. Sticky defer
+    # keeps scroll reset as the sole release owner for that navigation gen.
+    try:
+        deferred_gen = int(st.session_state.get(NAV_RELEASE_DEFER_GEN_KEY) or 0)
+    except (TypeError, ValueError):
+        deferred_gen = 0
+    defer_release = transition_kind == "navigation" or (
+        gen > 0 and deferred_gen == gen
+    )
+    if transition_kind == "navigation" and gen > 0:
+        st.session_state[NAV_RELEASE_DEFER_GEN_KEY] = gen
     release_attr = (
         ""
-        if transition_kind == "navigation"
+        if defer_release
         else f'data-cadivor-page-body-release-gen="{gen}" '
     )
     try:

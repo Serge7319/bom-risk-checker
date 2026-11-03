@@ -29,11 +29,31 @@
     return window.parent;
   }
 
+  // Bump when cover/rail settle logic changes so long-lived parent tabs
+  // replace the previous click/observer handlers instead of keeping Nov-3
+  // mid-viewport release behavior after a deploy.
+  const IMMEDIATE_NAV_COVER_VERSION = "nov3-426-rail-v3";
+
   function ensureImmediateNavigationCover(w) {
-    if (w.__cadivorImmediateNavigationCoverInstalled) return;
+    if (w.__cadivorImmediateNavigationCoverInstalled === IMMEDIATE_NAV_COVER_VERSION) {
+      return;
+    }
     const doc = w.document;
     if (!doc || !doc.addEventListener) return;
-    w.__cadivorImmediateNavigationCoverInstalled = true;
+
+    // Tear down a prior install so file/deploy updates actually take effect.
+    try {
+      if (typeof w.__cadivorImmediateNavigationClick === "function") {
+        doc.removeEventListener("click", w.__cadivorImmediateNavigationClick, true);
+      }
+      if (
+        w.__cadivorImmediateNavigationObserver
+        && typeof w.__cadivorImmediateNavigationObserver.disconnect === "function"
+      ) {
+        w.__cadivorImmediateNavigationObserver.disconnect();
+      }
+    } catch (_) {}
+    w.__cadivorImmediateNavigationCoverInstalled = IMMEDIATE_NAV_COVER_VERSION;
 
     const reportActionSelector = [
       '[class*="st-key-approved_home_menu_"]',
@@ -205,6 +225,33 @@
       );
     }
 
+    function titleBandSettled(cover) {
+      // After release-gen, titles can still jump (shell remount / deferred
+      // blocks). Keep the opaque cover until the visible h1 rests in the
+      // header band for a few frames.
+      const heading = doc.querySelector("h1");
+      if (!heading) {
+        cover.setAttribute("data-cadivor-title-stable", "0");
+        return false;
+      }
+      const y = Math.round(heading.getBoundingClientRect().top);
+      const prev = Number(cover.getAttribute("data-cadivor-title-y") || "NaN");
+      const stable = Number(cover.getAttribute("data-cadivor-title-stable") || "0");
+      cover.setAttribute("data-cadivor-title-y", String(y));
+      const inBand = y >= 48 && y <= 180;
+      if (!inBand) {
+        cover.setAttribute("data-cadivor-title-stable", "0");
+        return false;
+      }
+      if (Number.isFinite(prev) && Math.abs(prev - y) <= 2) {
+        const next = stable + 1;
+        cover.setAttribute("data-cadivor-title-stable", String(next));
+        return next >= 3;
+      }
+      cover.setAttribute("data-cadivor-title-stable", "1");
+      return false;
+    }
+
     function shouldRemoveInstantCover(cover, pythonCover) {
       const previousGeneration = String(
         cover.getAttribute("data-cadivor-prior-body-gen") || ""
@@ -214,9 +261,13 @@
         : "";
       // Only release after scroll/body release-gen. DestinationSurfaceReady alone
       // removed the cover while titles were still mid-viewport (Nov 3 4:26).
-      if (hasReleasedDestination(previousGeneration)) return true;
-      if (releasedForTransitionGen(pythonGen)) return true;
-      return false;
+      const released = hasReleasedDestination(previousGeneration)
+        || releasedForTransitionGen(pythonGen);
+      if (!released) {
+        cover.setAttribute("data-cadivor-title-stable", "0");
+        return false;
+      }
+      return titleBandSettled(cover);
     }
 
     function queueReleaseCheck() {
@@ -361,6 +412,8 @@
     // Streamlit (New BOM stayed on Dashboard forever with "Preparing…").
     // Capture-phase click still paints the cover before paint, but the same
     // click event keeps the original button target so navigation runs.
+    w.__cadivorImmediateNavigationClick = handleTransitionClick;
+    w.__cadivorQueueNavigationCoverRelease = queueReleaseCheck;
     doc.addEventListener("click", handleTransitionClick, true);
     if (typeof w.MutationObserver === "function") {
       const observer = new w.MutationObserver(() => {
@@ -711,6 +764,16 @@
       queue("url-change");
       releaseNavigationCoverAfterScrollReset();
     }, 300);
+    // Keep probing title settle while the opaque cover is mounted so we do
+    // not depend solely on MutationObserver bursts after release-gen.
+    w.setInterval(() => {
+      if (
+        w.document.getElementById("cadivor-instant-navigation-transition")
+        && typeof w.__cadivorQueueNavigationCoverRelease === "function"
+      ) {
+        try { w.__cadivorQueueNavigationCoverRelease(); } catch (_) {}
+      }
+    }, 50);
     w.__cadivorNavBridgeV4 = state;
     return state;
   }

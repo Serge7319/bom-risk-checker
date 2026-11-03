@@ -30,3 +30,17 @@ def test_instant_cover_preserves_rail_strip_during_remount():
     assert "background:#f8fafc" in BRIDGE
     assert "ensureRailContinuity()" in BRIDGE
     assert "width:calc(100vw - var(--cv-foundation-rail,296px))" in BRIDGE
+
+
+def test_cover_installer_is_versioned_so_deploys_replace_stale_handlers():
+    assert 'IMMEDIATE_NAV_COVER_VERSION = "nov3-426-rail-v3"' in BRIDGE
+    assert "__cadivorImmediateNavigationClick" in BRIDGE
+    assert "removeEventListener(\"click\", w.__cadivorImmediateNavigationClick, true)" in BRIDGE
+    assert "titleBandSettled" in BRIDGE
+    assert "__cadivorQueueNavigationCoverRelease" in BRIDGE
+
+
+def test_navigation_re_reveal_keeps_deferred_release_gen():
+    assert "NAV_RELEASE_DEFER_GEN_KEY" in TRANSITION
+    assert "deferred_gen = int(st.session_state.get(NAV_RELEASE_DEFER_GEN_KEY)" in TRANSITION
+    assert "defer_release = transition_kind == \"navigation\"" in TRANSITION

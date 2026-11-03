@@ -15,6 +15,7 @@ from src.ui.main_transition import (
     MAIN_TRANSITION_GEN_KEY,
     MAIN_TRANSITION_KIND_KEY,
     MAIN_TRANSITION_ROUTE_KEY,
+    NAV_RELEASE_DEFER_GEN_KEY,
     inject_main_transition_css,
     reveal_main_transition,
 )
@@ -80,6 +81,31 @@ class MainTransitionReleaseSignalTests(unittest.TestCase):
             reveal_main_transition("Monitoring")
 
         self.assertIn('data-cadivor-page-body-gen="814"', html[0][0])
+        self.assertNotIn("data-cadivor-page-body-release-gen", html[0][0])
+        self.assertEqual(state.get(NAV_RELEASE_DEFER_GEN_KEY), 814)
+
+    def test_cleared_kind_re_reveal_still_defers_navigation_release(self):
+        """After kind is cleared, a second reveal of the same gen must not release."""
+        state = {
+            MAIN_TRANSITION_GEN_KEY: 816,
+            MAIN_TRANSITION_ROUTE_KEY: "Cost Optimization",
+            MAIN_TRANSITION_ACTIVE_KEY: False,
+            MAIN_TRANSITION_KIND_KEY: "",
+            NAV_RELEASE_DEFER_GEN_KEY: 816,
+        }
+        html = []
+
+        with (
+            patch("src.ui.main_transition.st.session_state", state),
+            patch("src.ui.main_transition.st.markdown"),
+            patch(
+                "src.ui.main_transition.st.html",
+                side_effect=lambda value, **kwargs: html.append((value, kwargs)),
+            ),
+        ):
+            reveal_main_transition("Cost Optimization")
+
+        self.assertIn('data-cadivor-page-body-gen="816"', html[0][0])
         self.assertNotIn("data-cadivor-page-body-release-gen", html[0][0])
 
     def test_transition_css_uses_direct_document_marker_generation(self):
