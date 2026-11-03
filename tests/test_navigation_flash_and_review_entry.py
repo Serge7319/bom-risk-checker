@@ -53,8 +53,11 @@ class NavigationFlashAndReviewEntryTests(unittest.TestCase):
         self.assertIn('[data-cadivor-signed-out-surface="1"]', BROWSER_BRIDGE)
         self.assertIn("html[data-cadivor-shell-locked='1']", BROWSER_BRIDGE)
         self.assertIn("var(--cv-foundation-rail,296px)", BROWSER_BRIDGE)
-        self.assertNotIn("getBoundingClientRect().width", BROWSER_BRIDGE)
+        # Geometry lock must stay CSS-token based (no ResizeObserver / measured rail width).
         self.assertNotIn("ResizeObserver", BROWSER_BRIDGE)
+        self.assertNotIn('root.style.setProperty("--cv-foundation-rail"', BROWSER_BRIDGE)
+        self.assertIn("#cadivor-rail-continuity{display:none!important;}", BROWSER_BRIDGE)
+        self.assertIn("singleFoundationRailReady", BROWSER_BRIDGE)
         self.assertIn("max-width:16px!important;max-height:16px!important", BROWSER_BRIDGE)
 
     def test_python_transition_also_clamps_sidebar_glyphs_while_rerendering(self):

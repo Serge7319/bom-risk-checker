@@ -32,8 +32,10 @@
   // Bump when cover/rail settle logic changes so long-lived parent tabs
   // replace the previous click/observer handlers instead of keeping Nov-3
   // mid-viewport release behavior after a deploy.
+  // v7: outermost-only rail suppress (do not hide parent wrappers of the live rail).
+  // v6: keep cover until a single foundation rail is ready; suppress remount duplicates.
   // v5: skeleton surface + canonical route labels (Nov 3 blank-canvas recording).
-  const IMMEDIATE_NAV_COVER_VERSION = "nov3-548-skeleton-v5";
+  const IMMEDIATE_NAV_COVER_VERSION = "nov3-548-skeleton-v7";
 
   // Menu aliases → canonical Streamlit route names used in ?page= and body markers.
   const CANONICAL_ROUTE_BY_LABEL = {
@@ -274,6 +276,62 @@
       return allTop && windowTop <= 2;
     }
 
+
+    function liveFoundationRails() {
+      const raw = Array.from(
+        doc.querySelectorAll('[class*="st-key-cv_foundation_navigation"]')
+      ).filter((element) => {
+        if (element.closest('[data-stale="true"]')) return false;
+        if (element.getAttribute("data-cadivor-rail-suppressed") === "1") return false;
+        try {
+          return element.getBoundingClientRect().width > 40;
+        } catch (_) {
+          return false;
+        }
+      });
+      return raw.filter((element) =>
+        !raw.some((other) => other !== element && other.contains(element))
+      );
+    }
+
+    function suppressDuplicateFoundationRails() {
+      // Streamlit can briefly mount two foundation rails during a remount.
+      // Keep only the newest outermost rail so the workspace never shows two menus.
+      // Ignore descendants of another match — hiding a parent would also hide the
+      // child we meant to keep.
+      const raw = Array.from(
+        doc.querySelectorAll('[class*="st-key-cv_foundation_navigation"]')
+      ).filter((element) => !element.closest('[data-stale="true"]'));
+      const rails = raw.filter((element) =>
+        !raw.some((other) => other !== element && other.contains(element))
+      );
+      rails.forEach((element, index) => {
+        if (index < rails.length - 1) {
+          element.setAttribute("data-cadivor-rail-suppressed", "1");
+          element.style.setProperty("display", "none", "important");
+          element.style.setProperty("visibility", "hidden", "important");
+          element.style.setProperty("pointer-events", "none", "important");
+        } else {
+          element.removeAttribute("data-cadivor-rail-suppressed");
+          element.style.removeProperty("display");
+          element.style.removeProperty("visibility");
+          element.style.removeProperty("pointer-events");
+        }
+      });
+      return liveFoundationRails().length <= 1;
+    }
+
+    function singleFoundationRailReady() {
+      suppressDuplicateFoundationRails();
+      const rails = liveFoundationRails();
+      if (rails.length !== 1) return false;
+      try {
+        return rails[0].getBoundingClientRect().width >= 200;
+      } catch (_) {
+        return false;
+      }
+    }
+
     function matchingDestinationReleased(cover) {
       const route = String(cover.getAttribute("data-cadivor-dest-route") || "").trim();
       const expectedGen = String(
@@ -346,7 +404,10 @@
       if (!matchingDestinationReleased(cover) && !releasedForTransitionGen(pythonGen)) {
         return false;
       }
-      // Destination shell is ready: require scroll at top, then release.
+      // Destination shell is ready: one sidebar, scrolled to top, then release.
+      if (!singleFoundationRailReady()) {
+        return false;
+      }
       return mainScrollAtTop();
     }
 
@@ -370,6 +431,7 @@
         if (pythonCover) {
           pythonCover.style.setProperty("pointer-events", "none", "important");
         }
+        suppressDuplicateFoundationRails();
 
         if (shouldRemoveInstantCover(cover, pythonCover)) {
           raf(() => {

@@ -9,8 +9,8 @@ BRIDGE = (
 ).read_text(encoding="utf-8")
 
 
-def test_cover_version_is_skeleton_v5():
-    assert 'IMMEDIATE_NAV_COVER_VERSION = "nov3-548-skeleton-v5"' in BRIDGE
+def test_cover_version_is_skeleton_v7():
+    assert 'IMMEDIATE_NAV_COVER_VERSION = "nov3-548-skeleton-v7"' in BRIDGE
 
 
 def test_cover_maps_menu_alias_to_canonical_route():
@@ -35,6 +35,9 @@ def test_cover_does_not_paint_empty_duplicate_rail_strip():
 
 def test_release_requires_matching_destination_and_scroll_top():
     assert "matchingDestinationReleased" in BRIDGE
+    assert "singleFoundationRailReady" in BRIDGE
+    assert "suppressDuplicateFoundationRails" in BRIDGE
+    assert "other.contains(element)" in BRIDGE
     assert "mainScrollAtTop" in BRIDGE
     assert "function titleYStable" not in BRIDGE
     assert "querySelector(\"h1\")" not in BRIDGE

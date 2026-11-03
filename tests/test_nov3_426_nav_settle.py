@@ -31,7 +31,7 @@ def test_instant_cover_keeps_workspace_column_inset():
 
 
 def test_cover_installer_is_versioned_so_deploys_replace_stale_handlers():
-    assert 'IMMEDIATE_NAV_COVER_VERSION = "nov3-548-skeleton-v5"' in BRIDGE
+    assert 'IMMEDIATE_NAV_COVER_VERSION = "nov3-548-skeleton-v7"' in BRIDGE
     assert "__cadivorImmediateNavigationClick" in BRIDGE
     assert "removeEventListener(\"click\", w.__cadivorImmediateNavigationClick, true)" in BRIDGE
     assert "__cadivorQueueNavigationCoverRelease" in BRIDGE
