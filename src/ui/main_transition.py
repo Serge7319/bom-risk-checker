@@ -697,18 +697,22 @@ def reveal_main_transition(route: str = "") -> None:
             )
     except Exception:
         pass
-    del transition_kind  # Kind only gates mid-route deferral; final reveal always releases.
     escaped = html.escape(safe_route or "1")
     try:
         gen = int(st.session_state.get(MAIN_TRANSITION_GEN_KEY) or 0)
     except (TypeError, ValueError):
         gen = 0
-    # Always publish release-gen with the body marker. Navigation mid-route
-    # reveals stay deferred via should_defer_navigation_reveal, so the cover
-    # only collapses when the destination renderer finishes (force reveal /
-    # page stop). Waiting on scroll-settle alone left Opening mounted for
-    # seconds after the form was already painted — and could stick forever
-    # when scroll never reported atTop.
+    # Body-gen marks destination readiness. For in-app navigation, do NOT also
+    # publish release-gen here — Nov 3 4:26 recording showed titles/content
+    # painting mid-viewport then jumping up because the cover collapsed before
+    # scroll-to-top settled. Browser/nav scroll reset owns release-gen after
+    # atTop is stable (with a bounded timeout). Blocking/first-admit reveals
+    # still publish release-gen immediately so Login→Home is not stuck.
+    release_attr = (
+        ""
+        if transition_kind == "navigation"
+        else f'data-cadivor-page-body-release-gen="{gen}" '
+    )
     try:
         # st.html inserts this marker directly into the application document.
         # Keep the ready signal as a real DOM node instead of a JavaScript
@@ -719,7 +723,7 @@ def reveal_main_transition(route: str = "") -> None:
         st.html(
             f'<div data-cadivor-page-body="{escaped}" '
             f'data-cadivor-page-body-gen="{gen}" '
-            f'data-cadivor-page-body-release-gen="{gen}" '
+            f"{release_attr}"
             f'data-cadivor-transition-gen="{gen}" aria-hidden="true" '
             'style="position:absolute;width:1px;height:1px;margin:-1px;border:0;'
             'padding:0;overflow:hidden;clip:rect(0,0,0,0)"></div>'

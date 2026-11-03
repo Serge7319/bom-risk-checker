@@ -54,12 +54,11 @@ class MainTransitionReleaseSignalTests(unittest.TestCase):
         self.assertNotIn("<script", html[0][0])
         self.assertEqual(html[0][1], {})
 
-    def test_navigation_reveal_publishes_release_gen_with_body_marker(self):
-        """Final navigation reveals must release Opening immediately.
+    def test_navigation_reveal_waits_for_scroll_owned_release_gen(self):
+        """In-app navigation must not collapse Opening before scroll settles.
 
-        Mid-route early reveals stay deferred via should_defer_navigation_reveal.
-        Once reveal_main_transition runs, publish release-gen so the cover does
-        not wait on flaky scroll settle.
+        Nov 3 4:26 recording: titles painted mid-viewport then jumped up when
+        Python published release-gen immediately with the body marker.
         """
         state = {
             MAIN_TRANSITION_GEN_KEY: 814,
@@ -81,7 +80,7 @@ class MainTransitionReleaseSignalTests(unittest.TestCase):
             reveal_main_transition("Monitoring")
 
         self.assertIn('data-cadivor-page-body-gen="814"', html[0][0])
-        self.assertIn('data-cadivor-page-body-release-gen="814"', html[0][0])
+        self.assertNotIn("data-cadivor-page-body-release-gen", html[0][0])
 
     def test_transition_css_uses_direct_document_marker_generation(self):
         state = {}

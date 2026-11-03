@@ -23,9 +23,22 @@ def test_scroll_reset_runs_in_app_document_until_destination_mounts():
     assert "element.scrollHeight > element.clientHeight + 2" in reset
     assert "state.timer = window.setInterval(state.reset, 100)" in reset
     assert "state.settled >= 2" in reset
-    assert "destinationMounted && Date.now() - state.startedAt > 250" in reset
+    # Bound timeout only — never release mid-scroll after 250ms (4:26 jump).
+    assert "destinationMounted && Date.now() - state.startedAt > 250" not in reset
+    assert "Date.now() - state.startedAt > 900" in reset
     assert "Date.now() - state.startedAt > 10000" in reset
     assert "components.html" not in reset
+
+
+def test_instant_navigation_cover_keeps_rail_continuity_until_release():
+    bridge = BROWSER_NAVIGATION
+    assert "cadivor-rail-continuity" in bridge
+    assert "ensureRailContinuity" in bridge
+    remove = bridge.split("function shouldRemoveInstantCover", 1)[1].split(
+        "function queueReleaseCheck", 1
+    )[0]
+    assert "destinationSurfaceReady(cover) && !pythonCover" not in remove
+    assert "hasReleasedDestination" in remove
 
 
 def test_analysis_submission_and_report_switch_request_same_route_scroll_reset():
@@ -102,10 +115,8 @@ def test_browser_bridge_releases_navigation_cover_only_after_scroll_is_stable():
         'body.setAttribute("data-cadivor-page-body-release-gen", gen)'
     )
     assert "routeReleaseStableChecks >= 3" in helper
-    assert "function mainLayoutSignature()" in bridge
-    assert "routeReleaseStableSignature" in helper
-    assert "block.scrollHeight" in bridge
     assert "releaseNavigationCoverAfterScrollReset();" in bridge
+    assert "cadivor-rail-continuity" in bridge
 
 
 def test_bom_progress_uses_the_reserved_top_slot_without_hiding_the_workspace():

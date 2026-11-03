@@ -573,9 +573,23 @@ def inject_nav_scroll_reset_if_needed() -> bool:
             state.settled = destinationMounted && atTop ? state.settled + 1 : 0;
             if (state.settled >= 2) {{
               stop(true);
-            }} else if (destinationMounted && Date.now() - state.startedAt > 250) {{
-              // Destination body is ready. Do not keep Opening for flaky
-              // scrollHeight/atTop settle — release as soon as content exists.
+            }} else if (
+              destinationMounted
+              && Date.now() - state.startedAt > 900
+            ) {{
+              // Bound wait: force another top reset, then release so Opening
+              // cannot stick forever when scrollHeight never reports atTop.
+              // Do not release earlier without atTop — that painted titles
+              // mid-viewport then jumped them up (Nov 3 4:26 recording).
+              for (const element of candidates) {{
+                try {{
+                  element.scrollTop = 0;
+                  if (typeof element.scrollTo === 'function') {{
+                    element.scrollTo({{ top: 0, left: 0, behavior: 'auto' }});
+                  }}
+                }} catch (error) {{}}
+              }}
+              try {{ window.scrollTo({{ top: 0, left: 0, behavior: 'auto' }}); }} catch (error) {{}}
               stop(true);
             }} else if (Date.now() - state.startedAt > 10000) {{
               stop(state.transitionGen <= 0 || Boolean(body));
