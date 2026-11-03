@@ -24,9 +24,11 @@ class NavigationFlashAndReviewEntryTests(unittest.TestCase):
         self.assertIn('id = "cadivor-instant-navigation-transition"', BROWSER_BRIDGE)
         self.assertIn(".cv-main-transition.cv-route-loading", BROWSER_BRIDGE)
         self.assertIn("data-cadivor-page-body-gen", BROWSER_BRIDGE)
-        self.assertIn("min-width:190px!important", BROWSER_BRIDGE)
-        self.assertIn("flex:0 0 32px!important", BROWSER_BRIDGE)
-        self.assertIn('"Opening " + normalized + "…"', BROWSER_BRIDGE)
+        # Instant cover is a full page skeleton (not a tiny toast chip).
+        self.assertIn("cv-instant-navigation-skeleton", BROWSER_BRIDGE)
+        self.assertIn("flex:0 0 36px!important", BROWSER_BRIDGE)
+        self.assertIn('"Opening " + display + "…"', BROWSER_BRIDGE)
+        self.assertIn("canonicalRouteForLabel", BROWSER_BRIDGE)
 
     def test_transition_cover_waits_for_the_destination_release_marker(self):
         self.assertIn("function hasReleasedDestination(previousGeneration = \"\")", BROWSER_BRIDGE)
@@ -43,7 +45,8 @@ class NavigationFlashAndReviewEntryTests(unittest.TestCase):
         self.assertIn("if (pythonCover) {", BROWSER_BRIDGE)
         self.assertIn("liveCover.remove()", BROWSER_BRIDGE)
         self.assertIn("shouldRemoveInstantCover", BROWSER_BRIDGE)
-        self.assertIn("hasReleasedDestination(previousGeneration)", BROWSER_BRIDGE)
+        self.assertIn("matchingDestinationReleased", BROWSER_BRIDGE)
+        self.assertIn("mainScrollAtTop", BROWSER_BRIDGE)
 
     def test_runtime_geometry_lock_survives_reruns_without_measuring_the_rail(self):
         self.assertIn('root.setAttribute("data-cadivor-shell-locked", "1")', BROWSER_BRIDGE)
@@ -82,10 +85,14 @@ class NavigationFlashAndReviewEntryTests(unittest.TestCase):
         self.assertIn("background:#F5F7FB", style)
         self.assertIn("pointer-events:auto", style)
         self.assertNotIn("background:transparent", style)
+        self.assertIn("cv-instant-navigation-skeleton", BROWSER_BRIDGE)
         self.assertIn("shouldRemoveInstantCover(cover, pythonCover)", release)
         self.assertIn("if (pythonCover)", release)
         self.assertIn("liveCover.remove()", release)
-        self.assertIn("destinationSurfaceReady", BROWSER_BRIDGE)
+        # Release on matching destination + scroll-top — not a generic h1 wait.
+        self.assertIn("matchingDestinationReleased", BROWSER_BRIDGE)
+        self.assertIn("mainScrollAtTop", BROWSER_BRIDGE)
+        self.assertNotIn("querySelector(\"h1\")", BROWSER_BRIDGE)
         self.assertNotIn("currentGeneration !== previousGeneration", release)
 
     def test_bom_progress_slot_precedes_the_full_width_upload_form(self):

@@ -25,23 +25,19 @@ def test_scroll_reset_bounds_wait_without_early_mid_scroll_release():
     assert "Date.now() - state.startedAt > 250" not in reset
 
 
-def test_instant_cover_preserves_rail_strip_during_remount():
-    assert "cadivor-rail-continuity" in BRIDGE
-    assert "background:#f8fafc" in BRIDGE
-    assert "ensureRailContinuity()" in BRIDGE
-    assert "width:calc(100vw - var(--cv-foundation-rail,296px))" in BRIDGE
+def test_instant_cover_keeps_workspace_column_inset():
+    assert "left:var(--cv-foundation-rail,296px)" in BRIDGE
+    assert "cv-instant-navigation-skeleton" in BRIDGE
 
 
 def test_cover_installer_is_versioned_so_deploys_replace_stale_handlers():
-    assert 'IMMEDIATE_NAV_COVER_VERSION = "nov3-548-cover-v4"' in BRIDGE
+    assert 'IMMEDIATE_NAV_COVER_VERSION = "nov3-548-skeleton-v5"' in BRIDGE
     assert "__cadivorImmediateNavigationClick" in BRIDGE
     assert "removeEventListener(\"click\", w.__cadivorImmediateNavigationClick, true)" in BRIDGE
-    assert "titleYStable" in BRIDGE
-    assert "function titleBandSettled" not in BRIDGE
     assert "__cadivorQueueNavigationCoverRelease" in BRIDGE
     assert 'staleStyle.remove()' in BRIDGE or "staleStyle) staleStyle.remove()" in BRIDGE
     assert "data-cadivor-cover-shown-at" in BRIDGE
-    assert "now - shownAt >= 1600" in BRIDGE
+    assert "matchingDestinationReleased" in BRIDGE
 
 
 def test_navigation_re_reveal_keeps_deferred_release_gen():
