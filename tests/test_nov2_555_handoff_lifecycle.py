@@ -20,6 +20,8 @@ def test_synthetic_25_component_fixture_exists():
 def test_boot_splash_and_entry_force_light_canvas():
     assert "def apply_light_boot_splash" in BOOT
     assert "cadivor-light-boot" in BOOT
+    assert "cadivor-boot-splash" in BOOT
+    assert "stAppSkeleton" in BOOT
     assert "apply_light_boot_splash()" in ENTRY
     chrome = ENTRY.split('id="cadivor-root-chrome"', 1)[1].split("</style>", 1)[0]
     assert "color-scheme: light" in chrome

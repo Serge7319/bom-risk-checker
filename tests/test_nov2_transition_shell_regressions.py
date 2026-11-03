@@ -74,5 +74,41 @@ def test_light_boot_splash_patches_streamlit_index():
     boot = (ROOT / "scripts" / "cadivor_streamlit_boot.py").read_text(encoding="utf-8")
     assert "def apply_light_boot_splash" in boot
     assert "cadivor-light-boot" in boot
+    assert "cadivor-boot-splash" in boot
+    assert "stAppSkeleton" in boot
+    assert "Loading your workspace" in boot
     assert "color-scheme:light" in boot
     assert "apply_light_boot_splash()" in boot.split("def main", 1)[1]
+
+
+def test_light_boot_splash_writes_branded_cover_into_streamlit_index(tmp_path, monkeypatch):
+    """Cold load must show Cadivor cover, not dark skeleton or empty white."""
+    import scripts.cadivor_streamlit_boot as boot
+
+    fake_streamlit = tmp_path / "streamlit"
+    static = fake_streamlit / "static"
+    static.mkdir(parents=True)
+    index = static / "index.html"
+    index.write_text(
+        "<!doctype html><html><head><title>Streamlit</title></head>"
+        "<body><div id=\"root\"></div></body></html>",
+        encoding="utf-8",
+    )
+
+    class _FakeStreamlit:
+        __file__ = str(fake_streamlit / "__init__.py")
+
+    monkeypatch.setitem(__import__("sys").modules, "streamlit", _FakeStreamlit())
+    assert boot.apply_light_boot_splash() is True
+    text = index.read_text(encoding="utf-8")
+    assert 'id="cadivor-light-boot"' in text
+    assert '<div id="cadivor-boot-splash"' in text
+    assert "Loading your workspace" in text
+    assert "stAppSkeleton" in text
+    assert "color-scheme:light" in text
+    # Idempotent upgrade path replaces prior fragments instead of stacking.
+    assert boot.apply_light_boot_splash() is True
+    text2 = index.read_text(encoding="utf-8")
+    assert text2.count('<div id="cadivor-boot-splash"') == 1
+    assert text2.count('id="cadivor-light-boot"') == 1
+    assert text2.count('cadivor-boot-splash-retire') == 1
