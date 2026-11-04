@@ -42,16 +42,17 @@ export default function LoginPage() {
             <small>Engineering Intelligence</small>
           </div>
         </div>
-        <div className="cv-eyebrow">Sandbox JWT auth</div>
+        <div className="cv-eyebrow">Cadivor Auth</div>
         <h1 style={{ margin: "0 0 6px", fontSize: 26, letterSpacing: "-0.03em" }}>
           Sign in
         </h1>
         <p className="cv-page-description" style={{ marginTop: 6 }}>
-          Server-verified sandbox tokens. Workspace comes from membership, not
-          the client. Credentials are not shipped in the app — use accounts
-          created by the explicit sandbox seed step. API:{" "}
+          Uses Cadivor Supabase Auth on production (server-verified tokens;
+          workspace from migration membership). Sandbox HS256 remains
+          sandbox-only and is blocked in production. Credentials are not
+          shipped in the app. API:{" "}
           <code style={{ fontSize: 11 }}>{API_BASE}</code>. No Stripe, email, or
-          live suppliers. Production remains on app.cadivor.com.
+          live suppliers on this Next API.
         </p>
         <label htmlFor="email">Email</label>
         <input

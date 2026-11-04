@@ -33,12 +33,15 @@ from apps.api.synthetic_analyze import (  # noqa: E402
 from apps.api.sandbox_auth import (  # noqa: E402
     AuthError,
     AuthNotConfiguredError,
-    auth_configured,
-    describe_auth,
+    auth_configured as sandbox_auth_configured,
+    describe_auth as describe_sandbox_auth,
+    is_production_runtime,
     login as sandbox_login,
     logout as sandbox_logout,
-    resolve_bearer,
+    resolve_bearer as sandbox_resolve_bearer,
+    sandbox_jwt_permitted,
 )
+from apps.api import supabase_auth  # noqa: E402
 from apps.api.workspace_store import (  # noqa: E402
     PersistenceNotConfiguredError,
     WorkspaceAccessError,
@@ -54,7 +57,9 @@ _origins = [
     origin.strip()
     for origin in os.environ.get(
         "CADIVOR_WEB_ORIGINS",
-        "http://127.0.0.1:3000,http://localhost:3000",
+        "http://127.0.0.1:3000,http://localhost:3000,"
+        "https://app.cadivor.com,"
+        "https://cadivor-next-web-sandbox.up.railway.app",
     ).split(",")
     if origin.strip()
 ]
@@ -62,6 +67,27 @@ _origins = [
 
 def _json(data: Any, status_code: int = 200) -> JSONResponse:
     return JSONResponse(data, status_code=status_code)
+
+
+def _use_supabase_auth() -> bool:
+    """Production runtimes always use Supabase Auth; HS256 stays sandbox-only."""
+    if is_production_runtime():
+        return True
+    if (os.environ.get("CADIVOR_USE_SUPABASE_AUTH") or "").strip() == "1":
+        return True
+    return False
+
+
+def auth_configured() -> bool:
+    if _use_supabase_auth():
+        return supabase_auth.supabase_auth_configured()
+    return sandbox_auth_configured()
+
+
+def describe_auth() -> dict[str, Any]:
+    if _use_supabase_auth():
+        return supabase_auth.describe_supabase_auth()
+    return describe_sandbox_auth()
 
 
 def _auth_context(request: Request) -> tuple[dict[str, str] | None, JSONResponse | None]:
@@ -73,9 +99,16 @@ def _auth_context(request: Request) -> tuple[dict[str, str] | None, JSONResponse
     # Ignore any client-supplied workspace claim on the request.
     _ = request.query_params.get("workspace_id")
     try:
-        ctx = resolve_bearer(token)
+        if _use_supabase_auth():
+            ctx = supabase_auth.resolve_bearer(token)
+        else:
+            ctx = sandbox_resolve_bearer(token)
     except AuthNotConfiguredError as exc:
-        return None, _json({"detail": str(exc)}, 503)
+        payload: dict[str, Any] = {"detail": str(exc)}
+        if _use_supabase_auth():
+            payload["missing_config_vars"] = supabase_auth.missing_config_vars()
+            payload["setup_required"] = describe_auth().get("setup_required")
+        return None, _json(payload, 503)
     except AuthError as exc:
         return None, _json({"detail": exc.detail}, exc.status_code)
     return ctx.as_dict(), None
@@ -104,7 +137,7 @@ async def health(_: Request) -> JSONResponse:
     except PersistenceNotConfiguredError:
         store_path_basename = None
     auth = describe_auth()
-    # Never treat production SUPABASE_* as the migration sandbox backend.
+    using_supabase = _use_supabase_auth()
     return _json(
         {
             "ok": True,
@@ -115,6 +148,9 @@ async def health(_: Request) -> JSONResponse:
             "email": "disabled",
             "auth": auth,
             "auth_configured": auth_configured(),
+            "auth_path": "supabase" if using_supabase else "sandbox-jwt",
+            "sandbox_jwt_permitted": sandbox_jwt_permitted(),
+            "production_runtime": is_production_runtime(),
             "tools": [
                 "monitoring",
                 "compare-parts",
@@ -133,11 +169,15 @@ async def health(_: Request) -> JSONResponse:
                 "home-dashboard",
                 "workspace-isolation",
                 "sandbox-jwt-auth",
+                "supabase-jwt-auth",
             ],
             "persistence": {
                 **persistence,
                 "store_path_basename": store_path_basename,
-                "production_supabase_unused": True,
+                # Auth may use Cadivor Supabase; migration *records* never use
+                # the Streamlit Supabase data store.
+                "streamlit_supabase_data_store_unused": True,
+                "migration_database_required": True,
             },
         }
     )
@@ -153,17 +193,26 @@ async def auth_login(request: Request) -> JSONResponse:
     # Client may send workspace_id; it is ignored — membership decides.
     requested_ws = body.get("workspace_id")
     try:
-        session = sandbox_login(
-            email, password, requested_workspace_id=str(requested_ws or "") or None
-        )
+        if _use_supabase_auth():
+            session = supabase_auth.login(
+                email,
+                password,
+                requested_workspace_id=str(requested_ws or "") or None,
+            )
+        else:
+            session = sandbox_login(
+                email,
+                password,
+                requested_workspace_id=str(requested_ws or "") or None,
+            )
     except AuthNotConfiguredError as exc:
-        return _json(
-            {
-                "detail": str(exc),
-                "setup_required": describe_auth().get("setup_required"),
-            },
-            503,
-        )
+        payload: dict[str, Any] = {
+            "detail": str(exc),
+            "setup_required": describe_auth().get("setup_required"),
+        }
+        if _use_supabase_auth():
+            payload["missing_config_vars"] = supabase_auth.missing_config_vars()
+        return _json(payload, 503)
     except AuthError as exc:
         return _json({"detail": exc.detail}, exc.status_code)
     return _json(session)
@@ -175,7 +224,10 @@ async def auth_logout(request: Request) -> JSONResponse:
         return _json({"detail": "Missing bearer token"}, 401)
     token = authorization.removeprefix("Bearer ").strip()
     try:
-        sandbox_logout(token)
+        if _use_supabase_auth():
+            supabase_auth.logout(token)
+        else:
+            sandbox_logout(token)
     except AuthNotConfiguredError as exc:
         return _json({"detail": str(exc)}, 503)
     except AuthError as exc:

@@ -185,6 +185,10 @@ def test_production_runtime_fails_closed_even_with_sandbox_secret(
     monkeypatch.setenv("RAILWAY_ENVIRONMENT", "production")
     monkeypatch.delenv("CADIVOR_ALLOW_SANDBOX_JWT", raising=False)
     monkeypatch.delenv("CADIVOR_ALLOW_EPHEMERAL_FILE_STORE", raising=False)
+    monkeypatch.delenv("SUPABASE_URL", raising=False)
+    monkeypatch.delenv("SUPABASE_KEY", raising=False)
+    monkeypatch.delenv("SUPABASE_ANON_KEY", raising=False)
+    monkeypatch.delenv("CADIVOR_MIGRATION_DATABASE_URL", raising=False)
     reset_store_for_tests(tmp_path / "prod_store.json")
     # Do not call reset_auth_store_for_tests — it clears production env.
     from apps.api import sandbox_auth as sa
@@ -193,8 +197,12 @@ def test_production_runtime_fails_closed_even_with_sandbox_secret(
     sa._SEEDED = False
     client = TestClient(app)
     health = client.get("/health").json()
-    assert health["auth"]["mode"] == "blocked-production"
+    assert health["production_runtime"] is True
+    assert health["sandbox_jwt_permitted"] is False
+    assert health["auth_path"] == "supabase"
+    assert health["auth"]["mode"] == "unconfigured"
     assert health["auth_configured"] is False
+    assert "SUPABASE_URL" in health["auth"]["missing_config_vars"]
     login = client.post(
         "/auth/login",
         json={
@@ -203,9 +211,7 @@ def test_production_runtime_fails_closed_even_with_sandbox_secret(
         },
     )
     assert login.status_code == 503
-    assert "fail closed" in login.json()["detail"].lower() or "disabled" in login.json()[
-        "detail"
-    ].lower()
+    assert "SUPABASE_URL" in login.json().get("missing_config_vars", [])
 
 
 def test_production_blocks_even_when_allow_sandbox_jwt_and_secret_set(
@@ -216,6 +222,10 @@ def test_production_blocks_even_when_allow_sandbox_jwt_and_secret_set(
     monkeypatch.setenv("CADIVOR_ALLOW_SANDBOX_JWT", "1")
     monkeypatch.setenv("CADIVOR_SANDBOX_AUTH_SECRET", "leaked-sandbox-secret-should-not-work")
     monkeypatch.setenv("CADIVOR_ALLOW_EPHEMERAL_FILE_STORE", "1")
+    monkeypatch.delenv("SUPABASE_URL", raising=False)
+    monkeypatch.delenv("SUPABASE_KEY", raising=False)
+    monkeypatch.delenv("SUPABASE_ANON_KEY", raising=False)
+    monkeypatch.delenv("CADIVOR_MIGRATION_DATABASE_URL", raising=False)
     reset_store_for_tests(tmp_path / "prod_allow_store.json")
     from apps.api import sandbox_auth as sa
 
@@ -226,8 +236,9 @@ def test_production_blocks_even_when_allow_sandbox_jwt_and_secret_set(
     assert sa.auth_configured() is False
     client = TestClient(app)
     health = client.get("/health").json()
-    assert health["auth"]["mode"] == "blocked-production"
-    assert health["auth"]["sandbox_jwt_permitted"] is False
+    assert health["auth_path"] == "supabase"
+    assert health["auth"]["mode"] == "unconfigured"
+    assert health["sandbox_jwt_permitted"] is False
     assert health["auth_configured"] is False
     login = client.post(
         "/auth/login",
@@ -237,6 +248,7 @@ def test_production_blocks_even_when_allow_sandbox_jwt_and_secret_set(
         },
     )
     assert login.status_code == 503
+    assert "SUPABASE_URL" in login.json().get("missing_config_vars", [])
     with pytest.raises(sa.AuthNotConfiguredError):
         seed_demo_users(SANDBOX_SEED_USERS)
 

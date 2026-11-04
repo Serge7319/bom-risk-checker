@@ -1,11 +1,11 @@
-/** Sandbox migration API only — no localhost fallback. */
-const SANDBOX_API_BASE = "https://cadivor-next-api-sandbox.up.railway.app";
+/** Next migration API (sandbox or production Railway) — no localhost fallback. */
+const DEFAULT_API_BASE = "https://cadivor-next-api-sandbox.up.railway.app";
 const API_BASE = (
-  process.env.NEXT_PUBLIC_API_BASE?.replace(/\/$/, "") || SANDBOX_API_BASE
+  process.env.NEXT_PUBLIC_API_BASE?.replace(/\/$/, "") || DEFAULT_API_BASE
 ).replace(/\/$/, "");
 if (/localhost|127\.0\.0\.1/i.test(API_BASE)) {
   throw new Error(
-    `NEXT_PUBLIC_API_BASE must target the Railway sandbox API, not localhost (got ${API_BASE})`,
+    `NEXT_PUBLIC_API_BASE must target the Railway migration API, not localhost (got ${API_BASE})`,
   );
 }
 
@@ -52,7 +52,8 @@ export type Report = AnalyzeSummary & {
   } | null;
 };
 
-const SESSION_KEY = "cadivor_next_sandbox_session";
+const SESSION_KEY = "cadivor_next_session";
+const LEGACY_SESSION_KEY = "cadivor_next_sandbox_session";
 
 function redirectToLoginAfterAuthFailure() {
   if (typeof window === "undefined") return;
@@ -86,7 +87,9 @@ async function apiJson<T>(
 export function getSession(): Session | null {
   if (typeof window === "undefined") return null;
   try {
-    const raw = window.localStorage.getItem(SESSION_KEY);
+    const raw =
+      window.localStorage.getItem(SESSION_KEY) ||
+      window.localStorage.getItem(LEGACY_SESSION_KEY);
     return raw ? (JSON.parse(raw) as Session) : null;
   } catch {
     return null;
@@ -95,10 +98,12 @@ export function getSession(): Session | null {
 
 export function setSession(session: Session) {
   window.localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+  window.localStorage.removeItem(LEGACY_SESSION_KEY);
 }
 
 export function clearSession() {
   window.localStorage.removeItem(SESSION_KEY);
+  window.localStorage.removeItem(LEGACY_SESSION_KEY);
 }
 
 export async function login(email: string, password: string): Promise<Session> {

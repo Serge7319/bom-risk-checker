@@ -244,6 +244,7 @@ class AuthContext:
     plan: str
     access_token: str
     jti: str
+    mode: str = "sandbox-jwt"
 
     def as_dict(self) -> dict[str, str]:
         return {
@@ -254,7 +255,7 @@ class AuthContext:
             "plan": self.plan,
             "access_token": self.access_token,
             "jti": self.jti,
-            "mode": "sandbox-jwt",
+            "mode": self.mode,
         }
 
 
@@ -341,6 +342,43 @@ class _FileAuthStore:
         with _LOCK:
             row = self._data["memberships"].get(user_id)
             return dict(row) if row else None
+
+    def ensure_supabase_owner(
+        self,
+        *,
+        user_id: str,
+        email: str,
+        workspace_id: str,
+        workspace: str,
+        plan: str = "Trial",
+    ) -> dict[str, str]:
+        """Link a Supabase auth subject to a migration-only test workspace."""
+        email_n = email.strip().lower()
+        with _LOCK:
+            for uid, row in list(self._data["users"].items()):
+                if row.get("email") == email_n and uid != user_id:
+                    self._data["users"].pop(uid, None)
+                    self._data["memberships"].pop(uid, None)
+            self._data["users"][user_id] = {
+                "id": user_id,
+                "email": email_n,
+                "password_hash": _hash_password("__supabase_auth_managed__"),
+                "plan": plan,
+            }
+            self._data["memberships"][user_id] = {
+                "user_id": user_id,
+                "workspace_id": workspace_id,
+                "workspace_name": workspace,
+                "role": "owner",
+            }
+            self.save()
+            return {
+                "user_id": user_id,
+                "email": email_n,
+                "workspace_id": workspace_id,
+                "workspace": workspace,
+                "plan": plan,
+            }
 
     def revoke(self, jti: str, exp: int) -> None:
         with _LOCK:
@@ -469,6 +507,56 @@ class _PostgresAuthStore:
                 (user_id,),
             ).fetchone()
             return dict(row) if row else None
+
+    def ensure_supabase_owner(
+        self,
+        *,
+        user_id: str,
+        email: str,
+        workspace_id: str,
+        workspace: str,
+        plan: str = "Trial",
+    ) -> dict[str, str]:
+        """Link a Supabase auth subject to a migration-only test workspace."""
+        self.ensure_schema()
+        email_n = email.strip().lower()
+        password_hash = _hash_password("__supabase_auth_managed__")
+        with _LOCK:
+            with self._connect() as conn:
+                conn.execute(
+                    "DELETE FROM migration_users WHERE email = %s AND id <> %s",
+                    (email_n, user_id),
+                )
+                conn.execute(
+                    """
+                    INSERT INTO migration_users (id, email, password_hash, plan)
+                    VALUES (%s, %s, %s, %s)
+                    ON CONFLICT (id) DO UPDATE SET
+                      email = EXCLUDED.email,
+                      plan = EXCLUDED.plan
+                    """,
+                    (user_id, email_n, password_hash, plan),
+                )
+                conn.execute(
+                    """
+                    INSERT INTO migration_workspace_members
+                      (user_id, workspace_id, workspace_name, role)
+                    VALUES (%s, %s, %s, 'owner')
+                    ON CONFLICT (user_id) DO UPDATE SET
+                      workspace_id = EXCLUDED.workspace_id,
+                      workspace_name = EXCLUDED.workspace_name,
+                      role = EXCLUDED.role
+                    """,
+                    (user_id, workspace_id, workspace),
+                )
+                conn.commit()
+        return {
+            "user_id": user_id,
+            "email": email_n,
+            "workspace_id": workspace_id,
+            "workspace": workspace,
+            "plan": plan,
+        }
 
     def revoke(self, jti: str, exp: int) -> None:
         self.ensure_schema()
