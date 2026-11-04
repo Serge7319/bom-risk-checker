@@ -2,19 +2,12 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  API_BASE,
-  SMOKE_EMAIL,
-  SMOKE_PASSWORD,
-  getSession,
-  setSession,
-  smokeLogin,
-} from "@/lib/api";
+import { API_BASE, getSession, login, setSession } from "@/lib/api";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState(SMOKE_EMAIL);
-  const [password, setPassword] = useState(SMOKE_PASSWORD);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -27,7 +20,7 @@ export default function LoginPage() {
     setBusy(true);
     setError("");
     try {
-      const session = await smokeLogin(email, password);
+      const session = await login(email, password);
       setSession(session);
       router.replace("/");
     } catch (err) {
@@ -49,15 +42,16 @@ export default function LoginPage() {
             <small>Engineering Intelligence</small>
           </div>
         </div>
-        <div className="cv-eyebrow">Migration preview</div>
+        <div className="cv-eyebrow">Sandbox JWT auth</div>
         <h1 style={{ margin: "0 0 6px", fontSize: 26, letterSpacing: "-0.03em" }}>
           Sign in
         </h1>
         <p className="cv-page-description" style={{ marginTop: 6 }}>
-          Smoke credentials only. Auth and BOM calls go to{" "}
-          <code style={{ fontSize: 11 }}>{API_BASE}</code>. No Stripe charges,
-          email, or live supplier calls. Production Streamlit remains on
-          app.cadivor.com.
+          Server-verified sandbox tokens. Workspace comes from membership, not
+          the client. Credentials are not shipped in the app — use accounts
+          created by the explicit sandbox seed step. API:{" "}
+          <code style={{ fontSize: 11 }}>{API_BASE}</code>. No Stripe, email, or
+          live suppliers. Production remains on app.cadivor.com.
         </p>
         <label htmlFor="email">Email</label>
         <input

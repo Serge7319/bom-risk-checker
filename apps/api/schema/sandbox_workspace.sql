@@ -1,6 +1,31 @@
 -- Cadivor Next.js migration sandbox workspace schema (non-production only).
--- Applied automatically by PostgresWorkspaceStore.ensure_schema().
--- Do NOT point this at production Supabase.
+-- Applied automatically by PostgresWorkspaceStore.ensure_schema() and
+-- sandbox_auth Postgres backend. Do NOT point this at production Supabase.
+
+CREATE TABLE IF NOT EXISTS migration_users (
+  id TEXT PRIMARY KEY,
+  email TEXT NOT NULL UNIQUE,
+  password_hash TEXT NOT NULL,
+  plan TEXT NOT NULL DEFAULT 'Trial',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS migration_workspace_members (
+  user_id TEXT PRIMARY KEY REFERENCES migration_users(id) ON DELETE CASCADE,
+  workspace_id TEXT NOT NULL,
+  workspace_name TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'owner',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS migration_ws_members_ws_idx
+  ON migration_workspace_members (workspace_id);
+
+CREATE TABLE IF NOT EXISTS migration_revoked_tokens (
+  jti TEXT PRIMARY KEY,
+  exp BIGINT NOT NULL,
+  revoked_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 
 CREATE TABLE IF NOT EXISTS migration_projects (
   id TEXT PRIMARY KEY,

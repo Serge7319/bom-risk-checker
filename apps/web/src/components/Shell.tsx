@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { API_BASE, clearSession, type Session } from "@/lib/api";
+import { API_BASE, clearSession, logout, type Session } from "@/lib/api";
 import { NAV_GROUPS } from "@/lib/routes";
 
 function crumbTitle(pathname: string): string {
@@ -77,14 +77,21 @@ export function Shell({
               <span className="cv-plan-chip">Sandbox</span>
             </div>
             <div className="cv-plan-copy">
-              Synthetic smoke auth and offline BOM analysis. Production
+              Sandbox JWT auth with membership-scoped workspaces. Production
               Streamlit on app.cadivor.com is untouched.
             </div>
           </div>
           <button
             type="button"
             className="cv-signout"
-            onClick={() => {
+            onClick={async () => {
+              try {
+                if (session.access_token) {
+                  await logout(session.access_token);
+                }
+              } catch {
+                // Always clear local session even if revoke fails.
+              }
               clearSession();
               router.replace("/login");
             }}

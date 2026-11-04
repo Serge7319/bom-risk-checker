@@ -11,10 +11,10 @@ Business north star: **continuous engineering workflow** (persistent projects, r
 | Persistent project / BOM / revision / analysis workflows | **Proven on sandbox Postgres** | `CADIVOR_MIGRATION_DATABASE_URL` on `cadivor-next-api` (sandbox only). Analyses survive API redeploy. Production Supabase unused. |
 | Multi-level BOMs + risk roll-up + drill-down | **Proven** | Nested fixture on sandbox; hierarchy + top rolled risk retrieved after redeploy. |
 | Home / dashboard from saved data | **Proven workspace-scoped** | `GET /workspace/home` filtered by verified smoke workspace. |
-| Workspace / tenant isolation | **Proven (live sandbox + pytest)** | `ws-smoke-a` / `ws-smoke-b`; cross-workspace list/get/update/delete → 404. |
+| Workspace / tenant isolation | **Proven (live sandbox + pytest)** | Membership-derived `ws-sandbox-a` / `ws-sandbox-b`; cross-workspace list/get/update/delete → 404; client workspace_id ignored. |
 | Survive sandbox API redeploy | **Proven** | Flat + nested IDs created on deploy `9c201e7c`, retrieved after redeploys `82109a4c` and `4829a93d`. |
 | Proactive monitoring + email alerts | **Staged / preview-only** | Preview monitoring derives signals from analysis only. No scheduled supplier refresh, no email. |
-| Self-serve onboarding | **Staged** | Smoke login only; production auth / trial onboarding not migrated. |
+| Self-serve onboarding | **Sandbox JWT only** | Server-verified sandbox JWTs + membership workspaces; production Auth / trial onboarding not migrated. Smoke login removed (410). |
 | Usage-based subscription tiers (active BOMs / tracked parts) | **Staged** | Plan field is smoke label; metering not enforced. |
 | PLM / ERP / CAD integrations | **Staged** | No connectors; do not present as live. |
 | Compliance evidence packs | **Staged** | Report evidence is synthetic-preview labeled; not a compliance export. |

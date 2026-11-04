@@ -9,14 +9,12 @@ if (/localhost|127\.0\.0\.1/i.test(API_BASE)) {
   );
 }
 
-export const SMOKE_EMAIL = "auth-smoke@cadivor.test";
-export const SMOKE_PASSWORD = "cadivor-auth-smoke";
-
 export type Session = {
   access_token: string;
   email: string;
   workspace: string;
   workspace_id?: string;
+  user_id?: string;
   plan: string;
   mode: string;
 };
@@ -54,7 +52,15 @@ export type Report = AnalyzeSummary & {
   } | null;
 };
 
-const SESSION_KEY = "cadivor_next_smoke_session";
+const SESSION_KEY = "cadivor_next_sandbox_session";
+
+function redirectToLoginAfterAuthFailure() {
+  if (typeof window === "undefined") return;
+  clearSession();
+  if (!window.location.pathname.startsWith("/login")) {
+    window.location.assign("/login");
+  }
+}
 
 async function apiJson<T>(
   path: string,
@@ -67,6 +73,10 @@ async function apiJson<T>(
   }
   const res = await fetch(`${API_BASE}${path}`, { ...init, headers });
   if (!res.ok) {
+    if (res.status === 401 && init.token) {
+      // Any authenticated API 401 → clear session and return to login.
+      redirectToLoginAfterAuthFailure();
+    }
     const detail = (await res.json().catch(() => ({}))) as { detail?: string };
     throw new Error(detail.detail || `Request failed (${res.status})`);
   }
@@ -91,11 +101,28 @@ export function clearSession() {
   window.localStorage.removeItem(SESSION_KEY);
 }
 
-export async function smokeLogin(email: string, password: string): Promise<Session> {
-  return apiJson("/auth/smoke-login", {
+export async function login(email: string, password: string): Promise<Session> {
+  return apiJson("/auth/login", {
     method: "POST",
     body: JSON.stringify({ email, password }),
   });
+}
+
+export async function logout(token: string): Promise<void> {
+  await apiJson("/auth/logout", { method: "POST", token });
+}
+
+export async function fetchMe(token: string) {
+  return apiJson<{
+    ok: boolean;
+    email: string;
+    user_id: string;
+    workspace: string;
+    workspace_id: string;
+    plan: string;
+    mode: string;
+    client_workspace_id_trusted: boolean;
+  }>("/auth/me", { token });
 }
 
 export async function analyzeBom(

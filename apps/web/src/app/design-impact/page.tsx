@@ -77,7 +77,7 @@ export default function DesignImpactPage() {
                   {(Array.isArray(catalog) ? catalog : []).slice(0, 25).map((row, i) => (
                     <tr key={i}>
                       <td><strong>{String(row["Part Number"] || row.mpn || "")}</strong></td>
-                      <td>{String(row.Manufacturer || row.manufacturer || Array.from(row["Manufacturer Values"] || [])[0] || "")}</td>
+                      <td>{String(row.Manufacturer || row.manufacturer || (Array.isArray(row["Manufacturer Values"]) ? row["Manufacturer Values"][0] : "") || "")}</td>
                       <td>{String(row.Lifecycle || row.lifecycle || "")}</td>
                       <td>{String(row["Risk Level"] || row.risk_level || "")}</td>
                     </tr>

@@ -1,13 +1,13 @@
 FROM node:22-bookworm-slim AS deps
 WORKDIR /app
-COPY apps/web/package.json apps/web/package-lock.json ./
+COPY package.json package-lock.json ./
 RUN npm ci
 
 FROM node:22-bookworm-slim AS build
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
-COPY apps/web ./
-ARG NEXT_PUBLIC_API_BASE
+COPY . ./
+ARG NEXT_PUBLIC_API_BASE=https://cadivor-next-api-sandbox.up.railway.app
 ENV NEXT_PUBLIC_API_BASE=$NEXT_PUBLIC_API_BASE
 RUN npm run build
 

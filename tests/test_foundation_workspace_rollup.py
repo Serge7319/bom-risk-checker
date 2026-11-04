@@ -3,21 +3,39 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from starlette.testclient import TestClient
 
 from apps.api.bom_hierarchy import compute_effective_quantities, rollup_assemblies
-from apps.api.main import SMOKE_EMAIL, SMOKE_PASSWORD, app
+from apps.api.main import app
+from apps.api.sandbox_auth import reset_auth_store_for_tests
 from apps.api.synthetic_analyze import analyze_upload, get_report
 from apps.api.workspace_store import WorkspaceStore, reset_store_for_tests
+from tests.fixtures.sandbox_auth_accounts import (
+    SANDBOX_SEED_USERS,
+    SMOKE_EMAIL,
+    SMOKE_PASSWORD,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 NESTED = ROOT / "tests/fixtures/nested_bom_product.csv"
 FLAT = ROOT / "tests/fixtures/synthetic_bom_25parts.csv"
 
 
+@pytest.fixture(autouse=True)
+def _sandbox_auth(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("CADIVOR_SANDBOX_AUTH_SECRET", "test-sandbox-auth-secret-key")
+    monkeypatch.setenv("CADIVOR_ALLOW_EPHEMERAL_FILE_STORE", "1")
+    monkeypatch.setenv("CADIVOR_ALLOW_SANDBOX_JWT", "1")
+    monkeypatch.delenv("CADIVOR_MIGRATION_DATABASE_URL", raising=False)
+    monkeypatch.delenv("RAILWAY_ENVIRONMENT", raising=False)
+    monkeypatch.delenv("CADIVOR_FORCE_PRODUCTION_AUTH", raising=False)
+    reset_auth_store_for_tests(tmp_path / "auth.json", accounts=SANDBOX_SEED_USERS)
+
+
 def _auth(client: TestClient) -> dict[str, str]:
     res = client.post(
-        "/auth/smoke-login",
+        "/auth/login",
         json={"email": SMOKE_EMAIL, "password": SMOKE_PASSWORD},
     )
     assert res.status_code == 200

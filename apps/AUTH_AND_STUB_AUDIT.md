@@ -1,59 +1,46 @@
-# Auth & stub audit — Next.js migration (sandbox)
+# Auth & stub audit — Next.js migration (**sandbox-only**)
 
-Branch: `migrate/nextjs-shell-bom-flow` · Environment audited: Railway **sandbox** `cadivor-next-api`  
-Production `app.cadivor.com` / production Supabase: **not used by this API**.
+Branch: `migrate/nextjs-shell-bom-flow` · PR #565 (open; auth work **not committed yet**)
+Environment: Railway **sandbox** (`modest-vibrancy`)
+**Custom HS256 JWT is sandbox migration auth only — not production authentication.**
+Production Supabase Auth remains a separate future task. No commit / push / merge / production deploy in this slice.
 
-## 1) Authentication: smoke login only (not real identities)
-
-| Question | Finding |
-| --- | --- |
-| Does the API use real authenticated identities? | **No.** Only hardcoded smoke accounts in `apps/api/main.py` (`SMOKE_ACCOUNTS`). |
-| Login path | `POST /auth/smoke-login` with fixed email/password pairs. |
-| Web login | `apps/web/src/app/login/page.tsx` → `smokeLogin()`; session stored in `localStorage`. |
-| Bearer tokens | Static strings (`cadivor-nextjs-smoke-token`, `…-token-b`), not JWTs from Supabase Auth. |
-| Production Supabase Auth | **Not wired** on `cadivor-next-api` (`SUPABASE_*` absent). |
-
-**Production blocker:** Replace smoke auth with verified Supabase (or equivalent) sessions before any production cutover. Do not ship smoke tokens to production.
-
-## 2) Workspace identity derivation
-
-| Question | Finding |
-| --- | --- |
-| Is workspace identity derived from verified credentials? | **Only within the smoke model.** `_auth_context()` maps a valid smoke bearer token → fixed `workspace_id` (`ws-smoke-a` / `ws-smoke-b`). Callers cannot supply an arbitrary workspace id. |
-| Client-supplied workspace_id trusted? | **No.** Routes ignore body/query workspace claims; store calls use `ctx["workspace_id"]` from the token map. |
-| Cross-tenant enforcement | Store + API raise/404 on foreign ids (proven by pytest + live sandbox). |
-
-**Production blocker:** Map verified user → membership → `workspace_id` from the production identity/workspace tables (Streamlit path already uses Supabase RLS/workspace scope). Smoke map is not a substitute.
-
-## 3) Product pages — live preview vs stub / staged
-
-Classification for the Next shell (`apps/web`):
-
-| Route | Status | Notes |
+| Service | Deploy | URL |
 | --- | --- | --- |
-| `/login` | Smoke-only | Migration preview credentials |
-| `/` (Home) | **Preview live** | Reads `/workspace/home` from sandbox Postgres; staged items labeled |
-| `/bom-analyzer` | **Preview live** | Upload → synthetic analyze → persist |
-| `/reports`, `/reports/[id]` | **Preview live** | Workspace-scoped list/detail; synthetic evidence labeled |
-| `/monitoring` | Preview API + gap banner | No scheduled refresh / email |
-| `/compare-parts` | Preview API + gap banner | Offline/synthetic compare path |
-| `/datasheet-qa` | Preview API + gap banner | Upload Q&A preview |
-| `/procurement` | Preview API + gap banner | Synthetic prices |
-| `/design-impact` | Preview API + gap banner | Analysis-derived |
-| `/cost-optimization` | Preview API + gap banner | Synthetic unit prices |
-| `/supply-risk` | Preview API + gap banner | Scenario model on saved analysis |
-| `/portfolio-intelligence` | Preview API + gap banner | Aggregates preview analyses |
-| `/detailed-risk-report` | Preview API + gap banner | Part-level synthetic risk |
-| `/engineering-decisions` | **Partial / browser-local** | Uses last analysis in localStorage; not full Streamlit decision workflow |
-| `/engineering-intelligence` | **Partial stub** | Mirrors last synthetic analysis; no Streamlit EI parity |
-| `/find-replacement` | **Stub** | `ToolPage` + `CapabilityStub` only |
-| `/settings` | **Stub / read-only** | Smoke session fields; nothing persisted |
+| API | `fc39d25d-a95f-4fd0-9f54-80916275256e` | https://cadivor-next-api-sandbox.up.railway.app |
+| Web | `1fbc54f0-971b-4f16-b830-a3f255cd958a` | https://cadivor-next-web-sandbox.up.railway.app |
+| Evidence | | `apps/MIGRATION_SANDBOX_AUTH_VERIFY.json` |
 
-Suppliers, Stripe, and email remain **disabled** on the migration API (`/health`).
+## Fixed (hardening requested)
 
-## 4) What this does *not* claim
+| Item | Status |
+| --- | --- |
+| Demo passwords in application source | **Fixed.** Removed from `apps/api` and `apps/web`. Login fields start empty; copy states credentials are not shipped. |
+| Test credentials location | **Fixed.** Only in `tests/fixtures/sandbox_auth_accounts.py`. |
+| Demo-user seeding | **Fixed.** Explicit sandbox-only step: `seed_demo_users(...)` / `python -m apps.api.seed_sandbox_demo` with `CADIVOR_SEED_SANDBOX_DEMO_USERS=1` + JSON/file. Login/resolve do **not** auto-seed (`test_login_does_not_auto_seed_users`). |
+| Production + `CADIVOR_ALLOW_SANDBOX_JWT=1` + secret | **Fixed / proven.** `is_production_runtime()` wins first. `test_production_blocks_even_when_allow_sandbox_jwt_and_secret_set` → login **503**, seed blocked, `sandbox_jwt_permitted: false`. |
+| Authenticated API **401** leaves stale session | **Fixed.** `apiJson` clears localStorage and redirects to `/login` when a bearer request returns **401**. Hosted browser: revoked token → `/login` with `session: null`. |
 
-- Not production auth
-- Not production customer data
-- Not feature parity with Streamlit for stub/partial pages
-- Not a green light to point `app.cadivor.com` at this stack
+## Auth model (sandbox JWT — still not production Auth)
+
+| Topic | Behavior |
+| --- | --- |
+| Passwords | PBKDF2-HMAC-SHA256, 120k, `compare_digest` |
+| Tokens | HS256 + 12h `exp` + `jti` revocation |
+| Workspace | Membership table after verify; client `workspace_id` ignored |
+| Cross-tenant | Foreign report → **404** (does not clear session) |
+| Missing secret | Login **503** fail closed |
+| Smoke login | **410** |
+
+## Checks
+
+- Pytest (sandbox auth + isolation + migration API/tools/foundation): **20 passed**
+- Hosted sandbox browser E2E: empty login → login A → reload → protected report → revoke → **401 → /login, session cleared** → login B → A’s report **not found**
+
+## Remaining limitations (not fixed here)
+
+1. **Production Auth** — Supabase (or equivalent) still a separate cutover task.
+2. Revocation table has no TTL sweeper.
+3. Stub pages + suppliers / Stripe / email not production-ready.
+4. Auth remains **uncommitted**; sandbox redeploys only.
+5. Demo passwords still exist in **test fixtures** (intentional). New empty sandbox DBs need the explicit seed CLI/env (existing sandbox Postgres users already present).

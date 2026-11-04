@@ -30,6 +30,15 @@ from apps.api.synthetic_analyze import (  # noqa: E402
     get_report,
     list_reports,
 )
+from apps.api.sandbox_auth import (  # noqa: E402
+    AuthError,
+    AuthNotConfiguredError,
+    auth_configured,
+    describe_auth,
+    login as sandbox_login,
+    logout as sandbox_logout,
+    resolve_bearer,
+)
 from apps.api.workspace_store import (  # noqa: E402
     PersistenceNotConfiguredError,
     WorkspaceAccessError,
@@ -37,27 +46,9 @@ from apps.api.workspace_store import (  # noqa: E402
     get_store,
 )
 
-SMOKE_ACCOUNTS = {
-    "auth-smoke@cadivor.test": {
-        "password": "cadivor-auth-smoke",
-        "access_token": "cadivor-nextjs-smoke-token",
-        "workspace_id": "ws-smoke-a",
-        "workspace": "CADIVOR SMOKE A",
-        "plan": "Trial",
-    },
-    "auth-smoke-b@cadivor.test": {
-        "password": "cadivor-auth-smoke",
-        "access_token": "cadivor-nextjs-smoke-token-b",
-        "workspace_id": "ws-smoke-b",
-        "workspace": "CADIVOR SMOKE B",
-        "plan": "Trial",
-    },
-}
-# Back-compat aliases used by existing tests
-SMOKE_EMAIL = "auth-smoke@cadivor.test"
-SMOKE_PASSWORD = "cadivor-auth-smoke"
-SMOKE_TOKEN = "cadivor-nextjs-smoke-token"
-SMOKE_WORKSPACE_ID = "ws-smoke-a"
+# Demo passwords are not shipped in the API. Tests import
+# tests.fixtures.sandbox_auth_accounts; operators seed via
+# python -m apps.api.seed_sandbox_demo (sandbox-only).
 
 _origins = [
     origin.strip()
@@ -74,21 +65,20 @@ def _json(data: Any, status_code: int = 200) -> JSONResponse:
 
 
 def _auth_context(request: Request) -> tuple[dict[str, str] | None, JSONResponse | None]:
-    """Return authenticated smoke session (workspace-scoped) or an error response."""
+    """Verify bearer JWT and derive workspace from membership (never from client)."""
     authorization = request.headers.get("authorization") or ""
     if not authorization.startswith("Bearer "):
         return None, _json({"detail": "Missing bearer token"}, 401)
     token = authorization.removeprefix("Bearer ").strip()
-    for email, account in SMOKE_ACCOUNTS.items():
-        if account["access_token"] == token:
-            return {
-                "email": email,
-                "access_token": token,
-                "workspace_id": account["workspace_id"],
-                "workspace": account["workspace"],
-                "plan": account["plan"],
-            }, None
-    return None, _json({"detail": "Invalid smoke token"}, 401)
+    # Ignore any client-supplied workspace claim on the request.
+    _ = request.query_params.get("workspace_id")
+    try:
+        ctx = resolve_bearer(token)
+    except AuthNotConfiguredError as exc:
+        return None, _json({"detail": str(exc)}, 503)
+    except AuthError as exc:
+        return None, _json({"detail": exc.detail}, exc.status_code)
+    return ctx.as_dict(), None
 
 
 def _require_smoke_token(request: Request) -> JSONResponse | None:
@@ -113,6 +103,7 @@ async def health(_: Request) -> JSONResponse:
         store_path_basename = getattr(getattr(store, "path", None), "name", None)
     except PersistenceNotConfiguredError:
         store_path_basename = None
+    auth = describe_auth()
     # Never treat production SUPABASE_* as the migration sandbox backend.
     return _json(
         {
@@ -122,6 +113,8 @@ async def health(_: Request) -> JSONResponse:
             "suppliers": "disabled",
             "stripe": "disabled",
             "email": "disabled",
+            "auth": auth,
+            "auth_configured": auth_configured(),
             "tools": [
                 "monitoring",
                 "compare-parts",
@@ -139,6 +132,7 @@ async def health(_: Request) -> JSONResponse:
                 "bom-hierarchy-rollup",
                 "home-dashboard",
                 "workspace-isolation",
+                "sandbox-jwt-auth",
             ],
             "persistence": {
                 **persistence,
@@ -149,25 +143,72 @@ async def health(_: Request) -> JSONResponse:
     )
 
 
-async def smoke_login(request: Request) -> JSONResponse:
+async def auth_login(request: Request) -> JSONResponse:
     try:
         body = await request.json()
     except Exception:  # noqa: BLE001
         return _json({"detail": "Invalid JSON"}, 400)
     email = str(body.get("email") or "").strip().lower()
     password = str(body.get("password") or "")
-    account = SMOKE_ACCOUNTS.get(email)
-    if not account or password != account["password"]:
-        return _json({"detail": "Invalid smoke credentials"}, 401)
+    # Client may send workspace_id; it is ignored — membership decides.
+    requested_ws = body.get("workspace_id")
+    try:
+        session = sandbox_login(
+            email, password, requested_workspace_id=str(requested_ws or "") or None
+        )
+    except AuthNotConfiguredError as exc:
+        return _json(
+            {
+                "detail": str(exc),
+                "setup_required": describe_auth().get("setup_required"),
+            },
+            503,
+        )
+    except AuthError as exc:
+        return _json({"detail": exc.detail}, exc.status_code)
+    return _json(session)
+
+
+async def auth_logout(request: Request) -> JSONResponse:
+    authorization = request.headers.get("authorization") or ""
+    if not authorization.startswith("Bearer "):
+        return _json({"detail": "Missing bearer token"}, 401)
+    token = authorization.removeprefix("Bearer ").strip()
+    try:
+        sandbox_logout(token)
+    except AuthNotConfiguredError as exc:
+        return _json({"detail": str(exc)}, 503)
+    except AuthError as exc:
+        return _json({"detail": exc.detail}, exc.status_code)
+    return _json({"ok": True, "logged_out": True})
+
+
+async def auth_me(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
     return _json(
         {
-            "access_token": account["access_token"],
-            "email": email,
-            "workspace": account["workspace"],
-            "workspace_id": account["workspace_id"],
-            "plan": account["plan"],
-            "mode": "synthetic-preview",
+            "ok": True,
+            "email": ctx["email"],
+            "user_id": ctx["user_id"],
+            "workspace": ctx["workspace"],
+            "workspace_id": ctx["workspace_id"],
+            "plan": ctx["plan"],
+            "mode": ctx.get("mode") or "sandbox-jwt",
+            "client_workspace_id_trusted": False,
         }
+    )
+
+
+async def smoke_login(request: Request) -> JSONResponse:
+    """Removed as the auth path — returns 410. Use POST /auth/login."""
+    return _json(
+        {
+            "detail": "Smoke login removed. Use POST /auth/login with sandbox JWT auth.",
+            "setup_required": describe_auth().get("setup_required"),
+        },
+        410,
     )
 
 
@@ -515,6 +556,9 @@ async def detailed_risk_get(request: Request) -> JSONResponse:
 app = Starlette(
     routes=[
         Route("/health", health, methods=["GET"]),
+        Route("/auth/login", auth_login, methods=["POST"]),
+        Route("/auth/logout", auth_logout, methods=["POST"]),
+        Route("/auth/me", auth_me, methods=["GET"]),
         Route("/auth/smoke-login", smoke_login, methods=["POST"]),
         Route("/boms/analyze", boms_analyze, methods=["POST"]),
         Route("/reports", reports_list, methods=["GET"]),
