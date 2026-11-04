@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  API_BASE,
   SMOKE_EMAIL,
   SMOKE_PASSWORD,
   getSession,
@@ -39,21 +40,24 @@ export default function LoginPage() {
   return (
     <div className="cv-login">
       <form className="cv-card cv-login-card" onSubmit={onSubmit}>
-        <div className="cv-brand" style={{ marginBottom: 18 }}>
+        <div className="cv-brand" style={{ marginBottom: 18, paddingBottom: 0 }}>
           <span className="cv-mark" aria-hidden>
             C
           </span>
           <div>
             <strong>Cadivor</strong>
-            <small>NEXT.JS MIGRATION PREVIEW</small>
+            <small>Engineering Intelligence</small>
           </div>
         </div>
+        <div className="cv-eyebrow">Migration preview</div>
         <h1 style={{ margin: "0 0 6px", fontSize: 26, letterSpacing: "-0.03em" }}>
           Sign in
         </h1>
-        <p style={{ margin: 0, color: "#64748b", fontSize: 13, lineHeight: 1.5 }}>
-          Smoke credentials only. No Stripe charges, email, or live supplier
-          calls.
+        <p className="cv-page-description" style={{ marginTop: 6 }}>
+          Smoke credentials only. Auth and BOM calls go to{" "}
+          <code style={{ fontSize: 11 }}>{API_BASE}</code>. No Stripe charges,
+          email, or live supplier calls. Production Streamlit remains on
+          app.cadivor.com.
         </p>
         <label htmlFor="email">Email</label>
         <input
@@ -75,7 +79,7 @@ export default function LoginPage() {
         />
         {error ? <div className="cv-error">{error}</div> : null}
         <button
-          className="cv-button"
+          className="cv-button primary"
           style={{ width: "100%", marginTop: 18 }}
           type="submit"
           disabled={busy}

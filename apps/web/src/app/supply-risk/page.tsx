@@ -1,0 +1,124 @@
+"use client";
+
+import { FormEvent, useEffect, useState } from "react";
+import { Shell } from "@/components/Shell";
+import { GapBanner, LoadingCard } from "@/components/GapBanner";
+import { PageHeader, PrimaryLink } from "@/components/PageHeader";
+import { runSupplyRisk } from "@/lib/api";
+import { PAGE_META } from "@/lib/routes";
+import { readLastAnalysis, useRequireSession } from "@/lib/session";
+
+export default function SupplyRiskPage() {
+  const session = useRequireSession();
+  const [stockReduction, setStockReduction] = useState(25);
+  const [buildQty, setBuildQty] = useState(100);
+  const [data, setData] = useState<Record<string, unknown> | null>(null);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(true);
+
+  async function run(event?: FormEvent) {
+    event?.preventDefault();
+    if (!session) return;
+    setBusy(true);
+    setError("");
+    const last = readLastAnalysis();
+    try {
+      setData(
+        await runSupplyRisk(session.access_token, {
+          analysis_id: last?.analysis_id || null,
+          build_quantity: buildQty,
+          stock_reduction_percent: stockReduction,
+          supplier_loss: 0,
+          demand_growth_percent: 0,
+          include_lifecycle_event: false,
+        }),
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  useEffect(() => {
+    run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session]);
+
+  if (!session) return null;
+  const scenario = (data?.scenario || {}) as Record<string, unknown>;
+  const rows = (scenario.impacted || scenario.rows || []) as Array<Record<string, unknown>>;
+  const metrics = {
+    build_quantity: scenario.build_quantity,
+    stock_reduction_percent: scenario.stock_reduction_percent,
+    project_impact: Array.isArray(scenario.project_impact)
+      ? scenario.project_impact.length
+      : scenario.project_impact,
+  } as Record<string, unknown>;
+
+  return (
+    <Shell session={session}>
+      <PageHeader meta={PAGE_META.supply} actions={<PrimaryLink href="/bom-analyzer">Analyze BOM</PrimaryLink>} />
+      {typeof data?.gap === "string" ? <GapBanner>{String(data.gap)}</GapBanner> : null}
+      <form className="cv-card pad" style={{ marginBottom: 14 }} onSubmit={run}>
+        <div className="cv-form-grid">
+          <div className="cv-field">
+            <label htmlFor="build">Build quantity</label>
+            <input id="build" type="number" min={1} value={buildQty} onChange={(e) => setBuildQty(Number(e.target.value) || 1)} />
+          </div>
+          <div className="cv-field">
+            <label htmlFor="stock">Stock reduction %</label>
+            <input id="stock" type="number" min={0} max={100} value={stockReduction} onChange={(e) => setStockReduction(Number(e.target.value) || 0)} />
+          </div>
+        </div>
+        <button className="cv-button primary" style={{ marginTop: 12 }} type="submit" disabled={busy}>
+          {busy ? "Modeling…" : "Run scenario"}
+        </button>
+      </form>
+      {busy ? <LoadingCard label="Modeling supply scenario…" /> : null}
+      {error ? <div className="cv-error">{error}</div> : null}
+      {!busy && data ? (
+        <>
+          <div className="cv-kpis">
+            <div className="cv-kpi tone-amber"><span>Impacted rows</span><strong>{rows.length}</strong><em>From scenario builder</em></div>
+            <div className="cv-kpi"><span>Metric fields</span><strong>{Object.keys(metrics).length}</strong><em>Summary</em></div>
+            <div className="cv-kpi tone-blue"><span>Stock cut</span><strong>{stockReduction}%</strong><em>Parameter</em></div>
+            <div className="cv-kpi"><span>Build qty</span><strong>{buildQty}</strong><em>Parameter</em></div>
+          </div>
+          <section className="cv-card pad">
+            <h3 className="cv-card-title">Scenario rows</h3>
+            <div className="cv-table-wrap" style={{ marginTop: 12 }}>
+              <table className="cv-table">
+                <thead>
+                  <tr>
+                    <th>Part</th>
+                    <th>Stock</th>
+                    <th>Adjusted</th>
+                    <th>Lifecycle</th>
+                    <th>Risk</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.slice(0, 40).map((row, i) => (
+                    <tr key={i}>
+                      <td><strong>{String(row["Part Number"] || row.mpn || "")}</strong></td>
+                      <td>{String(row["Available Stock"] || row.stock || row.Stock || "—")}</td>
+                      <td>{String(row["Adjusted Stock"] || row.adjusted_stock || "—")}</td>
+                      <td>{String(row.Lifecycle || row.lifecycle || "—")}</td>
+                      <td>{String(row["Risk Level"] || row.risk_level || "—")}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {!rows.length ? (
+              <p className="cv-small-note" style={{ marginTop: 10 }}>
+                No tabular rows exposed. Metric keys: {Object.keys(metrics).slice(0, 10).join(", ") || "none"}.
+              </p>
+            ) : null}
+          </section>
+        </>
+      ) : null}
+    </Shell>
+  );
+}

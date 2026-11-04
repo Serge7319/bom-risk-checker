@@ -2,12 +2,22 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { clearSession, type Session } from "@/lib/api";
+import { API_BASE, clearSession, type Session } from "@/lib/api";
+import { NAV_GROUPS } from "@/lib/routes";
 
-const NAV = [
-  { href: "/", label: "Home" },
-  { href: "/bom-analyzer", label: "BOM Analyzer" },
-];
+function crumbTitle(pathname: string): string {
+  if (pathname === "/") return "Home";
+  if (pathname.startsWith("/reports/")) return "Engineering Intelligence";
+  for (const group of NAV_GROUPS) {
+    for (const item of group.items) {
+      if (item.href === "/") continue;
+      if (pathname === item.href || pathname.startsWith(`${item.href}/`)) {
+        return item.label;
+      }
+    }
+  }
+  return "Workspace";
+}
 
 export function Shell({
   session,
@@ -18,6 +28,7 @@ export function Shell({
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const title = crumbTitle(pathname);
 
   return (
     <div className="cv-shell">
@@ -28,46 +39,82 @@ export function Shell({
           </span>
           <div>
             <strong>Cadivor</strong>
-            <small>ENGINEERING INTELLIGENCE</small>
+            <small>Engineering Intelligence</small>
           </div>
         </div>
         <div className="cv-workspace-card">
-          <span>WORKSPACE</span>
+          <span>Workspace</span>
           <strong>{session.workspace}</strong>
-          <em>
-            SUBSCRIPTION · {session.plan.toUpperCase()}
-          </em>
+          <em style={{ marginTop: 6 }}>Subscription · {session.plan}</em>
         </div>
-        <nav className="cv-nav">
-          <p>WORKSPACE</p>
-          {NAV.map((item) => {
-            const active =
-              item.href === "/"
-                ? pathname === "/"
-                : pathname.startsWith(item.href);
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={active ? "active" : undefined}
-              >
-                {item.label}
-              </Link>
-            );
-          })}
+        <nav className="cv-nav" aria-label="Primary">
+          {NAV_GROUPS.map((group) => (
+            <div className="cv-nav-group" key={group.label}>
+              <div className="cv-nav-label">{group.label}</div>
+              {group.items.map((item) => {
+                const active =
+                  item.href === "/"
+                    ? pathname === "/"
+                    : pathname === item.href ||
+                      pathname.startsWith(`${item.href}/`);
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={active ? "active" : undefined}
+                  >
+                    {item.label}
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
         </nav>
-        <button
-          type="button"
-          className="cv-signout"
-          onClick={() => {
-            clearSession();
-            router.replace("/login");
-          }}
-        >
-          Sign out
-        </button>
+        <div className="cv-rail-bottom">
+          <div className="cv-plan-card">
+            <div className="cv-plan-top">
+              <span>Migration preview</span>
+              <span className="cv-plan-chip">Sandbox</span>
+            </div>
+            <div className="cv-plan-copy">
+              Synthetic smoke auth and offline BOM analysis. Production
+              Streamlit on app.cadivor.com is untouched.
+            </div>
+          </div>
+          <button
+            type="button"
+            className="cv-signout"
+            onClick={() => {
+              clearSession();
+              router.replace("/login");
+            }}
+          >
+            Sign out
+          </button>
+        </div>
       </aside>
-      <main className="cv-main">{children}</main>
+      <div className="cv-column">
+        <header className="cv-topbar">
+          <div className="cv-crumb">
+            <span>Workspace</span>
+            <span aria-hidden>·</span>
+            <strong>{title}</strong>
+          </div>
+        </header>
+        <main className="cv-main">
+          <div className="cv-preview-banner" role="status">
+            <span className="cv-preview-dot" aria-hidden />
+            <strong>Next.js migration preview.</strong>
+            <span>
+              API target{" "}
+              <code style={{ fontSize: 10 }}>{API_BASE}</code>
+              . Real API where wired; unsupported pages are labeled. No live
+              supplier, Stripe, or email calls.
+            </span>
+          </div>
+          {children}
+        </main>
+      </div>
     </div>
   );
 }
