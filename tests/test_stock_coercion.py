@@ -7,13 +7,12 @@ import types
 import unittest
 
 
-def _cache_data(*_args, **_kwargs):
-    return lambda func: func
+from tests.streamlit_cache_stub import install_streamlit_cache_stub
 
 
 class StockCoercionTests(unittest.TestCase):
     def setUp(self):
-        sys.modules["streamlit"] = types.SimpleNamespace(cache_data=_cache_data)
+        install_streamlit_cache_stub()
         sys.modules.pop("integrations.digikey_client", None)
         sys.modules.pop("integrations.supplier_aggregator", None)
         sys.modules.pop("src.alternative_engine", None)

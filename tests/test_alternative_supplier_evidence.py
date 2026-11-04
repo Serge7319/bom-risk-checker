@@ -31,8 +31,7 @@ def _digikey_direct_pair(mpn: str, original: str = "C0603C104K5RACTU", **extra):
 
 
 
-def _cache_data(*_args, **_kwargs):
-    return lambda func: func
+from tests.streamlit_cache_stub import install_streamlit_cache_stub
 
 
 def _discovery_payload(candidates):
@@ -48,7 +47,7 @@ def _discovery_payload(candidates):
 
 class AlternativeSupplierEvidenceTests(unittest.TestCase):
     def setUp(self):
-        sys.modules["streamlit"] = types.SimpleNamespace(cache_data=_cache_data)
+        install_streamlit_cache_stub()
         sys.modules.pop("src.alternative_engine", None)
         self.engine = importlib.import_module("src.alternative_engine")
         self.engine.get_best_part_data = lambda _part: {}
