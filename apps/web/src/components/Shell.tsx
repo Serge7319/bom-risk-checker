@@ -84,13 +84,13 @@ export function Shell({
         <div className="cv-rail-bottom">
           <div className="cv-plan-card">
             <div className="cv-plan-top">
-              <span>Next.js migration</span>
-              <span className="cv-plan-chip">Test build</span>
+              <span>Workspace data</span>
+              <span className="cv-plan-chip">Separate records</span>
             </div>
             <div className="cv-plan-copy">
-              This build is separate from app.cadivor.com, which still runs the
-              current Streamlit app. Saved BOMs here do not change existing
-              records. Live suppliers, billing, and automated alert emails are not enabled.
+              Historical analyses from the previous app have not been imported
+              into this workspace. Supplier evidence is sample data; live supplier
+              integrations, billing, and automated alert emails are not connected.
             </div>
           </div>
           <button
@@ -123,11 +123,11 @@ export function Shell({
         <main className="cv-main">
           <div className="cv-preview-banner" role="status">
             <span className="cv-preview-dot" aria-hidden />
-            <strong>Migration test build.</strong>
+            <strong>Evidence notice.</strong>
             <span>
-              Separate from app.cadivor.com, which remains on the current
-              Cadivor app. Analysis uses synthetic evidence; live supplier,
-              billing, and automated alert email connections are not enabled here.
+              Supplier pricing, lifecycle, and availability shown here use sample
+              evidence. Live supplier integrations, billing, and automated alert
+              delivery are not connected.
             </span>
           </div>
           {children}
