@@ -71,7 +71,7 @@ export default function HomePage() {
                 <i aria-hidden />
                 {hasSaved
                   ? "Projects in this workspace"
-                  : "No saved BOMs in this test workspace yet"}
+                  : "No saved BOMs in this workspace yet"}
               </div>
               <h2>
                 {hasSaved
@@ -80,8 +80,8 @@ export default function HomePage() {
               </h2>
               <p>
                 Home brings together saved projects, rolled-up risks, and next
-                actions. Automated monitoring, plan limits, and design-tool
-                integrations are not available in this build yet.
+                actions. Scheduled monitoring, billing, and design-tool
+                integrations are not connected yet.
               </p>
               <div className="cv-hero-actions">
                 <PrimaryLink href="/bom-analyzer">
