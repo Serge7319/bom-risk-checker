@@ -97,8 +97,8 @@ export default function EngineeringDecisionsPage() {
             <h3 className="cv-card-title">Decision queue from latest analysis</h3>
             <p className="cv-card-subtitle">
               {last.filename || "BOM"} · {last.total_parts} parts. Open the report
-              for part-level evidence; this test build does not invent supplier
-              prices or fit approvals.
+              for part-level evidence. Supplier prices and fit approvals require verified
+              source data, so this report does not infer them.
             </p>
           </div>
           <div className="cv-table-wrap">
@@ -150,12 +150,12 @@ export default function EngineeringDecisionsPage() {
                 </tr>
                 <tr>
                   <td>
-                    <span className="cv-badge gray">Unavailable in this build</span>
+                    <span className="cv-badge gray">Not available yet</span>
                   </td>
                   <td>
                     <strong>Saved decision records</strong>
                     <div className="cv-muted">
-                      Multi-BOM decision history is not mirrored from Streamlit
+                      Historical multi-BOM decision records are not included in this workspace.
                     </div>
                   </td>
                   <td>—</td>
