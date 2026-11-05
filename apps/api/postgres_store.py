@@ -1,7 +1,7 @@
-"""Postgres-backed workspace store for the Next.js migration sandbox.
+"""Postgres-backed workspace store for the Next.js migration app.
 
-Requires CADIVOR_MIGRATION_DATABASE_URL pointing at a dedicated non-production
-database. Never reads production SUPABASE_* credentials.
+Requires CADIVOR_MIGRATION_DATABASE_URL pointing at a dedicated database,
+separate from the existing Streamlit app's saved-BOM data.
 """
 from __future__ import annotations
 
@@ -55,7 +55,7 @@ class PostgresWorkspaceStore:
         if not self.database_url:
             raise ValueError("CADIVOR_MIGRATION_DATABASE_URL is required")
         # Compatibility with health() which inspects .path on file store
-        self.path = Path("postgres://migration-sandbox")
+        self.path = Path("postgres://migration-postgres")
         self._schema_ready = False
         self.ensure_schema()
 
@@ -459,7 +459,7 @@ class PostgresWorkspaceStore:
         next_actions = [
             {
                 "title": "Reopen an active project BOM",
-                "detail": "Workspace-scoped analyses in the sandbox Postgres store.",
+                "detail": "Workspace-scoped saved analyses in the migration database.",
                 "href": "/reports",
                 "live": True,
             },
@@ -478,7 +478,7 @@ class PostgresWorkspaceStore:
             },
             {
                 "title": "Plan limits on active BOMs / tracked parts",
-                "detail": "Staged — usage tiers not enforced in sandbox smoke auth.",
+                "detail": "Staged — usage limits are not enforced in this migration build.",
                 "href": "/settings",
                 "live": False,
             },
@@ -489,9 +489,9 @@ class PostgresWorkspaceStore:
             "workspace_id": wid,
             "persistence": "migration-postgres-store",
             "gap": (
-                "Sandbox Postgres store is tenant-scoped for the migration preview. "
-                "Production Supabase is not used. Monitoring email, plan metering, "
-                "PLM/ERP/CAD remain staged."
+                "Saved project, BOM, revision, and analysis records use the dedicated migration "
+                "Postgres database, separate from the current Streamlit app. Monitoring email, "
+                "usage limits, PLM/ERP/CAD remain staged."
             ),
             "metrics": {
                 "active_projects": len(projects),

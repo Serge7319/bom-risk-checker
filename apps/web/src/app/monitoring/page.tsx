@@ -5,6 +5,7 @@ import { Shell } from "@/components/Shell";
 import { GapBanner, LoadingCard } from "@/components/GapBanner";
 import { PageHeader, PrimaryLink } from "@/components/PageHeader";
 import { fetchMonitoring } from "@/lib/api";
+import { evidenceSourceLabel } from "@/lib/display";
 import { PAGE_META } from "@/lib/routes";
 import { readLastAnalysis, useRequireSession } from "@/lib/session";
 
@@ -35,7 +36,7 @@ export default function MonitoringPage() {
         actions={<PrimaryLink href="/bom-analyzer">Analyze BOM</PrimaryLink>}
       />
       {typeof data?.gap === "string" ? <GapBanner>{data.gap}</GapBanner> : null}
-      {busy ? <LoadingCard label="Loading monitoring signals from sandbox API…" /> : null}
+      {busy ? <LoadingCard label="Loading monitoring signals from saved analyses…" /> : null}
       {error ? <div className="cv-error">{error}</div> : null}
       {!busy && data ? (
         <>
@@ -47,7 +48,7 @@ export default function MonitoringPage() {
           </div>
           <section className="cv-card pad">
             <h3 className="cv-card-title">Alert queue</h3>
-            <p className="cv-card-subtitle">Analysis-derived review prompts · not Supabase monitor history</p>
+            <p className="cv-card-subtitle">Review prompts derived from saved analyses; live monitoring is not enabled.</p>
             {alerts.length ? (
               <div className="cv-table-wrap" style={{ marginTop: 12 }}>
                 <table className="cv-table">
@@ -67,7 +68,7 @@ export default function MonitoringPage() {
                         <td><strong>{String(a.part_number || "")}</strong></td>
                         <td>{String(a.alert_type || "")}</td>
                         <td>{String(a.alert_message || "")}</td>
-                        <td>{String(a.evidence_source || "synthetic-preview")}</td>
+                        <td>{evidenceSourceLabel(a.evidence_source)}</td>
                       </tr>
                     ))}
                   </tbody>

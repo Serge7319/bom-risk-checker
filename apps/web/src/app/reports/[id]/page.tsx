@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { Shell } from "@/components/Shell";
 import { PageHeader, SecondaryLink } from "@/components/PageHeader";
 import { fetchReport, type Report } from "@/lib/api";
+import { analysisModeLabel, evidenceSourceLabel } from "@/lib/display";
 import { PAGE_META } from "@/lib/routes";
 import { rememberAnalysis, useRequireSession } from "@/lib/session";
 
@@ -91,8 +92,8 @@ export default function ReportPage() {
               <dd>{report.total_parts}</dd>
             </div>
             <div className="cv-record-field">
-              <dt>Mode</dt>
-              <dd>{report.mode}</dd>
+              <dt>Evidence basis</dt>
+              <dd>{analysisModeLabel(report.mode)}</dd>
             </div>
           </dl>
 
@@ -119,7 +120,7 @@ export default function ReportPage() {
                   ? new Date(report.created_at).toLocaleString()
                   : "—"}
               </strong>
-              <em>API timestamp</em>
+              <em>Saved to this workspace</em>
             </div>
           </div>
 
@@ -132,12 +133,12 @@ export default function ReportPage() {
               {[
                 report.bom_name ? `BOM ${report.bom_name}` : null,
                 report.revision ? `rev ${report.revision}` : null,
-                report.persisted ? "persisted in workspace store" : null,
+                report.persisted ? "Saved to this workspace" : null,
               ]
                 .filter(Boolean)
                 .join(" · ") ||
                 report.summary_message ||
-                "Synthetic preview report from the migration API."}
+                "Synthetic analysis; live supplier data is not included."}
             </p>
             <p className="cv-small-note" style={{ marginTop: 8 }}>
               Lifecycle and stock fields are offline synthetic estimates, not
@@ -262,7 +263,7 @@ export default function ReportPage() {
                               </td>
                               <td>
                                 {String(
-                                  row.evidence_source || "synthetic-preview",
+                                  evidenceSourceLabel(row.evidence_source),
                                 )}
                               </td>
                             </tr>
@@ -338,7 +339,7 @@ export default function ReportPage() {
         </>
       ) : !error ? (
         <section className="cv-loading">
-          Loading report from migration API…
+          Loading saved report…
           <div className="cv-progress" aria-hidden>
             <i />
           </div>

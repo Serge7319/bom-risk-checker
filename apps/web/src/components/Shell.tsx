@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { API_BASE, clearSession, logout, type Session } from "@/lib/api";
+import { clearSession, logout, type Session } from "@/lib/api";
 import { NAV_GROUPS } from "@/lib/routes";
 
 function crumbTitle(pathname: string): string {
@@ -73,12 +73,13 @@ export function Shell({
         <div className="cv-rail-bottom">
           <div className="cv-plan-card">
             <div className="cv-plan-top">
-              <span>Migration preview</span>
-              <span className="cv-plan-chip">Sandbox</span>
+              <span>Next.js migration</span>
+              <span className="cv-plan-chip">Test build</span>
             </div>
             <div className="cv-plan-copy">
-              Sandbox JWT auth with membership-scoped workspaces. Production
-              Streamlit on app.cadivor.com is untouched.
+              This build is separate from app.cadivor.com, which still runs the
+              current Streamlit app. Saved BOMs here do not change existing
+              records. Live suppliers, billing, and email are not enabled.
             </div>
           </div>
           <button
@@ -111,12 +112,11 @@ export function Shell({
         <main className="cv-main">
           <div className="cv-preview-banner" role="status">
             <span className="cv-preview-dot" aria-hidden />
-            <strong>Next.js migration preview.</strong>
+            <strong>Migration test build.</strong>
             <span>
-              API target{" "}
-              <code style={{ fontSize: 10 }}>{API_BASE}</code>
-              . Real API where wired; unsupported pages are labeled. No live
-              supplier, Stripe, or email calls.
+              Separate from app.cadivor.com, which remains on the current
+              Cadivor app. Analysis uses synthetic evidence; live supplier,
+              billing, and email connections are not enabled here.
             </span>
           </div>
           {children}

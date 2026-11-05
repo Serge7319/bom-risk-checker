@@ -71,7 +71,7 @@ export default function BomAnalyzerPage() {
       />
 
       <section className="cv-card pad" style={{ marginBottom: 16 }}>
-        <div className="cv-eyebrow">Persistent workflow · migration API</div>
+        <div className="cv-eyebrow">Persistent workflow · migration workspace</div>
         <h3 className="cv-card-title" style={{ fontSize: 18 }}>
           {file ? file.name : "Upload a BOM to begin"}
         </h3>

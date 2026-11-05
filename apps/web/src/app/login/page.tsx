@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { API_BASE, getSession, login, setSession } from "@/lib/api";
+import { getSession, login, setSession } from "@/lib/api";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -47,12 +47,9 @@ export default function LoginPage() {
           Sign in
         </h1>
         <p className="cv-page-description" style={{ marginTop: 6 }}>
-          Uses Cadivor Supabase Auth on production (server-verified tokens;
-          workspace from migration membership). Sandbox HS256 remains
-          sandbox-only and is blocked in production. Credentials are not
-          shipped in the app. API:{" "}
-          <code style={{ fontSize: 11 }}>{API_BASE}</code>. No Stripe, email, or
-          live suppliers on this Next API.
+          Sign in with the account enabled for this migration test. Saved BOMs
+          here are separate from existing Cadivor records. Live supplier,
+          billing, and email connections are not enabled in this build.
         </p>
         <label htmlFor="email">Email</label>
         <input

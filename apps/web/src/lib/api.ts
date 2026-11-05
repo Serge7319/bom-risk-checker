@@ -1,13 +1,5 @@
-/** Next migration API (sandbox or production Railway) — no localhost fallback. */
-const DEFAULT_API_BASE = "https://cadivor-next-api-sandbox.up.railway.app";
-const API_BASE = (
-  process.env.NEXT_PUBLIC_API_BASE?.replace(/\/$/, "") || DEFAULT_API_BASE
-).replace(/\/$/, "");
-if (/localhost|127\.0\.0\.1/i.test(API_BASE)) {
-  throw new Error(
-    `NEXT_PUBLIC_API_BASE must target the Railway migration API, not localhost (got ${API_BASE})`,
-  );
-}
+/** The deployed web service must set its matching API endpoint explicitly. */
+const API_BASE = (process.env.NEXT_PUBLIC_API_BASE || "").trim().replace(/\/$/, "");
 
 export type Session = {
   access_token: string;
@@ -67,6 +59,12 @@ async function apiJson<T>(
   path: string,
   init: RequestInit & { token?: string } = {},
 ): Promise<T> {
+  if (!API_BASE) {
+    throw new Error("Cadivor could not connect. Refresh the page or contact support.");
+  }
+  if (/localhost|127\.0\.0\.1/i.test(API_BASE)) {
+    throw new Error("Cadivor could not connect. Refresh the page or contact support.");
+  }
   const headers = new Headers(init.headers || {});
   if (init.token) headers.set("Authorization", `Bearer ${init.token}`);
   if (init.body && !(init.body instanceof FormData) && !headers.has("Content-Type")) {
@@ -170,6 +168,7 @@ export async function listReports(token: string) {
   return apiJson<{
     ok: boolean;
     gap?: string;
+    persistence?: string;
     reports: Array<Record<string, unknown>>;
   }>("/reports", { token });
 }
@@ -257,5 +256,3 @@ export async function fetchDetailedRisk(token: string, analysisId?: string) {
   const q = analysisId ? `?analysis_id=${encodeURIComponent(analysisId)}` : "";
   return apiJson<Record<string, unknown>>(`/tools/detailed-risk${q}`, { token });
 }
-
-export { API_BASE };

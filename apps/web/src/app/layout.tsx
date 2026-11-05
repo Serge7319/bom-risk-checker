@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Cadivor",
-  description: "Cadivor engineering intelligence — Next.js migration preview",
+  description: "Cadivor engineering workflow migration test build",
 };
 
 export default function RootLayout({

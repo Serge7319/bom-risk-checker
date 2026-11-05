@@ -1,6 +1,7 @@
--- Cadivor Next.js migration sandbox workspace schema (non-production only).
--- Applied automatically by PostgresWorkspaceStore.ensure_schema() and
--- sandbox_auth Postgres backend. Do NOT point this at production Supabase.
+-- Cadivor Next.js migration workspace schema.
+-- Applied automatically by PostgresWorkspaceStore.ensure_schema(). Use only
+-- with the dedicated migration Postgres database, never the existing
+-- Streamlit/Supabase saved-BOM data store.
 
 CREATE TABLE IF NOT EXISTS migration_users (
   id TEXT PRIMARY KEY,

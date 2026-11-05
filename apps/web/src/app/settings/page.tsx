@@ -34,13 +34,10 @@ export default function Page() {
             <label htmlFor="email">Signed-in email</label>
             <input id="email" value={session.email} readOnly />
           </div>
-          <div className="cv-field">
-            <label htmlFor="mode">Auth mode</label>
-            <input id="mode" value={session.mode} readOnly />
-          </div>
         </div>
         <p className="cv-small-note" style={{ marginTop: 12 }}>
-          Read-only smoke session fields from the migration API. Design-only — no settings are persisted.
+          Workspace and plan details are read-only in this test build. Changes
+          are not saved here.
         </p>
       </section>
       <CapabilityStub

@@ -37,10 +37,10 @@ export default function PortfolioPage() {
       {!busy && data ? (
         <>
           <div className="cv-kpis">
-            <div className="cv-kpi tone-blue"><span>In-memory analyses</span><strong>{reports.length}</strong><em>Sandbox process only</em></div>
-            <div className="cv-kpi"><span>Project rows</span><strong>{projects.length}</strong><em>Builder output</em></div>
+            <div className="cv-kpi tone-blue"><span>Saved analyses</span><strong>{reports.length}</strong><em>From this workspace</em></div>
+            <div className="cv-kpi"><span>Project rows</span><strong>{projects.length}</strong><em>From saved analyses</em></div>
             <div className="cv-kpi tone-amber"><span>Shared components</span><strong>{shared.length}</strong><em>Across analyses</em></div>
-            <div className="cv-kpi"><span>Mode</span><strong style={{ fontSize: 14 }}>preview</strong><em>No Streamlit mirror</em></div>
+            <div className="cv-kpi"><span>Data scope</span><strong style={{ fontSize: 14 }}>This workspace</strong><em>Current app history is not included</em></div>
           </div>
           <div className="cv-grid-2">
             <section className="cv-card pad">

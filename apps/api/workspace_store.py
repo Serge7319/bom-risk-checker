@@ -1,11 +1,11 @@
-"""Migration workspace store: Postgres (sandbox durable) or ephemeral file.
+"""Migration workspace store: dedicated Postgres or ephemeral local file.
 
 Tenant-scoped by workspace_id on every project / BOM / revision / analysis /
 report path.
 
-Sandbox durable backend: CADIVOR_MIGRATION_DATABASE_URL (dedicated non-prod
-Postgres only). File store is local/tests only — never a silent sandbox fallback.
-Production Supabase credentials are never read here.
+Deployed services use CADIVOR_MIGRATION_DATABASE_URL. Its Postgres database is
+separate from the Streamlit app's saved-BOM data. File storage is for local
+preview/tests only — never a silent deployed fallback.
 """
 from __future__ import annotations
 
@@ -41,7 +41,7 @@ class WorkspaceAccessError(LookupError):
 
 
 class PersistenceNotConfiguredError(RuntimeError):
-    """Sandbox requires CADIVOR_MIGRATION_DATABASE_URL; file fallback disabled."""
+    """Deployed services require the migration database; file fallback disabled."""
 
 
 def _now() -> str:
@@ -60,12 +60,12 @@ def _empty() -> dict[str, Any]:
 
 
 def migration_database_url() -> str:
-    """Dedicated migration DB only — never production SUPABASE_*."""
+    """Dedicated migration database; never use Supabase data-store credentials."""
     return (os.environ.get("CADIVOR_MIGRATION_DATABASE_URL") or "").strip()
 
 
 def allow_ephemeral_file_store() -> bool:
-    """File store allowed for local preview/tests, not as silent sandbox fallback."""
+    """File store is limited to local preview/tests, not deployed fallback."""
     if (os.environ.get("CADIVOR_ALLOW_EPHEMERAL_FILE_STORE") or "").strip() == "1":
         return True
     # Local / CI without Railway: ephemeral file store is explicit preview mode.
@@ -367,7 +367,7 @@ class WorkspaceStore:
             next_actions = [
                 {
                     "title": "Reopen an active project BOM",
-                    "detail": "Workspace-scoped saved analyses (local preview until sandbox Postgres is attached).",
+                    "detail": "Workspace-scoped saved analyses in the local preview store.",
                     "href": "/reports",
                     "live": True,
                 },
@@ -386,7 +386,7 @@ class WorkspaceStore:
                 },
                 {
                     "title": "Plan limits on active BOMs / tracked parts",
-                    "detail": "Staged — usage tiers not enforced in sandbox smoke auth.",
+                    "detail": "Staged — usage limits are not enforced in this migration build.",
                     "href": "/settings",
                     "live": False,
                 },
@@ -397,9 +397,9 @@ class WorkspaceStore:
                 "workspace_id": wid,
                 "persistence": "migration-workspace-store",
                 "gap": (
-                    "Workspace store is file-backed and tenant-scoped for local migration preview only. "
-                    "Sandbox durability requires CADIVOR_MIGRATION_DATABASE_URL on cadivor-next-api. "
-                    "Production Supabase is not used. Monitoring email, plan metering, PLM/ERP/CAD remain staged."
+                    "This local preview uses temporary file storage and does not survive service restarts. "
+                    "Deployed use requires the dedicated migration database. Monitoring email, usage limits, "
+                    "PLM/ERP/CAD remain staged."
                 ),
                 "metrics": {
                     "active_projects": len(projects),
@@ -559,7 +559,10 @@ def describe_persistence() -> dict[str, Any]:
             "durable_across_redeploy": True,
             "database_configured": True,
             "ephemeral_file_allowed": False,
-            "label": "sandbox Postgres via CADIVOR_MIGRATION_DATABASE_URL",
+            "label": (
+                "Saved BOM records use the dedicated migration Postgres database, "
+                "separate from the current Streamlit app."
+            ),
             "railway_environment": railway_env or None,
         }
     if allow_ephemeral_file_store():
@@ -568,7 +571,7 @@ def describe_persistence() -> dict[str, Any]:
             "durable_across_redeploy": False,
             "database_configured": False,
             "ephemeral_file_allowed": True,
-            "label": "local migration preview only — not sandbox-durable (no DATABASE_URL)",
+            "label": "Local preview storage is temporary and does not survive service restarts.",
             "railway_environment": railway_env or None,
         }
     return {
@@ -577,8 +580,8 @@ def describe_persistence() -> dict[str, Any]:
         "database_configured": False,
         "ephemeral_file_allowed": False,
         "label": (
-            "sandbox requires CADIVOR_MIGRATION_DATABASE_URL; "
-            "ephemeral file fallback disabled"
+            "A dedicated migration database is required for deployed use; "
+            "temporary file storage is disabled."
         ),
         "railway_environment": railway_env or None,
     }
@@ -601,8 +604,8 @@ def get_store(path: Path | None = None) -> Any:
 
     if not allow_ephemeral_file_store():
         raise PersistenceNotConfiguredError(
-            "Sandbox persistence requires CADIVOR_MIGRATION_DATABASE_URL "
-            "(dedicated non-production Postgres). Ephemeral file store is disabled "
+            "A dedicated migration database is required for deployed use. "
+            "Temporary file storage is disabled "
             "on Railway unless CADIVOR_ALLOW_EPHEMERAL_FILE_STORE=1."
         )
 

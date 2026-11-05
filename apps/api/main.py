@@ -1,6 +1,6 @@
-"""Cadivor Next.js migration API — sandbox / synthetic preview only.
+"""Cadivor Next.js migration API — separate test build, synthetic evidence only.
 
-Uses Starlette (already pinned with Streamlit) so Railway sandbox installs do
+Uses Starlette (already pinned with Streamlit) so Railway installs do
 not fight FastAPI's older Starlette bound. Production Streamlit is unchanged.
 No Stripe charges, email, or live supplier HTTP calls.
 """

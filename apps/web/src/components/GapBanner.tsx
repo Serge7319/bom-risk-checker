@@ -2,7 +2,7 @@ export function GapBanner({ children }: { children: React.ReactNode }) {
   return (
     <div className="cv-decision-banner" role="note">
       <div>
-        <strong>Sandbox capability note</strong>
+        <strong>Migration capability note</strong>
         <span>{children}</span>
       </div>
     </div>

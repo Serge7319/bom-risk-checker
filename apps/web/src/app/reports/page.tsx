@@ -13,6 +13,7 @@ export default function ReportsIndexPage() {
   const session = useRequireSession();
   const [reports, setReports] = useState<Array<Record<string, unknown>>>([]);
   const [gap, setGap] = useState("");
+  const [persistence, setPersistence] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(true);
   const last = typeof window !== "undefined" ? readLastAnalysis() : null;
@@ -23,6 +24,7 @@ export default function ReportsIndexPage() {
       .then((payload) => {
         setReports(payload.reports || []);
         setGap(payload.gap || "");
+        setPersistence(payload.persistence || "");
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Failed"))
       .finally(() => setBusy(false));
@@ -37,30 +39,36 @@ export default function ReportsIndexPage() {
         actions={<PrimaryLink href="/bom-analyzer">New analysis</PrimaryLink>}
       />
       {gap ? <GapBanner>{gap}</GapBanner> : null}
-      {busy ? <LoadingCard label="Loading in-memory reports…" /> : null}
+      {busy ? <LoadingCard label="Loading saved reports…" /> : null}
       {error ? <div className="cv-error">{error}</div> : null}
-      {!busy ? (
+      {!busy && !error ? (
         <>
           <div className="cv-kpis">
             <div className="cv-kpi tone-blue">
-              <span>API reports</span>
+              <span>Saved analyses</span>
               <strong>{reports.length}</strong>
-              <em>Current sandbox process</em>
+              <em>Saved to this workspace</em>
             </div>
             <div className="cv-kpi">
-              <span>Browser latest</span>
+              <span>Recent shortcut</span>
               <strong>{last ? 1 : 0}</strong>
-              <em>localStorage pointer</em>
+              <em>{last ? "Saved on this device" : "None on this device"}</em>
             </div>
             <div className="cv-kpi tone-amber">
-              <span>Persistence</span>
-              <strong style={{ fontSize: 14 }}>Gap</strong>
-              <em>Not durable yet</em>
+              <span>Storage</span>
+              <strong style={{ fontSize: 14 }}>
+                {persistence === "postgres" ? "Workspace" : "Local preview"}
+              </strong>
+              <em>
+                {persistence === "postgres"
+                  ? "Saved in your workspace"
+                  : "Temporary local data"}
+              </em>
             </div>
             <div className="cv-kpi">
-              <span>Auth</span>
-              <strong style={{ fontSize: 14 }}>Smoke</strong>
-              <em>Sandbox only</em>
+              <span>Record access</span>
+              <strong style={{ fontSize: 14 }}>Workspace</strong>
+              <em>Scoped to this account</em>
             </div>
           </div>
           {reports.length ? (
@@ -107,7 +115,7 @@ export default function ReportsIndexPage() {
             </section>
           ) : (
             <section className="cv-empty">
-              No in-memory reports yet.{" "}
+              No saved reports yet.{" "}
               <Link href="/bom-analyzer">Analyze a BOM</Link> to create one.
             </section>
           )}

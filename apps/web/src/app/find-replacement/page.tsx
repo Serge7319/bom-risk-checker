@@ -7,7 +7,7 @@ export default function Page() {
   return (
     <ToolPage
       meta={PAGE_META.replacement}
-      capability="Candidate search and fit evidence scoring are not exposed by the migration API yet."
+      capability="Candidate search and evidence-backed fit scoring are not available here yet."
     >
     </ToolPage>
   );

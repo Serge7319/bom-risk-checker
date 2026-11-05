@@ -1,6 +1,6 @@
-"""Sandbox tool handlers for Next.js migration pages.
+"""Tool handlers for Next.js migration pages.
 
-Reuses Cadivor build_* helpers on in-memory synthetic analyses. Never calls
+Reuses Cadivor build_* helpers on saved synthetic analyses. Never calls
 live distributors, Stripe, email, or Supabase. Prices/stock are labeled
 synthetic-preview when present.
 """
@@ -82,7 +82,7 @@ def monitoring_payload(
         return {
             "ok": True,
             "mode": "synthetic-preview",
-            "gap": "No analyzed BOM yet. Run BOM Analyzer first. Durable Supabase monitor_alerts are not available in sandbox.",
+            "gap": "No analyzed BOM yet. Run BOM Analyzer first. This view needs saved analysis data.",
             "metrics": {
                 "monitored_parts": 0,
                 "active_alerts": 0,
@@ -177,7 +177,7 @@ def monitoring_payload(
             "mode": "synthetic-preview",
             "analysis_id": report["id"],
             "filename": report.get("filename"),
-            "gap": "Sandbox monitoring derives review signals from the latest synthetic analysis. It does not read Supabase monitor_alerts or run scheduled supplier refresh.",
+            "gap": "Monitoring derives review prompts from saved synthetic analysis. It does not load historical alerts or run scheduled supplier refresh.",
             "metrics": {
                 "monitored_parts": report.get("total_parts") or 0,
                 "active_alerts": len(alerts),
@@ -256,7 +256,7 @@ def compare_parts_payload(
             "part_b": b,
             "source_a": source_a,
             "source_b": source_b,
-            "gap": "Live supplier lookup is disabled in sandbox. Comparison uses analysis records when present, otherwise labeled synthetic-preview fields — not live distributor evidence.",
+            "gap": "Live supplier lookup is disabled for this migration build. Comparison uses saved analysis fields when available; otherwise it uses labeled synthetic data, not distributor evidence.",
             "finding": comparison.get("overall_finding")
             or comparison.get("finding")
             or comparison.get("summary"),
@@ -288,7 +288,7 @@ def datasheet_qa_payload(
     question: str,
 ) -> dict[str, Any]:
     document = extract_uploaded_datasheet(payload, filename=filename or "datasheet.pdf")
-    # Prefer local grounded answers; do not require AI credentials in sandbox.
+    # Prefer local grounded answers; do not require cloud AI credentials.
     result = answer_datasheet_question(document, question, ai_client=None, history=None)
     follow_ups: list[str] = []
     try:
@@ -323,7 +323,7 @@ def procurement_payload(*, workspace_id: str, analysis_id: str | None = None) ->
         return {
             "ok": True,
             "mode": "synthetic-preview",
-            "gap": "No analysis yet. Live distributor coverage is disabled in sandbox.",
+            "gap": "No analysis yet. Live distributor coverage is disabled for this migration build.",
             "parts": [],
         }
     rows = []
@@ -367,7 +367,7 @@ def design_impact_payload(
         return {
             "ok": True,
             "mode": "synthetic-preview",
-            "gap": "Analyze a BOM first. Design impact needs at least one in-memory analysis.",
+            "gap": "Analyze a BOM first. Design impact needs at least one saved analysis.",
             "intelligence": {},
         }
     intelligence = build_design_impact(
@@ -380,7 +380,7 @@ def design_impact_payload(
         {
             "ok": True,
             "mode": "synthetic-preview",
-            "gap": "Impact is computed from sandbox in-memory analyses only — not the production saved-BOM catalog.",
+            "gap": "Impact is computed from saved analyses in this migration workspace. The existing Streamlit saved-BOM catalog has not been imported.",
             "intelligence": intelligence,
         }
     )
@@ -463,7 +463,7 @@ def portfolio_payload(*, workspace_id: str) -> dict[str, Any]:
         return {
             "ok": True,
             "mode": "synthetic-preview",
-            "gap": "No in-memory analyses yet. Production Streamlit portfolio history is not mirrored.",
+            "gap": "No saved analyses yet. Analyze a BOM first. The existing Streamlit portfolio history has not been imported.",
             "intelligence": {},
             "reports": [],
         }
@@ -472,7 +472,7 @@ def portfolio_payload(*, workspace_id: str) -> dict[str, Any]:
         {
             "ok": True,
             "mode": "synthetic-preview",
-            "gap": "Portfolio is limited to analyses created in this sandbox API process for the authenticated workspace.",
+            "gap": "Portfolio is calculated from the authenticated workspace's saved migration analyses. It does not mirror the existing Streamlit portfolio history.",
             "reports": list_reports(workspace_id=workspace_id),
             "intelligence": intelligence,
         }

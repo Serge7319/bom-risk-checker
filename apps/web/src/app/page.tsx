@@ -6,6 +6,7 @@ import { Shell } from "@/components/Shell";
 import { GapBanner, LoadingCard } from "@/components/GapBanner";
 import { PageHeader, PrimaryLink, SecondaryLink } from "@/components/PageHeader";
 import { fetchWorkspaceHome } from "@/lib/api";
+import { evidenceSourceLabel } from "@/lib/display";
 import { PAGE_META } from "@/lib/routes";
 import { useRequireSession } from "@/lib/session";
 
@@ -69,8 +70,8 @@ export default function HomePage() {
               <div className="cv-hero-kicker">
                 <i aria-hidden />
                 {hasSaved
-                  ? "Active projects from workspace store"
-                  : "Migration preview · awaiting first saved BOM"}
+                  ? "Projects in this workspace"
+                  : "No saved BOMs in this test workspace yet"}
               </div>
               <h2>
                 {hasSaved
@@ -78,10 +79,9 @@ export default function HomePage() {
                   : "Save a project BOM to populate this engineering dashboard."}
               </h2>
               <p>
-                Home surfaces reopenable projects, rolled-up risks, and next
-                actions from persisted analyses. Live monitoring email, plan
-                metering, and PLM/ERP/CAD integrations remain staged — not shown
-                as live.
+                Home brings together saved projects, rolled-up risks, and next
+                actions. Automated monitoring, plan limits, and design-tool
+                integrations are not available in this build yet.
               </p>
               <div className="cv-hero-actions">
                 <PrimaryLink href="/bom-analyzer">
@@ -111,19 +111,17 @@ export default function HomePage() {
                   ? `${String(latest.project_name || latest.filename || "BOM")} · rev ${String(latest.revision || "—")} · ${String(latest.total_parts ?? 0)} parts`
                   : "No saved analysis yet."}
               </div>
-              <div className="cv-hero-source">
-                Persistence: migration workspace store
-              </div>
+              <div className="cv-hero-source">Data: saved to this workspace</div>
             </div>
           </section>
 
           <div className="cv-section-heading">
             <div>
               <h2>At a glance</h2>
-              <p>Counts from saved project / BOM / analysis records.</p>
+              <p>Counts from saved projects and analyses in this workspace.</p>
             </div>
             <span className="cv-data-note">
-              {hasSaved ? "Persisted workspace" : "Empty until first save"}
+              {hasSaved ? "Current workspace" : "Empty until first save"}
             </span>
           </div>
           <div className="cv-kpis">
@@ -145,7 +143,7 @@ export default function HomePage() {
             <div className="cv-kpi">
               <span>Analyses</span>
               <strong>{hasSaved ? metrics.saved_analyses ?? 0 : "—"}</strong>
-              <em>{hasSaved ? "Durable in sandbox store" : "—"}</em>
+              <em>{hasSaved ? "Saved to this workspace" : "—"}</em>
             </div>
           </div>
 
@@ -237,7 +235,7 @@ export default function HomePage() {
                           {item.why ? ` — ${String(item.why)}` : ""}
                         </div>
                         <div className="cv-small-note">
-                          Evidence: {String(item.evidence_source || "synthetic-preview")}
+                          Evidence: {evidenceSourceLabel(item.evidence_source)}
                         </div>
                       </div>
                       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>

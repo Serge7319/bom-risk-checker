@@ -6,12 +6,14 @@ if [[ -z "${PORT:-}" ]]; then
   exit 1
 fi
 
-# Same-repo sandbox services share this start script via railway.toml.
-# Production bom-risk-checker keeps the Streamlit path below.
+# The Streamlit service and the separate Next migration API share this script.
+# Keep both API service names on the API path; the customer app stays Streamlit.
 service_name="${RAILWAY_SERVICE_NAME:-}"
-if [[ "${CADIVOR_RUNTIME:-}" == "next-api" || "${service_name}" == "cadivor-next-api" ]]; then
+if [[ "${CADIVOR_RUNTIME:-}" == "next-api" \
+  || "${service_name}" == "cadivor-next-api" \
+  || "${service_name}" == "cadivor-next-api-prod" ]]; then
   echo "railway_start: dispatching migration API for service=${service_name}" >&2
-  exec bash start_migration_api.sh
+  exec bash apps/api/start.sh
 fi
 
 # Prefer CADIVOR_APP_ORIGIN when set by Railway. Default matches production.

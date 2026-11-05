@@ -1,46 +1,46 @@
 # Next.js migration route parity checklist
 
-Branch: `migrate/nextjs-shell-bom-flow` · Production `app.cadivor.com` untouched.
+`app.cadivor.com` remains on Streamlit. This checklist describes the separate Next.js migration test build on Railway subdomains; it is not a customer-domain cutover record.
 
-| Route | Streamlit / product reference | Migration status | Data source | Explicit gaps |
-| --- | --- | --- | --- | --- |
-| `/login` | Smoke / auth gate | Working (sandbox smoke only) | `POST /auth/smoke-login` | Production auth (Supabase) not migrated |
-| `/` Home | Home workspace / portfolio overview | Working | Latest in-memory analysis summary | No durable portfolio history |
-| `/bom-analyzer` | BOM Analyzer | Working | `POST /boms/analyze` | Distributors disabled |
-| `/reports` | Reports index | Working (browser + API list) | `GET /reports` + localStorage | Durable report-history persistence gap |
-| `/reports/[id]` | Engineering Intelligence report | Working | `GET /reports/{id}` | — |
-| `/engineering-decisions` | Decision queue | Working (analysis-derived) | Latest analysis risk counts | No saved decision DB |
-| `/engineering-intelligence` | EI landing | Working (links to report) | Latest analysis | Multi-BOM EI packs not mirrored |
-| `/monitoring` | Monitoring Center / monitoring_engine | Working (preview) | Alerts derived from analysis parts via `build_alert_record` | No Supabase `monitor_alerts` / scheduled refresh |
-| `/compare-parts` | Compare Parts / `parts_compare` | Working (preview) | `build_parts_comparison` on analysis or synthetic records | Live supplier lookup disabled |
-| `/datasheet-qa` | Datasheet Q&A | Working | Upload PDF → `extract_uploaded_datasheet` + `answer_datasheet_question` | Cloud AI optional; local grounded answers |
-| `/procurement` | Procurement Advisor | Working (preview) | Analysis parts; supplier offers empty when disabled | Live distributor pricing disabled |
-| `/design-impact` | Design Impact Analyzer | Working (preview) | `build_design_impact` on in-memory analyses/parts | Needs ≥1 analyzed BOM |
-| `/cost-optimization` | Cost Optimization | Working (preview) | `build_cost_optimization` on synthetic unit prices | Prices are synthetic-preview, not live quotes |
-| `/supply-risk` | Supply Risk Scenario | Working (preview) | `build_supply_scenario` on analysis stock fields | Scenario uses synthetic stock evidence |
-| `/portfolio-intelligence` | Portfolio Intelligence | Working (preview) | `build_portfolio_intelligence` on in-memory reports | No Streamlit saved-BOM mirror |
-| `/detailed-risk-report` | Detailed Risk Report / `component_rows` | Working (preview) | `component_rows` + `report_exposure_summary` | Export bytes optional later |
-| `/find-replacement` | Alternative Finder | Stub / limited | — | Live alternate search not in sandbox scope this slice |
-| `/settings` | Settings | Read-only smoke session | Smoke session fields | Workspace admin not migrated |
+| Route | Migration status | Current data source | Remaining gaps |
+| --- | --- | --- | --- |
+| `/login` | Supabase auth path available on migration API | Supabase Auth; membership derives workspace | Signup, confirmation, reset/invite, and full session lifecycle not verified end-to-end |
+| `/` Home | Working | Saved migration workspace records | Existing Streamlit data is not imported |
+| `/bom-analyzer` | Working for synthetic test flow | Uploaded CSV → saved migration Postgres record | Live supplier evidence is disabled |
+| `/reports` | Working | Workspace-scoped saved report list | Production migration DB redeploy/recovery check outstanding |
+| `/reports/[id]` | Working | Workspace-scoped saved report | Supplier evidence remains synthetic in this build |
+| `/engineering-decisions` | Partial | Latest saved report risk counts | Decisions/approvals are not independently persisted |
+| `/engineering-intelligence` | Partial | Latest saved report | Multi-BOM engineering record/history is not fully mirrored |
+| `/monitoring` | Preview | Signals derived from saved BOM analyses | No scheduled refresh, durable alert history, or email delivery |
+| `/compare-parts` | Preview | Saved analysis fields or synthetic records | Live supplier lookup is disabled |
+| `/datasheet-qa` | Preview | Uploaded datasheet extraction and grounded answer | No full production document-management workflow |
+| `/procurement` | Preview | Analysis parts; no live offer feed | Live distributor pricing is disabled |
+| `/design-impact` | Preview | Saved migration analyses | Existing Streamlit catalog/history is not imported |
+| `/cost-optimization` | Preview | Synthetic unit prices | Not live quotes or contract pricing |
+| `/supply-risk` | Preview | Scenario assumptions and saved fields | No live disruption feed |
+| `/portfolio-intelligence` | Partial preview | Saved migration workspace analyses | Existing Streamlit portfolio history is not imported |
+| `/detailed-risk-report` | Preview | Saved synthetic analysis rows | Live distributor refresh and complete export workflow are outstanding |
+| `/find-replacement` | Limited/stub | — | Live alternate search and fit scoring are not implemented here |
+| `/settings` | Read-only/limited | Signed-in workspace display fields | Workspace administration and billing are not implemented here |
 
-## Tracked migration gaps (do not claim complete)
+## Production-readiness gaps
 
-1. **Report-history persistence** — in-memory API store + browser localStorage only; lost on container recycle.
-2. **Production authentication** — smoke login is sandbox-only; Supabase production auth not wired.
-3. **Live supplier / Stripe / email** — intentionally disabled in sandbox.
-4. **Supabase monitoring tables** — alerts are analysis-derived, not durable monitor history.
+1. Public signup, verified email, workspace provisioning, and 14-day trial lifecycle.
+2. Live distributor evidence, including exact-part identity, source URL, retrieval time, and source-label/unit handling.
+3. Scheduled monitoring refresh, alert history, notification preferences, and email delivery.
+4. Enforced plans/usage metering and billing.
+5. Production-service persistence recovery and cross-workspace isolation tests.
+6. PLM/ERP/CAD integrations and compliance evidence packs.
+7. Cutover and rollback rehearsal before `app.cadivor.com` moves from Streamlit.
 
+## Builder truthfulness rules
 
-## Builder reuse (sandbox-safe)
-
-| Surface | Primary builders | Must not invent |
+| Surface | Allowed data | Never imply |
 | --- | --- | --- |
-| Monitoring | `build_alert_record` / analysis-derived queue | Live stock/price deltas, scheduled refresh |
-| Compare Parts | `build_parts_comparison` on analysis/synthetic part dicts | Parametric matches without evidence; live lookup |
-| Datasheet Q&A | `extract_uploaded_datasheet` + `answer_datasheet_question` (local-excerpts) | Specs absent from PDF |
-| Procurement | `build_procurement_advisor` on saved/synthetic parts | Distributor prices when offers empty |
-| Design Impact | `build_design_impact` | Multi-BOM history beyond in-memory reports |
-| Cost Optimization | `build_cost_optimization` on recorded unit_price | Live quotes |
-| Supply Risk | `build_supply_scenario` | Live disruption feed |
-| Portfolio | `build_portfolio_intelligence` | Durable saved-BOM mirror |
-| Detailed Risk | `component_rows` + `report_exposure_summary` | Live distributor refresh |
+| Monitoring | Saved-analysis-derived signals | Live stock/price changes, scheduled refresh, or sent alerts |
+| Compare Parts | Saved fields, uploaded datasheets, clearly marked synthetic fields | Live supplier lookup when disabled |
+| Datasheet Q&A | Extracted text from the uploaded datasheet | Specs absent from the document |
+| Procurement / Cost | Saved prices or clearly marked synthetic estimates | Distributor quotes or contract prices when offers are unavailable |
+| Design / Portfolio | Migration workspace analyses | Imported Streamlit history when none exists |
+| Supply Risk | Explicit scenario assumptions and saved fields | Live disruption monitoring |
+| Detailed Risk | Saved analysis rows | Live distributor refresh |

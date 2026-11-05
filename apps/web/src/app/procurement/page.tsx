@@ -5,6 +5,7 @@ import { Shell } from "@/components/Shell";
 import { GapBanner, LoadingCard } from "@/components/GapBanner";
 import { PageHeader, PrimaryLink } from "@/components/PageHeader";
 import { fetchProcurement } from "@/lib/api";
+import { evidenceSourceLabel } from "@/lib/display";
 import { PAGE_META } from "@/lib/routes";
 import { readLastAnalysis, useRequireSession } from "@/lib/session";
 
@@ -59,7 +60,7 @@ export default function ProcurementPage() {
                     <td>{String(p.risk_level || "")}</td>
                     <td>{String(p.stock ?? "—")}</td>
                     <td>{p.unit_price == null ? "—" : String(p.unit_price)}</td>
-                    <td><span className="cv-badge gray">{String(p.price_source || "synthetic-preview")}</span></td>
+                    <td><span className="cv-badge gray">{evidenceSourceLabel(p.price_source, "Synthetic estimate")}</span></td>
                     <td>{String(p.offer_count ?? 0)} · {String(p.coverage)}</td>
                   </tr>
                 ))}

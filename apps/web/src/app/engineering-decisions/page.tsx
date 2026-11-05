@@ -3,20 +3,41 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Shell } from "@/components/Shell";
+import { LoadingCard } from "@/components/GapBanner";
 import { PageHeader, PrimaryLink, SecondaryLink } from "@/components/PageHeader";
-import type { AnalyzeSummary } from "@/lib/api";
+import { listReports, type AnalyzeSummary } from "@/lib/api";
 import { PAGE_META } from "@/lib/routes";
-import { readLastAnalysis, useRequireSession } from "@/lib/session";
+import { useRequireSession } from "@/lib/session";
 
 export default function EngineeringDecisionsPage() {
   const session = useRequireSession();
   const [last, setLast] = useState<
     (AnalyzeSummary & { filename?: string; saved_at?: string }) | null
   >(null);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(true);
 
   useEffect(() => {
-    setLast(readLastAnalysis());
-  }, []);
+    if (!session) return;
+    listReports(session.access_token)
+      .then(({ reports }) => {
+        const row = reports[0];
+        setLast(row ? {
+          analysis_id: String(row.analysis_id || row.id || ""),
+          total_parts: Number(row.total_parts || 0),
+          health_score: row.health_score == null ? null : Number(row.health_score),
+          health_status: String(row.health_status || "—"),
+          high_risk_count: Number(row.high_risk_count || 0),
+          medium_risk_count: Number(row.medium_risk_count || 0),
+          low_risk_count: Number(row.low_risk_count || 0),
+          mode: String(row.mode || "synthetic-preview"),
+          filename: String(row.filename || "Saved BOM analysis"),
+          saved_at: String(row.created_at || ""),
+        } : null);
+      })
+      .catch((err) => setError(err instanceof Error ? err.message : "Unable to load saved analyses."))
+      .finally(() => setBusy(false));
+  }, [session]);
 
   if (!session) return null;
 
@@ -37,16 +58,19 @@ export default function EngineeringDecisionsPage() {
           <strong>Signals are evidence prompts</strong>
           <span>
             They are not automatic approval or fit verdicts. Counts below come
-            from the latest synthetic analysis in this browser when available.
+            from the latest saved analysis when available.
           </span>
         </div>
       </div>
+
+      {busy ? <LoadingCard label="Loading the latest saved analysis…" /> : null}
+      {error ? <div className="cv-error">{error}</div> : null}
 
       <div className="cv-kpis">
         <div className="cv-kpi tone-amber">
           <span>High priority</span>
           <strong>{last ? last.high_risk_count : "—"}</strong>
-          <em>{last ? "From latest API analysis" : "No analysis yet"}</em>
+          <em>{last ? "From latest saved analysis" : "No analysis yet"}</em>
         </div>
         <div className="cv-kpi tone-blue">
           <span>Medium</span>
@@ -67,14 +91,14 @@ export default function EngineeringDecisionsPage() {
         </div>
       </div>
 
-      {last?.analysis_id ? (
+      {!busy && !error && last?.analysis_id ? (
         <section className="cv-card pad">
           <div style={{ marginBottom: 12 }}>
             <h3 className="cv-card-title">Decision queue from latest analysis</h3>
             <p className="cv-card-subtitle">
-              {last.filename || "BOM"} · {last.total_parts} parts · mode{" "}
-              {last.mode}. Open the report for part-level evidence; this preview
-              does not invent supplier prices or fit approvals.
+              {last.filename || "BOM"} · {last.total_parts} parts. Open the report
+              for part-level evidence; this test build does not invent supplier
+              prices or fit approvals.
             </p>
           </div>
           <div className="cv-table-wrap">
@@ -126,7 +150,7 @@ export default function EngineeringDecisionsPage() {
                 </tr>
                 <tr>
                   <td>
-                    <span className="cv-badge gray">Preview limit</span>
+                    <span className="cv-badge gray">Unavailable in this build</span>
                   </td>
                   <td>
                     <strong>Saved decision records</strong>
@@ -136,20 +160,20 @@ export default function EngineeringDecisionsPage() {
                   </td>
                   <td>—</td>
                   <td>
-                    <span className="cv-small-note">Unsupported in preview</span>
+                    <span className="cv-small-note">Unavailable in this build</span>
                   </td>
                 </tr>
               </tbody>
             </table>
           </div>
         </section>
-      ) : (
+      ) : !busy && !error ? (
         <section className="cv-empty">
           No decision queue yet.{" "}
-          <Link href="/bom-analyzer">Analyze a BOM</Link> through the sandbox
-          API to populate priorities from real risk counts.
+          <Link href="/bom-analyzer">Analyze a BOM</Link> to populate priorities
+          from the saved analysis.
         </section>
-      )}
+      ) : null}
     </Shell>
   );
 }

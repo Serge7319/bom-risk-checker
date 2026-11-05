@@ -63,13 +63,13 @@ export default function DesignImpactPage() {
           </div>
         </div>
       </div>
-      {busy ? <LoadingCard label="Building design impact from sandbox analyses…" /> : null}
+      {busy ? <LoadingCard label="Building design impact from saved analyses…" /> : null}
       {error ? <div className="cv-error">{error}</div> : null}
       {!busy && data ? (
         <div className="cv-grid-2">
           <section className="cv-card pad">
             <h3 className="cv-card-title">Component catalog</h3>
-            <p className="cv-card-subtitle">{Array.isArray(catalog) ? catalog.length : 0} parts across in-memory analyses</p>
+            <p className="cv-card-subtitle">{Array.isArray(catalog) ? catalog.length : 0} parts from saved analyses</p>
             <div className="cv-table-wrap" style={{ marginTop: 12 }}>
               <table className="cv-table">
                 <thead><tr><th>Part</th><th>Manufacturer</th><th>Lifecycle</th><th>Risk</th></tr></thead>

@@ -5,6 +5,7 @@ import { Shell } from "@/components/Shell";
 import { GapBanner, LoadingCard } from "@/components/GapBanner";
 import { PageHeader, PrimaryLink } from "@/components/PageHeader";
 import { fetchCostOptimization } from "@/lib/api";
+import { evidenceSourceLabel } from "@/lib/display";
 import { PAGE_META } from "@/lib/routes";
 import { readLastAnalysis, useRequireSession } from "@/lib/session";
 
@@ -86,7 +87,7 @@ export default function CostOptimizationPage() {
                       <td>{String(row.Quantity || row.quantity || row.Qty || "")}</td>
                       <td>{String(row["Unit Price"] || row.unit_price || "—")}</td>
                       <td>{String(row["Extended Cost"] || row.extended || row.Extended || "—")}</td>
-                      <td>{String(row.Opportunity || row.note || row.Notes || "synthetic-preview")}</td>
+                      <td>{evidenceSourceLabel(row.Opportunity || row.note || row.Notes, "Synthetic estimate")}</td>
                     </tr>
                   ))}
                 </tbody>
