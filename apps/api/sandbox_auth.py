@@ -21,6 +21,7 @@ import threading
 import time
 import uuid
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -245,9 +246,13 @@ class AuthContext:
     access_token: str
     jti: str
     mode: str = "sandbox-jwt"
+    trial_started_at: str | None = None
+    trial_ends_at: str | None = None
+    trial_status: str | None = None
+    trial_days_remaining: int | None = None
 
-    def as_dict(self) -> dict[str, str]:
-        return {
+    def as_dict(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {
             "user_id": self.user_id,
             "email": self.email,
             "workspace_id": self.workspace_id,
@@ -257,6 +262,15 @@ class AuthContext:
             "jti": self.jti,
             "mode": self.mode,
         }
+        if self.trial_started_at is not None:
+            payload["trial_started_at"] = self.trial_started_at
+        if self.trial_ends_at is not None:
+            payload["trial_ends_at"] = self.trial_ends_at
+        if self.trial_status is not None:
+            payload["trial_status"] = self.trial_status
+        if self.trial_days_remaining is not None:
+            payload["trial_days_remaining"] = self.trial_days_remaining
+        return payload
 
 
 class _FileAuthStore:
@@ -351,8 +365,8 @@ class _FileAuthStore:
         workspace_id: str,
         workspace: str,
         plan: str = "Trial",
-    ) -> dict[str, str]:
-        """Link a Supabase auth subject to a migration-only test workspace."""
+    ) -> dict[str, Any]:
+        """Link a verified Supabase owner and start a first-login trial once."""
         email_n = email.strip().lower()
         with _LOCK:
             for uid, row in list(self._data["users"].items()):
@@ -365,11 +379,21 @@ class _FileAuthStore:
                 "password_hash": _hash_password("__supabase_auth_managed__"),
                 "plan": plan,
             }
+            membership = self._data["memberships"].get(user_id, {})
+            started = membership.get("trial_started_at") or datetime.now(timezone.utc).isoformat()
+            ends = membership.get("trial_ends_at") or (
+                datetime.fromisoformat(started.replace("Z", "+00:00"))
+                + timedelta(days=14)
+            ).isoformat()
+            status = membership.get("subscription_status") or "trialing"
             self._data["memberships"][user_id] = {
                 "user_id": user_id,
                 "workspace_id": workspace_id,
                 "workspace_name": workspace,
                 "role": "owner",
+                "trial_started_at": started,
+                "trial_ends_at": ends,
+                "subscription_status": status,
             }
             self.save()
             return {
@@ -378,6 +402,9 @@ class _FileAuthStore:
                 "workspace_id": workspace_id,
                 "workspace": workspace,
                 "plan": plan,
+                "trial_started_at": started,
+                "trial_ends_at": ends,
+                "subscription_status": status,
             }
 
     def revoke(self, jti: str, exp: int) -> None:
@@ -418,8 +445,18 @@ class _PostgresAuthStore:
               workspace_id TEXT NOT NULL,
               workspace_name TEXT NOT NULL,
               role TEXT NOT NULL DEFAULT 'owner',
+              trial_started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+              trial_ends_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '14 days'),
+              subscription_status TEXT NOT NULL DEFAULT 'trialing',
               created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
             );
+            ALTER TABLE migration_workspace_members
+              ADD COLUMN IF NOT EXISTS trial_started_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+            ALTER TABLE migration_workspace_members
+              ADD COLUMN IF NOT EXISTS trial_ends_at TIMESTAMPTZ NOT NULL
+              DEFAULT (NOW() + INTERVAL '14 days');
+            ALTER TABLE migration_workspace_members
+              ADD COLUMN IF NOT EXISTS subscription_status TEXT NOT NULL DEFAULT 'trialing';
             CREATE INDEX IF NOT EXISTS migration_ws_members_ws_idx
               ON migration_workspace_members (workspace_id);
             CREATE TABLE IF NOT EXISTS migration_revoked_tokens (
@@ -516,8 +553,8 @@ class _PostgresAuthStore:
         workspace_id: str,
         workspace: str,
         plan: str = "Trial",
-    ) -> dict[str, str]:
-        """Link a Supabase auth subject to a migration-only test workspace."""
+    ) -> dict[str, Any]:
+        """Link a verified Supabase owner and start a first-login trial once."""
         self.ensure_schema()
         email_n = email.strip().lower()
         password_hash = _hash_password("__supabase_auth_managed__")
@@ -549,13 +586,22 @@ class _PostgresAuthStore:
                     """,
                     (user_id, workspace_id, workspace),
                 )
+                membership = conn.execute(
+                    "SELECT trial_started_at, trial_ends_at, subscription_status "
+                    "FROM migration_workspace_members WHERE user_id = %s",
+                    (user_id,),
+                ).fetchone()
                 conn.commit()
+        membership = dict(membership or {})
         return {
             "user_id": user_id,
             "email": email_n,
             "workspace_id": workspace_id,
             "workspace": workspace,
             "plan": plan,
+            "trial_started_at": membership.get("trial_started_at"),
+            "trial_ends_at": membership.get("trial_ends_at"),
+            "subscription_status": membership.get("subscription_status") or "trialing",
         }
 
     def revoke(self, jti: str, exp: int) -> None:

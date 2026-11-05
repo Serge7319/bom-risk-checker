@@ -9,6 +9,10 @@ export type Session = {
   user_id?: string;
   plan: string;
   mode: string;
+  trial_started_at?: string;
+  trial_ends_at?: string;
+  trial_status?: string;
+  trial_days_remaining?: number;
 };
 
 export type AnalyzeSummary = {
@@ -111,6 +115,27 @@ export async function login(email: string, password: string): Promise<Session> {
   });
 }
 
+export async function fetchAuthConfig() {
+  return apiJson<{ signup_enabled: boolean; trial_length_days: number }>("/auth/config");
+}
+
+export async function signup(
+  email: string,
+  password: string,
+  workspaceName: string,
+  captchaToken?: string,
+) {
+  return apiJson<{ accepted: boolean; message: string }>("/auth/signup", {
+    method: "POST",
+    body: JSON.stringify({
+      email,
+      password,
+      workspace_name: workspaceName,
+      captcha_token: captchaToken,
+    }),
+  });
+}
+
 export async function logout(token: string): Promise<void> {
   await apiJson("/auth/logout", { method: "POST", token });
 }
@@ -125,6 +150,10 @@ export async function fetchMe(token: string) {
     plan: string;
     mode: string;
     client_workspace_id_trusted: boolean;
+    trial_started_at?: string;
+    trial_ends_at?: string;
+    trial_status?: string;
+    trial_days_remaining?: number;
   }>("/auth/me", { token });
 }
 

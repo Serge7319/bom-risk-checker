@@ -2,7 +2,7 @@
 
 Uses Starlette (already pinned with Streamlit) so Railway installs do
 not fight FastAPI's older Starlette bound. Production Streamlit is unchanged.
-No Stripe charges, email, or live supplier HTTP calls.
+No Stripe charges, automated email notifications, or live supplier HTTP calls.
 """
 from __future__ import annotations
 
@@ -145,9 +145,18 @@ async def health(_: Request) -> JSONResponse:
             "mode": "synthetic-preview",
             "suppliers": "disabled",
             "stripe": "disabled",
-            "email": "disabled",
+            "email": (
+                "signup-verification-only"
+                if _use_supabase_auth() and supabase_auth.signup_enabled()
+                else "disabled"
+            ),
+            "alert_email": "disabled",
             "auth": auth,
             "auth_configured": auth_configured(),
+            "self_serve_signup_enabled": bool(
+                _use_supabase_auth() and supabase_auth.signup_enabled()
+            ),
+            "trial_length_days": supabase_auth.TRIAL_DAYS,
             "auth_path": "supabase" if using_supabase else "sandbox-jwt",
             "sandbox_jwt_permitted": sandbox_jwt_permitted(),
             "production_runtime": is_production_runtime(),
@@ -218,6 +227,39 @@ async def auth_login(request: Request) -> JSONResponse:
     return _json(session)
 
 
+async def auth_signup_config(_: Request) -> JSONResponse:
+    """Expose public onboarding availability without exposing auth configuration."""
+    enabled = bool(_use_supabase_auth() and supabase_auth.signup_enabled())
+    return _json({"signup_enabled": enabled, "trial_length_days": supabase_auth.TRIAL_DAYS})
+
+
+async def auth_signup(request: Request) -> JSONResponse:
+    if not _use_supabase_auth() or not supabase_auth.signup_enabled():
+        return _json({"detail": "Self-serve signup is not enabled"}, 503)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return _json({"detail": "Invalid JSON"}, 400)
+    try:
+        supabase_auth.signup(
+            str(body.get("email") or ""),
+            str(body.get("password") or ""),
+            str(body.get("workspace_name") or ""),
+            captcha_token=str(body.get("captcha_token") or "") or None,
+        )
+    except AuthNotConfiguredError as exc:
+        return _json({"detail": str(exc)}, 503)
+    except AuthError as exc:
+        return _json({"detail": exc.detail}, exc.status_code)
+    return _json(
+        {
+            "accepted": True,
+            "message": "If this address can be registered, a verification link will arrive by email.",
+        },
+        202,
+    )
+
+
 async def auth_logout(request: Request) -> JSONResponse:
     authorization = request.headers.get("authorization") or ""
     if not authorization.startswith("Bearer "):
@@ -249,6 +291,10 @@ async def auth_me(request: Request) -> JSONResponse:
             "plan": ctx["plan"],
             "mode": ctx.get("mode") or "sandbox-jwt",
             "client_workspace_id_trusted": False,
+            "trial_started_at": ctx.get("trial_started_at"),
+            "trial_ends_at": ctx.get("trial_ends_at"),
+            "trial_status": ctx.get("trial_status"),
+            "trial_days_remaining": ctx.get("trial_days_remaining"),
         }
     )
 
@@ -268,6 +314,14 @@ async def boms_analyze(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
+    if _use_supabase_auth() and supabase_auth.trial_expired(ctx):
+        return _json(
+            {
+                "code": "trial_expired",
+                "detail": "Your 14-day trial has ended. Saved reports remain available; contact Cadivor to continue analysis.",
+            },
+            402,
+        )
     form = await request.form()
     upload = form.get("file")
     if upload is None:
@@ -608,6 +662,8 @@ async def detailed_risk_get(request: Request) -> JSONResponse:
 app = Starlette(
     routes=[
         Route("/health", health, methods=["GET"]),
+        Route("/auth/config", auth_signup_config, methods=["GET"]),
+        Route("/auth/signup", auth_signup, methods=["POST"]),
         Route("/auth/login", auth_login, methods=["POST"]),
         Route("/auth/logout", auth_logout, methods=["POST"]),
         Route("/auth/me", auth_me, methods=["GET"]),

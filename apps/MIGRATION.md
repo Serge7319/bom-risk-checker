@@ -7,7 +7,8 @@ Same repository, branch `migrate/nextjs-shell-bom-flow`.
 - Shared Next.js shell + Supabase Auth path on the migration API
 - One end-to-end synthetic BOM flow: upload → analyze → report
 - Python analysis uses existing `bom_parser`, `risk_engine`, and `health_score`
-- Synthetic part evidence only — no live distributor calls, Stripe, or email
+- Synthetic part evidence only — no live distributor calls, Stripe, or alert email
+- Verified-email signup and 14-day trial code is present but gated off; no signup emails are sent
 - **Production Streamlit on `app.cadivor.com` is unchanged**
 
 ## Local run
@@ -23,7 +24,6 @@ cd apps/web
 npm run dev
 ```
 
-Fixture: `tests/fixtures/synthetic_bom_25parts.csv`
 Fixture: `tests/fixtures/synthetic_bom_25parts.csv`
 
 ## Railway deployment boundary
@@ -58,3 +58,16 @@ The migration API uses Supabase Auth with workspace membership and dedicated
 migration Postgres. The current production migration service's database
 redeploy-survival and cross-workspace checks have not been re-run in this pass.
 Do not cut over `app.cadivor.com` based on the migration smoke checks alone.
+
+
+## Self-serve signup / trial gate
+
+Signup is deliberately **disabled** on the deployed migration services. No verification email is sent unless the feature is explicitly enabled. Before enabling, an operator must configure all of the following on the migration API:
+
+- `CADIVOR_SELF_SERVE_SIGNUP_ENABLED=1`
+- `CADIVOR_SIGNUP_EMAIL_CONFIRMATION_CONFIRMED=1` only after Supabase Confirm Email is enabled and tested
+- `CADIVOR_SIGNUP_ABUSE_PROTECTION_CONFIRMED=1` only after Supabase Auth abuse/rate controls are reviewed
+- `CADIVOR_SIGNUP_REDIRECT_URL` set to an HTTPS login URL whose origin is included in `CADIVOR_WEB_ORIGINS`
+- Supabase verification email delivery configured and tested; do not use the Streamlit data database as the migration record store
+
+The migration API exposes only whether signup is enabled, not secrets. Unverified users do not receive a migration workspace. The workspace and 14-day trial start on their first verified sign-in. New BOM analysis is blocked after trial expiry; saved reports remain readable. Alert email, billing, and supplier integrations remain disabled.

@@ -29,6 +29,17 @@ export function Shell({
   const pathname = usePathname();
   const router = useRouter();
   const title = crumbTitle(pathname);
+  const remainingDays = session.trial_ends_at
+    ? Math.max(0, Math.ceil((Date.parse(session.trial_ends_at) - Date.now()) / 86400000))
+    : session.trial_days_remaining;
+  const trialExpired =
+    session.trial_status === "trial_expired" ||
+    (session.trial_status === "trialing" && remainingDays === 0);
+  const subscriptionLabel = trialExpired
+    ? "Trial expired · read only"
+    : session.trial_status === "trialing" && remainingDays != null
+      ? `Trial · ${remainingDays} days remaining`
+      : `Subscription · ${session.plan}`;
 
   return (
     <div className="cv-shell">
@@ -45,7 +56,7 @@ export function Shell({
         <div className="cv-workspace-card">
           <span>Workspace</span>
           <strong>{session.workspace}</strong>
-          <em style={{ marginTop: 6 }}>Subscription · {session.plan}</em>
+          <em style={{ marginTop: 6 }}>{subscriptionLabel}</em>
         </div>
         <nav className="cv-nav" aria-label="Primary">
           {NAV_GROUPS.map((group) => (
@@ -79,7 +90,7 @@ export function Shell({
             <div className="cv-plan-copy">
               This build is separate from app.cadivor.com, which still runs the
               current Streamlit app. Saved BOMs here do not change existing
-              records. Live suppliers, billing, and email are not enabled.
+              records. Live suppliers, billing, and automated alert emails are not enabled.
             </div>
           </div>
           <button
@@ -116,7 +127,7 @@ export function Shell({
             <span>
               Separate from app.cadivor.com, which remains on the current
               Cadivor app. Analysis uses synthetic evidence; live supplier,
-              billing, and email connections are not enabled here.
+              billing, and automated alert email connections are not enabled here.
             </span>
           </div>
           {children}

@@ -16,8 +16,19 @@ CREATE TABLE IF NOT EXISTS migration_workspace_members (
   workspace_id TEXT NOT NULL,
   workspace_name TEXT NOT NULL,
   role TEXT NOT NULL DEFAULT 'owner',
+  trial_started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  trial_ends_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '14 days'),
+  subscription_status TEXT NOT NULL DEFAULT 'trialing',
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE migration_workspace_members
+  ADD COLUMN IF NOT EXISTS trial_started_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE migration_workspace_members
+  ADD COLUMN IF NOT EXISTS trial_ends_at TIMESTAMPTZ NOT NULL
+  DEFAULT (NOW() + INTERVAL '14 days');
+ALTER TABLE migration_workspace_members
+  ADD COLUMN IF NOT EXISTS subscription_status TEXT NOT NULL DEFAULT 'trialing';
 
 CREATE INDEX IF NOT EXISTS migration_ws_members_ws_idx
   ON migration_workspace_members (workspace_id);

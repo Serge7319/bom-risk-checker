@@ -1,6 +1,7 @@
 """Production Supabase Auth path for the Next migration API (mocked Auth client)."""
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -8,14 +9,23 @@ import pytest
 from starlette.testclient import TestClient
 
 from apps.api.main import app
-from apps.api.sandbox_auth import reset_auth_store_for_tests
+from apps.api.sandbox_auth import get_auth_store, reset_auth_store_for_tests
 from apps.api.workspace_store import reset_store_for_tests
 
 
 class _FakeUser:
-    def __init__(self, user_id: str, email: str) -> None:
+    def __init__(
+        self,
+        user_id: str,
+        email: str,
+        *,
+        email_confirmed_at: str | None = "2026-11-01T12:00:00+00:00",
+        user_metadata: dict | None = None,
+    ) -> None:
         self.id = user_id
         self.email = email
+        self.email_confirmed_at = email_confirmed_at
+        self.user_metadata = user_metadata or {}
 
 
 class _FakeSession:
@@ -41,6 +51,7 @@ class _FakeAuth:
         self._by_token = {
             row["token"]: row["user"] for row in self.users.values()
         }
+        self.signup_payloads = []
 
     def sign_in_with_password(self, payload: dict):
         email = str(payload.get("email") or "").strip().lower()
@@ -55,6 +66,23 @@ class _FakeAuth:
         if not user:
             raise RuntimeError("Invalid JWT")
         return SimpleNamespace(user=user)
+
+    def sign_up(self, payload: dict):
+        self.signup_payloads.append(payload)
+        email = payload["email"]
+        user = _FakeUser(
+            "33333333-3333-3333-3333-333333333333",
+            email,
+            email_confirmed_at=None,
+            user_metadata=payload.get("options", {}).get("data", {}),
+        )
+        self.users[email] = {
+            "password": payload["password"],
+            "user": user,
+            "token": "supabase-access-token-new",
+        }
+        self._by_token["supabase-access-token-new"] = user
+        return SimpleNamespace(user=user, session=None)
 
     def sign_out(self):
         return None
@@ -74,6 +102,10 @@ def supabase_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClie
     monkeypatch.delenv("CADIVOR_MIGRATION_DATABASE_URL", raising=False)
     monkeypatch.delenv("CADIVOR_SANDBOX_AUTH_SECRET", raising=False)
     monkeypatch.delenv("CADIVOR_ALLOW_SANDBOX_JWT", raising=False)
+    monkeypatch.delenv("CADIVOR_SELF_SERVE_SIGNUP_ENABLED", raising=False)
+    monkeypatch.delenv("CADIVOR_SIGNUP_REDIRECT_URL", raising=False)
+    monkeypatch.delenv("CADIVOR_SIGNUP_CAPTCHA_REQUIRED", raising=False)
+    monkeypatch.delenv("CADIVOR_WEB_ORIGINS", raising=False)
     monkeypatch.delenv("RAILWAY_ENVIRONMENT", raising=False)
 
     fake = _FakeAuth()
@@ -85,7 +117,9 @@ def supabase_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClie
     from apps.api import synthetic_analyze as sa
 
     sa._REPORTS.clear()
-    return TestClient(app)
+    client = TestClient(app)
+    client.app.state.fake_auth = fake
+    return client
 
 
 def test_production_runtime_reports_missing_supabase_vars(
@@ -221,3 +255,155 @@ def test_sandbox_hs256_blocked_when_production_runtime_forced(
     health = client.get("/health").json()
     assert health["sandbox_jwt_permitted"] is False
     assert health["auth_path"] == "supabase"
+
+
+def test_self_serve_signup_is_disabled_by_default(supabase_client: TestClient):
+    config = supabase_client.get("/auth/config")
+    assert config.status_code == 200
+    assert config.json() == {"signup_enabled": False, "trial_length_days": 14}
+    response = supabase_client.post(
+        "/auth/signup",
+        json={
+            "email": "new@cadivor.test",
+            "password": "long-password-123",
+            "workspace_name": "New workspace",
+        },
+    )
+    assert response.status_code == 503
+    assert supabase_client.app.state.fake_auth.signup_payloads == []
+
+
+def test_verified_signup_provisions_workspace_and_starts_trial_once(
+    supabase_client: TestClient, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv("CADIVOR_SELF_SERVE_SIGNUP_ENABLED", "1")
+    monkeypatch.setenv("CADIVOR_SIGNUP_EMAIL_CONFIRMATION_CONFIRMED", "1")
+    monkeypatch.setenv("CADIVOR_SIGNUP_ABUSE_PROTECTION_CONFIRMED", "1")
+    monkeypatch.setenv(
+        "CADIVOR_SIGNUP_REDIRECT_URL",
+        "https://cadivor-next-web-prod-production.up.railway.app/login",
+    )
+    monkeypatch.setenv(
+        "CADIVOR_WEB_ORIGINS",
+        "https://cadivor-next-web-prod-production.up.railway.app",
+    )
+    client = supabase_client
+    config = client.get("/auth/config")
+    assert config.json()["signup_enabled"] is True
+    response = client.post(
+        "/auth/signup",
+        json={
+            "email": "new@cadivor.test",
+            "password": "long-password-123",
+            "workspace_name": "Acme Hardware",
+        },
+    )
+    assert response.status_code == 202
+    assert response.json()["accepted"] is True
+    fake = client.app.state.fake_auth
+    payload = fake.signup_payloads[0]
+    assert payload["options"]["email_redirect_to"].endswith("/login")
+    assert payload["options"]["data"]["workspace_name"] == "Acme Hardware"
+    user = fake.users["new@cadivor.test"]["user"]
+    assert get_auth_store().membership_for_user(user.id) is None
+
+    unverified = client.post(
+        "/auth/login",
+        json={"email": "new@cadivor.test", "password": "long-password-123"},
+    )
+    assert unverified.status_code == 403
+    assert get_auth_store().membership_for_user(user.id) is None
+
+    user.email_confirmed_at = "2026-11-05T10:00:00+00:00"
+    login = client.post(
+        "/auth/login",
+        json={"email": "new@cadivor.test", "password": "long-password-123"},
+    )
+    assert login.status_code == 200, login.text
+    body = login.json()
+    assert body["workspace"] == "Acme Hardware"
+    assert body["trial_status"] == "trialing"
+    started = datetime.fromisoformat(body["trial_started_at"])
+    ends = datetime.fromisoformat(body["trial_ends_at"])
+    assert (ends - started).days == 14
+
+    headers = {"Authorization": f"Bearer {body['access_token']}"}
+    me = client.get("/auth/me", headers=headers)
+    assert me.status_code == 200
+    assert me.json()["trial_ends_at"] == body["trial_ends_at"]
+
+    again = client.post(
+        "/auth/login",
+        json={"email": "new@cadivor.test", "password": "long-password-123"},
+    )
+    assert again.status_code == 200
+    assert again.json()["trial_started_at"] == body["trial_started_at"]
+    assert again.json()["trial_ends_at"] == body["trial_ends_at"]
+
+
+def test_signup_redirect_must_be_allowlisted_https(
+    supabase_client: TestClient, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv("CADIVOR_SELF_SERVE_SIGNUP_ENABLED", "1")
+    monkeypatch.setenv("CADIVOR_SIGNUP_EMAIL_CONFIRMATION_CONFIRMED", "1")
+    monkeypatch.setenv("CADIVOR_SIGNUP_ABUSE_PROTECTION_CONFIRMED", "1")
+    monkeypatch.setenv("CADIVOR_SIGNUP_REDIRECT_URL", "http://attacker.example/login")
+    monkeypatch.setenv(
+        "CADIVOR_WEB_ORIGINS",
+        "https://cadivor-next-web-prod-production.up.railway.app",
+    )
+    assert supabase_client.get("/auth/config").json()["signup_enabled"] is False
+    response = supabase_client.post(
+        "/auth/signup",
+        json={
+            "email": "new@cadivor.test",
+            "password": "long-password-123",
+            "workspace_name": "Acme",
+        },
+    )
+    assert response.status_code == 503
+    assert supabase_client.app.state.fake_auth.signup_payloads == []
+
+
+def test_expired_trial_is_read_only_for_new_bom_analysis(
+    supabase_client: TestClient,
+):
+    login = supabase_client.post(
+        "/auth/login",
+        json={"email": "owner@cadivor.test", "password": "owner-pass-123"},
+    )
+    assert login.status_code == 200
+    body = login.json()
+    store = get_auth_store()
+    store._data["memberships"][body["user_id"]]["trial_ends_at"] = "2025-01-01T00:00:00+00:00"
+    headers = {"Authorization": f"Bearer {body['access_token']}"}
+    denied = supabase_client.post("/boms/analyze", headers=headers)
+    assert denied.status_code == 402
+    assert denied.json()["code"] == "trial_expired"
+    assert supabase_client.get("/reports", headers=headers).status_code == 200
+
+
+
+def test_signup_requires_explicit_email_and_abuse_protection_acknowledgments(
+    supabase_client: TestClient, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv("CADIVOR_SELF_SERVE_SIGNUP_ENABLED", "1")
+    monkeypatch.setenv(
+        "CADIVOR_SIGNUP_REDIRECT_URL",
+        "https://cadivor-next-web-prod-production.up.railway.app/login",
+    )
+    monkeypatch.setenv(
+        "CADIVOR_WEB_ORIGINS",
+        "https://cadivor-next-web-prod-production.up.railway.app",
+    )
+    assert supabase_client.get("/auth/config").json()["signup_enabled"] is False
+    response = supabase_client.post(
+        "/auth/signup",
+        json={
+            "email": "new@cadivor.test",
+            "password": "long-password-123",
+            "workspace_name": "Acme",
+        },
+    )
+    assert response.status_code == 503
+    assert supabase_client.app.state.fake_auth.signup_payloads == []

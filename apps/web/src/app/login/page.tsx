@@ -1,8 +1,9 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { getSession, login, setSession } from "@/lib/api";
+import { fetchAuthConfig, getSession, login, setSession } from "@/lib/api";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -10,10 +11,17 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [signupEnabled, setSignupEnabled] = useState(false);
 
   useEffect(() => {
     if (getSession()) router.replace("/");
   }, [router]);
+
+  useEffect(() => {
+    fetchAuthConfig()
+      .then((config) => setSignupEnabled(config.signup_enabled))
+      .catch(() => setSignupEnabled(false));
+  }, []);
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
@@ -48,8 +56,8 @@ export default function LoginPage() {
         </h1>
         <p className="cv-page-description" style={{ marginTop: 6 }}>
           Sign in with the account enabled for this migration test. Saved BOMs
-          here are separate from existing Cadivor records. Live supplier,
-          billing, and email connections are not enabled in this build.
+          here are separate from existing Cadivor records. Supplier and billing
+          connections are not enabled in this build.
         </p>
         <label htmlFor="email">Email</label>
         <input
@@ -78,6 +86,11 @@ export default function LoginPage() {
         >
           {busy ? "Signing in…" : "Continue"}
         </button>
+        {signupEnabled ? (
+          <p className="cv-auth-switch">
+            New to Cadivor? <Link href="/signup">Start a 14-day trial</Link>
+          </p>
+        ) : null}
       </form>
     </div>
   );

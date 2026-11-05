@@ -4,7 +4,7 @@
 
 | Route | Migration status | Current data source | Remaining gaps |
 | --- | --- | --- | --- |
-| `/login` | Supabase auth path available on migration API | Supabase Auth; membership derives workspace | Signup, confirmation, reset/invite, and full session lifecycle not verified end-to-end |
+| `/login` | Supabase auth path available on migration API | Supabase Auth; membership derives workspace | Hosted login lifecycle not re-run; signup remains feature-gated; reset/invite not implemented |
 | `/` Home | Working | Saved migration workspace records | Existing Streamlit data is not imported |
 | `/bom-analyzer` | Working for synthetic test flow | Uploaded CSV → saved migration Postgres record | Live supplier evidence is disabled |
 | `/reports` | Working | Workspace-scoped saved report list | Production migration DB redeploy/recovery check outstanding |
@@ -25,7 +25,7 @@
 
 ## Production-readiness gaps
 
-1. Public signup, verified email, workspace provisioning, and 14-day trial lifecycle.
+1. Signup/trial code is implemented behind a closed feature gate; configure email verification/delivery, redirect allowlisting, and abuse controls, then verify the hosted end-to-end lifecycle before enabling.
 2. Live distributor evidence, including exact-part identity, source URL, retrieval time, and source-label/unit handling.
 3. Scheduled monitoring refresh, alert history, notification preferences, and email delivery.
 4. Enforced plans/usage metering and billing.

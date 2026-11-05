@@ -14,6 +14,8 @@ import hashlib
 import os
 import re
 import uuid
+from datetime import datetime, timedelta, timezone
+from urllib.parse import urlsplit
 from typing import Any
 
 from apps.api.sandbox_auth import (
@@ -58,6 +60,85 @@ def missing_config_vars() -> list[str]:
 
 def supabase_auth_configured() -> bool:
     return not missing_config_vars()
+
+
+def signup_enabled() -> bool:
+    """Signup stays off until an operator enables verified-email onboarding."""
+    return (
+        is_production_runtime()
+        and (os.environ.get("CADIVOR_SELF_SERVE_SIGNUP_ENABLED") or "").strip() == "1"
+        and (os.environ.get("CADIVOR_SIGNUP_EMAIL_CONFIRMATION_CONFIRMED") or "").strip() == "1"
+        and (os.environ.get("CADIVOR_SIGNUP_ABUSE_PROTECTION_CONFIRMED") or "").strip() == "1"
+        and supabase_auth_configured()
+        and bool(_signup_redirect_url())
+        and (os.environ.get("CADIVOR_SIGNUP_CAPTCHA_REQUIRED") or "").strip() != "1"
+    )
+
+
+def _signup_redirect_url() -> str:
+    """Return a same-origin HTTPS confirmation URL, or empty when not safe."""
+    value = (os.environ.get("CADIVOR_SIGNUP_REDIRECT_URL") or "").strip()
+    if not value:
+        return ""
+    parsed = urlsplit(value)
+    if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
+        return ""
+    origin = f"https://{parsed.netloc}".rstrip("/").lower()
+    allowed = {
+        item.strip().rstrip("/").lower()
+        for item in (os.environ.get("CADIVOR_WEB_ORIGINS") or "").split(",")
+        if item.strip()
+    }
+    return value if origin in allowed else ""
+
+
+def _normalize_datetime(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        dt = value
+    else:
+        try:
+            dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        except (TypeError, ValueError):
+            return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc).isoformat()
+
+
+def _trial_fields(membership: dict[str, Any]) -> dict[str, Any]:
+    started = _normalize_datetime(membership.get("trial_started_at"))
+    ends = _normalize_datetime(membership.get("trial_ends_at"))
+    if not started:
+        started_dt = datetime.now(timezone.utc)
+        started = started_dt.isoformat()
+    else:
+        started_dt = datetime.fromisoformat(started)
+    if not ends:
+        ends = (started_dt + timedelta(days=14)).isoformat()
+    ends_dt = datetime.fromisoformat(ends)
+    status = str(membership.get("subscription_status") or "trialing")
+    remaining_seconds = (ends_dt - datetime.now(timezone.utc)).total_seconds()
+    if status == "trialing" and remaining_seconds <= 0:
+        status = "trial_expired"
+    remaining_days = max(0, int((max(0.0, remaining_seconds) + 86399) // 86400))
+    return {
+        "trial_started_at": started,
+        "trial_ends_at": ends,
+        "trial_status": status,
+        "trial_days_remaining": remaining_days,
+    }
+
+
+def trial_expired(context: dict[str, Any]) -> bool:
+    """Expired trials may keep reading saved data but cannot run new analyses."""
+    if str(context.get("trial_status") or "trialing") not in {"trialing", "trial_expired"}:
+        return False
+    if context.get("trial_status") == "trial_expired":
+        return True
+    end = _normalize_datetime(context.get("trial_ends_at"))
+    return bool(end and datetime.now(timezone.utc) >= datetime.fromisoformat(end))
 
 
 def describe_supabase_auth() -> dict[str, Any]:
@@ -119,12 +200,17 @@ def _workspace_ids_for_owner(user_id: str, email: str) -> tuple[str, str]:
     return workspace_id, workspace_name
 
 
-def ensure_owner_membership(*, user_id: str, email: str, plan: str = "Trial") -> dict[str, str]:
-    """Create/reuse a dedicated test workspace for the signed-in Supabase owner."""
+def ensure_owner_membership(
+    *,
+    user_id: str,
+    email: str,
+    plan: str = "Trial",
+    workspace_name: str | None = None,
+) -> dict[str, Any]:
+    """Create/reuse a migration workspace and start its trial once."""
     if not user_id or not email:
         raise AuthError("Authenticated user missing id or email")
     if not migration_database_url():
-        # Allow ephemeral file store only for unit tests / local preview.
         railway_env = (os.environ.get("RAILWAY_ENVIRONMENT") or "").strip()
         allow_file = (os.environ.get("CADIVOR_ALLOW_EPHEMERAL_FILE_STORE") or "").strip() == "1"
         if railway_env or not allow_file:
@@ -134,21 +220,27 @@ def ensure_owner_membership(*, user_id: str, email: str, plan: str = "Trial") ->
     store = get_auth_store()
     existing = store.membership_for_user(user_id)
     if existing:
-        return {
-            "user_id": user_id,
-            "email": email.strip().lower(),
-            "workspace_id": str(existing["workspace_id"]),
-            "workspace": str(existing.get("workspace_name") or existing["workspace_id"]),
-            "plan": plan,
-        }
-    workspace_id, workspace_name = _workspace_ids_for_owner(user_id, email)
-    return store.ensure_supabase_owner(
+        workspace_id = str(existing["workspace_id"])
+        existing_name = str(existing.get("workspace_name") or existing["workspace_id"])
+        desired_name = existing_name
+    else:
+        workspace_id, existing_name = _workspace_ids_for_owner(user_id, email)
+        desired_name = workspace_name or existing_name
+    result = store.ensure_supabase_owner(
         user_id=user_id,
         email=email,
         workspace_id=workspace_id,
-        workspace=workspace_name,
+        workspace=desired_name,
         plan=plan,
     )
+    return {
+        "user_id": user_id,
+        "email": email.strip().lower(),
+        "workspace_id": str(result["workspace_id"]),
+        "workspace": str(result.get("workspace") or desired_name),
+        "plan": str(result.get("plan") or plan),
+        **_trial_fields(result),
+    }
 
 
 def _user_payload(user: Any) -> tuple[str, str]:
@@ -165,6 +257,71 @@ def _user_payload(user: Any) -> tuple[str, str]:
     if not user_id or not email:
         raise AuthError("Supabase user missing id or email")
     return user_id, email
+
+
+def user_workspace_name(user: Any) -> str | None:
+    metadata = getattr(user, "user_metadata", None) or (
+        user.get("user_metadata") if isinstance(user, dict) else None
+    )
+    if not isinstance(metadata, dict):
+        return None
+    value = " ".join(str(metadata.get("workspace_name") or "").split())
+    return value[:80] or None
+
+
+def user_email_verified(user: Any) -> bool:
+    for key in ("email_confirmed_at", "confirmed_at"):
+        value = getattr(user, key, None) or (
+            user.get(key) if isinstance(user, dict) else None
+        )
+        if value:
+            return True
+    return False
+
+
+def signup(
+    email: str,
+    password: str,
+    workspace_name: str,
+    *,
+    captcha_token: str | None = None,
+) -> None:
+    """Request Supabase's verified-email signup; provision after verified login."""
+    if not signup_enabled():
+        raise AuthNotConfiguredError("Self-serve signup is not enabled")
+    email_n = (email or "").strip().lower()
+    workspace_n = " ".join((workspace_name or "").split())
+    if not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email_n):
+        raise AuthError("Enter a valid email address", 400)
+    if len(password or "") < 12:
+        raise AuthError("Use a password with at least 12 characters", 400)
+    if not workspace_n or len(workspace_n) > 80:
+        raise AuthError("Enter a workspace name of 1 to 80 characters", 400)
+    captcha_required = (os.environ.get("CADIVOR_SIGNUP_CAPTCHA_REQUIRED") or "").strip() == "1"
+    if captcha_required and not (captcha_token or "").strip():
+        raise AuthError("Complete the security check and try again", 400)
+    options: dict[str, Any] = {
+        "email_redirect_to": _signup_redirect_url(),
+        "data": {"workspace_name": workspace_n},
+    }
+    if captcha_token:
+        options["captcha_token"] = captcha_token
+    try:
+        response = _client().auth.sign_up(
+            {"email": email_n, "password": password, "options": options}
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise AuthError(
+            "We could not send the verification email. Try again shortly or sign in if you already have an account.",
+            503,
+        ) from exc
+    session = getattr(response, "session", None) or (
+        response.get("session") if isinstance(response, dict) else None
+    )
+    if session is not None:
+        raise AuthNotConfiguredError(
+            "Email confirmation must be enabled in Supabase before signup can be enabled"
+        )
 
 
 def login(
@@ -191,6 +348,8 @@ def login(
     )
     if session is None or user is None:
         raise AuthError("Invalid credentials")
+    if signup_enabled() and not user_email_verified(user):
+        raise AuthError("Verify your email address before signing in", 403)
     access_token = str(
         getattr(session, "access_token", None)
         or (session.get("access_token") if isinstance(session, dict) else "")
@@ -199,7 +358,11 @@ def login(
     if not access_token:
         raise AuthError("Invalid credentials")
     user_id, user_email = _user_payload(user)
-    membership = ensure_owner_membership(user_id=user_id, email=user_email)
+    membership = ensure_owner_membership(
+        user_id=user_id,
+        email=user_email,
+        workspace_name=user_workspace_name(user),
+    )
     expires_in = int(
         getattr(session, "expires_in", None)
         or (session.get("expires_in") if isinstance(session, dict) else 0)
@@ -217,6 +380,7 @@ def login(
         "mode": "supabase-jwt",
         "sandbox_only": False,
         "production_auth": True,
+        **_trial_fields(membership),
     }
 
 
@@ -263,7 +427,11 @@ def resolve_bearer(access_token: str) -> AuthContext:
     if user is None:
         raise AuthError("Invalid token")
     user_id, email = _user_payload(user)
-    membership = ensure_owner_membership(user_id=user_id, email=email)
+    membership = ensure_owner_membership(
+        user_id=user_id,
+        email=email,
+        workspace_name=user_workspace_name(user),
+    )
     return AuthContext(
         user_id=membership["user_id"],
         email=membership["email"],
@@ -273,4 +441,8 @@ def resolve_bearer(access_token: str) -> AuthContext:
         access_token=access_token,
         jti=fingerprint,
         mode="supabase-jwt",
+        trial_started_at=membership.get("trial_started_at"),
+        trial_ends_at=membership.get("trial_ends_at"),
+        trial_status=membership.get("trial_status"),
+        trial_days_remaining=membership.get("trial_days_remaining"),
     )

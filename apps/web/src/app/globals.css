@@ -969,6 +969,31 @@ button {
   background: #fff;
 }
 
+.cv-auth-switch {
+  margin: 16px 0 0;
+  color: var(--muted);
+  text-align: center;
+  font-size: 13px;
+}
+
+.cv-auth-switch a {
+  color: var(--blue-700);
+  font-weight: 750;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.cv-signup-success {
+  margin-top: 18px;
+  background: #f7fafc;
+}
+
+.cv-signup-success p {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .cv-error {
   margin-top: 12px;
   color: var(--red);

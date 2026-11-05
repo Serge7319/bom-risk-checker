@@ -17,9 +17,9 @@ Business north star: **continuous engineering workflow**—persistent project/BO
 | Multi-level BOMs and risk roll-up | **Verified with synthetic fixture** | `nested_bom_product.csv`: CAP100U effective quantity is 8; the top-level roll-up surfaces the medium-risk NRND leaf. No customer BOM or live distributor evidence was used. |
 | Home from saved data | **Working on migration test services** | Home, Reports, Engineering Decisions, and Engineering Intelligence read saved workspace analyses. Existing Streamlit records have not been imported. |
 | Workspace isolation | **Implemented; verification is mixed by environment** | Membership is server-derived and isolation tests pass; prior live sandbox cross-workspace checks passed. A live cross-tenant test against the current production migration database was not repeated in this pass. |
-| Authentication | **Supabase path configured on migration API** | Health reports Supabase JWT membership auth and sandbox JWT disabled in production runtime. Full signup, reset, invitation, expiry, and multi-tenant production test sequence remain open. Existing `app.cadivor.com` auth was not changed. |
+| Authentication | **Supabase path configured on migration API** | Health reports Supabase JWT membership auth and sandbox JWT disabled in production runtime. Hosted login lifecycle is not fully re-run in this pass. Signup, password reset, invitation, and production-domain cutover remain separate. Existing `app.cadivor.com` auth was not changed. |
 | Proactive monitoring and email alerts | **Not yet live** | Monitoring is derived from saved analysis data. No scheduled supplier refresh or alert email delivery. |
-| Self-serve onboarding and 14-day trial | **Not yet live** | No public account creation, email verification, workspace provisioning flow, or enforceable trial lifecycle. This is the next product milestone. |
+| Self-serve onboarding and 14-day trial | **Implemented behind a closed feature gate** | Verified-email signup, workspace provisioning on verified sign-in, trial dates, and analysis restriction after 14 days are in code. Live signup remains off; no verification emails have been sent. Before enabling: configure/verify Supabase email confirmation, delivery and redirect allowlist, and abuse controls; then run a designated end-to-end signup. |
 | Usage-based subscription tiers | **Not yet live** | Plan display is not usage metering. Stripe checkout and limits are not enabled in the migration build. |
 | PLM / ERP / CAD integrations | **Not yet live** | No connectors or add-ins. |
 | Compliance evidence packs | **Not yet live** | Synthetic report fields do not constitute RoHS, REACH, conflict-minerals, or audit evidence. |
@@ -42,7 +42,7 @@ Previous sandbox isolation and redeploy results are recorded in `MIGRATION_TEST_
 
 ## Ordered roadmap to production readiness
 
-1. **Self-serve onboarding:** email-verified signup, workspace creation, first-login provisioning, and a real 14-day trial lifecycle with tenant-isolation checks.
+1. **Finish self-serve activation:** verify email confirmation/delivery, public redirect allowlist, and abuse protections; run one designated hosted signup, verification, login, tenant-isolation, trial-expiry, and report-read test. Keep the feature gate closed until these checks pass.
 2. **Trusted product evidence:** authorized distributor integrations, source citations, refresh timestamps, and live/synthetic separation throughout BOM, compare, and monitoring workflows.
 3. **Continuous monitoring:** scheduled lifecycle/availability refresh, durable alert history, notification preferences, and email delivery.
 4. **Commercial readiness:** enforce usage limits and active-BOM/component pricing; connect billing only after trial/account lifecycle is verified.
