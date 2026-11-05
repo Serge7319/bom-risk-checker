@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Cadivor",
-  description: "Cadivor engineering workflow migration test build",
+  description: "Cadivor engineering intelligence and BOM analysis platform",
 };
 
 export default function RootLayout({
