@@ -60,12 +60,11 @@ export function CapabilityStub({
   return (
     <section className="cv-card pad cv-empty">
       <strong style={{ display: "block", color: "#19304f", marginBottom: 6 }}>
-        Not available in this test build yet
+        Not available here yet
       </strong>
       <p style={{ margin: 0 }}>
-        {capability} The current Cadivor app remains available at
-        app.cadivor.com. Use BOM Analyzer to review the synthetic analysis
-        workflow available in this test build.
+        {capability} Use BOM Analyzer to review a report using the evidence
+        available in your workspace.
       </p>
       {nextStep ? <div style={{ marginTop: 14 }}>{nextStep}</div> : null}
     </section>
