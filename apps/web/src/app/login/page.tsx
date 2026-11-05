@@ -55,9 +55,9 @@ export default function LoginPage() {
           Sign in
         </h1>
         <p className="cv-page-description" style={{ marginTop: 6 }}>
-          Sign in with the account enabled for this migration test. Saved BOMs
-          here are separate from existing Cadivor records. Supplier and billing
-          connections are not enabled in this build.
+          Sign in to your Cadivor workspace. Supplier evidence uses sample data;
+          live supplier, billing, and automated alert email connections are not
+          connected.
         </p>
         <label htmlFor="email">Email</label>
         <input
