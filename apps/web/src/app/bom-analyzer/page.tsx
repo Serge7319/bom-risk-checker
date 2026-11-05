@@ -71,14 +71,14 @@ export default function BomAnalyzerPage() {
       />
 
       <section className="cv-card pad" style={{ marginBottom: 16 }}>
-        <div className="cv-eyebrow">Persistent workflow · migration workspace</div>
+        <div className="cv-eyebrow">Persistent BOM workflow</div>
         <h3 className="cv-card-title" style={{ fontSize: 18 }}>
           {file ? file.name : "Upload a BOM to begin"}
         </h3>
         <p className="cv-card-subtitle">
-          Saves project, BOM, revision, and analysis in the migration workspace
-          store. Nested Parent MPN rows roll risk to assemblies. Distributors,
-          Stripe, and email stay disabled.
+          Saves project, BOM, revision, and analysis to this workspace. Parent MPN
+          rows roll risk up to assemblies. Supplier connections, billing, and
+          automated alert email are not connected.
         </p>
 
         <div className="cv-bom-stages" style={{ marginTop: 14 }}>
@@ -96,6 +96,7 @@ export default function BomAnalyzerPage() {
         </div>
 
         <div
+          className="cv-bom-fields"
           style={{
             display: "grid",
             gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
@@ -129,7 +130,7 @@ export default function BomAnalyzerPage() {
           </label>
         </div>
 
-        <div className="cv-upload-zone">
+        <div className="cv-upload-zone cv-bom-upload-zone">
           <h3>New analysis</h3>
           <p>
             Flat BOMs still work. For roll-up, include Parent MPN and Line Type
@@ -162,7 +163,7 @@ export default function BomAnalyzerPage() {
 
         {busy ? (
           <div className="cv-loading" style={{ marginTop: 14 }}>
-            Running synthetic analysis and saving to workspace store…
+            Analyzing the BOM with available evidence and saving it to your workspace…
             <div className="cv-progress" aria-hidden>
               <i />
             </div>
