@@ -5,6 +5,8 @@ import unittest
 
 sys.modules.setdefault("requests", types.SimpleNamespace(get=None, post=None))
 
+from tests.streamlit_cache_stub import install_streamlit_cache_stub
+
 
 class _Response:
     def __init__(self, payload):
@@ -19,8 +21,7 @@ class _Response:
 
 class DigiKeySubstitutionTests(unittest.TestCase):
     def setUp(self):
-        streamlit = types.SimpleNamespace(secrets={})
-        sys.modules["streamlit"] = streamlit
+        install_streamlit_cache_stub(secrets={})
         sys.modules.pop("integrations.digikey_client", None)
         self.client = importlib.import_module("integrations.digikey_client")
         self.client.get_secret = lambda *_args, **_kwargs: "client-id"

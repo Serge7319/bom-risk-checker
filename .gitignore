@@ -12,3 +12,7 @@ __pycache__/
 .streamlit/secrets.toml
 .env
 reports/*.xlsx
+
+.venv312/
+.evidence/
+.evidence_rc/

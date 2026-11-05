@@ -20,7 +20,7 @@ def test_approved_finder_consumes_clicked_part_before_mounting_search_input():
     assert 'st.session_state.pop("cadivor_replacement_search_pending", "")' in renderer
     search_call = renderer.index("run_alternative_finder_search(st.session_state, query)")
     page_heading = renderer.index('"<div class=\'cv-ap\'><h1>Find a replacement')
-    reveal = renderer.index('reveal_authenticated_page_body("Alternative Finder")')
+    reveal = renderer.index('reveal_authenticated_page_body("Alternative Finder", force=True)')
     input_mount = renderer.index("key=input_widget_key")
     assert page_heading < input_mount < reveal < search_call
     assert "st.rerun()" not in renderer[search_call:search_call + 180]
@@ -230,7 +230,7 @@ def test_finder_route_stops_after_the_approved_renderer_and_reveals_before_searc
     )[0]
 
     assert branch.index("render_replacement_search()") < branch.index(
-        'reveal_authenticated_page_body("Alternative Finder")'
+        'reveal_authenticated_page_body("Alternative Finder", force=True)'
     ) < branch.index("stop_authenticated_page()")
     assert branch.index("stop_authenticated_page()") < branch.index(
         "from integrations.supplier_aggregator import get_best_part_data"
@@ -238,7 +238,7 @@ def test_finder_route_stops_after_the_approved_renderer_and_reveals_before_searc
     search_call = renderer.index("run_alternative_finder_search(st.session_state, query)")
     heading = renderer.index("<h1>Find a replacement</h1>")
     input_mount = renderer.index("key=input_widget_key")
-    reveal = renderer.index('reveal_authenticated_page_body("Alternative Finder")')
+    reveal = renderer.index('reveal_authenticated_page_body("Alternative Finder", force=True)')
     assert heading < input_mount < reveal < search_call
 
 

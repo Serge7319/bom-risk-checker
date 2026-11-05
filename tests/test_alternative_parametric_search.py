@@ -4,14 +4,16 @@ import unittest
 from pathlib import Path
 
 
-def _identity_cache(*_args, **_kwargs):
-    return lambda function: function
-
+from tests.streamlit_cache_stub import identity_decorator, install_streamlit_cache_stub
 
 if "streamlit" not in sys.modules:
-    sys.modules["streamlit"] = types.SimpleNamespace(cache_data=_identity_cache)
-elif not hasattr(sys.modules["streamlit"], "cache_data"):
-    sys.modules["streamlit"].cache_data = _identity_cache
+    install_streamlit_cache_stub()
+else:
+    st = sys.modules["streamlit"]
+    if not hasattr(st, "cache_data"):
+        st.cache_data = identity_decorator
+    if not hasattr(st, "fragment"):
+        st.fragment = identity_decorator
 sys.modules.setdefault("requests", types.SimpleNamespace(get=None, post=None))
 
 from src.alternative_classification import CLASS_CATALOG_INSUFFICIENT, classification_sort_key

@@ -7,6 +7,7 @@ import pandas as pd
 
 from src.monitoring_intelligence import (
     build_monitoring_action_center,
+    monitoring_preview_parts,
     monitoring_overview_alert_rows,
     monitoring_workflow_urgency,
 )
@@ -88,6 +89,31 @@ class MonitoringIntelligencePresentationTests(unittest.TestCase):
 
         self.assertNotIn("Analysis ID", center["latest_components"].columns)
         self.assertIn("Last Checked", center["latest_components"].columns)
+
+    def test_empty_alert_category_does_not_claim_that_monitored_parts_are_absent(self):
+        history = pd.DataFrame(
+            [
+                {"part_number": "LM358N", "supplier": "DigiKey"},
+                {"part_number": "NE555P", "supplier": "Mouser"},
+            ]
+        )
+        center = build_monitoring_action_center(pd.DataFrame(), history)
+
+        self.assertEqual(center["monitored_components"], 2)
+        self.assertEqual(monitoring_preview_parts(center["active_queue"], "lifecycle"), "No current alerts")
+        self.assertEqual(monitoring_preview_parts(center["active_queue"], "inventory"), "No current alerts")
+
+    def test_monitoring_preview_lists_only_components_matching_the_selected_category(self):
+        active = pd.DataFrame(
+            [
+                {"Part Number": "LM358N", "Alert Type": "Lifecycle Change", "Priority Score": 70},
+                {"Part Number": "NE555P", "Alert Type": "Stock Drop", "Priority Score": 75},
+            ]
+        )
+
+        self.assertEqual(monitoring_preview_parts(active, "lifecycle"), "LM358N")
+        self.assertEqual(monitoring_preview_parts(active, "inventory"), "NE555P")
+        self.assertEqual(monitoring_preview_parts(active, "immediate"), "NE555P")
 
     def test_alert_overview_uses_active_rows_and_keeps_supplier_context(self):
         alerts = pd.DataFrame(

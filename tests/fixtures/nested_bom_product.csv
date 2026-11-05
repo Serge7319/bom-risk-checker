@@ -1,0 +1,8 @@
+MPN,Manufacturer,Description,Quantity,Parent MPN,Line Type
+PROD-TOP,Acme,Top-level product,1,,assembly
+PSU-ASM,Acme,Power supply assembly,2,PROD-TOP,assembly
+REG-5V,Texas Instruments,5V regulator NRND candidate,1,PSU-ASM,part
+CAP-100U,Murata,Bulk capacitor,4,PSU-ASM,part
+MCU-ASM,Acme,Controller assembly,1,PROD-TOP,assembly
+STM32F103,STMicroelectronics,MCU,1,MCU-ASM,part
+EPF10K20RC2404N,Altera,Legacy FPGA NRND,1,MCU-ASM,part

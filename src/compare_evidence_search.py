@@ -8,6 +8,8 @@ row that includes that exact MPN).
 from __future__ import annotations
 
 import re
+from concurrent.futures import ThreadPoolExecutor
+from contextvars import ContextVar, copy_context
 from datetime import datetime, timezone
 from typing import Any, Mapping
 from urllib.parse import quote, urljoin
@@ -31,6 +33,10 @@ PROVIDER_TIMEOUT = "timeout"
 PROVIDER_REDIRECT_LOOP = "redirect_loop"
 PROVIDER_SKIPPED = "skipped"
 PROVIDER_DISCOVERY_LEAD = "discovery_lead"
+
+_PREFETCHED_COMPARE_FETCHES: ContextVar[dict[tuple[str, str], tuple[str, bytes | str, str]] | None] = ContextVar(
+    "cadivor_prefetched_compare_fetches", default=None
+)
 
 # Indexed DigiKey detail URLs found during discovery. Recorded as leads only.
 # Attribute values require the permitted DigiKey API (or another authorized
@@ -77,6 +83,22 @@ _RS_GROUP_SEARCH_LISTING_LEADS: dict[tuple[str, str], str] = {
 
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _parallel_ordered(items: list[Any], worker: Any, *, limit: int = 8) -> list[Any]:
+    """Run independent public-source checks concurrently, preserving source order."""
+    values = list(items or [])
+    if len(values) < 2:
+        return [worker(value) for value in values]
+    with ThreadPoolExecutor(
+        max_workers=min(max(1, int(limit)), len(values)),
+        thread_name_prefix="compare-source",
+    ) as executor:
+        futures = [
+            executor.submit(copy_context().run, worker, value)
+            for value in values
+        ]
+        return [future.result() for future in futures]
 
 
 def _status_row(
@@ -312,6 +334,10 @@ def _fetch_public_https(url: str, *, referer: str = "") -> tuple[str, bytes | st
     """Return (status, payload_or_reason, final_url). status is ok|blocked|error|..."""
     if not _public_datasheet_url(url):
         return PROVIDER_SKIPPED, "URL is not a public HTTPS destination.", url
+    prefetched = _PREFETCHED_COMPARE_FETCHES.get()
+    cache_key = (_canonical_datasheet_url(url), str(referer or ""))
+    if prefetched is not None and cache_key in prefetched:
+        return prefetched[cache_key]
     headers = {
         "Accept": "text/html,application/xhtml+xml,application/pdf;q=0.9,*/*;q=0.8",
         "User-Agent": "CadivorEngineeringReview/1.0 (+https://cadivor.com)",
@@ -699,67 +725,109 @@ def _rs_group_search_listing_lead(*, manufacturer: str, mpn: str) -> dict[str, A
     )
 
 
+def _supplier_record_matches_exact_mpn(
+    record: Mapping[str, Any] | None,
+    *,
+    mpn: str,
+    manufacturer: str,
+) -> bool:
+    if not isinstance(record, Mapping) or not record:
+        return False
+    returned_mpn = str(
+        record.get("manufacturer_part_number")
+        or record.get("Manufacturer Part Number")
+        or record.get("mpn")
+        or ""
+    ).strip()
+    returned_mfr = str(record.get("manufacturer") or record.get("Manufacturer") or "").strip()
+    mpn_ok = bool(returned_mpn) and re.sub(r"[^A-Z0-9]", "", returned_mpn.upper()) == re.sub(
+        r"[^A-Z0-9]", "", str(mpn or "").upper()
+    )
+    mfr_ok = (not manufacturer) or (
+        re.sub(r"[^a-z0-9]+", "", returned_mfr.casefold())
+        == re.sub(r"[^a-z0-9]+", "", str(manufacturer or "").casefold())
+    )
+    return bool(mpn_ok and mfr_ok)
+
+
 def _try_digikey_api_exact_mpn(
     *,
     mpn: str,
     manufacturer: str,
+    supplier_record: Mapping[str, Any] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any] | None]:
-    """Use the existing DigiKey client when credentials are configured."""
-    try:
-        from integrations.supplier_aggregator import _supplier_lookup_callable
-    except Exception as exc:
-        return (
-            _status_row(
-                source="DigiKey",
-                source_type="authorized_distributor_api_lookup",
-                status=PROVIDER_ERROR,
-                detail=f"DigiKey API lookup unavailable ({exc.__class__.__name__}).",
-            ),
-            None,
-        )
-    lookup = _supplier_lookup_callable("DigiKey")
-    if lookup is None:
-        return (
-            _status_row(
-                source="DigiKey",
-                source_type="authorized_distributor_api_lookup",
-                status=PROVIDER_NOT_CONFIGURED,
-                detail=(
-                    "DigiKey API credentials are not configured. Required product "
-                    "secrets: DIGIKEY_CLIENT_ID and DIGIKEY_CLIENT_SECRET. The indexed "
-                    "listing remains a discovery lead only; public DigiKey HTML is "
-                    "HTTP 403-blocked and is not used. RES10K values stay unverified "
-                    "until the API retrieves this exact MPN or an exact-MPN datasheet "
-                    "is uploaded through Compare Parts."
-                    if str(mpn).strip().upper() == "RES10K"
-                    else (
-                        "DigiKey API credentials are not configured. Required product "
-                        "secrets: DIGIKEY_CLIENT_ID and DIGIKEY_CLIENT_SECRET. Exact-MPN "
-                        "API lookup was not available."
-                    )
+    """Use DigiKey listing data already retrieved for this compare when possible."""
+    reused = None
+    if isinstance(supplier_record, Mapping) and supplier_record:
+        source_name = str(
+            supplier_record.get("source")
+            or supplier_record.get("Source")
+            or supplier_record.get("supplier")
+            or ""
+        ).strip().casefold()
+        if "digikey" in source_name and _supplier_record_matches_exact_mpn(
+            supplier_record, mpn=mpn, manufacturer=manufacturer
+        ):
+            reused = dict(supplier_record)
+    if reused is not None:
+        result = reused
+    else:
+        try:
+            from integrations.supplier_aggregator import _supplier_lookup_callable
+        except Exception as exc:
+            return (
+                _status_row(
+                    source="DigiKey",
+                    source_type="authorized_distributor_api_lookup",
+                    status=PROVIDER_ERROR,
+                    detail=f"DigiKey listing lookup unavailable ({exc.__class__.__name__}).",
                 ),
-            ),
-            None,
-        )
-    try:
-        result = lookup(mpn) or {}
-    except Exception as exc:
-        return (
-            _status_row(
-                source="DigiKey",
-                source_type="authorized_distributor_api_lookup",
-                status=PROVIDER_ERROR,
-                detail=f"DigiKey API lookup failed ({exc.__class__.__name__}: {exc}).",
-            ),
-            None,
-        )
+                None,
+            )
+        lookup = _supplier_lookup_callable("DigiKey")
+        if lookup is None:
+            return (
+                _status_row(
+                    source="DigiKey",
+                    source_type="authorized_distributor_api_lookup",
+                    status=PROVIDER_NOT_CONFIGURED,
+                    detail=(
+                        "DigiKey listing credentials are not configured. The indexed "
+                        "listing remains a discovery lead only; the DigiKey product page "
+                        "is blocked for automated retrieval and is not used. RES10K values "
+                        "stay unverified until DigiKey returns this exact MPN or an "
+                        "exact-MPN datasheet is uploaded through Compare Parts."
+                        if str(mpn).strip().upper() == "RES10K"
+                        else (
+                            "DigiKey listing credentials are not configured. Exact-MPN "
+                            "listing lookup was not available."
+                        )
+                    ),
+                ),
+                None,
+            )
+        try:
+            result = lookup(mpn) or {}
+        except Exception as exc:
+            return (
+                _status_row(
+                    source="DigiKey",
+                    source_type="authorized_distributor_api_lookup",
+                    status=PROVIDER_ERROR,
+                    detail=(
+                        f"DigiKey product listing lookup failed "
+                        f"({exc.__class__.__name__}: {exc})."
+                    ),
+                ),
+                None,
+            )
     if not isinstance(result, dict) or not result:
         return (
             _status_row(
                 source="DigiKey",
                 source_type="authorized_distributor_api_lookup",
                 status=PROVIDER_NOT_FOUND,
-                detail="DigiKey API returned no exact-MPN record. No values were taken.",
+                detail="DigiKey product listing returned no exact-MPN record. No values were taken.",
             ),
             None,
         )
@@ -784,13 +852,13 @@ def _try_digikey_api_exact_mpn(
                 source_type="authorized_distributor_api_lookup",
                 status=PROVIDER_NOT_FOUND,
                 detail=(
-                    "DigiKey API response did not verify the entered manufacturer and "
+                    "DigiKey product listing did not verify the entered manufacturer and "
                     "exact MPN. No values were taken."
                 ),
             ),
             None,
         )
-    # Represent API parametric fields as a cited evidence document.
+    # Represent DigiKey listing fields as a cited evidence document.
     lines = [f"Manufacturer: {returned_mfr}", f"Model: {returned_mpn}"]
     for label, keys in (
         ("Resistance", ("resistance", "Resistance")),
@@ -811,14 +879,14 @@ def _try_digikey_api_exact_mpn(
         "available": True,
         "pages": [
             {
-                "page": "DigiKey API",
-                "document": "DigiKey authorized API",
+                "page": "DigiKey product listing",
+                "document": "DigiKey product listing",
                 "text": "\n".join(lines),
             }
         ],
         "page_count": 1,
-        "extraction_method": "authorized_distributor_api",
-        "source_name": "DigiKey authorized API",
+        "extraction_method": "authorized_distributor_listing",
+        "source_name": "DigiKey product listing",
         "source_type": "authorized_distributor_api",
         "source_url": str(result.get("product_detail_url") or result.get("datasheet_url") or ""),
         "final_url": str(result.get("product_detail_url") or result.get("datasheet_url") or ""),
@@ -830,7 +898,7 @@ def _try_digikey_api_exact_mpn(
             source_type="authorized_distributor_api_lookup",
             url=str(doc.get("final_url") or ""),
             status=PROVIDER_AVAILABLE,
-            detail="DigiKey API retrieved a record naming the entered manufacturer and exact MPN.",
+            detail="DigiKey product listing retrieved a record naming the entered manufacturer and exact MPN.",
             identity_verified=True,
         ),
         doc,
@@ -894,13 +962,14 @@ def _source_field_labels(text: str) -> list[str]:
     return labels
 
 
-def gather_part_evidence(
+def _gather_part_evidence_from_sources(
     *,
     mpn: str,
     manufacturer: str = "",
     datasheet_url: str = "",
     product_detail_url: str = "",
     probe_distributor_pages: bool = True,
+    supplier_record: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Search manufacturer and authorized sources for exact-MPN evidence."""
     sources: list[dict[str, Any]] = []
@@ -949,12 +1018,18 @@ def gather_part_evidence(
         )
 
     # 2) Manufacturer product / order-code pages.
-    for source_type, url in _manufacturer_product_candidates(
+    product_candidates = _manufacturer_product_candidates(
         manufacturer=requested_manufacturer,
         mpn=requested_mpn,
         product_detail_url=product_detail_url,
+    )
+    product_fetches = _parallel_ordered(
+        product_candidates,
+        lambda candidate: _fetch_public_https(candidate[1], referer=candidate[1]),
+    )
+    for (source_type, url), (status, payload, final_url) in zip(
+        product_candidates, product_fetches
     ):
-        status, payload, final_url = _fetch_public_https(url, referer=url)
         if status != PROVIDER_AVAILABLE:
             sources.append(
                 _status_row(
@@ -1008,10 +1083,16 @@ def gather_part_evidence(
             documents.append(doc)
 
     # 2b) Manufacturer site search pages (exact-MPN still required in body).
-    for source_type, url in _manufacturer_search_candidates(
+    manufacturer_search_candidates = _manufacturer_search_candidates(
         manufacturer=requested_manufacturer, mpn=requested_mpn
+    )
+    manufacturer_search_fetches = _parallel_ordered(
+        manufacturer_search_candidates,
+        lambda candidate: _fetch_public_https(candidate[1]),
+    )
+    for (source_type, url), (status, payload, final_url) in zip(
+        manufacturer_search_candidates, manufacturer_search_fetches
     ):
-        status, payload, final_url = _fetch_public_https(url)
         identity_ok = False
         detail = str(payload)
         if status == PROVIDER_AVAILABLE and isinstance(payload, str):
@@ -1046,17 +1127,23 @@ def gather_part_evidence(
             for row in sources
             if row.get("url")
         }
+        catalog_candidates = []
         for source_type, url in _ohmite_order_code_catalog_candidates(requested_mpn):
             key = _canonical_datasheet_url(url)
             if key in seen_urls:
                 continue
             seen_urls.add(key)
-            row, doc = _probe_exact_mpn_source(
-                source_type=source_type,
-                url=url,
+            catalog_candidates.append((source_type, url))
+        catalog_results = _parallel_ordered(
+            catalog_candidates,
+            lambda candidate: _probe_exact_mpn_source(
+                source_type=candidate[0],
+                url=candidate[1],
                 manufacturer=requested_manufacturer,
                 mpn=requested_mpn,
             )
+        )
+        for row, doc in catalog_results:
             sources.append(row)
             if doc is not None:
                 documents.append(doc)
@@ -1076,19 +1163,26 @@ def gather_part_evidence(
             for row in sources
             if row.get("url")
         }
-        for source_type, url in _authorized_distributor_product_candidates(
+        authorized_candidates = _authorized_distributor_product_candidates(
             manufacturer=requested_manufacturer, mpn=requested_mpn
-        ):
+        )
+        filtered_authorized_candidates = []
+        for source_type, url in authorized_candidates:
             key = _canonical_datasheet_url(url)
             if key in seen_auth_urls:
                 continue
             seen_auth_urls.add(key)
-            row, doc = _probe_authorized_distributor_product_page(
-                source_type=source_type,
-                url=url,
+            filtered_authorized_candidates.append((source_type, url))
+        authorized_results = _parallel_ordered(
+            filtered_authorized_candidates,
+            lambda candidate: _probe_authorized_distributor_product_page(
+                source_type=candidate[0],
+                url=candidate[1],
                 manufacturer=requested_manufacturer,
                 mpn=requested_mpn,
             )
+        )
+        for row, doc in authorized_results:
             sources.append(row)
             if doc is not None:
                 documents.append(doc)
@@ -1103,16 +1197,33 @@ def gather_part_evidence(
     if lead is not None:
         sources.append(lead)
     digikey_status, digikey_doc = _try_digikey_api_exact_mpn(
-        mpn=requested_mpn, manufacturer=requested_manufacturer
+        mpn=requested_mpn,
+        manufacturer=requested_manufacturer,
+        supplier_record=supplier_record,
     )
     sources.append(digikey_status)
     if digikey_doc is not None:
         documents.append(digikey_doc)
 
+    digikey_verified = bool(
+        digikey_doc is not None and digikey_status.get("identity_verified")
+    )
+    # When DigiKey already verified the exact MPN, skip slow public HTML probes.
+    # Manufacturer PDF/product pages above still contribute when available.
+    skip_public_html = digikey_verified
+
     # 5) Other public distributor product pages — record access; never use 403 bodies.
-    if probe_distributor_pages:
-        for source_type, url in _distributor_public_candidates(requested_mpn, requested_manufacturer):
-            status, payload, final_url = _fetch_public_https(url)
+    if probe_distributor_pages and not skip_public_html:
+        distributor_candidates = _distributor_public_candidates(
+            requested_mpn, requested_manufacturer
+        )
+        distributor_fetches = _parallel_ordered(
+            distributor_candidates,
+            lambda candidate: _fetch_public_https(candidate[1]),
+        )
+        for (source_type, url), (status, payload, final_url) in zip(
+            distributor_candidates, distributor_fetches
+        ):
             detail = str(payload) if status != PROVIDER_AVAILABLE else "Page retrieved."
             identity_ok = False
             if status == PROVIDER_AVAILABLE and isinstance(payload, str):
@@ -1153,10 +1264,21 @@ def gather_part_evidence(
             )
 
     # 6) Parts aggregators — coverage only; never attribute compare values from them.
-    for source_type, url in _aggregator_listing_candidates(
-        manufacturer=requested_manufacturer, mpn=requested_mpn
+    # Skip when DigiKey already verified the exact MPN — these pages are not value sources.
+    if skip_public_html:
+        aggregator_candidates = []
+        aggregator_fetches = []
+    else:
+        aggregator_candidates = _aggregator_listing_candidates(
+            manufacturer=requested_manufacturer, mpn=requested_mpn
+        )
+        aggregator_fetches = _parallel_ordered(
+            aggregator_candidates,
+            lambda candidate: _fetch_public_https(candidate[1]),
+        )
+    for (source_type, url), (status, payload, final_url) in zip(
+        aggregator_candidates, aggregator_fetches
     ):
-        status, payload, final_url = _fetch_public_https(url)
         detail = str(payload) if status != PROVIDER_AVAILABLE else (
             "Aggregator listing retrieved. It is not an authorized distributor source; "
             "no attribute values were taken."
@@ -1217,6 +1339,114 @@ def gather_part_evidence(
         "primary_document": primary,
         "identity": primary_identity,
     }
+
+
+def gather_part_evidence(
+    *,
+    mpn: str,
+    manufacturer: str = "",
+    datasheet_url: str = "",
+    product_detail_url: str = "",
+    probe_distributor_pages: bool = True,
+    supplier_record: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Fetch independent source pages together, then apply the normal evidence gates.
+
+    Every source still gets its own status and identity check. Prefetching removes
+    serial source-group timeouts without changing which sources are searched or
+    which documents are allowed to contribute values.
+    """
+    requested_mpn = str(mpn or "").strip()
+    requested_manufacturer = str(manufacturer or "").strip()
+    candidates: list[tuple[str, str]] = []
+    candidates.extend(
+        (url, url)
+        for _, url in _manufacturer_product_candidates(
+            manufacturer=requested_manufacturer,
+            mpn=requested_mpn,
+            product_detail_url=product_detail_url,
+        )
+    )
+    candidates.extend(
+        (url, "")
+        for _, url in _manufacturer_search_candidates(
+            manufacturer=requested_manufacturer, mpn=requested_mpn
+        )
+    )
+    maker_key = re.sub(r"[^a-z0-9]+", "", requested_manufacturer.casefold())
+    if maker_key == "ohmite":
+        candidates.extend(
+            (url, url)
+            for _, url in _ohmite_order_code_catalog_candidates(requested_mpn)
+        )
+    digikey_reusable = (
+        isinstance(supplier_record, Mapping)
+        and supplier_record
+        and "digikey"
+        in str(
+            supplier_record.get("source")
+            or supplier_record.get("Source")
+            or supplier_record.get("supplier")
+            or ""
+        ).casefold()
+        and _supplier_record_matches_exact_mpn(
+            supplier_record, mpn=requested_mpn, manufacturer=requested_manufacturer
+        )
+    )
+    effective_probe = bool(probe_distributor_pages) and not digikey_reusable
+    if effective_probe:
+        candidates.extend(
+            (url, "")
+            for _, url in _authorized_distributor_product_candidates(
+                manufacturer=requested_manufacturer, mpn=requested_mpn
+            )
+        )
+        candidates.extend(
+            (url, "")
+            for _, url in _distributor_public_candidates(
+                requested_mpn, requested_manufacturer
+            )
+        )
+    if not digikey_reusable:
+        candidates.extend(
+            (url, "")
+            for _, url in _aggregator_listing_candidates(
+                manufacturer=requested_manufacturer, mpn=requested_mpn
+            )
+        )
+
+    unique: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for url, referer in candidates:
+        key = (_canonical_datasheet_url(url), referer)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append((url, referer))
+
+    fetched = _parallel_ordered(
+        unique,
+        lambda candidate: _fetch_public_https(
+            candidate[0], referer=candidate[1]
+        ),
+        limit=10,
+    )
+    cache = {
+        (_canonical_datasheet_url(url), referer): result
+        for (url, referer), result in zip(unique, fetched)
+    }
+    token = _PREFETCHED_COMPARE_FETCHES.set(cache)
+    try:
+        return _gather_part_evidence_from_sources(
+            mpn=requested_mpn,
+            manufacturer=requested_manufacturer,
+            datasheet_url=datasheet_url,
+            product_detail_url=product_detail_url,
+            probe_distributor_pages=effective_probe,
+            supplier_record=supplier_record,
+        )
+    finally:
+        _PREFETCHED_COMPARE_FETCHES.reset(token)
 
 
 def prefer_verified_document(*documents: Mapping[str, Any] | None) -> dict[str, Any] | None:

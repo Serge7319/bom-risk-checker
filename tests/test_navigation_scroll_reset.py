@@ -23,8 +23,22 @@ def test_scroll_reset_runs_in_app_document_until_destination_mounts():
     assert "element.scrollHeight > element.clientHeight + 2" in reset
     assert "state.timer = window.setInterval(state.reset, 100)" in reset
     assert "state.settled >= 2" in reset
+    # Bound timeout only — never release mid-scroll after 250ms (4:26 jump).
+    assert "destinationMounted && Date.now() - state.startedAt > 250" not in reset
+    assert "Date.now() - state.startedAt > 900" in reset
     assert "Date.now() - state.startedAt > 10000" in reset
     assert "components.html" not in reset
+
+
+def test_instant_navigation_cover_keeps_rail_continuity_until_release():
+    bridge = BROWSER_NAVIGATION
+    assert "cadivor-rail-continuity" in bridge
+    assert "ensureRailContinuity" in bridge
+    remove = bridge.split("function shouldRemoveInstantCover", 1)[1].split(
+        "function queueReleaseCheck", 1
+    )[0]
+    assert "destinationSurfaceReady(cover) && !pythonCover" not in remove
+    assert "hasReleasedDestination" in remove
 
 
 def test_analysis_submission_and_report_switch_request_same_route_scroll_reset():
@@ -38,21 +52,39 @@ def test_analysis_submission_and_report_switch_request_same_route_scroll_reset()
     )[0]
 
 
+def test_compare_parts_submission_keeps_form_and_result_at_the_top():
+    pages = (ROOT / "src" / "ui" / "approved_pages.py").read_text(encoding="utf-8")
+    compare = pages.split("def render_compare_live()", 1)[1].split(
+        "def render_datasheet_live()", 1
+    )[0]
+    assert "request_main_scroll_reset()" in compare
+    assert compare.index("request_main_scroll_reset()") < compare.index(
+        "run_compare_parts_many(requested_parts)"
+    )
+
+
 def test_long_bom_analysis_keeps_top_anchor_until_progress_finishes_or_user_scrolls():
-    progress = (ROOT / "src" / "ui" / "approved_pages.py").read_text(encoding="utf-8")
-    start = progress.index("if analysis_running and not results_visible:")
-    end = progress.index('with st.container(key="approved_bom_title")', start)
-    active_scroll = progress[start:end]
+    pages = (ROOT / "src" / "ui" / "approved_pages.py").read_text(encoding="utf-8")
+    runtime = (ROOT / "src" / "authenticated_runtime.py").read_text(encoding="utf-8")
+    start = pages.index("if analysis_running:")
+    end = pages.index('with st.container(key="approved_bom_title")', start)
+    catalog_during_analysis = pages[start:end]
 
-    assert "window.setInterval(state.reset, 350)" in active_scroll
-    assert "const progress = doc.querySelector('.st-key-bom8_analysis_progress_card')" in active_scroll
-    assert "doc.addEventListener('wheel', cancelOnScroll" in active_scroll
-    assert "doc.addEventListener('touchmove', cancelOnScroll" in active_scroll
-    assert "Date.now() - state.startedAt > 600000" in active_scroll
-    assert "Date.now() - state.missingSince > 10000" in active_scroll
-    assert 'cadivor_bom_analysis_scroll_token' in active_scroll
+    # Catalog must not paint filters/table/anchor above the live progress card.
+    assert "Progress/handoff owns the workspace" in catalog_during_analysis
+    assert "return" in catalog_during_analysis
+    assert 'cadivor_bom_analysis_handoff' in pages
+    assert "window.setInterval(state.reset, 350)" not in catalog_during_analysis
+    assert 'cadivor-bom-analysis-top-anchor' not in catalog_during_analysis
 
-    submit = RUNTIME.split("if _approved_bom_submitted and uploaded_file is not None:", 1)[1]
+    # Scroll reset is owned by the unified early analysis surface + fragment completion.
+    early = runtime.split("Unified analysis surface:", 1)[1]
+    assert "request_main_scroll_reset()" in early.split("def _render_active_bom_analysis():", 1)[0]
+    assert early.split("def _render_active_bom_analysis():", 1)[1].count(
+        "request_main_scroll_reset()"
+    ) >= 3
+
+    submit = runtime.split("if _approved_bom_submitted and uploaded_file is not None:", 1)[1]
     assert "request_main_scroll_reset()" in submit.split("st.rerun()", 1)[0]
     selector_callback = EI_REPORT.split(
         "def _navigate_to_detailed_report_analysis", 1
@@ -84,3 +116,34 @@ def test_browser_bridge_releases_navigation_cover_only_after_scroll_is_stable():
     )
     assert "routeReleaseStableChecks >= 3" in helper
     assert "releaseNavigationCoverAfterScrollReset();" in bridge
+    assert "cadivor-rail-continuity" in bridge
+
+
+def test_bom_progress_uses_the_reserved_top_slot_without_hiding_the_workspace():
+    styles = (ROOT / "src" / "assets" / "css" / "monitoring_home_alignment.css").read_text(
+        encoding="utf-8"
+    )
+    source = (ROOT / "src" / "authenticated_runtime.py").read_text(encoding="utf-8")
+    early_surface = source.index("Unified analysis surface:")
+    surface_end = source.index("stop_authenticated_page()", early_surface)
+    surface = source[early_surface:surface_end]
+    progress = source.index(
+        'with st.container(key="bom8_analysis_progress_card", border=True):',
+        early_surface,
+    )
+
+    # Preparing and progress share one top card before catalog CSS.
+    assert early_surface < progress < surface_end
+    assert "bom_analysis_status_slot = st.empty()" in surface
+    assert "with bom_analysis_status_slot.container():" in surface
+    assert "preparing_top_path" in surface
+    assert "progress_top_path" in surface
+    assert "progress_handoff_path" in surface
+    assert "Preparing your BOM analysis" in surface
+    assert "display:none !important" in surface
+    assert ".st-key-bom9_workspace_grid" in styles
+    assert ".st-key-bom8_analysis_preparing_card" in styles
+    assert "st-key-bom8_analysis_progress_card, .st-key-bom8_analysis_preparing_card" in styles
+    assert "[data-testid=\"stElementContainer\"]:not(:has(.st-key-bom8_analysis_progress_card))" not in styles
+    assert "position: relative !important;" in styles
+    assert "position: sticky !important;" not in styles

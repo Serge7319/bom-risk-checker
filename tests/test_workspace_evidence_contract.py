@@ -50,7 +50,7 @@ class WorkspaceEvidenceContractTests(unittest.TestCase):
             {"Recommendation": "Complete sourcing data", "Supplier Sources": 3, "Lifecycle Status": "Active"},
         )
         self.assertIn("3 recorded sources", html)
-        self.assertIn("1 offer row in the table", html)
+        self.assertIn("1 saved offer row shown", html)
         self.assertNotIn("Resolve the verified supply gap", html)
 
     def test_confirmed_zero_stock_is_not_called_missing(self):

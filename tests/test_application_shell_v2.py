@@ -280,7 +280,11 @@ class ApplicationShellV2Tests(unittest.TestCase):
         self.assertIn('type="secondary"', nav_render)
         self.assertNotIn('type="primary" if is_active', nav_render)
         self.assertIn('st.session_state.get("cadivor_route")', source)
-        self.assertIn("include_analysis_reports=bool(active_analysis_id)", source)
+        self.assertIn(
+            "include_analysis_reports = bool(active_analysis_id) and not _bom_shell_handoff",
+            source,
+        )
+        self.assertIn('cadivor_bom_shell_nav_hold', source)
 
     def test_saved_bom_menu_names_engineering_intelligence(self) -> None:
         source = Path(__file__).resolve().parents[1] / "src" / "ui" / "approved_pages.py"

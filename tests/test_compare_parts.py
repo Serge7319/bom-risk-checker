@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import unittest
+from threading import Barrier
 from pathlib import Path
 from unittest.mock import patch
 
@@ -274,6 +275,16 @@ class ComparePartsCoreTests(unittest.TestCase):
         self.assertFalse(claim_compare_parts_submit(session, "AAA", "BBB", now=100.5))
         self.assertTrue(claim_compare_parts_submit(session, "AAA", "BBB", now=103.0))
 
+    def test_submit_claim_rejects_a_second_pair_while_first_is_running(self):
+        session = {
+            "compare_parts_result": {
+                "status": "running",
+                "part_a": "AAA",
+                "part_b": "BBB",
+            }
+        }
+        self.assertFalse(claim_compare_parts_submit(session, "CCC", "DDD", now=103.0))
+
     def test_pdf_parity_with_user_facing_fields(self):
         from io import BytesIO
 
@@ -312,6 +323,39 @@ class ComparePartsCoreTests(unittest.TestCase):
         self.assertEqual(result["status"], "completed")
         self.assertEqual(result["comparison"]["family"], "Capacitor")
 
+    def test_run_compare_parts_keeps_fail_closed_matrix_when_both_lookups_miss(self):
+        empty_evidence = {
+            "sources": [],
+            "documents": [],
+            "verified_documents": [],
+            "primary_document": None,
+            "identity": {
+                "attached": False,
+                "verified": False,
+                "mpn_verified": False,
+                "manufacturer_verified": False,
+                "reason": "No datasheet was attached for this part.",
+            },
+        }
+        with (
+            patch("src.parts_compare.lookup_part_for_compare", return_value={}),
+            patch("src.compare_evidence_search.gather_part_evidence", return_value=empty_evidence),
+        ):
+            result = run_compare_parts(
+                "LM358DR",
+                "NE555P",
+                extract_linked_datasheets=False,
+            )
+        comparison = result.get("comparison")
+        self.assertEqual(result["status"], "failed")
+        self.assertIn("does not infer compatibility", result["error"])
+        self.assertIsInstance(comparison, dict)
+        self.assertTrue(comparison["rows"])
+        self.assertEqual(sum(comparison["counts"].values()), len(comparison["rows"]))
+        self.assertTrue(
+            all(FINDING_NEEDS_DATA == row["Assessment"] for row in comparison["rows"])
+        )
+
     def test_run_compare_parts_many_builds_a_third_column_and_retrieves_once(self):
         empty_evidence = {
             "sources": [],
@@ -329,13 +373,13 @@ class ComparePartsCoreTests(unittest.TestCase):
         with (
             patch(
                 "src.parts_compare.lookup_part_for_compare",
-                side_effect=[
-                    _cap(),
-                    _cap(mpn="ALT-B"),
-                    _cap(v="25V", mpn="ALT-C"),
-                ],
+                side_effect=lambda mpn: {
+                    "C0603C104K5RACTU": _cap(),
+                    "ALT-B": _cap(mpn="ALT-B"),
+                    "ALT-C": _cap(v="25V", mpn="ALT-C"),
+                }[mpn],
             ) as lookup,
-            patch("src.compare_evidence_search.gather_part_evidence", return_value=empty_evidence),
+            patch("src.compare_evidence_search.gather_part_evidence", return_value=empty_evidence) as gather,
         ):
             result = run_compare_parts_many(["C0603C104K5RACTU", "ALT-B", "ALT-C"])
 
@@ -349,6 +393,80 @@ class ComparePartsCoreTests(unittest.TestCase):
         self.assertEqual(voltage["Part C"], "25V")
         self.assertIn("Part C:", voltage["Assessment"])
         self.assertEqual(lookup.call_count, 3)
+        # Resolve each entered part once. Part A is shared by both comparisons,
+        # so searching its linked evidence again for Part C only adds latency.
+        self.assertEqual(gather.call_count, 3)
+
+    def test_run_compare_parts_many_retrieves_each_part_concurrently_in_input_order(self):
+        barrier = Barrier(2)
+        empty_evidence = {
+            "sources": [],
+            "documents": [],
+            "verified_documents": [],
+            "primary_document": None,
+            "identity": {
+                "attached": False,
+                "verified": False,
+                "mpn_verified": False,
+                "manufacturer_verified": False,
+                "reason": "No datasheet was attached for this part.",
+            },
+        }
+
+        def lookup(mpn):
+            barrier.wait(timeout=2)
+            return _cap(mpn=mpn)
+
+        with (
+            patch("src.parts_compare.lookup_part_for_compare", side_effect=lookup) as lookup_mock,
+            patch("src.compare_evidence_search.gather_part_evidence", return_value=empty_evidence),
+        ):
+            result = run_compare_parts_many(["BASE", "CANDIDATE"])
+
+        self.assertEqual(lookup_mock.call_count, 2)
+        self.assertEqual(result["part_numbers"], ["BASE", "CANDIDATE"])
+        self.assertEqual(result["comparison"]["part_a"]["mpn"], "BASE")
+        self.assertEqual(result["comparison"]["part_b"]["mpn"], "CANDIDATE")
+
+    def test_run_compare_parts_many_keeps_fail_closed_matrix_when_all_lookups_miss(self):
+        empty_evidence = {
+            "sources": [],
+            "documents": [],
+            "verified_documents": [],
+            "primary_document": None,
+            "identity": {
+                "attached": False,
+                "verified": False,
+                "mpn_verified": False,
+                "manufacturer_verified": False,
+                "reason": "No datasheet was attached for this part.",
+            },
+        }
+        with (
+            patch("src.parts_compare.lookup_part_for_compare", return_value={}) as lookup,
+            patch("src.compare_evidence_search.gather_part_evidence", return_value=empty_evidence),
+        ):
+            result = run_compare_parts_many(
+                ["LM358DR", "NE555P"],
+                extract_linked_datasheets=False,
+            )
+
+        comparison = result.get("comparison")
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["part_numbers"], ["LM358DR", "NE555P"])
+        self.assertIn("does not infer compatibility", result["error"])
+        self.assertIsInstance(comparison, dict)
+        self.assertEqual(comparison["part_a"]["mpn"], "LM358DR")
+        self.assertEqual(comparison["part_b"]["mpn"], "NE555P")
+        self.assertTrue(comparison["rows"])
+        self.assertEqual(
+            sum(comparison["counts"].values()),
+            len(comparison["rows"]),
+        )
+        self.assertTrue(
+            all(FINDING_NEEDS_DATA in row["Assessment"] for row in comparison["rows"])
+        )
+        self.assertEqual(lookup.call_count, 2)
 
     def test_run_compare_parts_many_rejects_duplicates_and_more_than_three(self):
         with patch("src.parts_compare.lookup_part_for_compare") as lookup:
@@ -379,6 +497,30 @@ class ComparePartsCoreTests(unittest.TestCase):
 
 
 class ComparePartsUiWiringTests(unittest.TestCase):
+    def test_authenticated_compare_page_submits_background_job_and_polls_it(self):
+        root = Path(__file__).resolve().parents[1]
+        page = (root / "src" / "pages" / "compare_parts.py").read_text(encoding="utf-8")
+        self.assertIn("submit_compare_parts(", page)
+        self.assertIn("_render_compare_parts_job_status()", page)
+        self.assertIn("@st.fragment(run_every=\"1s\")", page)
+        self.assertIn("COMPARE_PARTS_FUTURE_KEY", page)
+        self.assertNotIn("result = run_compare_parts(", page)
+        self.assertIn('"bytes": payload', page)
+
+    def test_background_compare_submit_returns_without_running_the_search_inline(self):
+        from src.parts_compare import submit_compare_parts_many
+
+        future = object()
+        with patch(
+            "src.parts_compare._COMPARE_PARTS_EXECUTOR.submit",
+            return_value=future,
+        ) as submit:
+            returned = submit_compare_parts_many(["LM358DR", "NE555P"])
+        self.assertIs(returned, future)
+        args, kwargs = submit.call_args
+        self.assertEqual(args[1], ["LM358DR", "NE555P"])
+        self.assertEqual(kwargs, {})
+
     def test_nav_and_runtime_wire_compare_parts(self):
         root = Path(__file__).resolve().parents[1]
         shell = (root / "src" / "ui" / "unified_shell.py").read_text(encoding="utf-8")
@@ -386,7 +528,7 @@ class ComparePartsUiWiringTests(unittest.TestCase):
         page = (root / "src" / "pages" / "compare_parts.py").read_text(encoding="utf-8")
         self.assertIn('"Compare Parts"', shell)
         self.assertIn('"Compare Parts"', runtime)
-        self.assertIn("render_compare_parts_page", runtime)
+        self.assertIn("render_compare_live", runtime)
         self.assertIn("compare_parts_form", page)
         self.assertIn("cadivor_comparison_matrix_dataframe", page)
         self.assertIn("user_may_view_comparison_diagnostics", page)
@@ -415,13 +557,16 @@ class ComparePartsUiWiringTests(unittest.TestCase):
         )[0]
         self.assertIn('"＋ Add part"', renderer)
         self.assertIn('st.text_input("Part C"', renderer)
-        self.assertIn("run_compare_parts_many(requested_parts)", renderer)
+        self.assertIn("submit_compare_parts_many(", renderer)
+        self.assertIn("cadivor_compare_future", renderer)
+        self.assertIn("_render_compare_parts_job_status()", renderer)
         self.assertIn('"Add to comparison"', finder)
         self.assertIn("<h3>Compare up to 3 parts</h3>", finder)
         self.assertIn('"Compare part numbers manually"', finder)
-        self.assertIn('st.session_state["approved_compare_b"] = candidate_b', finder)
-        self.assertIn('st.session_state["approved_compare_c"] = candidate_c', finder)
-        self.assertIn('st.session_state["approved_compare_auto_run_pending"] = True', finder)
+        self.assertIn('st.session_state["cadivor_compare_part_b"] = candidate_b', finder)
+        self.assertIn('st.session_state["cadivor_compare_part_c"] = candidate_c', finder)
+        self.assertIn('st.session_state["cadivor_compare_pending_handoff"] = {', finder)
+        self.assertIn('"auto_run": True', finder)
 
     def test_approved_compare_hides_unused_part_and_row_assessment_copy(self):
         root = Path(__file__).resolve().parents[1]
@@ -456,7 +601,34 @@ class ComparePartsUiWiringTests(unittest.TestCase):
         self.assertEqual(rows[0]["Part A"], "0603")
         self.assertEqual(rows[0]["Part B"], "0603")
         self.assertEqual(rows[0]["Assessment"], FINDING_COMPATIBLE)
-        self.assertNotIn("Key", rows[0])
+
+    def test_user_facing_evidence_uses_plain_language_and_keeps_citations(self):
+        raw = (
+            "Part A DigiKey authorized API does not state this field. "
+            "Part A value is from the supplier catalog. "
+            "No DigiKey authorized API citation. "
+            "Part B datasheet p. 3. Source URL: https://example.com/part.pdf "
+            "Source field label: Mounting style. "
+            "Extraction method: native PDF text. OCR is not supported."
+        )
+        visible_row = user_facing_compare_rows(
+            [{"Attribute": "Mounting", "Evidence": raw}]
+        )[0]
+        visible = visible_row["Evidence"]
+
+        for internal_term in (
+            "api",
+            "supplier catalog",
+            "source url",
+            "https://",
+            "extraction method",
+            "native pdf",
+        ):
+            self.assertNotIn(internal_term, visible.casefold())
+        self.assertIn("DigiKey listing", visible)
+        self.assertIn("p. 3", visible)
+        self.assertIn("Source label: Mounting style", visible)
+        self.assertNotIn("Key", visible_row)
 
 
 if __name__ == "__main__":

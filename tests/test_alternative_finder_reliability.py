@@ -31,13 +31,12 @@ def _digikey_direct_pair(mpn: str, original: str = "C0603C104K5RACTU", **extra):
 
 
 
-def _cache_data(*_args, **_kwargs):
-    return lambda func: func
+from tests.streamlit_cache_stub import install_streamlit_cache_stub
 
 
 class AlternativeFinderReliabilityTests(unittest.TestCase):
     def setUp(self):
-        sys.modules["streamlit"] = types.SimpleNamespace(cache_data=_cache_data)
+        install_streamlit_cache_stub()
         sys.modules.pop("src.alternative_engine", None)
         sys.modules.pop("integrations.supplier_aggregator", None)
         self.engine = importlib.import_module("src.alternative_engine")

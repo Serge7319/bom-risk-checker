@@ -11,14 +11,16 @@ from typing import Any, MutableMapping
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = (ROOT / "src" / "ui" / "main_transition.py").read_text(encoding="utf-8")
+UNIFIED_SHELL = (ROOT / "src" / "ui" / "unified_shell.py").read_text(encoding="utf-8")
 
 
 class MainTransitionSlowRouteContractTests(unittest.TestCase):
     def test_opening_clips_the_complete_main_viewport(self):
-        self.assertIn(
-            "width:calc(100vw - var(--cv-foundation-rail,228px))!important",
-            SOURCE,
-        )
+        # Navigation cover fills the already rail-offset stMain containing block.
+        # Re-adding the rail inset caused the production narrow-strip collapse.
+        self.assertIn("left:0!important", SOURCE)
+        self.assertIn("right:0!important", SOURCE)
+        self.assertIn("width:auto!important", SOURCE)
         self.assertIn("clip-path:inset(0)!important", SOURCE)
         self.assertIn("z-index:2147483000!important", SOURCE)
         self.assertIn("pointer-events:auto!important", SOURCE)
@@ -31,6 +33,28 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
         )
         role_lookup = runtime.index("def _read_users_role_for_shell")
         self.assertLess(cover, role_lookup)
+
+    def test_outgoing_route_is_hidden_under_opaque_cover_until_destination_release(self):
+        stale_hide_rule = UNIFIED_SHELL.split(
+            "Same-page remounts (CSV upload on New BOM)",
+            1,
+        )[1].split("/* Retired Streamlit shell containers", 1)[0]
+        self.assertIn('[data-stale="true"]', stale_hide_rule)
+        self.assertIn("display:none!important", stale_hide_rule)
+        self.assertIn('data-cadivor-main-transition="1"', stale_hide_rule)
+        self.assertIn("opaque", UNIFIED_SHELL)
+
+        cover_css = SOURCE.split(
+            '.cv-main-transition.cv-route-loading[data-cadivor-transition-kind="navigation"]{{',
+            1,
+        )[1].split("}}", 1)[0]
+        self.assertIn("background:#F5F7FB!important", cover_css)
+        self.assertIn("pointer-events:auto!important", cover_css)
+
+        destination_release_rule = SOURCE.split(
+            'body:has([data-cadivor-page-body-gen="{gen}"][data-cadivor-page-body-release-gen="{gen}"])', 1
+        )[1].split("/*", 1)[0]
+        self.assertIn("display:none!important", destination_release_rule)
 
     def test_transition_cover_uses_synchronous_non_iframe_html(self):
         paint = SOURCE.split("def _paint_main_transition_markup", 1)[1].split(
@@ -61,7 +85,7 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
         self.assertIn("_infer_unarmed_transition_kind(route, previous_route)", prepare)
         self.assertIn("state[MAIN_TRANSITION_KIND_KEY] = inferred_kind", prepare)
 
-    def test_navigation_cover_has_inline_first_paint_fallback(self):
+    def test_navigation_cover_has_opaque_inline_first_paint_fallback(self):
         namespace = {
             "html": html,
             "BOM_ANALYSIS_TRANSITION_KEY": "cadivor_bom_analysis_transition",
@@ -78,12 +102,19 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
         markup = namespace["route_loading_markup"]("Monitoring", 22)
 
         self.assertIn("position:fixed", markup)
-        self.assertIn("left:calc(var(--cv-foundation-rail,296px) + 28px)", markup)
-        self.assertIn("background:transparent", markup)
-        self.assertNotIn("background:#F5F7FB", markup)
+        self.assertIn("left:var(--cv-foundation-rail,228px)", markup)
+        self.assertIn("right:0", markup)
+        self.assertIn("top:var(--cv-foundation-top,64px)", markup)
+        self.assertIn("width:auto", markup)
+        self.assertIn("background:#F5F7FB", markup)
+        self.assertIn("pointer-events:auto", markup)
         self.assertIn("z-index:2147483000", markup)
-        self.assertIn('role="status" aria-label="Loading Monitoring" aria-live="polite"', markup)
-        self.assertIn("box-sizing:border-box;width:184px", markup)
+        self.assertIn('role="status" aria-label="Opening Monitoring" aria-live="polite"', markup)
+        self.assertIn('class="cv-main-transition-layout"', markup)
+        self.assertIn('class="cv-main-transition-skeleton"', markup)
+        self.assertIn('class="cv-transition-table"', markup)
+        self.assertIn("Preparing this page in your Cadivor workspace.", markup)
+        self.assertIn("Opening Monitoring…", markup)
 
     def test_regular_navigation_covers_partial_render_until_destination_is_complete(self):
         namespace = {
@@ -105,21 +136,27 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
         markup = namespace["route_loading_markup"]("Portfolio Intelligence", 21)
         self.assertIn('data-cadivor-transition-kind="navigation"', markup)
         self.assertIn("cv-main-transition-progress", markup)
+        self.assertIn("cv-main-transition-skeleton", markup)
         self.assertIn('class="cv-main-transition-mark"', markup)
-        self.assertIn(">C</div>", markup)
-        self.assertNotIn("Opening Portfolio Intelligence", markup)
+        self.assertIn(">C</span>", markup)
+        self.assertIn("Opening Portfolio Intelligence…", markup)
         nav_css = SOURCE.split(
             '.cv-main-transition.cv-route-loading[data-cadivor-transition-kind="navigation"]{{',
             1,
         )[1].split("}}", 1)[0]
-        self.assertIn("background:transparent!important", nav_css)
-        self.assertIn("pointer-events:none!important", nav_css)
-        self.assertNotIn("height:calc(100dvh - var(--cv-foundation-top,64px))!important", nav_css)
+        self.assertIn("background:#F5F7FB!important", nav_css)
+        self.assertIn("pointer-events:auto!important", nav_css)
+        self.assertIn("width:36px!important;height:36px!important", SOURCE)
+        self.assertIn("cv-main-transition-label", SOURCE)
+        self.assertNotIn("@media (max-width:1100px){{", SOURCE)
+        self.assertIn("height:auto!important", nav_css)
+        self.assertIn("left:var(--cv-foundation-rail,228px)!important", nav_css)
+        self.assertIn("top:var(--cv-foundation-top,64px)!important", nav_css)
+        self.assertIn("width:auto!important", nav_css)
         self.assertNotIn(
             "visibility:hidden!important;opacity:0!important;pointer-events:none!important;\n          transition:none!important",
             SOURCE,
         )
-        self.assertIn("does not paint an opaque", SOURCE)
         self.assertIn(
             ':not([data-cadivor-transition-kind="navigation"]) {{\n          pointer-events:auto!important',
             SOURCE,
@@ -183,13 +220,48 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
         finder = approved_pages.split("def render_replacement_search()", 1)[1].split(
             "\ndef ", 1
         )[0]
-        reveal_at = finder.index('reveal_authenticated_page_body("Alternative Finder")')
+        reveal_at = finder.index('reveal_authenticated_page_body("Alternative Finder", force=True)')
         supplier_lookup_at = finder.index(
             "run_alternative_finder_search(st.session_state, query)"
         )
         self.assertLess(reveal_at, supplier_lookup_at)
 
-    def test_dashboard_cover_is_released_after_heading_before_workspace_reads(self):
+    def test_compare_form_releases_navigation_cover_before_supplier_and_datasheet_search(self):
+        approved_pages = (ROOT / "src" / "ui" / "approved_pages.py").read_text(
+            encoding="utf-8"
+        )
+        compare = approved_pages.split("def render_compare_live", 1)[1].split(
+            "def render_datasheet_live", 1
+        )[0]
+        reveal_at = compare.index(
+            'reveal_authenticated_page_body("Compare Parts", force=True)'
+        )
+        search_at = compare.index("submit_compare_parts_many(")
+        self.assertLess(reveal_at, search_at)
+
+    def test_report_and_procurement_routes_release_after_the_full_page_renders(self):
+        analysis_detail = (ROOT / "src" / "pages" / "analysis_detail.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertNotIn(
+            'reveal_authenticated_page_body("Analysis Details")',
+            analysis_detail,
+        )
+        runtime = (ROOT / "src" / "authenticated_runtime.py").read_text(
+            encoding="utf-8"
+        )
+        procurement = runtime.split(
+            'if app_mode == "Procurement Advisor":', 1
+        )[1].split('if app_mode == "Cost Optimization":', 1)[0]
+        self.assertNotIn('reveal_authenticated_page_body("Procurement Advisor")', procurement)
+        self.assertIn("force=True", runtime.split("def stop_authenticated_page", 1)[1].split(
+            "from src.ui.executive_workspace", 1
+        )[0])
+        self.assertIn("font-size:13px!important", procurement)
+        self.assertIn("font-size:26px!important", procurement)
+        self.assertIn("font-size:20px!important", procurement)
+
+    def test_dashboard_does_not_release_transition_on_temporary_loading_heading(self):
         runtime = (ROOT / "src" / "authenticated_runtime.py").read_text(encoding="utf-8")
         start = runtime.index("# ---------- Dashboard ----------")
         end = runtime.index('if app_mode == "Analysis Details":', start)
@@ -197,13 +269,14 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
         heading_at = dashboard.index(
             'render_dashboard_page_heading(\n            "Preparing your workspace"'
         )
-        reveal_at = dashboard.index('reveal_authenticated_page_body("Dashboard")')
         data_read_at = dashboard.index("_workspace_commands_cache_fresh(")
         clear_at = dashboard.index("_dashboard_loading_placeholder.empty()")
         home_at = dashboard.index("render_home(")
-        self.assertLess(heading_at, reveal_at)
-        self.assertLess(reveal_at, data_read_at)
+        stop_at = dashboard.rindex("stop_authenticated_page()")
+        self.assertLess(heading_at, data_read_at)
         self.assertLess(clear_at, home_at)
+        self.assertLess(home_at, stop_at)
+        self.assertNotIn('reveal_authenticated_page_body("Dashboard")', dashboard)
         self.assertIn("render_home(", dashboard)
         self.assertIn("stop_authenticated_page()", dashboard)
 
@@ -212,19 +285,23 @@ class MainTransitionSlowRouteContractTests(unittest.TestCase):
         start = runtime.index('if app_mode == "Monitoring":')
         end = runtime.index('if app_mode == "Supply Risk Scenario":', start)
         monitoring = runtime[start:end]
-        release = 'reveal_authenticated_page_body("Monitoring")'
-        self.assertEqual(monitoring.count(release), 2)
+        release = 'reveal_authenticated_page_body("Monitoring", force=True)'
+        self.assertEqual(monitoring.count(release), 4)
 
         restricted = monitoring.split("if not monitoring_allowed:", 1)[1].split(
             "return_analysis_id", 1
         )[0]
         self.assertLess(restricted.index(release), restricted.index("stop_authenticated_page()"))
 
-        header_start = monitoring.index("cadivor_section_header(")
-        content_release = monitoring.index(release, header_start)
-        self.assertLess(header_start, content_release)
-        self.assertLess(content_release, monitoring.index("def _monitor_query"))
-        self.assertLess(content_release, monitoring.index("active_queue =", header_start))
+        overview_start = monitoring.index("render_monitoring(")
+        overview_release = monitoring.index(release, overview_start)
+        self.assertLess(overview_start, overview_release)
+        self.assertLess(overview_release, monitoring.index('with st.container(key="monitoring_snapshot")'))
+        self.assertLess(overview_release, monitoring.index("stop_authenticated_page()", overview_start))
+
+        final_release = monitoring.rindex(release)
+        self.assertGreater(final_release, monitoring.index("def _render_monitoring_snapshot_card"))
+        self.assertGreater(final_release, monitoring.index("if monitor_view == \"components\":"))
         self.assertIn("run_with_read_budget(", monitoring)
         self.assertIn('budget_seconds=6.0', monitoring)
         self.assertIn('key="monitoring_data_retry"', monitoring)

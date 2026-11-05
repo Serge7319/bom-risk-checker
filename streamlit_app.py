@@ -17,6 +17,15 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
+# Local/dev boots that skip railway_start still need the light splash patch so
+# marketing → login never flashes Streamlit's dark skeleton.
+try:
+    from scripts.cadivor_streamlit_boot import apply_light_boot_splash
+
+    apply_light_boot_splash()
+except Exception:
+    pass
+
 st.markdown(
     """
     <style id="cadivor-root-chrome">
@@ -26,7 +35,12 @@ st.markdown(
         height: 0 !important;
         min-height: 0 !important;
     }
-    .stApp { background: #F6F8FB !important; }
+    /* Force light canvas before Streamlit's default dark frame can paint on
+       marketing → app handoff (?auth=login) and cold first paint. */
+    html, body, .stApp, [data-testid="stAppViewContainer"] {
+        background: #F5F7FB !important;
+        color-scheme: light !important;
+    }
     .main .block-container, [data-testid="stAppViewContainer"] .main .block-container {
         padding-top: 0 !important;
     }

@@ -1,0 +1,10 @@
+{
+  "pass": true,
+  "dump_bytes": 27307,
+  "analysis_id": "f66cd56e-8211-4776-963f-810bee4e88b4",
+  "parts_before": 25,
+  "parts_after": 25,
+  "database": "disposable-embedded-postgres",
+  "not_customer_db": true,
+  "not_live_migration_db": true
+}

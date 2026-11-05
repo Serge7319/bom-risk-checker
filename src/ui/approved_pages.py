@@ -9,17 +9,24 @@ from __future__ import annotations
 import html
 import hashlib
 import io
+import logging
 from functools import wraps
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
+from uuid import uuid4
 
 import streamlit as st
+from src.safe_diagnostics import safe_exception_frames
+
+logger = logging.getLogger(__name__)
 
 from src.bom_upload_flow import (
     prepare_new_approved_bom_analysis,
+    start_new_approved_bom_analysis_from_home,
     should_render_approved_bom_upload_form,
     should_stop_approved_bom_renderer,
     should_disable_bom_analyze_button,
+    remember_approved_bom_upload,
     stage_approved_bom_submission,
 )
 from src.approval_evidence import has_document_page_citation
@@ -962,9 +969,9 @@ def begin_approved_page() -> None:
         .st-key-approved_home_recent_card{margin:26px 0 0!important;padding:0!important;overflow-x:auto!important;border:1px solid #cbd8e8!important;border-radius:16px!important;background:#fff!important;box-shadow:0 3px 12px rgba(15,23,42,.045)!important}
         .st-key-approved_home_recent_card [data-testid="stVerticalBlock"]{gap:0!important}
         .st-key-approved_home_recent_card [data-testid="stElementContainer"]{margin:0!important;padding:0!important}
-        .cv-ap-home-table-head{display:grid!important;grid-template-columns:2.15fr 1.25fr .72fr .8fr .95fr 1.05fr 2.05fr!important;align-items:center!important;gap:16px!important;box-sizing:border-box!important;width:100%!important;min-width:1240px!important;min-height:68px!important;padding:0 30px!important;background:#f7f9fc!important;border-top:1px solid #e5ebf3!important;border-bottom:1px solid #dce4ef!important}
+        .cv-ap-home-table-head{display:grid!important;grid-template-columns:2.0fr 1.15fr .7fr .75fr .9fr 1.0fr 1.7fr!important;align-items:center!important;gap:12px!important;box-sizing:border-box!important;width:100%!important;min-width:0!important;min-height:68px!important;padding:0 30px!important;background:#f7f9fc!important;border-top:1px solid #e5ebf3!important;border-bottom:1px solid #dce4ef!important}
         .cv-ap-home-table-head [role="columnheader"]{display:flex;align-items:center;min-width:0;min-height:48px;overflow:visible;color:#64748b;font-size:14px;font-weight:750;line-height:1.25;letter-spacing:.035em;text-transform:uppercase;white-space:normal;overflow-wrap:anywhere}
-        .cv-ap-home-table-head [role="columnheader"]:nth-child(n+3){justify-content:center!important;text-align:center}
+        .cv-ap-home-table-head [role="columnheader"]:nth-child(n+3){justify-content:center!important;text-align:center}.cv-ap-home-table-head [role="columnheader"]:last-child{justify-content:flex-end!important;position:sticky!important;right:0!important;z-index:2!important;background:#f7f9fc!important;min-width:168px!important;padding-left:8px!important}
         .st-key-approved_home_recent_heading{box-sizing:border-box!important;width:100%!important;min-height:0!important;margin:0!important;padding:12px 26px 12px!important}
         .st-key-approved_home_recent_heading [data-testid="stVerticalBlock"]{gap:0!important}
         .st-key-approved_home_recent_heading [data-testid="stHorizontalBlock"]{box-sizing:border-box!important;align-items:flex-start!important;width:100%!important;margin-top:0!important;padding-top:0!important}
@@ -981,11 +988,11 @@ def begin_approved_page() -> None:
         [class*="st-key-approved_home_view_all"] button *,[class*="st-key-approved_home_view_all"] button p,[class*="st-key-approved_home_view_all"] button span{color:#2563eb!important}
         [class*="st-key-approved_home_view_all"] button:hover{background:#dbeafe!important;border-color:#93b4ee!important}
         [class*="st-key-approved_home_new_bom"] button,[class*="st-key-approved_home_new_bom"] button p,[class*="st-key-approved_home_new_bom"] button span{white-space:nowrap!important}
-        [class*="st-key-approved_home_row_"]{box-sizing:border-box!important;width:100%!important;min-width:1240px!important;min-height:120px!important;margin:0!important;padding:18px 30px!important;border-top:0!important;border-bottom:1px solid #e5ebf3!important;background:#fff!important}
+        [class*="st-key-approved_home_row_"]{box-sizing:border-box!important;width:100%!important;min-width:0!important;min-height:120px!important;margin:0!important;padding:18px 30px!important;border-top:0!important;border-bottom:1px solid #e5ebf3!important;background:#fff!important}
         .st-key-approved_home_recent_card .st-key-approved_home_row_last{border-radius:0 0 15px 15px!important;border-bottom:0!important;background:#fff!important}
         [class*="st-key-approved_home_row_"] [data-testid="stVerticalBlock"]{display:flex!important;flex-direction:column!important;gap:0!important;justify-content:center!important;min-height:84px!important}
         [class*="st-key-approved_home_row_"] [data-testid="stElementContainer"]{margin:0!important;padding:0!important}
-        [class*="st-key-approved_home_row_"] [data-testid="stHorizontalBlock"]{display:grid!important;grid-template-columns:2.15fr 1.25fr .72fr .8fr .95fr 1.05fr 2.05fr!important;align-items:center!important;gap:16px!important;width:100%!important;min-height:84px!important}
+        [class*="st-key-approved_home_row_"] [data-testid="stHorizontalBlock"]{display:grid!important;grid-template-columns:2.0fr 1.15fr .7fr .75fr .9fr 1.0fr 1.7fr!important;align-items:center!important;gap:12px!important;width:100%!important;min-height:84px!important}
         [class*="st-key-approved_home_row_"] [data-testid="stColumn"],[class*="st-key-approved_home_row_"] [data-testid="column"]{align-self:stretch!important;justify-self:stretch!important;display:flex!important;align-items:center!important;justify-content:center!important;box-sizing:border-box!important;width:100%!important;max-width:100%!important;min-width:0!important;flex:none!important;min-height:84px!important}
         [class*="st-key-approved_home_row_"] [data-testid="stColumn"]:nth-child(-n+2),[class*="st-key-approved_home_row_"] [data-testid="column"]:nth-child(-n+2){justify-content:flex-start!important}
         [class*="st-key-approved_home_row_"] [data-testid="column"] [data-testid="stMarkdownContainer"]{width:100%!important}
@@ -1008,7 +1015,7 @@ def begin_approved_page() -> None:
         [class*="st-key-approved_home_menu_"] [data-testid="stPopover"] button[aria-expanded] svg,[class*="st-key-approved_home_menu_"] [data-testid="stPopover"] button[aria-expanded] [data-testid="stIconMaterial"]{display:none!important}
         [class*="st-key-approved_home_row_"] [class*="st-key-approved_home_menu_"]{display:flex!important;flex-direction:row!important;flex-wrap:nowrap!important;align-items:center!important;justify-content:center!important;gap:6px!important;width:100%!important;min-height:0!important}
         [class*="st-key-approved_home_action_review_"] button{box-sizing:border-box!important;width:auto!important;min-width:0!important;height:auto!important;min-height:36px!important;padding:6px 9px!important;border-radius:8px!important;font-size:12px!important;font-weight:700!important;white-space:normal!important;line-height:1.2!important}
-        [class*="st-key-approved_home_row_"] [data-testid="stColumn"]:last-child,[class*="st-key-approved_home_row_"] [data-testid="column"]:last-child{display:flex!important;align-items:center!important;justify-content:center!important;min-width:0!important;overflow:visible!important;text-align:center}
+        [class*="st-key-approved_home_row_"] [data-testid="stColumn"]:last-child,[class*="st-key-approved_home_row_"] [data-testid="column"]:last-child{display:flex!important;align-items:center!important;justify-content:flex-end!important;min-width:168px!important;overflow:visible!important;text-align:center;position:sticky!important;right:0!important;z-index:2!important;background:#fff!important;padding-left:8px!important}
         .st-key-approved_home_recent_card [class*="st-key-approved_home_menu_"]>[data-testid="stVerticalBlock"]{display:flex!important;flex-direction:row!important;flex-wrap:nowrap!important;align-items:center!important;justify-content:flex-end!important;gap:6px!important;width:100%!important;min-height:44px!important}
         .st-key-approved_home_recent_card [class*="st-key-approved_home_menu_"]>[data-testid="stVerticalBlock"]>[data-testid="stElementContainer"]{width:auto!important;flex:0 0 auto!important}
         .st-key-approved_home_recent_card [class*="st-key-approved_home_action_review_"]{flex:0 0 auto!important;min-width:max-content!important}
@@ -1098,11 +1105,14 @@ def begin_approved_page() -> None:
         .st-key-approved_saved_bom_settings_page>[data-testid="stVerticalBlock"]{gap:12px!important}
         .st-key-approved_saved_bom_edit_screen,.st-key-approved_saved_bom_delete_screen{box-sizing:border-box!important;width:100%!important;max-width:none!important;margin:0 auto!important;padding:22px!important;border:1px solid #d7e0eb!important;border-radius:16px!important;background:#fff!important}
         .st-key-approved_saved_bom_delete_screen button[kind="primary"]{background:#be123c!important;border-color:#be123c!important}
-        .st-key-approved_monitoring_kpi_grid{box-sizing:border-box!important;width:100%!important;max-width:100%!important;min-width:0!important;margin:0 0 20px!important;overflow:visible!important}
-        .st-key-approved_monitoring_kpi_grid>[data-testid="stVerticalBlock"]{gap:0!important}
-        .st-key-approved_monitoring_kpi_grid [data-testid="stHorizontalBlock"]{display:grid!important;grid-template-columns:repeat(4,minmax(0,240px))!important;justify-content:start!important;align-items:stretch!important;gap:16px!important;width:100%!important;overflow:visible!important}
-        .st-key-approved_monitoring_kpi_grid [data-testid="stColumn"],.st-key-approved_monitoring_kpi_grid [data-testid="column"]{box-sizing:border-box!important;display:flex!important;flex:none!important;justify-self:stretch!important;width:100%!important;max-width:240px!important;min-width:0!important;padding:0!important}
-        .st-key-approved_monitoring_kpi_grid [data-testid="column"]>[data-testid="stVerticalBlock"]{box-sizing:border-box!important;width:100%!important;max-width:none!important;min-width:0!important}
+        .st-key-approved_monitoring_kpi_grid,.st-key-approved_monitoring_filters,.st-key-approved_monitoring_alert_card{box-sizing:border-box!important;display:block!important;align-self:stretch!important;width:100%!important;max-width:100%!important;min-width:0!important;margin-left:0!important;margin-right:0!important}
+        section[data-testid="stMain"]:has(.st-key-monitoring_home_width_marker) [data-testid="stMainBlockContainer"]>[data-testid="stVerticalBlock"]{align-items:stretch!important}
+        section[data-testid="stMain"]:has(.st-key-monitoring_home_width_marker) [data-testid="stElementContainer"]:has(.st-key-approved_monitoring_kpi_grid),section[data-testid="stMain"]:has(.st-key-monitoring_home_width_marker) [data-testid="stElementContainer"]:has(.st-key-approved_monitoring_filters),section[data-testid="stMain"]:has(.st-key-monitoring_home_width_marker) [data-testid="stElementContainer"]:has(.st-key-approved_monitoring_alert_card){box-sizing:border-box!important;display:block!important;flex:1 1 100%!important;align-self:stretch!important;width:100%!important;max-width:1440px!important;min-width:0!important;margin-left:auto!important;margin-right:auto!important}
+        .st-key-approved_monitoring_kpi_grid{margin:0!important;overflow:visible!important}
+        .st-key-approved_monitoring_kpi_grid>[data-testid="stVerticalBlock"]{display:block!important;width:100%!important;max-width:100%!important;min-width:0!important;gap:0!important}
+        .st-key-approved_monitoring_kpi_grid [data-testid="stHorizontalBlock"]{box-sizing:border-box!important;display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;justify-content:stretch!important;align-items:stretch!important;gap:16px!important;width:100%!important;max-width:100%!important;min-width:0!important;overflow:visible!important}
+        .st-key-approved_monitoring_kpi_grid [data-testid="stHorizontalBlock"]>[data-testid="stColumn"],.st-key-approved_monitoring_kpi_grid [data-testid="stHorizontalBlock"]>[data-testid="column"]{box-sizing:border-box!important;display:flex!important;flex:none!important;justify-self:stretch!important;width:100%!important;max-width:none!important;min-width:0!important;padding:0!important}
+        .st-key-approved_monitoring_kpi_grid [data-testid="stHorizontalBlock"]>[data-testid="column"]>[data-testid="stVerticalBlock"]{box-sizing:border-box!important;display:flex!important;flex-direction:column!important;width:100%!important;max-width:none!important;min-width:0!important;height:100%!important}
         .st-key-approved_monitoring_kpi_active,.st-key-approved_monitoring_kpi_high,.st-key-approved_monitoring_kpi_lifecycle,.st-key-approved_monitoring_kpi_inventory{position:relative!important;box-sizing:border-box!important;display:block!important;flex:1 1 0!important;width:100%!important;max-width:none!important;min-width:0!important}
         .st-key-approved_monitoring_kpi_active>[data-testid="stVerticalBlock"],.st-key-approved_monitoring_kpi_high>[data-testid="stVerticalBlock"],.st-key-approved_monitoring_kpi_lifecycle>[data-testid="stVerticalBlock"],.st-key-approved_monitoring_kpi_inventory>[data-testid="stVerticalBlock"]{box-sizing:border-box!important;position:relative!important;display:block!important;width:100%!important;max-width:none!important;min-width:0!important;height:auto!important;min-height:0!important;overflow:visible!important;gap:0!important}
         .cv-ap-monitoring-kpi{display:grid!important;grid-template-columns:minmax(0,1fr) 96px!important;grid-template-rows:auto auto!important;align-items:start!important;column-gap:12px!important;row-gap:8px!important;box-sizing:border-box!important;width:100%!important;min-width:0!important;height:auto!important;min-height:0!important;overflow:visible!important;padding:16px 16px 14px!important;border:1px solid #e3ebf6!important;border-radius:14px!important;background:linear-gradient(135deg,#fbfdff 0%,#f7faff 100%)!important;box-shadow:0 2px 7px rgba(15,23,42,.035)!important}
@@ -1117,15 +1127,16 @@ def begin_approved_page() -> None:
         .cv-ap-monitoring-copy strong{display:flex!important;align-items:center!important;gap:12px!important;margin-top:5px;color:#12213b!important;font-size:40px!important;font-weight:650!important;line-height:1!important;letter-spacing:-.035em!important}
         .cv-ap-monitoring-chevron{color:#64748b!important;font-size:34px!important;font-weight:400!important;line-height:1!important}
         .cv-ap-monitoring-kpi .cv-ap-spark{grid-column:2;grid-row:1/3;align-self:center;width:112px!important;max-width:100%!important;height:56px!important}
-        .st-key-approved_monitoring_kpi_active [class*="st-key-approved_monitoring_action_"],.st-key-approved_monitoring_kpi_high [class*="st-key-approved_monitoring_action_"],.st-key-approved_monitoring_kpi_lifecycle [class*="st-key-approved_monitoring_action_"],.st-key-approved_monitoring_kpi_inventory [class*="st-key-approved_monitoring_action_"]{position:absolute!important;inset:0!important;z-index:3!important;margin:0!important;padding:0!important;opacity:0!important}
-        .st-key-approved_monitoring_kpi_active [class*="st-key-approved_monitoring_action_"] button,.st-key-approved_monitoring_kpi_high [class*="st-key-approved_monitoring_action_"] button,.st-key-approved_monitoring_kpi_lifecycle [class*="st-key-approved_monitoring_action_"] button,.st-key-approved_monitoring_kpi_inventory [class*="st-key-approved_monitoring_action_"] button{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;min-height:188px!important;cursor:pointer!important}
+        .st-key-approved_monitoring_kpi_active [data-testid="stElementContainer"]:has([class*="st-key-approved_monitoring_action_"]),.st-key-approved_monitoring_kpi_high [data-testid="stElementContainer"]:has([class*="st-key-approved_monitoring_action_"]),.st-key-approved_monitoring_kpi_lifecycle [data-testid="stElementContainer"]:has([class*="st-key-approved_monitoring_action_"]),.st-key-approved_monitoring_kpi_inventory [data-testid="stElementContainer"]:has([class*="st-key-approved_monitoring_action_"]){position:absolute!important;inset:0!important;width:100%!important;height:100%!important;margin:0!important;padding:0!important;z-index:3!important}
+        .st-key-approved_monitoring_kpi_active [class*="st-key-approved_monitoring_action_"],.st-key-approved_monitoring_kpi_high [class*="st-key-approved_monitoring_action_"],.st-key-approved_monitoring_kpi_lifecycle [class*="st-key-approved_monitoring_action_"],.st-key-approved_monitoring_kpi_inventory [class*="st-key-approved_monitoring_action_"]{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;z-index:3!important;margin:0!important;padding:0!important;opacity:0!important}
+        .st-key-approved_monitoring_kpi_active [class*="st-key-approved_monitoring_action_"] button,.st-key-approved_monitoring_kpi_high [class*="st-key-approved_monitoring_action_"] button,.st-key-approved_monitoring_kpi_lifecycle [class*="st-key-approved_monitoring_action_"] button,.st-key-approved_monitoring_kpi_inventory [class*="st-key-approved_monitoring_action_"] button{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;min-height:0!important;cursor:pointer!important}
         .st-key-approved_monitoring_kpi_active [class*="st-key-approved_monitoring_action_"]:focus-within,.st-key-approved_monitoring_kpi_high [class*="st-key-approved_monitoring_action_"]:focus-within,.st-key-approved_monitoring_kpi_lifecycle [class*="st-key-approved_monitoring_action_"]:focus-within,.st-key-approved_monitoring_kpi_inventory [class*="st-key-approved_monitoring_action_"]:focus-within{opacity:1!important}
         .st-key-approved_monitoring_kpi_active [class*="st-key-approved_monitoring_action_"] button:focus-visible,.st-key-approved_monitoring_kpi_high [class*="st-key-approved_monitoring_action_"] button:focus-visible,.st-key-approved_monitoring_kpi_lifecycle [class*="st-key-approved_monitoring_action_"] button:focus-visible,.st-key-approved_monitoring_kpi_inventory [class*="st-key-approved_monitoring_action_"] button:focus-visible{opacity:1!important;color:transparent!important;background:rgba(255,255,255,.04)!important;outline:3px solid #2563eb!important;outline-offset:-4px!important}
-        .st-key-approved_monitoring_filters{box-sizing:border-box!important;width:100%!important;margin:0 0 22px!important;padding:14px 20px!important;border:1px solid #e3ebf6!important;border-radius:12px!important;background:#fff!important;box-shadow:0 2px 7px rgba(15,23,42,.025)!important}
+        .st-key-approved_monitoring_filters{margin:0!important;padding:14px 20px!important;border:1px solid #e3ebf6!important;border-radius:12px!important;background:#fff!important;box-shadow:0 2px 7px rgba(15,23,42,.025)!important}
         .st-key-approved_monitoring_filters>[data-testid="stVerticalBlock"]{gap:0!important}
         .st-key-approved_monitoring_filters [data-testid="stHorizontalBlock"]{align-items:center!important;gap:10px!important}
         .st-key-approved_monitoring_filters [data-testid="stWidgetLabel"] p{margin:0 0 5px!important;color:#52647b!important;font-size:12px!important;font-weight:700!important}
-        .cv-ap-monitoring-show-label{display:flex;align-items:center;min-height:42px;min-width:4.5rem;color:#1e293b;font-size:15px;font-weight:700;line-height:1.2;white-space:nowrap;overflow:visible}
+        .cv-ap-monitoring-show-label{display:flex;align-items:center;min-height:42px;min-width:5.5rem;color:#1e293b;font-size:16px;font-weight:750;line-height:1.2;white-space:nowrap;overflow:visible}
         .cv-ap-monitoring-period-label{display:flex;align-items:center;min-height:42px;color:#52647b;font-size:14px;font-weight:650;white-space:nowrap}
         .st-key-approved_monitoring_category_row{box-sizing:border-box!important;width:100%!important;min-width:0!important}
         .st-key-approved_monitoring_category_row [data-testid="stPills"],.st-key-approved_monitoring_category_row [role="radiogroup"],.st-key-approved_monitoring_category_row [data-baseweb="button-group"]{display:flex!important;flex-flow:row wrap!important;justify-content:flex-start!important;align-items:center!important;gap:8px!important;width:100%!important;min-width:0!important}
@@ -1137,8 +1148,9 @@ def begin_approved_page() -> None:
         .cv-ap-monitoring-calendar{display:flex;align-items:center;justify-content:center;min-height:42px;color:#52647b}
         .cv-ap-monitoring-calendar svg{width:18px;height:18px}
         .st-key-approved_monitoring_filters [data-testid="stSelectbox"] [data-baseweb="select"]>div{min-height:42px!important;border:1px solid #d9e2ee!important;border-radius:9px!important;background:#fff!important}
-        .st-key-approved_monitoring_alert_heading{box-sizing:border-box!important;width:100%!important;margin:0!important;padding:8px 20px 2px!important}
+        .st-key-approved_monitoring_alert_heading{box-sizing:border-box!important;width:100%!important;margin:0!important;padding:2px 20px!important}
         .st-key-approved_monitoring_alert_heading>[data-testid="stVerticalBlock"]{gap:0!important}
+        .st-key-approved_monitoring_alert_heading [data-testid="stElementContainer"]{margin:0!important;padding:0!important}
         .cv-ap-monitoring-heading h2{margin:0!important;color:#14233d!important;font-size:20px!important;font-weight:760!important;line-height:1.25!important;letter-spacing:-.02em!important}
         .cv-ap-monitoring-heading p{margin:4px 0 0!important;color:#64748b!important;font-size:12px!important}
         .cv-ap-monitoring-count{color:#64748b!important;font-size:12px!important;text-align:right!important;white-space:nowrap}
@@ -1165,9 +1177,9 @@ def begin_approved_page() -> None:
         .cv-ap-alert-popover small{color:#8794a7;font-size:10px}
         .cv-ap-table-center{width:100%;display:flex;align-items:center;justify-content:center;text-align:center}
         @media(max-width:1100px){[class*="st-key-approved_home_new_bom"],[class*="st-key-approved_home_open_reports"]{left:0!important}}
-        @media(max-width:1100px){.st-key-approved_monitoring_kpi_grid [data-testid="stHorizontalBlock"]{gap:12px!important;grid-template-columns:repeat(2,minmax(0,240px))!important}.st-key-approved_monitoring_kpi_grid [data-testid="stColumn"],.st-key-approved_monitoring_kpi_grid [data-testid="column"]{flex:none!important;width:100%!important;max-width:240px!important}.cv-ap-monitoring-kpi{height:auto!important;min-height:0!important;overflow:visible!important;padding:14px!important;grid-template-columns:minmax(72px,1fr) 48px!important}.cv-ap-monitoring-copy>span{font-size:14px!important;white-space:normal!important;overflow-wrap:normal!important;word-break:normal!important}.cv-ap-monitoring-kpi .cv-ap-spark{width:48px!important}.cv-ap-monitoring-copy strong{font-size:32px!important;gap:8px!important}.cv-ap-monitoring-chevron{font-size:26px!important}.st-key-approved_monitoring_kpi_active>[data-testid="stVerticalBlock"],.st-key-approved_monitoring_kpi_high>[data-testid="stVerticalBlock"],.st-key-approved_monitoring_kpi_lifecycle>[data-testid="stVerticalBlock"],.st-key-approved_monitoring_kpi_inventory>[data-testid="stVerticalBlock"]{height:auto!important;min-height:0!important;overflow:visible!important}.cv-ap-monitoring-kpi .cv-ap-spark{width:76px!important}.st-key-approved_monitoring_filters [data-testid="stHorizontalBlock"]{gap:8px!important}}
+        @media(max-width:1100px){.st-key-approved_monitoring_kpi_grid [data-testid="stHorizontalBlock"]{gap:12px!important;grid-template-columns:repeat(2,minmax(0,1fr))!important}.st-key-approved_monitoring_kpi_grid [data-testid="stColumn"],.st-key-approved_monitoring_kpi_grid [data-testid="column"]{flex:none!important;width:100%!important;max-width:none!important}.cv-ap-monitoring-kpi{height:auto!important;min-height:0!important;overflow:visible!important;padding:14px!important;grid-template-columns:minmax(72px,1fr) 48px!important}.cv-ap-monitoring-copy>span{font-size:14px!important;white-space:normal!important;overflow-wrap:normal!important;word-break:normal!important}.cv-ap-monitoring-kpi .cv-ap-spark{width:48px!important}.cv-ap-monitoring-copy strong{font-size:32px!important;gap:8px!important}.cv-ap-monitoring-chevron{font-size:26px!important}.st-key-approved_monitoring_kpi_active>[data-testid="stVerticalBlock"],.st-key-approved_monitoring_kpi_high>[data-testid="stVerticalBlock"],.st-key-approved_monitoring_kpi_lifecycle>[data-testid="stVerticalBlock"],.st-key-approved_monitoring_kpi_inventory>[data-testid="stVerticalBlock"]{height:auto!important;min-height:0!important;overflow:visible!important}.cv-ap-monitoring-kpi .cv-ap-spark{width:76px!important}.st-key-approved_monitoring_filters [data-testid="stHorizontalBlock"]{gap:8px!important}}
         @media(max-width:1200px){
-          .st-key-approved_monitoring_filters [data-testid="stHorizontalBlock"]:has(.st-key-approved_monitoring_category_row){display:grid!important;grid-template-columns:minmax(4.5rem,max-content) minmax(0,1fr)!important;align-items:start!important;gap:8px!important}
+          .st-key-approved_monitoring_filters [data-testid="stHorizontalBlock"]:has(.st-key-approved_monitoring_category_row){display:grid!important;grid-template-columns:minmax(5.5rem,max-content) minmax(0,1fr)!important;align-items:start!important;gap:8px!important}
           .st-key-approved_monitoring_filters [data-testid="stHorizontalBlock"]:has(.st-key-approved_monitoring_category_row)>[data-testid="column"]{box-sizing:border-box!important;width:auto!important;max-width:none!important;min-width:0!important;flex:none!important;padding:0!important}
           .st-key-approved_monitoring_filters [data-testid="column"]:has(.cv-ap-monitoring-show-label){grid-column:1!important;grid-row:1!important;align-self:start!important}
           .st-key-approved_monitoring_filters [data-testid="column"]:has(.st-key-approved_monitoring_category_row){grid-column:2!important;grid-row:1!important}
@@ -1175,7 +1187,7 @@ def begin_approved_page() -> None:
           .st-key-approved_monitoring_period_control{width:340px!important;max-width:100%!important;margin-left:auto!important}
           .cv-ap-monitoring-show-label{font-size:14px!important}
         }
-        @media(max-width:900px){.st-key-approved_monitoring_filters{padding:12px!important}.st-key-approved_monitoring_alert_heading{padding:14px 14px 10px!important}.cv-ap-monitoring-heading h2{font-size:18px!important}}
+        @media(max-width:900px){.st-key-approved_monitoring_filters{padding:12px!important}.st-key-approved_monitoring_alert_heading{padding:8px 14px 4px!important}.cv-ap-monitoring-heading h2{font-size:18px!important}}
         @media(max-width:640px){.st-key-approved_monitoring_period_control{width:100%!important}.st-key-approved_monitoring_filters [data-testid="column"]:has(.cv-ap-monitoring-show-label){align-self:start!important}.st-key-approved_monitoring_category_row button,.st-key-approved_monitoring_category_row [role="radio"],.st-key-approved_monitoring_category_row [role="option"]{min-height:38px!important;height:38px!important;padding:0 10px!important;font-size:11px!important}}
         @media(max-width:640px){.st-key-approved_monitoring_kpi_grid [data-testid="stHorizontalBlock"]{grid-template-columns:1fr!important}.st-key-approved_monitoring_kpi_grid [data-testid="column"]{flex:none!important;width:100%!important;max-width:100%!important}.cv-ap-monitoring-kpi{height:auto!important;min-height:0!important;overflow:visible!important}.st-key-approved_monitoring_alert_heading{padding:14px 14px 10px!important}.cv-ap-monitoring-heading h2{font-size:18px!important}}
         @media(max-width:1100px){
@@ -1306,8 +1318,12 @@ def begin_approved_page() -> None:
         .st-key-approved_bom_upload_form [data-testid="stFileUploaderDropzoneInstructions"] small{color:#718198!important;font-size:12px!important}
         .st-key-approved_bom_upload_form [data-testid="stFileUploaderDropzone"] button{flex:0 0 auto!important;min-height:40px!important;height:40px!important;border:1px solid #c8d5e8!important;border-radius:9px!important;background:#fff!important;color:#225bd7!important;box-shadow:none!important;font-size:13px!important;font-weight:700!important}
         .st-key-approved_bom_upload_form [data-testid="stFileUploaderDropzone"] button:hover{border-color:#8eafff!important;background:#f5f8ff!important}
-        .st-key-approved_bom_submit_row [data-testid="stHorizontalBlock"]{align-items:center!important;gap:16px!important}
-        .st-key-approved_bom_submit_row [data-testid="stCaptionContainer"] p{color:#718198!important;font-size:12px!important}
+        .st-key-approved_bom_submit_row [data-testid="stHorizontalBlock"]{align-items:flex-start!important;gap:18px!important;flex-wrap:nowrap!important}
+        .st-key-approved_bom_submit_row [data-testid="column"]:first-child{flex:0 0 168px!important;width:168px!important;min-width:168px!important;max-width:168px!important}
+        .st-key-approved_bom_submit_row [data-testid="column"]:last-child{flex:1 1 auto!important;min-width:0!important;padding-left:4px!important}
+        .st-key-approved_bom_submit_row [data-testid="stCaptionContainer"]{margin:8px 0 0!important}
+        .st-key-approved_bom_submit_row [data-testid="stCaptionContainer"] p{color:#718198!important;font-size:12px!important;line-height:1.45!important}
+        .st-key-approved_bom_submit_row .cadivor-bom-upload-waiting{margin:8px 0 0!important}
         [class*="st-key-approved_bom_analyze"] button{width:auto!important;min-width:148px!important;max-width:100%!important;min-height:44px!important}
         [class*="st-key-approved_bom_analyze"] button:disabled{border:1px solid #d7dfeb!important;background:#e9eef6!important;color:#8996a8!important;box-shadow:none!important;opacity:1!important;cursor:not-allowed!important}
         [class*="st-key-approved_bom_analyze"] button:disabled *{color:#8996a8!important}
@@ -2474,16 +2490,22 @@ def render_home(
                 )
             with action_col:
                 if pause_new_analyses:
-                    if st.button("Open reports", key="approved_home_open_reports", type="primary"):
-                        navigate_to("Reports")
-                elif st.button(
-                    "+ New BOM analysis",
-                    key="approved_home_new_bom",
-                    type="primary",
-                    width="stretch",
-                ):
-                    prepare_new_approved_bom_analysis(st.session_state)
-                    navigate_to("BOM Analyzer", new_analysis="1")
+                    st.button(
+                        "Open reports",
+                        key="approved_home_open_reports",
+                        type="primary",
+                        on_click=navigate_to,
+                        args=("Reports",),
+                        kwargs={"_rerun": False},
+                    )
+                else:
+                    st.button(
+                        "+ New BOM analysis",
+                        key="approved_home_new_bom",
+                        type="primary",
+                        width="stretch",
+                        on_click=start_new_approved_bom_analysis_from_home,
+                    )
 
         saved_delta = _home_weekly_delta(rows, "saved_boms")
         review_delta = _home_weekly_delta(rows, "needs_review")
@@ -2513,7 +2535,10 @@ def render_home(
             unsafe_allow_html=True,
         )
 
-        home_widths = [2.15, 1.25, 0.72, 0.8, 0.95, 1.05, 1.35]
+        # Keep the live Streamlit row tracks identical to the CSS header.
+        # A narrower final row track shifted the Engineering Intelligence and
+        # overflow actions left of the Actions heading.
+        home_widths = [2.0, 1.15, 0.7, 0.75, 0.9, 1.0, 1.7]
         with st.container(key="approved_home_recent_card"):
             with st.container(key="approved_home_recent_heading"):
                 heading_col, view_all_col = st.columns([10, 1], vertical_alignment="center")
@@ -2651,6 +2676,8 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
         or st.session_state.get("bom8_analysis_pending")
         or st.session_state.get("bom8_analysis_in_progress")
         or st.session_state.get("cadivor_bom_pipeline_active")
+        or st.session_state.get("cadivor_bom_analysis_handoff")
+        or st.session_state.get("cadivor_bom_nav_bridge")
     )
     catalog_requested = bool(
         st.session_state.get("cadivor_bom_catalog_requested")
@@ -2662,112 +2689,12 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
         not catalog_requested
         and analysis_results is not None
         and not getattr(analysis_results, "empty", True)
+        and not analysis_running
     )
-    if analysis_running and not results_visible:
-        # The analysis pipeline can inherit the browser's previous scroll
-        # offset. Use st.html so this reset runs in the app document;
-        # components.html runs inside a sandboxed iframe and cannot reliably
-        # scroll the parent page.
-        try:
-            from src.ui.navigation import NAV_SCROLL_RESET_TOKEN_KEY
-
-            scroll_token = int(
-                st.session_state.get("cadivor_bom_analysis_scroll_token")
-                or st.session_state.get(NAV_SCROLL_RESET_TOKEN_KEY)
-                or 0
-            )
-        except (ImportError, TypeError, ValueError):
-            scroll_token = 0
-        st.markdown(
-            '<div id="cadivor-bom-analysis-top-anchor" '
-            f'data-scroll-token="{scroll_token}" aria-hidden="true"></div>',
-            unsafe_allow_html=True,
-        )
-        st.html(
-            """
-            <script>
-            (() => {
-              const doc = document;
-              const anchor = doc.getElementById('cadivor-bom-analysis-top-anchor');
-              const token = anchor?.getAttribute('data-scroll-token') || '0';
-              const root = doc.documentElement;
-              const activeKey = '__cadivorBomAnalysisScrollLock';
-              const existing = root[activeKey];
-              if (existing && existing.token === token && existing.timer) {
-                existing.reset();
-                return;
-              }
-              if (existing) existing.stop();
-
-              const state = { token, userInteracted: false, timer: null, missingSince: 0, startedAt: Date.now(), lastTop: null };
-              const stop = () => {
-                if (state.timer) window.clearInterval(state.timer);
-                state.timer = null;
-                doc.removeEventListener('wheel', cancelOnScroll, true);
-                doc.removeEventListener('touchmove', cancelOnScroll, true);
-                doc.removeEventListener('keydown', cancelOnNavigationKey, true);
-                if (root[activeKey] === state) delete root[activeKey];
-              };
-              const cancelOnScroll = () => {
-                state.userInteracted = true;
-                stop();
-              };
-              const cancelOnNavigationKey = (event) => {
-                const target = event.target;
-                if (target && target.closest && target.closest('input, textarea, select, [contenteditable="true"]')) return;
-                if (['PageUp', 'PageDown', 'Home', 'End', 'ArrowUp', 'ArrowDown', ' '].includes(event.key)) cancelOnScroll();
-              };
-              state.stop = stop;
-              state.reset = () => {
-                if (state.userInteracted) return;
-                const progress = doc.querySelector('.st-key-bom8_analysis_progress_card');
-                const marker = doc.getElementById('cadivor-bom-analysis-top-anchor');
-                if (!progress || !marker) {
-                  if (!state.missingSince) state.missingSince = Date.now();
-                  // Streamlit can temporarily replace the progress subtree during
-                  // a full rerun. Keep the lock through that short unmount window.
-                  if (Date.now() - state.missingSince > 10000) stop();
-                  return;
-                }
-                state.missingSince = 0;
-                const main = doc.querySelector('section[data-testid="stMain"]');
-                const candidates = [
-                  main && main.querySelector('[data-testid="stMainBlockContainer"]'),
-                  main && main.querySelector('.main'),
-                  main,
-                  doc.querySelector('section.main'),
-                  doc.querySelector('[data-testid="stAppViewContainer"]'),
-                  doc.scrollingElement,
-                  doc.documentElement,
-                  doc.body
-                ].filter(Boolean);
-                for (const element of candidates) {
-                  try {
-                    if (Math.abs(element.scrollTop) > 1) element.scrollTop = 0;
-                  } catch (error) {}
-                }
-                try { window.scrollTo(0, 0); } catch (error) {}
-                const cardTop = progress.getBoundingClientRect().top;
-                if (state.lastTop != null && Math.abs(cardTop - state.lastTop) > 24) {
-                  state.startedAt = Date.now();
-                }
-                state.lastTop = cardTop;
-                if (Date.now() - state.startedAt > 2500) stop();
-              };
-              root[activeKey] = state;
-              doc.addEventListener('wheel', cancelOnScroll, { capture: true, passive: true });
-              doc.addEventListener('touchmove', cancelOnScroll, { capture: true, passive: true });
-              doc.addEventListener('keydown', cancelOnNavigationKey, true);
-              state.reset();
-              state.timer = window.setInterval(state.reset, 350);
-            })();
-            </script>
-            """,
-            unsafe_allow_javascript=True,
-        )
-        # The live progress card below is the only analysis title. Painting
-        # "Analyzing BOM" here as well puts a second heading above it and
-        # pushes the progress surface down the workspace.
+    if analysis_running:
+        # Progress/handoff owns the workspace — including after results exist
+        # but before Analysis Details mounts. Painting results chrome here left
+        # only "Review uploaded components" over a blank shell.
         return
     with st.container(key="approved_bom_title"):
         title_col, action_col = st.columns([1, 0.28], gap="small", vertical_alignment="center")
@@ -2856,18 +2783,76 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
                     "Upload your BOM file",
                     type=["csv", "xlsx"],
                     key="bom_file_uploader",
+                    on_change=remember_approved_bom_upload,
                     help="CSV or Excel with MPN and Quantity columns.",
                     disabled=analysis_running,
                 )
-                upload_state_file = uploaded if uploaded is not None else st.session_state.get(
-                    "bom_file_uploader"
-                )
+                upload_state_file = uploaded
+                if upload_state_file is None:
+                    upload_state_file = st.session_state.get("bom_file_uploader")
+                if upload_state_file is None:
+                    upload_state_file = st.session_state.get("cadivor_uploaded_bom_file")
                 upload_available = upload_state_file is not None
-                uploaded_name = str(getattr(upload_state_file, "name", "") or "")
+                uploaded_name = str(
+                    getattr(upload_state_file, "name", "")
+                    or st.session_state.get("cadivor_uploaded_bom_filename")
+                    or ""
+                )
                 if upload_available:
                     st.session_state.pop("cadivor_bom_submission_error", None)
+                    st.session_state.pop("cadivor_bom_upload_receiving", None)
+                upload_receiving = bool(
+                    st.session_state.get("cadivor_bom_upload_receiving")
+                ) and not upload_available
+                # Server-visible receiving state for the upload rerun. Client JS
+                # still unhides the banner on the change event before the rerun.
+                receiving_hidden = "" if upload_receiving else " hidden"
+                st.markdown(
+                    f"""
+                    <div id="cadivor-bom-upload-receiving" class="cadivor-bom-upload-receiving"
+                         role="status" aria-live="polite"{receiving_hidden}>
+                      Receiving file… Analyze BOM will enable when Cadivor has the upload.
+                    </div>
+                    <style>
+                    .cadivor-bom-upload-receiving{{
+                      margin:8px 0 0;padding:10px 12px;border:1px solid #bfdbfe;
+                      border-radius:10px;background:#eff6ff;color:#1d4ed8;
+                      font-size:.86rem;line-height:1.35;font-weight:600;
+                    }}
+                    </style>
+                    <script>
+                    (function(){{
+                      const root = window.parent && window.parent.document
+                        ? window.parent.document : document;
+                      const markReceiving = () => {{
+                        const banner = root.querySelector('#cadivor-bom-upload-receiving');
+                        if (banner) banner.hidden = false;
+                      }};
+                      const bind = () => {{
+                        root.querySelectorAll(
+                          '.st-key-bom_file_uploader input[type="file"],'
+                          + ' [data-testid="stFileUploaderDropzone"] input[type="file"]'
+                        ).forEach((input) => {{
+                          if (input.dataset.cadivorReceivingBound === '1') return;
+                          input.dataset.cadivorReceivingBound = '1';
+                          input.addEventListener('change', markReceiving);
+                        }});
+                      }};
+                      bind();
+                      try {{
+                        new MutationObserver(bind).observe(root.body, {{childList:true, subtree:true}});
+                      }} catch (e) {{}}
+                    }})();
+                    </script>
+                    """,
+                    unsafe_allow_html=True,
+                )
                 with st.container(key="approved_bom_submit_row"):
-                    submit_col, guidance_col = st.columns([0.12, 0.88], gap="small", vertical_alignment="center")
+                    # Keep Analyze and helper text in separate tracks so the
+                    # helper cannot overlap the button at ~1360px viewports.
+                    submit_col, guidance_col = st.columns(
+                        [0.22, 0.78], gap="medium", vertical_alignment="top"
+                    )
                     with submit_col:
                         submitted = st.button(
                             "Analyzing BOM…" if analysis_running else "Analyze BOM",
@@ -2888,7 +2873,7 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
                             st.markdown(
                                 """
                                 <div class="cadivor-bom-upload-waiting" role="status" aria-live="polite">
-                                  <span>Select a CSV or Excel file above. Cadivor is waiting for the complete upload; Analyze BOM activates when the file is ready.</span>
+                                  <span>Select a CSV or Excel file above. Analyze BOM enables within about 2 seconds after Cadivor receives it. While the file is uploading you will see a Receiving file… state. If that does not finish, remove the file and select it again.</span>
                                 </div>
                                 <style>
                                 .cadivor-bom-upload-waiting {
@@ -2907,7 +2892,7 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
                     staged = stage_approved_bom_submission(
                         st.session_state,
                         submitted=True,
-                        uploaded_file=uploaded,
+                        uploaded_file=upload_state_file,
                         project_name=resolve_project_choice(
                             NEW_PROJECT_CHOICE,
                             typed_project,
@@ -2979,7 +2964,9 @@ def render_bom_catalog(records: list[dict[str, Any]] | None, user_id: str = "") 
             if not within_analyzed_range(_first(row, "created_at", "updated_at", fallback=""), date_filter, today):
                 continue
             visible.append((row, label, project_name, bom_name))
-        bom_widths = [2.15, 1.25, 0.72, 0.8, 0.95, 1.05, 1.35]
+        # The BOM catalog reuses the Home header, including its 2.05fr Actions
+        # track. Keep the row's action controls on that same track as well.
+        bom_widths = [2.15, 1.25, 0.72, 0.8, 0.95, 1.05, 2.05]
         with st.container(key="approved_bom_catalog_table"):
             header_labels = ("Name", "Project", "Part count", "Health", "High-risk parts", "Last analyzed", "Actions")
             header_cells = "".join(
@@ -3506,8 +3493,8 @@ def render_monitoring(
         st.markdown(
             """
             <div class="cv-ap cv-ap-monitoring-page-header">
-              <h1>Alerts & monitoring</h1>
-              <p class="cv-ap-sub">Stay ahead of changes in component availability, lifecycle status, pricing and supplier activity.</p>
+              <h1>Alerts & Monitoring</h1>
+              <p class="cv-ap-sub">Review lifecycle, inventory, pricing, and supplier changes across monitored components.</p>
             </div>
             """,
             unsafe_allow_html=True,
@@ -6511,7 +6498,7 @@ def render_replacement_search() -> None:
         )
     # Mount the destination before supplier I/O. Deep links must show the selected
     # MPN and the Finder workspace immediately while the catalog search runs.
-    reveal_authenticated_page_body("Alternative Finder")
+    reveal_authenticated_page_body("Alternative Finder", force=True)
     query = str(query or st.session_state.get(input_widget_key) or "").strip()
     if query and (pending_query or prefilled_search_pending):
         from src.alternative_finder_search import run_alternative_finder_search
@@ -6973,12 +6960,114 @@ def render_replacement_search() -> None:
 
 
 
+def _collect_compare_parts_job() -> bool:
+    """Move a finished comparison future into session state."""
+    future = st.session_state.get("cadivor_compare_future")
+    if future is None or not future.done():
+        return False
+    job_parts = list(st.session_state.get("cadivor_compare_job_parts") or [])
+    try:
+        result = future.result()
+        if not isinstance(result, dict):
+            raise TypeError("comparison worker returned an invalid result")
+    except Exception as exc:
+        failure_ref = uuid4().hex[:8].upper()
+        logger.warning(
+            "Compare Parts failed ref=%s stage=worker_result exception_type=%s frames=%s",
+            failure_ref,
+            type(exc).__name__,
+            safe_exception_frames(exc),
+        )
+        result = {
+            "status": "failed",
+            "part_a": job_parts[0] if job_parts else "",
+            "part_b": job_parts[1] if len(job_parts) > 1 else "",
+            "part_c": job_parts[2] if len(job_parts) > 2 else "",
+            "part_numbers": job_parts,
+            "error": (
+                "Cadivor could not complete this comparison right now. Please try again. "
+                f"Reference: {failure_ref}."
+            ),
+        }
+    st.session_state["cadivor_compare_result"] = result
+    st.session_state["cadivor_compare_part_c"] = (
+        job_parts[2] if len(job_parts) > 2 else ""
+    )
+    st.session_state.pop("cadivor_compare_future", None)
+    st.session_state.pop("cadivor_compare_job_parts", None)
+    st.session_state.pop("cadivor_compare_started_at", None)
+    return True
+
+
+COMPARE_PARTS_JOB_TIMEOUT_SECONDS = 90
+
+
+@st.fragment(run_every="2s")
+def _render_compare_parts_job_status() -> None:
+    """Poll the evidence search without blocking navigation or page rendering."""
+    future = st.session_state.get("cadivor_compare_future")
+    if future is None:
+        return
+    if _collect_compare_parts_job():
+        st.rerun()
+        return
+    try:
+        started_at = float(st.session_state.get("cadivor_compare_started_at") or 0.0)
+    except (TypeError, ValueError):
+        started_at = 0.0
+    elapsed = max(0, int(datetime.now().timestamp() - started_at)) if started_at else 0
+    if elapsed >= COMPARE_PARTS_JOB_TIMEOUT_SECONDS:
+        job_parts = list(st.session_state.get("cadivor_compare_job_parts") or [])
+        try:
+            future.cancel()
+        except Exception:
+            pass
+        st.session_state["cadivor_compare_result"] = {
+            "status": "failed",
+            "part_a": job_parts[0] if job_parts else "",
+            "part_b": job_parts[1] if len(job_parts) > 1 else "",
+            "part_c": job_parts[2] if len(job_parts) > 2 else "",
+            "part_numbers": job_parts,
+            "error": (
+                "Cadivor stopped this comparison after 90 seconds because one or more "
+                "evidence sources did not respond in time. Entered part numbers are "
+                "unchanged. Try again, or review the sources that remain unavailable."
+            ),
+            "elapsed_seconds": elapsed,
+        }
+        st.session_state.pop("cadivor_compare_future", None)
+        st.session_state.pop("cadivor_compare_job_parts", None)
+        st.session_state.pop("cadivor_compare_started_at", None)
+        st.rerun()
+        return
+    st.info(
+        "Searching supplier records, manufacturer pages, and available datasheets. "
+        "Cadivor will show the comparison as soon as the evidence checks finish.",
+        icon="🔎",
+    )
+    if elapsed > 0:
+        st.caption(f"Search time: {elapsed}s.")
+    if elapsed >= 45:
+        st.caption(
+            "Some sources are responding slowly. Cadivor will stop this search at 90 seconds "
+            "and report which evidence could not be retrieved."
+        )
+
+
 def render_compare_live() -> None:
     """Compare up to three parts, with each candidate checked against Part A."""
     begin_approved_page()
     from src.approved_alternatives import part_key
-    from src.parts_compare import resolve_compare_parts_submitted_mpn, run_compare_parts_many
-    from src.ui.navigation import reveal_authenticated_page_body
+    from src.parts_compare import (
+        customer_facing_evidence_text,
+        resolve_compare_parts_submitted_mpn,
+        submit_compare_parts_many,
+    )
+    from src.ui.navigation import request_main_scroll_reset, reveal_authenticated_page_body
+
+    _collect_compare_parts_job()
+    compare_future = st.session_state.get("cadivor_compare_future")
+    compare_running = compare_future is not None and not compare_future.done()
 
     pending_handoff = st.session_state.pop("cadivor_compare_pending_handoff", None)
     if isinstance(pending_handoff, dict):
@@ -7075,21 +7164,22 @@ def render_compare_live() -> None:
         else:
             input_cols = st.columns(2)
         with input_cols[0]:
-            entered_a = st.text_input("Part A", key="approved_compare_a", placeholder="Manufacturer part number")
+            entered_a = st.text_input("Part A", key="approved_compare_a", placeholder="Manufacturer part number", disabled=compare_running)
         with input_cols[1]:
-            entered_b = st.text_input("Part B", key="approved_compare_b", placeholder="Manufacturer part number")
+            entered_b = st.text_input("Part B", key="approved_compare_b", placeholder="Manufacturer part number", disabled=compare_running)
         entered_c = ""
         if st.session_state.get("approved_compare_show_c"):
             with input_cols[2]:
-                entered_c = st.text_input("Part C", key="approved_compare_c", placeholder="Manufacturer part number")
+                entered_c = st.text_input("Part C", key="approved_compare_c", placeholder="Manufacturer part number", disabled=compare_running)
         submitted = st.form_submit_button(
             "Compare parts",
             type="primary",
             key="approved_compare_run",
+            disabled=compare_running,
         )
     # The compare form is now visibly mounted. Close the navigation cover before
     # supplier lookups begin so progress does not dim the full page.
-    reveal_authenticated_page_body("Compare Parts")
+    reveal_authenticated_page_body("Compare Parts", force=True)
     part_a = resolve_compare_parts_submitted_mpn(
         entered_a,
         st.session_state.get("approved_compare_a"),
@@ -7109,20 +7199,16 @@ def render_compare_live() -> None:
     requested_parts = [part for part in (part_a, part_b, part_c) if str(part or "").strip()]
     auto_run = bool(st.session_state.pop("approved_compare_auto_run_pending", False))
     if submitted or auto_run:
+        request_main_scroll_reset()
+    if submitted or auto_run:
         if len(requested_parts) >= 2:
-            try:
-                with st.spinner("Comparing recorded supplier and datasheet evidence…"):
-                    st.session_state["cadivor_compare_result"] = run_compare_parts_many(requested_parts)
-                st.session_state["cadivor_compare_part_c"] = part_c
-            except Exception:
-                st.session_state["cadivor_compare_result"] = {
-                    "status": "failed",
-                    "part_a": part_a,
-                    "part_b": part_b,
-                    "part_c": part_c,
-                    "part_numbers": requested_parts,
-                    "error": "Cadivor could not complete this comparison right now. Please try again.",
-                }
+            st.session_state.pop("cadivor_compare_result", None)
+            st.session_state["cadivor_compare_job_parts"] = requested_parts
+            st.session_state["cadivor_compare_started_at"] = datetime.now().timestamp()
+            st.session_state["cadivor_compare_future"] = submit_compare_parts_many(
+                requested_parts
+            )
+            compare_running = True
         else:
             st.session_state["cadivor_compare_result"] = {
                 "status": "failed",
@@ -7133,16 +7219,26 @@ def render_compare_live() -> None:
                 "error": "Enter Part A and Part B manufacturer part numbers.",
             }
     if st.session_state.get("approved_compare_show_c"):
-        st.button("Remove Part C", key="approved_compare_remove_c", on_click=_remove_third_part)
+        st.button(
+            "Remove Part C",
+            key="approved_compare_remove_c",
+            on_click=_remove_third_part,
+            disabled=compare_running,
+        )
     else:
         st.button(
             "＋ Add part",
             key="approved_compare_add_c",
             type="secondary",
             on_click=_show_third_part,
+            disabled=compare_running,
         )
 
+    _render_compare_parts_job_status()
+
     result = st.session_state.get("cadivor_compare_result")
+    future = st.session_state.get("cadivor_compare_future")
+    compare_running = compare_running or (future is not None and not future.done())
     if isinstance(result, dict):
         result_parts = result.get("part_numbers")
         if result_parts is None:
@@ -7241,7 +7337,11 @@ def render_compare_live() -> None:
         raw_a = _shown(_recorded(row, "Part A", "part_a", "a", "value_a", "Original") or str(row.get("Part A") or row.get("Original") or ""))
         raw_b = _shown(_recorded(row, "Part B", "part_b", "b", "value_b", "Candidate") or str(row.get("Part B") or row.get("Candidate") or ""))
         raw_c = _shown(_recorded(row, "Part C", "part_c", "c", "value_c") or str(row.get("Part C") or ""))
-        evidence = _shown(str(row.get("Evidence") or row.get("evidence") or ""))
+        evidence = _shown(
+            customer_facing_evidence_text(
+                row.get("Evidence") or row.get("evidence") or ""
+            )
+        )
         label_key = label.casefold()
 
         def critical_for(slot: str) -> bool:
@@ -7327,6 +7427,8 @@ def render_compare_live() -> None:
             empty = error
         elif ran or comparison:
             empty = "No comparable attributes were recorded for these parts."
+        elif compare_running:
+            empty = "Comparison search is running. Results will appear here when the evidence checks finish."
         elif part_a.strip() and part_b.strip():
             empty = "No comparison is available yet. Run Compare parts to load recorded attributes."
         else:
@@ -7340,6 +7442,15 @@ def render_compare_live() -> None:
     submitted_c = str(result.get("part_c") or "") if isinstance(result, dict) else ""
     name_c = _esc(card_c.get("mpn") or submitted_c or part_c or "Part C")
     notice = "".join(compatibility_notices)
+    lookup_error = str(result.get("error") or "").strip() if isinstance(result, dict) else ""
+    lookup_notice = (
+        "<div class='cv-compare-data-warning' role='status' "
+        "style='margin:12px 0;padding:12px 16px;border:1px solid #f4c873;"
+        "border-radius:12px;background:#fff9e8;color:#754208;font-size:14px;line-height:1.45'>"
+        f"{_esc(lookup_error)}</div>"
+        if lookup_error
+        else ""
+    )
     headers = f"<th>Parameter</th><th>{name_a}</th><th>{name_b}</th>"
     if has_part_c:
         headers += f"<th>{name_c}</th>"
@@ -7366,6 +7477,7 @@ def render_compare_live() -> None:
         f"""
         <div class="cv-ap">
           {notice}
+          {lookup_notice}
           {figures}
         </div>
         """,
@@ -7546,13 +7658,15 @@ def render_datasheet_live() -> None:
             st.error(str(extracted.get("reason") or "Could not read this PDF."))
         st.markdown(
             '<div class="dq-marker" aria-hidden="true"></div>'
-            "<header class='dq-hero'>"
+            "<header class='dq-hero' data-cadivor-destination-shell='Datasheet Q&A'>"
             "<p class='dq-breadcrumb'>Engineering Intelligence / Datasheet Q&amp;A</p>"
             "<h1 class='dq-title'>Datasheet Q&amp;A</h1>"
             "<p class='dq-sub'>Ask precise questions about technical documents and inspect the supporting source pages.</p>"
             "</header>",
             unsafe_allow_html=True,
         )
+        from src.ui.navigation import reveal_authenticated_page_body as _reveal_datasheet_shell
+        _reveal_datasheet_shell("Datasheet Q&A", force=True)
 
         # A part-number lookup makes this workflow discoverable and retrieves
         # exact supplier-linked PDFs when available. A public web search is

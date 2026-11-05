@@ -22,7 +22,10 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          pip install -r requirements.txt PyMuPDF
+          pip install -r requirements.txt PyMuPDF pytest
+
+      - name: Run Next migration Supabase Auth and trial tests
+        run: python -m pytest tests/test_supabase_auth.py -q
 
       - name: Run Alternative Finder Regression Tests
         run: |

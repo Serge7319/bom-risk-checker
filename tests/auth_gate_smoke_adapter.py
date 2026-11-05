@@ -286,68 +286,170 @@ def _smoke_user_row(*, email: str = SMOKE_EMAIL) -> dict[str, Any]:
     }
 
 
+class _SmokeStore:
+    """Process-local tables so BOM persist → Analysis Details can complete in smoke."""
+
+    def __init__(self) -> None:
+        self.tables: dict[str, list[dict[str, Any]]] = {
+            "users": [_smoke_user_row()],
+            "analyses": [],
+            "analysis_parts": [],
+            "monitor_alerts": [],
+            "workspace_members": [
+                {
+                    "id": "smoke-member-1",
+                    "workspace_id": "smoke-workspace",
+                    "user_id": "auth-smoke-user",
+                    "email": SMOKE_EMAIL,
+                    "display_name": "Auth Smoke",
+                    "role": "owner",
+                    "functional_roles": [],
+                    "status": "active",
+                    "joined_at": "2026-01-01T00:00:00+00:00",
+                }
+            ],
+        }
+
+
 class _SmokeQuery:
-    def __init__(self, data: list | None = None, count: int = 0) -> None:
-        self._data = list(data or [])
-        self._count = count
+    def __init__(self, store: _SmokeStore, table: str) -> None:
+        self._store = store
+        self._table = table
+        self._filters: list[tuple[str, str, Any]] = []
+        self._order_col: str | None = None
+        self._order_desc = False
+        self._limit: int | None = None
+        self._pending_insert: list[dict[str, Any]] | None = None
+        self._pending_update: dict[str, Any] | None = None
+        self._pending_delete = False
 
     def select(self, *args: Any, **kwargs: Any) -> "_SmokeQuery":
         del args, kwargs
         return self
 
-    def eq(self, *args: Any, **kwargs: Any) -> "_SmokeQuery":
+    def eq(self, column: str, value: Any = None, *args: Any, **kwargs: Any) -> "_SmokeQuery":
         del args, kwargs
+        self._filters.append(("eq", str(column), value))
         return self
 
-    def neq(self, *args: Any, **kwargs: Any) -> "_SmokeQuery":
+    def neq(self, column: str, value: Any = None, *args: Any, **kwargs: Any) -> "_SmokeQuery":
         del args, kwargs
+        self._filters.append(("neq", str(column), value))
         return self
 
-    def in_(self, *args: Any, **kwargs: Any) -> "_SmokeQuery":
+    def in_(self, column: str, values: Any = None, *args: Any, **kwargs: Any) -> "_SmokeQuery":
         del args, kwargs
+        self._filters.append(("in", str(column), list(values or [])))
         return self
 
-    def order(self, *args: Any, **kwargs: Any) -> "_SmokeQuery":
+    def order(
+        self, column: str, *args: Any, desc: bool = False, **kwargs: Any
+    ) -> "_SmokeQuery":
         del args, kwargs
+        self._order_col = str(column)
+        self._order_desc = bool(desc)
         return self
 
-    def limit(self, *args: Any, **kwargs: Any) -> "_SmokeQuery":
+    def limit(self, count: int, *args: Any, **kwargs: Any) -> "_SmokeQuery":
         del args, kwargs
+        self._limit = int(count)
         return self
 
     def range(self, *args: Any, **kwargs: Any) -> "_SmokeQuery":
         del args, kwargs
         return self
 
-    def update(self, *args: Any, **kwargs: Any) -> "_SmokeQuery":
+    def update(self, payload: Any = None, *args: Any, **kwargs: Any) -> "_SmokeQuery":
         del args, kwargs
+        self._pending_update = dict(payload or {})
         return self
 
-    def insert(self, *args: Any, **kwargs: Any) -> "_SmokeQuery":
+    def insert(self, payload: Any = None, *args: Any, **kwargs: Any) -> "_SmokeQuery":
         del args, kwargs
+        if isinstance(payload, list):
+            rows = [dict(row) for row in payload if isinstance(row, dict)]
+        elif isinstance(payload, dict):
+            rows = [dict(payload)]
+        else:
+            rows = []
+        from datetime import datetime, timezone
+
+        now = datetime.now(timezone.utc).isoformat()
+        for row in rows:
+            if not str(row.get("id") or "").strip():
+                row["id"] = str(uuid.uuid4())
+            if self._table in {"analyses", "analysis_parts"} and not row.get("created_at"):
+                row["created_at"] = now
+        self._pending_insert = rows
         return self
 
-    def upsert(self, *args: Any, **kwargs: Any) -> "_SmokeQuery":
-        del args, kwargs
-        return self
+    def upsert(self, payload: Any = None, *args: Any, **kwargs: Any) -> "_SmokeQuery":
+        return self.insert(payload, *args, **kwargs)
 
     def delete(self, *args: Any, **kwargs: Any) -> "_SmokeQuery":
         del args, kwargs
+        self._pending_delete = True
         return self
 
+    def _matches(self, row: dict[str, Any]) -> bool:
+        for op, column, expected in self._filters:
+            actual = row.get(column)
+            if op == "eq" and str(actual) != str(expected):
+                return False
+            if op == "neq" and str(actual) == str(expected):
+                return False
+            if op == "in" and str(actual) not in {str(v) for v in expected}:
+                return False
+        return True
+
+    def _filtered(self) -> list[dict[str, Any]]:
+        rows = [dict(row) for row in self._store.tables.get(self._table, []) if self._matches(row)]
+        if self._order_col:
+            rows.sort(
+                key=lambda row: str(row.get(self._order_col) or ""),
+                reverse=self._order_desc,
+            )
+        if self._limit is not None:
+            rows = rows[: self._limit]
+        return rows
+
     def execute(self) -> Any:
-        return types.SimpleNamespace(data=list(self._data), count=self._count)
+        table_rows = self._store.tables.setdefault(self._table, [])
+        if self._pending_insert is not None:
+            table_rows.extend(self._pending_insert)
+            return types.SimpleNamespace(
+                data=[dict(row) for row in self._pending_insert],
+                count=len(self._pending_insert),
+            )
+        matched = [row for row in table_rows if self._matches(row)]
+        if self._pending_update is not None:
+            for row in matched:
+                row.update(self._pending_update)
+            return types.SimpleNamespace(
+                data=[dict(row) for row in matched],
+                count=len(matched),
+            )
+        if self._pending_delete:
+            keep = [row for row in table_rows if not self._matches(row)]
+            self._store.tables[self._table] = keep
+            return types.SimpleNamespace(data=[dict(row) for row in matched], count=len(matched))
+        rows = self._filtered()
+        return types.SimpleNamespace(data=rows, count=len(rows))
 
 
 class _SmokeSupabase:
+    def __init__(self) -> None:
+        self._store = _SmokeStore()
+
     def table(self, name: str) -> _SmokeQuery:
-        if name == "users":
-            return _SmokeQuery(data=[_smoke_user_row()])
-        return _SmokeQuery()
+        return _SmokeQuery(self._store, str(name or ""))
 
     def rpc(self, *args: Any, **kwargs: Any) -> _SmokeQuery:
         del args, kwargs
-        return _SmokeQuery(data=[{"account_status": "active", "maintenance_mode": False}])
+        self._store.tables["__rpc__"] = [
+            {"account_status": "active", "maintenance_mode": False}
+        ]
+        return _SmokeQuery(self._store, "__rpc__")
 
     @property
     def auth(self) -> Any:

@@ -33,19 +33,50 @@ class ApprovedPageVisualContractTests(unittest.TestCase):
         self.assertIn('justify-content: flex-end !important;', MONITORING_HOME_CSS)
         self.assertIn('st-key-approved_home_new_bom"] button', MONITORING_HOME_CSS)
 
+    def test_route_geometry_has_one_final_workspace_owner(self):
+        self.assertIn('_load_css("monitoring_home_alignment.css")', CORE_UI)
+        self.assertIn("inject_workspace_geometry_final()", CORE_UI)
+        self.assertNotIn('id="cadivor-workspace-geometry-prepaint"', CORE_UI)
+        self.assertIn(".cv-ap-home-kpi .cv-ap-home-icon", MONITORING_HOME_CSS)
+        self.assertIn("max-width: 30px !important;", MONITORING_HOME_CSS)
+        self.assertIn("grid-template-columns: minmax(0, 1fr) !important;", MONITORING_HOME_CSS)
+
     def test_monitoring_kpis_override_streamlit_column_sizing(self):
         self.assertIn(
-            '.st-key-approved_monitoring_kpi_grid [data-testid="stHorizontalBlock"]{display:grid!important;grid-template-columns:repeat(4,minmax(0,240px))!important;justify-content:start!important;',
+            '.st-key-approved_monitoring_kpi_grid [data-testid="stHorizontalBlock"]{box-sizing:border-box!important;display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;justify-content:stretch!important;',
             APPROVED_PAGES,
         )
         self.assertIn(
-            '.st-key-approved_monitoring_kpi_grid{box-sizing:border-box!important;width:100%!important;max-width:100%!important;min-width:0!important;margin:0 0 20px!important;overflow:visible!important}',
+            '.st-key-approved_monitoring_kpi_grid [data-testid="stHorizontalBlock"]>[data-testid="column"]{box-sizing:border-box!important;display:flex!important;flex:none!important;justify-self:stretch!important;width:100%!important;max-width:none!important;',
             APPROVED_PAGES,
         )
+        self.assertIn(
+            'grid-template-columns:repeat(2,minmax(0,1fr))!important',
+            APPROVED_PAGES,
+        )
+        self.assertIn(
+            '.st-key-approved_monitoring_kpi_grid{margin:0!important;overflow:visible!important}',
+            APPROVED_PAGES,
+        )
+        self.assertIn(
+            'section[data-testid="stMain"]:has(.st-key-monitoring_home_width_marker) [data-testid="stElementContainer"]:has(.st-key-approved_monitoring_kpi_grid)',
+            APPROVED_PAGES,
+        )
+        self.assertIn("flex:1 1 100%!important", APPROVED_PAGES)
+        self.assertIn("align-items: stretch !important;", MONITORING_HOME_CSS)
+        self.assertIn('min-height:0!important;cursor:pointer!important', APPROVED_PAGES)
+        self.assertNotIn('min-height:188px!important', APPROVED_PAGES)
         self.assertNotIn(
             '.st-key-approved_monitoring_kpi_grid [data-testid="column"]{box-sizing:border-box!important;display:flex!important;flex:1 1 0!important;width:0!important;max-width:none!important;',
             APPROVED_PAGES,
         )
+
+    def test_compare_parts_renders_customer_safe_evidence(self):
+        compare = APPROVED_PAGES.split("def render_compare_live", 1)[1].split(
+            "def render_datasheet_live", 1
+        )[0]
+        self.assertIn("customer_facing_evidence_text", compare)
+        self.assertIn("customer_facing_evidence_text(\n                row.get(\"Evidence\")", compare)
 
     def test_monitoring_category_filter_is_one_stateful_required_pills_widget(self):
         monitoring_renderer = APPROVED_PAGES.split("def render_monitoring(", 1)[1]
@@ -83,6 +114,33 @@ class ApprovedPageVisualContractTests(unittest.TestCase):
         )
         self.assertIn('("render_monitoring", "standard")', APPROVED_PAGES)
         self.assertIn('.st-key-approved_monitoring_alert_card {', MONITORING_HOME_CSS)
+        self.assertIn('max-width: 1440px !important;', MONITORING_HOME_CSS)
+        self.assertIn('> [data-testid="stElementContainer"]:not(:has(> .st-key-monitoring_home_width_marker))', MONITORING_HOME_CSS)
+
+    def test_monitoring_has_one_header_and_reveals_after_selected_view_mounts(self):
+        runtime = (ROOT / "src" / "authenticated_runtime.py").read_text(
+            encoding="utf-8"
+        )
+        monitoring = runtime.split('if app_mode == "Monitoring":', 1)[1].split(
+            'if app_mode == "Supply Risk Scenario":', 1
+        )[0]
+        overview = monitoring.split('if monitor_view == "overview":', 1)[1].split(
+            'with st.container(key="monitoring_snapshot"):', 1
+        )[0]
+        snapshot = monitoring.split(
+            'with st.container(key="monitoring_snapshot"):', 1
+        )[1]
+        self.assertNotIn("cadivor_section_header(", monitoring)
+        self.assertIn("include_header=True", overview)
+        self.assertIn('reveal_authenticated_page_body("Monitoring", force=True)', snapshot)
+        self.assertGreater(
+            snapshot.index('reveal_authenticated_page_body("Monitoring", force=True)'),
+            snapshot.index("_render_monitor_action_queue()"),
+        )
+        self.assertLess(
+            snapshot.index('reveal_authenticated_page_body("Monitoring", force=True)'),
+            snapshot.index("stop_authenticated_page()"),
+        )
 
     def test_approved_alternatives_shortcut_uses_widget_callback(self):
         shortcut = EI_BOM_REPORT.split(
@@ -104,12 +162,14 @@ class ApprovedPageVisualContractTests(unittest.TestCase):
         self.assertIn('st.button("Start 14-Day Trial", key="cv_public_signup"', MARKETING_SITE)
 
 
-    def test_navigation_cover_waits_for_the_complete_destination_render(self):
+    def test_navigation_cover_releases_when_destination_shell_is_ready(self):
         navigation_state = {
             DELAY_ROUTE_BODY_REVEAL_KEY: True,
             MAIN_TRANSITION_KIND_KEY: "navigation",
         }
-        self.assertTrue(should_defer_navigation_reveal(navigation_state))
+        # Shell-ready pages must be able to release Opening… without waiting for
+        # stop_authenticated_page(); force remains an explicit release path.
+        self.assertFalse(should_defer_navigation_reveal(navigation_state))
         self.assertFalse(should_defer_navigation_reveal(navigation_state, force=True))
         self.assertFalse(
             should_defer_navigation_reveal(
@@ -133,6 +193,14 @@ class ApprovedPageVisualContractTests(unittest.TestCase):
             "from src.ui.executive_workspace", 1
         )[0]
         self.assertIn("force=True", stop_wrapper)
+        self.assertIn(
+            'reveal_authenticated_page_body("Procurement Advisor", force=True)',
+            runtime_source,
+        )
+        self.assertIn(
+            'reveal_authenticated_page_body("Compare Parts", force=True)',
+            APPROVED_PAGES,
+        )
 
     def test_bom_risk_summary_and_metrics_precede_component_review_table(self):
         markup = engineering_intelligence_html(
@@ -152,6 +220,14 @@ class ApprovedPageVisualContractTests(unittest.TestCase):
         self.assertIn(
             'header_labels = ("Name", "Project", "Part count", "Health", "High-risk parts", "Last analyzed", "Actions")',
             home,
+        )
+        self.assertIn(
+            "home_widths = [2.0, 1.15, 0.7, 0.75, 0.9, 1.0, 1.7]",
+            home,
+        )
+        self.assertIn(
+            "grid-template-columns:2.0fr 1.15fr .7fr .75fr .9fr 1.0fr 1.7fr!important",
+            APPROVED_PAGES,
         )
         self.assertIn('cells = st.columns(home_widths, gap="small"', home)
         self.assertIn('_render_saved_bom_actions(cells[6],', home)
@@ -198,12 +274,12 @@ class ApprovedPageVisualContractTests(unittest.TestCase):
 
     def test_monitoring_filter_pills_wrap_before_the_period_control_can_overlap(self):
         self.assertIn(
-            "grid-template-columns: minmax(4.5rem, max-content) minmax(0, 1fr) 356px !important;",
+            "grid-template-columns: minmax(5.5rem, max-content) minmax(0, 1fr) 356px !important;",
             MONITORING_FINAL_CSS,
         )
-        self.assertIn("grid-template-columns: minmax(4.5rem, max-content) minmax(0, 1fr) !important;", MONITORING_FINAL_CSS)
+        self.assertIn("grid-template-columns: minmax(5.5rem, max-content) minmax(0, 1fr) !important;", MONITORING_FINAL_CSS)
         self.assertIn(".cv-ap-monitoring-show-label", MONITORING_FINAL_CSS)
-        self.assertIn("min-width: 4.5rem !important;", MONITORING_FINAL_CSS)
+        self.assertIn("min-width: 5.5rem !important;", MONITORING_FINAL_CSS)
         self.assertIn("flex-flow: row wrap !important;", MONITORING_FINAL_CSS)
         self.assertIn("max-width: 100% !important;", MONITORING_FINAL_CSS)
         self.assertIn("border-radius: 999px !important;", MONITORING_FINAL_CSS)

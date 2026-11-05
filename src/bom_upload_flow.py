@@ -37,6 +37,8 @@ def consume_approved_bom_submission(
             state["bom8_analysis_upload_file"] = uploaded_file
             state["cadivor_bom_pipeline_active"] = True
             state["bom8_analysis_pending"] = True
+        state.pop("cadivor_uploaded_bom_file", None)
+        state.pop("cadivor_uploaded_bom_filename", None)
 
     if uploaded_file is not None:
         state.pop("bom8_sample_mode", None)
@@ -63,12 +65,13 @@ def stage_approved_bom_submission(
     upload = uploaded_file
     if upload is None:
         upload = state.get("bom_file_uploader")
+    if upload is None:
+        upload = state.get("cadivor_uploaded_bom_file")
 
     if upload is None:
         state["cadivor_bom_submission_error"] = (
-            "Analyze was received, but the selected file was not available on Cadivor. "
-            "Remove it from the upload box, select it again, wait for the upload to finish, "
-            "then select Analyze BOM."
+            "Cadivor has not received the selected file yet. Wait for the upload to finish, "
+            "then select Analyze BOM again. If it still does not start, remove the file and upload it again."
         )
         return False
 
@@ -77,6 +80,11 @@ def stage_approved_bom_submission(
     state["cadivor_pending_upload"] = upload
     state["cadivor_pending_project"] = str(project_name or "")
     state["cadivor_pending_bom_name"] = str(bom_name or "")
+    # Arm progress ownership on the click run so the next paint can show an
+    # honest preparing state before CSV parse / supplier work begins.
+    state["cadivor_bom_pipeline_active"] = True
+    state["bom8_analysis_pending"] = True
+    state["bom8_analysis_in_progress"] = True
     return True
 
 
@@ -108,7 +116,21 @@ def finish_approved_bom_submission(
         "bom8_analysis_progress_queue",
         "bom8_analysis_cancel_event",
         "bom8_analysis_progress",
+        "bom8_analysis_total_parts",
+        "cadivor_bom_component_progress_started",
+        "cadivor_analysis_first_progress_logged",
+        "cadivor_bom_analysis_handoff",
+        "cadivor_bom_open_details_after_save",
+        "cadivor_bom_handoff_hold_armed",
+        "cadivor_bom_report_handoff_active",
+        "cadivor_bom_details_paint_report_only",
+        "cadivor_bom_shell_nav_hold",
+        "cadivor_bom_nav_bridge",
+        "cadivor_bom_navigate_details_id",
         "cadivor_bom_analysis_transition",
+        "cadivor_uploaded_bom_file",
+        "cadivor_uploaded_bom_filename",
+        "cadivor_bom_upload_receiving",
     ):
         state.pop(key, None)
     if reopen_upload:
@@ -206,8 +228,31 @@ def has_completed_saved_bom_results(state: MutableMapping[str, Any]) -> bool:
 def should_disable_bom_analyze_button(
     *, analysis_running: bool, upload_available: bool
 ) -> bool:
-    """Enable Analyze only after the server confirms the complete upload is available."""
+    """Only allow analysis after Streamlit has received the uploaded file."""
     return bool(analysis_running or not upload_available)
+
+
+def remember_approved_bom_upload(
+    state: MutableMapping[str, Any] | None = None,
+) -> None:
+    """Persist the completed uploader value across a form rerun."""
+    if state is None:
+        import streamlit as st
+
+        state = st.session_state
+    upload = state.get("bom_file_uploader")
+    if upload is None:
+        state.pop("cadivor_uploaded_bom_file", None)
+        state.pop("cadivor_uploaded_bom_filename", None)
+        state.pop("cadivor_bom_upload_receiving", None)
+        return
+    # Mark receiving before the widget remount so the BOM form can show a
+    # durable "Receiving file…" surface instead of an empty workspace.
+    state["cadivor_bom_upload_receiving"] = True
+    state["cadivor_uploaded_bom_file"] = upload
+    state["cadivor_uploaded_bom_filename"] = str(
+        getattr(upload, "name", "") or ""
+    )
 
 
 def should_render_approved_bom_upload_form(
@@ -268,22 +313,43 @@ def prepare_new_approved_bom_analysis(state: MutableMapping[str, Any]) -> None:
         "approved_bom_project_name",
         "approved_bom_name",
         "bom_file_uploader",
+        "cadivor_uploaded_bom_file",
+        "cadivor_uploaded_bom_filename",
     ):
         state.pop(key, None)
     state["cadivor_bom_upload_open"] = True
     state["cadivor_manage_saved_boms"] = False
 
-    from src.ui.main_transition import arm_main_transition
+    # The upload form is a fast local destination. Arming a full Opening cover
+    # here raced the Home→BOM navigation cover and could leave "Opening BOM
+    # Analyzer…" mounted after the form was ready (or before the file input
+    # ever painted). Let navigate_to() own the route cover when the page
+    # actually changes; same-route New BOM relies on the instant click cover
+    # plus the force-reveal after the form mounts.
 
-    previous_route = str(
-        state.get("cadivor_route") or state.get("app_mode") or "BOM Analyzer"
-    ).strip() or "BOM Analyzer"
-    arm_main_transition(
-        state,
-        "BOM Analyzer",
-        kind="navigation",
-        previous_route=previous_route,
-    )
+
+def start_new_approved_bom_analysis_from_home(
+    state: MutableMapping[str, Any] | None = None,
+    *,
+    navigate: Any = None,
+) -> None:
+    """Prepare the upload route in the button callback, before Home rerenders.
+
+    Streamlit runs button callbacks before the next full script pass. Navigating
+    from the button's return-value branch makes the entire Dashboard (including
+    its slow data reads and loading placeholder) rerun first, which can briefly
+    squeeze the Home layout into the navigation rail.
+    """
+    if state is None:
+        import streamlit as st
+
+        state = st.session_state
+    prepare_new_approved_bom_analysis(state)
+    if navigate is None:
+        from src.ui.navigation import navigate_to
+
+        navigate = navigate_to
+    navigate("BOM Analyzer", _rerun=False, new_analysis="1")
 
 
 def should_render_legacy_bom_workspace(state: MutableMapping[str, Any]) -> bool:

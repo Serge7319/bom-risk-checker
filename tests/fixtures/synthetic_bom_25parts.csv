@@ -1,0 +1,26 @@
+MPN,Manufacturer,Description,Quantity
+XC3S400-4PQG208C,Xilinx,FPGA,1
+EPF10K20RC240-4N,Altera,FPGA,1
+CY7C199-15PC,Cypress,SRAM,2
+MC68HC711E9CFN2,NXP,MCU,1
+DS1232LP,Maxim,Supervisor,1
+ST72F324J6T6,STMicroelectronics,MCU,1
+MAX232CPE,Maxim,Transceiver,2
+GRM188R71H104KA93D,Murata,Capacitor,10
+MC68HC11E1CFNE2,NXP,MCU,1
+LM358DR,Texas Instruments,Op Amp,4
+SN74HC595N,Texas Instruments,Shift Register,2
+ATMEGA328P-PU,Microchip,MCU,1
+NE555P,Texas Instruments,Timer,2
+1N4148,Vishay,Diode,20
+2N3904,ON Semiconductor,BJT,5
+IRF540N,Infineon,MOSFET,2
+LM7805CT,Texas Instruments,LDO,1
+CRCW060310K0FKEA,Vishay,Resistor,50
+C0805C104K5RACTU,KEMET,Capacitor,20
+B3F-1000,Omron,Tactile Switch,4
+USB-B-S-F-B-TH,Samtec,USB Connector,1
+PJ-002A,CUI,DC Jack,1
+HDR-2.54-1x8,Generic,Header,2
+LED-0805-RED,Generic,LED,8
+FUSE-1206-1A,Littelfuse,Fuse,1

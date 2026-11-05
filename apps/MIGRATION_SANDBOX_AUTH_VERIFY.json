@@ -1,0 +1,26 @@
+{
+  "pass": true,
+  "sandbox_only": true,
+  "production_auth": false,
+  "label": "custom HS256 JWT is sandbox migration auth only — not production authentication",
+  "api": "https://cadivor-next-api-sandbox.up.railway.app",
+  "web": "https://cadivor-next-web-sandbox.up.railway.app",
+  "api_deploy": "fc39d25d-a95f-4fd0-9f54-80916275256e",
+  "web_deploy": "1fbc54f0-971b-4f16-b830-a3f255cd958a",
+  "pytest": "20 passed (auth + isolation + migration suites; includes allow-flag production block + no auto-seed)",
+  "hardening_fixed": {
+    "passwords_removed_from_app_source": true,
+    "credentials_in_test_fixtures_only": "tests/fixtures/sandbox_auth_accounts.py",
+    "explicit_seed_cli": "python -m apps.api.seed_sandbox_demo + CADIVOR_SEED_SANDBOX_DEMO_USERS=1",
+    "production_blocks_allow_sandbox_jwt_plus_secret": true,
+    "authenticated_401_clears_session_and_redirects_login": true
+  },
+  "browser": {
+    "login_empty_fields_no_shipped_password": true,
+    "login_a": "Sandbox Workspace A",
+    "reload": "session persisted",
+    "protected_report": "loaded for A",
+    "revoked_token_401": "redirect /login + localStorage session null",
+    "cross_ws_b_on_a_report": "Report not found; session retained (404 not 401)"
+  }
+}

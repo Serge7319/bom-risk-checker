@@ -297,6 +297,18 @@ def mark_authenticated(user: Any, session: Any, cookie_manager: Any = None) -> N
             st.session_state["cadivor_login_handoff_stage"] = "initializing"
 
     requested = str(st.session_state.pop("cadivor_requested_page", "") or "").strip()
+    if not requested:
+        # Deep-link login (?page=Procurement+Advisor) may reach mark_authenticated
+        # before bootstrap copies the query into cadivor_requested_page.
+        try:
+            raw_page = st.query_params.get("page", "")
+            if isinstance(raw_page, (list, tuple)):
+                raw_page = raw_page[0] if raw_page else ""
+            requested = str(raw_page or "").strip()
+        except Exception:
+            requested = ""
+    if requested.lower() in {"login", "signup", "public", "auth"}:
+        requested = ""
     route = "Reports" if st.session_state.get("cadivor_stress_landing_pending") else requested or "Dashboard"
     st.session_state["cadivor_route"] = route
     st.session_state["app_mode"] = route

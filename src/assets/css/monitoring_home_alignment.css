@@ -48,6 +48,87 @@ html body section[data-testid="stMain"] .st-key-monitoring_home_width_marker {
   display: none !important;
 }
 
+/* The Home page's full visual stylesheet arrives with the route renderer.
+   Keep KPI icons bounded from the first frame so a navigation rerun cannot
+   briefly turn an inline SVG into a page-sized icon. */
+html body section[data-testid="stMain"] .cv-ap-home-kpis {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 16px !important;
+  min-width: 0 !important;
+}
+html body section[data-testid="stMain"] .cv-ap-home-kpi {
+  display: flex !important;
+  align-items: flex-start !important;
+  min-width: 0 !important;
+}
+html body section[data-testid="stMain"] .cv-ap-home-kpi .cv-ap-home-icon {
+  display: flex !important;
+  flex: 0 0 60px !important;
+  width: 60px !important;
+  min-width: 60px !important;
+  height: 60px !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+html body section[data-testid="stMain"] .cv-ap-home-icon svg {
+  display: block !important;
+  width: 30px !important;
+  min-width: 30px !important;
+  max-width: 30px !important;
+  height: 30px !important;
+  max-height: 30px !important;
+}
+@media (max-width: 1100px) {
+  html body section[data-testid="stMain"] .cv-ap-home-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+  html body section[data-testid="stMain"] .cv-ap-home-kpi .cv-ap-home-icon {
+    flex-basis: 40px !important;
+    width: 40px !important;
+    min-width: 40px !important;
+    height: 40px !important;
+  }
+  html body section[data-testid="stMain"] .cv-ap-home-icon svg {
+    width: 20px !important;
+    min-width: 20px !important;
+    max-width: 20px !important;
+    height: 20px !important;
+    max-height: 20px !important;
+  }
+}
+@media (max-width: 700px) {
+  html body section[data-testid="stMain"] .cv-ap-home-kpis {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 12px !important;
+  }
+}
+
+/* Legacy Monitoring views start at this route marker. Keep their direct
+   Streamlit content on the same centered workspace canvas. */
+html body section[data-testid="stMain"]:has(.st-key-monitoring_home_width_marker) [data-testid="stMainBlockContainer"],
+html body section[data-testid="stMain"]:has(.st-key-monitoring_home_width_marker) .main .block-container {
+  box-sizing: border-box !important;
+  width: calc(100% - 48px) !important;
+  max-width: 1440px !important;
+  min-width: 0 !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+/* The overview hero is emitted by the shared runtime before its approved-page
+   canvas. Constrain the hero itself so it lines up with that canvas. */
+html body section[data-testid="stMain"]:has(.st-key-monitoring_home_width_marker) .cv64-section {
+  box-sizing: border-box !important;
+  width: 100% !important;
+  max-width: 1440px !important;
+  min-width: 0 !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
 html body section[data-testid="stMain"] :is([data-testid="stElementContainer"], [data-testid="stLayoutWrapper"]):has(> .st-key-monitoring_home_width_marker) {
   position: absolute !important;
   width: 0 !important;
@@ -57,6 +138,66 @@ html body section[data-testid="stMain"] :is([data-testid="stElementContainer"], 
   border: 0 !important;
   overflow: hidden !important;
   flex: 0 0 0 !important;
+}
+
+/* Keep every top-level Monitoring section on the same centered canvas.
+   The approved Alerts page has its own wrapper; the snapshot and its
+   subviews are regular Streamlit blocks, so constrain those siblings here. */
+html body section[data-testid="stMain"] [data-testid="stMainBlockContainer"]:has(.st-key-monitoring_home_width_marker)
+  > [data-testid="stVerticalBlock"]
+  > [data-testid="stElementContainer"]:not(:has(> .st-key-monitoring_home_width_marker)) {
+  box-sizing: border-box !important;
+  width: 100% !important;
+  max-width: 1440px !important;
+  min-width: 0 !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
+/* The overview KPI row, filter bar, and alert table use equal full-width
+   siblings. Keep their outer Streamlit wrappers on the same centered canvas. */
+html body section[data-testid="stMain"]:has(.st-key-monitoring_home_width_marker)
+  :is(.st-key-approved_monitoring_kpi_grid, .st-key-approved_monitoring_filters, .st-key-approved_monitoring_alert_card) {
+  box-sizing: border-box !important;
+  align-self: stretch !important;
+  width: 100% !important;
+  max-width: 1440px !important;
+  min-width: 0 !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
+/* Stretch the actual Monitoring page wrappers. This route is mounted directly
+   in stMainBlockContainer and does not use the generic approved-page canvas. */
+html body section[data-testid="stMain"]:has(.st-key-monitoring_home_width_marker)
+  [data-testid="stMainBlockContainer"] > [data-testid="stVerticalBlock"] {
+  align-items: stretch !important;
+}
+
+html body section[data-testid="stMain"]:has(.st-key-monitoring_home_width_marker)
+  [data-testid="stElementContainer"]:has(.st-key-approved_monitoring_kpi_grid),
+html body section[data-testid="stMain"]:has(.st-key-monitoring_home_width_marker)
+  [data-testid="stElementContainer"]:has(.st-key-approved_monitoring_filters),
+html body section[data-testid="stMain"]:has(.st-key-monitoring_home_width_marker)
+  [data-testid="stElementContainer"]:has(.st-key-approved_monitoring_alert_card) {
+  box-sizing: border-box !important;
+  display: block !important;
+  flex: 1 1 100% !important;
+  align-self: stretch !important;
+  width: 100% !important;
+  max-width: 1440px !important;
+  min-width: 0 !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
+html body section[data-testid="stMain"]:has(.st-key-approved_monitoring_kpi_grid) .st-key-approved_monitoring_kpi_grid,
+html body section[data-testid="stMain"]:has(.st-key-approved_monitoring_kpi_grid) .st-key-approved_monitoring_filters {
+  margin-bottom: 0 !important;
+}
+
+html body section[data-testid="stMain"]:has(.st-key-approved_monitoring_kpi_grid) .st-key-approved_monitoring_alert_card {
+  margin-top: 0 !important;
 }
 
 /* Monitoring and Home share the same content box inside the 1,440px main column. */
@@ -93,6 +234,7 @@ html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_re
   width: 100% !important;
   max-width: 100% !important;
   min-width: 0 !important;
+  align-items: stretch !important;
 }
 
 /* Match the larger, card-based Monitoring mockup while retaining live data. */
@@ -113,21 +255,74 @@ html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_re
 }
 
 html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_kpi_grid {
+  display: block !important;
+  box-sizing: border-box !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
   overflow: visible !important;
+}
+
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_kpi_grid > [data-testid="stVerticalBlock"] {
+  display: block !important;
+  box-sizing: border-box !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+}
+
+/* Give all four KPI cards the same full-width tracks as the alerts table. */
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_kpi_grid [data-testid="stHorizontalBlock"] {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  justify-content: stretch !important;
+  align-items: stretch !important;
+  gap: 16px !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  overflow: visible !important;
+}
+
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_kpi_grid [data-testid="stHorizontalBlock"] > [data-testid="stColumn"],
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_kpi_grid [data-testid="stHorizontalBlock"] > [data-testid="column"] {
+  box-sizing: border-box !important;
+  display: flex !important;
+  flex: none !important;
+  justify-self: stretch !important;
+  width: 100% !important;
+  max-width: none !important;
+  min-width: 0 !important;
+  padding: 0 !important;
+}
+
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_kpi_grid [data-testid="stHorizontalBlock"] > [data-testid="column"] > [data-testid="stVerticalBlock"] {
+  display: flex !important;
+  flex-direction: column !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  height: 100% !important;
 }
 
 html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-kpi {
-  grid-template-columns: minmax(0, 1fr) 96px !important;
-  grid-template-rows: auto auto !important;
-  height: auto !important;
-  min-height: 0 !important;
+  grid-template-columns: 48px minmax(0, 1fr) !important;
+  grid-template-rows: 48px minmax(0, 1fr) !important;
+  column-gap: 12px !important;
+  row-gap: 8px !important;
+  height: 144px !important;
+  min-height: 144px !important;
   overflow: visible !important;
-  padding: 16px 16px 14px !important;
+  padding: 14px 16px !important;
 }
 
 html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-icon {
-  width: 58px !important;
-  height: 58px !important;
+  grid-column: 1 !important;
+  grid-row: 1 !important;
+  width: 48px !important;
+  height: 48px !important;
 }
 
 html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-icon svg {
@@ -136,16 +331,33 @@ html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_re
 }
 
 html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-copy > span {
-  font-size: 18px !important;
+  grid-column: 2 !important;
+  grid-row: 1 !important;
+  align-self: center !important;
+  font-size: 14px !important;
+  line-height: 1.2 !important;
+  white-space: nowrap !important;
 }
 
 html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-copy strong {
-  font-size: 40px !important;
+  grid-column: 1 !important;
+  grid-row: 2 !important;
+  align-self: center !important;
+  margin-top: 0 !important;
+  font-size: 32px !important;
 }
 
 html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-kpi .cv-ap-spark {
-  width: 100px !important;
-  height: 58px !important;
+  grid-column: 2 !important;
+  grid-row: 2 !important;
+  justify-self: end !important;
+  align-self: center !important;
+  width: 76px !important;
+  height: 40px !important;
+}
+
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-copy {
+  display: contents !important;
 }
 
 html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_alert_card {
@@ -165,11 +377,28 @@ html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_re
 }
 
 html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_alert_heading {
-  padding: 8px 20px 2px !important;
+  box-sizing: border-box !important;
+  margin: 0 !important;
+  padding: 4px 20px 2px !important;
+}
+
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_alert_heading [data-testid="stHorizontalBlock"] {
+  min-height: 36px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_alert_heading [data-testid="stColumn"],
+html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_alert_heading [data-testid="column"] {
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
 }
 
 html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-heading h2 {
+  margin: 0 !important;
+  padding: 0 !important;
   font-size: 21px !important;
+  line-height: 1.25 !important;
 }
 
 html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-count {
@@ -206,44 +435,66 @@ html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_re
 }
 
 @media (max-width: 1100px) {
+  html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_kpi_grid [data-testid="stHorizontalBlock"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 12px !important;
+  }
+
   html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-kpi {
-    grid-template-columns: minmax(0, 1fr) 76px !important;
-    height: auto !important;
-    min-height: 0 !important;
+    grid-template-columns: 40px minmax(0, 1fr) !important;
+    grid-template-rows: 40px minmax(0, 1fr) !important;
+    height: 144px !important;
+    min-height: 144px !important;
     overflow: visible !important;
-    padding: 14px !important;
+    padding: 12px !important;
   }
 
   html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-icon {
-    width: 52px !important;
-    height: 52px !important;
+    width: 40px !important;
+    height: 40px !important;
   }
 
   html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-copy > span {
-    font-size: 14px !important;
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+    font-size: 13px !important;
     overflow-wrap: normal !important;
     word-break: normal !important;
-  }
-
-  html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-kpi .cv-ap-spark {
-    width: 48px !important;
+    white-space: nowrap !important;
   }
 
   html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-copy strong {
-    font-size: 34px !important;
+    grid-column: 1 !important;
+    grid-row: 2 !important;
+  }
+
+  html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-kpi .cv-ap-spark {
+    width: 64px !important;
+  }
+
+  html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-copy strong {
+    font-size: 30px !important;
+  }
+
+  html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-copy {
+    display: contents !important;
   }
 }
 
 @media (max-width: 640px) {
+  html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_kpi_grid [data-testid="stHorizontalBlock"] {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
   html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-kpi {
-    height: auto !important;
-    min-height: 0 !important;
+    height: 144px !important;
+    min-height: 144px !important;
     overflow: visible !important;
-    padding: 14px !important;
+    padding: 12px 14px !important;
   }
 
   html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .st-key-approved_monitoring_alert_heading {
-    padding: 16px 14px 12px !important;
+    padding: 2px 12px !important;
   }
 
   html body section[data-testid="stMain"] .st-key-approved_page_canvas_standard_render_monitoring .cv-ap-monitoring-table-head,
@@ -311,23 +562,28 @@ html body section[data-testid="stMain"] [class*="st-key-approved_home_action_rev
   white-space: nowrap !important;
 }
 
-/* BOM analysis progress sits after the upload shell in the main column.
-   Hide that shell and every other element container, then keep the progress
-   card and its own contents. The card stays at the top of the scrollport. */
-html body:has(.st-key-bom8_analysis_progress_card) section[data-testid="stMain"] [data-testid="stElementContainer"]:not(:has(.st-key-bom8_analysis_progress_card)) {
+/* Keep the BOM progress surface in normal flow at the reserved top slot.
+   Hide only the upload controls it replaces; broad main-column hiding caused
+   the empty chrome and narrow-strip flashes seen during analysis. */
+html body:has(.st-key-bom8_analysis_progress_card, .st-key-bom8_analysis_preparing_card) section[data-testid="stMain"] .st-key-bom9_workspace_grid,
+html body:has(.st-key-bom8_analysis_progress_card, .st-key-bom8_analysis_preparing_card) section[data-testid="stMain"] .st-key-approved_bom_title,
+html body:has(.st-key-bom8_analysis_progress_card, .st-key-bom8_analysis_preparing_card) section[data-testid="stMain"] .st-key-approved_bom_toolbar,
+html body:has(.st-key-bom8_analysis_progress_card, .st-key-bom8_analysis_preparing_card) section[data-testid="stMain"] .st-key-approved_bom_upload_panel,
+html body:has(.st-key-bom8_analysis_progress_card, .st-key-bom8_analysis_preparing_card) section[data-testid="stMain"] .st-key-bom9_upload_panel,
+html body:has(.st-key-bom8_analysis_progress_card, .st-key-bom8_analysis_preparing_card) section[data-testid="stMain"] #cadivor-bom-analysis-top-anchor {
   display: none !important;
   height: 0 !important;
   min-height: 0 !important;
+  max-height: 0 !important;
   margin: 0 !important;
   padding: 0 !important;
-  overflow: hidden !important;
-  flex: 0 0 0 !important;
 }
 
-html body:has(.st-key-bom8_analysis_progress_card) section[data-testid="stMain"] [data-testid="stElementContainer"]:has(.st-key-bom8_analysis_progress_card),
-html body:has(.st-key-bom8_analysis_progress_card) section[data-testid="stMain"] .st-key-bom8_analysis_progress_card [data-testid="stElementContainer"],
-html body:has(.st-key-bom8_analysis_progress_card) .st-key-cv_foundation_navigation [data-testid="stElementContainer"],
-html body:has(.st-key-bom8_analysis_progress_card) .st-key-cv_foundation_profile_menu [data-testid="stElementContainer"] {
+html body:has(.st-key-bom8_analysis_progress_card, .st-key-bom8_analysis_preparing_card) section[data-testid="stMain"] [data-testid="stElementContainer"]:has(.st-key-bom8_analysis_progress_card, .st-key-bom8_analysis_preparing_card),
+html body:has(.st-key-bom8_analysis_progress_card, .st-key-bom8_analysis_preparing_card) section[data-testid="stMain"] .st-key-bom8_analysis_progress_card [data-testid="stElementContainer"],
+html body:has(.st-key-bom8_analysis_progress_card, .st-key-bom8_analysis_preparing_card) section[data-testid="stMain"] .st-key-bom8_analysis_preparing_card [data-testid="stElementContainer"],
+html body:has(.st-key-bom8_analysis_progress_card, .st-key-bom8_analysis_preparing_card) .st-key-cv_foundation_navigation [data-testid="stElementContainer"],
+html body:has(.st-key-bom8_analysis_progress_card, .st-key-bom8_analysis_preparing_card) .st-key-cv_foundation_profile_menu [data-testid="stElementContainer"] {
   display: flex !important;
   height: auto !important;
   min-height: 0 !important;
@@ -337,16 +593,39 @@ html body:has(.st-key-bom8_analysis_progress_card) .st-key-cv_foundation_profile
   flex: none !important;
 }
 
-html body:has(.st-key-bom8_analysis_progress_card) section[data-testid="stMain"] [data-testid="stVerticalBlock"]:has(.st-key-bom8_analysis_progress_card) {
-  gap: 0 !important;
-  row-gap: 0 !important;
-}
-
-html body section[data-testid="stMain"] .st-key-bom8_analysis_progress_card {
-  position: sticky !important;
-  top: 76px !important;
-  z-index: 4 !important;
+html body section[data-testid="stMain"] :is(.st-key-bom8_analysis_progress_card, .st-key-bom8_analysis_preparing_card) {
+  position: relative !important;
+  top: auto !important;
+  z-index: 1 !important;
   width: 100% !important;
   max-width: 1440px !important;
   margin: 8px auto 16px !important;
+}
+
+/* Always-on handoff rules so the first Analysis Details paint cannot flash
+   section-nav / empty canvas above the Saving card before route-local CSS
+   injects. Keep the card near the Analyzer y≈38 slot. */
+html body:has(.st-key-bom8_analysis_progress_card):not(:has(.cv-ei-report))
+  section[data-testid="stMain"] .st-key-approved_page_canvas_standard_analysis_detail,
+html body:has(.st-key-bom8_analysis_progress_card):not(:has(.cv-ei-report))
+  section[data-testid="stMain"] [class*="st-key-cv_analysis_section_nav"] {
+  display: none !important;
+  height: 0 !important;
+  max-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  visibility: hidden !important;
+  border: 0 !important;
+}
+
+html body:has(.st-key-bom8_analysis_progress_card):not(:has(.cv-ei-report))
+  section[data-testid="stMain"] [data-testid="stMainBlockContainer"]:has(.st-key-bom8_analysis_progress_card) {
+  box-sizing: border-box !important;
+  width: calc(100% - 48px) !important;
+  max-width: 1440px !important;
+  min-width: 0 !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+  padding-top: 30px !important;
 }

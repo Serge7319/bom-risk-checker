@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import html
+import time
 from typing import Any, Mapping
 
 import pandas as pd
@@ -9,6 +10,7 @@ import streamlit as st
 
 from src.datasheet_comparison import user_may_view_comparison_diagnostics
 from src.parts_compare import (
+    COMPARE_PARTS_FUTURE_KEY,
     COMPARE_PARTS_PART_A_WIDGET_KEY,
     COMPARE_PARTS_PART_B_WIDGET_KEY,
     COMPARE_PARTS_RESULT_KEY,
@@ -22,7 +24,7 @@ from src.parts_compare import (
     claim_compare_parts_submit,
     generate_parts_comparison_pdf,
     resolve_compare_parts_submitted_mpn,
-    run_compare_parts,
+    submit_compare_parts,
 )
 from src.ui.cadivor_design_system import (
     MetricCard,
@@ -43,6 +45,7 @@ from src.ui.cadivor_design_system import (
 
 COMPARE_PARTS_DATASHEET_A_KEY = "compare_parts_datasheet_a"
 COMPARE_PARTS_DATASHEET_B_KEY = "compare_parts_datasheet_b"
+COMPARE_PARTS_STARTED_AT_KEY = "compare_parts_started_at"
 
 
 def _esc(value: object) -> str:
@@ -156,8 +159,78 @@ def _decorate_assessment_column(matrix: pd.DataFrame) -> pd.DataFrame:
     return decorated
 
 
+def _uploaded_file_payload(upload: Any) -> dict[str, Any] | None:
+    """Copy a Streamlit upload into plain bytes before sending it to a worker."""
+    if upload is None:
+        return None
+    getter = getattr(upload, "getvalue", None)
+    if not callable(getter):
+        return None
+    payload = bytes(getter() or b"")
+    if not payload:
+        return None
+    return {
+        "bytes": payload,
+        "filename": str(getattr(upload, "name", "") or "datasheet.pdf"),
+    }
+
+
+def _collect_compare_parts_job() -> bool:
+    """Transfer a completed worker result to session state."""
+    future = st.session_state.get(COMPARE_PARTS_FUTURE_KEY)
+    if future is None or not future.done():
+        return False
+    try:
+        result = future.result()
+        if not isinstance(result, dict):
+            raise TypeError("comparison worker returned an invalid result")
+    except Exception:
+        running = st.session_state.get(COMPARE_PARTS_RESULT_KEY)
+        running = running if isinstance(running, dict) else {}
+        result = {
+            "status": STATUS_FAILED,
+            "part_a": str(running.get("part_a") or ""),
+            "part_b": str(running.get("part_b") or ""),
+            "error": "Cadivor could not complete this comparison right now. Please try again.",
+        }
+    st.session_state[COMPARE_PARTS_RESULT_KEY] = result
+    st.session_state.pop(COMPARE_PARTS_FUTURE_KEY, None)
+    st.session_state.pop(COMPARE_PARTS_STARTED_AT_KEY, None)
+    return True
+
+
+@st.fragment(run_every="1s")
+def _render_compare_parts_job_status() -> None:
+    """Poll the evidence search while leaving the rest of the workspace rendered."""
+    future = st.session_state.get(COMPARE_PARTS_FUTURE_KEY)
+    if future is None:
+        return
+    if _collect_compare_parts_job():
+        st.rerun()
+        return
+    st.info(
+        "Comparing the parts using available supplier and datasheet evidence. "
+        "The comparison will appear here when the evidence checks finish.",
+        icon="🔎",
+    )
+    try:
+        started_at = float(st.session_state.get(COMPARE_PARTS_STARTED_AT_KEY) or 0.0)
+    except (TypeError, ValueError):
+        started_at = 0.0
+    if started_at:
+        elapsed = max(0, int(time.monotonic() - started_at))
+        if elapsed >= 30:
+            st.caption(
+                f"Search time: {elapsed}s. Some evidence sources are responding slowly; "
+                "the search is still running."
+            )
+
+
 def render_compare_parts_page(*, is_admin: bool = False, role: str | None = None) -> None:
     """Render the Compare Parts engineering workspace."""
+    _collect_compare_parts_job()
+    compare_future = st.session_state.get(COMPARE_PARTS_FUTURE_KEY)
+    compare_running = compare_future is not None and not compare_future.done()
     _inject_compare_parts_styles()
     st.markdown('<div class="cv64-page-shell"><div class="cp-workspace">', unsafe_allow_html=True)
     cadivor_section_header(
@@ -186,12 +259,14 @@ def render_compare_parts_page(*, is_admin: bool = False, role: str | None = None
                 "Part A",
                 key=COMPARE_PARTS_PART_A_WIDGET_KEY,
                 placeholder="Manufacturer part number",
+                disabled=compare_running,
             )
         with cols[1]:
             part_b_form = st.text_input(
                 "Part B",
                 key=COMPARE_PARTS_PART_B_WIDGET_KEY,
                 placeholder="Manufacturer part number",
+                disabled=compare_running,
             )
         button_cols = st.columns([1, 3])
         with button_cols[0]:
@@ -200,6 +275,7 @@ def render_compare_parts_page(*, is_admin: bool = False, role: str | None = None
                 "Compare Parts",
                 type="primary",
                 use_container_width=False,
+                disabled=compare_running,
             )
             cadivor_button_wrap_end()
     with st.expander("Optional: upload exact-MPN datasheet", expanded=False):
@@ -215,6 +291,7 @@ def render_compare_parts_page(*, is_admin: bool = False, role: str | None = None
                 type=["pdf"],
                 key=COMPARE_PARTS_DATASHEET_A_KEY,
                 help="Exact-MPN datasheet for Part A when live sources are unavailable.",
+                disabled=compare_running,
             )
         with upload_cols[1]:
             uploaded_b = st.file_uploader(
@@ -222,6 +299,7 @@ def render_compare_parts_page(*, is_admin: bool = False, role: str | None = None
                 type=["pdf"],
                 key=COMPARE_PARTS_DATASHEET_B_KEY,
                 help="Exact-MPN datasheet for Part B when live sources are unavailable.",
+                disabled=compare_running,
             )
     cadivor_panel_end()
 
@@ -246,20 +324,34 @@ def render_compare_parts_page(*, is_admin: bool = False, role: str | None = None
                 uploads: dict[str, Any] = {}
                 file_a = uploaded_a or st.session_state.get(COMPARE_PARTS_DATASHEET_A_KEY)
                 file_b = uploaded_b or st.session_state.get(COMPARE_PARTS_DATASHEET_B_KEY)
-                if file_a is not None:
-                    uploads["a"] = file_a
-                if file_b is not None:
-                    uploads["b"] = file_b
-                with st.status("Retrieving both parts and comparing attributes…", expanded=True):
-                    st.write("Looking up Part A and Part B from configured suppliers…")
-                    result = run_compare_parts(
+                payload_a = _uploaded_file_payload(file_a)
+                payload_b = _uploaded_file_payload(file_b)
+                if payload_a is not None:
+                    uploads["a"] = payload_a
+                if payload_b is not None:
+                    uploads["b"] = payload_b
+                st.session_state[COMPARE_PARTS_RESULT_KEY] = {
+                    "status": STATUS_RUNNING,
+                    "part_a": part_a,
+                    "part_b": part_b,
+                }
+                try:
+                    st.session_state[COMPARE_PARTS_FUTURE_KEY] = submit_compare_parts(
                         part_a,
                         part_b,
                         datasheet_uploads=uploads or None,
                     )
-                    st.write("Building the family-aware comparison matrix…")
-                st.session_state[COMPARE_PARTS_RESULT_KEY] = result
+                    st.session_state[COMPARE_PARTS_STARTED_AT_KEY] = time.monotonic()
+                except Exception:
+                    st.session_state.pop(COMPARE_PARTS_FUTURE_KEY, None)
+                    st.session_state[COMPARE_PARTS_RESULT_KEY] = {
+                        "status": STATUS_FAILED,
+                        "part_a": part_a,
+                        "part_b": part_b,
+                        "error": "Cadivor could not start this comparison right now. Please try again.",
+                    }
             except Exception:
+                st.session_state.pop(COMPARE_PARTS_FUTURE_KEY, None)
                 st.session_state[COMPARE_PARTS_RESULT_KEY] = {
                     "status": STATUS_FAILED,
                     "part_a": part_a,
@@ -279,7 +371,7 @@ def render_compare_parts_page(*, is_admin: bool = False, role: str | None = None
 
     status = str(result.get("status") or "")
     if status == STATUS_RUNNING:
-        st.info("Comparison in progress…")
+        _render_compare_parts_job_status()
         st.markdown("</div></div>", unsafe_allow_html=True)
         return
     if status == STATUS_FAILED:

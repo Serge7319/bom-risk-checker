@@ -82,6 +82,22 @@ def normalize_column_name(column_name: str) -> str:
         "refdes": "reference_designators",
         "reference designator": "reference_designators",
         "reference designators": "reference_designators",
+
+        # Multi-level / assembly hierarchy (optional; flat BOMs ignore these)
+        "parent mpn": "parent_mpn",
+        "parent part": "parent_mpn",
+        "parent part number": "parent_mpn",
+        "assembly mpn": "parent_mpn",
+        "parent": "parent_mpn",
+        "line type": "line_type",
+        "item type": "line_type",
+        "bom line type": "line_type",
+        "level": "bom_level",
+        "bom level": "bom_level",
+        "indent level": "bom_level",
+        "qty per": "quantity",
+        "qty per parent": "quantity",
+        "quantity per parent": "quantity",
     }
 
     return column_map.get(alias_key, col)

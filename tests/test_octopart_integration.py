@@ -8,6 +8,9 @@ import unittest
 from unittest.mock import Mock, patch
 
 
+from tests.streamlit_cache_stub import identity_decorator
+
+
 class OctopartIntegrationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -15,6 +18,8 @@ class OctopartIntegrationTests(unittest.TestCase):
         cls.originals = {name: sys.modules.get(name) for name in cls.names}
         streamlit = types.ModuleType("streamlit")
         streamlit.secrets = {}
+        streamlit.cache_data = identity_decorator
+        streamlit.fragment = identity_decorator
         sys.modules["streamlit"] = streamlit
         cls.requests = types.ModuleType("requests")
         cls.requests.post = Mock()
@@ -474,10 +479,11 @@ class OctopartIntegrationTests(unittest.TestCase):
 
 class SupplierDiagnosticSanitizationTests(unittest.TestCase):
     def setUp(self):
-        # Force a cache_data-capable Streamlit stub even if an earlier test left a
-        # partial streamlit module in sys.modules (setdefault would keep it).
+        # Force a cache_data/fragment-capable Streamlit stub even if an earlier
+        # test left a partial streamlit module in sys.modules.
         streamlit = types.ModuleType("streamlit")
-        streamlit.cache_data = lambda *a, **k: (lambda f: f)
+        streamlit.cache_data = identity_decorator
+        streamlit.fragment = identity_decorator
         streamlit.secrets = {}
         sys.modules["streamlit"] = streamlit
         sys.modules.setdefault("requests", types.SimpleNamespace(get=None, post=None))

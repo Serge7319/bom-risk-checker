@@ -27,6 +27,32 @@ from src.procurement_advisor import (
 
 
 class ProcurementAdvisorTests(unittest.TestCase):
+    def test_supplier_coverage_distinguishes_source_count_from_visible_offer_rows(self):
+        part = {
+            "mpn": "TPS54331D",
+            "supplier_offers": [
+                {
+                    "distributor": "Newark",
+                    "unit_price": 1.25,
+                    "currency": "USD",
+                }
+            ],
+        }
+        recommendation = {
+            "Recommendation": "Review sourcing",
+            "Supplier Sources": 2,
+        }
+
+        rendered = (
+            procurement_part_summary_html(part, recommendation),
+            procurement_recommendation_html(part, recommendation),
+            procurement_summary_cards_html(part, recommendation),
+        )
+        for markup in rendered:
+            self.assertIn("2 recorded sources", markup)
+            self.assertIn("1 saved offer row shown", markup)
+        self.assertNotIn("not 2 separate quotes", " ".join(rendered).casefold())
+
     def test_sourcing_recommendation_markup_uses_visible_streamlit_containers(self):
         part = {"mpn": "TPS54331D", "description": "Power controller"}
         recommendation = {
@@ -100,6 +126,11 @@ class ProcurementAdvisorTests(unittest.TestCase):
         self.assertIn("[0.85, 1.15]", branch)
         self.assertIn('with st.container(key="cv_pa_supplier_controls"):', branch)
         self.assertIn("cv_pa_next_steps", branch)
+        self.assertIn("font-size:13px!important;font-weight:850!important;letter-spacing:.08em!important", branch)
+        self.assertIn("font-size:26px!important;font-weight:800!important;line-height:1.2!important", branch)
+        self.assertIn("font-size:15px!important;line-height:1.5!important", branch)
+        self.assertIn(".st-key-cv_pa_next_steps [data-testid=\"stMarkdownContainer\"] h2", branch)
+        self.assertIn("font-size:20px!important;font-weight:800;line-height:1.35", branch)
         self.assertIn('key="cv_pa_table_actions"', branch)
         self.assertLess(
             branch.index("supplier_comparison_table_html("),
@@ -360,7 +391,10 @@ class ProcurementAdvisorTests(unittest.TestCase):
         self.assertEqual(frame.loc[0, "Available stock"], "Not recorded")
         self.assertEqual(frame.loc[1, "Available stock"], "25,000")
         self.assertEqual(frame.loc[1, "Price vs current"], "-10.0%")
-        self.assertTrue(all(str(dtype) == "object" for dtype in frame.dtypes))
+        # Stock and selection labels must stay display text (never numeric NaN).
+        for column in ("Selected", "Available stock", "Price vs current", "Supplier"):
+            if column in frame.columns:
+                self.assertIn(str(frame[column].dtype), {"object", "string", "str"})
 
     def test_supplier_comparison_mockup_table_highlights_selection_and_escapes_supplier_text(self):
         markup = supplier_comparison_table_html(

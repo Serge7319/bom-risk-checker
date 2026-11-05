@@ -15,6 +15,7 @@ from src.bom_upload_flow import (
     prepare_new_approved_bom_analysis,
     has_completed_saved_bom_results,
     should_disable_bom_analyze_button,
+    start_new_approved_bom_analysis_from_home,
 )
 
 
@@ -33,23 +34,47 @@ class ApprovedBOMPageContractTests(unittest.TestCase):
         self.assertIn('if datasheet_review.get("review_completed"):', approval_section)
         self.assertNotIn('if review_state.get("review_completed"):', approval_section)
 
-    def test_home_new_analysis_clears_old_context_before_navigation(self):
+    def test_home_new_analysis_uses_pre_rerun_callback(self):
         source = Path("src/ui/approved_pages.py").read_text(encoding="utf-8")
         action_start = source.index('key="approved_home_new_bom"')
         home_action = source[action_start : action_start + 600]
-        self.assertIn("prepare_new_approved_bom_analysis(st.session_state)", home_action)
-        self.assertIn('navigate_to("BOM Analyzer", new_analysis="1")', home_action)
+        home_button_prefix = source[max(0, action_start - 220) : action_start]
+        self.assertIn("on_click=start_new_approved_bom_analysis_from_home", home_action)
+        self.assertNotIn("if st.button(", home_button_prefix)
         workspace_source = Path("src/pages/home_workspace.py").read_text(encoding="utf-8")
-        workspace_action = workspace_source[workspace_source.index('key="home_new_bom"') :]
-        self.assertIn("prepare_new_approved_bom_analysis(st.session_state)", workspace_action)
-        self.assertIn('navigate_to("BOM Analyzer", new_analysis="1", arm_opening=False)', workspace_action)
+        workspace_action_start = workspace_source.index('key="home_new_bom"')
+        workspace_action = workspace_source[workspace_action_start : workspace_action_start + 250]
+        workspace_button_prefix = workspace_source[max(0, workspace_action_start - 220) : workspace_action_start]
+        self.assertIn("on_click=start_new_approved_bom_analysis_from_home", workspace_action)
+        self.assertNotIn("if st.button(", workspace_button_prefix)
+
+    def test_home_new_analysis_callback_prepares_route_before_script_rerun(self):
+        state = {"cadivor_route": "Dashboard", "analysis_id": "old-analysis"}
+        calls = []
+
+        def navigate(page, **kwargs):
+            calls.append((page, kwargs))
+            state["cadivor_route"] = page
+
+        start_new_approved_bom_analysis_from_home(state, navigate=navigate)
+
+        self.assertTrue(state["cadivor_bom_upload_open"])
+        self.assertNotIn("analysis_id", state)
+        self.assertEqual(state["cadivor_route"], "BOM Analyzer")
+        self.assertEqual(
+            calls,
+            [("BOM Analyzer", {"_rerun": False, "new_analysis": "1"})],
+        )
 
     def test_completed_saved_results_render_without_reopening_the_upload(self):
         source = Path("src/authenticated_runtime.py").read_text(encoding="utf-8")
         self.assertIn("has_completed_saved_bom_results(", source)
         self.assertIn("st.session_state\n        )", source)
         self.assertIn("and not _has_completed_saved_results", source)
-        self.assertIn("if _has_completed_saved_results and uploaded_file is None:", source)
+        self.assertIn(
+            "if (_has_completed_saved_results or _handoff_save_active) and uploaded_file is None:",
+            source,
+        )
         self.assertIn("cadivor_bom_catalog_requested", source)
 
     def test_bom_analyzer_menu_returns_to_the_saved_catalog(self):
@@ -156,14 +181,37 @@ class ApprovedBOMSubmissionTests(unittest.TestCase):
             )
         )
 
-    def test_upload_page_disables_analyze_until_upload_is_ready(self):
+    def test_upload_page_disables_analyze_until_server_has_file(self):
         source = Path("src/ui/approved_pages.py").read_text(encoding="utf-8")
         self.assertIn("disabled=should_disable_bom_analyze_button(", source)
+        self.assertIn("on_change=remember_approved_bom_upload", source)
+        self.assertNotIn("args=(st.session_state,)", source)
+        self.assertIn('st.session_state.get("cadivor_uploaded_bom_file")', source)
+        self.assertIn("uploaded_file=upload_state_file", source)
         self.assertIn("upload_available=upload_available", source)
         self.assertNotIn("cadivor-bom-upload-spinner", source)
-        self.assertIn("waiting for the complete upload", source)
+        self.assertIn("Analyze BOM enables within about 2 seconds after Cadivor receives it", source)
+        self.assertIn("Receiving file", source)
         self.assertIn("fully uploaded and ready", source)
-        self.assertNotIn("select Analyze BOM to retry the upload check", source)
+
+    def test_completed_uploader_value_is_remembered_and_can_be_staged(self):
+        from src.bom_upload_flow import remember_approved_bom_upload
+
+        upload = type("Uploaded", (), {"name": "synthetic.csv"})()
+        state = {"bom_file_uploader": upload}
+        remember_approved_bom_upload(state)
+        self.assertIs(state["cadivor_uploaded_bom_file"], upload)
+        self.assertEqual(state["cadivor_uploaded_bom_filename"], "synthetic.csv")
+        state.pop("bom_file_uploader")
+        staged = stage_approved_bom_submission(
+            state,
+            submitted=True,
+            uploaded_file=None,
+            project_name="Synthetic project",
+            bom_name="Synthetic BOM",
+        )
+        self.assertTrue(staged)
+        self.assertIs(state["cadivor_pending_upload"], upload)
 
     def test_submit_recovers_file_from_uploader_widget_state(self):
         upload = object()
@@ -202,7 +250,7 @@ class ApprovedBOMSubmissionTests(unittest.TestCase):
 
         self.assertFalse(staged)
         self.assertNotIn("cadivor_bom_analysis_ready", state)
-        self.assertIn("selected file was not available", state["cadivor_bom_submission_error"])
+        self.assertIn("has not received the selected file yet", state["cadivor_bom_submission_error"])
 
     def test_approved_upload_hands_off_file_names_and_starts_analysis(self):
         upload = object()
@@ -311,9 +359,14 @@ class ApprovedBOMSubmissionTests(unittest.TestCase):
         source = Path("src/authenticated_runtime.py").read_text(encoding="utf-8")
         render = source.index("            render_bom_catalog(", source.index("saved_bom_rerun_handoff"))
         consume = source.index("consume_approved_bom_submission(st.session_state)", render)
-        transition = source[consume : consume + 700]
+        transition = source[consume : consume + 1800]
         self.assertIn("if _approved_bom_submitted and uploaded_file is not None:", transition)
+        # Analyze click must not paint Preparing under the upload form; the
+        # unified early surface owns preparing/progress on the next run.
+        self.assertNotIn("bom8_analysis_preparing_card", transition)
         self.assertIn("st.rerun()", transition)
+        self.assertIn("Unified analysis surface:", source)
+        self.assertIn("preparing_top_path", source)
         self.assertIn(
             "if not analysis_in_progress and not _has_completed_saved_results:\n            render_upload_detected(",
             source,
@@ -378,6 +431,8 @@ class ApprovedBOMSubmissionTests(unittest.TestCase):
             "show_analysis_success_29b": True,
             "approved_bom_project_name": "Old project",
             "cadivor_bom_pipeline_active": True,
+            "cadivor_uploaded_bom_file": object(),
+            "cadivor_uploaded_bom_filename": "old.csv",
         }
 
         prepare_new_approved_bom_analysis(state)
@@ -386,6 +441,8 @@ class ApprovedBOMSubmissionTests(unittest.TestCase):
         self.assertNotIn("analysis_id", state)
         self.assertNotIn("approved_bom_project_name", state)
         self.assertNotIn("cadivor_bom_pipeline_active", state)
+        self.assertNotIn("cadivor_uploaded_bom_file", state)
+        self.assertNotIn("cadivor_uploaded_bom_filename", state)
         self.assertTrue(state["cadivor_bom_upload_open"])
 
     def test_analysis_body_renders_on_bom_analyzer_without_review_flag(self):
@@ -399,12 +456,17 @@ class ApprovedBOMSubmissionTests(unittest.TestCase):
 
     def test_new_analysis_routes_to_saved_engineering_intelligence_after_persistence(self):
         source = Path("src/authenticated_runtime.py").read_text(encoding="utf-8")
-        success = source.split('st.toast("Analysis complete. Opening your BOM analysis…"', 1)[1]
-        handoff = success.split('if _one_time_blocked_plan', 1)[0]
-        self.assertIn('navigate_to(\n                        "Analysis Details"', handoff)
-        self.assertIn('analysis_tab="Engineering Intelligence"', handoff)
-        self.assertIn('_rerun=False', handoff)
-        self.assertIn('st.rerun()', source[source.index('st.toast("Analysis complete. Opening your BOM analysis…"'):])
+        # Persist arms a bridge rerun; early bridge navigates to Analysis Details.
+        self.assertIn("handoff_navigate_bridge", source)
+        self.assertIn("cadivor_bom_navigate_details_id", source)
+        early_bridge = source.split("_pending_details_nav_early", 1)[1].split(
+            "def _resolved_qp_value", 1
+        )[0]
+        self.assertIn('"Analysis Details"', early_bridge)
+        self.assertIn('analysis_tab="Engineering Intelligence"', early_bridge)
+        self.assertIn("arm_opening=False", early_bridge)
+        self.assertIn("_rerun=False", early_bridge)
+        self.assertIn("via=bridge_same_run", early_bridge)
 
     def test_missing_upload_does_not_queue_analysis(self):
         state = {

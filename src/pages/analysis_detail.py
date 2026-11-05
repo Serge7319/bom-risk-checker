@@ -1772,14 +1772,12 @@ def render_analysis_detail(
     )
     if focused_mpn and focused_section == "Engineering Decisions":
         from src.pages.saved_analysis_control import release_saved_analysis_placeholder
-        from src.ui.navigation import reveal_authenticated_page_body
 
         _consume_pending_analysis_section(analysis_id=analysis_id)
         st.session_state["cadivor_active_analysis_tab"] = "Engineering Decisions"
         st.session_state[_analysis_section_nav_key(analysis_id)] = "Engineering Decisions"
         _sync_bom_area_widgets(analysis_id=analysis_id, section="Engineering Decisions")
         release_saved_analysis_placeholder()
-        reveal_authenticated_page_body("Analysis Details")
         _render_focused_component_review(
             analysis=analysis,
             parts=parts,
@@ -1913,16 +1911,40 @@ def render_analysis_detail(
         unsafe_allow_html=True,
         )
     from src.pages.saved_analysis_control import release_saved_analysis_placeholder
-    from src.ui.navigation import reveal_authenticated_page_body
 
     release_saved_analysis_placeholder()
-    reveal_authenticated_page_body("Analysis Details")
     if show_legacy_analysis_header:
         with st.container(key="cv_analysis_hero_actions"):
             if st.button("Back to BOMs", key="analysis_back_to_boms", type="secondary"):
                 return_to_saved_bom_list(arm_opening=False)
     _sync_cadivor_active_analysis_tab(analysis_id=analysis_id)
-    active_tab = _render_analysis_section_navigation(analysis_id=analysis_id)
+    # BOM save→report handoff: data is ready — clear Saving ownership once and
+    # skip section nav for this first EI paint so clipped right-edge controls
+    # never flash over a blank workspace.
+    _bom_report_handoff = bool(
+        st.session_state.get("cadivor_bom_report_handoff_active")
+        or st.session_state.get("cadivor_bom_analysis_handoff")
+    )
+    if _bom_report_handoff:
+        from src.bom_upload_flow import finish_approved_bom_submission
+
+        finish_approved_bom_submission(st.session_state)
+        st.session_state.pop("cadivor_bom_report_handoff_active", None)
+        st.session_state.pop("cadivor_bom_analysis_handoff", None)
+        st.session_state.pop("cadivor_bom_open_details_after_save", None)
+        st.session_state.pop("cadivor_bom_details_paint_report_only", None)
+        # Keep foundation nav row-set frozen through the first post-report rerun
+        # so thawing analysis-report shortcuts cannot remount the rail in-flow.
+        st.session_state["cadivor_bom_shell_nav_hold"] = True
+        st.session_state["cadivor_active_analysis_tab"] = "Engineering Intelligence"
+        active_tab = "Engineering Intelligence"
+        print(
+            "CADIVOR_PHASE analysis_details_handoff_report_ready "
+            f"analysis_id={analysis_id!r}",
+            flush=True,
+        )
+    else:
+        active_tab = _render_analysis_section_navigation(analysis_id=analysis_id)
 
     lifecycle_exposed_parts = []
     no_stock_parts = []

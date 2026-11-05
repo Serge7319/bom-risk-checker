@@ -70,6 +70,7 @@ from src.plans import (
 )
 from src.auth_bootstrap import get_supabase_client, log_startup_phase, qp_value as _qp_value
 from src.supabase_read import SupabaseReadTransportError, execute_supabase_read
+from src.safe_diagnostics import safe_exception_frames
 from src.auth_state import (
     AUTH_AUTHENTICATED,
     AUTH_SIGNED_OUT,
@@ -668,6 +669,219 @@ def _workspace_commands_cache_fresh(user_id):
 
 def _workspace_payload(payload, workspace_id):
     return _build_workspace_payload(payload, workspace_id)
+
+
+def _persist_bom_handoff_analysis(
+    *,
+    supabase,
+    current_user,
+    results_df,
+    analysis_name: str,
+    source_filename: str,
+    active_workspace_id,
+    active_workspace_role,
+    monthly_upload_count: int,
+    one_time_blocked_plan: bool = False,
+    one_time_reserved: bool = False,
+    one_time_user_id: str = "",
+    one_time_order_id: str = "",
+    attach_one_time_analysis=None,
+    release_one_time_credit=None,
+) -> str:
+    """Persist a completed BOM without painting Streamlit widgets.
+
+    Used while the top saving card owns the BOM Analyzer main column so catalog
+    chrome cannot remount the card or drop the sidebar before Analysis Details.
+    """
+    from uuid import uuid4
+
+    import math
+
+    from src.bom_upload_flow import confirmed_inserted_id, fail_approved_bom_summary_save
+    from src.health_score import calculate_bom_health_score
+    from src.part_images import normalize_supplier_image_url
+    from src.saved_bom_cost import (
+        OPTIONAL_SAVED_PART_COLUMNS,
+        analysis_part_cost_fields,
+        json_safe_value,
+        omitted_optional_column,
+        without_column,
+    )
+    from src.workspace_write_scope import can_create_analysis as _can_create_analysis
+
+    def _opt_number(value):
+        try:
+            if value is None:
+                return None
+            number = float(value)
+            return number if math.isfinite(number) else None
+        except (TypeError, ValueError):
+            return None
+
+    high_count = len(results_df[results_df["Risk Level"] == "High"])
+    medium_count = len(results_df[results_df["Risk Level"] == "Medium"])
+    low_count = len(results_df[results_df["Risk Level"] == "Low"])
+    total_parts = len(results_df)
+    health_data = calculate_bom_health_score(results_df)
+    health_score = health_data.get("health_score")
+    if health_score is None:
+        health_status = "⚪ Needs verification"
+    elif health_score >= 90:
+        health_status = "🟢 Excellent"
+    elif health_score >= 75:
+        health_status = "🟢 Healthy"
+    elif health_score >= 60:
+        health_status = "🟡 Moderate Risk"
+    elif health_score >= 40:
+        health_status = "🟠 High Risk"
+    else:
+        health_status = "🔴 Critical"
+    st.session_state["health_score"] = health_score
+    st.session_state["health_status"] = health_status
+
+    try:
+        if not _can_create_analysis(active_workspace_id, active_workspace_role):
+            raise PermissionError(
+                "This BOM was not saved. An active workspace with owner, admin, or engineer "
+                "access could not be verified. Switch to an active writable workspace, then retry."
+            )
+        analysis_id = str(uuid4())
+        if one_time_reserved and attach_one_time_analysis is not None:
+            attach_one_time_analysis(one_time_user_id, one_time_order_id, analysis_id)
+        analysis_response = supabase.table("analyses").insert(
+            _workspace_payload(
+                {
+                    "id": analysis_id,
+                    "user_id": current_user["id"],
+                    "project_name": analysis_name,
+                    "filename": source_filename,
+                    "total_parts": total_parts,
+                    "high_risk_count": high_count,
+                    "medium_risk_count": medium_count,
+                    "low_risk_count": low_count,
+                    "health_score": health_score,
+                },
+                workspace_id=active_workspace_id,
+            )
+        ).execute()
+        response_rows = list(getattr(analysis_response, "data", None) or [])
+        echoed_id = ""
+        if response_rows and isinstance(response_rows[0], dict):
+            echoed_id = str(response_rows[0].get("id") or "").strip()
+        fetched_rows: list = []
+        if not echoed_id:
+            fetched = (
+                supabase.table("analyses")
+                .select("id")
+                .eq("id", analysis_id)
+                .eq("user_id", current_user["id"])
+                .limit(1)
+                .execute()
+            )
+            fetched_rows = list(getattr(fetched, "data", None) or [])
+        analysis_id = confirmed_inserted_id(
+            response_rows,
+            sent_id=analysis_id,
+            fetched_rows=fetched_rows,
+        )
+        st.session_state["analysis_id"] = analysis_id
+        st.session_state["cadivor_active_analysis_id"] = str(analysis_id)
+        st.session_state["cadivor_active_analysis_tab"] = "Engineering Intelligence"
+    except Exception as exc:
+        failure_ref = uuid4().hex[:8].upper()
+        if one_time_reserved and release_one_time_credit is not None:
+            if release_one_time_credit(one_time_user_id, one_time_order_id):
+                st.session_state.pop("cadivor_one_time_bom_order_id", None)
+        message = str(exc).strip() or "Cadivor could not save this analysis."
+        fail_approved_bom_summary_save(
+            st.session_state,
+            message=f"{message} Reference: {failure_ref}.",
+        )
+        raise
+
+    part_records = []
+    for _, part_row in results_df.iterrows():
+        cost_fields = analysis_part_cost_fields(part_row)
+        part_records.append(
+            {
+                "analysis_id": analysis_id,
+                "user_id": current_user["id"],
+                "workspace_id": active_workspace_id,
+                "image_url": normalize_supplier_image_url(part_row.get("Photo", "")),
+                "project_name": analysis_name,
+                "mpn": part_row.get("MPN", ""),
+                "manufacturer": part_row.get("Manufacturer", ""),
+                "description": str(part_row.get("Description") or "").strip() or None,
+                "category": str(part_row.get("Category") or "").strip() or None,
+                "supplier_data_verified": bool(part_row.get("Supplier Data Verified", False)),
+                "sourcing_updated_at": part_row.get("Sourcing Updated At") or None,
+                "risk_score": _opt_number(part_row.get("Risk Score")),
+                "risk_level": part_row.get("Risk Level", ""),
+                "risk_reasons": part_row.get("Risk Reasons", ""),
+                "lifecycle_status": part_row.get("Lifecycle Status", ""),
+                "stock_available": _opt_number(part_row.get("Stock Available")),
+                "supplier_count": _opt_number(part_row.get("Supplier Count")),
+                "supplier_coverage": str(part_row.get("Supplier Coverage") or "").strip() or None,
+                "stock_data_sources": part_row.get("Stock Data Sources") or [],
+                "stock_data_complete": bool(part_row.get("Stock Data Complete", False)),
+                "lifecycle_evidence": part_row.get("Lifecycle Evidence") or [],
+                "lifecycle_conflict": bool(part_row.get("Lifecycle Conflict", False)),
+                "lead_time_source": str(part_row.get("Lead Time Source") or "").strip() or None,
+                "alternate_search_status": str(part_row.get("Alternate Search Status") or "").strip() or None,
+                "alternate_candidates": part_row.get("Alternate Candidates") or [],
+                "quantity": cost_fields["quantity"],
+                "unit_price": cost_fields["unit_price"],
+                "unit_price_currency": cost_fields["unit_price_currency"],
+                "primary_supplier": cost_fields["primary_supplier"],
+                "product_url": cost_fields["product_url"],
+                "datasheet_url": cost_fields["datasheet_url"],
+                "supplier_offers": cost_fields["supplier_offers"],
+                "lead_time_weeks": _opt_number(part_row.get("Lead Time Weeks", None)),
+            }
+        )
+    if part_records:
+        pending_records = [json_safe_value(record) for record in part_records]
+        for _attempt in range(len(OPTIONAL_SAVED_PART_COLUMNS) + 1):
+            try:
+                supabase.table("analysis_parts").insert(pending_records).execute()
+                break
+            except Exception as optional_column_error:
+                missing_column = omitted_optional_column(str(optional_column_error))
+                if not missing_column or all(
+                    missing_column not in record for record in pending_records
+                ):
+                    raise
+                pending_records = without_column(pending_records, missing_column)
+        else:
+            raise RuntimeError("Could not save BOM parts after dropping unknown columns.")
+
+    if not one_time_blocked_plan:
+        try:
+            supabase.table("users").update(
+                {"monthly_upload_count": int(monthly_upload_count) + 1}
+            ).eq("id", current_user["id"]).execute()
+        except Exception:
+            pass
+
+    print(
+        f"CADIVOR_PHASE analysis_saved id={analysis_id} handoff=True inline=True",
+        flush=True,
+    )
+    st.session_state["analysis_saved"] = True
+    st.session_state["show_analysis_success_29b"] = True
+    st.session_state["last_saved_analysis_id"] = analysis_id
+    from datetime import datetime, timezone
+
+    st.session_state["last_saved_analysis_at"] = datetime.now(timezone.utc).isoformat()
+    for _pending_key in (
+        "cadivor_one_time_pending_source_filename",
+        "cadivor_one_time_pending_project_name",
+        "cadivor_one_time_pending_bom_name",
+    ):
+        st.session_state.pop(_pending_key, None)
+    return str(analysis_id)
+
+
 
 
 def _decision_context_key(analysis_id=None):
@@ -2378,6 +2592,42 @@ def run_authenticated_app() -> None:
     _shell_route = resolve_canonical_app_route(allow_admin=True)
     app_mode = _shell_route
 
+    # BOM save→Details bridge must run before foundation shell paint. Waiting
+    # until the BOM Analyzer branch remounted shell chrome under the Saving
+    # card and pushed cardTop ~200px before Engineering Intelligence opened.
+    _pending_details_nav_early = str(
+        st.session_state.pop("cadivor_bom_navigate_details_id", "") or ""
+    ).strip()
+    if _pending_details_nav_early and st.session_state.get("cadivor_bom_nav_bridge"):
+        from src.ui.navigation import navigate_to as _navigate_to_bridge_early
+
+        # Persistence already finished on BOM Analyzer under the Saving card.
+        # Commit Details in this same run (no extra empty rerun) without Opening
+        # so we never mix "Opening Analysis Details…" with Saving or remount
+        # foundation nav uncovered. Details paints the EI report only.
+        st.session_state["cadivor_bom_report_handoff_active"] = True
+        st.session_state["cadivor_bom_analysis_handoff"] = True
+        st.session_state["cadivor_bom_details_paint_report_only"] = True
+        st.session_state.pop("cadivor_bom_analysis_ready", None)
+        st.session_state.pop("cadivor_bom_nav_bridge", None)
+        print(
+            "CADIVOR_PHASE handoff_navigate_analysis_details "
+            f"route='Analysis Details' analysis_id={_pending_details_nav_early!r} "
+            "via=bridge_same_run",
+            flush=True,
+        )
+        _navigate_to_bridge_early(
+            "Analysis Details",
+            analysis_id=_pending_details_nav_early,
+            analysis_tab="Engineering Intelligence",
+            arm_opening=False,
+            _rerun=False,
+        )
+        # navigate_to updated session route after app_mode was resolved above —
+        # re-bind dispatch so this run owns Analysis Details content only.
+        _shell_route = "Analysis Details"
+        app_mode = _shell_route
+
     def _resolved_qp_value(name: str, default: str = "") -> str:
         from src.ui.navigation import current_navigation_query_value as _current_navigation_query_value
 
@@ -2452,6 +2702,13 @@ def run_authenticated_app() -> None:
         begin_logout(supabase, cookie_manager)
 
     inject_premium_css()
+    # Rail geometry CSS must land before Opening markup. First-admit Opening
+    # previously painted with --cv-foundation-rail unset (0px fallback) and the
+    # foundation host zeroed, so Home appeared without a visible left rail until
+    # a later in-app navigation remounted shell CSS.
+    from src.ui.unified_shell import inject_unified_shell_css as _inject_shell_css_early
+
+    _inject_shell_css_early()
     _presented_route = get_presented_route()
     # First admit AND every chrome-changing navigation need the in-main owner.
     # Skipping first-admit loading left Dashboard chrome with an empty canvas.
@@ -2460,6 +2717,14 @@ def run_authenticated_app() -> None:
         needs_transition=_needs_main_transition,
         target_route=_shell_route,
     )
+    # BOM save→report: Saving already owned the Analyzer surface through
+    # persistence. Do not infer an unarmed Opening cover for Details — that
+    # painted "Opening Analysis Details…" over/alongside Saving and leaked a
+    # second navigation stack into the main canvas.
+    if st.session_state.get("cadivor_bom_report_handoff_active") or st.session_state.get(
+        "cadivor_bom_details_paint_report_only"
+    ):
+        _paint_opening = False
     st.session_state[DELAY_ROUTE_BODY_REVEAL_KEY] = bool(_paint_opening)
     if _paint_opening:
         from src.boot_read_budget import begin_first_page_budget
@@ -2470,6 +2735,19 @@ def run_authenticated_app() -> None:
     # main pane during slow route changes. The shell and persistent navigation
     # mount beneath the cover; the page-body marker releases it after content.
     if _paint_opening:
+        # First admit used blocking Opening (rail fallback 0px) and painted
+        # before shell CSS — a lone centered card on an empty canvas. Arm the
+        # compact navigation cover so Opening insets to the rail while the
+        # durable shell mounts beneath.
+        if not str(_presented_route or "").strip():
+            from src.ui.main_transition import arm_main_transition as _arm_first_admit
+
+            _arm_first_admit(
+                st.session_state,
+                _shell_route,
+                kind="navigation",
+                previous_route="",
+            )
         mount_main_transition_loading(_shell_route, paint_markup=True)
     # Verified public.users.role BEFORE first shell paint — never trust a stale
     # cadivor_shell_cache is_admin=False for Admin Console entitlement.
@@ -2500,8 +2778,20 @@ def run_authenticated_app() -> None:
             )
     except Exception:
         pass
+    # During BOM save→Details, keep the shell's claimed route on Analyzer so
+    # Streamlit does not remount foundation navigation/workspace hosts in the
+    # main document flow beside the fixed rail.
+    _shell_page_for_chrome = _shell_route
+    if (
+        st.session_state.get("cadivor_bom_report_handoff_active")
+        or st.session_state.get("cadivor_bom_analysis_handoff")
+        or st.session_state.get("cadivor_bom_details_paint_report_only")
+        or st.session_state.get("cadivor_bom_nav_bridge")
+        or st.session_state.get("cadivor_bom_shell_nav_hold")
+    ):
+        _shell_page_for_chrome = "BOM Analyzer"
     render_unified_shell(
-        current_page=_shell_route,
+        current_page=_shell_page_for_chrome,
         profile=_shell_profile,
         workspace_name=str(
             _shell_cache.get("workspace_name") or "Cadivor Workspace"
@@ -4196,10 +4486,9 @@ def run_authenticated_app() -> None:
             "Preparing your workspace",
             "Loading your saved BOMs and current risk signals.",
         )
-        # Release the full-page transition once the stable Dashboard heading
-        # is mounted. Workspace data below is independently time-bounded; it
-        # must not keep the user trapped on Opening Dashboard while it loads.
-        reveal_authenticated_page_body("Dashboard")
+        # Keep the previous route visible under the transition chip while the
+        # bounded Home reads complete. Releasing on this placeholder made the
+        # Dashboard replace the outgoing page with an empty/skeleton workspace.
         try:
             _command_cache = st.session_state.get("cadivor_workspace_command_cache")
             if not _workspace_commands_cache_fresh(current_user["id"]):
@@ -4511,11 +4800,34 @@ def run_authenticated_app() -> None:
         stop_authenticated_page()
 
     if app_mode == "Analysis Details":
+        print(
+            f"CADIVOR_PHASE analysis_details_mount "
+            f"analysis_id={st.session_state.get('analysis_id') or st.session_state.get('cadivor_active_analysis_id')!r}",
+            flush=True,
+        )
+        _report_handoff_active = bool(
+            st.session_state.get("cadivor_bom_report_handoff_active")
+            or st.session_state.get("cadivor_bom_analysis_handoff")
+        )
+        _paint_report_only = bool(
+            st.session_state.pop("cadivor_bom_details_paint_report_only", None)
+        ) or bool(_report_handoff_active)
         # Give the saved-BOM workspace and every section/tab the same centered
         # 1440px canvas used by Home and the other standard workspaces.
+        # After persistence, Details owns the surface with the EI report only —
+        # do not remount the Analyzer Saving card under an Analysis Details URL
+        # (that mixed routes and leaked a clipped second nav stack).
+        if _paint_report_only:
+            print("CADIVOR_PHASE analysis_details_handoff_report_only", flush=True)
         st.html(
             """
             <style id="cadivor-analysis-workspace-canvas" data-cadivor-layout-style="true">
+            .st-key-bom8_analysis_progress_card,
+            .st-key-bom8_analysis_preparing_card{
+              display:none!important;height:0!important;max-height:0!important;
+              margin:0!important;padding:0!important;overflow:hidden!important;
+              border:0!important;visibility:hidden!important
+            }
             section[data-testid="stMain"] .st-key-approved_page_canvas_standard_analysis_detail{
               box-sizing:border-box!important;width:100%!important;max-width:1440px!important;
               min-width:0!important;margin-left:auto!important;margin-right:auto!important;
@@ -4651,7 +4963,7 @@ def run_authenticated_app() -> None:
             # Monitoring can be opened on plans without alert access too. This
             # is the first real destination content on that path, so release
             # the shared route cover before stopping the page branch.
-            reveal_authenticated_page_body("Monitoring")
+            reveal_authenticated_page_body("Monitoring", force=True)
             stop_authenticated_page()
 
         return_analysis_id = _resolved_qp_value("return_analysis_id")
@@ -4673,17 +4985,9 @@ def run_authenticated_app() -> None:
                 )
             navigate_to("Analysis Details", **return_params)
 
-        # Keep Monitoring data loading and part-specific actions in this route
-        # renderer. The alert-overview subview uses the approved visual renderer
-        # after this shared data is ready. Reveal the destination before reading
-        # optional dashboard data so the route cover never waits on Supabase.
-        cadivor_section_header(
-            "Alerts & Monitoring",
-            eyebrow="Alerts",
-            description="Review lifecycle, inventory, pricing, and supplier changes across monitored components.",
-            icon="radar",
-        )
-        reveal_authenticated_page_body("Monitoring")
+        # Keep the route cover until the selected Monitoring view is mounted.
+        # The overview renders its header with the KPI/table canvas; the other
+        # views render the Monitoring snapshot as their single page header.
         live_refresh_notice = st.session_state.pop(
             "monitoring_live_refresh_notice", None
         )
@@ -4698,6 +5002,26 @@ def run_authenticated_app() -> None:
         monitoring_user_id = str(current_user.get("id") or "")
         monitoring_workspace_id = str(active_workspace_id or "")
         monitoring_analysis_id = str(return_analysis_id or "").strip()
+
+        # Shell-first: release Opening… before bounded Supabase reads so the
+        # full-screen cover cannot sit over a 6s+ monitoring budget. Keep the
+        # temporary loading hero in an empty slot so real Alerts & Monitoring
+        # content does not stack underneath a stale "Loading…" title.
+        _monitoring_loading_placeholder = st.empty()
+        with _monitoring_loading_placeholder.container():
+            st.markdown(
+                """
+                <section class="cv123-monitor-hero" data-cadivor-destination-shell="Monitoring">
+                  <div class="cv123-monitor-top"><div>
+                    <div class="cv123-monitor-eyebrow">Monitoring Intelligence Center</div>
+                    <div class="cv123-monitor-title">Loading monitoring activity…</div>
+                    <div class="cv123-monitor-copy">Sidebar and account controls stay available while Cadivor refreshes alerts for this workspace.</div>
+                  </div><span class="cv123-monitor-badge">Loading</span></div>
+                </section>
+                """,
+                unsafe_allow_html=True,
+            )
+        reveal_authenticated_page_body("Monitoring", force=True)
 
         def _monitor_query(table_name, columns="*"):
             # Capture auth/workspace scope before entering the detached read
@@ -4772,6 +5096,7 @@ def run_authenticated_app() -> None:
                 alert_rows = monitoring_cache.get("alerts", [])
                 monitor_rows = monitoring_cache.get("history", [])
             else:
+                _monitoring_loading_placeholder.empty()
                 stop_authenticated_page()
         else:
             from src.boot_read_budget import run_with_read_budget
@@ -4832,7 +5157,11 @@ def run_authenticated_app() -> None:
                     alert_rows = []
                     monitor_rows = []
                 if not isinstance(monitoring_cache, dict):
+                    _monitoring_loading_placeholder.empty()
                     stop_authenticated_page()
+
+        # Replace the temporary loading hero before any real Monitoring chrome.
+        _monitoring_loading_placeholder.empty()
 
         alert_df = pd.DataFrame(alert_rows)
         monitor_df = pd.DataFrame(monitor_rows)
@@ -4840,6 +5169,7 @@ def run_authenticated_app() -> None:
         from src.monitoring_intelligence import (
             build_monitoring_action_center,
             monitoring_workflow_urgency,
+            monitoring_preview_parts,
         )
         monitoring_center = build_monitoring_action_center(alert_df, monitor_df)
         monitored_count = monitoring_center["monitored_components"]
@@ -6885,49 +7215,7 @@ def run_authenticated_app() -> None:
             e2.download_button("Download monitored component snapshot", data=components.to_csv(index=False).encode("utf-8"), file_name="cadivor_monitored_components.csv", mime="text/csv", use_container_width=True, key="m32_components_export")
 
         def _monitor_preview_parts(focus: str) -> str:
-            if not isinstance(active_queue, pd.DataFrame) or active_queue.empty:
-                return "No active components"
-            focused = active_queue.copy()
-            alert_types = focused["Alert Type"].astype(str)
-            if focus == "immediate":
-                scores = pd.to_numeric(
-                    focused["Priority Score"],
-                    errors="coerce",
-                ).fillna(0)
-                focused = focused[scores >= 75]
-            elif focus == "lifecycle":
-                focused = focused[
-                    alert_types.str.contains(
-                        "lifecycle|eol|obsolete",
-                        case=False,
-                        regex=True,
-                    )
-                ]
-            elif focus == "inventory":
-                focused = focused[
-                    alert_types.str.contains(
-                        "stock|inventory",
-                        case=False,
-                        regex=True,
-                    )
-                ]
-            elif focus == "pricing":
-                focused = focused[
-                    alert_types.str.contains("price", case=False, regex=True)
-                ]
-            if focused.empty or "Part Number" not in focused.columns:
-                return "No active components"
-            parts = []
-            for raw_part in focused["Part Number"].tolist():
-                part = _monitor_display(raw_part, "")
-                if part and part not in parts:
-                    parts.append(part)
-            if not parts:
-                return "No active components"
-            visible_parts = parts[:3]
-            remaining = len(parts) - len(visible_parts)
-            preview = " · ".join(visible_parts)
-            return f"{preview} · +{remaining} more" if remaining else preview
+            return monitoring_preview_parts(active_queue, focus)
 
         def _render_monitoring_snapshot_card(
             *,
@@ -7005,15 +7293,21 @@ def run_authenticated_app() -> None:
             from src.monitoring_intelligence import monitoring_overview_alert_rows
             from src.ui.approved_pages import render_monitoring
 
+            # Overview is the approved Alerts & Monitoring page only. Do not
+            # also paint the Monitoring snapshot cards on this path.
             render_monitoring(
                 monitoring_overview_alert_rows(
                     alert_rows,
                     monitoring_center.get("active_queue"),
                 ),
-                include_header=False,
+                include_header=True,
             )
+            reveal_authenticated_page_body("Monitoring", force=True)
             stop_authenticated_page()
 
+        # Non-overview Monitoring views use the snapshot cards as the page
+        # header. Keep this behind the overview stop so both layouts never
+        # compete in one script run.
         with st.container(key="monitoring_snapshot"):
             active_snapshot_focus = ""
             if monitor_view == "queue":
@@ -7023,12 +7317,26 @@ def run_authenticated_app() -> None:
                 )
             elif monitor_view == "components":
                 active_snapshot_focus = "components"
+            if focused_monitor_part:
+                snapshot_eyebrow = "Component monitoring"
+                snapshot_title = html.escape(str(focused_monitor_part))
+                snapshot_copy = (
+                    "Supplier baseline and filtered component table for this part. "
+                    f"{int(monitoring_center['active_alerts']):,} active alerts remain available in Alert Overview."
+                )
+            else:
+                snapshot_eyebrow = "Monitoring overview"
+                snapshot_title = "Monitoring snapshot"
+                snapshot_copy = (
+                    f"{int(monitoring_center['active_alerts']):,} active alerts. "
+                    "Use these shortcuts to move from signal to action."
+                )
             st.markdown(
                 f"""
                 <div class="cv-monitor-snapshot-head">
-                  <span class="cv-monitor-snapshot-eyebrow">Monitoring overview</span>
-                  <span class="cv-monitor-snapshot-title">Monitoring snapshot</span>
-                  <p>{int(monitoring_center['active_alerts']):,} active alerts. Use these shortcuts to move from signal to action.</p>
+                  <span class="cv-monitor-snapshot-eyebrow">{snapshot_eyebrow}</span>
+                  <span class="cv-monitor-snapshot-title">{snapshot_title}</span>
+                  <p>{snapshot_copy}</p>
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -7133,13 +7441,25 @@ def run_authenticated_app() -> None:
                             settings_tab="Billing",
                         )
 
+        if focused_monitor_part:
+            workspace_eyebrow = "Filtered component view"
+            workspace_title = f"Monitoring {html.escape(str(focused_monitor_part))}"
+            workspace_copy = (
+                "Snapshot context stays above this table. Search is prefilled for the selected part."
+            )
+        else:
+            workspace_eyebrow = "Monitoring workspace"
+            workspace_title = "Act on supplier and lifecycle changes"
+            workspace_copy = (
+                "Filter the active queue, inspect evidence, and document the engineering response."
+            )
         st.markdown(
             f"""
             <div class="cv-monitor-workspace-head">
               <div>
-                <span class="cv-monitor-workspace-eyebrow">Monitoring workspace</span>
-                <span class="cv-monitor-workspace-title">Act on supplier and lifecycle changes</span>
-                <p>Filter the active queue, inspect evidence, and document the engineering response.</p>
+                <span class="cv-monitor-workspace-eyebrow">{workspace_eyebrow}</span>
+                <span class="cv-monitor-workspace-title">{workspace_title}</span>
+                <p>{workspace_copy}</p>
               </div>
               <span class="cv-monitor-active-badge">
                 {int(monitoring_center['active_alerts']):,} active
@@ -7184,30 +7504,48 @@ def run_authenticated_app() -> None:
         else:
             _render_monitor_action_queue()
 
-
+        # Release the route cover only after the selected view and its data
+        # controls are in the document, avoiding a half-painted snapshot.
+        reveal_authenticated_page_body("Monitoring", force=True)
         stop_authenticated_page()
 
 
     # ---------- Supply Risk Scenario ----------
     if app_mode == "Supply Risk Scenario":
-        try:
-            scenario_analyses = load_analysis_history(current_user["id"]) or []
-        except Exception:
-            scenario_analyses = []
-
-        try:
-            scenario_parts_response = (
-                _workspace_query(supabase.table("analysis_parts").select("*"))
-                .eq("user_id", current_user["id"])
-                .limit(10000)
-                .execute()
+        _supply_loading_placeholder = st.empty()
+        with _supply_loading_placeholder.container():
+            st.markdown(
+                """
+                <div class="cv-ap" data-cadivor-destination-shell="Supply Risk Scenario">
+                  <p class="cv-ap-kicker">SUPPLY</p>
+                  <h1>Supply Risk Scenario</h1>
+                  <p class="cv-ap-sub">Loading scenario data for this workspace…</p>
+                </div>
+                """,
+                unsafe_allow_html=True,
             )
-            scenario_parts = scenario_parts_response.data or []
-        except Exception:
-            scenario_parts = []
+        reveal_authenticated_page_body("Supply Risk Scenario", force=True)
+        with st.spinner("Loading supply risk data…"):
+            try:
+                scenario_analyses = load_analysis_history(current_user["id"]) or []
+            except Exception:
+                scenario_analyses = []
+
+            try:
+                scenario_parts_response = (
+                    _workspace_query(supabase.table("analysis_parts").select("*"))
+                    .eq("user_id", current_user["id"])
+                    .limit(10000)
+                    .execute()
+                )
+                scenario_parts = scenario_parts_response.data or []
+            except Exception:
+                scenario_parts = []
 
         from src.supply_risk_scenario import render_supply_scenario_dashboard
 
+        # Drop the temporary route heading once the real page title mounts.
+        _supply_loading_placeholder.empty()
         with st.container(key="approved_page_canvas_standard_supply_risk_scenario"):
             render_supply_scenario_dashboard(
                 analyses=scenario_analyses,
@@ -7219,21 +7557,35 @@ def run_authenticated_app() -> None:
 
     # ---------- Cost Optimization ----------
     if app_mode == "Cost Optimization":
-        try:
-            cost_analyses = load_analysis_history(current_user["id"]) or []
-        except Exception:
-            cost_analyses = []
-
-        try:
-            cost_parts_response = (
-                _workspace_query(supabase.table("analysis_parts").select("*"))
-                .eq("user_id", current_user["id"])
-                .limit(10000)
-                .execute()
+        _cost_loading_placeholder = st.empty()
+        with _cost_loading_placeholder.container():
+            st.markdown(
+                """
+                <div class="cv-ap" data-cadivor-destination-shell="Cost Optimization">
+                  <p class="cv-ap-kicker">COST</p>
+                  <h1>Cost Optimization</h1>
+                  <p class="cv-ap-sub">Loading cost models for this workspace…</p>
+                </div>
+                """,
+                unsafe_allow_html=True,
             )
-            cost_parts = cost_parts_response.data or []
-        except Exception:
-            cost_parts = []
+        reveal_authenticated_page_body("Cost Optimization", force=True)
+        with st.spinner("Loading cost optimization data…"):
+            try:
+                cost_analyses = load_analysis_history(current_user["id"]) or []
+            except Exception:
+                cost_analyses = []
+
+            try:
+                cost_parts_response = (
+                    _workspace_query(supabase.table("analysis_parts").select("*"))
+                    .eq("user_id", current_user["id"])
+                    .limit(10000)
+                    .execute()
+                )
+                cost_parts = cost_parts_response.data or []
+            except Exception:
+                cost_parts = []
 
         build_quantity = int(st.session_state.get("cost_build_quantity", 100) or 100)
 
@@ -7255,6 +7607,7 @@ def run_authenticated_app() -> None:
                 help="Cadivor multiplies recorded BOM quantities and unit prices by this production quantity.",
             )
 
+        _cost_loading_placeholder.empty()
         render_cost_optimization(
             intelligence=cost_intelligence,
             internal_nav_button=internal_nav_button,
@@ -7265,21 +7618,35 @@ def run_authenticated_app() -> None:
 
     # ---------- Design Impact Analyzer ----------
     if app_mode == "Design Impact Analyzer":
-        try:
-            impact_analyses = load_analysis_history(current_user["id"]) or []
-        except Exception:
-            impact_analyses = []
-
-        try:
-            impact_parts_response = (
-                _workspace_query(supabase.table("analysis_parts").select("*"))
-                .eq("user_id", current_user["id"])
-                .limit(10000)
-                .execute()
+        _impact_loading_placeholder = st.empty()
+        with _impact_loading_placeholder.container():
+            st.markdown(
+                """
+                <div class="cv-ap" data-cadivor-destination-shell="Design Impact Analyzer">
+                  <p class="cv-ap-kicker">DESIGN</p>
+                  <h1>Design Impact Analyzer</h1>
+                  <p class="cv-ap-sub">Loading design-impact evidence for this workspace…</p>
+                </div>
+                """,
+                unsafe_allow_html=True,
             )
-            impact_parts = impact_parts_response.data or []
-        except Exception:
-            impact_parts = []
+        reveal_authenticated_page_body("Design Impact Analyzer", force=True)
+        with st.spinner("Loading design impact data…"):
+            try:
+                impact_analyses = load_analysis_history(current_user["id"]) or []
+            except Exception:
+                impact_analyses = []
+
+            try:
+                impact_parts_response = (
+                    _workspace_query(supabase.table("analysis_parts").select("*"))
+                    .eq("user_id", current_user["id"])
+                    .limit(10000)
+                    .execute()
+                )
+                impact_parts = impact_parts_response.data or []
+            except Exception:
+                impact_parts = []
 
         requested_impact_mpn = (
             st.session_state.get("design_impact_mpn")
@@ -7360,6 +7727,7 @@ def run_authenticated_app() -> None:
             lifecycle=str(impact_intelligence.get("lifecycle") or ""),
         )
 
+        _impact_loading_placeholder.empty()
         render_design_impact(
             intelligence=impact_intelligence,
             impact_map_markup=impact_map_markup,
@@ -7606,16 +7974,20 @@ def run_authenticated_app() -> None:
                 .st-key-cv_pa_supplier_controls label{font-size:12px!important;color:#64748b!important;font-weight:750!important}
                 .st-key-cv_pa_next_steps{box-sizing:border-box!important;width:100%!important;margin:8px 0 0!important;padding:14px 16px!important;border:1px solid #dfe7f1!important;border-radius:14px!important;background:#fff!important;box-shadow:none!important}
                 .st-key-cv_pa_next_steps>[data-testid="stVerticalBlock"]{gap:8px!important}
-                .cv-pa-next-heading{margin:0 0 2px}
-                .cv-pa-next-heading span{display:block;margin-bottom:5px;color:#2563eb;font-size:10px;font-weight:850;letter-spacing:.12em}
-                .cv-pa-next-heading h2{margin:0 0 5px;color:#102341;font-size:21px;font-weight:800;line-height:1.2}
-                .cv-pa-next-heading p{margin:0;color:#64748b;font-size:14px;line-height:1.45}
+                .cv-pa-next-heading{margin:0 0 8px}
+                .st-key-cv_pa_next_steps .cv-pa-next-heading>span,
+                .st-key-cv_pa_next_steps [data-testid="stMarkdownContainer"] .cv-pa-next-heading>span{display:block!important;margin:0 0 8px!important;color:#2563eb!important;font-size:13px!important;font-weight:850!important;letter-spacing:.08em!important;text-transform:uppercase!important;line-height:1.3!important}
+                .st-key-cv_pa_next_steps .cv-pa-next-heading>h2,
+                .st-key-cv_pa_next_steps [data-testid="stMarkdownContainer"] .cv-pa-next-heading>h2,
+                .st-key-cv_pa_next_steps [data-testid="stMarkdownContainer"] h2{margin:0 0 8px!important;color:#102341!important;font-size:26px!important;font-weight:800!important;line-height:1.2!important;letter-spacing:-.02em!important}
+                .st-key-cv_pa_next_steps .cv-pa-next-heading>p,
+                .st-key-cv_pa_next_steps [data-testid="stMarkdownContainer"] .cv-pa-next-heading>p{margin:0!important;color:#64748b!important;font-size:15px!important;line-height:1.5!important}
                 .st-key-cv_pa_next_steps [data-testid="stHorizontalBlock"]{align-items:stretch!important;gap:16px!important}
                 .st-key-cv_pa_next_steps [data-testid="column"]{box-sizing:border-box!important;min-width:0!important;padding:16px!important;border:1px solid #e2e8f0!important;border-radius:12px!important;background:#f8fafc!important}
                 .cv-pa-next-action{min-height:60px;margin:0 0 10px}
-                .cv-pa-next-action strong{display:block;color:#172b4d;font-size:15px;font-weight:800;line-height:1.3}
-                .cv-pa-next-action p{margin:5px 0 0;color:#64748b;font-size:13px;line-height:1.45}
-                .st-key-cv_pa_next_steps [data-testid="stMarkdownContainer"] p{font-size:13px;line-height:1.45}
+                .cv-pa-next-action strong{display:block;color:#172b4d;font-size:20px!important;font-weight:800;line-height:1.35}
+                .cv-pa-next-action p{margin:6px 0 0;color:#64748b;font-size:16px!important;line-height:1.5}
+                .st-key-cv_pa_next_steps [data-testid="stMarkdownContainer"] p{font-size:15px!important;line-height:1.5}
                 .cv-pa-summary,.cv-pa-table-shell,.cv-pa-table-scroll,.st-key-cv_pa_supplier_options{max-width:100%!important;min-width:0!important}
                 .cv-pa-summary{grid-template-columns:96px minmax(0,1.4fr) repeat(4,minmax(0,1fr))!important}
                 .cv-pa-table-scroll{overflow-x:auto!important}
@@ -7637,6 +8009,12 @@ def run_authenticated_app() -> None:
                 unsafe_allow_html=True,
             )
             st.markdown(procurement_page_header_html(), unsafe_allow_html=True)
+            from src.ui.navigation import request_main_scroll_reset
+
+            # Reveal as soon as the page header is mounted so the navigation
+            # loader cannot sit over live Procurement Advisor content.
+            request_main_scroll_reset()
+            reveal_authenticated_page_body("Procurement Advisor", force=True)
             mpn_options = []
             for row in procurement_recommendations:
                 mpn = str(row.get("Part Number") or "").strip()
@@ -7743,8 +8121,6 @@ def run_authenticated_app() -> None:
                     ),
                     unsafe_allow_html=True,
                 )
-                reveal_authenticated_page_body("Procurement Advisor")
-
                 if editor_open:
                     st.markdown(
                         "Enter details from a current authorized supplier quote or manufacturer record. "
@@ -8142,7 +8518,6 @@ def run_authenticated_app() -> None:
                     )
 
             else:
-                reveal_authenticated_page_body("Procurement Advisor")
                 st.info("Upload or open a saved BOM to add components to procurement review.")
 
             with st.expander("More procurement actions and all components", expanded=False):
@@ -8765,7 +9140,7 @@ def run_authenticated_app() -> None:
                 _clear_engineering_decision_caches()
                 st.rerun()
             cadivor_button_wrap_end()
-            reveal_authenticated_page_body("Engineering Decisions")
+            reveal_authenticated_page_body("Engineering Decisions", force=True)
             stop_authenticated_page()
         elif needs_decision_hydrate:
             # Pass 1: paint shell + in-page loader, then defer IO to the next run.
@@ -8773,6 +9148,9 @@ def run_authenticated_app() -> None:
             _render_ed_inline_loading(
                 detail="Preparing decision data for this workspace. Sidebar and account menu remain available."
             )
+            # Release Opening… as soon as the Decisions shell/loader is mounted.
+            # Pass 2 hydrate IO must not hold the full-screen cover.
+            reveal_authenticated_page_body("Engineering Decisions", force=True)
             # st.stop() never returns — call st.rerun() directly so Pass 2 can hydrate.
             if st.session_state.get("_cadivor_authenticated_surface_ready"):
                 inject_workspace_geometry_final()
@@ -8796,7 +9174,7 @@ def run_authenticated_app() -> None:
                 icon="clipboard-check",
                 test_id="ed-page-hero",
             )
-            reveal_authenticated_page_body("Engineering Decisions")
+            reveal_authenticated_page_body("Engineering Decisions", force=True)
 
         if ed_body_ready:
             decision_alert_df = st.session_state.get(decision_alerts_key)
@@ -8873,7 +9251,7 @@ def run_authenticated_app() -> None:
                         type="secondary",
                     ):
                         _return_to_engineering_decisions_queue()
-                    reveal_authenticated_page_body("Engineering Decisions")
+                    reveal_authenticated_page_body("Engineering Decisions", force=True)
             elif focus_part:
                 selected_decision = next(
                     (
@@ -10236,7 +10614,7 @@ def run_authenticated_app() -> None:
                             else:
                                 st.caption("No saved BOM is linked to this alert.")
 
-                reveal_authenticated_page_body("Engineering Decisions")
+                reveal_authenticated_page_body("Engineering Decisions", force=True)
                 stop_authenticated_page()
 
             if selected_decision:
@@ -21416,6 +21794,600 @@ def run_authenticated_app() -> None:
         )
         from src.bom_upload_flow import has_completed_saved_bom_results
 
+        # Unified analysis surface: preparing and component progress share one
+        # top-aligned card before BOM CSS/catalog. This prevents the mid-page
+        # preparing → top progress jump and the post-complete Preparing flash.
+        _early_analysis_surface_painted = False
+        _bom_preparing_painted = False
+        _bom_handoff_to_save = False
+        _analysis_handoff = bool(st.session_state.get("cadivor_bom_analysis_handoff"))
+        _analysis_surface_active = bool(
+            st.session_state.get("bom8_analysis_future") is not None
+            or st.session_state.get("cadivor_bom_pipeline_active")
+            or st.session_state.get("bom8_analysis_pending")
+            or st.session_state.get("bom8_analysis_in_progress")
+            or st.session_state.get("cadivor_bom_analysis_ready")
+            or st.session_state.get("cadivor_bom_component_progress_started")
+            or _analysis_handoff
+        )
+        _results_ready = bool(
+            st.session_state.get("results_df") is not None
+            and not getattr(st.session_state.get("results_df"), "empty", True)
+        )
+        _analysis_saved = bool(st.session_state.get("analysis_saved"))
+        _open_details_pending = bool(
+            str(st.session_state.get("cadivor_bom_open_details_after_save") or "").strip()
+        )
+        # Keep the saving card mounted for one frame after persist so navigate
+        # does not remount the shell underneath it.
+        if (_analysis_surface_active and not _analysis_saved) or (
+            _open_details_pending and _analysis_handoff
+        ):
+            bom_analysis_status_slot = st.empty()
+            from src.ui.navigation import request_main_scroll_reset
+
+            # Do not scroll-reset during the save handoff — that remount moved
+            # the same progress card ~30–200px down between 4/5 and Saving.
+            if not st.session_state.get("cadivor_bom_analysis_handoff"):
+                st.session_state["cadivor_bom_analysis_scroll_token"] = (
+                    request_main_scroll_reset()
+                )
+            _future = st.session_state.get("bom8_analysis_future")
+            _progress_started = bool(
+                st.session_state.get("cadivor_bom_component_progress_started")
+                or st.session_state.get("bom8_analysis_progress")
+            )
+
+            def _bootstrap_bom_analysis_worker() -> bool:
+                """Parse the staged upload and start the worker before painting.
+
+                Starting after a Preparing paint required a second remount and
+                let Streamlit briefly show Preparing below leftover upload
+                chrome (cardTop ~700px) before progress remounted at the top.
+                """
+                if st.session_state.get("bom8_analysis_future") is not None:
+                    return True
+                from concurrent.futures import ThreadPoolExecutor
+                import queue
+                import threading
+
+                from src.bom_parser import (
+                    aggregate_bom_rows as _agg_early_bom,
+                    normalize_bom_columns as _norm_early_bom,
+                )
+                from src.bom_upload_flow import resume_approved_bom_submission
+                from src.ui.main_transition import arm_bom_analysis_transition
+
+                early_upload, early_project, early_bom = (
+                    resume_approved_bom_submission(st.session_state)
+                )
+                if early_upload is None:
+                    early_upload = st.session_state.get("bom_file_uploader")
+                if early_upload is None:
+                    return False
+                name = str(getattr(early_upload, "name", "") or "")
+                early_upload.seek(0)
+                if name.lower().endswith(".csv"):
+                    early_df = pd.read_csv(early_upload)
+                else:
+                    early_df = pd.read_excel(early_upload)
+                early_df = _agg_early_bom(_norm_early_bom(early_df))
+                progress_queue = queue.Queue()
+                cancel_event = threading.Event()
+                executor = ThreadPoolExecutor(max_workers=1)
+                first_mpn = ""
+                try:
+                    first_mpn = (
+                        str(early_df.iloc[0].get("mpn") or "")
+                        if len(early_df)
+                        else ""
+                    )
+                except Exception:
+                    first_mpn = ""
+                progress_queue.put((0, len(early_df), first_mpn or "Starting"))
+                st.session_state["bom8_analysis_progress_queue"] = progress_queue
+                st.session_state["bom8_analysis_cancel_event"] = cancel_event
+                st.session_state["bom8_analysis_executor"] = executor
+                st.session_state["bom8_analysis_progress"] = (
+                    0,
+                    len(early_df),
+                    first_mpn or "Starting",
+                )
+                st.session_state["bom8_analysis_total_parts"] = len(early_df)
+                st.session_state["cadivor_bom_component_progress_started"] = True
+                st.session_state.pop("bom8_analysis_pending", None)
+                st.session_state["bom8_analysis_in_progress"] = True
+                if early_project:
+                    st.session_state["bom8_project_name"] = early_project
+                if early_bom:
+                    st.session_state["bom8_bom_name"] = early_bom
+                arm_bom_analysis_transition(st.session_state, "start")
+                import time as _phase_time
+
+                t0 = float(st.session_state.get("cadivor_analysis_phase_t0") or 0.0)
+                elapsed = (_phase_time.perf_counter() - t0) * 1000.0 if t0 else 0.0
+                print(
+                    f"CADIVOR_PHASE worker_start parts={len(early_df)} "
+                    f"elapsed_ms={int(elapsed)} via=bootstrap_before_paint",
+                    flush=True,
+                )
+                log = list(st.session_state.get("cadivor_analysis_phase_log") or [])
+                log.append(("worker_start", round(elapsed, 1)))
+                st.session_state["cadivor_analysis_phase_log"] = log
+                st.session_state["bom8_analysis_future"] = executor.submit(
+                    analyze_bom,
+                    early_df.copy(deep=True),
+                    progress_queue,
+                    cancel_event,
+                )
+                return True
+
+            if _future is None and not _progress_started:
+                try:
+                    if _bootstrap_bom_analysis_worker():
+                        _future = st.session_state.get("bom8_analysis_future")
+                        _progress_started = True
+                except Exception as early_exc:
+                    st.session_state["cadivor_bom_bootstrap_error"] = str(early_exc)
+
+            @st.fragment(run_every=1.0)
+            def _render_active_bom_analysis():
+                current_future = st.session_state.get("bom8_analysis_future")
+                if current_future is None:
+                    return
+
+                from src.bom_upload_flow import finish_approved_bom_submission
+
+                # one_time_* helpers are already aliased in this BOM Analyzer branch.
+                _one_time_user_id = str((current_user or {}).get("id") or "")
+                _one_time_order_id = str(
+                    st.session_state.get("cadivor_one_time_bom_order_id") or ""
+                )
+                _one_time_reserved = bool(
+                    _one_time_order_id
+                    and one_time_credit_reserved(_one_time_user_id, _one_time_order_id)
+                )
+                source_filename = str(
+                    st.session_state.get("uploaded_filename")
+                    or st.session_state.get("cadivor_one_time_pending_source_filename")
+                    or ""
+                )
+                project_name = str(
+                    st.session_state.get("bom8_project_name")
+                    or st.session_state.get("cadivor_one_time_pending_project_name")
+                    or ""
+                )
+                bom_name = str(
+                    st.session_state.get("bom8_bom_name")
+                    or st.session_state.get("cadivor_one_time_pending_bom_name")
+                    or ""
+                )
+
+                progress_queue = st.session_state.get("bom8_analysis_progress_queue")
+                completed, total_parts, current_mpn = st.session_state.get(
+                    "bom8_analysis_progress",
+                    (0, int(st.session_state.get("bom8_analysis_total_parts") or 0), ""),
+                )
+                while progress_queue is not None and not progress_queue.empty():
+                    completed, total_parts, current_mpn = progress_queue.get_nowait()
+                    st.session_state["bom8_analysis_progress"] = (
+                        completed,
+                        total_parts,
+                        current_mpn,
+                    )
+
+                if st.button(
+                    "Cancel analysis",
+                    key="bom8_cancel_analysis",
+                    type="secondary",
+                ):
+                    cancel_event = st.session_state.get("bom8_analysis_cancel_event")
+                    if cancel_event is not None:
+                        cancel_event.set()
+                    if _one_time_reserved:
+                        if release_one_time_credit(_one_time_user_id, _one_time_order_id):
+                            st.session_state.pop("cadivor_one_time_bom_order_id", None)
+                    executor = st.session_state.pop("bom8_analysis_executor", None)
+                    if executor is not None:
+                        executor.shutdown(wait=False, cancel_futures=True)
+                    st.session_state.pop("bom8_analysis_future", None)
+                    st.session_state.pop("bom8_analysis_progress_queue", None)
+                    st.session_state.pop("bom8_analysis_cancel_event", None)
+                    st.session_state.pop("bom8_analysis_progress", None)
+                    finish_approved_bom_submission(st.session_state, reopen_upload=True)
+                    st.session_state["bom8_analysis_cancelled_notice"] = True
+                    st.rerun()
+
+                if not current_future.done():
+                    if completed <= 0 and current_mpn:
+                        step = f"Checking {current_mpn}"
+                    elif completed < total_parts:
+                        step = "Checking the remaining components"
+                    else:
+                        step = "Finishing supplier checks"
+                    st.markdown(
+                        "<div class='cv-ap'><h1 style='margin:0 0 8px'>Analyzing BOM</h1></div>",
+                        unsafe_allow_html=True,
+                    )
+                    st.info(f"**{step}** — {completed} of {total_parts} components complete")
+                    st.progress(completed / total_parts if total_parts else 0.0)
+                    if completed > 0 and not st.session_state.get(
+                        "cadivor_analysis_first_progress_logged"
+                    ):
+                        st.session_state["cadivor_analysis_first_progress_logged"] = True
+                        import time as _phase_time
+
+                        _t0 = float(st.session_state.get("cadivor_analysis_phase_t0") or 0.0)
+                        _elapsed = (
+                            (_phase_time.perf_counter() - _t0) * 1000.0 if _t0 else 0.0
+                        )
+                        print(
+                            f"CADIVOR_PHASE first_progress_ui elapsed_ms={int(_elapsed)} "
+                            f"step={step}",
+                            flush=True,
+                        )
+                    return
+
+                # Keep the same top card painted while we mount results on the
+                # next full run — clearing the fragment first let the card jump.
+                st.markdown(
+                    "<div class='cv-ap'><h1 style='margin:0 0 8px'>Analyzing BOM</h1></div>",
+                    unsafe_allow_html=True,
+                )
+                st.info(
+                    f"**Saving the analysis** — {completed} of {total_parts} components complete"
+                )
+                st.progress(completed / total_parts if total_parts else 1.0)
+
+                # Future finished — mount result or terminal state once.
+                st.session_state.pop("bom8_analysis_future", None)
+                st.session_state.pop("bom8_analysis_progress_queue", None)
+                st.session_state.pop("bom8_analysis_cancel_event", None)
+                executor = st.session_state.pop("bom8_analysis_executor", None)
+                if executor is not None:
+                    executor.shutdown(wait=False, cancel_futures=True)
+                st.session_state.pop("bom8_analysis_progress", None)
+
+                try:
+                    analysis_result = current_future.result()
+                except Exception as exc:
+                    finish_approved_bom_submission(st.session_state, reopen_upload=True)
+                    st.error(f"BOM analysis failed: {exc}")
+                    from src.ui.navigation import request_main_scroll_reset
+
+                    st.session_state["cadivor_bom_analysis_scroll_token"] = (
+                        request_main_scroll_reset()
+                    )
+                    st.rerun()
+                    return
+
+                if analysis_result is None:
+                    finish_approved_bom_submission(st.session_state, reopen_upload=True)
+                    st.warning("Analysis canceled. No BOM analysis was saved.")
+                    from src.ui.navigation import request_main_scroll_reset
+
+                    st.session_state["cadivor_bom_analysis_scroll_token"] = (
+                        request_main_scroll_reset()
+                    )
+                    st.rerun()
+                    return
+
+                results_df, degraded = analysis_result
+                st.session_state["results_df"] = results_df
+                st.session_state["cadivor_one_time_pending_source_filename"] = source_filename
+                st.session_state["cadivor_one_time_pending_project_name"] = str(project_name or "")
+                st.session_state["cadivor_one_time_pending_bom_name"] = str(bom_name or "")
+                st.session_state["cadivor_supplier_degraded"] = degraded
+                st.session_state["cadivor_supplier_degraded_message"] = (
+                    "Some supplier data could not be verified during this analysis."
+                    if degraded
+                    else ""
+                )
+                # Keep the top progress surface through save/navigate. Finishing
+                # the pipeline here dropped the card into a blank "Review
+                # uploaded components" workspace before Analysis Details mounted.
+                st.session_state["cadivor_bom_analysis_handoff"] = True
+                st.session_state["cadivor_bom_component_progress_started"] = True
+                st.session_state["bom8_analysis_in_progress"] = True
+                st.session_state["bom8_analysis_progress"] = (
+                    completed,
+                    total_parts,
+                    current_mpn or "Complete",
+                )
+                st.session_state.pop("bom8_analysis_pending", None)
+                st.session_state.pop("cadivor_analysis_first_progress_logged", None)
+                # Persist + open details inside this fragment tree. A full
+                # st.rerun() remounted the card (~200px) and dropped the
+                # sidebar; main-script code after the fragment call does not
+                # run on fragment-only ticks.
+                print("CADIVOR_PHASE handoff_armed", flush=True)
+                if not st.session_state.get("analysis_saved"):
+                    from src.saved_bom_project import analysis_title_for_upload
+
+                    print("CADIVOR_PHASE handoff_fallthrough_to_save", flush=True)
+                    _handoff_project = str(
+                        st.session_state.get("bom8_project_name")
+                        or st.session_state.get("cadivor_one_time_pending_project_name")
+                        or project_name
+                        or ""
+                    )
+                    _handoff_bom = str(
+                        st.session_state.get("bom8_bom_name")
+                        or st.session_state.get("cadivor_one_time_pending_bom_name")
+                        or bom_name
+                        or ""
+                    )
+                    _handoff_filename = str(
+                        source_filename
+                        or st.session_state.get("uploaded_filename")
+                        or "saved_bom_analysis.csv"
+                    )
+                    _handoff_one_time_blocked = (
+                        not is_admin
+                        and selected_plan.get("can_create_analyses") is False
+                    )
+                    _handoff_one_time_user = str((current_user or {}).get("id") or "")
+                    _handoff_one_time_order = str(
+                        st.session_state.get("cadivor_one_time_bom_order_id") or ""
+                    )
+                    _handoff_one_time_reserved = bool(
+                        _handoff_one_time_blocked
+                        and _handoff_one_time_order
+                        and one_time_credit_reserved(
+                            _handoff_one_time_user, _handoff_one_time_order
+                        )
+                    )
+                    _handoff_analysis_id = _persist_bom_handoff_analysis(
+                        supabase=supabase,
+                        current_user=current_user,
+                        results_df=results_df,
+                        analysis_name=analysis_title_for_upload(
+                            _handoff_project, _handoff_bom
+                        ),
+                        source_filename=_handoff_filename,
+                        active_workspace_id=active_workspace_id,
+                        active_workspace_role=active_workspace_role,
+                        monthly_upload_count=int(monthly_upload_count or 0),
+                        one_time_blocked_plan=_handoff_one_time_blocked,
+                        one_time_reserved=_handoff_one_time_reserved,
+                        one_time_user_id=_handoff_one_time_user,
+                        one_time_order_id=_handoff_one_time_order,
+                        attach_one_time_analysis=attach_one_time_analysis,
+                        release_one_time_credit=release_one_time_credit,
+                    )
+                    st.session_state["cadivor_bom_open_details_after_save"] = str(
+                        _handoff_analysis_id
+                    )
+                    print(
+                        "CADIVOR_PHASE handoff_saved_hold_saving "
+                        f"analysis_id={_handoff_analysis_id!r}",
+                        flush=True,
+                    )
+                    print("CADIVOR_PHASE handoff_hold_armed", flush=True)
+                    import time as _handoff_hold_time
+
+                    _handoff_hold_time.sleep(0.75)
+                    # Keep handoff/catalog suppression through the bridge rerun.
+                    # finish() here unhid catalog chrome under the still-visible
+                    # Saving card and pushed cardTop ~246 before Details opened.
+                    st.session_state["cadivor_bom_navigate_details_id"] = str(
+                        _handoff_analysis_id
+                    )
+                    st.session_state["cadivor_bom_nav_bridge"] = True
+                    print(
+                        "CADIVOR_PHASE handoff_navigate_bridge "
+                        f"analysis_id={_handoff_analysis_id!r}",
+                        flush=True,
+                    )
+                    st.rerun()
+                return
+
+            st.markdown(
+                """
+                <style data-cadivor-layout-style="true">
+                body:has(.st-key-bom8_analysis_progress_card, .st-key-bom8_analysis_preparing_card) .st-key-bom9_workspace_grid,
+                body:has(.st-key-bom8_analysis_progress_card, .st-key-bom8_analysis_preparing_card) .st-key-approved_bom_title,
+                body:has(.st-key-bom8_analysis_progress_card, .st-key-bom8_analysis_preparing_card) .st-key-approved_bom_toolbar,
+                body:has(.st-key-bom8_analysis_progress_card, .st-key-bom8_analysis_preparing_card) .st-key-approved_bom_upload_panel,
+                body:has(.st-key-bom8_analysis_progress_card, .st-key-bom8_analysis_preparing_card) .st-key-bom9_upload_panel,
+                body:has(.st-key-bom8_analysis_progress_card, .st-key-bom8_analysis_preparing_card) .st-key-approved_bom_catalog_table,
+                body:has(.st-key-bom8_analysis_progress_card, .st-key-bom8_analysis_preparing_card) #cadivor-bom-analysis-top-anchor {
+                  display:none !important;
+                  height:0 !important;
+                  max-height:0 !important;
+                  margin:0 !important;
+                  padding:0 !important;
+                }
+                .st-key-bom8_analysis_progress_card,
+                .st-key-bom8_analysis_preparing_card {
+                  box-sizing:border-box!important;
+                  position:relative!important;
+                  top:auto!important;
+                  margin:8px auto 16px!important;
+                  width:100%!important;
+                  max-width:1440px!important;
+                }
+                </style>
+                """,
+                unsafe_allow_html=True,
+            )
+            # Same container key for preparing and progress so Streamlit does
+            # not remount the card at a new workspace position.
+            with bom_analysis_status_slot.container():
+                with st.container(key="bom8_analysis_progress_card", border=True):
+                    if _future is not None and not _results_ready:
+                        print("CADIVOR_PHASE progress_top_path", flush=True)
+                        st.session_state["cadivor_bom_component_progress_started"] = True
+                        _render_active_bom_analysis()
+                    elif _results_ready or _analysis_handoff or _progress_started:
+                        # Same card through save — never drop into review/catalog blank.
+                        print("CADIVOR_PHASE progress_handoff_path", flush=True)
+                        completed, total_parts, current_mpn = st.session_state.get(
+                            "bom8_analysis_progress",
+                            (0, int(st.session_state.get("bom8_analysis_total_parts") or 0), ""),
+                        )
+                        # Reuse the in-progress cancel key so Streamlit keeps the
+                        # same card chrome/geometry through the saving handoff.
+                        st.button(
+                            "Cancel analysis",
+                            key="bom8_cancel_analysis",
+                            type="secondary",
+                            disabled=True,
+                        )
+                        st.markdown(
+                            "<div class='cv-ap'><h1 style='margin:0 0 8px'>Analyzing BOM</h1></div>",
+                            unsafe_allow_html=True,
+                        )
+                        st.info(
+                            f"**Saving the analysis** — {completed} of {total_parts} components complete"
+                        )
+                        st.progress(completed / total_parts if total_parts else 1.0)
+                        _open_details_id = str(
+                            st.session_state.get("cadivor_bom_open_details_after_save")
+                            or ""
+                        ).strip()
+                        # When persist already finished, keep Saving painted; the
+                        # hold fragment below opens Analysis Details after a beat.
+                        if _results_ready and not st.session_state.get("analysis_saved"):
+                            _bom_handoff_to_save = True
+                        elif _open_details_id and st.session_state.get("analysis_saved"):
+                            # Re-arm the hold fragment on this paint.
+                            pass
+                    else:
+                        print("CADIVOR_PHASE preparing_top_path", flush=True)
+                        bootstrap_error = str(
+                            st.session_state.pop("cadivor_bom_bootstrap_error", "") or ""
+                        )
+                        st.markdown(
+                            "<div class='cv-ap'><h1 style='margin:0 0 8px'>Preparing your BOM analysis</h1></div>",
+                            unsafe_allow_html=True,
+                        )
+                        if bootstrap_error:
+                            st.error(
+                                f"Could not start the BOM analysis: {bootstrap_error}"
+                            )
+                        else:
+                            st.caption(
+                                "Reading the uploaded file and starting component checks."
+                            )
+                            st.progress(0, text="Preparing the first component check…")
+                        import time as _phase_time
+
+                        _t0 = float(st.session_state.get("cadivor_analysis_phase_t0") or 0.0)
+                        if _t0:
+                            _elapsed = (_phase_time.perf_counter() - _t0) * 1000.0
+                            print(
+                                f"CADIVOR_PHASE preparing_card_painted elapsed_ms={int(_elapsed)}",
+                                flush=True,
+                            )
+                            log = list(st.session_state.get("cadivor_analysis_phase_log") or [])
+                            log.append(("preparing_card_painted", round(_elapsed, 1)))
+                            st.session_state["cadivor_analysis_phase_log"] = log
+            reveal_authenticated_page_body("BOM Analyzer", force=True)
+            # Keep this tree mounted across progress→saving so Streamlit does not
+            # remount the card lower. Persist inline while only the saving card
+            # is mounted — falling into catalog/form widgets remounted the shell
+            # (sidebar flicker + ~32px cardTop shift) before Analysis Details.
+            if _bom_handoff_to_save and not st.session_state.get("analysis_saved"):
+                _early_analysis_surface_painted = True
+                print("CADIVOR_PHASE handoff_fallthrough_to_save", flush=True)
+                from src.saved_bom_project import analysis_title_for_upload
+
+                _handoff_results = st.session_state.get("results_df")
+                _handoff_project = str(
+                    st.session_state.get("bom8_project_name")
+                    or st.session_state.get("cadivor_one_time_pending_project_name")
+                    or ""
+                )
+                _handoff_bom = str(
+                    st.session_state.get("bom8_bom_name")
+                    or st.session_state.get("cadivor_one_time_pending_bom_name")
+                    or ""
+                )
+                _handoff_filename = str(
+                    st.session_state.get("uploaded_filename")
+                    or st.session_state.get("cadivor_one_time_pending_source_filename")
+                    or "saved_bom_analysis.csv"
+                )
+                _handoff_one_time_blocked = (
+                    not is_admin and selected_plan.get("can_create_analyses") is False
+                )
+                _handoff_one_time_user = str((current_user or {}).get("id") or "")
+                _handoff_one_time_order = str(
+                    st.session_state.get("cadivor_one_time_bom_order_id") or ""
+                )
+                _handoff_one_time_reserved = bool(
+                    _handoff_one_time_blocked
+                    and _handoff_one_time_order
+                    and one_time_credit_reserved(
+                        _handoff_one_time_user, _handoff_one_time_order
+                    )
+                )
+                _handoff_analysis_id = _persist_bom_handoff_analysis(
+                    supabase=supabase,
+                    current_user=current_user,
+                    results_df=_handoff_results,
+                    analysis_name=analysis_title_for_upload(
+                        _handoff_project, _handoff_bom
+                    ),
+                    source_filename=_handoff_filename,
+                    active_workspace_id=active_workspace_id,
+                    active_workspace_role=active_workspace_role,
+                    monthly_upload_count=int(monthly_upload_count or 0),
+                    one_time_blocked_plan=_handoff_one_time_blocked,
+                    one_time_reserved=_handoff_one_time_reserved,
+                    one_time_user_id=_handoff_one_time_user,
+                    one_time_order_id=_handoff_one_time_order,
+                    attach_one_time_analysis=attach_one_time_analysis,
+                    release_one_time_credit=release_one_time_credit,
+                )
+                st.session_state["cadivor_bom_open_details_after_save"] = str(
+                    _handoff_analysis_id
+                )
+                print(
+                    "CADIVOR_PHASE handoff_saved_hold_saving "
+                    f"analysis_id={_handoff_analysis_id!r}",
+                    flush=True,
+                )
+
+                # Keep Saving painted on this same card/shell, then open details.
+                # Extra fragments/widgets after the card remounted it (~32px) and
+                # briefly hid the sidebar; a short hold avoids that remount.
+                print(
+                    "CADIVOR_PHASE handoff_hold_armed",
+                    flush=True,
+                )
+                import time as _handoff_hold_time
+
+                _handoff_hold_time.sleep(0.75)
+                _open_id = str(
+                    st.session_state.get("cadivor_bom_open_details_after_save")
+                    or _handoff_analysis_id
+                    or ""
+                ).strip()
+                st.session_state["cadivor_bom_navigate_details_id"] = _open_id
+                st.session_state["cadivor_bom_nav_bridge"] = True
+                print(
+                    "CADIVOR_PHASE handoff_navigate_bridge "
+                    f"analysis_id={_open_id!r}",
+                    flush=True,
+                )
+                st.rerun()
+            elif _future is not None and not _results_ready:
+                stop_authenticated_page()
+            else:
+                _early_analysis_surface_painted = True
+                stop_authenticated_page()
+
+        _handoff_save_active = bool(
+            _bom_handoff_to_save
+            or st.session_state.get("cadivor_bom_analysis_handoff")
+            or st.session_state.get("cadivor_bom_open_details_after_save")
+        ) and (
+            not bool(st.session_state.get("analysis_saved"))
+            or bool(st.session_state.get("cadivor_bom_open_details_after_save"))
+        )
+
         _has_completed_saved_results = has_completed_saved_bom_results(
             st.session_state
         )
@@ -21440,7 +22412,8 @@ def run_authenticated_app() -> None:
         ):
             navigate_to("Analysis Details", analysis_id=_resume_analysis_id)
 
-        st.markdown(
+        if not _handoff_save_active:
+            st.markdown(
             """
             <style id="cadivor-bom-intelligence-v1" data-cadivor-layout-style="true">
             .bom8-hero{
@@ -21987,8 +22960,22 @@ def run_authenticated_app() -> None:
             }
             .st-key-bom9_workspace_grid{margin-top:2px;}
             div[data-testid="stHorizontalBlock"]:has(.st-key-bom9_upload_panel):has(.st-key-bom9_saved_panel){
+                display:grid!important;
+                grid-template-columns:minmax(0,1fr)!important;
                 align-items:flex-start!important;
-                gap:18px!important;
+                gap:16px!important;
+                width:100%!important;
+                max-width:none!important;
+            }
+            div[data-testid="stHorizontalBlock"]:has(.st-key-bom9_upload_panel):has(.st-key-bom9_saved_panel) > [data-testid="column"],
+            div[data-testid="stHorizontalBlock"]:has(.st-key-bom9_upload_panel):has(.st-key-bom9_saved_panel) > [data-testid="stColumn"]{
+                box-sizing:border-box!important;
+                grid-column:1!important;
+                width:100%!important;
+                max-width:none!important;
+                min-width:0!important;
+                flex:none!important;
+                padding:0!important;
             }
             div[data-testid="stVerticalBlockBorderWrapper"]:has(.bom9-upload-marker),
             div[data-testid="stVerticalBlockBorderWrapper"]:has(.bom9-saved-marker){
@@ -22291,24 +23278,22 @@ def run_authenticated_app() -> None:
                 margin-right:auto!important;
             }
             .st-key-bom8_analysis_preview{max-width:1440px!important;}
-            .st-key-bom8_analysis_progress_card{max-width:1440px!important;margin:8px auto 16px!important;}
-            section[data-testid="stMain"] [data-testid="stMainBlockContainer"]:has(.st-key-bom8_analysis_progress_card){
-              padding-top:calc(var(--cv-foundation-top, 64px) + 12px)!important;
-            }
-            body:has(.st-key-bom8_analysis_progress_card) section[data-testid="stMain"] [data-testid="stVerticalBlock"]:has(.st-key-bom8_analysis_progress_card){
-              gap:0!important;
-              row-gap:0!important;
-            }
-            body:has(.st-key-bom8_analysis_progress_card) section[data-testid="stMain"] [data-testid="stVerticalBlock"]:has(.st-key-bom8_analysis_progress_card) > :not(:has(.st-key-bom8_analysis_progress_card)):not(:has([class*="st-key-cv_foundation_navigation"])):not(:has([class*="st-key-cv_foundation_profile"])):not(:has(.cv-foundation-topbar)){
-              display:none!important;
-              height:0!important;
-              min-height:0!important;
-              max-height:0!important;
-              margin:0!important;
-              padding:0!important;
-              overflow:hidden!important;
-              flex:0 0 0!important;
-              border:0!important;
+            .st-key-bom8_analysis_progress_card,
+            .st-key-bom8_analysis_preparing_card{box-sizing:border-box!important;width:100%!important;max-width:1440px!important;margin:8px auto 16px!important;}
+            /* Match Home/Monitoring canvas: Streamlit's default block-container
+               can leave New BOM / progress / report surfaces unnecessarily narrow. */
+            section[data-testid="stMain"] [data-testid="stMainBlockContainer"]:has(.st-key-bom8_analysis_progress_card),
+            section[data-testid="stMain"] [data-testid="stMainBlockContainer"]:has(.st-key-bom8_analysis_preparing_card),
+            section[data-testid="stMain"] [data-testid="stMainBlockContainer"]:has(.st-key-approved_bom_upload_panel),
+            section[data-testid="stMain"] [data-testid="stMainBlockContainer"]:has(.st-key-approved_bom_title),
+            section[data-testid="stMain"] [data-testid="stMainBlockContainer"]:has(.cv-ei-report){
+              box-sizing:border-box!important;
+              width:calc(100% - 48px)!important;
+              max-width:1440px!important;
+              min-width:0!important;
+              margin-left:auto!important;
+              margin-right:auto!important;
+              padding-top:12px!important;
             }
             .st-key-bom8_one_time_payment_action{max-width:760px!important;margin-top:12px!important;}
             .st-key-bom8_analysis_progress_card .stButton>button{width:auto!important;min-width:0!important;}
@@ -22320,7 +23305,46 @@ def run_authenticated_app() -> None:
             unsafe_allow_html=True,
         )
 
-        history_data = load_analysis_history(current_user["id"]) or []
+        # Preparing already painted on the early surface (and may fall through
+        # to start the worker). Progress/hold stopped above. Never paint a
+        # second analysis card or recreate the top slot mid-page.
+        _analysis_start_armed = bool(
+            st.session_state.get("cadivor_bom_pipeline_active")
+            or st.session_state.get("bom8_analysis_pending")
+            or st.session_state.get("bom8_analysis_in_progress")
+            or st.session_state.get("bom8_analysis_future")
+            or st.session_state.get("cadivor_bom_analysis_ready")
+            or st.session_state.get("cadivor_bom_component_progress_started")
+        )
+        if not _early_analysis_surface_painted:
+            _bom_preparing_painted = bool(_analysis_start_armed)
+            bom_analysis_status_slot = None
+        # During handoff save, leave the new-analysis slot unset so we do not
+        # allocate another empty after the progress card (that remount shifts
+        # cardTop by ~200px).
+        bom_new_analysis_slot = None
+
+
+        # New BOM upload is the destination surface. Do not block the file
+        # input behind a catalog history round-trip — reuse session rows when
+        # available and load history only for catalog / results destinations.
+        _prefer_upload_form = bool(
+            st.session_state.get("cadivor_bom_upload_open")
+        ) and not bool(
+            st.session_state.get("cadivor_bom_catalog_requested")
+            or st.session_state.get("cadivor_show_saved_boms")
+            or st.session_state.get("bom81_high_risk_review")
+        )
+        if _prefer_upload_form:
+            history_data = list(
+                st.session_state.get("cadivor_saved_analyses_rows")
+                or st.session_state.get("saved_analyses")
+                or []
+            )
+            if not isinstance(history_data, list):
+                history_data = []
+        else:
+            history_data = load_analysis_history(current_user["id"]) or []
         history_df = pd.DataFrame(history_data)
 
         if not history_df.empty:
@@ -22345,7 +23369,8 @@ def run_authenticated_app() -> None:
             saved_analysis_count = 0
             total_high_risk = 0
 
-        st.markdown(
+        if not _handoff_save_active:
+            st.markdown(
             """
             <style>
             .cv64-metric-grid a.cv64-metric__action {
@@ -22403,25 +23428,65 @@ def run_authenticated_app() -> None:
             uploaded_file, project_name, bom_name = resume_approved_bom_submission(
                 st.session_state
             )
+        elif _handoff_save_active:
+            # Keep the saving card alone in main — resume names/file without chrome.
+            uploaded_file, project_name, bom_name = resume_approved_bom_submission(
+                st.session_state
+            )
+            _approved_bom_submitted = False
+            if not project_name:
+                project_name = str(st.session_state.get("bom8_project_name") or "")
+            if not bom_name:
+                bom_name = str(st.session_state.get("bom8_bom_name") or "")
         else:
             render_bom_catalog(
                 history_data if isinstance(history_data, list) else [],
                 user_id=str((current_user or {}).get("id") or ""),
             )
             # Keep the transition owner over a submitted upload until the next
-            # run paints its single analysis-progress surface.
+            # run paints its single analysis-progress surface. The New BOM
+            # upload form is already the destination — force-release Opening
+            # so the file input is usable immediately (90s on Opening is a
+            # failure, not an acceptable transition).
+            _upload_form_ready = bool(
+                st.session_state.get("cadivor_bom_upload_open")
+            ) and not bool(
+                st.session_state.get("cadivor_bom_catalog_requested")
+                or st.session_state.get("cadivor_show_saved_boms")
+                or st.session_state.get("cadivor_bom_analysis_ready")
+                or st.session_state.get("cadivor_bom_pipeline_active")
+                or st.session_state.get("bom8_analysis_future")
+                or st.session_state.get("bom8_analysis_pending")
+                or st.session_state.get("bom8_analysis_in_progress")
+            )
             if not st.session_state.get("cadivor_bom_analysis_ready"):
-                reveal_authenticated_page_body("BOM Analyzer")
+                reveal_authenticated_page_body(
+                    "BOM Analyzer",
+                    force=_upload_form_ready,
+                )
             _approved_bom_submitted, uploaded_file, project_name, bom_name = (
                 consume_approved_bom_submission(st.session_state)
             )
             if _approved_bom_submitted and uploaded_file is not None:
-                # Let the upload form disappear before parsing and starting the
-                # long-running analysis. Otherwise its submitted state is
-                # painted alongside the progress/results transition.
+                # Honest starting state within the same click run: show preparing
+                # before any CSV parse / supplier work, then continue on rerun.
                 from src.ui.main_transition import arm_bom_analysis_transition
                 from src.ui.navigation import request_main_scroll_reset
+                import time as _phase_time
 
+                print(
+                    f"CADIVOR_PHASE analyze_click_consumed "
+                    f"ts={_phase_time.time():.3f}",
+                    flush=True,
+                )
+                st.session_state["cadivor_analysis_phase_t0"] = _phase_time.perf_counter()
+                st.session_state["cadivor_analysis_phase_log"] = [
+                    ("analyze_click_consumed", 0.0)
+                ]
+                # Rerun into the top analysis surface — do not paint preparing
+                # under the upload form (that caused the mid-page jump).
+                _bom_preparing_painted = True
+                reveal_authenticated_page_body("BOM Analyzer", force=True)
                 request_main_scroll_reset()
                 arm_bom_analysis_transition(st.session_state, "start")
                 st.rerun()
@@ -22482,6 +23547,7 @@ def run_authenticated_app() -> None:
             and not st.session_state.get("bom81_high_risk_review")
             and not _resume_pending_one_time_analysis
             and not _has_completed_saved_results
+            and not _handoff_save_active
         ):
             if saved_bom_rerun_active:
                 st.error("The updated BOM file is no longer available in this session. Return to BOMs and open the saved BOM again.")
@@ -22617,10 +23683,14 @@ def run_authenticated_app() -> None:
                                         st.caption("This component's saved BOM is not available in the current workspace.")
                 stop_authenticated_page()
 
-            # Reserve the primary workflow at the top of the BOM page. The saved
-            # manager is rendered next, then the new-analysis workflow fills this
-            # slot below; Streamlit keeps the slot in its original top position.
-            bom_new_analysis_slot = st.empty()
+            # Top status slot is reserved earlier when analysis is armed so the
+            # progress card is not pushed below catalog/anchor chrome.
+            # Preparing/progress already painted on the unified early surface
+            # (or stopped there). Never paint a second mid-page Preparing card.
+            if bom_analysis_status_slot is None and not _handoff_save_active:
+                bom_analysis_status_slot = st.empty()
+            if bom_new_analysis_slot is None and not _handoff_save_active:
+                bom_new_analysis_slot = st.empty()
 
             def _render_saved_bom_manager() -> None:
                 """Render saved analyses beside the new-BOM workflow on desktop."""
@@ -23409,7 +24479,14 @@ def run_authenticated_app() -> None:
 
             # Keep the primary task together: workflow and form occupy the reserved top slot
             # occupy the reserved top slot; saved analyses remain below it.
-            _bom_new_analysis_context = bom_new_analysis_slot.container()
+            if _handoff_save_active or bom_new_analysis_slot is None:
+                # Handoff owns the main column with the saving card only — a new
+                # empty/container here remounted that card far down the page.
+                from contextlib import nullcontext
+
+                _bom_new_analysis_context = nullcontext()
+            else:
+                _bom_new_analysis_context = bom_new_analysis_slot.container()
             _bom_new_analysis_context.__enter__()
             if should_render_legacy_bom_workspace(st.session_state):
                 st.markdown(
@@ -23678,12 +24755,24 @@ def run_authenticated_app() -> None:
         source_filename = "cadivor_10_part_sample_bom.csv" if sample_mode else (
             uploaded_file.name if uploaded_file is not None else ""
         )
-        if _has_completed_saved_results and uploaded_file is None:
+        if (_has_completed_saved_results or _handoff_save_active) and uploaded_file is None:
             source_filename = str(
-                st.session_state.get("uploaded_filename") or "saved_bom_analysis.csv"
+                st.session_state.get("uploaded_filename")
+                or st.session_state.get("cadivor_one_time_pending_source_filename")
+                or "saved_bom_analysis.csv"
             )
-            project_name = str(st.session_state.get("bom8_project_name") or "")
-            bom_name = str(st.session_state.get("bom8_bom_name") or "")
+            project_name = str(
+                st.session_state.get("bom8_project_name")
+                or st.session_state.get("cadivor_one_time_pending_project_name")
+                or project_name
+                or ""
+            )
+            bom_name = str(
+                st.session_state.get("bom8_bom_name")
+                or st.session_state.get("cadivor_one_time_pending_bom_name")
+                or bom_name
+                or ""
+            )
         if _resume_pending_one_time_analysis and uploaded_file is None:
             source_filename = str(
                 st.session_state.get("cadivor_one_time_pending_source_filename")
@@ -23708,12 +24797,17 @@ def run_authenticated_app() -> None:
             and not sample_mode
             and not _resume_pending_one_time_analysis
             and not _has_completed_saved_results
+            and not _handoff_save_active
         ):
             st.markdown("</div>", unsafe_allow_html=True)
             stop_authenticated_page()
 
         try:
-            if _has_completed_saved_results and uploaded_file is None:
+            if (
+                (_has_completed_saved_results or _handoff_save_active)
+                and uploaded_file is None
+                and st.session_state.get("results_df") is not None
+            ):
                 _completed_results_df = st.session_state["results_df"]
                 _mpn_column = next(
                     (
@@ -23943,152 +25037,17 @@ def run_authenticated_app() -> None:
             arm_bom_analysis_transition(st.session_state, "start")
             st.rerun()
 
-        analysis_future = st.session_state.get("bom8_analysis_future")
-        if analysis_future is not None:
-            @st.fragment(run_every=1.0)
-            def _render_active_bom_analysis():
-                current_future = st.session_state.get("bom8_analysis_future")
-                if current_future is None:
-                    return
-
-                progress_queue = st.session_state.get("bom8_analysis_progress_queue")
-                completed, total_parts, current_mpn = st.session_state.get(
-                    "bom8_analysis_progress",
-                    (0, len(bom_df), ""),
-                )
-                while progress_queue is not None and not progress_queue.empty():
-                    completed, total_parts, current_mpn = progress_queue.get_nowait()
-                    st.session_state["bom8_analysis_progress"] = (
-                        completed,
-                        total_parts,
-                        current_mpn,
-                    )
-
-                if st.button(
-                    "Cancel analysis",
-                    key="bom8_cancel_analysis",
-                    type="secondary",
-                ):
-                    cancel_event = st.session_state.get("bom8_analysis_cancel_event")
-                    if cancel_event is not None:
-                        cancel_event.set()
-                    if _one_time_reserved:
-                        if release_one_time_credit(_one_time_user_id, _one_time_order_id):
-                            st.session_state.pop("cadivor_one_time_bom_order_id", None)
-                    executor = st.session_state.pop("bom8_analysis_executor", None)
-                    if executor is not None:
-                        executor.shutdown(wait=False, cancel_futures=True)
-                    st.session_state.pop("bom8_analysis_future", None)
-                    st.session_state.pop("bom8_analysis_progress_queue", None)
-                    st.session_state.pop("bom8_analysis_cancel_event", None)
-                    st.session_state.pop("bom8_analysis_progress", None)
-                    finish_approved_bom_submission(st.session_state, reopen_upload=True)
-                    st.session_state["bom8_analysis_cancelled_notice"] = True
-                    st.rerun()
-
-                if not current_future.done():
-                    if completed <= 0 and current_mpn:
-                        step = f"Checking {current_mpn}"
-                    elif completed < total_parts:
-                        step = "Checking the remaining components"
-                    else:
-                        step = "Saving the analysis"
-                    st.markdown(
-                        "<div class='cv-ap'><h1 style='margin:0 0 8px'>Analyzing BOM</h1></div>",
-                        unsafe_allow_html=True,
-                    )
-                    st.info(
-                        f"**{step}** — {completed} of {total_parts} components complete"
-                    )
-                    st.progress(completed / total_parts if total_parts else 0)
-                    return
-
-                try:
-                    analysis_result = current_future.result()
-                except Exception as e:
-                    if _one_time_reserved:
-                        if release_one_time_credit(_one_time_user_id, _one_time_order_id):
-                            st.session_state.pop("cadivor_one_time_bom_order_id", None)
-                    st.session_state.pop("bom8_analysis_future", None)
-                    failed_executor = st.session_state.pop("bom8_analysis_executor", None)
-                    if failed_executor is not None:
-                        failed_executor.shutdown(wait=False, cancel_futures=True)
-                    st.session_state.pop("bom8_analysis_progress_queue", None)
-                    st.session_state.pop("bom8_analysis_cancel_event", None)
-                    st.session_state.pop("bom8_analysis_progress", None)
-                    finish_approved_bom_submission(st.session_state, reopen_upload=True)
-                    st.session_state["cadivor_bom_analysis_error"] = True
-                    from src.ui.navigation import request_main_scroll_reset
-
-                    st.session_state["cadivor_bom_analysis_scroll_token"] = request_main_scroll_reset()
-                    st.rerun()
-
-                st.session_state.pop("bom8_analysis_future", None)
-                executor = st.session_state.pop("bom8_analysis_executor", None)
-                if executor is not None:
-                    executor.shutdown(wait=False, cancel_futures=True)
-                st.session_state.pop("bom8_analysis_progress_queue", None)
-                st.session_state.pop("bom8_analysis_cancel_event", None)
-                st.session_state.pop("bom8_analysis_progress", None)
-
-                if analysis_result is None:
-                    if _one_time_reserved:
-                        if release_one_time_credit(_one_time_user_id, _one_time_order_id):
-                            st.session_state.pop("cadivor_one_time_bom_order_id", None)
-                    finish_approved_bom_submission(st.session_state, reopen_upload=True)
-                    st.session_state["bom8_analysis_cancelled_notice"] = True
-                    from src.ui.navigation import request_main_scroll_reset
-
-                    st.session_state["cadivor_bom_analysis_scroll_token"] = request_main_scroll_reset()
-                    st.rerun()
-
-                results_df, degraded = analysis_result
-                st.session_state["results_df"] = results_df
-                st.session_state["cadivor_one_time_pending_source_filename"] = source_filename
-                st.session_state["cadivor_one_time_pending_project_name"] = str(project_name or "")
-                st.session_state["cadivor_one_time_pending_bom_name"] = str(bom_name or "")
-                st.session_state["cadivor_supplier_degraded"] = degraded
-                st.session_state["cadivor_supplier_degraded_message"] = (
-                    "Some supplier data could not be verified during this analysis."
-                    if degraded
-                    else ""
-                )
-                # The report replaces the progress fragment on this same route.
-                # Reset after the result is mounted as well as when analysis
-                # starts, otherwise a long run can preserve the upload form's
-                # old scroll offset and reveal the report below the fold.
-                from src.ui.navigation import request_main_scroll_reset
-
-                st.session_state["cadivor_bom_analysis_scroll_token"] = request_main_scroll_reset()
-                st.rerun()
-
-            st.markdown(
-                """
-                <style data-cadivor-layout-style="true">
-                body:has(.st-key-bom8_analysis_progress_card) .st-key-bom9_workspace_grid,
-                body:has(.st-key-bom8_analysis_progress_card) .st-key-approved_bom_title,
-                body:has(.st-key-bom8_analysis_progress_card) #cadivor-bom-analysis-top-anchor {
-                  display:none !important;
-                  height:0 !important;
-                  margin:0 !important;
-                  padding:0 !important;
-                }
-                .st-key-bom8_analysis_progress_card {
-                  margin-top: 8px !important;
-                }
-                </style>
-                """,
-                unsafe_allow_html=True,
-            )
-            with st.container(key="bom8_analysis_progress_card", border=True):
-                _render_active_bom_analysis()
-            st.stop()
+        # Active analysis progress is painted in the reserved top slot above
+        # catalog chrome; this late path is unreachable while a future is set.
 
         has_completed_results = bool(
             st.session_state.get("results_df") is not None
             and not getattr(st.session_state.get("results_df"), "empty", True)
         )
-        if _resume_pending_one_time_analysis and uploaded_file is None:
+        if st.session_state.get("cadivor_bom_analysis_handoff"):
+            # Handoff keeps the top progress card; do not paint review chrome.
+            pass
+        elif _resume_pending_one_time_analysis and uploaded_file is None:
             with st.expander("Review uploaded components", expanded=False):
                 st.caption(
                     "The completed analysis is being saved without repeating supplier lookups."
@@ -24201,13 +25160,34 @@ def run_authenticated_app() -> None:
             st.session_state["bom8_analysis_progress_queue"] = progress_queue
             st.session_state["bom8_analysis_cancel_event"] = cancel_event
             st.session_state["bom8_analysis_executor"] = executor
+            # Seed progress immediately so the next run shows a real starting
+            # state before the first supplier callback arrives.
+            first_mpn = ""
+            try:
+                first_mpn = str(bom_df.iloc[0].get("mpn") or "") if len(bom_df) else ""
+            except Exception:
+                first_mpn = ""
+            progress_queue.put((0, len(bom_df), first_mpn or "Starting"))
+            st.session_state["bom8_analysis_progress"] = (0, len(bom_df), first_mpn or "Starting")
+            st.session_state["bom8_analysis_total_parts"] = len(bom_df)
+            st.session_state["cadivor_bom_component_progress_started"] = True
+            import time as _phase_time
+            _t0 = float(st.session_state.get("cadivor_analysis_phase_t0") or 0.0)
+            _elapsed = (_phase_time.perf_counter() - _t0) * 1000.0 if _t0 else 0.0
+            print(
+                f"CADIVOR_PHASE worker_start parts={len(bom_df)} "
+                f"elapsed_ms={int(_elapsed)}",
+                flush=True,
+            )
+            log = list(st.session_state.get("cadivor_analysis_phase_log") or [])
+            log.append(("worker_start", round(_elapsed, 1)))
+            st.session_state["cadivor_analysis_phase_log"] = log
             st.session_state["bom8_analysis_future"] = executor.submit(
                 analyze_bom,
                 bom_df.copy(deep=True),
                 progress_queue,
                 cancel_event,
             )
-            st.session_state["bom8_analysis_progress"] = (0, len(bom_df), "")
             st.rerun()
 
         if st.session_state.get("show_upgrade_checkout") and not is_admin:
@@ -24477,6 +25457,16 @@ def run_authenticated_app() -> None:
                     st.session_state["cadivor_active_analysis_tab"] = "Engineering Intelligence"
 
                 except Exception as e:
+                    from uuid import uuid4
+
+                    failure_ref = uuid4().hex[:8].upper()
+                    logger.warning(
+                        "BOM summary save failed ref=%s stage=analysis_insert exception_type=%s code=%s frames=%s",
+                        failure_ref,
+                        type(e).__name__,
+                        str(getattr(e, "code", "") or "")[:12],
+                        safe_exception_frames(e),
+                    )
                     if _one_time_reserved:
                         if release_one_time_credit(_one_time_user_id, _one_time_order_id):
                             st.session_state.pop("cadivor_one_time_bom_order_id", None)
@@ -24496,6 +25486,7 @@ def run_authenticated_app() -> None:
                             "Cadivor could not confirm that the analysis summary was saved. "
                             "Check Saved BOMs before retrying to avoid creating a duplicate."
                         )
+                    save_error_message += f" Reference: {failure_ref}."
                     fail_approved_bom_summary_save(
                         st.session_state,
                         message=save_error_message,
@@ -24720,6 +25711,11 @@ def run_authenticated_app() -> None:
                 except Exception as e:
                     st.warning(f"Analysis completed, but upload count could not be updated: {e}")
 
+                print(
+                    f"CADIVOR_PHASE analysis_saved id={analysis_id} "
+                    f"handoff={bool(st.session_state.get('cadivor_bom_analysis_handoff'))}",
+                    flush=True,
+                )
                 st.session_state["analysis_saved"] = True
                 st.session_state["show_analysis_success_29b"] = True
                 st.session_state["last_saved_analysis_id"] = analysis_id
@@ -24731,14 +25727,23 @@ def run_authenticated_app() -> None:
                 ):
                     st.session_state.pop(_pending_key, None)
                 st.session_state.pop("bom8_analysis_in_progress", None)
-                finish_approved_bom_submission(st.session_state)
+                # Keep handoff armed until after navigate so the saving card is
+                # not replaced by the BOM catalog on this same run.
                 saved_bom_rerun_completed = bool(
                     st.session_state.pop("cadivor_saved_bom_rerun_active", False)
                 )
-                st.session_state["pending_app_mode"] = (
-                    "BOM Settings" if saved_bom_rerun_completed else "BOM Analyzer"
+                from src.ui.main_transition import (
+                    BOM_ANALYSIS_TRANSITION_KEY as _bom_transition_key,
+                    DELAY_ROUTE_BODY_REVEAL_KEY as _delay_reveal,
+                    MAIN_TRANSITION_KIND_KEY as _transition_kind,
+                    PRESENTED_ROUTE_KEY as _presented_route_key,
                 )
-                st.session_state["app_mode"] = st.session_state["pending_app_mode"]
+
+                # Clear any leftover Opening cover before the destination mounts.
+                st.session_state[_delay_reveal] = False
+                st.session_state.pop("cadivor_main_transition_active", None)
+                st.session_state.pop(_transition_kind, None)
+                st.session_state.pop(_bom_transition_key, None)
                 if saved_bom_rerun_completed:
                     st.session_state["cadivor_bom_rerun_complete_notice"] = {
                         "analysis_id": str(analysis_id),
@@ -24748,6 +25753,8 @@ def run_authenticated_app() -> None:
                     st.session_state.pop("cadivor_bom_pipeline_active", None)
                     st.session_state.pop("bom8_analysis_upload_file", None)
                     st.session_state["cadivor_bom_upload_open"] = False
+                    st.session_state.pop("cadivor_bom_analysis_handoff", None)
+                    finish_approved_bom_submission(st.session_state)
                     st.toast("Updated BOM analysis is ready. You’re back in the BOM editor.", icon="✅")
                     navigate_to(
                         "BOM Settings",
@@ -24756,15 +25763,20 @@ def run_authenticated_app() -> None:
                         arm_opening=False,
                     )
                 else:
-                    # Take a new analysis straight into its saved engineering
-                    # review. A saved-BOM rerun returns to its editor instead.
-                    st.toast("Analysis complete. Opening your BOM analysis…", icon="✅")
-                    navigate_to(
-                        "Analysis Details",
-                        analysis_id=str(analysis_id),
-                        analysis_tab="Engineering Intelligence",
-                        _rerun=False,
-                        arm_opening=False,
+                    # Keep the saving card on the BOM Analyzer shell for one
+                    # stable frame, then open Analysis Details on the next run.
+                    # Navigating in the same run remounted the shell (sidebar
+                    # flicker + ~32px cardTop shift) before the report mounted.
+                    st.session_state["cadivor_bom_open_details_after_save"] = str(
+                        analysis_id
+                    )
+                    st.session_state[_delay_reveal] = False
+                    st.session_state.pop("cadivor_main_transition_active", None)
+                    st.session_state.pop(_transition_kind, None)
+                    print(
+                        "CADIVOR_PHASE handoff_saved_hold_saving "
+                        f"analysis_id={analysis_id!r}",
+                        flush=True,
                     )
                 # The Saved BOM Manager was rendered earlier in this script run
                 # from pre-save history. Rebuild once after persistence so the

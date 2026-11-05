@@ -23,6 +23,9 @@ AUTH_GATE_STATE_KEY = "cadivor_auth_gate_state"
 AUTH_GATE_ERROR_KEY = "cadivor_auth_gate_error"
 AUTH_GATE_PENDING_EMAIL_KEY = "cadivor_auth_gate_pending_email"
 AUTH_GATE_PENDING_PASSWORD_KEY = "cadivor_auth_gate_pending_password"
+# One Streamlit script run may own the provider sign-in call so a concurrent
+# rerun cannot pop credentials mid-flight and leave Signing-you-in orphaned.
+AUTH_GATE_LOGIN_CLAIM_RUN_KEY = "cadivor_auth_gate_login_claim_run"
 
 _VALID_STATES = frozenset({"boot", "login", "authenticating", "ready", "error"})
 
@@ -63,14 +66,28 @@ def auth_gate_error_message() -> str:
 
 
 def stash_pending_credentials(email: str, password: str) -> None:
-    """Hold credentials for the next authenticating run only (popped on use)."""
+    """Hold credentials until provider login finishes (success or failure)."""
     st.session_state[AUTH_GATE_PENDING_EMAIL_KEY] = str(email or "").strip()
     st.session_state[AUTH_GATE_PENDING_PASSWORD_KEY] = str(password or "")
+    st.session_state.pop(AUTH_GATE_LOGIN_CLAIM_RUN_KEY, None)
+
+
+def peek_pending_credentials() -> tuple[str, str]:
+    """Read stashed credentials without clearing them."""
+    email = str(st.session_state.get(AUTH_GATE_PENDING_EMAIL_KEY) or "").strip()
+    password = str(st.session_state.get(AUTH_GATE_PENDING_PASSWORD_KEY) or "")
+    return email, password
+
+
+def clear_pending_credentials() -> None:
+    st.session_state.pop(AUTH_GATE_PENDING_EMAIL_KEY, None)
+    st.session_state.pop(AUTH_GATE_PENDING_PASSWORD_KEY, None)
 
 
 def pop_pending_credentials() -> tuple[str, str]:
-    email = str(st.session_state.pop(AUTH_GATE_PENDING_EMAIL_KEY, "") or "").strip()
-    password = str(st.session_state.pop(AUTH_GATE_PENDING_PASSWORD_KEY, "") or "")
+    """Compatibility helper — prefer peek + clear after the provider attempt."""
+    email, password = peek_pending_credentials()
+    clear_pending_credentials()
     return email, password
 
 
@@ -78,6 +95,39 @@ def has_pending_credentials() -> bool:
     email = str(st.session_state.get(AUTH_GATE_PENDING_EMAIL_KEY) or "").strip()
     password = str(st.session_state.get(AUTH_GATE_PENDING_PASSWORD_KEY) or "")
     return bool(email and password)
+
+
+def _current_script_run_id() -> str:
+    try:
+        from src.auth_diagnostics import current_script_run_id
+
+        return str(current_script_run_id() or "").strip()
+    except Exception:
+        return ""
+
+
+def try_claim_login_provider() -> bool:
+    """Claim exclusive ownership of the password provider call for this run."""
+    run_id = _current_script_run_id() or f"run-{id(st.session_state)}"
+    existing = str(st.session_state.get(AUTH_GATE_LOGIN_CLAIM_RUN_KEY) or "").strip()
+    if existing and existing != run_id:
+        return False
+    st.session_state[AUTH_GATE_LOGIN_CLAIM_RUN_KEY] = run_id
+    return True
+
+
+def release_login_provider_claim() -> None:
+    st.session_state.pop(AUTH_GATE_LOGIN_CLAIM_RUN_KEY, None)
+
+
+def login_provider_claim_active() -> bool:
+    return bool(str(st.session_state.get(AUTH_GATE_LOGIN_CLAIM_RUN_KEY) or "").strip())
+
+
+def login_provider_claimed_by_this_run() -> bool:
+    run_id = _current_script_run_id()
+    existing = str(st.session_state.get(AUTH_GATE_LOGIN_CLAIM_RUN_KEY) or "").strip()
+    return bool(run_id and existing and existing == run_id)
 
 
 def _log_gate_transition(previous: str, nxt: str, *, reason: str = "") -> None:

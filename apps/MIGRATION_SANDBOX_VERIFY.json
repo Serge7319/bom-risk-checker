@@ -1,0 +1,37 @@
+{
+  "api": "https://cadivor-next-api-sandbox.up.railway.app",
+  "health": {
+    "backend": "postgres",
+    "durable_across_redeploy": true,
+    "database_configured": true,
+    "ephemeral_file_allowed": false,
+    "label": "sandbox Postgres via CADIVOR_MIGRATION_DATABASE_URL",
+    "railway_environment": "sandbox",
+    "store_path_basename": "migration-sandbox",
+    "production_supabase_unused": true
+  },
+  "foundation": [
+    "workspace-store",
+    "projects",
+    "bom-hierarchy-rollup",
+    "home-dashboard",
+    "workspace-isolation"
+  ],
+  "auth": {
+    "mode": "smoke-login",
+    "workspace_a": "ws-smoke-a",
+    "workspace_b": "ws-smoke-b",
+    "no_supabase": true
+  },
+  "flows": {
+    "flat_status": 200,
+    "nested_status": 200,
+    "nested_has_hierarchy": true,
+    "owner_get": 200,
+    "cross_get": 404,
+    "a_list": 4,
+    "b_list_lacks_a": true,
+    "prior_nested_survives": true
+  },
+  "pass": true
+}

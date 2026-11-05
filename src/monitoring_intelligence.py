@@ -55,6 +55,56 @@ def _alert_priority(row: Dict[str, Any]) -> int:
 WORKFLOW_URGENCY_LEVELS = ("Low", "Normal", "High", "Urgent")
 
 
+def monitoring_preview_parts(active_queue: Any, focus: str) -> str:
+    """Summarize components with alerts for a Monitoring snapshot category.
+
+    Monitored coverage is a separate count from unresolved alerts. Use alert
+    language for an empty category so the card does not imply that tracked
+    components do not exist.
+    """
+    if not isinstance(active_queue, pd.DataFrame) or active_queue.empty:
+        return "No current alerts"
+
+    focused = active_queue.copy()
+    alert_types = (
+        focused["Alert Type"].astype(str)
+        if "Alert Type" in focused.columns
+        else pd.Series("", index=focused.index, dtype="object")
+    )
+    if focus == "immediate":
+        scores = pd.to_numeric(
+            focused.get("Priority Score", pd.Series(0, index=focused.index)),
+            errors="coerce",
+        ).fillna(0)
+        focused = focused[scores >= 75]
+    elif focus == "lifecycle":
+        focused = focused[
+            alert_types.str.contains("lifecycle|eol|obsolete", case=False, regex=True)
+        ]
+    elif focus == "inventory":
+        focused = focused[
+            alert_types.str.contains("stock|inventory", case=False, regex=True)
+        ]
+    elif focus == "pricing":
+        focused = focused[
+            alert_types.str.contains("price", case=False, regex=True)
+        ]
+
+    if focused.empty or "Part Number" not in focused.columns:
+        return "No current alerts"
+    parts = list(dict.fromkeys(
+        _text(value)
+        for value in focused["Part Number"].tolist()
+        if _text(value)
+    ))
+    if not parts:
+        return "No current alerts"
+    visible = parts[:3]
+    remaining = len(parts) - len(visible)
+    preview = " · ".join(visible)
+    return f"{preview} · +{remaining} more" if remaining else preview
+
+
 def monitoring_workflow_urgency(
     evidence_score: Any,
     stored_priority: Any = "",

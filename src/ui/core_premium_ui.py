@@ -79,9 +79,8 @@ def inject_core_premium_ui() -> None:
         or ""
     ).strip()
     if route == "Engineering Decisions":
-        # The review packet uses these rules for its workspace width and cards.
-        # Load them before its first paint; the final geometry pass reapplies
-        # this stylesheet later to preserve cascade precedence.
+        # The review packet needs its workspace geometry before its first
+        # paint; other routes install shared geometry once in the final pass.
         inject_navigation_recovery_css(prepaint=True)
 
 
