@@ -1,4 +1,4 @@
-"""Production upload CORS origin must match https://app.cadivor.com."""
+"""Production Railway starts the Next.js API; legacy Streamlit helper tests remain archived."""
 from __future__ import annotations
 
 import importlib.util
@@ -23,15 +23,13 @@ def _load_boot():
 
 
 class StreamlitUploadOriginBootTests(unittest.TestCase):
-    def test_railway_start_keeps_cors_and_xsrf_enabled(self) -> None:
+    def test_railway_start_runs_only_the_next_api(self) -> None:
         start = RAILWAY.read_text(encoding="utf-8")
-        self.assertIn("scripts/cadivor_streamlit_boot.py", start)
-        self.assertNotIn("enableCORS=false", start)
-        self.assertNotIn("enableXsrfProtection=false", start)
-        config = CONFIG.read_text(encoding="utf-8")
-        self.assertIn('corsAllowedOrigins = ["https://app.cadivor.com"]', config)
-        self.assertIn("enableXsrfProtection = true", config)
-        self.assertIn("enableCORS = true", config)
+        self.assertIn("exec bash apps/api/start.sh", start)
+        self.assertNotIn("cadivor_streamlit_boot.py", start)
+        self.assertNotIn("streamlit", start.casefold())
+        root_config = (ROOT / "railway.toml").read_text(encoding="utf-8")
+        self.assertIn('startCommand = "bash scripts/railway_start.sh"', root_config)
 
     def test_boot_patch_forces_https_origin_and_secure_xsrf_cookie(self) -> None:
         boot = _load_boot()
