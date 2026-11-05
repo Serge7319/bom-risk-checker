@@ -28,6 +28,7 @@ from apps.api.sandbox_auth import (
 from apps.api.workspace_store import migration_database_url
 
 _TEST_WORKSPACE_PREFIX = "ws-next-prod-test"
+TRIAL_DAYS = 14
 
 
 def supabase_url() -> str:
