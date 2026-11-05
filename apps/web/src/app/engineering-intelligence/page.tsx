@@ -68,7 +68,7 @@ export default function EngineeringIntelligencePage() {
         <section className="cv-card pad cv-record-header">
           <div className="cv-eyebrow">Latest saved engineering report</div>
           <h2 className="cv-card-title" style={{ fontSize: 22, marginTop: 8 }}>
-            {last.filename || "Synthetic BOM analysis"}
+            {last.filename || "BOM analysis"}
           </h2>
           <p className="cv-card-subtitle">
             Health {last.health_score ?? "—"}/100 · {last.health_status} ·{" "}
@@ -116,10 +116,10 @@ export default function EngineeringIntelligencePage() {
       ) : null}
 
       <section className="cv-card pad" style={{ marginTop: 14 }}>
-        <h3 className="cv-card-title">About this test build</h3>
+        <h3 className="cv-card-title">Workspace records</h3>
         <p className="cv-card-subtitle">
-          This test build has its own saved analyses. Existing records in the
-          current app at app.cadivor.com have not been imported.
+          Historical analyses from the previous Cadivor app have not been
+          imported into this workspace.
         </p>
       </section>
     </Shell>

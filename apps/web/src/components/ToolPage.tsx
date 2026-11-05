@@ -36,7 +36,7 @@ export function ToolPage({
       {children}
       <CapabilityStub
         capability={capability}
-        nextStep={<PrimaryLink href="/bom-analyzer">Run synthetic BOM analysis</PrimaryLink>}
+        nextStep={<PrimaryLink href="/bom-analyzer">Run BOM analysis</PrimaryLink>}
       />
     </Shell>
   );

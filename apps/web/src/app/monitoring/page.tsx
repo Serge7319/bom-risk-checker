@@ -48,7 +48,7 @@ export default function MonitoringPage() {
           </div>
           <section className="cv-card pad">
             <h3 className="cv-card-title">Alert queue</h3>
-            <p className="cv-card-subtitle">Review prompts derived from saved analyses; live monitoring is not enabled.</p>
+            <p className="cv-card-subtitle">Review signals derived from saved analyses. Automated refresh and alert delivery are not connected yet.</p>
             {alerts.length ? (
               <div className="cv-table-wrap" style={{ marginTop: 12 }}>
                 <table className="cv-table">

@@ -36,13 +36,13 @@ export default function Page() {
           </div>
         </div>
         <p className="cv-small-note" style={{ marginTop: 12 }}>
-          Workspace and plan details are read-only in this test build. Changes
-          are not saved here.
+          Workspace and plan details are read-only here. Account administration
+          and billing controls are not available yet.
         </p>
       </section>
       <CapabilityStub
-        capability="Workspace admin, evidence-source preferences, and billing settings stay on Streamlit production for now."
-        nextStep={<PrimaryLink href="/bom-analyzer">Run synthetic BOM analysis</PrimaryLink>}
+        capability="Workspace administration, supplier evidence preferences, and billing controls are not available in this workspace yet."
+        nextStep={<PrimaryLink href="/bom-analyzer">Run BOM analysis</PrimaryLink>}
       />
     </Shell>
   );
