@@ -2,7 +2,7 @@
 
 Uses Starlette (already pinned with Streamlit) so Railway installs do
 not fight FastAPI's older Starlette bound. Production Streamlit is unchanged.
-No Stripe charges, automated email notifications, or live supplier HTTP calls.
+No live Stripe charges or live supplier HTTP calls by default. Monitoring email uses a mock sink unless explicitly enabled.
 """
 from __future__ import annotations
 
@@ -48,6 +48,15 @@ from apps.api.workspace_store import (  # noqa: E402
     describe_persistence,
     get_store,
 )
+
+from apps.api import billing_prep  # noqa: E402
+from apps.api import compliance_packs  # noqa: E402
+from apps.api import connectors  # noqa: E402
+from apps.api import monitoring_store  # noqa: E402
+from apps.api import monitoring_scheduler  # noqa: E402
+from apps.api import plan_limits  # noqa: E402
+from apps.api import supplier_lookup  # noqa: E402
+from apps.api.evidence_contract import annotate_report_parts  # noqa: E402
 
 # Demo passwords are not shipped in the API. Tests import
 # tests.fixtures.sandbox_auth_accounts; operators seed via
@@ -170,6 +179,11 @@ async def health(_: Request) -> JSONResponse:
                 "supply-risk",
                 "portfolio",
                 "detailed-risk",
+                "supplier-lookup",
+                "compliance",
+                "connectors",
+                "billing-status",
+                "plan-usage",
             ],
             "foundation": [
                 "workspace-store",
@@ -179,7 +193,14 @@ async def health(_: Request) -> JSONResponse:
                 "workspace-isolation",
                 "sandbox-jwt-auth",
                 "supabase-jwt-auth",
+                "plan-limits",
+                "monitoring-store",
+                "evidence-contract",
             ],
+            "suppliers_live": supplier_lookup.live_lookups_enabled(),
+            "stripe_checkout_enabled": billing_prep.checkout_enabled(),
+            "monitoring_email_enabled": monitoring_store.email_delivery_enabled(),
+            "monitoring_scheduler_enabled": monitoring_scheduler.scheduler_enabled(),
             "persistence": {
                 **persistence,
                 "store_path_basename": store_path_basename,
@@ -334,6 +355,20 @@ async def boms_analyze(request: Request) -> JSONResponse:
     bom_name = str(form.get("bom_name") or "").strip() or None
     revision = str(form.get("revision") or "").strip() or None
     _disable_live_integrations()
+    # Approximate unique-part count from CSV rows (header excluded) for limit checks.
+    try:
+        line_count = sum(1 for line in payload.decode("utf-8", errors="ignore").splitlines() if line.strip())
+        part_count_estimate = max(0, line_count - 1)
+    except Exception:  # noqa: BLE001
+        part_count_estimate = 0
+    try:
+        plan_limits.assert_analysis_allowed(
+            workspace_id=ctx["workspace_id"],
+            ctx=ctx,
+            part_count=part_count_estimate,
+        )
+    except plan_limits.PlanLimitError as exc:
+        return _json({"code": exc.code, "detail": exc.detail, "limits": exc.limits}, 402)
     try:
         report = analyze_upload(
             filename=filename,
@@ -495,7 +530,7 @@ async def reports_get(request: Request) -> JSONResponse:
         return _json({"detail": str(exc)}, 503)
     if not report:
         return _json({"detail": "Report not found"}, 404)
-    return _json(report)
+    return _json(annotate_report_parts(report))
 
 
 async def monitoring_get(request: Request) -> JSONResponse:
@@ -659,6 +694,190 @@ async def detailed_risk_get(request: Request) -> JSONResponse:
         return _json({"detail": "Report not found"}, 404)
 
 
+
+async def supplier_lookup_post(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return _json({"detail": "Invalid JSON"}, 400)
+    _disable_live_integrations()
+    result = supplier_lookup.lookup_exact_part(str(body.get("mpn") or ""))
+    return _json(result)
+
+
+async def monitoring_preferences_get(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    return _json({"ok": True, "preferences": monitoring_store.get_preferences(ctx["workspace_id"])})
+
+
+async def monitoring_preferences_put(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return _json({"detail": "Invalid JSON"}, 400)
+    prefs = monitoring_store.update_preferences(ctx["workspace_id"], body if isinstance(body, dict) else {})
+    return _json({"ok": True, "preferences": prefs})
+
+
+async def monitoring_alerts_get(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    return _json(
+        {
+            "ok": True,
+            "alerts": monitoring_store.list_alerts(ctx["workspace_id"]),
+            "refresh_history": monitoring_store.list_refresh_history(ctx["workspace_id"]),
+            "preferences": monitoring_store.get_preferences(ctx["workspace_id"]),
+        }
+    )
+
+
+async def monitoring_acknowledge_post(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return _json({"detail": "Invalid JSON"}, 400)
+    alert = monitoring_store.acknowledge_alert(ctx["workspace_id"], str(body.get("alert_id") or ""))
+    if not alert:
+        return _json({"detail": "Alert not found"}, 404)
+    return _json({"ok": True, "alert": alert})
+
+
+async def monitoring_notify_post(request: Request) -> JSONResponse:
+    """Exercise notification wiring with the mock sink (no real email by default)."""
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        body = {}
+    alert_id = str((body or {}).get("alert_id") or "")
+    alerts = monitoring_store.list_alerts(ctx["workspace_id"])
+    alert = next((a for a in alerts if a.get("id") == alert_id), None) or (alerts[0] if alerts else None)
+    if not alert:
+        return _json({"detail": "No alerts to notify"}, 404)
+    result = monitoring_store.deliver_alert_email(ctx["workspace_id"], alert)
+    return _json(result)
+
+
+async def plan_usage_get(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    return _json({"ok": True, **plan_limits.usage_snapshot(ctx["workspace_id"], ctx)})
+
+
+async def billing_status_get(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    return _json(billing_prep.billing_status())
+
+
+async def billing_checkout_prep_post(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return _json({"detail": "Invalid JSON"}, 400)
+    result = billing_prep.prepare_checkout_intent(
+        workspace_id=ctx["workspace_id"],
+        plan_token=str(body.get("plan") or body.get("plan_token") or ""),
+        user_id=ctx["user_id"],
+    )
+    status = 200 if result.get("ok") else 409
+    return _json(result, status)
+
+
+async def connectors_get(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    return _json(connectors.connector_status_payload())
+
+
+async def connectors_sync_post(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return _json({"detail": "Invalid JSON"}, 400)
+    connector_id = str(body.get("connector_id") or "plm.generic_bom_csv")
+    rows = body.get("rows") if isinstance(body.get("rows"), list) else []
+    result = connectors.sync_generic_bom_csv(rows, connector_id=connector_id)
+    payload = {
+        "ok": result.ok,
+        "connector_id": result.connector_id,
+        "mode": result.mode,
+        "records": result.records,
+        "gap": result.gap,
+        "ran_at": result.ran_at,
+        "workspace_id": ctx["workspace_id"],
+    }
+    return _json(payload, 200 if result.ok else 400)
+
+
+async def compliance_pack_get(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    pack_type = request.path_params.get("pack_type") or "rohs"
+    analysis_id = request.query_params.get("analysis_id") or None
+    try:
+        report = migration_tools._require_analysis(analysis_id, workspace_id=ctx["workspace_id"])
+    except WorkspaceAccessError:
+        return _json({"detail": "Report not found"}, 404)
+    if pack_type == "audit":
+        return _json(compliance_packs.export_audit_bundle(report))
+    return _json(compliance_packs.build_pack(report, pack_type))
+
+
+
+
+async def monitoring_refresh_post(request: Request) -> JSONResponse:
+    """On-demand or cron-authenticated monitoring refresh (mock delivery by default)."""
+    cron_header = request.headers.get("x-cadivor-cron-token")
+    cron_ok = monitoring_scheduler.authorize_cron(cron_header)
+    ctx, denied = _auth_context(request)
+    if denied and not cron_ok:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    analysis_id = None
+    workspace_id = None
+    if cron_ok:
+        workspace_id = (request.query_params.get("workspace_id") or "").strip()
+        analysis_id = request.query_params.get("analysis_id") or None
+        if not workspace_id:
+            return _json({"detail": "workspace_id required for cron refresh"}, 400)
+    else:
+        assert ctx is not None
+        workspace_id = ctx["workspace_id"]
+        analysis_id = request.query_params.get("analysis_id") or None
+    _disable_live_integrations()
+    return _json(
+        monitoring_scheduler.run_workspace_refresh(
+            workspace_id, analysis_id=analysis_id
+        )
+    )
+
+
+
 app = Starlette(
     routes=[
         Route("/health", health, methods=["GET"]),
@@ -685,6 +904,19 @@ app = Starlette(
         Route("/tools/supply-risk", supply_risk_post, methods=["POST"]),
         Route("/tools/portfolio", portfolio_get, methods=["GET"]),
         Route("/tools/detailed-risk", detailed_risk_get, methods=["GET"]),
+        Route("/tools/supplier-lookup", supplier_lookup_post, methods=["POST"]),
+        Route("/tools/monitoring/preferences", monitoring_preferences_get, methods=["GET"]),
+        Route("/tools/monitoring/preferences", monitoring_preferences_put, methods=["PUT"]),
+        Route("/tools/monitoring/alerts", monitoring_alerts_get, methods=["GET"]),
+        Route("/tools/monitoring/acknowledge", monitoring_acknowledge_post, methods=["POST"]),
+        Route("/tools/monitoring/notify", monitoring_notify_post, methods=["POST"]),
+        Route("/tools/monitoring/refresh", monitoring_refresh_post, methods=["POST"]),
+        Route("/billing/status", billing_status_get, methods=["GET"]),
+        Route("/billing/checkout-prep", billing_checkout_prep_post, methods=["POST"]),
+        Route("/plan/usage", plan_usage_get, methods=["GET"]),
+        Route("/integrations/connectors", connectors_get, methods=["GET"]),
+        Route("/integrations/connectors/sync", connectors_sync_post, methods=["POST"]),
+        Route("/compliance/{pack_type}", compliance_pack_get, methods=["GET"]),
     ],
     middleware=[
         Middleware(

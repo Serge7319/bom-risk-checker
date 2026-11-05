@@ -71,3 +71,79 @@ Signup is deliberately **disabled** on the deployed migration services. No verif
 - Supabase verification email delivery configured and tested; do not use the Streamlit data database as the migration record store
 
 The migration API exposes only whether signup is enabled, not secrets. Unverified users do not receive a migration workspace. The workspace and 14-day trial start on their first verified sign-in. New BOM analysis is blocked after trial expiry; saved reports remain readable. Alert email, billing, and supplier integrations remain disabled.
+
+## Roadmap gate progress (2026-11-05)
+
+Work continues on branch `migrate/nextjs-shell-bom-flow` against the dedicated migration API/web services only. `app.cadivor.com` Streamlit traffic was not changed.
+
+| Gate | Status | Notes |
+| --- | --- | --- |
+| Onboarding / trial | PARTIAL / BLOCKED (live) | Feature gate closed; unit coverage present |
+| Trusted evidence | PARTIAL | Mocked authorized lookup + evidence envelopes |
+| Monitoring | PARTIAL | Durable store + mock email sink; no real sends |
+| Commercial | PARTIAL | Server plan limits; Stripe test prep only |
+| Connectors | PARTIAL | Generic CSV ready; vendor choice pending |
+| Compliance | PARTIAL | Evidence-linked packs; no unsupported claims |
+| Cutover | PARTIAL | See `apps/CUTOVER_RUNBOOK.md`; domain unchanged |
+
+### New migration API modules
+
+- `apps/api/evidence_contract.py`
+- `apps/api/supplier_lookup.py`
+- `apps/api/monitoring_store.py`
+- `apps/api/plan_limits.py`
+- `apps/api/billing_prep.py`
+- `apps/api/connectors.py`
+- `apps/api/compliance_packs.py`
+
+### Verification commands
+
+```bash
+.venv312/bin/python -m pytest tests/test_nextjs_roadmap_gates.py tests/test_nextjs_migration_api.py tests/test_nextjs_migration_tools.py tests/test_supabase_auth.py tests/test_nextjs_api_origin_contract.py -q
+```
+
+Results from this pass are recorded after the pytest run below (update if re-run).
+
+### Pytest evidence (2026-11-05, local)
+
+Command:
+
+```bash
+.venv312/bin/python -m pytest tests/test_nextjs_roadmap_gates.py tests/test_nextjs_migration_api.py tests/test_nextjs_migration_tools.py tests/test_supabase_auth.py tests/test_nextjs_api_origin_contract.py -q
+```
+
+Result: **PASS** — `25 passed` (13 in `tests/test_nextjs_roadmap_gates.py` + 12 existing migration/auth/origin tests). No live signup, supplier, Stripe charge, or alert email was exercised. Later same day: Node located at `~/.local/node-v22.14.0-darwin-arm64` (v22.14.0); `npm ci` + `npm run lint` (exit 0, 1 font warning) + `npm run build` (exit 0).
+
+
+### Cutover disposable-DB + web evidence (2026-11-05 evening)
+
+Node binary: `/Users/sergekashambala/.local/node-v22.14.0-darwin-arm64/bin/node` (v22.14.0) / npm 10.9.2
+
+```bash
+export PATH="$HOME/.local/node-v22.14.0-darwin-arm64/bin:$PATH"
+cd apps/web && npm ci && npm run lint && npm run build
+.venv312/bin/pip install 'embedded-postgres==18.6.3' 'psycopg[binary]'
+.venv312/bin/python -m pytest tests/test_cutover_disposable_db.py tests/test_nextjs_roadmap_gates.py tests/test_nextjs_migration_api.py tests/test_nextjs_migration_tools.py tests/test_supabase_auth.py tests/test_nextjs_api_origin_contract.py -q
+```
+
+Results:
+
+- `npm run lint`: **PASS** (exit 0; warning `@next/next/no-page-custom-font` in `src/app/layout.tsx`)
+- `npm run build`: **PASS** (exit 0; Next 15.5.9; 22 routes)
+- pytest: **29 passed**
+- Disposable DB backup/restore + tenant isolation + performance: **PASS** (artifacts under `apps/.evidence_cutover/`; not customer/live migration DB)
+- Signup: remains **disabled**; second-account hosted check **BLOCKED** (password/inbox unavailable; Supabase safeguards unverified)
+
+### Security DEFINER privilege migration (2026-11-05)
+
+Source: `supabase/migrations/20261105_revoke_anon_security_definer_execute.sql`
+
+Disposable-DB test: `tests/test_supabase_security_definer_grants.py` — **PASS** (anon revoked; trigger helpers `cadivor_write_audit_event` / `cadivor_audit_engineering_record` revoked from anon+authenticated; Streamlit authenticated RPCs retained; service-only RPCs stay service_role).
+
+**Live shared Supabase apply:** not executed in this pass — no database password / Management API token available in the agent environment. Apply via Supabase SQL editor or `psql` with the project DB credentials after review.
+
+### Supabase Auth public settings probe (2026-11-05)
+
+`GET /auth/v1/settings` (anon): `disable_signup=false`, `mailer_autoconfirm=false` (email confirmation required), email provider enabled. Public payload does **not** expose leaked-password protection, redirect allowlists, or rate-limit details. Advisor-reported leaked-password protection remains unverified; migration API signup env gates stay **closed**. No verification email sent.
+
+Pytest this pass: **30+ passed** (privilege + cutover + roadmap + migration/auth suites).

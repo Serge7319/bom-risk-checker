@@ -125,3 +125,59 @@ CREATE TABLE IF NOT EXISTS migration_reports (
 
 CREATE INDEX IF NOT EXISTS migration_reports_ws_idx
   ON migration_reports (workspace_id);
+
+
+-- Monitoring durability (tenant-scoped). Alert email delivery remains gated.
+CREATE TABLE IF NOT EXISTS migration_monitoring_alerts (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  analysis_id TEXT,
+  part_number TEXT,
+  alert_type TEXT,
+  severity TEXT,
+  message TEXT,
+  acknowledged BOOLEAN NOT NULL DEFAULT FALSE,
+  payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS migration_monitoring_alerts_ws_idx
+  ON migration_monitoring_alerts (workspace_id, created_at DESC);
+
+CREATE UNIQUE INDEX IF NOT EXISTS migration_monitoring_alerts_dedupe_uidx
+  ON migration_monitoring_alerts (workspace_id, analysis_id, part_number, alert_type);
+
+CREATE TABLE IF NOT EXISTS migration_notification_preferences (
+  workspace_id TEXT PRIMARY KEY,
+  email_alerts BOOLEAN NOT NULL DEFAULT FALSE,
+  lifecycle BOOLEAN NOT NULL DEFAULT TRUE,
+  availability BOOLEAN NOT NULL DEFAULT TRUE,
+  risk BOOLEAN NOT NULL DEFAULT TRUE,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS migration_monitoring_refresh_history (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  analysis_id TEXT,
+  alert_count INTEGER NOT NULL DEFAULT 0,
+  mode TEXT,
+  ran_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  payload JSONB NOT NULL DEFAULT '{}'::jsonb
+);
+
+CREATE INDEX IF NOT EXISTS migration_monitoring_refresh_ws_idx
+  ON migration_monitoring_refresh_history (workspace_id, ran_at DESC);
+
+CREATE TABLE IF NOT EXISTS migration_usage_events (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  quantity INTEGER NOT NULL DEFAULT 1,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  meta JSONB NOT NULL DEFAULT '{}'::jsonb
+);
+
+CREATE INDEX IF NOT EXISTS migration_usage_events_ws_month_idx
+  ON migration_usage_events (workspace_id, created_at DESC);

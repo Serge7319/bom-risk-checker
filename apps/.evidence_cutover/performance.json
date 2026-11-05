@@ -1,0 +1,7 @@
+{
+  "pass": true,
+  "analyze_ms": 31.73,
+  "report_get_ms": 12.2,
+  "fixture": "synthetic_bom_25parts.csv",
+  "database": "disposable-embedded-postgres"
+}

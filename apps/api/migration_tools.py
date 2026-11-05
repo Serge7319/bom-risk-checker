@@ -24,6 +24,9 @@ from src.datasheet_qa import (
     suggest_datasheet_follow_ups,
 )
 from src.design_impact_analyzer import build_design_impact
+from apps.api.evidence_contract import annotate_report_parts, classify_part_evidence
+from apps.api.supplier_lookup import lookup_exact_part
+from apps.api import monitoring_store
 from src.monitoring_engine import build_alert_record
 from src.monitoring_intelligence import build_monitoring_action_center
 from src.parts_compare import (
@@ -171,21 +174,39 @@ def monitoring_payload(
     lifecycle_n = sum(
         1 for a in alerts if "lifecycle" in str(a.get("alert_type") or "").lower()
     )
+    for alert in alerts:
+        alert["analysis_id"] = report["id"]
+        alert["workspace_id"] = workspace_id
+        alert["evidence_source"] = alert.get("evidence_source") or "synthetic-preview-analysis"
+    durable = monitoring_store.persist_alerts(workspace_id, alerts)
+    refresh = monitoring_store.record_refresh(
+        workspace_id,
+        analysis_id=report["id"],
+        alert_count=len(durable),
+        mode="synthetic-preview",
+    )
+    prefs = monitoring_store.get_preferences(workspace_id)
     return _json_safe(
         {
             "ok": True,
             "mode": "synthetic-preview",
             "analysis_id": report["id"],
             "filename": report.get("filename"),
-            "gap": "Monitoring derives review prompts from saved synthetic analysis. It does not load historical alerts or run scheduled supplier refresh.",
+            "gap": (
+                "Monitoring persists tenant-scoped alert history from saved analysis. "
+                "Scheduled supplier refresh and real alert email remain disabled."
+            ),
             "metrics": {
                 "monitored_parts": report.get("total_parts") or 0,
-                "active_alerts": len(alerts),
+                "active_alerts": len(durable),
                 "high_priority": high,
                 "lifecycle_changes": lifecycle_n,
             },
-            "alerts": alerts,
+            "alerts": durable,
             "action_center": action_center,
+            "preferences": prefs,
+            "refresh": refresh,
+            "refresh_history": monitoring_store.list_refresh_history(workspace_id)[:10],
         }
     )
 
@@ -343,6 +364,25 @@ def procurement_payload(*, workspace_id: str, analysis_id: str | None = None) ->
                 "coverage": "unavailable"
                 if not offers
                 else "recorded-offers",
+                "evidence": classify_part_evidence(
+                    {
+                        "MPN": part.get("MPN"),
+                        "Manufacturer": part.get("Manufacturer"),
+                        "Unit Price": part.get("unit_price") or part.get("Unit Price"),
+                        "evidence_source": part.get("price_source") or "synthetic-preview",
+                        "source": part.get("Supplier") or "",
+                    }
+                ),
+                "authorized_lookup": (
+                    lambda hit: {
+                        "evidence_class": hit.get("evidence_class"),
+                        "synthetic": hit.get("synthetic"),
+                        "source_url": (hit.get("match") or {}).get("source_url") or "",
+                        "retrieved_at": (hit.get("match") or {}).get("retrieved_at") or "",
+                        "live_lookups_enabled": hit.get("live_lookups_enabled"),
+                        "gap": hit.get("gap"),
+                    }
+                )(lookup_exact_part(str(part.get("MPN") or ""))),
             }
         )
     return _json_safe(
@@ -504,3 +544,34 @@ def detailed_risk_payload(*, workspace_id: str, analysis_id: str | None = None) 
             "summary": summary,
         }
     )
+
+
+def with_evidence_labels(report: dict[str, Any] | None) -> dict[str, Any]:
+    """Attach live/synthetic evidence envelopes to a saved report payload."""
+    if not report:
+        return {"ok": False, "detail": "Report not found"}
+    annotated = annotate_report_parts(report)
+    annotated["ok"] = True
+    annotated["mode"] = annotated.get("mode") or "synthetic-preview"
+    return _json_safe(annotated)
+
+
+def decorate_parts_with_evidence(parts: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    out = []
+    for part in parts or []:
+        row = dict(part) if isinstance(part, dict) else {"value": part}
+        row["evidence"] = classify_part_evidence(row)
+        # Attach mocked authorized lookup metadata without claiming live evidence.
+        mpn = str(row.get("MPN") or row.get("manufacturer_part_number") or "")
+        if mpn:
+            lookup = lookup_exact_part(mpn)
+            row["authorized_lookup"] = {
+                "evidence_class": lookup.get("evidence_class"),
+                "synthetic": lookup.get("synthetic"),
+                "source_url": (lookup.get("match") or {}).get("source_url") or "",
+                "retrieved_at": (lookup.get("match") or {}).get("retrieved_at") or "",
+                "live_lookups_enabled": lookup.get("live_lookups_enabled"),
+                "gap": lookup.get("gap"),
+            }
+        out.append(row)
+    return out

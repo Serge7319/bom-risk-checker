@@ -16,39 +16,42 @@ Business north star: **continuous engineering workflow**—persistent project/BO
 | Persistent project / BOM / revision / analysis workflow | **Working on the separate migration test services** | Flat and nested synthetic analyses save to migration Postgres and reload by report ID after a browser refresh. A fresh API redeploy-survival check on the current production test service has not been run. |
 | Multi-level BOMs and risk roll-up | **Verified with synthetic fixture** | `nested_bom_product.csv`: CAP100U effective quantity is 8; the top-level roll-up surfaces the medium-risk NRND leaf. No customer BOM or live distributor evidence was used. |
 | Home from saved data | **Working on migration test services** | Home, Reports, Engineering Decisions, and Engineering Intelligence read saved workspace analyses. Existing Streamlit records have not been imported. |
-| Workspace isolation | **Implemented; verification is mixed by environment** | Membership is server-derived and isolation tests pass; prior live sandbox cross-workspace checks passed. A live cross-tenant test against the current production migration database was not repeated in this pass. |
+| Workspace isolation | **Implemented; verification is mixed by environment** | Membership is server-derived and isolation tests pass; prior live sandbox cross-workspace checks passed. Disposable embedded-Postgres cross-tenant read/mutation isolation PASS this pass; live production migration database recheck not repeated (and restore drills intentionally avoid that DB). |
 | Authentication | **Supabase path configured on migration API** | Health reports Supabase JWT membership auth and sandbox JWT disabled in production runtime. Hosted login lifecycle is not fully re-run in this pass. Signup, password reset, invitation, and production-domain cutover remain separate. Existing `app.cadivor.com` auth was not changed. |
-| Proactive monitoring and email alerts | **Not yet live** | Monitoring is derived from saved analysis data. No scheduled supplier refresh or alert email delivery. |
-| Self-serve onboarding and 14-day trial | **Implemented behind a closed feature gate** | Verified-email signup, workspace provisioning on verified sign-in, trial dates, and analysis restriction after 14 days are in code. Live signup remains off; no verification emails have been sent. Before enabling: configure/verify Supabase email confirmation, delivery and redirect allowlist, and abuse controls; then run a designated end-to-end signup. |
-| Usage-based subscription tiers | **Not yet live** | Plan display is not usage metering. Stripe checkout and limits are not enabled in the migration build. |
-| PLM / ERP / CAD integrations | **Not yet live** | No connectors or add-ins. |
-| Compliance evidence packs | **Not yet live** | Synthetic report fields do not constitute RoHS, REACH, conflict-minerals, or audit evidence. |
-| Decision tools | **Partial preview** | Several pages render analysis-derived or synthetic fields. Live distributor lookup is disabled; Find Replacement and Settings remain limited/stubbed. |
+| Proactive monitoring and email alerts | **PARTIAL (2026-11-05)** | Durable tenant-scoped alert history, preferences, on-demand refresh history, and mock email sink are implemented and unit-tested. Scheduled cron and real email transport remain disabled (`CADIVOR_MONITORING_EMAIL_ENABLED` unset). |
+| Self-serve onboarding and 14-day trial | **PARTIAL / BLOCKED for live enablement (2026-11-05)** | Verified-email signup, workspace provisioning on verified sign-in, trial dates, and analysis restriction after 14 days are in code and covered by unit tests. Live signup remains off until Supabase email confirmation, delivery, redirect allowlist, and abuse controls are operator-confirmed; no verification emails sent this pass. |
+| Usage-based subscription tiers | **PARTIAL (2026-11-05)** | Server-enforced plan limits + `/plan/usage` metering against migration reports. Stripe status/checkout-prep endpoints use existing `src.plans` price secret names; checkout stays disabled; live keys blocked; no charges created. |
+| PLM / ERP / CAD integrations | **PARTIAL (2026-11-05)** | Connector registry + generic CSV sync groundwork and tests. Vendor-specific Arena/Propel/NetSuite/SAP choices remain **BLOCKED** pending customer discovery and sandbox credentials. |
+| Compliance evidence packs | **PARTIAL (2026-11-05)** | RoHS/REACH/conflict-minerals/audit export paths label missing evidence and never claim compliance without sourced live evidence. Synthetic examples only. |
+| Decision tools | **Partial preview** | Evidence envelopes on reports; mocked authorized supplier lookup with exact-MPN matching. Live distributor HTTP remains disabled without migration-owned credentials + transport flag. |
+
+## Ordered roadmap status (2026-11-05)
+
+| Gate | Status | Evidence |
+| --- | --- | --- |
+| 1. Onboarding / trial | **PARTIAL / BLOCKED (live)** | Code+unit tests PASS. Live enablement blocked on: Supabase Confirm Email verified, delivery tested, `CADIVOR_SIGNUP_REDIRECT_URL` allowlisted in `CADIVOR_WEB_ORIGINS`, abuse/rate controls confirmed, designated second-account E2E. Env gates remain closed. |
+| 2. Trusted product evidence | **PARTIAL** | `evidence_contract`, mocked `supplier_lookup`, report `evidence_summary`; tests in `tests/test_nextjs_roadmap_gates.py`. Live authorized calls **BLOCKED** without migration-service credentials + `CADIVOR_MIGRATION_SUPPLIER_LIVE` + transport ready. |
+| 3. Continuous monitoring | **PARTIAL** | Durable alerts/preferences/refresh + mock notify sink; schema tables added. Scheduler and real email **BLOCKED** (no cron attach; `CADIVOR_MONITORING_EMAIL_ENABLED` off). |
+| 4. Commercial readiness | **PARTIAL** | Plan limit enforcement on `/boms/analyze`; billing status + checkout-prep (no sessions). Live checkout **BLOCKED** by design. |
+| 5. Workflow integration | **PARTIAL** | Connector groundwork ready for generic CSV; vendor pick **BLOCKED** on discovery. |
+| 6. Compliance | **PARTIAL** | Packs+audit export with missing-evidence labels; no false claims. |
+| 7. Cutover readiness | **PARTIAL** | Disposable embedded-Postgres drills PASS (isolation, backup/restore, performance) in `tests/test_cutover_disposable_db.py`; evidence in `apps/.evidence_cutover/`. Domain cutover **not done**. Hosted prod-migration-DB restore still outstanding (by design not run here). `apps/web` lint+build PASS (Node v22.14.0). |
 
 ## Checks completed on 2026-11-05
 
 | Check | Result |
 | --- | --- |
-| Migration API health | **PASS** — Supabase auth path reported; dedicated Postgres configured; no production service-role key reported as used. |
-| Flat synthetic BOM | **PASS** — saved report and Home reload observed on the migration web app. |
-| Nested synthetic BOM upload | **PASS** — 7 rows; CAP100U effective quantity 8; medium-risk leaf rolled to top level. |
-| Nested report browser refresh | **PASS** — same quantities and roll-up retrieved by report ID after refresh. |
-| Migration routes | **PASS for navigation/render smoke** — all 16 sidebar routes opened; preview/stub status still applies. |
-| Production migration DB redeploy survival | **Not checked in this pass** |
-| Production migration DB cross-workspace isolation | **Not checked in this pass** |
+| Migration API health (prior) | **PASS** — Supabase auth path reported; dedicated Postgres configured; no production service-role key reported as used. |
+| Flat / nested synthetic BOM (prior) | **PASS** on migration test services. |
+| Roadmap gate unit/API tests | **PASS** — local pytest → `30+ passed` including disposable-DB cutover suite (2026-11-05). |
+| Live signup enablement | **Not done** — public settings show email confirmation on (`mailer_autoconfirm=false`); leaked-password protection still advisor-flagged/unverified; signup env gates closed; no email sent. |
+| SECURITY DEFINER anon revoke migration | **PASS on disposable DB** — `20261105_revoke_anon_security_definer_execute.sql` + `tests/test_supabase_security_definer_grants.py`. Live apply pending DB credentials/Management token. |
+| Live supplier / Stripe charges / alert email | **Not done** — intentionally disabled. |
+| Disposable Postgres cutover drill | **PASS** — isolation + backup/restore + performance on embedded Postgres only (`apps/.evidence_cutover/`). |
+| `apps/web` lint | **PASS** — `npm run lint` exit 0 (1 `@next/next/no-page-custom-font` warning in `layout.tsx`). |
+| `apps/web` production build | **PASS** — `npm run build` exit 0 (Next.js 15.5.9); 22 routes generated including `/signup`. |
+| Second-account hosted auth/signup | **BLOCKED** — account `serge.subscription+cadivor-sandbox@gmail.com` known from prior session; password/inbox unavailable here; Supabase email/abuse/redirect confirms unverified; signup remains closed. |
 | `app.cadivor.com` Next.js cutover | **Not done** — app remains on Streamlit. |
-
-Previous sandbox isolation and redeploy results are recorded in `MIGRATION_TEST_RESULTS.txt` and `MIGRATION_SANDBOX_VERIFY.json`; they are not production migration-service test evidence.
-
-## Ordered roadmap to production readiness
-
-1. **Finish self-serve activation:** verify email confirmation/delivery, public redirect allowlist, and abuse protections; run one designated hosted signup, verification, login, tenant-isolation, trial-expiry, and report-read test. Keep the feature gate closed until these checks pass.
-2. **Trusted product evidence:** authorized distributor integrations, source citations, refresh timestamps, and live/synthetic separation throughout BOM, compare, and monitoring workflows.
-3. **Continuous monitoring:** scheduled lifecycle/availability refresh, durable alert history, notification preferences, and email delivery.
-4. **Commercial readiness:** enforce usage limits and active-BOM/component pricing; connect billing only after trial/account lifecycle is verified.
-5. **Workflow integration:** PLM/ERP connectors and CAD integrations, prioritized from customer discovery.
-6. **Compliance:** sourced RoHS/REACH/conflict-minerals evidence and audit-ready exports.
-7. **Cutover:** parity, auth, tenant isolation, persistence/recovery, performance, and rollback checks before moving `app.cadivor.com`.
 
 ## Do not claim complete
 

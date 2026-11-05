@@ -380,13 +380,13 @@ class WorkspaceStore:
                 },
                 {
                     "title": "Automated lifecycle/stock monitoring + email",
-                    "detail": "Staged — not live until supplier refresh and alert delivery are wired.",
+                    "detail": "Partial — durable alerts/preferences exist; scheduled refresh and real alert email remain disabled.",
                     "href": "/monitoring",
                     "live": False,
                 },
                 {
                     "title": "Plan limits on active BOMs / tracked parts",
-                    "detail": "Staged — usage limits are not enforced in this migration build.",
+                    "detail": "Partial — server plan limits and /plan/usage metering are enforced; Stripe checkout remains disabled.",
                     "href": "/settings",
                     "live": False,
                 },
