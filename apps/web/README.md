@@ -1,5 +1,15 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Production configuration
+
+The Railway web service must set these public build-time variables:
+
+- `NEXT_PUBLIC_API_BASE` — the matching Cadivor API origin.
+- `NEXT_PUBLIC_SUPABASE_URL` — the Supabase project URL.
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` — the project's publishable key. This key is designed to be public; never use a Supabase secret or service-role key here.
+
+The browser Supabase client persists and refreshes the user's Auth session. The API still validates each access token and resolves workspace membership server-side.
+
 ## Getting Started
 
 First, run the development server:

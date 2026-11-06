@@ -1,15 +1,15 @@
 # Next.js migration route parity checklist
 
-`app.cadivor.com` remains on Streamlit. This checklist describes the separate Next.js migration test build on Railway subdomains; it is not a customer-domain cutover record.
+`app.cadivor.com` now serves the Next.js app from Railway. This checklist tracks feature parity and remaining product-readiness gaps after the domain cutover.
 
-Updated: 2026-11-05
+Updated: 2026-11-06
 
 | Route | Migration status | Current data source | Remaining gaps |
 | --- | --- | --- | --- |
 | `/login` | Supabase auth path available on migration API | Supabase Auth; membership derives workspace | Hosted login lifecycle not re-run; signup remains feature-gated; reset/invite not implemented |
 | `/signup` | Page present; API gated off | `/auth/config`, `/auth/signup` | Live enablement blocked on email/abuse/redirect confirms |
 | `/` Home | Working | Saved migration workspace records | Existing Streamlit data is not imported |
-| `/bom-analyzer` | Working for synthetic test flow | Uploaded CSV → saved migration Postgres record; server plan limits enforced | Live supplier evidence is disabled |
+| `/bom-analyzer` | Working in production Next.js | Uploaded CSV → saved Railway Postgres record; server plan limits enforced; approved side panels are in the current web bundle | Live supplier evidence is disabled |
 | `/reports` | Working | Workspace-scoped saved report list | Disposable-DB backup/restore PASS; live migration DB recovery check still outstanding (not run against live) |
 | `/reports/[id]` | Working | Workspace-scoped saved report + evidence envelopes | Supplier evidence remains synthetic unless live path authorized |
 | `/engineering-decisions` | Partial | Latest saved report risk counts | Decisions/approvals are not independently persisted |
@@ -50,7 +50,7 @@ Updated: 2026-11-05
 4. Stripe Checkout session creation in test mode after trial lifecycle verification; live keys remain blocked.
 5. Production-service persistence recovery and cross-workspace isolation rechecks.
 6. Customer discovery for vendor-specific PLM/ERP connectors.
-7. Cutover and rollback rehearsal before `app.cadivor.com` moves from Streamlit — see `apps/CUTOVER_RUNBOOK.md`.
+7. Post-cutover hosted auth/API verification, production recovery review and Next.js rollback rehearsal — see `apps/CUTOVER_RUNBOOK.md`.
 
 ## Builder truthfulness rules
 
@@ -72,8 +72,16 @@ Updated: 2026-11-05
 - Disposable embedded-Postgres cutover suite: **PASS** (`tests/test_cutover_disposable_db.py`).
 - Second-account signup/login email: **BLOCKED** — `serge.subscription+cadivor-sandbox@gmail.com` known; credentials/inbox not available to the agent; safeguards unverified; public signup not enabled.
 
+## Production deployment verification (2026-11-06)
+
+- `app.cadivor.com/bom-analyzer`: **HTTP 200**, Next.js response headers.
+- Production Railway web and API deployments: **SUCCESS**; API health reports Supabase Auth and durable Postgres.
+- The current live Analyzer JavaScript bundle includes “Before you analyze” and “Recent analyses.” If an already-open browser tab still shows the prior one-column layout, hard-refresh it to fetch the current bundle.
+- `npm run lint`: **PASS** (one pre-existing custom-font warning); `npm run build`: **PASS** (Next.js 15.5.9; 22 routes).
+- Browser token refresh: **in progress on the production-readiness branch**; until it deploys, an expired access token can still lead to a 401 on authenticated API requests.
+
 ## Security and auth notes (2026-11-05)
 
-- Privilege hardening migration added: `supabase/migrations/20261105_revoke_anon_security_definer_execute.sql` (disposable-DB verified; live apply pending).
+- Privilege hardening migration `20261105_revoke_anon_security_definer_execute.sql` is applied to the shared Supabase project. A follow-up migration removes authenticated direct execute on the trigger-only `handle_new_user()` function; live application is pending.
 - Signup remains closed on the migration API. Public Auth settings: email confirmation required (`mailer_autoconfirm=false`). Leaked-password protection not confirmed via public API; keep signup closed.
 - Monitoring refresh hook: `POST /tools/monitoring/refresh` (user JWT or cron token); real email still disabled.

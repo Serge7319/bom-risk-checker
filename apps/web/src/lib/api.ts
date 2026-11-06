@@ -1,3 +1,5 @@
+import { getSupabaseBrowserClient } from "@/lib/supabase";
+
 /** The deployed web service must set its matching API endpoint explicitly. */
 const API_BASE = (process.env.NEXT_PUBLIC_API_BASE || "").trim().replace(/\/$/, "");
 
@@ -19,6 +21,8 @@ function assertApiBaseConfigured(): void {
 
 export type Session = {
   access_token: string;
+  /** Used once to seed Supabase JS; never copied to Cadivor's session record. */
+  refresh_token?: string;
   email: string;
   workspace: string;
   workspace_id?: string;
@@ -66,12 +70,99 @@ export type Report = AnalyzeSummary & {
 
 const SESSION_KEY = "cadivor_next_session";
 const LEGACY_SESSION_KEY = "cadivor_next_sandbox_session";
+let refreshInFlight: Promise<string | null> | null = null;
+
+function sessionMatchesSupabaseUser(
+  appSession: Session | null,
+  authUser: { id: string; email?: string | null } | null | undefined,
+): boolean {
+  if (!appSession || !authUser) return false;
+  if (appSession.user_id) return appSession.user_id === authUser.id;
+  return Boolean(
+    appSession.email &&
+      authUser.email &&
+      appSession.email.trim().toLowerCase() === authUser.email.trim().toLowerCase(),
+  );
+}
+
+function persistAccessToken(accessToken: string) {
+  const current = getSession();
+  if (!current || typeof window === "undefined") return;
+  window.localStorage.setItem(
+    SESSION_KEY,
+    JSON.stringify({ ...current, access_token: accessToken }),
+  );
+}
+
+async function refreshSupabaseAccessToken(): Promise<string | null> {
+  if (!refreshInFlight) {
+    refreshInFlight = (async () => {
+      try {
+        const client = getSupabaseBrowserClient();
+        const appSession = getSession();
+        if (!client || !appSession) return null;
+
+        const { data: current, error: currentError } = await client.auth.getSession();
+        if (
+          currentError ||
+          !current.session ||
+          !sessionMatchesSupabaseUser(appSession, current.session.user)
+        ) {
+          return null;
+        }
+
+        const { data, error } = await client.auth.refreshSession();
+        if (
+          error ||
+          !data.session ||
+          !sessionMatchesSupabaseUser(appSession, data.session.user)
+        ) {
+          return null;
+        }
+
+        persistAccessToken(data.session.access_token);
+        return data.session.access_token;
+      } catch {
+        return null;
+      }
+    })().finally(() => {
+      refreshInFlight = null;
+    });
+  }
+  return refreshInFlight;
+}
+
+async function currentSupabaseAccessToken(fallback: string): Promise<string> {
+  try {
+    const client = getSupabaseBrowserClient();
+    const appSession = getSession();
+    if (!client || !appSession) return fallback;
+
+    const { data, error } = await client.auth.getSession();
+    const authSession = data.session;
+    if (error || !authSession || !sessionMatchesSupabaseUser(appSession, authSession.user)) {
+      return fallback;
+    }
+
+    const expiresSoon =
+      authSession.expires_at != null &&
+      authSession.expires_at <= Math.floor(Date.now() / 1000) + 45;
+    if (expiresSoon) {
+      return (await refreshSupabaseAccessToken()) || fallback;
+    }
+
+    persistAccessToken(authSession.access_token);
+    return authSession.access_token;
+  } catch {
+    return fallback;
+  }
+}
 
 function redirectToLoginAfterAuthFailure() {
   if (typeof window === "undefined") return;
   clearSession();
   if (!window.location.pathname.startsWith("/login")) {
-    window.location.assign("/login");
+    window.location.assign("/login?reason=session-refresh");
   }
 }
 
@@ -80,17 +171,36 @@ async function apiJson<T>(
   init: RequestInit & { token?: string } = {},
 ): Promise<T> {
   assertApiBaseConfigured();
-  const headers = new Headers(init.headers || {});
-  if (init.token) headers.set("Authorization", `Bearer ${init.token}`);
-  if (init.body && !(init.body instanceof FormData) && !headers.has("Content-Type")) {
-    headers.set("Content-Type", "application/json");
-  }
-  const res = await fetch(`${API_BASE}${path}`, { ...init, headers });
-  if (!res.ok) {
-    if (res.status === 401 && init.token) {
-      // Any authenticated API 401 → clear session and return to login.
-      redirectToLoginAfterAuthFailure();
+  const { token: initialToken, ...requestInit } = init;
+  const send = (token?: string) => {
+    const headers = new Headers(requestInit.headers || {});
+    if (token) headers.set("Authorization", `Bearer ${token}`);
+    if (
+      requestInit.body &&
+      !(requestInit.body instanceof FormData) &&
+      !headers.has("Content-Type")
+    ) {
+      headers.set("Content-Type", "application/json");
     }
+    return fetch(`${API_BASE}${path}`, { ...requestInit, headers });
+  };
+
+  const token = initialToken
+    ? await currentSupabaseAccessToken(initialToken)
+    : undefined;
+  let res = await send(token);
+  if (!res.ok) {
+    if (res.status === 401 && initialToken) {
+      const refreshedToken = await refreshSupabaseAccessToken();
+      if (refreshedToken && refreshedToken !== token) {
+        res = await send(refreshedToken);
+      }
+      if (res.status === 401) {
+        redirectToLoginAfterAuthFailure();
+      }
+    }
+  }
+  if (!res.ok) {
     const detail = (await res.json().catch(() => ({}))) as { detail?: string };
     throw new Error(detail.detail || `Request failed (${res.status})`);
   }
@@ -109,18 +219,38 @@ export function getSession(): Session | null {
   }
 }
 
-export function setSession(session: Session) {
-  window.localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+export async function setSession(session: Session): Promise<void> {
+  let storedSession = session;
+  const client = getSupabaseBrowserClient();
+  if (client && !session.refresh_token) {
+    throw new Error("Sign-in did not return a refresh session. Please try again or contact support.");
+  }
+  if (client) {
+    const { data, error } = await client.auth.setSession({
+      access_token: session.access_token,
+      refresh_token: session.refresh_token as string,
+    });
+    if (error || !data.session) {
+      void client.auth.signOut({ scope: "local" }).catch(() => undefined);
+      throw new Error("Sign-in succeeded, but Cadivor could not keep the session active. Please sign in again.");
+    }
+    storedSession = { ...session, access_token: data.session.access_token };
+  }
+  const safeSession = { ...storedSession };
+  delete safeSession.refresh_token;
+  window.localStorage.setItem(SESSION_KEY, JSON.stringify(safeSession));
   window.localStorage.removeItem(LEGACY_SESSION_KEY);
 }
 
 export function clearSession() {
   window.localStorage.removeItem(SESSION_KEY);
   window.localStorage.removeItem(LEGACY_SESSION_KEY);
+  const client = getSupabaseBrowserClient();
+  if (client) void client.auth.signOut({ scope: "local" }).catch(() => undefined);
 }
 
 export async function login(email: string, password: string): Promise<Session> {
-  return apiJson("/auth/login", {
+  return apiJson<Session>("/auth/login", {
     method: "POST",
     body: JSON.stringify({ email, password }),
   });

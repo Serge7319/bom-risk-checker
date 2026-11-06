@@ -1,8 +1,9 @@
-"""Cadivor Next.js migration API — separate test build, synthetic evidence only.
+"""Cadivor API for the Next.js application.
 
-Uses Starlette (already pinned with Streamlit) so Railway installs do
-not fight FastAPI's older Starlette bound. Production Streamlit is unchanged.
-No live Stripe charges or live supplier HTTP calls by default. Monitoring email uses a mock sink unless explicitly enabled.
+Production uses Supabase Auth and a dedicated Railway Postgres workspace store.
+BOM risk and sourcing evidence remains explicitly synthetic until authorized
+supplier integrations are configured. Stripe checkout and alert email stay off
+until their separate production gates are verified.
 """
 from __future__ import annotations
 
