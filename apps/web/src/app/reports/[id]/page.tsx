@@ -6,13 +6,15 @@ import { useParams, useRouter } from "next/navigation";
 import { AskCadivorPanel } from "@/components/AskCadivorPanel";
 import { Shell } from "@/components/Shell";
 import { KpiCard } from "@/components/KpiCard";
+import { Icon } from "@/components/Icons";
 import { PageHeader, SecondaryLink } from "@/components/PageHeader";
 import {
-  downloadReportCsv,
+  downloadReportExport,
   fetchReport,
   listDecisionRecords,
   type DecisionRecord,
   type Report,
+  type ReportExportFormat,
 } from "@/lib/api";
 import { analysisModeLabel, evidenceSourceLabel } from "@/lib/display";
 import { PAGE_META } from "@/lib/routes";
@@ -35,7 +37,7 @@ export default function ReportPage() {
   const [decisionError, setDecisionError] = useState("");
   const [error, setError] = useState("");
   const [exportError, setExportError] = useState("");
-  const [exportBusy, setExportBusy] = useState(false);
+  const [exporting, setExporting] = useState<ReportExportFormat | null>(null);
 
   useEffect(() => {
     if (!session) return;
@@ -62,20 +64,24 @@ export default function ReportPage() {
       .catch((err) => setDecisionError(err instanceof Error ? err.message : "Decision history could not load."));
   }, [params.id, session]);
 
-  if (!session) return null;
-
-  async function onExportCsv() {
-    if (!session) return;
-    setExportBusy(true);
+  async function onDownload(format: ReportExportFormat) {
+    if (!session || !report) return;
+    setExporting(format);
     setExportError("");
     try {
-      await downloadReportCsv(String(params.id), session.access_token);
+      await downloadReportExport(
+        String(report.analysis_id || report.id),
+        session.access_token,
+        format,
+      );
     } catch (err) {
-      setExportError(err instanceof Error ? err.message : "The CSV export could not be created.");
+      setExportError(err instanceof Error ? err.message : "The report could not be downloaded.");
     } finally {
-      setExportBusy(false);
+      setExporting(null);
     }
   }
+
+  if (!session) return null;
 
   const meta = {
     ...PAGE_META.ei,
@@ -98,14 +104,10 @@ export default function ReportPage() {
             <SecondaryLink href={`/compare-parts?analysis_id=${encodeURIComponent(params.id)}`}>
               Compare parts
             </SecondaryLink>
-            <button type="button" className="cv-button" onClick={onExportCsv} disabled={!report || exportBusy}>
-              {exportBusy ? "Preparing CSV…" : "Download CSV"}
-            </button>
           </>
         }
       />
 
-      {exportError ? <div className="cv-error" role="alert">CSV export could not be downloaded. {exportError}</div> : null}
       {error ? (
         <div className="cv-error" role="alert">
           This saved report could not be opened. {error} <Link href="/reports">Return to saved reports</Link>
@@ -136,6 +138,30 @@ export default function ReportPage() {
               <dd>{analysisModeLabel(report.mode)}</dd>
             </div>
           </dl>
+
+          <section className="cv-card pad cv-report-export" aria-labelledby="report-export-title">
+            <div>
+              <h2 id="report-export-title" className="cv-card-title">Download this report</h2>
+              <p className="cv-card-subtitle">
+                Export the saved component risk, hierarchy, and evidence labels for review.
+              </p>
+            </div>
+            <div className="cv-report-export-controls">
+              <button type="button" className="cv-button" onClick={() => onDownload("pdf")} disabled={exporting !== null}>
+                <Icon name="download" /> {exporting === "pdf" ? "Preparing PDF…" : "Download PDF"}
+              </button>
+              <button type="button" className="cv-button" onClick={() => onDownload("xlsx")} disabled={exporting !== null}>
+                <Icon name="download" /> {exporting === "xlsx" ? "Preparing Excel…" : "Download Excel"}
+              </button>
+              <button type="button" className="cv-button" onClick={() => onDownload("csv")} disabled={exporting !== null}>
+                <Icon name="download" /> {exporting === "csv" ? "Preparing CSV…" : "Download CSV audit"}
+              </button>
+            </div>
+            {exportError ? <div className="cv-error" role="alert">{exportError}</div> : null}
+            {report.mode === "synthetic-preview" ? (
+              <p className="cv-small-note">This report uses synthetic preview evidence. Stock, prices, and lifecycle estimates are not live supplier verification.</p>
+            ) : null}
+          </section>
 
           <div className="cv-kpis">
             <KpiCard

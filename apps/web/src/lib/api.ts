@@ -368,6 +368,47 @@ export async function fetchReport(analysisId: string, token: string): Promise<Re
   return apiJson(`/reports/${analysisId}`, { token });
 }
 
+export type ReportExportFormat = "pdf" | "csv" | "xlsx";
+
+export async function downloadReportExport(
+  analysisId: string,
+  token: string,
+  format: ReportExportFormat,
+): Promise<void> {
+  assertApiBaseConfigured();
+  const path = `/reports/${encodeURIComponent(analysisId)}/export/${format}`;
+  const send = (accessToken: string) =>
+    fetch(`${API_BASE}${path}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+  const activeToken = await currentSupabaseAccessToken(token);
+  let response = await send(activeToken);
+  if (response.status === 401) {
+    const refreshedToken = await refreshSupabaseAccessToken();
+    if (refreshedToken && refreshedToken !== activeToken) {
+      response = await send(refreshedToken);
+    }
+    if (response.status === 401) redirectToLoginAfterAuthFailure();
+  }
+  if (!response.ok) {
+    const detail = (await response.json().catch(() => ({}))) as { detail?: string };
+    throw new Error(detail.detail || `Report download failed (${response.status})`);
+  }
+
+  const blob = await response.blob();
+  const disposition = response.headers.get("Content-Disposition") || "";
+  const filename = disposition.match(/filename="?([^";]+)"?/i)?.[1] || `cadivor-report.${format}`;
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 export async function listReports(token: string) {
   return apiJson<{
     ok: boolean;

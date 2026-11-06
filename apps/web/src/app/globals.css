@@ -2771,3 +2771,51 @@ button {
   }
 }
 
+.cv-report-export {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin: 14px 0;
+}
+.cv-report-export-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.cv-report-export-controls .cv-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.cv-report-export-controls svg {
+  width: 15px;
+  height: 15px;
+}
+.cv-report-export-controls .cv-button:disabled {
+  opacity: 0.65;
+  cursor: progress;
+}
+.cv-report-export .cv-error,
+.cv-report-export .cv-small-note {
+  flex-basis: 100%;
+  margin: 0;
+}
+@media (max-width: 760px) {
+  .cv-report-export {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .cv-report-export-controls {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+  .cv-report-export-controls .cv-button {
+    justify-content: center;
+    width: 100%;
+  }
+}
+

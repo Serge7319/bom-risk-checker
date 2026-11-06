@@ -5,6 +5,7 @@ Business north star: **continuous engineering workflow**—persistent project/BO
 ## Current production boundary (verified 2026-11-06)
 
 - `https://app.cadivor.com` is served by the Next.js Railway web service and its Supabase-authenticated API.
+- The current production web and API deployment is `f6b61f6` (2026-11-06).
 - Railway production services are `cadivor-next-web-prod`, `cadivor-next-api-prod`, and the dedicated `Postgres-FGtQ` database. No Streamlit service is present in either Railway project visible to this account; legacy Streamlit source remains in the repository.
 - The Next.js database is separate from the old Streamlit/Supabase saved-BOM store. Existing Streamlit records have not been imported.
 - Supplier and component evidence remains synthetic unless clearly labeled and sourced from an enabled live provider.
@@ -18,12 +19,14 @@ Business north star: **continuous engineering workflow**—persistent project/BO
 | Home from saved data | **Working in production Next.js** | Home, Reports, Engineering Decisions, and Engineering Intelligence read saved workspace analyses. Existing Streamlit records have not been imported. |
 | Workspace isolation | **Implemented; verification is mixed by environment** | Membership is server-derived and isolation tests pass; prior live sandbox cross-workspace checks passed. Disposable embedded-Postgres cross-tenant read/mutation isolation PASS this pass; live production migration database recheck not repeated (and restore drills intentionally avoid that DB). |
 | Authentication | **Supabase Auth and refresh handling deployed** | The API validates Supabase JWTs and resolves membership server-side. The browser persists and refreshes Supabase sessions; one hosted second-account POST/report E2E remains outstanding. Signup remains gated; password reset and invitations are not implemented. |
-| Proactive monitoring and email alerts | **PARTIAL (2026-11-05)** | Durable tenant-scoped alert history, preferences, on-demand refresh history, and mock email sink are implemented and unit-tested. Scheduled cron and real email transport remain disabled (`CADIVOR_MONITORING_EMAIL_ENABLED` unset). |
+| Engineering decision records | **PARTIAL; comparison records persist in production** | PR #577 is deployed at `b889036`: Compare Parts saves a workspace-scoped comparison snapshot, reviewer, decision, and rationale; Engineering Decisions and the linked report display the saved record. No signed approval lifecycle, automatic qualification, or BOM mutation is implemented. |
+| Report downloads | **PARTIAL** | Production has a basic component CSV download. This branch adds authenticated, workspace-scoped PDF, Excel, and expanded CSV audit downloads with synthetic evidence labels; report CI and deployment are pending. |
+| Proactive monitoring and email alerts | **PARTIAL (2026-11-06)** | Durable tenant-scoped alert history, preferences, on-demand refresh history, and mock email sink exist in the API. The live Monitoring page currently only displays analysis-derived signals; refresh/acknowledge/preferences controls are not wired into its UI. Scheduled cron and real email transport remain disabled. |
 | Self-serve onboarding and 14-day trial | **PARTIAL / BLOCKED for live enablement (2026-11-05)** | Verified-email signup, workspace provisioning on verified sign-in, trial dates, and analysis restriction after 14 days are in code and covered by unit tests. Live signup remains off until Supabase email confirmation, delivery, redirect allowlist, and abuse controls are operator-confirmed; no verification emails sent this pass. |
-| Usage-based subscription tiers | **PARTIAL (2026-11-05)** | Server-enforced plan limits + `/plan/usage` metering against migration reports. Stripe status/checkout-prep endpoints use existing `src.plans` price secret names; checkout stays disabled; live keys blocked; no charges created. |
+| Usage-based subscription tiers | **PARTIAL (2026-11-06)** | Server-enforced plan limits + `/plan/usage` metering exist. Stripe status/checkout-prep only; no Checkout Session or one-time-report purchase route exists; checkout is disabled and no charges were created. |
 | PLM / ERP / CAD integrations | **PARTIAL (2026-11-05)** | Connector registry + generic CSV sync groundwork and tests. Vendor-specific Arena/Propel/NetSuite/SAP choices remain **BLOCKED** pending customer discovery and sandbox credentials. |
 | Compliance evidence packs | **PARTIAL (2026-11-05)** | RoHS/REACH/conflict-minerals/audit export paths label missing evidence and never claim compliance without sourced live evidence. Synthetic examples only. |
-| Decision tools | **Partial preview** | Evidence envelopes on reports; mocked authorized supplier lookup with exact-MPN matching. Live distributor HTTP remains disabled without migration-owned credentials + transport flag. |
+| Decision tools | **PARTIAL** | Compare Parts decision capture persists human reviewer choices with evidence snapshots. Part comparison, supplier evidence, and fit remain synthetic/offline; live distributor HTTP stays disabled without migration-owned credentials + transport flag. |
 
 ## Ordered roadmap status (2026-11-06)
 
