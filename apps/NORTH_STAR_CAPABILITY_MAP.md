@@ -17,7 +17,7 @@ Business north star: **continuous engineering workflow**—persistent project/BO
 | Multi-level BOMs and risk roll-up | **Verified with synthetic fixture** | `nested_bom_product.csv`: CAP100U effective quantity is 8; the top-level roll-up surfaces the medium-risk NRND leaf. No customer BOM or live distributor evidence was used. |
 | Home from saved data | **Working in production Next.js** | Home, Reports, Engineering Decisions, and Engineering Intelligence read saved workspace analyses. Existing Streamlit records have not been imported. |
 | Workspace isolation | **Implemented; verification is mixed by environment** | Membership is server-derived and isolation tests pass; prior live sandbox cross-workspace checks passed. Disposable embedded-Postgres cross-tenant read/mutation isolation PASS this pass; live production migration database recheck not repeated (and restore drills intentionally avoid that DB). |
-| Authentication | **Supabase Auth live; refresh hardening in progress** | The API validates Supabase JWTs and resolves membership server-side. Browser refresh handling is being added; one hosted second-account lifecycle check remains outstanding. Signup remains gated; password reset and invitations are not implemented. |
+| Authentication | **Supabase Auth and refresh handling deployed** | The API validates Supabase JWTs and resolves membership server-side. The browser persists and refreshes Supabase sessions; one hosted second-account POST/report E2E remains outstanding. Signup remains gated; password reset and invitations are not implemented. |
 | Proactive monitoring and email alerts | **PARTIAL (2026-11-05)** | Durable tenant-scoped alert history, preferences, on-demand refresh history, and mock email sink are implemented and unit-tested. Scheduled cron and real email transport remain disabled (`CADIVOR_MONITORING_EMAIL_ENABLED` unset). |
 | Self-serve onboarding and 14-day trial | **PARTIAL / BLOCKED for live enablement (2026-11-05)** | Verified-email signup, workspace provisioning on verified sign-in, trial dates, and analysis restriction after 14 days are in code and covered by unit tests. Live signup remains off until Supabase email confirmation, delivery, redirect allowlist, and abuse controls are operator-confirmed; no verification emails sent this pass. |
 | Usage-based subscription tiers | **PARTIAL (2026-11-05)** | Server-enforced plan limits + `/plan/usage` metering against migration reports. Stripe status/checkout-prep endpoints use existing `src.plans` price secret names; checkout stays disabled; live keys blocked; no charges created. |
@@ -41,11 +41,11 @@ Business north star: **continuous engineering workflow**—persistent project/BO
 
 | Check | Result |
 | --- | --- |
-| Migration API health (prior) | **PASS** — Supabase auth path reported; dedicated Postgres configured; no production service-role key reported as used. |
-| Flat / nested synthetic BOM (prior) | **PASS** on migration test services. |
+| Migration API health | **PASS** — production API reports Supabase Auth and dedicated Postgres; no production service-role key is used by the browser. |
+| Flat / nested synthetic BOM (prior) | **PASS** — synthetic flow saves to production Railway Postgres and reloads by report ID. |
 | Roadmap gate unit/API tests | **PASS** — local pytest → `30+ passed` including disposable-DB cutover suite (2026-11-05). |
 | Live signup enablement | **Not done** — public settings show email confirmation on (`mailer_autoconfirm=false`); leaked-password protection still advisor-flagged/unverified; signup env gates closed; no email sent. |
-| SECURITY DEFINER anon revoke migration | **PASS on disposable DB** — `20261105_revoke_anon_security_definer_execute.sql` + `tests/test_supabase_security_definer_grants.py`. Live apply pending DB credentials/Management token. |
+| SECURITY DEFINER privilege hardening | **PASS live + disposable DB** — migrations `20261105_revoke_anon_security_definer_execute` and `20261106_revoke_authenticated_handle_new_user_execute` are applied. Anon/authenticated direct execution is revoked; the auth.users trigger stays attached and service_role retains execute. |
 | Live supplier / Stripe charges / alert email | **Not done** — intentionally disabled. |
 | Disposable Postgres cutover drill | **PASS** — isolation + backup/restore + performance on embedded Postgres only (`apps/.evidence_cutover/`). |
 | `apps/web` lint | **PASS** — `npm run lint` exit 0 (1 `@next/next/no-page-custom-font` warning in `layout.tsx`). |
@@ -55,4 +55,4 @@ Business north star: **continuous engineering workflow**—persistent project/BO
 
 ## Do not claim complete
 
-Production readiness is not achieved until onboarding/auth lifecycle, live supplier evidence, monitoring delivery, tenant isolation, persistence recovery, commercial controls, and cutover/rollback are verified on the intended production deployment. The migration subdomains are test services, not the customer-domain release.
+Production readiness remains partial while signup safeguards and the hosted second-account E2E, live supplier evidence, scheduled monitoring delivery, production recovery, commercial controls and post-cutover checks remain open. `app.cadivor.com` is already the live Next.js customer-domain application.
