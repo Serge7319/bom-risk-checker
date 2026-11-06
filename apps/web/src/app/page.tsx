@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Shell } from "@/components/Shell";
 import { GapBanner, LoadingCard } from "@/components/GapBanner";
+import { KpiCard } from "@/components/KpiCard";
 import { PageHeader, PrimaryLink, SecondaryLink } from "@/components/PageHeader";
 import { fetchWorkspaceHome } from "@/lib/api";
 import { evidenceSourceLabel } from "@/lib/display";
@@ -125,26 +126,32 @@ export default function HomePage() {
             </span>
           </div>
           <div className="cv-kpis">
-            <div className="cv-kpi tone-blue">
-              <span>Active projects</span>
-              <strong>{hasSaved ? metrics.active_projects ?? 0 : "—"}</strong>
-              <em>{hasSaved ? "Reopenable after reload" : "Upload a BOM"}</em>
-            </div>
-            <div className="cv-kpi">
-              <span>Saved BOMs</span>
-              <strong>{hasSaved ? metrics.saved_boms ?? 0 : "—"}</strong>
-              <em>{hasSaved ? "With revisions" : "Awaiting data"}</em>
-            </div>
-            <div className="cv-kpi tone-amber">
-              <span>Priority risks</span>
-              <strong>{hasSaved ? metrics.priority_items ?? 0 : "—"}</strong>
-              <em>{hasSaved ? "From roll-up / high-risk" : "—"}</em>
-            </div>
-            <div className="cv-kpi">
-              <span>Analyses</span>
-              <strong>{hasSaved ? metrics.saved_analyses ?? 0 : "—"}</strong>
-              <em>{hasSaved ? "Saved to this workspace" : "—"}</em>
-            </div>
+            <KpiCard
+              icon="portfolio"
+              tone="blue"
+              label="Active projects"
+              value={hasSaved ? metrics.active_projects ?? 0 : "—"}
+              detail={hasSaved ? "Reopenable after reload" : "Upload a BOM"}
+            />
+            <KpiCard
+              icon="box"
+              label="Saved BOMs"
+              value={hasSaved ? metrics.saved_boms ?? 0 : "—"}
+              detail={hasSaved ? "With revisions" : "Awaiting data"}
+            />
+            <KpiCard
+              icon="risk"
+              tone="amber"
+              label="Priority risks"
+              value={hasSaved ? metrics.priority_items ?? 0 : "—"}
+              detail={hasSaved ? "From roll-up / high-risk" : "—"}
+            />
+            <KpiCard
+              icon="insight"
+              label="Analyses"
+              value={hasSaved ? metrics.saved_analyses ?? 0 : "—"}
+              detail={hasSaved ? "Saved to this workspace" : "—"}
+            />
           </div>
 
           <div className="cv-home-grid">
@@ -156,14 +163,14 @@ export default function HomePage() {
                 </p>
               </div>
               {(data.projects || []).length ? (
-                <div className="cv-table-wrap">
-                  <table className="cv-table">
+                <div className="cv-table-wrap cv-table-wrap--actions">
+                  <table className="cv-table cv-table-actions">
                     <thead>
                       <tr>
                         <th>Project</th>
                         <th>BOMs</th>
                         <th>Latest health</th>
-                        <th></th>
+                        <th className="cv-table-action">Action</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -187,10 +194,13 @@ export default function HomePage() {
                                 ? ` · ${String(first.top_rolled_risk)}`
                                 : ""}
                             </td>
-                            <td>
+                            <td className="cv-table-action">
                               {analysisId ? (
-                                <Link href={`/reports/${String(analysisId)}`}>
-                                  Open →
+                                <Link
+                                  className="cv-table-open"
+                                  href={`/reports/${String(analysisId)}`}
+                                >
+                                  Open
                                 </Link>
                               ) : (
                                 "—"

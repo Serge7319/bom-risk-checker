@@ -1,8 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { AskCadivorPanel } from "@/components/AskCadivorPanel";
 import { Shell } from "@/components/Shell";
+import { KpiCard } from "@/components/KpiCard";
 import { PageHeader, SecondaryLink } from "@/components/PageHeader";
 import { fetchReport, type Report } from "@/lib/api";
 import { analysisModeLabel, evidenceSourceLabel } from "@/lib/display";
@@ -98,31 +101,42 @@ export default function ReportPage() {
           </dl>
 
           <div className="cv-kpis">
-            <div className="cv-kpi tone-amber">
-              <span>High risk</span>
-              <strong>{report.high_risk_count}</strong>
-              <em>Needs review</em>
-            </div>
-            <div className="cv-kpi tone-blue">
-              <span>Medium risk</span>
-              <strong>{report.medium_risk_count}</strong>
-              <em>Follow up</em>
-            </div>
-            <div className="cv-kpi">
-              <span>Low risk</span>
-              <strong>{report.low_risk_count}</strong>
-              <em>Within BOM</em>
-            </div>
-            <div className="cv-kpi">
-              <span>Created</span>
-              <strong style={{ fontSize: 14 }}>
-                {report.created_at
+            <KpiCard
+              icon="risk"
+              tone="amber"
+              label="High risk"
+              value={report.high_risk_count}
+              detail="Needs review"
+            />
+            <KpiCard
+              icon="bell"
+              tone="blue"
+              label="Medium risk"
+              value={report.medium_risk_count}
+              detail="Follow up"
+            />
+            <KpiCard
+              icon="check"
+              label="Low risk"
+              value={report.low_risk_count}
+              detail="Within BOM"
+            />
+            <KpiCard
+              icon="clock"
+              label="Created"
+              value={
+                report.created_at
                   ? new Date(report.created_at).toLocaleString()
-                  : "—"}
-              </strong>
-              <em>Saved to this workspace</em>
-            </div>
+                  : "—"
+              }
+              detail="Saved to this workspace"
+            />
           </div>
+
+          <AskCadivorPanel
+            token={session.access_token}
+            analysisId={String(report.analysis_id || report.id)}
+          />
 
           <section className="cv-card pad" style={{ marginBottom: 14 }}>
             <div className="cv-eyebrow">Engineering decision record</div>
@@ -295,15 +309,17 @@ export default function ReportPage() {
                     <th>Eff. qty</th>
                     <th>Lifecycle</th>
                     <th>Risk</th>
+                    <th className="cv-table-action">Action</th>
                   </tr>
                 </thead>
                 <tbody>
                   {report.parts.map((part, index) => {
                     const risk = String(part["Risk Level"] || "");
+                    const mpn = String(part.MPN || "");
                     return (
-                      <tr key={`${String(part.MPN)}-${index}`}>
+                      <tr key={`${mpn}-${index}`}>
                         <td>
-                          <strong>{String(part.MPN)}</strong>
+                          <strong>{mpn}</strong>
                           <div className="cv-small-note">
                             {String(part.line_type || part["Line Type"] || "")}
                           </div>
@@ -328,6 +344,18 @@ export default function ReportPage() {
                           <span className={`cv-badge ${riskBadge(risk)}`}>
                             {risk || "—"}
                           </span>
+                        </td>
+                        <td className="cv-table-action">
+                          {mpn ? (
+                            <Link
+                              className="cv-table-open"
+                              href={`/find-replacement?mpn=${encodeURIComponent(mpn)}&analysis_id=${encodeURIComponent(String(report.analysis_id || report.id))}&manufacturer=${encodeURIComponent(String(part.Manufacturer || ""))}`}
+                            >
+                              Replace
+                            </Link>
+                          ) : (
+                            "—"
+                          )}
                         </td>
                       </tr>
                     );

@@ -118,8 +118,7 @@ export default function EngineeringIntelligencePage() {
       <section className="cv-card pad" style={{ marginTop: 14 }}>
         <h3 className="cv-card-title">Workspace records</h3>
         <p className="cv-card-subtitle">
-          Historical analyses from the previous Cadivor app have not been
-          imported into this workspace.
+          This view uses analyses saved in the current workspace only.
         </p>
       </section>
     </Shell>

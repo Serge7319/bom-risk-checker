@@ -119,12 +119,12 @@ export function Shell({
           <div className="cv-plan-card">
             <div className="cv-plan-top">
               <span>Workspace data</span>
-              <span className="cv-plan-chip">Separate records</span>
+              <span className="cv-plan-chip">This workspace</span>
             </div>
             <div className="cv-plan-copy">
-              Historical analyses from the previous app have not been imported
-              into this workspace. Supplier evidence is sample data; live supplier
-              integrations, billing, and automated alert emails are not connected.
+              Supplier evidence shown here is labeled synthetic when live
+              distributors are disconnected. Billing checkout and automated alert
+              emails are not connected yet.
             </div>
           </div>
           <button
