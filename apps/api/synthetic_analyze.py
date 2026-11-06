@@ -330,8 +330,10 @@ def analyses_and_parts(
 
 def synthetic_compare_part(mpn: str, *, from_report: dict[str, Any] | None = None) -> dict[str, Any]:
     """Build a compare-ready part record without live distributor lookup."""
+    from apps.api.compare_catalog import enrich_compare_part
+
     if from_report:
-        return {
+        record = {
             "manufacturer_part_number": str(from_report.get("MPN") or mpn),
             "manufacturer": str(from_report.get("Manufacturer") or ""),
             "description": str(from_report.get("Description") or ""),
@@ -342,8 +344,9 @@ def synthetic_compare_part(mpn: str, *, from_report: dict[str, Any] | None = Non
             "source": "synthetic-preview-analysis",
             "supplier_data_verified": False,
         }
+        return enrich_compare_part(str(record["manufacturer_part_number"] or mpn), record)
     base = _synthetic_part(mpn, "", "", 1)
-    return {
+    record = {
         "manufacturer_part_number": mpn,
         "manufacturer": base["manufacturer"],
         "description": base["description"],
@@ -354,3 +357,4 @@ def synthetic_compare_part(mpn: str, *, from_report: dict[str, Any] | None = Non
         "source": "synthetic-preview",
         "supplier_data_verified": False,
     }
+    return enrich_compare_part(mpn, record)

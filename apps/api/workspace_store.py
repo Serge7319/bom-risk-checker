@@ -398,8 +398,8 @@ class WorkspaceStore:
                 "persistence": "migration-workspace-store",
                 "gap": (
                     "This local preview uses temporary file storage and does not survive service restarts. "
-                    "Deployed use requires the dedicated migration database. Monitoring email, usage limits, "
-                    "PLM/ERP/CAD remain staged."
+                    "Deployed workspaces use durable storage. Monitoring email, billing checkout, and "
+                    "design-tool connectors are not connected yet."
                 ),
                 "metrics": {
                     "active_projects": len(projects),

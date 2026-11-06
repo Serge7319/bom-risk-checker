@@ -708,6 +708,59 @@ async def supplier_lookup_post(request: Request) -> JSONResponse:
     return _json(result)
 
 
+async def find_replacement_post(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return _json({"detail": "Invalid JSON"}, 400)
+    _disable_live_integrations()
+    try:
+        result = migration_tools.find_replacement_payload(
+            workspace_id=ctx["workspace_id"],
+            mpn=str(body.get("mpn") or body.get("part_number") or ""),
+            manufacturer=str(body.get("manufacturer") or ""),
+            analysis_id=body.get("analysis_id") or None,
+        )
+    except WorkspaceAccessError:
+        return _json({"detail": "Report not found"}, 404)
+    status = 200 if result.get("ok") else 400
+    return _json(result, status)
+
+
+async def ask_cadivor_post(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return _json({"detail": "Invalid JSON"}, 400)
+    _disable_live_integrations()
+    history = body.get("history") if isinstance(body.get("history"), list) else []
+    clean_history: list[dict[str, str]] = []
+    for item in history:
+        if not isinstance(item, dict):
+            continue
+        role = str(item.get("role") or "").strip()
+        content = str(item.get("content") or item.get("text") or "").strip()
+        if role and content:
+            clean_history.append({"role": role, "content": content})
+    try:
+        result = migration_tools.ask_cadivor_payload(
+            workspace_id=ctx["workspace_id"],
+            analysis_id=str(body.get("analysis_id") or ""),
+            question=str(body.get("question") or ""),
+            history=clean_history,
+        )
+    except WorkspaceAccessError:
+        return _json({"detail": "Report not found"}, 404)
+    status = 200 if result.get("ok") else 400
+    return _json(result, status)
+
+
 async def monitoring_preferences_get(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
@@ -905,6 +958,8 @@ app = Starlette(
         Route("/tools/portfolio", portfolio_get, methods=["GET"]),
         Route("/tools/detailed-risk", detailed_risk_get, methods=["GET"]),
         Route("/tools/supplier-lookup", supplier_lookup_post, methods=["POST"]),
+        Route("/tools/find-replacement", find_replacement_post, methods=["POST"]),
+        Route("/tools/ask-cadivor", ask_cadivor_post, methods=["POST"]),
         Route("/tools/monitoring/preferences", monitoring_preferences_get, methods=["GET"]),
         Route("/tools/monitoring/preferences", monitoring_preferences_put, methods=["PUT"]),
         Route("/tools/monitoring/alerts", monitoring_alerts_get, methods=["GET"]),

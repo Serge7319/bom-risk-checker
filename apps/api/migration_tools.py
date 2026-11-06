@@ -261,12 +261,57 @@ def compare_parts_payload(
         part_b_mpn=b,
         extract_linked_datasheets=False,
     )
-    rows = user_facing_compare_rows(comparison.get("rows") or comparison.get("comparison_rows"))
+    # Prefer rows that already carry Assessment from build_parts_comparison so
+    # family-mismatch verdicts are not collapsed to "Needs data".
+    raw_rows = comparison.get("rows") or comparison.get("comparison_rows") or []
+    rows: list[dict[str, Any]] = []
+    if isinstance(raw_rows, list) and raw_rows and isinstance(raw_rows[0], dict) and (
+        "Assessment" in raw_rows[0]
+    ):
+        for row in raw_rows:
+            if not isinstance(row, dict):
+                continue
+            rows.append(
+                {
+                    "Attribute": row.get("Attribute", ""),
+                    "Part A": row.get("Part A", row.get("Original", "")),
+                    "Part B": row.get(
+                        "Part B",
+                        row.get("Candidate", row.get("Selected Alternative", "")),
+                    ),
+                    "Assessment": row.get("Assessment")
+                    or row.get("Status")
+                    or "",
+                    "Evidence": row.get("Evidence") or row.get("Note") or "",
+                }
+            )
+    if not rows:
+        rows = user_facing_compare_rows(raw_rows)
     if not rows and isinstance(comparison.get("user_facing_rows"), list):
         rows = comparison["user_facing_rows"]
-    # Fall back to raw rows if helper shape differs
-    if not rows and isinstance(comparison.get("rows"), list):
-        rows = comparison["rows"]
+
+    finding = (
+        comparison.get("overall_finding")
+        or comparison.get("finding")
+        or comparison.get("summary")
+    )
+    family_mismatch = bool(comparison.get("family_mismatch"))
+    gap = (
+        "Live supplier and datasheet fetch are not connected. "
+        "Comparison uses saved analysis fields when available, otherwise labeled "
+        "offline catalog attributes — not live distributor evidence."
+    )
+    if family_mismatch:
+        gap = (
+            "Component families differ based on offline catalog attributes. "
+            "This is an evidence-backed incompatibility signal, not a qualified "
+            "drop-in approval. Live datasheets were not fetched."
+        )
+    elif not rows:
+        gap = (
+            "Unable to confirm compatibility: attribute evidence is missing for "
+            "both parts. Live supplier lookup and datasheet fetch are not connected."
+        )
 
     return _json_safe(
         {
@@ -277,11 +322,10 @@ def compare_parts_payload(
             "part_b": b,
             "source_a": source_a,
             "source_b": source_b,
-            "gap": "Live supplier lookup is disabled for this migration build. Comparison uses saved analysis fields when available; otherwise it uses labeled synthetic data, not distributor evidence.",
-            "finding": comparison.get("overall_finding")
-            or comparison.get("finding")
-            or comparison.get("summary"),
+            "gap": gap,
+            "finding": finding,
             "family": (comparison.get("family") or comparison.get("family_meta") or {}),
+            "family_mismatch": family_mismatch,
             "rows": rows,
             "part_cards": {
                 "a": comparison.get("part_a"),
@@ -295,9 +339,209 @@ def compare_parts_payload(
                     "summary",
                     "counts",
                     "engineering_confidence",
+                    "family_mismatch",
                 )
                 if k in comparison
             },
+        }
+    )
+
+
+def find_replacement_payload(
+    *,
+    workspace_id: str,
+    mpn: str,
+    manufacturer: str = "",
+    analysis_id: str | None = None,
+) -> dict[str, Any]:
+    """Standalone replacement search; BOM analysis is optional context only."""
+    from apps.api.compare_catalog import offline_replacement_candidates
+    from apps.api.supplier_lookup import live_lookups_enabled, lookup_exact_part
+
+    requested = str(mpn or "").strip()
+    if not requested:
+        return {
+            "ok": False,
+            "status": STATUS_FAILED,
+            "detail": "Enter a manufacturer part number to search.",
+        }
+
+    report = _require_analysis(analysis_id, workspace_id=workspace_id)
+    bom_context = None
+    if report:
+        for part in report.get("parts") or []:
+            if str(part.get("MPN") or "").strip().casefold() == requested.casefold():
+                bom_context = {
+                    "analysis_id": report["id"],
+                    "filename": report.get("filename"),
+                    "project_name": report.get("project_name"),
+                    "part": part,
+                }
+                break
+
+    original_lookup = lookup_exact_part(requested)
+    original = synthetic_compare_part(
+        requested,
+        from_report=(bom_context or {}).get("part") if bom_context else None,
+    )
+    if manufacturer and not original.get("manufacturer"):
+        original["manufacturer"] = manufacturer.strip()
+
+    candidates_raw = offline_replacement_candidates(requested)
+    candidates: list[dict[str, Any]] = []
+    for item in candidates_raw:
+        cand_mpn = str(item.get("mpn") or "").strip()
+        if not cand_mpn or cand_mpn.casefold() == requested.casefold():
+            continue
+        enriched = synthetic_compare_part(cand_mpn)
+        candidates.append(
+            {
+                "mpn": cand_mpn,
+                "manufacturer": item.get("manufacturer") or enriched.get("manufacturer") or "",
+                "description": enriched.get("description") or "",
+                "rationale": item.get("rationale") or "",
+                "fit": item.get("fit") or "unable_to_confirm",
+                "missing_evidence": list(item.get("missing") or []),
+                "evidence_class": "synthetic",
+                "compare_href_query": f"part_a={requested}&part_b={cand_mpn}",
+            }
+        )
+
+    missing: list[str] = []
+    if not live_lookups_enabled():
+        missing.append("live authorized-distributor search (credentials / transport not enabled)")
+    if not candidates:
+        missing.append("catalog or supplier candidate list for this MPN")
+    missing.append("datasheet-backed fit scoring")
+
+    outcome = "candidates_found" if candidates else "unable_to_confirm"
+    gap = (
+        "Candidate list uses the offline reference catalog. Fit is not confirmed — "
+        "compare datasheets before any design change. Live supplier offers are not connected."
+        if candidates
+        else (
+            "Unable to confirm replacements for this part. "
+            + "Missing: "
+            + "; ".join(missing)
+            + "."
+        )
+    )
+
+    return _json_safe(
+        {
+            "ok": True,
+            "status": STATUS_COMPLETED,
+            "mode": "synthetic-preview",
+            "outcome": outcome,
+            "requested_mpn": requested,
+            "manufacturer": manufacturer or original.get("manufacturer") or "",
+            "original": {
+                "mpn": original.get("manufacturer_part_number") or requested,
+                "manufacturer": original.get("manufacturer") or "",
+                "description": original.get("description") or "",
+                "lifecycle_status": original.get("lifecycle_status") or "",
+                "source": original.get("source") or "synthetic-preview",
+                "lookup": original_lookup,
+            },
+            "bom_context": bom_context,
+            "candidates": candidates,
+            "missing_evidence": missing,
+            "gap": gap,
+            "live_lookups_enabled": live_lookups_enabled(),
+        }
+    )
+
+
+def ask_cadivor_payload(
+    *,
+    workspace_id: str,
+    analysis_id: str,
+    question: str,
+    history: list[dict[str, str]] | None = None,
+) -> dict[str, Any]:
+    """Grounded Ask Cadivor against a saved analysis (local fallback without OpenAI)."""
+    from src.services.engineering_ai import EngineeringAI, EngineeringAIError
+
+    report = _require_analysis(analysis_id, workspace_id=workspace_id)
+    if not report:
+        return {
+            "ok": False,
+            "status": STATUS_FAILED,
+            "detail": "Saved analysis required. Open a report, then ask a question.",
+        }
+    clean_q = str(question or "").strip()
+    if not clean_q:
+        return {
+            "ok": False,
+            "status": STATUS_FAILED,
+            "detail": "Enter an engineering question.",
+        }
+
+    components: list[dict[str, Any]] = []
+    for part in report.get("parts") or []:
+        components.append(
+            {
+                "mpn": part.get("MPN"),
+                "manufacturer": part.get("Manufacturer"),
+                "description": part.get("Description"),
+                "lifecycle_status": part.get("Lifecycle"),
+                "risk_level": part.get("Risk Level"),
+                "risk_score": part.get("Risk Score") or part.get("risk_score"),
+                "risk_reasons": part.get("Risk Reasons"),
+                "stock": part.get("Stock"),
+                "quantity": part.get("Quantity") or part.get("quantity"),
+            }
+        )
+    context = {
+        "analysis": {
+            "id": report.get("id"),
+            "filename": report.get("filename"),
+            "project_name": report.get("project_name"),
+            "bom_name": report.get("bom_name"),
+            "revision": report.get("revision"),
+        },
+        "summary": {
+            "health_score": report.get("health_score"),
+            "health_status": report.get("health_status"),
+            "high_risk_parts": report.get("high_risk_count"),
+            "medium_risk_parts": report.get("medium_risk_count"),
+            "low_risk_parts": report.get("low_risk_count"),
+            "total_parts": report.get("total_parts"),
+        },
+        "components": components,
+        "monitoring": [],
+        "alternatives": [],
+        "decisions": [],
+    }
+    try:
+        response = EngineeringAI().ask(
+            question=clean_q,
+            context=context,
+            history=history or [],
+        )
+    except EngineeringAIError as exc:
+        return {
+            "ok": False,
+            "status": STATUS_FAILED,
+            "detail": str(exc),
+            "code": getattr(exc, "code", "error"),
+        }
+
+    return _json_safe(
+        {
+            "ok": True,
+            "status": STATUS_COMPLETED,
+            "analysis_id": report["id"],
+            "question": clean_q,
+            "answer": response.answer,
+            "provider": response.provider,
+            "model": response.model,
+            "grounded": bool(response.grounded),
+            "gap": (
+                None
+                if response.provider != "cadivor-grounded"
+                else "Answer is grounded in this saved analysis. Cloud AI assist is optional and was not required."
+            ),
         }
     )
 
@@ -344,7 +588,7 @@ def procurement_payload(*, workspace_id: str, analysis_id: str | None = None) ->
         return {
             "ok": True,
             "mode": "synthetic-preview",
-            "gap": "No analysis yet. Live distributor coverage is disabled for this migration build.",
+            "gap": "No analysis yet. Live distributor coverage is not connected.",
             "parts": [],
         }
     rows = []
@@ -420,7 +664,7 @@ def design_impact_payload(
         {
             "ok": True,
             "mode": "synthetic-preview",
-            "gap": "Impact is computed from saved analyses in this migration workspace. The existing Streamlit saved-BOM catalog has not been imported.",
+            "gap": "Impact is computed from saved analyses in this workspace only.",
             "intelligence": intelligence,
         }
     )
@@ -503,7 +747,7 @@ def portfolio_payload(*, workspace_id: str) -> dict[str, Any]:
         return {
             "ok": True,
             "mode": "synthetic-preview",
-            "gap": "No saved analyses yet. Analyze a BOM first. The existing Streamlit portfolio history has not been imported.",
+            "gap": "No saved analyses yet. Analyze a BOM first.",
             "intelligence": {},
             "reports": [],
         }
@@ -512,7 +756,7 @@ def portfolio_payload(*, workspace_id: str) -> dict[str, Any]:
         {
             "ok": True,
             "mode": "synthetic-preview",
-            "gap": "Portfolio is calculated from the authenticated workspace's saved migration analyses. It does not mirror the existing Streamlit portfolio history.",
+            "gap": "Portfolio is calculated from this workspace's saved analyses only.",
             "reports": list_reports(workspace_id=workspace_id),
             "intelligence": intelligence,
         }

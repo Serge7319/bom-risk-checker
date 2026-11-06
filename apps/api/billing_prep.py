@@ -65,10 +65,10 @@ def billing_status() -> dict[str, Any]:
         "webhook_configured": _has_secret("STRIPE_WEBHOOK_SECRET"),
         "plans": plans,
         "gap": (
-            "Live Stripe keys are blocked on the migration API."
+            "Live Stripe keys are blocked in this environment."
             if mode == "live-blocked"
-            else "Stripe Checkout is prepared for test-mode wiring only. "
-            "No sessions or charges are created by the migration API."
+            else "Billing checkout is prepared for test-mode wiring only. "
+            "No checkout sessions or charges are created yet."
         ),
     }
 

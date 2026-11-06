@@ -296,3 +296,48 @@ export async function fetchDetailedRisk(token: string, analysisId?: string) {
   const q = analysisId ? `?analysis_id=${encodeURIComponent(analysisId)}` : "";
   return apiJson<Record<string, unknown>>(`/tools/detailed-risk${q}`, { token });
 }
+
+export async function findReplacement(
+  token: string,
+  body: { mpn: string; manufacturer?: string; analysis_id?: string | null },
+) {
+  return apiJson<Record<string, unknown>>("/tools/find-replacement", {
+    method: "POST",
+    token,
+    body: JSON.stringify(body),
+  });
+}
+
+export async function askCadivor(
+  token: string,
+  body: {
+    analysis_id: string;
+    question: string;
+    history?: Array<{ role: string; content: string }>;
+  },
+) {
+  return apiJson<Record<string, unknown>>("/tools/ask-cadivor", {
+    method: "POST",
+    token,
+    body: JSON.stringify(body),
+  });
+}
+
+export async function fetchPlanUsage(token: string) {
+  return apiJson<Record<string, unknown>>("/plan/usage", { token });
+}
+
+export async function fetchBillingStatus(token: string) {
+  return apiJson<Record<string, unknown>>("/billing/status", { token });
+}
+
+export async function fetchConnectors(token: string) {
+  return apiJson<Record<string, unknown>>("/integrations/connectors", { token });
+}
+
+export async function fetchCompliancePack(token: string, packType: string) {
+  return apiJson<Record<string, unknown>>(
+    `/compliance/${encodeURIComponent(packType)}`,
+    { token },
+  );
+}

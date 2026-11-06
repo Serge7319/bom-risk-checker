@@ -1,0 +1,54 @@
+
+> web@0.1.0 build
+> next build
+
+   ▲ Next.js 15.5.9
+   - Environments: .env.local
+
+   Creating an optimized production build ...
+ ✓ Compiled successfully in 3.0s
+   Linting and checking validity of types ...
+
+./src/app/layout.tsx
+23:9  Warning: Custom fonts not added in `pages/_document.js` will only load for a single page. This is discouraged. See: https://nextjs.org/docs/messages/no-page-custom-font  @next/next/no-page-custom-font
+
+info  - Need to disable some ESLint rules? Learn more here: https://nextjs.org/docs/app/api-reference/config/eslint#disabling-rules
+   Collecting page data ...
+   Generating static pages (0/22) ...
+   Generating static pages (5/22) 
+   Generating static pages (10/22) 
+   Generating static pages (16/22) 
+ ✓ Generating static pages (22/22)
+   Finalizing page optimization ...
+   Collecting build traces ...
+
+Route (app)                                 Size  First Load JS
+┌ ○ /                                    3.03 kB         114 kB
+├ ○ /_not-found                            991 B         103 kB
+├ ○ /bom-analyzer                        1.81 kB         113 kB
+├ ○ /compare-parts                       1.88 kB         113 kB
+├ ○ /cost-optimization                   1.85 kB         113 kB
+├ ○ /datasheet-qa                        1.42 kB         113 kB
+├ ○ /design-impact                       1.72 kB         113 kB
+├ ○ /detailed-risk-report                1.43 kB         113 kB
+├ ○ /engineering-decisions               1.85 kB         113 kB
+├ ○ /engineering-intelligence            1.49 kB         113 kB
+├ ○ /find-replacement                     2.1 kB         114 kB
+├ ○ /login                               2.53 kB         108 kB
+├ ○ /monitoring                           1.6 kB         113 kB
+├ ○ /portfolio-intelligence              1.37 kB         113 kB
+├ ○ /procurement                         2.27 kB         114 kB
+├ ○ /reports                             1.36 kB         113 kB
+├ ƒ /reports/[id]                        3.46 kB         115 kB
+├ ○ /settings                            1.72 kB         113 kB
+├ ○ /signup                              2.71 kB         108 kB
+└ ○ /supply-risk                          1.7 kB         113 kB
++ First Load JS shared by all             102 kB
+  ├ chunks/255-cb395327542b56ef.js       45.9 kB
+  ├ chunks/4bd1b696-c023c6e3521b1417.js  54.2 kB
+  └ other shared chunks (total)          1.93 kB
+
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
