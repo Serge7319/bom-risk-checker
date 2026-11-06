@@ -118,3 +118,77 @@ def test_ask_cadivor_on_saved_report():
     assert body["ok"] is True
     assert body["answer"]
     assert body["grounded"] is True
+
+def test_compare_lm358_vs_ne555_identity_and_unable_to_confirm():
+    client = TestClient(app)
+    headers = _auth_headers(client)
+    res = client.post(
+        "/tools/compare-parts",
+        headers=headers,
+        json={"part_a": "LM358DR", "part_b": "NE555P"},
+    )
+    assert res.status_code == 200
+    body = res.json()
+    assert body["family_mismatch"] is True
+    assert body["finding"] == FINDING_MATERIAL
+    cards = body.get("part_cards") or {}
+    a = cards.get("a") or {}
+    b = cards.get("b") or {}
+    assert a.get("manufacturer") == "Texas Instruments"
+    assert b.get("manufacturer") == "Texas Instruments"
+    assert a.get("family") == "Operational amplifier"
+    assert b.get("family") == "Timer IC"
+    assert "oscillator" not in str(b.get("family") or "").lower()
+    assert "crystal" not in str(b.get("family") or "").lower()
+    for row in body.get("rows") or []:
+        assessment = str(row.get("Assessment") or "")
+        assert "needs data" not in assessment.lower()
+        if str(row.get("Attribute") or "").lower() in {"package", "pin count", "pins"}:
+            assert assessment == "Unable to confirm"
+
+
+def test_ask_cadivor_respects_low_risk_report_fields(tmp_path, monkeypatch):
+    from apps.api.synthetic_analyze import get_report
+    from apps.api.workspace_store import get_store
+
+    client = TestClient(app)
+    headers = _auth_headers(client)
+    analyze = client.post(
+        "/boms/analyze",
+        headers=headers,
+        files={"file": ("synthetic_bom_25parts.csv", FIXTURE.read_bytes(), "text/csv")},
+        data={"project_name": "Parity", "bom_name": "LowRisk"},
+    )
+    assert analyze.status_code == 200
+    payload = analyze.json()
+    analysis_id = payload["analysis_id"]
+    workspace_id = payload["workspace_id"]
+    report = get_report(analysis_id, workspace_id=workspace_id)
+    assert report is not None
+    for part in report.get("parts") or []:
+        part["Risk Level"] = "Low"
+        part["risk_level"] = "Low"
+        part["Risk Score"] = 12
+        part["risk_score"] = 12
+        part.pop("supplier_count", None)
+        part.pop("Supplier Count", None)
+        part.pop("lead_time_weeks", None)
+    report["high_risk_count"] = 0
+    report["medium_risk_count"] = 0
+    report["low_risk_count"] = len(report.get("parts") or [])
+    get_store().upsert_analysis_report(report, workspace_id=workspace_id)
+    res = client.post(
+        "/tools/ask-cadivor",
+        headers=headers,
+        json={
+            "analysis_id": analysis_id,
+            "question": "What should I review first in this BOM?",
+        },
+    )
+    assert res.status_code == 200
+    body = res.json()
+    answer = str(body.get("answer") or "").lower()
+    assert body["ok"] is True
+    assert "0 priority" in answer
+    assert "only 0 recorded source" not in answer
+    assert "100/100" not in answer

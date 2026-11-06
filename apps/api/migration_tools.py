@@ -77,6 +77,55 @@ def _require_analysis(
     return get_report(reports[0]["id"], workspace_id=workspace_id)
 
 
+def _customer_assessment(value: Any) -> str:
+    """Map internal needs-data labels to customer-facing Unable to confirm."""
+    text = str(value or "").strip()
+    lower = text.lower()
+    if not text:
+        return "Unable to confirm"
+    if "needs data" in lower or "needs validation" in lower:
+        return "Unable to confirm"
+    return text
+
+
+def _customer_compare_value(value: Any) -> Any:
+    text = str(value or "").strip()
+    if not text or text.lower() in {"none", "null", "n/a", "—", "-"}:
+        return "Unable to confirm"
+    lower = text.lower()
+    if "not stated" in lower or "not retrieved" in lower or "not available" in lower:
+        return "Unable to confirm"
+    return value
+
+
+def _optional_number(value: Any) -> float | int | None:
+    if value is None or value == "":
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if number != number or number in (float("inf"), float("-inf")):
+        return None
+    if abs(number - round(number)) < 1e-9:
+        return int(round(number))
+    return number
+
+
+def _risk_score_from_report_part(part: dict[str, Any]) -> float | int | None:
+    known = _optional_number(part.get("Risk Score") if part.get("Risk Score") is not None else part.get("risk_score"))
+    if known is not None:
+        return known
+    level = str(part.get("Risk Level") or part.get("risk_level") or "").strip().lower()
+    if level == "high":
+        return 75
+    if level == "medium":
+        return 45
+    if level in {"low", "healthy"}:
+        return 15
+    return None
+
+
 def monitoring_payload(
     *, workspace_id: str, analysis_id: str | None = None
 ) -> dict[str, Any]:
@@ -274,21 +323,40 @@ def compare_parts_payload(
             rows.append(
                 {
                     "Attribute": row.get("Attribute", ""),
-                    "Part A": row.get("Part A", row.get("Original", "")),
-                    "Part B": row.get(
-                        "Part B",
-                        row.get("Candidate", row.get("Selected Alternative", "")),
+                    "Part A": _customer_compare_value(row.get("Part A", row.get("Original", ""))),
+                    "Part B": _customer_compare_value(
+                        row.get(
+                            "Part B",
+                            row.get("Candidate", row.get("Selected Alternative", "")),
+                        )
                     ),
-                    "Assessment": row.get("Assessment")
-                    or row.get("Status")
-                    or "",
+                    "Assessment": _customer_assessment(
+                        row.get("Assessment") or row.get("Status") or ""
+                    ),
                     "Evidence": row.get("Evidence") or row.get("Note") or "",
                 }
             )
     if not rows:
-        rows = user_facing_compare_rows(raw_rows)
+        rows = [
+            {
+                **item,
+                "Part A": _customer_compare_value(item.get("Part A")),
+                "Part B": _customer_compare_value(item.get("Part B")),
+                "Assessment": _customer_assessment(item.get("Assessment")),
+            }
+            for item in user_facing_compare_rows(raw_rows)
+        ]
     if not rows and isinstance(comparison.get("user_facing_rows"), list):
-        rows = comparison["user_facing_rows"]
+        rows = [
+            {
+                **item,
+                "Part A": _customer_compare_value(item.get("Part A")),
+                "Part B": _customer_compare_value(item.get("Part B")),
+                "Assessment": _customer_assessment(item.get("Assessment")),
+            }
+            for item in comparison["user_facing_rows"]
+            if isinstance(item, dict)
+        ]
 
     finding = (
         comparison.get("overall_finding")
@@ -479,16 +547,39 @@ def ask_cadivor_payload(
 
     components: list[dict[str, Any]] = []
     for part in report.get("parts") or []:
+        if not isinstance(part, dict):
+            continue
+        # Keep missing supplier/stock/lead fields as None so EngineeringAI does
+        # not invent "0 recorded source" or equal 100/100 priorities.
         components.append(
             {
-                "mpn": part.get("MPN"),
-                "manufacturer": part.get("Manufacturer"),
-                "description": part.get("Description"),
-                "lifecycle_status": part.get("Lifecycle"),
-                "risk_level": part.get("Risk Level"),
-                "risk_score": part.get("Risk Score") or part.get("risk_score"),
-                "risk_reasons": part.get("Risk Reasons"),
-                "stock": part.get("Stock"),
+                "mpn": part.get("MPN") or part.get("mpn"),
+                "part_number": part.get("MPN") or part.get("mpn"),
+                "manufacturer": part.get("Manufacturer") or part.get("manufacturer"),
+                "description": part.get("Description") or part.get("description"),
+                "lifecycle_status": part.get("Lifecycle") or part.get("lifecycle_status"),
+                "lifecycle": part.get("Lifecycle") or part.get("lifecycle_status"),
+                "risk_level": part.get("Risk Level") or part.get("risk_level"),
+                "risk_score": _risk_score_from_report_part(part),
+                "risk_reasons": part.get("Risk Reasons") or part.get("risk_reasons"),
+                "supplier_count": _optional_number(
+                    part.get("supplier_count")
+                    if part.get("supplier_count") is not None
+                    else part.get("Supplier Count")
+                ),
+                "stock_available": _optional_number(
+                    part.get("stock_available")
+                    if part.get("stock_available") is not None
+                    else part.get("Stock")
+                    if part.get("Stock") is not None
+                    else part.get("stock")
+                ),
+                "stock": part.get("Stock") if part.get("Stock") is not None else part.get("stock"),
+                "lead_time_weeks": _optional_number(
+                    part.get("lead_time_weeks")
+                    if part.get("lead_time_weeks") is not None
+                    else part.get("Lead Time Weeks")
+                ),
                 "quantity": part.get("Quantity") or part.get("quantity"),
             }
         )
@@ -503,10 +594,12 @@ def ask_cadivor_payload(
         "summary": {
             "health_score": report.get("health_score"),
             "health_status": report.get("health_status"),
-            "high_risk_parts": report.get("high_risk_count"),
-            "medium_risk_parts": report.get("medium_risk_count"),
-            "low_risk_parts": report.get("low_risk_count"),
-            "total_parts": report.get("total_parts"),
+            "high_risk_parts": report.get("high_risk_count") or 0,
+            "medium_risk_parts": report.get("medium_risk_count") or 0,
+            "low_risk_parts": report.get("low_risk_count") or 0,
+            "total_parts": report.get("total_parts") or len(components),
+            "priority_risk_parts": int(report.get("high_risk_count") or 0)
+            + int(report.get("medium_risk_count") or 0),
         },
         "components": components,
         "monitoring": [],

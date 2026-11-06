@@ -1,0 +1,101 @@
+{
+  "ok": true,
+  "status": "completed",
+  "mode": "synthetic-preview",
+  "part_a": "LM358DR",
+  "part_b": "NE555P",
+  "source_a": "synthetic-preview-analysis",
+  "source_b": "synthetic-preview-analysis",
+  "gap": "Component families differ based on offline catalog attributes. This is an evidence-backed incompatibility signal, not a qualified drop-in approval. Live datasheets were not fetched.",
+  "finding": "Material difference",
+  "family": "General",
+  "family_mismatch": true,
+  "rows": [
+    {
+      "Attribute": "Component family",
+      "Part A": "Operational amplifier",
+      "Part B": "Timer IC",
+      "Assessment": "Material difference",
+      "Evidence": "Part A and Part B resolve to different component families; family-specific electrical attributes are not compared as equivalents"
+    },
+    {
+      "Attribute": "Package",
+      "Part A": "Unable to confirm",
+      "Part B": "Unable to confirm",
+      "Assessment": "Unable to confirm",
+      "Evidence": "One or both values were not available from the retrieved evidence"
+    },
+    {
+      "Attribute": "Pin count",
+      "Part A": "Unable to confirm",
+      "Part B": "Unable to confirm",
+      "Assessment": "Unable to confirm",
+      "Evidence": "One or both values were not available from the retrieved evidence"
+    },
+    {
+      "Attribute": "Mounting",
+      "Part A": "Unable to confirm",
+      "Part B": "Unable to confirm",
+      "Assessment": "Unable to confirm",
+      "Evidence": "One or both values were not available from the retrieved evidence"
+    },
+    {
+      "Attribute": "Supply voltage",
+      "Part A": "Unable to confirm",
+      "Part B": "Unable to confirm",
+      "Assessment": "Unable to confirm",
+      "Evidence": "One or both values were not available from the retrieved evidence"
+    },
+    {
+      "Attribute": "Temperature range",
+      "Part A": "Unable to confirm",
+      "Part B": "Unable to confirm",
+      "Assessment": "Unable to confirm",
+      "Evidence": "One or both values were not available from the retrieved evidence"
+    },
+    {
+      "Attribute": "Lifecycle",
+      "Part A": "Active",
+      "Part B": "Active",
+      "Assessment": "Compatible on available evidence",
+      "Evidence": "The retrieved values match exactly"
+    }
+  ],
+  "part_cards": {
+    "a": {
+      "mpn": "LM358DR",
+      "manufacturer": "Texas Instruments",
+      "description": "Op Amp",
+      "family": "Operational amplifier",
+      "family_display_name": "Operational amplifier",
+      "image_url": "",
+      "package": "",
+      "lifecycle_status": "Active",
+      "datasheet_url": "",
+      "supplier_url": "",
+      "found": true
+    },
+    "b": {
+      "mpn": "NE555P",
+      "manufacturer": "Texas Instruments",
+      "description": "Timer",
+      "family": "Timer IC",
+      "family_display_name": "Timer IC",
+      "image_url": "",
+      "package": "",
+      "lifecycle_status": "Active",
+      "datasheet_url": "",
+      "supplier_url": "",
+      "found": true
+    }
+  },
+  "comparison": {
+    "finding": "Material difference",
+    "counts": {
+      "compatible": 1,
+      "material_difference": 1,
+      "needs_data": 5
+    },
+    "family_mismatch": true
+  }
+}

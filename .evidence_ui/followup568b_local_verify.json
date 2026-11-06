@@ -1,0 +1,19 @@
+{
+  "analyze_ok": null,
+  "analysis_id": "cffdac10-30d7-4b0d-95f3-1b57b40b896b",
+  "home_projects": 1,
+  "gap": "This local preview uses temporary file storage and does not survive service restarts. Deployed workspaces use durable storage. Monitoring email, billing checkout, and design-tool connectors are not connected yet.",
+  "gap_clean": true,
+  "compare_finding": "Material difference",
+  "family_a": "Operational amplifier",
+  "family_b": "Timer IC",
+  "assessments": [
+    "Compatible on available evidence",
+    "Material difference",
+    "Unable to confirm"
+  ],
+  "ask_ok": true,
+  "ask_has_0_recorded": false,
+  "ask_has_100": true,
+  "ask_snippet": "### intent\ncomponent risk\n\n### direct answer\n**first engineering review priority.** review **epf10k20rc2404n** first because its leading concern is **lifecycle**: lifecycle status is nrnd.\n\n### executive summary\nreview **epf10k20rc2404n** first because its leading concern is **li"
+}
