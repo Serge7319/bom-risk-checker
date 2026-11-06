@@ -22,7 +22,7 @@ export default function BomAnalyzerPage() {
   const router = useRouter();
   const session = useRequireSession();
   const [file, setFile] = useState<File | null>(null);
-  const [projectName, setProjectName] = useState("Demo Product Line");
+  const [projectName, setProjectName] = useState("");
   const [bomName, setBomName] = useState("");
   const [revision, setRevision] = useState("A");
   const [busy, setBusy] = useState(false);
@@ -40,7 +40,7 @@ export default function BomAnalyzerPage() {
         bomName: bomName.trim() || file.name.replace(/\.(csv|xlsx)$/i, ""),
         revision: revision.trim() || "A",
       });
-      rememberAnalysis({ ...result, filename: file.name });
+      rememberAnalysis({ ...result, filename: file.name }, session);
       setSummary(result);
       router.push(`/reports/${result.analysis_id}`);
     } catch (err) {
@@ -120,9 +120,8 @@ export default function BomAnalyzerPage() {
           {file ? file.name : "Upload a BOM to begin"}
         </h3>
         <p className="cv-card-subtitle">
-          Saves project, BOM, revision, and analysis to this workspace. Parent MPN
-          rows roll risk up to assemblies. Supplier connections, billing, and
-          automated alert email are not connected.
+          Each run saves a report you can reopen from Saved analyses. Parent MPN
+          and Line Type columns enable assembly risk roll-up.
         </p>
 
         <div
@@ -135,11 +134,11 @@ export default function BomAnalyzerPage() {
           }}
         >
           <label className="cv-field">
-            <span>Project</span>
+          <span>Project name</span>
             <input
               value={projectName}
               onChange={(e) => setProjectName(e.target.value)}
-              placeholder="Project name"
+              placeholder="e.g. Motor controller"
             />
           </label>
           <label className="cv-field">
@@ -147,7 +146,7 @@ export default function BomAnalyzerPage() {
             <input
               value={bomName}
               onChange={(e) => setBomName(e.target.value)}
-              placeholder="Defaults to filename"
+              placeholder="Optional · defaults to filename"
             />
           </label>
           <label className="cv-field">
@@ -155,7 +154,7 @@ export default function BomAnalyzerPage() {
             <input
               value={revision}
               onChange={(e) => setRevision(e.target.value)}
-              placeholder="A"
+              placeholder="e.g. A"
             />
           </label>
         </div>
@@ -163,8 +162,8 @@ export default function BomAnalyzerPage() {
         <div className="cv-upload-zone cv-bom-upload-zone">
           <h3>New analysis</h3>
           <p>
-            Flat BOMs still work. For roll-up, include Parent MPN and Line Type
-            (assembly|part) columns.
+            Upload a CSV or XLSX BOM. Add Parent MPN and Line Type columns when
+            you want to roll component risk up to assemblies.
           </p>
           <input
             type="file"
@@ -187,10 +186,11 @@ export default function BomAnalyzerPage() {
             >
               {busy ? "Analyzing…" : "Analyze BOM"}
             </button>
-            <PrimaryLink href="/">Back to Home</PrimaryLink>
+            <PrimaryLink href="/reports">Saved analyses</PrimaryLink>
           </div>
         </div>
       </section>
     </Shell>
   );
 }
+

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { EmptyState } from "@/components/EmptyState";
 import { Shell } from "@/components/Shell";
 import { GapBanner, LoadingCard } from "@/components/GapBanner";
 import { PageHeader, PrimaryLink } from "@/components/PageHeader";
@@ -19,7 +20,7 @@ export default function DesignImpactPage() {
     if (!session) return;
     setBusy(true);
     setError("");
-    const last = readLastAnalysis();
+    const last = readLastAnalysis(session);
     fetchDesignImpact(session.access_token, {
       analysisId: last?.analysis_id,
       mpn: selected,
@@ -48,7 +49,7 @@ export default function DesignImpactPage() {
 
   return (
     <Shell session={session}>
-      <PageHeader meta={PAGE_META.design} actions={<PrimaryLink href="/bom-analyzer">Analyze BOM</PrimaryLink>} />
+      <PageHeader meta={PAGE_META.design} actions={<PrimaryLink href="/compare-parts">Compare parts</PrimaryLink>} />
       {typeof data?.gap === "string" ? <GapBanner>{String(data.gap)}</GapBanner> : null}
       <div className="cv-card pad" style={{ marginBottom: 14 }}>
         <div className="cv-form-grid">
@@ -64,9 +65,9 @@ export default function DesignImpactPage() {
         </div>
       </div>
       {busy ? <LoadingCard label="Building design impact from saved analyses…" /> : null}
-      {error ? <div className="cv-error">{error}</div> : null}
+      {error ? <div className="cv-error" role="alert">Design impact could not load. {error}</div> : null}
       {!busy && data ? (
-        <div className="cv-grid-2">
+        catalog.length ? <div className="cv-grid-2">
           <section className="cv-card pad">
             <h3 className="cv-card-title">Component catalog</h3>
             <p className="cv-card-subtitle">{Array.isArray(catalog) ? catalog.length : 0} parts from saved analyses</p>
@@ -100,8 +101,9 @@ export default function DesignImpactPage() {
             <h3 className="cv-card-title" style={{ marginTop: 16 }}>Affected context</h3>
             <p className="cv-small-note">{Array.isArray(affected) ? `${affected.length} related rows` : "See intelligence payload for project links."}</p>
           </section>
-        </div>
+        </div> : <EmptyState icon="impact" title="No saved BOM components to trace" body="Design impact uses saved BOM analyses to find affected projects and parts. Analyze a BOM to start a trace." action={<PrimaryLink href="/bom-analyzer">Analyze a BOM</PrimaryLink>} />
       ) : null}
     </Shell>
   );
 }
+

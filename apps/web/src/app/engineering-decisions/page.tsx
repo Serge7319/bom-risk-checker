@@ -2,8 +2,10 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { EmptyState } from "@/components/EmptyState";
 import { Shell } from "@/components/Shell";
 import { LoadingCard } from "@/components/GapBanner";
+import { KpiCard } from "@/components/KpiCard";
 import { PageHeader, PrimaryLink, SecondaryLink } from "@/components/PageHeader";
 import { listReports, type AnalyzeSummary } from "@/lib/api";
 import { PAGE_META } from "@/lib/routes";
@@ -64,32 +66,15 @@ export default function EngineeringDecisionsPage() {
       </div>
 
       {busy ? <LoadingCard label="Loading the latest saved analysis…" /> : null}
-      {error ? <div className="cv-error">{error}</div> : null}
+      {error ? <div className="cv-error" role="alert">The decision queue could not load. {error}</div> : null}
 
-      <div className="cv-kpis">
-        <div className="cv-kpi tone-amber">
-          <span>High priority</span>
-          <strong>{last ? last.high_risk_count : "—"}</strong>
-          <em>{last ? "From latest saved analysis" : "No analysis yet"}</em>
+      {last ? (
+        <div className="cv-kpis">
+          <KpiCard icon="risk" tone="amber" label="High priority" value={last.high_risk_count} detail="Engineering review recommended" />
+          <KpiCard icon="clock" tone="blue" label="Medium priority" value={last.medium_risk_count} detail="Confirm the evidence is current" />
+          <KpiCard icon="check" label="Low priority" value={last.low_risk_count} detail="Lower risk signals in this BOM" />
         </div>
-        <div className="cv-kpi tone-blue">
-          <span>Medium</span>
-          <strong>{last ? last.medium_risk_count : "—"}</strong>
-          <em>{last ? "Review recommended" : "Upload a BOM first"}</em>
-        </div>
-        <div className="cv-kpi">
-          <span>Low</span>
-          <strong>{last ? last.low_risk_count : "—"}</strong>
-          <em>{last ? "Within latest BOM" : "Awaiting data"}</em>
-        </div>
-        <div className="cv-kpi">
-          <span>Health</span>
-          <strong>
-            {last?.health_score == null ? "—" : `${last.health_score}/100`}
-          </strong>
-          <em>{last?.health_status || "—"}</em>
-        </div>
-      </div>
+      ) : null}
 
       {!busy && !error && last?.analysis_id ? (
         <section className="cv-card pad">
@@ -168,12 +153,14 @@ export default function EngineeringDecisionsPage() {
           </div>
         </section>
       ) : !busy && !error ? (
-        <section className="cv-empty">
-          No decision queue yet.{" "}
-          <Link href="/bom-analyzer">Analyze a BOM</Link> to populate priorities
-          from the saved analysis.
-        </section>
+        <EmptyState
+          icon="decisions"
+          title="No decision signals yet"
+          body="Analyze a BOM to see its highest priority component signals and open the supporting report."
+          action={<PrimaryLink href="/bom-analyzer">Start a BOM analysis</PrimaryLink>}
+        />
       ) : null}
     </Shell>
   );
 }
+

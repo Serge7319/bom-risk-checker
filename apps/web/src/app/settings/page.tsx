@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { EmptyState } from "@/components/EmptyState";
 import { Shell } from "@/components/Shell";
 import { GapBanner, LoadingCard } from "@/components/GapBanner";
 import { PageHeader, PrimaryLink, SecondaryLink } from "@/components/PageHeader";
@@ -12,6 +13,56 @@ import {
 } from "@/lib/api";
 import { PAGE_META } from "@/lib/routes";
 import { useRequireSession } from "@/lib/session";
+import { workspaceDisplayName } from "@/lib/display";
+
+type Fact = { label: string; value: string };
+
+function labelFor(key: string): string {
+  return key
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function factsFrom(
+  value: Record<string, unknown> | null,
+  prefix = "",
+  depth = 0,
+): Fact[] {
+  if (!value || depth > 2) return [];
+  return Object.entries(value).flatMap(([key, item]) => {
+    if (/(^id$|_id$|token|secret|password|raw)/i.test(key)) return [];
+    const label = prefix ? `${prefix} · ${labelFor(key)}` : labelFor(key);
+    if (item && typeof item === "object" && !Array.isArray(item)) {
+      return factsFrom(item as Record<string, unknown>, label, depth + 1);
+    }
+    let display: string;
+    if (typeof item === "boolean") display = item ? "Enabled" : "Disabled";
+    else if (item == null || item === "") display = "Not reported";
+    else if (Array.isArray(item)) {
+      display = item.length && item.every((entry) => ["string", "number", "boolean"].includes(typeof entry))
+        ? item.map(String).join(" · ")
+        : `${item.length} item${item.length === 1 ? "" : "s"}`;
+    } else display = String(item);
+    return [{ label, value: display.slice(0, 180) }];
+  }).slice(0, 12);
+}
+
+function FactsGrid({ facts }: { facts: Fact[] }) {
+  if (!facts.length) {
+    return <p className="cv-small-note">No status details were returned.</p>;
+  }
+  return (
+    <dl className="cv-fact-grid">
+      {facts.map((fact) => (
+        <div className="cv-fact" key={fact.label}>
+          <dt>{fact.label}</dt>
+          <dd>{fact.value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
 
 export default function Page() {
   const session = useRequireSession();
@@ -52,6 +103,8 @@ export default function Page() {
   const connectorRows = ((connectors?.connectors ||
     connectors?.items ||
     []) as Array<Record<string, unknown>>) || [];
+  const usageFacts = factsFrom(usage);
+  const complianceFacts = factsFrom(compliance);
 
   return (
     <Shell session={session}>
@@ -68,7 +121,7 @@ export default function Page() {
         <div className="cv-form-grid">
           <div className="cv-field">
             <label htmlFor="workspace-name">Workspace name</label>
-            <input id="workspace-name" value={session.workspace} readOnly />
+            <input id="workspace-name" value={workspaceDisplayName(session.workspace)} readOnly />
           </div>
           <div className="cv-field">
             <label htmlFor="plan">Plan</label>
@@ -82,7 +135,7 @@ export default function Page() {
       </section>
 
       {busy ? <LoadingCard label="Loading plan, billing, and connector status…" /> : null}
-      {error ? <div className="cv-error">{error}</div> : null}
+      {error ? <div className="cv-error" role="alert">Some workspace settings could not load. {error}</div> : null}
 
       {billing && typeof billing.gap === "string" ? (
         <GapBanner>{String(billing.gap)}</GapBanner>
@@ -95,9 +148,7 @@ export default function Page() {
             <p className="cv-card-subtitle">
               Limits and usage for the signed-in workspace.
             </p>
-            <pre className="cv-json-block">
-              {JSON.stringify(usage || {}, null, 2)}
-            </pre>
+            <FactsGrid facts={usageFacts} />
           </section>
 
           <section className="cv-card pad" style={{ marginBottom: 14 }}>
@@ -113,11 +164,11 @@ export default function Page() {
               </div>
               <div className="cv-record-field">
                 <dt>Checkout enabled</dt>
-                <dd>{String(Boolean(billing?.checkout_enabled))}</dd>
+                <dd>{billing?.checkout_enabled ? "Enabled" : "Disabled"}</dd>
               </div>
               <div className="cv-record-field">
                 <dt>Charges created</dt>
-                <dd>{String(Boolean(billing?.charges_created))}</dd>
+                <dd>{billing?.charges_created ? "Yes" : "No"}</dd>
               </div>
             </dl>
           </section>
@@ -160,9 +211,7 @@ export default function Page() {
                 </table>
               </div>
             ) : (
-              <p className="cv-small-note" style={{ marginTop: 8 }}>
-                No connector registry payload returned.
-              </p>
+              <EmptyState icon="settings" title="No connectors configured" body="Connector options appear here when workspace integrations are added." />
             )}
           </section>
 
@@ -172,12 +221,11 @@ export default function Page() {
               RoHS pack readiness for this workspace. Packs stay evidence-linked
               and do not claim compliance without sourced records.
             </p>
-            <pre className="cv-json-block">
-              {JSON.stringify(compliance || {}, null, 2)}
-            </pre>
+            <FactsGrid facts={complianceFacts} />
           </section>
         </>
       ) : null}
     </Shell>
   );
 }
+

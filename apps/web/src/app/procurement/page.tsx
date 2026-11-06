@@ -21,7 +21,7 @@ export default function ProcurementPage() {
 
   useEffect(() => {
     if (!session) return;
-    const last = readLastAnalysis();
+    const last = readLastAnalysis(session);
     fetchProcurement(session.access_token, last?.analysis_id)
       .then(setData)
       .catch((err) => setError(err instanceof Error ? err.message : "Failed"))
@@ -45,7 +45,7 @@ export default function ProcurementPage() {
     <Shell session={session}>
       <PageHeader
         meta={PAGE_META.procurement}
-        actions={<PrimaryLink href="/bom-analyzer">Analyze BOM</PrimaryLink>}
+        actions={<PrimaryLink href="/compare-parts">Compare alternatives</PrimaryLink>}
       />
       {typeof data?.gap === "string" ? <GapBanner>{String(data.gap)}</GapBanner> : null}
       {busy ? <LoadingCard label="Loading procurement coverage…" /> : null}
@@ -79,7 +79,6 @@ export default function ProcurementPage() {
                 style={{ width: 240 }}
               />
               <span style={{ flex: 1 }} />
-              <span className="cv-badge blue">Sourcing options</span>
             </div>
 
             {parts.length ? (
@@ -124,8 +123,8 @@ export default function ProcurementPage() {
             ) : (
               <EmptyState
                 icon="procure"
-                title="No sourcing rows for this filter"
-                body="Upload and analyze a BOM, or clear the filter, to review supplier evidence in this workspace."
+                title={filter ? "No sourcing rows match this filter" : "No sourcing rows available"}
+                body={filter ? "Try another part number, manufacturer, lifecycle, or coverage term." : "Analyze a BOM to review its available supplier coverage and source labels here."}
                 action={<PrimaryLink href="/bom-analyzer">Open BOM Analyzer</PrimaryLink>}
               />
             )}
@@ -199,3 +198,4 @@ export default function ProcurementPage() {
     </Shell>
   );
 }
+

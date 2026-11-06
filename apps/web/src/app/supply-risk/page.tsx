@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import { EmptyState } from "@/components/EmptyState";
 import { Shell } from "@/components/Shell";
 import { GapBanner, LoadingCard } from "@/components/GapBanner";
 import { PageHeader, PrimaryLink } from "@/components/PageHeader";
@@ -21,7 +22,7 @@ export default function SupplyRiskPage() {
     if (!session) return;
     setBusy(true);
     setError("");
-    const last = readLastAnalysis();
+    const last = readLastAnalysis(session);
     try {
       setData(
         await runSupplyRisk(session.access_token, {
@@ -48,17 +49,9 @@ export default function SupplyRiskPage() {
   if (!session) return null;
   const scenario = (data?.scenario || {}) as Record<string, unknown>;
   const rows = (scenario.impacted || scenario.rows || []) as Array<Record<string, unknown>>;
-  const metrics = {
-    build_quantity: scenario.build_quantity,
-    stock_reduction_percent: scenario.stock_reduction_percent,
-    project_impact: Array.isArray(scenario.project_impact)
-      ? scenario.project_impact.length
-      : scenario.project_impact,
-  } as Record<string, unknown>;
-
   return (
     <Shell session={session}>
-      <PageHeader meta={PAGE_META.supply} actions={<PrimaryLink href="/bom-analyzer">Analyze BOM</PrimaryLink>} />
+      <PageHeader meta={PAGE_META.supply} actions={<PrimaryLink href="/reports">Choose a saved analysis</PrimaryLink>} />
       {typeof data?.gap === "string" ? <GapBanner>{String(data.gap)}</GapBanner> : null}
       <form className="cv-card pad" style={{ marginBottom: 14 }} onSubmit={run}>
         <div className="cv-form-grid">
@@ -76,18 +69,18 @@ export default function SupplyRiskPage() {
         </button>
       </form>
       {busy ? <LoadingCard label="Modeling supply scenario…" /> : null}
-      {error ? <div className="cv-error">{error}</div> : null}
+      {error ? <div className="cv-error" role="alert">The supply scenario could not run. {error}</div> : null}
       {!busy && data ? (
         <>
-          <div className="cv-kpis">
-            <div className="cv-kpi tone-amber"><span>Impacted rows</span><strong>{rows.length}</strong><em>From scenario builder</em></div>
-            <div className="cv-kpi"><span>Metric fields</span><strong>{Object.keys(metrics).length}</strong><em>Summary</em></div>
-            <div className="cv-kpi tone-blue"><span>Stock cut</span><strong>{stockReduction}%</strong><em>Parameter</em></div>
-            <div className="cv-kpi"><span>Build qty</span><strong>{buildQty}</strong><em>Parameter</em></div>
-          </div>
           <section className="cv-card pad">
-            <h3 className="cv-card-title">Scenario rows</h3>
-            <div className="cv-table-wrap" style={{ marginTop: 12 }}>
+            <div className="cv-section-heading cv-section-heading--card">
+              <div>
+                <h2>Affected components</h2>
+                <p>Scenario: {String(scenario.build_quantity ?? buildQty)} units with a {String(scenario.stock_reduction_percent ?? stockReduction)}% stock reduction.</p>
+              </div>
+              <span className="cv-data-note">{rows.length} component{rows.length === 1 ? "" : "s"}</span>
+            </div>
+            {rows.length ? <div className="cv-table-wrap" style={{ marginTop: 12 }}>
               <table className="cv-table">
                 <thead>
                   <tr>
@@ -110,15 +103,11 @@ export default function SupplyRiskPage() {
                   ))}
                 </tbody>
               </table>
-            </div>
-            {!rows.length ? (
-              <p className="cv-small-note" style={{ marginTop: 10 }}>
-                No tabular rows exposed. Metric keys: {Object.keys(metrics).slice(0, 10).join(", ") || "none"}.
-              </p>
-            ) : null}
+            </div> : <EmptyState icon="risk" title="No affected components found" body="The selected BOM has no inventory rows matching this scenario. Try another stock reduction or review the saved analysis." action={<PrimaryLink href="/reports">Choose a saved analysis</PrimaryLink>} />}
           </section>
         </>
       ) : null}
     </Shell>
   );
 }
+

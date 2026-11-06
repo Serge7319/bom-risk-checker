@@ -6,8 +6,10 @@ import { useSearchParams } from "next/navigation";
 import { Shell } from "@/components/Shell";
 import { GapBanner, LoadingCard } from "@/components/GapBanner";
 import { KpiCard } from "@/components/KpiCard";
+import { EmptyState } from "@/components/EmptyState";
 import { PageHeader, PrimaryLink, SecondaryLink } from "@/components/PageHeader";
 import { compareParts } from "@/lib/api";
+import { analysisModeLabel, evidenceSourceLabel } from "@/lib/display";
 import { PAGE_META } from "@/lib/routes";
 import { readLastAnalysis, useRequireSession } from "@/lib/session";
 
@@ -34,7 +36,7 @@ function ComparePartsInner() {
     setError("");
     setResult(null);
     try {
-      const last = readLastAnalysis();
+      const last = readLastAnalysis(session);
       const data = await compareParts(
         session.access_token,
         partA,
@@ -51,7 +53,7 @@ function ComparePartsInner() {
 
   if (!session) return null;
   const rows = (result?.rows || []) as Array<Record<string, unknown>>;
-  const finding = String(result?.finding || "See rows");
+  const finding = String(result?.finding || "Review attribute evidence");
   const mismatch = Boolean(result?.family_mismatch);
 
   return (
@@ -97,7 +99,7 @@ function ComparePartsInner() {
       {busy ? (
         <LoadingCard label="Running comparison with available evidence…" />
       ) : null}
-      {error ? <div className="cv-error">{error}</div> : null}
+      {error ? <div className="cv-error" role="alert">The comparison could not complete. {error}</div> : null}
       {result ? (
         <>
           {typeof result.gap === "string" ? (
@@ -109,25 +111,19 @@ function ComparePartsInner() {
               tone={mismatch ? "amber" : "blue"}
               label="Finding"
               value={<span style={{ fontSize: 14 }}>{finding}</span>}
-              detail={String(result.mode || "")}
+              detail={analysisModeLabel(result.mode)}
             />
             <KpiCard
               icon="file"
               label="Part A source"
-              value={<span style={{ fontSize: 14 }}>{String(result.source_a)}</span>}
-              detail={String(result.part_a)}
+              value={<span style={{ fontSize: 14 }}>{evidenceSourceLabel(result.source_a, "Not reported")}</span>}
+              detail={String(result.part_a || partA)}
             />
             <KpiCard
               icon="file"
               label="Part B source"
-              value={<span style={{ fontSize: 14 }}>{String(result.source_b)}</span>}
-              detail={String(result.part_b)}
-            />
-            <KpiCard
-              icon="insight"
-              label="Rows"
-              value={rows.length}
-              detail="Attribute comparisons"
+              value={<span style={{ fontSize: 14 }}>{evidenceSourceLabel(result.source_b, "Not reported")}</span>}
+              detail={String(result.part_b || partB)}
             />
           </div>
           <section className="cv-card pad">
@@ -146,7 +142,7 @@ function ComparePartsInner() {
                 Find replacement for Part A →
               </Link>
             </div>
-            <div className="cv-table-wrap" style={{ marginTop: 12 }}>
+            {rows.length ? <div className="cv-table-wrap" style={{ marginTop: 12 }}>
               <table className="cv-table">
                 <thead>
                   <tr>
@@ -182,7 +178,7 @@ function ComparePartsInner() {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </div> : <EmptyState icon="compare" title="No comparable attributes returned" body="The available records did not include attributes to compare. Check the part numbers or review the source evidence first." />}
           </section>
         </>
       ) : null}
@@ -197,3 +193,4 @@ export default function ComparePartsPage() {
     </Suspense>
   );
 }
+

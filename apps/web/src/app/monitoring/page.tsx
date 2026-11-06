@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { Shell } from "@/components/Shell";
+import { EmptyState } from "@/components/EmptyState";
 import { GapBanner, LoadingCard } from "@/components/GapBanner";
+import { KpiCard } from "@/components/KpiCard";
 import { PageHeader, PrimaryLink } from "@/components/PageHeader";
 import { fetchMonitoring } from "@/lib/api";
 import { evidenceSourceLabel } from "@/lib/display";
@@ -17,7 +19,7 @@ export default function MonitoringPage() {
 
   useEffect(() => {
     if (!session) return;
-    const last = readLastAnalysis();
+    const last = readLastAnalysis(session);
     setBusy(true);
     fetchMonitoring(session.access_token, last?.analysis_id)
       .then(setData)
@@ -33,22 +35,21 @@ export default function MonitoringPage() {
     <Shell session={session}>
       <PageHeader
         meta={PAGE_META.monitoring}
-        actions={<PrimaryLink href="/bom-analyzer">Analyze BOM</PrimaryLink>}
+        actions={<PrimaryLink href="/reports">View saved reports</PrimaryLink>}
       />
       {typeof data?.gap === "string" ? <GapBanner>{data.gap}</GapBanner> : null}
       {busy ? <LoadingCard label="Loading monitoring signals from saved analyses…" /> : null}
-      {error ? <div className="cv-error">{error}</div> : null}
+      {error ? <div className="cv-error" role="alert">Monitoring could not load. {error}</div> : null}
       {!busy && data ? (
         <>
           <div className="cv-kpis">
-            <div className="cv-kpi tone-blue"><span>Monitored parts</span><strong>{metrics.monitored_parts ?? 0}</strong><em>From latest analysis</em></div>
-            <div className="cv-kpi tone-amber"><span>Active alerts</span><strong>{metrics.active_alerts ?? 0}</strong><em>Derived signals</em></div>
-            <div className="cv-kpi"><span>High priority</span><strong>{metrics.high_priority ?? 0}</strong><em>Needs review</em></div>
-            <div className="cv-kpi"><span>Lifecycle signals</span><strong>{metrics.lifecycle_changes ?? 0}</strong><em>NRND / change flags</em></div>
+            <KpiCard icon="monitor" tone="blue" label="Tracked components" value={metrics.monitored_parts ?? 0} detail="Parts in the selected analysis" />
+            <KpiCard icon="bell" tone="amber" label="Alerts to review" value={metrics.active_alerts ?? 0} detail="Signals derived from saved evidence" />
+            <KpiCard icon="clock" label="Lifecycle flags" value={metrics.lifecycle_changes ?? 0} detail="NRND or lifecycle change signals" />
           </div>
           <section className="cv-card pad">
-            <h3 className="cv-card-title">Alert queue</h3>
-            <p className="cv-card-subtitle">Review signals derived from saved analyses. Automated refresh and alert delivery are not connected yet.</p>
+            <h3 className="cv-card-title">Alerts and changes</h3>
+            <p className="cv-card-subtitle">Review signals derived from saved analyses. Scheduled refresh and email delivery are currently disabled.</p>
             {alerts.length ? (
               <div className="cv-table-wrap" style={{ marginTop: 12 }}>
                 <table className="cv-table">
@@ -75,7 +76,12 @@ export default function MonitoringPage() {
                 </table>
               </div>
             ) : (
-              <p className="cv-small-note" style={{ marginTop: 12 }}>No derived alerts. Analyze a BOM with NRND or elevated risk parts to populate this queue.</p>
+              <EmptyState
+                icon="monitor"
+                title={Number(metrics.monitored_parts || 0) > 0 ? "No alerts need review" : "No components are being tracked yet"}
+                body={Number(metrics.monitored_parts || 0) > 0 ? "The selected analysis has no derived lifecycle or risk alerts." : "Analyze a BOM to create a component list that can be reviewed here."}
+                action={Number(metrics.monitored_parts || 0) > 0 ? undefined : <PrimaryLink href="/bom-analyzer">Open BOM Analyzer</PrimaryLink>}
+              />
             )}
           </section>
         </>
@@ -83,3 +89,4 @@ export default function MonitoringPage() {
     </Shell>
   );
 }
+
