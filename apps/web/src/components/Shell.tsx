@@ -5,6 +5,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Icon, NAV_ICONS } from "@/components/Icons";
 import { clearSession, logout, type Session } from "@/lib/api";
+import { workspaceDisplayName } from "@/lib/display";
 import { NAV_GROUPS } from "@/lib/routes";
 
 function crumbTitle(pathname: string): string {
@@ -77,7 +78,7 @@ export function Shell({
 
         <div className="cv-workspace-card">
           <span>Workspace</span>
-          <strong>{session.workspace}</strong>
+          <strong>{workspaceDisplayName(session.workspace)}</strong>
           <em style={{ marginTop: 6 }}>{subscriptionLabel}</em>
         </div>
 
@@ -116,17 +117,6 @@ export function Shell({
         </nav>
 
         <div className="cv-rail-bottom">
-          <div className="cv-plan-card">
-            <div className="cv-plan-top">
-              <span>Workspace data</span>
-              <span className="cv-plan-chip">This workspace</span>
-            </div>
-            <div className="cv-plan-copy">
-              Supplier evidence shown here is labeled synthetic when live
-              distributors are disconnected. Billing checkout and automated alert
-              emails are not connected yet.
-            </div>
-          </div>
           <button
             type="button"
             className="cv-signout"
@@ -181,9 +171,9 @@ export function Shell({
             />
           </form>
           <div className="cv-topbar-actions">
-            <span className="cv-icon-btn" aria-hidden="true" title="Notifications (not connected)">
+            <Link href="/monitoring" className="cv-icon-btn" aria-label="Open monitoring" title="Open monitoring">
               <Icon name="bell" />
-            </span>
+            </Link>
             <div className="cv-user-chip" title={session.email}>
               <span className="cv-avatar" aria-hidden="true">
                 {initials}
@@ -198,11 +188,11 @@ export function Shell({
         <main className="cv-main">
           <div className="cv-preview-banner" role="status">
             <span className="cv-preview-dot" aria-hidden />
-            <strong>Evidence notice.</strong>
+            <strong>Data availability.</strong>
             <span>
-              Supplier pricing, lifecycle, and availability shown here use sample
-              evidence. Live supplier integrations, billing, and automated alert
-              delivery are not connected.
+              Supplier prices and availability may be sample estimates; check each
+              source label before acting. Checkout and scheduled alert emails are
+              currently disabled.
             </span>
           </div>
           {children}
@@ -211,3 +201,4 @@ export function Shell({
     </div>
   );
 }
+

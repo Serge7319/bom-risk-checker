@@ -42,7 +42,7 @@ export default function ReportPage() {
           low_risk_count: data.low_risk_count,
           mode: data.mode,
           filename: data.filename,
-        });
+        }, session);
       })
       .catch((err) =>
         setError(err instanceof Error ? err.message : "Failed to load report"),
@@ -73,7 +73,11 @@ export default function ReportPage() {
         }
       />
 
-      {error ? <div className="cv-error">{error}</div> : null}
+      {error ? (
+        <div className="cv-error" role="alert">
+          This saved report could not be opened. {error} <Link href="/reports">Return to saved reports</Link>
+        </div>
+      ) : null}
 
       {report ? (
         <>
@@ -121,16 +125,6 @@ export default function ReportPage() {
               value={report.low_risk_count}
               detail="Within BOM"
             />
-            <KpiCard
-              icon="clock"
-              label="Created"
-              value={
-                report.created_at
-                  ? new Date(report.created_at).toLocaleString()
-                  : "—"
-              }
-              detail="Saved to this workspace"
-            />
           </div>
 
           <AskCadivorPanel
@@ -172,31 +166,26 @@ export default function ReportPage() {
               </div>
               {report.hierarchy.top_level ? (
                 <div className="cv-kpis" style={{ marginBottom: 12 }}>
-                  <div className="cv-kpi tone-amber">
-                    <span>Top rolled risk</span>
-                    <strong>
-                      {String(
-                        report.hierarchy.top_level.rolled_risk_level || "—",
-                      )}
-                    </strong>
-                    <em>{String(report.hierarchy.top_level.mpn || "")}</em>
-                  </div>
-                  <div className="cv-kpi">
-                    <span>Leaf parts</span>
-                    <strong>
-                      {String(report.hierarchy.top_level.leaf_count ?? "—")}
-                    </strong>
-                    <em>Under top assembly</em>
-                  </div>
-                  <div className="cv-kpi tone-blue">
-                    <span>High leaves</span>
-                    <strong>
-                      {String(
-                        report.hierarchy.top_level.high_risk_leaves ?? 0,
-                      )}
-                    </strong>
-                    <em>Need review</em>
-                  </div>
+                  <KpiCard
+                    icon="risk"
+                    tone="amber"
+                    label="Highest assembly risk"
+                    value={String(report.hierarchy.top_level.rolled_risk_level || "Not reported")}
+                    detail={String(report.hierarchy.top_level.mpn || "Top assembly")}
+                  />
+                  <KpiCard
+                    icon="box"
+                    label="Leaf components"
+                    value={String(report.hierarchy.top_level.leaf_count ?? "Not reported")}
+                    detail="Components beneath the top assembly"
+                  />
+                  <KpiCard
+                    icon="risk"
+                    tone="blue"
+                    label="High-risk leaf components"
+                    value={String(report.hierarchy.top_level.high_risk_leaves ?? 0)}
+                    detail="Need engineering review"
+                  />
                 </div>
               ) : null}
               <div className="cv-table-wrap">
@@ -384,3 +373,4 @@ export default function ReportPage() {
     </Shell>
   );
 }
+

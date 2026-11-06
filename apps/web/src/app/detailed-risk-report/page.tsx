@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { EmptyState } from "@/components/EmptyState";
 import { Shell } from "@/components/Shell";
 import { GapBanner, LoadingCard } from "@/components/GapBanner";
+import { KpiCard } from "@/components/KpiCard";
 import { PageHeader, PrimaryLink } from "@/components/PageHeader";
 import { fetchDetailedRisk } from "@/lib/api";
 import { PAGE_META } from "@/lib/routes";
@@ -16,7 +18,7 @@ export default function DetailedRiskPage() {
 
   useEffect(() => {
     if (!session) return;
-    const last = readLastAnalysis();
+    const last = readLastAnalysis(session);
     fetchDetailedRisk(session.access_token, last?.analysis_id)
       .then(setData)
       .catch((err) => setError(err instanceof Error ? err.message : "Failed"))
@@ -35,18 +37,17 @@ export default function DetailedRiskPage() {
           title: data?.filename ? `Detailed risk · ${String(data.filename)}` : PAGE_META.risk.title,
         }}
         record
-        actions={<PrimaryLink href="/bom-analyzer">Analyze BOM</PrimaryLink>}
+        actions={<PrimaryLink href="/reports">Open saved reports</PrimaryLink>}
       />
       {typeof data?.gap === "string" ? <GapBanner>{String(data.gap)}</GapBanner> : null}
       {busy ? <LoadingCard label="Loading detailed risk rows…" /> : null}
-      {error ? <div className="cv-error">{error}</div> : null}
+      {error ? <div className="cv-error" role="alert">Risk details could not load. {error}</div> : null}
       {!busy && data ? (
-        <>
+        rows.length ? <>
           <div className="cv-kpis">
-            <div className="cv-kpi tone-blue"><span>Health</span><strong>{data.health_score == null ? "—" : String(data.health_score)}</strong><em>{String(data.health_status || "")}</em></div>
-            <div className="cv-kpi"><span>Components</span><strong>{rows.length}</strong><em>Whitelisted export schema</em></div>
-            <div className="cv-kpi tone-amber"><span>Open high risk</span><strong>{String(summary.open_high_risk_component_count ?? "—")}</strong><em>From exposure summary</em></div>
-            <div className="cv-kpi"><span>Priced rows</span><strong>{String(summary.priced_component_count ?? "—")}</strong><em>Synthetic prices when present</em></div>
+            <KpiCard icon="shield" tone="blue" label="Health score" value={data.health_score == null ? "Not scored" : `${String(data.health_score)}/100`} detail={String(data.health_status || "Overall report rating")} />
+            <KpiCard icon="box" label="Components assessed" value={rows.length} detail="Rows in this report" />
+            <KpiCard icon="risk" tone="amber" label="High-risk components" value={String(summary.open_high_risk_component_count ?? "Not reported")} detail="Review the evidence before release" />
           </div>
           <section className="cv-card pad">
             <h3 className="cv-card-title">Component risk detail</h3>
@@ -79,8 +80,9 @@ export default function DetailedRiskPage() {
               </table>
             </div>
           </section>
-        </>
+        </> : <EmptyState icon="risk" title="No component risk rows found" body="Open a saved analysis with component data to view the detailed risk breakdown." action={<PrimaryLink href="/reports">Choose a saved report</PrimaryLink>} />
       ) : null}
     </Shell>
   );
 }
+

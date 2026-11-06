@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { EmptyState } from "@/components/EmptyState";
 import { Shell } from "@/components/Shell";
 import { LoadingCard } from "@/components/GapBanner";
 import { PageHeader, PrimaryLink, SecondaryLink } from "@/components/PageHeader";
@@ -107,20 +108,16 @@ export default function EngineeringIntelligencePage() {
         </section>
       ) : null}
       {busy ? <LoadingCard label="Loading saved engineering reports…" /> : null}
-      {error ? <div className="cv-error">{error}</div> : null}
+      {error ? <div className="cv-error" role="alert">Saved engineering reports could not load. {error}</div> : null}
       {!busy && !error && !last ? (
-        <section className="cv-empty">
-          No saved analysis yet. Run <Link href="/bom-analyzer">BOM Analyzer</Link>
-          to create one, then return here or browse <Link href="/reports">Reports</Link>.
-        </section>
+        <EmptyState
+          icon="insight"
+          title="No engineering report yet"
+          body="Run a BOM analysis to create a report with component signals, risk roll-up, and evidence links."
+          action={<PrimaryLink href="/bom-analyzer">Start a BOM analysis</PrimaryLink>}
+        />
       ) : null}
-
-      <section className="cv-card pad" style={{ marginTop: 14 }}>
-        <h3 className="cv-card-title">Workspace records</h3>
-        <p className="cv-card-subtitle">
-          This view uses analyses saved in the current workspace only.
-        </p>
-      </section>
     </Shell>
   );
 }
+

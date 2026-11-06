@@ -66,7 +66,7 @@ export default function HomePage() {
 
       {!busy && data ? (
         <>
-          <section className="cv-home-hero">
+          <section className={"cv-home-hero" + (latest ? " has-latest" : "")}>
             <div>
               <div className="cv-hero-kicker">
                 <i aria-hidden />
@@ -80,9 +80,8 @@ export default function HomePage() {
                   : "Save a project BOM to populate this engineering dashboard."}
               </h2>
               <p>
-                Home brings together saved projects, rolled-up risks, and next
-                actions. Scheduled monitoring, billing, and design-tool
-                integrations are not connected yet.
+                Review saved BOMs, follow priority signals to their evidence, and
+                reopen the report whenever you need it.
               </p>
               <div className="cv-hero-actions">
                 <PrimaryLink href="/bom-analyzer">
@@ -99,12 +98,12 @@ export default function HomePage() {
                 )}
               </div>
             </div>
-            <div className="cv-hero-side">
+            {latest ? <div className="cv-hero-side">
               <div className="cv-hero-side-label">Latest analysis health</div>
               <div className="cv-readiness">
                 <div className="cv-score">
-                  {health == null ? "—" : health}
-                  <small> / 100</small>
+                  {health == null ? "Not scored" : health}
+                  {health != null ? <small> / 100</small> : null}
                 </div>
               </div>
               <div className="cv-hero-side-copy">
@@ -113,19 +112,18 @@ export default function HomePage() {
                   : "No saved analysis yet."}
               </div>
               <div className="cv-hero-source">Data: saved to this workspace</div>
-            </div>
+            </div> : null}
           </section>
 
-          <div className="cv-section-heading">
-            <div>
-              <h2>At a glance</h2>
-              <p>Counts from saved projects and analyses in this workspace.</p>
+          {hasSaved ? <>
+            <div className="cv-section-heading">
+              <div>
+                <h2>At a glance</h2>
+                <p>Counts from saved projects and analyses in this workspace.</p>
+              </div>
+              <span className="cv-data-note">Current workspace</span>
             </div>
-            <span className="cv-data-note">
-              {hasSaved ? "Current workspace" : "Empty until first save"}
-            </span>
-          </div>
-          <div className="cv-kpis">
+            <div className="cv-kpis">
             <KpiCard
               icon="portfolio"
               tone="blue"
@@ -142,17 +140,12 @@ export default function HomePage() {
             <KpiCard
               icon="risk"
               tone="amber"
-              label="Priority risks"
+              label="Priority risk items"
               value={hasSaved ? metrics.priority_items ?? 0 : "—"}
-              detail={hasSaved ? "From roll-up / high-risk" : "—"}
+              detail={hasSaved ? "High or rolled-up risk signals" : "After your first save"}
             />
-            <KpiCard
-              icon="insight"
-              label="Analyses"
-              value={hasSaved ? metrics.saved_analyses ?? 0 : "—"}
-              detail={hasSaved ? "Saved to this workspace" : "—"}
-            />
-          </div>
+            </div>
+          </> : null}
 
           <div className="cv-home-grid">
             <section className="cv-card pad">
@@ -277,8 +270,8 @@ export default function HomePage() {
                 </div>
               ) : (
                 <div className="cv-empty" style={{ border: 0, minHeight: 120, padding: 18 }}>
-                  <h3 style={{ fontSize: 14 }}>No priority risks yet</h3>
-                  <p>Save a BOM analysis to populate this ranked queue.</p>
+                  <h3 style={{ fontSize: 14 }}>{hasSaved ? "No priority risks identified" : "No analysis to review yet"}</h3>
+                  <p>{hasSaved ? "Your saved analyses did not produce high or medium priority items." : "Save a BOM analysis to populate this queue."}</p>
                 </div>
               )}
             </section>
@@ -324,3 +317,4 @@ export default function HomePage() {
     </Shell>
   );
 }
+

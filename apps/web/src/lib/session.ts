@@ -10,6 +10,11 @@ import {
 
 const LAST_ANALYSIS_KEY = "cadivor_next_last_analysis";
 
+function lastAnalysisKey(session?: Pick<Session, "user_id" | "email">): string {
+  const identity = session?.user_id || session?.email?.trim().toLowerCase();
+  return identity ? `${LAST_ANALYSIS_KEY}:${identity}` : LAST_ANALYSIS_KEY;
+}
+
 export function useRequireSession(): Session | null {
   const router = useRouter();
   const [session, setSession] = useState<Session | null>(null);
@@ -26,20 +31,25 @@ export function useRequireSession(): Session | null {
   return session;
 }
 
-export function rememberAnalysis(summary: AnalyzeSummary & { filename?: string }) {
+export function rememberAnalysis(
+  summary: AnalyzeSummary & { filename?: string },
+  session?: Pick<Session, "user_id" | "email">,
+) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(
-    LAST_ANALYSIS_KEY,
+    lastAnalysisKey(session),
     JSON.stringify({ ...summary, saved_at: new Date().toISOString() }),
   );
 }
 
-export function readLastAnalysis():
+export function readLastAnalysis(session?: Pick<Session, "user_id" | "email">):
   | (AnalyzeSummary & { filename?: string; saved_at?: string })
   | null {
   if (typeof window === "undefined") return null;
   try {
-    const raw = window.localStorage.getItem(LAST_ANALYSIS_KEY);
+    // Never reuse a previous account's report context after switching accounts.
+    // The unscoped key is read only for legacy callers without an active session.
+    const raw = window.localStorage.getItem(lastAnalysisKey(session));
     return raw
       ? (JSON.parse(raw) as AnalyzeSummary & {
           filename?: string;
@@ -50,3 +60,4 @@ export function readLastAnalysis():
     return null;
   }
 }
+
