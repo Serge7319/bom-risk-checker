@@ -14,7 +14,7 @@
 | # | Check | Evidence required | Status (2026-11-06) |
 | --- | --- | --- | --- |
 | 1 | Signup/trial lifecycle on migration API (email confirm, redirect allowlist, abuse controls, designated account) | Hosted logs + test account notes | **BLOCKED** — Supabase Confirm Email / delivery / abuse / redirect operator confirms not verified; second account `serge.subscription+cadivor-sandbox@gmail.com` identified from prior session evidence but password and inbox are **not available** in this agent environment; no verification email sent; signup gate remains closed |
-| 2 | Auth login/logout/`/auth/me` on hosted production path | Hosted account exercise + API logs | **PARTIAL** — Supabase Auth is active; token refresh fix is being prepared. Hosted second-account lifecycle still needs a signed-in browser session. |
+| 2 | Auth login/logout/`/auth/me` on hosted production path | Hosted account exercise + API logs | **PARTIAL** — Supabase Auth and browser token refresh are deployed. Hosted second-account POST/report lifecycle still needs an authenticated browser session. |
 | 3 | Tenant isolation across reports, monitoring alerts, preferences, mutations | Cross-workspace negative tests on disposable DB | **PASS (disposable DB)** — workspace B gets 404 on A's report get/delete; monitoring prefs/alerts isolated; B cannot ack A's alerts |
 | 4 | Trusted supplier evidence path (exact MPN, source URL, retrieved_at, units, live vs synthetic labels) | Mock PASS; live PASS only with migration-owned credentials | **PARTIAL** — mocked PASS including procurement evidence envelopes; live calls still disabled |
 | 5 | Monitoring durable history + mock notification sink | API tests | **PARTIAL** — Postgres-backed monitoring store used when `CADIVOR_MIGRATION_DATABASE_URL` set; mock email only; scheduler not attached |
@@ -95,7 +95,7 @@ Pytest result this pass: **29 passed** (4 cutover disposable-DB + 25 prior migra
 
 ## Remaining post-cutover work
 
-1. Deploy the browser token-refresh fix and verify sign-in followed by authenticated POST requests.
+1. Verify a fresh sign-in followed by authenticated POST requests and saved-report reload on the customer domain.
 2. Complete hosted second-account login/report persistence once a browser session for that account is available.
 3. Keep signup closed until email confirmation, delivery, redirects, abuse safeguards and leaked-password protection are verified.
 4. Complete the production backup/restore and tenant-isolation review without restoring over production data.
@@ -108,13 +108,13 @@ Pytest result this pass: **29 passed** (4 cutover disposable-DB + 25 prior migra
 4. Confirm login, report listing and a saved report load on the customer domain.
 5. Record incident notes: time, trigger, health diffs and user-visible impact.
 
-## Shared Supabase privilege hardening (2026-11-05)
+## Shared Supabase privilege hardening (2026-11-06)
 
 Migration file: `supabase/migrations/20261105_revoke_anon_security_definer_execute.sql`
 
-Disposable verification: `tests/test_supabase_security_definer_grants.py` **PASS** — preserves authenticated grants for Streamlit RPCs (`cadivor_record_user_activity`, admin RPCs, workspace invitation/role helpers); revokes anon globally on SECURITY DEFINER; strips anon+authenticated from trigger helpers `cadivor_write_audit_event` / `cadivor_audit_engineering_record`; keeps service_role-only helpers off anon/authenticated.
+Disposable verification: `tests/test_supabase_security_definer_grants.py` **PASS** — preserves authenticated grants for existing RPCs; revokes anon globally on SECURITY DEFINER; strips anon+authenticated from trigger helpers and from direct execution of `handle_new_user()`; keeps service_role-only helpers off anon/authenticated. The `auth.users` insert trigger remains attached.
 
-Live apply to the shared Cadivor Supabase project **pending** operator DB credentials or Supabase Management API token (not present in agent env). Apply before customer-domain cutover.
+Both privilege migrations are **applied to the shared Supabase project**. Read-only verification confirms `anon` and `authenticated` cannot execute `handle_new_user()`, `service_role` can execute it, and the trigger remains attached.
 
 ## Explicit non-goals for this document
 

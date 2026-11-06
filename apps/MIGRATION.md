@@ -1,14 +1,14 @@
 # Cadivor Next.js production migration status
 
-Current source branch: `fix/roadmap-prod-safety-2026-11-06`.
+Current production source: `main` at merge commit `e7f3d6a`.
 
 ## Current production state (verified 2026-11-06)
 
 - `https://app.cadivor.com` is served by the Next.js Railway web service. The active production Railway project contains the Next.js web/API services and the dedicated Postgres service; no Streamlit service is present in the two Railway projects currently visible to this account.
-- The web and API deployments are healthy. The web deployment uses merge commit `04fdaa9` and its BOM Analyzer bundle contains both approved panels: “Before you analyze” and “Recent analyses.” An already-open browser tab can retain the prior bundle; a hard refresh fetches the current deployment.
+- The web and API deployments are healthy. The web deployment uses merge commit `e7f3d6a` and its BOM Analyzer bundle contains both approved panels: “Before you analyze” and “Recent analyses.” An already-open browser tab can retain the prior bundle; a hard refresh fetches the current deployment.
 - Supabase Auth and the dedicated Railway Postgres store back the current application. Existing Streamlit records have not been imported.
 - Public signup, live supplier calls, Stripe checkout, monitoring scheduler, and real alert email remain disabled. No charges or verification emails were sent.
-- The app now receives a Supabase publishable key for browser session refresh; the access-token refresh fix is being prepared for deployment on this branch.
+- The browser now receives a Supabase publishable key. Login stores the Supabase refresh session; authenticated API requests refresh once and retry after an expired access token. This fix is deployed in `e7f3d6a`; a one-time sign-in may be needed to replace a session created by the previous build.
 
 The sections below retain historical migration evidence and gate details. Where older text says the domain is still on Streamlit, this verified deployment status supersedes it.
 
@@ -151,7 +151,8 @@ Source: `supabase/migrations/20261105_revoke_anon_security_definer_execute.sql`
 
 Disposable-DB test: `tests/test_supabase_security_definer_grants.py` — **PASS** (anon revoked; trigger helpers `cadivor_write_audit_event` / `cadivor_audit_engineering_record` revoked from anon+authenticated; Streamlit authenticated RPCs retained; service-only RPCs stay service_role).
 
-**Live shared Supabase apply:** not executed in this pass — no database password / Management API token available in the agent environment. Apply via Supabase SQL editor or `psql` with the project DB credentials after review.
+The shared Supabase project has both `20261105_revoke_anon_security_definer_execute` and `20261106_revoke_authenticated_handle_new_user_execute` applied. Read-only privilege verification confirms `anon` and `authenticated` cannot directly execute `handle_new_user()`, `service_role` retains execute, and the auth.users trigger remains attached.
+
 
 ### Supabase Auth public settings probe (2026-11-05)
 
