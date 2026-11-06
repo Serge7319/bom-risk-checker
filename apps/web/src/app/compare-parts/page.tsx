@@ -30,7 +30,12 @@ function getAnalysisId(row: Row) {
 function reportLabel(row: Row) {
   const bom = text(row.bom_name || row.filename || row.project_name, "Saved analysis");
   const revision = row.revision ? ` · rev ${String(row.revision)}` : "";
-  const project = row.project_name && row.project_name !== bom ? `${String(row.project_name)} · ` : "";
+  const storedProject = String(row.project_name || "").trim();
+  const separator = storedProject.indexOf(" — ");
+  const projectName = separator >= 0
+    ? storedProject.slice(0, separator).trim()
+    : storedProject !== bom ? storedProject : "";
+  const project = projectName ? `${projectName} · ` : "";
   return `${project}${bom}${revision}`;
 }
 
