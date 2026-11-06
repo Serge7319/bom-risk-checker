@@ -271,6 +271,27 @@ def test_supplier_monitoring_billing_connectors_compliance_on_disposable_db(cuto
     )
     assert compare.status_code in (200, 400)
 
+    decision = client.post(
+        "/decision-records",
+        headers=headers,
+        json={
+            "analysis_id": analysis_id,
+            "part_a": "RES10K",
+            "part_b": "CAP100U",
+            "decision": "hold_for_review",
+            "reviewer": "Disposable DB reviewer",
+            "rationale": "Verify the exact part specifications before release.",
+        },
+    )
+    assert decision.status_code == 201, decision.text
+    decision_id = decision.json()["record"]["id"]
+    assert decision.json()["record"]["qualification_status"] == "not-qualified-by-cadivor"
+    persisted_decisions = client.get(
+        f"/decision-records?analysis_id={analysis_id}", headers=headers
+    )
+    assert persisted_decisions.status_code == 200
+    assert persisted_decisions.json()["records"][0]["id"] == decision_id
+
     procurement = client.get(
         "/tools/procurement", headers=headers, params={"analysis_id": analysis_id}
     )

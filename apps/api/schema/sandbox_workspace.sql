@@ -126,6 +126,22 @@ CREATE TABLE IF NOT EXISTS migration_reports (
 CREATE INDEX IF NOT EXISTS migration_reports_ws_idx
   ON migration_reports (workspace_id);
 
+-- Human-authored, tenant-scoped decisions from the Next.js workspace.
+-- The payload retains the comparison evidence as it appeared when recorded.
+CREATE TABLE IF NOT EXISTS migration_decision_records (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  analysis_id TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  payload JSONB NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS migration_decision_records_ws_created_idx
+  ON migration_decision_records (workspace_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS migration_decision_records_ws_analysis_idx
+  ON migration_decision_records (workspace_id, analysis_id, created_at DESC);
+
 
 -- Monitoring durability (tenant-scoped). Alert email delivery remains gated.
 CREATE TABLE IF NOT EXISTS migration_monitoring_alerts (

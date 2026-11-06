@@ -56,6 +56,7 @@ def _empty() -> dict[str, Any]:
         "revisions": {},
         "analyses": {},
         "reports": {},
+        "decision_records": {},
     }
 
 
@@ -272,6 +273,46 @@ class WorkspaceStore:
                 for row in self._data["analyses"].values()
                 if row.get("workspace_id") == wid
             ]
+            return sorted(
+                rows, key=lambda row: str(row.get("created_at") or ""), reverse=True
+            )
+
+    def create_decision_record(
+        self, record: dict[str, Any], *, workspace_id: str
+    ) -> dict[str, Any]:
+        """Persist a human decision and its comparison snapshot by workspace."""
+        wid = self._require_workspace(workspace_id)
+        analysis_id = str(record.get("analysis_id") or "").strip()
+        if analysis_id and not self.get_report(analysis_id, workspace_id=wid):
+            raise WorkspaceAccessError(f"analysis {analysis_id} was not found")
+        with _LOCK:
+            saved = dict(record)
+            decision_id = str(saved.get("decision_id") or uuid.uuid4())
+            saved.update(
+                {
+                    "id": decision_id,
+                    "decision_id": decision_id,
+                    "workspace_id": wid,
+                    "created_at": str(saved.get("created_at") or _now()),
+                }
+            )
+            self._data.setdefault("decision_records", {})[decision_id] = saved
+            self.save()
+            return dict(saved)
+
+    def list_decision_records(
+        self, *, workspace_id: str, analysis_id: str | None = None
+    ) -> list[dict[str, Any]]:
+        wid = self._require_workspace(workspace_id)
+        aid = str(analysis_id or "").strip()
+        with _LOCK:
+            rows = []
+            for record in self._data.setdefault("decision_records", {}).values():
+                if record.get("workspace_id") != wid:
+                    continue
+                if aid and str(record.get("analysis_id") or "") != aid:
+                    continue
+                rows.append(dict(record))
             return sorted(
                 rows, key=lambda row: str(row.get("created_at") or ""), reverse=True
             )

@@ -20,12 +20,28 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Set Up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
       - name: Install Dependencies
         run: |
           pip install -r requirements.txt PyMuPDF pytest embedded-postgres
 
-      - name: Run Next migration Supabase Auth and trial tests
-        run: python -m pytest tests/test_supabase_auth.py -q
+      - name: Run Next migration API, decision-record, Supabase Auth, and trial tests
+        run: python -m pytest tests/test_supabase_auth.py tests/test_nextjs_migration_tools.py -q
+
+      - name: Install Next.js web dependencies
+        run: npm ci --prefix apps/web
+
+      - name: Lint Next.js web app
+        run: npm run lint --prefix apps/web
+
+      - name: Build Next.js web app
+        run: npm run build --prefix apps/web
 
       - name: Run disposable Postgres migration gates
         run: python -m pytest tests/test_cutover_disposable_db.py tests/test_nextjs_roadmap_gates.py -q

@@ -343,6 +343,52 @@ export async function listReports(token: string) {
   }>("/reports", { token });
 }
 
+export type DecisionRecord = {
+  id: string;
+  decision_id: string;
+  analysis_id?: string | null;
+  project_name?: string | null;
+  bom_name?: string | null;
+  revision?: string | null;
+  part_a: string;
+  part_b: string;
+  decision: string;
+  decision_label: string;
+  reviewer: string;
+  rationale: string;
+  qualification_status: string;
+  qualification_note: string;
+  created_at: string;
+  comparison_snapshot: Record<string, unknown>;
+};
+
+export async function listDecisionRecords(token: string, analysisId?: string) {
+  const query = analysisId ? `?analysis_id=${encodeURIComponent(analysisId)}` : "";
+  return apiJson<{ ok: boolean; records: DecisionRecord[] }>(
+    `/decision-records${query}`,
+    { token },
+  );
+}
+
+export async function recordDecision(
+  token: string,
+  payload: {
+    analysis_id?: string | null;
+    part_a: string;
+    part_b: string;
+    decision: string;
+    reviewer: string;
+    rationale: string;
+    verified_primary_evidence?: boolean;
+  },
+) {
+  return apiJson<{ ok: boolean; record: DecisionRecord }>("/decision-records", {
+    method: "POST",
+    token,
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function fetchMonitoring(token: string, analysisId?: string) {
   const q = analysisId ? `?analysis_id=${encodeURIComponent(analysisId)}` : "";
   return apiJson<Record<string, unknown>>(`/tools/monitoring${q}`, { token });

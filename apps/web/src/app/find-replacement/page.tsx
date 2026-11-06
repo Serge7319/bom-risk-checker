@@ -10,6 +10,13 @@ import { findReplacement } from "@/lib/api";
 import { PAGE_META } from "@/lib/routes";
 import { readLastAnalysis, useRequireSession } from "@/lib/session";
 
+function compareHref(partA: string, partB?: string, analysisId?: string) {
+  const query = new URLSearchParams({ part_a: partA });
+  if (partB) query.set("part_b", partB);
+  if (analysisId) query.set("analysis_id", analysisId);
+  return `/compare-parts?${query.toString()}`;
+}
+
 function FindReplacementInner() {
   const session = useRequireSession();
   const search = useSearchParams();
@@ -52,6 +59,9 @@ function FindReplacementInner() {
   const candidates = (result?.candidates || []) as Array<Record<string, unknown>>;
   const missing = (result?.missing_evidence || []) as string[];
   const original = (result?.original || {}) as Record<string, unknown>;
+  const analysisId = String(
+    result?.analysis_id || search.get("analysis_id") || readLastAnalysis(session)?.analysis_id || "",
+  );
 
   return (
     <Shell session={session}>
@@ -161,7 +171,7 @@ function FindReplacementInner() {
                           <td>{missingBits.length ? missingBits.join("; ") : "—"}</td>
                           <td className="cv-table-action">
                             <Link
-                              href={`/compare-parts?part_a=${encodeURIComponent(String(result.requested_mpn || mpn))}&part_b=${encodeURIComponent(cand)}`}
+                              href={compareHref(String(result.requested_mpn || mpn), cand, analysisId)}
                             >
                               Compare →
                             </Link>
@@ -189,7 +199,7 @@ function FindReplacementInner() {
               ) : null}
               <div style={{ marginTop: 12 }}>
                 <SecondaryLink
-                  href={`/compare-parts?part_a=${encodeURIComponent(mpn)}`}
+                  href={compareHref(mpn, undefined, analysisId)}
                 >
                   Open Compare Parts
                 </SecondaryLink>

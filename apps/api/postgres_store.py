@@ -78,7 +78,7 @@ class PostgresWorkspaceStore:
         with _LOCK:
             with self._connect() as conn:
                 conn.execute(
-                    "TRUNCATE migration_reports, migration_analyses, "
+                    "TRUNCATE migration_decision_records, migration_reports, migration_analyses, "
                     "migration_revisions, migration_boms, migration_projects "
                     "CASCADE"
                 )
@@ -349,6 +349,68 @@ class PostgresWorkspaceStore:
                         item[key] = item[key].isoformat()
                 out.append(item)
             return out
+
+    def create_decision_record(
+        self, record: dict[str, Any], *, workspace_id: str
+    ) -> dict[str, Any]:
+        """Persist a human decision and its comparison snapshot by workspace."""
+        wid = self._require_workspace(workspace_id)
+        analysis_id = str(record.get("analysis_id") or "").strip()
+        if analysis_id and not self.get_report(analysis_id, workspace_id=wid):
+            raise WorkspaceAccessError(f"analysis {analysis_id} was not found")
+        with _LOCK:
+            saved = dict(record)
+            decision_id = str(saved.get("decision_id") or uuid.uuid4())
+            created_at = str(saved.get("created_at") or _now())
+            saved.update(
+                {
+                    "id": decision_id,
+                    "decision_id": decision_id,
+                    "workspace_id": wid,
+                    "created_at": created_at,
+                }
+            )
+            with self._connect() as conn:
+                conn.execute(
+                    """
+                    INSERT INTO migration_decision_records
+                      (id, workspace_id, analysis_id, created_at, payload)
+                    VALUES (%s, %s, %s, %s, %s::jsonb)
+                    """,
+                    (
+                        decision_id,
+                        wid,
+                        analysis_id or None,
+                        created_at,
+                        json.dumps(saved),
+                    ),
+                )
+                conn.commit()
+            return saved
+
+    def list_decision_records(
+        self, *, workspace_id: str, analysis_id: str | None = None
+    ) -> list[dict[str, Any]]:
+        wid = self._require_workspace(workspace_id)
+        aid = str(analysis_id or "").strip()
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT payload FROM migration_decision_records
+                WHERE workspace_id = %s
+                  AND (%s = '' OR analysis_id = %s)
+                ORDER BY created_at DESC
+                """,
+                (wid, aid, aid),
+            ).fetchall()
+        records = []
+        for row in rows:
+            payload = row["payload"]
+            if isinstance(payload, str):
+                payload = json.loads(payload)
+            if isinstance(payload, dict):
+                records.append(dict(payload))
+        return records
 
     def list_projects(self, *, workspace_id: str) -> list[dict[str, Any]]:
         wid = self._require_workspace(workspace_id)
