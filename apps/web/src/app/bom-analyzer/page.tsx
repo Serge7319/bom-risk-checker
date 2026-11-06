@@ -51,6 +51,14 @@ export default function BomAnalyzerPage() {
 
   if (!session) return null;
 
+  const activeStage = busy
+    ? "Analyzing"
+    : summary
+      ? "Decision"
+      : file
+        ? "Validating"
+        : "Received";
+
   return (
     <Shell session={session}>
       <PageHeader
@@ -70,6 +78,42 @@ export default function BomAnalyzerPage() {
         }
       />
 
+      <section
+        className="cv-bom-progress-sticky"
+        aria-live="polite"
+        aria-busy={busy}
+      >
+        <div className="cv-eyebrow">BOM progress</div>
+        <div className="cv-bom-stages">
+          {STAGES.map((stage) => (
+            <span
+              key={stage}
+              className={`cv-bom-stage${stage === activeStage ? " active" : ""}`}
+            >
+              {stage}
+            </span>
+          ))}
+        </div>
+        <div className="cv-bom-progress" aria-hidden>
+          <i style={{ width: busy ? "55%" : summary ? "85%" : file ? "28%" : "12%" }} />
+        </div>
+        {busy ? (
+          <div className="cv-loading" style={{ marginTop: 12, border: 0, padding: "10px 0 0" }}>
+            Analyzing the BOM with available evidence and saving it to your workspace…
+          </div>
+        ) : null}
+        {error ? <div className="cv-error" style={{ marginTop: 10 }}>{error}</div> : null}
+        {summary ? (
+          <p className="cv-small-note" style={{ marginTop: 10 }}>
+            Saved {summary.project_name || summary.analysis_id}
+            {summary.has_hierarchy
+              ? ` · assembly roll-up ${summary.top_rolled_risk || "n/a"}`
+              : ""}{" "}
+            · {summary.total_parts} parts · health {summary.health_score ?? "—"}
+          </p>
+        ) : null}
+      </section>
+
       <section className="cv-card pad" style={{ marginBottom: 16 }}>
         <div className="cv-eyebrow">Persistent BOM workflow</div>
         <h3 className="cv-card-title" style={{ fontSize: 18 }}>
@@ -80,20 +124,6 @@ export default function BomAnalyzerPage() {
           rows roll risk up to assemblies. Supplier connections, billing, and
           automated alert email are not connected.
         </p>
-
-        <div className="cv-bom-stages" style={{ marginTop: 14 }}>
-          {STAGES.map((stage) => (
-            <span
-              key={stage}
-              className={`cv-bom-stage${busy && stage === "Analyzing" ? " active" : ""}${!busy && !summary && stage === "Received" ? " active" : ""}${summary && stage === "Decision" ? " active" : ""}`}
-            >
-              {stage}
-            </span>
-          ))}
-        </div>
-        <div className="cv-bom-progress" aria-hidden>
-          <i style={{ width: busy ? "55%" : summary ? "85%" : "12%" }} />
-        </div>
 
         <div
           className="cv-bom-fields"
@@ -160,25 +190,6 @@ export default function BomAnalyzerPage() {
             <PrimaryLink href="/">Back to Home</PrimaryLink>
           </div>
         </div>
-
-        {busy ? (
-          <div className="cv-loading" style={{ marginTop: 14 }}>
-            Analyzing the BOM with available evidence and saving it to your workspace…
-            <div className="cv-progress" aria-hidden>
-              <i />
-            </div>
-          </div>
-        ) : null}
-        {error ? <div className="cv-error">{error}</div> : null}
-        {summary ? (
-          <p className="cv-small-note" style={{ marginTop: 12 }}>
-            Saved {summary.project_name || summary.analysis_id}
-            {summary.has_hierarchy
-              ? ` · assembly roll-up ${summary.top_rolled_risk || "n/a"}`
-              : ""}{" "}
-            · {summary.total_parts} parts · health {summary.health_score ?? "—"}
-          </p>
-        ) : null}
       </section>
     </Shell>
   );

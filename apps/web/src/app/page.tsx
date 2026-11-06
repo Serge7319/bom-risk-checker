@@ -213,49 +213,62 @@ export default function HomePage() {
 
             <section className="cv-card pad">
               <div style={{ marginBottom: 12 }}>
-                <h3 className="cv-card-title">Priority risks</h3>
+                <h3 className="cv-card-title">Priority queue</h3>
                 <p className="cv-card-subtitle">
-                  Assembly roll-up contributors or high-risk counts — with
-                  evidence sources labeled.
+                  Ranked, evidence-linked risks from saved analyses in this
+                  workspace.
                 </p>
               </div>
               {(data.priority_risks || []).length ? (
-                <ul className="cv-action-list">
-                  {data.priority_risks.map((item, index) => (
-                    <li key={index}>
-                      <div>
-                        <strong>
-                          {item.mpn
-                            ? String(item.mpn)
-                            : String(item.bom_name || "BOM")}
-                        </strong>
-                        <div className="cv-priority-meta">
-                          {String(item.project_name || "")}
-                          {item.bom_path ? ` · ${String(item.bom_path)}` : ""}
-                          {item.why ? ` — ${String(item.why)}` : ""}
-                        </div>
-                        <div className="cv-small-note">
-                          Evidence: {evidenceSourceLabel(item.evidence_source)}
-                        </div>
-                      </div>
-                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                        <span
-                          className={`cv-badge ${String(item.risk_level).toLowerCase() === "high" ? "red" : "amber"}`}
+                <div className="cv-priority-list">
+                  {data.priority_risks.map((item, index) => {
+                    const high =
+                      String(item.risk_level || "").toLowerCase() === "high";
+                    return (
+                      <div className="cv-priority-row" key={index}>
+                        <div
+                          className={`cv-priority-index${high ? "" : " amber"}`}
                         >
-                          {String(item.risk_level || "—")}
-                        </span>
+                          {String(index + 1).padStart(2, "0")}
+                        </div>
+                        <div>
+                          <div className="cv-priority-title">
+                            {item.mpn
+                              ? String(item.mpn)
+                              : String(item.bom_name || "BOM")}
+                            {item.why ? ` · ${String(item.why)}` : ""}
+                          </div>
+                          <div className="cv-priority-meta">
+                            {String(item.project_name || "")}
+                            {item.bom_path ? ` · ${String(item.bom_path)}` : ""}
+                          </div>
+                          <div className="cv-evidence-chips">
+                            <span className="cv-evidence-chip">
+                              {evidenceSourceLabel(item.evidence_source)}
+                            </span>
+                            <span className="cv-evidence-chip">
+                              {String(item.risk_level || "—")} priority
+                            </span>
+                          </div>
+                        </div>
                         {item.analysis_id ? (
-                          <Link href={`/reports/${String(item.analysis_id)}`}>
-                            Evidence →
+                          <Link
+                            className="cv-button small"
+                            href={`/reports/${String(item.analysis_id)}`}
+                          >
+                            Review evidence
                           </Link>
-                        ) : null}
+                        ) : (
+                          <span className="cv-badge gray">No report link</span>
+                        )}
                       </div>
-                    </li>
-                  ))}
-                </ul>
+                    );
+                  })}
+                </div>
               ) : (
-                <div className="cv-empty" style={{ border: 0, padding: 0 }}>
-                  No priority risks yet.
+                <div className="cv-empty" style={{ border: 0, minHeight: 120, padding: 18 }}>
+                  <h3 style={{ fontSize: 14 }}>No priority risks yet</h3>
+                  <p>Save a BOM analysis to populate this ranked queue.</p>
                 </div>
               )}
             </section>

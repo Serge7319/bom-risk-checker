@@ -1,0 +1,6 @@
+{
+  "url": "http://127.0.0.1:3001/login",
+  "error_text": "Cadivor could not connect. Refresh the page or contact support.",
+  "still_on_login": true,
+  "rejects_localhost": true
+}

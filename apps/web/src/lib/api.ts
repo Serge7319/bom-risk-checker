@@ -1,6 +1,22 @@
 /** The deployed web service must set its matching API endpoint explicitly. */
 const API_BASE = (process.env.NEXT_PUBLIC_API_BASE || "").trim().replace(/\/$/, "");
 
+/** Local API hosts are blocked in production builds; allow only for explicit local/dev use. */
+function allowLocalApiBase(): boolean {
+  if (process.env.NODE_ENV === "development") return true;
+  return (process.env.NEXT_PUBLIC_ALLOW_LOCAL_API || "").trim() === "1";
+}
+
+function assertApiBaseConfigured(): void {
+  if (!API_BASE) {
+    throw new Error("Cadivor could not connect. Refresh the page or contact support.");
+  }
+  const isLocal = /localhost|127\.0\.0\.1/i.test(API_BASE);
+  if (isLocal && !allowLocalApiBase()) {
+    throw new Error("Cadivor could not connect. Refresh the page or contact support.");
+  }
+}
+
 export type Session = {
   access_token: string;
   email: string;
@@ -63,12 +79,7 @@ async function apiJson<T>(
   path: string,
   init: RequestInit & { token?: string } = {},
 ): Promise<T> {
-  if (!API_BASE) {
-    throw new Error("Cadivor could not connect. Refresh the page or contact support.");
-  }
-  if (/localhost|127\.0\.0\.1/i.test(API_BASE)) {
-    throw new Error("Cadivor could not connect. Refresh the page or contact support.");
-  }
+  assertApiBaseConfigured();
   const headers = new Headers(init.headers || {});
   if (init.token) headers.set("Authorization", `Bearer ${init.token}`);
   if (init.body && !(init.body instanceof FormData) && !headers.has("Content-Type")) {

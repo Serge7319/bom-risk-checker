@@ -1,5 +1,11 @@
 import Link from "next/link";
+import { Icon, PAGE_ICONS, type IconName } from "@/components/Icons";
 import type { PageMeta } from "@/lib/routes";
+
+function iconForMeta(meta: PageMeta): IconName {
+  const key = meta.icon || "";
+  return (PAGE_ICONS[key] || "spark") as IconName;
+}
 
 export function PageHeader({
   meta,
@@ -11,14 +17,19 @@ export function PageHeader({
   record?: boolean;
 }) {
   return (
-    <div className={`cv-page-header${record ? " cv-record-header" : ""}`}>
-      <div>
-        <div className="cv-eyebrow">{meta.eyebrow}</div>
-        <h1>{meta.title}</h1>
-        <p className="cv-page-description">{meta.description}</p>
+    <header className={`cv-page-header${record ? " cv-record-header" : ""}`}>
+      <div className="cv-page-head-copy">
+        <div className="cv-page-head-icon" aria-hidden="true">
+          <Icon name={iconForMeta(meta)} />
+        </div>
+        <div>
+          <div className="cv-eyebrow">{meta.eyebrow}</div>
+          <h1>{meta.title}</h1>
+          <p className="cv-page-description">{meta.description}</p>
+        </div>
       </div>
       {actions ? <div className="cv-header-actions">{actions}</div> : null}
-    </div>
+    </header>
   );
 }
 
@@ -58,15 +69,20 @@ export function CapabilityStub({
   nextStep?: React.ReactNode;
 }) {
   return (
-    <section className="cv-card pad cv-empty">
-      <strong style={{ display: "block", color: "#19304f", marginBottom: 6 }}>
-        Not available here yet
-      </strong>
-      <p style={{ margin: 0 }}>
-        {capability} Use BOM Analyzer to review a report using the evidence
-        available in your workspace.
-      </p>
-      {nextStep ? <div style={{ marginTop: 14 }}>{nextStep}</div> : null}
+    <section className="cv-card pad cv-empty-card" role="status">
+      <div className="cv-empty">
+        <div className="cv-empty-icon" aria-hidden="true">
+          <Icon name="box" />
+        </div>
+        <div>
+          <h3>Not available here yet</h3>
+          <p>
+            {capability} Use BOM Analyzer to review a report using the evidence
+            available in your workspace.
+          </p>
+          {nextStep ? <div className="cv-empty-actions">{nextStep}</div> : null}
+        </div>
+      </div>
     </section>
   );
 }

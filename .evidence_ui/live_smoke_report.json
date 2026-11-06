@@ -1,0 +1,50 @@
+{
+  "ok": true,
+  "shots": [
+    {
+      "file": "home_1680x1050.png",
+      "bytes": 408839,
+      "title": "Home",
+      "url": "http://127.0.0.1:3000/",
+      "size": "1680x1050"
+    },
+    {
+      "file": "bom_1680x1050.png",
+      "bytes": 219101,
+      "title": "BOM Analyzer",
+      "url": "http://127.0.0.1:3000/bom-analyzer",
+      "size": "1680x1050"
+    },
+    {
+      "file": "procurement_1680x1050.png",
+      "bytes": 356115,
+      "title": "Procurement Advisor",
+      "url": "http://127.0.0.1:3000/procurement",
+      "size": "1680x1050"
+    },
+    {
+      "file": "home_696x1188.png",
+      "bytes": 342154,
+      "title": "Home",
+      "url": "http://127.0.0.1:3000/",
+      "size": "696x1188"
+    },
+    {
+      "file": "bom_696x1188.png",
+      "bytes": 116558,
+      "title": "BOM Analyzer",
+      "url": "http://127.0.0.1:3000/bom-analyzer",
+      "size": "696x1188"
+    },
+    {
+      "file": "procurement_696x1188.png",
+      "bytes": 233889,
+      "title": "Procurement Advisor",
+      "url": "http://127.0.0.1:3000/procurement",
+      "size": "696x1188"
+    }
+  ],
+  "errors": [],
+  "signed_in_url": "http://127.0.0.1:3000/",
+  "after_analyze_url": "http://127.0.0.1:3000/reports/ddbce92a-43f8-4f77-912b-c4697b377229"
+}
