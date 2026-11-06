@@ -75,13 +75,13 @@ Updated: 2026-11-06
 ## Production deployment verification (2026-11-06)
 
 - `app.cadivor.com/bom-analyzer`: **HTTP 200**, Next.js response headers.
-- Production Railway web and API deployments: **SUCCESS**; API health reports Supabase Auth and durable Postgres.
+- Production Railway web and API deployments at `e7f3d6a`: **SUCCESS**; API health reports Supabase Auth and durable Postgres.
 - The current live Analyzer JavaScript bundle includes “Before you analyze” and “Recent analyses.” If an already-open browser tab still shows the prior one-column layout, hard-refresh it to fetch the current bundle.
 - `npm run lint`: **PASS** (one pre-existing custom-font warning); `npm run build`: **PASS** (Next.js 15.5.9; 22 routes).
-- Browser token refresh: **in progress on the production-readiness branch**; until it deploys, an expired access token can still lead to a 401 on authenticated API requests.
+- Browser token refresh: **deployed**; the login response seeds the Supabase client session and authenticated API requests retry once after refresh. First sign-in after the deployment may be required for sessions created by the prior build. Hosted account POST/report E2E still needs an authenticated browser.
 
-## Security and auth notes (2026-11-05)
+## Security and auth notes (2026-11-06)
 
-- Privilege hardening migration `20261105_revoke_anon_security_definer_execute.sql` is applied to the shared Supabase project. A follow-up migration removes authenticated direct execute on the trigger-only `handle_new_user()` function; live application is pending.
+- Both privilege migrations are applied to the shared Supabase project: `20261105_revoke_anon_security_definer_execute.sql` and `20261106_revoke_authenticated_handle_new_user_execute.sql`. Read-only verification confirms `anon` and `authenticated` cannot directly execute `handle_new_user()`, `service_role` retains execute, and its auth.users trigger remains attached.
 - Signup remains closed on the migration API. Public Auth settings: email confirmation required (`mailer_autoconfirm=false`). Leaked-password protection not confirmed via public API; keep signup closed.
 - Monitoring refresh hook: `POST /tools/monitoring/refresh` (user JWT or cron token); real email still disabled.
