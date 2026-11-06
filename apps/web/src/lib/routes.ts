@@ -96,14 +96,14 @@ export const PAGE_META: Record<string, PageMeta> = {
     title: "Reports",
     eyebrow: "Saved reports",
     description:
-      "Return to portfolio reviews, BOM analyses, and export-ready engineering summaries.",
+      "Open saved BOM analyses, review component evidence, and download a CSV report.",
   },
   compare: {
     icon: "compare",
     title: "Compare Parts",
     eyebrow: "Side-by-side comparison",
     description:
-      "Compare two or three parts using supplier and datasheet evidence.",
+      "Compare two parts using saved analysis fields and clearly labeled offline catalog evidence.",
   },
   qa: {
     icon: "qa",
@@ -131,7 +131,7 @@ export const PAGE_META: Record<string, PageMeta> = {
     title: "Cost Optimization",
     eyebrow: "Price harmonization",
     description:
-      "Compare part-level contract and sample pricing, then inspect how savings are modeled.",
+      "Review saved sample prices and model volume opportunities; supplier prices are not live quotes.",
   },
   supply: {
     icon: "supply",
@@ -166,7 +166,7 @@ export const PAGE_META: Record<string, PageMeta> = {
     title: "Settings",
     eyebrow: "Workspace settings",
     description:
-      "Manage workspace access, evidence sources, and review preferences.",
+      "Review account, plan usage, and integration readiness.",
   },
   record: {
     title: "Engineering decision record",

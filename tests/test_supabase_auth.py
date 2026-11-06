@@ -8,6 +8,7 @@ from types import SimpleNamespace
 import pytest
 from starlette.testclient import TestClient
 
+from apps.api import supabase_auth
 from apps.api.main import app
 from apps.api.sandbox_auth import get_auth_store, reset_auth_store_for_tests
 from apps.api.workspace_store import reset_store_for_tests
@@ -114,6 +115,14 @@ def supabase_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClie
         return SimpleNamespace(auth=fake)
 
     monkeypatch.setattr("supabase.create_client", _fake_client)
+    for account in fake.users.values():
+        user = account["user"]
+        supabase_auth.ensure_owner_membership(
+            user_id=user.id,
+            email=user.email,
+            workspace_name=supabase_auth.user_workspace_name(user),
+            allow_create=True,
+        )
     from apps.api import synthetic_analyze as sa
 
     sa._REPORTS.clear()
@@ -195,6 +204,14 @@ def test_supabase_login_membership_reload_logout_and_isolation(
     assert saved.status_code == 200
     assert saved.json()["id"] == analysis_id
 
+    exported = supabase_client.get(
+        f"/reports/{analysis_id}/export.csv", headers=headers
+    )
+    assert exported.status_code == 200
+    assert exported.headers["content-type"].startswith("text/csv")
+    assert exported.content.startswith(b"\xef\xbb\xbf")
+    assert "MPN,Qty,Lifecycle" in exported.content.decode("utf-8-sig")
+
     if nested.exists():
         nested_res = supabase_client.post(
             "/boms/analyze",
@@ -219,6 +236,10 @@ def test_supabase_login_membership_reload_logout_and_isolation(
     assert other.json()["workspace_id"] != body["workspace_id"]
     denied = supabase_client.get(f"/reports/{analysis_id}", headers=other_headers)
     assert denied.status_code == 404
+    denied_export = supabase_client.get(
+        f"/reports/{analysis_id}/export.csv", headers=other_headers
+    )
+    assert denied_export.status_code == 404
 
     # Logout revokes token for this API
     out = supabase_client.post("/auth/logout", headers=headers)
@@ -243,6 +264,13 @@ def test_sandbox_hs256_blocked_when_production_runtime_forced(
     monkeypatch.setattr(
         "supabase.create_client",
         lambda *_a, **_k: SimpleNamespace(auth=fake),
+    )
+    owner = fake.users["owner@cadivor.test"]["user"]
+    supabase_auth.ensure_owner_membership(
+        user_id=owner.id,
+        email=owner.email,
+        workspace_name=supabase_auth.user_workspace_name(owner),
+        allow_create=True,
     )
     client = TestClient(app)
     # Production path uses Supabase, not HS256 — even with sandbox secret set.
@@ -271,6 +299,38 @@ def test_self_serve_signup_is_disabled_by_default(supabase_client: TestClient):
     )
     assert response.status_code == 503
     assert supabase_client.app.state.fake_auth.signup_payloads == []
+
+
+def test_unprovisioned_supabase_account_cannot_enter_when_signup_is_closed(
+    supabase_client: TestClient,
+):
+    fake = supabase_client.app.state.fake_auth
+    email = "uninvited@cadivor.test"
+    user = _FakeUser(
+        "44444444-4444-4444-4444-444444444444",
+        email,
+    )
+    token = "supabase-access-token-uninvited"
+    fake.users[email] = {
+        "password": "uninvited-pass-123",
+        "user": user,
+        "token": token,
+    }
+    fake._by_token[token] = user
+
+    login = supabase_client.post(
+        "/auth/login",
+        json={"email": email, "password": "uninvited-pass-123"},
+    )
+    assert login.status_code == 403
+    assert "not provisioned" in login.json()["detail"].lower()
+    assert get_auth_store().membership_for_user(user.id) is None
+
+    bearer = supabase_client.get(
+        "/auth/me", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert bearer.status_code == 403
+    assert get_auth_store().membership_for_user(user.id) is None
 
 
 def test_verified_signup_provisions_workspace_and_starts_trial_once(

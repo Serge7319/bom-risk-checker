@@ -38,6 +38,7 @@ export default function CostOptimizationPage() {
   if (!session) return null;
   const opt = (data?.optimization || {}) as Record<string, unknown>;
   const opportunities = (opt.opportunities || opt.rows || []) as Array<Record<string, unknown>>;
+  const pricedRows = (opt.priced_rows || []) as Array<Record<string, unknown>>;
   return (
     <Shell session={session}>
       <PageHeader meta={PAGE_META.cost} actions={<PrimaryLink href="/procurement">Review sourcing</PrimaryLink>} />
@@ -70,23 +71,33 @@ export default function CostOptimizationPage() {
                     <th>Part</th>
                     <th>Qty</th>
                     <th>Unit price</th>
-                    <th>Extended</th>
-                    <th>Notes</th>
+                    <th>Estimated savings</th>
+                    <th>Evidence and rationale</th>
                   </tr>
                 </thead>
                 <tbody>
                   {opportunities.slice(0, 40).map((row, i) => (
                     <tr key={i}>
                       <td><strong>{String(row["Part Number"] || row.mpn || row.Part || "")}</strong></td>
-                      <td>{String(row.Quantity || row.quantity || row.Qty || "")}</td>
-                      <td>{String(row["Unit Price"] || row.unit_price || "—")}</td>
-                      <td>{String(row["Extended Cost"] || row.extended || row.Extended || "—")}</td>
-                      <td>{evidenceSourceLabel(row.Opportunity || row.note || row.Notes, "Synthetic estimate")}</td>
+                      <td>{String(row["Units per Build"] ?? row.Quantity ?? row.quantity ?? row.Qty ?? "—")}</td>
+                      <td>{String(row["Current Unit Price"] ?? row["Unit Price"] ?? row.unit_price ?? "—")}</td>
+                      <td>{String(row["Estimated Run Savings"] ?? row["Extended Cost"] ?? row.extended ?? row.Extended ?? "—")}</td>
+                      <td>
+                        {evidenceSourceLabel(data.mode || "Synthetic estimate", "Synthetic estimate")}
+                        <div className="cv-small-note">{String(row.Reason ?? row.Opportunity ?? row.note ?? row.Notes ?? "Modeled from saved price and quantity data.")}</div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-            </div> : <EmptyState icon="cost" title="No priced opportunities found" body="This analysis has no price rows to compare at the selected build quantity. Review Procurement Advisor for available sourcing coverage." action={<PrimaryLink href="/procurement">Open Procurement Advisor</PrimaryLink>} />}
+            </div> : <EmptyState
+              icon="cost"
+              title={pricedRows.length ? "No eligible savings opportunities" : "Pricing data needed"}
+              body={pricedRows.length
+                ? `Pricing is recorded for ${pricedRows.length} component(s), but none meet the current shared-project, multi-source, or per-build quantity criteria. Prices are synthetic estimates, not supplier quotes.`
+                : "No component prices are saved in this analysis. Supplier quotes are not connected yet; review Procurement Advisor for current coverage."}
+              action={<PrimaryLink href="/procurement">Open Procurement Advisor</PrimaryLink>}
+            />}
           </section>
         </>
       ) : null}

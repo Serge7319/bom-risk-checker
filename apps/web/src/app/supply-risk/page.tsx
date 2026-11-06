@@ -9,6 +9,10 @@ import { runSupplyRisk } from "@/lib/api";
 import { PAGE_META } from "@/lib/routes";
 import { readLastAnalysis, useRequireSession } from "@/lib/session";
 
+function cell(value: unknown, fallback = "—") {
+  return value === null || value === undefined || value === "" ? fallback : String(value);
+}
+
 export default function SupplyRiskPage() {
   const session = useRequireSession();
   const [stockReduction, setStockReduction] = useState(25);
@@ -94,11 +98,11 @@ export default function SupplyRiskPage() {
                 <tbody>
                   {rows.slice(0, 40).map((row, i) => (
                     <tr key={i}>
-                      <td><strong>{String(row["Part Number"] || row.mpn || "")}</strong></td>
-                      <td>{String(row["Available Stock"] || row.stock || row.Stock || "—")}</td>
-                      <td>{String(row["Adjusted Stock"] || row.adjusted_stock || "—")}</td>
-                      <td>{String(row.Lifecycle || row.lifecycle || "—")}</td>
-                      <td>{String(row["Risk Level"] || row.risk_level || "—")}</td>
+                      <td><strong>{cell(row["Part Number"] ?? row.mpn)}</strong></td>
+                      <td>{cell(row["Original Stock"] ?? row["Available Stock"] ?? row.stock ?? row.Stock)}</td>
+                      <td>{cell(row["Scenario Stock"] ?? row["Adjusted Stock"] ?? row.adjusted_stock)}</td>
+                      <td>{cell(row.Lifecycle ?? row.lifecycle)}</td>
+                      <td>{cell(row["Scenario Risk"] ?? row["Risk Level"] ?? row.risk_level)}</td>
                     </tr>
                   ))}
                 </tbody>

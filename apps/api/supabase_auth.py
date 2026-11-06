@@ -207,8 +207,9 @@ def ensure_owner_membership(
     email: str,
     plan: str = "Trial",
     workspace_name: str | None = None,
+    allow_create: bool = False,
 ) -> dict[str, Any]:
-    """Create/reuse a migration workspace and start its trial once."""
+    """Reuse a membership or provision an owner only when creation is explicitly allowed."""
     if not user_id or not email:
         raise AuthError("Authenticated user missing id or email")
     if not migration_database_url():
@@ -220,6 +221,11 @@ def ensure_owner_membership(
             )
     store = get_auth_store()
     existing = store.membership_for_user(user_id)
+    if not existing and not allow_create:
+        raise AuthError(
+            "This account is not provisioned for Cadivor. Contact support for access.",
+            403,
+        )
     if existing:
         workspace_id = str(existing["workspace_id"])
         existing_name = str(existing.get("workspace_name") or existing["workspace_id"])
@@ -349,7 +355,7 @@ def login(
     )
     if session is None or user is None:
         raise AuthError("Invalid credentials")
-    if signup_enabled() and not user_email_verified(user):
+    if not user_email_verified(user):
         raise AuthError("Verify your email address before signing in", 403)
     access_token = str(
         getattr(session, "access_token", None)
@@ -368,6 +374,7 @@ def login(
         user_id=user_id,
         email=user_email,
         workspace_name=user_workspace_name(user),
+        allow_create=signup_enabled(),
     )
     expires_in = int(
         getattr(session, "expires_in", None)
@@ -434,10 +441,13 @@ def resolve_bearer(access_token: str) -> AuthContext:
     if user is None:
         raise AuthError("Invalid token")
     user_id, email = _user_payload(user)
+    if not user_email_verified(user):
+        raise AuthError("Verify your email address before using Cadivor", 403)
     membership = ensure_owner_membership(
         user_id=user_id,
         email=email,
         workspace_name=user_workspace_name(user),
+        allow_create=signup_enabled(),
     )
     return AuthContext(
         user_id=membership["user_id"],

@@ -16,7 +16,7 @@ from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -43,6 +43,7 @@ from apps.api.sandbox_auth import (  # noqa: E402
     sandbox_jwt_permitted,
 )
 from apps.api import supabase_auth  # noqa: E402
+from src.ui.detailed_risk_export import detailed_risk_csv_bytes  # noqa: E402
 from apps.api.workspace_store import (  # noqa: E402
     PersistenceNotConfiguredError,
     WorkspaceAccessError,
@@ -518,6 +519,30 @@ async def workspace_home(request: Request) -> JSONResponse:
         return _json(get_store().home_dashboard(workspace_id=ctx["workspace_id"]))
     except PersistenceNotConfiguredError as exc:
         return _json({"detail": str(exc)}, 503)
+
+
+async def reports_csv_get(request: Request) -> Response:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    analysis_id = request.path_params["analysis_id"]
+    try:
+        report = get_report(analysis_id, workspace_id=ctx["workspace_id"])
+    except WorkspaceAccessError:
+        return _json({"detail": "Report not found"}, 404)
+    except PersistenceNotConfiguredError as exc:
+        return _json({"detail": str(exc)}, 503)
+    if not report:
+        return _json({"detail": "Report not found"}, 404)
+    csv_bytes = detailed_risk_csv_bytes(report.get("parts") or [])
+    return Response(
+        csv_bytes,
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": 'attachment; filename="cadivor-report.csv"',
+            "Cache-Control": "no-store",
+        },
+    )
 
 
 async def reports_get(request: Request) -> JSONResponse:
@@ -1079,6 +1104,7 @@ app = Starlette(
         Route("/auth/smoke-login", smoke_login, methods=["POST"]),
         Route("/boms/analyze", boms_analyze, methods=["POST"]),
         Route("/reports", reports_list, methods=["GET"]),
+        Route("/reports/{analysis_id}/export.csv", reports_csv_get, methods=["GET"]),
         Route("/reports/{analysis_id}", reports_get, methods=["GET"]),
         Route("/reports/{analysis_id}", reports_delete, methods=["DELETE"]),
         Route("/projects", projects_list, methods=["GET"]),
