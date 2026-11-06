@@ -1062,7 +1062,64 @@ def _s473_report(question: str, context: dict[str, Any], history=None) -> str:
         follow = ["What evidence would change this recommendation?", "Which evidence gap should be closed first?", "What should the engineering owner do next?"]
     else:
         intent = "Component Risk" if domain == "Component Risk" else domain
-        if domain == "Component Risk" and asks_review_first:
+        summary_now = context.get("summary") or {}
+        high = _safe_int(summary_now.get("high_risk_parts"), 0)
+        medium = _safe_int(summary_now.get("medium_risk_parts"), 0)
+        low = _safe_int(summary_now.get("low_risk_parts"), 0)
+        undifferentiated = bool(ranked) and all(relative(row) == 0 for row in ranked)
+        # Zero high/medium priority in the saved report means Cadivor must not invent a
+        # first priority or numbered ranking, even when secondary fields differ.
+        cannot_rank = (
+            domain in {"Component Risk", "General Engineering Review"}
+            and bool(ranked)
+            and high == 0
+            and medium == 0
+        )
+        asks_list_parts = any(
+            t in q
+            for t in (
+                "list the parts",
+                "list parts",
+                "show the parts",
+                "show parts",
+                "see the parts",
+                "which parts",
+                "what parts",
+                "parts in this",
+                "parts on this",
+            )
+        )
+
+        def _is_synthetic_row(row: dict[str, Any]) -> bool:
+            blob = " ".join(
+                str(row.get(key) or "")
+                for key in ("source", "Source", "price_source", "evidence_source", "mode")
+            ).lower()
+            return "synthetic" in blob
+
+        def _unranked_part_line(row: dict[str, Any]) -> str:
+            bits = [f"saved risk level: {str(row.get('risk_level') or 'Low')}"]
+            risk_score = _known_int(row.get("risk_score"))
+            if risk_score is not None:
+                bits.append(f"recorded component risk: {risk_score}/100")
+            suppliers = _known_int(row.get("supplier_count"))
+            if suppliers is not None:
+                label = "synthetic-preview source count" if _is_synthetic_row(row) else "recorded source count"
+                bits.append(f"{label}: {suppliers}")
+            stock = _known_int(row.get("stock_available"))
+            if stock is not None:
+                label = "synthetic-preview stock" if _is_synthetic_row(row) else "recorded stock"
+                bits.append(f"{label}: {stock:,}")
+            life = str(row.get("lifecycle_status") or row.get("lifecycle") or "").strip()
+            if life and life.lower() not in {"unknown", "n/a", "none"}:
+                bits.append(f"lifecycle: {life}")
+            if _is_synthetic_row(row):
+                bits.append("evidence: synthetic-preview")
+            return f"- **{_part_name(row)}** — " + "; ".join(bits) + "."
+
+        if cannot_rank:
+            title = "No priority ranking from saved evidence"
+        elif domain == "Component Risk" and asks_review_first:
             title = "First engineering review priority"
         elif domain == "Component Risk" and asks_at_risk_list:
             title = "At-risk components in this BOM"
@@ -1083,20 +1140,15 @@ def _s473_report(question: str, context: dict[str, Any], history=None) -> str:
                 "Evidence Confidence": "Cadivor cannot form a component-level recommendation until structured BOM evidence is refreshed and saved.",
             }
             direct = missing_direct.get(domain, "Cadivor cannot identify a priority because structured component evidence is missing from this saved analysis.")
+        elif cannot_rank:
+            low_clause = f" and **{low} low-risk part{'s' if low != 1 else ''}**" if low else ""
+            direct = (
+                f"This saved report identified **0 priority risks**{low_clause}. "
+                "The saved evidence does not support ranking one part above another, "
+                "so Cadivor will not name a first priority or produce a numbered ranking."
+            )
         elif domain == "Component Risk" and asks_review_first:
-            summary = context.get("summary") or {}
-            high = _safe_int(summary.get("high_risk_parts"), 0)
-            medium = _safe_int(summary.get("medium_risk_parts"), 0)
-            low = _safe_int(summary.get("low_risk_parts"), 0)
-            undifferentiated = bool(ranked) and all(relative(row) == 0 for row in ranked)
-            report_has_no_priority = high == 0 and medium == 0
-            if report_has_no_priority:
-                low_clause = f" and **{low} low-risk part{'s' if low != 1 else ''}**" if low else ""
-                direct = (
-                    f"This saved report shows **0 priority risks**{low_clause}. "
-                    "There is not enough differentiating risk evidence in the report to rank one part above another."
-                )
-            elif undifferentiated:
+            if undifferentiated:
                 direct = (
                     "The saved report does not contain enough differentiating evidence to rank these parts. "
                     "Cadivor will not assign equal priority scores without a measurable difference in the report fields."
@@ -1130,15 +1182,19 @@ def _s473_report(question: str, context: dict[str, Any], history=None) -> str:
                 return "priority not differentiated on saved evidence"
             return f"relative assessment priority {value}/100"
 
-        summary_now = context.get("summary") or {}
-        report_has_no_priority = (
-            domain == "Component Risk"
-            and asks_review_first
-            and _safe_int(summary_now.get("high_risk_parts"), 0) == 0
-            and _safe_int(summary_now.get("medium_risk_parts"), 0) == 0
-        )
-
-        if domain == "Component Risk" and asks_at_risk_list:
+        if cannot_rank:
+            if asks_list_parts:
+                ranking = (
+                    "Unranked parts in this saved report (not ordered by priority):\n"
+                    + "\n".join(_unranked_part_line(r) for r in components[:12] or ranked)
+                )
+            else:
+                ranking = (
+                    "No ranked priority list. This saved report recorded **0 priority risks**, "
+                    "and the saved evidence does not support ordering one part above another. "
+                    "Ask to list the parts if you want an unranked inventory of the saved BOM."
+                )
+        elif domain == "Component Risk" and asks_at_risk_list:
             def bucket(r):
                 score = _s473_score(r, domain)
                 return "Active review" if score >= 35 else "Watchlist"
@@ -1151,17 +1207,6 @@ def _s473_report(question: str, context: dict[str, Any], history=None) -> str:
                 f"- **#{i} {_part_name(r)}** — {_s473_driver(r, domain)[0]}: {_s473_driver(r, domain)[1]}; {_priority_phrase(r)}."
                 for i, r in enumerate(ranked, 1)
             )
-        if report_has_no_priority:
-            low_n = _safe_int(summary_now.get("low_risk_parts"), len(ranked))
-            ranking = (
-                f"- **Priority risks** — 0 recorded in this saved report.\n"
-                f"- **Low-risk parts** — {low_n} recorded; none are elevated without differentiating report evidence.\n"
-                + "\n".join(
-                    f"- **{_part_name(r)}** — saved risk level: {str(r.get('risk_level') or 'Low')}; "
-                    "priority not assigned from missing or undifferentiated evidence."
-                    for r in ranked[:5]
-                )
-            )
         if not ranking:
             missing_rankings = {
                 "Procurement": "- **Purchasing priority unavailable** — stock, lead-time, demand, pricing, and authorized-source evidence must be refreshed.",
@@ -1173,20 +1218,16 @@ def _s473_report(question: str, context: dict[str, Any], history=None) -> str:
             }
             ranking = missing_rankings.get(domain, "- **Component ranking unavailable** — structured component evidence must be refreshed.")
         evidence_rows = []
-        if report_has_no_priority:
+        if cannot_rank:
             evidence_rows.append(
-                "- **Report summary** — high-risk parts: 0; medium-risk parts: 0; "
-                f"low-risk parts: {_safe_int(summary_now.get('low_risk_parts'), len(components))}."
+                "- **Report summary** — priority risks: 0; high-risk parts: 0; medium-risk parts: 0; "
+                f"low-risk parts: {low if low else len(components)}."
             )
-            for row in ranked[:5]:
-                risk_score = _known_int(row.get("risk_score"))
-                suppliers = _known_int(row.get("supplier_count"))
-                evidence_rows.append(
-                    f"- **{_part_name(row)}** — saved risk level: {str(row.get('risk_level') or 'Low')}; "
-                    f"recorded component risk: {f'{risk_score}/100' if risk_score is not None else 'not recorded'}; "
-                    f"suppliers: {suppliers if suppliers is not None else 'not recorded'}; "
-                    f"lifecycle: {str(row.get('lifecycle_status') or row.get('lifecycle') or 'Unknown')}."
-                )
+            evidence_rows.append(
+                "- **Ranking status** — saved evidence does not distinguish a first priority among these parts."
+            )
+            if asks_list_parts:
+                evidence_rows.extend(_unranked_part_line(row) for row in (components[:12] or ranked))
         else:
             for row in ranked:
                 try:
@@ -1198,6 +1239,7 @@ def _s473_report(question: str, context: dict[str, Any], history=None) -> str:
                     lead = _known_float(row.get("lead_time_weeks"))
                     risk_score = _known_int(row.get("risk_score"))
                     pri = relative(row)
+                    synth = " synthetic-preview" if _is_synthetic_row(row) else ""
                     evidence_rows.append(
                         f"- **{_part_name(row)}** — risk category: {row_driver}; severity: {severity}; "
                         f"primary driver: {row_detail}; "
@@ -1206,7 +1248,8 @@ def _s473_report(question: str, context: dict[str, Any], history=None) -> str:
                         f"suppliers: {suppliers if suppliers is not None else 'not recorded'}; "
                         f"inventory: {f'{stock:,}' if stock is not None else 'not recorded'}; "
                         f"lead time: {f'{lead:g} weeks' if lead is not None else 'not recorded'}; "
-                        f"lifecycle: {str(row.get('lifecycle_status') or row.get('lifecycle') or 'Unknown')}."
+                        f"lifecycle: {str(row.get('lifecycle_status') or row.get('lifecycle') or 'Unknown')}"
+                        f"{'; evidence label:' + synth if synth else ''}."
                     )
                 except Exception:
                     continue
@@ -1221,7 +1264,14 @@ def _s473_report(question: str, context: dict[str, Any], history=None) -> str:
                 "Production Readiness": "- **Release evidence unavailable** — component risk, sourcing, lifecycle, compatibility, and approval records are incomplete.",
             }
             evidence = missing_evidence.get(domain, "- **Evidence unavailable** — the saved analysis does not contain structured component records.")
-        actions = f"Validate the primary driver for {top}, assign an owner, select the appropriate mitigation, and save the supporting evidence and decision." if ranked else "Refresh or re-run the BOM analysis so structured component evidence is available before making a release decision."
+        if cannot_rank:
+            actions = (
+                "Keep monitoring the saved report for newly elevated priority risks. "
+                "Do not assign a first-review owner from undifferentiated low-risk evidence alone. "
+                "Ask to list the parts if you need an unranked inventory."
+            )
+        else:
+            actions = f"Validate the primary driver for {top}, assign an owner, select the appropriate mitigation, and save the supporting evidence and decision." if ranked else "Refresh or re-run the BOM analysis so structured component evidence is available before making a release decision."
         workflows = {
             "Procurement": [("Review Demand and Stock", "Confirm build demand, usable stock, shortages, and required order date."), ("Verify Authorized Pricing", "Compare current authorized pricing, MOQ, allocation, and commercial terms."), ("Contact Supplier", "Confirm availability, lead time, allocation status, and delivery commitment."), ("Place or Expedite Order", "Issue the order or escalation needed to protect the production date."), ("Monitor Delivery", "Track acknowledgements, slips, receipts, and remaining exposure.")],
             "Supplier Qualification": [("Rank Candidate Sources", "Prioritize authorized candidates by readiness, capability, and risk reduction."), ("Verify Authorization", "Confirm manufacturer authorization and approved distribution status."), ("Review Quality and Capacity", "Assess quality systems, capacity, geography, and continuity capability."), ("Complete Technical Validation", "Validate compatibility, documentation, samples, and required testing."), ("Approve Supplier", "Record approval scope, conditions, owner, and monitoring requirements.")],
@@ -1233,8 +1283,24 @@ def _s473_report(question: str, context: dict[str, Any], history=None) -> str:
             "Component Risk": [("Rank Components", "Compare lifecycle, schedule, inventory, supplier concentration, and saved risk evidence."), ("Verify Primary Drivers", "Confirm each leading driver against current authoritative evidence."), ("Select Mitigation", "Choose alternate qualification, sourcing action, buffer stock, redesign, monitoring, or acceptance."), ("Assign Owner and Due Date", "Make each mitigation accountable and time-bound."), ("Confirm Risk Reduction", "Rerun the assessment and verify that exposure was measurably reduced.")],
             "General Engineering Review": [("Rank Priorities", "Order the material engineering concerns by severity and decision impact."), ("Validate Evidence", "Confirm the facts supporting each priority."), ("Select Mitigation", "Choose the lowest-risk practical action."), ("Record Decision", "Save ownership, approval, rationale, and due date."), ("Confirm Closure", "Verify the action is complete and residual risk is acceptable.")],
         }
-        workflow = workflows.get(domain, workflows["General Engineering Review"])
-        follow = [f"Why is {top} ranked first?", "What evidence would change this recommendation?", "What should the engineering owner do next?"] if ranked else ["Which evidence gap should be closed first?", "How do I refresh the BOM evidence?", "What information is required for a reliable assessment?"]
+        if cannot_rank:
+            workflow = [
+                ("Confirm Report Summary", "Verify the saved report still shows 0 high-risk and 0 medium-risk parts."),
+                ("Avoid Forced Ranking", "Do not assign a first-priority owner from undifferentiated low-risk evidence."),
+                ("List Parts If Needed", "Request an unranked part list when an inventory of the saved BOM is required."),
+                ("Watch for Elevations", "Re-run Ask Cadivor after new supplier, lifecycle, or risk evidence elevates a part."),
+                ("Record Residual Status", "Save that no priority ranking was supported by the current report evidence."),
+            ]
+        else:
+            workflow = workflows.get(domain, workflows["General Engineering Review"])
+        if cannot_rank:
+            follow = [
+                "List the parts in this BOM without ranking them.",
+                "What evidence would create a real priority difference?",
+                "How do I refresh the BOM evidence?",
+            ]
+        else:
+            follow = [f"Why is {top} ranked first?", "What evidence would change this recommendation?", "What should the engineering owner do next?"] if ranked else ["Which evidence gap should be closed first?", "How do I refresh the BOM evidence?", "What information is required for a reliable assessment?"]
 
     conf_label, conf_reason = _confidence(context, strong=False)
     workflow_lines = "\n".join(f"- {label} | {detail}" for label, detail in workflow)

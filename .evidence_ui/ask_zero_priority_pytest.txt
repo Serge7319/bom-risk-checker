@@ -1,0 +1,8 @@
+........                                                                 [100%]
+=============================== warnings summary ===============================
+tests/test_nextjs_parity_followup.py:7
+  /Users/sergekashambala/Documents/Businesses/bom-risk-checker-ui-approval/tests/test_nextjs_parity_followup.py:7: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+8 passed, 1 warning in 2.17s
