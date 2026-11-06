@@ -60,6 +60,14 @@ from apps.api import monitoring_scheduler  # noqa: E402
 from apps.api import plan_limits  # noqa: E402
 from apps.api import supplier_lookup  # noqa: E402
 from apps.api.evidence_contract import annotate_report_parts  # noqa: E402
+from apps.api.report_exports import (  # noqa: E402
+    build_report_export,
+    safe_download_stem,
+)
+from apps.api.report_exports import (  # noqa: E402
+    build_report_export,
+    safe_download_stem,
+)
 
 # Demo passwords are not shipped in the API. Tests import
 # tests.fixtures.sandbox_auth_accounts; operators seed via
@@ -559,6 +567,41 @@ async def reports_get(request: Request) -> JSONResponse:
     if not report:
         return _json({"detail": "Report not found"}, 404)
     return _json(annotate_report_parts(report))
+
+
+async def reports_export(request: Request) -> Response:
+    """Export one saved report, scoped to the authenticated workspace."""
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    analysis_id = request.path_params["analysis_id"]
+    file_format = str(request.path_params["file_format"] or "").lower()
+    try:
+        report = get_report(analysis_id, workspace_id=ctx["workspace_id"])
+    except WorkspaceAccessError:
+        return _json({"detail": "Report not found"}, 404)
+    except PersistenceNotConfiguredError as exc:
+        return _json({"detail": str(exc)}, 503)
+    if not report:
+        return _json({"detail": "Report not found"}, 404)
+    if file_format not in {"pdf", "csv", "xlsx"}:
+        return _json({"detail": "Choose one of the supported export formats: PDF, Excel, or CSV."}, 400)
+
+    export_report = annotate_report_parts(report)
+    try:
+        payload, media_type, extension = build_report_export(export_report, file_format)
+    except ValueError as exc:
+        return _json({"detail": str(exc)}, 400)
+    filename = f"{safe_download_stem(report)}.{extension}"
+    return Response(
+        payload,
+        media_type=media_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 
 async def monitoring_get(request: Request) -> JSONResponse:
@@ -1105,6 +1148,7 @@ app = Starlette(
         Route("/boms/analyze", boms_analyze, methods=["POST"]),
         Route("/reports", reports_list, methods=["GET"]),
         Route("/reports/{analysis_id}/export.csv", reports_csv_get, methods=["GET"]),
+        Route("/reports/{analysis_id}/export/{file_format}", reports_export, methods=["GET"]),
         Route("/reports/{analysis_id}", reports_get, methods=["GET"]),
         Route("/reports/{analysis_id}", reports_delete, methods=["DELETE"]),
         Route("/projects", projects_list, methods=["GET"]),

@@ -45,7 +45,7 @@ export default function ReportsIndexPage() {
             <div className="cv-section-heading cv-section-heading--card">
               <div>
                 <h2>Saved analyses</h2>
-                <p>Open a report to inspect component signals and evidence.</p>
+                <p>Open a report to review its evidence and download PDF, Excel, or CSV copies.</p>
               </div>
               <span className="cv-data-note">{reports.length} report{reports.length === 1 ? "" : "s"}</span>
             </div>
@@ -71,7 +71,7 @@ export default function ReportsIndexPage() {
                         <td>{String(row.total_parts ?? "—")}</td>
                         <td>{String(row.high_risk_count ?? "—")}</td>
                         <td>{row.created_at ? new Date(String(row.created_at)).toLocaleDateString() : "—"}</td>
-                        <td><Link className="cv-button small" href={`/reports/${encodeURIComponent(id)}`}>Open report</Link></td>
+                        <td><Link className="cv-button small" href={`/reports/${encodeURIComponent(id)}`}>Open &amp; download</Link></td>
                       </tr>
                     );
                   })}
