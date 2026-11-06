@@ -8,6 +8,7 @@ import { Shell } from "@/components/Shell";
 import { KpiCard } from "@/components/KpiCard";
 import { PageHeader, SecondaryLink } from "@/components/PageHeader";
 import {
+  downloadReportCsv,
   fetchReport,
   listDecisionRecords,
   type DecisionRecord,
@@ -33,6 +34,8 @@ export default function ReportPage() {
   const [decisions, setDecisions] = useState<DecisionRecord[]>([]);
   const [decisionError, setDecisionError] = useState("");
   const [error, setError] = useState("");
+  const [exportError, setExportError] = useState("");
+  const [exportBusy, setExportBusy] = useState(false);
 
   useEffect(() => {
     if (!session) return;
@@ -61,6 +64,19 @@ export default function ReportPage() {
 
   if (!session) return null;
 
+  async function onExportCsv() {
+    if (!session) return;
+    setExportBusy(true);
+    setExportError("");
+    try {
+      await downloadReportCsv(String(params.id), session.access_token);
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : "The CSV export could not be created.");
+    } finally {
+      setExportBusy(false);
+    }
+  }
+
   const meta = {
     ...PAGE_META.ei,
     title: report?.filename
@@ -82,10 +98,14 @@ export default function ReportPage() {
             <SecondaryLink href={`/compare-parts?analysis_id=${encodeURIComponent(params.id)}`}>
               Compare parts
             </SecondaryLink>
+            <button type="button" className="cv-button" onClick={onExportCsv} disabled={!report || exportBusy}>
+              {exportBusy ? "Preparing CSV…" : "Download CSV"}
+            </button>
           </>
         }
       />
 
+      {exportError ? <div className="cv-error" role="alert">CSV export could not be downloaded. {exportError}</div> : null}
       {error ? (
         <div className="cv-error" role="alert">
           This saved report could not be opened. {error} <Link href="/reports">Return to saved reports</Link>

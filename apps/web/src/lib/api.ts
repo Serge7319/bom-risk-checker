@@ -256,6 +256,40 @@ export async function login(email: string, password: string): Promise<Session> {
   });
 }
 
+export async function downloadReportCsv(analysisId: string, initialToken: string): Promise<void> {
+  assertApiBaseConfigured();
+  const send = (token: string) =>
+    fetch(`${API_BASE}/reports/${encodeURIComponent(analysisId)}/export.csv`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+  let token = await currentSupabaseAccessToken(initialToken);
+  let response = await send(token);
+  if (response.status === 401) {
+    const refreshedToken = await refreshSupabaseAccessToken();
+    if (refreshedToken && refreshedToken !== token) {
+      token = refreshedToken;
+      response = await send(token);
+    }
+    if (response.status === 401) redirectToLoginAfterAuthFailure();
+  }
+  if (!response.ok) {
+    const detail = (await response.json().catch(() => ({}))) as { detail?: string };
+    throw new Error(detail.detail || `Request failed (${response.status})`);
+  }
+
+  const blob = await response.blob();
+  const objectUrl = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = "cadivor-report.csv";
+  link.style.display = "none";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => window.URL.revokeObjectURL(objectUrl), 1000);
+}
+
 export async function fetchAuthConfig() {
   return apiJson<{ signup_enabled: boolean; trial_length_days: number }>("/auth/config");
 }

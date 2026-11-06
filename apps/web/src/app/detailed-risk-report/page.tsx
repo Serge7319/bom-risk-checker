@@ -10,6 +10,10 @@ import { fetchDetailedRisk } from "@/lib/api";
 import { PAGE_META } from "@/lib/routes";
 import { readLastAnalysis, useRequireSession } from "@/lib/session";
 
+function cell(value: unknown, fallback = "—") {
+  return value === null || value === undefined || value === "" ? fallback : String(value);
+}
+
 export default function DetailedRiskPage() {
   const session = useRequireSession();
   const [data, setData] = useState<Record<string, unknown> | null>(null);
@@ -67,13 +71,13 @@ export default function DetailedRiskPage() {
                 <tbody>
                   {rows.slice(0, 50).map((row, i) => (
                     <tr key={i}>
-                      <td><strong>{String(row.MPN || row.mpn || row["Part number"] || "")}</strong></td>
-                      <td>{String(row.Manufacturer || row.manufacturer || "")}</td>
-                      <td>{String(row.Lifecycle || row.lifecycle || row["Lifecycle status"] || "")}</td>
-                      <td>{String(row["Risk level"] || row["Risk Level"] || row.risk_level || "")}</td>
-                      <td>{String(row.Stock || row.stock || "—")}</td>
-                      <td>{String(row["Unit price"] || row.unit_price || "—")}</td>
-                      <td className="cv-small-note">{String(row["Risk reasons"] || row.reasons || "").slice(0, 120)}</td>
+                      <td><strong>{cell(row.MPN ?? row.mpn ?? row["Part number"])}</strong></td>
+                      <td>{cell(row.Manufacturer ?? row.manufacturer)}</td>
+                      <td>{cell(row.Lifecycle ?? row.lifecycle ?? row["Lifecycle status"])}</td>
+                      <td>{cell(row.Risk ?? row["Risk level"] ?? row["Risk Level"] ?? row.risk_level)}</td>
+                      <td>{cell(row.Stock ?? row.stock)}</td>
+                      <td>{cell(row["Unit price"] ?? row.unit_price)}</td>
+                      <td className="cv-small-note">{cell(row.Why ?? row["Risk reasons"] ?? row.reasons).slice(0, 120)}</td>
                     </tr>
                   ))}
                 </tbody>
