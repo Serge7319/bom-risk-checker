@@ -8,6 +8,7 @@ from types import SimpleNamespace
 import pytest
 from starlette.testclient import TestClient
 
+from apps.api import supabase_auth
 from apps.api.main import app
 from apps.api.sandbox_auth import get_auth_store, reset_auth_store_for_tests
 from apps.api.workspace_store import reset_store_for_tests
@@ -114,6 +115,14 @@ def supabase_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClie
         return SimpleNamespace(auth=fake)
 
     monkeypatch.setattr("supabase.create_client", _fake_client)
+    for account in fake.users.values():
+        user = account["user"]
+        supabase_auth.ensure_owner_membership(
+            user_id=user.id,
+            email=user.email,
+            workspace_name=supabase_auth.user_workspace_name(user),
+            allow_create=True,
+        )
     from apps.api import synthetic_analyze as sa
 
     sa._REPORTS.clear()
@@ -255,6 +264,13 @@ def test_sandbox_hs256_blocked_when_production_runtime_forced(
     monkeypatch.setattr(
         "supabase.create_client",
         lambda *_a, **_k: SimpleNamespace(auth=fake),
+    )
+    owner = fake.users["owner@cadivor.test"]["user"]
+    supabase_auth.ensure_owner_membership(
+        user_id=owner.id,
+        email=owner.email,
+        workspace_name=supabase_auth.user_workspace_name(owner),
+        allow_create=True,
     )
     client = TestClient(app)
     # Production path uses Supabase, not HS256 — even with sandbox secret set.
