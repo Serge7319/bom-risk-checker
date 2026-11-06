@@ -207,9 +207,9 @@ def ensure_owner_membership(
     email: str,
     plan: str = "Trial",
     workspace_name: str | None = None,
-    allow_create: bool = True,
+    allow_create: bool = False,
 ) -> dict[str, Any]:
-    """Create/reuse a migration workspace and start its trial once."""
+    """Reuse a membership or provision an owner only when creation is explicitly allowed."""
     if not user_id or not email:
         raise AuthError("Authenticated user missing id or email")
     if not migration_database_url():
@@ -223,7 +223,7 @@ def ensure_owner_membership(
     existing = store.membership_for_user(user_id)
     if not existing and not allow_create:
         raise AuthError(
-            "This account is not provisioned for Cadivor. Contact the workspace owner for access.",
+            "This account is not provisioned for Cadivor. Contact support for access.",
             403,
         )
     if existing:
