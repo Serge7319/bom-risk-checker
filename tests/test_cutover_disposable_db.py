@@ -296,3 +296,63 @@ def test_supplier_monitoring_billing_connectors_compliance_on_disposable_db(cuto
             assert body["compliance_claimed"] is False
         else:
             assert body["summary"]["compliance_claimed"] is False
+
+def test_concurrent_analysis_writes_are_persisted(cutover_env, monkeypatch):
+    """Parallel synthetic uploads must commit distinct workspace reports."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    from apps.api import plan_limits
+    from apps.api.main import app
+
+    # Isolate storage concurrency from the independent monthly quota gate.
+    monkeypatch.setattr(plan_limits, "assert_analysis_allowed", lambda **_: {})
+
+    account = SANDBOX_SEED_USERS[0]
+    headers = _login(TestClient(app), account["email"], account["password"])
+    payload = FIXTURE.read_bytes()
+    total = 8
+
+    def upload(index: int) -> tuple[int, dict]:
+        with TestClient(app) as client:
+            response = client.post(
+                "/boms/analyze",
+                headers=headers,
+                data={
+                    "project_name": "Concurrent Write Test",
+                    "bom_name": f"Concurrent BOM {index}",
+                    "revision": "A",
+                },
+                files={
+                    "file": (
+                        f"concurrent_bom_{index}.csv",
+                        payload,
+                        "text/csv",
+                    )
+                },
+            )
+        try:
+            body = response.json()
+        except ValueError:
+            body = {"detail": response.text}
+        return response.status_code, body
+
+    with ThreadPoolExecutor(max_workers=total) as pool:
+        results = list(pool.map(upload, range(total)))
+
+    failures = [
+        f"upload {index}: HTTP {status} {body}"
+        for index, (status, body) in enumerate(results)
+        if status != 200
+    ]
+    assert not failures, "\\n".join(failures)
+
+    analysis_ids = [body["analysis_id"] for _, body in results]
+    assert len(set(analysis_ids)) == total
+
+    # Confirm every distinct concurrent write can be read from Postgres.
+    client = TestClient(app)
+    for analysis_id in analysis_ids:
+        saved = client.get(f"/reports/{analysis_id}", headers=headers)
+        assert saved.status_code == 200, saved.text
+        assert saved.json()["workspace_id"] == account["workspace_id"]
+
