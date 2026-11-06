@@ -1,15 +1,25 @@
-# Cadivor Next.js migration test build
+# Cadivor Next.js production migration status
 
-Same repository, branch `migrate/nextjs-shell-bom-flow`.
+Current source branch: `fix/roadmap-prod-safety-2026-11-06`.
 
-## Scope of this preview
+## Current production state (verified 2026-11-06)
 
-- Shared Next.js shell + Supabase Auth path on the migration API
+- `https://app.cadivor.com` is served by the Next.js Railway web service. The active production Railway project contains the Next.js web/API services and the dedicated Postgres service; no Streamlit service is present in the two Railway projects currently visible to this account.
+- The web and API deployments are healthy. The web deployment uses merge commit `04fdaa9` and its BOM Analyzer bundle contains both approved panels: “Before you analyze” and “Recent analyses.” An already-open browser tab can retain the prior bundle; a hard refresh fetches the current deployment.
+- Supabase Auth and the dedicated Railway Postgres store back the current application. Existing Streamlit records have not been imported.
+- Public signup, live supplier calls, Stripe checkout, monitoring scheduler, and real alert email remain disabled. No charges or verification emails were sent.
+- The app now receives a Supabase publishable key for browser session refresh; the access-token refresh fix is being prepared for deployment on this branch.
+
+The sections below retain historical migration evidence and gate details. Where older text says the domain is still on Streamlit, this verified deployment status supersedes it.
+
+## Current capability boundary
+
+- Next.js shell + Supabase Auth path on the production API
 - One end-to-end synthetic BOM flow: upload → analyze → report
 - Python analysis uses existing `bom_parser`, `risk_engine`, and `health_score`
 - Synthetic part evidence only — no live distributor calls, Stripe, or alert email
 - Verified-email signup and 14-day trial code is present but gated off; no signup emails are sent
-- **Production Streamlit on `app.cadivor.com` is unchanged**
+- The customer domain now serves Next.js; the former Streamlit application is not a Railway service in the active production project
 
 ## Local run
 
@@ -26,12 +36,12 @@ npm run dev
 
 Fixture: `tests/fixtures/synthetic_bom_25parts.csv`
 
-## Railway deployment boundary
+## Railway production services
 
-`app.cadivor.com` remains on the Streamlit service. The Next.js web/API test
-services use separate Railway subdomains and a dedicated migration Postgres
-database. A Railway environment named `production` does not mean the migration
-app has replaced the customer-domain application.
+`app.cadivor.com` points to the `cadivor-next-web-prod` Railway service. Its API
+is `cadivor-next-api-prod`; `Postgres-FGtQ` is the dedicated application store.
+These services are in Railway's `production` environment. This means the
+Next.js app is the live customer-domain application, not a test service.
 
 ## Verified local preview (2026-11-03)
 
@@ -40,24 +50,24 @@ app has replaced the customer-domain application.
 - Evidence: `.evidence/nextjs_migration/` (login → shell → BOM Analyzer → 25-part report)
 - API unit test: `tests/test_nextjs_migration_api.py`
 
-## Railway migration test services (2026-11-05)
+## Railway production services (verified 2026-11-06)
 
-The API and web services are separate from the customer app:
+The production services are:
 
 - `cadivor-next-api-prod` → https://cadivor-next-api-prod-production.up.railway.app
 - `cadivor-next-web-prod` → https://cadivor-next-web-prod-production.up.railway.app
-- `Postgres-FGtQ` is the dedicated migration record database; existing Streamlit saved-BOM data was not imported.
+- `Postgres-FGtQ` is the dedicated application record database; existing Streamlit saved-BOM data was not imported.
 
 ### API startup dispatch
 
-The root `railway.toml` is shared with Streamlit. `scripts/railway_start.sh`
-must dispatch `cadivor-next-api` and `cadivor-next-api-prod` to
-`apps/api/start.sh`; `bom-risk-checker` stays on the Streamlit boot path.
+The root `railway.toml` still contains the legacy Streamlit start path for local
+or future use. The active production web/API services run the Next.js app and
+`apps/api/start.sh`; no Streamlit service was found in the active production
+project.
 
-The migration API uses Supabase Auth with workspace membership and dedicated
-migration Postgres. The current production migration service's database
-redeploy-survival and cross-workspace checks have not been re-run in this pass.
-Do not cut over `app.cadivor.com` based on the migration smoke checks alone.
+The API uses Supabase Auth with server-resolved workspace membership and
+dedicated Postgres. The disposable-database restore and tenant-isolation checks
+passed; a live production-database restore drill remains intentionally unrun.
 
 
 ## Self-serve signup / trial gate
@@ -74,7 +84,8 @@ The migration API exposes only whether signup is enabled, not secrets. Unverifie
 
 ## Roadmap gate progress (2026-11-05)
 
-Work continues on branch `migrate/nextjs-shell-bom-flow` against the dedicated migration API/web services only. `app.cadivor.com` Streamlit traffic was not changed.
+The Next.js app is now live at `app.cadivor.com`. Roadmap work continues on the
+current branch against the production API/web services and dedicated Postgres.
 
 | Gate | Status | Notes |
 | --- | --- | --- |
@@ -84,7 +95,7 @@ Work continues on branch `migrate/nextjs-shell-bom-flow` against the dedicated m
 | Commercial | PARTIAL | Server plan limits; Stripe test prep only |
 | Connectors | PARTIAL | Generic CSV ready; vendor choice pending |
 | Compliance | PARTIAL | Evidence-linked packs; no unsupported claims |
-| Cutover | PARTIAL | See `apps/CUTOVER_RUNBOOK.md`; domain unchanged |
+| Cutover | PARTIAL / POST-CUTOVER | Domain is routed to Next.js; see `apps/CUTOVER_RUNBOOK.md` for remaining recovery and live-DB checks |
 
 ### New migration API modules
 

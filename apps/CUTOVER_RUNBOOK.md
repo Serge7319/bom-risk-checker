@@ -1,20 +1,20 @@
 # Cadivor Next.js cutover and rollback runbook
 
-**Status:** Disposable-DB cutover drills executed locally (2026-11-05). `https://app.cadivor.com` remains on Streamlit. Do not change DNS, custom domains, or Streamlit traffic until every gate below is PASS with dated evidence on the intended production migration deployment.
+**Status (2026-11-06):** `https://app.cadivor.com` is live on the Next.js Railway web service. Web and API deployments are healthy. The approved BOM Analyzer side-panel code is in the live web bundle. The earlier pre-cutover status below is superseded; the remaining list is post-cutover readiness work.
 
 ## Boundaries that stay in force
 
-- Customer domain (`app.cadivor.com`) stays on the Streamlit service until explicit cutover approval.
-- Migration records stay in `CADIVOR_MIGRATION_DATABASE_URL` only. Do not import, merge, or alter existing Streamlit/Supabase customer BOM tables during cutover rehearsal.
+- Customer domain (`app.cadivor.com`) now routes to `cadivor-next-web-prod`; the active Railway production project has no Streamlit service.
+- Next.js records stay in the dedicated Railway Postgres store. Existing Streamlit/Supabase BOM tables were not merged or imported.
 - Cutover drills in this repository use a **disposable embedded Postgres** only. Never restore into the customer database or the live Railway migration database.
 - Use synthetic fixtures and provider mocks for checks. No customer BOMs, live Stripe charges, marketing email, or unauthorized supplier calls.
 
-## Pre-cutover checklist
+## Post-cutover readiness checklist
 
-| # | Check | Evidence required | Status (2026-11-05) |
+| # | Check | Evidence required | Status (2026-11-06) |
 | --- | --- | --- | --- |
 | 1 | Signup/trial lifecycle on migration API (email confirm, redirect allowlist, abuse controls, designated account) | Hosted logs + test account notes | **BLOCKED** — Supabase Confirm Email / delivery / abuse / redirect operator confirms not verified; second account `serge.subscription+cadivor-sandbox@gmail.com` identified from prior session evidence but password and inbox are **not available** in this agent environment; no verification email sent; signup gate remains closed |
-| 2 | Auth login/logout/`/auth/me` on disposable/migration path | HTTP/API tests | **PARTIAL** — sandbox JWT lifecycle PASS on disposable Postgres (`tests/test_cutover_disposable_db.py`); hosted Supabase second-account login not re-run (credentials unavailable) |
+| 2 | Auth login/logout/`/auth/me` on hosted production path | Hosted account exercise + API logs | **PARTIAL** — Supabase Auth is active; token refresh fix is being prepared. Hosted second-account lifecycle still needs a signed-in browser session. |
 | 3 | Tenant isolation across reports, monitoring alerts, preferences, mutations | Cross-workspace negative tests on disposable DB | **PASS (disposable DB)** — workspace B gets 404 on A's report get/delete; monitoring prefs/alerts isolated; B cannot ack A's alerts |
 | 4 | Trusted supplier evidence path (exact MPN, source URL, retrieved_at, units, live vs synthetic labels) | Mock PASS; live PASS only with migration-owned credentials | **PARTIAL** — mocked PASS including procurement evidence envelopes; live calls still disabled |
 | 5 | Monitoring durable history + mock notification sink | API tests | **PARTIAL** — Postgres-backed monitoring store used when `CADIVOR_MIGRATION_DATABASE_URL` set; mock email only; scheduler not attached |
@@ -23,8 +23,8 @@
 | 8 | Compliance packs label missing evidence; no false claims | API tests | **PARTIAL** — packs PASS on disposable DB; no unsupported claims |
 | 9 | Persistence backup/restore of disposable migration Postgres | Dump/restore drill | **PASS (disposable DB)** — see evidence below; **not** run against live migration or customer DB |
 | 10 | Performance smoke (analyze + report load) on disposable DB | Timed synthetic run | **PASS (disposable DB)** — analyze ~30ms, report GET ~13ms locally on synthetic 25-part fixture (not a production SLA) |
-| 11 | Rollback procedure reviewed | This document | Prepared (domain cutover not performed) |
-| 12 | `apps/web` lint + production build | lockfile install + commands | **PASS** — Node v22.14.0 at `~/.local/node-v22.14.0-darwin-arm64`; `npm ci`, `npm run lint` exit 0 (1 font warning), `npm run build` exit 0 |
+| 11 | Rollback procedure reviewed | This document + Railway deployment history | **PARTIAL** — rollback target is a known-good Next.js deployment; no Streamlit service is currently available in the active Railway projects. |
+| 12 | `apps/web` lint + production build | lockfile install + commands | **PASS (2026-11-06)** — `npm run lint` exit 0 (one existing custom-font warning); `npm run build` exit 0; Next.js 15.5.9, 22 routes |
 
 ## Disposable-DB drill commands (2026-11-05)
 
@@ -85,21 +85,28 @@ Performance evidence (2026-11-05):
 
 Pytest result this pass: **29 passed** (4 cutover disposable-DB + 25 prior migration/auth/roadmap).
 
-## Cutover sequence (only after checklist PASS on intended production migration services)
+## Domain cutover record (completed 2026-11-06)
 
-1. Freeze Streamlit feature flags that would conflict; leave Streamlit serving `app.cadivor.com`.
-2. Confirm migration API health: Supabase auth, dedicated Postgres, signup gate state, suppliers/stripe/email flags.
-3. Run synthetic end-to-end: login → analyze fixture → report → monitoring → compliance export.
-4. Attach custom domain to Next web **only** after approval; keep Streamlit service runnable.
-5. Monitor error rates for 30–60 minutes; keep Streamlit ready.
+1. `app.cadivor.com` was attached to `cadivor-next-web-prod`; Cloudflare DNS now targets the Railway web endpoint.
+2. `app.cadivor.com/bom-analyzer` responds with HTTP 200 and Next.js headers.
+3. The active Railway production project has healthy Next.js web/API deployments and dedicated Postgres; the live API reports Supabase Auth and Postgres persistence.
+4. The production web bundle contains “Before you analyze” and “Recent analyses.” A user with an older tab may need a hard refresh to load its new asset.
+5. Signup, live supplier access, Stripe checkout, scheduled monitoring and real alert email remain disabled.
+
+## Remaining post-cutover work
+
+1. Deploy the browser token-refresh fix and verify sign-in followed by authenticated POST requests.
+2. Complete hosted second-account login/report persistence once a browser session for that account is available.
+3. Keep signup closed until email confirmation, delivery, redirects, abuse safeguards and leaked-password protection are verified.
+4. Complete the production backup/restore and tenant-isolation review without restoring over production data.
 
 ## Rollback sequence
 
-1. Point `app.cadivor.com` back to the Streamlit Railway service (reverse the domain attachment only; do not delete Streamlit).
-2. Leave migration API/web and migration Postgres intact for forensics.
-3. Do not write migration DB rows into Streamlit tables during rollback.
-4. Confirm Streamlit login + one saved BOM load on the customer domain.
-5. Record incident notes: time, trigger, health diffs, whether any customer saw Next.js.
+1. Use Railway's rollback to the last known-good Next.js web deployment and verify the matching API version.
+2. Keep the domain attached to Next.js and leave Postgres intact; the previous Streamlit service is not currently provisioned in the active Railway projects.
+3. Do not restore or merge saved-BOM data across the old and new database stores during incident response.
+4. Confirm login, report listing and a saved report load on the customer domain.
+5. Record incident notes: time, trigger, health diffs and user-visible impact.
 
 ## Shared Supabase privilege hardening (2026-11-05)
 

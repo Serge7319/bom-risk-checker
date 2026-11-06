@@ -3,7 +3,8 @@
 import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { fetchAuthConfig, getSession, login, setSession } from "@/lib/api";
+import { clearSession, fetchAuthConfig, getSession, login, setSession } from "@/lib/api";
+import { getSupabaseBrowserClient } from "@/lib/supabase";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -12,9 +13,48 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [signupEnabled, setSignupEnabled] = useState(false);
+  const [sessionExpired, setSessionExpired] = useState(false);
 
   useEffect(() => {
-    if (getSession()) router.replace("/");
+    if (new URLSearchParams(window.location.search).get("reason") === "session-refresh") {
+      setSessionExpired(true);
+    }
+
+    const savedSession = getSession();
+    if (!savedSession) return;
+
+    const client = getSupabaseBrowserClient();
+    if (!client) {
+      router.replace("/");
+      return;
+    }
+
+    let active = true;
+    void client.auth.getSession().then(({ data, error: sessionError }) => {
+      if (!active) return;
+      const authUser = data.session?.user;
+      const matchesSavedUser = Boolean(
+        authUser &&
+          (savedSession.user_id
+            ? savedSession.user_id === authUser.id
+            : savedSession.email.trim().toLowerCase() ===
+              (authUser.email || "").trim().toLowerCase()),
+      );
+      if (!sessionError && data.session && matchesSavedUser) {
+        router.replace("/");
+      } else {
+        clearSession();
+        setSessionExpired(true);
+      }
+    }).catch(() => {
+      if (!active) return;
+      clearSession();
+      setSessionExpired(true);
+    });
+
+    return () => {
+      active = false;
+    };
   }, [router]);
 
   useEffect(() => {
@@ -29,7 +69,7 @@ export default function LoginPage() {
     setError("");
     try {
       const session = await login(email, password);
-      setSession(session);
+      await setSession(session);
       router.replace("/");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
@@ -59,6 +99,11 @@ export default function LoginPage() {
           live supplier, billing, and automated alert email connections are not
           connected.
         </p>
+        {sessionExpired ? (
+          <div className="cv-error" role="status">
+            Your saved sign-in expired. Sign in again to continue; your saved analyses remain in your workspace.
+          </div>
+        ) : null}
         <label htmlFor="email">Email</label>
         <input
           id="email"

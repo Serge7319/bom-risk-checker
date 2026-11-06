@@ -197,7 +197,7 @@ def _workspace_ids_for_owner(user_id: str, email: str) -> tuple[str, str]:
     slug = re.sub(r"[^a-z0-9]+", "-", (email or "owner").lower()).strip("-")[:24] or "owner"
     short = re.sub(r"[^a-f0-9]", "", user_id.lower())[:12] or uuid.uuid4().hex[:12]
     workspace_id = f"{_TEST_WORKSPACE_PREFIX}-{short}"
-    workspace_name = f"Next migration test · {slug}"
+    workspace_name = "Engineering workspace"
     return workspace_id, workspace_name
 
 
@@ -356,6 +356,11 @@ def login(
         or (session.get("access_token") if isinstance(session, dict) else "")
         or ""
     )
+    refresh_token = str(
+        getattr(session, "refresh_token", None)
+        or (session.get("refresh_token") if isinstance(session, dict) else "")
+        or ""
+    )
     if not access_token:
         raise AuthError("Invalid credentials")
     user_id, user_email = _user_payload(user)
@@ -371,6 +376,7 @@ def login(
     )
     return {
         "access_token": access_token,
+        **({"refresh_token": refresh_token} if refresh_token else {}),
         "token_type": "bearer",
         "expires_in": expires_in,
         "email": membership["email"],

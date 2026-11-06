@@ -1,0 +1,51 @@
+name: Cadivor Production API Health Check
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Check production API health
+        run: |
+          python - <<'PY'
+          import json
+          from urllib.request import urlopen
+
+          url = "https://cadivor-next-api-prod-production.up.railway.app/health"
+          with urlopen(url, timeout=15) as response:
+              if response.status != 200:
+                  raise SystemExit(f"Health endpoint returned HTTP {response.status}")
+              payload = json.load(response)
+
+          persistence = payload.get("persistence") or {}
+          required = {
+              "health endpoint": payload.get("ok") is True,
+              "production runtime": payload.get("production_runtime") is True,
+              "Supabase auth": payload.get("auth_path") == "supabase"
+                  and payload.get("auth_configured") is True,
+              "durable migration database": persistence.get("backend") == "postgres"
+                  and persistence.get("migration_database_required") is True,
+          }
+          failed = [name for name, passed in required.items() if not passed]
+          if failed:
+              raise SystemExit("Production API health check failed: " + ", ".join(failed))
+
+          print(json.dumps({
+              "ok": True,
+              "service": payload.get("service"),
+              "auth_path": payload.get("auth_path"),
+              "persistence": persistence.get("backend"),
+              "signup_enabled": payload.get("self_serve_signup_enabled"),
+              "suppliers_live": payload.get("suppliers_live"),
+              "stripe_checkout_enabled": payload.get("stripe_checkout_enabled"),
+              "monitoring_scheduler_enabled": payload.get("monitoring_scheduler_enabled"),
+              "monitoring_email_enabled": payload.get("monitoring_email_enabled"),
+          }, sort_keys=True))
+          PY

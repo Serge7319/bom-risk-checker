@@ -1,23 +1,23 @@
 # Cadivor north-star capability map
 
-Business north star: **continuous engineering workflow**—persistent project/BOM records, risk roll-up, ongoing monitoring, and self-serve adoption. This map separates verified migration-test behavior from a customer-facing production release.
+Business north star: **continuous engineering workflow**—persistent project/BOM records, risk roll-up, ongoing monitoring, and self-serve adoption. This map distinguishes verified production behavior from capabilities that remain gated or incomplete.
 
-## Deployment boundary
+## Current production boundary (verified 2026-11-06)
 
-- `https://app.cadivor.com` remains the existing Streamlit application.
-- The Next.js migration build and API run on separate Railway service subdomains in the Railway `production` environment. They have no `app.cadivor.com` custom domain and have not replaced the customer application.
-- Migration records are stored in the dedicated `CADIVOR_MIGRATION_DATABASE_URL` Postgres database; do not point it at or merge it with the existing Streamlit/Supabase saved-BOM store.
-- Use synthetic BOMs for migration checks. Do not describe the migration build as generally released or its generated supplier fields as live evidence.
+- `https://app.cadivor.com` is served by the Next.js Railway web service and its Supabase-authenticated API.
+- Railway production services are `cadivor-next-web-prod`, `cadivor-next-api-prod`, and the dedicated `Postgres-FGtQ` database. No Streamlit service is present in either Railway project visible to this account; legacy Streamlit source remains in the repository.
+- The Next.js database is separate from the old Streamlit/Supabase saved-BOM store. Existing Streamlit records have not been imported.
+- Supplier and component evidence remains synthetic unless clearly labeled and sourced from an enabled live provider.
 
 ## Goals vs current state
 
 | Goal | Current state | Verified boundary / remaining work |
 | --- | --- | --- |
-| Persistent project / BOM / revision / analysis workflow | **Working on the separate migration test services** | Flat and nested synthetic analyses save to migration Postgres and reload by report ID after a browser refresh. A fresh API redeploy-survival check on the current production test service has not been run. |
+| Persistent project / BOM / revision / analysis workflow | **Working in production Next.js** | Flat and nested synthetic analyses save to dedicated Railway Postgres and reload by report ID after a browser refresh. Live production database restore testing remains outstanding. |
 | Multi-level BOMs and risk roll-up | **Verified with synthetic fixture** | `nested_bom_product.csv`: CAP100U effective quantity is 8; the top-level roll-up surfaces the medium-risk NRND leaf. No customer BOM or live distributor evidence was used. |
-| Home from saved data | **Working on migration test services** | Home, Reports, Engineering Decisions, and Engineering Intelligence read saved workspace analyses. Existing Streamlit records have not been imported. |
+| Home from saved data | **Working in production Next.js** | Home, Reports, Engineering Decisions, and Engineering Intelligence read saved workspace analyses. Existing Streamlit records have not been imported. |
 | Workspace isolation | **Implemented; verification is mixed by environment** | Membership is server-derived and isolation tests pass; prior live sandbox cross-workspace checks passed. Disposable embedded-Postgres cross-tenant read/mutation isolation PASS this pass; live production migration database recheck not repeated (and restore drills intentionally avoid that DB). |
-| Authentication | **Supabase path configured on migration API** | Health reports Supabase JWT membership auth and sandbox JWT disabled in production runtime. Hosted login lifecycle is not fully re-run in this pass. Signup, password reset, invitation, and production-domain cutover remain separate. Existing `app.cadivor.com` auth was not changed. |
+| Authentication | **Supabase Auth live; refresh hardening in progress** | The API validates Supabase JWTs and resolves membership server-side. Browser refresh handling is being added; one hosted second-account lifecycle check remains outstanding. Signup remains gated; password reset and invitations are not implemented. |
 | Proactive monitoring and email alerts | **PARTIAL (2026-11-05)** | Durable tenant-scoped alert history, preferences, on-demand refresh history, and mock email sink are implemented and unit-tested. Scheduled cron and real email transport remain disabled (`CADIVOR_MONITORING_EMAIL_ENABLED` unset). |
 | Self-serve onboarding and 14-day trial | **PARTIAL / BLOCKED for live enablement (2026-11-05)** | Verified-email signup, workspace provisioning on verified sign-in, trial dates, and analysis restriction after 14 days are in code and covered by unit tests. Live signup remains off until Supabase email confirmation, delivery, redirect allowlist, and abuse controls are operator-confirmed; no verification emails sent this pass. |
 | Usage-based subscription tiers | **PARTIAL (2026-11-05)** | Server-enforced plan limits + `/plan/usage` metering against migration reports. Stripe status/checkout-prep endpoints use existing `src.plans` price secret names; checkout stays disabled; live keys blocked; no charges created. |
@@ -25,7 +25,7 @@ Business north star: **continuous engineering workflow**—persistent project/BO
 | Compliance evidence packs | **PARTIAL (2026-11-05)** | RoHS/REACH/conflict-minerals/audit export paths label missing evidence and never claim compliance without sourced live evidence. Synthetic examples only. |
 | Decision tools | **Partial preview** | Evidence envelopes on reports; mocked authorized supplier lookup with exact-MPN matching. Live distributor HTTP remains disabled without migration-owned credentials + transport flag. |
 
-## Ordered roadmap status (2026-11-05)
+## Ordered roadmap status (2026-11-06)
 
 | Gate | Status | Evidence |
 | --- | --- | --- |
@@ -35,7 +35,7 @@ Business north star: **continuous engineering workflow**—persistent project/BO
 | 4. Commercial readiness | **PARTIAL** | Plan limit enforcement on `/boms/analyze`; billing status + checkout-prep (no sessions). Live checkout **BLOCKED** by design. |
 | 5. Workflow integration | **PARTIAL** | Connector groundwork ready for generic CSV; vendor pick **BLOCKED** on discovery. |
 | 6. Compliance | **PARTIAL** | Packs+audit export with missing-evidence labels; no false claims. |
-| 7. Cutover readiness | **PARTIAL** | Disposable embedded-Postgres drills PASS (isolation, backup/restore, performance) in `tests/test_cutover_disposable_db.py`; evidence in `apps/.evidence_cutover/`. Domain cutover **not done**. Hosted prod-migration-DB restore still outstanding (by design not run here). `apps/web` lint+build PASS (Node v22.14.0). |
+| 7. Cutover readiness | **PARTIAL / POST-CUTOVER** | `app.cadivor.com` is live on Next.js; web/API deployments are healthy; no Streamlit service is present in the active Railway project. Disposable Postgres isolation/backup/restore/performance drills pass. Live database restore drill and hosted recovery rehearsal remain outstanding. |
 
 ## Checks completed on 2026-11-05
 
@@ -51,7 +51,7 @@ Business north star: **continuous engineering workflow**—persistent project/BO
 | `apps/web` lint | **PASS** — `npm run lint` exit 0 (1 `@next/next/no-page-custom-font` warning in `layout.tsx`). |
 | `apps/web` production build | **PASS** — `npm run build` exit 0 (Next.js 15.5.9); 22 routes generated including `/signup`. |
 | Second-account hosted auth/signup | **BLOCKED** — account `serge.subscription+cadivor-sandbox@gmail.com` known from prior session; password/inbox unavailable here; Supabase email/abuse/redirect confirms unverified; signup remains closed. |
-| `app.cadivor.com` Next.js cutover | **Not done** — app remains on Streamlit. |
+| `app.cadivor.com` Next.js deployment | **PASS** — domain serves the Railway Next.js web app; the live bundle contains the approved BOM Analyzer side panels. |
 
 ## Do not claim complete
 
