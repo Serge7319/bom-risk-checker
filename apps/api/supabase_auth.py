@@ -176,7 +176,7 @@ def _require_configured() -> tuple[str, str]:
     missing = missing_config_vars()
     if missing:
         raise AuthNotConfiguredError(
-            "Supabase Auth is not configured for the Next migration API. "
+            "Supabase Auth is not configured for this API. "
             f"Missing: {', '.join(missing)}"
         )
     return supabase_url(), supabase_anon_key()

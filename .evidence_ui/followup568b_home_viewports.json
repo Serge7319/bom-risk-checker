@@ -1,0 +1,50 @@
+[
+  {
+    "viewport": {
+      "name": "desktop_1680x1050",
+      "width": 1680,
+      "height": 1050
+    },
+    "pageOverflow": false,
+    "openVisible": true,
+    "overflow": {
+      "scrollWidth": 1680,
+      "clientWidth": 1680,
+      "bodyScrollWidth": 1680
+    },
+    "screenshot": "/Users/sergekashambala/Documents/Businesses/bom-risk-checker-ui-approval/.evidence_ui/screenshots/home_active_projects_desktop_1680x1050.png",
+    "tableScreenshot": "/Users/sergekashambala/Documents/Businesses/bom-risk-checker-ui-approval/.evidence_ui/screenshots/home_table_desktop_1680x1050.png"
+  },
+  {
+    "viewport": {
+      "name": "laptop_1366x768",
+      "width": 1366,
+      "height": 768
+    },
+    "pageOverflow": false,
+    "openVisible": true,
+    "overflow": {
+      "scrollWidth": 1366,
+      "clientWidth": 1366,
+      "bodyScrollWidth": 1366
+    },
+    "screenshot": "/Users/sergekashambala/Documents/Businesses/bom-risk-checker-ui-approval/.evidence_ui/screenshots/home_active_projects_laptop_1366x768.png",
+    "tableScreenshot": "/Users/sergekashambala/Documents/Businesses/bom-risk-checker-ui-approval/.evidence_ui/screenshots/home_table_laptop_1366x768.png"
+  },
+  {
+    "viewport": {
+      "name": "mobile_696x1188",
+      "width": 696,
+      "height": 1188
+    },
+    "pageOverflow": false,
+    "openVisible": true,
+    "overflow": {
+      "scrollWidth": 696,
+      "clientWidth": 696,
+      "bodyScrollWidth": 696
+    },
+    "screenshot": "/Users/sergekashambala/Documents/Businesses/bom-risk-checker-ui-approval/.evidence_ui/screenshots/home_active_projects_mobile_696x1188.png",
+    "tableScreenshot": "/Users/sergekashambala/Documents/Businesses/bom-risk-checker-ui-approval/.evidence_ui/screenshots/home_table_mobile_696x1188.png"
+  }
+]

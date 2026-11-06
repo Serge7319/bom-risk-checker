@@ -459,7 +459,7 @@ class PostgresWorkspaceStore:
         next_actions = [
             {
                 "title": "Reopen an active project BOM",
-                "detail": "Workspace-scoped saved analyses in the migration database.",
+                "detail": "Open saved analyses from this workspace.",
                 "href": "/reports",
                 "live": True,
             },
@@ -489,9 +489,9 @@ class PostgresWorkspaceStore:
             "workspace_id": wid,
             "persistence": "migration-postgres-store",
             "gap": (
-                "Saved project, BOM, revision, and analysis records use the dedicated migration "
-                "Postgres database, separate from the current Streamlit app. Monitoring email, "
-                "usage limits, PLM/ERP/CAD remain staged."
+                "Saved projects, BOMs, revisions, and analyses are stored in your workspace. "
+                "Monitoring email, billing checkout, usage-limit checkout, and PLM/ERP/CAD "
+                "connectors are not connected yet."
             ),
             "metrics": {
                 "active_projects": len(projects),

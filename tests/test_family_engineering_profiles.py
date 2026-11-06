@@ -27,7 +27,7 @@ from src.component_family_profiles import FieldSpec, COMPARE_LIMIT_GE, COMPARE_N
 class FamilyProfileRegistryTests(unittest.TestCase):
     REQUIRED_FAMILIES = {
         "Capacitor", "Resistor", "Inductor", "Diode / protection",
-        "Bipolar transistor", "MOSFET", "Regulator", "Operational amplifier",
+        "Bipolar transistor", "MOSFET", "Regulator", "Operational amplifier", "Timer IC",
         "Logic / interface IC", "MCU / processor", "FPGA / CPLD",
         "Connector / electromechanical", "Relay", "Switch",
         "Oscillator / crystal", "Sensor", "Transformer",
@@ -49,6 +49,7 @@ class FamilyProfileRegistryTests(unittest.TestCase):
             "MOSFET": {"description": "N-Channel MOSFET 60V"},
             "Regulator": {"description": "LDO voltage regulator 3.3V"},
             "Operational amplifier": {"description": "Operational amplifier rail-to-rail"},
+            "Timer IC": {"description": "Precision timer IC", "architecture": "555 timer", "manufacturer_part_number": "NE555P"},
             "MCU / processor": {"description": "ARM Cortex-M microcontroller"},
             "FPGA / CPLD": {"description": "Artix-7 FPGA"},
             "Connector / electromechanical": {"description": "Board-to-board connector header"},

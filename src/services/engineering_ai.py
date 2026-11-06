@@ -752,21 +752,47 @@ def _s473_route(question: str, history: list[dict[str, str]] | None = None) -> t
     return operation, domain
 
 
+def _known_float(value: Any) -> float | None:
+    try:
+        if value is None or value == "":
+            return None
+        result = float(value)
+        if result != result or result in (float("inf"), float("-inf")):
+            return None
+        return result
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
+def _known_int(value: Any) -> int | None:
+    known = _known_float(value)
+    if known is None:
+        return None
+    try:
+        return int(round(known))
+    except Exception:
+        return None
+
+
 def _s473_score(row: dict[str, Any], domain: str) -> float:
     risk = _safe_float(row.get("risk_score"), 0.0)
-    suppliers = _safe_int(row.get("supplier_count"), 0)
-    stock = _safe_int(row.get("stock_available"), 0)
+    suppliers = _known_int(row.get("supplier_count"))
+    stock = _known_int(row.get("stock_available"))
     lead = _safe_float(row.get("lead_time_weeks"), 0.0)
     lifecycle = str(row.get("lifecycle_status") or row.get("lifecycle") or "").lower()
     life_penalty = 65 if any(x in lifecycle for x in ("obsolete", "eol", "nrnd", "replacement", "not recommended")) else 0
-    if domain == "Procurement": return lead * 3 + max(0, 1000 - stock) / 50 + max(0, 3 - suppliers) * 20 + risk
-    if domain == "Supplier Qualification": return max(0, 3 - suppliers) * 30 + lead * 2 + risk + (20 if stock <= 0 else 0)
-    if domain == "Single Source Exposure": return max(0, 4 - suppliers) * 35 + risk + lead
-    if domain == "Schedule Resilience": return lead * 4 + max(0, 3 - suppliers) * 25 + (30 if stock <= 0 else 0) + risk
+    # Missing supplier/stock evidence must stay neutral — never treat absence as zero sources.
+    supplier_gap = 0 if suppliers is None else max(0, 3 - suppliers)
+    stock_value = 0 if stock is None else stock
+    stock_empty = stock is not None and stock <= 0
+    if domain == "Procurement": return lead * 3 + max(0, 1000 - stock_value) / 50 + supplier_gap * 20 + risk
+    if domain == "Supplier Qualification": return supplier_gap * 30 + lead * 2 + risk + (20 if stock_empty else 0)
+    if domain == "Single Source Exposure": return (0 if suppliers is None else max(0, 4 - suppliers) * 35) + risk + lead
+    if domain == "Schedule Resilience": return lead * 4 + supplier_gap * 25 + (30 if stock_empty else 0) + risk
     if domain == "Lifecycle": return risk + life_penalty
-    if domain == "Inventory": return max(0, 10000 - stock) / 100 + lead * 2 + risk
-    if domain == "Production Readiness": return risk + max(0, 3 - suppliers) * 15 + (25 if stock <= 0 else 0) + life_penalty / 2
-    return risk + lead * 1.5 + max(0, 3 - suppliers) * 12 + (18 if stock <= 0 else 0) + life_penalty
+    if domain == "Inventory": return (0 if stock is None else max(0, 10000 - stock_value) / 100) + lead * 2 + risk
+    if domain == "Production Readiness": return risk + supplier_gap * 15 + (25 if stock_empty else 0) + life_penalty / 2
+    return risk + lead * 1.5 + supplier_gap * 12 + (18 if stock_empty else 0) + life_penalty
 
 
 def _s473_gaps(context: dict[str, Any], components: list[dict[str, Any]]) -> list[tuple[str, str, str]]:
@@ -782,8 +808,8 @@ def _s473_gaps(context: dict[str, Any], components: list[dict[str, Any]]) -> lis
             "Without part-level risk, lifecycle, inventory, lead-time, and source data, Cadivor cannot form or test a component recommendation.",
         ))
     counts = [
-        ("Lead-time evidence", sum(_safe_float(r.get("lead_time_weeks"), 0.0) <= 0 for r in components), "schedule and delivery priority"),
-        ("Authorized-source evidence", sum(_safe_int(r.get("supplier_count"), 0) <= 0 for r in components), "supplier concentration and sourcing priority"),
+        ("Lead-time evidence", sum(_known_float(r.get("lead_time_weeks")) is None for r in components), "schedule and delivery priority"),
+        ("Authorized-source evidence", sum(_known_int(r.get("supplier_count")) is None for r in components), "supplier concentration and sourcing priority"),
         ("Lifecycle verification", sum(not str(r.get("lifecycle_status") or r.get("lifecycle") or "").strip() for r in components), "obsolescence and migration urgency"),
         ("Inventory evidence", sum(r.get("stock_available") in (None, "") for r in components), "shortage and material coverage"),
     ]
@@ -797,20 +823,28 @@ def _s473_gaps(context: dict[str, Any], components: list[dict[str, Any]]) -> lis
 
 
 def _s473_driver(row: dict[str, Any], domain: str) -> tuple[str, str]:
-    risk = _safe_int(row.get("risk_score"), 0)
-    suppliers = _safe_int(row.get("supplier_count"), 0)
-    stock = _safe_int(row.get("stock_available"), 0)
-    lead = _safe_float(row.get("lead_time_weeks"), 0.0)
-    life = str(row.get("lifecycle_status") or row.get("lifecycle") or "Unknown")
+    risk = _known_int(row.get("risk_score"))
+    suppliers = _known_int(row.get("supplier_count"))
+    stock = _known_int(row.get("stock_available"))
+    lead = _known_float(row.get("lead_time_weeks")) or 0.0
+    life = str(row.get("lifecycle_status") or row.get("lifecycle") or "").strip() or "Unknown"
+    risk_level = str(row.get("risk_level") or "").strip()
     candidates: list[tuple[float, str, str]] = []
     if domain in {"Schedule Resilience", "Procurement", "Component Risk", "General Engineering Review"} and lead > 0:
         candidates.append((lead * 4, "Schedule", f"{lead:g}-week recorded lead time"))
-    if suppliers <= 1: candidates.append((90, "Single source", f"only {suppliers} recorded source"))
-    elif suppliers == 2: candidates.append((55, "Supplier concentration", f"only {suppliers} recorded sources"))
-    if stock <= 0: candidates.append((85, "Inventory", "no recorded available stock"))
+    if suppliers is not None:
+        if suppliers <= 1:
+            candidates.append((90, "Single source", f"only {suppliers} recorded source"))
+        elif suppliers == 2:
+            candidates.append((55, "Supplier concentration", f"only {suppliers} recorded sources"))
+    if stock is not None and stock <= 0:
+        candidates.append((85, "Inventory", "no recorded available stock"))
     if any(x in life.lower() for x in ("obsolete", "eol", "nrnd", "replacement", "not recommended")):
         candidates.append((95, "Lifecycle", f"lifecycle status is {life}"))
-    if risk > 0: candidates.append((risk, "Composite risk", f"recorded risk score is {risk}/100"))
+    if risk is not None and risk > 0:
+        candidates.append((risk, "Composite risk", f"recorded risk score is {risk}/100"))
+    elif risk_level:
+        candidates.append((10, "Reported risk level", f"saved report risk level is {risk_level}"))
     if not candidates:
         return "Evidence gap", "insufficient saved component evidence to identify a dominant driver"
     _, label, detail = max(candidates, key=lambda x: x[0])
@@ -843,13 +877,14 @@ def _s48_relative_priorities(rows: list[dict[str, Any]], domain: str) -> dict[in
     raw = [max(0.0, _safe_float(_s473_score(row, domain), 0.0)) for row in rows]
     if not raw:
         return {}
-    high = max(raw) or 1.0
+    high = max(raw)
     low = min(raw)
     spread = high - low
     values: dict[int, int] = {}
     for row, score in zip(rows, raw):
         if spread <= 0.0001:
-            relative = 100
+            # Tied / undifferentiated — never invent equal 100/100 priorities.
+            relative = 0
         else:
             relative = int(round(35 + 65 * ((score - low) / spread)))
         values[id(row)] = max(0, min(100, relative))
@@ -1049,8 +1084,26 @@ def _s473_report(question: str, context: dict[str, Any], history=None) -> str:
             }
             direct = missing_direct.get(domain, "Cadivor cannot identify a priority because structured component evidence is missing from this saved analysis.")
         elif domain == "Component Risk" and asks_review_first:
-            driver, detail = _s473_driver(top_row, domain)
-            direct = f"Review **{top}** first because its leading concern is **{driver.lower()}**: {detail}."
+            summary = context.get("summary") or {}
+            high = _safe_int(summary.get("high_risk_parts"), 0)
+            medium = _safe_int(summary.get("medium_risk_parts"), 0)
+            low = _safe_int(summary.get("low_risk_parts"), 0)
+            undifferentiated = bool(ranked) and all(relative(row) == 0 for row in ranked)
+            report_has_no_priority = high == 0 and medium == 0
+            if report_has_no_priority:
+                low_clause = f" and **{low} low-risk part{'s' if low != 1 else ''}**" if low else ""
+                direct = (
+                    f"This saved report shows **0 priority risks**{low_clause}. "
+                    "There is not enough differentiating risk evidence in the report to rank one part above another."
+                )
+            elif undifferentiated:
+                direct = (
+                    "The saved report does not contain enough differentiating evidence to rank these parts. "
+                    "Cadivor will not assign equal priority scores without a measurable difference in the report fields."
+                )
+            else:
+                driver, detail = _s473_driver(top_row, domain)
+                direct = f"Review **{top}** first because its leading concern is **{driver.lower()}**: {detail}."
         elif domain == "Component Risk" and asks_at_risk_list:
             active = [r for r in ranked if _s473_score(r, domain) >= 35]
             watch = [r for r in ranked if _s473_score(r, domain) < 35]
@@ -1071,13 +1124,44 @@ def _s473_report(question: str, context: dict[str, Any], history=None) -> str:
         elif domain == "Production Readiness": direct = f"Production readiness should be decided only after the leading issue associated with **{top}** is closed or explicitly accepted."
         else: direct = f"The first engineering review priority is **{top}** based on the saved BOM evidence."
 
+        def _priority_phrase(row: dict[str, Any]) -> str:
+            value = relative(row)
+            if value <= 0:
+                return "priority not differentiated on saved evidence"
+            return f"relative assessment priority {value}/100"
+
+        summary_now = context.get("summary") or {}
+        report_has_no_priority = (
+            domain == "Component Risk"
+            and asks_review_first
+            and _safe_int(summary_now.get("high_risk_parts"), 0) == 0
+            and _safe_int(summary_now.get("medium_risk_parts"), 0) == 0
+        )
+
         if domain == "Component Risk" and asks_at_risk_list:
             def bucket(r):
                 score = _s473_score(r, domain)
                 return "Active review" if score >= 35 else "Watchlist"
-            ranking = "\n".join(f"- **#{i} {_part_name(r)}** — status: {bucket(r)}; {_s473_driver(r, domain)[0]}: {_s473_driver(r, domain)[1]}; relative assessment priority {relative(r)}/100." for i, r in enumerate(ranked, 1))
+            ranking = "\n".join(
+                f"- **#{i} {_part_name(r)}** — status: {bucket(r)}; {_s473_driver(r, domain)[0]}: {_s473_driver(r, domain)[1]}; {_priority_phrase(r)}."
+                for i, r in enumerate(ranked, 1)
+            )
         else:
-            ranking = "\n".join(f"- **#{i} {_part_name(r)}** — {_s473_driver(r, domain)[0]}: {_s473_driver(r, domain)[1]}; relative assessment priority {relative(r)}/100." for i, r in enumerate(ranked, 1))
+            ranking = "\n".join(
+                f"- **#{i} {_part_name(r)}** — {_s473_driver(r, domain)[0]}: {_s473_driver(r, domain)[1]}; {_priority_phrase(r)}."
+                for i, r in enumerate(ranked, 1)
+            )
+        if report_has_no_priority:
+            low_n = _safe_int(summary_now.get("low_risk_parts"), len(ranked))
+            ranking = (
+                f"- **Priority risks** — 0 recorded in this saved report.\n"
+                f"- **Low-risk parts** — {low_n} recorded; none are elevated without differentiating report evidence.\n"
+                + "\n".join(
+                    f"- **{_part_name(r)}** — saved risk level: {str(r.get('risk_level') or 'Low')}; "
+                    "priority not assigned from missing or undifferentiated evidence."
+                    for r in ranked[:5]
+                )
+            )
         if not ranking:
             missing_rankings = {
                 "Procurement": "- **Purchasing priority unavailable** — stock, lead-time, demand, pricing, and authorized-source evidence must be refreshed.",
@@ -1089,20 +1173,43 @@ def _s473_report(question: str, context: dict[str, Any], history=None) -> str:
             }
             ranking = missing_rankings.get(domain, "- **Component ranking unavailable** — structured component evidence must be refreshed.")
         evidence_rows = []
-        for row in ranked:
-            try:
-                row_score = _s473_score(row, domain)
-                row_driver, row_detail = _s473_driver(row, domain)
-                severity = "High" if row_score >= 70 else "Medium" if row_score >= 35 else "Low"
+        if report_has_no_priority:
+            evidence_rows.append(
+                "- **Report summary** — high-risk parts: 0; medium-risk parts: 0; "
+                f"low-risk parts: {_safe_int(summary_now.get('low_risk_parts'), len(components))}."
+            )
+            for row in ranked[:5]:
+                risk_score = _known_int(row.get("risk_score"))
+                suppliers = _known_int(row.get("supplier_count"))
                 evidence_rows.append(
-                    f"- **{_part_name(row)}** — risk category: {row_driver}; severity: {severity}; "
-                    f"primary driver: {row_detail}; recorded component risk: {_safe_int(row.get('risk_score'), 0)}/100; "
-                    f"relative assessment priority: {relative(row)}/100; suppliers: {_safe_int(row.get('supplier_count'), 0)}; "
-                    f"inventory: {_safe_int(row.get('stock_available'), 0):,}; lead time: {_safe_float(row.get('lead_time_weeks'), 0.0):g} weeks; "
+                    f"- **{_part_name(row)}** — saved risk level: {str(row.get('risk_level') or 'Low')}; "
+                    f"recorded component risk: {f'{risk_score}/100' if risk_score is not None else 'not recorded'}; "
+                    f"suppliers: {suppliers if suppliers is not None else 'not recorded'}; "
                     f"lifecycle: {str(row.get('lifecycle_status') or row.get('lifecycle') or 'Unknown')}."
                 )
-            except Exception:
-                continue
+        else:
+            for row in ranked:
+                try:
+                    row_score = _s473_score(row, domain)
+                    row_driver, row_detail = _s473_driver(row, domain)
+                    severity = "High" if row_score >= 70 else "Medium" if row_score >= 35 else "Low"
+                    suppliers = _known_int(row.get("supplier_count"))
+                    stock = _known_int(row.get("stock_available"))
+                    lead = _known_float(row.get("lead_time_weeks"))
+                    risk_score = _known_int(row.get("risk_score"))
+                    pri = relative(row)
+                    evidence_rows.append(
+                        f"- **{_part_name(row)}** — risk category: {row_driver}; severity: {severity}; "
+                        f"primary driver: {row_detail}; "
+                        f"recorded component risk: {f'{risk_score}/100' if risk_score is not None else 'not recorded'}; "
+                        f"relative assessment priority: {pri if pri > 0 else 'not differentiated'}; "
+                        f"suppliers: {suppliers if suppliers is not None else 'not recorded'}; "
+                        f"inventory: {f'{stock:,}' if stock is not None else 'not recorded'}; "
+                        f"lead time: {f'{lead:g} weeks' if lead is not None else 'not recorded'}; "
+                        f"lifecycle: {str(row.get('lifecycle_status') or row.get('lifecycle') or 'Unknown')}."
+                    )
+                except Exception:
+                    continue
         evidence = "\n".join(evidence_rows) or "- No valid component evidence could be normalized for this assessment."
         if not evidence:
             missing_evidence = {

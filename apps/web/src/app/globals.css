@@ -919,7 +919,9 @@ button {
 }
 
 .cv-table-wrap--actions {
-  overflow-x: visible;
+  overflow-x: auto;
+  max-width: 100%;
+  -webkit-overflow-scrolling: touch;
 }
 
 .cv-table {
@@ -930,6 +932,7 @@ button {
 
 .cv-table.cv-table-actions {
   min-width: 0;
+  width: 100%;
   table-layout: fixed;
 }
 
@@ -1206,6 +1209,15 @@ button {
   }
   .cv-home-hero {
     grid-template-columns: minmax(0, 1.3fr) minmax(230px, 0.8fr);
+  }
+}
+
+@media (max-width: 900px) {
+  .cv-table.cv-table-actions {
+    min-width: 560px;
+  }
+  .cv-table-wrap--actions {
+    overflow-x: auto;
   }
 }
 

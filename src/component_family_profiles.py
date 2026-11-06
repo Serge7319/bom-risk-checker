@@ -396,6 +396,19 @@ _register(FamilyProfile(
 ))
 
 _register(FamilyProfile(
+    id="Timer IC", display_name="Timer IC",
+    markers=("555 timer", "precision timer", "timer ic", "timing circuit"),
+    scoring_mode="ic_weighted", architecture_meaningful=True,
+    fields=(
+        _f("architecture", "Function / category", compare=COMPARE_TYPE, required=True,
+           pdf=("timer", "function"), digikey=("Type",), mouser=("Product Type",)),
+        _f("voltage_range", "Supply voltage", compare=COMPARE_EXACT, required=True, unit="V",
+           pdf=("supply voltage",), role="range",
+           digikey=("Voltage - Supply",), mouser=("Supply Voltage",)),
+    ),
+))
+
+_register(FamilyProfile(
     id="Operational amplifier", display_name="Operational amplifier",
     markers=("operational amplifier", "op amp", "op-amp", "opamp"),
     scoring_mode="ic_weighted", architecture_meaningful=True,
@@ -620,7 +633,8 @@ _register(FamilyProfile(
 ))
 
 _INFERENCE_ORDER: tuple[str, ...] = (
-    "FPGA / CPLD", "MCU / processor", "Operational amplifier", "Logic / interface IC",
+    "FPGA / CPLD", "MCU / processor", "Operational amplifier", "Timer IC",
+    "Logic / interface IC",
     "Regulator", "MOSFET", "Bipolar transistor", "Diode / protection", "Capacitor",
     "Potentiometer / rheostat", "Resistor", "Inductor", "Transformer",
     "Oscillator / crystal", "Sensor", "Relay", "Switch", "Connector / electromechanical",

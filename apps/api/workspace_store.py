@@ -560,8 +560,8 @@ def describe_persistence() -> dict[str, Any]:
             "database_configured": True,
             "ephemeral_file_allowed": False,
             "label": (
-                "Saved BOM records use the dedicated migration Postgres database, "
-                "separate from the current Streamlit app."
+                "Saved BOM and project records are stored in your workspace database. "
+                "Monitoring email, billing checkout, and design-tool connectors are not connected yet."
             ),
             "railway_environment": railway_env or None,
         }
@@ -580,8 +580,8 @@ def describe_persistence() -> dict[str, Any]:
         "database_configured": False,
         "ephemeral_file_allowed": False,
         "label": (
-            "A dedicated migration database is required for deployed use; "
-            "temporary file storage is disabled."
+            "Workspace database storage is not configured for this deployment; "
+            "temporary local storage is disabled."
         ),
         "railway_environment": railway_env or None,
     }
@@ -604,7 +604,7 @@ def get_store(path: Path | None = None) -> Any:
 
     if not allow_ephemeral_file_store():
         raise PersistenceNotConfiguredError(
-            "A dedicated migration database is required for deployed use. "
+            "Workspace database storage is not configured for this deployment. "
             "Temporary file storage is disabled "
             "on Railway unless CADIVOR_ALLOW_EPHEMERAL_FILE_STORE=1."
         )
