@@ -49,6 +49,7 @@ from apps.api.workspace_store import (  # noqa: E402
     describe_persistence,
     get_store,
 )
+from src.saved_bom_project import split_project_and_bom  # noqa: E402
 
 from apps.api import billing_prep  # noqa: E402
 from apps.api import compliance_packs  # noqa: E402
@@ -678,7 +679,7 @@ async def decision_records_post(request: Request) -> JSONResponse:
         record = get_store().create_decision_record(
             {
                 "analysis_id": analysis_id,
-                "project_name": (report or {}).get("project_name"),
+                "project_name": split_project_and_bom(report or {})[0] or None,
                 "bom_name": (report or {}).get("bom_name") or (report or {}).get("filename"),
                 "revision": (report or {}).get("revision"),
                 "part_a": part_a,
