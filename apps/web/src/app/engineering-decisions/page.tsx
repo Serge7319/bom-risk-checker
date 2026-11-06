@@ -7,7 +7,12 @@ import { Shell } from "@/components/Shell";
 import { LoadingCard } from "@/components/GapBanner";
 import { KpiCard } from "@/components/KpiCard";
 import { PageHeader, PrimaryLink, SecondaryLink } from "@/components/PageHeader";
-import { listReports, type AnalyzeSummary } from "@/lib/api";
+import {
+  listDecisionRecords,
+  listReports,
+  type AnalyzeSummary,
+  type DecisionRecord,
+} from "@/lib/api";
 import { PAGE_META } from "@/lib/routes";
 import { useRequireSession } from "@/lib/session";
 
@@ -17,27 +22,34 @@ export default function EngineeringDecisionsPage() {
     (AnalyzeSummary & { filename?: string; saved_at?: string }) | null
   >(null);
   const [error, setError] = useState("");
+  const [decisionError, setDecisionError] = useState("");
+  const [records, setRecords] = useState<DecisionRecord[]>([]);
   const [busy, setBusy] = useState(true);
 
   useEffect(() => {
     if (!session) return;
-    listReports(session.access_token)
-      .then(({ reports }) => {
-        const row = reports[0];
-        setLast(row ? {
-          analysis_id: String(row.analysis_id || row.id || ""),
-          total_parts: Number(row.total_parts || 0),
-          health_score: row.health_score == null ? null : Number(row.health_score),
-          health_status: String(row.health_status || "—"),
-          high_risk_count: Number(row.high_risk_count || 0),
-          medium_risk_count: Number(row.medium_risk_count || 0),
-          low_risk_count: Number(row.low_risk_count || 0),
-          mode: String(row.mode || "synthetic-preview"),
-          filename: String(row.filename || "Saved BOM analysis"),
-          saved_at: String(row.created_at || ""),
-        } : null);
-      })
-      .catch((err) => setError(err instanceof Error ? err.message : "Unable to load saved analyses."))
+    Promise.all([
+      listReports(session.access_token)
+        .then(({ reports }) => {
+          const row = reports[0];
+          setLast(row ? {
+            analysis_id: String(row.analysis_id || row.id || ""),
+            total_parts: Number(row.total_parts || 0),
+            health_score: row.health_score == null ? null : Number(row.health_score),
+            health_status: String(row.health_status || "—"),
+            high_risk_count: Number(row.high_risk_count || 0),
+            medium_risk_count: Number(row.medium_risk_count || 0),
+            low_risk_count: Number(row.low_risk_count || 0),
+            mode: String(row.mode || "synthetic-preview"),
+            filename: String(row.filename || "Saved BOM analysis"),
+            saved_at: String(row.created_at || ""),
+          } : null);
+        })
+        .catch((err) => setError(err instanceof Error ? err.message : "Unable to load saved analyses.")),
+      listDecisionRecords(session.access_token)
+        .then(({ records: savedRecords }) => setRecords(savedRecords || []))
+        .catch((err) => setDecisionError(err instanceof Error ? err.message : "Unable to load decision records.")),
+    ])
       .finally(() => setBusy(false));
   }, [session]);
 
@@ -65,8 +77,8 @@ export default function EngineeringDecisionsPage() {
         </div>
       </div>
 
-      {busy ? <LoadingCard label="Loading the latest saved analysis…" /> : null}
-      {error ? <div className="cv-error" role="alert">The decision queue could not load. {error}</div> : null}
+      {busy ? <LoadingCard label="Loading saved analyses and decision records…" /> : null}
+      {error ? <div className="cv-error" role="alert">Engineering decisions could not load. {error}</div> : null}
 
       {last ? (
         <div className="cv-kpis">
@@ -133,21 +145,6 @@ export default function EngineeringDecisionsPage() {
                     </Link>
                   </td>
                 </tr>
-                <tr>
-                  <td>
-                    <span className="cv-badge gray">Not available yet</span>
-                  </td>
-                  <td>
-                    <strong>Saved decision records</strong>
-                    <div className="cv-muted">
-                      Historical multi-BOM decision records are not included in this workspace.
-                    </div>
-                  </td>
-                  <td>—</td>
-                  <td>
-                    <span className="cv-small-note">Unavailable in this build</span>
-                  </td>
-                </tr>
               </tbody>
             </table>
           </div>
@@ -159,6 +156,69 @@ export default function EngineeringDecisionsPage() {
           body="Analyze a BOM to see its highest priority component signals and open the supporting report."
           action={<PrimaryLink href="/bom-analyzer">Start a BOM analysis</PrimaryLink>}
         />
+      ) : null}
+
+      {!busy ? (
+        <section className="cv-card pad cv-decision-history">
+          <div className="cv-decision-history-heading">
+            <div>
+              <div className="cv-eyebrow">Workspace history</div>
+              <h2 className="cv-card-title">Recorded engineering decisions</h2>
+              <p className="cv-card-subtitle">Human review records include the comparison snapshot available when they were saved. Cadivor does not qualify alternates or change a BOM.</p>
+            </div>
+            <PrimaryLink href="/compare-parts">Compare parts</PrimaryLink>
+          </div>
+          {records.length ? (
+            <div className="cv-table-wrap" style={{ marginTop: 14 }}>
+              <table className="cv-table">
+                <thead>
+                  <tr>
+                    <th>Saved</th>
+                    <th>Project / BOM</th>
+                    <th>Parts</th>
+                    <th>Decision / reviewer</th>
+                    <th>Rationale and evidence status</th>
+                    <th>Record</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {records.map((record) => (
+                    <tr key={record.id}>
+                      <td>{record.created_at ? new Date(record.created_at).toLocaleDateString() : "—"}</td>
+                      <td>
+                        <strong>{record.project_name || "Workspace"}</strong>
+                        <div className="cv-muted">{record.bom_name || "No BOM linked"}{record.revision ? ` · rev ${record.revision}` : ""}</div>
+                      </td>
+                      <td><strong>{record.part_a} → {record.part_b}</strong></td>
+                      <td>
+                        <span className="cv-badge blue">{record.decision_label}</span>
+                        <div className="cv-muted">{record.reviewer}</div>
+                      </td>
+                      <td>
+                        <div>{record.rationale}</div>
+                        <div className="cv-small-note">{record.qualification_note}</div>
+                      </td>
+                      <td>
+                        {record.analysis_id ? (
+                          <Link className="cv-button small" href={`/reports/${encodeURIComponent(record.analysis_id)}`}>Open report</Link>
+                        ) : <span className="cv-small-note">Workspace record</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            decisionError ? (
+              <div className="cv-error" role="alert">Saved decisions could not load. {decisionError}</div>
+            ) : <EmptyState
+              icon="decisions"
+              title="No decisions recorded yet"
+              body="Compare two parts, choose Record a decision, and save a reviewer, rationale, and evidence snapshot here."
+              action={<PrimaryLink href="/compare-parts">Open Compare Parts</PrimaryLink>}
+            />
+          )}
+        </section>
       ) : null}
     </Shell>
   );

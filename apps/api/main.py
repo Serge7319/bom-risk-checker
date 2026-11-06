@@ -49,6 +49,7 @@ from apps.api.workspace_store import (  # noqa: E402
     describe_persistence,
     get_store,
 )
+from src.saved_bom_project import split_project_and_bom  # noqa: E402
 
 from apps.api import billing_prep  # noqa: E402
 from apps.api import compliance_packs  # noqa: E402
@@ -173,6 +174,7 @@ async def health(_: Request) -> JSONResponse:
             "tools": [
                 "monitoring",
                 "compare-parts",
+                "decision-records",
                 "datasheet-qa",
                 "procurement",
                 "design-impact",
@@ -564,11 +566,145 @@ async def compare_parts_post(request: Request) -> JSONResponse:
             part_a=str(body.get("part_a") or ""),
             part_b=str(body.get("part_b") or ""),
             analysis_id=body.get("analysis_id") or None,
+            use_latest_if_missing=False,
         )
     except WorkspaceAccessError:
         return _json({"detail": "Report not found"}, 404)
     status = 200 if result.get("ok") else 400
     return _json(result, status)
+
+
+_DECISION_LABELS = {
+    "hold_for_review": "Hold for review",
+    "approve_alternate": "Approve alternate",
+    "retain_current_part": "Retain current part",
+}
+
+
+async def decision_records_get(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    analysis_id = (request.query_params.get("analysis_id") or "").strip()
+    try:
+        if analysis_id and not get_report(analysis_id, workspace_id=ctx["workspace_id"]):
+            return _json({"detail": "Report not found"}, 404)
+        records = get_store().list_decision_records(
+            workspace_id=ctx["workspace_id"],
+            analysis_id=analysis_id or None,
+        )
+    except WorkspaceAccessError:
+        return _json({"detail": "Report not found"}, 404)
+    except PersistenceNotConfiguredError as exc:
+        return _json({"detail": str(exc)}, 503)
+    return _json({"ok": True, "records": records})
+
+
+async def decision_records_post(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return _json({"detail": "Invalid JSON"}, 400)
+    if not isinstance(body, dict):
+        return _json({"detail": "Decision payload must be an object."}, 400)
+
+    part_a = str(body.get("part_a") or "").strip()
+    part_b = str(body.get("part_b") or "").strip()
+    decision = str(body.get("decision") or "").strip()
+    reviewer = str(body.get("reviewer") or "").strip()
+    rationale = str(body.get("rationale") or "").strip()
+    requested_analysis_id = str(body.get("analysis_id") or "").strip() or None
+    if not part_a or not part_b or part_a.casefold() == part_b.casefold():
+        return _json({"detail": "Compare two different parts before recording a decision."}, 400)
+    if len(part_a) > 160 or len(part_b) > 160:
+        return _json({"detail": "Manufacturer part numbers must be 160 characters or fewer."}, 400)
+    if decision not in _DECISION_LABELS:
+        return _json({"detail": "Choose a supported engineering decision."}, 400)
+    if not reviewer or len(reviewer) > 120:
+        return _json({"detail": "Enter a reviewer name (up to 120 characters)."}, 400)
+    if not rationale or len(rationale) > 3000:
+        return _json({"detail": "Enter a rationale (up to 3,000 characters)."}, 400)
+    if decision == "approve_alternate" and body.get("verified_primary_evidence") is not True:
+        return _json(
+            {
+                "detail": (
+                    "Confirm that you reviewed the candidate's manufacturer datasheet "
+                    "and package/footprint evidence before recording an approval."
+                )
+            },
+            400,
+        )
+
+    try:
+        if requested_analysis_id and not get_report(
+            requested_analysis_id, workspace_id=ctx["workspace_id"]
+        ):
+            return _json({"detail": "Report not found"}, 404)
+        comparison = migration_tools.compare_parts_payload(
+            workspace_id=ctx["workspace_id"],
+            part_a=part_a,
+            part_b=part_b,
+            analysis_id=requested_analysis_id,
+            use_latest_if_missing=False,
+        )
+        if not comparison.get("ok"):
+            return _json({"detail": comparison.get("detail") or "Comparison unavailable."}, 400)
+        analysis_id = str(comparison.get("analysis_id") or "").strip() or None
+        report = (
+            get_report(analysis_id, workspace_id=ctx["workspace_id"])
+            if analysis_id
+            else None
+        )
+        snapshot = {
+            key: comparison.get(key)
+            for key in (
+                "mode",
+                "finding",
+                "engineering_evidence_summary",
+                "engineering_evidence_status",
+                "counts",
+                "family",
+                "family_mismatch",
+                "rows",
+                "part_cards",
+                "source_a",
+                "source_b",
+                "evidence_sources",
+                "gap",
+            )
+        }
+        record = get_store().create_decision_record(
+            {
+                "analysis_id": analysis_id,
+                "project_name": split_project_and_bom(report or {})[0] or None,
+                "bom_name": (report or {}).get("bom_name") or (report or {}).get("filename"),
+                "revision": (report or {}).get("revision"),
+                "part_a": part_a,
+                "part_b": part_b,
+                "decision": decision,
+                "decision_label": _DECISION_LABELS[decision],
+                "reviewer": reviewer,
+                "rationale": rationale,
+                "verified_primary_evidence": decision == "approve_alternate",
+                "qualification_status": "not-qualified-by-cadivor",
+                "qualification_note": (
+                    "This record captures a human decision. The comparison used synthetic or "
+                    "offline evidence and did not qualify or update the BOM."
+                ),
+                "comparison_snapshot": snapshot,
+                "created_by": ctx.get("user_id"),
+                "created_by_email": ctx.get("email"),
+            },
+            workspace_id=ctx["workspace_id"],
+        )
+    except WorkspaceAccessError:
+        return _json({"detail": "Report not found"}, 404)
+    except PersistenceNotConfiguredError as exc:
+        return _json({"detail": str(exc)}, 503)
+    return _json({"ok": True, "record": record}, 201)
 
 
 async def datasheet_qa_post(request: Request) -> JSONResponse:
@@ -951,6 +1087,8 @@ app = Starlette(
         Route("/workspace/home", workspace_home, methods=["GET"]),
         Route("/tools/monitoring", monitoring_get, methods=["GET"]),
         Route("/tools/compare-parts", compare_parts_post, methods=["POST"]),
+        Route("/decision-records", decision_records_get, methods=["GET"]),
+        Route("/decision-records", decision_records_post, methods=["POST"]),
         Route("/tools/datasheet-qa", datasheet_qa_post, methods=["POST"]),
         Route("/tools/procurement", procurement_get, methods=["GET"]),
         Route("/tools/design-impact", design_impact_get, methods=["GET"]),

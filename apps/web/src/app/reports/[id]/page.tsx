@@ -7,7 +7,12 @@ import { AskCadivorPanel } from "@/components/AskCadivorPanel";
 import { Shell } from "@/components/Shell";
 import { KpiCard } from "@/components/KpiCard";
 import { PageHeader, SecondaryLink } from "@/components/PageHeader";
-import { fetchReport, type Report } from "@/lib/api";
+import {
+  fetchReport,
+  listDecisionRecords,
+  type DecisionRecord,
+  type Report,
+} from "@/lib/api";
 import { analysisModeLabel, evidenceSourceLabel } from "@/lib/display";
 import { PAGE_META } from "@/lib/routes";
 import { rememberAnalysis, useRequireSession } from "@/lib/session";
@@ -25,6 +30,8 @@ export default function ReportPage() {
   const router = useRouter();
   const session = useRequireSession();
   const [report, setReport] = useState<Report | null>(null);
+  const [decisions, setDecisions] = useState<DecisionRecord[]>([]);
+  const [decisionError, setDecisionError] = useState("");
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -47,6 +54,9 @@ export default function ReportPage() {
       .catch((err) =>
         setError(err instanceof Error ? err.message : "Failed to load report"),
       );
+    listDecisionRecords(session.access_token, params.id)
+      .then(({ records }) => setDecisions(records || []))
+      .catch((err) => setDecisionError(err instanceof Error ? err.message : "Decision history could not load."));
   }, [params.id, session]);
 
   if (!session) return null;
@@ -68,6 +78,9 @@ export default function ReportPage() {
             <SecondaryLink href="/bom-analyzer">New analysis</SecondaryLink>
             <SecondaryLink href="/engineering-decisions">
               Decision queue
+            </SecondaryLink>
+            <SecondaryLink href={`/compare-parts?analysis_id=${encodeURIComponent(params.id)}`}>
+              Compare parts
             </SecondaryLink>
           </>
         }
@@ -152,6 +165,36 @@ export default function ReportPage() {
               Lifecycle and stock fields are offline synthetic estimates, not
               live distributor evidence.
             </p>
+          </section>
+
+          <section className="cv-card pad cv-report-decisions" style={{ marginBottom: 14 }}>
+            <div className="cv-eyebrow">Comparison history</div>
+            <h2 className="cv-card-title" style={{ marginTop: 8 }}>Engineering decisions for this BOM</h2>
+            <p className="cv-card-subtitle">Each entry preserves the reviewer’s rationale and the comparison evidence snapshot used at the time.</p>
+            {decisionError ? <div className="cv-error" role="alert">Decision history could not load. {decisionError}</div> : null}
+            {decisions.length ? (
+              <div className="cv-table-wrap" style={{ marginTop: 12 }}>
+                <table className="cv-table">
+                  <thead>
+                    <tr><th>Saved</th><th>Current part</th><th>Candidate</th><th>Decision</th><th>Reviewer / rationale</th><th>Evidence status</th></tr>
+                  </thead>
+                  <tbody>
+                    {decisions.map((decision) => (
+                      <tr key={decision.id}>
+                        <td>{decision.created_at ? new Date(decision.created_at).toLocaleDateString() : "—"}</td>
+                        <td><strong>{decision.part_a}</strong></td>
+                        <td><strong>{decision.part_b}</strong></td>
+                        <td><span className="cv-badge blue">{decision.decision_label}</span></td>
+                        <td>{decision.reviewer}<div className="cv-muted">{decision.rationale}</div></td>
+                        <td><span className="cv-badge amber">Not qualified by Cadivor</span><div className="cv-small-note">{decision.qualification_note}</div></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : !decisionError ? (
+              <div className="cv-small-note" style={{ marginTop: 12 }}>No comparison decisions have been recorded for this analysis.</div>
+            ) : null}
           </section>
 
           {report.hierarchy?.has_hierarchy ? (

@@ -43,6 +43,15 @@ def _auth_headers(client: TestClient) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
+def _account_headers(client: TestClient, account: dict[str, str]) -> dict[str, str]:
+    res = client.post(
+        "/auth/login",
+        json={"email": account["email"], "password": account["password"]},
+    )
+    assert res.status_code == 200
+    return {"Authorization": f"Bearer {res.json()['access_token']}"}
+
+
 def test_migration_tools_vertical_slice():
     client = TestClient(app)
     headers = _auth_headers(client)
@@ -108,3 +117,87 @@ def test_migration_tools_vertical_slice():
     health = client.get("/health")
     assert health.status_code == 200
     assert "monitoring" in health.json()["tools"]
+
+
+def test_decision_records_round_trip_and_are_workspace_scoped():
+    client = TestClient(app)
+    headers_a = _account_headers(client, SANDBOX_SEED_USERS[0])
+    headers_b = _account_headers(client, SANDBOX_SEED_USERS[1])
+    analyze = client.post(
+        "/boms/analyze",
+        headers=headers_a,
+        data={"project_name": "Decision test", "bom_name": "Synthetic controller", "revision": "B"},
+        files={"file": ("synthetic_bom_25parts.csv", FIXTURE.read_bytes(), "text/csv")},
+    )
+    assert analyze.status_code == 200, analyze.text
+    analysis_id = analyze.json()["analysis_id"]
+    report = client.get(f"/reports/{analysis_id}", headers=headers_a).json()
+    part_a, part_b = report["parts"][0]["MPN"], report["parts"][1]["MPN"]
+
+    payload = {
+        "analysis_id": analysis_id,
+        "part_a": part_a,
+        "part_b": part_b,
+        "decision": "hold_for_review",
+        "reviewer": "Engineering reviewer",
+        "rationale": "Confirm package and lifecycle from manufacturer datasheets.",
+    }
+    saved = client.post("/decision-records", headers=headers_a, json=payload)
+    assert saved.status_code == 201, saved.text
+    record = saved.json()["record"]
+    assert record["analysis_id"] == analysis_id
+    assert record["project_name"] == "Decision test"
+    assert record["bom_name"] == "Synthetic controller"
+    assert record["qualification_status"] == "not-qualified-by-cadivor"
+    assert record["comparison_snapshot"]["rows"]
+
+    listed = client.get("/decision-records", headers=headers_a)
+    assert listed.status_code == 200
+    assert [row["id"] for row in listed.json()["records"]] == [record["id"]]
+    scoped = client.get(f"/decision-records?analysis_id={analysis_id}", headers=headers_a)
+    assert [row["id"] for row in scoped.json()["records"]] == [record["id"]]
+
+    # A different account cannot see or attach a record to account A's report.
+    assert client.get("/decision-records", headers=headers_b).json()["records"] == []
+    assert client.get(
+        f"/decision-records?analysis_id={analysis_id}", headers=headers_b
+    ).status_code == 404
+    assert client.post("/decision-records", headers=headers_b, json=payload).status_code == 404
+    assert client.post(
+        "/decision-records", headers=headers_a,
+        json={**payload, "analysis_id": "missing-analysis"},
+    ).status_code == 404
+
+    blocked_approval = client.post(
+        "/decision-records",
+        headers=headers_a,
+        json={**payload, "decision": "approve_alternate"},
+    )
+    assert blocked_approval.status_code == 400
+    assert "manufacturer datasheet" in blocked_approval.json()["detail"].lower()
+
+
+def test_compare_can_record_workspace_decision_without_linking_latest_bom():
+    client = TestClient(app)
+    headers = _auth_headers(client)
+    analyze = client.post(
+        "/boms/analyze",
+        headers=headers,
+        files={"file": ("synthetic_bom_25parts.csv", FIXTURE.read_bytes(), "text/csv")},
+    )
+    assert analyze.status_code == 200
+    saved = client.post(
+        "/decision-records",
+        headers=headers,
+        json={
+            "part_a": "LM358",
+            "part_b": "LM358P",
+            "decision": "retain_current_part",
+            "reviewer": "Engineering reviewer",
+            "rationale": "No verified fit evidence was retrieved.",
+        },
+    )
+    assert saved.status_code == 201, saved.text
+    record = saved.json()["record"]
+    assert record["analysis_id"] is None
+    assert record["comparison_snapshot"]["mode"] == "synthetic-preview"

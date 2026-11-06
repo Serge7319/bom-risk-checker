@@ -266,6 +266,7 @@ def compare_parts_payload(
     part_a: str,
     part_b: str,
     analysis_id: str | None = None,
+    use_latest_if_missing: bool = True,
 ) -> dict[str, Any]:
     a = str(part_a or "").strip()
     b = str(part_b or "").strip()
@@ -282,7 +283,11 @@ def compare_parts_payload(
             "detail": "Part A and Part B must be different.",
         }
 
-    report = _require_analysis(analysis_id, workspace_id=workspace_id)
+    report = (
+        _require_analysis(analysis_id, workspace_id=workspace_id)
+        if analysis_id or use_latest_if_missing
+        else None
+    )
     by_mpn: dict[str, dict[str, Any]] = {}
     if report:
         for part in report.get("parts") or []:
@@ -365,27 +370,38 @@ def compare_parts_payload(
     )
     family_mismatch = bool(comparison.get("family_mismatch"))
     gap = (
-        "Live supplier and datasheet fetch are not connected. "
-        "Comparison uses saved analysis fields when available, otherwise labeled "
-        "offline catalog attributes — not live distributor evidence."
+        "No live supplier or manufacturer datasheet lookup is connected in this deployment. "
+        "Values absent from the saved BOM and offline identity catalog remain unverified; "
+        "this result cannot confirm drop-in compatibility."
     )
     if family_mismatch:
         gap = (
-            "Component families differ based on offline catalog attributes. "
-            "This is an evidence-backed incompatibility signal, not a qualified "
-            "drop-in approval. Live datasheets were not fetched."
+            "The offline catalog identifies different component families. Treat this as a "
+            "review signal, not a qualified drop-in verdict; manufacturer datasheets were not fetched."
         )
     elif not rows:
         gap = (
-            "Unable to confirm compatibility: attribute evidence is missing for "
-            "both parts. Live supplier lookup and datasheet fetch are not connected."
+            "No comparable source-backed attributes were found. Connect supplier/datasheet "
+            "evidence or review manufacturer documentation before making a substitution."
         )
+
+    counts = comparison.get("counts") or {}
+    evidence_sources = comparison.get("evidence_sources") or {}
+    unknown_attributes = [
+        str(row.get("Attribute") or "")
+        for row in rows
+        if str(row.get("Assessment") or "").strip().lower()
+        in {"unable to confirm", "needs validation", "needs data"}
+        and str(row.get("Attribute") or "").strip()
+    ]
+    analysis_context = str((report or {}).get("id") or "") or None
 
     return _json_safe(
         {
             "ok": True,
             "status": STATUS_COMPLETED,
             "mode": "synthetic-preview",
+            "analysis_id": analysis_context,
             "part_a": a,
             "part_b": b,
             "source_a": source_a,
@@ -394,11 +410,18 @@ def compare_parts_payload(
             "finding": finding,
             "family": (comparison.get("family") or comparison.get("family_meta") or {}),
             "family_mismatch": family_mismatch,
+            "engineering_evidence_summary": comparison.get("engineering_evidence_summary") or "",
+            "engineering_evidence_status": comparison.get("engineering_evidence_status") or "unverified",
+            "counts": counts,
+            "unknown_attributes": unknown_attributes,
             "rows": rows,
             "part_cards": {
                 "a": comparison.get("part_a"),
                 "b": comparison.get("part_b"),
             },
+            "evidence_sources": evidence_sources,
+            "datasheet_identity": comparison.get("datasheet_identity") or {},
+            "review_warnings": comparison.get("review_warnings") or [],
             "comparison": {
                 k: comparison.get(k)
                 for k in (
@@ -407,6 +430,10 @@ def compare_parts_payload(
                     "summary",
                     "counts",
                     "engineering_confidence",
+                    "engineering_evidence_summary",
+                    "engineering_evidence_status",
+                    "evidence_sources",
+                    "datasheet_identity",
                     "family_mismatch",
                 )
                 if k in comparison
