@@ -147,6 +147,51 @@ def test_compare_lm358_vs_ne555_identity_and_unable_to_confirm():
             assert assessment == "Unable to confirm"
 
 
+def _force_report_risk_profile(report, *, high=0, medium=0, low=None, elevate_first=False):
+    parts = list(report.get("parts") or [])
+    if low is None:
+        low = len(parts)
+    for idx, part in enumerate(parts):
+        if elevate_first and idx == 0:
+            part["Risk Level"] = "High"
+            part["risk_level"] = "High"
+            part["Risk Score"] = 88
+            part["risk_score"] = 88
+            part["lifecycle_status"] = "NRND"
+            part["Lifecycle"] = "NRND"
+            part["supplier_count"] = 1
+            part["stock_available"] = 0
+            part["lead_time_weeks"] = 20
+        elif elevate_first and idx == 1:
+            part["Risk Level"] = "Medium"
+            part["risk_level"] = "Medium"
+            part["Risk Score"] = 55
+            part["risk_score"] = 55
+            part["lifecycle_status"] = "Active"
+            part["Lifecycle"] = "Active"
+            part["supplier_count"] = 1
+            part["stock_available"] = 5
+            part["lead_time_weeks"] = 12
+        else:
+            part["Risk Level"] = "Low"
+            part["risk_level"] = "Low"
+            part["Risk Score"] = 12
+            part["risk_score"] = 12
+            part["lifecycle_status"] = "Active"
+            part["Lifecycle"] = "Active"
+            part.pop("supplier_count", None)
+            part.pop("Supplier Count", None)
+            part.pop("lead_time_weeks", None)
+            part.pop("stock_available", None)
+        part.setdefault("Source", "synthetic-preview")
+        part.setdefault("source", "synthetic-preview")
+    report["parts"] = parts
+    report["high_risk_count"] = high
+    report["medium_risk_count"] = medium
+    report["low_risk_count"] = low
+    return report
+
+
 def test_ask_cadivor_respects_low_risk_report_fields(tmp_path, monkeypatch):
     from apps.api.synthetic_analyze import get_report
     from apps.api.workspace_store import get_store
@@ -165,17 +210,7 @@ def test_ask_cadivor_respects_low_risk_report_fields(tmp_path, monkeypatch):
     workspace_id = payload["workspace_id"]
     report = get_report(analysis_id, workspace_id=workspace_id)
     assert report is not None
-    for part in report.get("parts") or []:
-        part["Risk Level"] = "Low"
-        part["risk_level"] = "Low"
-        part["Risk Score"] = 12
-        part["risk_score"] = 12
-        part.pop("supplier_count", None)
-        part.pop("Supplier Count", None)
-        part.pop("lead_time_weeks", None)
-    report["high_risk_count"] = 0
-    report["medium_risk_count"] = 0
-    report["low_risk_count"] = len(report.get("parts") or [])
+    _force_report_risk_profile(report, high=0, medium=0, low=len(report.get("parts") or []))
     get_store().upsert_analysis_report(report, workspace_id=workspace_id)
     res = client.post(
         "/tools/ask-cadivor",
@@ -187,8 +222,86 @@ def test_ask_cadivor_respects_low_risk_report_fields(tmp_path, monkeypatch):
     )
     assert res.status_code == 200
     body = res.json()
-    answer = str(body.get("answer") or "").lower()
+    answer = str(body.get("answer") or "")
+    lower = answer.lower()
     assert body["ok"] is True
-    assert "0 priority" in answer
-    assert "only 0 recorded source" not in answer
-    assert "100/100" not in answer
+    assert "0 priority" in lower
+    assert "does not support ranking" in lower or "not support ranking" in lower
+    assert "first engineering review priority" not in lower
+    assert "only 0 recorded source" not in lower
+    assert "100/100" not in lower
+    assert "#1 " not in answer and "#1\n" not in answer
+    assert "ranked first" not in lower
+    # Generic Component Risk wording must also avoid inventing a first priority.
+    res2 = client.post(
+        "/tools/ask-cadivor",
+        headers=headers,
+        json={
+            "analysis_id": analysis_id,
+            "question": "What are the engineering priorities for this BOM?",
+        },
+    )
+    assert res2.status_code == 200
+    answer2 = str(res2.json().get("answer") or "")
+    lower2 = answer2.lower()
+    assert "0 priority" in lower2
+    assert "first engineering review priority" not in lower2
+    assert "#1 " not in answer2
+    # Unranked inventory only when the user asks to see parts.
+    listed = client.post(
+        "/tools/ask-cadivor",
+        headers=headers,
+        json={
+            "analysis_id": analysis_id,
+            "question": "List the parts in this BOM without ranking them.",
+        },
+    )
+    assert listed.status_code == 200
+    listed_answer = str(listed.json().get("answer") or "")
+    assert "unranked" in listed_answer.lower()
+    assert "#1 " not in listed_answer
+
+
+def test_ask_cadivor_keeps_ranked_priorities_when_risks_differ():
+    from apps.api.synthetic_analyze import get_report
+    from apps.api.workspace_store import get_store
+
+    client = TestClient(app)
+    headers = _auth_headers(client)
+    analyze = client.post(
+        "/boms/analyze",
+        headers=headers,
+        files={"file": ("synthetic_bom_25parts.csv", FIXTURE.read_bytes(), "text/csv")},
+        data={"project_name": "Parity", "bom_name": "Differentiated"},
+    )
+    assert analyze.status_code == 200
+    payload = analyze.json()
+    analysis_id = payload["analysis_id"]
+    workspace_id = payload["workspace_id"]
+    report = get_report(analysis_id, workspace_id=workspace_id)
+    assert report is not None
+    _force_report_risk_profile(
+        report,
+        high=1,
+        medium=1,
+        low=max(0, len(report.get("parts") or []) - 2),
+        elevate_first=True,
+    )
+    get_store().upsert_analysis_report(report, workspace_id=workspace_id)
+    res = client.post(
+        "/tools/ask-cadivor",
+        headers=headers,
+        json={
+            "analysis_id": analysis_id,
+            "question": "What should I review first in this BOM?",
+        },
+    )
+    assert res.status_code == 200
+    body = res.json()
+    answer = str(body.get("answer") or "")
+    lower = answer.lower()
+    assert body["ok"] is True
+    assert "first engineering review priority" in lower
+    assert "#1 " in answer
+    assert "0 priority risks" not in lower
+    assert "review **" in lower or "review **" in answer.lower()

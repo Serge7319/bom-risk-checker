@@ -581,6 +581,8 @@ def ask_cadivor_payload(
                     else part.get("Lead Time Weeks")
                 ),
                 "quantity": part.get("Quantity") or part.get("quantity"),
+                "source": part.get("Source") or part.get("source") or report.get("mode"),
+                "evidence_source": part.get("evidence_source") or part.get("Source") or part.get("source") or report.get("mode"),
             }
         )
     context = {
