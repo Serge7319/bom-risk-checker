@@ -22,10 +22,13 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          pip install -r requirements.txt PyMuPDF pytest
+          pip install -r requirements.txt PyMuPDF pytest embedded-postgres
 
       - name: Run Next migration Supabase Auth and trial tests
         run: python -m pytest tests/test_supabase_auth.py -q
+
+      - name: Run disposable Postgres migration gates
+        run: python -m pytest tests/test_cutover_disposable_db.py tests/test_nextjs_roadmap_gates.py -q
 
       - name: Run Alternative Finder Regression Tests
         run: |
