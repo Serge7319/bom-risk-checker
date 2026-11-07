@@ -254,10 +254,14 @@ def _require_configured() -> tuple[str, str]:
     return supabase_url(), supabase_anon_key()
 
 
-def _client():
+def _client(*, flow_type: str | None = None):
     from supabase import create_client
 
     url, key = _require_configured()
+    if flow_type:
+        from supabase import ClientOptions
+
+        return create_client(url, key, options=ClientOptions(flow_type=flow_type))
     return create_client(url, key)
 
 
@@ -273,6 +277,39 @@ def _workspace_ids_for_owner(user_id: str, email: str) -> tuple[str, str]:
     return workspace_id, workspace_name
 
 
+def _accept_invitations(
+    user_id: str,
+    email: str,
+    *,
+    strict: bool,
+    prefer_invite_id: str | None = None,
+) -> list[dict[str, Any]]:
+    """Accept pending invitations for a verified, authenticated Supabase user.
+
+    Callers have already established ``email_confirmed_at`` and the user id via
+    Supabase ``get_user``; the invitation's workspace and role are resolved
+    server-side. ``strict`` makes failures fatal - required before any
+    personal-workspace provisioning so an unreadable invitation table can never
+    be bypassed by silently creating an empty workspace.
+    """
+    from apps.api import team_service
+
+    try:
+        return team_service.accept_pending_invitations(
+            user_id=user_id, email=email, prefer_invite_id=prefer_invite_id
+        )
+    except team_service.TeamError as exc:
+        if strict:
+            raise AuthError(exc.detail, exc.status_code) from exc
+        return []
+    except Exception as exc:  # noqa: BLE001
+        if strict:
+            raise AuthError(
+                "We could not check your workspace invitations. Try again shortly.", 503
+            ) from exc
+        return []
+
+
 def ensure_owner_membership(
     *,
     user_id: str,
@@ -280,8 +317,16 @@ def ensure_owner_membership(
     plan: str = "Trial",
     workspace_name: str | None = None,
     allow_create: bool = False,
+    accept_invites: str = "if_missing",
+    prefer_invite_id: str | None = None,
 ) -> dict[str, Any]:
-    """Reuse a membership or provision an owner only when creation is explicitly allowed."""
+    """Reuse a membership or provision an owner only when creation is explicitly allowed.
+
+    Pending, unexpired invitations for the verified email are accepted *before*
+    any personal workspace is created (``accept_invites`` is ``"if_missing"``,
+    ``"always"``, or ``"never"``). Membership is authoritative in the migration
+    database; see ``apps.api.team_service``.
+    """
     if not user_id or not email:
         raise AuthError("Authenticated user missing id or email")
     if not migration_database_url():
@@ -293,6 +338,15 @@ def ensure_owner_membership(
             )
     store = get_auth_store()
     existing = store.membership_for_user(user_id)
+    if accept_invites == "always" or (accept_invites == "if_missing" and not existing):
+        accepted = _accept_invitations(
+            user_id,
+            email,
+            strict=not existing,
+            prefer_invite_id=prefer_invite_id,
+        )
+        if accepted:
+            existing = store.membership_for_user(user_id)
     if not existing and not allow_create:
         raise AuthError(
             "This account is not provisioned for Cadivor. Contact support for access.",
@@ -416,10 +470,29 @@ def signup(
         )
 
 
+def _invite_hint(invite_token: str | None) -> str | None:
+    if not invite_token:
+        return None
+    try:
+        from apps.api import team_service
+
+        return team_service.invite_id_for_token(invite_token)
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def login(
-    email: str, password: str, *, requested_workspace_id: str | None = None
+    email: str,
+    password: str,
+    *,
+    requested_workspace_id: str | None = None,
+    invite_token: str | None = None,
 ) -> dict[str, Any]:
-    """Sign in via Cadivor Supabase Auth; ignore client workspace_id."""
+    """Sign in via Cadivor Supabase Auth; ignore client workspace_id.
+
+    ``invite_token`` is only a hint for which accepted invitation should become
+    the active workspace; acceptance itself is by verified email match.
+    """
     _ = requested_workspace_id
     _require_configured()
     email_n = (email or "").strip().lower()
@@ -460,6 +533,8 @@ def login(
         email=user_email,
         workspace_name=user_workspace_name(user),
         allow_create=signup_enabled(),
+        accept_invites="always",
+        prefer_invite_id=_invite_hint(invite_token),
     )
     entitlements = account_entitlements(access_token)
     expires_in = int(
@@ -561,3 +636,211 @@ def resolve_bearer(access_token: str) -> AuthContext:
         trial_status=entitlements.get("trial_status"),
         trial_days_remaining=entitlements.get("trial_days_remaining"),
     )
+
+
+# --------------------------------------------------------------------------
+# Invitation account creation, password reset/change, session controls
+# --------------------------------------------------------------------------
+
+def _safe_redirect(candidate: str, allowed_origins: list[str]) -> str:
+    """Return ``candidate`` only when it is an allowlisted, credential-free URL."""
+    value = (candidate or "").strip()
+    if not value:
+        return ""
+    parsed = urlsplit(value)
+    if not parsed.hostname or parsed.username or parsed.password:
+        return ""
+    local = parsed.hostname in {"localhost", "127.0.0.1"}
+    if parsed.scheme != "https" and not (local and not is_production_runtime()):
+        return ""
+    origin = f"{parsed.scheme}://{parsed.netloc}".rstrip("/").lower()
+    allowed = {item.strip().rstrip("/").lower() for item in allowed_origins if item.strip()}
+    return value if origin in allowed else ""
+
+
+def web_redirect_url(web_origin: str, path: str, allowed_origins: list[str]) -> str:
+    """Allowlisted same-origin URL on the Next web app, or empty when unsafe."""
+    configured = (os.environ.get("CADIVOR_INVITE_REDIRECT_URL") or "").strip()
+    if path == "/login" and configured:
+        safe = _safe_redirect(configured, allowed_origins)
+        if safe:
+            return safe
+    return _safe_redirect(f"{web_origin.rstrip('/')}{path}", allowed_origins)
+
+
+def signup_for_invitation(
+    *,
+    token: str,
+    password: str,
+    redirect_to: str,
+    full_name: str | None = None,
+    captcha_token: str | None = None,
+) -> None:
+    """Create a Supabase account for the invited address (verification required).
+
+    Not the public self-serve route: it only works with a valid, unexpired
+    invitation token, the email address comes from the stored invitation
+    (never the browser), and Supabase email confirmation is still mandatory -
+    login and every API request reject unverified users. No workspace or
+    membership is created here; acceptance happens after verified sign-in.
+    """
+    from apps.api import team_service
+
+    _require_configured()
+    invite = team_service.valid_invitation_for_token(token)
+    if invite is None:
+        raise AuthError("This invitation is not valid or has expired.", 404)
+    if len(password or "") < 12:
+        raise AuthError("Use a password with at least 12 characters", 400)
+    captcha_required = (os.environ.get("CADIVOR_SIGNUP_CAPTCHA_REQUIRED") or "").strip() == "1"
+    if captcha_required and not (captcha_token or "").strip():
+        raise AuthError("Complete the security check and try again", 400)
+    metadata: dict[str, Any] = {}
+    name = " ".join(str(full_name or "").split())[:120]
+    if name:
+        metadata["full_name"] = name
+    options: dict[str, Any] = {"data": metadata}
+    if redirect_to:
+        options["email_redirect_to"] = redirect_to
+    if captcha_token:
+        options["captcha_token"] = captcha_token
+    try:
+        response = _client().auth.sign_up(
+            {"email": str(invite["email"]), "password": password, "options": options}
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise AuthError(
+            "We could not send the verification email. Try again shortly or sign in if you already have an account.",
+            503,
+        ) from exc
+    session = getattr(response, "session", None) or (
+        response.get("session") if isinstance(response, dict) else None
+    )
+    if session is not None:
+        raise AuthNotConfiguredError(
+            "Email confirmation must be enabled in Supabase before invitation signup can be used"
+        )
+
+
+def request_password_reset(email: str, *, redirect_to: str) -> None:
+    """Ask Supabase Auth to email a recovery link; never reveals account state."""
+    _require_configured()
+    email_n = (email or "").strip().lower()
+    if not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email_n):
+        raise AuthError("Enter a valid email address", 400)
+    options: dict[str, Any] = {}
+    if redirect_to:
+        options["redirect_to"] = redirect_to
+    try:
+        # Implicit flow: the recovery link must work without a code verifier
+        # that only a browser session could hold.
+        _client(flow_type="implicit").auth.reset_password_for_email(email_n, options)
+    except Exception:  # noqa: BLE001
+        # Same response for unknown addresses, throttling, or provider errors.
+        return
+
+
+def _auth_user_update(access_token: str, body: dict[str, Any]) -> None:
+    """Update the token owner's Supabase Auth user via the Auth REST API."""
+    import json as _json
+    import urllib.error
+    import urllib.request
+
+    url, key = _require_configured()
+    req = urllib.request.Request(
+        f"{url.rstrip('/')}/auth/v1/user",
+        data=_json.dumps(body).encode("utf-8"),
+        method="PUT",
+        headers={
+            "Authorization": f"Bearer {access_token}",
+            "apikey": key,
+            "Content-Type": "application/json",
+        },
+    )
+    try:
+        urllib.request.urlopen(req, timeout=10).read()  # noqa: S310 - Auth host from env
+    except urllib.error.HTTPError as exc:
+        detail = ""
+        try:
+            payload = _json.loads(exc.read().decode("utf-8") or "{}")
+            detail = str(
+                payload.get("msg") or payload.get("message") or payload.get("error_description") or ""
+            )
+        except Exception:  # noqa: BLE001
+            detail = ""
+        status = 400 if exc.code in {400, 401, 403, 422} else 503
+        raise AuthError(
+            detail or "Supabase could not update the password. Try again.", status
+        ) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise AuthError("Supabase could not update the password. Try again.", 503) from exc
+
+
+def _validate_new_password(password: str) -> None:
+    if len(password or "") < 12:
+        raise AuthError("Use a password with at least 12 characters", 400)
+    if len(password) > 256:
+        raise AuthError("Password is too long", 400)
+
+
+def complete_password_reset(recovery_access_token: str, new_password: str) -> None:
+    """Finish a recovery flow using the short-lived token from the reset email."""
+    _require_configured()
+    _validate_new_password(new_password)
+    if not recovery_access_token:
+        raise AuthError("This reset link is invalid or has expired.", 400)
+    try:
+        response = _client().auth.get_user(recovery_access_token)
+    except Exception as exc:  # noqa: BLE001
+        raise AuthError("This reset link is invalid or has expired.", 400) from exc
+    user = getattr(response, "user", None) or (
+        response.get("user") if isinstance(response, dict) else None
+    )
+    if user is None:
+        raise AuthError("This reset link is invalid or has expired.", 400)
+    _auth_user_update(recovery_access_token, {"password": new_password})
+
+
+def change_password(
+    access_token: str, email: str, current_password: str, new_password: str
+) -> None:
+    """Change the signed-in user's password after re-verifying the current one."""
+    _require_configured()
+    _validate_new_password(new_password)
+    if not current_password:
+        raise AuthError("Enter your current password", 400)
+    if new_password == current_password:
+        raise AuthError("Choose a password that is different from the current one", 400)
+    try:
+        verified = _client().auth.sign_in_with_password(
+            {"email": (email or "").strip().lower(), "password": current_password}
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise AuthError("Your current password is incorrect", 400) from exc
+    verified_user = getattr(verified, "user", None) or (
+        verified.get("user") if isinstance(verified, dict) else None
+    )
+    if verified_user is None:
+        raise AuthError("Your current password is incorrect", 400)
+    _auth_user_update(access_token, {"password": new_password})
+
+
+def revoke_other_sessions(access_token: str) -> None:
+    """Sign the user out of every other device (keeps the current session)."""
+    import urllib.request
+
+    url, key = _require_configured()
+    req = urllib.request.Request(
+        f"{url.rstrip('/')}/auth/v1/logout?scope=others",
+        data=b"{}",
+        method="POST",
+        headers={
+            "Authorization": f"Bearer {access_token}",
+            "apikey": key,
+            "Content-Type": "application/json",
+        },
+    )
+    try:
+        urllib.request.urlopen(req, timeout=10).read()  # noqa: S310 - Auth host from env
+    except Exception as exc:  # noqa: BLE001
+        raise AuthError("Other sessions could not be signed out. Try again.", 503) from exc

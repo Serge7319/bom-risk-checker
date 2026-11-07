@@ -11,15 +11,19 @@ CREATE TABLE IF NOT EXISTS migration_users (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- One row per (user, workspace). Membership here is the authoritative access
+-- source for the Next app, including memberships created by invitations.
 CREATE TABLE IF NOT EXISTS migration_workspace_members (
-  user_id TEXT PRIMARY KEY REFERENCES migration_users(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES migration_users(id) ON DELETE CASCADE,
   workspace_id TEXT NOT NULL,
   workspace_name TEXT NOT NULL,
   role TEXT NOT NULL DEFAULT 'owner',
   trial_started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   trial_ends_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '14 days'),
   subscription_status TEXT NOT NULL DEFAULT 'trialing',
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  status TEXT NOT NULL DEFAULT 'active',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (user_id, workspace_id)
 );
 
 ALTER TABLE migration_workspace_members
@@ -29,9 +33,35 @@ ALTER TABLE migration_workspace_members
   DEFAULT (NOW() + INTERVAL '14 days');
 ALTER TABLE migration_workspace_members
   ADD COLUMN IF NOT EXISTS subscription_status TEXT NOT NULL DEFAULT 'trialing';
+ALTER TABLE migration_workspace_members
+  ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active';
+
+-- Upgrade legacy single-workspace-per-user primary keys in place.
+DO $$
+DECLARE
+  pk_name text;
+  pk_cols int;
+BEGIN
+  SELECT conname, array_length(conkey, 1) INTO pk_name, pk_cols
+    FROM pg_constraint
+   WHERE conrelid = 'migration_workspace_members'::regclass
+     AND contype = 'p';
+  IF pk_name IS NOT NULL AND pk_cols = 1 THEN
+    EXECUTE 'ALTER TABLE migration_workspace_members DROP CONSTRAINT '
+      || quote_ident(pk_name);
+    ALTER TABLE migration_workspace_members
+      ADD PRIMARY KEY (user_id, workspace_id);
+  END IF;
+END $$;
 
 CREATE INDEX IF NOT EXISTS migration_ws_members_ws_idx
   ON migration_workspace_members (workspace_id);
+
+CREATE TABLE IF NOT EXISTS migration_user_active_workspace (
+  user_id TEXT PRIMARY KEY REFERENCES migration_users(id) ON DELETE CASCADE,
+  workspace_id TEXT NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 
 CREATE TABLE IF NOT EXISTS migration_revoked_tokens (
   jti TEXT PRIMARY KEY,

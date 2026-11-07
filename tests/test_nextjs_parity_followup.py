@@ -75,9 +75,134 @@ def test_find_replacement_standalone_without_bom():
     assert body["outcome"] == "candidates_found"
     assert len(body["candidates"]) >= 1
     assert body["bom_context"] is None
+    assert body.get("analysis_id") in (None, "")
+    assert not body.get("context_unavailable")
     for cand in body["candidates"]:
         assert cand["fit"] == "unable_to_confirm"
         assert cand["missing_evidence"]
+
+
+def test_find_replacement_standalone_am29f010_with_no_saved_report():
+    """Standalone flash MPN must search without requiring a saved BOM report."""
+    client = TestClient(app)
+    headers = _auth_headers(client)
+    res = client.post(
+        "/tools/find-replacement",
+        headers=headers,
+        json={"mpn": "AM29F010B-70EC"},
+    )
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["ok"] is True
+    assert "report not found" not in str(body).lower()
+    assert body.get("bom_context") is None
+    assert body.get("analysis_id") in (None, "")
+    assert body["requested_mpn"] == "AM29F010B-70EC"
+    # Offline catalog may not list this legacy flash — either candidates or
+    # honest unable_to_confirm is fine; never invent compatibility.
+    assert body["outcome"] in {"candidates_found", "unable_to_confirm", "failure"}
+    if body["outcome"] != "candidates_found":
+        assert body.get("candidates") in ([], None) or body["candidates"] == []
+
+
+def test_find_replacement_ignores_stale_analysis_id():
+    """Stale/localStorage analysis IDs must not 404 or invent BOM context."""
+    client = TestClient(app)
+    headers = _auth_headers(client)
+    res = client.post(
+        "/tools/find-replacement",
+        headers=headers,
+        json={
+            "mpn": "LM358DR",
+            "analysis_id": "analysis-stale-does-not-exist",
+        },
+    )
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["ok"] is True
+    assert body["bom_context"] is None
+    assert body.get("analysis_id") in (None, "")
+    assert body.get("context_unavailable")
+    assert "standalone" in str(body["context_unavailable"]).lower()
+    assert body["outcome"] == "candidates_found"
+    assert len(body["candidates"]) >= 1
+
+
+def test_find_replacement_bom_row_preserves_only_that_bom_context():
+    from apps.api.synthetic_analyze import get_report
+
+    client = TestClient(app)
+    headers = _auth_headers(client)
+    analyze = client.post(
+        "/boms/analyze",
+        headers=headers,
+        files={"file": ("synthetic_bom_25parts.csv", FIXTURE.read_bytes(), "text/csv")},
+        data={"project_name": "Parity", "bom_name": "RowContext"},
+    )
+    assert analyze.status_code == 200
+    payload = analyze.json()
+    analysis_id = payload["analysis_id"]
+    workspace_id = payload["workspace_id"]
+    report = get_report(analysis_id, workspace_id=workspace_id)
+    assert report is not None
+    parts = report.get("parts") or []
+    assert parts
+    mpn = str(parts[0].get("MPN") or parts[0].get("mpn") or "").strip()
+    assert mpn
+
+    res = client.post(
+        "/tools/find-replacement",
+        headers=headers,
+        json={"mpn": mpn, "analysis_id": analysis_id},
+    )
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["ok"] is True
+    assert body["bom_context"] is not None
+    assert body["bom_context"]["analysis_id"] == analysis_id
+    assert body["analysis_id"] == analysis_id
+    assert str(body["bom_context"]["part"].get("MPN") or "").strip() == mpn
+    assert not body.get("context_unavailable")
+
+
+def test_find_replacement_inaccessible_analysis_id_is_tenant_safe():
+    """Foreign/deleted analysis IDs must not leak another workspace's report."""
+    from tests.fixtures.sandbox_auth_accounts import SANDBOX_SEED_USERS
+
+    client = TestClient(app)
+    headers_a = _auth_headers(client)
+    analyze = client.post(
+        "/boms/analyze",
+        headers=headers_a,
+        files={"file": ("synthetic_bom_25parts.csv", FIXTURE.read_bytes(), "text/csv")},
+        data={"project_name": "Parity", "bom_name": "TenantA"},
+    )
+    assert analyze.status_code == 200
+    foreign_id = analyze.json()["analysis_id"]
+
+    other = SANDBOX_SEED_USERS[1]
+    login_b = client.post(
+        "/auth/login",
+        json={"email": other["email"], "password": other["password"]},
+    )
+    assert login_b.status_code == 200
+    headers_b = {"Authorization": f"Bearer {login_b.json()['access_token']}"}
+
+    res = client.post(
+        "/tools/find-replacement",
+        headers=headers_b,
+        json={"mpn": "LM358DR", "analysis_id": foreign_id},
+    )
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["ok"] is True
+    assert body["bom_context"] is None
+    assert body.get("analysis_id") in (None, "")
+    assert body.get("context_unavailable")
+    assert "tenanta" not in str(body).lower()
+    assert body.get("bom_context") is None
+    assert foreign_id not in str(body.get("original") or {})
+    assert body["outcome"] == "candidates_found"
 
 
 def test_find_replacement_unknown_is_unable_to_confirm():

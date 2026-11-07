@@ -8,11 +8,12 @@ import { LoadingCard } from "@/components/GapBanner";
 import { PageHeader, PrimaryLink, SecondaryLink } from "@/components/PageHeader";
 import { findReplacement } from "@/lib/api";
 import { PAGE_META } from "@/lib/routes";
-import { readLastAnalysis, useRequireSession } from "@/lib/session";
+import { useRequireSession } from "@/lib/session";
 
 function compareHref(partA: string, partB?: string, analysisId?: string) {
   const query = new URLSearchParams({ part_a: partA });
   if (partB) query.set("part_b", partB);
+  // Only attach BOM context when this search was opened from a valid BOM row.
   if (analysisId) query.set("analysis_id", analysisId);
   return `/compare-parts?${query.toString()}`;
 }
@@ -25,6 +26,9 @@ function FindReplacementInner() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<Record<string, unknown> | null>(null);
+
+  // Explicit BOM-row link only — never reuse last-analysis localStorage for this tool.
+  const bomAnalysisId = (search.get("analysis_id") || "").trim();
 
   useEffect(() => {
     const q = (search.get("mpn") || search.get("part") || "").trim();
@@ -40,12 +44,12 @@ function FindReplacementInner() {
     setError("");
     setResult(null);
     try {
-      const last = readLastAnalysis();
-      const analysisFromQuery = (search.get("analysis_id") || "").trim();
       const data = await findReplacement(session.access_token, {
         mpn,
         manufacturer: manufacturer || undefined,
-        analysis_id: analysisFromQuery || last?.analysis_id || null,
+        // Standalone: MPN (+ optional manufacturer) only.
+        // analysis_id only when the page was opened from a BOM-row link.
+        analysis_id: bomAnalysisId || null,
       });
       setResult(data);
     } catch (err) {
@@ -58,9 +62,16 @@ function FindReplacementInner() {
   if (!session) return null;
   const candidates = (result?.candidates || []) as Array<Record<string, unknown>>;
   const original = (result?.original || {}) as Record<string, unknown>;
-  const analysisId = String(
-    result?.analysis_id || search.get("analysis_id") || readLastAnalysis(session)?.analysis_id || "",
-  );
+  // Compare Parts inherits BOM context only when the API confirmed bom_context.
+  const compareAnalysisId = result?.bom_context
+    ? String(
+        (result.bom_context as Record<string, unknown>).analysis_id ||
+          result.analysis_id ||
+          bomAnalysisId ||
+          "",
+      )
+    : "";
+  const contextNotice = String(result?.context_unavailable || "").trim();
 
   return (
     <Shell session={session}>
@@ -129,6 +140,11 @@ function FindReplacementInner() {
                 Standalone search — no BOM required.
               </p>
             )}
+            {contextNotice ? (
+              <p className="cv-small-note" role="status" style={{ marginTop: 8 }}>
+                {contextNotice}
+              </p>
+            ) : null}
           </section>
 
           {candidates.length ? (
@@ -169,7 +185,11 @@ function FindReplacementInner() {
                           <td>{missingBits.length ? missingBits.join("; ") : "—"}</td>
                           <td className="cv-table-action">
                             <Link
-                              href={compareHref(String(result.requested_mpn || mpn), cand, analysisId)}
+                              href={compareHref(
+                                String(result.requested_mpn || mpn),
+                                cand,
+                                compareAnalysisId || undefined,
+                              )}
                             >
                               Compare →
                             </Link>
@@ -191,7 +211,7 @@ function FindReplacementInner() {
               </p>
               <div style={{ marginTop: 12 }}>
                 <SecondaryLink
-                  href={compareHref(mpn, undefined, analysisId)}
+                  href={compareHref(mpn, undefined, compareAnalysisId || undefined)}
                 >
                   Open Compare Parts
                 </SecondaryLink>

@@ -110,13 +110,18 @@ def send_workspace_invitation_email(
     workspace_name: str,
     invited_by_name: str,
     role: str,
+    invite_url: str | None = None,
 ) -> Any:
-    """Send an invitation that opens Cadivor's authenticated Workspace page."""
+    """Send an invitation that opens Cadivor's authenticated Workspace page.
+
+    ``invite_url`` lets the Next app supply its own account-creation link; the
+    default keeps the Streamlit Workspace link for existing callers.
+    """
     recipient = _clean_recipient(to_email)
     safe_workspace = html.escape(str(workspace_name or "Cadivor Workspace").strip())
     safe_inviter = html.escape(str(invited_by_name or "A workspace owner").strip())
     safe_role = html.escape(str(role or "engineer").strip().title())
-    invite_url = app_url(
+    invite_url = str(invite_url or "").strip() or app_url(
         "",
         page="Workspace",
         auth="signup",
