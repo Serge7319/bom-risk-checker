@@ -3335,6 +3335,73 @@ button {
   border-radius: 12px;
 }
 
+.cv-page-head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cv-procurement-table {
+  min-width: 1840px;
+}
+.cv-procurement-table .cv-part-cell {
+  min-width: 210px;
+  gap: 10px;
+}
+.cv-procurement-description,
+.cv-procurement-recommendation small,
+.cv-procurement-timestamp {
+  display: block;
+  margin-top: 4px;
+  color: #72839a;
+  font-size: 10px;
+  line-height: 1.45;
+  white-space: normal;
+}
+.cv-procurement-recommendation {
+  min-width: 245px;
+  white-space: normal;
+}
+.cv-procurement-recommendation strong {
+  display: block;
+}
+.cv-procurement-offers summary {
+  color: #2455a6;
+  cursor: pointer;
+  font-weight: 750;
+  white-space: nowrap;
+}
+.cv-procurement-offer-list {
+  display: grid;
+  gap: 8px;
+  min-width: 260px;
+  max-width: 340px;
+  margin-top: 8px;
+}
+.cv-procurement-offer {
+  display: grid;
+  gap: 3px;
+  padding: 9px 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 9px;
+  background: #f8fafc;
+  white-space: normal;
+}
+.cv-procurement-offer strong {
+  color: #19304f;
+}
+.cv-procurement-offer span,
+.cv-procurement-offer a {
+  color: #60738d;
+  font-size: 10px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.cv-procurement-offer a {
+  color: #2455a6;
+  font-weight: 700;
+}
+
 /* Compare Parts: evidence-first comparison and decision capture */
 .cv-compare-state {
   display: inline-flex;
