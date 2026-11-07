@@ -13,6 +13,8 @@ export type WorkflowContext = {
   validating: boolean;
   validation: BomValidationPreview | null;
   validationError: string;
+  /** Validation result is for the currently selected file. */
+  validationMatchesFile: boolean;
   analyzing: boolean;
   analyzeError: string;
   summary: AnalyzeSummary | null;
@@ -33,6 +35,7 @@ export type StageView = {
 export type WorkflowGuide = {
   stages: StageView[];
   currentStage: WorkflowStage;
+  readyToAnalyze: boolean;
   announcement: string;
   primaryCta: {
     label: string;
@@ -61,7 +64,11 @@ export function buildWorkflowGuide(ctx: WorkflowContext): WorkflowGuide {
   const errored = new Set<WorkflowStage>();
   const blocked = new Set<WorkflowStage>();
 
-  const canAnalyze = Boolean(ctx.validation?.can_analyze);
+  const canAnalyze = Boolean(
+    ctx.validation?.can_analyze && ctx.validationMatchesFile && !ctx.validating,
+  );
+  const readyToAnalyze =
+    canAnalyze && !ctx.analyzing && !ctx.summary && !ctx.analysisId && !ctx.analyzeError;
   const hasSummary = Boolean(ctx.summary || ctx.analysisId);
   const risksOpened = Boolean(ctx.review?.risksOpenedAt);
   const evidenceReviewed = Boolean(ctx.review?.evidenceReviewedAt);
@@ -85,7 +92,8 @@ export function buildWorkflowGuide(ctx: WorkflowContext): WorkflowGuide {
     ctx.hasFile &&
     !ctx.validating &&
     !hasSummary &&
-    (ctx.validationError || (ctx.validation && !ctx.validation.can_analyze))
+    (ctx.validationError ||
+      (ctx.validation && ctx.validationMatchesFile && !ctx.validation.can_analyze))
   ) {
     errored.add("Validating");
   }
@@ -104,6 +112,7 @@ export function buildWorkflowGuide(ctx: WorkflowContext): WorkflowGuide {
     blocked.add("Decision");
     blocked.add("Monitor");
   } else if (!hasSummary) {
+    // Ready-to-analyze: Analyzing is next, not blocked, not current.
     blocked.add("Risks");
     blocked.add("Evidence");
     blocked.add("Decision");
@@ -130,8 +139,11 @@ export function buildWorkflowGuide(ctx: WorkflowContext): WorkflowGuide {
     current = "Validating";
   } else if (ctx.analyzeError && !hasSummary) {
     current = "Analyzing";
+  } else if (readyToAnalyze) {
+    // Validation passed; wait for the user to start analysis.
+    current = "Validating";
   } else if (!hasSummary) {
-    current = "Analyzing";
+    current = "Validating";
   } else if (!risksOpened) {
     current = "Risks";
   } else if (!evidenceReviewed) {
@@ -148,18 +160,22 @@ export function buildWorkflowGuide(ctx: WorkflowContext): WorkflowGuide {
       : "Choose a CSV or XLSX BOM to begin. You can leave anytime and resume later.",
     Validating: ctx.validating
       ? "Checking columns, row counts, and required fields."
-      : canAnalyze || hasSummary
-        ? `Validated ${ctx.validation?.unique_part_count ?? ctx.summary?.total_parts ?? 0} parts across ${ctx.validation?.row_count ?? 0} rows.`
-        : ctx.validation
-          ? "Fix the listed validation issues before analysis can run."
-          : "Validation starts after a file is selected.",
+      : readyToAnalyze
+        ? `Validation passed for ${ctx.validation?.unique_part_count ?? 0} parts across ${ctx.validation?.row_count ?? 0} source rows. Ready to analyze.`
+        : canAnalyze || hasSummary
+          ? `Validated ${ctx.validation?.unique_part_count ?? ctx.summary?.total_parts ?? 0} parts across ${ctx.validation?.row_count ?? 0} source rows.`
+          : ctx.validation && ctx.validationMatchesFile
+            ? "Fix the listed validation issues before analysis can run."
+            : "Validation starts after a file is selected.",
     Analyzing: ctx.analyzing
       ? "Running the existing BOM risk analysis and saving the report."
       : hasSummary
         ? "Analysis finished and the report is saved in this workspace."
         : ctx.analyzeError
           ? "Analysis did not finish. Your file and project details are still here."
-          : "Analysis runs only after required validation passes.",
+          : readyToAnalyze
+            ? "Analysis has not started yet."
+            : "Analysis runs only after required validation passes.",
     Risks: hasSummary
       ? risksOpened
         ? "Saved risk report has been opened."
@@ -180,14 +196,16 @@ export function buildWorkflowGuide(ctx: WorkflowContext): WorkflowGuide {
 
   const nextActions: Record<WorkflowStage, string> = {
     Received: ctx.hasFile ? "Continue to validation results." : "Select a BOM file.",
-    Validating: canAnalyze
-      ? "Run analysis when ready."
-      : "Resolve required validation errors, then analyze.",
+    Validating: readyToAnalyze
+      ? "Run Analyze BOM when you are ready."
+      : canAnalyze
+        ? "Run analysis when ready."
+        : "Resolve required validation errors, then analyze.",
     Analyzing: hasSummary
       ? "Open the saved risk report."
       : ctx.analyzing
-        ? "Stay on this page or leave — the request continues in this browser session."
-        : "Start analysis after validation passes.",
+        ? "Stay on this page or leave — the request continues in this browser session for your account."
+        : "Waiting for analysis to start.",
     Risks: "Open the saved report and review risk counts.",
     Evidence: "Review evidence labels on component rows.",
     Decision: "Open Decision queue or Compare parts to record a decision.",
@@ -204,12 +222,27 @@ export function buildWorkflowGuide(ctx: WorkflowContext): WorkflowGuide {
     nextAction: nextActions[id],
   }));
 
+  // Ready state: Validating is complete (and remains the focus), Analyzing is next.
+  if (readyToAnalyze) {
+    const validatingStage = stages.find((stage) => stage.id === "Validating");
+    const analyzingStage = stages.find((stage) => stage.id === "Analyzing");
+    if (validatingStage) validatingStage.status = "complete";
+    if (analyzingStage && analyzingStage.status !== "error") {
+      analyzingStage.status = "next";
+    }
+  }
+
   let primaryCta: WorkflowGuide["primaryCta"];
   if (!ctx.hasFile) {
     primaryCta = { label: "Choose BOM file", action: "choose-file" };
   } else if (ctx.validating) {
     primaryCta = { label: "Validating…", disabled: true };
-  } else if (ctx.validation && !ctx.validation.can_analyze && !hasSummary) {
+  } else if (
+    ctx.validation &&
+    ctx.validationMatchesFile &&
+    !ctx.validation.can_analyze &&
+    !hasSummary
+  ) {
     primaryCta = { label: "Fix file and re-check", action: "choose-file" };
   } else if (ctx.analyzing) {
     primaryCta = { label: "Analysis in progress…", disabled: true };
@@ -233,16 +266,18 @@ export function buildWorkflowGuide(ctx: WorkflowContext): WorkflowGuide {
   } else if (hasSummary) {
     primaryCta = {
       label: "Open Monitoring",
-      href: "/monitoring",
+      href: `/monitoring?analysis_id=${encodeURIComponent(reportId)}`,
     };
-  } else if (canAnalyze) {
+  } else if (readyToAnalyze || canAnalyze) {
     primaryCta = { label: "Analyze BOM", action: "analyze" };
   } else {
     primaryCta = { label: "Choose BOM file", action: "choose-file" };
   }
 
   const currentView = stages.find((stage) => stage.id === current)!;
-  const announcement = `${current} is current. ${currentView.explanation} Next: ${currentView.nextAction}`;
+  const announcement = readyToAnalyze
+    ? `Ready to analyze. ${explanations.Validating} Next: ${nextActions.Validating}`
+    : `${current} is current. ${currentView.explanation} Next: ${currentView.nextAction}`;
 
-  return { stages, currentStage: current, announcement, primaryCta };
+  return { stages, currentStage: current, readyToAnalyze, announcement, primaryCta };
 }

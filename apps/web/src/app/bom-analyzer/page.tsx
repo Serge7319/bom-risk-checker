@@ -15,6 +15,7 @@ import {
 } from "@/lib/api";
 import {
   clearFinishedAnalyzeJob,
+  fileIdentityKey,
   getActiveAnalyzeJob,
   loadDraftFile,
   markReviewProgress,
@@ -69,6 +70,10 @@ export default function BomAnalyzerPage() {
   const [hasDecisionRecord, setHasDecisionRecord] = useState(false);
   const [draftReady, setDraftReady] = useState(false);
   const [backgroundNote, setBackgroundNote] = useState("");
+  const [draftPersistNotice, setDraftPersistNotice] = useState("");
+  const [validatedFileKey, setValidatedFileKey] = useState("");
+  const validationRequestIdRef = useRef(0);
+  const selectedFileKeyRef = useRef("");
 
   const persistMeta = useCallback(
     (patch: Partial<BomDraftMeta>) => {
@@ -82,6 +87,7 @@ export default function BomAnalyzerPage() {
         fileName: file?.name || current.fileName,
         fileSize: file?.size || current.fileSize,
         fileType: file?.type || current.fileType,
+        fileKey: file ? fileIdentityKey(file) : current.fileKey,
         validation,
         validationError,
         analysisId,
@@ -137,6 +143,8 @@ export default function BomAnalyzerPage() {
       setRevision(meta.revision || "A");
       setValidation(meta.validation);
       setValidationError(meta.validationError || "");
+      setValidatedFileKey(meta.fileKey || "");
+      selectedFileKeyRef.current = meta.fileKey || "";
       setAnalyzeError(meta.analyzeError || "");
       setOneTimeReportRequired(Boolean(meta.oneTimeReportRequired));
       setSummary(meta.summary);
@@ -146,8 +154,18 @@ export default function BomAnalyzerPage() {
       }
       const restored = await loadDraftFile(session);
       if (cancelled) return;
-      if (restored) setFile(restored);
-      const job = getActiveAnalyzeJob();
+      if (restored) {
+        setFile(restored);
+        const key = fileIdentityKey(restored);
+        selectedFileKeyRef.current = key;
+        if (meta.fileKey && meta.fileKey !== key) {
+          setValidation(null);
+          setValidatedFileKey("");
+        } else if (meta.validation && meta.fileKey === key) {
+          setValidatedFileKey(key);
+        }
+      }
+      const job = getActiveAnalyzeJob(session);
       if (job?.status === "running") {
         setAnalyzing(true);
         setBackgroundNote(
@@ -164,12 +182,12 @@ export default function BomAnalyzerPage() {
           analyzeError: "",
           oneTimeReportRequired: false,
         });
-        clearFinishedAnalyzeJob();
+        clearFinishedAnalyzeJob(session);
       } else if (job?.status === "failed") {
         setAnalyzeError(job.error || "Analyze failed");
         setOneTimeReportRequired(Boolean(job.oneTimeReportRequired));
         setAnalyzing(false);
-        clearFinishedAnalyzeJob();
+        clearFinishedAnalyzeJob(session);
       }
       setDraftReady(true);
     })();
@@ -184,6 +202,9 @@ export default function BomAnalyzerPage() {
     if (!session) return;
     return subscribeAnalyzeJob((job) => {
       if (!job) return;
+      if (job.ownerKey && job.ownerKey !== (session.user_id || session.email?.trim().toLowerCase() || "anonymous")) {
+        return;
+      }
       if (job.status === "running") {
         setAnalyzing(true);
         setAnalyzeError("");
@@ -209,7 +230,7 @@ export default function BomAnalyzerPage() {
           },
           session,
         );
-        clearFinishedAnalyzeJob();
+        clearFinishedAnalyzeJob(session);
         return;
       }
       if (job.status === "failed") {
@@ -224,9 +245,9 @@ export default function BomAnalyzerPage() {
           },
           session,
         );
-        clearFinishedAnalyzeJob();
+        clearFinishedAnalyzeJob(session);
       }
-    });
+    }, session);
   }, [session]);
 
   useEffect(() => {
@@ -268,24 +289,31 @@ export default function BomAnalyzerPage() {
   ]);
 
   const runValidation = useCallback(
-    async (nextFile: File) => {
+    async (nextFile: File, requestId: number, fileKey: string) => {
       if (!session) return;
-      setValidating(true);
-      setValidationError("");
-      setAnalyzeError("");
       try {
         const preview = await validateBom(nextFile, session.access_token);
+        if (requestId !== validationRequestIdRef.current) return;
+        if (selectedFileKeyRef.current !== fileKey) return;
         setValidation(preview);
+        setValidatedFileKey(fileKey);
         if (!preview.can_analyze) {
           setValidationError(
             preview.errors[0] || "Required validation did not pass. Analysis stays disabled.",
           );
+        } else {
+          setValidationError("");
         }
       } catch (err) {
+        if (requestId !== validationRequestIdRef.current) return;
+        if (selectedFileKeyRef.current !== fileKey) return;
         setValidation(null);
+        setValidatedFileKey("");
         setValidationError(err instanceof Error ? err.message : "Validation failed");
       } finally {
-        setValidating(false);
+        if (requestId === validationRequestIdRef.current) {
+          setValidating(false);
+        }
       }
     },
     [session],
@@ -293,7 +321,15 @@ export default function BomAnalyzerPage() {
 
   async function onFileChosen(next: File | null) {
     if (!session) return;
+    // Synchronously clear previous validation before any await.
+    const requestId = ++validationRequestIdRef.current;
+    const nextKey = next ? fileIdentityKey(next) : "";
+    selectedFileKeyRef.current = nextKey;
     setFile(next);
+    setValidation(null);
+    setValidationError("");
+    setValidatedFileKey("");
+    setDraftPersistNotice("");
     setSummary(null);
     setAnalysisId(null);
     setReview(null);
@@ -301,34 +337,66 @@ export default function BomAnalyzerPage() {
     setAnalyzeError("");
     setOneTimeReportRequired(false);
     setBackgroundNote("");
+    setValidating(Boolean(next));
     if (!next) {
-      setValidation(null);
-      setValidationError("");
+      setValidating(false);
+      return;
+    }
+    if (next.size > 10 * 1024 * 1024) {
+      setValidating(false);
+      setValidationError("BOM file must be 10 MB or smaller.");
       return;
     }
     if (!bomName.trim()) {
       setBomName(next.name.replace(/\.(csv|xlsx)$/i, ""));
     }
-    await saveDraftFile(next, session);
-    await runValidation(next);
+    try {
+      await saveDraftFile(next, session);
+    } catch (err) {
+      if (requestId !== validationRequestIdRef.current) return;
+      setDraftPersistNotice(
+        err instanceof Error
+          ? `Draft could not be saved for later resume (${err.message}). Validation continues with the file still in memory.`
+          : "Draft could not be saved for later resume. Validation continues with the file still in memory.",
+      );
+    }
+    if (requestId !== validationRequestIdRef.current) return;
+    await runValidation(next, requestId, nextKey);
   }
 
   function onAnalyze() {
-    if (!session || !file || !validation?.can_analyze || analyzing) return;
+    if (!session || !file || analyzing) return;
+    const matches =
+      Boolean(validation?.can_analyze) &&
+      validatedFileKey === fileIdentityKey(file) &&
+      !validating;
+    if (!matches) return;
     setAnalyzeError("");
     setOneTimeReportRequired(false);
     setSummary(null);
     setAnalysisId(null);
     setBackgroundNote(
-      "Analysis continues in this browser session while you use other pages. Return here to see status.",
+      "Analysis continues in this browser session while you use other pages. Return here to see status for your account.",
     );
-    startAnalyzeJob(file, session.access_token, {
-      projectName: projectName.trim() || undefined,
-      bomName: bomName.trim() || file.name.replace(/\.(csv|xlsx)$/i, ""),
-      revision: revision.trim() || "A",
-    });
+    startAnalyzeJob(
+      file,
+      session.access_token,
+      {
+        projectName: projectName.trim() || undefined,
+        bomName: bomName.trim() || file.name.replace(/\.(csv|xlsx)$/i, ""),
+        revision: revision.trim() || "A",
+      },
+      session,
+    );
     setAnalyzing(true);
   }
+
+  const validationMatchesFile = Boolean(
+    file &&
+      validation &&
+      validatedFileKey &&
+      validatedFileKey === fileIdentityKey(file),
+  );
 
   const guide = useMemo(
     () =>
@@ -337,6 +405,7 @@ export default function BomAnalyzerPage() {
         validating,
         validation,
         validationError,
+        validationMatchesFile,
         analyzing,
         analyzeError,
         summary,
@@ -350,6 +419,7 @@ export default function BomAnalyzerPage() {
       validating,
       validation,
       validationError,
+      validationMatchesFile,
       analyzing,
       analyzeError,
       summary,
@@ -365,7 +435,13 @@ export default function BomAnalyzerPage() {
     .filter((row) => row.id || row.analysis_id)
     .slice(0, 3);
   const primary = guide.primaryCta;
-  const canAnalyze = Boolean(file && validation?.can_analyze && !analyzing && !validating);
+  const canAnalyze = Boolean(
+    file &&
+      validationMatchesFile &&
+      validation?.can_analyze &&
+      !analyzing &&
+      !validating,
+  );
 
   function handlePrimary() {
     if (primary.disabled) return;
@@ -418,6 +494,14 @@ export default function BomAnalyzerPage() {
               {backgroundNote}
             </p>
           ) : null}
+          {draftPersistNotice ? (
+            <p className="cv-bom-validation-warnings" role="status">
+              {draftPersistNotice}
+            </p>
+          ) : null}
+          <p className="cv-bom-guidance-note" role="note" data-testid="synthetic-sample-label">
+            Evidence and local demos may use clearly labeled synthetic sample BOM data. Production risk scoring is unchanged.
+          </p>
 
           <div className="cv-bom-fields cv-bom-fields-grid">
             <label className="cv-field">
@@ -476,6 +560,7 @@ export default function BomAnalyzerPage() {
                 <h3 className="cv-card-title">Validation preview</h3>
                 <p className="cv-card-subtitle">
                   Uses the same parse path as analysis. Analysis stays disabled until required checks pass.
+                  Row counts are source BOM rows before part aggregation.
                 </p>
               </div>
               {validating ? (

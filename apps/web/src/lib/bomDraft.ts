@@ -7,8 +7,37 @@ import {
   type BomValidationPreview,
   type Session,
 } from "@/lib/api";
+import {
+  clearFinishedAnalyzeJob as clearFinishedAnalyzeJobBase,
+  getActiveAnalyzeJob as getActiveAnalyzeJobBase,
+  resetAnalyzeJobsForTests as resetAnalyzeJobsForTestsBase,
+  startAnalyzeJobWithRunner,
+  subscribeAnalyzeJob as subscribeAnalyzeJobBase,
+  type AnalyzeJob as AnalyzeJobBase,
+  type AnalyzeJobStatus as AnalyzeJobStatusBase,
+} from "@/lib/bomAnalyzeJobs";
 
 export type { BomValidationPreview };
+
+export type SessionIdentity = Pick<Session, "user_id" | "email" | "workspace_id">;
+export type AnalyzeJobStatus = AnalyzeJobStatusBase;
+export type AnalyzeJob = AnalyzeJobBase & { result?: AnalyzeSummary };
+
+export function getActiveAnalyzeJob(session?: SessionIdentity) {
+  return getActiveAnalyzeJobBase(session);
+}
+export function subscribeAnalyzeJob(
+  listener: (job: AnalyzeJob | null) => void,
+  session?: SessionIdentity,
+) {
+  return subscribeAnalyzeJobBase(listener as never, session);
+}
+export function clearFinishedAnalyzeJob(session?: SessionIdentity): void {
+  clearFinishedAnalyzeJobBase(session);
+}
+export function resetAnalyzeJobsForTests(): void {
+  resetAnalyzeJobsForTestsBase();
+}
 
 const META_KEY = "cadivor_bom_analyzer_draft_meta";
 const REVIEW_KEY = "cadivor_bom_review_progress";
@@ -23,6 +52,7 @@ export type BomDraftMeta = {
   fileName: string;
   fileSize: number;
   fileType: string;
+  fileKey: string;
   updatedAt: string;
   validation: BomValidationPreview | null;
   validationError: string;
@@ -40,21 +70,6 @@ export type BomReviewProgress = {
   monitorOpenedAt?: string;
 };
 
-export type AnalyzeJobStatus = "idle" | "running" | "succeeded" | "failed";
-
-export type AnalyzeJob = {
-  id: string;
-  status: AnalyzeJobStatus;
-  startedAt: string;
-  finishedAt?: string;
-  fileName: string;
-  projectName: string;
-  bomName: string;
-  revision: string;
-  result?: AnalyzeSummary;
-  error?: string;
-  oneTimeReportRequired?: boolean;
-};
 
 type DraftFileRecord = {
   id: string;
@@ -64,19 +79,20 @@ type DraftFileRecord = {
   blob: Blob;
 };
 
-function identityKey(session?: Pick<Session, "user_id" | "email">): string {
+export function identityKey(session?: SessionIdentity): string {
   const identity = session?.user_id || session?.email?.trim().toLowerCase();
   return identity || "anonymous";
 }
 
-function metaStorageKey(session?: Pick<Session, "user_id" | "email">): string {
+export function fileIdentityKey(file: File): string {
+  return `${file.name}:${file.size}:${file.lastModified}`;
+}
+
+function metaStorageKey(session?: SessionIdentity): string {
   return `${META_KEY}:${identityKey(session)}`;
 }
 
-function reviewStorageKey(
-  analysisId: string,
-  session?: Pick<Session, "user_id" | "email">,
-): string {
+function reviewStorageKey(analysisId: string, session?: SessionIdentity): string {
   return `${REVIEW_KEY}:${identityKey(session)}:${analysisId}`;
 }
 
@@ -88,6 +104,7 @@ export function emptyDraftMeta(): BomDraftMeta {
     fileName: "",
     fileSize: 0,
     fileType: "",
+    fileKey: "",
     updatedAt: new Date().toISOString(),
     validation: null,
     validationError: "",
@@ -98,9 +115,7 @@ export function emptyDraftMeta(): BomDraftMeta {
   };
 }
 
-export function readDraftMeta(
-  session?: Pick<Session, "user_id" | "email">,
-): BomDraftMeta {
+export function readDraftMeta(session?: SessionIdentity): BomDraftMeta {
   if (typeof window === "undefined") return emptyDraftMeta();
   try {
     const raw = window.localStorage.getItem(metaStorageKey(session));
@@ -111,16 +126,13 @@ export function readDraftMeta(
   }
 }
 
-export function writeDraftMeta(
-  meta: BomDraftMeta,
-  session?: Pick<Session, "user_id" | "email">,
-): void {
+export function writeDraftMeta(meta: BomDraftMeta, session?: SessionIdentity): void {
   if (typeof window === "undefined") return;
   const next = { ...meta, updatedAt: new Date().toISOString() };
   window.localStorage.setItem(metaStorageKey(session), JSON.stringify(next));
 }
 
-export function clearDraftMeta(session?: Pick<Session, "user_id" | "email">): void {
+export function clearDraftMeta(session?: SessionIdentity): void {
   if (typeof window === "undefined") return;
   window.localStorage.removeItem(metaStorageKey(session));
 }
@@ -139,63 +151,72 @@ function openDb(): Promise<IDBDatabase> {
   });
 }
 
-export async function saveDraftFile(
-  file: File,
-  session?: Pick<Session, "user_id" | "email">,
-): Promise<void> {
-  if (typeof window === "undefined" || !window.indexedDB) return;
+export async function saveDraftFile(file: File, session?: SessionIdentity): Promise<void> {
+  if (typeof window === "undefined") {
+    throw new Error("Draft persistence is only available in the browser.");
+  }
+  if (!window.indexedDB) {
+    throw new Error("This browser does not support draft file persistence.");
+  }
   const db = await openDb();
-  await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction(STORE, "readwrite");
-    tx.objectStore(STORE).put({
-      id: `${FILE_ID}:${identityKey(session)}`,
-      name: file.name,
-      type: file.type,
-      lastModified: file.lastModified,
-      blob: file,
-    } satisfies DraftFileRecord);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error || new Error("Could not save BOM draft file"));
-  });
-  db.close();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE, "readwrite");
+      tx.objectStore(STORE).put({
+        id: `${FILE_ID}:${identityKey(session)}`,
+        name: file.name,
+        type: file.type,
+        lastModified: file.lastModified,
+        blob: file,
+      } satisfies DraftFileRecord);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error || new Error("Could not save BOM draft file"));
+      tx.onabort = () => reject(tx.error || new Error("BOM draft save was aborted"));
+    });
+  } finally {
+    db.close();
+  }
 }
 
-export async function loadDraftFile(
-  session?: Pick<Session, "user_id" | "email">,
-): Promise<File | null> {
+export async function loadDraftFile(session?: SessionIdentity): Promise<File | null> {
   if (typeof window === "undefined" || !window.indexedDB) return null;
   try {
     const db = await openDb();
-    const record = await new Promise<DraftFileRecord | undefined>((resolve, reject) => {
-      const tx = db.transaction(STORE, "readonly");
-      const request = tx.objectStore(STORE).get(`${FILE_ID}:${identityKey(session)}`);
-      request.onsuccess = () => resolve(request.result as DraftFileRecord | undefined);
-      request.onerror = () => reject(request.error || new Error("Could not load BOM draft file"));
-    });
-    db.close();
-    if (!record?.blob) return null;
-    return new File([record.blob], record.name, {
-      type: record.type,
-      lastModified: record.lastModified,
-    });
+    try {
+      const record = await new Promise<DraftFileRecord | undefined>((resolve, reject) => {
+        const tx = db.transaction(STORE, "readonly");
+        const request = tx.objectStore(STORE).get(`${FILE_ID}:${identityKey(session)}`);
+        request.onsuccess = () => resolve(request.result as DraftFileRecord | undefined);
+        request.onerror = () =>
+          reject(request.error || new Error("Could not load BOM draft file"));
+      });
+      if (!record?.blob) return null;
+      return new File([record.blob], record.name, {
+        type: record.type,
+        lastModified: record.lastModified,
+      });
+    } finally {
+      db.close();
+    }
   } catch {
     return null;
   }
 }
 
-export async function clearDraftFile(
-  session?: Pick<Session, "user_id" | "email">,
-): Promise<void> {
+export async function clearDraftFile(session?: SessionIdentity): Promise<void> {
   if (typeof window === "undefined" || !window.indexedDB) return;
   try {
     const db = await openDb();
-    await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction(STORE, "readwrite");
-      tx.objectStore(STORE).delete(`${FILE_ID}:${identityKey(session)}`);
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error || new Error("Could not clear BOM draft file"));
-    });
-    db.close();
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction(STORE, "readwrite");
+        tx.objectStore(STORE).delete(`${FILE_ID}:${identityKey(session)}`);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error || new Error("Could not clear BOM draft file"));
+      });
+    } finally {
+      db.close();
+    }
   } catch {
     // Draft cleanup is best-effort.
   }
@@ -203,7 +224,7 @@ export async function clearDraftFile(
 
 export function readReviewProgress(
   analysisId: string,
-  session?: Pick<Session, "user_id" | "email">,
+  session?: SessionIdentity,
 ): BomReviewProgress {
   if (typeof window === "undefined") return { analysisId };
   try {
@@ -219,7 +240,7 @@ export function readReviewProgress(
 export function markReviewProgress(
   analysisId: string,
   patch: Partial<BomReviewProgress>,
-  session?: Pick<Session, "user_id" | "email">,
+  session?: SessionIdentity,
 ): BomReviewProgress {
   const next = { ...readReviewProgress(analysisId, session), ...patch, analysisId };
   if (typeof window !== "undefined") {
@@ -228,73 +249,23 @@ export function markReviewProgress(
   return next;
 }
 
-type JobListener = (job: AnalyzeJob | null) => void;
-
-let activeJob: AnalyzeJob | null = null;
-const listeners = new Set<JobListener>();
-
-export function getActiveAnalyzeJob(): AnalyzeJob | null {
-  return activeJob;
-}
-
-export function subscribeAnalyzeJob(listener: JobListener): () => void {
-  listeners.add(listener);
-  listener(activeJob);
-  return () => listeners.delete(listener);
-}
-
-function emitJob() {
-  for (const listener of listeners) listener(activeJob);
-}
-
 export function startAnalyzeJob(
   file: File,
   token: string,
   meta: { projectName?: string; bomName?: string; revision?: string },
+  session?: SessionIdentity,
 ): AnalyzeJob {
-  if (activeJob?.status === "running") return activeJob;
-
-  const job: AnalyzeJob = {
-    id: `job-${Date.now()}`,
-    status: "running",
-    startedAt: new Date().toISOString(),
-    fileName: file.name,
-    projectName: meta.projectName || "",
-    bomName: meta.bomName || "",
-    revision: meta.revision || "A",
-  };
-  activeJob = job;
-  emitJob();
-
-  void analyzeBom(file, token, meta)
-    .then((result) => {
-      if (activeJob?.id !== job.id) return;
-      activeJob = {
-        ...job,
-        status: "succeeded",
-        finishedAt: new Date().toISOString(),
-        result,
-      };
-      emitJob();
-    })
-    .catch((err) => {
-      if (activeJob?.id !== job.id) return;
-      activeJob = {
-        ...job,
-        status: "failed",
-        finishedAt: new Date().toISOString(),
-        error: err instanceof Error ? err.message : "Analyze failed",
-        oneTimeReportRequired:
-          err instanceof ApiError && err.payload.code === "one_time_report_required",
-      };
-      emitJob();
-    });
-
-  return job;
+  return startAnalyzeJobWithRunner(
+    file,
+    token,
+    meta,
+    session,
+    async (f, t, m) => analyzeBom(f as File, t, m),
+    (err) => ({
+      message: err instanceof Error ? err.message : "Analyze failed",
+      oneTimeReportRequired:
+        err instanceof ApiError && err.payload.code === "one_time_report_required",
+    }),
+  ) as AnalyzeJob;
 }
 
-export function clearFinishedAnalyzeJob(): void {
-  if (activeJob?.status === "running") return;
-  activeJob = null;
-  emitJob();
-}

@@ -1,0 +1,91 @@
+{
+  "captured_at": "2026-11-07T20:09:55.418Z",
+  "api": "http://127.0.0.1:8791",
+  "web": "http://127.0.0.1:3005",
+  "email": "sandbox-a@cadivor.test",
+  "fixture": "tests/fixtures/synthetic_bom_25parts.csv",
+  "synthetic_label": true,
+  "analysis_id": "4d4441f4-e60b-4538-8a05-7dc697ed9d2c",
+  "shots": [
+    {
+      "name": "real_initial_desktop",
+      "file": "docs/evidence_bom_workflow/screenshots/real_initial_desktop.png"
+    },
+    {
+      "name": "real_initial_mobile",
+      "file": "docs/evidence_bom_workflow/screenshots/real_initial_mobile.png"
+    },
+    {
+      "name": "real_ready_desktop",
+      "file": "docs/evidence_bom_workflow/screenshots/real_ready_desktop.png"
+    },
+    {
+      "name": "real_ready_mobile",
+      "file": "docs/evidence_bom_workflow/screenshots/real_ready_mobile.png"
+    },
+    {
+      "name": "real_analyzing_desktop",
+      "file": "docs/evidence_bom_workflow/screenshots/real_analyzing_desktop.png"
+    },
+    {
+      "name": "real_analyzing_mobile",
+      "file": "docs/evidence_bom_workflow/screenshots/real_analyzing_mobile.png"
+    },
+    {
+      "name": "real_resume_inflight_or_done_desktop",
+      "file": "docs/evidence_bom_workflow/screenshots/real_resume_inflight_or_done_desktop.png"
+    },
+    {
+      "name": "real_resume_inflight_or_done_mobile",
+      "file": "docs/evidence_bom_workflow/screenshots/real_resume_inflight_or_done_mobile.png"
+    },
+    {
+      "name": "real_success_desktop",
+      "file": "docs/evidence_bom_workflow/screenshots/real_success_desktop.png"
+    },
+    {
+      "name": "real_success_mobile",
+      "file": "docs/evidence_bom_workflow/screenshots/real_success_mobile.png"
+    },
+    {
+      "name": "real_risks_desktop",
+      "file": "docs/evidence_bom_workflow/screenshots/real_risks_desktop.png"
+    },
+    {
+      "name": "real_risks_mobile",
+      "file": "docs/evidence_bom_workflow/screenshots/real_risks_mobile.png"
+    },
+    {
+      "name": "real_evidence_desktop",
+      "file": "docs/evidence_bom_workflow/screenshots/real_evidence_desktop.png"
+    },
+    {
+      "name": "real_evidence_mobile",
+      "file": "docs/evidence_bom_workflow/screenshots/real_evidence_mobile.png"
+    },
+    {
+      "name": "real_decision_desktop",
+      "file": "docs/evidence_bom_workflow/screenshots/real_decision_desktop.png"
+    },
+    {
+      "name": "real_decision_mobile",
+      "file": "docs/evidence_bom_workflow/screenshots/real_decision_mobile.png"
+    },
+    {
+      "name": "real_monitor_desktop",
+      "file": "docs/evidence_bom_workflow/screenshots/real_monitor_desktop.png"
+    },
+    {
+      "name": "real_monitor_mobile",
+      "file": "docs/evidence_bom_workflow/screenshots/real_monitor_mobile.png"
+    },
+    {
+      "name": "real_validation_error_desktop",
+      "file": "docs/evidence_bom_workflow/screenshots/real_validation_error_desktop.png"
+    },
+    {
+      "name": "real_validation_error_mobile",
+      "file": "docs/evidence_bom_workflow/screenshots/real_validation_error_mobile.png"
+    }
+  ]
+}

@@ -7,14 +7,12 @@ from typing import Any
 
 import pandas as pd
 
-from src.bom_parser import (
-    REQUIRED_COLUMNS,
-    aggregate_bom_rows,
-    clean_bom_data,
-    normalize_bom_columns,
-    validate_bom,
-)
+from apps.api.synthetic_analyze import parse_bom_bytes
+from src.bom_parser import REQUIRED_COLUMNS
 from src.normalizer import normalize_column_name
+
+# Matches the UI copy: "CSV or XLSX · up to 10 MB"
+MAX_BOM_UPLOAD_BYTES = 10 * 1024 * 1024
 
 
 def _read_raw_frame(filename: str, payload: bytes) -> pd.DataFrame:
@@ -26,37 +24,12 @@ def _read_raw_frame(filename: str, payload: bytes) -> pd.DataFrame:
     return pd.read_csv(buffer)
 
 
-def _parse_bom_bytes(filename: str, payload: bytes) -> pd.DataFrame:
-    """Same parse path as apps.api.synthetic_analyze.parse_bom_bytes."""
-    df = _read_raw_frame(filename, payload)
-    df = normalize_bom_columns(df)
-    df = validate_bom(df)
-    hierarchical = (
-        "parent_mpn" in df.columns
-        and df["parent_mpn"].fillna("").astype(str).str.strip().ne("").any()
-    )
-    if hierarchical:
-        if "parent_mpn" not in df.columns:
-            df["parent_mpn"] = ""
-        df["parent_mpn"] = df["parent_mpn"].fillna("").astype(str)
-        groups = []
-        for (_mpn, _parent), group in df.groupby(["mpn", "parent_mpn"], sort=False, dropna=False):
-            first = group.iloc[0].to_dict()
-            if "quantity" in group.columns:
-                quantity_values = pd.to_numeric(group["quantity"], errors="coerce")
-                first["quantity"] = quantity_values.fillna(0).sum()
-            groups.append(first)
-        df = pd.DataFrame(groups)
-    else:
-        df = aggregate_bom_rows(df)
-    return clean_bom_data(df)
-
-
 def validation_preview(filename: str, payload: bytes) -> dict[str, Any]:
     """Return column detection, counts, and actionable errors/warnings.
 
-    Uses the same parse path as ``/boms/analyze``. Does not run the risk
-    analysis engine.
+    Uses ``synthetic_analyze.parse_bom_bytes`` — the same parse path as
+    ``/boms/analyze``. Does not run risk scoring or persist reports.
+    ``row_count`` is the source BOM data row count before aggregation.
     """
     if not payload:
         return {
@@ -68,8 +41,25 @@ def validation_preview(filename: str, payload: bytes) -> dict[str, Any]:
             "missing_required": list(REQUIRED_COLUMNS),
             "row_count": 0,
             "unique_part_count": 0,
+            "parsed_row_count": 0,
             "errors": ["Empty file"],
             "warnings": [],
+        }
+
+    if len(payload) > MAX_BOM_UPLOAD_BYTES:
+        return {
+            "ok": False,
+            "can_analyze": False,
+            "filename": filename,
+            "detected_columns": [],
+            "required_columns": list(REQUIRED_COLUMNS),
+            "missing_required": list(REQUIRED_COLUMNS),
+            "row_count": 0,
+            "unique_part_count": 0,
+            "parsed_row_count": 0,
+            "errors": ["BOM file must be 10 MB or smaller."],
+            "warnings": [],
+            "code": "payload_too_large",
         }
 
     errors: list[str] = []
@@ -95,15 +85,17 @@ def validation_preview(filename: str, payload: bytes) -> dict[str, Any]:
             "missing_required": list(REQUIRED_COLUMNS),
             "row_count": 0,
             "unique_part_count": 0,
+            "parsed_row_count": 0,
             "errors": [f"Could not read the BOM file: {exc}"],
             "warnings": [],
         }
 
+    source_row_count = int(len(raw.index))
     normalized_names = {item["normalized"] for item in detected_columns}
     missing_required = [col for col in REQUIRED_COLUMNS if col not in normalized_names]
 
     try:
-        parsed = _parse_bom_bytes(filename, payload)
+        parsed = parse_bom_bytes(filename, payload)
     except Exception as exc:  # noqa: BLE001
         errors.append(str(exc))
         return {
@@ -113,8 +105,9 @@ def validation_preview(filename: str, payload: bytes) -> dict[str, Any]:
             "detected_columns": detected_columns,
             "required_columns": list(REQUIRED_COLUMNS),
             "missing_required": missing_required or list(REQUIRED_COLUMNS),
-            "row_count": int(len(raw.index)),
+            "row_count": source_row_count,
             "unique_part_count": 0,
+            "parsed_row_count": 0,
             "errors": errors,
             "warnings": warnings,
             "has_hierarchy_columns": "parent_mpn" in normalized_names,
@@ -152,8 +145,9 @@ def validation_preview(filename: str, payload: bytes) -> dict[str, Any]:
         "detected_columns": detected_columns,
         "required_columns": list(REQUIRED_COLUMNS),
         "missing_required": missing_required,
-        "row_count": int(len(parsed.index)),
+        "row_count": source_row_count,
         "unique_part_count": len(unique_parts),
+        "parsed_row_count": int(len(parsed.index)),
         "errors": errors,
         "warnings": warnings,
         "has_hierarchy_columns": bool(has_hierarchy),

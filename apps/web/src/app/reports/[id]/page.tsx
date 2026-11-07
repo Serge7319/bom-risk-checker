@@ -49,16 +49,18 @@ export default function ReportPage() {
   useEffect(() => {
     if (!session) return;
     const analysisKey = String(params.id || "");
-    setReview(
-      markReviewProgress(
-        analysisKey,
-        { risksOpenedAt: new Date().toISOString() },
-        session,
-      ),
-    );
+    setReview(readReviewProgress(analysisKey, session));
     fetchReport(params.id, session.access_token)
       .then((data) => {
         setReport(data);
+        const id = String(data.analysis_id || data.id || analysisKey);
+        setReview(
+          markReviewProgress(
+            id,
+            { risksOpenedAt: new Date().toISOString() },
+            session,
+          ),
+        );
         rememberAnalysis({
           analysis_id: data.analysis_id || data.id,
           total_parts: data.total_parts,
@@ -213,14 +215,7 @@ export default function ReportPage() {
               ) : (
                 <Link
                   className="cv-button primary"
-                  href="/monitoring"
-                  onClick={() => {
-                    markReviewProgress(
-                      String(params.id),
-                      { monitorOpenedAt: new Date().toISOString() },
-                      session,
-                    );
-                  }}
+                  href={`/monitoring?analysis_id=${encodeURIComponent(String(report.analysis_id || report.id || params.id))}`}
                 >
                   Open Monitoring
                 </Link>

@@ -407,10 +407,21 @@ async def boms_validate(request: Request) -> JSONResponse:
     if upload is None:
         return _json({"detail": "Missing file"}, 400)
     filename = getattr(upload, "filename", None) or "bom.csv"
-    payload = await upload.read()
+    limit = bom_validation.MAX_BOM_UPLOAD_BYTES
+    payload = await upload.read(limit + 1)
+    if len(payload) > limit:
+        return _json(
+            {
+                "detail": "BOM file must be 10 MB or smaller.",
+                "code": "payload_too_large",
+                "ok": False,
+                "can_analyze": False,
+            },
+            413,
+        )
     preview = bom_validation.validation_preview(filename, payload)
     # Always return the preview payload so the UI can show column detection and
-    # actionable errors without treating validation failure as a transport error.
+    # actionable errors without treating soft validation failure as a transport error.
     return _json({**preview, "workspace_id": ctx["workspace_id"]})
 
 
