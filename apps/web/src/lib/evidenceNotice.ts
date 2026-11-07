@@ -3,7 +3,7 @@
 export type EvidenceNoticeTone = "critical" | "context" | "service" | "hide";
 
 const SERVICE_RE =
-  /monitoring email|billing checkout|design-tool connector|connectors are not connected|stripe checkout|alert email|scheduler/i;
+  /monitoring email|billing checkout|design-tool connector|live vendor connector|connectors are not connected|file workflow|stripe checkout|alert email|scheduler/i;
 
 const CONTEXT_RE =
   /based on saved|from saved analys|workspace'?s? saved|computed from saved|calculated from this workspace|needs saved analysis|analyze a bom first|no analyzed bom yet|parts from saved|current workspace|temporary file storage|local preview|durable storage/i;

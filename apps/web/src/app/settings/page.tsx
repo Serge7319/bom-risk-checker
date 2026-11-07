@@ -1236,8 +1236,8 @@ export default function Page() {
               <section className="cv-card pad" style={{ marginBottom: 14 }}>
                 <h3 className="cv-card-title">Service readiness</h3>
                 <p className="cv-card-subtitle">
-                  Availability for monitoring email, scheduler, billing checkout, and connectors.
-                  Check whether monitoring email, scheduling, connectors, and billing checkout can run for this workspace.
+                  Operational availability for monitoring email, scheduler, and billing checkout.
+                  CSV file workflows are listed separately from live design-tool or vendor integrations.
                 </p>
                 <ul className="cv-action-list" style={{ marginTop: 12 }}>
                   <li>
@@ -1275,11 +1275,12 @@ export default function Page() {
                   </li>
                   <li>
                     <div>
-                      <strong>Design-tool connectors</strong>
+                      <strong>Live design-tool / vendor connectors</strong>
                       <small className="cv-small-note">
-                        Ready vs blocked connector capabilities
-                        {typeof readiness?.connectors?.ready_count === "number"
-                          ? ` · ${readiness.connectors.ready_count} ready, ${readiness.connectors.blocked_count ?? 0} blocked`
+                        Live integrations only — CSV file workflows do not count as ready
+                        {typeof readiness?.connectors?.live_ready_count === "number" ||
+                        typeof readiness?.connectors?.ready_count === "number"
+                          ? ` · ${readiness?.connectors?.live_ready_count ?? readiness?.connectors?.ready_count ?? 0} live ready, ${readiness?.connectors?.blocked_count ?? 0} blocked, ${readiness?.connectors?.file_workflow_count ?? 0} file workflows`
                           : ""}
                       </small>
                     </div>
@@ -1291,15 +1292,18 @@ export default function Page() {
               </section>
 
               <section className="cv-card pad" style={{ marginBottom: 14 }}>
-                <h3 className="cv-card-title">Connectors</h3>
+                <h3 className="cv-card-title">Connectors and file workflows</h3>
+                <p className="cv-card-subtitle">
+                  Generic CSV import/export paths are file workflows. Blocked rows are candidate live vendor integrations that still need discovery and credentials.
+                </p>
                 {connectorRows.length ? (
                   <div className="cv-table-wrap" style={{ marginTop: 12 }}>
                     <table className="cv-table">
                       <thead>
                         <tr>
-                          <th>Connector</th>
+                          <th>Name</th>
                           <th>Category</th>
-                          <th>Status</th>
+                          <th>Kind / status</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1309,7 +1313,12 @@ export default function Page() {
                               <strong>{String(row.display_name || row.id || "")}</strong>
                             </td>
                             <td>{String(row.category || "")}</td>
-                            <td>{String(row.status || "")}</td>
+                            <td>
+                              {String(row.kind || row.status || "") === "file_workflow" ||
+                              String(row.status || "") === "file_workflow"
+                                ? "File workflow"
+                                : String(row.status || row.kind || "")}
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -1318,8 +1327,8 @@ export default function Page() {
                 ) : (
                   <EmptyState
                     icon="settings"
-                    title="No connectors configured"
-                    body="Connector options appear here when workspace integrations are added."
+                    title="No connectors or file workflows listed"
+                    body="File workflows and vendor connector options appear here when the workspace catalog is available."
                   />
                 )}
               </section>

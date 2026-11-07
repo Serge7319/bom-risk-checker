@@ -34,3 +34,16 @@ node docs/evidence_ui_tables/capture_screenshots.mjs
 
 ## Do not deploy
 Open PR for review; do not merge or deploy until approved.
+
+
+## Real signed-in Next.js routes (required before UI review)
+
+Captured from authenticated sandbox sessions on `/settings`, `/design-impact`, and `/portfolio-intelligence` at **1440**, **696**, and **390** widths. Overflow is measured before the synthetic label banner is injected.
+
+```bash
+node docs/evidence_ui_tables/capture_real_routes.mjs
+```
+
+Files live under `screenshots_real/real_*.png` with `real_route_manifest.json` (includes overflowPx; all must be 0).
+
+Synthetic sample data is labeled in each screenshot (`data-testid="synthetic-sample-label"`). Fixture PNGs above remain CSS markup fixtures only.

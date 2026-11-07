@@ -1473,6 +1473,17 @@ button {
 }
 
 @media (max-width: 520px) {
+  html,
+  body {
+    overflow-x: clip;
+    max-width: 100%;
+  }
+  .cv-shell,
+  .cv-main,
+  .cv-page {
+    max-width: 100vw;
+    overflow-x: clip;
+  }
   .cv-grid-2--tables {
     grid-template-columns: 1fr;
     gap: 12px;

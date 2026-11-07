@@ -1411,14 +1411,22 @@ async def service_readiness_get(request: Request) -> JSONResponse:
             workspace_id=str(ctx.get("workspace_id") or "readiness-probe"),
             user_id=str(ctx.get("user_id") or "readiness-probe"),
         )
-        ready_count = int(connector_payload.get("ready_count") or 0)
+        # File workflows must not imply live design-tool/vendor readiness.
+        live_ready_count = int(
+            connector_payload.get("live_ready_count")
+            or connector_payload.get("ready_count")
+            or 0
+        )
         blocked_count = int(connector_payload.get("blocked_count") or 0)
-        if ready_count > 0 and blocked_count == 0:
-            connector_status = "ready"
-        elif ready_count > 0:
-            connector_status = "partial"
-        else:
-            connector_status = "not_connected"
+        file_workflow_count = int(connector_payload.get("file_workflow_count") or 0)
+        connector_status = str(connector_payload.get("live_status") or "not_connected")
+        if connector_status not in {"ready", "partial", "not_connected", "unknown"}:
+            if live_ready_count > 0 and blocked_count == 0:
+                connector_status = "ready"
+            elif live_ready_count > 0:
+                connector_status = "partial"
+            else:
+                connector_status = "not_connected"
         return _json(
             {
                 "ok": True,
@@ -1426,7 +1434,9 @@ async def service_readiness_get(request: Request) -> JSONResponse:
                 "scheduler": scheduler,
                 "connectors": {
                     "status": connector_status,
-                    "ready_count": ready_count,
+                    "ready_count": live_ready_count,
+                    "live_ready_count": live_ready_count,
+                    "file_workflow_count": file_workflow_count,
                     "blocked_count": blocked_count,
                     "connectors": connector_payload.get("connectors") or [],
                     "gap": connector_payload.get("gap"),

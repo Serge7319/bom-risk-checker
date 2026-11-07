@@ -87,3 +87,26 @@ def test_health_and_synthetic_bom_flow():
     payload = report.json()
     assert payload["total_parts"] == 25
     assert len(payload["parts"]) == 25
+
+
+def test_ci_includes_service_readiness_and_evidence_notice_files():
+    """Run readiness + evidence-notice suites from the CI-included migration API module."""
+    import subprocess
+    import sys
+
+    targets = [
+        "tests/test_service_readiness.py",
+        "tests/test_evidence_notice_behavior.py",
+        "tests/test_evidence_notice_classification.py",
+    ]
+    proc = subprocess.run(
+        [sys.executable, "-m", "pytest", *targets, "-q", "--tb=line"],
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stdout + "\n" + proc.stderr
+    combined = proc.stdout + proc.stderr
+    for name in targets:
+        assert name.split("/")[-1] in combined or "passed" in combined

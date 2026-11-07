@@ -731,6 +731,8 @@ export type ServiceReadiness = {
   connectors?: {
     status?: string;
     ready_count?: number;
+    live_ready_count?: number;
+    file_workflow_count?: number;
     blocked_count?: number;
     connectors?: Array<Record<string, unknown>>;
     gap?: string | null;

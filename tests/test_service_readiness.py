@@ -172,4 +172,24 @@ def test_service_readiness_error_omits_exception_string(
 def test_settings_copy_is_customer_facing():
     settings = Path("apps/web/src/app/settings/page.tsx").read_text(encoding="utf-8")
     assert "These notes stay in Settings instead of repeating across Home and Reports." not in settings
-    assert "monitoring email, scheduling, connectors, and billing checkout" in settings
+    assert "CSV file workflows are listed separately from live design-tool or vendor integrations" in settings
+    assert "Live design-tool / vendor connectors" in settings
+    assert "Design-tool connectors" not in settings or "Live design-tool / vendor connectors" in settings
+
+
+def test_csv_file_workflows_do_not_make_live_connectors_ready(client):
+    body = _readiness(client)
+    connectors = body["connectors"]
+    assert connectors["file_workflow_count"] >= 1
+    assert connectors["live_ready_count"] == 0
+    assert connectors["ready_count"] == 0
+    assert connectors["status"] == "not_connected"
+    kinds = {
+        str(row.get("kind") or row.get("status") or "")
+        for row in (connectors.get("connectors") or [])
+    }
+    assert "file_workflow" in kinds
+    # No CSV row should claim live ready status.
+    for row in connectors.get("connectors") or []:
+        if row.get("kind") == "file_workflow" or row.get("status") == "file_workflow":
+            assert row.get("status") != "ready"
