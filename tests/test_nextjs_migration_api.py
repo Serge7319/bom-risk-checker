@@ -203,6 +203,24 @@ def test_bom_analyze_job_account_isolation_runner():
     case.test_account_switch_while_analyze_job_running()
 
 
+def test_bom_analyze_job_workspace_isolation_runner():
+    """CI entry: same user cannot observe workspace A jobs/drafts while in workspace B."""
+    from tests.test_bom_workflow_guide_states import BomWorkflowGuideStateTests
+
+    case = BomWorkflowGuideStateTests("test_same_user_workspace_isolation_for_jobs_and_drafts")
+    case.setUpClass()
+    case.test_same_user_workspace_isolation_for_jobs_and_drafts()
+
+
+def test_bom_file_content_identity_runner():
+    """CI entry: content identity distinguishes same name/size/mtime with different bytes."""
+    from tests.test_bom_workflow_guide_states import BomWorkflowGuideStateTests
+
+    case = BomWorkflowGuideStateTests("test_file_identity_distinguishes_same_meta_different_bytes")
+    case.setUpClass()
+    case.test_file_identity_distinguishes_same_meta_different_bytes()
+
+
 def test_bom_validation_preview_module_suite():
     """CI entry: validation preview parity + no analyze side effects."""
     import unittest

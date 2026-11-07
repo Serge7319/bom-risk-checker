@@ -213,9 +213,22 @@ async function main() {
   }
   await capturePair(page, "real_ready");
 
+  // Deterministic leave/return: hold analyze pending, SPA-navigate away, use other page,
+  // release the request, return via sidebar, and confirm the same job finishes (no duplicate).
+  let releaseAnalyze;
+  const analyzeGate = new Promise((resolve) => {
+    releaseAnalyze = resolve;
+  });
+  let analyzeCalls = 0;
+  await page.route("**/boms/analyze", async (route) => {
+    analyzeCalls += 1;
+    await analyzeGate;
+    await route.continue();
+  });
+
   await page.getByRole("button", { name: /Analyze BOM/i }).first().click();
   try {
-    await page.waitForSelector("text=/Analysis in progress|Analyzing is current|Current stage[\\s\\S]*Analyzing/i", {
+    await page.waitForSelector("text=/Analysis in progress|Analyzing is current|Current stage[\s\S]*Analyzing/i", {
       timeout: 20000,
     });
   } catch (err) {
@@ -223,11 +236,25 @@ async function main() {
     throw err;
   }
   await capturePair(page, "real_analyzing");
+  if (analyzeCalls !== 1) {
+    throw new Error(`expected exactly 1 analyze request after click, got ${analyzeCalls}`);
+  }
 
-  // Leave and return during in-flight analysis
-  await page.goto(`${WEB}/settings`, { waitUntil: "domcontentloaded" });
-  await wait(500);
-  await page.goto(`${WEB}/bom-analyzer`, { waitUntil: "networkidle" });
+  // Soft SPA navigation keeps the held fetch + in-memory job alive.
+  await page.locator('a.cv-nav-item[href="/settings"], a[href="/settings"]').first().click();
+  await page.waitForURL(/\/settings/, { timeout: 30000 });
+  await page.waitForSelector("text=/Settings|Integrations|Service readiness|Workspace/i", {
+    timeout: 30000,
+  });
+  const settingsUsable = await page.locator("body").innerText();
+  if (!/settings|workspace|integration|readiness/i.test(settingsUsable)) {
+    throw new Error("settings page was not usable while analyze was pending");
+  }
+  await capturePair(page, "real_leave_settings_while_pending");
+
+  releaseAnalyze();
+  await page.locator('a.cv-nav-item[href="/bom-analyzer"], a[href="/bom-analyzer"]').first().click();
+  await page.waitForURL(/\/bom-analyzer/, { timeout: 30000 });
   await capturePair(page, "real_resume_inflight_or_done");
 
   try {
@@ -236,7 +263,11 @@ async function main() {
     await dumpFailure(page, "success");
     throw err;
   }
+  if (analyzeCalls !== 1) {
+    throw new Error(`duplicate analyze detected after leave/return: ${analyzeCalls} calls`);
+  }
   await capturePair(page, "real_success");
+  await page.unroute("**/boms/analyze").catch(() => {});
 
   await page.getByRole("link", { name: /Open saved risk report/i }).first().click();
   await page.waitForURL(/\/reports\//, { timeout: 60000 });

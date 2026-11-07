@@ -17,8 +17,10 @@ import {
   clearFinishedAnalyzeJob,
   fileIdentityKey,
   getActiveAnalyzeJob,
+  identityKey,
   loadDraftFile,
   markReviewProgress,
+  parseAnalyzeSummary,
   readDraftMeta,
   readReviewProgress,
   saveDraftFile,
@@ -72,6 +74,7 @@ export default function BomAnalyzerPage() {
   const [backgroundNote, setBackgroundNote] = useState("");
   const [draftPersistNotice, setDraftPersistNotice] = useState("");
   const [validatedFileKey, setValidatedFileKey] = useState("");
+  const [fileContentKey, setFileContentKey] = useState("");
   const validationRequestIdRef = useRef(0);
   const selectedFileKeyRef = useRef("");
 
@@ -87,7 +90,7 @@ export default function BomAnalyzerPage() {
         fileName: file?.name || current.fileName,
         fileSize: file?.size || current.fileSize,
         fileType: file?.type || current.fileType,
-        fileKey: file ? fileIdentityKey(file) : current.fileKey,
+        fileKey: fileContentKey || current.fileKey,
         validation,
         validationError,
         analysisId,
@@ -104,6 +107,7 @@ export default function BomAnalyzerPage() {
       bomName,
       revision,
       file,
+      fileContentKey,
       validation,
       validationError,
       analysisId,
@@ -156,8 +160,10 @@ export default function BomAnalyzerPage() {
       if (cancelled) return;
       if (restored) {
         setFile(restored);
-        const key = fileIdentityKey(restored);
+        const key = await fileIdentityKey(restored);
+        if (cancelled) return;
         selectedFileKeyRef.current = key;
+        setFileContentKey(key);
         if (meta.fileKey && meta.fileKey !== key) {
           setValidation(null);
           setValidatedFileKey("");
@@ -172,17 +178,24 @@ export default function BomAnalyzerPage() {
           "Analysis continues in this browser session while you use other pages. Return here to see status.",
         );
       } else if (job?.status === "succeeded" && job.result) {
-        setSummary(job.result);
-        setAnalysisId(job.result.analysis_id);
-        setAnalyzing(false);
-        rememberAnalysis({ ...job.result, filename: job.fileName }, session);
-        persistMeta({
-          summary: job.result,
-          analysisId: job.result.analysis_id,
-          analyzeError: "",
-          oneTimeReportRequired: false,
-        });
-        clearFinishedAnalyzeJob(session);
+        const summaryResult = parseAnalyzeSummary(job.result);
+        if (!summaryResult) {
+          setAnalyzeError("Analyze returned an incomplete summary.");
+          setAnalyzing(false);
+          clearFinishedAnalyzeJob(session);
+        } else {
+          setSummary(summaryResult);
+          setAnalysisId(summaryResult.analysis_id);
+          setAnalyzing(false);
+          rememberAnalysis({ ...summaryResult, filename: job.fileName }, session);
+          persistMeta({
+            summary: summaryResult,
+            analysisId: summaryResult.analysis_id,
+            analyzeError: "",
+            oneTimeReportRequired: false,
+          });
+          clearFinishedAnalyzeJob(session);
+        }
       } else if (job?.status === "failed") {
         setAnalyzeError(job.error || "Analyze failed");
         setOneTimeReportRequired(Boolean(job.oneTimeReportRequired));
@@ -202,7 +215,7 @@ export default function BomAnalyzerPage() {
     if (!session) return;
     return subscribeAnalyzeJob((job) => {
       if (!job) return;
-      if (job.ownerKey && job.ownerKey !== (session.user_id || session.email?.trim().toLowerCase() || "anonymous")) {
+      if (job.ownerKey && job.ownerKey !== identityKey(session)) {
         return;
       }
       if (job.status === "running") {
@@ -214,17 +227,23 @@ export default function BomAnalyzerPage() {
         return;
       }
       if (job.status === "succeeded" && job.result) {
+        const summaryResult = parseAnalyzeSummary(job.result);
         setAnalyzing(false);
-        setSummary(job.result);
-        setAnalysisId(job.result.analysis_id);
+        if (!summaryResult) {
+          setAnalyzeError("Analyze returned an incomplete summary.");
+          clearFinishedAnalyzeJob(session);
+          return;
+        }
+        setSummary(summaryResult);
+        setAnalysisId(summaryResult.analysis_id);
         setAnalyzeError("");
         setOneTimeReportRequired(false);
-        rememberAnalysis({ ...job.result, filename: job.fileName }, session);
+        rememberAnalysis({ ...summaryResult, filename: job.fileName }, session);
         writeDraftMeta(
           {
             ...readDraftMeta(session),
-            summary: job.result,
-            analysisId: job.result.analysis_id,
+            summary: summaryResult,
+            analysisId: summaryResult.analysis_id,
             analyzeError: "",
             oneTimeReportRequired: false,
           },
@@ -323,8 +342,8 @@ export default function BomAnalyzerPage() {
     if (!session) return;
     // Synchronously clear previous validation before any await.
     const requestId = ++validationRequestIdRef.current;
-    const nextKey = next ? fileIdentityKey(next) : "";
-    selectedFileKeyRef.current = nextKey;
+    selectedFileKeyRef.current = "";
+    setFileContentKey("");
     setFile(next);
     setValidation(null);
     setValidationError("");
@@ -350,6 +369,10 @@ export default function BomAnalyzerPage() {
     if (!bomName.trim()) {
       setBomName(next.name.replace(/\.(csv|xlsx)$/i, ""));
     }
+    const nextKey = await fileIdentityKey(next);
+    if (requestId !== validationRequestIdRef.current) return;
+    selectedFileKeyRef.current = nextKey;
+    setFileContentKey(nextKey);
     try {
       await saveDraftFile(next, session);
     } catch (err) {
@@ -368,7 +391,8 @@ export default function BomAnalyzerPage() {
     if (!session || !file || analyzing) return;
     const matches =
       Boolean(validation?.can_analyze) &&
-      validatedFileKey === fileIdentityKey(file) &&
+      Boolean(fileContentKey) &&
+      validatedFileKey === fileContentKey &&
       !validating;
     if (!matches) return;
     setAnalyzeError("");
@@ -395,7 +419,8 @@ export default function BomAnalyzerPage() {
     file &&
       validation &&
       validatedFileKey &&
-      validatedFileKey === fileIdentityKey(file),
+      fileContentKey &&
+      validatedFileKey === fileContentKey,
   );
 
   const guide = useMemo(

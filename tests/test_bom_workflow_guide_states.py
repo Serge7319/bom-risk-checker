@@ -54,6 +54,14 @@ class BomWorkflowGuideStateTests(unittest.TestCase):
         payload = self._run("jobs")
         self.assertIn("account-switch-in-flight", payload["cases"])
 
+    def test_same_user_workspace_isolation_for_jobs_and_drafts(self):
+        payload = self._run("workspace")
+        self.assertIn("workspace-switch-same-user", payload["cases"])
+
+    def test_file_identity_distinguishes_same_meta_different_bytes(self):
+        payload = self._run("identity")
+        self.assertIn("content-identity-same-meta-different-bytes", payload["cases"])
+
 
 if __name__ == "__main__":
     unittest.main()

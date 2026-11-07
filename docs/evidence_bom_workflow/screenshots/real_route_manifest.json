@@ -1,11 +1,11 @@
 {
-  "captured_at": "2026-11-07T20:09:55.418Z",
-  "api": "http://127.0.0.1:8791",
-  "web": "http://127.0.0.1:3005",
+  "captured_at": "2026-11-07T21:17:48.016Z",
+  "api": "http://127.0.0.1:8794",
+  "web": "http://127.0.0.1:3008",
   "email": "sandbox-a@cadivor.test",
   "fixture": "tests/fixtures/synthetic_bom_25parts.csv",
   "synthetic_label": true,
-  "analysis_id": "4d4441f4-e60b-4538-8a05-7dc697ed9d2c",
+  "analysis_id": "c6bbd72c-25af-4db9-8706-a49e27db2f8a",
   "shots": [
     {
       "name": "real_initial_desktop",
@@ -30,6 +30,14 @@
     {
       "name": "real_analyzing_mobile",
       "file": "docs/evidence_bom_workflow/screenshots/real_analyzing_mobile.png"
+    },
+    {
+      "name": "real_leave_settings_while_pending_desktop",
+      "file": "docs/evidence_bom_workflow/screenshots/real_leave_settings_while_pending_desktop.png"
+    },
+    {
+      "name": "real_leave_settings_while_pending_mobile",
+      "file": "docs/evidence_bom_workflow/screenshots/real_leave_settings_while_pending_mobile.png"
     },
     {
       "name": "real_resume_inflight_or_done_desktop",

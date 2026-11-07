@@ -1,5 +1,5 @@
 /**
- * Node runner for BOM workflow stage + account-scoped analyze job contracts.
+ * Node runner for BOM workflow stage + user/workspace-scoped analyze job contracts.
  * Invoked by tests/test_bom_workflow_guide_states.py
  */
 import { pathToFileURL } from "node:url";
@@ -52,6 +52,10 @@ async function loadWorkflow() {
 
 async function loadJobs() {
   return import(pathToFileURL(path.join(webSrc, "bomAnalyzeJobs.ts")).href);
+}
+
+async function loadFileIdentity() {
+  return import(pathToFileURL(path.join(webSrc, "bomFileIdentity.ts")).href);
 }
 
 async function runWorkflowCases() {
@@ -115,7 +119,16 @@ async function runWorkflowCases() {
       hasFile: true,
       validation: validPreview,
       validationMatchesFile: true,
-      summary: { analysis_id: "a1", total_parts: 2 },
+      summary: {
+        analysis_id: "a1",
+        total_parts: 2,
+        health_score: 80,
+        health_status: "ok",
+        high_risk_count: 0,
+        medium_risk_count: 0,
+        low_risk_count: 2,
+        mode: "synthetic-preview",
+      },
       analysisId: "a1",
     });
     assert(g.currentStage === "Risks", `success current=${g.currentStage}`);
@@ -160,6 +173,8 @@ async function runAccountIsolation() {
     getActiveAnalyzeJob,
     resetAnalyzeJobsForTests,
     clearFinishedAnalyzeJob,
+    identityKey,
+    parseAnalyzeSummary,
   } = await loadJobs();
 
   resetAnalyzeJobsForTests();
@@ -187,10 +202,10 @@ async function runAccountIsolation() {
   assert(getActiveAnalyzeJob(userA)?.status === "running", "A still running after B starts");
   assert(pending.length === 2, `expected 2 pending analyzes, got ${pending.length}`);
 
-  assert(seenA.some((j) => j && j.status === "running" && j.ownerKey === "user-a"), "A listener got A");
-  assert(seenB.some((j) => j && j.status === "running" && j.ownerKey === "user-b"), "B listener got B");
-  assert(!seenA.some((j) => j && j.ownerKey === "user-b"), "A never sees B");
-  assert(!seenB.some((j) => j && j.ownerKey === "user-a"), "B never sees A");
+  assert(seenA.some((j) => j && j.status === "running" && j.ownerKey === identityKey(userA)), "A listener got A");
+  assert(seenB.some((j) => j && j.status === "running" && j.ownerKey === identityKey(userB)), "B listener got B");
+  assert(!seenA.some((j) => j && j.ownerKey === identityKey(userB)), "A never sees B");
+  assert(!seenB.some((j) => j && j.ownerKey === identityKey(userA)), "B never sees A");
 
   const resultA = {
     analysis_id: "analysis-a",
@@ -216,15 +231,120 @@ async function runAccountIsolation() {
   assert(getActiveAnalyzeJob(userB)?.result?.analysis_id === "analysis-b", "B keeps own result");
   assert(!seenA.some((j) => j && j.result && j.result.analysis_id === "analysis-b"), "A never received B's result");
 
+  // Incomplete payloads must not become succeeded summaries.
+  resetAnalyzeJobsForTests();
+  const incompletePending = [];
+  const incompleteRunner = () =>
+    new Promise((resolve) => incompletePending.push(resolve));
+  startAnalyzeJobWithRunner(file, "token-a", { bomName: "A" }, userA, incompleteRunner);
+  incompletePending.shift()({ analysis_id: "partial-only" });
+  await waitMicrotasks();
+  assert(getActiveAnalyzeJob(userA)?.status === "failed", "incomplete summary fails closed");
+  assert(parseAnalyzeSummary({ analysis_id: "x" }) == null, "parseAnalyzeSummary rejects incomplete");
+
   clearFinishedAnalyzeJob(userA);
-  assert(getActiveAnalyzeJob(userA) == null, "A cleared");
-  assert(getActiveAnalyzeJob(userB)?.status === "succeeded", "B still present after A clear");
   clearFinishedAnalyzeJob(userB);
 
   unsubA();
   unsubB();
   resetAnalyzeJobsForTests();
   return ["account-switch-in-flight"];
+}
+
+async function runWorkspaceIsolation() {
+  const {
+    startAnalyzeJobWithRunner,
+    subscribeAnalyzeJob,
+    getActiveAnalyzeJob,
+    resetAnalyzeJobsForTests,
+    clearFinishedAnalyzeJob,
+    identityKey,
+  } = await loadJobs();
+  const { draftMetaStorageKey, draftFileRecordId } = await loadFileIdentity();
+
+  resetAnalyzeJobsForTests();
+  const wsA = { user_id: "user-same", email: "same@cadivor.test", workspace_id: "ws-a" };
+  const wsB = { user_id: "user-same", email: "same@cadivor.test", workspace_id: "ws-b" };
+  assert(identityKey(wsA) !== identityKey(wsB), "workspace identity keys differ");
+  assert(draftMetaStorageKey(wsA) !== draftMetaStorageKey(wsB), "draft meta keys differ by workspace");
+  assert(draftFileRecordId(wsA) !== draftFileRecordId(wsB), "draft file ids differ by workspace");
+
+  // localStorage-backed draft meta isolation (jsdom-free stub).
+  const store = new Map();
+  globalThis.window = {
+    localStorage: {
+      getItem: (k) => (store.has(k) ? store.get(k) : null),
+      setItem: (k, v) => store.set(k, String(v)),
+      removeItem: (k) => store.delete(k),
+    },
+  };
+
+  const draftA = {
+    projectName: "Workspace A project",
+    fileKey: "sha256:aaa",
+    analysisId: "analysis-ws-a",
+  };
+  window.localStorage.setItem(draftMetaStorageKey(wsA), JSON.stringify(draftA));
+  const rawA = JSON.parse(window.localStorage.getItem(draftMetaStorageKey(wsA)));
+  const rawB = window.localStorage.getItem(draftMetaStorageKey(wsB));
+  assert(rawA.projectName === "Workspace A project", "wsA reads own draft");
+  assert(rawB == null, "wsB must not restore wsA draft meta");
+
+  const pending = [];
+  const runner = () => new Promise((resolve) => pending.push(resolve));
+  const seenB = [];
+  const unsubB = subscribeAnalyzeJob((job) => seenB.push(job), wsB);
+  startAnalyzeJobWithRunner({ name: "a.csv" }, "tok", { bomName: "A" }, wsA, runner);
+  assert(getActiveAnalyzeJob(wsA)?.status === "running", "wsA job running");
+  assert(getActiveAnalyzeJob(wsB) == null, "same user in wsB must not see wsA job");
+  assert(!seenB.some((j) => j && j.status === "running"), "wsB listener never observes wsA job");
+
+  pending.shift()({
+    analysis_id: "analysis-ws-a",
+    total_parts: 1,
+    health_score: 70,
+    health_status: "ok",
+    high_risk_count: 0,
+    medium_risk_count: 0,
+    low_risk_count: 1,
+    mode: "synthetic-preview",
+  });
+  await waitMicrotasks();
+  assert(getActiveAnalyzeJob(wsA)?.result?.analysis_id === "analysis-ws-a", "wsA keeps result");
+  assert(getActiveAnalyzeJob(wsB) == null, "wsB still has no job after wsA succeeds");
+  assert(!seenB.some((j) => j && j.result), "wsB never receives wsA result");
+
+  clearFinishedAnalyzeJob(wsA);
+  unsubB();
+  resetAnalyzeJobsForTests();
+  delete globalThis.window;
+  return ["workspace-switch-same-user"];
+}
+
+async function runFileIdentityCases() {
+  const { fileIdentityKey } = await loadFileIdentity();
+  const stamp = 1_700_000_000_000;
+  const left = new File([Buffer.from("MPN,Qty\nAAA,1\n")], "same.csv", {
+    type: "text/csv",
+    lastModified: stamp,
+  });
+  const right = new File([Buffer.from("MPN,Qty\nBBB,1\n")], "same.csv", {
+    type: "text/csv",
+    lastModified: stamp,
+  });
+  assert(left.size === right.size, "fixture sizes must match for regression");
+  assert(left.name === right.name && left.lastModified === right.lastModified, "meta matches");
+  const keyLeft = await fileIdentityKey(left);
+  const keyRight = await fileIdentityKey(right);
+  assert(keyLeft !== keyRight, `content keys must differ: ${keyLeft} vs ${keyRight}`);
+  assert(keyLeft.startsWith("sha256:"), `left key=${keyLeft}`);
+  assert(keyRight.startsWith("sha256:"), `right key=${keyRight}`);
+  // Same bytes → same key
+  const leftAgain = await fileIdentityKey(
+    new File([Buffer.from("MPN,Qty\nAAA,1\n")], "same.csv", { type: "text/csv", lastModified: stamp }),
+  );
+  assert(leftAgain === keyLeft, "identical bytes keep the same identity");
+  return ["content-identity-same-meta-different-bytes"];
 }
 
 const suite = process.argv[2] || "all";
@@ -235,6 +355,12 @@ try {
   }
   if (suite === "jobs" || suite === "all") {
     results.cases.push(...(await runAccountIsolation()));
+  }
+  if (suite === "workspace" || suite === "all") {
+    results.cases.push(...(await runWorkspaceIsolation()));
+  }
+  if (suite === "identity" || suite === "all") {
+    results.cases.push(...(await runFileIdentityCases()));
   }
   console.log(JSON.stringify(results));
 } catch (err) {
