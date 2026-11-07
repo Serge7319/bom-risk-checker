@@ -348,6 +348,12 @@ async def auth_signup_config(_: Request) -> JSONResponse:
 async def auth_signup(request: Request) -> JSONResponse:
     if not _use_supabase_auth() or not supabase_auth.signup_enabled():
         return _json({"detail": "Self-serve signup is not enabled"}, 503)
+    # Rate-limit before any consent write so retries cannot flood the audit log.
+    if _throttled(request, "signup", limit=5, window=600):
+        return _json(
+            {"detail": "Too many signup attempts. Wait a few minutes and try again.", "code": "signup_rate_limited"},
+            429,
+        )
     try:
         body = await request.json()
     except Exception:  # noqa: BLE001
@@ -359,31 +365,53 @@ async def auth_signup(request: Request) -> JSONResponse:
             {"detail": "Agree to the Terms of Service and Privacy Policy to continue."},
             400,
         )
+    # Validate payload + CAPTCHA before inserting consent.
     try:
-        _record_legal_acceptance(
-            email=str(body.get("email") or ""),
+        email_n, workspace_n, captcha_token = supabase_auth.validate_signup_fields(
+            str(body.get("email") or ""),
+            str(body.get("password") or ""),
+            str(body.get("workspace_name") or ""),
+            captcha_token=str(body.get("captcha_token") or "") or None,
+        )
+    except AuthError as exc:
+        return _json({"detail": exc.detail}, exc.status_code)
+    try:
+        acceptance = legal_acceptance.record_acceptance_for_signup(
+            email=email_n,
             source="signup",
-            workspace_name=str(body.get("workspace_name") or "") or None,
+            workspace_name=workspace_n or None,
             terms_version=str(body.get("terms_version") or "") or None,
             privacy_version=str(body.get("privacy_version") or "") or None,
         )
     except legal_acceptance.LegalAcceptanceError as exc:
         return _legal_acceptance_error(exc)
     try:
-        supabase_auth.signup(
-            str(body.get("email") or ""),
+        result = supabase_auth.signup(
+            email_n,
             str(body.get("password") or ""),
-            str(body.get("workspace_name") or ""),
-            captcha_token=str(body.get("captcha_token") or "") or None,
+            workspace_n,
+            captcha_token=captcha_token,
         )
     except AuthNotConfiguredError as exc:
         return _json({"detail": str(exc)}, 503)
     except AuthError as exc:
         return _json({"detail": exc.detail}, exc.status_code)
+    user_id = str((result or {}).get("user_id") or "") or None
+    if user_id and acceptance and not acceptance.get("user_id"):
+        linked = legal_acceptance.attach_user_id(
+            acceptance_id=str(acceptance["id"]), user_id=user_id
+        )
+        if linked:
+            acceptance = linked
     return _json(
         {
             "accepted": True,
             "message": "If this address can be registered, a verification link will arrive by email.",
+            "acceptance_id": acceptance.get("id") if acceptance else None,
+            "acceptance_user_linked": bool(acceptance and acceptance.get("user_id")),
+            "acceptance_identity": (
+                "user_id" if acceptance and acceptance.get("user_id") else "email"
+            ),
             **legal_acceptance.published_versions(),
         },
         202,

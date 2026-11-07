@@ -200,6 +200,134 @@ def list_acceptances(*, email: str | None = None) -> list[dict[str, Any]]:
         return list(rows)
 
 
+
+def find_recent_acceptance(
+    *,
+    email: str,
+    source: str,
+    terms_version: str,
+    privacy_version: str,
+    max_age_seconds: int = 24 * 60 * 60,
+) -> dict[str, Any] | None:
+    """Return a recent matching acceptance to avoid unlimited audit rows on retries."""
+    email_n = (email or "").strip().lower()
+    if not email_n:
+        return None
+    now = datetime.now(timezone.utc)
+    for row in list_acceptances(email=email_n):
+        if str(row.get("source") or "") != source:
+            continue
+        if str(row.get("terms_version") or "") != terms_version:
+            continue
+        if str(row.get("privacy_version") or "") != privacy_version:
+            continue
+        raw = str(row.get("accepted_at") or "")
+        try:
+            accepted = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if accepted.tzinfo is None:
+            accepted = accepted.replace(tzinfo=timezone.utc)
+        if (now - accepted).total_seconds() <= max_age_seconds:
+            return row
+    return None
+
+
+def record_acceptance_for_signup(
+    *,
+    email: str,
+    source: str,
+    terms_version: str | None = None,
+    privacy_version: str | None = None,
+    user_id: str | None = None,
+    workspace_name: str | None = None,
+) -> dict[str, Any]:
+    """Record consent once per email/source/versions window; optionally attach user_id.
+
+    Identity policy:
+    - Prefer ``user_id`` when the auth provider returns one at signup time.
+    - Otherwise the durable audit identity is the normalized email address
+      (email-only) until a later verified login can attach ``user_id``.
+    """
+    terms_v, privacy_v = canonical_versions(terms_version, privacy_version)
+    existing = find_recent_acceptance(
+        email=email,
+        source=source,
+        terms_version=terms_v,
+        privacy_version=privacy_v,
+    )
+    if existing:
+        if user_id and not existing.get("user_id"):
+            return attach_user_id(acceptance_id=str(existing["id"]), user_id=user_id) or existing
+        return existing
+    return record_acceptance(
+        email=email,
+        source=source,
+        terms_version=terms_v,
+        privacy_version=privacy_v,
+        user_id=user_id,
+        workspace_name=workspace_name,
+    )
+
+
+def attach_user_id(*, acceptance_id: str, user_id: str) -> dict[str, Any] | None:
+    """Link a stored acceptance to the created auth user when known."""
+    user_n = (user_id or "").strip()
+    if not acceptance_id or not user_n:
+        return None
+    db_url = _database_url()
+    if db_url:
+        import psycopg
+
+        with psycopg.connect(db_url) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE migration_legal_acceptances
+                    SET user_id = %s
+                    WHERE id = %s
+                    RETURNING id, email, user_id, workspace_name, source,
+                              terms_version, privacy_version, accepted_at
+                    """,
+                    (user_n, acceptance_id),
+                )
+                row = cur.fetchone()
+            conn.commit()
+        if not row:
+            return None
+        keys = [
+            "id",
+            "email",
+            "user_id",
+            "workspace_name",
+            "source",
+            "terms_version",
+            "privacy_version",
+            "accepted_at",
+        ]
+        return {keys[i]: row[i] for i in range(len(keys))}
+
+    if not _ephemeral_consent_allowed():
+        return None
+    with _LOCK:
+        for row in _MEMORY:
+            if str(row.get("id")) == acceptance_id:
+                row["user_id"] = user_n
+                path = _file_path()
+                if path and path.exists():
+                    try:
+                        loaded = json.loads(path.read_text(encoding="utf-8"))
+                    except Exception:  # noqa: BLE001
+                        loaded = list(_MEMORY)
+                    if isinstance(loaded, list):
+                        for item in loaded:
+                            if str(item.get("id")) == acceptance_id:
+                                item["user_id"] = user_n
+                        path.write_text(json.dumps(loaded, indent=2), encoding="utf-8")
+                return dict(row)
+    return None
+
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS migration_legal_acceptances (
   id TEXT PRIMARY KEY,
@@ -213,6 +341,16 @@ CREATE TABLE IF NOT EXISTS migration_legal_acceptances (
 );
 CREATE INDEX IF NOT EXISTS migration_legal_acceptances_email_idx
   ON migration_legal_acceptances (lower(email), accepted_at DESC);
+CREATE INDEX IF NOT EXISTS migration_legal_acceptances_user_id_idx
+  ON migration_legal_acceptances (user_id)
+  WHERE user_id IS NOT NULL;
+"""
+
+
+_SCHEMA_SECURITY = """
+ALTER TABLE migration_legal_acceptances ENABLE ROW LEVEL SECURITY;
+ALTER TABLE migration_legal_acceptances FORCE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE migration_legal_acceptances FROM PUBLIC;
 """
 
 
@@ -225,6 +363,12 @@ def ensure_schema(database_url: str | None = None) -> None:
     with psycopg.connect(url) as conn:
         with conn.cursor() as cur:
             cur.execute(_SCHEMA)
+            try:
+                cur.execute(_SCHEMA_SECURITY)
+            except Exception:
+                # Disposable Postgres roles may lack FORCE RLS; table DDL still applied.
+                conn.rollback()
+                cur.execute(_SCHEMA)
         conn.commit()
 
 

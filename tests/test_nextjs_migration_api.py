@@ -87,3 +87,23 @@ def test_health_and_synthetic_bom_flow():
     payload = report.json()
     assert payload["total_parts"] == 25
     assert len(payload["parts"]) == 25
+
+
+def test_ci_includes_legal_acceptance_signup():
+    """CI entry so legal acceptance signup tests always run with migration API suite."""
+    import subprocess
+    import sys
+
+    targets = ["tests/test_legal_acceptance_signup.py"]
+    readiness = ROOT / "tests" / "test_service_readiness.py"
+    if readiness.exists():
+        targets.append("tests/test_service_readiness.py")
+    proc = subprocess.run(
+        [sys.executable, "-m", "pytest", *targets, "-q", "--tb=line"],
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stdout + "\n" + proc.stderr
+    assert "test_legal_acceptance_signup.py" in (proc.stdout + proc.stderr) or "passed" in proc.stdout

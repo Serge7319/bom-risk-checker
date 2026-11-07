@@ -397,6 +397,9 @@ CREATE TABLE IF NOT EXISTS migration_legal_acceptances (
 );
 CREATE INDEX IF NOT EXISTS migration_legal_acceptances_email_idx
   ON migration_legal_acceptances (lower(email), accepted_at DESC);
+CREATE INDEX IF NOT EXISTS migration_legal_acceptances_user_id_idx
+  ON migration_legal_acceptances (user_id)
+  WHERE user_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS migration_user_preferences (
   user_id TEXT PRIMARY KEY,
