@@ -1,12 +1,15 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { EmptyState } from "@/components/EmptyState";
 import { Shell } from "@/components/Shell";
-import { GapBanner, LoadingCard } from "@/components/GapBanner";
+import { LoadingCard } from "@/components/GapBanner";
 import { PageHeader, PrimaryLink, SecondaryLink } from "@/components/PageHeader";
 import {
   fetchBillingStatus,
+  beginBillingPortal,
+  beginSubscriptionCheckout,
   fetchCompliancePack,
   fetchConnectors,
   fetchPlanUsage,
@@ -76,6 +79,8 @@ export default function Page() {
   const [compliance, setCompliance] = useState<Record<string, unknown> | null>(
     null,
   );
+  const [billingAction, setBillingAction] = useState("");
+  const [billingError, setBillingError] = useState("");
 
   useEffect(() => {
     if (!session) return;
@@ -105,6 +110,53 @@ export default function Page() {
     []) as Array<Record<string, unknown>>) || [];
   const usageFacts = factsFrom(usage);
   const complianceFacts = factsFrom(compliance);
+  const planCatalog = Array.isArray(billing?.plan_catalog)
+    ? billing.plan_catalog as Array<Record<string, unknown>>
+    : [];
+  const stripePlans = Array.isArray(billing?.plans)
+    ? billing.plans as Array<Record<string, unknown>>
+    : [];
+  const currentPlanName = String(billing?.current_plan || usage?.plan || session.plan);
+  const currentPlan = currentPlanName.toLowerCase();
+  const canManageBilling = billing?.can_manage_billing === true;
+  const checkoutEnabled = billing?.checkout_enabled === true;
+
+  async function selectPlan(plan: Record<string, unknown>) {
+    if (!session) return;
+    const name = String(plan.name || "");
+    const token = String(plan.purchase_token || "");
+    setBillingAction(name);
+    setBillingError("");
+    try {
+      const result = canManageBilling
+        ? await beginBillingPortal(session.access_token)
+        : await beginSubscriptionCheckout(session.access_token, token);
+      const url = result.checkout?.url;
+      if (!result.ok || !url) {
+        throw new Error(result.detail || "Secure billing could not be opened.");
+      }
+      window.location.assign(url);
+    } catch (err) {
+      setBillingError(err instanceof Error ? err.message : "Secure billing could not be opened.");
+      setBillingAction("");
+    }
+  }
+
+  async function openBillingPortal() {
+    if (!session) return;
+    setBillingAction("portal");
+    setBillingError("");
+    try {
+      const result = await beginBillingPortal(session.access_token);
+      if (!result.ok || !result.checkout?.url) {
+        throw new Error(result.detail || "Billing settings could not be opened.");
+      }
+      window.location.assign(result.checkout.url);
+    } catch (err) {
+      setBillingError(err instanceof Error ? err.message : "Billing settings could not be opened.");
+      setBillingAction("");
+    }
+  }
 
   return (
     <Shell session={session}>
@@ -138,12 +190,90 @@ export default function Page() {
       {busy ? <LoadingCard label="Loading plan, billing, and connector status…" /> : null}
       {error ? <div className="cv-error" role="alert">Some workspace settings could not load. {error}</div> : null}
 
-      {billing && typeof billing.gap === "string" ? (
-        <GapBanner>{String(billing.gap)}</GapBanner>
-      ) : null}
-
       {!busy ? (
         <>
+          <section className="cv-card pad cv-plan-section" style={{ marginBottom: 14 }}>
+            <div className="cv-section-heading">
+              <div>
+                <h3 className="cv-card-title">Plans and billing</h3>
+                <p className="cv-card-subtitle">
+                  Your plan controls analysis limits, monitoring, and team access. Paid plans bill monthly through Stripe.
+                </p>
+              </div>
+              {canManageBilling ? (
+                <button className="cv-button" type="button" onClick={() => void openBillingPortal()} disabled={Boolean(billingAction)}>
+                  {billingAction === "portal" ? "Opening billing…" : "Manage subscription"}
+                </button>
+              ) : null}
+            </div>
+            <p className="cv-current-plan" role="status">
+              Current access: <strong>{currentPlanName}</strong>
+              {session.trial_days_remaining != null && currentPlanName.toLowerCase() === "trial"
+                ? ` · ${session.trial_days_remaining} days remaining`
+                : ""}
+            </p>
+            <div className="cv-plan-grid">
+              {planCatalog.map((plan) => {
+                const name = String(plan.name || "");
+                const token = String(plan.purchase_token || "");
+                const current = currentPlan === name.toLowerCase();
+                const providerPlan = stripePlans.find((row) => String(row.name || "") === name);
+                const hasPrice = Boolean(providerPlan?.enabled);
+                const paidPlan = Boolean(token);
+                const enterprise = name === "Enterprise";
+                const limit = (value: unknown) => value == null ? "Unlimited" : String(value);
+                const bullets = [
+                  `${limit(plan.monthly_bom_limit)} BOM analyses per month`,
+                  `${limit(plan.max_parts_per_bom)} components per BOM`,
+                  `${limit(plan.max_saved_boms)} saved BOMs`,
+                  Number(plan.monitored_parts_limit) > 0 || plan.monitored_parts_limit == null
+                    ? `${limit(plan.monitored_parts_limit)} monitored parts`
+                    : "Monitoring not included",
+                  Number(plan.ai_credits) > 0 ? `${limit(plan.ai_credits)} Ask Cadivor credits` : "Ask Cadivor not included",
+                  plan.team_features ? "Team collaboration" : "Individual workspace",
+                  Number(plan.included_users) > 0 ? `${limit(plan.included_users)} users included` : "",
+                  plan.datasheet_comparison ? "Datasheet comparison" : "",
+                  plan.api_access ? "API access" : "",
+                ].filter(Boolean);
+                let actionText = "Choose plan";
+                if (current) actionText = "Current plan";
+                else if (canManageBilling) actionText = "Change plan in billing";
+                else if (!checkoutEnabled || !hasPrice) actionText = "Temporarily unavailable";
+                if (enterprise) actionText = "Contact sales";
+                if (name === "Student" && !current) actionText = "Student plan";
+                return (
+                  <article className={`cv-plan-option${current ? " current" : ""}${name === "Professional" ? " featured" : ""}`} key={name}>
+                    <div className="cv-plan-option-top">
+                      <h4>{name}</h4>
+                      {name === "Professional" ? <span className="cv-plan-popular">Most popular</span> : null}
+                    </div>
+                    <div className="cv-plan-price">{String(plan.price || "Contact us")}</div>
+                    <p>{String(plan.description || "")}</p>
+                    <ul>{bullets.map((item) => <li key={item}>{item}</li>)}</ul>
+                    {enterprise ? (
+                      <a className="cv-button" href="mailto:sales@cadivor.com?subject=Cadivor%20Enterprise%20plans">{actionText}</a>
+                    ) : (
+                      <button
+                        className={current ? "cv-button" : "cv-button primary"}
+                        type="button"
+                        disabled={current || !paidPlan || (!canManageBilling && (!checkoutEnabled || !hasPrice)) || Boolean(billingAction)}
+                        onClick={() => void selectPlan(plan)}
+                        title={paidPlan && !hasPrice ? "This Stripe price is not active or does not match the published monthly plan." : undefined}
+                      >
+                        {billingAction === name ? "Opening secure checkout…" : actionText}
+                      </button>
+                    )}
+                  </article>
+                );
+              })}
+            </div>
+            {billingError ? <div className="cv-error" role="alert" style={{ marginTop: 12 }}>{billingError}</div> : null}
+            {typeof billing?.gap === "string" ? <p className="cv-small-note" style={{ marginTop: 12 }}>{String(billing.gap)}</p> : null}
+            <p className="cv-small-note" style={{ marginTop: 12 }}>
+              Need a single paid BOM report instead of a subscription? <Link href="/single-bom-report">View the one-time report option</Link>.
+            </p>
+          </section>
+
           <section className="cv-card pad" style={{ marginBottom: 14 }}>
             <h3 className="cv-card-title">Plan usage</h3>
             <p className="cv-card-subtitle">
@@ -159,16 +289,12 @@ export default function Page() {
             </p>
             <dl className="cv-record-meta">
               <div className="cv-record-field">
-                <dt>Stripe mode</dt>
-                <dd>{String(billing?.stripe_mode || "—")}</dd>
+                <dt>Subscription</dt>
+                <dd>{String(billing?.subscription_status || "No active subscription").replace(/_/g, " ")}</dd>
               </div>
               <div className="cv-record-field">
-                <dt>Checkout enabled</dt>
-                <dd>{billing?.checkout_enabled ? "Enabled" : "Disabled"}</dd>
-              </div>
-              <div className="cv-record-field">
-                <dt>Charges created</dt>
-                <dd>{billing?.charges_created ? "Yes" : "No"}</dd>
+                <dt>Monthly checkout</dt>
+                <dd>{checkoutEnabled ? "Available" : "Unavailable"}</dd>
               </div>
             </dl>
             <div style={{ marginTop: 14 }}>

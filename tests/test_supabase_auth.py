@@ -96,6 +96,8 @@ def supabase_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClie
     # reset_auth_store_for_tests clears production flags — set those after.
     reset_store_for_tests(store_path)
     reset_auth_store_for_tests(auth_path, accounts=[])
+    with supabase_auth._ENTITLEMENT_CACHE_LOCK:
+        supabase_auth._ENTITLEMENT_CACHE.clear()
     monkeypatch.setenv("CADIVOR_FORCE_PRODUCTION_AUTH", "1")
     monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
     monkeypatch.setenv("SUPABASE_KEY", "public-anon-key-for-tests")
@@ -115,6 +117,32 @@ def supabase_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClie
         return SimpleNamespace(auth=fake)
 
     monkeypatch.setattr("supabase.create_client", _fake_client)
+    def _billing_action(*, access_token: str, action: str, **_kwargs):
+        if action == "entitlements":
+            return {
+                "ok": True,
+                "plan": "Trial",
+                "trial_started_at": "2026-11-01T12:00:00+00:00",
+                "trial_ends_at": "2026-11-15T12:00:00+00:00",
+                "trial_status": "trialing",
+                "trial_days_remaining": 8,
+            }, 200
+        if action == "status":
+            return {
+                "ok": True,
+                "checkout_enabled": False,
+                "stripe_mode": "unconfigured",
+                "charges_created": False,
+                "has_active_subscription": False,
+                "can_manage_billing": False,
+                "plans": [],
+            }, 200
+        return {"ok": False, "detail": "not available"}, 409
+
+    monkeypatch.setattr(
+        "apps.api.subscription_billing_service.request_action",
+        _billing_action,
+    )
     for account in fake.users.values():
         user = account["user"]
         supabase_auth.ensure_owner_membership(
@@ -245,6 +273,26 @@ def test_supabase_login_membership_reload_logout_and_isolation(
     out = supabase_client.post("/auth/logout", headers=headers)
     assert out.status_code == 200
     assert supabase_client.get("/auth/me", headers=headers).status_code == 401
+
+
+def test_entitlement_snapshot_is_authoritative_and_login_does_not_reset_membership(
+    supabase_client: TestClient,
+):
+    store = get_auth_store()
+    user_id = "11111111-1111-1111-1111-111111111111"
+    store._data["users"][user_id]["plan"] = "Business"
+    store._data["memberships"][user_id]["role"] = "engineer"
+    store.save()
+
+    login = supabase_client.post(
+        "/auth/login",
+        json={"email": "owner@cadivor.test", "password": "owner-pass-123"},
+    )
+
+    assert login.status_code == 200
+    assert login.json()["plan"] == "Trial"
+    assert store._data["users"][user_id]["plan"] == "Business"
+    assert store._data["memberships"][user_id]["role"] == "engineer"
 
 
 def test_sandbox_hs256_blocked_when_production_runtime_forced(
@@ -426,8 +474,24 @@ def test_signup_redirect_must_be_allowlisted_https(
 
 
 def test_expired_trial_is_read_only_for_new_bom_analysis(
-    supabase_client: TestClient,
+    supabase_client: TestClient, monkeypatch: pytest.MonkeyPatch,
 ):
+    def _expired_entitlement(*, action: str, **_kwargs):
+        if action == "entitlements":
+            return {
+                "ok": True,
+                "plan": "Trial expired",
+                "trial_started_at": "2025-12-18T12:00:00+00:00",
+                "trial_ends_at": "2026-01-01T12:00:00+00:00",
+                "trial_status": "trial_expired",
+                "trial_days_remaining": 0,
+            }, 200
+        return {"ok": True, "charges_created": False}, 200
+
+    monkeypatch.setattr(
+        "apps.api.subscription_billing_service.request_action",
+        _expired_entitlement,
+    )
     login = supabase_client.post(
         "/auth/login",
         json={"email": "owner@cadivor.test", "password": "owner-pass-123"},

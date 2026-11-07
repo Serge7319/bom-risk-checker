@@ -352,8 +352,8 @@ def find_replacements(mpn: str) -> dict[str, Any]:
         "mode": "legacy-supplier-engine",
         "live_lookups_enabled": configured_supplier_count() > 0,
         "gap": (
-            "Supplier candidates are discovery evidence only. No candidate is a drop-in or approved replacement; verify manufacturer datasheets and qualification requirements."
+            "Candidate parts are research leads, not approved substitutes. Confirm identity, electrical limits, package, lifecycle, and qualification requirements against current manufacturer documentation."
             if candidates
-            else "Unable to confirm a replacement because supplier evidence is incomplete. " + "; ".join(missing) + "."
+            else "No verified replacement was found in this search. Check current manufacturer documentation and authorized distributors before changing the design."
         ),
     }

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { FormEvent, Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Shell } from "@/components/Shell";
-import { GapBanner, LoadingCard } from "@/components/GapBanner";
+import { LoadingCard } from "@/components/GapBanner";
 import { PageHeader, PrimaryLink, SecondaryLink } from "@/components/PageHeader";
 import { findReplacement } from "@/lib/api";
 import { PAGE_META } from "@/lib/routes";
@@ -57,7 +57,6 @@ function FindReplacementInner() {
 
   if (!session) return null;
   const candidates = (result?.candidates || []) as Array<Record<string, unknown>>;
-  const missing = (result?.missing_evidence || []) as string[];
   const original = (result?.original || {}) as Record<string, unknown>;
   const analysisId = String(
     result?.analysis_id || search.get("analysis_id") || readLastAnalysis(session)?.analysis_id || "",
@@ -109,13 +108,11 @@ function FindReplacementInner() {
         </div>
       </form>
 
-      {busy ? <LoadingCard label="Searching offline catalog and supplier path…" /> : null}
+      {busy ? <LoadingCard label="Searching the part catalog…" /> : null}
       {error ? <div className="cv-error">{error}</div> : null}
 
       {result ? (
         <>
-          {typeof result.gap === "string" ? <GapBanner>{String(result.gap)}</GapBanner> : null}
-
           <section className="cv-card pad" style={{ marginBottom: 14 }}>
             <h3 className="cv-card-title">Original part</h3>
             <p className="cv-card-subtitle">
@@ -148,14 +145,15 @@ function FindReplacementInner() {
                       <th>Candidate</th>
                       <th>Manufacturer</th>
                       <th>Fit status</th>
-                      <th>Missing evidence</th>
+                      <th>Evidence to verify</th>
                       <th></th>
                     </tr>
                   </thead>
                   <tbody>
                     {candidates.map((row) => {
                       const cand = String(row.mpn || "");
-                      const missingBits = (row.missing_evidence || []) as string[];
+                      const missingBits = ((row.missing_evidence || []) as string[])
+                        .filter((item) => !/(credential|transport|provider|catalog|lookup|search coverage)/i.test(item));
                       return (
                         <tr key={cand}>
                           <td>
@@ -187,16 +185,10 @@ function FindReplacementInner() {
             <section className="cv-card pad">
               <h3 className="cv-card-title">Unable to confirm</h3>
               <p className="cv-card-subtitle">
-                No replacement candidates can be confirmed for this part with the
-                connected sources.
+                No verified replacement was found in this search. Check current
+                manufacturer documentation and authorized distributors before
+                changing the design.
               </p>
-              {missing.length ? (
-                <ul className="cv-missing-list">
-                  {missing.map((item) => (
-                    <li key={item}>{item}</li>
-                  ))}
-                </ul>
-              ) : null}
               <div style={{ marginTop: 12 }}>
                 <SecondaryLink
                   href={compareHref(mpn, undefined, analysisId)}

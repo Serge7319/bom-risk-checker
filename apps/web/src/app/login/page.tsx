@@ -135,7 +135,15 @@ export default function LoginPage() {
           <p className="cv-auth-switch">
             New to Cadivor? <Link href="/signup">Start a 14-day trial</Link>
           </p>
-        ) : null}
+        ) : (
+          <p className="cv-auth-switch">
+            New account invitations are not available in this app yet. To request
+            access, contact{" "}
+            <a href="mailto:support@cadivor.com?subject=Cadivor%20access%20request">
+              Cadivor support
+            </a>.
+          </p>
+        )}
       </form>
     </div>
   );

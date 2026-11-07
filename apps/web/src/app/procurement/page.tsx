@@ -6,6 +6,7 @@ import { Shell } from "@/components/Shell";
 import { EmptyState } from "@/components/EmptyState";
 import { GapBanner, LoadingCard } from "@/components/GapBanner";
 import { Icon } from "@/components/Icons";
+import { PartThumbnail } from "@/components/PartThumbnail";
 import { PageHeader, PrimaryLink, SecondaryLink } from "@/components/PageHeader";
 import { fetchProcurement } from "@/lib/api";
 import { evidenceSourceLabel } from "@/lib/display";
@@ -100,7 +101,10 @@ export default function ProcurementPage() {
                     {parts.map((p, i) => (
                       <tr key={i}>
                         <td>
-                          <strong>{String(p.mpn || "")}</strong>
+                          <div className="cv-part-cell">
+                            <PartThumbnail part={p} />
+                            <strong>{String(p.mpn || "")}</strong>
+                          </div>
                         </td>
                         <td>{String(p.manufacturer || "")}</td>
                         <td>{String(p.lifecycle || "")}</td>

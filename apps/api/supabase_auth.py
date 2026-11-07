@@ -13,6 +13,8 @@ from __future__ import annotations
 import hashlib
 import os
 import re
+import threading
+import time
 import uuid
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlsplit
@@ -29,6 +31,9 @@ from apps.api.workspace_store import migration_database_url
 
 _TEST_WORKSPACE_PREFIX = "ws-next-prod-test"
 TRIAL_DAYS = 14
+_ENTITLEMENT_CACHE_TTL_SECONDS = 20
+_ENTITLEMENT_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
+_ENTITLEMENT_CACHE_LOCK = threading.RLock()
 
 
 def supabase_url() -> str:
@@ -132,6 +137,73 @@ def _trial_fields(membership: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def account_entitlements(access_token: str) -> dict[str, Any]:
+    """Read authoritative billing entitlements through the Supabase Edge Function.
+
+    The Edge Function reads ``public.users`` with its service-role client after
+    verifying this user's JWT. A profile row selected with the user's own JWT
+    is not trusted for plan or role because ordinary profile-update policies
+    must not become a billing authorization boundary.
+    """
+    from apps.api import subscription_billing_service
+
+    cache_key = _token_fingerprint(access_token)
+    now = time.monotonic()
+    with _ENTITLEMENT_CACHE_LOCK:
+        cached = _ENTITLEMENT_CACHE.get(cache_key)
+        if cached and now - cached[0] < _ENTITLEMENT_CACHE_TTL_SECONDS:
+            return dict(cached[1])
+
+    try:
+        result, status = subscription_billing_service.request_action(
+            access_token=access_token,
+            action="entitlements",
+            timeout_seconds=5,
+        )
+    except subscription_billing_service.SubscriptionBillingError:
+        snapshot = {"plan": "Subscription inactive"}
+    else:
+        if status != 200 or result.get("ok") is not True:
+            snapshot = {"plan": "Subscription inactive"}
+        else:
+            allowed_plans = {
+                "Student",
+                "Trial",
+                "Trial expired",
+                "Grandfathered beta",
+                "Subscription inactive",
+                "Starter",
+                "Professional",
+                "Business",
+                "Enterprise",
+            }
+            plan = str(result.get("plan") or "")
+            if plan not in allowed_plans:
+                plan = "Subscription inactive"
+            snapshot = {"plan": plan}
+            for field in (
+                "trial_started_at",
+                "trial_ends_at",
+                "trial_status",
+                "trial_days_remaining",
+            ):
+                if field in result:
+                    snapshot[field] = result[field]
+
+    with _ENTITLEMENT_CACHE_LOCK:
+        _ENTITLEMENT_CACHE[cache_key] = (now, dict(snapshot))
+        if len(_ENTITLEMENT_CACHE) > 512:
+            expired = [
+                key for key, (created, _) in _ENTITLEMENT_CACHE.items()
+                if now - created >= _ENTITLEMENT_CACHE_TTL_SECONDS
+            ]
+            for key in expired:
+                _ENTITLEMENT_CACHE.pop(key, None)
+            while len(_ENTITLEMENT_CACHE) > 512:
+                _ENTITLEMENT_CACHE.pop(next(iter(_ENTITLEMENT_CACHE)))
+    return snapshot
+
+
 def trial_expired(context: dict[str, Any]) -> bool:
     """Expired trials may keep reading saved data but cannot run new analyses."""
     if str(context.get("trial_status") or "trialing") not in {"trialing", "trial_expired"}:
@@ -229,7 +301,20 @@ def ensure_owner_membership(
     if existing:
         workspace_id = str(existing["workspace_id"])
         existing_name = str(existing.get("workspace_name") or existing["workspace_id"])
-        desired_name = existing_name
+        account = store.find_user_by_email(email) or {}
+        stored_plan = (
+            str(account.get("plan") or plan)
+            if str(account.get("id") or "") == user_id
+            else plan
+        )
+        return {
+            "user_id": user_id,
+            "email": email.strip().lower(),
+            "workspace_id": workspace_id,
+            "workspace": existing_name,
+            "plan": stored_plan,
+            **_trial_fields(existing),
+        }
     else:
         workspace_id, existing_name = _workspace_ids_for_owner(user_id, email)
         desired_name = workspace_name or existing_name
@@ -376,6 +461,7 @@ def login(
         workspace_name=user_workspace_name(user),
         allow_create=signup_enabled(),
     )
+    entitlements = account_entitlements(access_token)
     expires_in = int(
         getattr(session, "expires_in", None)
         or (session.get("expires_in") if isinstance(session, dict) else 0)
@@ -390,11 +476,20 @@ def login(
         "user_id": membership["user_id"],
         "workspace": membership["workspace"],
         "workspace_id": membership["workspace_id"],
-        "plan": membership["plan"],
+        "plan": entitlements["plan"],
         "mode": "supabase-jwt",
         "sandbox_only": False,
         "production_auth": True,
-        **_trial_fields(membership),
+        **{
+            key: entitlements[key]
+            for key in (
+                "trial_started_at",
+                "trial_ends_at",
+                "trial_status",
+                "trial_days_remaining",
+            )
+            if key in entitlements
+        },
     }
 
 
@@ -403,6 +498,8 @@ def logout(access_token: str) -> None:
     if not access_token:
         raise AuthError("Missing bearer token")
     get_auth_store().revoke(_token_fingerprint(access_token), exp=0)
+    with _ENTITLEMENT_CACHE_LOCK:
+        _ENTITLEMENT_CACHE.pop(_token_fingerprint(access_token), None)
     try:
         import urllib.request
 
@@ -449,17 +546,18 @@ def resolve_bearer(access_token: str) -> AuthContext:
         workspace_name=user_workspace_name(user),
         allow_create=signup_enabled(),
     )
+    entitlements = account_entitlements(access_token)
     return AuthContext(
         user_id=membership["user_id"],
         email=membership["email"],
         workspace_id=membership["workspace_id"],
         workspace=membership["workspace"],
-        plan=membership["plan"],
+        plan=entitlements["plan"],
         access_token=access_token,
         jti=fingerprint,
         mode="supabase-jwt",
-        trial_started_at=membership.get("trial_started_at"),
-        trial_ends_at=membership.get("trial_ends_at"),
-        trial_status=membership.get("trial_status"),
-        trial_days_remaining=membership.get("trial_days_remaining"),
+        trial_started_at=entitlements.get("trial_started_at"),
+        trial_ends_at=entitlements.get("trial_ends_at"),
+        trial_status=entitlements.get("trial_status"),
+        trial_days_remaining=entitlements.get("trial_days_remaining"),
     )

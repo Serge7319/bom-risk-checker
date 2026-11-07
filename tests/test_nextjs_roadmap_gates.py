@@ -194,7 +194,7 @@ def test_plan_usage_and_billing_prep():
     assert billing.status_code == 200
     assert billing.json()["checkout_enabled"] is False
     assert billing.json()["charges_created"] is False
-    assert billing.json()["stripe_mode"] == "unconfigured"
+    assert billing.json()["stripe_mode"] == "unavailable"
 
     prep = client.post(
         "/billing/checkout-prep",

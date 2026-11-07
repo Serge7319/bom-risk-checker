@@ -367,7 +367,7 @@ class PublicBomStressTest(unittest.TestCase):
         }
         auth_state = types.ModuleType("src.auth_state")
         for name in ("APP_LOGIN", "APP_SIGNUP", "APP_SIGNUP_CONFIRMATION_LINK_READY",
-                     "APP_SIGNUP_CONFIRMATION_INVALID",
+                     "APP_SIGNUP_CONFIRMATION_PENDING", "APP_SIGNUP_CONFIRMATION_INVALID",
                      "APP_SIGNUP_CONFIRMATION_SUCCESS", "AUTH_SIGNED_OUT",
                      "SIGNUP_PENDING_EMAIL_KEY"):
             setattr(auth_state, name, name)

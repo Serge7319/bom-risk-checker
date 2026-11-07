@@ -1,9 +1,8 @@
 """Cadivor API for the Next.js application.
 
 Production uses Supabase Auth, the established BOM/supplier analysis modules,
-and a dedicated Railway Postgres workspace store. Existing Stripe one-time
-report checkout is handled by its Supabase Edge Function; subscription checkout
-and scheduled alert email remain separate capabilities.
+and a dedicated Railway Postgres workspace store. One-time report and monthly
+subscription billing use Supabase Edge Functions with the existing Stripe setup.
 """
 from __future__ import annotations
 
@@ -62,6 +61,7 @@ from apps.api import monitoring_scheduler  # noqa: E402
 from apps.api import plan_limits  # noqa: E402
 from apps.api import supplier_lookup  # noqa: E402
 from apps.api import one_time_report_service  # noqa: E402
+from apps.api import subscription_billing_service  # noqa: E402
 from apps.api.evidence_contract import annotate_report_parts  # noqa: E402
 from apps.api.report_exports import (  # noqa: E402
     build_report_export,
@@ -1140,7 +1140,65 @@ async def billing_status_get(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
-    return _json(billing_prep.billing_status())
+    token = request.headers.get("authorization", "").removeprefix("Bearer ").strip()
+    try:
+        result, status = subscription_billing_service.request_action(
+            access_token=token,
+            action="status",
+            origin=request.headers.get("origin", ""),
+        )
+        if status < 200 or status >= 300:
+            raise subscription_billing_service.SubscriptionBillingError("Billing status unavailable")
+    except subscription_billing_service.SubscriptionBillingError:
+        result = {
+            "ok": False,
+            "checkout_enabled": False,
+            "charges_created": False,
+            "has_active_subscription": False,
+            "can_manage_billing": False,
+            "stripe_mode": "unavailable",
+            "plans": [],
+            "gap": "Plan billing is temporarily unavailable. Please try again or contact support.",
+        }
+    result["plan_catalog"] = billing_prep.plan_catalog()
+    return _json(result)
+
+
+async def billing_checkout_post(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return _json({"detail": "Invalid JSON"}, 400)
+    token = request.headers.get("authorization", "").removeprefix("Bearer ").strip()
+    try:
+        result, status = subscription_billing_service.request_action(
+            access_token=token,
+            action="checkout",
+            payload={"plan": body.get("plan") or body.get("plan_token") or ""},
+            origin=request.headers.get("origin", ""),
+        )
+    except subscription_billing_service.SubscriptionBillingError as exc:
+        return _json({"ok": False, "detail": str(exc)}, 503)
+    return _json(result, status)
+
+
+async def billing_portal_post(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    token = request.headers.get("authorization", "").removeprefix("Bearer ").strip()
+    try:
+        result, status = subscription_billing_service.request_action(
+            access_token=token,
+            action="portal",
+            origin=request.headers.get("origin", ""),
+        )
+    except subscription_billing_service.SubscriptionBillingError as exc:
+        return _json({"ok": False, "detail": str(exc)}, 503)
+    return _json(result, status)
 
 
 async def billing_checkout_prep_post(request: Request) -> JSONResponse:
@@ -1301,6 +1359,8 @@ app = Starlette(
         Route("/tools/monitoring/notify", monitoring_notify_post, methods=["POST"]),
         Route("/tools/monitoring/refresh", monitoring_refresh_post, methods=["POST"]),
         Route("/billing/status", billing_status_get, methods=["GET"]),
+        Route("/billing/checkout", billing_checkout_post, methods=["POST"]),
+        Route("/billing/portal", billing_portal_post, methods=["POST"]),
         Route("/billing/checkout-prep", billing_checkout_prep_post, methods=["POST"]),
         Route("/billing/one-time-report", one_time_report_status_get, methods=["GET"]),
         Route("/billing/one-time-report/checkout", one_time_report_checkout_post, methods=["POST"]),

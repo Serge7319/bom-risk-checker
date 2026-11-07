@@ -15,6 +15,8 @@ from src.plans import (
     PLAN_BUSINESS,
     PLAN_PROFESSIONAL,
     PLAN_STARTER,
+    PLAN_STUDENT,
+    PLAN_ENTERPRISE,
     get_plan,
 )
 
@@ -71,6 +73,33 @@ def billing_status() -> dict[str, Any]:
             "No checkout sessions or charges are created yet."
         ),
     }
+
+
+def plan_catalog() -> list[dict[str, Any]]:
+    """Customer-facing plans from the same registry used by enforcement."""
+    catalog = []
+    for name in (PLAN_STUDENT, PLAN_STARTER, PLAN_PROFESSIONAL, PLAN_BUSINESS, PLAN_ENTERPRISE):
+        plan = get_plan(name)
+        catalog.append(
+            {
+                "name": name,
+                "price": plan.get("price"),
+                "description": plan.get("description"),
+                "monthly_bom_limit": plan.get("monthly_bom_limit"),
+                "max_parts_per_bom": plan.get("max_parts_per_bom"),
+                "max_saved_boms": plan.get("max_saved_boms"),
+                "ai_credits": plan.get("ai_credits"),
+                "included_users": plan.get("included_users"),
+                "monitored_parts_limit": plan.get("monitored_parts_limit"),
+                "team_features": bool(plan.get("team_features")),
+                "api_access": bool(plan.get("api_access")),
+                "datasheet_comparison": bool(plan.get("datasheet_comparison")),
+                "student_watermark": bool(plan.get("student_watermark")),
+                "can_create_analyses": bool(plan.get("can_create_analyses")),
+                "purchase_token": CHECKOUT_PLAN_TOKENS.get(name),
+            }
+        )
+    return catalog
 
 
 def prepare_checkout_intent(
