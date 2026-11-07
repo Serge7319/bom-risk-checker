@@ -403,6 +403,30 @@ export async function fetchMe(token: string) {
   }>("/auth/me", { token });
 }
 
+export type BomValidationPreview = {
+  ok: boolean;
+  can_analyze: boolean;
+  filename: string;
+  detected_columns: Array<{ source: string; normalized: string }>;
+  required_columns: string[];
+  missing_required: string[];
+  row_count: number;
+  unique_part_count: number;
+  errors: string[];
+  warnings: string[];
+  has_hierarchy_columns?: boolean;
+  workspace_id?: string;
+};
+
+export async function validateBom(
+  file: File,
+  token: string,
+): Promise<BomValidationPreview> {
+  const body = new FormData();
+  body.append("file", file);
+  return apiJson("/boms/validate", { method: "POST", token, body });
+}
+
 export async function analyzeBom(
   file: File,
   token: string,

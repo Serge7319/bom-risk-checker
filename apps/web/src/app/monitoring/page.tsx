@@ -1,31 +1,63 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Shell } from "@/components/Shell";
 import { EmptyState } from "@/components/EmptyState";
 import { EvidenceNotice, LoadingCard } from "@/components/GapBanner";
 import { KpiCard } from "@/components/KpiCard";
 import { PageHeader, PrimaryLink } from "@/components/PageHeader";
 import { fetchMonitoring } from "@/lib/api";
+import { markReviewProgress, readReviewProgress } from "@/lib/bomDraft";
 import { evidenceSourceLabel } from "@/lib/display";
 import { PAGE_META } from "@/lib/routes";
 import { readLastAnalysis, useRequireSession } from "@/lib/session";
 
-export default function MonitoringPage() {
+function MonitoringPageInner() {
   const session = useRequireSession();
+  const searchParams = useSearchParams();
   const [data, setData] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(true);
+  const [activeAnalysisId, setActiveAnalysisId] = useState<string>("");
+
+  const requestedAnalysisId = useMemo(() => {
+    const fromQuery = (searchParams.get("analysis_id") || "").trim();
+    if (fromQuery) return fromQuery;
+    return "";
+  }, [searchParams]);
 
   useEffect(() => {
     if (!session) return;
     const last = readLastAnalysis(session);
+    const analysisId = requestedAnalysisId || last?.analysis_id || "";
+    setActiveAnalysisId(analysisId);
     setBusy(true);
-    fetchMonitoring(session.access_token, last?.analysis_id)
-      .then(setData)
-      .catch((err) => setError(err instanceof Error ? err.message : "Failed"))
+    setError("");
+    setData(null);
+    fetchMonitoring(session.access_token, analysisId || undefined)
+      .then((payload) => {
+        setData(payload);
+        if (analysisId) {
+          markReviewProgress(
+            analysisId,
+            { monitorOpenedAt: new Date().toISOString() },
+            session,
+          );
+        }
+      })
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : "Failed");
+        // Failed loads must not advance Monitor progress.
+        if (analysisId) {
+          const existing = readReviewProgress(analysisId, session);
+          if (existing.monitorOpenedAt) {
+            // leave existing progress from a prior successful visit
+          }
+        }
+      })
       .finally(() => setBusy(false));
-  }, [session]);
+  }, [session, requestedAnalysisId]);
 
   if (!session) return null;
   const metrics = (data?.metrics || {}) as Record<string, number>;
@@ -37,6 +69,12 @@ export default function MonitoringPage() {
         meta={PAGE_META.monitoring}
         actions={<PrimaryLink href="/reports">View saved reports</PrimaryLink>}
       />
+      {activeAnalysisId ? (
+        <p className="cv-evidence-context" role="note">
+          Monitoring signals for analysis <strong>{activeAnalysisId}</strong>
+          {requestedAnalysisId ? " (selected from report)" : " (last remembered analysis)"}.
+        </p>
+      ) : null}
       {<EvidenceNotice gap={data?.gap} />}
       {busy ? <LoadingCard label="Loading monitoring signals from saved analyses…" /> : null}
       {error ? <div className="cv-error" role="alert">Monitoring could not load. {error}</div> : null}
@@ -90,3 +128,11 @@ export default function MonitoringPage() {
   );
 }
 
+
+export default function MonitoringPage() {
+  return (
+    <Suspense fallback={null}>
+      <MonitoringPageInner />
+    </Suspense>
+  );
+}
