@@ -65,6 +65,22 @@ function asRows(value: unknown): Array<Record<string, unknown>> {
   return Array.isArray(value) ? (value as Array<Record<string, unknown>>) : [];
 }
 
+function settingsErrorMessage(err: unknown, fallback: string): string {
+  const raw = err instanceof Error ? err.message : "";
+  if (!raw || /failed to fetch/i.test(raw) || raw === "NetworkError when attempting to fetch resource.") {
+    return "Could not reach Cadivor. Check your connection and try again.";
+  }
+  return raw || fallback;
+}
+
+async function settledValue<T>(promise: Promise<T>): Promise<T | null> {
+  try {
+    return await promise;
+  } catch {
+    return null;
+  }
+}
+
 function Toggle({
   id,
   checked,
@@ -132,51 +148,70 @@ export default function Page() {
     if (!active) return;
     setBusy(true);
     setError("");
-    try {
-      const [
-        profileRes,
-        prefsRes,
-        securityRes,
-        workspaceRes,
-        workspacesRes,
-        membersRes,
-        invitesRes,
-        activityRes,
-        usageRes,
-        billingRes,
-        connectorsRes,
-        complianceRes,
-      ] = await Promise.all([
-        fetchProfile(active.access_token),
-        fetchPreferences(active.access_token),
-        fetchSecurityStatus(active.access_token),
-        fetchWorkspaceSettings(active.access_token),
-        listWorkspaces(active.access_token),
-        listWorkspaceMembers(active.access_token),
-        listWorkspaceInvitations(active.access_token),
-        listWorkspaceActivity(active.access_token),
-        fetchPlanUsage(active.access_token),
-        fetchBillingStatus(active.access_token),
-        fetchConnectors(active.access_token),
-        fetchCompliancePack(active.access_token, "rohs"),
-      ]);
+    const token = active.access_token;
+    const coreErrors: string[] = [];
+
+    // Core account data must succeed independently of workspace/billing extras.
+    const [profileRes, prefsRes, securityRes] = await Promise.all([
+      settledValue(fetchProfile(token)),
+      settledValue(fetchPreferences(token)),
+      settledValue(fetchSecurityStatus(token)),
+    ]);
+    if (profileRes) {
       setProfile(asRecord(profileRes.profile || profileRes));
-      setPreferences(asRecord(prefsRes.preferences || prefsRes));
-      setSecurity(securityRes);
-      setWorkspace(asRecord(workspaceRes.workspace || workspaceRes));
-      setWorkspaces(asRows(workspacesRes.workspaces || workspacesRes.items));
-      setMembers(asRows(membersRes.members));
-      setInvites(asRows(invitesRes.invitations));
-      setActivity(asRows(activityRes.activity || activityRes.items));
-      setUsage(usageRes);
-      setBilling(billingRes);
-      setConnectors(connectorsRes);
-      setCompliance(complianceRes);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Settings could not load");
-    } finally {
-      setBusy(false);
+    } else {
+      coreErrors.push("profile");
     }
+    if (prefsRes) {
+      setPreferences(asRecord(prefsRes.preferences || prefsRes));
+    } else {
+      coreErrors.push("preferences");
+    }
+    if (securityRes) {
+      setSecurity(securityRes);
+    } else {
+      coreErrors.push("security");
+    }
+
+    const [workspaceRes, workspacesRes, membersRes, activityRes, invitesRes] =
+      await Promise.all([
+        settledValue(fetchWorkspaceSettings(token)),
+        settledValue(listWorkspaces(token)),
+        settledValue(listWorkspaceMembers(token)),
+        settledValue(listWorkspaceActivity(token)),
+        settledValue(listWorkspaceInvitations(token)),
+      ]);
+    if (workspaceRes) {
+      setWorkspace(asRecord(workspaceRes.workspace || workspaceRes));
+    }
+    if (workspacesRes) {
+      setWorkspaces(asRows(workspacesRes.workspaces || workspacesRes.items));
+    }
+    if (membersRes) {
+      setMembers(asRows(membersRes.members));
+    }
+    if (activityRes) {
+      setActivity(asRows(activityRes.activity || activityRes.items));
+    }
+    setInvites(asRows(invitesRes?.invitations));
+
+    const [usageRes, billingRes, connectorsRes, complianceRes] = await Promise.all([
+      settledValue(fetchPlanUsage(token)),
+      settledValue(fetchBillingStatus(token)),
+      settledValue(fetchConnectors(token)),
+      settledValue(fetchCompliancePack(token, "rohs")),
+    ]);
+    if (usageRes) setUsage(usageRes);
+    if (billingRes) setBilling(billingRes);
+    if (connectorsRes) setConnectors(connectorsRes);
+    if (complianceRes) setCompliance(complianceRes);
+
+    if (coreErrors.length === 3) {
+      setError("Could not reach Cadivor. Check your connection and try again.");
+    } else if (coreErrors.includes("profile")) {
+      setError("Profile could not be loaded. You can still try saving again.");
+    }
+    setBusy(false);
   }
 
   useEffect(() => {
@@ -221,7 +256,7 @@ export default function Page() {
       setProfile(asRecord(saved.profile || saved));
       setNotice("Profile saved.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Profile could not be saved");
+      setError(settingsErrorMessage(err, "Profile could not be saved"));
     } finally {
       setSaving("");
     }
@@ -246,7 +281,7 @@ export default function Page() {
       setPreferences(asRecord(saved.preferences || saved));
       setNotice("Preferences saved.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Preferences could not be saved");
+      setError(settingsErrorMessage(err, "Preferences could not be saved"));
     } finally {
       setSaving("");
     }
@@ -266,9 +301,8 @@ export default function Page() {
       });
       setWorkspace(asRecord(saved.workspace || saved));
       setNotice("Workspace settings saved.");
-      await reload(session);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Workspace settings could not be saved");
+      setError(settingsErrorMessage(err, "Workspace settings could not be saved"));
     } finally {
       setSaving("");
     }
@@ -281,15 +315,27 @@ export default function Page() {
     setError("");
     setNotice("");
     try {
-      await createWorkspaceInvitation(session.access_token, {
+      const created = await createWorkspaceInvitation(session.access_token, {
         email: inviteEmail,
         role: inviteRole,
       });
       setInviteEmail("");
       setNotice("Invitation created and queued for delivery.");
-      await reload(session);
+      const invitesRes = await settledValue(
+        listWorkspaceInvitations(session.access_token),
+      );
+      if (invitesRes) {
+        setInvites(asRows(invitesRes.invitations));
+      } else if (created && typeof created === "object") {
+        const invitation = asRecord(
+          (created as Record<string, unknown>).invitation || created,
+        );
+        if (invitation.id) {
+          setInvites((prev) => [invitation, ...prev]);
+        }
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Invitation could not be sent");
+      setError(settingsErrorMessage(err, "Invitation could not be sent"));
     } finally {
       setSaving("");
     }

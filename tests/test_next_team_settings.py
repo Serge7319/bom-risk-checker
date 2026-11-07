@@ -168,12 +168,56 @@ def test_invited_engineer_cannot_manage_team(client: TestClient, sink: MemoryEma
         json={"token": _token(sink), "email": INVITEE, "password": INVITEE_PASSWORD},
     )
     member = _login(client, INVITEE, INVITEE_PASSWORD)
+    listed = client.get("/workspace/invitations", headers=_headers(member))
+    assert listed.status_code == 200, listed.text
+    body = listed.json()
+    assert body.get("can_manage") is False
+    assert body.get("invitations") == []
     res = client.post(
         "/workspace/invitations",
         headers=_headers(member),
         json={"email": "third@cadivor.test", "role": "viewer"},
     )
     assert res.status_code == 403
+
+
+def test_settings_profile_patch_persists_for_member(client: TestClient, sink: MemoryEmailSink):
+    """Settings UI uses /settings/profile; persistence must not depend on admin invite APIs."""
+    owner = _login(client, SMOKE_EMAIL, SMOKE_PASSWORD)
+    _invite(client, _headers(owner), role="engineer")
+    client.post(
+        "/invitations/register",
+        json={"token": _token(sink), "email": INVITEE, "password": INVITEE_PASSWORD},
+    )
+    member = _login(client, INVITEE, INVITEE_PASSWORD)
+    headers = _headers(member)
+    saved = client.patch(
+        "/settings/profile",
+        headers=headers,
+        json={
+            "full_name": "Manda Example",
+            "company_name": "Cadivor Lab",
+            "job_title": "Component Engineer",
+            "country": "United States",
+            "language": "en",
+            "timezone": "America/New_York",
+        },
+    )
+    assert saved.status_code == 200, saved.text
+    payload = saved.json()
+    assert payload.get("full_name") == "Manda Example" or (
+        (payload.get("profile") or {}).get("full_name") == "Manda Example"
+    )
+    again = client.get("/settings/profile", headers=headers)
+    assert again.status_code == 200, again.text
+    profile = again.json()
+    row = profile.get("profile") if isinstance(profile.get("profile"), dict) else profile
+    assert row["full_name"] == "Manda Example"
+    assert row["company_name"] == "Cadivor Lab"
+    assert row["job_title"] == "Component Engineer"
+    assert row["country"] == "United States"
+    assert row["timezone"] == "America/New_York"
+    assert str(row["email"]).lower() == INVITEE.lower()
 
 
 def test_resend_rotates_token(client: TestClient, sink: MemoryEmailSink):
