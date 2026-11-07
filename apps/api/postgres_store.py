@@ -539,10 +539,10 @@ class PostgresWorkspaceStore:
                 "live": False,
             },
             {
-                "title": "Plan limits on active BOMs / tracked parts",
-                "detail": "Partial — server plan limits and /plan/usage metering are enforced; Stripe checkout remains disabled.",
+                "title": "Plan access and upgrades",
+                "detail": "Review current access and available plan upgrades in Workspace Settings.",
                 "href": "/settings",
-                "live": False,
+                "live": True,
             },
         ]
         return {
@@ -550,11 +550,6 @@ class PostgresWorkspaceStore:
             "mode": "synthetic-preview",
             "workspace_id": wid,
             "persistence": "migration-postgres-store",
-            "gap": (
-                "Saved projects, BOMs, revisions, and analyses are stored in your workspace. "
-                "Monitoring email, billing checkout, usage-limit checkout, and PLM/ERP/CAD "
-                "connectors are not connected yet."
-            ),
             "metrics": {
                 "active_projects": len(projects),
                 "saved_boms": int(bom_count),
