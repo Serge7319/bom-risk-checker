@@ -242,6 +242,94 @@ class ComparePartsCoreTests(unittest.TestCase):
         attrs = {row["Attribute"] for row in comparison["rows"]}
         self.assertTrue(attrs.intersection({"Positions", "Pitch", "Mating style", "Package"}))
 
+    def test_flash_memory_uses_a_memory_specific_comparison_matrix(self):
+        comparison = build_parts_comparison(
+            {"manufacturer_part_number": "AM29F010B70EC"},
+            {"manufacturer_part_number": "SST39SF010A-70-4C-TU"},
+        )
+        self.assertEqual(comparison["family"], "Flash memory")
+        self.assertFalse(comparison["family_mismatch"])
+        attributes = {row["Attribute"] for row in comparison["rows"]}
+        self.assertTrue(
+            {
+                "Capacity / organization",
+                "Data bus width",
+                "Address width",
+                "Interface / bus type",
+                "Read access time",
+                "Chip-enable access time",
+                "Output-enable access time",
+                "Byte-program time",
+                "Sector geometry",
+                "Erase behavior",
+                "Write / sector protection",
+                "Program / erase endurance",
+                "Data retention",
+                "Package",
+                "Pinout / configuration",
+                "Temperature range",
+                "Supply voltage",
+            }.issubset(attributes)
+        )
+        self.assertGreaterEqual(len(comparison["rows"]), 20)
+        self.assertEqual(comparison["finding"], FINDING_NEEDS_DATA)
+
+    def test_unidentified_candidate_family_is_missing_evidence_not_a_mismatch(self):
+        comparison = build_parts_comparison(
+            {"manufacturer_part_number": "AM29F010B70EC"},
+            {"manufacturer_part_number": "UNLISTED-CANDIDATE"},
+        )
+        self.assertEqual(comparison["family"], "Flash memory")
+        self.assertFalse(comparison["family_mismatch"])
+        self.assertNotEqual(comparison["finding"], FINDING_MATERIAL)
+        self.assertFalse(any(row["Attribute"] == "Component family" for row in comparison["rows"]))
+        self.assertGreater(comparison["counts"]["needs_data"], 0)
+
+    def test_verified_datasheets_expose_package_dimension_excerpts(self):
+        part_a = {
+            "manufacturer_part_number": "AM29F010B70EC",
+            "manufacturer": "AMD",
+            "description": "NOR flash memory",
+        }
+        part_b = {
+            "manufacturer_part_number": "SST39SF010A-70-4C-TU",
+            "manufacturer": "Microchip",
+            "description": "NOR flash memory",
+        }
+        datasheet_a = {
+            "pages": [{
+                "page": 30,
+                "document": "AM29F010B datasheet",
+                "text": (
+                    "AMD AM29F010B70EC package outline dimensions\n"
+                    "Body length 20.0 mm\nBody width 8.0 mm\nLead pitch 0.50 mm"
+                ),
+            }]
+        }
+        datasheet_b = {
+            "pages": [{
+                "page": 27,
+                "document": "SST39SF010A datasheet",
+                "text": (
+                    "Microchip SST39SF010A-70-4C-TU package outline dimensions\n"
+                    "Body length 13.4 mm\nBody width 8.0 mm\nLead pitch 0.50 mm"
+                ),
+            }]
+        }
+
+        comparison = build_parts_comparison(
+            part_a,
+            part_b,
+            datasheet_a=datasheet_a,
+            datasheet_b=datasheet_b,
+        )
+        dimension_evidence = comparison["package_dimension_evidence"]
+        self.assertTrue(comparison["datasheet_identity"]["part_a"]["verified"])
+        self.assertTrue(comparison["datasheet_identity"]["part_b"]["verified"])
+        self.assertIn("20.0 mm", dimension_evidence["part_a"][0]["excerpt"])
+        self.assertIn("13.4 mm", dimension_evidence["part_b"][0]["excerpt"])
+        self.assertTrue(dimension_evidence["conflicts"])
+
     def test_family_mismatch_is_material_difference(self):
         comparison = build_parts_comparison(_cap(), _res())
         self.assertTrue(comparison["family_mismatch"])

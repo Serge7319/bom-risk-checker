@@ -463,6 +463,59 @@ _register(FamilyProfile(
 ))
 
 _register(FamilyProfile(
+    id="Flash memory", display_name="Flash memory",
+    markers=(
+        "flash memory", "nor flash", "nand flash", "flash rom",
+        "am29f", "am29l", "s29gl", "s29al", "m29f", "sst39sf",
+        "sst39wf", "sst39lf", "at49f", "mx29f", "w29", "ft29f",
+    ),
+    scoring_mode="resource_device", requires_pinout_for_dropin=True,
+    architecture_meaningful=True,
+    fields=(
+        _f("memory_type", "Memory technology", compare=COMPARE_TYPE, required=True,
+           pdf=("nor flash", "nand flash", "flash memory", "flash rom"), role="text"),
+        _f("memory_organization", "Capacity / organization", compare=COMPARE_EXACT, required=True,
+           pdf=("memory organization", "1 megabit", "1 mbit", "128 k x 8", "1 m x 8"), role="text",
+           digikey=("Memory Size", "Memory Organization"),
+           mouser=("Memory Size", "Memory Organization")),
+        _f("data_bus_width", "Data bus width", compare=COMPARE_EXACT, required=True,
+           pdf=("data bus width", "data inputs/outputs", "dq0–dq7", "dq0-dq7"), role="text"),
+        _f("address_width", "Address width", compare=COMPARE_EXACT,
+           pdf=("address width", "address inputs", "a0–a16", "a0-a16"), role="text"),
+        _f("interface_type", "Interface / bus type", compare=COMPARE_TYPE, required=True,
+           pdf=("parallel interface", "interface type", "parallel flash", "serial flash"),
+           digikey=("Interface", "Interface Type"), mouser=("Interface Type",), role="text"),
+        _f("read_access_time", "Read access time", compare=COMPARE_EXACT, required=True, unit="s",
+           pdf=("max access time", "address to output delay", "ce access"),
+           digikey=("Access Time", "Address Access Time"),
+           mouser=("Access Time",)),
+        _f("read_cycle_time", "Read cycle time", compare=COMPARE_EXACT, unit="s",
+           pdf=("read cycle time",), digikey=("Read Cycle Time",), mouser=("Read Cycle Time",)),
+        _f("chip_enable_access_time", "Chip-enable access time", compare=COMPARE_EXACT, unit="s",
+           pdf=("ce access", "chip enable access"), digikey=("Chip Enable Access Time",),
+           mouser=("Chip Enable Access Time",)),
+        _f("output_enable_access_time", "Output-enable access time", compare=COMPARE_EXACT, unit="s",
+           pdf=("oe access", "output enable access"), digikey=("Output Enable Access Time",),
+           mouser=("Output Enable Access Time",)),
+        _f("program_time", "Byte-program time", compare=COMPARE_EXACT, unit="s",
+           pdf=("byte program time", "program time"), digikey=("Write Cycle Time",),
+           mouser=("Write Cycle Time",)),
+        _f("sector_geometry", "Sector geometry", compare=COMPARE_EXACT,
+           pdf=("sector geometry", "sector size", "sector addresses table", "sectors are"), role="text"),
+        _f("erase_behavior", "Erase behavior", compare=COMPARE_TYPE,
+           pdf=("erase suspend/resume", "erase suspend", "sector erase capability"), role="text"),
+        _f("write_protection", "Write / sector protection", compare=COMPARE_TYPE,
+           pdf=("sector protection", "hardware data protection", "software data protection"), role="text"),
+        _f("erase_endurance", "Program / erase endurance", compare=COMPARE_EXACT,
+           pdf=("program/erase endurance", "program/erase cycles", "erase cycles per sector"), role="text"),
+        _f("data_retention", "Data retention", compare=COMPARE_EXACT,
+           pdf=("minimum pattern data retention time", "data retention"), role="text"),
+        _f("pinout", "Pinout / configuration", compare=COMPARE_EXACT, required=True,
+           pdf=("pinout", "pin configuration"), role="text"),
+    ),
+))
+
+_register(FamilyProfile(
     id="MCU / processor", display_name="MCU / processor",
     markers=("microcontroller", "mcu", "microprocessor", "processor", "arm cortex", "stm32", "avr "),
     scoring_mode="resource_device", requires_pinout_for_dropin=True, architecture_meaningful=True,
@@ -633,7 +686,7 @@ _register(FamilyProfile(
 ))
 
 _INFERENCE_ORDER: tuple[str, ...] = (
-    "FPGA / CPLD", "MCU / processor", "Operational amplifier", "Timer IC",
+    "Flash memory", "FPGA / CPLD", "MCU / processor", "Operational amplifier", "Timer IC",
     "Logic / interface IC",
     "Regulator", "MOSFET", "Bipolar transistor", "Diode / protection", "Capacitor",
     "Potentiometer / rheostat", "Resistor", "Inductor", "Transformer",

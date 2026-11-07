@@ -46,10 +46,30 @@ function isUnknown(row: Row) {
 
 function evidenceLabel(source: unknown) {
   const value = String(source || "").toLowerCase();
+  if (value.includes("uploaded-manufacturer-datasheet")) return "Uploaded exact-MPN datasheet · verified";
+  if (value.includes("manufacturer-datasheet")) return "Manufacturer datasheet · identity verified";
+  if (value.includes("supplier-record")) return "Supplier record · identity needs review";
+  if (value.includes("uploaded-datasheet-unverified")) return "Uploaded PDF · identity not verified";
   if (value.includes("verified")) return "Verified source evidence";
   if (value.includes("analysis")) return "Saved analysis fields · synthetic";
+  if (value.includes("unverified")) return "No exact-MPN source confirmed";
   return "Offline identity catalog · synthetic";
 }
+
+const VALIDATION_CHECKS = [
+  ["manufacturer_datasheet_reviewed", "Manufacturer datasheet reviewed"],
+  ["package_pinout_verified", "Package, footprint, and pinout verified"],
+  ["electrical_limits_verified", "Electrical limits and timing checked"],
+  ["thermal_environmental_limits_verified", "Thermal and environmental limits checked"],
+  ["lifecycle_and_supply_reviewed", "Lifecycle and supply evidence reviewed"],
+  ["prototype_validation_completed", "Prototype or bench validation completed"],
+] as const;
+
+const APPROVAL_CHECKS = [
+  "manufacturer_datasheet_reviewed",
+  "package_pinout_verified",
+  "electrical_limits_verified",
+];
 
 function reportDate(value: unknown) {
   if (!value) return "recently";
@@ -73,6 +93,8 @@ function ComparePartsInner() {
   const dialogRef = useRef<HTMLDivElement>(null);
   const [partA, setPartA] = useState("");
   const [partB, setPartB] = useState("");
+  const [datasheetA, setDatasheetA] = useState<File | null>(null);
+  const [datasheetB, setDatasheetB] = useState<File | null>(null);
   const [analysisId, setAnalysisId] = useState("");
   const [reports, setReports] = useState<Row[]>([]);
   const [reportsError, setReportsError] = useState("");
@@ -86,7 +108,11 @@ function ComparePartsInner() {
   const [decision, setDecision] = useState("hold_for_review");
   const [reviewer, setReviewer] = useState("");
   const [rationale, setRationale] = useState("");
-  const [verifiedPrimaryEvidence, setVerifiedPrimaryEvidence] = useState(false);
+  const [validationChecks, setValidationChecks] = useState<string[]>([]);
+  const [followUpAction, setFollowUpAction] = useState("");
+  const [followUpOwner, setFollowUpOwner] = useState("");
+  const [followUpDueDate, setFollowUpDueDate] = useState("");
+  const [residualRisk, setResidualRisk] = useState("unknown");
   const [decisionBusy, setDecisionBusy] = useState(false);
   const [decisionError, setDecisionError] = useState("");
   const [decisionSuccess, setDecisionSuccess] = useState<DecisionRecord | null>(null);
@@ -150,7 +176,10 @@ function ComparePartsInner() {
     try {
       const last = readLastAnalysis(session);
       const selectedAnalysis = analysisId || last?.analysis_id;
-      const data = await compareParts(session.access_token, partA, partB, selectedAnalysis);
+      const data = await compareParts(session.access_token, partA, partB, selectedAnalysis, {
+        a: datasheetA,
+        b: datasheetB,
+      });
       setResult(data);
       if (data.analysis_id) setAnalysisId(String(data.analysis_id));
     } catch (err) {
@@ -167,7 +196,11 @@ function ComparePartsInner() {
     setDecision("hold_for_review");
     setReviewer(session?.email || "");
     setRationale("");
-    setVerifiedPrimaryEvidence(false);
+    setValidationChecks([]);
+    setFollowUpAction("");
+    setFollowUpOwner("");
+    setFollowUpDueDate("");
+    setResidualRisk("unknown");
     setDecisionError("");
     setDecisionSuccess(null);
     setDecisionOpen(true);
@@ -186,6 +219,7 @@ function ComparePartsInner() {
         decisionPartA || String(result.part_a || partA),
         decisionPartB || String(result.part_b || partB),
         nextAnalysisId || undefined,
+        { a: datasheetA, b: datasheetB },
       );
       setResult(data);
       setAnalysisId(String(data.analysis_id || ""));
@@ -205,6 +239,14 @@ function ComparePartsInner() {
       setDecisionError("Enter both manufacturer part numbers before recording this decision.");
       return;
     }
+    if (decision === "approve_alternate" && !APPROVAL_CHECKS.every((item) => validationChecks.includes(item))) {
+      setDecisionError("Complete the datasheet, package/pinout, and electrical-limit checks before approving an alternate.");
+      return;
+    }
+    if (["conditional_approval", "defer_for_validation"].includes(decision) && !followUpAction.trim()) {
+      setDecisionError("Add the required follow-up action for this decision.");
+      return;
+    }
     setDecisionBusy(true);
     setDecisionError("");
     try {
@@ -220,6 +262,7 @@ function ComparePartsInner() {
             decisionPartA.trim(),
             decisionPartB.trim(),
             decisionAnalysisId || undefined,
+            { a: datasheetA, b: datasheetB },
           );
       setResult(comparison);
       const response = await recordDecision(session.access_token, {
@@ -229,8 +272,12 @@ function ComparePartsInner() {
         decision,
         reviewer,
         rationale,
-        verified_primary_evidence: verifiedPrimaryEvidence,
-      });
+        validation_checks: validationChecks,
+        follow_up_action: followUpAction,
+        follow_up_owner: followUpOwner,
+        follow_up_due_date: followUpDueDate || null,
+        residual_risk: residualRisk,
+      }, { a: datasheetA, b: datasheetB });
       setDecisionSuccess(response.record);
       setDecisionOpen(false);
     } catch (err) {
@@ -243,10 +290,18 @@ function ComparePartsInner() {
   if (!session) return null;
 
   const rows = (result?.rows || []) as Row[];
-  const knownRows = rows.filter((row) => !isUnknown(row));
   const unknownRows = rows.filter(isUnknown);
   const cards = (result?.part_cards || {}) as { a?: Row; b?: Row };
   const evidenceSources = (result?.evidence_sources || {}) as { part_a?: unknown[]; part_b?: unknown[] };
+  const packageDimensionEvidence = (result?.package_dimension_evidence || {}) as {
+    part_a?: Array<Record<string, unknown>>;
+    part_b?: Array<Record<string, unknown>>;
+    conflicts?: string[];
+  };
+  const packageDimensionConflicts = packageDimensionEvidence.conflicts || [];
+  const hasPackageDimensionEvidence = Boolean(
+    packageDimensionEvidence.part_a?.length || packageDimensionEvidence.part_b?.length,
+  );
   const resultFinding = text(result?.finding, "No compatibility conclusion");
   const evidenceCounts = (result?.counts || {}) as Record<string, unknown>;
   const reportOptions = [...reports];
@@ -262,7 +317,13 @@ function ComparePartsInner() {
           <>
             <span className={`cv-compare-state${result ? " preview" : ""}`}>
               <i aria-hidden="true" />
-              {result ? "Sample / offline evidence" : "Ready to compare"}
+              {result?.mode === "legacy-supplier-engine"
+                ? "Supplier / datasheet review"
+                : result?.mode === "uploaded-datasheet-review"
+                  ? "Uploaded datasheet review"
+                  : result
+                    ? "Sample / offline evidence"
+                    : "Ready to compare"}
             </span>
             <SecondaryLink href={replacementHref(String(result?.part_a || partA), String(result?.analysis_id || analysisId))}>Find a replacement</SecondaryLink>
             <button
@@ -321,6 +382,34 @@ function ComparePartsInner() {
             {busy ? "Comparing…" : "Compare parts"}
           </button>
         </div>
+        <details className="cv-compare-upload">
+          <summary>Optional: add manufacturer datasheets for stronger evidence</summary>
+          <p>
+            Upload a PDF when a linked source is missing or blocked. Cadivor uses its values only when the extracted text names the exact part number. Each file is limited to 8 MB; scanned PDFs without selectable text remain unverified.
+          </p>
+          <div className="cv-form-grid">
+            <label className="cv-field">
+              <span>Part A datasheet (PDF)</span>
+              <input
+                type="file"
+                accept="application/pdf,.pdf"
+                onChange={(event) => setDatasheetA(event.target.files?.[0] || null)}
+                disabled={busy}
+              />
+              <small>{datasheetA?.name || "Optional exact-MPN manufacturer PDF · up to 8 MB"}</small>
+            </label>
+            <label className="cv-field">
+              <span>Part B datasheet (PDF)</span>
+              <input
+                type="file"
+                accept="application/pdf,.pdf"
+                onChange={(event) => setDatasheetB(event.target.files?.[0] || null)}
+                disabled={busy}
+              />
+              <small>{datasheetB?.name || "Optional exact-MPN manufacturer PDF · up to 8 MB"}</small>
+            </label>
+          </div>
+        </details>
       </form>
 
       {busy ? <LoadingCard label="Comparing available part attributes and evidence…" /> : null}
@@ -357,9 +446,20 @@ function ComparePartsInner() {
               const manufacturer = text(card.manufacturer, "Manufacturer not confirmed");
               const description = text(card.description, "No verified description available.");
               const lifecycle = text(card.lifecycle_status, "Not confirmed");
+              const imageUrl = String(card.image_url || "").trim();
               return (
                 <section className="cv-card pad cv-compare-part-card" key={key}>
                   <div className="cv-compare-part-top">
+                    {imageUrl ? (
+                      <img
+                        className="cv-compare-part-image"
+                        src={imageUrl}
+                        alt={`${text(mpn)} component image`}
+                        loading="lazy"
+                        referrerPolicy="no-referrer"
+                        onError={(event) => { event.currentTarget.hidden = true; }}
+                      />
+                    ) : null}
                     <div>
                       <span className="cv-compare-part-label">{heading}</span>
                       <h2>{text(mpn)}</h2>
@@ -383,8 +483,8 @@ function ComparePartsInner() {
               <div>
                 <div className="cv-eyebrow">Specification comparison</div>
                 <h2 className="cv-card-title">Differences that affect fit</h2>
-                <p className="cv-card-subtitle">
-                  Each listed attribute is labeled as a match or review item. Missing source data stays unknown; it does not establish drop-in compatibility.
+              <p className="cv-card-subtitle">
+                  {text(result?.family, "Component family")}: the full family-specific matrix is shown below. Missing source data stays unknown; it does not establish drop-in compatibility.
                 </p>
               </div>
               <div className="cv-compare-counts" aria-label="Comparison attribute counts">
@@ -393,17 +493,21 @@ function ComparePartsInner() {
                 <span><strong>{text(evidenceCounts.needs_data, String(unknownRows.length))}</strong> unknown</span>
               </div>
             </div>
-            {knownRows.length ? (
+            {rows.length ? (
               <div className="cv-table-wrap" style={{ marginTop: 14 }}>
                 <table className="cv-table cv-compare-table">
                   <thead><tr><th>Property</th><th>Current part</th><th>Candidate</th><th>Assessment</th><th>Evidence / review note</th></tr></thead>
                   <tbody>
-                    {knownRows.map((row, index) => (
+                    {rows.map((row, index) => (
                       <tr key={`${String(row.Attribute || "attr")}-${index}`}>
                         <td><strong>{text(row.Attribute || row.attribute)}</strong></td>
                         <td>{text(row["Part A"] || row.part_a)}</td>
                         <td>{text(row["Part B"] || row.part_b)}</td>
-                        <td>{text(row.Assessment || row.assessment || row.Status)}</td>
+                        <td>
+                          <span className={`cv-compare-assessment${isUnknown(row) ? " unknown" : ""}`}>
+                            {text(row.Assessment || row.assessment || row.Status)}
+                          </span>
+                        </td>
                         <td>{text(row.Evidence || row.evidence || row.Note, "No source note supplied.")}</td>
                       </tr>
                     ))}
@@ -418,26 +522,54 @@ function ComparePartsInner() {
               />
             )}
             {unknownRows.length ? (
-              <details className="cv-compare-unknown">
-                <summary>Unverified attributes ({unknownRows.length})</summary>
-                <div className="cv-table-wrap" style={{ marginTop: 10 }}>
-                  <table className="cv-table cv-compare-table">
-                    <thead><tr><th>Property</th><th>Current part</th><th>Candidate</th><th>Why it remains open</th></tr></thead>
-                    <tbody>
-                      {unknownRows.map((row, index) => (
-                        <tr key={`unknown-${index}`}>
-                          <td><strong>{text(row.Attribute || row.attribute)}</strong></td>
-                          <td>{text(row["Part A"] || row.part_a, "Not confirmed")}</td>
-                          <td>{text(row["Part B"] || row.part_b, "Not confirmed")}</td>
-                          <td>{text(row.Evidence || row.evidence || row.Note, "Primary source evidence is missing.")}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </details>
+              <p className="cv-compare-open-count">All {unknownRows.length} unverified attributes are visible in the matrix above.</p>
             ) : null}
           </section>
+
+          {hasPackageDimensionEvidence ? (
+            <section className="cv-card pad cv-compare-dimensions-card">
+              <div>
+                <div className="cv-eyebrow">Mechanical fit review</div>
+                <h2 className="cv-card-title">Package outline evidence</h2>
+                <p className="cv-card-subtitle">
+                  Text excerpts from identity-verified datasheets. Inspect the original outline drawings,
+                  tolerances, and recommended land patterns before concluding that footprints match.
+                </p>
+              </div>
+              {packageDimensionConflicts.length ? (
+                <div className="cv-compare-dimension-warning" role="status">
+                  <strong>Dimension differences found in extracted text</strong>
+                  <ul>
+                    {packageDimensionConflicts.map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}
+                  </ul>
+                </div>
+              ) : (
+                <p className="cv-compare-dimension-note">
+                  No direct dimensional conflict was confirmed from extracted text. This does not establish a footprint match.
+                </p>
+              )}
+              <div className="cv-compare-dimension-grid">
+                {([
+                  ["Part A", packageDimensionEvidence.part_a || []],
+                  ["Part B", packageDimensionEvidence.part_b || []],
+                ] as Array<[string, Array<Record<string, unknown>>]>).map(([side, items]) => (
+                  <div className="cv-compare-dimension-item" key={side}>
+                    <strong>{side}</strong>
+                    {items.length ? (
+                      <ul>
+                        {items.map((item, index) => (
+                          <li key={`${String(item.document || "document")}-${String(item.page || index)}-${index}`}>
+                            <span>{text(item.excerpt)}</span>
+                            <small>{text(item.document, "Datasheet")}{item.page ? ` · p. ${String(item.page)}` : ""}</small>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : <p>No package-dimension excerpt was extracted from this verified source.</p>}
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : null}
 
           <section className="cv-card pad cv-compare-evidence-card">
             <div>
@@ -585,15 +717,16 @@ function ComparePartsInner() {
                   <span>Decision</span>
                   <select
                     value={decision}
-                    onChange={(event) => {
-                      setDecision(event.target.value);
-                      setVerifiedPrimaryEvidence(false);
-                    }}
+                    onChange={(event) => setDecision(event.target.value)}
                     disabled={decisionBusy}
                   >
                     <option value="hold_for_review">Hold for review</option>
                     <option value="approve_alternate">Approve alternate</option>
+                    <option value="conditional_approval">Conditional approval</option>
+                    <option value="reject_alternate">Reject alternate</option>
                     <option value="retain_current_part">Retain current part</option>
+                    <option value="defer_for_validation">Defer pending validation</option>
+                    <option value="accept_residual_risk">Accept residual risk</option>
                   </select>
                 </label>
                 <label className="cv-field">
@@ -614,19 +747,66 @@ function ComparePartsInner() {
                 />
               </label>
 
-              {decision === "approve_alternate" ? (
-                <label className="cv-modal-confirm">
+              <fieldset className="cv-modal-checklist">
+                <legend>Validation completed</legend>
+                <p>Select the engineering checks that were completed for this decision.</p>
+                <div>
+                  {VALIDATION_CHECKS.map(([value, label]) => (
+                    <label key={value}>
+                      <input
+                        type="checkbox"
+                        checked={validationChecks.includes(value)}
+                        onChange={(event) => setValidationChecks((current) => event.target.checked
+                          ? [...current, value]
+                          : current.filter((item) => item !== value))}
+                        disabled={decisionBusy}
+                      />
+                      <span>{label}</span>
+                    </label>
+                  ))}
+                </div>
+                {decision === "approve_alternate" ? (
+                  <small>Alternate approval requires the datasheet, package/pinout, and electrical-limit checks above.</small>
+                ) : null}
+              </fieldset>
+
+              <div className="cv-form-grid cv-form-grid-two cv-modal-followup">
+                <label className="cv-field">
+                  <span>Follow-up action{["conditional_approval", "defer_for_validation"].includes(decision) ? " · required" : " · optional"}</span>
                   <input
-                    type="checkbox"
-                    checked={verifiedPrimaryEvidence}
-                    onChange={(event) => setVerifiedPrimaryEvidence(event.target.checked)}
+                    value={followUpAction}
+                    onChange={(event) => setFollowUpAction(event.target.value)}
+                    maxLength={1000}
+                    placeholder="e.g. Complete thermal validation before release"
+                    required={["conditional_approval", "defer_for_validation"].includes(decision)}
+                    disabled={decisionBusy}
                   />
-                  <span>I reviewed the candidate manufacturer&apos;s datasheet and verified package/footprint requirements.</span>
                 </label>
-              ) : null}
+                <label className="cv-field">
+                  <span>Follow-up owner · optional</span>
+                  <input value={followUpOwner} onChange={(event) => setFollowUpOwner(event.target.value)} maxLength={120} disabled={decisionBusy} />
+                </label>
+                <label className="cv-field">
+                  <span>Due date · optional</span>
+                  <input type="date" value={followUpDueDate} onChange={(event) => setFollowUpDueDate(event.target.value)} disabled={decisionBusy} />
+                </label>
+                <label className="cv-field">
+                  <span>Residual risk</span>
+                  <select value={residualRisk} onChange={(event) => setResidualRisk(event.target.value)} disabled={decisionBusy}>
+                    <option value="unknown">Not assessed</option>
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                  </select>
+                </label>
+              </div>
 
               <div className="cv-decision-evidence-note">
-                This comparison currently uses synthetic or offline evidence. The record captures your human decision; it does not qualify a drop-in replacement or change the BOM.
+                {result?.mode === "legacy-supplier-engine"
+                  ? "The comparison uses Cadivor’s supplier and datasheet review engine. The record captures your human decision; it does not automatically approve fit or change the BOM."
+                  : result?.mode === "uploaded-datasheet-review"
+                    ? "The comparison includes the PDFs uploaded for this review. The record captures your human decision; it does not automatically approve fit or change the BOM."
+                    : "The comparison uses synthetic or offline evidence. The record captures your human decision; it does not qualify a drop-in replacement or change the BOM."}
               </div>
               {decisionError ? <div className="cv-error" role="alert">{decisionError}</div> : null}
 
@@ -635,7 +815,7 @@ function ComparePartsInner() {
                 <button
                   type="submit"
                   className="cv-button primary"
-                  disabled={decisionBusy || !decisionPartA.trim() || !decisionPartB.trim() || !reviewer.trim() || !rationale.trim() || (decision === "approve_alternate" && !verifiedPrimaryEvidence)}
+                  disabled={decisionBusy || !decisionPartA.trim() || !decisionPartB.trim() || !reviewer.trim() || !rationale.trim() || (decision === "approve_alternate" && !APPROVAL_CHECKS.every((item) => validationChecks.includes(item))) || (["conditional_approval", "defer_for_validation"].includes(decision) && !followUpAction.trim()) || (decision === "accept_residual_risk" && residualRisk === "unknown")}
                 >
                   {decisionBusy ? "Saving comparison and decision…" : "Record decision"}
                 </button>

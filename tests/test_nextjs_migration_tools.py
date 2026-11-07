@@ -119,6 +119,57 @@ def test_migration_tools_vertical_slice():
     assert "monitoring" in health.json()["tools"]
 
 
+def test_production_compare_reuses_the_legacy_supplier_and_datasheet_engine(monkeypatch):
+    from apps.api import legacy_supplier_workflow, migration_tools
+
+    calls = {}
+
+    def capture(**kwargs):
+        calls.update(kwargs)
+        return {"ok": True, "mode": "legacy-supplier-engine"}
+
+    monkeypatch.setattr(legacy_supplier_workflow, "production_analysis_enabled", lambda: True)
+    monkeypatch.setattr(migration_tools, "_legacy_compare_parts_payload", capture)
+    result = migration_tools.compare_parts_payload(
+        workspace_id="workspace-synthetic",
+        part_a="AM29F010B70EC",
+        part_b="AM29F010B70EI",
+        analysis_id="analysis-synthetic",
+        use_latest_if_missing=False,
+    )
+
+    assert result["mode"] == "legacy-supplier-engine"
+    assert calls["part_a"] == "AM29F010B70EC"
+    assert calls["part_b"] == "AM29F010B70EI"
+    assert calls["analysis_id"] == "analysis-synthetic"
+    assert calls["extract_linked_datasheets"] is True
+
+
+def test_compare_endpoint_accepts_optional_pdf_datasheets():
+    from io import BytesIO
+    from pypdf import PdfWriter
+
+    client = TestClient(app)
+    headers = _auth_headers(client)
+    pdf = BytesIO()
+    writer = PdfWriter()
+    writer.add_blank_page(width=100, height=100)
+    writer.write(pdf)
+
+    response = client.post(
+        "/tools/compare-parts",
+        headers=headers,
+        data={"part_a": "AM29F010B70EC", "part_b": "AM29F010B70EI"},
+        files={"datasheet_a": ("flash-memory.pdf", pdf.getvalue(), "application/pdf")},
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["mode"] == "uploaded-datasheet-review"
+    assert body["rows"]
+    assert body["family"] == "Flash memory"
+
+
 def test_decision_records_round_trip_and_are_workspace_scoped():
     client = TestClient(app)
     headers_a = _account_headers(client, SANDBOX_SEED_USERS[0])
@@ -141,6 +192,11 @@ def test_decision_records_round_trip_and_are_workspace_scoped():
         "decision": "hold_for_review",
         "reviewer": "Engineering reviewer",
         "rationale": "Confirm package and lifecycle from manufacturer datasheets.",
+        "validation_checks": ["manufacturer_datasheet_reviewed", "electrical_limits_verified"],
+        "follow_up_action": "Confirm the exact package suffix before release.",
+        "follow_up_owner": "Design Engineering",
+        "follow_up_due_date": "2026-11-14",
+        "residual_risk": "medium",
     }
     saved = client.post("/decision-records", headers=headers_a, json=payload)
     assert saved.status_code == 201, saved.text
@@ -150,6 +206,11 @@ def test_decision_records_round_trip_and_are_workspace_scoped():
     assert record["bom_name"] == "Synthetic controller"
     assert record["qualification_status"] == "not-qualified-by-cadivor"
     assert record["comparison_snapshot"]["rows"]
+    assert record["validation_checks"] == payload["validation_checks"]
+    assert record["follow_up_action"] == payload["follow_up_action"]
+    assert record["follow_up_owner"] == payload["follow_up_owner"]
+    assert record["follow_up_due_date"] == payload["follow_up_due_date"]
+    assert record["residual_risk"] == "medium"
 
     listed = client.get("/decision-records", headers=headers_a)
     assert listed.status_code == 200
@@ -175,6 +236,39 @@ def test_decision_records_round_trip_and_are_workspace_scoped():
     )
     assert blocked_approval.status_code == 400
     assert "manufacturer datasheet" in blocked_approval.json()["detail"].lower()
+
+
+def test_decision_record_preserves_uploaded_datasheet_comparison_snapshot():
+    from io import BytesIO
+    from pypdf import PdfWriter
+
+    client = TestClient(app)
+    headers = _auth_headers(client)
+    pdf = BytesIO()
+    writer = PdfWriter()
+    writer.add_blank_page(width=100, height=100)
+    writer.write(pdf)
+
+    response = client.post(
+        "/decision-records",
+        headers=headers,
+        data={
+            "part_a": "AM29F010B70EC",
+            "part_b": "SST39SF010A-70-4C-TU",
+            "decision": "hold_for_review",
+            "reviewer": "Engineering reviewer",
+            "rationale": "Review the exact manufacturer datasheets and board footprint.",
+            "validation_checks": "[]",
+            "residual_risk": "unknown",
+        },
+        files={"datasheet_a": ("am29f010b.pdf", pdf.getvalue(), "application/pdf")},
+    )
+
+    assert response.status_code == 201, response.text
+    snapshot = response.json()["record"]["comparison_snapshot"]
+    assert snapshot["mode"] == "uploaded-datasheet-review"
+    assert "datasheet_identity" in snapshot
+    assert "package_dimension_evidence" in snapshot
 
 
 def test_compare_can_record_workspace_decision_without_linking_latest_bom():
