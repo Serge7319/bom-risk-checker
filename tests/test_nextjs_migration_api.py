@@ -100,13 +100,16 @@ def test_ci_includes_service_readiness_and_evidence_notice_files():
         "tests/test_evidence_notice_classification.py",
     ]
     proc = subprocess.run(
-        [sys.executable, "-m", "pytest", *targets, "-q", "--tb=line"],
+        [sys.executable, "-m", "pytest", *targets, "-v", "--tb=line"],
         cwd=str(ROOT),
         capture_output=True,
         text=True,
         check=False,
     )
-    assert proc.returncode == 0, proc.stdout + "\n" + proc.stderr
-    combined = proc.stdout + proc.stderr
+    combined = proc.stdout + "\n" + proc.stderr
+    # Surface nested suite names in the parent CI log.
+    print(combined)
+    assert proc.returncode == 0, combined
     for name in targets:
-        assert name.split("/")[-1] in combined or "passed" in combined
+        assert name in combined
+        assert name.split("/")[-1] in combined
