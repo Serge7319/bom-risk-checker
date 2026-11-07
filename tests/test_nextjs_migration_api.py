@@ -99,11 +99,15 @@ def test_ci_includes_legal_acceptance_signup():
     if readiness.exists():
         targets.append("tests/test_service_readiness.py")
     proc = subprocess.run(
-        [sys.executable, "-m", "pytest", *targets, "-q", "--tb=line"],
+        [sys.executable, "-m", "pytest", *targets, "-v", "--tb=line"],
         cwd=str(ROOT),
         capture_output=True,
         text=True,
         check=False,
     )
-    assert proc.returncode == 0, proc.stdout + "\n" + proc.stderr
-    assert "test_legal_acceptance_signup.py" in (proc.stdout + proc.stderr) or "passed" in proc.stdout
+    combined = proc.stdout + "\n" + proc.stderr
+    # Surface nested suite names in the parent CI log.
+    print(combined)
+    assert proc.returncode == 0, combined
+    assert "tests/test_legal_acceptance_signup.py" in combined
+    assert "test_legal_acceptance_signup.py" in combined
