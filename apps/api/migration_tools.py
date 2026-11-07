@@ -643,6 +643,35 @@ def _uploaded_compare_parts_payload(
     )
 
 
+def _optional_analysis_context(
+    analysis_id: str | None, *, workspace_id: str
+) -> tuple[dict[str, Any] | None, str | None]:
+    """Load BOM context only when an analysis ID was explicitly supplied.
+
+    No ID means no BOM context — never imply the workspace's latest report.
+    Stale or inaccessible IDs degrade to a safe notice; they must not block
+    standalone search or leak another workspace's report.
+    """
+    from apps.api.workspace_store import WorkspaceAccessError
+
+    requested_id = str(analysis_id or "").strip()
+    if not requested_id:
+        return None, None
+    try:
+        report = get_report(requested_id, workspace_id=workspace_id)
+    except WorkspaceAccessError:
+        return None, (
+            "Saved BOM context is unavailable for this workspace. "
+            "Running a standalone replacement search instead."
+        )
+    if not report:
+        return None, (
+            "Saved BOM context is unavailable for this workspace. "
+            "Running a standalone replacement search instead."
+        )
+    return report, None
+
+
 def find_replacement_payload(
     *,
     workspace_id: str,
@@ -663,7 +692,9 @@ def find_replacement_payload(
             "detail": "Enter a manufacturer part number to search.",
         }
 
-    report = _require_analysis(analysis_id, workspace_id=workspace_id)
+    report, context_notice = _optional_analysis_context(
+        analysis_id, workspace_id=workspace_id
+    )
     bom_context = None
     if report:
         for part in report.get("parts") or []:
@@ -675,16 +706,37 @@ def find_replacement_payload(
                     "part": part,
                 }
                 break
+        if bom_context is None and not context_notice:
+            # Explicit analysis id was valid but the MPN is not on that BOM —
+            # still treat as standalone; do not invent part data from the report.
+            context_notice = (
+                "The linked BOM does not include this part number. "
+                "Running a standalone replacement search."
+            )
+
+    context_analysis_id = (
+        str(bom_context.get("analysis_id")) if bom_context else None
+    )
 
     if production_analysis_enabled():
         result = find_replacements(requested)
         original = result.get("original") if isinstance(result.get("original"), dict) else {}
         if manufacturer and not original.get("manufacturer"):
             original["manufacturer"] = manufacturer.strip()
+        outcome = (
+            "candidates_found"
+            if result.get("candidates")
+            else str(result.get("search_outcome") or "unable_to_confirm")
+        )
         return _json_safe({
             "ok": True,
             **result,
+            "outcome": outcome if outcome != "failure" else (
+                "unable_to_confirm" if not result.get("candidates") else outcome
+            ),
+            "analysis_id": context_analysis_id,
             "bom_context": bom_context,
+            "context_unavailable": context_notice,
             "original": original,
         })
 
@@ -744,6 +796,7 @@ def find_replacement_payload(
             "outcome": outcome,
             "requested_mpn": requested,
             "manufacturer": manufacturer or original.get("manufacturer") or "",
+            "analysis_id": context_analysis_id,
             "original": {
                 "mpn": original.get("manufacturer_part_number") or requested,
                 "manufacturer": original.get("manufacturer") or "",
@@ -753,6 +806,7 @@ def find_replacement_payload(
                 "lookup": original_lookup,
             },
             "bom_context": bom_context,
+            "context_unavailable": context_notice,
             "candidates": candidates,
             "missing_evidence": missing,
             "gap": gap,

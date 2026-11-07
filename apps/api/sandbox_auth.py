@@ -273,21 +273,68 @@ class AuthContext:
         return payload
 
 
+def _empty_auth_data() -> dict[str, Any]:
+    return {
+        "users": {},
+        "memberships": {},
+        "extra_memberships": [],
+        "active_workspace": {},
+        "revoked": {},
+    }
+
+
+def _normalize_auth_data(data: Any) -> dict[str, Any]:
+    base = _empty_auth_data()
+    if isinstance(data, dict):
+        base.update(data)
+    for key, default in _empty_auth_data().items():
+        if not isinstance(base.get(key), type(default)):
+            base[key] = default
+    return base
+
+
+MEMBERSHIP_ROLES = ("owner", "admin", "engineer", "viewer")
+
+# Older deployments created ``migration_workspace_members`` with a single-column
+# ``user_id`` primary key (one workspace per user). Invitations and "create
+# another workspace" need one row per (user, workspace), so upgrade in place.
+MEMBERSHIP_PK_UPGRADE_SQL = """
+            DO $$
+            DECLARE
+              pk_name text;
+              pk_cols int;
+            BEGIN
+              SELECT conname, array_length(conkey, 1) INTO pk_name, pk_cols
+                FROM pg_constraint
+               WHERE conrelid = 'migration_workspace_members'::regclass
+                 AND contype = 'p';
+              IF pk_name IS NOT NULL AND pk_cols = 1 THEN
+                EXECUTE 'ALTER TABLE migration_workspace_members DROP CONSTRAINT '
+                  || quote_ident(pk_name);
+                ALTER TABLE migration_workspace_members
+                  ADD PRIMARY KEY (user_id, workspace_id);
+              END IF;
+            END $$;
+"""
+
+
 class _FileAuthStore:
     def __init__(self, path: Path | None = None) -> None:
         self.path = Path(path) if path else _DEFAULT_FILE
-        self._data = {"users": {}, "memberships": {}, "revoked": {}}
+        self._data = _empty_auth_data()
         self.load()
 
     def load(self) -> None:
         with _LOCK:
             if self.path.exists():
                 try:
-                    self._data = json.loads(self.path.read_text(encoding="utf-8"))
+                    self._data = _normalize_auth_data(
+                        json.loads(self.path.read_text(encoding="utf-8"))
+                    )
                 except (OSError, json.JSONDecodeError):
-                    self._data = {"users": {}, "memberships": {}, "revoked": {}}
+                    self._data = _empty_auth_data()
             else:
-                self._data = {"users": {}, "memberships": {}, "revoked": {}}
+                self._data = _empty_auth_data()
 
     def save(self) -> None:
         with _LOCK:
@@ -298,7 +345,7 @@ class _FileAuthStore:
 
     def clear(self) -> None:
         with _LOCK:
-            self._data = {"users": {}, "memberships": {}, "revoked": {}}
+            self._data = _empty_auth_data()
             self.save()
 
     def ensure_schema(self) -> None:
@@ -352,10 +399,222 @@ class _FileAuthStore:
                     return dict(row)
         return None
 
+    def create_user_without_membership(
+        self, *, email: str, password: str, plan: str = "Trial"
+    ) -> str:
+        """Create an account that must join via invitation — no personal workspace."""
+        email_n = email.strip().lower()
+        with _LOCK:
+            for row in self._data["users"].values():
+                if row.get("email") == email_n:
+                    raise AuthError("An account already exists for this email.", 409)
+            uid = str(uuid.uuid4())
+            self._data["users"][uid] = {
+                "id": uid,
+                "email": email_n,
+                "password_hash": _hash_password(password),
+                "plan": plan,
+                "created_at": int(time.time()),
+            }
+            self.save()
+            return uid
+
+    # -- Multi-workspace membership -------------------------------------
+    # ``memberships[user_id]`` keeps the user's first (primary) membership so
+    # existing records stay valid; additional organizations live in
+    # ``extra_memberships``. Both are authoritative for the Next app.
+
+    def _membership_rows(self, user_id: str) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        primary = self._data["memberships"].get(user_id)
+        if primary:
+            rows.append(primary)
+        rows.extend(
+            row
+            for row in self._data["extra_memberships"]
+            if row.get("user_id") == user_id
+        )
+        return rows
+
+    @staticmethod
+    def _is_active(row: dict[str, Any]) -> bool:
+        return str(row.get("status") or "active") == "active"
+
+    def list_memberships(self, user_id: str) -> list[dict[str, Any]]:
+        with _LOCK:
+            return [
+                {**row, "status": "active"}
+                for row in self._membership_rows(user_id)
+                if self._is_active(row)
+            ]
+
     def membership_for_user(self, user_id: str) -> dict[str, Any] | None:
         with _LOCK:
-            row = self._data["memberships"].get(user_id)
-            return dict(row) if row else None
+            rows = [r for r in self._membership_rows(user_id) if self._is_active(r)]
+            if not rows:
+                return None
+            preferred = self._data["active_workspace"].get(user_id)
+            chosen = next(
+                (r for r in rows if preferred and r.get("workspace_id") == preferred),
+                rows[0],
+            )
+            return {**chosen, "status": "active"}
+
+    def membership_for_user_workspace(
+        self, user_id: str, workspace_id: str
+    ) -> dict[str, Any] | None:
+        with _LOCK:
+            for row in self._membership_rows(user_id):
+                if row.get("workspace_id") == workspace_id and self._is_active(row):
+                    return {**row, "status": "active"}
+        return None
+
+    def list_workspace_members(self, workspace_id: str) -> list[dict[str, Any]]:
+        with _LOCK:
+            rows = [
+                row
+                for row in [
+                    *self._data["memberships"].values(),
+                    *self._data["extra_memberships"],
+                ]
+                if row.get("workspace_id") == workspace_id
+            ]
+            members = []
+            for row in rows:
+                user = self._data["users"].get(str(row.get("user_id")), {})
+                members.append(
+                    {
+                        **row,
+                        "email": user.get("email") or row.get("email") or "",
+                        "status": str(row.get("status") or "active"),
+                    }
+                )
+            return members
+
+    def _find_membership(self, user_id: str, workspace_id: str) -> dict[str, Any] | None:
+        for row in self._membership_rows(user_id):
+            if row.get("workspace_id") == workspace_id:
+                return row
+        return None
+
+    def add_membership(
+        self,
+        *,
+        user_id: str,
+        workspace_id: str,
+        workspace_name: str,
+        role: str,
+        keep_existing_role: bool = True,
+    ) -> dict[str, Any]:
+        """Idempotently grant (or re-activate) membership in one workspace."""
+        if role not in MEMBERSHIP_ROLES:
+            raise ValueError("Unsupported workspace role")
+        with _LOCK:
+            existing = self._find_membership(user_id, workspace_id)
+            now = datetime.now(timezone.utc)
+            if existing is not None:
+                existing["status"] = "active"
+                if not keep_existing_role:
+                    existing["role"] = role
+                self.save()
+                return {**existing, "status": "active"}
+            row = {
+                "user_id": user_id,
+                "workspace_id": workspace_id,
+                "workspace_name": workspace_name,
+                "role": role,
+                "status": "active",
+                "joined_at": now.isoformat(),
+                "trial_started_at": now.isoformat(),
+                "trial_ends_at": (now + timedelta(days=14)).isoformat(),
+                "subscription_status": "trialing",
+            }
+            if user_id in self._data["memberships"]:
+                self._data["extra_memberships"].append(row)
+            else:
+                self._data["memberships"][user_id] = row
+            self.save()
+            return dict(row)
+
+    def set_membership_role(self, workspace_id: str, user_id: str, role: str) -> bool:
+        if role not in MEMBERSHIP_ROLES:
+            raise ValueError("Unsupported workspace role")
+        with _LOCK:
+            row = self._find_membership(user_id, workspace_id)
+            if row is None:
+                return False
+            row["role"] = role
+            self.save()
+            return True
+
+    def set_membership_status(self, workspace_id: str, user_id: str, status: str) -> bool:
+        with _LOCK:
+            row = self._find_membership(user_id, workspace_id)
+            if row is None:
+                return False
+            row["status"] = status
+            if (
+                status != "active"
+                and self._data["active_workspace"].get(user_id) == workspace_id
+            ):
+                self._data["active_workspace"].pop(user_id, None)
+            self.save()
+            return True
+
+    def set_active_workspace(self, user_id: str, workspace_id: str) -> bool:
+        with _LOCK:
+            row = self._find_membership(user_id, workspace_id)
+            if row is None or not self._is_active(row):
+                return False
+            self._data["active_workspace"][user_id] = workspace_id
+            self.save()
+            return True
+
+    def register_password_user(self, *, email: str, password: str, plan: str = "Trial") -> str:
+        """Create a password account WITHOUT any workspace (sandbox invitation path)."""
+        email_n = email.strip().lower()
+        with _LOCK:
+            for row in self._data["users"].values():
+                if row.get("email") == email_n:
+                    raise ValueError("account_exists")
+            uid = str(uuid.uuid4())
+            self._data["users"][uid] = {
+                "id": uid,
+                "email": email_n,
+                "password_hash": _hash_password(password),
+                "plan": plan,
+                "created_at": int(time.time()),
+            }
+            self.save()
+            return uid
+
+    def link_supabase_user(self, *, user_id: str, email: str, plan: str = "Trial") -> None:
+        """Record a verified Supabase identity without creating any workspace."""
+        email_n = email.strip().lower()
+        with _LOCK:
+            for uid, row in list(self._data["users"].items()):
+                if row.get("email") == email_n and uid != user_id:
+                    self._data["users"].pop(uid, None)
+                    self._data["memberships"].pop(uid, None)
+            current = self._data["users"].get(user_id) or {}
+            self._data["users"][user_id] = {
+                "id": user_id,
+                "email": email_n,
+                "password_hash": current.get("password_hash")
+                or _hash_password("__supabase_auth_managed__"),
+                "plan": current.get("plan") or plan,
+            }
+            self.save()
+
+    def rename_workspace(self, workspace_id: str, name: str) -> None:
+        with _LOCK:
+            for row in [
+                *self._data["memberships"].values(),
+                *self._data["extra_memberships"],
+            ]:
+                if row.get("workspace_id") == workspace_id:
+                    row["workspace_name"] = name
+            self.save()
 
     def ensure_supabase_owner(
         self,
@@ -441,14 +700,16 @@ class _PostgresAuthStore:
               created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
             );
             CREATE TABLE IF NOT EXISTS migration_workspace_members (
-              user_id TEXT PRIMARY KEY REFERENCES migration_users(id) ON DELETE CASCADE,
+              user_id TEXT NOT NULL REFERENCES migration_users(id) ON DELETE CASCADE,
               workspace_id TEXT NOT NULL,
               workspace_name TEXT NOT NULL,
               role TEXT NOT NULL DEFAULT 'owner',
               trial_started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
               trial_ends_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '14 days'),
               subscription_status TEXT NOT NULL DEFAULT 'trialing',
-              created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+              status TEXT NOT NULL DEFAULT 'active',
+              created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+              PRIMARY KEY (user_id, workspace_id)
             );
             ALTER TABLE migration_workspace_members
               ADD COLUMN IF NOT EXISTS trial_started_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
@@ -457,8 +718,16 @@ class _PostgresAuthStore:
               DEFAULT (NOW() + INTERVAL '14 days');
             ALTER TABLE migration_workspace_members
               ADD COLUMN IF NOT EXISTS subscription_status TEXT NOT NULL DEFAULT 'trialing';
+            ALTER TABLE migration_workspace_members
+              ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active';
+            """ + MEMBERSHIP_PK_UPGRADE_SQL + """
             CREATE INDEX IF NOT EXISTS migration_ws_members_ws_idx
               ON migration_workspace_members (workspace_id);
+            CREATE TABLE IF NOT EXISTS migration_user_active_workspace (
+              user_id TEXT PRIMARY KEY REFERENCES migration_users(id) ON DELETE CASCADE,
+              workspace_id TEXT NOT NULL,
+              updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
             CREATE TABLE IF NOT EXISTS migration_revoked_tokens (
               jti TEXT PRIMARY KEY,
               exp BIGINT NOT NULL,
@@ -474,8 +743,8 @@ class _PostgresAuthStore:
         self.ensure_schema()
         with self._connect() as conn:
             conn.execute(
-                "TRUNCATE migration_revoked_tokens, migration_workspace_members, "
-                "migration_users CASCADE"
+                "TRUNCATE migration_revoked_tokens, migration_user_active_workspace, "
+                "migration_workspace_members, migration_users CASCADE"
             )
             conn.commit()
 
@@ -512,15 +781,21 @@ class _PostgresAuthStore:
                         """,
                         (uid, email_n, password_hash, plan),
                     )
+                # Seeding replaces the user's memberships (single-workspace seed).
+                conn.execute(
+                    "DELETE FROM migration_workspace_members "
+                    "WHERE user_id = %s AND workspace_id <> %s",
+                    (uid, workspace_id),
+                )
                 conn.execute(
                     """
                     INSERT INTO migration_workspace_members
                       (user_id, workspace_id, workspace_name, role)
                     VALUES (%s, %s, %s, 'owner')
-                    ON CONFLICT (user_id) DO UPDATE SET
-                      workspace_id = EXCLUDED.workspace_id,
+                    ON CONFLICT (user_id, workspace_id) DO UPDATE SET
                       workspace_name = EXCLUDED.workspace_name,
-                      role = EXCLUDED.role
+                      role = EXCLUDED.role,
+                      status = 'active'
                     """,
                     (uid, workspace_id, workspace),
                 )
@@ -536,14 +811,220 @@ class _PostgresAuthStore:
             ).fetchone()
             return dict(row) if row else None
 
+    def create_user_without_membership(
+        self, *, email: str, password: str, plan: str = "Trial"
+    ) -> str:
+        """Create an account that must join via invitation — no personal workspace."""
+        self.ensure_schema()
+        email_n = email.strip().lower()
+        with self._connect() as conn:
+            existing = conn.execute(
+                "SELECT id FROM migration_users WHERE email = %s",
+                (email_n,),
+            ).fetchone()
+            if existing:
+                raise AuthError("An account already exists for this email.", 409)
+            uid = str(uuid.uuid4())
+            conn.execute(
+                """
+                INSERT INTO migration_users (id, email, password_hash, plan)
+                VALUES (%s, %s, %s, %s)
+                """,
+                (uid, email_n, _hash_password(password), plan),
+            )
+            conn.commit()
+            return uid
+
+    def list_memberships(self, user_id: str) -> list[dict[str, Any]]:
+        self.ensure_schema()
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM migration_workspace_members "
+                "WHERE user_id = %s AND status = 'active' ORDER BY created_at, workspace_id",
+                (user_id,),
+            ).fetchall()
+            return [dict(row) for row in rows]
+
     def membership_for_user(self, user_id: str) -> dict[str, Any] | None:
+        """Active membership: the user's selected workspace, else the earliest."""
         self.ensure_schema()
         with self._connect() as conn:
             row = conn.execute(
-                "SELECT * FROM migration_workspace_members WHERE user_id = %s",
+                """
+                SELECT m.*
+                  FROM migration_workspace_members m
+                  LEFT JOIN migration_user_active_workspace a
+                    ON a.user_id = m.user_id AND a.workspace_id = m.workspace_id
+                 WHERE m.user_id = %s AND m.status = 'active'
+                 ORDER BY (a.workspace_id IS NOT NULL) DESC, m.created_at, m.workspace_id
+                 LIMIT 1
+                """,
                 (user_id,),
             ).fetchone()
             return dict(row) if row else None
+
+    def membership_for_user_workspace(
+        self, user_id: str, workspace_id: str
+    ) -> dict[str, Any] | None:
+        self.ensure_schema()
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM migration_workspace_members "
+                "WHERE user_id = %s AND workspace_id = %s AND status = 'active'",
+                (user_id, workspace_id),
+            ).fetchone()
+            return dict(row) if row else None
+
+    def list_workspace_members(self, workspace_id: str) -> list[dict[str, Any]]:
+        self.ensure_schema()
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT m.*, u.email AS email
+                  FROM migration_workspace_members m
+                  JOIN migration_users u ON u.id = m.user_id
+                 WHERE m.workspace_id = %s
+                 ORDER BY m.created_at, m.user_id
+                """,
+                (workspace_id,),
+            ).fetchall()
+            return [dict(row) for row in rows]
+
+    def add_membership(
+        self,
+        *,
+        user_id: str,
+        workspace_id: str,
+        workspace_name: str,
+        role: str,
+        keep_existing_role: bool = True,
+    ) -> dict[str, Any]:
+        """Idempotently grant (or re-activate) membership in one workspace."""
+        if role not in MEMBERSHIP_ROLES:
+            raise ValueError("Unsupported workspace role")
+        self.ensure_schema()
+        with _LOCK:
+            with self._connect() as conn:
+                row = conn.execute(
+                    """
+                    INSERT INTO migration_workspace_members
+                      (user_id, workspace_id, workspace_name, role, status)
+                    VALUES (%s, %s, %s, %s, 'active')
+                    ON CONFLICT (user_id, workspace_id) DO UPDATE SET
+                      status = 'active',
+                      role = CASE WHEN %s THEN migration_workspace_members.role
+                                  ELSE EXCLUDED.role END
+                    RETURNING *
+                    """,
+                    (user_id, workspace_id, workspace_name, role, keep_existing_role),
+                ).fetchone()
+                conn.commit()
+                return dict(row)
+
+    def set_membership_role(self, workspace_id: str, user_id: str, role: str) -> bool:
+        if role not in MEMBERSHIP_ROLES:
+            raise ValueError("Unsupported workspace role")
+        self.ensure_schema()
+        with self._connect() as conn:
+            cur = conn.execute(
+                "UPDATE migration_workspace_members SET role = %s "
+                "WHERE workspace_id = %s AND user_id = %s",
+                (role, workspace_id, user_id),
+            )
+            conn.commit()
+            return cur.rowcount > 0
+
+    def set_membership_status(self, workspace_id: str, user_id: str, status: str) -> bool:
+        self.ensure_schema()
+        with self._connect() as conn:
+            cur = conn.execute(
+                "UPDATE migration_workspace_members SET status = %s "
+                "WHERE workspace_id = %s AND user_id = %s",
+                (status, workspace_id, user_id),
+            )
+            if status != "active":
+                conn.execute(
+                    "DELETE FROM migration_user_active_workspace "
+                    "WHERE user_id = %s AND workspace_id = %s",
+                    (user_id, workspace_id),
+                )
+            conn.commit()
+            return cur.rowcount > 0
+
+    def set_active_workspace(self, user_id: str, workspace_id: str) -> bool:
+        self.ensure_schema()
+        with self._connect() as conn:
+            member = conn.execute(
+                "SELECT 1 FROM migration_workspace_members "
+                "WHERE user_id = %s AND workspace_id = %s AND status = 'active'",
+                (user_id, workspace_id),
+            ).fetchone()
+            if not member:
+                return False
+            conn.execute(
+                """
+                INSERT INTO migration_user_active_workspace (user_id, workspace_id)
+                VALUES (%s, %s)
+                ON CONFLICT (user_id) DO UPDATE SET
+                  workspace_id = EXCLUDED.workspace_id,
+                  updated_at = NOW()
+                """,
+                (user_id, workspace_id),
+            )
+            conn.commit()
+            return True
+
+    def register_password_user(self, *, email: str, password: str, plan: str = "Trial") -> str:
+        """Create a password account WITHOUT any workspace (sandbox invitation path)."""
+        self.ensure_schema()
+        email_n = email.strip().lower()
+        uid = str(uuid.uuid4())
+        with _LOCK:
+            with self._connect() as conn:
+                row = conn.execute(
+                    """
+                    INSERT INTO migration_users (id, email, password_hash, plan)
+                    VALUES (%s, %s, %s, %s)
+                    ON CONFLICT (email) DO NOTHING
+                    RETURNING id
+                    """,
+                    (uid, email_n, _hash_password(password), plan),
+                ).fetchone()
+                conn.commit()
+        if not row:
+            raise ValueError("account_exists")
+        return uid
+
+    def link_supabase_user(self, *, user_id: str, email: str, plan: str = "Trial") -> None:
+        """Record a verified Supabase identity without creating any workspace."""
+        self.ensure_schema()
+        email_n = email.strip().lower()
+        password_hash = _hash_password("__supabase_auth_managed__")
+        with _LOCK:
+            with self._connect() as conn:
+                conn.execute(
+                    "DELETE FROM migration_users WHERE email = %s AND id <> %s",
+                    (email_n, user_id),
+                )
+                conn.execute(
+                    """
+                    INSERT INTO migration_users (id, email, password_hash, plan)
+                    VALUES (%s, %s, %s, %s)
+                    ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email
+                    """,
+                    (user_id, email_n, password_hash, plan),
+                )
+                conn.commit()
+
+    def rename_workspace(self, workspace_id: str, name: str) -> None:
+        self.ensure_schema()
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE migration_workspace_members SET workspace_name = %s "
+                "WHERE workspace_id = %s",
+                (name, workspace_id),
+            )
+            conn.commit()
 
     def ensure_supabase_owner(
         self,
@@ -579,17 +1060,18 @@ class _PostgresAuthStore:
                     INSERT INTO migration_workspace_members
                       (user_id, workspace_id, workspace_name, role)
                     VALUES (%s, %s, %s, 'owner')
-                    ON CONFLICT (user_id) DO UPDATE SET
-                      workspace_id = EXCLUDED.workspace_id,
+                    ON CONFLICT (user_id, workspace_id) DO UPDATE SET
                       workspace_name = EXCLUDED.workspace_name,
-                      role = EXCLUDED.role
+                      role = EXCLUDED.role,
+                      status = 'active'
                     """,
                     (user_id, workspace_id, workspace),
                 )
                 membership = conn.execute(
                     "SELECT trial_started_at, trial_ends_at, subscription_status "
-                    "FROM migration_workspace_members WHERE user_id = %s",
-                    (user_id,),
+                    "FROM migration_workspace_members "
+                    "WHERE user_id = %s AND workspace_id = %s",
+                    (user_id, workspace_id),
                 ).fetchone()
                 conn.commit()
         membership = dict(membership or {})
@@ -666,6 +1148,10 @@ def reset_auth_store_for_tests(
     os.environ.pop("RAILWAY_ENVIRONMENT", None)
     _STORE = _FileAuthStore(path)
     _STORE.clear()
+    # Team data (invitations, profiles, preferences) must reset with membership.
+    from apps.api import team_store
+
+    team_store.reset_team_store_for_tests(path.with_name(f"{path.stem}_team.json"))
     _SEEDED = False
     if accounts:
         seed_demo_users(accounts, store=_STORE)
@@ -724,7 +1210,18 @@ def login(email: str, password: str, *, requested_workspace_id: str | None = Non
     user = store.find_user_by_email(email)
     if not user or not _verify_password(password, str(user.get("password_hash") or "")):
         raise AuthError("Invalid credentials")
-    membership = store.membership_for_user(str(user["id"]))
+    user_id = str(user["id"])
+    membership = store.membership_for_user(user_id)
+    if not membership:
+        try:
+            from apps.api import team_service
+
+            team_service.accept_pending_invitations(
+                user_id=user_id, email=str(user["email"])
+            )
+        except Exception:  # noqa: BLE001
+            pass
+        membership = store.membership_for_user(user_id)
     if not membership:
         raise AuthError("No workspace membership for user", 403)
     now = int(time.time())
@@ -771,10 +1268,18 @@ def resolve_bearer(access_token: str) -> AuthContext:
     store = get_auth_store()
     if store.is_revoked(jti):
         raise AuthError("Token revoked")
+    email = str(claims.get("email") or "")
     membership = store.membership_for_user(user_id)
+    if not membership and email:
+        try:
+            from apps.api import team_service
+
+            team_service.accept_pending_invitations(user_id=user_id, email=email)
+        except Exception:  # noqa: BLE001
+            pass
+        membership = store.membership_for_user(user_id)
     if not membership:
         raise AuthError("No workspace membership for user", 403)
-    email = str(claims.get("email") or "")
     user = store.find_user_by_email(email) if email else None
     plan = str((user or {}).get("plan") or "Trial")
     return AuthContext(

@@ -323,7 +323,38 @@ export async function downloadReportCsv(analysisId: string, initialToken: string
 }
 
 export async function fetchAuthConfig() {
-  return apiJson<{ signup_enabled: boolean; trial_length_days: number }>("/auth/config");
+  return apiJson<{
+    signup_enabled: boolean;
+    trial_length_days: number;
+    invitations_enabled?: boolean;
+  }>("/auth/config");
+}
+
+export async function lookupInvitation(token: string) {
+  return apiJson<{
+    email: string;
+    workspace_name: string;
+    role: string;
+    expires_at?: string;
+    invited_by_name?: string;
+  }>(`/invitations/lookup?token=${encodeURIComponent(token)}`);
+}
+
+export async function registerFromInvitation(body: {
+  token: string;
+  email: string;
+  password: string;
+}) {
+  return apiJson<{
+    ok: boolean;
+    email: string;
+    user_id?: string;
+    message?: string;
+    accepted?: Array<Record<string, unknown>>;
+  }>("/invitations/register", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 }
 
 export async function signup(
@@ -692,6 +723,148 @@ export async function fetchConnectors(token: string) {
 export async function fetchCompliancePack(token: string, packType: string) {
   return apiJson<Record<string, unknown>>(
     `/compliance/${encodeURIComponent(packType)}`,
+    { token },
+  );
+}
+
+export async function fetchProfile(token: string) {
+  return apiJson<Record<string, unknown>>("/settings/profile", { token });
+}
+
+export async function updateProfile(token: string, body: Record<string, unknown>) {
+  return apiJson<Record<string, unknown>>("/settings/profile", {
+    method: "PATCH",
+    token,
+    body: JSON.stringify(body),
+  });
+}
+
+export async function fetchPreferences(token: string) {
+  return apiJson<Record<string, unknown>>("/settings/preferences", { token });
+}
+
+export async function updatePreferences(token: string, body: Record<string, unknown>) {
+  return apiJson<Record<string, unknown>>("/settings/preferences", {
+    method: "PATCH",
+    token,
+    body: JSON.stringify(body),
+  });
+}
+
+export async function fetchSecurityStatus(token: string) {
+  return apiJson<Record<string, unknown>>("/settings/security", { token });
+}
+
+export async function requestPasswordReset(email: string) {
+  return apiJson<{ ok?: boolean; accepted?: boolean; message?: string }>(
+    "/auth/password-reset",
+    { method: "POST", body: JSON.stringify({ email }) },
+  );
+}
+
+export async function completePasswordReset(
+  accessToken: string,
+  password: string,
+) {
+  return apiJson<{ ok?: boolean; message?: string }>(
+    "/auth/password-reset/complete",
+    {
+      method: "POST",
+      body: JSON.stringify({ access_token: accessToken, password }),
+    },
+  );
+}
+
+export async function changePassword(
+  token: string,
+  body: { current_password: string; new_password: string },
+) {
+  return apiJson<{ ok?: boolean; detail?: string }>("/auth/password", {
+    method: "POST",
+    token,
+    body: JSON.stringify(body),
+  });
+}
+
+export async function revokeOtherSessions(token: string) {
+  return apiJson<{ ok?: boolean }>("/auth/sessions/revoke-others", {
+    method: "POST",
+    token,
+    body: JSON.stringify({}),
+  });
+}
+
+export async function listWorkspaces(token: string) {
+  return apiJson<Record<string, unknown>>("/workspaces", { token });
+}
+
+export async function createWorkspace(token: string, name: string) {
+  return apiJson<Record<string, unknown>>("/workspaces", {
+    method: "POST",
+    token,
+    body: JSON.stringify({ name }),
+  });
+}
+
+export async function switchWorkspace(token: string, workspaceId: string) {
+  return apiJson<Record<string, unknown>>("/workspaces/active", {
+    method: "POST",
+    token,
+    body: JSON.stringify({ workspace_id: workspaceId }),
+  });
+}
+
+export async function fetchWorkspaceSettings(token: string) {
+  return apiJson<Record<string, unknown>>("/workspace/settings", { token });
+}
+
+export async function updateWorkspaceSettings(
+  token: string,
+  body: Record<string, unknown>,
+) {
+  return apiJson<Record<string, unknown>>("/workspace/settings", {
+    method: "PATCH",
+    token,
+    body: JSON.stringify(body),
+  });
+}
+
+export async function listWorkspaceMembers(token: string) {
+  return apiJson<Record<string, unknown>>("/workspace/members", { token });
+}
+
+export async function listWorkspaceInvitations(token: string) {
+  return apiJson<Record<string, unknown>>("/workspace/invitations", { token });
+}
+
+export async function createWorkspaceInvitation(
+  token: string,
+  body: { email: string; role: string; expires_in_days?: number },
+) {
+  return apiJson<Record<string, unknown>>("/workspace/invitations", {
+    method: "POST",
+    token,
+    body: JSON.stringify(body),
+  });
+}
+
+export async function resendWorkspaceInvitation(token: string, inviteId: string) {
+  return apiJson<Record<string, unknown>>(
+    `/workspace/invitations/${encodeURIComponent(inviteId)}/resend`,
+    { method: "POST", token, body: JSON.stringify({}) },
+  );
+}
+
+export async function cancelWorkspaceInvitation(token: string, inviteId: string) {
+  return apiJson<Record<string, unknown>>(
+    `/workspace/invitations/${encodeURIComponent(inviteId)}`,
+    { method: "DELETE", token },
+  );
+}
+
+export async function listWorkspaceActivity(token: string, limit = 40) {
+  return apiJson<Record<string, unknown>>(
+    `/workspace/activity?limit=${encodeURIComponent(String(limit))}`,
     { token },
   );
 }

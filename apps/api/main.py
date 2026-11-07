@@ -9,6 +9,8 @@ from __future__ import annotations
 import json
 import os
 import sys
+import threading
+import time
 import uuid
 from pathlib import Path
 from typing import Any
@@ -64,6 +66,8 @@ from apps.api import plan_limits  # noqa: E402
 from apps.api import supplier_lookup  # noqa: E402
 from apps.api import one_time_report_service  # noqa: E402
 from apps.api import subscription_billing_service  # noqa: E402
+from apps.api import team_service  # noqa: E402
+from apps.api.team_service import TeamError  # noqa: E402
 from apps.api.evidence_contract import annotate_report_parts  # noqa: E402
 from apps.api.report_exports import (  # noqa: E402
     build_report_export,
@@ -267,6 +271,7 @@ async def auth_login(request: Request) -> JSONResponse:
                 email,
                 password,
                 requested_workspace_id=str(requested_ws or "") or None,
+                invite_token=str(body.get("invite_token") or "") or None,
             )
         else:
             session = sandbox_login(
@@ -285,6 +290,26 @@ async def auth_login(request: Request) -> JSONResponse:
     except AuthError as exc:
         return _json({"detail": exc.detail}, exc.status_code)
     return _json(session)
+
+
+def _web_origin(request: Request) -> str:
+    """Prefer an allowlisted Origin / Referer; fall back to the first CADIVOR_WEB_ORIGINS entry."""
+    candidates = [
+        str(request.headers.get("origin") or "").strip().rstrip("/"),
+        str(request.headers.get("referer") or "").strip().rstrip("/"),
+    ]
+    allowed = {origin.rstrip("/") for origin in _origins}
+    for candidate in candidates:
+        if not candidate:
+            continue
+        # Referer may include a path.
+        origin = candidate.split("/login", 1)[0].split("/settings", 1)[0]
+        if origin in allowed:
+            return origin
+        if any(origin.startswith(item) for item in allowed):
+            return next(item for item in allowed if origin.startswith(item))
+    https = [o for o in _origins if o.startswith("https://")]
+    return (https[0] if https else (_origins[0] if _origins else "http://localhost:3000")).rstrip("/")
 
 
 async def auth_signup_config(_: Request) -> JSONResponse:
@@ -1135,15 +1160,14 @@ async def find_replacement_post(request: Request) -> JSONResponse:
         body = await request.json()
     except Exception:  # noqa: BLE001
         return _json({"detail": "Invalid JSON"}, 400)
-    try:
-        result = migration_tools.find_replacement_payload(
-            workspace_id=ctx["workspace_id"],
-            mpn=str(body.get("mpn") or body.get("part_number") or ""),
-            manufacturer=str(body.get("manufacturer") or ""),
-            analysis_id=body.get("analysis_id") or None,
-        )
-    except WorkspaceAccessError:
-        return _json({"detail": "Report not found"}, 404)
+    # Optional analysis_id is soft context only. Stale/inaccessible IDs must not
+    # 404 the search — find_replacement_payload degrades to standalone.
+    result = migration_tools.find_replacement_payload(
+        workspace_id=ctx["workspace_id"],
+        mpn=str(body.get("mpn") or body.get("part_number") or ""),
+        manufacturer=str(body.get("manufacturer") or ""),
+        analysis_id=body.get("analysis_id") or None,
+    )
     status = 200 if result.get("ok") else 400
     return _json(result, status)
 
@@ -1432,6 +1456,788 @@ async def monitoring_refresh_post(request: Request) -> JSONResponse:
     )
 
 
+def _team_error(exc: TeamError) -> JSONResponse:
+    payload: dict[str, Any] = {"detail": exc.detail}
+    if exc.code:
+        payload["code"] = exc.code
+    return _json(payload, exc.status_code)
+
+
+async def invitations_lookup_get(request: Request) -> JSONResponse:
+    token = str(request.query_params.get("token") or "").strip()
+    preview = team_service.lookup_invitation(token)
+    if not preview:
+        return _json({"detail": "This invitation is not valid or has expired."}, 404)
+    return _json({"ok": True, **preview})
+
+
+async def invitations_register_post(request: Request) -> JSONResponse:
+    """Invite-only account creation (sandbox membership store).
+
+    Public self-serve signup remains gated separately. This path never creates
+    an empty personal workspace that bypasses the invitation.
+    """
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return _json({"detail": "Invalid JSON"}, 400)
+    token = str(body.get("token") or "").strip()
+    email = str(body.get("email") or "").strip().lower()
+    password = str(body.get("password") or "")
+    preview = team_service.lookup_invitation(token)
+    if not preview:
+        return _json({"detail": "This invitation is not valid or has expired."}, 404)
+    if email != str(preview["email"]).lower():
+        return _json({"detail": "Use the email address this invitation was sent to."}, 400)
+    if len(password) < 12:
+        return _json({"detail": "Password must be at least 12 characters."}, 400)
+    if _use_supabase_auth():
+        # Production: Supabase signup + verified login accepts pending invites.
+        try:
+            supabase_auth.signup(
+                email,
+                password,
+                str(preview.get("workspace_name") or "Workspace"),
+                captcha_token=str(body.get("captcha_token") or "") or None,
+            )
+        except AuthNotConfiguredError as exc:
+            return _json({"detail": str(exc)}, 503)
+        except AuthError as exc:
+            return _json({"detail": exc.detail}, exc.status_code)
+        return _json(
+            {
+                "ok": True,
+                "email": email,
+                "message": (
+                    "If this address can be registered, a verification link will "
+                    "arrive by email. After verifying, sign in to join the invited workspace."
+                ),
+            },
+            202,
+        )
+    from apps.api.sandbox_auth import get_auth_store
+
+    store = get_auth_store()
+    if not hasattr(store, "create_user_without_membership"):
+        return _json({"detail": "Invite registration is unavailable."}, 503)
+    try:
+        user_id = store.create_user_without_membership(
+            email=email, password=password, plan="Trial"
+        )
+    except AuthError as exc:
+        return _json({"detail": exc.detail}, exc.status_code)
+    try:
+        accepted = team_service.accept_pending_invitations(
+            user_id=user_id, email=email
+        )
+    except TeamError as exc:
+        return _team_error(exc)
+    if not accepted:
+        return _json(
+            {
+                "detail": "Account created but the invitation could not be accepted.",
+            },
+            409,
+        )
+    return _json(
+        {
+            "ok": True,
+            "email": email,
+            "user_id": user_id,
+            "accepted": accepted,
+            "message": "Account created. Sign in with this email to open the invited workspace.",
+        }
+    )
+
+
+async def workspace_invitations_get(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        return _json(team_service.list_invitations(ctx))
+    except TeamError as exc:
+        return _team_error(exc)
+
+
+async def workspace_invitations_post(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return _json({"detail": "Invalid JSON"}, 400)
+    try:
+        result = team_service.create_invitation(
+            ctx,
+            email=str(body.get("email") or ""),
+            role=str(body.get("role") or "engineer"),
+            expires_in_days=body.get("expires_in_days"),
+            web_origin=_web_origin(request),
+        )
+    except TeamError as exc:
+        return _team_error(exc)
+    return _json(result, 201)
+
+
+async def workspace_invitation_resend_post(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    invite_id = str(request.path_params.get("invite_id") or "")
+    try:
+        return _json(
+            team_service.resend_invitation(
+                ctx, invite_id, web_origin=_web_origin(request)
+            )
+        )
+    except TeamError as exc:
+        return _team_error(exc)
+
+
+async def workspace_invitation_cancel_post(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    invite_id = str(request.path_params.get("invite_id") or "")
+    try:
+        return _json(team_service.cancel_invitation(ctx, invite_id))
+    except TeamError as exc:
+        return _team_error(exc)
+
+
+async def workspace_members_get(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        return _json(team_service.list_members(ctx))
+    except TeamError as exc:
+        return _team_error(exc)
+
+
+async def workspace_activity_get(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        limit = int(request.query_params.get("limit") or 50)
+    except ValueError:
+        limit = 50
+    try:
+        return _json(team_service.list_activity(ctx, limit=limit))
+    except TeamError as exc:
+        return _team_error(exc)
+
+
+async def workspace_settings_get(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        return _json(team_service.workspace_snapshot(ctx))
+    except TeamError as exc:
+        return _team_error(exc)
+
+
+async def workspace_settings_patch(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return _json({"detail": "Invalid JSON"}, 400)
+    try:
+        return _json(team_service.update_workspace_settings(ctx, body))
+    except TeamError as exc:
+        return _team_error(exc)
+
+
+async def workspaces_list_get(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        return _json(team_service.list_workspaces(ctx))
+    except TeamError as exc:
+        return _team_error(exc)
+
+
+async def workspaces_create_post(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return _json({"detail": "Invalid JSON"}, 400)
+    try:
+        return _json(
+            team_service.create_workspace(ctx, str(body.get("name") or "")),
+            201,
+        )
+    except TeamError as exc:
+        return _team_error(exc)
+
+
+async def workspaces_switch_post(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return _json({"detail": "Invalid JSON"}, 400)
+    try:
+        return _json(
+            team_service.switch_workspace(ctx, str(body.get("workspace_id") or ""))
+        )
+    except TeamError as exc:
+        return _team_error(exc)
+
+
+async def settings_profile_get(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        return _json(team_service.get_profile(ctx))
+    except TeamError as exc:
+        return _team_error(exc)
+
+
+async def settings_profile_patch(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return _json({"detail": "Invalid JSON"}, 400)
+    try:
+        return _json(team_service.update_profile(ctx, body))
+    except TeamError as exc:
+        return _team_error(exc)
+
+
+async def settings_preferences_get(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        return _json(team_service.get_preferences(ctx))
+    except TeamError as exc:
+        return _team_error(exc)
+
+
+async def settings_preferences_patch(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return _json({"detail": "Invalid JSON"}, 400)
+    try:
+        return _json(team_service.update_preferences(ctx, body))
+    except TeamError as exc:
+        return _team_error(exc)
+
+
+async def settings_security_get(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    supabase = _use_supabase_auth()
+    return _json(
+        {
+            "ok": True,
+            "auth_mode": "supabase" if supabase else "sandbox",
+            "password_change_available": supabase,
+            "password_reset_available": supabase,
+            "mfa": {"status": "planned", "enabled": False},
+            "sessions": {
+                "status": "planned" if not supabase else "basic",
+                "revoke_others_available": supabase,
+            },
+            "connected_accounts": {
+                "email_password": True,
+                "social_sso": {"status": "planned"},
+            },
+        }
+    )
+
+
+# --------------------------------------------------------------------------
+# Invitations, workspaces, profile, preferences, security (Settings)
+# --------------------------------------------------------------------------
+
+_THROTTLE: dict[str, list[float]] = {}
+_THROTTLE_LOCK = threading.Lock()
+
+
+def _throttled(request: Request, bucket: str, *, limit: int = 10, window: int = 60) -> bool:
+    """Best-effort per-process throttle for unauthenticated routes."""
+    forwarded = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
+    client = forwarded or (request.client.host if request.client else "unknown")
+    key = f"{bucket}:{client}"
+    now = time.monotonic()
+    with _THROTTLE_LOCK:
+        hits = [t for t in _THROTTLE.get(key, []) if now - t < window]
+        if len(hits) >= limit:
+            _THROTTLE[key] = hits
+            return True
+        hits.append(now)
+        _THROTTLE[key] = hits
+        if len(_THROTTLE) > 2048:
+            for stale in [k for k, v in _THROTTLE.items() if not v or now - v[-1] >= window]:
+                _THROTTLE.pop(stale, None)
+    return False
+
+
+def _team_error(exc: TeamError) -> JSONResponse:
+    payload: dict[str, Any] = {"detail": exc.detail}
+    if exc.code:
+        payload["code"] = exc.code
+    return _json(payload, exc.status_code)
+
+
+async def _read_json_object(request: Request) -> tuple[dict[str, Any] | None, JSONResponse | None]:
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return None, _json({"detail": "Invalid JSON"}, 400)
+    if not isinstance(body, dict):
+        return None, _json({"detail": "Expected a JSON object"}, 400)
+    return body, None
+
+
+async def _team_endpoint(
+    request: Request,
+    action: Any,
+    *,
+    body: bool = False,
+    status_code: int = 200,
+) -> JSONResponse:
+    """Authenticate, run ``action(ctx, payload)`` off the event loop, map errors."""
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    payload: dict[str, Any] = {}
+    if body:
+        parsed, bad = await _read_json_object(request)
+        if bad is not None or parsed is None:
+            return bad or _json({"detail": "Invalid JSON"}, 400)
+        payload = parsed
+    try:
+        result = await run_in_threadpool(action, ctx, payload)
+    except TeamError as exc:
+        return _team_error(exc)
+    except PersistenceNotConfiguredError as exc:
+        return _json({"detail": str(exc)}, 503)
+    except AuthError as exc:
+        return _json({"detail": exc.detail}, exc.status_code)
+    except AuthNotConfiguredError as exc:
+        return _json({"detail": str(exc)}, 503)
+    return _json({"ok": True, **result}, status_code)
+
+
+def _flat(key: str, value: dict[str, Any]) -> dict[str, Any]:
+    """Nested under ``key`` and flattened, so simple clients can read fields directly."""
+    return {key: value, **{k: v for k, v in value.items() if k != "ok"}}
+
+
+def _bearer_token(request: Request) -> str:
+    return (request.headers.get("authorization") or "").removeprefix("Bearer ").strip()
+
+
+async def auth_invitation_lookup(request: Request) -> JSONResponse:
+    """Token-gated, read-only view used to pre-fill the invitation sign-up form."""
+    if _throttled(request, "invite-lookup", limit=30):
+        return _json({"detail": "Too many requests. Try again shortly."}, 429)
+    token = str(request.query_params.get("token") or "")
+    try:
+        invitation = await run_in_threadpool(team_service.lookup_invitation, token)
+    except PersistenceNotConfiguredError as exc:
+        return _json({"detail": str(exc)}, 503)
+    if invitation is None:
+        return _json({"detail": "This invitation is not valid or has expired."}, 404)
+    return _json(
+        {
+            "ok": True,
+            "invitation": invitation,
+            "signup_available": bool(
+                _use_supabase_auth() and supabase_auth.supabase_auth_configured()
+            ),
+        }
+    )
+
+
+async def auth_invitation_signup(request: Request) -> JSONResponse:
+    """Create an account for an invited address (email verification still required).
+
+    Separate from the gated public self-serve ``/auth/signup``; this works only
+    with a valid invitation token and never returns or creates a session.
+    """
+    if not _use_supabase_auth() or not supabase_auth.supabase_auth_configured():
+        return _json({"detail": "Invitation account creation is not available"}, 503)
+    if _throttled(request, "invite-signup", limit=5):
+        return _json({"detail": "Too many requests. Try again shortly."}, 429)
+    body, bad = await _read_json_object(request)
+    if bad is not None or body is None:
+        return bad or _json({"detail": "Invalid JSON"}, 400)
+    redirect_to = supabase_auth.web_redirect_url(_web_origin(request), "/login", _origins)
+    try:
+        await run_in_threadpool(
+            lambda: supabase_auth.signup_for_invitation(
+                token=str(body.get("token") or ""),
+                password=str(body.get("password") or ""),
+                redirect_to=redirect_to,
+                full_name=str(body.get("full_name") or "") or None,
+                captcha_token=str(body.get("captcha_token") or "") or None,
+            )
+        )
+    except AuthNotConfiguredError as exc:
+        return _json({"detail": str(exc)}, 503)
+    except AuthError as exc:
+        return _json({"detail": exc.detail}, exc.status_code)
+    return _json(
+        {
+            "accepted": True,
+            "message": (
+                "If this address can be registered, a verification link will arrive by email. "
+                "Verify it, then sign in to join the workspace."
+            ),
+        },
+        202,
+    )
+
+
+async def auth_password_reset_request(request: Request) -> JSONResponse:
+    if not _use_supabase_auth() or not supabase_auth.supabase_auth_configured():
+        return _json({"detail": "Password reset is not available"}, 503)
+    if _throttled(request, "password-reset", limit=5):
+        return _json({"detail": "Too many requests. Try again shortly."}, 429)
+    body, bad = await _read_json_object(request)
+    if bad is not None or body is None:
+        return bad or _json({"detail": "Invalid JSON"}, 400)
+    redirect_to = supabase_auth.web_redirect_url(_web_origin(request), "/reset-password", _origins)
+    try:
+        await run_in_threadpool(
+            lambda: supabase_auth.request_password_reset(
+                str(body.get("email") or ""), redirect_to=redirect_to
+            )
+        )
+    except AuthError as exc:
+        return _json({"detail": exc.detail}, exc.status_code)
+    except AuthNotConfiguredError as exc:
+        return _json({"detail": str(exc)}, 503)
+    return _json(
+        {
+            "accepted": True,
+            "message": "If an account exists for this address, a reset link will arrive by email.",
+        },
+        202,
+    )
+
+
+async def auth_password_reset_complete(request: Request) -> JSONResponse:
+    if not _use_supabase_auth() or not supabase_auth.supabase_auth_configured():
+        return _json({"detail": "Password reset is not available"}, 503)
+    if _throttled(request, "password-reset-complete", limit=10):
+        return _json({"detail": "Too many requests. Try again shortly."}, 429)
+    body, bad = await _read_json_object(request)
+    if bad is not None or body is None:
+        return bad or _json({"detail": "Invalid JSON"}, 400)
+    try:
+        await run_in_threadpool(
+            lambda: supabase_auth.complete_password_reset(
+                str(body.get("access_token") or ""), str(body.get("password") or "")
+            )
+        )
+    except AuthNotConfiguredError as exc:
+        return _json({"detail": str(exc)}, 503)
+    except AuthError as exc:
+        return _json({"detail": exc.detail}, exc.status_code)
+    return _json({"ok": True, "message": "Your password was updated. Sign in with the new password."})
+
+
+async def auth_password_change(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    if not _use_supabase_auth():
+        return _json({"detail": "Password changes are managed by Supabase Auth only"}, 409)
+    body, bad = await _read_json_object(request)
+    if bad is not None or body is None:
+        return bad or _json({"detail": "Invalid JSON"}, 400)
+    try:
+        await run_in_threadpool(
+            lambda: supabase_auth.change_password(
+                _bearer_token(request),
+                ctx["email"],
+                str(body.get("current_password") or ""),
+                str(body.get("new_password") or ""),
+            )
+        )
+    except AuthNotConfiguredError as exc:
+        return _json({"detail": str(exc)}, 503)
+    except AuthError as exc:
+        return _json({"detail": exc.detail}, exc.status_code)
+    return _json({"ok": True, "message": "Your password was updated."})
+
+
+async def auth_sessions_revoke_others(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    if not _use_supabase_auth():
+        return _json({"detail": "Session management is available with Supabase Auth only"}, 409)
+    try:
+        await run_in_threadpool(supabase_auth.revoke_other_sessions, _bearer_token(request))
+    except AuthNotConfiguredError as exc:
+        return _json({"detail": str(exc)}, 503)
+    except AuthError as exc:
+        return _json({"detail": exc.detail}, exc.status_code)
+    return _json({"ok": True, "message": "Other devices were signed out."})
+
+
+async def security_status_get(request: Request) -> JSONResponse:
+    """Accurate account-security status; planned items are labelled, not faked."""
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    managed = _use_supabase_auth()
+    return _json(
+        {
+            "ok": True,
+            "email": ctx["email"],
+            "email_verified": True,
+            "auth_provider": "supabase" if managed else "sandbox",
+            "password": {
+                "managed_by": "Supabase Auth" if managed else "Sandbox accounts",
+                "change_available": managed,
+                "reset_available": managed,
+                "min_length": 12,
+            },
+            "two_factor": {
+                "status": "planned",
+                "label": "Planned - two-factor authentication is not available yet.",
+            },
+            "sessions": {
+                "status": "available" if managed else "unavailable",
+                "current_device": True,
+                "revoke_others_available": managed,
+                "device_list": "planned",
+            },
+            "connected_accounts": [
+                {
+                    "provider": "email",
+                    "label": "Email and password",
+                    "status": "connected",
+                    "email": ctx["email"],
+                }
+            ],
+            "single_sign_on": {"status": "planned", "label": "Planned - SSO is not available yet."},
+        }
+    )
+
+
+async def invitations_accept_post(request: Request) -> JSONResponse:
+    """Accept pending invitations addressed to the authenticated, verified email."""
+
+    def _accept(ctx: dict[str, Any], _: dict[str, Any]) -> dict[str, Any]:
+        accepted = team_service.accept_pending_invitations(
+            user_id=ctx["user_id"], email=ctx["email"]
+        )
+        return {"accepted": accepted, "count": len(accepted)}
+
+    return await _team_endpoint(request, _accept)
+
+
+async def profile_get(request: Request) -> JSONResponse:
+    return await _team_endpoint(
+        request, lambda ctx, _: _flat("profile", team_service.get_profile(ctx))
+    )
+
+
+async def profile_patch(request: Request) -> JSONResponse:
+    return await _team_endpoint(
+        request,
+        lambda ctx, body: _flat("profile", team_service.update_profile(ctx, body)),
+        body=True,
+    )
+
+
+async def preferences_get(request: Request) -> JSONResponse:
+    return await _team_endpoint(
+        request, lambda ctx, _: _flat("preferences", team_service.get_preferences(ctx))
+    )
+
+
+async def preferences_patch(request: Request) -> JSONResponse:
+    return await _team_endpoint(
+        request,
+        lambda ctx, body: _flat("preferences", team_service.update_preferences(ctx, body)),
+        body=True,
+    )
+
+
+async def workspace_settings_get(request: Request) -> JSONResponse:
+    return await _team_endpoint(
+        request, lambda ctx, _: {"workspace": team_service.workspace_snapshot(ctx)}
+    )
+
+
+async def workspace_settings_patch(request: Request) -> JSONResponse:
+    return await _team_endpoint(
+        request,
+        lambda ctx, body: {"workspace": team_service.update_workspace_settings(ctx, body)},
+        body=True,
+    )
+
+
+async def workspaces_get(request: Request) -> JSONResponse:
+    return await _team_endpoint(request, lambda ctx, _: team_service.list_workspaces(ctx))
+
+
+async def workspaces_post(request: Request) -> JSONResponse:
+    return await _team_endpoint(
+        request,
+        lambda ctx, body: {"workspace": team_service.create_workspace(ctx, str(body.get("name") or ""))},
+        body=True,
+        status_code=201,
+    )
+
+
+async def workspaces_active_post(request: Request) -> JSONResponse:
+    return await _team_endpoint(
+        request,
+        lambda ctx, body: {
+            "workspace": team_service.switch_workspace(ctx, str(body.get("workspace_id") or ""))
+        },
+        body=True,
+    )
+
+
+async def workspace_members_get(request: Request) -> JSONResponse:
+    return await _team_endpoint(request, lambda ctx, _: team_service.list_members(ctx))
+
+
+async def workspace_member_patch(request: Request) -> JSONResponse:
+    user_id = str(request.path_params.get("user_id") or "")
+    return await _team_endpoint(
+        request,
+        lambda ctx, body: {
+            "member": team_service.update_member_role(ctx, user_id, str(body.get("role") or ""))
+        },
+        body=True,
+    )
+
+
+async def workspace_member_delete(request: Request) -> JSONResponse:
+    user_id = str(request.path_params.get("user_id") or "")
+    return await _team_endpoint(
+        request, lambda ctx, _: {"member": team_service.remove_member(ctx, user_id)}
+    )
+
+
+async def workspace_invitations_get(request: Request) -> JSONResponse:
+    return await _team_endpoint(request, lambda ctx, _: team_service.list_invitations(ctx))
+
+
+async def workspace_invitations_post(request: Request) -> JSONResponse:
+    origin = _web_origin(request)
+    return await _team_endpoint(
+        request,
+        lambda ctx, body: team_service.create_invitation(
+            ctx,
+            email=str(body.get("email") or ""),
+            role=str(body.get("role") or ""),
+            expires_in_days=body.get("expires_in_days"),
+            web_origin=origin,
+        ),
+        body=True,
+        status_code=201,
+    )
+
+
+async def workspace_invitation_resend(request: Request) -> JSONResponse:
+    invite_id = str(request.path_params.get("invite_id") or "")
+    origin = _web_origin(request)
+    # Body is optional (expiry refresh); tolerate an empty request.
+    try:
+        raw = await request.json()
+    except Exception:  # noqa: BLE001
+        raw = {}
+    expires = raw.get("expires_in_days") if isinstance(raw, dict) else None
+    return await _team_endpoint(
+        request,
+        lambda ctx, _: team_service.resend_invitation(
+            ctx, invite_id, expires_in_days=expires, web_origin=origin
+        ),
+    )
+
+
+async def workspace_invitation_cancel(request: Request) -> JSONResponse:
+    invite_id = str(request.path_params.get("invite_id") or "")
+    return await _team_endpoint(
+        request, lambda ctx, _: team_service.cancel_invitation(ctx, invite_id)
+    )
+
+
+async def workspace_activity_get(request: Request) -> JSONResponse:
+    try:
+        limit = int(request.query_params.get("limit") or 50)
+    except ValueError:
+        limit = 50
+    return await _team_endpoint(
+        request, lambda ctx, _: team_service.list_activity(ctx, limit=limit)
+    )
+
+
+
+async def invitations_lookup_alias(request: Request) -> JSONResponse:
+    response = await auth_invitation_lookup(request)
+    if response.status_code != 200:
+        return response
+    payload = json.loads(response.body)
+    return _json({**payload, **payload.get("invitation", {})})
+
+
+async def invitations_register(request: Request) -> JSONResponse:
+    """Create an account from an invitation.
+
+    Supabase auth (production): creates an *unverified* Supabase user and asks
+    them to verify email, then sign in (acceptance happens at verified sign-in).
+    Sandbox auth (local/tests only): possession of the emailed token verifies
+    the mailbox, so the account is created and the invitation accepted at once.
+    """
+    if _use_supabase_auth():
+        return await auth_invitation_signup(request)
+    if not sandbox_jwt_permitted():
+        return _json({"detail": "Invitation account creation is not available"}, 503)
+    if _throttled(request, "invite-register", limit=20):
+        return _json({"detail": "Too many requests. Try again shortly."}, 429)
+    body, bad = await _read_json_object(request)
+    if bad is not None or body is None:
+        return bad or _json({"detail": "Invalid JSON"}, 400)
+    try:
+        result = await run_in_threadpool(
+            lambda: team_service.register_from_invitation_sandbox(
+                str(body.get("token") or ""),
+                str(body.get("email") or ""),
+                str(body.get("password") or ""),
+            )
+        )
+    except TeamError as exc:
+        return _team_error(exc)
+    except PersistenceNotConfiguredError as exc:
+        return _json({"detail": str(exc)}, 503)
+    return _json({"ok": True, **result})
+
 
 app = Starlette(
     routes=[
@@ -1442,6 +2248,53 @@ app = Starlette(
         Route("/auth/logout", auth_logout, methods=["POST"]),
         Route("/auth/me", auth_me, methods=["GET"]),
         Route("/auth/smoke-login", smoke_login, methods=["POST"]),
+        Route("/auth/invitations/lookup", auth_invitation_lookup, methods=["GET"]),
+        Route("/auth/invitations/signup", auth_invitation_signup, methods=["POST"]),
+        Route("/auth/password-reset", auth_password_reset_request, methods=["POST"]),
+        Route("/auth/password-reset/complete", auth_password_reset_complete, methods=["POST"]),
+        Route("/auth/password", auth_password_change, methods=["POST"]),
+        Route("/auth/sessions/revoke-others", auth_sessions_revoke_others, methods=["POST"]),
+        Route("/security/status", security_status_get, methods=["GET"]),
+        Route("/invitations/accept", invitations_accept_post, methods=["POST"]),
+        Route("/invitations/lookup", invitations_lookup_alias, methods=["GET"]),
+        Route("/invitations/register", invitations_register, methods=["POST"]),
+        Route("/settings/profile", profile_get, methods=["GET"]),
+        Route("/settings/profile", profile_patch, methods=["PATCH", "PUT"]),
+        Route("/settings/preferences", preferences_get, methods=["GET"]),
+        Route("/settings/preferences", preferences_patch, methods=["PATCH", "PUT"]),
+        Route("/profile", profile_get, methods=["GET"]),
+        Route("/profile", profile_patch, methods=["PATCH", "PUT"]),
+        Route("/preferences", preferences_get, methods=["GET"]),
+        Route("/preferences", preferences_patch, methods=["PATCH", "PUT"]),
+        Route("/workspaces", workspaces_get, methods=["GET"]),
+        Route("/workspaces", workspaces_post, methods=["POST"]),
+        Route("/workspaces/active", workspaces_active_post, methods=["POST"]),
+        Route("/workspace/settings", workspace_settings_get, methods=["GET"]),
+        Route("/workspace/settings", workspace_settings_patch, methods=["PATCH", "PUT"]),
+        Route("/workspace/members", workspace_members_get, methods=["GET"]),
+        Route("/workspace/members/{user_id}", workspace_member_patch, methods=["PATCH"]),
+        Route("/workspace/members/{user_id}", workspace_member_delete, methods=["DELETE"]),
+        Route("/workspace/invitations", workspace_invitations_get, methods=["GET"]),
+        Route("/workspace/invitations", workspace_invitations_post, methods=["POST"]),
+        Route(
+            "/workspace/invitations/{invite_id}/resend",
+            workspace_invitation_resend,
+            methods=["POST"],
+        ),
+        Route(
+            "/workspace/invitations/{invite_id}",
+            workspace_invitation_cancel,
+            methods=["DELETE"],
+        ),
+        Route("/workspace/activity", workspace_activity_get, methods=["GET"]),
+        # Compatibility aliases for the Next web client / sandbox tests.
+        Route("/workspaces/switch", workspaces_switch_post, methods=["POST"]),
+        Route(
+            "/workspace/invitations/{invite_id}/cancel",
+            workspace_invitation_cancel_post,
+            methods=["POST"],
+        ),
+        Route("/settings/security", security_status_get, methods=["GET"]),
         Route("/boms/analyze", boms_analyze, methods=["POST"]),
         Route("/reports", reports_list, methods=["GET"]),
         Route("/reports/{analysis_id}/export.csv", reports_csv_get, methods=["GET"]),

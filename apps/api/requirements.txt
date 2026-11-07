@@ -6,3 +6,5 @@ supabase>=2.0,<3
 uvicorn[standard]>=0.27,<1
 python-multipart>=0.0.9
 requests>=2.32,<3
+resend>=2,<3
+tzdata

@@ -3045,3 +3045,92 @@ button {
   }
 }
 
+/* Settings — two-column professional layout */
+.cv-settings-shell {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+.cv-settings-nav {
+  position: sticky;
+  top: 18px;
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: #fff;
+}
+.cv-settings-nav button {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 620;
+  color: #40556f;
+  cursor: pointer;
+}
+.cv-settings-nav button:hover {
+  background: #f3f6fa;
+}
+.cv-settings-nav button.active {
+  background: #e8eef8;
+  color: #1d4ed8;
+}
+.cv-settings-main {
+  min-width: 0;
+}
+.cv-settings-toggles {
+  display: grid;
+  gap: 10px;
+}
+.cv-settings-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: #fbfcfe;
+}
+.cv-settings-toggle strong {
+  display: block;
+  font-size: 13px;
+  color: var(--ink);
+}
+.cv-settings-toggle small {
+  display: block;
+  margin-top: 3px;
+  color: #64748b;
+  font-size: 12px;
+}
+.cv-settings-toggle input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: #2563eb;
+}
+.cv-field select {
+  width: 100%;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  font-size: 13px;
+  background: #fff;
+  color: var(--ink);
+}
+@media (max-width: 900px) {
+  .cv-settings-shell {
+    grid-template-columns: 1fr;
+  }
+  .cv-settings-nav {
+    position: static;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  }
+}
+

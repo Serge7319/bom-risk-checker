@@ -1,125 +1,299 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { EmptyState } from "@/components/EmptyState";
 import { Shell } from "@/components/Shell";
 import { LoadingCard } from "@/components/GapBanner";
 import { PageHeader, PrimaryLink, SecondaryLink } from "@/components/PageHeader";
 import {
-  fetchBillingStatus,
   beginBillingPortal,
   beginSubscriptionCheckout,
+  cancelWorkspaceInvitation,
+  changePassword,
+  createWorkspace,
+  createWorkspaceInvitation,
+  fetchBillingStatus,
   fetchCompliancePack,
   fetchConnectors,
   fetchPlanUsage,
+  fetchPreferences,
+  fetchProfile,
+  fetchSecurityStatus,
+  fetchWorkspaceSettings,
+  listWorkspaceActivity,
+  listWorkspaceInvitations,
+  listWorkspaceMembers,
+  listWorkspaces,
+  requestPasswordReset,
+  resendWorkspaceInvitation,
+  revokeOtherSessions,
+  switchWorkspace,
+  updatePreferences,
+  updateProfile,
+  updateWorkspaceSettings,
 } from "@/lib/api";
 import { PAGE_META } from "@/lib/routes";
 import { useRequireSession } from "@/lib/session";
 import { workspaceDisplayName } from "@/lib/display";
 
-type Fact = { label: string; value: string };
+type TabId = "profile" | "preferences" | "workspace" | "security" | "billing";
 
-function labelFor(key: string): string {
-  return key
-    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
-    .replace(/[_-]+/g, " ")
-    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+const TABS: Array<{ id: TabId; label: string }> = [
+  { id: "profile", label: "Profile" },
+  { id: "preferences", label: "Preferences" },
+  { id: "workspace", label: "Workspace" },
+  { id: "security", label: "Security" },
+  { id: "billing", label: "Billing" },
+];
+
+const NOTIFICATION_LABELS: Array<{ key: string; label: string; hint: string }> = [
+  { key: "project_activity", label: "Project activity", hint: "BOM uploads and analysis updates" },
+  { key: "simulation_results", label: "Simulation results", hint: "Scenario and risk simulations" },
+  { key: "team_activity", label: "Team activity", hint: "Member joins, role changes, invites" },
+  { key: "product_updates", label: "Product updates", hint: "Cadivor product announcements" },
+  { key: "marketing_emails", label: "Marketing emails", hint: "Occasional product education" },
+];
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
 }
 
-function factsFrom(
-  value: Record<string, unknown> | null,
-  prefix = "",
-  depth = 0,
-): Fact[] {
-  if (!value || depth > 2) return [];
-  return Object.entries(value).flatMap(([key, item]) => {
-    if (/(^id$|_id$|token|secret|password|raw)/i.test(key)) return [];
-    const label = prefix ? `${prefix} · ${labelFor(key)}` : labelFor(key);
-    if (item && typeof item === "object" && !Array.isArray(item)) {
-      return factsFrom(item as Record<string, unknown>, label, depth + 1);
-    }
-    let display: string;
-    if (typeof item === "boolean") display = item ? "Enabled" : "Disabled";
-    else if (item == null || item === "") display = "Not reported";
-    else if (Array.isArray(item)) {
-      display = item.length && item.every((entry) => ["string", "number", "boolean"].includes(typeof entry))
-        ? item.map(String).join(" · ")
-        : `${item.length} item${item.length === 1 ? "" : "s"}`;
-    } else display = String(item);
-    return [{ label, value: display.slice(0, 180) }];
-  }).slice(0, 12);
+function asRows(value: unknown): Array<Record<string, unknown>> {
+  return Array.isArray(value) ? (value as Array<Record<string, unknown>>) : [];
 }
 
-function FactsGrid({ facts }: { facts: Fact[] }) {
-  if (!facts.length) {
-    return <p className="cv-small-note">No status details were returned.</p>;
-  }
+function Toggle({
+  id,
+  checked,
+  onChange,
+  label,
+  hint,
+}: {
+  id: string;
+  checked: boolean;
+  onChange: (next: boolean) => void;
+  label: string;
+  hint?: string;
+}) {
   return (
-    <dl className="cv-fact-grid">
-      {facts.map((fact) => (
-        <div className="cv-fact" key={fact.label}>
-          <dt>{fact.label}</dt>
-          <dd>{fact.value}</dd>
-        </div>
-      ))}
-    </dl>
+    <label className="cv-settings-toggle" htmlFor={id}>
+      <span>
+        <strong>{label}</strong>
+        {hint ? <small>{hint}</small> : null}
+      </span>
+      <input
+        id={id}
+        type="checkbox"
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+      />
+    </label>
   );
 }
 
 export default function Page() {
   const session = useRequireSession();
+  const [tab, setTab] = useState<TabId>("profile");
   const [busy, setBusy] = useState(true);
+  const [saving, setSaving] = useState("");
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+
+  const [profile, setProfile] = useState<Record<string, unknown>>({});
+  const [preferences, setPreferences] = useState<Record<string, unknown>>({});
+  const [security, setSecurity] = useState<Record<string, unknown>>({});
+  const [workspace, setWorkspace] = useState<Record<string, unknown>>({});
+  const [workspaces, setWorkspaces] = useState<Array<Record<string, unknown>>>([]);
+  const [members, setMembers] = useState<Array<Record<string, unknown>>>([]);
+  const [invites, setInvites] = useState<Array<Record<string, unknown>>>([]);
+  const [activity, setActivity] = useState<Array<Record<string, unknown>>>([]);
   const [usage, setUsage] = useState<Record<string, unknown> | null>(null);
   const [billing, setBilling] = useState<Record<string, unknown> | null>(null);
-  const [connectors, setConnectors] = useState<Record<string, unknown> | null>(
-    null,
-  );
-  const [compliance, setCompliance] = useState<Record<string, unknown> | null>(
-    null,
-  );
+  const [connectors, setConnectors] = useState<Record<string, unknown> | null>(null);
+  const [compliance, setCompliance] = useState<Record<string, unknown> | null>(null);
   const [billingAction, setBillingAction] = useState("");
   const [billingError, setBillingError] = useState("");
 
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState("engineer");
+  const [newWorkspaceName, setNewWorkspaceName] = useState("");
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+
+  const notificationPrefs = useMemo(
+    () => asRecord(preferences.notification_preferences),
+    [preferences],
+  );
+
+  async function reload(active = session) {
+    if (!active) return;
+    setBusy(true);
+    setError("");
+    try {
+      const [
+        profileRes,
+        prefsRes,
+        securityRes,
+        workspaceRes,
+        workspacesRes,
+        membersRes,
+        invitesRes,
+        activityRes,
+        usageRes,
+        billingRes,
+        connectorsRes,
+        complianceRes,
+      ] = await Promise.all([
+        fetchProfile(active.access_token),
+        fetchPreferences(active.access_token),
+        fetchSecurityStatus(active.access_token),
+        fetchWorkspaceSettings(active.access_token),
+        listWorkspaces(active.access_token),
+        listWorkspaceMembers(active.access_token),
+        listWorkspaceInvitations(active.access_token),
+        listWorkspaceActivity(active.access_token),
+        fetchPlanUsage(active.access_token),
+        fetchBillingStatus(active.access_token),
+        fetchConnectors(active.access_token),
+        fetchCompliancePack(active.access_token, "rohs"),
+      ]);
+      setProfile(asRecord(profileRes.profile || profileRes));
+      setPreferences(asRecord(prefsRes.preferences || prefsRes));
+      setSecurity(securityRes);
+      setWorkspace(asRecord(workspaceRes.workspace || workspaceRes));
+      setWorkspaces(asRows(workspacesRes.workspaces || workspacesRes.items));
+      setMembers(asRows(membersRes.members));
+      setInvites(asRows(invitesRes.invitations));
+      setActivity(asRows(activityRes.activity || activityRes.items));
+      setUsage(usageRes);
+      setBilling(billingRes);
+      setConnectors(connectorsRes);
+      setCompliance(complianceRes);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Settings could not load");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   useEffect(() => {
     if (!session) return;
-    setBusy(true);
-    Promise.all([
-      fetchPlanUsage(session.access_token),
-      fetchBillingStatus(session.access_token),
-      fetchConnectors(session.access_token),
-      fetchCompliancePack(session.access_token, "rohs"),
-    ])
-      .then(([u, b, c, p]) => {
-        setUsage(u);
-        setBilling(b);
-        setConnectors(c);
-        setCompliance(p);
-      })
-      .catch((err) =>
-        setError(err instanceof Error ? err.message : "Failed to load settings"),
-      )
-      .finally(() => setBusy(false));
+    void reload(session);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
 
   if (!session) return null;
 
-  const connectorRows = ((connectors?.connectors ||
-    connectors?.items ||
-    []) as Array<Record<string, unknown>>) || [];
-  const usageFacts = factsFrom(usage);
-  const complianceFacts = factsFrom(compliance);
   const planCatalog = Array.isArray(billing?.plan_catalog)
-    ? billing.plan_catalog as Array<Record<string, unknown>>
+    ? (billing.plan_catalog as Array<Record<string, unknown>>)
     : [];
   const stripePlans = Array.isArray(billing?.plans)
-    ? billing.plans as Array<Record<string, unknown>>
+    ? (billing.plans as Array<Record<string, unknown>>)
     : [];
   const currentPlanName = String(billing?.current_plan || usage?.plan || session.plan);
   const currentPlan = currentPlanName.toLowerCase();
   const canManageBilling = billing?.can_manage_billing === true;
   const checkoutEnabled = billing?.checkout_enabled === true;
+  const connectorRows = asRows(connectors?.connectors || connectors?.items);
+  const password = asRecord(security.password);
+  const twoFactor = asRecord(security.two_factor);
+  const sessions = asRecord(security.sessions);
+  const canAdminister = workspace.can_administer === true;
+
+  async function saveProfile(event: FormEvent) {
+    event.preventDefault();
+    if (!session) return;
+    setSaving("profile");
+    setNotice("");
+    setError("");
+    try {
+      const saved = await updateProfile(session.access_token, {
+        full_name: profile.full_name,
+        company_name: profile.company_name,
+        job_title: profile.job_title,
+        country: profile.country,
+        language: profile.language,
+        timezone: profile.timezone,
+      });
+      setProfile(asRecord(saved.profile || saved));
+      setNotice("Profile saved.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Profile could not be saved");
+    } finally {
+      setSaving("");
+    }
+  }
+
+  async function savePreferences(event: FormEvent) {
+    event.preventDefault();
+    if (!session) return;
+    setSaving("preferences");
+    setNotice("");
+    setError("");
+    try {
+      const saved = await updatePreferences(session.access_token, {
+        appearance: preferences.appearance,
+        density: preferences.density,
+        default_units: preferences.default_units,
+        default_currency: preferences.default_currency,
+        monitoring_notifications: preferences.monitoring_notifications,
+        timezone: preferences.timezone || profile.timezone,
+        notification_preferences: notificationPrefs,
+      });
+      setPreferences(asRecord(saved.preferences || saved));
+      setNotice("Preferences saved.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Preferences could not be saved");
+    } finally {
+      setSaving("");
+    }
+  }
+
+  async function saveWorkspace(event: FormEvent) {
+    event.preventDefault();
+    if (!session) return;
+    setSaving("workspace");
+    setNotice("");
+    setError("");
+    try {
+      const saved = await updateWorkspaceSettings(session.access_token, {
+        name: workspace.name,
+        timezone: workspace.timezone,
+        unit_system: workspace.unit_system,
+      });
+      setWorkspace(asRecord(saved.workspace || saved));
+      setNotice("Workspace settings saved.");
+      await reload(session);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Workspace settings could not be saved");
+    } finally {
+      setSaving("");
+    }
+  }
+
+  async function onInvite(event: FormEvent) {
+    event.preventDefault();
+    if (!session) return;
+    setSaving("invite");
+    setError("");
+    setNotice("");
+    try {
+      await createWorkspaceInvitation(session.access_token, {
+        email: inviteEmail,
+        role: inviteRole,
+      });
+      setInviteEmail("");
+      setNotice("Invitation created and queued for delivery.");
+      await reload(session);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Invitation could not be sent");
+    } finally {
+      setSaving("");
+    }
+  }
 
   async function selectPlan(plan: Record<string, unknown>) {
     if (!session) return;
@@ -170,191 +344,871 @@ export default function Page() {
           </>
         }
       />
-      <section className="cv-card pad" style={{ marginBottom: 14 }}>
-        <div className="cv-form-grid">
-          <div className="cv-field">
-            <label htmlFor="workspace-name">Workspace name</label>
-            <input id="workspace-name" value={workspaceDisplayName(session.workspace)} readOnly />
-          </div>
-          <div className="cv-field">
-            <label htmlFor="plan">Plan</label>
-            <input id="plan" value={session.plan} readOnly />
-          </div>
-          <div className="cv-field">
-            <label htmlFor="email">Signed-in email</label>
-            <input id="email" value={session.email} readOnly />
-          </div>
-        </div>
-      </section>
 
-      {busy ? <LoadingCard label="Loading plan, billing, and connector status…" /> : null}
-      {error ? <div className="cv-error" role="alert">Some workspace settings could not load. {error}</div> : null}
+      <div className="cv-settings-shell">
+        <aside className="cv-settings-nav" aria-label="Settings sections">
+          {TABS.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={tab === item.id ? "active" : undefined}
+              onClick={() => {
+                setTab(item.id);
+                setNotice("");
+                setError("");
+              }}
+            >
+              {item.label}
+            </button>
+          ))}
+        </aside>
 
-      {!busy ? (
-        <>
-          <section className="cv-card pad cv-plan-section" style={{ marginBottom: 14 }}>
-            <div className="cv-section-heading">
-              <div>
-                <h3 className="cv-card-title">Plans and billing</h3>
-                <p className="cv-card-subtitle">
-                  Your plan controls analysis limits, monitoring, and team access. Paid plans bill monthly through Stripe.
-                </p>
+        <div className="cv-settings-main">
+          {busy ? <LoadingCard label="Loading account and workspace settings…" /> : null}
+          {error ? <div className="cv-error" role="alert">{error}</div> : null}
+          {notice ? (
+            <div className="cv-card pad" role="status" style={{ marginBottom: 14, padding: 12 }}>
+              {notice}
+            </div>
+          ) : null}
+
+          {!busy && tab === "profile" ? (
+            <form className="cv-card pad" onSubmit={saveProfile}>
+              <h3 className="cv-card-title">Profile</h3>
+              <p className="cv-card-subtitle">
+                Name and organization details for this Cadivor account. Email is managed by sign-in.
+              </p>
+              <div className="cv-form-grid" style={{ marginTop: 14 }}>
+                <div className="cv-field">
+                  <label htmlFor="full-name">Full name</label>
+                  <input
+                    id="full-name"
+                    value={String(profile.full_name || "")}
+                    onChange={(e) => setProfile({ ...profile, full_name: e.target.value })}
+                  />
+                </div>
+                <div className="cv-field">
+                  <label htmlFor="profile-email">Email</label>
+                  <input id="profile-email" value={String(profile.email || session.email)} readOnly />
+                </div>
+                <div className="cv-field">
+                  <label htmlFor="organization">Organization</label>
+                  <input
+                    id="organization"
+                    value={String(profile.company_name || "")}
+                    onChange={(e) => setProfile({ ...profile, company_name: e.target.value })}
+                  />
+                </div>
+                <div className="cv-field">
+                  <label htmlFor="job-title">Role / job title</label>
+                  <input
+                    id="job-title"
+                    value={String(profile.job_title || "")}
+                    onChange={(e) => setProfile({ ...profile, job_title: e.target.value })}
+                  />
+                </div>
+                <div className="cv-field">
+                  <label htmlFor="country">Location / country</label>
+                  <input
+                    id="country"
+                    value={String(profile.country || "")}
+                    onChange={(e) => setProfile({ ...profile, country: e.target.value })}
+                  />
+                </div>
+                <div className="cv-field">
+                  <label htmlFor="language">Language</label>
+                  <input
+                    id="language"
+                    value={String(profile.language || "en")}
+                    onChange={(e) => setProfile({ ...profile, language: e.target.value })}
+                  />
+                </div>
+                <div className="cv-field">
+                  <label htmlFor="timezone">Timezone</label>
+                  <input
+                    id="timezone"
+                    value={String(profile.timezone || "UTC")}
+                    onChange={(e) => setProfile({ ...profile, timezone: e.target.value })}
+                    placeholder="America/New_York"
+                  />
+                </div>
               </div>
-              {canManageBilling ? (
-                <button className="cv-button" type="button" onClick={() => void openBillingPortal()} disabled={Boolean(billingAction)}>
-                  {billingAction === "portal" ? "Opening billing…" : "Manage subscription"}
+              <div style={{ marginTop: 14 }}>
+                <button className="cv-button primary" type="submit" disabled={saving === "profile"}>
+                  {saving === "profile" ? "Saving…" : "Save profile"}
                 </button>
-              ) : null}
-            </div>
-            <p className="cv-current-plan" role="status">
-              Current access: <strong>{currentPlanName}</strong>
-              {session.trial_days_remaining != null && currentPlanName.toLowerCase() === "trial"
-                ? ` · ${session.trial_days_remaining} days remaining`
-                : ""}
-            </p>
-            <div className="cv-plan-grid">
-              {planCatalog.map((plan) => {
-                const name = String(plan.name || "");
-                const token = String(plan.purchase_token || "");
-                const current = currentPlan === name.toLowerCase();
-                const providerPlan = stripePlans.find((row) => String(row.name || "") === name);
-                const hasPrice = Boolean(providerPlan?.enabled);
-                const paidPlan = Boolean(token);
-                const enterprise = name === "Enterprise";
-                const limit = (value: unknown) => value == null ? "Unlimited" : String(value);
-                const bullets = [
-                  `${limit(plan.monthly_bom_limit)} BOM analyses per month`,
-                  `${limit(plan.max_parts_per_bom)} components per BOM`,
-                  `${limit(plan.max_saved_boms)} saved BOMs`,
-                  Number(plan.monitored_parts_limit) > 0 || plan.monitored_parts_limit == null
-                    ? `${limit(plan.monitored_parts_limit)} monitored parts`
-                    : "Monitoring not included",
-                  Number(plan.ai_credits) > 0 ? `${limit(plan.ai_credits)} Ask Cadivor credits` : "Ask Cadivor not included",
-                  plan.team_features ? "Team collaboration" : "Individual workspace",
-                  Number(plan.included_users) > 0 ? `${limit(plan.included_users)} users included` : "",
-                  plan.datasheet_comparison ? "Datasheet comparison" : "",
-                  plan.api_access ? "API access" : "",
-                ].filter(Boolean);
-                let actionText = "Choose plan";
-                if (current) actionText = "Current plan";
-                else if (canManageBilling) actionText = "Change plan in billing";
-                else if (!checkoutEnabled || !hasPrice) actionText = "Temporarily unavailable";
-                if (enterprise) actionText = "Contact sales";
-                if (name === "Student" && !current) actionText = "Student plan";
-                return (
-                  <article className={`cv-plan-option${current ? " current" : ""}${name === "Professional" ? " featured" : ""}`} key={name}>
-                    <div className="cv-plan-option-top">
-                      <h4>{name}</h4>
-                      {name === "Professional" ? <span className="cv-plan-popular">Most popular</span> : null}
-                    </div>
-                    <div className="cv-plan-price">{String(plan.price || "Contact us")}</div>
-                    <p>{String(plan.description || "")}</p>
-                    <ul>{bullets.map((item) => <li key={item}>{item}</li>)}</ul>
-                    {enterprise ? (
-                      <a className="cv-button" href="mailto:sales@cadivor.com?subject=Cadivor%20Enterprise%20plans">{actionText}</a>
-                    ) : (
-                      <button
-                        className={current ? "cv-button" : "cv-button primary"}
-                        type="button"
-                        disabled={current || !paidPlan || (!canManageBilling && (!checkoutEnabled || !hasPrice)) || Boolean(billingAction)}
-                        onClick={() => void selectPlan(plan)}
-                        title={paidPlan && !hasPrice ? "This Stripe price is not active or does not match the published monthly plan." : undefined}
-                      >
-                        {billingAction === name ? "Opening secure checkout…" : actionText}
-                      </button>
-                    )}
-                  </article>
-                );
-              })}
-            </div>
-            {billingError ? <div className="cv-error" role="alert" style={{ marginTop: 12 }}>{billingError}</div> : null}
-            {typeof billing?.gap === "string" ? <p className="cv-small-note" style={{ marginTop: 12 }}>{String(billing.gap)}</p> : null}
-            <p className="cv-small-note" style={{ marginTop: 12 }}>
-              Need a single paid BOM report instead of a subscription? <Link href="/single-bom-report">View the one-time report option</Link>.
-            </p>
-          </section>
-
-          <section className="cv-card pad" style={{ marginBottom: 14 }}>
-            <h3 className="cv-card-title">Plan usage</h3>
-            <p className="cv-card-subtitle">
-              Limits and usage for the signed-in workspace.
-            </p>
-            <FactsGrid facts={usageFacts} />
-          </section>
-
-          <section className="cv-card pad" style={{ marginBottom: 14 }}>
-            <h3 className="cv-card-title">Billing status</h3>
-            <p className="cv-card-subtitle">
-              Subscription checkout status is shown below. The one-time BOM report is a separate purchase and does not start a recurring plan.
-            </p>
-            <dl className="cv-record-meta">
-              <div className="cv-record-field">
-                <dt>Subscription</dt>
-                <dd>{String(billing?.subscription_status || "No active subscription").replace(/_/g, " ")}</dd>
               </div>
-              <div className="cv-record-field">
-                <dt>Monthly checkout</dt>
-                <dd>{checkoutEnabled ? "Available" : "Unavailable"}</dd>
-              </div>
-            </dl>
-            <div style={{ marginTop: 14 }}>
-              <SecondaryLink href="/single-bom-report">View one-time BOM report and purchase history</SecondaryLink>
-            </div>
-          </section>
+            </form>
+          ) : null}
 
-          <section className="cv-card pad" style={{ marginBottom: 14 }}>
-            <h3 className="cv-card-title">Connectors</h3>
-            <p className="cv-card-subtitle">
-              Design-tool and PLM/ERP connectors available to this workspace.
-              Blocked items need credentials after customer discovery.
-            </p>
-            {connectorRows.length ? (
-              <div className="cv-table-wrap" style={{ marginTop: 12 }}>
-                <table className="cv-table">
-                  <thead>
-                    <tr>
-                      <th>Connector</th>
-                      <th>Category</th>
-                      <th>Status</th>
-                      <th>Notes</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {connectorRows.map((row) => (
-                      <tr key={String(row.id || row.display_name)}>
-                        <td>
-                          <strong>
-                            {String(row.display_name || row.id || "")}
-                          </strong>
-                        </td>
-                        <td>{String(row.category || "")}</td>
-                        <td>{String(row.status || "")}</td>
-                        <td>
-                          {String(
-                            row.notes || row.decision_needed || row.gap || "—",
-                          )}
-                        </td>
-                      </tr>
+          {!busy && tab === "preferences" ? (
+            <form className="cv-card pad" onSubmit={savePreferences}>
+              <h3 className="cv-card-title">Preferences</h3>
+              <p className="cv-card-subtitle">
+                Appearance, units, and notification choices for this account.
+              </p>
+              <div className="cv-form-grid" style={{ marginTop: 14 }}>
+                <div className="cv-field">
+                  <label htmlFor="appearance">Appearance</label>
+                  <select
+                    id="appearance"
+                    value={String(preferences.appearance || "system")}
+                    onChange={(e) => setPreferences({ ...preferences, appearance: e.target.value })}
+                  >
+                    <option value="system">System</option>
+                    <option value="light">Light</option>
+                    <option value="dark">Dark</option>
+                  </select>
+                </div>
+                <div className="cv-field">
+                  <label htmlFor="density">Density</label>
+                  <select
+                    id="density"
+                    value={String(preferences.density || "comfortable")}
+                    onChange={(e) => setPreferences({ ...preferences, density: e.target.value })}
+                  >
+                    <option value="comfortable">Comfortable</option>
+                    <option value="compact">Compact</option>
+                  </select>
+                </div>
+                <div className="cv-field">
+                  <label htmlFor="units">Units</label>
+                  <select
+                    id="units"
+                    value={String(preferences.default_units || "metric")}
+                    onChange={(e) => setPreferences({ ...preferences, default_units: e.target.value })}
+                  >
+                    <option value="metric">Metric</option>
+                    <option value="imperial">Imperial</option>
+                  </select>
+                </div>
+                <div className="cv-field">
+                  <label htmlFor="currency">Currency</label>
+                  <select
+                    id="currency"
+                    value={String(preferences.default_currency || "USD")}
+                    onChange={(e) =>
+                      setPreferences({ ...preferences, default_currency: e.target.value })
+                    }
+                  >
+                    {["USD", "EUR", "GBP", "CAD"].map((code) => (
+                      <option key={code} value={code}>
+                        {code}
+                      </option>
                     ))}
-                  </tbody>
-                </table>
+                  </select>
+                </div>
+                <div className="cv-field">
+                  <label htmlFor="pref-timezone">Timezone</label>
+                  <input
+                    id="pref-timezone"
+                    value={String(preferences.timezone || profile.timezone || "UTC")}
+                    onChange={(e) => setPreferences({ ...preferences, timezone: e.target.value })}
+                  />
+                </div>
               </div>
-            ) : (
-              <EmptyState icon="settings" title="No connectors configured" body="Connector options appear here when workspace integrations are added." />
-            )}
-          </section>
+              <div className="cv-settings-toggles" style={{ marginTop: 16 }}>
+                {NOTIFICATION_LABELS.map((item) => (
+                  <Toggle
+                    key={item.key}
+                    id={`pref-${item.key}`}
+                    label={item.label}
+                    hint={item.hint}
+                    checked={Boolean(notificationPrefs[item.key])}
+                    onChange={(next) =>
+                      setPreferences({
+                        ...preferences,
+                        notification_preferences: { ...notificationPrefs, [item.key]: next },
+                      })
+                    }
+                  />
+                ))}
+                <Toggle
+                  id="pref-monitoring"
+                  label="Monitoring / lifecycle alerts"
+                  hint="Part lifecycle and monitoring notifications"
+                  checked={Boolean(preferences.monitoring_notifications)}
+                  onChange={(next) =>
+                    setPreferences({ ...preferences, monitoring_notifications: next })
+                  }
+                />
+              </div>
+              <div style={{ marginTop: 14 }}>
+                <button
+                  className="cv-button primary"
+                  type="submit"
+                  disabled={saving === "preferences"}
+                >
+                  {saving === "preferences" ? "Saving…" : "Save preferences"}
+                </button>
+              </div>
+            </form>
+          ) : null}
 
-          <section className="cv-card pad">
-            <h3 className="cv-card-title">Compliance pack status</h3>
-            <p className="cv-card-subtitle">
-              RoHS pack readiness for this workspace. Packs stay evidence-linked
-              and do not claim compliance without sourced records.
-            </p>
-            <FactsGrid facts={complianceFacts} />
-          </section>
-        </>
-      ) : null}
+          {!busy && tab === "workspace" ? (
+            <>
+              <section className="cv-card pad" style={{ marginBottom: 14 }}>
+                <h3 className="cv-card-title">Active workspace</h3>
+                <p className="cv-card-subtitle">
+                  Switch between workspaces you belong to, or create another when your plan allows it.
+                </p>
+                <div className="cv-form-grid" style={{ marginTop: 14 }}>
+                  <div className="cv-field">
+                    <label htmlFor="active-workspace">Workspace</label>
+                    <select
+                      id="active-workspace"
+                      value={String(workspace.workspace_id || session.workspace_id || "")}
+                      onChange={(e) => {
+                        void (async () => {
+                          if (!session) return;
+                          setSaving("switch");
+                          try {
+                            await switchWorkspace(session.access_token, e.target.value);
+                            window.location.reload();
+                          } catch (err) {
+                            setError(
+                              err instanceof Error ? err.message : "Could not switch workspace",
+                            );
+                            setSaving("");
+                          }
+                        })();
+                      }}
+                    >
+                      {workspaces.map((row) => (
+                        <option
+                          key={String(row.workspace_id)}
+                          value={String(row.workspace_id)}
+                        >
+                          {String(row.name || row.workspace_name || row.workspace_id)}
+                          {row.role ? ` · ${String(row.role)}` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="cv-field">
+                    <label htmlFor="create-workspace">Create another workspace</label>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <input
+                        id="create-workspace"
+                        value={newWorkspaceName}
+                        onChange={(e) => setNewWorkspaceName(e.target.value)}
+                        placeholder="Workspace name"
+                      />
+                      <button
+                        className="cv-button"
+                        type="button"
+                        disabled={saving === "create-ws" || !newWorkspaceName.trim()}
+                        onClick={() => {
+                          void (async () => {
+                            if (!session) return;
+                            setSaving("create-ws");
+                            setError("");
+                            try {
+                              await createWorkspace(session.access_token, newWorkspaceName.trim());
+                              setNewWorkspaceName("");
+                              window.location.reload();
+                            } catch (err) {
+                              setError(
+                                err instanceof Error
+                                  ? err.message
+                                  : "Could not create workspace",
+                              );
+                              setSaving("");
+                            }
+                          })();
+                        }}
+                      >
+                        Create
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <form className="cv-card pad" style={{ marginBottom: 14 }} onSubmit={saveWorkspace}>
+                <h3 className="cv-card-title">Workspace settings</h3>
+                <p className="cv-card-subtitle">
+                  Name, timezone, and units for{" "}
+                  {String(workspace.name || workspaceDisplayName(session.workspace))}.
+                </p>
+                <div className="cv-form-grid" style={{ marginTop: 14 }}>
+                  <div className="cv-field">
+                    <label htmlFor="ws-name">Workspace name</label>
+                    <input
+                      id="ws-name"
+                      value={String(workspace.name || "")}
+                      onChange={(e) => setWorkspace({ ...workspace, name: e.target.value })}
+                      disabled={!canAdminister}
+                      required
+                    />
+                  </div>
+                  <div className="cv-field">
+                    <label htmlFor="ws-timezone">Timezone</label>
+                    <input
+                      id="ws-timezone"
+                      value={String(workspace.timezone || "UTC")}
+                      onChange={(e) => setWorkspace({ ...workspace, timezone: e.target.value })}
+                      disabled={!canAdminister}
+                    />
+                  </div>
+                  <div className="cv-field">
+                    <label htmlFor="ws-units">Units</label>
+                    <select
+                      id="ws-units"
+                      value={String(workspace.unit_system || "metric")}
+                      onChange={(e) => setWorkspace({ ...workspace, unit_system: e.target.value })}
+                      disabled={!canAdminister}
+                    >
+                      <option value="metric">Metric</option>
+                      <option value="imperial">Imperial</option>
+                    </select>
+                  </div>
+                </div>
+                {canAdminister ? (
+                  <div style={{ marginTop: 14 }}>
+                    <button
+                      className="cv-button primary"
+                      type="submit"
+                      disabled={saving === "workspace"}
+                    >
+                      {saving === "workspace" ? "Saving…" : "Save workspace"}
+                    </button>
+                  </div>
+                ) : (
+                  <p className="cv-small-note" style={{ marginTop: 12 }}>
+                    Only owners and admins can edit workspace settings.
+                  </p>
+                )}
+              </form>
+
+              <section className="cv-card pad" style={{ marginBottom: 14 }}>
+                <h3 className="cv-card-title">Members</h3>
+                {members.length ? (
+                  <div className="cv-table-wrap" style={{ marginTop: 12 }}>
+                    <table className="cv-table">
+                      <thead>
+                        <tr>
+                          <th>Member</th>
+                          <th>Role</th>
+                          <th>Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {members.map((row) => (
+                          <tr key={String(row.user_id || row.email)}>
+                            <td>
+                              <strong>{String(row.display_name || row.email || "")}</strong>
+                              <div className="cv-small-note">{String(row.email || "")}</div>
+                            </td>
+                            <td>{String(row.role || "")}</td>
+                            <td>{String(row.status || "active")}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <EmptyState icon="settings" title="No members listed" body="Member directory appears here for this workspace." />
+                )}
+              </section>
+
+              {canAdminister ? (
+                <section className="cv-card pad" style={{ marginBottom: 14 }}>
+                  <h3 className="cv-card-title">Invitations</h3>
+                  <form className="cv-form-grid" onSubmit={onInvite} style={{ marginTop: 12 }}>
+                    <div className="cv-field">
+                      <label htmlFor="invite-email">Email</label>
+                      <input
+                        id="invite-email"
+                        type="email"
+                        value={inviteEmail}
+                        onChange={(e) => setInviteEmail(e.target.value)}
+                        required
+                      />
+                    </div>
+                    <div className="cv-field">
+                      <label htmlFor="invite-role">Role</label>
+                      <select
+                        id="invite-role"
+                        value={inviteRole}
+                        onChange={(e) => setInviteRole(e.target.value)}
+                      >
+                        <option value="admin">Admin</option>
+                        <option value="engineer">Engineer</option>
+                        <option value="viewer">Viewer</option>
+                      </select>
+                    </div>
+                    <div style={{ gridColumn: "1 / -1" }}>
+                      <button className="cv-button primary" type="submit" disabled={saving === "invite"}>
+                        {saving === "invite" ? "Sending…" : "Send invitation"}
+                      </button>
+                    </div>
+                  </form>
+                  {invites.length ? (
+                    <div className="cv-table-wrap" style={{ marginTop: 14 }}>
+                      <table className="cv-table cv-table-actions">
+                        <thead>
+                          <tr>
+                            <th>Email</th>
+                            <th>Role</th>
+                            <th>Status</th>
+                            <th></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {invites.map((row) => (
+                            <tr key={String(row.id)}>
+                              <td>{String(row.email || "")}</td>
+                              <td>{String(row.role || "")}</td>
+                              <td>{String(row.status || "")}</td>
+                              <td className="cv-table-action">
+                                {String(row.status) === "pending" ? (
+                                  <>
+                                    <button
+                                      className="cv-button"
+                                      type="button"
+                                      onClick={() => {
+                                        void (async () => {
+                                          if (!session) return;
+                                          try {
+                                            await resendWorkspaceInvitation(
+                                              session.access_token,
+                                              String(row.id),
+                                            );
+                                            setNotice("Invitation resent.");
+                                            await reload(session);
+                                          } catch (err) {
+                                            setError(
+                                              err instanceof Error
+                                                ? err.message
+                                                : "Could not resend invitation",
+                                            );
+                                          }
+                                        })();
+                                      }}
+                                    >
+                                      Resend
+                                    </button>{" "}
+                                    <button
+                                      className="cv-button"
+                                      type="button"
+                                      onClick={() => {
+                                        void (async () => {
+                                          if (!session) return;
+                                          try {
+                                            await cancelWorkspaceInvitation(
+                                              session.access_token,
+                                              String(row.id),
+                                            );
+                                            setNotice("Invitation cancelled.");
+                                            await reload(session);
+                                          } catch (err) {
+                                            setError(
+                                              err instanceof Error
+                                                ? err.message
+                                                : "Could not cancel invitation",
+                                            );
+                                          }
+                                        })();
+                                      }}
+                                    >
+                                      Cancel
+                                    </button>
+                                  </>
+                                ) : (
+                                  "—"
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <p className="cv-small-note" style={{ marginTop: 12 }}>
+                      No invitations yet.
+                    </p>
+                  )}
+                </section>
+              ) : null}
+
+              <section className="cv-card pad">
+                <h3 className="cv-card-title">Activity</h3>
+                {activity.length ? (
+                  <div className="cv-table-wrap" style={{ marginTop: 12 }}>
+                    <table className="cv-table">
+                      <thead>
+                        <tr>
+                          <th>When</th>
+                          <th>Event</th>
+                          <th>Detail</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {activity.map((row) => (
+                          <tr key={String(row.id || `${row.created_at}-${row.event}`)}>
+                            <td>{String(row.created_at || "").replace("T", " ").slice(0, 19)}</td>
+                            <td>{String(row.event || "")}</td>
+                            <td>{String(row.message || "")}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="cv-small-note" style={{ marginTop: 12 }}>
+                    Workspace activity appears here as members join and settings change.
+                  </p>
+                )}
+              </section>
+            </>
+          ) : null}
+
+          {!busy && tab === "security" ? (
+            <section className="cv-card pad">
+              <h3 className="cv-card-title">Security</h3>
+              <p className="cv-card-subtitle">
+                Password and session controls use Supabase Auth when production authentication is enabled.
+              </p>
+              <dl className="cv-fact-grid" style={{ marginTop: 14 }}>
+                <div className="cv-fact">
+                  <dt>Password management</dt>
+                  <dd>{String(password.managed_by || "Not reported")}</dd>
+                </div>
+                <div className="cv-fact">
+                  <dt>Two-factor authentication</dt>
+                  <dd>{String(twoFactor.label || twoFactor.status || "Planned")}</dd>
+                </div>
+                <div className="cv-fact">
+                  <dt>Active sessions</dt>
+                  <dd>
+                    {sessions.revoke_others_available
+                      ? "You can revoke other signed-in devices."
+                      : String(sessions.status || "Unavailable in this environment")}
+                  </dd>
+                </div>
+              </dl>
+
+              {password.reset_available ? (
+                <div style={{ marginTop: 16 }}>
+                  <button
+                    className="cv-button"
+                    type="button"
+                    disabled={saving === "reset"}
+                    onClick={() => {
+                      void (async () => {
+                        setSaving("reset");
+                        setError("");
+                        try {
+                          await requestPasswordReset(session.email);
+                          setNotice(
+                            "If this account uses email sign-in, a password reset link will arrive by email.",
+                          );
+                        } catch (err) {
+                          setError(
+                            err instanceof Error ? err.message : "Password reset could not start",
+                          );
+                        } finally {
+                          setSaving("");
+                        }
+                      })();
+                    }}
+                  >
+                    {saving === "reset" ? "Sending…" : "Send password reset email"}
+                  </button>
+                </div>
+              ) : (
+                <p className="cv-small-note" style={{ marginTop: 12 }}>
+                  Password reset is available when Supabase Auth manages this account.
+                </p>
+              )}
+
+              {password.change_available ? (
+                <form
+                  className="cv-form-grid"
+                  style={{ marginTop: 18 }}
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void (async () => {
+                      setSaving("password");
+                      setError("");
+                      try {
+                        await changePassword(session.access_token, {
+                          current_password: currentPassword,
+                          new_password: newPassword,
+                        });
+                        setCurrentPassword("");
+                        setNewPassword("");
+                        setNotice("Password updated.");
+                      } catch (err) {
+                        setError(
+                          err instanceof Error ? err.message : "Password could not be changed",
+                        );
+                      } finally {
+                        setSaving("");
+                      }
+                    })();
+                  }}
+                >
+                  <div className="cv-field">
+                    <label htmlFor="current-password">Current password</label>
+                    <input
+                      id="current-password"
+                      type="password"
+                      value={currentPassword}
+                      onChange={(e) => setCurrentPassword(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div className="cv-field">
+                    <label htmlFor="new-password">New password</label>
+                    <input
+                      id="new-password"
+                      type="password"
+                      minLength={12}
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div style={{ gridColumn: "1 / -1" }}>
+                    <button className="cv-button primary" type="submit" disabled={saving === "password"}>
+                      {saving === "password" ? "Updating…" : "Change password"}
+                    </button>
+                  </div>
+                </form>
+              ) : null}
+
+              {sessions.revoke_others_available ? (
+                <div style={{ marginTop: 16 }}>
+                  <button
+                    className="cv-button"
+                    type="button"
+                    disabled={saving === "sessions"}
+                    onClick={() => {
+                      void (async () => {
+                        setSaving("sessions");
+                        setError("");
+                        try {
+                          await revokeOtherSessions(session.access_token);
+                          setNotice("Other sessions were signed out.");
+                        } catch (err) {
+                          setError(
+                            err instanceof Error ? err.message : "Could not revoke sessions",
+                          );
+                        } finally {
+                          setSaving("");
+                        }
+                      })();
+                    }}
+                  >
+                    {saving === "sessions" ? "Signing out…" : "Sign out other devices"}
+                  </button>
+                </div>
+              ) : null}
+
+              <p className="cv-small-note" style={{ marginTop: 16 }}>
+                Connected accounts: email and password. Social / SSO sign-in is planned and not shown as active.
+              </p>
+            </section>
+          ) : null}
+
+          {!busy && tab === "billing" ? (
+            <>
+              <section className="cv-card pad cv-plan-section" style={{ marginBottom: 14 }}>
+                <div className="cv-section-heading">
+                  <div>
+                    <h3 className="cv-card-title">Plans and billing</h3>
+                    <p className="cv-card-subtitle">
+                      Your plan controls analysis limits, monitoring, and team access. Paid plans bill monthly through Stripe.
+                    </p>
+                  </div>
+                  {canManageBilling ? (
+                    <button
+                      className="cv-button"
+                      type="button"
+                      onClick={() => void openBillingPortal()}
+                      disabled={Boolean(billingAction)}
+                    >
+                      {billingAction === "portal" ? "Opening billing…" : "Manage subscription"}
+                    </button>
+                  ) : null}
+                </div>
+                <p className="cv-current-plan" role="status">
+                  Current access: <strong>{currentPlanName}</strong>
+                  {session.trial_days_remaining != null &&
+                  currentPlanName.toLowerCase() === "trial"
+                    ? ` · ${session.trial_days_remaining} days remaining`
+                    : ""}
+                </p>
+                <div className="cv-plan-grid">
+                  {planCatalog.map((plan) => {
+                    const name = String(plan.name || "");
+                    const token = String(plan.purchase_token || "");
+                    const current = currentPlan === name.toLowerCase();
+                    const providerPlan = stripePlans.find((row) => String(row.name || "") === name);
+                    const hasPrice = Boolean(providerPlan?.enabled);
+                    const paidPlan = Boolean(token);
+                    const enterprise = name === "Enterprise";
+                    const limit = (value: unknown) =>
+                      value == null ? "Unlimited" : String(value);
+                    const bullets = [
+                      `${limit(plan.monthly_bom_limit)} BOM analyses per month`,
+                      `${limit(plan.max_parts_per_bom)} components per BOM`,
+                      `${limit(plan.max_saved_boms)} saved BOMs`,
+                      Number(plan.monitored_parts_limit) > 0 || plan.monitored_parts_limit == null
+                        ? `${limit(plan.monitored_parts_limit)} monitored parts`
+                        : "Monitoring not included",
+                      Number(plan.ai_credits) > 0
+                        ? `${limit(plan.ai_credits)} Ask Cadivor credits`
+                        : "Ask Cadivor not included",
+                      plan.team_features ? "Team collaboration" : "Individual workspace",
+                    ].filter(Boolean);
+                    let actionText = "Choose plan";
+                    if (current) actionText = "Current plan";
+                    else if (canManageBilling) actionText = "Change plan in billing";
+                    else if (!checkoutEnabled || !hasPrice) actionText = "Temporarily unavailable";
+                    if (enterprise) actionText = "Contact sales";
+                    return (
+                      <article
+                        className={`cv-plan-option${current ? " current" : ""}${
+                          name === "Professional" ? " featured" : ""
+                        }`}
+                        key={name}
+                      >
+                        <div className="cv-plan-option-top">
+                          <h4>{name}</h4>
+                          {name === "Professional" ? (
+                            <span className="cv-plan-popular">Most popular</span>
+                          ) : null}
+                        </div>
+                        <div className="cv-plan-price">{String(plan.price || "Contact us")}</div>
+                        <p>{String(plan.description || "")}</p>
+                        <ul>
+                          {bullets.map((item) => (
+                            <li key={item}>{item}</li>
+                          ))}
+                        </ul>
+                        {enterprise ? (
+                          <a
+                            className="cv-button"
+                            href="mailto:sales@cadivor.com?subject=Cadivor%20Enterprise%20plans"
+                          >
+                            {actionText}
+                          </a>
+                        ) : (
+                          <button
+                            className={current ? "cv-button" : "cv-button primary"}
+                            type="button"
+                            disabled={
+                              current ||
+                              !paidPlan ||
+                              (!canManageBilling && (!checkoutEnabled || !hasPrice)) ||
+                              Boolean(billingAction)
+                            }
+                            onClick={() => void selectPlan(plan)}
+                          >
+                            {billingAction === name ? "Opening secure checkout…" : actionText}
+                          </button>
+                        )}
+                      </article>
+                    );
+                  })}
+                </div>
+                {billingError ? (
+                  <div className="cv-error" role="alert" style={{ marginTop: 12 }}>
+                    {billingError}
+                  </div>
+                ) : null}
+                <p className="cv-small-note" style={{ marginTop: 12 }}>
+                  Need a single paid BOM report instead of a subscription?{" "}
+                  <Link href="/single-bom-report">View the one-time report option</Link>.
+                </p>
+              </section>
+
+              <section className="cv-card pad" style={{ marginBottom: 14 }}>
+                <h3 className="cv-card-title">Plan usage</h3>
+                <p className="cv-card-subtitle">Limits and usage for the signed-in workspace.</p>
+                <dl className="cv-fact-grid">
+                  {Object.entries(usage || {})
+                    .filter(([key]) => !/(^id$|_id$|token|secret|password|raw)/i.test(key))
+                    .slice(0, 10)
+                    .map(([key, value]) => (
+                      <div className="cv-fact" key={key}>
+                        <dt>{key.replace(/[_-]+/g, " ")}</dt>
+                        <dd>
+                          {typeof value === "boolean"
+                            ? value
+                              ? "Enabled"
+                              : "Disabled"
+                            : value == null || value === ""
+                              ? "Not reported"
+                              : String(value).slice(0, 120)}
+                        </dd>
+                      </div>
+                    ))}
+                </dl>
+              </section>
+
+              <section className="cv-card pad" style={{ marginBottom: 14 }}>
+                <h3 className="cv-card-title">Connectors</h3>
+                {connectorRows.length ? (
+                  <div className="cv-table-wrap" style={{ marginTop: 12 }}>
+                    <table className="cv-table">
+                      <thead>
+                        <tr>
+                          <th>Connector</th>
+                          <th>Category</th>
+                          <th>Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {connectorRows.map((row) => (
+                          <tr key={String(row.id || row.display_name)}>
+                            <td>
+                              <strong>{String(row.display_name || row.id || "")}</strong>
+                            </td>
+                            <td>{String(row.category || "")}</td>
+                            <td>{String(row.status || "")}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <EmptyState
+                    icon="settings"
+                    title="No connectors configured"
+                    body="Connector options appear here when workspace integrations are added."
+                  />
+                )}
+              </section>
+
+              <section className="cv-card pad">
+                <h3 className="cv-card-title">Compliance pack status</h3>
+                <p className="cv-card-subtitle">
+                  RoHS pack readiness for this workspace. Packs stay evidence-linked.
+                </p>
+                <dl className="cv-fact-grid">
+                  {Object.entries(compliance || {})
+                    .filter(([key]) => !/(^id$|_id$|token|secret|password|raw)/i.test(key))
+                    .slice(0, 8)
+                    .map(([key, value]) => (
+                      <div className="cv-fact" key={key}>
+                        <dt>{key.replace(/[_-]+/g, " ")}</dt>
+                        <dd>
+                          {value == null || value === ""
+                            ? "Not reported"
+                            : String(value).slice(0, 120)}
+                        </dd>
+                      </div>
+                    ))}
+                </dl>
+              </section>
+            </>
+          ) : null}
+        </div>
+      </div>
     </Shell>
   );
 }
-
