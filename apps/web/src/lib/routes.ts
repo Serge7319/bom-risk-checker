@@ -43,6 +43,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     label: "Workspace admin",
     items: [
+      { id: "reports", href: "/single-bom-report", label: "One-time BOM report" },
       { id: "settings", href: "/settings", label: "Settings" },
     ],
   },
@@ -167,6 +168,13 @@ export const PAGE_META: Record<string, PageMeta> = {
     eyebrow: "Workspace settings",
     description:
       "Review account, plan usage, and integration readiness.",
+  },
+  single_bom_report: {
+    icon: "reports",
+    title: "One-time BOM report",
+    eyebrow: "Single report purchase",
+    description:
+      "Purchase one complete BOM analysis without starting a recurring subscription.",
   },
   record: {
     title: "Engineering decision record",

@@ -1,7 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import re
 
-import streamlit as st
+from src.runtime_cache import cache_data
 
 from integrations.pin_count import sanitize_stored_pin_count
 from integrations.stock_coercion import parse_stock_total
@@ -558,7 +558,7 @@ def get_first_exact_supplier_result(part_number: str, request_id: str = "") -> d
         executor.shutdown(wait=not returned_early, cancel_futures=returned_early)
 
 
-@st.cache_data(ttl=300, show_spinner=False)
+@cache_data(ttl=300, show_spinner=False)
 def get_best_part_data(part_number: str) -> dict:
     from integrations.supplier_diagnostics import resolve_supplier_diagnostic_request_id
 
@@ -1149,7 +1149,7 @@ def discover_alternative_candidates(
     return discovery
 
 
-@st.cache_data(ttl=300, show_spinner=False)
+@cache_data(ttl=300, show_spinner=False)
 def search_supplier_alternatives(part_number: str) -> list[dict]:
     """Return ranked supplier evidence without treating catalog matches as direct substitutes.
 

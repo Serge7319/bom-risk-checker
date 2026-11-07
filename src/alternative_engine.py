@@ -39,7 +39,7 @@ from src.alternative_classification import (
     is_non_component_catalog_candidate,
     refine_classification_after_comparison,
 )
-import streamlit as st
+from src.runtime_cache import cache_data
 
 _LAST_ALTERNATIVE_DISCOVERY: dict = {}
 
@@ -1604,7 +1604,7 @@ def apply_supplier_enrichment_to_candidate(
     return enriched
 
 
-@st.cache_data(ttl=300, show_spinner=False)
+@cache_data(ttl=300, show_spinner=False)
 def suggest_alternatives_v2(
     original_part_number: str,
     *,

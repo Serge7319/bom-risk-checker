@@ -1,2 +1,6 @@
 [functions.stripe-webhook]
 verify_jwt = false
+
+# User sessions are verified explicitly with Supabase Auth inside the handler.
+[functions.one-time-report]
+verify_jwt = false

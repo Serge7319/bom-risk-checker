@@ -450,6 +450,7 @@ def find_replacement_payload(
     analysis_id: str | None = None,
 ) -> dict[str, Any]:
     """Standalone replacement search; BOM analysis is optional context only."""
+    from apps.api.legacy_supplier_workflow import find_replacements, production_analysis_enabled
     from apps.api.compare_catalog import offline_replacement_candidates
     from apps.api.supplier_lookup import live_lookups_enabled, lookup_exact_part
 
@@ -473,6 +474,18 @@ def find_replacement_payload(
                     "part": part,
                 }
                 break
+
+    if production_analysis_enabled():
+        result = find_replacements(requested)
+        original = result.get("original") if isinstance(result.get("original"), dict) else {}
+        if manufacturer and not original.get("manufacturer"):
+            original["manufacturer"] = manufacturer.strip()
+        return _json_safe({
+            "ok": True,
+            **result,
+            "bom_context": bom_context,
+            "original": original,
+        })
 
     original_lookup = lookup_exact_part(requested)
     original = synthetic_compare_part(
