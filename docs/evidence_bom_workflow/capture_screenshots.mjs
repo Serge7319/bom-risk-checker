@@ -282,7 +282,6 @@ for (const key of Object.keys(states)) {
     await page.goto(`http://127.0.0.1:${port}/${key}`, { waitUntil: "networkidle" });
     const file = `${key}_${label}.png`;
     await page.screenshot({ path: path.join(outDir, file), fullPage: true });
-    writeFileSync(path.join(outDir, `${key}_${label}.html`), pages[`/${key}`]);
     manifest.push(file);
     await page.close();
   }
