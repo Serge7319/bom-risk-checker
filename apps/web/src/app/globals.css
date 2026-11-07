@@ -1345,6 +1345,13 @@ button {
   text-underline-offset: 2px;
 }
 
+.cv-terms-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  margin-top: 10px;
+}
+
 .cv-terms-toggle {
   display: inline-block;
   margin-top: 10px;
@@ -1370,6 +1377,12 @@ button {
 }
 
 .cv-terms-full h3 {
+  margin: 0 0 4px;
+  font-size: 14px;
+  color: var(--ink);
+}
+
+.cv-terms-full h4 {
   margin: 12px 0 4px;
   font-size: 13px;
   color: var(--ink);

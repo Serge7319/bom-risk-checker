@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { fetchAuthConfig, signup } from "@/lib/api";
 import { TermsAcceptance } from "@/components/TermsAcceptance";
+import { PRIVACY_VERSION, TERMS_VERSION } from "@/lib/legalTerms";
 
 export default function SignupPage() {
   const [enabled, setEnabled] = useState<boolean | null>(null);
@@ -36,7 +37,10 @@ export default function SignupPage() {
     }
     setBusy(true);
     try {
-      const result = await signup(email, password, workspaceName, undefined, true);
+      const result = await signup(email, password, workspaceName, undefined, true, {
+        terms_version: TERMS_VERSION,
+        privacy_version: PRIVACY_VERSION,
+      });
       setMessage(result.message);
       setPassword("");
       setConfirmPassword("");

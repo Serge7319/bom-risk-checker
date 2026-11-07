@@ -2,9 +2,9 @@
 
 import { useId, useState } from "react";
 import {
-  CADIVOR_TERMS_SECTIONS,
   PRIVACY_URL,
-  TERMS_SUMMARY,
+  PUBLISHED_PRIVACY,
+  PUBLISHED_TERMS,
   TERMS_URL,
 } from "@/lib/legalTerms";
 
@@ -16,13 +16,10 @@ type Props = {
 
 export function TermsAcceptance({ checked, onChange, disabled = false }: Props) {
   const checkboxId = useId();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState<"terms" | "privacy" | null>(null);
 
   return (
     <div className="cv-terms">
-      <div className="cv-terms-box" role="note">
-        <strong>Terms summary:</strong> {TERMS_SUMMARY}
-      </div>
       <label className="cv-terms-check" htmlFor={checkboxId}>
         <input
           id={checkboxId}
@@ -44,33 +41,48 @@ export function TermsAcceptance({ checked, onChange, disabled = false }: Props) 
           .
         </span>
       </label>
-      <button
-        type="button"
-        className="cv-terms-toggle"
-        aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
-      >
-        {open ? "Hide Terms of Service" : "View Terms of Service"}
-      </button>
-      {open ? (
+      <div className="cv-terms-actions">
+        <button
+          type="button"
+          className="cv-terms-toggle"
+          aria-expanded={open === "terms"}
+          onClick={() => setOpen((value) => (value === "terms" ? null : "terms"))}
+        >
+          {open === "terms" ? "Hide Terms of Service" : "View Terms of Service"}
+        </button>
+        <button
+          type="button"
+          className="cv-terms-toggle"
+          aria-expanded={open === "privacy"}
+          onClick={() =>
+            setOpen((value) => (value === "privacy" ? null : "privacy"))
+          }
+        >
+          {open === "privacy" ? "Hide Privacy Policy" : "View Privacy Policy"}
+        </button>
+      </div>
+      {open === "terms" ? (
         <div className="cv-terms-full" role="region" aria-label="Terms of Service">
-          <p className="cv-terms-meta">
-            Pre-launch version — Last updated July 25, 2026. By creating an
-            account, checking the acceptance box during registration, or using
-            Cadivor, you agree to these Terms and the Privacy Policy.
-          </p>
-          {CADIVOR_TERMS_SECTIONS.map((section) => (
+          <h3>{PUBLISHED_TERMS.title}</h3>
+          <p className="cv-terms-meta">{PUBLISHED_TERMS.subtitle}</p>
+          {PUBLISHED_TERMS.sections.map((section) => (
             <section key={section.title}>
-              <h3>{section.title}</h3>
+              <h4>{section.title}</h4>
               <p>{section.body}</p>
             </section>
           ))}
-          <p className="cv-terms-meta">
-            This pre-launch version requires review by qualified counsel and
-            completion with Cadivor’s legal entity name, business address,
-            governing law, payment and refund terms, dispute process, and
-            enterprise-specific provisions before commercial launch.
-          </p>
+        </div>
+      ) : null}
+      {open === "privacy" ? (
+        <div className="cv-terms-full" role="region" aria-label="Privacy Policy">
+          <h3>{PUBLISHED_PRIVACY.title}</h3>
+          <p className="cv-terms-meta">{PUBLISHED_PRIVACY.subtitle}</p>
+          {PUBLISHED_PRIVACY.sections.map((section) => (
+            <section key={section.title}>
+              <h4>{section.title}</h4>
+              <p>{section.body}</p>
+            </section>
+          ))}
         </div>
       ) : null}
     </div>

@@ -60,6 +60,7 @@ from src.saved_bom_project import split_project_and_bom  # noqa: E402
 from apps.api import billing_prep  # noqa: E402
 from apps.api import compliance_packs  # noqa: E402
 from apps.api import connectors  # noqa: E402
+from apps.api import legal_acceptance  # noqa: E402
 from apps.api import monitoring_store  # noqa: E402
 from apps.api import monitoring_scheduler  # noqa: E402
 from apps.api import plan_limits  # noqa: E402
@@ -329,6 +330,7 @@ async def auth_signup_config(_: Request) -> JSONResponse:
             "signup_enabled": enabled,
             "trial_length_days": supabase_auth.TRIAL_DAYS,
             "invitations_enabled": True,
+            **legal_acceptance.published_versions(),
         }
     )
 
@@ -358,10 +360,18 @@ async def auth_signup(request: Request) -> JSONResponse:
         return _json({"detail": str(exc)}, 503)
     except AuthError as exc:
         return _json({"detail": exc.detail}, exc.status_code)
+    legal_acceptance.record_acceptance(
+        email=str(body.get("email") or ""),
+        source="signup",
+        workspace_name=str(body.get("workspace_name") or "") or None,
+        terms_version=str(body.get("terms_version") or "") or None,
+        privacy_version=str(body.get("privacy_version") or "") or None,
+    )
     return _json(
         {
             "accepted": True,
             "message": "If this address can be registered, a verification link will arrive by email.",
+            **legal_acceptance.published_versions(),
         },
         202,
     )
@@ -1533,6 +1543,13 @@ async def invitations_register_post(request: Request) -> JSONResponse:
             return _json({"detail": str(exc)}, 503)
         except AuthError as exc:
             return _json({"detail": exc.detail}, exc.status_code)
+        legal_acceptance.record_acceptance(
+            email=email,
+            source="invitation",
+            workspace_name=str(preview.get("workspace_name") or "") or None,
+            terms_version=str(body.get("terms_version") or "") or None,
+            privacy_version=str(body.get("privacy_version") or "") or None,
+        )
         return _json(
             {
                 "ok": True,
@@ -1541,6 +1558,7 @@ async def invitations_register_post(request: Request) -> JSONResponse:
                     "If this address can be registered, a verification link will "
                     "arrive by email. After verifying, sign in to join the invited workspace."
                 ),
+                **legal_acceptance.published_versions(),
             },
             202,
         )
@@ -1568,6 +1586,14 @@ async def invitations_register_post(request: Request) -> JSONResponse:
             },
             409,
         )
+    legal_acceptance.record_acceptance(
+        email=email,
+        source="invitation",
+        user_id=user_id,
+        workspace_name=str(preview.get("workspace_name") or "") or None,
+        terms_version=str(body.get("terms_version") or "") or None,
+        privacy_version=str(body.get("privacy_version") or "") or None,
+    )
     return _json(
         {
             "ok": True,
@@ -1575,6 +1601,7 @@ async def invitations_register_post(request: Request) -> JSONResponse:
             "user_id": user_id,
             "accepted": accepted,
             "message": "Account created. Sign in with this email to open the invited workspace.",
+            **legal_acceptance.published_versions(),
         }
     )
 
@@ -1937,6 +1964,20 @@ async def auth_invitation_signup(request: Request) -> JSONResponse:
         return _json({"detail": str(exc)}, 503)
     except AuthError as exc:
         return _json({"detail": exc.detail}, exc.status_code)
+    # Prefer email from invitation token lookup when present.
+    invite_email = ""
+    try:
+        preview = team_service.lookup_invitation(str(body.get("token") or ""))
+        if preview:
+            invite_email = str(preview.get("email") or "")
+    except Exception:  # noqa: BLE001
+        invite_email = ""
+    legal_acceptance.record_acceptance(
+        email=invite_email or str(body.get("email") or ""),
+        source="invitation",
+        terms_version=str(body.get("terms_version") or "") or None,
+        privacy_version=str(body.get("privacy_version") or "") or None,
+    )
     return _json(
         {
             "accepted": True,
@@ -1944,6 +1985,7 @@ async def auth_invitation_signup(request: Request) -> JSONResponse:
                 "If this address can be registered, a verification link will arrive by email. "
                 "Verify it, then sign in to join the workspace."
             ),
+            **legal_acceptance.published_versions(),
         },
         202,
     )
@@ -2275,7 +2317,14 @@ async def invitations_register(request: Request) -> JSONResponse:
         return _team_error(exc)
     except PersistenceNotConfiguredError as exc:
         return _json({"detail": str(exc)}, 503)
-    return _json({"ok": True, **result})
+    legal_acceptance.record_acceptance(
+        email=str(body.get("email") or ""),
+        source="invitation",
+        user_id=str(result.get("user_id") or "") or None,
+        terms_version=str(body.get("terms_version") or "") or None,
+        privacy_version=str(body.get("privacy_version") or "") or None,
+    )
+    return _json({"ok": True, **result, **legal_acceptance.published_versions()})
 
 
 app = Starlette(

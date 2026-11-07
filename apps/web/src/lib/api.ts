@@ -345,6 +345,8 @@ export async function registerFromInvitation(body: {
   email: string;
   password: string;
   accepted_terms: boolean;
+  terms_version?: string;
+  privacy_version?: string;
 }) {
   return apiJson<{
     ok: boolean;
@@ -364,6 +366,7 @@ export async function signup(
   workspaceName: string,
   captchaToken?: string,
   acceptedTerms = false,
+  versions?: { terms_version?: string; privacy_version?: string },
 ) {
   return apiJson<{ accepted: boolean; message: string }>("/auth/signup", {
     method: "POST",
@@ -373,6 +376,8 @@ export async function signup(
       workspace_name: workspaceName,
       captcha_token: captchaToken,
       accepted_terms: acceptedTerms,
+      terms_version: versions?.terms_version,
+      privacy_version: versions?.privacy_version,
     }),
   });
 }

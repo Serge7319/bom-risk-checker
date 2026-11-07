@@ -336,11 +336,12 @@ def test_sandbox_hs256_blocked_when_production_runtime_forced(
 def test_self_serve_signup_is_disabled_by_default(supabase_client: TestClient):
     config = supabase_client.get("/auth/config")
     assert config.status_code == 200
-    assert config.json() == {
-        "signup_enabled": False,
-        "trial_length_days": 14,
-        "invitations_enabled": True,
-    }
+    body = config.json()
+    assert body["signup_enabled"] is False
+    assert body["trial_length_days"] == 14
+    assert body["invitations_enabled"] is True
+    assert "terms_version" in body
+    assert "privacy_version" in body
     response = supabase_client.post(
         "/auth/signup",
         json={

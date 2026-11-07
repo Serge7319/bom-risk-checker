@@ -14,6 +14,7 @@ import {
 } from "@/lib/api";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
 import { TermsAcceptance } from "@/components/TermsAcceptance";
+import { PRIVACY_VERSION, TERMS_VERSION } from "@/lib/legalTerms";
 
 type InvitePreview = {
   email: string;
@@ -165,6 +166,8 @@ function LoginInner() {
         email,
         password,
         accepted_terms: true,
+        terms_version: TERMS_VERSION,
+        privacy_version: PRIVACY_VERSION,
       });
       setNotice(
         result.message ||

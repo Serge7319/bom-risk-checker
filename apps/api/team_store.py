@@ -384,6 +384,20 @@ CREATE TABLE IF NOT EXISTS migration_customer_profiles (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+
+CREATE TABLE IF NOT EXISTS migration_legal_acceptances (
+  id TEXT PRIMARY KEY,
+  email TEXT NOT NULL,
+  user_id TEXT,
+  workspace_name TEXT,
+  source TEXT NOT NULL,
+  terms_version TEXT NOT NULL,
+  privacy_version TEXT NOT NULL,
+  accepted_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS migration_legal_acceptances_email_idx
+  ON migration_legal_acceptances (lower(email), accepted_at DESC);
+
 CREATE TABLE IF NOT EXISTS migration_user_preferences (
   user_id TEXT PRIMARY KEY,
   appearance TEXT,
