@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import uuid
 from pathlib import Path
 
 import pytest
@@ -111,6 +112,133 @@ def test_signup_rejects_missing_and_false_acceptance(
     assert rows[0]["privacy_version"] == legal_acceptance.PRIVACY_VERSION
     assert rows[0]["source"] == "signup"
     assert rows[0]["accepted_at"]
+    uuid.UUID(rows[0]["id"])
+
+
+def test_forged_terms_version_rejected_before_signup(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+):
+    import apps.api.supabase_auth as supabase_auth
+
+    called: list[str] = []
+    monkeypatch.setattr(api_main, "_use_supabase_auth", lambda: True)
+    monkeypatch.setattr(supabase_auth, "signup_enabled", lambda: True)
+    monkeypatch.setattr(
+        supabase_auth,
+        "signup",
+        lambda *a, **k: called.append("signup"),
+    )
+    res = client.post(
+        "/auth/signup",
+        json={
+            "email": "forged@cadivor.test",
+            "password": "long-password-123",
+            "workspace_name": "Terms Lab",
+            "accepted_terms": True,
+            "terms_version": "forged-evil-v99",
+            "privacy_version": legal_acceptance.PRIVACY_VERSION,
+        },
+    )
+    assert res.status_code == 400
+    body = res.json()
+    assert body.get("code") == "terms_version_mismatch"
+    assert called == []
+    assert legal_acceptance.list_acceptances(email="forged@cadivor.test") == []
+
+
+def test_consent_storage_failure_blocks_signup(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+):
+    import apps.api.supabase_auth as supabase_auth
+
+    called: list[str] = []
+    monkeypatch.setattr(api_main, "_use_supabase_auth", lambda: True)
+    monkeypatch.setattr(supabase_auth, "signup_enabled", lambda: True)
+    monkeypatch.setattr(
+        supabase_auth,
+        "signup",
+        lambda *a, **k: called.append("signup"),
+    )
+    monkeypatch.setattr(
+        legal_acceptance,
+        "record_acceptance",
+        lambda **kwargs: (_ for _ in ()).throw(
+            legal_acceptance.LegalAcceptanceError(
+                "Cadivor could not record Terms acceptance. Account creation was not started.",
+                status_code=503,
+                code="consent_storage_failed",
+            )
+        ),
+    )
+    res = client.post(
+        "/auth/signup",
+        json={
+            "email": "storage-fail@cadivor.test",
+            "password": "long-password-123",
+            "workspace_name": "Terms Lab",
+            "accepted_terms": True,
+            "terms_version": legal_acceptance.TERMS_VERSION,
+            "privacy_version": legal_acceptance.PRIVACY_VERSION,
+        },
+    )
+    assert res.status_code == 503
+    body = res.json()
+    assert body.get("code") == "consent_storage_failed"
+    assert "account creation was not started" in body["detail"].lower()
+    assert called == []
+
+
+def test_fail_closed_without_durable_consent_store(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+):
+    import apps.api.supabase_auth as supabase_auth
+
+    called: list[str] = []
+    monkeypatch.setattr(api_main, "_use_supabase_auth", lambda: True)
+    monkeypatch.setattr(supabase_auth, "signup_enabled", lambda: True)
+    monkeypatch.setattr(
+        supabase_auth,
+        "signup",
+        lambda *a, **k: called.append("signup"),
+    )
+    monkeypatch.delenv("CADIVOR_ALLOW_EPHEMERAL_FILE_STORE", raising=False)
+    monkeypatch.delenv("CADIVOR_MIGRATION_DATABASE_URL", raising=False)
+    monkeypatch.delenv("CADIVOR_LEGAL_ACCEPTANCE_PATH", raising=False)
+
+    res = client.post(
+        "/auth/signup",
+        json={
+            "email": "no-store@cadivor.test",
+            "password": "long-password-123",
+            "workspace_name": "Terms Lab",
+            "accepted_terms": True,
+        },
+    )
+    assert res.status_code == 503
+    assert res.json().get("code") == "consent_storage_unavailable"
+    assert called == []
+
+
+def test_same_second_acceptances_both_persist_with_unique_ids(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+):
+    del client
+    fixed = "2026-11-07T19:00:00+00:00"
+    monkeypatch.setattr(legal_acceptance, "utc_now", lambda: fixed)
+    first = legal_acceptance.record_acceptance(
+        email="same-second@cadivor.test",
+        source="signup",
+    )
+    second = legal_acceptance.record_acceptance(
+        email="same-second@cadivor.test",
+        source="signup",
+    )
+    assert first["id"] != second["id"]
+    uuid.UUID(first["id"])
+    uuid.UUID(second["id"])
+    rows = legal_acceptance.list_acceptances(email="same-second@cadivor.test")
+    ids = {row["id"] for row in rows}
+    assert first["id"] in ids and second["id"] in ids
 
 
 def test_invitation_register_requires_acceptance_and_persists(
@@ -167,6 +295,7 @@ def test_invitation_register_requires_acceptance_and_persists(
     assert rows[0]["source"] == "invitation"
     assert rows[0]["terms_version"] == legal_acceptance.TERMS_VERSION
     assert rows[0]["accepted_at"]
+    uuid.UUID(rows[0]["id"])
 
 
 def test_ui_login_cta_and_terms_checkbox_contract():
@@ -194,7 +323,7 @@ def test_ui_login_cta_and_terms_checkbox_contract():
     assert "Cadivor does not sell personal information" in marketing
     assert "Cadivor does not sell personal information" in legal
     assert "acceptedTerms" in signup
-    assert re.search(r"type=\"checkbox\"", terms)
+    assert re.search(r'type="checkbox"', terms)
 
 
 def test_migration_file_exists():
@@ -205,3 +334,44 @@ def test_migration_file_exists():
     assert "terms_version" in sql
     assert "privacy_version" in sql
     assert "accepted_at" in sql
+
+
+def _has_embedded_postgres() -> bool:
+    import importlib.util
+
+    return (
+        importlib.util.find_spec("embedded_postgres") is not None
+        and importlib.util.find_spec("psycopg") is not None
+    )
+
+
+@pytest.mark.skipif(not _has_embedded_postgres(), reason="embedded_postgres/psycopg required")
+def test_postgres_same_second_acceptances_both_persist(tmp_path, monkeypatch):
+    """UUID ids must both insert under Postgres (no silent ON CONFLICT discard)."""
+    import embedded_postgres
+
+    pgdata = tmp_path / "pgdata"
+    pgdata.mkdir()
+    server = embedded_postgres.get_server(pgdata, cleanup_mode="delete")
+    uri = server.get_uri(database="postgres")
+    monkeypatch.setenv("CADIVOR_MIGRATION_DATABASE_URL", uri)
+    monkeypatch.delenv("CADIVOR_ALLOW_EPHEMERAL_FILE_STORE", raising=False)
+    monkeypatch.delenv("CADIVOR_LEGAL_ACCEPTANCE_PATH", raising=False)
+    legal_acceptance.reset_legal_acceptances_for_tests()
+    legal_acceptance.ensure_schema(uri)
+    fixed = "2026-11-07T19:00:00+00:00"
+    monkeypatch.setattr(legal_acceptance, "utc_now", lambda: fixed)
+    first = legal_acceptance.record_acceptance(
+        email="pg-same-second@cadivor.test", source="signup"
+    )
+    second = legal_acceptance.record_acceptance(
+        email="pg-same-second@cadivor.test", source="signup"
+    )
+    assert first["id"] != second["id"]
+    rows = legal_acceptance.list_acceptances(email="pg-same-second@cadivor.test")
+    ids = {row["id"] for row in rows}
+    assert first["id"] in ids and second["id"] in ids
+    try:
+        server.__exit__(None, None, None)
+    except Exception:
+        pass

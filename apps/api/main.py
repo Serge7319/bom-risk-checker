@@ -313,6 +313,7 @@ def _web_origin(request: Request) -> str:
     return (https[0] if https else (_origins[0] if _origins else "http://localhost:3000")).rstrip("/")
 
 
+
 def _accepted_terms(body: dict) -> bool:
     value = body.get("accepted_terms")
     if isinstance(value, bool):
@@ -320,6 +321,15 @@ def _accepted_terms(body: dict) -> bool:
     if isinstance(value, str):
         return value.strip().lower() in {"1", "true", "yes", "on"}
     return False
+
+
+def _legal_acceptance_error(exc: legal_acceptance.LegalAcceptanceError) -> JSONResponse:
+    return _json({"detail": exc.detail, "code": exc.code}, exc.status_code)
+
+
+def _record_legal_acceptance(**kwargs):
+    """Persist consent or raise LegalAcceptanceError (never creates accounts)."""
+    return legal_acceptance.record_acceptance(**kwargs)
 
 
 async def auth_signup_config(_: Request) -> JSONResponse:
@@ -350,6 +360,16 @@ async def auth_signup(request: Request) -> JSONResponse:
             400,
         )
     try:
+        _record_legal_acceptance(
+            email=str(body.get("email") or ""),
+            source="signup",
+            workspace_name=str(body.get("workspace_name") or "") or None,
+            terms_version=str(body.get("terms_version") or "") or None,
+            privacy_version=str(body.get("privacy_version") or "") or None,
+        )
+    except legal_acceptance.LegalAcceptanceError as exc:
+        return _legal_acceptance_error(exc)
+    try:
         supabase_auth.signup(
             str(body.get("email") or ""),
             str(body.get("password") or ""),
@@ -360,13 +380,6 @@ async def auth_signup(request: Request) -> JSONResponse:
         return _json({"detail": str(exc)}, 503)
     except AuthError as exc:
         return _json({"detail": exc.detail}, exc.status_code)
-    legal_acceptance.record_acceptance(
-        email=str(body.get("email") or ""),
-        source="signup",
-        workspace_name=str(body.get("workspace_name") or "") or None,
-        terms_version=str(body.get("terms_version") or "") or None,
-        privacy_version=str(body.get("privacy_version") or "") or None,
-    )
     return _json(
         {
             "accepted": True,
@@ -1530,6 +1543,16 @@ async def invitations_register_post(request: Request) -> JSONResponse:
         return _json({"detail": "Use the email address this invitation was sent to."}, 400)
     if len(password) < 12:
         return _json({"detail": "Password must be at least 12 characters."}, 400)
+    try:
+        _record_legal_acceptance(
+            email=email,
+            source="invitation",
+            workspace_name=str(preview.get("workspace_name") or "") or None,
+            terms_version=str(body.get("terms_version") or "") or None,
+            privacy_version=str(body.get("privacy_version") or "") or None,
+        )
+    except legal_acceptance.LegalAcceptanceError as exc:
+        return _legal_acceptance_error(exc)
     if _use_supabase_auth():
         # Production: Supabase signup + verified login accepts pending invites.
         try:
@@ -1543,13 +1566,6 @@ async def invitations_register_post(request: Request) -> JSONResponse:
             return _json({"detail": str(exc)}, 503)
         except AuthError as exc:
             return _json({"detail": exc.detail}, exc.status_code)
-        legal_acceptance.record_acceptance(
-            email=email,
-            source="invitation",
-            workspace_name=str(preview.get("workspace_name") or "") or None,
-            terms_version=str(body.get("terms_version") or "") or None,
-            privacy_version=str(body.get("privacy_version") or "") or None,
-        )
         return _json(
             {
                 "ok": True,
@@ -1586,14 +1602,6 @@ async def invitations_register_post(request: Request) -> JSONResponse:
             },
             409,
         )
-    legal_acceptance.record_acceptance(
-        email=email,
-        source="invitation",
-        user_id=user_id,
-        workspace_name=str(preview.get("workspace_name") or "") or None,
-        terms_version=str(body.get("terms_version") or "") or None,
-        privacy_version=str(body.get("privacy_version") or "") or None,
-    )
     return _json(
         {
             "ok": True,
@@ -1949,6 +1957,23 @@ async def auth_invitation_signup(request: Request) -> JSONResponse:
             {"detail": "Agree to the Terms of Service and Privacy Policy to continue."},
             400,
         )
+    preview = team_service.lookup_invitation(str(body.get("token") or ""))
+    if not preview:
+        return _json({"detail": "This invitation is not valid or has expired."}, 404)
+    invite_email = str(preview.get("email") or "").strip().lower()
+    body_email = str(body.get("email") or "").strip().lower()
+    if body_email and body_email != invite_email:
+        return _json({"detail": "Use the email address this invitation was sent to."}, 400)
+    try:
+        _record_legal_acceptance(
+            email=invite_email,
+            source="invitation",
+            workspace_name=str(preview.get("workspace_name") or "") or None,
+            terms_version=str(body.get("terms_version") or "") or None,
+            privacy_version=str(body.get("privacy_version") or "") or None,
+        )
+    except legal_acceptance.LegalAcceptanceError as exc:
+        return _legal_acceptance_error(exc)
     redirect_to = supabase_auth.web_redirect_url(_web_origin(request), "/login", _origins)
     try:
         await run_in_threadpool(
@@ -1964,20 +1989,6 @@ async def auth_invitation_signup(request: Request) -> JSONResponse:
         return _json({"detail": str(exc)}, 503)
     except AuthError as exc:
         return _json({"detail": exc.detail}, exc.status_code)
-    # Prefer email from invitation token lookup when present.
-    invite_email = ""
-    try:
-        preview = team_service.lookup_invitation(str(body.get("token") or ""))
-        if preview:
-            invite_email = str(preview.get("email") or "")
-    except Exception:  # noqa: BLE001
-        invite_email = ""
-    legal_acceptance.record_acceptance(
-        email=invite_email or str(body.get("email") or ""),
-        source="invitation",
-        terms_version=str(body.get("terms_version") or "") or None,
-        privacy_version=str(body.get("privacy_version") or "") or None,
-    )
     return _json(
         {
             "accepted": True,
@@ -2305,11 +2316,28 @@ async def invitations_register(request: Request) -> JSONResponse:
             {"detail": "Agree to the Terms of Service and Privacy Policy to continue."},
             400,
         )
+    token = str(body.get("token") or "").strip()
+    email = str(body.get("email") or "").strip().lower()
+    preview = team_service.lookup_invitation(token)
+    if not preview:
+        return _json({"detail": "This invitation is not valid or has expired."}, 404)
+    if email != str(preview["email"]).lower():
+        return _json({"detail": "Use the email address this invitation was sent to."}, 400)
+    try:
+        _record_legal_acceptance(
+            email=email,
+            source="invitation",
+            workspace_name=str(preview.get("workspace_name") or "") or None,
+            terms_version=str(body.get("terms_version") or "") or None,
+            privacy_version=str(body.get("privacy_version") or "") or None,
+        )
+    except legal_acceptance.LegalAcceptanceError as exc:
+        return _legal_acceptance_error(exc)
     try:
         result = await run_in_threadpool(
             lambda: team_service.register_from_invitation_sandbox(
-                str(body.get("token") or ""),
-                str(body.get("email") or ""),
+                token,
+                email,
                 str(body.get("password") or ""),
             )
         )
@@ -2317,13 +2345,6 @@ async def invitations_register(request: Request) -> JSONResponse:
         return _team_error(exc)
     except PersistenceNotConfiguredError as exc:
         return _json({"detail": str(exc)}, 503)
-    legal_acceptance.record_acceptance(
-        email=str(body.get("email") or ""),
-        source="invitation",
-        user_id=str(result.get("user_id") or "") or None,
-        terms_version=str(body.get("terms_version") or "") or None,
-        privacy_version=str(body.get("privacy_version") or "") or None,
-    )
     return _json({"ok": True, **result, **legal_acceptance.published_versions()})
 
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import threading
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -17,6 +18,16 @@ PRIVACY_URL = "https://www.cadivor.com/#/privacy"
 
 _LOCK = threading.RLock()
 _MEMORY: list[dict[str, Any]] = []
+
+
+class LegalAcceptanceError(Exception):
+    """Handled consent failure — callers must not create accounts after this."""
+
+    def __init__(self, detail: str, *, status_code: int = 503, code: str = "consent_storage_failed"):
+        super().__init__(detail)
+        self.detail = detail
+        self.status_code = status_code
+        self.code = code
 
 
 def published_versions() -> dict[str, str]:
@@ -36,7 +47,19 @@ def _database_url() -> str:
     return (os.environ.get("CADIVOR_MIGRATION_DATABASE_URL") or "").strip()
 
 
+def _ephemeral_consent_allowed() -> bool:
+    """Local/test memory+file consent only when explicitly opted in.
+
+    Unlike workspace_store.allow_ephemeral_file_store(), this does not treat
+    "no Railway env" as permission to store production consent in memory.
+    """
+    return (os.environ.get("CADIVOR_ALLOW_EPHEMERAL_FILE_STORE") or "").strip() == "1"
+
+
 def _file_path() -> Path | None:
+    """File-backed consent store for local tests only (ephemeral flag required)."""
+    if not _ephemeral_consent_allowed():
+        return None
     raw = (os.environ.get("CADIVOR_LEGAL_ACCEPTANCE_PATH") or "").strip()
     if raw:
         return Path(raw)
@@ -44,6 +67,45 @@ def _file_path() -> Path | None:
     if data:
         return Path(data) / "legal_acceptances.json"
     return None
+
+
+def durable_storage_available() -> bool:
+    """True when consent can be stored in Postgres or an explicit test store."""
+    if _database_url():
+        return True
+    return _ephemeral_consent_allowed()
+
+
+def require_durable_storage() -> None:
+    if durable_storage_available():
+        return
+    raise LegalAcceptanceError(
+        "Cadivor could not record Terms acceptance because durable consent storage is unavailable. Account creation was not started.",
+        status_code=503,
+        code="consent_storage_unavailable",
+    )
+
+
+def canonical_versions(
+    terms_version: str | None = None,
+    privacy_version: str | None = None,
+) -> tuple[str, str]:
+    """Return server canonical versions; reject forged client values."""
+    terms = (terms_version or "").strip()
+    privacy = (privacy_version or "").strip()
+    if terms and terms != TERMS_VERSION:
+        raise LegalAcceptanceError(
+            "The Terms of Service version does not match Cadivor's published terms. Refresh the page and try again.",
+            status_code=400,
+            code="terms_version_mismatch",
+        )
+    if privacy and privacy != PRIVACY_VERSION:
+        raise LegalAcceptanceError(
+            "The Privacy Policy version does not match Cadivor's published policy. Refresh the page and try again.",
+            status_code=400,
+            code="privacy_version_mismatch",
+        )
+    return TERMS_VERSION, PRIVACY_VERSION
 
 
 def reset_legal_acceptances_for_tests() -> None:
@@ -63,24 +125,41 @@ def record_acceptance(
     user_id: str | None = None,
     workspace_name: str | None = None,
 ) -> dict[str, Any]:
+    """Persist consent. Uses UUID ids. Fails closed when durable storage is missing."""
+    require_durable_storage()
     email_n = (email or "").strip().lower()
     if not email_n:
-        raise ValueError("email required")
+        raise LegalAcceptanceError(
+            "Cadivor could not record Terms acceptance because the email address was missing.",
+            status_code=400,
+            code="consent_email_required",
+        )
+    terms_v, privacy_v = canonical_versions(terms_version, privacy_version)
     row = {
-        "id": f"legal-{len(_MEMORY)+1}-{int(datetime.now(timezone.utc).timestamp())}",
+        "id": str(uuid.uuid4()),
         "email": email_n,
         "user_id": user_id,
         "workspace_name": workspace_name,
         "source": source,
-        "terms_version": (terms_version or TERMS_VERSION).strip() or TERMS_VERSION,
-        "privacy_version": (privacy_version or PRIVACY_VERSION).strip()
-        or PRIVACY_VERSION,
+        "terms_version": terms_v,
+        "privacy_version": privacy_v,
         "accepted_at": utc_now(),
     }
     db_url = _database_url()
     if db_url:
-        _record_postgres(db_url, row)
+        try:
+            _record_postgres(db_url, row)
+        except LegalAcceptanceError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise LegalAcceptanceError(
+                "Cadivor could not record Terms acceptance. Account creation was not started.",
+                status_code=503,
+                code="consent_storage_failed",
+            ) from exc
         return row
+
+    # Local / test ephemeral path only (_ephemeral_consent_allowed already required).
     with _LOCK:
         _MEMORY.append(dict(row))
         path = _file_path()
@@ -104,6 +183,8 @@ def list_acceptances(*, email: str | None = None) -> list[dict[str, Any]]:
     db_url = _database_url()
     if db_url:
         return _list_postgres(db_url, email_n or None)
+    if not _ephemeral_consent_allowed():
+        return []
     with _LOCK:
         rows = list(_MEMORY)
         path = _file_path()
@@ -158,7 +239,6 @@ def _record_postgres(database_url: str, row: dict[str, Any]) -> None:
                 INSERT INTO migration_legal_acceptances
                   (id, email, user_id, workspace_name, source, terms_version, privacy_version, accepted_at)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s::timestamptz)
-                ON CONFLICT (id) DO NOTHING
                 """,
                 (
                     row["id"],
@@ -171,6 +251,12 @@ def _record_postgres(database_url: str, row: dict[str, Any]) -> None:
                     row["accepted_at"],
                 ),
             )
+            if cur.rowcount != 1:
+                raise LegalAcceptanceError(
+                    "Cadivor could not record Terms acceptance. Account creation was not started.",
+                    status_code=503,
+                    code="consent_storage_failed",
+                )
         conn.commit()
 
 
