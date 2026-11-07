@@ -39,7 +39,8 @@ def test_health_and_synthetic_bom_flow():
     health = client.get("/health").json()
     assert health["ok"] is True
     assert health["suppliers"] == "disabled"
-    assert health["stripe"] == "disabled"
+    assert health["stripe"] == "one-time-report-managed-by-supabase-edge-function"
+    assert health["stripe_checkout_enabled"] is False
     assert health["email"] == "disabled"
     assert health["auth"]["mode"] == "sandbox-jwt-membership"
     assert health["auth"]["smoke_login_default"] is False

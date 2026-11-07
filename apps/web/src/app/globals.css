@@ -2697,6 +2697,16 @@ button {
   font-weight: 700;
 }
 .cv-success a { color: #1e5fa1; font-weight: 780; white-space: nowrap; }
+.cv-notice {
+  margin: 12px 0;
+  padding: 12px 14px;
+  border: 1px solid #cbdcf8;
+  border-radius: var(--radius-sm);
+  background: #f3f7ff;
+  color: #35537f;
+  font-size: 12px;
+  line-height: 1.5;
+}
 .cv-decision-history { margin-top: 14px; }
 .cv-decision-history-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .cv-decision-history .cv-table { min-width: 900px; }

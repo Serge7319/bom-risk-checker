@@ -68,6 +68,37 @@ export type Report = AnalyzeSummary & {
   } | null;
 };
 
+export class ApiError extends Error {
+  status: number;
+  payload: Record<string, unknown>;
+
+  constructor(message: string, status: number, payload: Record<string, unknown>) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.payload = payload;
+  }
+}
+
+export type OneTimeReportOrder = {
+  id: string;
+  status: string;
+  created_at?: string | null;
+  paid_at?: string | null;
+  analysis_id?: string | null;
+};
+
+export type OneTimeReportStatus = {
+  ok: boolean;
+  enabled: boolean;
+  price?: { amount: number; currency: string };
+  available_credit: boolean;
+  analysis_in_progress: boolean;
+  checkout?: { state: string; url?: string } | null;
+  orders: OneTimeReportOrder[];
+  max_components: number;
+};
+
 const SESSION_KEY = "cadivor_next_session";
 const LEGACY_SESSION_KEY = "cadivor_next_sandbox_session";
 let refreshInFlight: Promise<string | null> | null = null;
@@ -201,8 +232,9 @@ async function apiJson<T>(
     }
   }
   if (!res.ok) {
-    const detail = (await res.json().catch(() => ({}))) as { detail?: string };
-    throw new Error(detail.detail || `Request failed (${res.status})`);
+    const payload = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    const detail = typeof payload.detail === "string" ? payload.detail : `Request failed (${res.status})`;
+    throw new ApiError(detail, res.status, payload);
   }
   return res.json() as Promise<T>;
 }
@@ -580,6 +612,22 @@ export async function fetchPlanUsage(token: string) {
 
 export async function fetchBillingStatus(token: string) {
   return apiJson<Record<string, unknown>>("/billing/status", { token });
+}
+
+export async function fetchOneTimeReportStatus(token: string) {
+  return apiJson<OneTimeReportStatus>("/billing/one-time-report", { token });
+}
+
+export async function beginOneTimeReportCheckout(token: string) {
+  return apiJson<{
+    ok: boolean;
+    checkout?: { state: string; url?: string };
+    detail?: string;
+  }>("/billing/one-time-report/checkout", {
+    method: "POST",
+    token,
+    body: JSON.stringify({}),
+  });
 }
 
 export async function fetchConnectors(token: string) {

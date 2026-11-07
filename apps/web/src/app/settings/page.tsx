@@ -113,6 +113,7 @@ export default function Page() {
         actions={
           <>
             <PrimaryLink href="/bom-analyzer">BOM Analyzer</PrimaryLink>
+            <SecondaryLink href="/single-bom-report">One-time report</SecondaryLink>
             <SecondaryLink href="/">Home</SecondaryLink>
           </>
         }
@@ -154,8 +155,7 @@ export default function Page() {
           <section className="cv-card pad" style={{ marginBottom: 14 }}>
             <h3 className="cv-card-title">Billing status</h3>
             <p className="cv-card-subtitle">
-              Checkout is not live. Status below reports readiness only — no
-              charges are created from this page.
+              Subscription checkout status is shown below. The one-time BOM report is a separate purchase and does not start a recurring plan.
             </p>
             <dl className="cv-record-meta">
               <div className="cv-record-field">
@@ -171,6 +171,9 @@ export default function Page() {
                 <dd>{billing?.charges_created ? "Yes" : "No"}</dd>
               </div>
             </dl>
+            <div style={{ marginTop: 14 }}>
+              <SecondaryLink href="/single-bom-report">View one-time BOM report and purchase history</SecondaryLink>
+            </div>
           </section>
 
           <section className="cv-card pad" style={{ marginBottom: 14 }}>

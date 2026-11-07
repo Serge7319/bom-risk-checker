@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icons";
 import { Shell } from "@/components/Shell";
 import { PageHeader, SecondaryLink } from "@/components/PageHeader";
-import { analyzeBom, listReports, type AnalyzeSummary } from "@/lib/api";
+import { analyzeBom, ApiError, listReports, type AnalyzeSummary } from "@/lib/api";
 import { PAGE_META } from "@/lib/routes";
 import { rememberAnalysis, useRequireSession } from "@/lib/session";
 
@@ -48,6 +48,7 @@ export default function BomAnalyzerPage() {
   const [revision, setRevision] = useState("A");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [oneTimeReportRequired, setOneTimeReportRequired] = useState(false);
   const [summary, setSummary] = useState<AnalyzeSummary | null>(null);
 
   useEffect(() => {
@@ -74,6 +75,7 @@ export default function BomAnalyzerPage() {
     if (!session || !file) return;
     setBusy(true);
     setError("");
+    setOneTimeReportRequired(false);
     setSummary(null);
     try {
       const result = await analyzeBom(file, session.access_token, {
@@ -86,6 +88,9 @@ export default function BomAnalyzerPage() {
       router.push(`/reports/${result.analysis_id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Analyze failed");
+      setOneTimeReportRequired(
+        err instanceof ApiError && err.payload.code === "one_time_report_required",
+      );
       setBusy(false);
     }
   }
@@ -109,6 +114,9 @@ export default function BomAnalyzerPage() {
         meta={PAGE_META.bom}
         actions={
           <>
+            <Link className="cv-button" href="/single-bom-report" target="_blank" rel="noreferrer">
+              One-time report
+            </Link>
             <SecondaryLink href="/reports">Saved analyses</SecondaryLink>
           </>
         }
@@ -145,7 +153,26 @@ export default function BomAnalyzerPage() {
                 Analyzing the BOM with available evidence and saving it to your workspace…
               </div>
             ) : null}
-            {error ? <div className="cv-error" role="alert">{error}</div> : null}
+            {error ? (
+              <div className="cv-error" role="alert">
+                {error}
+                {oneTimeReportRequired ? (
+                  <div style={{ marginTop: 10 }}>
+                    <Link
+                      className="cv-button primary"
+                      href="/single-bom-report"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Open one-time report purchase
+                    </Link>
+                    <p className="cv-small-note" style={{ marginTop: 8 }}>
+                      Keep this BOM open. After checkout is confirmed, return here and run the analysis; your selected file will still be ready.
+                    </p>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
             {summary ? (
               <p className="cv-small-note cv-bom-summary">
                 Saved {summary.project_name || summary.analysis_id}

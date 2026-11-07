@@ -1,14 +1,15 @@
 """Cadivor API for the Next.js application.
 
-Production uses Supabase Auth and a dedicated Railway Postgres workspace store.
-BOM risk and sourcing evidence remains explicitly synthetic until authorized
-supplier integrations are configured. Stripe checkout and alert email stay off
-until their separate production gates are verified.
+Production uses Supabase Auth, the established BOM/supplier analysis modules,
+and a dedicated Railway Postgres workspace store. Existing Stripe one-time
+report checkout is handled by its Supabase Edge Function; subscription checkout
+and scheduled alert email remain separate capabilities.
 """
 from __future__ import annotations
 
 import os
 import sys
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +31,7 @@ from apps.api.synthetic_analyze import (  # noqa: E402
     delete_report,
     get_report,
     list_reports,
+    parse_bom_bytes,
 )
 from apps.api.sandbox_auth import (  # noqa: E402
     AuthError,
@@ -59,11 +61,8 @@ from apps.api import monitoring_store  # noqa: E402
 from apps.api import monitoring_scheduler  # noqa: E402
 from apps.api import plan_limits  # noqa: E402
 from apps.api import supplier_lookup  # noqa: E402
+from apps.api import one_time_report_service  # noqa: E402
 from apps.api.evidence_contract import annotate_report_parts  # noqa: E402
-from apps.api.report_exports import (  # noqa: E402
-    build_report_export,
-    safe_download_stem,
-)
 from apps.api.report_exports import (  # noqa: E402
     build_report_export,
     safe_download_stem,
@@ -140,12 +139,24 @@ def _require_smoke_token(request: Request) -> JSONResponse | None:
     return err
 
 
-def _disable_live_integrations() -> None:
-    os.environ.pop("MOUSER_API_KEY", None)
-    os.environ.pop("DIGIKEY_CLIENT_ID", None)
-    os.environ.pop("DIGIKEY_CLIENT_SECRET", None)
-    os.environ.pop("NEWARK_API_KEY", None)
-    os.environ.pop("RESEND_API_KEY", None)
+def _release_one_time_credit_if_report_was_not_saved(
+    *, access_token: str, order_id: str, analysis_id: str, workspace_id: str
+) -> None:
+    """Release only when the durable workspace store confirms no report exists."""
+    try:
+        if get_report(analysis_id, workspace_id=workspace_id):
+            return
+    except Exception:  # noqa: BLE001
+        # An uncertain store state must not recycle a paid credit.
+        return
+    try:
+        one_time_report_service.request_action(
+            access_token=access_token,
+            action="release",
+            payload={"order_id": order_id},
+        )
+    except one_time_report_service.OneTimeReportServiceError:
+        pass
 
 
 async def health(_: Request) -> JSONResponse:
@@ -158,13 +169,23 @@ async def health(_: Request) -> JSONResponse:
         store_path_basename = None
     auth = describe_auth()
     using_supabase = _use_supabase_auth()
+    from apps.api.legacy_supplier_workflow import (
+        configured_supplier_count,
+        production_analysis_enabled,
+    )
+    supplier_count = configured_supplier_count()
+    legacy_engine = production_analysis_enabled()
     return _json(
         {
             "ok": True,
             "service": "cadivor-migration-api",
-            "mode": "synthetic-preview",
-            "suppliers": "disabled",
-            "stripe": "disabled",
+            "mode": "legacy-supplier-engine" if legacy_engine else "synthetic-preview",
+            "suppliers": (
+                "configured"
+                if supplier_count
+                else "credentials-not-present" if legacy_engine else "disabled"
+            ),
+            "stripe": "one-time-report-managed-by-supabase-edge-function",
             "email": (
                 "signup-verification-only"
                 if _use_supabase_auth() and supabase_auth.signup_enabled()
@@ -195,6 +216,7 @@ async def health(_: Request) -> JSONResponse:
                 "compliance",
                 "connectors",
                 "billing-status",
+                "one-time-report",
                 "plan-usage",
             ],
             "foundation": [
@@ -209,8 +231,10 @@ async def health(_: Request) -> JSONResponse:
                 "monitoring-store",
                 "evidence-contract",
             ],
-            "suppliers_live": supplier_lookup.live_lookups_enabled(),
+            "suppliers_live": bool(legacy_engine and supplier_count),
+            "supplier_provider_count": supplier_count,
             "stripe_checkout_enabled": billing_prep.checkout_enabled(),
+            "one_time_report_bridge": "supabase-edge-function",
             "monitoring_email_enabled": monitoring_store.email_delivery_enabled(),
             "monitoring_scheduler_enabled": monitoring_scheduler.scheduler_enabled(),
             "persistence": {
@@ -347,14 +371,6 @@ async def boms_analyze(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
-    if _use_supabase_auth() and supabase_auth.trial_expired(ctx):
-        return _json(
-            {
-                "code": "trial_expired",
-                "detail": "Your 14-day trial has ended. Saved reports remain available; contact Cadivor to continue analysis.",
-            },
-            402,
-        )
     form = await request.form()
     upload = form.get("file")
     if upload is None:
@@ -366,21 +382,70 @@ async def boms_analyze(request: Request) -> JSONResponse:
     project_name = str(form.get("project_name") or "").strip() or None
     bom_name = str(form.get("bom_name") or "").strip() or None
     revision = str(form.get("revision") or "").strip() or None
-    _disable_live_integrations()
-    # Approximate unique-part count from CSV rows (header excluded) for limit checks.
     try:
-        line_count = sum(1 for line in payload.decode("utf-8", errors="ignore").splitlines() if line.strip())
-        part_count_estimate = max(0, line_count - 1)
-    except Exception:  # noqa: BLE001
-        part_count_estimate = 0
+        parsed_bom = parse_bom_bytes(filename, payload)
+        part_numbers = parsed_bom.get("mpn_normalized", parsed_bom.get("mpn"))
+        unique_part_count = len({str(value).strip().casefold() for value in part_numbers if str(value).strip()})
+    except Exception as exc:  # noqa: BLE001
+        return _json({"detail": str(exc)}, 400)
+
+    analysis_id = str(uuid.uuid4())
+    reserved_order_id = ""
     try:
         plan_limits.assert_analysis_allowed(
             workspace_id=ctx["workspace_id"],
             ctx=ctx,
-            part_count=part_count_estimate,
+            part_count=unique_part_count,
         )
     except plan_limits.PlanLimitError as exc:
-        return _json({"code": exc.code, "detail": exc.detail, "limits": exc.limits}, 402)
+        if unique_part_count > 100:
+            return _json(
+                {
+                    "code": "one_time_report_size_limit",
+                    "detail": (
+                        f"This BOM has {unique_part_count} unique components. "
+                        "The existing one-time report covers up to 100."
+                    ),
+                    "limits": exc.limits,
+                    "one_time_report": {"href": "/single-bom-report", "max_components": 100},
+                },
+                402,
+            )
+        try:
+            purchase, purchase_status = one_time_report_service.request_action(
+                access_token=request.headers.get("authorization", "").removeprefix("Bearer ").strip(),
+                action="reserve",
+                payload={"analysis_id": analysis_id},
+            )
+        except one_time_report_service.OneTimeReportServiceError:
+            purchase, purchase_status = {}, 503
+        if purchase_status == 200 and purchase.get("ok") and purchase.get("order_id"):
+            reserved_order_id = str(purchase["order_id"])
+        else:
+            status_code = purchase_status if purchase_status in {401, 403} else 402
+            detail = (
+                str(purchase.get("detail") or "Verify your email before using a one-time report.")
+                if status_code == 403
+                else (
+                    "Your plan limit has been reached. A paid one-time report credit can "
+                    "unlock one complete BOM analysis for up to 100 unique components."
+                )
+            )
+            return _json(
+                {
+                    "code": "one_time_report_required",
+                    "detail": detail,
+                    "plan_limit": {"code": exc.code, "detail": exc.detail},
+                    "limits": exc.limits,
+                    "one_time_report": {
+                        "href": "/single-bom-report",
+                        "max_components": 100,
+                    },
+                },
+                status_code,
+            )
+
+    access_token = request.headers.get("authorization", "").removeprefix("Bearer ").strip()
     try:
         report = analyze_upload(
             filename=filename,
@@ -389,11 +454,49 @@ async def boms_analyze(request: Request) -> JSONResponse:
             project_name=project_name,
             bom_name=bom_name,
             revision=revision,
+            analysis_id=analysis_id,
         )
     except PersistenceNotConfiguredError as exc:
+        if reserved_order_id:
+            _release_one_time_credit_if_report_was_not_saved(
+                access_token=access_token,
+                order_id=reserved_order_id,
+                analysis_id=analysis_id,
+                workspace_id=ctx["workspace_id"],
+            )
         return _json({"detail": str(exc)}, 503)
     except Exception as exc:  # noqa: BLE001
+        if reserved_order_id:
+            _release_one_time_credit_if_report_was_not_saved(
+                access_token=access_token,
+                order_id=reserved_order_id,
+                analysis_id=analysis_id,
+                workspace_id=ctx["workspace_id"],
+            )
         return _json({"detail": str(exc)}, 400)
+
+    payment_reconciled = True
+    if reserved_order_id:
+        try:
+            consumed, consume_status = one_time_report_service.request_action(
+                access_token=access_token,
+                action="consume",
+                payload={"order_id": reserved_order_id, "analysis_id": report["id"]},
+            )
+            payment_reconciled = consume_status == 200 and bool(consumed.get("ok"))
+        except one_time_report_service.OneTimeReportServiceError:
+            payment_reconciled = False
+
+    if reserved_order_id and not payment_reconciled:
+        return _json(
+            {
+                "code": "one_time_report_reconciliation_pending",
+                "detail": "Your paid report was saved. Payment reconciliation is still processing; open it from Reports.",
+                "analysis_id": report["id"],
+                "persisted": bool(report.get("persisted")),
+            },
+            503,
+        )
     hierarchy = report.get("hierarchy") or {}
     top = hierarchy.get("top_level") or {}
     return _json(
@@ -627,7 +730,6 @@ async def compare_parts_post(request: Request) -> JSONResponse:
         body = await request.json()
     except Exception:  # noqa: BLE001
         return _json({"detail": "Invalid JSON"}, 400)
-    _disable_live_integrations()
     try:
         result = migration_tools.compare_parts_payload(
             workspace_id=ctx["workspace_id"],
@@ -790,7 +892,6 @@ async def datasheet_qa_post(request: Request) -> JSONResponse:
     payload = await upload.read()
     if not payload:
         return _json({"detail": "Empty file"}, 400)
-    _disable_live_integrations()
     try:
         result = migration_tools.datasheet_qa_payload(
             filename=filename, payload=payload, question=question
@@ -908,7 +1009,6 @@ async def supplier_lookup_post(request: Request) -> JSONResponse:
         body = await request.json()
     except Exception:  # noqa: BLE001
         return _json({"detail": "Invalid JSON"}, 400)
-    _disable_live_integrations()
     result = supplier_lookup.lookup_exact_part(str(body.get("mpn") or ""))
     return _json(result)
 
@@ -921,7 +1021,6 @@ async def find_replacement_post(request: Request) -> JSONResponse:
         body = await request.json()
     except Exception:  # noqa: BLE001
         return _json({"detail": "Invalid JSON"}, 400)
-    _disable_live_integrations()
     try:
         result = migration_tools.find_replacement_payload(
             workspace_id=ctx["workspace_id"],
@@ -943,7 +1042,6 @@ async def ask_cadivor_post(request: Request) -> JSONResponse:
         body = await request.json()
     except Exception:  # noqa: BLE001
         return _json({"detail": "Invalid JSON"}, 400)
-    _disable_live_integrations()
     history = body.get("history") if isinstance(body.get("history"), list) else []
     clean_history: list[dict[str, str]] = []
     for item in history:
@@ -1062,6 +1160,34 @@ async def billing_checkout_prep_post(request: Request) -> JSONResponse:
     return _json(result, status)
 
 
+async def one_time_report_status_get(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        result, status = one_time_report_service.request_action(
+            access_token=request.headers.get("authorization", "").removeprefix("Bearer ").strip(),
+            action="status",
+        )
+    except one_time_report_service.OneTimeReportServiceError as exc:
+        return _json({"ok": False, "detail": str(exc)}, 503)
+    return _json(result, status)
+
+
+async def one_time_report_checkout_post(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        result, status = one_time_report_service.request_action(
+            access_token=request.headers.get("authorization", "").removeprefix("Bearer ").strip(),
+            action="checkout",
+        )
+    except one_time_report_service.OneTimeReportServiceError as exc:
+        return _json({"ok": False, "detail": str(exc)}, 503)
+    return _json(result, status)
+
+
 async def connectors_get(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
@@ -1127,7 +1253,6 @@ async def monitoring_refresh_post(request: Request) -> JSONResponse:
         assert ctx is not None
         workspace_id = ctx["workspace_id"]
         analysis_id = request.query_params.get("analysis_id") or None
-    _disable_live_integrations()
     return _json(
         monitoring_scheduler.run_workspace_refresh(
             workspace_id, analysis_id=analysis_id
@@ -1177,6 +1302,8 @@ app = Starlette(
         Route("/tools/monitoring/refresh", monitoring_refresh_post, methods=["POST"]),
         Route("/billing/status", billing_status_get, methods=["GET"]),
         Route("/billing/checkout-prep", billing_checkout_prep_post, methods=["POST"]),
+        Route("/billing/one-time-report", one_time_report_status_get, methods=["GET"]),
+        Route("/billing/one-time-report/checkout", one_time_report_checkout_post, methods=["POST"]),
         Route("/plan/usage", plan_usage_get, methods=["GET"]),
         Route("/integrations/connectors", connectors_get, methods=["GET"]),
         Route("/integrations/connectors/sync", connectors_sync_post, methods=["POST"]),

@@ -31,6 +31,7 @@ def classify_part_evidence(part: dict[str, Any] | None) -> dict[str, Any]:
         or row.get("source")
         or ""
     ).strip()
+    explicit_class = str(row.get("evidence_class") or "").strip().casefold()
     live_candidate = {
         "manufacturer_part_number": row.get("manufacturer_part_number") or requested,
         "manufacturer": row.get("Manufacturer") or row.get("manufacturer") or "",
@@ -43,6 +44,23 @@ def classify_part_evidence(part: dict[str, Any] | None) -> dict[str, Any]:
         "provider_status": row.get("provider_status") or "AVAILABLE",
     }
     exact = exact_supplier_evidence(requested, live_candidate)
+    if explicit_class == EVIDENCE_MISSING:
+        return {
+            "evidence_class": EVIDENCE_MISSING,
+            "requested_mpn": requested,
+            "identity_verified": False,
+            "source": "",
+            "source_url": "",
+            "datasheet_url": "",
+            "retrieved_at": row.get("retrieved_at") or "",
+            "units": {
+                "quantity": row.get("Quantity") or row.get("quantity"),
+                "unit_price": row.get("Unit Price") or row.get("unit_price"),
+                "currency": row.get("unit_price_currency") or row.get("currency") or "",
+            },
+            "synthetic": False,
+            "gap": "No live supplier evidence was available for this component.",
+        }
     # Live class requires an explicit live source label AND exact identity match.
     if exact and source_label.casefold().startswith("live"):
         return {
@@ -113,6 +131,9 @@ def annotate_report_parts(report: dict[str, Any] | None) -> dict[str, Any]:
             for p in parts
             if (p.get("evidence") or {}).get("evidence_class") == EVIDENCE_MISSING
         ),
-        "live_lookups_enabled": False,
+        "live_lookups_enabled": any(
+            (part.get("evidence") or {}).get("evidence_class") == EVIDENCE_LIVE
+            for part in parts
+        ),
     }
     return payload

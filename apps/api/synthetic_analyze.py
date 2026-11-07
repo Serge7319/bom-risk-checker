@@ -85,49 +85,73 @@ def parse_bom_bytes(filename: str, payload: bytes) -> pd.DataFrame:
     return clean_bom_data(df)
 
 
-def analyze_dataframe(df: pd.DataFrame) -> dict[str, Any]:
+def analyze_dataframe(
+    df: pd.DataFrame,
+    *,
+    analysis_mode: str | None = None,
+    analysis_id: str | None = None,
+) -> dict[str, Any]:
+    from apps.api.legacy_supplier_workflow import production_analysis_enabled
+
+    use_legacy_engine = (
+        bool(analysis_mode == "legacy-supplier")
+        if analysis_mode is not None
+        else production_analysis_enabled()
+    )
     rows: list[dict[str, Any]] = []
-    for _, row in df.iterrows():
-        source = row.to_dict()
-        mpn = str(row.get("mpn_normalized") or row.get("mpn") or "").strip()
-        manufacturer = str(row.get("manufacturer") or "").strip()
-        description = str(row.get("description") or "").strip()
-        quantity = row.get("quantity", 1)
-        part = _synthetic_part(mpn, manufacturer, description, quantity)
-        risk = calculate_risk(part)
-        hierarchy_fields = attach_hierarchy_fields(source)
-        rows.append(
-            {
-                "MPN": mpn,
-                "mpn": mpn,
-                "Manufacturer": manufacturer,
-                "manufacturer": manufacturer,
-                "Description": description,
-                "description": description,
-                "Quantity": quantity,
-                "quantity": quantity,
-                "Lifecycle": part["lifecycle_status"],
-                "lifecycle_status": part["lifecycle_status"],
-                "Stock": part["stock_total"],
-                "stock": part["stock_total"],
-                "stock_available": part["stock_available"],
-                "Unit Price": part["unit_price"],
-                "unit_price": part["unit_price"],
-                "unit_price_currency": "USD",
-                "Risk Score": risk.get("risk_score"),
-                "risk_score": risk.get("risk_score"),
-                "Risk Level": risk.get("risk_level"),
-                "risk_level": risk.get("risk_level"),
-                "Risk Reasons": "; ".join(risk.get("reasons") or []),
-                "supplier_count": 1,
-                "Supplier Data Verified": True,
-                "Stock Data Complete": True,
-                "Source": "synthetic-preview",
-                "source": "synthetic-preview",
-                "price_source": "synthetic-preview",
-                **hierarchy_fields,
-            }
-        )
+    if use_legacy_engine:
+        from apps.api.legacy_supplier_workflow import analyze_rows
+
+        rows = analyze_rows(df)
+        for index, (_, row) in enumerate(df.iterrows()):
+            if index < len(rows):
+                rows[index].update(attach_hierarchy_fields(row.to_dict()))
+        report_mode = "legacy-supplier-engine"
+    else:
+        for _, row in df.iterrows():
+            source = row.to_dict()
+            mpn = str(row.get("mpn_normalized") or row.get("mpn") or "").strip()
+            manufacturer = str(row.get("manufacturer") or "").strip()
+            description = str(row.get("description") or "").strip()
+            quantity = row.get("quantity", 1)
+            part = _synthetic_part(mpn, manufacturer, description, quantity)
+            risk = calculate_risk(part)
+            hierarchy_fields = attach_hierarchy_fields(source)
+            rows.append(
+                {
+                    "MPN": mpn,
+                    "mpn": mpn,
+                    "Manufacturer": manufacturer,
+                    "manufacturer": manufacturer,
+                    "Description": description,
+                    "description": description,
+                    "Quantity": quantity,
+                    "quantity": quantity,
+                    "Lifecycle": part["lifecycle_status"],
+                    "lifecycle_status": part["lifecycle_status"],
+                    "Stock": part["stock_total"],
+                    "stock": part["stock_total"],
+                    "stock_available": part["stock_available"],
+                    "Unit Price": part["unit_price"],
+                    "unit_price": part["unit_price"],
+                    "unit_price_currency": "USD",
+                    "Risk Score": risk.get("risk_score"),
+                    "risk_score": risk.get("risk_score"),
+                    "Risk Level": risk.get("risk_level"),
+                    "risk_level": risk.get("risk_level"),
+                    "Risk Reasons": "; ".join(risk.get("reasons") or []),
+                    "supplier_count": 1,
+                    "Supplier Data Verified": True,
+                    "Stock Data Complete": True,
+                    "Source": "synthetic-preview",
+                    "source": "synthetic-preview",
+                    "price_source": "synthetic-preview",
+                    "evidence_class": "synthetic-preview",
+                    "evidence_source": "synthetic-preview",
+                    **hierarchy_fields,
+                }
+            )
+        report_mode = "synthetic-preview"
 
     hierarchy: dict[str, Any] | None = None
     if has_hierarchy(rows):
@@ -139,11 +163,11 @@ def analyze_dataframe(df: pd.DataFrame) -> dict[str, Any]:
     # risk comes from synthetic evidence on each row.
     health = calculate_bom_health_score(results)
     levels = results["Risk Level"].fillna("").astype(str).str.casefold()
-    analysis_id = str(uuid.uuid4())
+    analysis_id = str(analysis_id or uuid.uuid4())
     report = {
         "id": analysis_id,
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "mode": "synthetic-preview",
+        "mode": report_mode,
         "filename": "",
         "total_parts": int(len(results)),
         "health_score": health.get("health_score"),
@@ -169,9 +193,11 @@ def analyze_upload(
     bom_name: str | None = None,
     revision: str | None = None,
     persist: bool = True,
+    analysis_mode: str | None = None,
+    analysis_id: str | None = None,
 ) -> dict[str, Any]:
     df = parse_bom_bytes(filename, payload)
-    report = analyze_dataframe(df)
+    report = analyze_dataframe(df, analysis_mode=analysis_mode, analysis_id=analysis_id)
     report["filename"] = filename or "bom.csv"
     report["workspace_id"] = workspace_id
     _REPORTS[report["id"]] = report
