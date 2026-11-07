@@ -437,9 +437,14 @@ def test_expired_trial_is_read_only_for_new_bom_analysis(
     store = get_auth_store()
     store._data["memberships"][body["user_id"]]["trial_ends_at"] = "2025-01-01T00:00:00+00:00"
     headers = {"Authorization": f"Bearer {body['access_token']}"}
-    denied = supabase_client.post("/boms/analyze", headers=headers)
+    denied = supabase_client.post(
+        "/boms/analyze",
+        headers=headers,
+        files={"file": ("bom.csv", b"MPN,Quantity\nLM358DR,1\n", "text/csv")},
+    )
     assert denied.status_code == 402
-    assert denied.json()["code"] == "trial_expired"
+    assert denied.json()["code"] == "one_time_report_required"
+    assert denied.json()["one_time_report"]["href"] == "/single-bom-report"
     assert supabase_client.get("/reports", headers=headers).status_code == 200
 
 

@@ -180,7 +180,11 @@ async def health(_: Request) -> JSONResponse:
             "ok": True,
             "service": "cadivor-migration-api",
             "mode": "legacy-supplier-engine" if legacy_engine else "synthetic-preview",
-            "suppliers": "configured" if supplier_count else "credentials-not-present",
+            "suppliers": (
+                "configured"
+                if supplier_count
+                else "credentials-not-present" if legacy_engine else "disabled"
+            ),
             "stripe": "one-time-report-managed-by-supabase-edge-function",
             "email": (
                 "signup-verification-only"
