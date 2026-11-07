@@ -312,10 +312,25 @@ def _web_origin(request: Request) -> str:
     return (https[0] if https else (_origins[0] if _origins else "http://localhost:3000")).rstrip("/")
 
 
+def _accepted_terms(body: dict) -> bool:
+    value = body.get("accepted_terms")
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return False
+
+
 async def auth_signup_config(_: Request) -> JSONResponse:
     """Expose public onboarding availability without exposing auth configuration."""
     enabled = bool(_use_supabase_auth() and supabase_auth.signup_enabled())
-    return _json({"signup_enabled": enabled, "trial_length_days": supabase_auth.TRIAL_DAYS})
+    return _json(
+        {
+            "signup_enabled": enabled,
+            "trial_length_days": supabase_auth.TRIAL_DAYS,
+            "invitations_enabled": True,
+        }
+    )
 
 
 async def auth_signup(request: Request) -> JSONResponse:
@@ -325,6 +340,13 @@ async def auth_signup(request: Request) -> JSONResponse:
         body = await request.json()
     except Exception:  # noqa: BLE001
         return _json({"detail": "Invalid JSON"}, 400)
+    if not isinstance(body, dict):
+        return _json({"detail": "Invalid JSON"}, 400)
+    if not _accepted_terms(body):
+        return _json(
+            {"detail": "Agree to the Terms of Service and Privacy Policy to continue."},
+            400,
+        )
     try:
         supabase_auth.signup(
             str(body.get("email") or ""),
@@ -1481,6 +1503,13 @@ async def invitations_register_post(request: Request) -> JSONResponse:
         body = await request.json()
     except Exception:  # noqa: BLE001
         return _json({"detail": "Invalid JSON"}, 400)
+    if not isinstance(body, dict):
+        return _json({"detail": "Invalid JSON"}, 400)
+    if not _accepted_terms(body):
+        return _json(
+            {"detail": "Agree to the Terms of Service and Privacy Policy to continue."},
+            400,
+        )
     token = str(body.get("token") or "").strip()
     email = str(body.get("email") or "").strip().lower()
     password = str(body.get("password") or "")
@@ -1888,6 +1917,11 @@ async def auth_invitation_signup(request: Request) -> JSONResponse:
     body, bad = await _read_json_object(request)
     if bad is not None or body is None:
         return bad or _json({"detail": "Invalid JSON"}, 400)
+    if not _accepted_terms(body):
+        return _json(
+            {"detail": "Agree to the Terms of Service and Privacy Policy to continue."},
+            400,
+        )
     redirect_to = supabase_auth.web_redirect_url(_web_origin(request), "/login", _origins)
     try:
         await run_in_threadpool(
@@ -2224,6 +2258,11 @@ async def invitations_register(request: Request) -> JSONResponse:
     body, bad = await _read_json_object(request)
     if bad is not None or body is None:
         return bad or _json({"detail": "Invalid JSON"}, 400)
+    if not _accepted_terms(body):
+        return _json(
+            {"detail": "Agree to the Terms of Service and Privacy Policy to continue."},
+            400,
+        )
     try:
         result = await run_in_threadpool(
             lambda: team_service.register_from_invitation_sandbox(

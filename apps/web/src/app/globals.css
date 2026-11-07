@@ -1304,6 +1304,89 @@ button {
   text-underline-offset: 2px;
 }
 
+.cv-terms {
+  margin-top: 14px;
+}
+
+.cv-terms-box {
+  background: #f8fafc;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 12px 13px;
+  color: var(--slate, #475569);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.cv-terms-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 12px;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.45;
+  cursor: pointer;
+}
+
+.cv-terms-check input {
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  flex: 0 0 auto;
+  accent-color: var(--blue-700);
+}
+
+.cv-terms-check a {
+  color: var(--blue-700);
+  font-weight: 750;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.cv-terms-toggle {
+  display: inline-block;
+  margin-top: 10px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--blue-700);
+  font-size: 12.5px;
+  font-weight: 750;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.cv-terms-full {
+  margin-top: 10px;
+  max-height: 220px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  padding: 12px 14px;
+}
+
+.cv-terms-full h3 {
+  margin: 12px 0 4px;
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.cv-terms-full p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.cv-terms-meta {
+  margin: 0 0 8px !important;
+  font-style: italic;
+}
+
 .cv-signup-success {
   margin-top: 18px;
   background: #f7fafc;

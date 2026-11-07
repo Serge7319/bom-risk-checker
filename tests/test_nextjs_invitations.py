@@ -80,6 +80,7 @@ def test_invite_create_register_accept_persists_role(email_sink: MemoryEmailSink
             "token": token,
             "email": "invitee@cadivor.test",
             "password": "InviteePassword!1",
+            "accepted_terms": True,
         },
     )
     assert registered.status_code == 200, registered.text
