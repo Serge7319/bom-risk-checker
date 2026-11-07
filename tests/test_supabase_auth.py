@@ -336,13 +336,19 @@ def test_sandbox_hs256_blocked_when_production_runtime_forced(
 def test_self_serve_signup_is_disabled_by_default(supabase_client: TestClient):
     config = supabase_client.get("/auth/config")
     assert config.status_code == 200
-    assert config.json() == {"signup_enabled": False, "trial_length_days": 14}
+    body = config.json()
+    assert body["signup_enabled"] is False
+    assert body["trial_length_days"] == 14
+    assert body["invitations_enabled"] is True
+    assert "terms_version" in body
+    assert "privacy_version" in body
     response = supabase_client.post(
         "/auth/signup",
         json={
             "email": "new@cadivor.test",
             "password": "long-password-123",
             "workspace_name": "New workspace",
+            "accepted_terms": True,
         },
     )
     assert response.status_code == 503
@@ -398,12 +404,23 @@ def test_verified_signup_provisions_workspace_and_starts_trial_once(
     client = supabase_client
     config = client.get("/auth/config")
     assert config.json()["signup_enabled"] is True
+    rejected = client.post(
+        "/auth/signup",
+        json={
+            "email": "new@cadivor.test",
+            "password": "long-password-123",
+            "workspace_name": "Acme Hardware",
+        },
+    )
+    assert rejected.status_code == 400
+    assert "terms" in rejected.json()["detail"].lower()
     response = client.post(
         "/auth/signup",
         json={
             "email": "new@cadivor.test",
             "password": "long-password-123",
             "workspace_name": "Acme Hardware",
+            "accepted_terms": True,
         },
     )
     assert response.status_code == 202
@@ -467,6 +484,7 @@ def test_signup_redirect_must_be_allowlisted_https(
             "email": "new@cadivor.test",
             "password": "long-password-123",
             "workspace_name": "Acme",
+            "accepted_terms": True,
         },
     )
     assert response.status_code == 503
@@ -532,6 +550,7 @@ def test_signup_requires_explicit_email_and_abuse_protection_acknowledgments(
             "email": "new@cadivor.test",
             "password": "long-password-123",
             "workspace_name": "Acme",
+            "accepted_terms": True,
         },
     )
     assert response.status_code == 503

@@ -89,6 +89,32 @@ def test_health_and_synthetic_bom_flow():
     assert len(payload["parts"]) == 25
 
 
+def test_ci_includes_legal_acceptance_signup(capsys):
+    """CI entry so legal acceptance signup tests always run with migration API suite."""
+    import subprocess
+    import sys
+
+    targets = ["tests/test_legal_acceptance_signup.py"]
+    proc = subprocess.run(
+        [sys.executable, "-m", "pytest", *targets, "-v", "--tb=line"],
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    combined = proc.stdout + "\n" + proc.stderr
+    # Bypass parent pytest capture so CI -q logs still name the nested files.
+    with capsys.disabled():
+        print("CI_NESTED_SUITE_START")
+        for name in targets:
+            print(f"CI_NESTED_SUITE_FILE={name}")
+        print(combined)
+        print("CI_NESTED_SUITE_END")
+    assert proc.returncode == 0, combined
+    assert "tests/test_legal_acceptance_signup.py" in combined
+    assert "test_legal_acceptance_signup.py" in combined
+
+
 def test_ci_includes_service_readiness_and_evidence_notice_files(capsys):
     """Run readiness + evidence-notice suites from the CI-included migration API module."""
     import subprocess

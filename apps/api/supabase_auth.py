@@ -425,18 +425,17 @@ def user_email_verified(user: Any) -> bool:
     return False
 
 
-def signup(
+def validate_signup_fields(
     email: str,
     password: str,
     workspace_name: str,
     *,
     captcha_token: str | None = None,
-) -> None:
-    """Request Supabase's verified-email signup; provision after verified login."""
-    if not signup_enabled():
-        raise AuthNotConfiguredError("Self-serve signup is not enabled")
+) -> tuple[str, str, str | None]:
+    """Validate signup payload + CAPTCHA before consent or account creation."""
     email_n = (email or "").strip().lower()
     workspace_n = " ".join((workspace_name or "").split())
+    token = (captcha_token or "").strip() or None
     if not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email_n):
         raise AuthError("Enter a valid email address", 400)
     if len(password or "") < 12:
@@ -444,8 +443,29 @@ def signup(
     if not workspace_n or len(workspace_n) > 80:
         raise AuthError("Enter a workspace name of 1 to 80 characters", 400)
     captcha_required = (os.environ.get("CADIVOR_SIGNUP_CAPTCHA_REQUIRED") or "").strip() == "1"
-    if captcha_required and not (captcha_token or "").strip():
+    if captcha_required and not token:
         raise AuthError("Complete the security check and try again", 400)
+    return email_n, workspace_n, token
+
+
+def signup(
+    email: str,
+    password: str,
+    workspace_name: str,
+    *,
+    captcha_token: str | None = None,
+) -> dict[str, Any]:
+    """Request Supabase's verified-email signup; provision after verified login.
+
+    Returns ``{"user_id": ...|None, "email": ...}``. ``user_id`` is set when
+    Supabase returns a user object (common when email confirmation is required
+    and no session is issued yet).
+    """
+    if not signup_enabled():
+        raise AuthNotConfiguredError("Self-serve signup is not enabled")
+    email_n, workspace_n, captcha_token = validate_signup_fields(
+        email, password, workspace_name, captcha_token=captcha_token
+    )
     options: dict[str, Any] = {
         "email_redirect_to": _signup_redirect_url(),
         "data": {"workspace_name": workspace_n},
@@ -468,6 +488,13 @@ def signup(
         raise AuthNotConfiguredError(
             "Email confirmation must be enabled in Supabase before signup can be enabled"
         )
+    user = getattr(response, "user", None) or (
+        response.get("user") if isinstance(response, dict) else None
+    )
+    user_id = None
+    if user is not None:
+        user_id = str(getattr(user, "id", None) or (user.get("id") if isinstance(user, dict) else "") or "") or None
+    return {"email": email_n, "user_id": user_id}
 
 
 def _invite_hint(invite_token: str | None) -> str | None:

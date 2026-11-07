@@ -95,7 +95,7 @@ def test_cancelled_invite_cannot_be_used(client: TestClient, sink: MemoryEmailSi
     assert client.get(f"/invitations/lookup?token={token}").status_code == 404
     res = client.post(
         "/invitations/register",
-        json={"token": token, "email": INVITEE, "password": INVITEE_PASSWORD},
+        json={"token": token, "email": INVITEE, "password": INVITEE_PASSWORD, "accepted_terms": True},
     )
     assert res.status_code == 404
 
@@ -111,7 +111,7 @@ def test_expired_invite_is_not_accepted(client: TestClient, sink: MemoryEmailSin
     assert client.get(f"/invitations/lookup?token={token}").status_code == 404
     res = client.post(
         "/invitations/register",
-        json={"token": token, "email": INVITEE, "password": INVITEE_PASSWORD},
+        json={"token": token, "email": INVITEE, "password": INVITEE_PASSWORD, "accepted_terms": True},
     )
     assert res.status_code == 404
 
@@ -125,6 +125,7 @@ def test_register_requires_invited_email(client: TestClient, sink: MemoryEmailSi
             "token": _token(sink),
             "email": "someone-else@cadivor.test",
             "password": INVITEE_PASSWORD,
+            "accepted_terms": True,
         },
     )
     assert res.status_code == 400
@@ -143,6 +144,7 @@ def test_browser_supplied_workspace_and_role_are_ignored(
             "password": INVITEE_PASSWORD,
             "role": "owner",
             "workspace_id": "attacker-workspace",
+            "accepted_terms": True,
         },
     )
     assert res.status_code == 200, res.text
@@ -155,7 +157,7 @@ def test_token_is_single_use(client: TestClient, sink: MemoryEmailSink):
     owner = _login(client, SMOKE_EMAIL, SMOKE_PASSWORD)
     _invite(client, _headers(owner))
     token = _token(sink)
-    body = {"token": token, "email": INVITEE, "password": INVITEE_PASSWORD}
+    body = {"token": token, "email": INVITEE, "password": INVITEE_PASSWORD, "accepted_terms": True}
     assert client.post("/invitations/register", json=body).status_code == 200
     assert client.post("/invitations/register", json=body).status_code == 404
 
@@ -165,7 +167,7 @@ def test_invited_engineer_cannot_manage_team(client: TestClient, sink: MemoryEma
     _invite(client, _headers(owner), role="engineer")
     client.post(
         "/invitations/register",
-        json={"token": _token(sink), "email": INVITEE, "password": INVITEE_PASSWORD},
+        json={"token": _token(sink), "email": INVITEE, "password": INVITEE_PASSWORD, "accepted_terms": True},
     )
     member = _login(client, INVITEE, INVITEE_PASSWORD)
     listed = client.get("/workspace/invitations", headers=_headers(member))
@@ -187,7 +189,7 @@ def test_settings_profile_patch_persists_for_member(client: TestClient, sink: Me
     _invite(client, _headers(owner), role="engineer")
     client.post(
         "/invitations/register",
-        json={"token": _token(sink), "email": INVITEE, "password": INVITEE_PASSWORD},
+        json={"token": _token(sink), "email": INVITEE, "password": INVITEE_PASSWORD, "accepted_terms": True},
     )
     member = _login(client, INVITEE, INVITEE_PASSWORD)
     headers = _headers(member)
@@ -257,7 +259,7 @@ def test_workspace_settings_admin_only_and_persist(client: TestClient, sink: Mem
     _invite(client, headers, role="viewer")
     client.post(
         "/invitations/register",
-        json={"token": _token(sink), "email": INVITEE, "password": INVITEE_PASSWORD},
+        json={"token": _token(sink), "email": INVITEE, "password": INVITEE_PASSWORD, "accepted_terms": True},
     )
     member = _login(client, INVITEE, INVITEE_PASSWORD)
     denied = client.patch(

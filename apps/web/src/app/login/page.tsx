@@ -13,6 +13,8 @@ import {
   setSession,
 } from "@/lib/api";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
+import { TermsAcceptance } from "@/components/TermsAcceptance";
+import { PRIVACY_VERSION, TERMS_VERSION } from "@/lib/legalTerms";
 
 type InvitePreview = {
   email: string;
@@ -40,6 +42,7 @@ function LoginInner() {
   const [sessionExpired, setSessionExpired] = useState(false);
   const [invite, setInvite] = useState<InvitePreview | null>(null);
   const [inviteError, setInviteError] = useState("");
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
 
   useEffect(() => {
     if (new URLSearchParams(window.location.search).get("reason") === "session-refresh") {
@@ -150,6 +153,10 @@ function LoginInner() {
       setError("Passwords do not match.");
       return;
     }
+    if (!acceptedTerms) {
+      setError("Agree to the Terms of Service and Privacy Policy to continue.");
+      return;
+    }
     setBusy(true);
     setError("");
     setNotice("");
@@ -158,6 +165,9 @@ function LoginInner() {
         token: inviteToken,
         email,
         password,
+        accepted_terms: true,
+        terms_version: TERMS_VERSION,
+        privacy_version: PRIVACY_VERSION,
       });
       setNotice(
         result.message ||
@@ -166,6 +176,7 @@ function LoginInner() {
       setMode("signin");
       setPassword("");
       setConfirmPassword("");
+      setAcceptedTerms(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not create account");
     } finally {
@@ -270,6 +281,11 @@ function LoginInner() {
               required
               minLength={12}
             />
+            <TermsAcceptance
+              checked={acceptedTerms}
+              onChange={setAcceptedTerms}
+              disabled={busy}
+            />
           </>
         ) : null}
         {error ? <div className="cv-error">{error}</div> : null}
@@ -282,7 +298,11 @@ function LoginInner() {
           className="cv-button primary"
           style={{ width: "100%", marginTop: 18 }}
           type="submit"
-          disabled={busy || (mode === "create" && (!inviteToken || Boolean(inviteError)))}
+          disabled={
+            busy ||
+            (mode === "create" &&
+              (!inviteToken || Boolean(inviteError) || !acceptedTerms))
+          }
         >
           {busy
             ? mode === "create"
@@ -292,15 +312,15 @@ function LoginInner() {
               ? "Create account and join workspace"
               : "Continue"}
         </button>
-        {signupEnabled ? (
+        {mode === "signin" && signupEnabled ? (
           <p className="cv-auth-switch">
-            New to Cadivor? <Link href="/signup">Start a 14-day trial</Link>
+            <Link href="/signup">Create an account · Start a 14-day trial</Link>
           </p>
-        ) : inviteToken ? (
+        ) : mode === "signin" && inviteToken ? (
           <p className="cv-auth-switch">
             Already have an account? Use Sign in above after verifying your email.
           </p>
-        ) : invitationsEnabled ? (
+        ) : mode === "signin" && invitationsEnabled ? (
           <p className="cv-auth-switch">
             New teammates join through a workspace invitation link. Ask a workspace
             owner or admin to invite you, or contact{" "}
@@ -308,7 +328,7 @@ function LoginInner() {
               Cadivor support
             </a>.
           </p>
-        ) : (
+        ) : mode === "signin" ? (
           <p className="cv-auth-switch">
             New account invitations are not available in this app yet. To request
             access, contact{" "}
@@ -316,7 +336,7 @@ function LoginInner() {
               Cadivor support
             </a>.
           </p>
-        )}
+        ) : null}
       </form>
     </div>
   );
