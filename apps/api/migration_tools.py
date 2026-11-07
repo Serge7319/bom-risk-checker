@@ -1054,7 +1054,7 @@ def design_impact_payload(
         {
             "ok": True,
             "mode": "synthetic-preview",
-            "gap": "Impact is computed from saved analyses in this workspace only.",
+            "gap": "Based on saved analyses in this workspace.",
             "intelligence": intelligence,
         }
     )
@@ -1146,7 +1146,7 @@ def portfolio_payload(*, workspace_id: str) -> dict[str, Any]:
         {
             "ok": True,
             "mode": "synthetic-preview",
-            "gap": "Portfolio is calculated from this workspace's saved analyses only.",
+            "gap": "Based on saved analyses in this workspace.",
             "reports": list_reports(workspace_id=workspace_id),
             "intelligence": intelligence,
         }

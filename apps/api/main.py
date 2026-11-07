@@ -559,13 +559,15 @@ async def reports_list(request: Request) -> JSONResponse:
         reports = list_reports(workspace_id=ctx["workspace_id"])
     except PersistenceNotConfiguredError as exc:
         return _json({"detail": str(exc)}, 503)
+    # Do not surface deployment service gaps (billing/email/connectors) as a
+    # Reports warning card — those belong in Settings / health diagnostics.
     return _json(
         {
             "ok": True,
             "mode": "synthetic-preview",
             "workspace_id": ctx["workspace_id"],
             "persistence": persistence["backend"],
-            "gap": persistence["label"],
+            "gap": None,
             "reports": reports,
         }
     )

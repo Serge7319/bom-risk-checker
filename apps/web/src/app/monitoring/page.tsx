@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Shell } from "@/components/Shell";
 import { EmptyState } from "@/components/EmptyState";
-import { GapBanner, LoadingCard } from "@/components/GapBanner";
+import { EvidenceNotice, LoadingCard } from "@/components/GapBanner";
 import { KpiCard } from "@/components/KpiCard";
 import { PageHeader, PrimaryLink } from "@/components/PageHeader";
 import { fetchMonitoring } from "@/lib/api";
@@ -37,7 +37,7 @@ export default function MonitoringPage() {
         meta={PAGE_META.monitoring}
         actions={<PrimaryLink href="/reports">View saved reports</PrimaryLink>}
       />
-      {typeof data?.gap === "string" ? <GapBanner>{data.gap}</GapBanner> : null}
+      {<EvidenceNotice gap={data?.gap} />}
       {busy ? <LoadingCard label="Loading monitoring signals from saved analyses…" /> : null}
       {error ? <div className="cv-error" role="alert">Monitoring could not load. {error}</div> : null}
       {!busy && data ? (

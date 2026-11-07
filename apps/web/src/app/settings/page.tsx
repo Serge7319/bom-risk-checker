@@ -1197,6 +1197,45 @@ export default function Page() {
               </section>
 
               <section className="cv-card pad" style={{ marginBottom: 14 }}>
+                <h3 className="cv-card-title">Service readiness</h3>
+                <p className="cv-card-subtitle">
+                  Availability for email, billing, and connectors. These notes stay in Settings
+                  instead of repeating across Home and Reports.
+                </p>
+                <ul className="cv-action-list" style={{ marginTop: 12 }}>
+                  <li>
+                    <div>
+                      <strong>Monitoring email</strong>
+                      <small className="cv-small-note">Configured from workspace alert settings</small>
+                    </div>
+                    <span className="cv-badge gray">
+                      {billing?.monitoring_email_enabled === true || usage?.monitoring_email_enabled === true
+                        ? "Ready"
+                        : "Not connected"}
+                    </span>
+                  </li>
+                  <li>
+                    <div>
+                      <strong>Billing checkout</strong>
+                      <small className="cv-small-note">Stripe plan upgrades and portal</small>
+                    </div>
+                    <span className="cv-badge gray">
+                      {checkoutEnabled ? "Ready" : "Not connected"}
+                    </span>
+                  </li>
+                  <li>
+                    <div>
+                      <strong>Design-tool connectors</strong>
+                      <small className="cv-small-note">PLM / CAD integrations</small>
+                    </div>
+                    <span className="cv-badge gray">
+                      {connectorRows.length ? `${connectorRows.length} listed` : "Not connected"}
+                    </span>
+                  </li>
+                </ul>
+              </section>
+
+              <section className="cv-card pad" style={{ marginBottom: 14 }}>
                 <h3 className="cv-card-title">Connectors</h3>
                 {connectorRows.length ? (
                   <div className="cv-table-wrap" style={{ marginTop: 12 }}>

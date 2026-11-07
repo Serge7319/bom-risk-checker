@@ -47,6 +47,7 @@ body {
   font-family: var(--font);
   font-size: 14px;
   color-scheme: light;
+  overflow-x: hidden;
 }
 
 a {
@@ -917,21 +918,34 @@ button {
 
 .cv-table-wrap {
   overflow: auto;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
+  max-width: 100%;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
   background: white;
+  -webkit-overflow-scrolling: touch;
 }
 
 .cv-table-wrap--actions {
   overflow-x: auto;
   max-width: 100%;
-  -webkit-overflow-scrolling: touch;
+}
+
+.cv-table-wrap--fit {
+  overflow-x: visible;
 }
 
 .cv-table {
   width: 100%;
-  border-collapse: collapse;
-  min-width: 680px;
+  border-collapse: separate;
+  border-spacing: 0;
+  min-width: 0;
+  table-layout: auto;
+}
+
+.cv-table--fit {
+  min-width: 0;
+  width: 100%;
+  table-layout: fixed;
 }
 
 .cv-table.cv-table-actions {
@@ -1197,24 +1211,36 @@ button {
 }
 
 .cv-table th {
-  background: #f4f6f9;
-  color: #63748b;
+  background: #eef2f7;
+  color: #4a5d75;
   text-align: left;
-  padding: 10px 12px;
-  font-size: 9px;
-  letter-spacing: 0.08em;
+  padding: 11px 14px;
+  font-size: 10px;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  font-weight: 800;
-  border-bottom: 1px solid var(--line);
+  font-weight: 780;
+  border-bottom: 1px solid var(--line-strong);
+  border-right: 1px solid #e4ebf3;
   white-space: nowrap;
 }
 
+.cv-table th:last-child,
+.cv-table td:last-child {
+  border-right: 0;
+}
+
 .cv-table td {
-  padding: 11px 12px;
-  border-bottom: 1px solid #edf1f5;
-  font-size: 10px;
-  color: #435873;
+  padding: 12px 14px;
+  border-bottom: 1px solid #e8eef5;
+  border-right: 1px solid #eef2f7;
+  font-size: 12px;
+  color: #3a506c;
   vertical-align: middle;
+  line-height: 1.45;
+}
+
+.cv-table tbody tr:hover td {
+  background: #f7fafc;
 }
 
 .cv-table tr:last-child td {
@@ -1222,9 +1248,49 @@ button {
 }
 
 .cv-table strong {
-  color: #2b405d;
-  font-size: 10px;
+  color: #243b58;
+  font-size: 12px;
   font-weight: 730;
+}
+
+.cv-table .cv-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.cv-table .cv-cell-wrap {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.cv-estimate-tag {
+  margin-top: 3px;
+  color: #7a6540;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.cv-evidence-context {
+  margin: 0 0 14px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+  font-weight: 600;
+}
+
+.cv-card--table {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.cv-grid-2--tables {
+  align-items: start;
 }
 
 .cv-form-grid {
@@ -1388,6 +1454,17 @@ button {
   }
   .cv-table-wrap--actions {
     overflow-x: auto;
+  }
+  .cv-grid-2--tables {
+    grid-template-columns: 1fr;
+  }
+  .cv-table--fit {
+    table-layout: auto;
+  }
+  .cv-main,
+  .cv-page,
+  .cv-card {
+    max-width: 100%;
   }
 }
 
@@ -1674,21 +1751,12 @@ button {
   font-size: 11px;
 }
 
-.cv-table {
-  font-size: 12px;
-}
-
+/* Table density overrides retained for readability; column rules live above. */
 .cv-table th {
-  font-size: 11px;
-  padding: 12px 14px;
+  font-size: 10px;
 }
 
-.cv-table td {
-  font-size: 12px;
-  line-height: 1.45;
-  padding: 13px 14px;
-}
-
+.cv-table td,
 .cv-table strong {
   font-size: 12px;
 }
@@ -2923,9 +2991,14 @@ button {
 }
 .cv-decision-history { margin-top: 14px; }
 .cv-decision-history-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
-.cv-decision-history .cv-table { min-width: 900px; }
-.cv-decision-history .cv-table td { vertical-align: top; }
-.cv-report-decisions .cv-table { min-width: 850px; }
+.cv-decision-history .cv-table td,
+.cv-report-decisions .cv-table td { vertical-align: top; }
+.cv-decision-history .cv-table,
+.cv-report-decisions .cv-table { min-width: 0; }
+@media (min-width: 901px) {
+  .cv-decision-history .cv-table { min-width: 760px; }
+  .cv-report-decisions .cv-table { min-width: 720px; }
+}
 @media (max-width: 700px) {
   .cv-compare-parts-grid,
   .cv-compare-evidence-grid,

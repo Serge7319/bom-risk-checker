@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { EmptyState } from "@/components/EmptyState";
 import { Shell } from "@/components/Shell";
-import { GapBanner, LoadingCard } from "@/components/GapBanner";
+import { EvidenceNotice, LoadingCard } from "@/components/GapBanner";
 import { PageHeader, PrimaryLink } from "@/components/PageHeader";
 import { fetchCostOptimization } from "@/lib/api";
 import { evidenceSourceLabel } from "@/lib/display";
@@ -42,7 +42,7 @@ export default function CostOptimizationPage() {
   return (
     <Shell session={session}>
       <PageHeader meta={PAGE_META.cost} actions={<PrimaryLink href="/procurement">Review sourcing</PrimaryLink>} />
-      {typeof data?.gap === "string" ? <GapBanner>{String(data.gap)}</GapBanner> : null}
+      {<EvidenceNotice gap={data?.gap} />}
       <div className="cv-card pad" style={{ marginBottom: 14, display: "flex", gap: 12, alignItems: "end" }}>
         <div className="cv-field" style={{ minWidth: 160 }}>
           <label htmlFor="qty">Build quantity</label>
@@ -69,9 +69,9 @@ export default function CostOptimizationPage() {
                 <thead>
                   <tr>
                     <th>Part</th>
-                    <th>Qty</th>
-                    <th>Unit price</th>
-                    <th>Estimated savings</th>
+                    <th className="cv-num">Qty</th>
+                    <th className="cv-num">Unit price</th>
+                    <th className="cv-num">Estimated savings</th>
                     <th>Evidence and rationale</th>
                   </tr>
                 </thead>
@@ -79,11 +79,14 @@ export default function CostOptimizationPage() {
                   {opportunities.slice(0, 40).map((row, i) => (
                     <tr key={i}>
                       <td><strong>{String(row["Part Number"] || row.mpn || row.Part || "")}</strong></td>
-                      <td>{String(row["Units per Build"] ?? row.Quantity ?? row.quantity ?? row.Qty ?? "—")}</td>
-                      <td>{String(row["Current Unit Price"] ?? row["Unit Price"] ?? row.unit_price ?? "—")}</td>
-                      <td>{String(row["Estimated Run Savings"] ?? row["Extended Cost"] ?? row.extended ?? row.Extended ?? "—")}</td>
-                      <td>
-                        {evidenceSourceLabel(data.mode || "Synthetic estimate", "Synthetic estimate")}
+                      <td className="cv-num">{String(row["Units per Build"] ?? row.Quantity ?? row.quantity ?? row.Qty ?? "—")}</td>
+                      <td className="cv-num">
+                        {String(row["Current Unit Price"] ?? row["Unit Price"] ?? row.unit_price ?? "—")}
+                        <div className="cv-estimate-tag">Estimate</div>
+                      </td>
+                      <td className="cv-num">{String(row["Estimated Run Savings"] ?? row["Extended Cost"] ?? row.extended ?? row.Extended ?? "—")}</td>
+                      <td className="cv-cell-wrap">
+                        <span className="cv-badge gray">{evidenceSourceLabel(data.mode || "Synthetic estimate", "Synthetic estimate")}</span>
                         <div className="cv-small-note">{String(row.Reason ?? row.Opportunity ?? row.note ?? row.Notes ?? "Modeled from saved price and quantity data.")}</div>
                       </td>
                     </tr>
