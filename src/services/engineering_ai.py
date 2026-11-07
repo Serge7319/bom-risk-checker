@@ -1070,7 +1070,7 @@ def _s473_report(question: str, context: dict[str, Any], history=None) -> str:
         # Zero high/medium priority in the saved report means Cadivor must not invent a
         # first priority or numbered ranking, even when secondary fields differ.
         cannot_rank = (
-            domain in {"Component Risk", "General Engineering Review"}
+            domain in {"Component Risk", "General Engineering Review", "Evidence Confidence"}
             and bool(ranked)
             and high == 0
             and medium == 0
