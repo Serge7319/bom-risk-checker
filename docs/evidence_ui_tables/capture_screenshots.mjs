@@ -1,6 +1,13 @@
 /**
- * Capture Design Impact / Portfolio / Compare screenshots using the live
- * Next.js globals.css (no fixture overrides of the mobile grid rule).
+ * MARKUP FIXTURE CAPTURE — not a live Next.js route verification.
+ *
+ * This script rebuilds page markup by hand and serves it with the live
+ * apps/web/src/app/globals.css. It does NOT boot the Next app shell, auth,
+ * or /design-impact|/portfolio-intelligence|/compare-parts routes.
+ * Do not treat these PNGs as proof that real routes render overflow-free.
+ *
+ * It does check documentElement.scrollWidth against the viewport width for
+ * the fixture markup at 390px, 696px, and desktop.
  */
 import { createRequire } from "node:module";
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
@@ -95,12 +102,16 @@ const compareBody = `
 </main>`;
 
 function pageHtml(title, body) {
-  // Serve compiled utility-less CSS: strip @tailwind directives for static capture.
   const cleaned = css.replace(/@tailwind[^;]+;/g, "");
   return `<!doctype html><html><head><meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>${title}</title><style>${cleaned}</style></head>
-<body><div class="cv-shell" style="grid-template-columns:1fr">${body}</div></body></html>`;
+<title>${title} (markup fixture)</title><style>${cleaned}</style></head>
+<body data-capture-mode="markup-fixture">
+<p style="margin:0;padding:8px 12px;background:#fff7ed;color:#9a3412;font:12px/1.4 system-ui">
+  Markup fixture — not a live Next.js route. Overflow checks apply to this fixture only.
+</p>
+<div class="cv-shell" style="grid-template-columns:1fr">${body}</div>
+</body></html>`;
 }
 
 const pages = {
@@ -108,6 +119,12 @@ const pages = {
   "/portfolio-intelligence": pageHtml("Portfolio", portfolioBody),
   "/compare-parts": pageHtml("Compare Parts", compareBody),
 };
+
+const viewports = [
+  { label: "mobile_390", width: 390, height: 844 },
+  { label: "tablet_696", width: 696, height: 900 },
+  { label: "desktop", width: 1280, height: 900 },
+];
 
 const server = http.createServer((req, res) => {
   const html = pages[req.url?.split("?")[0] || ""];
@@ -122,34 +139,55 @@ const server = http.createServer((req, res) => {
 
 await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
 const { port } = server.address();
-const base = `http://127.0.0.1:${port}`;
-
 const browser = await chromium.launch();
-const shots = [
-  ["after_design_impact_desktop.png", "/design-impact", 1280, 800],
-  ["after_design_impact_mobile.png", "/design-impact", 390, 844],
-  ["after_portfolio_desktop.png", "/portfolio-intelligence", 1280, 800],
-  ["after_portfolio_mobile.png", "/portfolio-intelligence", 390, 844],
-  ["after_compare_desktop.png", "/compare-parts", 1280, 720],
-];
+const report = {
+  mode: "markup-fixture",
+  note: "Does not boot Next routes or the app shell. Overflow results are fixture-only.",
+  captures: [],
+};
 
-for (const [name, route, width, height] of shots) {
-  const page = await browser.newPage({ viewport: { width, height } });
-  await page.goto(`${base}${route}`, { waitUntil: "networkidle" });
-  await page.screenshot({
-    path: path.join(outDir, name),
-    fullPage: true,
-  });
-  // Persist the served HTML for review (no grid override).
-  writeFileSync(
-    path.join(outDir, name.replace(/\.png$/, ".html")),
-    pages[route],
-    "utf8",
-  );
-  await page.close();
-  console.log("wrote", name);
+for (const [route, prefix] of [
+  ["/design-impact", "after_design_impact"],
+  ["/portfolio-intelligence", "after_portfolio"],
+  ["/compare-parts", "after_compare"],
+]) {
+  for (const vp of viewports) {
+    const page = await browser.newPage({
+      viewport: { width: vp.width, height: vp.height },
+    });
+    await page.goto(`http://127.0.0.1:${port}${route}`, { waitUntil: "networkidle" });
+    const metrics = await page.evaluate(() => ({
+      scrollWidth: document.documentElement.scrollWidth,
+      clientWidth: document.documentElement.clientWidth,
+      bodyScrollWidth: document.body.scrollWidth,
+    }));
+    const overflow = metrics.scrollWidth > metrics.clientWidth + 1;
+    const file =
+      vp.label === "desktop"
+        ? `${prefix}_desktop.png`
+        : vp.label === "mobile_390"
+          ? `${prefix}_mobile.png`
+          : `${prefix}_${vp.label}.png`;
+    await page.screenshot({ path: path.join(outDir, file), fullPage: true });
+    report.captures.push({
+      route,
+      viewport: vp,
+      file,
+      ...metrics,
+      overflow,
+    });
+    await page.close();
+    if (overflow) {
+      console.warn(`OVERFLOW fixture ${file}: scrollWidth=${metrics.scrollWidth} clientWidth=${metrics.clientWidth}`);
+    }
+  }
 }
 
 await browser.close();
 server.close();
-console.log("done");
+writeFileSync(path.join(outDir, "overflow_report.json"), JSON.stringify(report, null, 2));
+const failed = report.captures.filter((c) => c.overflow);
+console.log(
+  `Markup-fixture capture complete (${report.captures.length} PNGs). Overflow failures: ${failed.length}`,
+);
+if (failed.length) process.exitCode = 1;

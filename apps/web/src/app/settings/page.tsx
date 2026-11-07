@@ -1237,7 +1237,7 @@ export default function Page() {
                 <h3 className="cv-card-title">Service readiness</h3>
                 <p className="cv-card-subtitle">
                   Availability for monitoring email, scheduler, billing checkout, and connectors.
-                  These notes stay in Settings instead of repeating across Home and Reports.
+                  Check whether monitoring email, scheduling, connectors, and billing checkout can run for this workspace.
                 </p>
                 <ul className="cv-action-list" style={{ marginTop: 12 }}>
                   <li>

@@ -7,6 +7,7 @@ subscription billing use Supabase Edge Functions with the existing Stripe setup.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sys
 import threading
@@ -1396,6 +1397,7 @@ async def connectors_get(request: Request) -> JSONResponse:
 async def service_readiness_get(request: Request) -> JSONResponse:
     """Authenticated readiness for Settings: email, scheduler, connectors.
 
+    Status values reflect operational capability, not enable flags alone.
     Does not infer monitoring-email state from billing or plan-usage payloads.
     """
     ctx, denied = _auth_context(request)
@@ -1403,9 +1405,12 @@ async def service_readiness_get(request: Request) -> JSONResponse:
         return denied or _json({"detail": "Unauthorized"}, 401)
     try:
         connector_payload = connectors.connector_status_payload()
-        email_enabled = bool(monitoring_store.email_delivery_enabled())
-        scheduler_on = bool(monitoring_scheduler.scheduler_enabled())
-        cron_configured = bool(monitoring_scheduler.cron_token_configured())
+        email = monitoring_store.monitoring_email_readiness()
+        scheduler = monitoring_scheduler.scheduler_readiness()
+        billing = billing_prep.checkout_readiness(
+            workspace_id=str(ctx.get("workspace_id") or "readiness-probe"),
+            user_id=str(ctx.get("user_id") or "readiness-probe"),
+        )
         ready_count = int(connector_payload.get("ready_count") or 0)
         blocked_count = int(connector_payload.get("blocked_count") or 0)
         if ready_count > 0 and blocked_count == 0:
@@ -1417,15 +1422,8 @@ async def service_readiness_get(request: Request) -> JSONResponse:
         return _json(
             {
                 "ok": True,
-                "monitoring_email": {
-                    "status": "ready" if email_enabled else "not_connected",
-                    "enabled": email_enabled,
-                },
-                "scheduler": {
-                    "status": "ready" if scheduler_on else "not_connected",
-                    "enabled": scheduler_on,
-                    "cron_token_configured": cron_configured,
-                },
+                "monitoring_email": email,
+                "scheduler": scheduler,
                 "connectors": {
                     "status": connector_status,
                     "ready_count": ready_count,
@@ -1433,20 +1431,17 @@ async def service_readiness_get(request: Request) -> JSONResponse:
                     "connectors": connector_payload.get("connectors") or [],
                     "gap": connector_payload.get("gap"),
                 },
-                "billing_checkout": {
-                    "status": (
-                        "ready" if billing_prep.checkout_enabled() else "not_connected"
-                    ),
-                    "enabled": bool(billing_prep.checkout_enabled()),
-                },
+                "billing_checkout": billing,
             }
         )
     except Exception as exc:  # noqa: BLE001
+        logging.getLogger(__name__).exception(
+            "service_readiness_get failed: %s", type(exc).__name__
+        )
         return _json(
             {
                 "ok": False,
                 "detail": "Service readiness could not be determined.",
-                "error": str(exc)[:200],
                 "monitoring_email": {"status": "unknown"},
                 "scheduler": {"status": "unknown"},
                 "connectors": {"status": "unknown"},

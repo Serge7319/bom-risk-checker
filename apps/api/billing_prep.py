@@ -138,3 +138,39 @@ def prepare_checkout_intent(
         "prepared": prepared,
         "billing": status,
     }
+
+
+def checkout_readiness(
+    *,
+    workspace_id: str = "readiness-probe",
+    user_id: str = "readiness-probe",
+) -> dict[str, Any]:
+    """Status for the checkout flow the app actually uses.
+
+    The migration API still returns ``not_implemented`` from
+    ``prepare_checkout_intent`` even when the enable flag and test Stripe keys
+    are present. Ready is reserved for a successful checkout intent.
+    """
+    enabled = checkout_enabled()
+    if not enabled:
+        return {"status": "not_connected", "enabled": False}
+    plan_token = next(iter(CHECKOUT_PLAN_TOKENS.values()), "")
+    if not plan_token:
+        return {"status": "unknown", "enabled": True}
+    result = prepare_checkout_intent(
+        workspace_id=workspace_id,
+        plan_token=str(plan_token),
+        user_id=user_id,
+    )
+    if result.get("ok"):
+        return {"status": "ready", "enabled": True}
+    code = str(result.get("code") or "")
+    if code == "not_implemented":
+        return {
+            "status": "not_connected",
+            "enabled": True,
+            "code": "not_implemented",
+        }
+    if code in {"checkout_disabled", "live_blocked", "unknown_plan"}:
+        return {"status": "not_connected", "enabled": enabled, "code": code}
+    return {"status": "unknown", "enabled": enabled, "code": code or None}
