@@ -614,6 +614,32 @@ export async function fetchBillingStatus(token: string) {
   return apiJson<Record<string, unknown>>("/billing/status", { token });
 }
 
+export async function beginSubscriptionCheckout(token: string, plan: string) {
+  return apiJson<{
+    ok: boolean;
+    checkout?: { state: string; url?: string };
+    code?: string;
+    detail?: string;
+  }>("/billing/checkout", {
+    method: "POST",
+    token,
+    body: JSON.stringify({ plan }),
+  });
+}
+
+export async function beginBillingPortal(token: string) {
+  return apiJson<{
+    ok: boolean;
+    checkout?: { state: string; url?: string };
+    code?: string;
+    detail?: string;
+  }>("/billing/portal", {
+    method: "POST",
+    token,
+    body: JSON.stringify({}),
+  });
+}
+
 export async function fetchOneTimeReportStatus(token: string) {
   return apiJson<OneTimeReportStatus>("/billing/one-time-report", { token });
 }

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Shell } from "@/components/Shell";
-import { GapBanner, LoadingCard } from "@/components/GapBanner";
+import { LoadingCard } from "@/components/GapBanner";
 import { KpiCard } from "@/components/KpiCard";
 import { PageHeader, PrimaryLink, SecondaryLink } from "@/components/PageHeader";
 import { fetchWorkspaceHome } from "@/lib/api";
@@ -60,7 +60,6 @@ export default function HomePage() {
         }
       />
 
-      {typeof data?.gap === "string" ? <GapBanner>{data.gap}</GapBanner> : null}
       {busy ? <LoadingCard label="Loading workspace from saved analyses…" /> : null}
       {error ? <div className="cv-error">{error}</div> : null}
 

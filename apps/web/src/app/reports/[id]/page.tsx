@@ -7,6 +7,7 @@ import { AskCadivorPanel } from "@/components/AskCadivorPanel";
 import { Shell } from "@/components/Shell";
 import { KpiCard } from "@/components/KpiCard";
 import { Icon } from "@/components/Icons";
+import { PartThumbnail } from "@/components/PartThumbnail";
 import { PageHeader, SecondaryLink } from "@/components/PageHeader";
 import {
   downloadReportExport,
@@ -89,6 +90,9 @@ export default function ReportPage() {
       ? `EI · ${report.filename}`
       : PAGE_META.ei.title,
   };
+  const verifiedSupplierRows = (report?.parts || []).filter((part) =>
+    part.supplier_data_verified === true || part["Supplier Data Verified"] === true,
+  ).length;
 
   return (
     <Shell session={session}>
@@ -208,8 +212,11 @@ export default function ReportPage() {
                 "Synthetic analysis; live supplier data is not included."}
             </p>
             <p className="cv-small-note" style={{ marginTop: 8 }}>
-              Lifecycle and stock fields are offline synthetic estimates, not
-              live distributor evidence.
+              {report.mode === "synthetic-preview"
+                ? "Supplier prices, stock, and lifecycle are synthetic estimates, not live distributor evidence."
+                : verifiedSupplierRows > 0
+                  ? `Verified supplier evidence is present for ${verifiedSupplierRows} of ${report.parts.length} component rows. Review each source and timestamp before acting.`
+                  : "Supplier price, stock, and lifecycle data were not verified for this report. Treat these fields as unconfirmed and check current authorized sources."}
             </p>
           </section>
 
@@ -397,9 +404,14 @@ export default function ReportPage() {
                     return (
                       <tr key={`${mpn}-${index}`}>
                         <td>
-                          <strong>{mpn}</strong>
-                          <div className="cv-small-note">
-                            {String(part.line_type || part["Line Type"] || "")}
+                          <div className="cv-part-cell">
+                            <PartThumbnail part={part} />
+                            <span>
+                              <strong>{mpn}</strong>
+                              <span className="cv-small-note">
+                                {String(part.line_type || part["Line Type"] || "")}
+                              </span>
+                            </span>
                           </div>
                         </td>
                         <td>

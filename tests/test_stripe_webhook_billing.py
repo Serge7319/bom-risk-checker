@@ -641,10 +641,9 @@ class StripeWebhookSourceAlignmentTests(unittest.TestCase):
         self.assertNotIn("ENDED_STATUSES", combined)
         self.assertNotIn('plan = "Starter"', combined)
         self.assertNotIn("plan = 'Starter'", combined)
-        self.assertEqual(
-            config.strip(),
-            "[functions.stripe-webhook]\nverify_jwt = false",
-        )
+        self.assertIn("[functions.stripe-webhook]\nverify_jwt = false", config)
+        self.assertIn("[functions.one-time-report]\nverify_jwt = false", config)
+        self.assertIn("[functions.subscription-checkout]\nverify_jwt = false", config)
         sql = (
             ROOT / "supabase" / "migrations" / "20260912_stripe_webhook_event_lease.sql"
         ).read_text(encoding="utf-8")

@@ -186,15 +186,6 @@ export function Shell({
           </div>
         </header>
         <main className="cv-main">
-          <div className="cv-preview-banner" role="status">
-            <span className="cv-preview-dot" aria-hidden />
-            <strong>Data availability.</strong>
-            <span>
-              Supplier prices and availability may be sample estimates; check each
-              source label before acting. Checkout and scheduled alert emails are
-              currently disabled.
-            </span>
-          </div>
           {children}
         </main>
       </div>
