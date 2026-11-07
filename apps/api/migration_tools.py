@@ -37,8 +37,9 @@ from src.parts_compare import (
 )
 from src.portfolio_intelligence import build_portfolio_intelligence
 from src.procurement_advisor import (
+    apply_sourcing_override,
+    build_procurement_advisor,
     normalize_supplier_offer_records,
-    procurement_recommendation_html,
 )
 from src.supply_risk_scenario import build_supply_scenario
 from src.ui.detailed_risk_export import component_rows, report_exposure_summary
@@ -977,58 +978,308 @@ def procurement_payload(*, workspace_id: str, analysis_id: str | None = None) ->
     if not report:
         return {
             "ok": True,
-            "mode": "synthetic-preview",
-            "gap": "No analysis yet. Live distributor coverage is not connected.",
+            "mode": "no-analysis",
+            "gap": None,
             "parts": [],
         }
+
+    def first_value(row: dict[str, Any], *keys: str, default: Any = None) -> Any:
+        for key in keys:
+            value = row.get(key)
+            if value is not None and value != "":
+                return value
+        return default
+
+    raw_parts = [
+        apply_sourcing_override(dict(part))
+        for part in report.get("parts") or []
+        if isinstance(part, dict)
+    ]
+    # Reuse the established Procurement Advisor rules over the exact saved
+    # report rows. Synthetic preview values remain visible as estimates, but
+    # are excluded from purchasing recommendations.
+    recommendation_parts = []
+    for part in raw_parts:
+        recommendation_part = dict(part)
+        # Normalize the report contract used by both the original Streamlit
+        # analysis ("Supplier Offers", "Lead Time Weeks", etc.) and Next.
+        # The saved report may contain either shape depending on when it ran.
+        for target, aliases in {
+            "mpn": ("mpn", "MPN", "Part Number", "part_number"),
+            "manufacturer": ("manufacturer", "Manufacturer"),
+            "description": ("description", "Description", "part_description", "product_description"),
+            "category": ("category", "Category", "component_type", "part_type", "architecture"),
+            "quantity": ("effective_quantity", "Effective Quantity", "quantity", "Quantity", "qty"),
+            "lifecycle_status": ("lifecycle_status", "Lifecycle Status", "Lifecycle"),
+            "risk_score": ("risk_score", "Risk Score"),
+            "supplier_count": ("supplier_count", "Supplier Count", "Supplier Sources"),
+            "stock_available": (
+                "stock_available", "Stock Available", "Total Market Stock", "stock", "Stock"
+            ),
+            "unit_price": ("unit_price", "Unit Price", "price"),
+            "unit_price_currency": (
+                "unit_price_currency", "Unit Price Currency", "currency", "Currency"
+            ),
+            "lead_time_weeks": (
+                "lead_time_weeks", "Lead Time Weeks", "Lead Time (Weeks)", "lead_time"
+            ),
+            "primary_supplier": (
+                "primary_supplier", "best_source", "Best Source", "supplier", "Supplier", "source", "Source"
+            ),
+            "supplier_offers": ("supplier_offers", "Supplier Offers"),
+            "supplier_data_verified": ("supplier_data_verified", "Supplier Data Verified"),
+        }.items():
+            value = first_value(part, *aliases)
+            if value is not None:
+                recommendation_part[target] = value
+        part_source = str(
+            first_value(
+                part,
+                "evidence_source",
+                "evidence_class",
+                "price_source",
+                "source",
+                "Source",
+                default="",
+            )
+            or ""
+        ).casefold()
+        verification_value = first_value(
+            part, "supplier_data_verified", "Supplier Data Verified"
+        )
+        has_verified_source = (
+            verification_value is True
+            or str(verification_value or "").strip().casefold()
+            in {"1", "true", "yes", "verified"}
+        )
+        if (
+            str(report.get("mode") or "").casefold() == "synthetic-preview"
+            or "synthetic" in part_source
+            or not has_verified_source
+        ):
+            recommendation_part["supplier_data_verified"] = False
+        recommendation_parts.append(recommendation_part)
+    advisor = build_procurement_advisor(
+        analyses=[report], parts=recommendation_parts, alerts=[]
+    )
+    recommendations_by_mpn = {
+        str(row.get("Part Number") or "").strip().casefold(): row
+        for row in advisor.get("recommendations") or []
+        if isinstance(row, dict)
+    }
+
     rows = []
-    for part in report.get("parts") or []:
+    evidence_counts = {"live": 0, "synthetic": 0, "missing": 0}
+    for part in raw_parts:
+        mpn = str(first_value(part, "MPN", "mpn", "Part Number", "part_number", default="") or "").strip()
+        manufacturer = str(first_value(part, "Manufacturer", "manufacturer", default="") or "").strip()
+        supplier = str(
+            first_value(
+                part,
+                "primary_supplier",
+                "best_source",
+                "Best Source",
+                "supplier",
+                "source",
+                "Source",
+                "Supplier",
+                default="",
+            )
+            or ""
+        ).strip()
+        verified_value = first_value(part, "supplier_data_verified", "Supplier Data Verified")
+        raw_evidence_source = str(
+            first_value(
+                part,
+                "evidence_source",
+                "evidence_class",
+                "price_source",
+                "Evidence Source",
+                "Price Source",
+                default="",
+            )
+            or ""
+        ).strip()
+        report_mode = str(report.get("mode") or "").casefold()
+        verified = verified_value is True or str(verified_value or "").strip().casefold() in {
+            "1", "true", "yes", "verified"
+        }
+        evidence_tag = raw_evidence_source.casefold()
+        if evidence_tag == "missing":
+            evidence_source = "missing"
+        elif evidence_tag.startswith("live"):
+            evidence_source = raw_evidence_source
+        elif any(token in evidence_tag for token in ("synthetic", "preview", "offline")):
+            evidence_source = "synthetic-preview"
+        elif report_mode == "synthetic-preview":
+            evidence_source = "synthetic-preview"
+        elif report_mode == "legacy-supplier-engine" and verified and supplier:
+            evidence_source = "live-authorized-supplier"
+        else:
+            evidence_source = "missing"
+        normalized_evidence_part = {
+            **part,
+            "MPN": mpn,
+            "manufacturer_part_number": first_value(
+                part, "manufacturer_part_number", "Manufacturer Part Number", default=mpn
+            ),
+            "Manufacturer": manufacturer,
+            "source": supplier,
+            "supplier_data_verified": verified_value,
+            "evidence_source": evidence_source,
+            "evidence_class": evidence_source,
+            "Unit Price": first_value(part, "Unit Price", "unit_price", "price"),
+            "unit_price_currency": first_value(
+                part,
+                "unit_price_currency",
+                "Unit Price Currency",
+                "currency",
+                "Currency",
+                default="",
+            ),
+            "product_url": first_value(
+                part, "product_url", "Product URL", "product_detail_url", default=""
+            ),
+            "datasheet_url": first_value(part, "datasheet_url", "Datasheet URL", default=""),
+            "retrieved_at": first_value(
+                part,
+                "retrieved_at",
+                "Sourcing Updated At",
+                "sourcing_updated_at",
+                "updated_at",
+                default="",
+            ),
+        }
+        evidence = classify_part_evidence(normalized_evidence_part)
+        evidence_class = str(evidence.get("evidence_class") or "missing")
+        if evidence_class == "live-authorized-supplier":
+            evidence_counts["live"] += 1
+        elif evidence_class == "synthetic-preview":
+            evidence_counts["synthetic"] += 1
+        else:
+            evidence_counts["missing"] += 1
+
         offers = normalize_supplier_offer_records(part)
+        recommendation = recommendations_by_mpn.get(mpn.casefold()) or {}
+        has_manual_price = "unit_price" in (part.get("_sourcing_override_fields") or ())
+        reported_price = first_value(part, "Unit Price", "unit_price", "price")
+        price_source = (
+            "user-entered"
+            if has_manual_price
+            else evidence_class
+            if evidence_class in {"live-authorized-supplier", "synthetic-preview"}
+            else "not-recorded"
+        )
+        trusted_saved_values = evidence_class in {
+            "live-authorized-supplier",
+            "synthetic-preview",
+        } or has_manual_price
+        saved_stock = first_value(
+            part, "stock_available", "Stock Available", "Total Market Stock", "stock", "Stock"
+        )
+        display_price = recommendation.get("Unit Price")
+        if display_price is None and trusted_saved_values:
+            display_price = reported_price
+        display_stock = recommendation.get("Available Stock")
+        if display_stock is None and trusted_saved_values:
+            display_stock = saved_stock
+        supplier_count = recommendation.get("Supplier Sources")
+        if offers:
+            coverage = f"{len(offers)} saved offer{'s' if len(offers) != 1 else ''}"
+        elif supplier_count is not None:
+            coverage = f"{supplier_count} source{'s' if supplier_count != 1 else ''}; no offer details saved"
+        elif evidence_class == "live-authorized-supplier":
+            coverage = "Live source verified; no offer rows returned"
+        else:
+            coverage = "No supplier offers recorded"
+
         rows.append(
             {
-                "mpn": part.get("MPN"),
-                "manufacturer": part.get("Manufacturer"),
-                "lifecycle": part.get("Lifecycle"),
-                "risk_level": part.get("Risk Level"),
-                "stock": part.get("Stock"),
-                "unit_price": part.get("unit_price") or part.get("Unit Price"),
-                "price_source": part.get("price_source") or "synthetic-preview",
+                "mpn": mpn,
+                "manufacturer": manufacturer,
+                "description": first_value(part, "Description", "description", "part_description", default=""),
+                "category": first_value(part, "Category", "category", "component_type", "part_type", default=""),
+                "image_url": first_value(part, "image_url", "Image URL", "Photo", default=""),
+                "product_url": normalized_evidence_part["product_url"],
+                "datasheet_url": normalized_evidence_part["datasheet_url"],
+                "quantity": recommendation.get("Required Quantity")
+                if recommendation.get("Required Quantity") is not None
+                else first_value(part, "Quantity", "quantity", "qty"),
+                "lifecycle": recommendation.get("Lifecycle Status")
+                or first_value(part, "Lifecycle", "lifecycle_status", default="Unknown"),
+                "risk_level": first_value(part, "Risk Level", "risk_level", default="Needs verification"),
+                "risk_score": first_value(part, "Risk Score", "risk_score"),
+                "recommendation": recommendation.get("Recommendation") or "Complete sourcing data",
+                "next_step": recommendation.get("Next Step") or "Confirm current supplier evidence before ordering.",
+                "priority_score": recommendation.get("Priority Score"),
+                "evidence_status": recommendation.get("Evidence Status") or "Incomplete",
+                "missing_sourcing_data": recommendation.get("Missing Sourcing Data") or "",
+                "supplier": supplier,
+                "supplier_count": supplier_count,
+                "stock": display_stock,
+                "unit_price": display_price,
+                "currency": recommendation.get("Currency")
+                or normalized_evidence_part["unit_price_currency"],
+                "lead_time_weeks": recommendation.get("Lead Time (Weeks)"),
+                "price_source": price_source,
+                "evidence_class": evidence_class,
                 "supplier_offers": offers,
                 "offer_count": len(offers),
-                "coverage": "unavailable"
-                if not offers
-                else "recorded-offers",
-                "evidence": classify_part_evidence(
-                    {
-                        "MPN": part.get("MPN"),
-                        "Manufacturer": part.get("Manufacturer"),
-                        "Unit Price": part.get("unit_price") or part.get("Unit Price"),
-                        "evidence_source": part.get("price_source") or "synthetic-preview",
-                        "source": part.get("Supplier") or "",
-                    }
-                ),
-                "authorized_lookup": (
-                    lambda hit: {
-                        "evidence_class": hit.get("evidence_class"),
-                        "synthetic": hit.get("synthetic"),
-                        "source_url": (hit.get("match") or {}).get("source_url") or "",
-                        "retrieved_at": (hit.get("match") or {}).get("retrieved_at") or "",
-                        "live_lookups_enabled": hit.get("live_lookups_enabled"),
-                        "gap": hit.get("gap"),
-                    }
-                )(lookup_exact_part(str(part.get("MPN") or ""))),
+                "coverage": coverage,
+                "evidence": evidence,
+                "retrieved_at": normalized_evidence_part["retrieved_at"],
+                "stock_sources": first_value(part, "stock_data_sources", "Stock Data Sources", default=[]),
             }
         )
+
+    counts = evidence_counts
+    total = len(rows)
+    configured_sources = 0
+    try:
+        from apps.api.legacy_supplier_workflow import configured_supplier_count
+
+        configured_sources = configured_supplier_count()
+    except Exception:  # noqa: BLE001
+        configured_sources = 0
+
+    if counts["live"] and (counts["synthetic"] or counts["missing"]):
+        mode = "mixed-evidence"
+        gap = "Evidence varies by component. Check each row's source and timestamp before using sourcing values."
+    elif counts["live"]:
+        mode = "live-source-evidence"
+        gap = None
+    elif counts["synthetic"]:
+        mode = "synthetic-preview"
+        gap = (
+            "This saved analysis contains sample estimates, not distributor quotes. "
+            "No supplier credentials are configured on this API service."
+            if configured_sources == 0
+            else "This saved analysis contains sample estimates, not distributor quotes. Supplier integrations are configured; run the BOM again to retrieve current supplier evidence."
+        )
+    elif configured_sources == 0:
+        mode = "source-unavailable"
+        gap = "No supplier credentials are configured on this API service, so this analysis has no live distributor quotes."
+    else:
+        mode = "source-check-complete"
+        gap = "No verified supplier quotes are saved for this analysis. Supplier integrations are configured; run the BOM again to check current availability and pricing."
+
     return _json_safe(
         {
             "ok": True,
-            "mode": "synthetic-preview",
+            "mode": mode,
+            "analysis_mode": report.get("mode"),
             "analysis_id": report["id"],
             "filename": report.get("filename"),
-            "gap": "Live supplier pricing and availability are disabled. Unit prices shown are synthetic-preview fields from analysis, not distributor quotes.",
-            "recommendation_note": "Use recorded analysis fields for triage only. Do not treat synthetic unit prices as procurement awards.",
+            "gap": gap,
+            "recommendation_note": advisor.get("summary") or "Review saved sourcing evidence before placing an order.",
+            "evidence_summary": {
+                "live_parts": counts["live"],
+                "sample_parts": counts["synthetic"],
+                "parts_without_verified_supplier_evidence": counts["missing"],
+                "parts_total": total,
+                "configured_supplier_sources": configured_sources,
+            },
             "parts": rows,
-            "recommendation_html_available": callable(procurement_recommendation_html),
         }
     )
 

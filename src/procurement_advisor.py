@@ -141,6 +141,8 @@ def supplier_landed_cost_override(
 def apply_sourcing_override(part: Mapping[str, Any]) -> Dict[str, Any]:
     """Overlay user-verified, current sourcing values without rewriting BOM evidence."""
     row = dict(part or {})
+    if row.get("supplier_data_verified") is None and "Supplier Data Verified" in row:
+        row["supplier_data_verified"] = row.get("Supplier Data Verified")
     override = _parse_override(row.get("sourcing_override"))
     row["_sourcing_override_fields"] = frozenset(override)
     for field in (*SOURCING_OVERRIDE_FIELDS, *PROCUREMENT_CONTEXT_OVERRIDE_FIELDS):
@@ -251,10 +253,19 @@ def _offer_updated_at(value: Any) -> str:
 
 
 def _part_currency(part: Mapping[str, Any]) -> str:
-    explicit = _t(_first(part, "currency", "Currency", default=""))
+    explicit = _t(
+        _first(
+            part,
+            "unit_price_currency",
+            "Unit Price Currency",
+            "currency",
+            "Currency",
+            default="",
+        )
+    )
     if explicit:
         return explicit.upper()
-    offers = part.get("supplier_offers") or []
+    offers = _first(part, "supplier_offers", "Supplier Offers", default=[]) or []
     if isinstance(offers, str):
         try:
             offers = json.loads(offers)
@@ -264,7 +275,18 @@ def _part_currency(part: Mapping[str, Any]) -> str:
         offers = [offers]
     if not isinstance(offers, (list, tuple)):
         return ""
-    supplier = _t(_first(part, "primary_supplier", "best_source", "supplier", default=""))
+    supplier = _t(
+        _first(
+            part,
+            "primary_supplier",
+            "best_source",
+            "Best Source",
+            "supplier",
+            "source",
+            "Source",
+            default="",
+        )
+    )
     currency_values = {
         _t(offer.get("currency")).upper()
         for offer in offers
@@ -290,8 +312,13 @@ def _updated_at(row: Mapping[str, Any]) -> str:
         _first(
             row,
             "sourcing_updated_at",
+            "Sourcing Updated At",
+            "retrieved_at",
+            "Retrieved At",
             "updated_at",
-            default=_offer_updated_at(row.get("supplier_offers"))
+            default=_offer_updated_at(
+                _first(row, "supplier_offers", "Supplier Offers", default=[])
+            )
             or row.get("_analysis_created_at")
             or row.get("created_at")
             or "",
@@ -324,7 +351,7 @@ def procurement_header_html(
         except (TypeError, ValueError):
             return raw[:10] if len(raw) >= 10 else raw
 
-    offers = part.get("supplier_offers") or []
+    offers = _first(part, "supplier_offers", "Supplier Offers", default=[]) or []
     if isinstance(offers, str):
         try:
             offers = json.loads(offers)
@@ -579,12 +606,23 @@ def _trusted_sourcing_values(part: Mapping[str, Any]) -> dict[str, Any]:
     """Return only fields supported by a verified row or an explicit override."""
     raw_part = dict(part or {})
     override = _parse_override(raw_part.get("sourcing_override"))
-    raw_verified = raw_part.get("supplier_data_verified")
+    raw_verified = _first(raw_part, "supplier_data_verified", "Supplier Data Verified")
     has_source_override = any(field in override for field in SOURCING_OVERRIDE_FIELDS)
     if _truthy(raw_verified) or (raw_verified is None and not has_source_override):
         normalized = _recommend(apply_sourcing_override(raw_part))
         return {
-            "primary_supplier": _t(_first(raw_part, "primary_supplier", "best_source", "supplier", default="")) or None,
+            "primary_supplier": _t(
+                _first(
+                    raw_part,
+                    "primary_supplier",
+                    "best_source",
+                    "Best Source",
+                    "supplier",
+                    "source",
+                    "Source",
+                    default="",
+                )
+            ) or None,
             "unit_price": normalized.get("Unit Price"),
             "currency": _part_currency(raw_part) or None,
             "stock_available": normalized.get("Available Stock"),
@@ -604,7 +642,10 @@ def normalize_supplier_offer_records(part: Mapping[str, Any]) -> list[dict[str, 
     raw_part = dict(part or {})
     trusted_values = _trusted_sourcing_values(raw_part)
     part = apply_sourcing_override(raw_part)
-    offers = part.get("supplier_offers") or []
+    # The preserved Streamlit analysis rows use "Supplier Offers" while the
+    # Next.js/Postgres rows use "supplier_offers". Accept both shapes so the
+    # migration does not silently discard saved distributor quotes.
+    offers = _first(part, "supplier_offers", "Supplier Offers", default=[]) or []
     if isinstance(offers, str):
         try:
             offers = json.loads(offers)
@@ -1490,21 +1531,29 @@ def _recommend(row: Dict[str, Any]) -> Dict[str, Any]:
     row = apply_sourcing_override(row)
     part = _t(_first(row, "mpn", "MPN", "part_number", default="Component"), "Component")
     manufacturer = _t(_first(row, "manufacturer", "Manufacturer", default="Unknown"), "Unknown")
-    raw_stock = _maybe_n(_first(row, "stock_available", "stock"))
-    qty_value = _maybe_n(_first(row, "quantity", "qty"))
+    raw_stock = _maybe_n(
+        _first(row, "stock_available", "Stock Available", "Total Market Stock", "stock", "Stock")
+    )
+    qty_value = _maybe_n(
+        _first(row, "effective_quantity", "Effective Quantity", "quantity", "Quantity", "qty")
+    )
     qty = int(qty_value) if qty_value is not None and qty_value > 0 else None
-    raw_suppliers = _maybe_n(_first(row, "supplier_count"))
-    raw_lead = _maybe_n(_first(row, "lead_time_weeks", "lead_time"))
-    lifecycle = _t(_first(row, "lifecycle_status", default="Unknown"), "Unknown")
-    risk_value = _maybe_n(_first(row, "risk_score"))
+    raw_suppliers = _maybe_n(_first(row, "supplier_count", "Supplier Count", "Supplier Sources"))
+    raw_lead = _maybe_n(
+        _first(row, "lead_time_weeks", "Lead Time Weeks", "Lead Time (Weeks)", "lead_time")
+    )
+    lifecycle = _t(_first(row, "lifecycle_status", "Lifecycle Status", "Lifecycle", default="Unknown"), "Unknown")
+    risk_value = _maybe_n(_first(row, "risk_score", "Risk Score"))
     risk = int(risk_value or 0)
-    supplier_name = _t(_first(row, "primary_supplier", "best_source", "supplier", default=""))
+    supplier_name = _t(
+        _first(row, "primary_supplier", "best_source", "Best Source", "supplier", "Supplier", "source", "Source", default="")
+    )
     manual_fields = set(row.get("_sourcing_override_fields") or ())
     has_verification_flag = row.get("supplier_data_verified") is not None
     verified = _truthy(row.get("supplier_data_verified"))
     if has_verification_flag and not verified and "lifecycle_status" not in manual_fields:
         lifecycle = "Unknown"
-    offers = row.get("supplier_offers") or []
+    offers = _first(row, "supplier_offers", "Supplier Offers", default=[]) or []
     offer_stock_recorded = False
     if isinstance(offers, str):
         try:
@@ -1515,7 +1564,8 @@ def _recommend(row: Dict[str, Any]) -> Dict[str, Any]:
         offers = [offers]
     if isinstance(offers, (list, tuple)):
         offer_stock_recorded = any(
-            isinstance(offer, Mapping) and _maybe_n(offer.get("stock")) is not None
+            isinstance(offer, Mapping)
+            and _maybe_n(_first(offer, "stock", "stock_total", "available_stock")) is not None
             for offer in offers
         )
     if "stock_available" in manual_fields or (has_verification_flag and verified):

@@ -34,11 +34,25 @@ export default function ProcurementPage() {
     const q = filter.trim().toLowerCase();
     if (!q) return rows;
     return rows.filter((p) =>
-      [p.mpn, p.manufacturer, p.lifecycle, p.coverage]
+      [p.mpn, p.manufacturer, p.category, p.supplier, p.recommendation, p.lifecycle, p.coverage]
         .map((v) => String(v || "").toLowerCase())
         .some((v) => v.includes(q)),
     );
   }, [data, filter]);
+
+  const evidenceSummary = (data?.evidence_summary || {}) as Record<string, unknown>;
+  const liveParts = Number(evidenceSummary.live_parts || 0);
+  const sampleParts = Number(evidenceSummary.sample_parts || 0);
+  const sourcingBadge = liveParts
+    ? `Live supplier evidence · ${liveParts} part${liveParts === 1 ? "" : "s"}`
+    : sampleParts
+      ? "Sample evidence · not distributor quotes"
+      : "No live quotes saved for this BOM";
+
+  const display = (value: unknown, fallback = "Not recorded") => {
+    if (value === null || value === undefined || String(value).trim() === "") return fallback;
+    return String(value);
+  };
 
   if (!session) return null;
 
@@ -46,7 +60,12 @@ export default function ProcurementPage() {
     <Shell session={session}>
       <PageHeader
         meta={PAGE_META.procurement}
-        actions={<PrimaryLink href="/compare-parts">Compare alternatives</PrimaryLink>}
+        actions={
+          <div className="cv-page-head-actions">
+            <PrimaryLink href="/bom-analyzer">Run new BOM analysis</PrimaryLink>
+            <SecondaryLink href="/compare-parts">Compare alternatives</SecondaryLink>
+          </div>
+        }
       />
       {<EvidenceNotice gap={data?.gap} />}
       {busy ? <LoadingCard label="Loading procurement coverage…" /> : null}
@@ -64,7 +83,7 @@ export default function ProcurementPage() {
                 </p>
               </div>
               <span className="cv-badge gray">
-                Sample evidence · not live distributor quotes
+                {sourcingBadge}
               </span>
             </div>
 
@@ -84,40 +103,97 @@ export default function ProcurementPage() {
 
             {parts.length ? (
               <div className="cv-table-wrap">
-                <table className="cv-table">
+                <table className="cv-table cv-procurement-table">
                   <thead>
                     <tr>
                       <th>MPN</th>
                       <th>Manufacturer</th>
+                      <th>Recommended action</th>
+                      <th>Required quantity</th>
                       <th>Lifecycle</th>
                       <th>Risk</th>
+                      <th>Supplier coverage</th>
                       <th>Stock</th>
                       <th>Unit price</th>
-                      <th>Price source</th>
+                      <th>Lead time</th>
+                      <th>Evidence source</th>
                       <th>Offers</th>
                     </tr>
                   </thead>
                   <tbody>
                     {parts.map((p, i) => (
-                      <tr key={i}>
+                      <tr key={`${String(p.mpn || "part")}-${i}`}>
                         <td>
                           <div className="cv-part-cell">
                             <PartThumbnail part={p} />
-                            <strong>{String(p.mpn || "")}</strong>
+                            <div>
+                              <strong>{display(p.mpn, "MPN not recorded")}</strong>
+                              {p.description ? <small className="cv-procurement-description">{String(p.description)}</small> : null}
+                              {p.category ? <small className="cv-procurement-description">Category: {String(p.category)}</small> : null}
+                            </div>
                           </div>
                         </td>
-                        <td>{String(p.manufacturer || "")}</td>
-                        <td>{String(p.lifecycle || "")}</td>
-                        <td>{String(p.risk_level || "")}</td>
-                        <td>{String(p.stock ?? "—")}</td>
-                        <td>{p.unit_price == null ? "—" : String(p.unit_price)}</td>
+                        <td>{display(p.manufacturer, "Not provided")}</td>
+                        <td className="cv-procurement-recommendation">
+                          <strong>{display(p.recommendation, "Complete sourcing data")}</strong>
+                          {p.next_step ? <small>{String(p.next_step)}</small> : null}
+                        </td>
+                        <td>{display(p.quantity)}</td>
+                        <td>{display(p.lifecycle, "Unknown")}</td>
+                        <td>{display(p.risk_level, "Needs verification")}</td>
+                        <td>
+                          <strong>{display(p.supplier, "No primary supplier recorded")}</strong>
+                          <small className="cv-procurement-description">
+                            {p.supplier_count == null
+                              ? "Supplier count not reported"
+                              : String(p.supplier_count) + " source" + (Number(p.supplier_count) === 1 ? "" : "s")}
+                          </small>
+                        </td>
+                        <td>{display(p.stock, "Not reported")}</td>
+                        <td>
+                          {p.unit_price == null
+                            ? "Not reported"
+                            : `${String(p.unit_price)}${p.currency ? ` ${String(p.currency)}` : " (currency not recorded)"}`}
+                        </td>
+                        <td>{p.lead_time_weeks == null ? "Not reported" : `${String(p.lead_time_weeks)} weeks`}</td>
                         <td>
                           <span className="cv-badge gray">
-                            {evidenceSourceLabel(p.price_source, "Synthetic estimate")}
+                            {evidenceSourceLabel(p.price_source, "Not recorded")}
                           </span>
+                          {p.retrieved_at ? <small className="cv-procurement-timestamp">{String(p.retrieved_at)}</small> : null}
                         </td>
                         <td>
-                          {String(p.offer_count ?? 0)} · {String(p.coverage)}
+                          {Array.isArray(p.supplier_offers) && p.supplier_offers.length ? (
+                            <details className="cv-procurement-offers">
+                              <summary>{p.supplier_offers.length} saved offer{p.supplier_offers.length === 1 ? "" : "s"}</summary>
+                              <div className="cv-procurement-offer-list">
+                                {p.supplier_offers.map((rawOffer, offerIndex) => {
+                                  const offer = rawOffer as Record<string, unknown>;
+                                  const supplierName = display(offer.supplier, "Supplier not recorded");
+                                  const productUrl = String(offer.product_url || "");
+                                  return (
+                                    <div className="cv-procurement-offer" key={`${supplierName}-${offerIndex}`}>
+                                      <strong>{supplierName}</strong>
+                                      <span>
+                                        {offer.unit_price == null
+                                          ? "Price not reported"
+                                          : `${String(offer.unit_price)}${offer.currency ? ` ${String(offer.currency)}` : " (currency not recorded)"}`}
+                                      </span>
+                                      <span>Stock: {display(offer.stock, "Not reported")}</span>
+                                      <span>Lead: {offer.lead_time_weeks == null ? "Not reported" : `${String(offer.lead_time_weeks)} weeks`}</span>
+                                      {offer.region ? <span>Region: {String(offer.region)}</span> : null}
+                                      {offer.retrieved_at ? <span>Retrieved: {String(offer.retrieved_at)}</span> : null}
+                                      {productUrl.startsWith("https://") || productUrl.startsWith("http://") ? (
+                                        <a href={productUrl} target="_blank" rel="noreferrer">Supplier listing</a>
+                                      ) : null}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </details>
+                          ) : (
+                            <span>{display(p.coverage, "No saved offers")}</span>
+                          )}
                         </td>
                       </tr>
                     ))}
