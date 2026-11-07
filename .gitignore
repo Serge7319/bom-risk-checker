@@ -17,3 +17,4 @@ reports/*.xlsx
 .evidence/
 .evidence_rc/
 .venv-guide/
+docs/evidence_bom_workflow/screenshots/*.html
