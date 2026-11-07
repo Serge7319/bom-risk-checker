@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { EmptyState } from "@/components/EmptyState";
 import { Shell } from "@/components/Shell";
-import { GapBanner, LoadingCard } from "@/components/GapBanner";
+import { EvidenceNotice, LoadingCard } from "@/components/GapBanner";
 import { PageHeader, PrimaryLink } from "@/components/PageHeader";
 import { runSupplyRisk } from "@/lib/api";
 import { PAGE_META } from "@/lib/routes";
@@ -56,7 +56,7 @@ export default function SupplyRiskPage() {
   return (
     <Shell session={session}>
       <PageHeader meta={PAGE_META.supply} actions={<PrimaryLink href="/reports">Choose a saved analysis</PrimaryLink>} />
-      {typeof data?.gap === "string" ? <GapBanner>{String(data.gap)}</GapBanner> : null}
+      {<EvidenceNotice gap={data?.gap} />}
       <form className="cv-card pad" style={{ marginBottom: 14 }} onSubmit={run}>
         <div className="cv-form-grid">
           <div className="cv-field">

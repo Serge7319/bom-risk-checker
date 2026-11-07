@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Shell } from "@/components/Shell";
 import { EmptyState } from "@/components/EmptyState";
-import { GapBanner, LoadingCard } from "@/components/GapBanner";
+import { EvidenceNotice, LoadingCard } from "@/components/GapBanner";
 import { Icon } from "@/components/Icons";
 import { PartThumbnail } from "@/components/PartThumbnail";
 import { PageHeader, PrimaryLink, SecondaryLink } from "@/components/PageHeader";
@@ -48,7 +48,7 @@ export default function ProcurementPage() {
         meta={PAGE_META.procurement}
         actions={<PrimaryLink href="/compare-parts">Compare alternatives</PrimaryLink>}
       />
-      {typeof data?.gap === "string" ? <GapBanner>{String(data.gap)}</GapBanner> : null}
+      {<EvidenceNotice gap={data?.gap} />}
       {busy ? <LoadingCard label="Loading procurement coverage…" /> : null}
       {error ? <div className="cv-error">{error}</div> : null}
       {!busy && data ? (

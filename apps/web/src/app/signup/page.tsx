@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { fetchAuthConfig, signup } from "@/lib/api";
+import { TermsAcceptance } from "@/components/TermsAcceptance";
+import { PRIVACY_VERSION, TERMS_VERSION } from "@/lib/legalTerms";
 
 export default function SignupPage() {
   const [enabled, setEnabled] = useState<boolean | null>(null);
@@ -10,6 +12,7 @@ export default function SignupPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
@@ -28,12 +31,20 @@ export default function SignupPage() {
       setError("The passwords do not match.");
       return;
     }
+    if (!acceptedTerms) {
+      setError("Agree to the Terms of Service and Privacy Policy to continue.");
+      return;
+    }
     setBusy(true);
     try {
-      const result = await signup(email, password, workspaceName);
+      const result = await signup(email, password, workspaceName, undefined, true, {
+        terms_version: TERMS_VERSION,
+        privacy_version: PRIVACY_VERSION,
+      });
       setMessage(result.message);
       setPassword("");
       setConfirmPassword("");
+      setAcceptedTerms(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Signup could not be started.");
     } finally {
@@ -109,12 +120,17 @@ export default function SignupPage() {
               onChange={(event) => setConfirmPassword(event.target.value)}
               required
             />
+            <TermsAcceptance
+              checked={acceptedTerms}
+              onChange={setAcceptedTerms}
+              disabled={busy}
+            />
             {error ? <div className="cv-error" role="alert">{error}</div> : null}
             <button
               className="cv-button primary"
               style={{ width: "100%", marginTop: 18 }}
               type="submit"
-              disabled={busy}
+              disabled={busy || !acceptedTerms}
             >
               {busy ? "Sending verification…" : "Create workspace"}
             </button>

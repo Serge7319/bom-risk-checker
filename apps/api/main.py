@@ -7,6 +7,7 @@ subscription billing use Supabase Edge Functions with the existing Stripe setup.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sys
 import threading
@@ -59,8 +60,9 @@ from src.saved_bom_project import split_project_and_bom  # noqa: E402
 
 from apps.api import billing_prep  # noqa: E402
 from apps.api import compliance_packs  # noqa: E402
-from apps.api import connectors
+from apps.api import connectors  # noqa: E402
 from apps.api import bom_validation  # noqa: E402
+from apps.api import legal_acceptance  # noqa: E402
 from apps.api import monitoring_store  # noqa: E402
 from apps.api import monitoring_scheduler  # noqa: E402
 from apps.api import plan_limits  # noqa: E402
@@ -313,34 +315,106 @@ def _web_origin(request: Request) -> str:
     return (https[0] if https else (_origins[0] if _origins else "http://localhost:3000")).rstrip("/")
 
 
+
+def _accepted_terms(body: dict) -> bool:
+    value = body.get("accepted_terms")
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return False
+
+
+def _legal_acceptance_error(exc: legal_acceptance.LegalAcceptanceError) -> JSONResponse:
+    return _json({"detail": exc.detail, "code": exc.code}, exc.status_code)
+
+
+def _record_legal_acceptance(**kwargs):
+    """Persist consent or raise LegalAcceptanceError (never creates accounts)."""
+    return legal_acceptance.record_acceptance(**kwargs)
+
+
 async def auth_signup_config(_: Request) -> JSONResponse:
     """Expose public onboarding availability without exposing auth configuration."""
     enabled = bool(_use_supabase_auth() and supabase_auth.signup_enabled())
-    return _json({"signup_enabled": enabled, "trial_length_days": supabase_auth.TRIAL_DAYS})
+    return _json(
+        {
+            "signup_enabled": enabled,
+            "trial_length_days": supabase_auth.TRIAL_DAYS,
+            "invitations_enabled": True,
+            **legal_acceptance.published_versions(),
+        }
+    )
 
 
 async def auth_signup(request: Request) -> JSONResponse:
     if not _use_supabase_auth() or not supabase_auth.signup_enabled():
         return _json({"detail": "Self-serve signup is not enabled"}, 503)
+    # Rate-limit before any consent write so retries cannot flood the audit log.
+    if _throttled(request, "signup", limit=5, window=600):
+        return _json(
+            {"detail": "Too many signup attempts. Wait a few minutes and try again.", "code": "signup_rate_limited"},
+            429,
+        )
     try:
         body = await request.json()
     except Exception:  # noqa: BLE001
         return _json({"detail": "Invalid JSON"}, 400)
+    if not isinstance(body, dict):
+        return _json({"detail": "Invalid JSON"}, 400)
+    if not _accepted_terms(body):
+        return _json(
+            {"detail": "Agree to the Terms of Service and Privacy Policy to continue."},
+            400,
+        )
+    # Validate payload + CAPTCHA before inserting consent.
     try:
-        supabase_auth.signup(
+        email_n, workspace_n, captcha_token = supabase_auth.validate_signup_fields(
             str(body.get("email") or ""),
             str(body.get("password") or ""),
             str(body.get("workspace_name") or ""),
             captcha_token=str(body.get("captcha_token") or "") or None,
         )
+    except AuthError as exc:
+        return _json({"detail": exc.detail}, exc.status_code)
+    try:
+        acceptance = legal_acceptance.record_acceptance_for_signup(
+            email=email_n,
+            source="signup",
+            workspace_name=workspace_n or None,
+            terms_version=str(body.get("terms_version") or "") or None,
+            privacy_version=str(body.get("privacy_version") or "") or None,
+        )
+    except legal_acceptance.LegalAcceptanceError as exc:
+        return _legal_acceptance_error(exc)
+    try:
+        result = supabase_auth.signup(
+            email_n,
+            str(body.get("password") or ""),
+            workspace_n,
+            captcha_token=captcha_token,
+        )
     except AuthNotConfiguredError as exc:
         return _json({"detail": str(exc)}, 503)
     except AuthError as exc:
         return _json({"detail": exc.detail}, exc.status_code)
+    user_id = str((result or {}).get("user_id") or "") or None
+    if user_id and acceptance and not acceptance.get("user_id"):
+        linked = legal_acceptance.attach_user_id(
+            acceptance_id=str(acceptance["id"]), user_id=user_id
+        )
+        if linked:
+            acceptance = linked
     return _json(
         {
             "accepted": True,
             "message": "If this address can be registered, a verification link will arrive by email.",
+            "acceptance_id": acceptance.get("id") if acceptance else None,
+            "acceptance_user_linked": bool(acceptance and acceptance.get("user_id")),
+            "acceptance_identity": (
+                "user_id" if acceptance and acceptance.get("user_id") else "email"
+            ),
+            **legal_acceptance.published_versions(),
         },
         202,
     )
@@ -589,13 +663,15 @@ async def reports_list(request: Request) -> JSONResponse:
         reports = list_reports(workspace_id=ctx["workspace_id"])
     except PersistenceNotConfiguredError as exc:
         return _json({"detail": str(exc)}, 503)
+    # Do not surface deployment service gaps (billing/email/connectors) as a
+    # Reports warning card — those belong in Settings / health diagnostics.
     return _json(
         {
             "ok": True,
             "mode": "synthetic-preview",
             "workspace_id": ctx["workspace_id"],
             "persistence": persistence["backend"],
-            "gap": persistence["label"],
+            "gap": None,
             "reports": reports,
         }
     )
@@ -1421,6 +1497,73 @@ async def connectors_get(request: Request) -> JSONResponse:
     return _json(connectors.connector_status_payload())
 
 
+async def service_readiness_get(request: Request) -> JSONResponse:
+    """Authenticated readiness for Settings: email, scheduler, connectors.
+
+    Status values reflect operational capability, not enable flags alone.
+    Does not infer monitoring-email state from billing or plan-usage payloads.
+    """
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        connector_payload = connectors.connector_status_payload()
+        email = monitoring_store.monitoring_email_readiness()
+        scheduler = monitoring_scheduler.scheduler_readiness()
+        billing = billing_prep.checkout_readiness(
+            workspace_id=str(ctx.get("workspace_id") or "readiness-probe"),
+            user_id=str(ctx.get("user_id") or "readiness-probe"),
+        )
+        # File workflows must not imply live design-tool/vendor readiness.
+        live_ready_count = int(
+            connector_payload.get("live_ready_count")
+            or connector_payload.get("ready_count")
+            or 0
+        )
+        blocked_count = int(connector_payload.get("blocked_count") or 0)
+        file_workflow_count = int(connector_payload.get("file_workflow_count") or 0)
+        connector_status = str(connector_payload.get("live_status") or "not_connected")
+        if connector_status not in {"ready", "partial", "not_connected", "unknown"}:
+            if live_ready_count > 0 and blocked_count == 0:
+                connector_status = "ready"
+            elif live_ready_count > 0:
+                connector_status = "partial"
+            else:
+                connector_status = "not_connected"
+        return _json(
+            {
+                "ok": True,
+                "monitoring_email": email,
+                "scheduler": scheduler,
+                "connectors": {
+                    "status": connector_status,
+                    "ready_count": live_ready_count,
+                    "live_ready_count": live_ready_count,
+                    "file_workflow_count": file_workflow_count,
+                    "blocked_count": blocked_count,
+                    "connectors": connector_payload.get("connectors") or [],
+                    "gap": connector_payload.get("gap"),
+                },
+                "billing_checkout": billing,
+            }
+        )
+    except Exception as exc:  # noqa: BLE001
+        logging.getLogger(__name__).exception(
+            "service_readiness_get failed: %s", type(exc).__name__
+        )
+        return _json(
+            {
+                "ok": False,
+                "detail": "Service readiness could not be determined.",
+                "monitoring_email": {"status": "unknown"},
+                "scheduler": {"status": "unknown"},
+                "connectors": {"status": "unknown"},
+                "billing_checkout": {"status": "unknown"},
+            },
+            503,
+        )
+
+
 async def connectors_sync_post(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
@@ -1511,6 +1654,13 @@ async def invitations_register_post(request: Request) -> JSONResponse:
         body = await request.json()
     except Exception:  # noqa: BLE001
         return _json({"detail": "Invalid JSON"}, 400)
+    if not isinstance(body, dict):
+        return _json({"detail": "Invalid JSON"}, 400)
+    if not _accepted_terms(body):
+        return _json(
+            {"detail": "Agree to the Terms of Service and Privacy Policy to continue."},
+            400,
+        )
     token = str(body.get("token") or "").strip()
     email = str(body.get("email") or "").strip().lower()
     password = str(body.get("password") or "")
@@ -1521,6 +1671,16 @@ async def invitations_register_post(request: Request) -> JSONResponse:
         return _json({"detail": "Use the email address this invitation was sent to."}, 400)
     if len(password) < 12:
         return _json({"detail": "Password must be at least 12 characters."}, 400)
+    try:
+        _record_legal_acceptance(
+            email=email,
+            source="invitation",
+            workspace_name=str(preview.get("workspace_name") or "") or None,
+            terms_version=str(body.get("terms_version") or "") or None,
+            privacy_version=str(body.get("privacy_version") or "") or None,
+        )
+    except legal_acceptance.LegalAcceptanceError as exc:
+        return _legal_acceptance_error(exc)
     if _use_supabase_auth():
         # Production: Supabase signup + verified login accepts pending invites.
         try:
@@ -1542,6 +1702,7 @@ async def invitations_register_post(request: Request) -> JSONResponse:
                     "If this address can be registered, a verification link will "
                     "arrive by email. After verifying, sign in to join the invited workspace."
                 ),
+                **legal_acceptance.published_versions(),
             },
             202,
         )
@@ -1576,6 +1737,7 @@ async def invitations_register_post(request: Request) -> JSONResponse:
             "user_id": user_id,
             "accepted": accepted,
             "message": "Account created. Sign in with this email to open the invited workspace.",
+            **legal_acceptance.published_versions(),
         }
     )
 
@@ -1918,6 +2080,28 @@ async def auth_invitation_signup(request: Request) -> JSONResponse:
     body, bad = await _read_json_object(request)
     if bad is not None or body is None:
         return bad or _json({"detail": "Invalid JSON"}, 400)
+    if not _accepted_terms(body):
+        return _json(
+            {"detail": "Agree to the Terms of Service and Privacy Policy to continue."},
+            400,
+        )
+    preview = team_service.lookup_invitation(str(body.get("token") or ""))
+    if not preview:
+        return _json({"detail": "This invitation is not valid or has expired."}, 404)
+    invite_email = str(preview.get("email") or "").strip().lower()
+    body_email = str(body.get("email") or "").strip().lower()
+    if body_email and body_email != invite_email:
+        return _json({"detail": "Use the email address this invitation was sent to."}, 400)
+    try:
+        _record_legal_acceptance(
+            email=invite_email,
+            source="invitation",
+            workspace_name=str(preview.get("workspace_name") or "") or None,
+            terms_version=str(body.get("terms_version") or "") or None,
+            privacy_version=str(body.get("privacy_version") or "") or None,
+        )
+    except legal_acceptance.LegalAcceptanceError as exc:
+        return _legal_acceptance_error(exc)
     redirect_to = supabase_auth.web_redirect_url(_web_origin(request), "/login", _origins)
     try:
         await run_in_threadpool(
@@ -1940,6 +2124,7 @@ async def auth_invitation_signup(request: Request) -> JSONResponse:
                 "If this address can be registered, a verification link will arrive by email. "
                 "Verify it, then sign in to join the workspace."
             ),
+            **legal_acceptance.published_versions(),
         },
         202,
     )
@@ -2254,11 +2439,33 @@ async def invitations_register(request: Request) -> JSONResponse:
     body, bad = await _read_json_object(request)
     if bad is not None or body is None:
         return bad or _json({"detail": "Invalid JSON"}, 400)
+    if not _accepted_terms(body):
+        return _json(
+            {"detail": "Agree to the Terms of Service and Privacy Policy to continue."},
+            400,
+        )
+    token = str(body.get("token") or "").strip()
+    email = str(body.get("email") or "").strip().lower()
+    preview = team_service.lookup_invitation(token)
+    if not preview:
+        return _json({"detail": "This invitation is not valid or has expired."}, 404)
+    if email != str(preview["email"]).lower():
+        return _json({"detail": "Use the email address this invitation was sent to."}, 400)
+    try:
+        _record_legal_acceptance(
+            email=email,
+            source="invitation",
+            workspace_name=str(preview.get("workspace_name") or "") or None,
+            terms_version=str(body.get("terms_version") or "") or None,
+            privacy_version=str(body.get("privacy_version") or "") or None,
+        )
+    except legal_acceptance.LegalAcceptanceError as exc:
+        return _legal_acceptance_error(exc)
     try:
         result = await run_in_threadpool(
             lambda: team_service.register_from_invitation_sandbox(
-                str(body.get("token") or ""),
-                str(body.get("email") or ""),
+                token,
+                email,
                 str(body.get("password") or ""),
             )
         )
@@ -2266,7 +2473,7 @@ async def invitations_register(request: Request) -> JSONResponse:
         return _team_error(exc)
     except PersistenceNotConfiguredError as exc:
         return _json({"detail": str(exc)}, 503)
-    return _json({"ok": True, **result})
+    return _json({"ok": True, **result, **legal_acceptance.published_versions()})
 
 
 app = Starlette(
@@ -2365,6 +2572,7 @@ app = Starlette(
         Route("/plan/usage", plan_usage_get, methods=["GET"]),
         Route("/integrations/connectors", connectors_get, methods=["GET"]),
         Route("/integrations/connectors/sync", connectors_sync_post, methods=["POST"]),
+        Route("/integrations/service-readiness", service_readiness_get, methods=["GET"]),
         Route("/compliance/{pack_type}", compliance_pack_get, methods=["GET"]),
     ],
     middleware=[

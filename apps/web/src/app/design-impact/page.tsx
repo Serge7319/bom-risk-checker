@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { EmptyState } from "@/components/EmptyState";
 import { Shell } from "@/components/Shell";
-import { GapBanner, LoadingCard } from "@/components/GapBanner";
+import { EvidenceNotice, LoadingCard } from "@/components/GapBanner";
 import { PageHeader, PrimaryLink } from "@/components/PageHeader";
 import { fetchDesignImpact } from "@/lib/api";
 import { PAGE_META } from "@/lib/routes";
@@ -50,7 +50,7 @@ export default function DesignImpactPage() {
   return (
     <Shell session={session}>
       <PageHeader meta={PAGE_META.design} actions={<PrimaryLink href="/compare-parts">Compare parts</PrimaryLink>} />
-      {typeof data?.gap === "string" ? <GapBanner>{String(data.gap)}</GapBanner> : null}
+      {<EvidenceNotice gap={data?.gap} />}
       <div className="cv-card pad" style={{ marginBottom: 14 }}>
         <div className="cv-form-grid">
           <div className="cv-field">
@@ -67,20 +67,20 @@ export default function DesignImpactPage() {
       {busy ? <LoadingCard label="Building design impact from saved analyses…" /> : null}
       {error ? <div className="cv-error" role="alert">Design impact could not load. {error}</div> : null}
       {!busy && data ? (
-        catalog.length ? <div className="cv-grid-2">
-          <section className="cv-card pad">
+        catalog.length ? <div className="cv-grid-2 cv-grid-2--tables">
+          <section className="cv-card pad cv-card--table">
             <h3 className="cv-card-title">Component catalog</h3>
             <p className="cv-card-subtitle">{Array.isArray(catalog) ? catalog.length : 0} parts from saved analyses</p>
-            <div className="cv-table-wrap" style={{ marginTop: 12 }}>
-              <table className="cv-table">
-                <thead><tr><th>Part</th><th>Manufacturer</th><th>Lifecycle</th><th>Risk</th></tr></thead>
+            <div className="cv-table-wrap cv-table-wrap--fit" style={{ marginTop: 12 }}>
+              <table className="cv-table cv-table--fit">
+                <thead><tr><th>Part</th><th>Manufacturer</th><th>Lifecycle</th><th className="cv-num">Risk</th></tr></thead>
                 <tbody>
                   {(Array.isArray(catalog) ? catalog : []).slice(0, 25).map((row, i) => (
                     <tr key={i}>
-                      <td><strong>{String(row["Part Number"] || row.mpn || "")}</strong></td>
-                      <td>{String(row.Manufacturer || row.manufacturer || (Array.isArray(row["Manufacturer Values"]) ? row["Manufacturer Values"][0] : "") || "")}</td>
-                      <td>{String(row.Lifecycle || row.lifecycle || "")}</td>
-                      <td>{String(row["Risk Level"] || row.risk_level || "")}</td>
+                      <td data-label="Part"><strong>{String(row["Part Number"] || row.mpn || "")}</strong></td>
+                      <td data-label="Manufacturer">{String(row.Manufacturer || row.manufacturer || (Array.isArray(row["Manufacturer Values"]) ? row["Manufacturer Values"][0] : "") || "")}</td>
+                      <td data-label="Lifecycle">{String(row.Lifecycle || row.lifecycle || "")}</td>
+                      <td className="cv-num" data-label="Risk">{String(row["Risk Level"] || row.risk_level || "")}</td>
                     </tr>
                   ))}
                 </tbody>

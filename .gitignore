@@ -18,3 +18,4 @@ reports/*.xlsx
 .evidence_rc/
 .venv-guide/
 docs/evidence_bom_workflow/screenshots/*.html
+.venv-pr/

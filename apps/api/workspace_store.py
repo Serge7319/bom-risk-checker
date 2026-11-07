@@ -439,8 +439,7 @@ class WorkspaceStore:
                 "persistence": "migration-workspace-store",
                 "gap": (
                     "This local preview uses temporary file storage and does not survive service restarts. "
-                    "Deployed workspaces use durable storage. Monitoring email, billing checkout, and "
-                    "design-tool connectors are not connected yet."
+                    "Deployed workspaces use durable storage."
                 ),
                 "metrics": {
                     "active_projects": len(projects),
@@ -600,10 +599,12 @@ def describe_persistence() -> dict[str, Any]:
             "durable_across_redeploy": True,
             "database_configured": True,
             "ephemeral_file_allowed": False,
-            "label": (
-                "Saved BOM and project records are stored in your workspace database. "
-                "Monitoring email, billing checkout, and design-tool connectors are not connected yet."
-            ),
+            "label": "Saved BOM and project records are stored in your workspace database.",
+            "service_gaps": [
+                "Monitoring email is not connected yet.",
+                "Billing checkout is not connected yet.",
+                "Design-tool connectors are not connected yet.",
+            ],
             "railway_environment": railway_env or None,
         }
     if allow_ephemeral_file_store():

@@ -4,7 +4,7 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Shell } from "@/components/Shell";
 import { EmptyState } from "@/components/EmptyState";
-import { GapBanner, LoadingCard } from "@/components/GapBanner";
+import { EvidenceNotice, LoadingCard } from "@/components/GapBanner";
 import { KpiCard } from "@/components/KpiCard";
 import { PageHeader, PrimaryLink } from "@/components/PageHeader";
 import { fetchMonitoring } from "@/lib/api";
@@ -75,7 +75,7 @@ function MonitoringPageInner() {
           {requestedAnalysisId ? " (selected from report)" : " (last remembered analysis)"}.
         </p>
       ) : null}
-      {typeof data?.gap === "string" ? <GapBanner>{data.gap}</GapBanner> : null}
+      {<EvidenceNotice gap={data?.gap} />}
       {busy ? <LoadingCard label="Loading monitoring signals from saved analyses…" /> : null}
       {error ? <div className="cv-error" role="alert">Monitoring could not load. {error}</div> : null}
       {!busy && data ? (

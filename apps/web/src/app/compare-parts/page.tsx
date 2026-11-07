@@ -4,7 +4,7 @@ import Link from "next/link";
 import { FormEvent, Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { EmptyState } from "@/components/EmptyState";
-import { GapBanner, LoadingCard } from "@/components/GapBanner";
+import { EvidenceNotice, LoadingCard } from "@/components/GapBanner";
 import { Shell } from "@/components/Shell";
 import { PageHeader, SecondaryLink } from "@/components/PageHeader";
 import {
@@ -425,7 +425,7 @@ function ComparePartsInner() {
 
       {result ? (
         <>
-          {typeof result.gap === "string" ? <GapBanner>{String(result.gap)}</GapBanner> : null}
+          {<EvidenceNotice gap={result.gap} />}
 
           <div className="cv-compare-screening" role="status">
             <span className="cv-compare-screening-icon" aria-hidden="true">!</span>

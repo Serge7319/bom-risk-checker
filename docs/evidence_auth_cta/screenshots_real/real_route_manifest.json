@@ -1,0 +1,32 @@
+{
+  "captured_at": "2026-11-07T20:20:22.245Z",
+  "api": "http://127.0.0.1:8793",
+  "web": "http://127.0.0.1:3007",
+  "synthetic": true,
+  "shots": [
+    {
+      "name": "real_login_desktop",
+      "file": "docs/evidence_auth_cta/screenshots_real/real_login_desktop.png"
+    },
+    {
+      "name": "real_login_mobile",
+      "file": "docs/evidence_auth_cta/screenshots_real/real_login_mobile.png"
+    },
+    {
+      "name": "real_signup_desktop",
+      "file": "docs/evidence_auth_cta/screenshots_real/real_signup_desktop.png"
+    },
+    {
+      "name": "real_signup_mobile",
+      "file": "docs/evidence_auth_cta/screenshots_real/real_signup_mobile.png"
+    },
+    {
+      "name": "real_invitation_registration_desktop",
+      "file": "docs/evidence_auth_cta/screenshots_real/real_invitation_registration_desktop.png"
+    },
+    {
+      "name": "real_invitation_registration_mobile",
+      "file": "docs/evidence_auth_cta/screenshots_real/real_invitation_registration_mobile.png"
+    }
+  ]
+}

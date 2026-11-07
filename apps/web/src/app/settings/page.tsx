@@ -17,6 +17,8 @@ import {
   fetchCompliancePack,
   fetchConnectors,
   fetchPlanUsage,
+  fetchServiceReadiness,
+  type ServiceReadiness,
   fetchPreferences,
   fetchProfile,
   fetchSecurityStatus,
@@ -129,6 +131,8 @@ export default function Page() {
   const [usage, setUsage] = useState<Record<string, unknown> | null>(null);
   const [billing, setBilling] = useState<Record<string, unknown> | null>(null);
   const [connectors, setConnectors] = useState<Record<string, unknown> | null>(null);
+  const [readiness, setReadiness] = useState<ServiceReadiness | null>(null);
+  const [readinessUnknown, setReadinessUnknown] = useState(false);
   const [compliance, setCompliance] = useState<Record<string, unknown> | null>(null);
   const [billingAction, setBillingAction] = useState("");
   const [billingError, setBillingError] = useState("");
@@ -195,16 +199,37 @@ export default function Page() {
     }
     setInvites(asRows(invitesRes?.invitations));
 
-    const [usageRes, billingRes, connectorsRes, complianceRes] = await Promise.all([
-      settledValue(fetchPlanUsage(token)),
-      settledValue(fetchBillingStatus(token)),
-      settledValue(fetchConnectors(token)),
-      settledValue(fetchCompliancePack(token, "rohs")),
-    ]);
+    const [usageRes, billingRes, connectorsRes, complianceRes, readinessRes] =
+      await Promise.all([
+        settledValue(fetchPlanUsage(token)),
+        settledValue(fetchBillingStatus(token)),
+        settledValue(fetchConnectors(token)),
+        settledValue(fetchCompliancePack(token, "rohs")),
+        settledValue(fetchServiceReadiness(token)),
+      ]);
     if (usageRes) setUsage(usageRes);
     if (billingRes) setBilling(billingRes);
     if (connectorsRes) setConnectors(connectorsRes);
     if (complianceRes) setCompliance(complianceRes);
+    if (readinessRes && readinessRes.ok !== false) {
+      setReadiness(readinessRes);
+      setReadinessUnknown(false);
+      if (readinessRes.connectors) {
+        setConnectors({
+          ...(connectorsRes || {}),
+          ...readinessRes.connectors,
+          connectors:
+            readinessRes.connectors.connectors ||
+            asRows(
+              (connectorsRes as Record<string, unknown> | null)?.connectors ||
+                (connectorsRes as Record<string, unknown> | null)?.items,
+            ),
+        });
+      }
+    } else {
+      setReadiness(null);
+      setReadinessUnknown(true);
+    }
 
     if (coreErrors.length === 3) {
       setError("Could not reach Cadivor. Check your connection and try again.");
@@ -232,7 +257,19 @@ export default function Page() {
   const currentPlan = currentPlanName.toLowerCase();
   const canManageBilling = billing?.can_manage_billing === true;
   const checkoutEnabled = billing?.checkout_enabled === true;
-  const connectorRows = asRows(connectors?.connectors || connectors?.items);
+  const connectorRows = asRows(
+    readiness?.connectors?.connectors || connectors?.connectors || connectors?.items,
+  );
+  function readinessLabel(
+    status: string | undefined,
+    readyText = "Ready",
+    notReadyText = "Not connected",
+  ): string {
+    if (readinessUnknown || !status || status === "unknown") return "Unknown";
+    if (status === "ready") return readyText;
+    if (status === "partial") return "Partial";
+    return notReadyText;
+  }
   const password = asRecord(security.password);
   const twoFactor = asRecord(security.two_factor);
   const sessions = asRecord(security.sessions);
@@ -1197,15 +1234,76 @@ export default function Page() {
               </section>
 
               <section className="cv-card pad" style={{ marginBottom: 14 }}>
-                <h3 className="cv-card-title">Connectors</h3>
+                <h3 className="cv-card-title">Service readiness</h3>
+                <p className="cv-card-subtitle">
+                  Operational availability for monitoring email, scheduler, and billing checkout.
+                  CSV file workflows are listed separately from live design-tool or vendor integrations.
+                </p>
+                <ul className="cv-action-list" style={{ marginTop: 12 }}>
+                  <li>
+                    <div>
+                      <strong>Monitoring email</strong>
+                      <small className="cv-small-note">Alert delivery transport configuration</small>
+                    </div>
+                    <span className="cv-badge gray">
+                      {readinessLabel(readiness?.monitoring_email?.status)}
+                    </span>
+                  </li>
+                  <li>
+                    <div>
+                      <strong>Monitoring scheduler</strong>
+                      <small className="cv-small-note">Scheduled refresh and cron hook</small>
+                    </div>
+                    <span className="cv-badge gray">
+                      {readinessLabel(readiness?.scheduler?.status)}
+                    </span>
+                  </li>
+                  <li>
+                    <div>
+                      <strong>Billing checkout</strong>
+                      <small className="cv-small-note">Stripe plan upgrades and portal</small>
+                    </div>
+                    <span className="cv-badge gray">
+                      {readinessUnknown
+                        ? "Unknown"
+                        : readiness?.billing_checkout?.status
+                          ? readinessLabel(readiness.billing_checkout.status)
+                          : checkoutEnabled
+                            ? "Ready"
+                            : "Not connected"}
+                    </span>
+                  </li>
+                  <li>
+                    <div>
+                      <strong>Live design-tool / vendor connectors</strong>
+                      <small className="cv-small-note">
+                        Live integrations only — CSV file workflows do not count as ready
+                        {typeof readiness?.connectors?.live_ready_count === "number" ||
+                        typeof readiness?.connectors?.ready_count === "number"
+                          ? ` · ${readiness?.connectors?.live_ready_count ?? readiness?.connectors?.ready_count ?? 0} live ready, ${readiness?.connectors?.blocked_count ?? 0} blocked, ${readiness?.connectors?.file_workflow_count ?? 0} file workflows`
+                          : ""}
+                      </small>
+                    </div>
+                    <span className="cv-badge gray">
+                      {readinessLabel(readiness?.connectors?.status)}
+                    </span>
+                  </li>
+                </ul>
+              </section>
+
+              <section className="cv-card pad" style={{ marginBottom: 14 }}>
+                <h3 className="cv-card-title">Connectors and file workflows</h3>
+                <p className="cv-card-subtitle">
+                  Generic CSV import/export paths are file workflows. Blocked rows are candidate live vendor integrations that still need discovery and credentials.
+                </p>
                 {connectorRows.length ? (
                   <div className="cv-table-wrap" style={{ marginTop: 12 }}>
                     <table className="cv-table">
                       <thead>
                         <tr>
-                          <th>Connector</th>
+                          <th>Name</th>
                           <th>Category</th>
-                          <th>Status</th>
+                          <th>Kind / status</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1215,7 +1313,12 @@ export default function Page() {
                               <strong>{String(row.display_name || row.id || "")}</strong>
                             </td>
                             <td>{String(row.category || "")}</td>
-                            <td>{String(row.status || "")}</td>
+                            <td>
+                              {String(row.kind || row.status || "") === "file_workflow" ||
+                              String(row.status || "") === "file_workflow"
+                                ? "File workflow"
+                                : String(row.status || row.kind || "")}
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -1224,8 +1327,8 @@ export default function Page() {
                 ) : (
                   <EmptyState
                     icon="settings"
-                    title="No connectors configured"
-                    body="Connector options appear here when workspace integrations are added."
+                    title="No connectors or file workflows listed"
+                    body="File workflows and vendor connector options appear here when the workspace catalog is available."
                   />
                 )}
               </section>

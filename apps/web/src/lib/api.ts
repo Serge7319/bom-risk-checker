@@ -344,6 +344,9 @@ export async function registerFromInvitation(body: {
   token: string;
   email: string;
   password: string;
+  accepted_terms: boolean;
+  terms_version?: string;
+  privacy_version?: string;
 }) {
   return apiJson<{
     ok: boolean;
@@ -362,6 +365,8 @@ export async function signup(
   password: string,
   workspaceName: string,
   captchaToken?: string,
+  acceptedTerms = false,
+  versions?: { terms_version?: string; privacy_version?: string },
 ) {
   return apiJson<{ accepted: boolean; message: string }>("/auth/signup", {
     method: "POST",
@@ -370,6 +375,9 @@ export async function signup(
       password,
       workspace_name: workspaceName,
       captcha_token: captchaToken,
+      accepted_terms: acceptedTerms,
+      terms_version: versions?.terms_version,
+      privacy_version: versions?.privacy_version,
     }),
   });
 }
@@ -742,6 +750,31 @@ export async function beginOneTimeReportCheckout(token: string) {
 
 export async function fetchConnectors(token: string) {
   return apiJson<Record<string, unknown>>("/integrations/connectors", { token });
+}
+
+export type ServiceReadiness = {
+  ok?: boolean;
+  monitoring_email?: { status?: string; enabled?: boolean };
+  scheduler?: {
+    status?: string;
+    enabled?: boolean;
+    cron_token_configured?: boolean;
+  };
+  connectors?: {
+    status?: string;
+    ready_count?: number;
+    live_ready_count?: number;
+    file_workflow_count?: number;
+    blocked_count?: number;
+    connectors?: Array<Record<string, unknown>>;
+    gap?: string | null;
+  };
+  billing_checkout?: { status?: string; enabled?: boolean };
+  detail?: string;
+};
+
+export async function fetchServiceReadiness(token: string) {
+  return apiJson<ServiceReadiness>("/integrations/service-readiness", { token });
 }
 
 export async function fetchCompliancePack(token: string, packType: string) {
