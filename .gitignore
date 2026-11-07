@@ -16,3 +16,4 @@ reports/*.xlsx
 .venv312/
 .evidence/
 .evidence_rc/
+.venv-guide/

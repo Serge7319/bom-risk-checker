@@ -7,6 +7,7 @@ import { GapBanner, LoadingCard } from "@/components/GapBanner";
 import { KpiCard } from "@/components/KpiCard";
 import { PageHeader, PrimaryLink } from "@/components/PageHeader";
 import { fetchMonitoring } from "@/lib/api";
+import { markReviewProgress } from "@/lib/bomDraft";
 import { evidenceSourceLabel } from "@/lib/display";
 import { PAGE_META } from "@/lib/routes";
 import { readLastAnalysis, useRequireSession } from "@/lib/session";
@@ -20,6 +21,13 @@ export default function MonitoringPage() {
   useEffect(() => {
     if (!session) return;
     const last = readLastAnalysis(session);
+    if (last?.analysis_id) {
+      markReviewProgress(
+        last.analysis_id,
+        { monitorOpenedAt: new Date().toISOString() },
+        session,
+      );
+    }
     setBusy(true);
     fetchMonitoring(session.access_token, last?.analysis_id)
       .then(setData)

@@ -1,24 +1,35 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { BomWorkflowStepper } from "@/components/BomWorkflowStepper";
 import { Icon } from "@/components/Icons";
 import { Shell } from "@/components/Shell";
 import { PageHeader, SecondaryLink } from "@/components/PageHeader";
-import { analyzeBom, ApiError, listReports, type AnalyzeSummary } from "@/lib/api";
+import {
+  listDecisionRecords,
+  listReports,
+  validateBom,
+  type AnalyzeSummary,
+  type BomValidationPreview,
+} from "@/lib/api";
+import {
+  clearFinishedAnalyzeJob,
+  getActiveAnalyzeJob,
+  loadDraftFile,
+  markReviewProgress,
+  readDraftMeta,
+  readReviewProgress,
+  saveDraftFile,
+  startAnalyzeJob,
+  subscribeAnalyzeJob,
+  writeDraftMeta,
+  type BomDraftMeta,
+  type BomReviewProgress,
+} from "@/lib/bomDraft";
+import { buildWorkflowGuide } from "@/lib/bomWorkflow";
 import { PAGE_META } from "@/lib/routes";
 import { rememberAnalysis, useRequireSession } from "@/lib/session";
-
-const STAGES = [
-  "Received",
-  "Validating",
-  "Analyzing",
-  "Risks",
-  "Evidence",
-  "Decision",
-  "Monitor",
-] as const;
 
 function formatReportDate(value: unknown): string {
   if (!value) return "recently";
@@ -37,8 +48,8 @@ function formatReportDate(value: unknown): string {
 }
 
 export default function BomAnalyzerPage() {
-  const router = useRouter();
   const session = useRequireSession();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [recentReports, setRecentReports] = useState<Array<Record<string, unknown>>>([]);
   const [reportsBusy, setReportsBusy] = useState(true);
   const [reportsError, setReportsError] = useState("");
@@ -46,10 +57,55 @@ export default function BomAnalyzerPage() {
   const [projectName, setProjectName] = useState("");
   const [bomName, setBomName] = useState("");
   const [revision, setRevision] = useState("A");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  const [validating, setValidating] = useState(false);
+  const [validation, setValidation] = useState<BomValidationPreview | null>(null);
+  const [validationError, setValidationError] = useState("");
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analyzeError, setAnalyzeError] = useState("");
   const [oneTimeReportRequired, setOneTimeReportRequired] = useState(false);
   const [summary, setSummary] = useState<AnalyzeSummary | null>(null);
+  const [analysisId, setAnalysisId] = useState<string | null>(null);
+  const [review, setReview] = useState<BomReviewProgress | null>(null);
+  const [hasDecisionRecord, setHasDecisionRecord] = useState(false);
+  const [draftReady, setDraftReady] = useState(false);
+  const [backgroundNote, setBackgroundNote] = useState("");
+
+  const persistMeta = useCallback(
+    (patch: Partial<BomDraftMeta>) => {
+      if (!session) return;
+      const current = readDraftMeta(session);
+      const next: BomDraftMeta = {
+        ...current,
+        projectName,
+        bomName,
+        revision,
+        fileName: file?.name || current.fileName,
+        fileSize: file?.size || current.fileSize,
+        fileType: file?.type || current.fileType,
+        validation,
+        validationError,
+        analysisId,
+        summary,
+        analyzeError,
+        oneTimeReportRequired,
+        ...patch,
+      };
+      writeDraftMeta(next, session);
+    },
+    [
+      session,
+      projectName,
+      bomName,
+      revision,
+      file,
+      validation,
+      validationError,
+      analysisId,
+      summary,
+      analyzeError,
+      oneTimeReportRequired,
+    ],
+  );
 
   useEffect(() => {
     if (!session) return;
@@ -71,42 +127,256 @@ export default function BomAnalyzerPage() {
     };
   }, [session]);
 
-  async function onAnalyze() {
-    if (!session || !file) return;
-    setBusy(true);
-    setError("");
+  useEffect(() => {
+    if (!session) return;
+    let cancelled = false;
+    (async () => {
+      const meta = readDraftMeta(session);
+      setProjectName(meta.projectName || "");
+      setBomName(meta.bomName || "");
+      setRevision(meta.revision || "A");
+      setValidation(meta.validation);
+      setValidationError(meta.validationError || "");
+      setAnalyzeError(meta.analyzeError || "");
+      setOneTimeReportRequired(Boolean(meta.oneTimeReportRequired));
+      setSummary(meta.summary);
+      setAnalysisId(meta.analysisId);
+      if (meta.analysisId) {
+        setReview(readReviewProgress(meta.analysisId, session));
+      }
+      const restored = await loadDraftFile(session);
+      if (cancelled) return;
+      if (restored) setFile(restored);
+      const job = getActiveAnalyzeJob();
+      if (job?.status === "running") {
+        setAnalyzing(true);
+        setBackgroundNote(
+          "Analysis continues in this browser session while you use other pages. Return here to see status.",
+        );
+      } else if (job?.status === "succeeded" && job.result) {
+        setSummary(job.result);
+        setAnalysisId(job.result.analysis_id);
+        setAnalyzing(false);
+        rememberAnalysis({ ...job.result, filename: job.fileName }, session);
+        persistMeta({
+          summary: job.result,
+          analysisId: job.result.analysis_id,
+          analyzeError: "",
+          oneTimeReportRequired: false,
+        });
+        clearFinishedAnalyzeJob();
+      } else if (job?.status === "failed") {
+        setAnalyzeError(job.error || "Analyze failed");
+        setOneTimeReportRequired(Boolean(job.oneTimeReportRequired));
+        setAnalyzing(false);
+        clearFinishedAnalyzeJob();
+      }
+      setDraftReady(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // Restore once per session identity.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session]);
+
+  useEffect(() => {
+    if (!session) return;
+    return subscribeAnalyzeJob((job) => {
+      if (!job) return;
+      if (job.status === "running") {
+        setAnalyzing(true);
+        setAnalyzeError("");
+        setBackgroundNote(
+          "Analysis continues in this browser session while you use other pages. Return here to see status.",
+        );
+        return;
+      }
+      if (job.status === "succeeded" && job.result) {
+        setAnalyzing(false);
+        setSummary(job.result);
+        setAnalysisId(job.result.analysis_id);
+        setAnalyzeError("");
+        setOneTimeReportRequired(false);
+        rememberAnalysis({ ...job.result, filename: job.fileName }, session);
+        writeDraftMeta(
+          {
+            ...readDraftMeta(session),
+            summary: job.result,
+            analysisId: job.result.analysis_id,
+            analyzeError: "",
+            oneTimeReportRequired: false,
+          },
+          session,
+        );
+        clearFinishedAnalyzeJob();
+        return;
+      }
+      if (job.status === "failed") {
+        setAnalyzing(false);
+        setAnalyzeError(job.error || "Analyze failed");
+        setOneTimeReportRequired(Boolean(job.oneTimeReportRequired));
+        writeDraftMeta(
+          {
+            ...readDraftMeta(session),
+            analyzeError: job.error || "Analyze failed",
+            oneTimeReportRequired: Boolean(job.oneTimeReportRequired),
+          },
+          session,
+        );
+        clearFinishedAnalyzeJob();
+      }
+    });
+  }, [session]);
+
+  useEffect(() => {
+    if (!session || !analysisId) return;
+    listDecisionRecords(session.access_token, analysisId)
+      .then(({ records }) => {
+        const found = (records || []).length > 0;
+        setHasDecisionRecord(found);
+        if (found) {
+          setReview(
+            markReviewProgress(
+              analysisId,
+              { decisionRecordedAt: new Date().toISOString() },
+              session,
+            ),
+          );
+        }
+      })
+      .catch(() => setHasDecisionRecord(false));
+  }, [session, analysisId]);
+
+  useEffect(() => {
+    if (!session || !draftReady) return;
+    persistMeta({});
+  }, [
+    session,
+    draftReady,
+    projectName,
+    bomName,
+    revision,
+    file,
+    validation,
+    validationError,
+    analysisId,
+    summary,
+    analyzeError,
+    oneTimeReportRequired,
+    persistMeta,
+  ]);
+
+  const runValidation = useCallback(
+    async (nextFile: File) => {
+      if (!session) return;
+      setValidating(true);
+      setValidationError("");
+      setAnalyzeError("");
+      try {
+        const preview = await validateBom(nextFile, session.access_token);
+        setValidation(preview);
+        if (!preview.can_analyze) {
+          setValidationError(
+            preview.errors[0] || "Required validation did not pass. Analysis stays disabled.",
+          );
+        }
+      } catch (err) {
+        setValidation(null);
+        setValidationError(err instanceof Error ? err.message : "Validation failed");
+      } finally {
+        setValidating(false);
+      }
+    },
+    [session],
+  );
+
+  async function onFileChosen(next: File | null) {
+    if (!session) return;
+    setFile(next);
+    setSummary(null);
+    setAnalysisId(null);
+    setReview(null);
+    setHasDecisionRecord(false);
+    setAnalyzeError("");
+    setOneTimeReportRequired(false);
+    setBackgroundNote("");
+    if (!next) {
+      setValidation(null);
+      setValidationError("");
+      return;
+    }
+    if (!bomName.trim()) {
+      setBomName(next.name.replace(/\.(csv|xlsx)$/i, ""));
+    }
+    await saveDraftFile(next, session);
+    await runValidation(next);
+  }
+
+  function onAnalyze() {
+    if (!session || !file || !validation?.can_analyze || analyzing) return;
+    setAnalyzeError("");
     setOneTimeReportRequired(false);
     setSummary(null);
-    try {
-      const result = await analyzeBom(file, session.access_token, {
-        projectName: projectName.trim() || undefined,
-        bomName: bomName.trim() || file.name.replace(/\.(csv|xlsx)$/i, ""),
-        revision: revision.trim() || "A",
-      });
-      rememberAnalysis({ ...result, filename: file.name }, session);
-      setSummary(result);
-      router.push(`/reports/${result.analysis_id}`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Analyze failed");
-      setOneTimeReportRequired(
-        err instanceof ApiError && err.payload.code === "one_time_report_required",
-      );
-      setBusy(false);
-    }
+    setAnalysisId(null);
+    setBackgroundNote(
+      "Analysis continues in this browser session while you use other pages. Return here to see status.",
+    );
+    startAnalyzeJob(file, session.access_token, {
+      projectName: projectName.trim() || undefined,
+      bomName: bomName.trim() || file.name.replace(/\.(csv|xlsx)$/i, ""),
+      revision: revision.trim() || "A",
+    });
+    setAnalyzing(true);
   }
+
+  const guide = useMemo(
+    () =>
+      buildWorkflowGuide({
+        hasFile: Boolean(file),
+        validating,
+        validation,
+        validationError,
+        analyzing,
+        analyzeError,
+        summary,
+        analysisId,
+        review,
+        hasDecisionRecord,
+        monitoringAvailable: false,
+      }),
+    [
+      file,
+      validating,
+      validation,
+      validationError,
+      analyzing,
+      analyzeError,
+      summary,
+      analysisId,
+      review,
+      hasDecisionRecord,
+    ],
+  );
 
   if (!session) return null;
 
-  const activeStage = busy
-    ? "Analyzing"
-    : summary
-      ? "Decision"
-      : file
-        ? "Validating"
-        : "Received";
   const visibleReports = recentReports
     .filter((row) => row.id || row.analysis_id)
     .slice(0, 3);
+  const primary = guide.primaryCta;
+  const canAnalyze = Boolean(file && validation?.can_analyze && !analyzing && !validating);
+
+  function handlePrimary() {
+    if (primary.disabled) return;
+    if (primary.action === "choose-file") {
+      fileInputRef.current?.click();
+      return;
+    }
+    if (primary.action === "analyze" || primary.action === "retry-analyze") {
+      onAnalyze();
+    }
+  }
 
   return (
     <Shell session={session}>
@@ -122,6 +392,10 @@ export default function BomAnalyzerPage() {
         }
       />
 
+      <p className="cv-bom-guidance-note" role="note">
+        This workflow guides analysis and review. Sidebar navigation and other tools stay available — leave anytime and resume this draft later.
+      </p>
+
       <div className="cv-bom-workspace-grid">
         <section className="cv-card pad cv-bom-create-card">
           <div className="cv-bom-card-heading">
@@ -131,58 +405,19 @@ export default function BomAnalyzerPage() {
                 Add project details, upload the file, then review validation before analysis.
               </p>
             </div>
-            <span className="cv-bom-step">Step {STAGES.indexOf(activeStage) + 1} of {STAGES.length}</span>
+            <span className="cv-bom-step">
+              Stage {guide.stages.findIndex((s) => s.id === guide.currentStage) + 1} of{" "}
+              {guide.stages.length}
+            </span>
           </div>
 
-          <section className="cv-bom-progress-inline" aria-live="polite" aria-busy={busy}>
-            <div className="cv-bom-stages">
-              {STAGES.map((stage) => (
-                <span
-                  key={stage}
-                  className={`cv-bom-stage${stage === activeStage ? " active" : ""}`}
-                >
-                  {stage}
-                </span>
-              ))}
-            </div>
-            <div className="cv-bom-progress" aria-hidden>
-              <i style={{ width: busy ? "55%" : summary ? "85%" : file ? "28%" : "12%" }} />
-            </div>
-            {busy ? (
-              <div className="cv-loading cv-bom-inline-message" role="status">
-                Analyzing the BOM with available evidence and saving it to your workspace…
-              </div>
-            ) : null}
-            {error ? (
-              <div className="cv-error" role="alert">
-                {error}
-                {oneTimeReportRequired ? (
-                  <div style={{ marginTop: 10 }}>
-                    <Link
-                      className="cv-button primary"
-                      href="/single-bom-report"
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      Open one-time report purchase
-                    </Link>
-                    <p className="cv-small-note" style={{ marginTop: 8 }}>
-                      Keep this BOM open. After checkout is confirmed, return here and run the analysis; your selected file will still be ready.
-                    </p>
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
-            {summary ? (
-              <p className="cv-small-note cv-bom-summary">
-                Saved {summary.project_name || summary.analysis_id}
-                {summary.has_hierarchy
-                  ? ` · assembly roll-up ${summary.top_rolled_risk || "n/a"}`
-                  : ""}{" "}
-                · {summary.total_parts} parts · health {summary.health_score ?? "—"}
-              </p>
-            ) : null}
-          </section>
+          <BomWorkflowStepper guide={guide} analyzing={analyzing} />
+
+          {backgroundNote && analyzing ? (
+            <p className="cv-small-note cv-bom-background-note" role="status">
+              {backgroundNote}
+            </p>
+          ) : null}
 
           <div className="cv-bom-fields cv-bom-fields-grid">
             <label className="cv-field">
@@ -191,6 +426,7 @@ export default function BomAnalyzerPage() {
                 value={projectName}
                 onChange={(e) => setProjectName(e.target.value)}
                 placeholder="e.g. Motor controller"
+                disabled={analyzing}
               />
             </label>
             <label className="cv-field">
@@ -199,6 +435,7 @@ export default function BomAnalyzerPage() {
                 value={bomName}
                 onChange={(e) => setBomName(e.target.value)}
                 placeholder="Defaults to filename"
+                disabled={analyzing}
               />
             </label>
             <label className="cv-field">
@@ -207,6 +444,7 @@ export default function BomAnalyzerPage() {
                 value={revision}
                 onChange={(e) => setRevision(e.target.value)}
                 placeholder="e.g. A"
+                disabled={analyzing}
               />
             </label>
           </div>
@@ -222,22 +460,166 @@ export default function BomAnalyzerPage() {
             <label className="cv-bom-file-picker">
               <span>{file ? "Choose a different file" : "Choose file"}</span>
               <input
+                ref={fileInputRef}
                 type="file"
                 accept=".csv,.xlsx"
-                onChange={(e) => setFile(e.target.files?.[0] || null)}
+                disabled={analyzing}
+                onChange={(e) => void onFileChosen(e.target.files?.[0] || null)}
               />
               <small>{file ? file.name : "CSV or XLSX · up to 10 MB"}</small>
             </label>
-            <div className="cv-bom-analyze-actions">
+          </div>
+
+          {file ? (
+            <section className="cv-bom-validation" aria-live="polite">
+              <div className="cv-bom-validation-heading">
+                <h3 className="cv-card-title">Validation preview</h3>
+                <p className="cv-card-subtitle">
+                  Uses the same parse path as analysis. Analysis stays disabled until required checks pass.
+                </p>
+              </div>
+              {validating ? (
+                <p className="cv-bom-recent-state" role="status">
+                  Validating columns and part counts…
+                </p>
+              ) : null}
+              {validation ? (
+                <>
+                  <dl className="cv-bom-validation-stats">
+                    <div>
+                      <dt>Rows</dt>
+                      <dd>{validation.row_count}</dd>
+                    </div>
+                    <div>
+                      <dt>Unique parts</dt>
+                      <dd>{validation.unique_part_count}</dd>
+                    </div>
+                    <div>
+                      <dt>Columns detected</dt>
+                      <dd>{validation.detected_columns.length}</dd>
+                    </div>
+                    <div>
+                      <dt>Ready to analyze</dt>
+                      <dd>{validation.can_analyze ? "Yes" : "No"}</dd>
+                    </div>
+                  </dl>
+                  {validation.detected_columns.length ? (
+                    <div className="cv-bom-column-list">
+                      <p className="cv-small-note">Detected columns</p>
+                      <ul>
+                        {validation.detected_columns.map((col) => (
+                          <li key={`${col.source}-${col.normalized}`}>
+                            <strong>{col.source}</strong>
+                            <span>→ {col.normalized || "unmapped"}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                  {validation.errors.length ? (
+                    <div className="cv-error" role="alert">
+                      <strong>Validation errors</strong>
+                      <ul>
+                        {validation.errors.map((item) => (
+                          <li key={item}>{item}</li>
+                        ))}
+                      </ul>
+                      {validation.missing_required.length ? (
+                        <p className="cv-small-note" style={{ marginTop: 8 }}>
+                          Missing required: {validation.missing_required.join(", ")}
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {validation.warnings.length ? (
+                    <div className="cv-bom-validation-warnings" role="status">
+                      <strong>Warnings</strong>
+                      <ul>
+                        {validation.warnings.map((item) => (
+                          <li key={item}>{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                </>
+              ) : null}
+              {validationError && !validation?.errors.length ? (
+                <div className="cv-error" role="alert">
+                  {validationError}
+                </div>
+              ) : null}
+            </section>
+          ) : null}
+
+          {analyzeError ? (
+            <div className="cv-error" role="alert">
+              {analyzeError}
+              <p className="cv-small-note" style={{ marginTop: 8 }}>
+                Your selected file and project details are still available. Fix the issue, then retry analysis.
+              </p>
+              {oneTimeReportRequired ? (
+                <div style={{ marginTop: 10 }}>
+                  <Link
+                    className="cv-button primary"
+                    href="/single-bom-report"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Open one-time report purchase
+                  </Link>
+                  <p className="cv-small-note" style={{ marginTop: 8 }}>
+                    Keep this BOM open. After checkout is confirmed, return here and run the analysis; your selected file will still be ready.
+                  </p>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          {summary ? (
+            <div className="cv-bom-success" role="status">
+              <p className="cv-bom-summary">
+                Saved {summary.project_name || summary.analysis_id}
+                {summary.has_hierarchy
+                  ? ` · assembly roll-up ${summary.top_rolled_risk || "n/a"}`
+                  : ""}{" "}
+                · {summary.total_parts} parts · health {summary.health_score ?? "—"}
+              </p>
+              <p className="cv-small-note">
+                Received, Validating, and Analyzing are complete. Continue with Risks in the saved report.
+              </p>
+            </div>
+          ) : null}
+
+          <div className="cv-bom-analyze-actions cv-bom-primary-cta">
+            {primary.href ? (
+              <Link className="cv-button primary" href={primary.href}>
+                {primary.label}
+              </Link>
+            ) : (
               <button
                 type="button"
                 className="cv-button primary"
-                disabled={!file || busy}
+                disabled={
+                  primary.disabled ||
+                  (primary.action === "analyze" || primary.action === "retry-analyze"
+                    ? !canAnalyze
+                    : false)
+                }
+                onClick={handlePrimary}
+              >
+                {primary.label}
+              </button>
+            )}
+            {canAnalyze && primary.action !== "analyze" ? (
+              <button
+                type="button"
+                className="cv-button"
+                disabled={!canAnalyze}
                 onClick={onAnalyze}
               >
-                {busy ? "Analyzing…" : "Analyze BOM"}
+                Analyze BOM
               </button>
-            </div>
+            ) : null}
           </div>
         </section>
 
@@ -245,20 +627,20 @@ export default function BomAnalyzerPage() {
           <section className="cv-card pad cv-bom-side-card">
             <h2 className="cv-card-title">Before you analyze</h2>
             <p className="cv-card-subtitle">
-              A short validation preview prevents avoidable report errors.
+              Validation preview prevents avoidable report errors. Only Analyze is gated.
             </p>
             <ul className="cv-bom-checklist">
               <li>
                 <span className="cv-bom-check-icon"><Icon name="check" /></span>
-                <span><strong>Confirm required columns</strong><small>Map the MPN, quantity, and hierarchy fields.</small></span>
+                <span><strong>Confirm required columns</strong><small>MPN is required; quantity and manufacturer improve matching.</small></span>
               </li>
               <li>
                 <span className="cv-bom-check-icon"><Icon name="shield" /></span>
-                <span><strong>Review evidence coverage</strong><small>Check which records use sample evidence.</small></span>
+                <span><strong>Review evidence coverage</strong><small>Check which records use sample evidence in the saved report.</small></span>
               </li>
               <li>
                 <span className="cv-bom-check-icon"><Icon name="report" /></span>
-                <span><strong>Save a traceable report</strong><small>Return to this revision from Saved analyses.</small></span>
+                <span><strong>Resume from Recent analyses</strong><small>Saved reports keep Risks → Evidence → Decision → Monitor available.</small></span>
               </li>
             </ul>
           </section>
@@ -267,7 +649,7 @@ export default function BomAnalyzerPage() {
             <div className="cv-bom-recent-heading">
               <div>
                 <h2 className="cv-card-title">Recent analyses</h2>
-                <p className="cv-card-subtitle">Pick up where you left off.</p>
+                <p className="cv-card-subtitle">Resume a saved analysis at Risks or later.</p>
               </div>
               <Link href="/reports" className="cv-bom-view-all">View all</Link>
             </div>
@@ -275,7 +657,9 @@ export default function BomAnalyzerPage() {
             {reportsBusy ? (
               <p className="cv-bom-recent-state" role="status">Loading saved analyses…</p>
             ) : reportsError ? (
-              <p className="cv-bom-recent-state" role="alert">Recent analyses could not load. <Link href="/reports">Open Saved analyses</Link>.</p>
+              <p className="cv-bom-recent-state" role="alert">
+                Recent analyses could not load. <Link href="/reports">Open Saved analyses</Link>.
+              </p>
             ) : visibleReports.length ? (
               <ul className="cv-bom-recent-list">
                 {visibleReports.map((row) => {
@@ -286,12 +670,22 @@ export default function BomAnalyzerPage() {
                   const dateLabel = formatReportDate(row.created_at);
                   return (
                     <li key={id}>
-                      <Link href={`/reports/${encodeURIComponent(id)}`} className="cv-bom-recent-link">
+                      <Link
+                        href={`/reports/${encodeURIComponent(id)}`}
+                        className="cv-bom-recent-link"
+                        onClick={() => {
+                          markReviewProgress(
+                            id,
+                            { risksOpenedAt: new Date().toISOString() },
+                            session,
+                          );
+                        }}
+                      >
                         <span className="cv-bom-recent-copy">
                           <strong>{title}{revisionLabel}</strong>
                           <small>{partsLabel} · updated {dateLabel}</small>
                         </span>
-                        <span className="cv-button small">Open</span>
+                        <span className="cv-button small">Resume</span>
                       </Link>
                     </li>
                   );
@@ -308,4 +702,3 @@ export default function BomAnalyzerPage() {
     </Shell>
   );
 }
-

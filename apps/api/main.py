@@ -59,7 +59,8 @@ from src.saved_bom_project import split_project_and_bom  # noqa: E402
 
 from apps.api import billing_prep  # noqa: E402
 from apps.api import compliance_packs  # noqa: E402
-from apps.api import connectors  # noqa: E402
+from apps.api import connectors
+from apps.api import bom_validation  # noqa: E402
 from apps.api import monitoring_store  # noqa: E402
 from apps.api import monitoring_scheduler  # noqa: E402
 from apps.api import plan_limits  # noqa: E402
@@ -393,6 +394,24 @@ async def smoke_login(request: Request) -> JSONResponse:
         },
         410,
     )
+
+
+
+async def boms_validate(request: Request) -> JSONResponse:
+    """Validate a BOM upload without running the analysis engine."""
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    form = await request.form()
+    upload = form.get("file")
+    if upload is None:
+        return _json({"detail": "Missing file"}, 400)
+    filename = getattr(upload, "filename", None) or "bom.csv"
+    payload = await upload.read()
+    preview = bom_validation.validation_preview(filename, payload)
+    # Always return the preview payload so the UI can show column detection and
+    # actionable errors without treating validation failure as a transport error.
+    return _json({**preview, "workspace_id": ctx["workspace_id"]})
 
 
 async def boms_analyze(request: Request) -> JSONResponse:
@@ -2295,6 +2314,7 @@ app = Starlette(
             methods=["POST"],
         ),
         Route("/settings/security", security_status_get, methods=["GET"]),
+        Route("/boms/validate", boms_validate, methods=["POST"]),
         Route("/boms/analyze", boms_analyze, methods=["POST"]),
         Route("/reports", reports_list, methods=["GET"]),
         Route("/reports/{analysis_id}/export.csv", reports_csv_get, methods=["GET"]),
