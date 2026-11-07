@@ -463,6 +463,11 @@ export type DecisionRecord = {
   decision_label: string;
   reviewer: string;
   rationale: string;
+  validation_checks?: string[];
+  follow_up_action?: string;
+  follow_up_owner?: string;
+  follow_up_due_date?: string | null;
+  residual_risk?: string;
   qualification_status: string;
   qualification_note: string;
   created_at: string;
@@ -486,13 +491,28 @@ export async function recordDecision(
     decision: string;
     reviewer: string;
     rationale: string;
+    validation_checks?: string[];
+    follow_up_action?: string;
+    follow_up_owner?: string;
+    follow_up_due_date?: string | null;
+    residual_risk?: string;
     verified_primary_evidence?: boolean;
   },
+  datasheets?: { a?: File | null; b?: File | null },
 ) {
+  const body = datasheets?.a || datasheets?.b ? new FormData() : null;
+  if (body) {
+    for (const [key, value] of Object.entries(payload)) {
+      if (value === undefined || value === null) continue;
+      body.append(key, Array.isArray(value) ? JSON.stringify(value) : String(value));
+    }
+    if (datasheets?.a) body.append("datasheet_a", datasheets.a);
+    if (datasheets?.b) body.append("datasheet_b", datasheets.b);
+  }
   return apiJson<{ ok: boolean; record: DecisionRecord }>("/decision-records", {
     method: "POST",
     token,
-    body: JSON.stringify(payload),
+    body: body || JSON.stringify(payload),
   });
 }
 
@@ -506,11 +526,20 @@ export async function compareParts(
   partA: string,
   partB: string,
   analysisId?: string,
+  datasheets?: { a?: File | null; b?: File | null },
 ) {
+  const body = datasheets?.a || datasheets?.b ? new FormData() : null;
+  if (body) {
+    body.append("part_a", partA);
+    body.append("part_b", partB);
+    body.append("analysis_id", analysisId || "");
+    if (datasheets?.a) body.append("datasheet_a", datasheets.a);
+    if (datasheets?.b) body.append("datasheet_b", datasheets.b);
+  }
   return apiJson<Record<string, unknown>>("/tools/compare-parts", {
     method: "POST",
     token,
-    body: JSON.stringify({
+    body: body || JSON.stringify({
       part_a: partA,
       part_b: partB,
       analysis_id: analysisId || null,

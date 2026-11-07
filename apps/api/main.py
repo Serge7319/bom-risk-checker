@@ -6,6 +6,7 @@ subscription billing use Supabase Edge Functions with the existing Stripe setup.
 """
 from __future__ import annotations
 
+import json
 import os
 import sys
 import uuid
@@ -13,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from starlette.applications import Starlette
+from starlette.concurrency import run_in_threadpool
 from starlette.middleware import Middleware
 from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
@@ -67,6 +69,7 @@ from apps.api.report_exports import (  # noqa: E402
     build_report_export,
     safe_download_stem,
 )
+from src.datasheet_comparison import MAX_DATASHEET_BYTES  # noqa: E402
 
 # Demo passwords are not shipped in the API. Tests import
 # tests.fixtures.sandbox_auth_accounts; operators seed via
@@ -726,17 +729,46 @@ async def compare_parts_post(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
+    datasheet_uploads: dict[str, Any] = {}
+    if "multipart/form-data" in str(request.headers.get("content-type") or "").lower():
+        try:
+            form = await request.form(max_files=2, max_fields=8)
+        except Exception:  # noqa: BLE001
+            return _json({"detail": "Invalid multipart comparison request."}, 400)
+        body = {
+            "part_a": form.get("part_a"),
+            "part_b": form.get("part_b"),
+            "analysis_id": form.get("analysis_id"),
+        }
+        for side, field_name in (("a", "datasheet_a"), ("b", "datasheet_b")):
+            upload = form.get(field_name)
+            if upload is None or not callable(getattr(upload, "read", None)):
+                continue
+            filename = str(getattr(upload, "filename", "") or "datasheet.pdf").strip()
+            if not filename.casefold().endswith(".pdf"):
+                return _json({"detail": f"Part {side.upper()} datasheet must be a PDF."}, 400)
+            payload = await upload.read(MAX_DATASHEET_BYTES + 1)
+            if len(payload) > MAX_DATASHEET_BYTES:
+                return _json({"detail": "Each datasheet must be 8 MB or smaller."}, 413)
+            if not payload.startswith(b"%PDF"):
+                return _json({"detail": f"Part {side.upper()} upload is not a readable PDF file."}, 400)
+            datasheet_uploads[side] = {"bytes": payload, "filename": filename}
+    else:
+        try:
+            body = await request.json()
+        except Exception:  # noqa: BLE001
+            return _json({"detail": "Invalid JSON"}, 400)
+    if not isinstance(body, dict):
+        return _json({"detail": "Comparison payload must be an object."}, 400)
     try:
-        body = await request.json()
-    except Exception:  # noqa: BLE001
-        return _json({"detail": "Invalid JSON"}, 400)
-    try:
-        result = migration_tools.compare_parts_payload(
+        result = await run_in_threadpool(
+            migration_tools.compare_parts_payload,
             workspace_id=ctx["workspace_id"],
             part_a=str(body.get("part_a") or ""),
             part_b=str(body.get("part_b") or ""),
             analysis_id=body.get("analysis_id") or None,
             use_latest_if_missing=False,
+            datasheet_uploads=datasheet_uploads or None,
         )
     except WorkspaceAccessError:
         return _json({"detail": "Report not found"}, 404)
@@ -747,8 +779,22 @@ async def compare_parts_post(request: Request) -> JSONResponse:
 _DECISION_LABELS = {
     "hold_for_review": "Hold for review",
     "approve_alternate": "Approve alternate",
+    "conditional_approval": "Conditional approval",
+    "reject_alternate": "Reject alternate",
     "retain_current_part": "Retain current part",
+    "defer_for_validation": "Defer pending validation",
+    "accept_residual_risk": "Accept residual risk",
 }
+
+_DECISION_VALIDATION_CHECKS = {
+    "manufacturer_datasheet_reviewed",
+    "package_pinout_verified",
+    "electrical_limits_verified",
+    "thermal_environmental_limits_verified",
+    "lifecycle_and_supply_reviewed",
+    "prototype_validation_completed",
+}
+_DECISION_RISK_LEVELS = {"unknown", "low", "medium", "high"}
 
 
 async def decision_records_get(request: Request) -> JSONResponse:
@@ -774,10 +820,37 @@ async def decision_records_post(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
-    try:
-        body = await request.json()
-    except Exception:  # noqa: BLE001
-        return _json({"detail": "Invalid JSON"}, 400)
+    datasheet_uploads: dict[str, Any] = {}
+    if "multipart/form-data" in str(request.headers.get("content-type") or "").lower():
+        try:
+            form = await request.form(max_files=2, max_fields=32)
+            body = {key: form.get(key) for key in (
+                "analysis_id", "part_a", "part_b", "decision", "reviewer", "rationale",
+                "validation_checks", "follow_up_action", "follow_up_owner",
+                "follow_up_due_date", "residual_risk",
+            )}
+            raw_checks = body.get("validation_checks")
+            body["validation_checks"] = json.loads(raw_checks) if raw_checks else []
+        except Exception:  # noqa: BLE001
+            return _json({"detail": "Invalid multipart decision request."}, 400)
+        for side, field_name in (("a", "datasheet_a"), ("b", "datasheet_b")):
+            upload = form.get(field_name)
+            if upload is None or not callable(getattr(upload, "read", None)):
+                continue
+            filename = str(getattr(upload, "filename", "") or "datasheet.pdf").strip()
+            if not filename.casefold().endswith(".pdf"):
+                return _json({"detail": f"Part {side.upper()} datasheet must be a PDF."}, 400)
+            payload = await upload.read(MAX_DATASHEET_BYTES + 1)
+            if len(payload) > MAX_DATASHEET_BYTES:
+                return _json({"detail": "Each datasheet must be 8 MB or smaller."}, 413)
+            if not payload.startswith(b"%PDF"):
+                return _json({"detail": f"Part {side.upper()} upload is not a readable PDF file."}, 400)
+            datasheet_uploads[side] = {"bytes": payload, "filename": filename}
+    else:
+        try:
+            body = await request.json()
+        except Exception:  # noqa: BLE001
+            return _json({"detail": "Invalid JSON"}, 400)
     if not isinstance(body, dict):
         return _json({"detail": "Decision payload must be an object."}, 400)
 
@@ -786,6 +859,17 @@ async def decision_records_post(request: Request) -> JSONResponse:
     decision = str(body.get("decision") or "").strip()
     reviewer = str(body.get("reviewer") or "").strip()
     rationale = str(body.get("rationale") or "").strip()
+    validation_checks = body.get("validation_checks") or []
+    if not isinstance(validation_checks, list) or any(
+        not isinstance(item, str) or item not in _DECISION_VALIDATION_CHECKS
+        for item in validation_checks
+    ):
+        return _json({"detail": "Choose valid engineering validation items."}, 400)
+    validation_checks = list(dict.fromkeys(validation_checks))
+    follow_up_action = str(body.get("follow_up_action") or "").strip()
+    follow_up_owner = str(body.get("follow_up_owner") or "").strip()
+    follow_up_due_date = str(body.get("follow_up_due_date") or "").strip()
+    residual_risk = str(body.get("residual_risk") or "unknown").strip().lower()
     requested_analysis_id = str(body.get("analysis_id") or "").strip() or None
     if not part_a or not part_b or part_a.casefold() == part_b.casefold():
         return _json({"detail": "Compare two different parts before recording a decision."}, 400)
@@ -797,12 +881,32 @@ async def decision_records_post(request: Request) -> JSONResponse:
         return _json({"detail": "Enter a reviewer name (up to 120 characters)."}, 400)
     if not rationale or len(rationale) > 3000:
         return _json({"detail": "Enter a rationale (up to 3,000 characters)."}, 400)
-    if decision == "approve_alternate" and body.get("verified_primary_evidence") is not True:
+    if residual_risk not in _DECISION_RISK_LEVELS:
+        return _json({"detail": "Choose a valid residual-risk level."}, 400)
+    if len(follow_up_action) > 1000 or len(follow_up_owner) > 120:
+        return _json({"detail": "Follow-up details exceed the allowed length."}, 400)
+    if follow_up_due_date:
+        try:
+            from datetime import date
+
+            date.fromisoformat(follow_up_due_date)
+        except ValueError:
+            return _json({"detail": "Follow-up due date must use YYYY-MM-DD."}, 400)
+    if decision in {"conditional_approval", "defer_for_validation"} and not follow_up_action:
+        return _json({"detail": "Add the follow-up action for a conditional or deferred decision."}, 400)
+    if decision == "accept_residual_risk" and residual_risk == "unknown":
+        return _json({"detail": "Choose a residual-risk level before recording risk acceptance."}, 400)
+    required_approval_checks = {
+        "manufacturer_datasheet_reviewed",
+        "package_pinout_verified",
+        "electrical_limits_verified",
+    }
+    if decision == "approve_alternate" and not required_approval_checks.issubset(set(validation_checks)):
         return _json(
             {
                 "detail": (
-                    "Confirm that you reviewed the candidate's manufacturer datasheet "
-                    "and package/footprint evidence before recording an approval."
+                    "Before approving an alternate, record that its manufacturer datasheet, "
+                    "package/pinout, and electrical limits were reviewed."
                 )
             },
             400,
@@ -813,12 +917,14 @@ async def decision_records_post(request: Request) -> JSONResponse:
             requested_analysis_id, workspace_id=ctx["workspace_id"]
         ):
             return _json({"detail": "Report not found"}, 404)
-        comparison = migration_tools.compare_parts_payload(
+        comparison = await run_in_threadpool(
+            migration_tools.compare_parts_payload,
             workspace_id=ctx["workspace_id"],
             part_a=part_a,
             part_b=part_b,
             analysis_id=requested_analysis_id,
             use_latest_if_missing=False,
+            datasheet_uploads=datasheet_uploads or None,
         )
         if not comparison.get("ok"):
             return _json({"detail": comparison.get("detail") or "Comparison unavailable."}, 400)
@@ -843,6 +949,9 @@ async def decision_records_post(request: Request) -> JSONResponse:
                 "source_a",
                 "source_b",
                 "evidence_sources",
+                "datasheet_identity",
+                "package_dimension_evidence",
+                "review_warnings",
                 "gap",
             )
         }
@@ -858,11 +967,16 @@ async def decision_records_post(request: Request) -> JSONResponse:
                 "decision_label": _DECISION_LABELS[decision],
                 "reviewer": reviewer,
                 "rationale": rationale,
-                "verified_primary_evidence": decision == "approve_alternate",
+                "validation_checks": validation_checks,
+                "follow_up_action": follow_up_action,
+                "follow_up_owner": follow_up_owner,
+                "follow_up_due_date": follow_up_due_date or None,
+                "residual_risk": residual_risk,
+                "verified_primary_evidence": required_approval_checks.issubset(set(validation_checks)),
                 "qualification_status": "not-qualified-by-cadivor",
                 "qualification_note": (
-                    "This record captures a human decision. The comparison used synthetic or "
-                    "offline evidence and did not qualify or update the BOM."
+                    "This record captures a human decision and did not automatically qualify "
+                    "a drop-in replacement or update the BOM."
                 ),
                 "comparison_snapshot": snapshot,
                 "created_by": ctx.get("user_id"),

@@ -196,6 +196,19 @@ export default function EngineeringDecisionsPage() {
                       </td>
                       <td>
                         <div>{record.rationale}</div>
+                        {record.validation_checks?.length ? (
+                          <div className="cv-small-note">
+                            Checks completed: {record.validation_checks.map((item) => item.replaceAll("_", " ")).join(" · ")}
+                          </div>
+                        ) : null}
+                        {record.follow_up_action ? (
+                          <div className="cv-small-note">
+                            Follow-up: {record.follow_up_action}
+                            {record.follow_up_owner ? ` · ${record.follow_up_owner}` : ""}
+                            {record.follow_up_due_date ? ` · due ${record.follow_up_due_date}` : ""}
+                          </div>
+                        ) : null}
+                        <div className="cv-small-note">Residual risk: {record.residual_risk || "not assessed"}</div>
                         <div className="cv-small-note">{record.qualification_note}</div>
                       </td>
                       <td>

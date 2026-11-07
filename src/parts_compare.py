@@ -16,6 +16,8 @@ from src.datasheet_comparison import (
     build_engineering_evidence_assessment,
     customer_facing_evidence_text,
     diagnostic_comparison_rows,
+    compare_datasheet_dimension_evidence,
+    extract_datasheet_dimension_evidence,
     family_for_datasheet_review,
     merge_verified_datasheet_rows,
     user_facing_comparison_rows,
@@ -175,6 +177,7 @@ def resolve_comparison_family(part_a: Mapping[str, Any], part_b: Mapping[str, An
     """Choose the shared family profile used for attribute comparison."""
     family_a = infer_family_id(part_a)
     family_b = infer_family_id(part_b)
+    general_family = get_family_profile("General").id
     if family_a == family_b:
         return {
             "family": family_a,
@@ -182,14 +185,16 @@ def resolve_comparison_family(part_a: Mapping[str, Any], part_b: Mapping[str, An
             "family_a": family_a,
             "family_b": family_b,
         }
-    if family_a == "General" and family_b != "General":
+    # General means the available text could not identify the family. It is
+    # not affirmative evidence that the two components differ by family.
+    if family_a == general_family and family_b != general_family:
         return {
             "family": family_b,
             "family_mismatch": False,
             "family_a": family_a,
             "family_b": family_b,
         }
-    if family_b == "General" and family_a != "General":
+    if family_b == general_family and family_a != general_family:
         return {
             "family": family_a,
             "family_mismatch": False,
@@ -864,7 +869,10 @@ def build_parts_comparison(
     # Force family used by datasheet comparison by tagging Part A when families align
     # through General fallback; build_datasheet_comparison infers from Part A.
     part_a_for_compare = dict(part_a)
-    if not family_meta["family_mismatch"] and infer_family_id(part_a_for_compare) == "General":
+    if (
+        not family_meta["family_mismatch"]
+        and infer_family_id(part_a_for_compare) == get_family_profile("General").id
+    ):
         part_a_for_compare["description"] = (
             f"{part_a_for_compare.get('description') or ''} {profile.display_name}"
         ).strip()
@@ -996,6 +1004,15 @@ def build_parts_comparison(
     fixture_kpi = _fixture_kpi_summary(rows)
     verified_a = bool((datasheet_identity.get("part_a") or {}).get("verified"))
     verified_b = bool((datasheet_identity.get("part_b") or {}).get("verified"))
+    package_dimension_a = (
+        extract_datasheet_dimension_evidence(document_a) if verified_a else []
+    )
+    package_dimension_b = (
+        extract_datasheet_dimension_evidence(document_b) if verified_b else []
+    )
+    package_dimension_conflicts = compare_datasheet_dimension_evidence(
+        package_dimension_a, package_dimension_b
+    )
     asymmetry_note = ""
     if verified_b and not verified_a:
         asymmetry_note = (
@@ -1059,6 +1076,11 @@ def build_parts_comparison(
         "diagnostic_rows": diagnostic_comparison_rows(rows),
         "datasheet_identity": datasheet_identity,
         "evidence_sources": evidence_sources,
+        "package_dimension_evidence": {
+            "part_a": package_dimension_a,
+            "part_b": package_dimension_b,
+            "conflicts": package_dimension_conflicts,
+        },
         "access_blockers": access_blockers,
         "review_warnings": review_warnings,
         "fixture_kpi": fixture_kpi,

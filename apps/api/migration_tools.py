@@ -267,6 +267,7 @@ def compare_parts_payload(
     part_b: str,
     analysis_id: str | None = None,
     use_latest_if_missing: bool = True,
+    datasheet_uploads: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     a = str(part_a or "").strip()
     b = str(part_b or "").strip()
@@ -283,11 +284,35 @@ def compare_parts_payload(
             "detail": "Part A and Part B must be different.",
         }
 
+    # Production Next.js comparisons use the same supplier and datasheet
+    # engines as the original Streamlit workflow. Local/synthetic previews keep
+    # their isolated data path unless a reviewer attaches exact-MPN PDFs.
+    from apps.api.legacy_supplier_workflow import production_analysis_enabled
+
+    if production_analysis_enabled():
+        return _legacy_compare_parts_payload(
+            workspace_id=workspace_id,
+            part_a=a,
+            part_b=b,
+            analysis_id=analysis_id,
+            datasheet_uploads=datasheet_uploads,
+            extract_linked_datasheets=True,
+        )
+    if datasheet_uploads:
+        return _uploaded_compare_parts_payload(
+            workspace_id=workspace_id,
+            part_a=a,
+            part_b=b,
+            analysis_id=analysis_id,
+            datasheet_uploads=datasheet_uploads,
+        )
+
     report = (
         _require_analysis(analysis_id, workspace_id=workspace_id)
         if analysis_id or use_latest_if_missing
         else None
     )
+
     by_mpn: dict[str, dict[str, Any]] = {}
     if report:
         for part in report.get("parts") or []:
@@ -439,6 +464,182 @@ def compare_parts_payload(
                 if k in comparison
             },
         }
+    )
+
+
+def _comparison_source_label(
+    comparison: dict[str, Any], side: str, *, uploaded: bool = False
+) -> str:
+    identity = comparison.get("datasheet_identity")
+    identity = identity if isinstance(identity, dict) else {}
+    side_identity = identity.get(f"part_{side}")
+    side_identity = side_identity if isinstance(side_identity, dict) else {}
+    if side_identity.get("verified"):
+        return "uploaded-manufacturer-datasheet" if uploaded else "manufacturer-datasheet"
+    if uploaded:
+        return "uploaded-datasheet-unverified"
+    card = comparison.get(f"part_{side}")
+    card = card if isinstance(card, dict) else {}
+    if card.get("supplier_url") or card.get("datasheet_url"):
+        return "supplier-record-unverified"
+    return "unverified"
+
+
+def _comparison_payload_from_engine(
+    *,
+    workspace_id: str,
+    part_a: str,
+    part_b: str,
+    analysis_id: str | None,
+    engine_result: dict[str, Any],
+    mode: str,
+    upload_a: bool = False,
+    upload_b: bool = False,
+) -> dict[str, Any]:
+    comparison = engine_result.get("comparison")
+    if not isinstance(comparison, dict):
+        return {
+            "ok": False,
+            "status": STATUS_FAILED,
+            "detail": engine_result.get("error") or "Comparison evidence could not be prepared.",
+        }
+    rows = [row for row in comparison.get("rows") or [] if isinstance(row, dict)]
+    unknown = [
+        str(row.get("Attribute") or "")
+        for row in rows
+        if str(row.get("Assessment") or "").casefold()
+        in {"unable to confirm", "needs data / engineering validation", "needs validation"}
+        and str(row.get("Attribute") or "").strip()
+    ]
+    source_a = _comparison_source_label(comparison, "a", uploaded=upload_a)
+    source_b = _comparison_source_label(comparison, "b", uploaded=upload_b)
+    gap = str(engine_result.get("error") or "").strip()
+    if not gap and (source_a in {"unverified", "uploaded-datasheet-unverified"} or source_b in {"unverified", "uploaded-datasheet-unverified"}):
+        sides = []
+        if source_a in {"unverified", "uploaded-datasheet-unverified"}:
+            sides.append("Part A")
+        if source_b in {"unverified", "uploaded-datasheet-unverified"}:
+            sides.append("Part B")
+        gap = (
+            f"No exact-MPN manufacturer datasheet or verified supplier record was confirmed for "
+            f"{' and '.join(sides)}. The returned matrix keeps those attributes unverified."
+        )
+    counts = comparison.get("counts") or {}
+    finding = str(comparison.get("finding") or comparison.get("overall_finding") or "Needs data / engineering validation")
+    return _json_safe({
+        "ok": True,
+        "status": STATUS_COMPLETED,
+        "mode": mode,
+        "analysis_id": analysis_id,
+        "workspace_id": workspace_id,
+        "part_a": part_a,
+        "part_b": part_b,
+        "source_a": source_a,
+        "source_b": source_b,
+        "gap": gap,
+        "finding": finding,
+        "family": comparison.get("family") or "General electronic component",
+        "family_mismatch": bool(comparison.get("family_mismatch")),
+        "engineering_evidence_summary": comparison.get("engineering_evidence_summary") or "",
+        "engineering_evidence_status": comparison.get("engineering_evidence_status") or "unverified",
+        "counts": counts,
+        "unknown_attributes": unknown,
+        "rows": rows,
+        "part_cards": {
+            "a": comparison.get("part_a"),
+            "b": comparison.get("part_b"),
+        },
+        "evidence_sources": comparison.get("evidence_sources") or {},
+        "package_dimension_evidence": comparison.get("package_dimension_evidence") or {},
+        "datasheet_identity": comparison.get("datasheet_identity") or {},
+        "review_warnings": comparison.get("review_warnings") or [],
+        "comparison": {
+            key: comparison.get(key)
+            for key in (
+                "finding", "family", "family_display_name", "family_mismatch", "counts",
+                "engineering_evidence_summary", "engineering_evidence_status",
+                "datasheet_identity", "evidence_sources", "review_warnings",
+            )
+            if key in comparison
+        },
+    })
+
+
+def _legacy_compare_parts_payload(
+    *,
+    workspace_id: str,
+    part_a: str,
+    part_b: str,
+    analysis_id: str | None,
+    datasheet_uploads: dict[str, Any] | None,
+    extract_linked_datasheets: bool,
+) -> dict[str, Any]:
+    from src.parts_compare import run_compare_parts
+
+    report = _require_analysis(analysis_id, workspace_id=workspace_id) if analysis_id else None
+    result = run_compare_parts(
+        part_a,
+        part_b,
+        datasheet_uploads=datasheet_uploads,
+        extract_linked_datasheets=extract_linked_datasheets,
+    )
+    return _comparison_payload_from_engine(
+        workspace_id=workspace_id,
+        part_a=part_a,
+        part_b=part_b,
+        analysis_id=str((report or {}).get("id") or "") or None,
+        engine_result=result,
+        mode="legacy-supplier-engine",
+        upload_a=bool((datasheet_uploads or {}).get("a")),
+        upload_b=bool((datasheet_uploads or {}).get("b")),
+    )
+
+
+def _uploaded_compare_parts_payload(
+    *,
+    workspace_id: str,
+    part_a: str,
+    part_b: str,
+    analysis_id: str | None,
+    datasheet_uploads: dict[str, Any],
+) -> dict[str, Any]:
+    from src.parts_compare import build_parts_comparison, _datasheet_from_upload_payload
+
+    report = _require_analysis(analysis_id, workspace_id=workspace_id) if analysis_id else None
+    from_report: dict[str, dict[str, Any]] = {}
+    if report:
+        for part in report.get("parts") or []:
+            key = str(part.get("MPN") or "").strip().casefold()
+            if key:
+                from_report[key] = part
+
+    data_a = synthetic_compare_part(part_a, from_report=from_report.get(part_a.casefold()))
+    data_b = synthetic_compare_part(part_b, from_report=from_report.get(part_b.casefold()))
+    doc_a = _datasheet_from_upload_payload(
+        datasheet_uploads.get("a"), manufacturer=str(data_a.get("manufacturer") or ""), mpn=part_a
+    ) if datasheet_uploads.get("a") else None
+    doc_b = _datasheet_from_upload_payload(
+        datasheet_uploads.get("b"), manufacturer=str(data_b.get("manufacturer") or ""), mpn=part_b
+    ) if datasheet_uploads.get("b") else None
+    comparison = build_parts_comparison(
+        data_a,
+        data_b,
+        part_a_mpn=part_a,
+        part_b_mpn=part_b,
+        datasheet_a=doc_a,
+        datasheet_b=doc_b,
+        extract_linked_datasheets=False,
+    )
+    result = {"comparison": comparison, "error": ""}
+    return _comparison_payload_from_engine(
+        workspace_id=workspace_id,
+        part_a=part_a,
+        part_b=part_b,
+        analysis_id=str((report or {}).get("id") or "") or None,
+        engine_result=result,
+        mode="uploaded-datasheet-review",
+        upload_a=bool(doc_a),
+        upload_b=bool(doc_b),
     )
 
 
