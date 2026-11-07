@@ -95,9 +95,8 @@ export default function LoginPage() {
           Sign in
         </h1>
         <p className="cv-page-description" style={{ marginTop: 6 }}>
-          Sign in to your Cadivor workspace. Supplier evidence uses sample data;
-          live supplier, billing, and automated alert email connections are not
-          connected.
+          Sign in to your Cadivor workspace. Supplier prices and availability
+          may include sample estimates; check the source label before acting.
         </p>
         {sessionExpired ? (
           <div className="cv-error" role="status">
