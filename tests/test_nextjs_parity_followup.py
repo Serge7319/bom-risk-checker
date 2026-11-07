@@ -217,8 +217,122 @@ def test_find_replacement_unknown_is_unable_to_confirm():
     body = res.json()
     assert body["outcome"] == "unable_to_confirm"
     assert body["candidates"] == []
-    assert "unable to confirm" in str(body["gap"]).lower()
+    gap = str(body.get("gap") or "").lower()
+    assert "no candidates were returned by the available sources" in gap
+    assert "does not confirm that no replacement exists" in gap
 
+
+
+def test_find_replacement_empty_state_exposes_discovery_providers(monkeypatch):
+    """Empty production-path payload keeps discovery.providers for the UI."""
+    from apps.api import legacy_supplier_workflow as workflow
+
+    monkeypatch.setattr(workflow, "production_analysis_enabled", lambda: True)
+
+    def fake_find_replacements(mpn: str):
+        return {
+            "status": "completed",
+            "search_outcome": "unable_to_confirm",
+            "requested_mpn": mpn,
+            "original": {"mpn": mpn, "manufacturer": "", "description": "", "supplier_data_verified": False},
+            "candidates": [],
+            "discovery": {
+                "providers": {
+                    "DigiKey": {
+                        "lookup": "not_configured",
+                        "catalog": "not_configured",
+                        "substitutions": "not_configured",
+                        "message": "DIGIKEY_CLIENT_ID not configured",
+                    },
+                    "Mouser": {
+                        "lookup": "timeout",
+                        "catalog": "error",
+                        "substitutions": "not_supported",
+                        "message": "api_key=must-not-appear-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                    },
+                }
+            },
+            "missing_evidence": ["supplier-listed replacement candidates", "datasheet-backed fit scoring"],
+            "mode": "legacy-supplier-engine",
+            "live_lookups_enabled": False,
+            "gap": (
+                "No candidates were returned by the available sources. "
+                "This does not confirm that no replacement exists. "
+                "Review supplier coverage, manufacturer documentation, and authorized distributors before changing the design."
+            ),
+        }
+
+    monkeypatch.setattr(workflow, "find_replacements", fake_find_replacements)
+    client = TestClient(app)
+    headers = _auth_headers(client)
+    res = client.post(
+        "/tools/find-replacement",
+        headers=headers,
+        json={"mpn": "AM29F010B-70EC"},
+    )
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["candidates"] == []
+    assert "no candidates were returned by the available sources" in str(body["gap"]).lower()
+    assert "does not confirm that no replacement exists" in str(body["gap"]).lower()
+    providers = (body.get("discovery") or {}).get("providers") or {}
+    assert "DigiKey" in providers and "Mouser" in providers
+    assert providers["DigiKey"]["lookup"] == "not_configured"
+    assert providers["Mouser"]["lookup"] == "timeout"
+    assert "must-not-appear" not in str(body).lower()
+    assert body.get("missing_evidence")
+
+
+def test_find_replacement_candidate_remains_unverified(monkeypatch):
+    """Returned candidates stay explicitly unverified research leads."""
+    from apps.api import legacy_supplier_workflow as workflow
+
+    monkeypatch.setattr(workflow, "production_analysis_enabled", lambda: True)
+
+    def fake_find_replacements(mpn: str):
+        return {
+            "status": "completed",
+            "search_outcome": "candidates_found",
+            "requested_mpn": mpn,
+            "original": {"mpn": mpn, "manufacturer": "AMD", "description": "", "supplier_data_verified": True},
+            "candidates": [
+                {
+                    "mpn": "AM29F010B-120JC",
+                    "manufacturer": "AMD",
+                    "rationale": "Supplier-listed related part",
+                    "fit": "supplier-listed candidate; qualification required",
+                    "missing_evidence": ["datasheet-backed electrical, package, thermal, and qualification review"],
+                    "evidence_class": "live-authorized-supplier",
+                }
+            ],
+            "discovery": {
+                "providers": {
+                    "DigiKey": {"catalog": "ok", "catalog_count": 1, "substitutions": "ok", "explicit_count": 1}
+                }
+            },
+            "missing_evidence": ["datasheet-backed fit scoring"],
+            "mode": "legacy-supplier-engine",
+            "live_lookups_enabled": True,
+            "gap": "Candidate parts are research leads, not approved substitutes.",
+        }
+
+    monkeypatch.setattr(workflow, "find_replacements", fake_find_replacements)
+    client = TestClient(app)
+    headers = _auth_headers(client)
+    res = client.post(
+        "/tools/find-replacement",
+        headers=headers,
+        json={"mpn": "AM29F010B-70EC"},
+    )
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["outcome"] == "candidates_found"
+    assert len(body["candidates"]) == 1
+    cand = body["candidates"][0]
+    assert cand["mpn"] == "AM29F010B-120JC"
+    assert "qualification required" in str(cand.get("fit") or "").lower()
+    assert cand.get("missing_evidence")
+    assert "research leads" in str(body.get("gap") or "").lower()
 
 def test_ask_cadivor_on_saved_report():
     client = TestClient(app)

@@ -719,6 +719,8 @@ def find_replacement_payload(
     )
 
     if production_analysis_enabled():
+        from apps.api.legacy_supplier_workflow import _sanitize_discovery_for_client
+
         result = find_replacements(requested)
         original = result.get("original") if isinstance(result.get("original"), dict) else {}
         if manufacturer and not original.get("manufacturer"):
@@ -728,6 +730,8 @@ def find_replacement_payload(
             if result.get("candidates")
             else str(result.get("search_outcome") or "unable_to_confirm")
         )
+        if isinstance(result.get("discovery"), dict):
+            result = {**result, "discovery": _sanitize_discovery_for_client(result["discovery"])}
         return _json_safe({
             "ok": True,
             **result,
@@ -781,8 +785,9 @@ def find_replacement_payload(
         "compare datasheets before any design change. Live supplier offers are not connected."
         if candidates
         else (
-            "Unable to confirm replacements for this part. "
-            + "Missing: "
+            "No candidates were returned by the available sources. "
+            "This does not confirm that no replacement exists. "
+            "Missing: "
             + "; ".join(missing)
             + "."
         )

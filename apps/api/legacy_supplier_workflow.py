@@ -273,6 +273,39 @@ def _part_analysis_failure(row: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _sanitize_discovery_for_client(discovery: Mapping[str, Any] | dict[str, Any]) -> dict[str, Any]:
+    """Copy discovery metadata for the client without credential values."""
+    from src.alternative_finder_search import _redact_secrets
+
+    cleaned = dict(discovery or {})
+    providers = cleaned.get("providers")
+    if isinstance(providers, Mapping):
+        next_providers: dict[str, Any] = {}
+        for name, raw in providers.items():
+            if not isinstance(raw, Mapping):
+                next_providers[str(name)] = raw
+                continue
+            row = dict(raw)
+            if "message" in row:
+                row["message"] = _redact_secrets(str(row.get("message") or ""))
+            next_providers[str(name)] = row
+        cleaned["providers"] = next_providers
+    failures = cleaned.get("provider_failures")
+    if isinstance(failures, list):
+        next_failures = []
+        for item in failures:
+            if isinstance(item, Mapping):
+                row = dict(item)
+                for key in ("message", "error", "detail"):
+                    if key in row:
+                        row[key] = _redact_secrets(str(row.get(key) or ""))
+                next_failures.append(row)
+            else:
+                next_failures.append(_redact_secrets(str(item or "")))
+        cleaned["provider_failures"] = next_failures
+    return cleaned
+
+
 def find_replacements(mpn: str) -> dict[str, Any]:
     """Run the same Alternative Finder state machine used by the legacy UI."""
     from src.alternative_finder_search import run_alternative_finder_search
@@ -283,7 +316,9 @@ def find_replacements(mpn: str) -> dict[str, Any]:
     result = result if isinstance(result, dict) else {}
     original = result.get("original_data") if isinstance(result.get("original_data"), dict) else {}
     candidates_raw = result.get("candidates") if isinstance(result.get("candidates"), list) else []
-    discovery = result.get("discovery_metadata") if isinstance(result.get("discovery_metadata"), dict) else {}
+    discovery = _sanitize_discovery_for_client(
+        result.get("discovery_metadata") if isinstance(result.get("discovery_metadata"), dict) else {}
+    )
 
     candidates: list[dict[str, Any]] = []
     for candidate in candidates_raw:
@@ -354,6 +389,10 @@ def find_replacements(mpn: str) -> dict[str, Any]:
         "gap": (
             "Candidate parts are research leads, not approved substitutes. Confirm identity, electrical limits, package, lifecycle, and qualification requirements against current manufacturer documentation."
             if candidates
-            else "No verified replacement was found in this search. Check current manufacturer documentation and authorized distributors before changing the design."
+            else (
+                "No candidates were returned by the available sources. "
+                "This does not confirm that no replacement exists. "
+                "Review supplier coverage, manufacturer documentation, and authorized distributors before changing the design."
+            )
         ),
     }

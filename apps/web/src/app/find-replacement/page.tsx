@@ -1,12 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, Suspense, useEffect, useState } from "react";
+import { FormEvent, Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Shell } from "@/components/Shell";
-import { LoadingCard } from "@/components/GapBanner";
+import { GapBanner, LoadingCard } from "@/components/GapBanner";
 import { PageHeader, PrimaryLink, SecondaryLink } from "@/components/PageHeader";
 import { findReplacement } from "@/lib/api";
+import {
+  buildFindReplacementViewModel,
+  type ProviderChannelStatus,
+} from "@/lib/findReplacementPresentation";
 import { PAGE_META } from "@/lib/routes";
 import { useRequireSession } from "@/lib/session";
 
@@ -16,6 +20,22 @@ function compareHref(partA: string, partB?: string, analysisId?: string) {
   // Only attach BOM context when this search was opened from a valid BOM row.
   if (analysisId) query.set("analysis_id", analysisId);
   return `/compare-parts?${query.toString()}`;
+}
+
+function providerBadgeClass(status: ProviderChannelStatus): string {
+  switch (status) {
+    case "returned_results":
+      return "cv-badge green";
+    case "searched_no_results":
+      return "cv-badge gray";
+    case "not_configured":
+      return "cv-badge amber";
+    case "failed":
+    case "timeout":
+      return "cv-badge red";
+    default:
+      return "cv-badge gray";
+  }
 }
 
 function FindReplacementInner() {
@@ -58,6 +78,8 @@ function FindReplacementInner() {
       setBusy(false);
     }
   }
+
+  const view = useMemo(() => buildFindReplacementViewModel(result), [result]);
 
   if (!session) return null;
   const candidates = (result?.candidates || []) as Array<Record<string, unknown>>;
@@ -147,13 +169,51 @@ function FindReplacementInner() {
             ) : null}
           </section>
 
-          {candidates.length ? (
-            <section className="cv-card pad">
-              <h3 className="cv-card-title">Candidate results</h3>
+          {view.providerRows.length ? (
+            <section
+              className="cv-card pad"
+              style={{ marginBottom: 14 }}
+              data-testid="replacement-provider-status"
+            >
+              <h3 className="cv-card-title">Supplier source status</h3>
               <p className="cv-card-subtitle">
-                Candidates are reference suggestions. Fit is not confirmed until
-                datasheet evidence is reviewed.
+                Coverage from the search response. Credential values are never shown.
               </p>
+              <ul className="cv-missing-list" style={{ marginTop: 10 }}>
+                {view.providerRows.map((row) => (
+                  <li key={`${row.name}-${row.channel}-${row.status}`}>
+                    <strong>{row.name}</strong>{" "}
+                    <span className={providerBadgeClass(row.status)}>{row.label}</span>
+                    {row.message ? (
+                      <div className="cv-small-note">{row.message}</div>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
+
+          {view.gap ? <GapBanner>{view.gap}</GapBanner> : null}
+
+          {view.missingEvidence.length ? (
+            <section
+              className="cv-card pad"
+              style={{ marginBottom: 14 }}
+              data-testid="replacement-missing-evidence"
+            >
+              <h3 className="cv-card-title">Missing evidence</h3>
+              <ul className="cv-missing-list">
+                {view.missingEvidence.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
+
+          {candidates.length ? (
+            <section className="cv-card pad" data-testid="replacement-candidates">
+              <h3 className="cv-card-title">Candidate results</h3>
+              <p className="cv-card-subtitle">{view.candidatesUnverifiedNote}</p>
               <div className="cv-table-wrap" style={{ marginTop: 12 }}>
                 <table className="cv-table cv-table-actions">
                   <thead>
@@ -168,13 +228,15 @@ function FindReplacementInner() {
                   <tbody>
                     {candidates.map((row) => {
                       const cand = String(row.mpn || "");
-                      const missingBits = ((row.missing_evidence || []) as string[])
-                        .filter((item) => !/(credential|transport|provider|catalog|lookup|search coverage)/i.test(item));
+                      const missingBits = ((row.missing_evidence || []) as string[]).map((item) =>
+                        String(item || ""),
+                      );
                       return (
-                        <tr key={cand}>
+                        <tr key={cand} data-testid="replacement-candidate-row">
                           <td>
                             <strong>{cand}</strong>
                             <div className="cv-small-note">{String(row.rationale || "")}</div>
+                            <div className="cv-small-note">Unverified until engineering review</div>
                           </td>
                           <td>{String(row.manufacturer || "—")}</td>
                           <td>
@@ -202,13 +264,9 @@ function FindReplacementInner() {
               </div>
             </section>
           ) : (
-            <section className="cv-card pad">
-              <h3 className="cv-card-title">Unable to confirm</h3>
-              <p className="cv-card-subtitle">
-                No verified replacement was found in this search. Check current
-                manufacturer documentation and authorized distributors before
-                changing the design.
-              </p>
+            <section className="cv-card pad" data-testid="replacement-empty-state">
+              <h3 className="cv-card-title">{view.emptyHeadline}</h3>
+              <p className="cv-card-subtitle">{view.emptyDetail}</p>
               <div style={{ marginTop: 12 }}>
                 <SecondaryLink
                   href={compareHref(mpn, undefined, compareAnalysisId || undefined)}

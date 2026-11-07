@@ -118,3 +118,20 @@ def test_ci_includes_service_readiness_and_evidence_notice_files(capsys):
     for name in targets:
         assert name in combined
         assert name.split("/")[-1] in combined
+
+def test_find_replacement_presentation_runner():
+    """CI entry: Find a replacement empty-state and candidate presentation contracts."""
+    from tests.test_find_replacement_presentation import FindReplacementPresentationTests
+
+    case = FindReplacementPresentationTests("test_no_provider_empty_state_and_candidate_rendering")
+    case.setUpClass()
+    case.test_no_provider_empty_state_and_candidate_rendering()
+
+
+def test_find_replacement_empty_and_candidate_api_contracts(monkeypatch):
+    """CI entry: API empty-state discovery + unverified candidate payload contracts."""
+    from tests import test_nextjs_parity_followup as mod
+
+    mod.test_find_replacement_empty_state_exposes_discovery_providers(monkeypatch)
+    mod.test_find_replacement_candidate_remains_unverified(monkeypatch)
+
