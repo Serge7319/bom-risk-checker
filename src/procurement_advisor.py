@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 22223)
-Total output lines: 1719
-
 """Compact procurement intelligence used by Cadivor's overview and Procurement Advisor."""
 from __future__ import annotations
 from datetime import datetime
@@ -786,7 +783,276 @@ def supplier_comparison_dataframe(
             price_label = "Not reported by supplier"
         delta = "—"
         if price is not None and current_price is not None and same_currency and current_price > 0:
-            pct = (price / current_…4223 tokens truncated…str(recommendation["Missing Sourcing Data"]).split(",")
+            pct = (price / current_price - 1) * 100
+            delta = f"{pct:+.1f}%" if abs(pct) >= .05 else "Current price"
+        stock = row.get("stock")
+        lead = row.get("lead_time_weeks")
+        price_break = row.get("price_break_quantity")
+        index = "—"
+        if best_price and price and same_currency:
+            # A unit-price index is explicitly normalized to the cheapest quote.
+            index = f"{round(best_price / price * 100):d}"
+        item = {
+            "Selected": "● Selected" if row["supplier"].casefold() == str(selected_supplier).casefold() else "○ Select row",
+            "Supplier": row["supplier"] + (" · Current source" if row.get("is_current") else " · Offer recorded"),
+            "Unit price": price_label,
+            "Price vs current": delta,
+            "Available stock": f"{stock:,}" if isinstance(stock, (int, float)) else "Not recorded",
+            "Lead time": f"{lead:g} weeks" if lead is not None else "Not recorded",
+            "Region": row.get("region") or "Not recorded",
+            "Supply risk": row.get("supply_risk") or "Not recorded",
+            "Unit price index": index,
+            "Price break": f"{price_break:,.0f} units" if price_break is not None else "Not recorded",
+            "Retrieved": (row.get("retrieved_at") or "Not recorded")[:10],
+            "Product page": "Saved link" if row.get("product_url", "").startswith(("https://", "http://")) else "Not recorded",
+        }
+        # Retain row identity in the frame; it is hidden in the UI and supports stable selection.
+        item["_supplier_key"] = row["supplier"]
+        display_rows.append(item)
+    return pd.DataFrame(display_rows, columns=columns + ["_supplier_key"])
+
+
+def supplier_comparison_table_html(
+    part: Mapping[str, Any],
+    *,
+    selected_supplier: str = "",
+    view: str = "Key comparison",
+    required_quantity: Any = None,
+) -> str:
+    """Render the saved supplier evidence as the sourcing mockup's styled table."""
+    part = apply_sourcing_override(part or {})
+    offers = normalize_supplier_offer_records(part)
+    if not offers:
+        return "<div class='cv-pa-table-empty'>No saved supplier quotes are available for this component.</div>"
+
+    trusted = _trusted_sourcing_values(part)
+    current_price = _maybe_n(trusted.get("unit_price"))
+    current_currency = _t(trusted.get("currency")).upper()
+    current_lead = _maybe_n(trusted.get("lead_time_weeks"))
+    required = _maybe_n(required_quantity)
+    if required is None:
+        required = _maybe_n(_first(part, "quantity", "qty"))
+
+    quote_currencies = {
+        _t(row.get("currency")).upper()
+        for row in offers
+        if _t(row.get("currency"))
+    }
+    comparison_currency = current_currency or (next(iter(quote_currencies)) if len(quote_currencies) == 1 else "")
+    comparable_prices = [
+        _maybe_n(row.get("unit_price"))
+        for row in offers
+        if _maybe_n(row.get("unit_price")) is not None
+        and comparison_currency
+        and _t(row.get("currency")).upper() == comparison_currency
+    ]
+    lowest_price = min(comparable_prices) if comparable_prices else None
+    landed_costs = normalize_supplier_landed_costs(part.get("supplier_landed_costs"))
+    landed_by_currency: dict[str, list[float]] = {}
+    for landed in landed_costs.values():
+        landed_by_currency.setdefault(landed["currency"], []).append(float(landed["unit_cost"]))
+    landed_cost_indexes = {
+        currency: min(values)
+        for currency, values in landed_by_currency.items()
+        if len(values) >= 2 and min(values) > 0
+    }
+    fastest_lead = min(
+        (float(row["lead_time_weeks"]) for row in offers if row.get("lead_time_weeks") is not None),
+        default=None,
+    )
+
+    headers = [
+        "", "Supplier", "Unit price", "Available stock", "Lead time",
+        "Region", "Supply risk", "Total cost index",
+    ]
+    if view == "All evidence":
+        headers.extend(["Price break", "Landed unit cost", "Quote updated", "Product link"])
+
+    def money(value: Any, currency: str) -> str:
+        return money_label(value, currency)
+
+    def date_label(value: Any) -> str:
+        raw = _t(value)
+        if not raw:
+            return "Not recorded"
+        try:
+            return datetime.fromisoformat(raw.replace("Z", "+00:00")).strftime("%b %d, %Y")
+        except (TypeError, ValueError):
+            return raw[:10]
+
+    body_rows = []
+    for row in offers:
+        supplier = _t(row.get("supplier"), "Supplier")
+        is_selected = supplier.casefold() == str(selected_supplier or "").casefold()
+        price = _maybe_n(row.get("unit_price"))
+        currency = _t(row.get("currency")).upper()
+        is_lowest = (
+            price is not None
+            and lowest_price is not None
+            and currency == comparison_currency
+            and math.isclose(price, lowest_price, rel_tol=1e-9, abs_tol=1e-12)
+        )
+        badge = (
+            "<span class='cv-pa-quote-badge current'>Current source</span>"
+            if row.get("is_current")
+            else "<span class='cv-pa-quote-badge'>Quote recorded</span>"
+        )
+        if is_lowest:
+            badge += "<span class='cv-pa-quote-badge best'>Lowest quote</span>"
+        quote_date = date_label(row.get("retrieved_at"))
+        quote_copy = "Current sourcing record" if row.get("is_current") else f"Quote updated {quote_date}"
+
+        price_delta = ""
+        if current_price is not None and price is not None and current_currency and currency == current_currency and current_price > 0:
+            pct = (price / current_price - 1) * 100
+            if abs(pct) >= 0.05:
+                tone = "good" if pct < 0 else "warn"
+                price_delta = f"<span class='cv-pa-table-badge {tone}'>{pct:+.1f}% vs current</span>"
+            else:
+                price_delta = "<span class='cv-pa-table-badge neutral'>Current price</span>"
+        elif is_lowest:
+            price_delta = "<span class='cv-pa-table-badge good'>Lowest listed price</span>"
+
+        stock = _maybe_n(row.get("stock"))
+        if stock is None:
+            stock_value, stock_detail, stock_tone = "Not reported by supplier", "The saved quote has no stock figure", "neutral"
+        else:
+            stock_text = f"{stock:,.0f}" if stock.is_integer() else f"{stock:,.2f}".rstrip("0").rstrip(".")
+            if stock <= 0:
+                stock_detail, stock_tone = "Confirmed zero in the saved quote", "warn"
+            elif required is not None and required > 0 and stock < required:
+                stock_detail, stock_tone = f"Short by {required - stock:,.0f} for BOM", "warn"
+            elif required is not None and required > 0:
+                stock_detail, stock_tone = "Covers BOM quantity", "good"
+            else:
+                stock_detail, stock_tone = "Stock reported", "good"
+            stock_value = f"{stock_text} units"
+
+        lead = _maybe_n(row.get("lead_time_weeks"))
+        if lead is None:
+            lead_value, lead_detail, lead_tone = "Not recorded", "Confirm with supplier", "neutral"
+        else:
+            lead_value = f"{lead:g} weeks"
+            if current_lead is not None and lead < current_lead:
+                lead_detail, lead_tone = f"{current_lead - lead:g} weeks faster", "good"
+            elif current_lead is not None and lead > current_lead:
+                lead_detail, lead_tone = f"{lead - current_lead:g} weeks longer", "warn"
+            elif fastest_lead is not None and math.isclose(lead, fastest_lead):
+                lead_detail, lead_tone = "Fastest listed", "good"
+            else:
+                lead_detail, lead_tone = "Supplier quote", "neutral"
+
+        raw_risk = _t(row.get("supply_risk"))
+        if raw_risk:
+            risk_key = raw_risk.casefold()
+            risk_tone = "good" if "low" in risk_key else "warn" if any(x in risk_key for x in ("medium", "moderate")) else "bad" if any(x in risk_key for x in ("high", "critical")) else "neutral"
+            risk_detail = "Recorded supplier risk"
+        else:
+            raw_risk, risk_tone, risk_detail = "Not assessed", "neutral", "No saved risk assessment"
+
+        landed_cost = landed_costs.get(supplier.casefold())
+        landed_minimum = landed_cost_indexes.get(landed_cost.get("currency")) if landed_cost else None
+        index_value = None
+        if landed_cost and landed_minimum is not None and landed_cost["unit_cost"] > 0:
+            index_value = min(100, round(landed_minimum / landed_cost["unit_cost"] * 100))
+        if index_value is None:
+            index_label = "Add landed cost" if not landed_cost else "Need comparable quote"
+            index_markup = f"<span class='cv-pa-index-empty'>{index_label}</span>"
+        else:
+            index_markup = (
+                f"<div class='cv-pa-index' title='Based on entered landed unit costs in {html_escape(landed_cost['currency'])}'><strong>{index_value}</strong>"
+                f"<span><i style='width:{index_value}%'></i></span></div>"
+            )
+
+        select_label = "Selected supplier" if is_selected else "Select supplier using the control above"
+        select_class = " is-selected" if is_selected else ""
+        selected_value = str(is_selected).lower()
+        cells = [
+            f"<td class='cv-pa-select-mark'><span class='cv-pa-radio{select_class}' role='radio' aria-checked='{selected_value}' aria-label='{html_escape(select_label)}'></span></td>",
+            "<td class='cv-pa-supplier-cell'>"
+            f"<strong>{html_escape(supplier)}</strong><div class='cv-pa-quote-badges'>{badge}</div>"
+            f"<small>{html_escape(quote_copy)}</small></td>",
+            f"<td><strong>{html_escape(money(price, row.get('currency') or currency))}</strong>{price_delta}</td>",
+            f"<td><strong>{html_escape(stock_value)}</strong><small class='tone-{stock_tone}'>{html_escape(stock_detail)}</small></td>",
+            f"<td><strong>{html_escape(lead_value)}</strong><small class='tone-{lead_tone}'>{html_escape(lead_detail)}</small></td>",
+            f"<td>{html_escape(_t(row.get('region'), 'Not recorded'))}</td>",
+            f"<td><span class='cv-pa-risk tone-{risk_tone}'><i></i>{html_escape(raw_risk)}</span><small>{html_escape(risk_detail)}</small></td>",
+            f"<td>{index_markup}</td>",
+        ]
+        if view == "All evidence":
+            price_break = _maybe_n(row.get("price_break_quantity"))
+            price_break_label = f"{price_break:,.0f} units" if price_break is not None else "Not recorded"
+            landed_label = money(landed_cost.get("unit_cost"), landed_cost.get("currency")) if landed_cost else "Not recorded"
+            link_label = "Link saved" if str(row.get("product_url") or "").startswith(("https://", "http://")) else "Not recorded"
+            cells.extend(
+                [
+                    f"<td>{html_escape(price_break_label)}</td>",
+                    f"<td>{html_escape(landed_label)}</td>",
+                    f"<td>{html_escape(quote_date)}</td>",
+                    f"<td>{html_escape(link_label)}</td>",
+                ]
+            )
+        body_rows.append(
+            f"<tr class='{'is-selected' if is_selected else ''}'>{''.join(cells)}</tr>"
+        )
+
+    header_html = "".join(f"<th>{html_escape(label)}</th>" for label in headers)
+    return (
+        "<style id='cv-pa-supplier-table-css'>"
+        ".cv-pa-table-shell{overflow:hidden;border:1px solid #dce6f2;border-radius:12px;background:#fff;box-shadow:0 3px 12px rgba(15,23,42,.035)}"
+        ".cv-pa-table-scroll{width:100%;overflow-x:auto}.cv-pa-supplier-table{width:100%;min-width:1080px;border-collapse:separate;border-spacing:0;font-size:14px;color:#24364d}"
+        ".cv-pa-supplier-table th{padding:15px 14px;text-align:left;white-space:nowrap;background:#f7f9fc;border-bottom:1px solid #dfe7f2;color:#52647b;font-size:12px;font-weight:800;letter-spacing:.04em;text-transform:uppercase}"
+        ".cv-pa-supplier-table td{padding:16px 14px;vertical-align:middle;border-bottom:1px solid #e8edf4;background:#fff;line-height:1.4}.cv-pa-supplier-table tbody tr:last-child td{border-bottom:0}"
+        ".cv-pa-supplier-table tr.is-selected td{background:#eef5ff;border-top:1px solid #bfdbfe;border-bottom:1px solid #bfdbfe}.cv-pa-supplier-table tr.is-selected td:first-child{border-left:3px solid #2563eb}.cv-pa-supplier-table tr:not(.is-selected):hover td{background:#f8fbff}"
+        ".cv-pa-select-mark{width:42px;text-align:center}.cv-pa-radio{position:relative;display:inline-flex;box-sizing:border-box;width:20px;height:20px;align-items:center;justify-content:center;border:1.5px solid #9aa9bd;border-radius:50%;background:#fff;vertical-align:middle}.cv-pa-radio.is-selected{border:2px solid #2878f0}.cv-pa-radio.is-selected:after{content:'';display:block;width:10px;height:10px;border-radius:50%;background:#2878f0}"
+        ".cv-pa-supplier-cell{min-width:210px}.cv-pa-supplier-cell strong{display:block;color:#0f172a;font-size:15px;font-weight:850}.cv-pa-supplier-cell small,.cv-pa-supplier-table td small{display:block;margin-top:5px;color:#64748b;font-size:12px;white-space:nowrap}"
+        ".cv-pa-quote-badges{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}.cv-pa-quote-badge,.cv-pa-table-badge{display:inline-flex;align-items:center;border-radius:999px;padding:4px 8px;background:#f1f5f9;color:#475569;font-size:11px;font-weight:800;white-space:nowrap}.cv-pa-quote-badge.current{background:#e0e7ff;color:#3730a3}.cv-pa-quote-badge.best,.cv-pa-table-badge.good{background:#dcfce7;color:#15803d}.cv-pa-table-badge.warn{background:#fef3c7;color:#92400e}.cv-pa-table-badge.neutral{background:#f1f5f9;color:#64748b}"
+        ".cv-pa-supplier-table td>strong{display:block;color:#0f172a;font-size:14px;font-weight:800;white-space:nowrap}.cv-pa-supplier-table td small.tone-good{color:#15803d}.cv-pa-supplier-table td small.tone-warn{color:#b45309}.cv-pa-supplier-table td small.tone-bad{color:#b91c1c}"
+        ".cv-pa-risk{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;font-weight:750}.cv-pa-risk i{width:8px;height:8px;border-radius:99px;background:#94a3b8}.cv-pa-risk.tone-good i{background:#16a34a}.cv-pa-risk.tone-warn i{background:#f59e0b}.cv-pa-risk.tone-bad i{background:#dc2626}"
+        ".cv-pa-index{display:flex;align-items:center;gap:8px;min-width:110px}.cv-pa-index strong{min-width:24px;color:#0f172a}.cv-pa-index>span{height:7px;min-width:65px;flex:1;border-radius:99px;background:#e2e8f0;overflow:hidden}.cv-pa-index i{display:block;height:100%;border-radius:99px;background:#22c55e}.cv-pa-index-empty{display:block;min-width:110px;color:#94a3b8;font-size:12px;line-height:1.35}"
+        ".cv-pa-table-empty{padding:24px;border:1px solid #dfe7f2;border-radius:14px;background:#fff;color:#64748b;font-size:15px}"
+        "</style><div class='cv-pa-table-shell'><div class='cv-pa-table-scroll'><table class='cv-pa-supplier-table'>"
+        f"<thead><tr>{header_html}</tr></thead><tbody>{''.join(body_rows)}</tbody>"
+        "</table></div></div>"
+    )
+
+
+def procurement_supplier_insight_context(
+    part: Mapping[str, Any],
+    recommendation: Mapping[str, Any] | None,
+    price_comparison: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build a minimal AI context from saved supplier and component evidence."""
+    part = apply_sourcing_override(part or {})
+    recommendation = recommendation or _recommend(dict(part))
+    trusted = _trusted_sourcing_values(part)
+    offers = normalize_supplier_offer_records(part)
+    landed_costs = normalize_supplier_landed_costs(part.get("supplier_landed_costs"))
+    annual_demand = _maybe_n(_first(part, "annual_demand", "annual_quantity", "yearly_demand"))
+    target_price = _maybe_n(_first(part, "target_unit_price", "target_price"))
+    target_currency = _t(_first(part, "target_currency", "target_price_currency", default="")).upper()
+    required_by = _t(_first(part, "required_by", "required_date", "need_by_date", "required_at", default=""))
+    quote_rows = [
+        {
+            "supplier": row["supplier"],
+            "source_role": "current source" if row.get("is_current") else "saved quote; qualification not recorded",
+            "unit_price": row.get("unit_price"),
+            "currency": row.get("currency") or None,
+            "stock": row.get("stock"),
+            "lead_time_weeks": row.get("lead_time_weeks"),
+            "region": row.get("region") or None,
+            "supply_risk": row.get("supply_risk") or None,
+            "retrieved_at": row.get("retrieved_at") or None,
+            "landed_unit_cost": landed_costs.get(row["supplier"].casefold(), {}).get("unit_cost"),
+            "landed_currency": landed_costs.get(row["supplier"].casefold(), {}).get("currency"),
+        }
+        for row in offers[:20]
+    ]
+    gaps = []
+    if recommendation.get("Missing Sourcing Data"):
+        gaps.extend(
+            item.strip()
+            for item in str(recommendation["Missing Sourcing Data"]).split(",")
             if item.strip()
         )
     if annual_demand is None:
