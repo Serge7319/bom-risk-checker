@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { EmptyState } from "@/components/EmptyState";
 import { Shell } from "@/components/Shell";
-import { GapBanner, LoadingCard } from "@/components/GapBanner";
+import { EvidenceNotice, LoadingCard } from "@/components/GapBanner";
 import { KpiCard } from "@/components/KpiCard";
 import { PageHeader, PrimaryLink } from "@/components/PageHeader";
 import { fetchPortfolio } from "@/lib/api";
@@ -33,7 +33,7 @@ export default function PortfolioPage() {
   return (
     <Shell session={session}>
       <PageHeader meta={PAGE_META.portfolio} actions={<PrimaryLink href="/reports">Open saved analyses</PrimaryLink>} />
-      {typeof data?.gap === "string" ? <GapBanner>{String(data.gap)}</GapBanner> : null}
+      {<EvidenceNotice gap={data?.gap} />}
       {busy ? <LoadingCard label="Loading portfolio intelligence…" /> : null}
       {error ? <div className="cv-error" role="alert">Portfolio data could not load. {error}</div> : null}
       {!busy && data ? (
@@ -43,37 +43,37 @@ export default function PortfolioPage() {
             <KpiCard icon="portfolio" label="Projects represented" value={projects.length} detail="Projects with saved BOM records" />
             <KpiCard icon="box" tone="amber" label="Shared components" value={shared.length} detail="Parts appearing in multiple BOMs" />
           </div>
-          <div className="cv-grid-2">
-            <section className="cv-card pad">
+          <div className="cv-grid-2 cv-grid-2--tables">
+            <section className="cv-card pad cv-card--table">
               <h3 className="cv-card-title">Analyses</h3>
-              {reports.length ? <div className="cv-table-wrap" style={{ marginTop: 12 }}>
-                <table className="cv-table">
-                  <thead><tr><th>File</th><th>Health</th><th>Parts</th><th>High</th></tr></thead>
+              {reports.length ? <div className="cv-table-wrap cv-table-wrap--fit" style={{ marginTop: 12 }}>
+                <table className="cv-table cv-table--fit">
+                  <thead><tr><th>File</th><th className="cv-num">Health</th><th className="cv-num">Parts</th><th className="cv-num">High</th></tr></thead>
                   <tbody>
                     {reports.map((r, i) => (
                       <tr key={i}>
-                        <td><strong>{String(r.filename || "")}</strong></td>
-                        <td>{String(r.health_score ?? "—")}</td>
-                        <td>{String(r.total_parts ?? "—")}</td>
-                        <td>{String(r.high_risk_count ?? "—")}</td>
+                        <td data-label="File"><strong>{String(r.filename || "")}</strong></td>
+                        <td className="cv-num" data-label="Health">{String(r.health_score ?? "—")}</td>
+                        <td className="cv-num" data-label="Parts">{String(r.total_parts ?? "—")}</td>
+                        <td className="cv-num" data-label="High">{String(r.high_risk_count ?? "—")}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div> : <EmptyState icon="report" title="No analyses to summarize" body="Save a BOM analysis to see it included in the portfolio." action={<PrimaryLink href="/bom-analyzer">New BOM analysis</PrimaryLink>} />}
             </section>
-            <section className="cv-card pad">
+            <section className="cv-card pad cv-card--table">
               <h3 className="cv-card-title">Project health</h3>
-              {projects.length ? <div className="cv-table-wrap" style={{ marginTop: 12 }}>
-                <table className="cv-table">
-                  <thead><tr><th>Project</th><th>Health</th><th>Components</th><th>High-risk</th></tr></thead>
+              {projects.length ? <div className="cv-table-wrap cv-table-wrap--fit" style={{ marginTop: 12 }}>
+                <table className="cv-table cv-table--fit">
+                  <thead><tr><th>Project</th><th className="cv-num">Health</th><th className="cv-num">Components</th><th className="cv-num">High-risk</th></tr></thead>
                   <tbody>
                     {projects.slice(0, 20).map((r, i) => (
                       <tr key={i}>
-                        <td><strong>{String(r.Project || r.project || "")}</strong></td>
-                        <td>{String(r.Health ?? r.health ?? "—")}</td>
-                        <td>{String(r.Components ?? r.components ?? "—")}</td>
-                        <td>{String(r["High-Risk"] ?? r.high_risk ?? "—")}</td>
+                        <td data-label="Project"><strong>{String(r.Project || r.project || "")}</strong></td>
+                        <td className="cv-num" data-label="Health">{String(r.Health ?? r.health ?? "—")}</td>
+                        <td className="cv-num" data-label="Components">{String(r.Components ?? r.components ?? "—")}</td>
+                        <td className="cv-num" data-label="High-risk">{String(r["High-Risk"] ?? r.high_risk ?? "—")}</td>
                       </tr>
                     ))}
                   </tbody>

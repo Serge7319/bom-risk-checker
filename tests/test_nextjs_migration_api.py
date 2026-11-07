@@ -87,3 +87,34 @@ def test_health_and_synthetic_bom_flow():
     payload = report.json()
     assert payload["total_parts"] == 25
     assert len(payload["parts"]) == 25
+
+
+def test_ci_includes_service_readiness_and_evidence_notice_files(capsys):
+    """Run readiness + evidence-notice suites from the CI-included migration API module."""
+    import subprocess
+    import sys
+
+    targets = [
+        "tests/test_service_readiness.py",
+        "tests/test_evidence_notice_behavior.py",
+        "tests/test_evidence_notice_classification.py",
+    ]
+    proc = subprocess.run(
+        [sys.executable, "-m", "pytest", *targets, "-v", "--tb=line"],
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    combined = proc.stdout + "\n" + proc.stderr
+    # Bypass parent pytest capture so CI -q logs still name the nested files.
+    with capsys.disabled():
+        print("CI_NESTED_SUITE_START")
+        for name in targets:
+            print(f"CI_NESTED_SUITE_FILE={name}")
+        print(combined)
+        print("CI_NESTED_SUITE_END")
+    assert proc.returncode == 0, combined
+    for name in targets:
+        assert name in combined
+        assert name.split("/")[-1] in combined

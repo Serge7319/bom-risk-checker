@@ -720,6 +720,31 @@ export async function fetchConnectors(token: string) {
   return apiJson<Record<string, unknown>>("/integrations/connectors", { token });
 }
 
+export type ServiceReadiness = {
+  ok?: boolean;
+  monitoring_email?: { status?: string; enabled?: boolean };
+  scheduler?: {
+    status?: string;
+    enabled?: boolean;
+    cron_token_configured?: boolean;
+  };
+  connectors?: {
+    status?: string;
+    ready_count?: number;
+    live_ready_count?: number;
+    file_workflow_count?: number;
+    blocked_count?: number;
+    connectors?: Array<Record<string, unknown>>;
+    gap?: string | null;
+  };
+  billing_checkout?: { status?: string; enabled?: boolean };
+  detail?: string;
+};
+
+export async function fetchServiceReadiness(token: string) {
+  return apiJson<ServiceReadiness>("/integrations/service-readiness", { token });
+}
+
 export async function fetchCompliancePack(token: string, packType: string) {
   return apiJson<Record<string, unknown>>(
     `/compliance/${encodeURIComponent(packType)}`,

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { EmptyState } from "@/components/EmptyState";
 import { Shell } from "@/components/Shell";
-import { GapBanner, LoadingCard } from "@/components/GapBanner";
+import { EvidenceNotice, LoadingCard } from "@/components/GapBanner";
 import { KpiCard } from "@/components/KpiCard";
 import { PageHeader, PrimaryLink } from "@/components/PageHeader";
 import { fetchDetailedRisk } from "@/lib/api";
@@ -43,7 +43,7 @@ export default function DetailedRiskPage() {
         record
         actions={<PrimaryLink href="/reports">Open saved reports</PrimaryLink>}
       />
-      {typeof data?.gap === "string" ? <GapBanner>{String(data.gap)}</GapBanner> : null}
+      {<EvidenceNotice gap={data?.gap} />}
       {busy ? <LoadingCard label="Loading detailed risk rows…" /> : null}
       {error ? <div className="cv-error" role="alert">Risk details could not load. {error}</div> : null}
       {!busy && data ? (

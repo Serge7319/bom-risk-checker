@@ -1,0 +1,154 @@
+{
+  "captured_at": "2026-11-07T20:20:03.855Z",
+  "api": "http://127.0.0.1:8792",
+  "web": "http://127.0.0.1:3006",
+  "synthetic": true,
+  "shots": [
+    {
+      "route": "settings",
+      "viewport": "desktop",
+      "file": "docs/evidence_ui_tables/screenshots_real/real_settings_desktop.png",
+      "overflowPx": 0
+    },
+    {
+      "route": "settings",
+      "viewport": "tablet_696",
+      "file": "docs/evidence_ui_tables/screenshots_real/real_settings_tablet_696.png",
+      "overflowPx": 0
+    },
+    {
+      "route": "settings",
+      "viewport": "mobile_390",
+      "file": "docs/evidence_ui_tables/screenshots_real/real_settings_mobile_390.png",
+      "overflowPx": 0
+    },
+    {
+      "route": "design_impact",
+      "viewport": "desktop",
+      "file": "docs/evidence_ui_tables/screenshots_real/real_design_impact_desktop.png",
+      "overflowPx": 0
+    },
+    {
+      "route": "design_impact",
+      "viewport": "tablet_696",
+      "file": "docs/evidence_ui_tables/screenshots_real/real_design_impact_tablet_696.png",
+      "overflowPx": 0
+    },
+    {
+      "route": "design_impact",
+      "viewport": "mobile_390",
+      "file": "docs/evidence_ui_tables/screenshots_real/real_design_impact_mobile_390.png",
+      "overflowPx": 0
+    },
+    {
+      "route": "portfolio",
+      "viewport": "desktop",
+      "file": "docs/evidence_ui_tables/screenshots_real/real_portfolio_desktop.png",
+      "overflowPx": 0
+    },
+    {
+      "route": "portfolio",
+      "viewport": "tablet_696",
+      "file": "docs/evidence_ui_tables/screenshots_real/real_portfolio_tablet_696.png",
+      "overflowPx": 0
+    },
+    {
+      "route": "portfolio",
+      "viewport": "mobile_390",
+      "file": "docs/evidence_ui_tables/screenshots_real/real_portfolio_mobile_390.png",
+      "overflowPx": 0
+    }
+  ],
+  "overflow": [
+    {
+      "route": "settings",
+      "viewport": "desktop",
+      "width": 1440,
+      "scrollWidth": 1440,
+      "clientWidth": 1440,
+      "bodyScrollWidth": 1440,
+      "overflowPx": 0,
+      "ok": true
+    },
+    {
+      "route": "settings",
+      "viewport": "tablet_696",
+      "width": 696,
+      "scrollWidth": 696,
+      "clientWidth": 696,
+      "bodyScrollWidth": 696,
+      "overflowPx": 0,
+      "ok": true
+    },
+    {
+      "route": "settings",
+      "viewport": "mobile_390",
+      "width": 390,
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "bodyScrollWidth": 390,
+      "overflowPx": 0,
+      "ok": true
+    },
+    {
+      "route": "design_impact",
+      "viewport": "desktop",
+      "width": 1440,
+      "scrollWidth": 1440,
+      "clientWidth": 1440,
+      "bodyScrollWidth": 1440,
+      "overflowPx": 0,
+      "ok": true
+    },
+    {
+      "route": "design_impact",
+      "viewport": "tablet_696",
+      "width": 696,
+      "scrollWidth": 696,
+      "clientWidth": 696,
+      "bodyScrollWidth": 696,
+      "overflowPx": 0,
+      "ok": true
+    },
+    {
+      "route": "design_impact",
+      "viewport": "mobile_390",
+      "width": 390,
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "bodyScrollWidth": 390,
+      "overflowPx": 0,
+      "ok": true
+    },
+    {
+      "route": "portfolio",
+      "viewport": "desktop",
+      "width": 1440,
+      "scrollWidth": 1440,
+      "clientWidth": 1440,
+      "bodyScrollWidth": 1440,
+      "overflowPx": 0,
+      "ok": true
+    },
+    {
+      "route": "portfolio",
+      "viewport": "tablet_696",
+      "width": 696,
+      "scrollWidth": 696,
+      "clientWidth": 696,
+      "bodyScrollWidth": 696,
+      "overflowPx": 0,
+      "ok": true
+    },
+    {
+      "route": "portfolio",
+      "viewport": "mobile_390",
+      "width": 390,
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "bodyScrollWidth": 390,
+      "overflowPx": 0,
+      "ok": true
+    }
+  ]
+}

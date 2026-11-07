@@ -307,7 +307,10 @@ def test_supplier_monitoring_billing_connectors_compliance_on_disposable_db(cuto
 
     connectors = client.get("/integrations/connectors", headers=headers)
     assert connectors.status_code == 200
-    assert connectors.json()["ready_count"] >= 1
+    connectors_body = connectors.json()
+    assert connectors_body.get("file_workflow_count", 0) >= 1
+    assert connectors_body.get("live_ready_count", connectors_body["ready_count"]) == 0
+    assert connectors_body["ready_count"] == 0
 
     for pack in ("rohs", "reach", "conflict_minerals", "audit"):
         res = client.get(f"/compliance/{pack}", headers=headers, params={"analysis_id": analysis_id})

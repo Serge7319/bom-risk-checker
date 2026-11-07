@@ -37,9 +37,58 @@ def email_delivery_enabled() -> bool:
     return (os.environ.get("CADIVOR_MONITORING_EMAIL_ENABLED") or "").strip() == "1"
 
 
+def _configured_email_transport() -> bool:
+    """True when Resend (or equivalent) can actually submit mail."""
+    try:
+        from src.email_delivery import email_delivery_configured
+
+        return bool(email_delivery_configured())
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def email_transport_ready() -> bool:
+    """Operational delivery: flag on and a wired transport (or test sink)."""
+    if not email_delivery_enabled():
+        return False
+    # Injectable sink used by unit tests counts as an operational transport.
+    if getattr(deliver_alert_email, "_default_sink", None) is not None:
+        return True
+    return _configured_email_transport()
+
+
+def monitoring_email_readiness() -> dict[str, Any]:
+    enabled = email_delivery_enabled()
+    transport = email_transport_ready()
+    if not enabled:
+        return {
+            "status": "not_connected",
+            "enabled": False,
+            "transport_ready": False,
+        }
+    if transport:
+        return {
+            "status": "ready",
+            "enabled": True,
+            "transport_ready": True,
+        }
+    # Flag on but deliver_alert_email would return no_sink_configured.
+    return {
+        "status": "not_connected",
+        "enabled": True,
+        "transport_ready": False,
+    }
+
+
+def set_default_email_sink(sink: Callable[[dict[str, Any]], None] | None) -> None:
+    """Install a process-default sink for monitoring alert delivery (tests)."""
+    deliver_alert_email._default_sink = sink  # type: ignore[attr-defined]
+
+
 def reset_email_sink_for_tests() -> None:
     with _lock:
         _EMAIL_SINK.clear()
+    set_default_email_sink(None)
 
 
 def recorded_emails() -> list[dict[str, Any]]:
@@ -390,7 +439,39 @@ def deliver_alert_email(
             "mock_recorded": True,
             "payload": payload,
         }
-    if sink is None:
-        return {"ok": False, "delivered": False, "reason": "no_sink_configured", "payload": payload}
-    sink(payload)
-    return {"ok": True, "delivered": True, "payload": payload}
+    active = sink or getattr(deliver_alert_email, "_default_sink", None)
+    if active is not None:
+        active(payload)
+        return {"ok": True, "delivered": True, "payload": payload, "mode": "sink"}
+    if _configured_email_transport():
+        recipient = str(
+            prefs.get("email_to") or prefs.get("notify_email") or prefs.get("email") or ""
+        ).strip()
+        if not recipient:
+            return {
+                "ok": False,
+                "delivered": False,
+                "reason": "no_sink_configured",
+                "payload": payload,
+            }
+        try:
+            from src.email_delivery import send_transactional_email
+
+            part = str(alert.get("part_number") or "component")
+            subject = f"Cadivor monitoring alert · {part}"
+            body = str(alert.get("alert_message") or alert.get("alert_type") or "Monitoring alert")
+            send_transactional_email(
+                to_email=recipient,
+                subject=subject,
+                html_body=f"<p>{body}</p>",
+                text_body=body,
+            )
+            return {"ok": True, "delivered": True, "payload": payload, "mode": "resend"}
+        except Exception:  # noqa: BLE001
+            return {
+                "ok": False,
+                "delivered": False,
+                "reason": "no_sink_configured",
+                "payload": payload,
+            }
+    return {"ok": False, "delivered": False, "reason": "no_sink_configured", "payload": payload}

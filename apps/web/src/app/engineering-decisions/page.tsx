@@ -67,15 +67,10 @@ export default function EngineeringDecisionsPage() {
         }
       />
 
-      <div className="cv-decision-banner">
-        <div>
-          <strong>Signals are evidence prompts</strong>
-          <span>
-            They are not automatic approval or fit verdicts. Counts below come
-            from the latest saved analysis when available.
-          </span>
-        </div>
-      </div>
+      <p className="cv-evidence-context" role="note">
+        Signals are evidence prompts, not automatic approvals. Counts reflect the
+        latest saved analysis when available.
+      </p>
 
       {busy ? <LoadingCard label="Loading saved analyses and decision records…" /> : null}
       {error ? <div className="cv-error" role="alert">Engineering decisions could not load. {error}</div> : null}
