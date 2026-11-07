@@ -305,3 +305,45 @@ def test_ask_cadivor_keeps_ranked_priorities_when_risks_differ():
     assert "#1 " in answer
     assert "0 priority risks" not in lower
     assert "review **" in lower or "review **" in answer.lower()
+
+
+def test_ask_cadivor_high_medium_question_does_not_rank_zero_priority_report():
+    from apps.api.synthetic_analyze import get_report
+    from apps.api.workspace_store import get_store
+
+    client = TestClient(app)
+    headers = _auth_headers(client)
+    analyze = client.post(
+        "/boms/analyze",
+        headers=headers,
+        files={"file": ("synthetic_bom_25parts.csv", FIXTURE.read_bytes(), "text/csv")},
+        data={"project_name": "Parity", "bom_name": "EvidenceConfidenceZeroPriority"},
+    )
+    assert analyze.status_code == 200
+    payload = analyze.json()
+    analysis_id = payload["analysis_id"]
+    workspace_id = payload["workspace_id"]
+    report = get_report(analysis_id, workspace_id=workspace_id)
+    assert report is not None
+    _force_report_risk_profile(report, high=0, medium=0, low=len(report.get("parts") or []))
+    get_store().upsert_analysis_report(report, workspace_id=workspace_id)
+
+    res = client.post(
+        "/tools/ask-cadivor",
+        headers=headers,
+        json={
+            "analysis_id": analysis_id,
+            "question": (
+                "Does this synthetic BOM contain any high- or medium-priority risks? "
+                "Summarize only what is supported by the saved evidence."
+            ),
+        },
+    )
+    assert res.status_code == 200
+    answer = str(res.json().get("answer") or "")
+    lower = answer.lower()
+    assert "0 priority risks" in lower
+    assert "does not support ranking" in lower
+    assert "first engineering review priority" not in lower
+    assert "ranked first" not in lower
+    assert "#1 " not in answer and "#1\\n" not in answer
