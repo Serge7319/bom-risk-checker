@@ -2,7 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { Shell } from "@/components/Shell";
-import { GapBanner, LoadingCard } from "@/components/GapBanner";
+import { EvidenceNotice, LoadingCard } from "@/components/GapBanner";
 import { PageHeader, PrimaryLink } from "@/components/PageHeader";
 import { askDatasheet } from "@/lib/api";
 import { PAGE_META } from "@/lib/routes";
@@ -55,7 +55,7 @@ export default function DatasheetQaPage() {
       {error ? <div className="cv-error">{error}</div> : null}
       {result ? (
         <>
-          {typeof result.gap === "string" ? <GapBanner>{String(result.gap)}</GapBanner> : null}
+          {<EvidenceNotice gap={result.gap} />}
           <section className="cv-card pad" style={{ marginTop: 14 }}>
             <h3 className="cv-card-title">Answer</h3>
             <p className="cv-card-subtitle">Provider · {String(result.provider || "local")}</p>

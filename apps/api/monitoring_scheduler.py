@@ -21,6 +21,36 @@ def cron_token_configured() -> bool:
     return bool((os.environ.get("CADIVOR_MONITORING_CRON_TOKEN") or "").strip())
 
 
+
+
+def scheduler_readiness() -> dict[str, Any]:
+    """Operational scheduler status — flag alone is not Ready.
+
+    Ready requires the enable flag, a cron token, and a verifiable schedule
+    attachment. External cron attachment is not introspectable here, so a
+    fully configured process reports Partial rather than inventing Ready.
+    """
+    enabled = scheduler_enabled()
+    cron = cron_token_configured()
+    if not enabled:
+        return {
+            "status": "not_connected",
+            "enabled": False,
+            "cron_token_configured": cron,
+        }
+    if not cron:
+        return {
+            "status": "partial",
+            "enabled": True,
+            "cron_token_configured": False,
+        }
+    return {
+        "status": "partial",
+        "enabled": True,
+        "cron_token_configured": True,
+        "detail": "Cron token is configured; external schedule attachment is not verified.",
+    }
+
 def authorize_cron(header_token: str | None) -> bool:
     expected = (os.environ.get("CADIVOR_MONITORING_CRON_TOKEN") or "").strip()
     if not expected:

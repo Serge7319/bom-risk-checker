@@ -95,9 +95,6 @@ def test_ci_includes_legal_acceptance_signup(capsys):
     import sys
 
     targets = ["tests/test_legal_acceptance_signup.py"]
-    readiness = ROOT / "tests" / "test_service_readiness.py"
-    if readiness.exists():
-        targets.append("tests/test_service_readiness.py")
     proc = subprocess.run(
         [sys.executable, "-m", "pytest", *targets, "-v", "--tb=line"],
         cwd=str(ROOT),
@@ -116,3 +113,34 @@ def test_ci_includes_legal_acceptance_signup(capsys):
     assert proc.returncode == 0, combined
     assert "tests/test_legal_acceptance_signup.py" in combined
     assert "test_legal_acceptance_signup.py" in combined
+
+
+def test_ci_includes_service_readiness_and_evidence_notice_files(capsys):
+    """Run readiness + evidence-notice suites from the CI-included migration API module."""
+    import subprocess
+    import sys
+
+    targets = [
+        "tests/test_service_readiness.py",
+        "tests/test_evidence_notice_behavior.py",
+        "tests/test_evidence_notice_classification.py",
+    ]
+    proc = subprocess.run(
+        [sys.executable, "-m", "pytest", *targets, "-v", "--tb=line"],
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    combined = proc.stdout + "\n" + proc.stderr
+    # Bypass parent pytest capture so CI -q logs still name the nested files.
+    with capsys.disabled():
+        print("CI_NESTED_SUITE_START")
+        for name in targets:
+            print(f"CI_NESTED_SUITE_FILE={name}")
+        print(combined)
+        print("CI_NESTED_SUITE_END")
+    assert proc.returncode == 0, combined
+    for name in targets:
+        assert name in combined
+        assert name.split("/")[-1] in combined

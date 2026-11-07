@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { GapBanner } from "@/components/GapBanner";
+import { EvidenceNotice } from "@/components/GapBanner";
 import { askCadivor } from "@/lib/api";
 
 export function AskCadivorPanel({
@@ -66,7 +66,7 @@ export function AskCadivorPanel({
         </div>
       </form>
       {error ? <div className="cv-error">{error}</div> : null}
-      {gap ? <GapBanner>{gap}</GapBanner> : null}
+      {<EvidenceNotice gap={gap} />}
       {answer ? (
         <div className="cv-ask-answer">
           {provider ? (

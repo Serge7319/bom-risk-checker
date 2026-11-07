@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { EmptyState } from "@/components/EmptyState";
-import { GapBanner, LoadingCard } from "@/components/GapBanner";
+import { EvidenceNotice, LoadingCard } from "@/components/GapBanner";
 import { PageHeader, PrimaryLink } from "@/components/PageHeader";
 import { Shell } from "@/components/Shell";
 import { listReports } from "@/lib/api";
@@ -36,7 +36,7 @@ export default function ReportsIndexPage() {
         meta={PAGE_META.reports}
         actions={<PrimaryLink href="/bom-analyzer">New BOM analysis</PrimaryLink>}
       />
-      {gap ? <GapBanner>{gap}</GapBanner> : null}
+      {<EvidenceNotice gap={gap} />}
       {busy ? <LoadingCard label="Loading saved reports…" /> : null}
       {error ? <div className="cv-error" role="alert">Reports could not load. {error}</div> : null}
       {!busy && !error ? (

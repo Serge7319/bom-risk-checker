@@ -1,0 +1,123 @@
+{
+  "mode": "markup-fixture",
+  "note": "Does not boot Next routes or the app shell. Overflow results are fixture-only.",
+  "captures": [
+    {
+      "route": "/design-impact",
+      "viewport": {
+        "label": "mobile_390",
+        "width": 390,
+        "height": 844
+      },
+      "file": "after_design_impact_mobile.png",
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "bodyScrollWidth": 390,
+      "overflow": false
+    },
+    {
+      "route": "/design-impact",
+      "viewport": {
+        "label": "tablet_696",
+        "width": 696,
+        "height": 900
+      },
+      "file": "after_design_impact_tablet_696.png",
+      "scrollWidth": 696,
+      "clientWidth": 696,
+      "bodyScrollWidth": 696,
+      "overflow": false
+    },
+    {
+      "route": "/design-impact",
+      "viewport": {
+        "label": "desktop",
+        "width": 1280,
+        "height": 900
+      },
+      "file": "after_design_impact_desktop.png",
+      "scrollWidth": 1280,
+      "clientWidth": 1280,
+      "bodyScrollWidth": 1280,
+      "overflow": false
+    },
+    {
+      "route": "/portfolio-intelligence",
+      "viewport": {
+        "label": "mobile_390",
+        "width": 390,
+        "height": 844
+      },
+      "file": "after_portfolio_mobile.png",
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "bodyScrollWidth": 390,
+      "overflow": false
+    },
+    {
+      "route": "/portfolio-intelligence",
+      "viewport": {
+        "label": "tablet_696",
+        "width": 696,
+        "height": 900
+      },
+      "file": "after_portfolio_tablet_696.png",
+      "scrollWidth": 696,
+      "clientWidth": 696,
+      "bodyScrollWidth": 696,
+      "overflow": false
+    },
+    {
+      "route": "/portfolio-intelligence",
+      "viewport": {
+        "label": "desktop",
+        "width": 1280,
+        "height": 900
+      },
+      "file": "after_portfolio_desktop.png",
+      "scrollWidth": 1280,
+      "clientWidth": 1280,
+      "bodyScrollWidth": 1280,
+      "overflow": false
+    },
+    {
+      "route": "/compare-parts",
+      "viewport": {
+        "label": "mobile_390",
+        "width": 390,
+        "height": 844
+      },
+      "file": "after_compare_mobile.png",
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "bodyScrollWidth": 390,
+      "overflow": false
+    },
+    {
+      "route": "/compare-parts",
+      "viewport": {
+        "label": "tablet_696",
+        "width": 696,
+        "height": 900
+      },
+      "file": "after_compare_tablet_696.png",
+      "scrollWidth": 696,
+      "clientWidth": 696,
+      "bodyScrollWidth": 696,
+      "overflow": false
+    },
+    {
+      "route": "/compare-parts",
+      "viewport": {
+        "label": "desktop",
+        "width": 1280,
+        "height": 900
+      },
+      "file": "after_compare_desktop.png",
+      "scrollWidth": 1280,
+      "clientWidth": 1280,
+      "bodyScrollWidth": 1280,
+      "overflow": false
+    }
+  ]
+}

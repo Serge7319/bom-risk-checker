@@ -219,7 +219,10 @@ def test_connectors_groundwork_and_sync():
     listing = client.get("/integrations/connectors", headers=headers)
     assert listing.status_code == 200
     body = listing.json()
-    assert body["ready_count"] >= 1
+    # CSV/generic imports are file workflows, not live vendor readiness.
+    assert body.get("file_workflow_count", 0) >= 1
+    assert body.get("live_ready_count", body["ready_count"]) == 0
+    assert body["ready_count"] == 0
     assert body["blocked_count"] >= 1
 
     sync = client.post(
@@ -275,7 +278,9 @@ def test_plan_limits_module_blocks_expired_trial():
 
 def test_connector_registry_unit():
     payload = connectors.connector_status_payload()
-    assert payload["ready_count"] >= 1
+    assert payload.get("file_workflow_count", 0) >= 1
+    assert payload.get("live_ready_count", payload["ready_count"]) == 0
+    assert payload["ready_count"] == 0
     result = connectors.sync_generic_bom_csv(
         [{"mpn": "CAP100U", "quantity": 3}],
         connector_id="cad.altium_or_solidworks",

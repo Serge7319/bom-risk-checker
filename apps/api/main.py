@@ -7,6 +7,7 @@ subscription billing use Supabase Edge Functions with the existing Stripe setup.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sys
 import threading
@@ -632,13 +633,15 @@ async def reports_list(request: Request) -> JSONResponse:
         reports = list_reports(workspace_id=ctx["workspace_id"])
     except PersistenceNotConfiguredError as exc:
         return _json({"detail": str(exc)}, 503)
+    # Do not surface deployment service gaps (billing/email/connectors) as a
+    # Reports warning card — those belong in Settings / health diagnostics.
     return _json(
         {
             "ok": True,
             "mode": "synthetic-preview",
             "workspace_id": ctx["workspace_id"],
             "persistence": persistence["backend"],
-            "gap": persistence["label"],
+            "gap": None,
             "reports": reports,
         }
     )
@@ -1462,6 +1465,73 @@ async def connectors_get(request: Request) -> JSONResponse:
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     return _json(connectors.connector_status_payload())
+
+
+async def service_readiness_get(request: Request) -> JSONResponse:
+    """Authenticated readiness for Settings: email, scheduler, connectors.
+
+    Status values reflect operational capability, not enable flags alone.
+    Does not infer monitoring-email state from billing or plan-usage payloads.
+    """
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        connector_payload = connectors.connector_status_payload()
+        email = monitoring_store.monitoring_email_readiness()
+        scheduler = monitoring_scheduler.scheduler_readiness()
+        billing = billing_prep.checkout_readiness(
+            workspace_id=str(ctx.get("workspace_id") or "readiness-probe"),
+            user_id=str(ctx.get("user_id") or "readiness-probe"),
+        )
+        # File workflows must not imply live design-tool/vendor readiness.
+        live_ready_count = int(
+            connector_payload.get("live_ready_count")
+            or connector_payload.get("ready_count")
+            or 0
+        )
+        blocked_count = int(connector_payload.get("blocked_count") or 0)
+        file_workflow_count = int(connector_payload.get("file_workflow_count") or 0)
+        connector_status = str(connector_payload.get("live_status") or "not_connected")
+        if connector_status not in {"ready", "partial", "not_connected", "unknown"}:
+            if live_ready_count > 0 and blocked_count == 0:
+                connector_status = "ready"
+            elif live_ready_count > 0:
+                connector_status = "partial"
+            else:
+                connector_status = "not_connected"
+        return _json(
+            {
+                "ok": True,
+                "monitoring_email": email,
+                "scheduler": scheduler,
+                "connectors": {
+                    "status": connector_status,
+                    "ready_count": live_ready_count,
+                    "live_ready_count": live_ready_count,
+                    "file_workflow_count": file_workflow_count,
+                    "blocked_count": blocked_count,
+                    "connectors": connector_payload.get("connectors") or [],
+                    "gap": connector_payload.get("gap"),
+                },
+                "billing_checkout": billing,
+            }
+        )
+    except Exception as exc:  # noqa: BLE001
+        logging.getLogger(__name__).exception(
+            "service_readiness_get failed: %s", type(exc).__name__
+        )
+        return _json(
+            {
+                "ok": False,
+                "detail": "Service readiness could not be determined.",
+                "monitoring_email": {"status": "unknown"},
+                "scheduler": {"status": "unknown"},
+                "connectors": {"status": "unknown"},
+                "billing_checkout": {"status": "unknown"},
+            },
+            503,
+        )
 
 
 async def connectors_sync_post(request: Request) -> JSONResponse:
@@ -2471,6 +2541,7 @@ app = Starlette(
         Route("/plan/usage", plan_usage_get, methods=["GET"]),
         Route("/integrations/connectors", connectors_get, methods=["GET"]),
         Route("/integrations/connectors/sync", connectors_sync_post, methods=["POST"]),
+        Route("/integrations/service-readiness", service_readiness_get, methods=["GET"]),
         Route("/compliance/{pack_type}", compliance_pack_get, methods=["GET"]),
     ],
     middleware=[
