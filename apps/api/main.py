@@ -1393,6 +1393,69 @@ async def connectors_get(request: Request) -> JSONResponse:
     return _json(connectors.connector_status_payload())
 
 
+async def service_readiness_get(request: Request) -> JSONResponse:
+    """Authenticated readiness for Settings: email, scheduler, connectors.
+
+    Does not infer monitoring-email state from billing or plan-usage payloads.
+    """
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        connector_payload = connectors.connector_status_payload()
+        email_enabled = bool(monitoring_store.email_delivery_enabled())
+        scheduler_on = bool(monitoring_scheduler.scheduler_enabled())
+        cron_configured = bool(monitoring_scheduler.cron_token_configured())
+        ready_count = int(connector_payload.get("ready_count") or 0)
+        blocked_count = int(connector_payload.get("blocked_count") or 0)
+        if ready_count > 0 and blocked_count == 0:
+            connector_status = "ready"
+        elif ready_count > 0:
+            connector_status = "partial"
+        else:
+            connector_status = "not_connected"
+        return _json(
+            {
+                "ok": True,
+                "monitoring_email": {
+                    "status": "ready" if email_enabled else "not_connected",
+                    "enabled": email_enabled,
+                },
+                "scheduler": {
+                    "status": "ready" if scheduler_on else "not_connected",
+                    "enabled": scheduler_on,
+                    "cron_token_configured": cron_configured,
+                },
+                "connectors": {
+                    "status": connector_status,
+                    "ready_count": ready_count,
+                    "blocked_count": blocked_count,
+                    "connectors": connector_payload.get("connectors") or [],
+                    "gap": connector_payload.get("gap"),
+                },
+                "billing_checkout": {
+                    "status": (
+                        "ready" if billing_prep.checkout_enabled() else "not_connected"
+                    ),
+                    "enabled": bool(billing_prep.checkout_enabled()),
+                },
+            }
+        )
+    except Exception as exc:  # noqa: BLE001
+        return _json(
+            {
+                "ok": False,
+                "detail": "Service readiness could not be determined.",
+                "error": str(exc)[:200],
+                "monitoring_email": {"status": "unknown"},
+                "scheduler": {"status": "unknown"},
+                "connectors": {"status": "unknown"},
+                "billing_checkout": {"status": "unknown"},
+            },
+            503,
+        )
+
+
 async def connectors_sync_post(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
@@ -2336,6 +2399,7 @@ app = Starlette(
         Route("/plan/usage", plan_usage_get, methods=["GET"]),
         Route("/integrations/connectors", connectors_get, methods=["GET"]),
         Route("/integrations/connectors/sync", connectors_sync_post, methods=["POST"]),
+        Route("/integrations/service-readiness", service_readiness_get, methods=["GET"]),
         Route("/compliance/{pack_type}", compliance_pack_get, methods=["GET"]),
     ],
     middleware=[

@@ -77,10 +77,10 @@ export default function DesignImpactPage() {
                 <tbody>
                   {(Array.isArray(catalog) ? catalog : []).slice(0, 25).map((row, i) => (
                     <tr key={i}>
-                      <td><strong>{String(row["Part Number"] || row.mpn || "")}</strong></td>
-                      <td>{String(row.Manufacturer || row.manufacturer || (Array.isArray(row["Manufacturer Values"]) ? row["Manufacturer Values"][0] : "") || "")}</td>
-                      <td>{String(row.Lifecycle || row.lifecycle || "")}</td>
-                      <td className="cv-num">{String(row["Risk Level"] || row.risk_level || "")}</td>
+                      <td data-label="Part"><strong>{String(row["Part Number"] || row.mpn || "")}</strong></td>
+                      <td data-label="Manufacturer">{String(row.Manufacturer || row.manufacturer || (Array.isArray(row["Manufacturer Values"]) ? row["Manufacturer Values"][0] : "") || "")}</td>
+                      <td data-label="Lifecycle">{String(row.Lifecycle || row.lifecycle || "")}</td>
+                      <td className="cv-num" data-label="Risk">{String(row["Risk Level"] || row.risk_level || "")}</td>
                     </tr>
                   ))}
                 </tbody>

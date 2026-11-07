@@ -17,6 +17,8 @@ import {
   fetchCompliancePack,
   fetchConnectors,
   fetchPlanUsage,
+  fetchServiceReadiness,
+  type ServiceReadiness,
   fetchPreferences,
   fetchProfile,
   fetchSecurityStatus,
@@ -129,6 +131,8 @@ export default function Page() {
   const [usage, setUsage] = useState<Record<string, unknown> | null>(null);
   const [billing, setBilling] = useState<Record<string, unknown> | null>(null);
   const [connectors, setConnectors] = useState<Record<string, unknown> | null>(null);
+  const [readiness, setReadiness] = useState<ServiceReadiness | null>(null);
+  const [readinessUnknown, setReadinessUnknown] = useState(false);
   const [compliance, setCompliance] = useState<Record<string, unknown> | null>(null);
   const [billingAction, setBillingAction] = useState("");
   const [billingError, setBillingError] = useState("");
@@ -195,16 +199,37 @@ export default function Page() {
     }
     setInvites(asRows(invitesRes?.invitations));
 
-    const [usageRes, billingRes, connectorsRes, complianceRes] = await Promise.all([
-      settledValue(fetchPlanUsage(token)),
-      settledValue(fetchBillingStatus(token)),
-      settledValue(fetchConnectors(token)),
-      settledValue(fetchCompliancePack(token, "rohs")),
-    ]);
+    const [usageRes, billingRes, connectorsRes, complianceRes, readinessRes] =
+      await Promise.all([
+        settledValue(fetchPlanUsage(token)),
+        settledValue(fetchBillingStatus(token)),
+        settledValue(fetchConnectors(token)),
+        settledValue(fetchCompliancePack(token, "rohs")),
+        settledValue(fetchServiceReadiness(token)),
+      ]);
     if (usageRes) setUsage(usageRes);
     if (billingRes) setBilling(billingRes);
     if (connectorsRes) setConnectors(connectorsRes);
     if (complianceRes) setCompliance(complianceRes);
+    if (readinessRes && readinessRes.ok !== false) {
+      setReadiness(readinessRes);
+      setReadinessUnknown(false);
+      if (readinessRes.connectors) {
+        setConnectors({
+          ...(connectorsRes || {}),
+          ...readinessRes.connectors,
+          connectors:
+            readinessRes.connectors.connectors ||
+            asRows(
+              (connectorsRes as Record<string, unknown> | null)?.connectors ||
+                (connectorsRes as Record<string, unknown> | null)?.items,
+            ),
+        });
+      }
+    } else {
+      setReadiness(null);
+      setReadinessUnknown(true);
+    }
 
     if (coreErrors.length === 3) {
       setError("Could not reach Cadivor. Check your connection and try again.");
@@ -232,7 +257,19 @@ export default function Page() {
   const currentPlan = currentPlanName.toLowerCase();
   const canManageBilling = billing?.can_manage_billing === true;
   const checkoutEnabled = billing?.checkout_enabled === true;
-  const connectorRows = asRows(connectors?.connectors || connectors?.items);
+  const connectorRows = asRows(
+    readiness?.connectors?.connectors || connectors?.connectors || connectors?.items,
+  );
+  function readinessLabel(
+    status: string | undefined,
+    readyText = "Ready",
+    notReadyText = "Not connected",
+  ): string {
+    if (readinessUnknown || !status || status === "unknown") return "Unknown";
+    if (status === "ready") return readyText;
+    if (status === "partial") return "Partial";
+    return notReadyText;
+  }
   const password = asRecord(security.password);
   const twoFactor = asRecord(security.two_factor);
   const sessions = asRecord(security.sessions);
@@ -1199,19 +1236,26 @@ export default function Page() {
               <section className="cv-card pad" style={{ marginBottom: 14 }}>
                 <h3 className="cv-card-title">Service readiness</h3>
                 <p className="cv-card-subtitle">
-                  Availability for email, billing, and connectors. These notes stay in Settings
-                  instead of repeating across Home and Reports.
+                  Availability for monitoring email, scheduler, billing checkout, and connectors.
+                  These notes stay in Settings instead of repeating across Home and Reports.
                 </p>
                 <ul className="cv-action-list" style={{ marginTop: 12 }}>
                   <li>
                     <div>
                       <strong>Monitoring email</strong>
-                      <small className="cv-small-note">Configured from workspace alert settings</small>
+                      <small className="cv-small-note">Alert delivery transport configuration</small>
                     </div>
                     <span className="cv-badge gray">
-                      {billing?.monitoring_email_enabled === true || usage?.monitoring_email_enabled === true
-                        ? "Ready"
-                        : "Not connected"}
+                      {readinessLabel(readiness?.monitoring_email?.status)}
+                    </span>
+                  </li>
+                  <li>
+                    <div>
+                      <strong>Monitoring scheduler</strong>
+                      <small className="cv-small-note">Scheduled refresh and cron hook</small>
+                    </div>
+                    <span className="cv-badge gray">
+                      {readinessLabel(readiness?.scheduler?.status)}
                     </span>
                   </li>
                   <li>
@@ -1220,16 +1264,27 @@ export default function Page() {
                       <small className="cv-small-note">Stripe plan upgrades and portal</small>
                     </div>
                     <span className="cv-badge gray">
-                      {checkoutEnabled ? "Ready" : "Not connected"}
+                      {readinessUnknown
+                        ? "Unknown"
+                        : readiness?.billing_checkout?.status
+                          ? readinessLabel(readiness.billing_checkout.status)
+                          : checkoutEnabled
+                            ? "Ready"
+                            : "Not connected"}
                     </span>
                   </li>
                   <li>
                     <div>
                       <strong>Design-tool connectors</strong>
-                      <small className="cv-small-note">PLM / CAD integrations</small>
+                      <small className="cv-small-note">
+                        Ready vs blocked connector capabilities
+                        {typeof readiness?.connectors?.ready_count === "number"
+                          ? ` · ${readiness.connectors.ready_count} ready, ${readiness.connectors.blocked_count ?? 0} blocked`
+                          : ""}
+                      </small>
                     </div>
                     <span className="cv-badge gray">
-                      {connectorRows.length ? `${connectorRows.length} listed` : "Not connected"}
+                      {readinessLabel(readiness?.connectors?.status)}
                     </span>
                   </li>
                 </ul>

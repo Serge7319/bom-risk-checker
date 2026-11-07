@@ -52,10 +52,10 @@ export default function PortfolioPage() {
                   <tbody>
                     {reports.map((r, i) => (
                       <tr key={i}>
-                        <td><strong>{String(r.filename || "")}</strong></td>
-                        <td className="cv-num">{String(r.health_score ?? "—")}</td>
-                        <td className="cv-num">{String(r.total_parts ?? "—")}</td>
-                        <td className="cv-num">{String(r.high_risk_count ?? "—")}</td>
+                        <td data-label="File"><strong>{String(r.filename || "")}</strong></td>
+                        <td className="cv-num" data-label="Health">{String(r.health_score ?? "—")}</td>
+                        <td className="cv-num" data-label="Parts">{String(r.total_parts ?? "—")}</td>
+                        <td className="cv-num" data-label="High">{String(r.high_risk_count ?? "—")}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -70,10 +70,10 @@ export default function PortfolioPage() {
                   <tbody>
                     {projects.slice(0, 20).map((r, i) => (
                       <tr key={i}>
-                        <td><strong>{String(r.Project || r.project || "")}</strong></td>
-                        <td className="cv-num">{String(r.Health ?? r.health ?? "—")}</td>
-                        <td className="cv-num">{String(r.Components ?? r.components ?? "—")}</td>
-                        <td className="cv-num">{String(r["High-Risk"] ?? r.high_risk ?? "—")}</td>
+                        <td data-label="Project"><strong>{String(r.Project || r.project || "")}</strong></td>
+                        <td className="cv-num" data-label="Health">{String(r.Health ?? r.health ?? "—")}</td>
+                        <td className="cv-num" data-label="Components">{String(r.Components ?? r.components ?? "—")}</td>
+                        <td className="cv-num" data-label="High-risk">{String(r["High-Risk"] ?? r.high_risk ?? "—")}</td>
                       </tr>
                     ))}
                   </tbody>
