@@ -377,13 +377,16 @@ def _deliver(
 
 
 def list_invitations(ctx: dict[str, Any]) -> dict[str, Any]:
-    require_admin(ctx)
-    rows = get_team_store().list_invites(ctx["workspace_id"])
+    """Members may call this; only owners/admins receive pending invite rows."""
+    role = require_member(ctx)
+    can_manage = role in ADMIN_ROLES
+    rows = get_team_store().list_invites(ctx["workspace_id"]) if can_manage else []
     return {
         "invitations": [public_invite(row) for row in rows],
+        "can_manage": can_manage,
         "email_delivery": invitation_email.delivery_mode(),
         "email_ready": invitation_email.delivery_ready(),
-        "assignable_roles": list(ASSIGNABLE_ROLES),
+        "assignable_roles": list(ASSIGNABLE_ROLES) if can_manage else [],
         "default_expiry_days": INVITE_DEFAULT_DAYS,
         "max_expiry_days": INVITE_MAX_DAYS,
     }
