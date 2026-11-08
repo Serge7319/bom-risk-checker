@@ -140,29 +140,88 @@ _LIFECYCLE_SIGNAL_TOKENS = (
 
 
 def _report_mode(report: dict[str, Any] | None) -> str:
-    mode = str((report or {}).get("mode") or "").strip()
-    return mode or "synthetic-preview"
+    """Return the report mode string, or empty when provenance is missing."""
+    return str((report or {}).get("mode") or "").strip()
 
 
 def _report_is_synthetic(report: dict[str, Any] | None) -> bool:
     mode = _report_mode(report).casefold()
-    return "synthetic" in mode or "preview" in mode
+    # Missing/blank mode is unknown, not synthetic.
+    return bool(mode) and ("synthetic" in mode or "preview" in mode)
 
 
 def _report_evidence_source(report: dict[str, Any] | None) -> str:
     """Provenance tag for monitoring alert evidence labels."""
     mode = _report_mode(report)
+    if not mode:
+        return "unknown-analysis"
     if _report_is_synthetic(report):
         return "synthetic-preview-analysis"
     if mode == "legacy-supplier-engine":
         return "legacy-supplier-analysis"
-    return f"{mode}-analysis" if mode else "saved-analysis"
+    return f"{mode}-analysis"
 
 
 def _report_evidence_phrase(report: dict[str, Any] | None) -> str:
+    mode = _report_mode(report)
+    if not mode:
+        return "analysis with unknown provenance"
     if _report_is_synthetic(report):
         return "synthetic analysis"
     return "saved analysis"
+
+
+_OVERRIDE_RATIONALE_MIN_LEN = 20
+_TRIVIAL_OVERRIDE_RATIONALES = {
+    "ok",
+    "okay",
+    "yes",
+    "y",
+    "approved",
+    "approve",
+    "n/a",
+    "na",
+    "none",
+    "same",
+    "see above",
+    "as above",
+    "as discussed",
+    ".",
+    "..",
+    "...",
+}
+
+
+def validate_override_rationale(
+    override_rationale: str, *, general_rationale: str = ""
+) -> str | None:
+    """Return an error detail when an approval override rationale is not meaningful."""
+    text = str(override_rationale or "").strip()
+    if not text:
+        return (
+            "Provide a specific override rationale explaining why approval is "
+            "still justified despite the comparison conflicts."
+        )
+    if len(text) > 3000:
+        return "Override rationale must be 3,000 characters or fewer."
+    lowered = text.casefold()
+    if lowered in _TRIVIAL_OVERRIDE_RATIONALES:
+        return "Override rationale must be a specific engineering explanation, not a placeholder."
+    if len(text) < _OVERRIDE_RATIONALE_MIN_LEN:
+        return (
+            f"Override rationale must be at least {_OVERRIDE_RATIONALE_MIN_LEN} "
+            "characters and explain why the conflicts are acceptable."
+        )
+    general = str(general_rationale or "").strip()
+    if general and lowered == general.casefold():
+        return "Override rationale must differ from the general decision rationale."
+    return None
+
+
+def monitoring_payload_mode(report: dict[str, Any] | None) -> str:
+    """Public mode label for Monitoring payloads (unknown when provenance is missing)."""
+    mode = _report_mode(report)
+    return mode or "unknown"
 
 
 def _lifecycle_is_signal(lifecycle: str) -> bool:
@@ -324,7 +383,7 @@ def monitoring_payload(
             },
         }
 
-    report_mode = _report_mode(report)
+    report_mode = monitoring_payload_mode(report)
     evidence_source = _report_evidence_source(report)
     evidence_phrase = _report_evidence_phrase(report)
     alerts: list[dict[str, Any]] = []

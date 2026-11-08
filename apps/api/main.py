@@ -1064,8 +1064,6 @@ async def decision_records_post(request: Request) -> JSONResponse:
             "on",
         }
     override_rationale = str(body.get("override_rationale") or "").strip()
-    if len(override_rationale) > 3000:
-        return _json({"detail": "Override rationale must be 3,000 characters or fewer."}, 400)
 
     try:
         if requested_analysis_id and not get_report(
@@ -1097,13 +1095,13 @@ async def decision_records_post(request: Request) -> JSONResponse:
                     },
                     400,
                 )
-            if not override_rationale:
+            override_error = migration_tools.validate_override_rationale(
+                override_rationale, general_rationale=rationale
+            )
+            if override_error:
                 return _json(
                     {
-                        "detail": (
-                            "Provide a specific override rationale explaining why approval is "
-                            "still justified despite the comparison conflicts."
-                        ),
+                        "detail": override_error,
                         "approval_conflicts": conflicts,
                     },
                     400,

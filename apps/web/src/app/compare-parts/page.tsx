@@ -13,6 +13,7 @@ import {
   recordDecision,
   type DecisionRecord,
 } from "@/lib/api";
+import { validateOverrideRationale } from "@/lib/decisionValidation";
 import { PAGE_META } from "@/lib/routes";
 import { readLastAnalysis, useRequireSession } from "@/lib/session";
 
@@ -201,6 +202,19 @@ function ComparePartsInner() {
   }, [search]);
 
   useEffect(() => {
+    if (!decisionOpen || !result) return;
+    // Any comparison identity change while the dialog is open invalidates prior ack/override.
+    resetConflictGuard();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally keyed to comparison identity only
+  }, [
+    decisionOpen,
+    String(result?.part_a || ""),
+    String(result?.part_b || ""),
+    String(result?.analysis_id || ""),
+    String(result?.finding || ""),
+  ]);
+
+  useEffect(() => {
     if (!session) return;
     let active = true;
     const queryAnalysis = (search.get("analysis_id") || "").trim();
@@ -265,6 +279,11 @@ function ComparePartsInner() {
     }
   }
 
+  function resetConflictGuard() {
+    setConflictAcknowledgement(false);
+    setOverrideRationale("");
+  }
+
   function openDecisionDialog() {
     setDecisionAnalysisId(String(result?.analysis_id || analysisId || ""));
     setDecisionPartA(String(result?.part_a || partA || ""));
@@ -277,8 +296,7 @@ function ComparePartsInner() {
     setFollowUpOwner("");
     setFollowUpDueDate("");
     setResidualRisk("unknown");
-    setConflictAcknowledgement(false);
-    setOverrideRationale("");
+    resetConflictGuard();
     setDecisionError("");
     setDecisionSuccess(null);
     setDecisionOpen(true);
@@ -302,11 +320,28 @@ function ComparePartsInner() {
       setResult(data);
       setAnalysisId(String(data.analysis_id || ""));
       setDecisionAnalysisId(String(data.analysis_id || nextAnalysisId || ""));
+      // Comparison identity changed — prior ack/override must not carry over.
+      resetConflictGuard();
     } catch (err) {
       setDecisionAnalysisId(previousAnalysisId);
       setDecisionError(err instanceof Error ? err.message : "Could not refresh the comparison for that BOM.");
     } finally {
       setDecisionBusy(false);
+    }
+  }
+
+  function onDecisionPartChange(side: "a" | "b", value: string) {
+    if (side === "a") setDecisionPartA(value);
+    else setDecisionPartB(value);
+    // Editing MPNs while the dialog is open invalidates any prior conflict ack.
+    resetConflictGuard();
+    setDecisionError("");
+  }
+
+  function onDecisionTypeChange(next: string) {
+    setDecision(next);
+    if (next !== "approve_alternate") {
+      resetConflictGuard();
     }
   }
 
@@ -330,17 +365,18 @@ function ComparePartsInner() {
       return;
     }
     const previewConflicts = conflictEntriesFromResult(result);
-    if (
-      decision === "approve_alternate"
-      && previewConflicts.hasConflicts
-      && (!conflictAcknowledgement || !overrideRationale.trim())
-    ) {
-      setDecisionError(
-        !conflictAcknowledgement
-          ? "Acknowledge the material differences and unknown required fit fields before approving."
-          : "Provide a specific override rationale for approving despite comparison conflicts.",
-      );
-      return;
+    if (decision === "approve_alternate" && previewConflicts.hasConflicts) {
+      if (!conflictAcknowledgement) {
+        setDecisionError(
+          "Acknowledge the material differences and unknown required fit fields before approving.",
+        );
+        return;
+      }
+      const overrideError = validateOverrideRationale(overrideRationale, rationale);
+      if (overrideError) {
+        setDecisionError(overrideError);
+        return;
+      }
     }
     setDecisionBusy(true);
     setDecisionError("");
@@ -359,7 +395,27 @@ function ComparePartsInner() {
             decisionAnalysisId || undefined,
             { a: datasheetA, b: datasheetB },
           );
+      const comparisonIdentityChanged = Boolean(
+        result
+        && (
+          String(result.part_a || "").trim().toLowerCase() !== String(comparison.part_a || "").trim().toLowerCase()
+          || String(result.part_b || "").trim().toLowerCase() !== String(comparison.part_b || "").trim().toLowerCase()
+          || String(result.analysis_id || "") !== String(comparison.analysis_id || "")
+          || String(result.finding || "") !== String(comparison.finding || "")
+        ),
+      );
       setResult(comparison);
+      if (comparisonIdentityChanged) {
+        // Fresh comparison — do not reuse ack/override from the prior snapshot.
+        resetConflictGuard();
+        const freshConflicts = conflictEntriesFromResult(comparison as Row);
+        if (decision === "approve_alternate" && freshConflicts.hasConflicts) {
+          setDecisionError(
+            "The comparison changed. Re-acknowledge the conflicts and provide a specific override rationale before approving.",
+          );
+          return;
+        }
+      }
       const response = await recordDecision(session.access_token, {
         analysis_id: String(comparison.analysis_id || decisionAnalysisId || "") || null,
         part_a: decisionPartA.trim(),
@@ -372,8 +428,8 @@ function ComparePartsInner() {
         follow_up_owner: followUpOwner,
         follow_up_due_date: followUpDueDate || null,
         residual_risk: residualRisk,
-        conflict_acknowledgement: conflictAcknowledgement,
-        override_rationale: overrideRationale.trim() || undefined,
+        conflict_acknowledgement: comparisonIdentityChanged ? false : conflictAcknowledgement,
+        override_rationale: comparisonIdentityChanged ? undefined : (overrideRationale.trim() || undefined),
       }, { a: datasheetA, b: datasheetB });
       setDecisionSuccess(response.record);
       setDecisionOpen(false);
@@ -757,7 +813,7 @@ function ComparePartsInner() {
                       <span>Current part</span>
                       <input
                         value={decisionPartA}
-                        onChange={(event) => setDecisionPartA(event.target.value)}
+                        onChange={(event) => onDecisionPartChange("a", event.target.value)}
                         maxLength={160}
                         placeholder="Current manufacturer part number"
                         autoComplete="off"
@@ -768,7 +824,7 @@ function ComparePartsInner() {
                       <span>Candidate part</span>
                       <input
                         value={decisionPartB}
-                        onChange={(event) => setDecisionPartB(event.target.value)}
+                        onChange={(event) => onDecisionPartChange("b", event.target.value)}
                         maxLength={160}
                         placeholder="Candidate manufacturer part number"
                         autoComplete="off"
@@ -788,7 +844,7 @@ function ComparePartsInner() {
                       <span>Current part</span>
                       <input
                         value={decisionPartA}
-                        onChange={(event) => setDecisionPartA(event.target.value)}
+                        onChange={(event) => onDecisionPartChange("a", event.target.value)}
                         maxLength={160}
                         placeholder="Current manufacturer part number"
                         autoComplete="off"
@@ -799,7 +855,7 @@ function ComparePartsInner() {
                       <span>Candidate part</span>
                       <input
                         value={decisionPartB}
-                        onChange={(event) => setDecisionPartB(event.target.value)}
+                        onChange={(event) => onDecisionPartChange("b", event.target.value)}
                         maxLength={160}
                         placeholder="Candidate manufacturer part number"
                         autoComplete="off"
@@ -815,7 +871,7 @@ function ComparePartsInner() {
                   <span>Decision</span>
                   <select
                     value={decision}
-                    onChange={(event) => setDecision(event.target.value)}
+                    onChange={(event) => onDecisionTypeChange(event.target.value)}
                     disabled={decisionBusy}
                   >
                     <option value="hold_for_review">Hold for review</option>
@@ -988,7 +1044,14 @@ function ComparePartsInner() {
                     || !rationale.trim()
                     || (decision === "approve_alternate" && !APPROVAL_CHECKS.every((item) => validationChecks.includes(item)))
                     || (decision === "approve_alternate" && residualRisk === "unknown")
-                    || (decision === "approve_alternate" && approvalConflicts.hasConflicts && (!conflictAcknowledgement || !overrideRationale.trim()))
+                    || (
+                      decision === "approve_alternate"
+                      && approvalConflicts.hasConflicts
+                      && (
+                        !conflictAcknowledgement
+                        || Boolean(validateOverrideRationale(overrideRationale, rationale))
+                      )
+                    )
                     || (["conditional_approval", "defer_for_validation"].includes(decision) && !followUpAction.trim())
                     || (decision === "accept_residual_risk" && residualRisk === "unknown")
                   }

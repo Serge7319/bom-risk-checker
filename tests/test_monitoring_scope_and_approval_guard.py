@@ -224,6 +224,22 @@ def test_monitoring_provenance_labels_follow_report_mode(monkeypatch):
     assert all("synthetic analysis" not in str(row.get("alert_message") or "").lower() for row in real["alerts"])
     assert all("saved analysis" in str(row.get("alert_message") or "").lower() for row in real["alerts"])
 
+    report["mode"] = ""
+    unknown = migration_tools.monitoring_payload(
+        workspace_id=workspace_id, analysis_id=analysis_id
+    )
+    assert unknown["mode"] == "unknown"
+    assert unknown["alerts"]
+    assert all(
+        str(row.get("evidence_source") or "") == "unknown-analysis"
+        for row in unknown["alerts"]
+    )
+    assert all(
+        "unknown provenance" in str(row.get("alert_message") or "").lower()
+        for row in unknown["alerts"]
+    )
+    assert all("synthetic" not in str(row.get("evidence_source") or "").lower() for row in unknown["alerts"])
+
 
 def _approval_checks() -> list[str]:
     return [
@@ -297,6 +313,82 @@ def test_approval_conflict_summary_detects_mcp2551_case():
     }
 
 
+def test_validate_override_rationale_rejects_empty_short_trivial_and_duplicate():
+    from apps.api.migration_tools import validate_override_rationale
+
+    general = "Approve alternate after reviewing datasheets and package drawings."
+    assert validate_override_rationale("") is not None
+    assert validate_override_rationale("   ") is not None
+    assert "at least 20" in (validate_override_rationale("too short") or "").lower()
+    assert "placeholder" in (validate_override_rationale("ok") or "").lower()
+    assert "placeholder" in (validate_override_rationale("n/a") or "").lower()
+    assert "differ" in (
+        validate_override_rationale(general, general_rationale=general) or ""
+    ).lower()
+    assert (
+        validate_override_rationale(
+            "Supply is 3.3 V only on this board; 5 V MCP2551 limit does not apply.",
+            general_rationale=general,
+        )
+        is None
+    )
+
+
+def test_client_override_validation_mirrors_server_rules():
+    """Client decisionValidation.ts must enforce the same meaningful-override rules."""
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "apps/web/src/lib/decisionValidation.ts"
+    ).read_text(encoding="utf-8")
+    assert "OVERRIDE_RATIONALE_MIN_LEN = 20" in source
+    assert "validateOverrideRationale" in source
+    assert "must differ from the general decision rationale" in source
+    assert "not a placeholder" in source
+
+
+def test_decision_dialog_clears_conflict_guard_on_comparison_identity_change():
+    """Compare Parts must reset ack/override when BOM or MPNs change while open."""
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "apps/web/src/app/compare-parts/page.tsx"
+    ).read_text(encoding="utf-8")
+    assert "function resetConflictGuard()" in source
+    assert "onDecisionPartChange" in source
+    assert "onDecisionTypeChange" in source
+    analysis_fn = source.split("async function changeDecisionAnalysis", 1)[1].split(
+        "function onDecisionPartChange", 1
+    )[0]
+    assert "resetConflictGuard()" in analysis_fn
+    part_fn = source.split("function onDecisionPartChange", 1)[1].split(
+        "function onDecisionTypeChange", 1
+    )[0]
+    assert "resetConflictGuard()" in part_fn
+    # Comparison identity deps while the dialog is open also clear the guard.
+    assert "String(result?.finding || \"\")" in source or "String(result?.finding || '')" in source
+    assert "decisionOpen" in source
+
+
+def test_monitoring_desktop_kpi_grid_keeps_four_columns():
+    """Desktop .cv-kpis must stay 4-up so Monitoring's fourth KPI is not wrapped."""
+    css = (
+        Path(__file__).resolve().parents[1] / "apps/web/src/app/globals.css"
+    ).read_text(encoding="utf-8")
+    # Collect non-media .cv-kpis grid-template-columns declarations in order.
+    import re
+
+    without_media = re.sub(r"@media[^{]+\{(?:[^{}]|\{[^{}]*\})*\}", "", css, flags=re.S)
+    columns = re.findall(
+        r"\.cv-kpis\s*\{[^}]*grid-template-columns:\s*([^;]+);",
+        without_media,
+        flags=re.S,
+    )
+    assert columns, "expected at least one .cv-kpis grid-template-columns rule"
+    assert "repeat(4" in columns[-1], (
+        f"final desktop .cv-kpis rule must use 4 columns, found {columns[-1]!r}"
+    )
+    assert all("repeat(3" not in rule for rule in columns)
+
+
 def test_api_rejects_conflicting_approval_without_ack_or_override(monkeypatch):
     from apps.api import migration_tools
 
@@ -330,6 +422,42 @@ def test_api_rejects_conflicting_approval_without_ack_or_override(monkeypatch):
     assert missing_override.status_code == 400, missing_override.text
     assert "override rationale" in missing_override.json()["detail"].lower()
 
+    short_override = client.post(
+        "/decision-records",
+        headers=headers,
+        json={
+            **base,
+            "conflict_acknowledgement": True,
+            "override_rationale": "looks fine",
+        },
+    )
+    assert short_override.status_code == 400, short_override.text
+    assert "at least 20" in short_override.json()["detail"].lower()
+
+    trivial_override = client.post(
+        "/decision-records",
+        headers=headers,
+        json={
+            **base,
+            "conflict_acknowledgement": True,
+            "override_rationale": "ok",
+        },
+    )
+    assert trivial_override.status_code == 400, trivial_override.text
+    assert "placeholder" in trivial_override.json()["detail"].lower()
+
+    duplicate_override = client.post(
+        "/decision-records",
+        headers=headers,
+        json={
+            **base,
+            "conflict_acknowledgement": True,
+            "override_rationale": base["rationale"],
+        },
+    )
+    assert duplicate_override.status_code == 400, duplicate_override.text
+    assert "differ" in duplicate_override.json()["detail"].lower()
+
     missing_risk = client.post(
         "/decision-records",
         headers=headers,
@@ -337,7 +465,9 @@ def test_api_rejects_conflicting_approval_without_ack_or_override(monkeypatch):
             **base,
             "residual_risk": "unknown",
             "conflict_acknowledgement": True,
-            "override_rationale": "Board already validated at 3.3 V rail.",
+            "override_rationale": (
+                "Board already validated at 3.3 V rail; 5 V MCP2551 limit does not apply."
+            ),
         },
     )
     assert missing_risk.status_code == 400, missing_risk.text
@@ -474,3 +604,102 @@ def test_no_conflict_approval_still_requires_existing_validation(monkeypatch):
     assert record["conflict_acknowledgement"] is False
     assert record.get("override_rationale") in {None, ""}
     assert record["qualification_status"] == "not-qualified-by-cadivor"
+
+
+def test_mcp2551_sn65hvd230dr_decision_flow_integration(monkeypatch):
+    """Deterministic MCP2551-I/SN → SN65HVD230DR approve-alternate decision flow.
+
+    Walks compare → conflict detection → rejected Low approval without a meaningful
+    override → accepted auditable override, without touching live suppliers.
+    """
+    from apps.api import migration_tools
+
+    comparison = _mcp2551_conflict_comparison()
+    monkeypatch.setattr(
+        migration_tools,
+        "compare_parts_payload",
+        lambda **kwargs: {
+            **comparison,
+            "analysis_id": kwargs.get("analysis_id"),
+            "part_a": kwargs.get("part_a") or comparison["part_a"],
+            "part_b": kwargs.get("part_b") or comparison["part_b"],
+        },
+    )
+
+    client = TestClient(app)
+    headers = _auth_headers(client)
+
+    # 1) Comparison surface exposes the voltage material difference + unknowns.
+    compared = client.post(
+        "/tools/compare-parts",
+        headers=headers,
+        json={"part_a": "MCP2551-I/SN", "part_b": "SN65HVD230DR"},
+    )
+    assert compared.status_code == 200, compared.text
+    body = compared.json()
+    assert body["finding"] == "Material difference"
+    assert body["counts"]["material_difference"] >= 1
+    supply = next(
+        row
+        for row in body["rows"]
+        if str(row.get("Attribute")) == "Supply voltage"
+    )
+    assert "4.5" in str(supply.get("Part A"))
+    assert "3" in str(supply.get("Part B"))
+    conflicts = migration_tools.approval_conflict_summary(body)
+    assert conflicts["has_conflicts"] is True
+    assert any(row["attribute"] == "Supply voltage" for row in conflicts["material_differences"])
+
+    # 2) Saved "Approve alternate / Low" without a meaningful override is rejected.
+    blocked = client.post(
+        "/decision-records",
+        headers=headers,
+        json={
+            "part_a": "MCP2551-I/SN",
+            "part_b": "SN65HVD230DR",
+            "decision": "approve_alternate",
+            "reviewer": "Engineering reviewer",
+            "rationale": "Approve alternate / Low",
+            "validation_checks": _approval_checks(),
+            "residual_risk": "low",
+            "conflict_acknowledgement": True,
+            "override_rationale": "ok",
+        },
+    )
+    assert blocked.status_code == 400, blocked.text
+    assert "placeholder" in blocked.json()["detail"].lower()
+
+    # 3) Auditable override is accepted and persisted with conflict evidence.
+    override = (
+        "Design runs exclusively at 3.3 V; the MCP2551 4.5–5.5 V rail does not apply. "
+        "Prototype confirmed SN65HVD230DR pinout and package fit."
+    )
+    saved = client.post(
+        "/decision-records",
+        headers=headers,
+        json={
+            "part_a": "MCP2551-I/SN",
+            "part_b": "SN65HVD230DR",
+            "decision": "approve_alternate",
+            "reviewer": "Engineering reviewer",
+            "rationale": "Approve alternate / Low after board-level validation.",
+            "validation_checks": _approval_checks(),
+            "residual_risk": "low",
+            "conflict_acknowledgement": True,
+            "override_rationale": override,
+        },
+    )
+    assert saved.status_code == 201, saved.text
+    record = saved.json()["record"]
+    assert record["part_a"] == "MCP2551-I/SN"
+    assert record["part_b"] == "SN65HVD230DR"
+    assert record["decision"] == "approve_alternate"
+    assert record["residual_risk"] == "low"
+    assert record["conflict_acknowledgement"] is True
+    assert record["override_rationale"] == override
+    assert "4.5" in str(record["comparison_snapshot"]["rows"])
+    assert record["qualification_status"] == "not-qualified-by-cadivor"
+
+    listed = client.get("/decision-records", headers=headers)
+    assert listed.status_code == 200
+    assert any(row["id"] == record["id"] for row in listed.json()["records"])
