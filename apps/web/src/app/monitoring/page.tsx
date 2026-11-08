@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { AnalysisStageNavigation } from "@/components/AnalysisStageNavigation";
 import { Shell } from "@/components/Shell";
 import { EmptyState } from "@/components/EmptyState";
 import { EvidenceNotice, LoadingCard } from "@/components/GapBanner";
@@ -29,6 +30,7 @@ function MonitoringPageInner() {
 
   useEffect(() => {
     if (!session) return;
+    let active = true;
     const last = readLastAnalysis(session);
     const analysisId = requestedAnalysisId || last?.analysis_id || "";
     setActiveAnalysisId(analysisId);
@@ -37,6 +39,7 @@ function MonitoringPageInner() {
     setData(null);
     fetchMonitoring(session.access_token, analysisId || undefined)
       .then((payload) => {
+        if (!active) return;
         setData(payload);
         if (analysisId) {
           markReviewProgress(
@@ -47,6 +50,7 @@ function MonitoringPageInner() {
         }
       })
       .catch((err) => {
+        if (!active) return;
         setError(err instanceof Error ? err.message : "Failed");
         // Failed loads must not advance Monitor progress.
         if (analysisId) {
@@ -56,7 +60,12 @@ function MonitoringPageInner() {
           }
         }
       })
-      .finally(() => setBusy(false));
+      .finally(() => {
+        if (active) setBusy(false);
+      });
+    return () => {
+      active = false;
+    };
   }, [session, requestedAnalysisId]);
 
   if (!session) return null;
@@ -69,6 +78,7 @@ function MonitoringPageInner() {
         meta={PAGE_META.monitoring}
         actions={<PrimaryLink href="/reports">View saved reports</PrimaryLink>}
       />
+      <AnalysisStageNavigation analysisId={activeAnalysisId} current="monitor" />
       {activeAnalysisId ? (
         <p className="cv-evidence-context" role="note">
           Monitoring signals for analysis <strong>{activeAnalysisId}</strong>

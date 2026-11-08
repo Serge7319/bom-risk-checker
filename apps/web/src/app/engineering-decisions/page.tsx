@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { AnalysisStageNavigation } from "@/components/AnalysisStageNavigation";
 import { EmptyState } from "@/components/EmptyState";
 import { Shell } from "@/components/Shell";
 import { LoadingCard } from "@/components/GapBanner";
@@ -16,7 +18,9 @@ import {
 import { PAGE_META } from "@/lib/routes";
 import { useRequireSession } from "@/lib/session";
 
-export default function EngineeringDecisionsPage() {
+function EngineeringDecisionsPageInner() {
+  const searchParams = useSearchParams();
+  const requestedAnalysisId = (searchParams.get("analysis_id") || "").trim();
   const session = useRequireSession();
   const [last, setLast] = useState<
     (AnalyzeSummary & { filename?: string; saved_at?: string }) | null
@@ -28,10 +32,24 @@ export default function EngineeringDecisionsPage() {
 
   useEffect(() => {
     if (!session) return;
+    let active = true;
+    setBusy(true);
+    setLast(null);
+    setRecords([]);
+    setError("");
+    setDecisionError("");
     Promise.all([
       listReports(session.access_token)
         .then(({ reports }) => {
-          const row = reports[0];
+          if (!active) return;
+          const row = requestedAnalysisId
+            ? reports.find((report) => String(report.analysis_id || report.id || "") === requestedAnalysisId)
+            : reports[0];
+          if (requestedAnalysisId && !row) {
+            setLast(null);
+            setError("The selected saved analysis could not be found in this workspace.");
+            return;
+          }
           setLast(row ? {
             analysis_id: String(row.analysis_id || row.id || ""),
             total_parts: Number(row.total_parts || 0),
@@ -46,12 +64,21 @@ export default function EngineeringDecisionsPage() {
           } : null);
         })
         .catch((err) => setError(err instanceof Error ? err.message : "Unable to load saved analyses.")),
-      listDecisionRecords(session.access_token)
-        .then(({ records: savedRecords }) => setRecords(savedRecords || []))
-        .catch((err) => setDecisionError(err instanceof Error ? err.message : "Unable to load decision records.")),
+      listDecisionRecords(session.access_token, requestedAnalysisId || undefined)
+        .then(({ records: savedRecords }) => {
+          if (active) setRecords(savedRecords || []);
+        })
+        .catch((err) => {
+          if (active) setDecisionError(err instanceof Error ? err.message : "Unable to load decision records.");
+        }),
     ])
-      .finally(() => setBusy(false));
-  }, [session]);
+      .finally(() => {
+        if (active) setBusy(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [session, requestedAnalysisId]);
 
   if (!session) return null;
 
@@ -67,9 +94,15 @@ export default function EngineeringDecisionsPage() {
         }
       />
 
+      <AnalysisStageNavigation
+        analysisId={last?.analysis_id || requestedAnalysisId}
+        current="decision"
+      />
+
       <p className="cv-evidence-context" role="note">
-        Signals are evidence prompts, not automatic approvals. Counts reflect the
-        latest saved analysis when available.
+        Signals are evidence prompts, not automatic approvals. {requestedAnalysisId
+          ? "Counts and records are scoped to the selected saved analysis."
+          : "Counts reflect the latest saved analysis when available."}
       </p>
 
       {busy ? <LoadingCard label="Loading saved analyses and decision records…" /> : null}
@@ -86,7 +119,7 @@ export default function EngineeringDecisionsPage() {
       {!busy && !error && last?.analysis_id ? (
         <section className="cv-card pad">
           <div style={{ marginBottom: 12 }}>
-            <h3 className="cv-card-title">Decision queue from latest analysis</h3>
+            <h3 className="cv-card-title">Decision queue from {requestedAnalysisId ? "selected analysis" : "latest analysis"}</h3>
             <p className="cv-card-subtitle">
               {last.filename || "BOM"} · {last.total_parts} parts. Open the report
               for part-level evidence. Supplier prices and fit approvals require verified
@@ -229,6 +262,14 @@ export default function EngineeringDecisionsPage() {
         </section>
       ) : null}
     </Shell>
+  );
+}
+
+export default function EngineeringDecisionsPage() {
+  return (
+    <Suspense fallback={null}>
+      <EngineeringDecisionsPageInner />
+    </Suspense>
   );
 }
 
