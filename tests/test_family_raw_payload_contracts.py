@@ -152,6 +152,19 @@ class FamilyRawPayloadContractTests(unittest.TestCase):
         ))
         better = normalize_digikey_product(_digikey_product(
             mpn="C0603C104K5RACAUTO",
+            description="Capacitor Ceramic 0.1uF 50V X7R 0603",
+            params=[
+                ("Package / Case", "0603 (1608 Metric)"),
+                ("Mounting Type", "Surface Mount"),
+                ("Capacitance", "100nF"),
+                ("Tolerance", "±10%"),
+                ("Voltage - Rated", "50V"),
+                ("Temperature Coefficient", "X7R"),
+                ("Operating Temperature", "-55°C ~ 125°C"),
+            ],
+        ))
+        higher_voltage = normalize_digikey_product(_digikey_product(
+            mpn="C0603C104K5RAC100",
             description="Capacitor Ceramic 0.1uF 100V X7R 0603",
             params=[
                 ("Package / Case", "0603 (1608 Metric)"),
@@ -182,7 +195,12 @@ class FamilyRawPayloadContractTests(unittest.TestCase):
         self.assertEqual(good["family"], "Capacitor")
         statuses = _status_map(good)
         self.assertEqual(statuses["Capacitance"], "Match")  # 0.1uF == 100nF
-        self.assertEqual(statuses["Rated voltage"], "Match")  # 100 >= 50
+        self.assertEqual(statuses["Rated voltage"], "Match")  # equal 50V
+        # Unequal LIMIT without a design/fit criterion is never Compatible.
+        self.assertEqual(
+            _status_map(build_datasheet_comparison(original, higher_voltage))["Rated voltage"],
+            "Different",
+        )
         self.assertEqual(_status_map(bad)["Rated voltage"], "Different")
         self.assertNotIn("Architecture", {r["Attribute"] for r in good["rows"]})
         self.assertNotIn("Pin count", {r["Attribute"] for r in good["rows"]})
@@ -238,7 +256,7 @@ class FamilyRawPayloadContractTests(unittest.TestCase):
         self.assertEqual(original["resistance"], "10 kOhms")
         result = build_datasheet_comparison(original, candidate)
         self.assertEqual(result["family"], "Resistor")
-        self.assertEqual(_status_map(result)["Power rating"], "Match")
+        self.assertEqual(_status_map(result)["Power rating"], "Different")
         self.assertEqual(_status_map(build_datasheet_comparison(original, under))["Power rating"], "Different")
         self.assertNotIn("Architecture", {r["Attribute"] for r in result["rows"]})
         self.assertNotIn("Pin count", {r["Attribute"] for r in result["rows"]})
@@ -288,7 +306,7 @@ class FamilyRawPayloadContractTests(unittest.TestCase):
         ))
         result = build_datasheet_comparison(original, better_dcr)
         self.assertEqual(result["family"], "Inductor")
-        self.assertEqual(_status_map(result)["DCR"], "Match")  # 20 <= 25
+        self.assertEqual(_status_map(result)["DCR"], "Different")  # 20 vs 25, no fit limit
         self.assertEqual(_status_map(build_datasheet_comparison(original, low_isat))["Saturation current"], "Different")
         self.assertNotIn("Architecture", {r["Attribute"] for r in result["rows"]})
         self._assert_ui_pdf_parity(original, better_dcr, result)
@@ -343,8 +361,8 @@ class FamilyRawPayloadContractTests(unittest.TestCase):
         result = build_datasheet_comparison(original, candidate)
         self.assertEqual(result["family"], "Diode / protection")
         statuses = _status_map(result)
-        self.assertEqual(statuses["Reverse voltage"], "Match")
-        self.assertEqual(statuses["Forward voltage"], "Match")
+        self.assertEqual(statuses["Reverse voltage"], "Different")  # 40 vs 30, no fit limit
+        self.assertEqual(statuses["Forward voltage"], "Different")  # 450 vs 800, no fit limit
         self.assertEqual(_status_map(build_datasheet_comparison(original, high_vf))["Forward voltage"], "Different")
         _assert_no_architecture(self, result)
         self._assert_ui_pdf_parity(original, candidate, result)
@@ -451,9 +469,9 @@ class FamilyRawPayloadContractTests(unittest.TestCase):
                 ("Voltage - Collector Base (Max)", "60V"),
                 ("Current - Collector (Ic) (Max)", "200mA"),
                 ("DC Current Gain (hFE) (Min) @ Ic, Vce", "100 @ 10mA, 1V"),
-                ("Power - Max", "350mW"),
+                ("Power - Max", "300mW"),
                 ("Frequency - Transition", "300MHz"),
-                ("Vce Saturation (Max) @ Ib, Ic", "250mV @ 5mA, 50mA"),
+                ("Vce Saturation (Max) @ Ib, Ic", "300mV @ 5mA, 50mA"),
                 ("Current - Collector Cutoff (Max)", "50nA"),
                 ("Operating Temperature", "-55°C ~ 150°C"),
             ],
@@ -473,10 +491,17 @@ class FamilyRawPayloadContractTests(unittest.TestCase):
         self.assertEqual(statuses["VCEO"], "Match")
         self.assertEqual(statuses["IC max"], "Match")
         self.assertEqual(statuses["hFE"], "Match")
-        self.assertEqual(statuses["Power dissipation"], "Match")  # 350 >= 300
+        self.assertEqual(statuses["Power dissipation"], "Match")
         self.assertEqual(statuses["Transition frequency"], "Match")
-        self.assertEqual(statuses["VCE(sat)"], "Match")  # 250mV <= 300mV
+        self.assertEqual(statuses["VCE(sat)"], "Match")
         self.assertEqual(statuses["Pinout / footprint"], "Match")
+        # Unequal LIMIT without fit criteria must not be Compatible.
+        unequal = dict(candidate)
+        unequal["power_dissipation"] = "350mW"
+        unequal["vce_saturation"] = "250mV @ 5mA, 50mA"
+        unequal_statuses = _status_map(build_datasheet_comparison(original, unequal))
+        self.assertEqual(unequal_statuses["Power dissipation"], "Different")
+        self.assertEqual(unequal_statuses["VCE(sat)"], "Different")
         _assert_no_architecture(self, result)
         assessment = build_engineering_evidence_assessment(
             result["counts"], comparison_rows=result["rows"], family=result["family"]
@@ -554,7 +579,7 @@ class FamilyRawPayloadContractTests(unittest.TestCase):
         result = build_datasheet_comparison(original, better)
         self.assertEqual(result["family"], "MOSFET")
         self.assertEqual(original["rds_on"], "54mOhm @ 2.8A, 4.5V")
-        self.assertEqual(_status_map(result)["RDS(on)"], "Match")
+        self.assertEqual(_status_map(result)["RDS(on)"], "Different")  # lower RDS without fit limit
         self.assertEqual(_status_map(build_datasheet_comparison(original, worse))["RDS(on)"], "Different")
         _assert_no_architecture(self, result)
         self._assert_ui_pdf_parity(original, better, result)
@@ -599,7 +624,7 @@ class FamilyRawPayloadContractTests(unittest.TestCase):
         self.assertEqual(result["family"], "Regulator")
         self.assertEqual(original["output_voltage"], "3.3V")
         self.assertEqual(original["dropout_voltage"], "0.4V @ 600mA")
-        self.assertEqual(_status_map(result)["Dropout voltage"], "Match")
+        self.assertEqual(_status_map(result)["Dropout voltage"], "Different")  # lower dropout without fit limit
         self._assert_ui_pdf_parity(original, candidate, result)
 
     # ------------------------------------------------------------------ #
