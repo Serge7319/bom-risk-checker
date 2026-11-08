@@ -224,8 +224,13 @@ def _finding_label(status: str, original: str, candidate: str, evidence: str = "
     note = str(evidence or "").strip()
     if original and candidate and status == "Match":
         if note and "match exactly" not in note.casefold() and "equivalent" not in note.casefold():
-            return "Compatible", f"{note} This is not an approval to use the part."
-        return "Compatible", "The retrieved values match. This is not an approval to use the part."
+            return "Compatible", f"{note} This is not an approval to substitute."
+        return "Compatible", "The retrieved values match. This is not an approval to substitute."
+    if status == "Conflicting":
+        return (
+            "Conflicting evidence",
+            note or "Cited sources disagree for this attribute. Leave it unverified until resolved.",
+        )
     if original and candidate and status == "Different":
         return "Known conflict", note or "The retrieved values differ. Review this difference before use."
     if original and candidate and status == "Needs review":

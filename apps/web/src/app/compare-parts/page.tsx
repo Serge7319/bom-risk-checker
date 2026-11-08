@@ -41,7 +41,13 @@ function reportLabel(row: Row) {
 
 function isUnknown(row: Row) {
   const assessment = text(row.Assessment || row.assessment || row.Status || "").toLowerCase();
-  return assessment.includes("unable to confirm") || assessment.includes("needs data") || assessment.includes("needs validation");
+  return (
+    assessment.includes("unable to confirm")
+    || assessment.includes("needs data")
+    || assessment.includes("needs validation")
+    || assessment.includes("needs verification")
+    || assessment.includes("conflict")
+  );
 }
 
 function evidenceLabel(source: unknown) {
@@ -341,7 +347,7 @@ function ComparePartsInner() {
       <form className="cv-card pad cv-compare-input-card" onSubmit={onSubmit}>
         <div className="cv-form-grid">
           <div className="cv-field">
-            <label htmlFor="part-a">Part A · current design</label>
+            <label htmlFor="part-a">Current · design MPN</label>
             <input
               id="part-a"
               value={partA}
@@ -352,7 +358,7 @@ function ComparePartsInner() {
             />
           </div>
           <div className="cv-field">
-            <label htmlFor="part-b">Part B · candidate</label>
+            <label htmlFor="part-b">Candidate · MPN</label>
             <input
               id="part-b"
               value={partB}
@@ -437,8 +443,8 @@ function ComparePartsInner() {
 
           <div className="cv-compare-parts-grid">
             {([
-              ["a", "Part A · current design", result.part_a],
-              ["b", "Part B · candidate", result.part_b],
+              ["a", "Current", result.part_a],
+              ["b", "Candidate", result.part_b],
             ] as Array<[string, string, unknown]>).map(([key, heading, mpn]) => {
               const card = (key === "a" ? cards.a : cards.b) || {};
               const source = key === "a" ? result.source_a : result.source_b;
@@ -496,13 +502,40 @@ function ComparePartsInner() {
             {rows.length ? (
               <div className="cv-table-wrap" style={{ marginTop: 14 }}>
                 <table className="cv-table cv-compare-table">
-                  <thead><tr><th>Property</th><th>Current part</th><th>Candidate</th><th>Assessment</th><th>Evidence / review note</th></tr></thead>
+                  <thead>
+                    <tr>
+                      <th>Property</th>
+                      <th>Current</th>
+                      <th>Candidate</th>
+                      <th>Sources</th>
+                      <th>Class / condition</th>
+                      <th>Assessment</th>
+                      <th>Evidence / review note</th>
+                    </tr>
+                  </thead>
                   <tbody>
                     {rows.map((row, index) => (
                       <tr key={`${String(row.Attribute || "attr")}-${index}`}>
                         <td><strong>{text(row.Attribute || row.attribute)}</strong></td>
-                        <td>{text(row["Part A"] || row.part_a)}</td>
-                        <td>{text(row["Part B"] || row.part_b)}</td>
+                        <td>
+                          {text(row["Part A"] || row.part_a)}
+                          {row["Part A MPN"] ? <div className="cv-small-note">{text(row["Part A MPN"])}</div> : null}
+                          {row.Unit ? <div className="cv-small-note">{text(row.Unit)}</div> : null}
+                        </td>
+                        <td>
+                          {text(row["Part B"] || row.part_b)}
+                          {row["Part B MPN"] ? <div className="cv-small-note">{text(row["Part B MPN"])}</div> : null}
+                        </td>
+                        <td>
+                          <div className="cv-small-note">A: {text(row["Part A source"], "Not stated")}</div>
+                          <div className="cv-small-note">B: {text(row["Part B source"], "Not stated")}</div>
+                        </td>
+                        <td>
+                          <div className="cv-small-note">
+                            {text(row["Part A value class"], "unknown")} → {text(row["Part B value class"], "unknown")}
+                          </div>
+                          <div className="cv-small-note">{text(row["Test condition"], "Not stated")}</div>
+                        </td>
                         <td>
                           <span className={`cv-compare-assessment${isUnknown(row) ? " unknown" : ""}`}>
                             {text(row.Assessment || row.assessment || row.Status)}
@@ -656,7 +689,7 @@ function ComparePartsInner() {
                   </label>
                   <div className="cv-modal-component-pair">
                     <label className="cv-field">
-                      <span>Current part</span>
+                      <span>Current</span>
                       <input
                         value={decisionPartA}
                         onChange={(event) => setDecisionPartA(event.target.value)}
@@ -687,7 +720,7 @@ function ComparePartsInner() {
                   </div>
                   <div className="cv-modal-component-pair">
                     <label className="cv-field">
-                      <span>Current part</span>
+                      <span>Current</span>
                       <input
                         value={decisionPartA}
                         onChange={(event) => setDecisionPartA(event.target.value)}

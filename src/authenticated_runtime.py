@@ -20853,11 +20853,6 @@ def run_authenticated_app() -> None:
 
             comparison_rows = [
                 {
-                    "Attribute": "Part Number",
-                    "Original": original_part,
-                    "Selected Alternative": selected_row.get("Alternative Part", ""),
-                },
-                {
                     "Attribute": "Lifecycle",
                     "Original": original_data.get("lifecycle_status", "Unknown"),
                     "Selected Alternative": selected_row.get("Lifecycle", "Unknown"),
@@ -21519,28 +21514,46 @@ def run_authenticated_app() -> None:
                 else:
                     history_rows = []
                     for record in part_decision_history:
+                        checks = record.get("validation_checks") or []
+                        if isinstance(checks, str):
+                            check_text = checks
+                        elif isinstance(checks, list):
+                            check_text = " · ".join(
+                                str(item).replace("_", " ") for item in checks if item
+                            )
+                        else:
+                            check_text = ""
                         history_rows.append(
                             {
                                 "Date": record.get("updated_at")
                                 or record.get("created_at", ""),
-                                "Decision": record.get("decision", ""),
+                                "Decision": record.get("decision", "")
+                                or record.get("decision_label", ""),
                                 "Engineer": record.get("engineer_name", "")
+                                or record.get("reviewer", "")
                                 or "Cadivor user",
-                                "Candidate": record.get("alternative_part", ""),
+                                "Candidate": record.get("alternative_part", "")
+                                or record.get("part_b", ""),
                                 "Project": record.get("project_name", "")
                                 or (
                                     "Standalone Alternative Finder"
                                     if record.get("context_key") == "standalone"
                                     else record.get("context_key", "")
                                 ),
-                                "Original": record.get("original_part", ""),
+                                "Original": record.get("original_part", "")
+                                or record.get("part_a", ""),
+                                "Checks": check_text or "—",
+                                "Follow-up": record.get("follow_up_action", "") or "—",
+                                "Residual risk": record.get("residual_risk", "")
+                                or "not assessed",
                                 "Score": record.get("recommendation_score", 0),
                                 "Compatibility": record.get(
                                     "compatibility_confidence", 0
                                 ),
                                 "Risk": record.get("risk", ""),
                                 "Supplier": record.get("supplier", ""),
-                                "Note": record.get("engineering_note", ""),
+                                "Note": record.get("engineering_note", "")
+                                or record.get("rationale", ""),
                             }
                         )
 

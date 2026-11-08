@@ -79,23 +79,33 @@ def _require_analysis(
 
 
 def _customer_assessment(value: Any) -> str:
-    """Map internal needs-data labels to customer-facing Unable to confirm."""
+    """Map internal needs-data labels to customer-facing Needs verification."""
     text = str(value or "").strip()
     lower = text.lower()
     if not text:
-        return "Unable to confirm"
-    if "needs data" in lower or "needs validation" in lower:
-        return "Unable to confirm"
+        return "Needs verification"
+    if "conflict" in lower:
+        return "Conflicting evidence"
+    if (
+        "needs data" in lower
+        or "needs validation" in lower
+        or "needs verification" in lower
+        or "unable to confirm" in lower
+        or "unassess" in lower
+    ):
+        return "Needs verification"
     return text
 
 
 def _customer_compare_value(value: Any) -> Any:
     text = str(value or "").strip()
     if not text or text.lower() in {"none", "null", "n/a", "—", "-"}:
-        return "Unable to confirm"
+        return "Needs verification"
     lower = text.lower()
     if "not stated" in lower or "not retrieved" in lower or "not available" in lower:
-        return "Unable to confirm"
+        return "Needs verification"
+    if "unable to confirm" in lower:
+        return "Needs verification"
     return value
 
 
@@ -361,6 +371,14 @@ def compare_parts_payload(
                             row.get("Candidate", row.get("Selected Alternative", "")),
                         )
                     ),
+                    "Part A MPN": row.get("Part A MPN") or a,
+                    "Part B MPN": row.get("Part B MPN") or b,
+                    "Part A source": row.get("Part A source") or row.get("OriginalSource") or "Not stated",
+                    "Part B source": row.get("Part B source") or row.get("CandidateSource") or "Not stated",
+                    "Unit": row.get("Unit") or "",
+                    "Test condition": row.get("Test condition") or "Not stated",
+                    "Part A value class": row.get("Part A value class") or "unknown",
+                    "Part B value class": row.get("Part B value class") or "unknown",
                     "Assessment": _customer_assessment(
                         row.get("Assessment") or row.get("Status") or ""
                     ),

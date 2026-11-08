@@ -247,19 +247,61 @@ export default function ReportPage() {
               <div className="cv-table-wrap" style={{ marginTop: 12 }}>
                 <table className="cv-table">
                   <thead>
-                    <tr><th>Saved</th><th>Current part</th><th>Candidate</th><th>Decision</th><th>Reviewer / rationale</th><th>Evidence status</th></tr>
+                    <tr>
+                      <th>Saved</th>
+                      <th>Current</th>
+                      <th>Candidate</th>
+                      <th>Decision</th>
+                      <th>Reviewer / rationale</th>
+                      <th>Approval details</th>
+                      <th>Evidence status</th>
+                    </tr>
                   </thead>
                   <tbody>
-                    {decisions.map((decision) => (
+                    {decisions.map((decision) => {
+                      const snapshot = (decision.comparison_snapshot || {}) as Record<string, unknown>;
+                      const evidenceStatus = String(
+                        snapshot.engineering_evidence_status
+                        || (decision.verified_primary_evidence ? "verified" : "unverified")
+                      );
+                      return (
                       <tr key={decision.id}>
                         <td>{decision.created_at ? new Date(decision.created_at).toLocaleDateString() : "—"}</td>
                         <td><strong>{decision.part_a}</strong></td>
                         <td><strong>{decision.part_b}</strong></td>
                         <td><span className="cv-badge blue">{decision.decision_label}</span></td>
-                        <td>{decision.reviewer}<div className="cv-muted">{decision.rationale}</div></td>
-                        <td><span className="cv-badge amber">Not qualified by Cadivor</span><div className="cv-small-note">{decision.qualification_note}</div></td>
+                        <td>
+                          {decision.reviewer}
+                          <div className="cv-muted">{decision.rationale}</div>
+                        </td>
+                        <td>
+                          {decision.validation_checks?.length ? (
+                            <div className="cv-small-note">
+                              Checks: {decision.validation_checks.map((item) => item.replaceAll("_", " ")).join(" · ")}
+                            </div>
+                          ) : (
+                            <div className="cv-small-note">No validation checks recorded</div>
+                          )}
+                          {decision.follow_up_action ? (
+                            <div className="cv-small-note">
+                              Follow-up: {decision.follow_up_action}
+                              {decision.follow_up_owner ? ` · ${decision.follow_up_owner}` : ""}
+                              {decision.follow_up_due_date ? ` · due ${decision.follow_up_due_date}` : ""}
+                            </div>
+                          ) : null}
+                          <div className="cv-small-note">Residual risk: {decision.residual_risk || "not assessed"}</div>
+                          {snapshot.finding ? (
+                            <div className="cv-small-note">Compare finding: {String(snapshot.finding)}</div>
+                          ) : null}
+                        </td>
+                        <td>
+                          <span className="cv-badge amber">Not qualified by Cadivor</span>
+                          <div className="cv-small-note">Snapshot evidence: {evidenceStatus}</div>
+                          <div className="cv-small-note">{decision.qualification_note}</div>
+                        </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

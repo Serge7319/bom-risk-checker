@@ -1086,6 +1086,21 @@ async def decision_records_post(request: Request) -> JSONResponse:
                 "gap",
             )
         }
+        source_a = str(comparison.get("source_a") or "").casefold()
+        source_b = str(comparison.get("source_b") or "").casefold()
+        identity = comparison.get("datasheet_identity") if isinstance(comparison.get("datasheet_identity"), dict) else {}
+        identity_a = identity.get("part_a") if isinstance(identity.get("part_a"), dict) else {}
+        identity_b = identity.get("part_b") if isinstance(identity.get("part_b"), dict) else {}
+        identity_verified = bool(identity_a.get("verified")) and bool(identity_b.get("verified"))
+        sources_resolved = (
+            source_a
+            and source_b
+            and "unverified" not in source_a
+            and "unverified" not in source_b
+            and source_a not in {"", "missing", "none"}
+            and source_b not in {"", "missing", "none"}
+        )
+        checks_complete = required_approval_checks.issubset(set(validation_checks))
         record = get_store().create_decision_record(
             {
                 "analysis_id": analysis_id,
@@ -1103,7 +1118,9 @@ async def decision_records_post(request: Request) -> JSONResponse:
                 "follow_up_owner": follow_up_owner,
                 "follow_up_due_date": follow_up_due_date or None,
                 "residual_risk": residual_risk,
-                "verified_primary_evidence": required_approval_checks.issubset(set(validation_checks)),
+                "verified_primary_evidence": bool(
+                    checks_complete and identity_verified and sources_resolved
+                ),
                 "qualification_status": "not-qualified-by-cadivor",
                 "qualification_note": (
                     "This record captures a human decision and did not automatically qualify "

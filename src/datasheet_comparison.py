@@ -31,8 +31,10 @@ from src.component_family_profiles import (
     pdf_label_aliases,
 )
 from src.parametric_compare import (
+    classify_value_condition,
     compare_field_values,
     engineering_confidence_from_rows,
+    extract_test_condition,
     normalize_mounting_style,
 )
 
@@ -47,7 +49,16 @@ USER_FACING_COMPARISON_COLUMNS = (
     "Attribute",
     "Original",
     "Candidate",
+    "Part A MPN",
+    "Part B MPN",
+    "Part A source",
+    "Part B source",
+    "Unit",
+    "Test condition",
+    "Part A value class",
+    "Part B value class",
     "Result",
+    "Assessment",
     "Evidence",
 )
 INTERNAL_COMPARISON_METADATA_COLUMNS = (
@@ -549,7 +560,9 @@ def merge_verified_datasheet_rows(
             status = str(current.get("Status") or "Needs data")
             compare_note = str(current.get("Evidence") or "")
         if conflict:
-            status = "Different"
+            status = "Conflicting"
+            if "conflict" not in " ".join(notes).casefold():
+                notes.insert(0, "Conflicting evidence was found between cited sources for this attribute.")
         if not notes:
             notes.append(compare_note)
         blank_a = (
@@ -562,10 +575,32 @@ def merge_verified_datasheet_rows(
             if identity["part_b"]["verified"]
             else _NOT_STATED
         )
-        current["Original"] = display_a or blank_a
-        current["Candidate"] = display_b or blank_b
+        display_a_final = display_a or blank_a
+        display_b_final = display_b or blank_b
+        source_label_a = (
+            f"{label_a}" + (f", field: {excerpt_a.split(':', 1)[0].strip()}" if excerpt_a and ":" in excerpt_a else "")
+            if source_a == "evidence"
+            else ("supplier catalog" if source_a == "catalog" else "none")
+        )
+        source_label_b = (
+            f"{label_b}" + (f", field: {excerpt_b.split(':', 1)[0].strip()}" if excerpt_b and ":" in excerpt_b else "")
+            if source_b == "evidence"
+            else ("supplier catalog" if source_b == "catalog" else "none")
+        )
+        current["Original"] = display_a_final
+        current["Candidate"] = display_b_final
         current["OriginalSource"] = source_a if display_a else "none"
         current["CandidateSource"] = source_b if display_b else "none"
+        current["Part A source"] = source_label_a if display_a else "Not stated"
+        current["Part B source"] = source_label_b if display_b else "Not stated"
+        current["Part A MPN"] = mpn_a
+        current["Part B MPN"] = mpn_b
+        current["Unit"] = getattr(spec, "unit", "") if spec is not None else current.get("Unit", "")
+        current["Part A value class"] = classify_value_condition(display_a_final if display_a else "")
+        current["Part B value class"] = classify_value_condition(display_b_final if display_b else "")
+        current["Test condition"] = extract_test_condition(
+            f"{display_a_final} {display_b_final}" if (display_a or display_b) else ""
+        )
         current["Status"] = status
         current["Evidence"] = " ".join(notes)
         merged.append(current)
@@ -673,7 +708,21 @@ def build_datasheet_comparison(original: dict, candidate: dict) -> dict:
     family = infer_component_family(original)
     profile = get_family_profile(family)
     fields = comparison_fields(profile)
-    rows, counts = [], {"Match": 0, "Different": 0, "Needs data": 0}
+    rows, counts = [], {"Match": 0, "Different": 0, "Needs data": 0, "Conflicting": 0}
+    original_mpn = str(
+        original.get("manufacturer_part_number")
+        or original.get("Manufacturer Part Number")
+        or original.get("mpn")
+        or ""
+    ).strip()
+    candidate_mpn = str(
+        candidate.get("manufacturer_part_number")
+        or candidate.get("Manufacturer Part Number")
+        or candidate.get("mpn")
+        or ""
+    ).strip()
+    original_sources = original.get("field_sources") if isinstance(original.get("field_sources"), dict) else {}
+    candidate_sources = candidate.get("field_sources") if isinstance(candidate.get("field_sources"), dict) else {}
     for spec in fields:
         if spec.key == "pin_count":
             original_value = _display_pin_count(original)
@@ -689,7 +738,7 @@ def build_datasheet_comparison(original: dict, candidate: dict) -> dict:
             candidate_value = _lifecycle_record_text(candidate)
         status, note = compare_field_values(original_value, candidate_value, spec)
         if original_conflict or candidate_conflict:
-            status = "Different"
+            status = "Conflicting"
             if original_value or candidate_value:
                 note = (
                     "Conflicting supplier records are listed in the value cells with source and time. "
@@ -702,15 +751,27 @@ def build_datasheet_comparison(original: dict, candidate: dict) -> dict:
                     "A lifecycle conflict was reported, but the individual supplier records were not retained."
                 )
         note = f"{note}{_CATALOG_SOURCE}"
-        counts[status] += 1
+        counts[status] = int(counts.get(status) or 0) + 1
+        source_a = str(original_sources.get(spec.key) or original.get("source") or "").strip() or "Not stated"
+        source_b = str(candidate_sources.get(spec.key) or candidate.get("source") or "").strip() or "Not stated"
         rows.append({
             "Attribute": spec.label,
             "Key": spec.key,
             "Required": bool(spec.required),
             "CompareMode": spec.compare,
             "ValueRole": spec.value_role,
+            "Unit": spec.unit or "",
             "Original": original_value or _NOT_STATED,
             "Candidate": candidate_value or _NOT_STATED,
+            "Part A MPN": original_mpn,
+            "Part B MPN": candidate_mpn,
+            "Part A source": source_a if original_value else "Not stated",
+            "Part B source": source_b if candidate_value else "Not stated",
+            "OriginalSource": source_a if original_value else "none",
+            "CandidateSource": source_b if candidate_value else "none",
+            "Part A value class": classify_value_condition(original_value),
+            "Part B value class": classify_value_condition(candidate_value),
+            "Test condition": extract_test_condition(f"{original_value} {candidate_value}"),
             "Status": status,
             "Evidence": note,
         })
@@ -725,24 +786,60 @@ def build_datasheet_comparison(original: dict, candidate: dict) -> dict:
 
 
 def user_facing_comparison_rows(rows: list | None) -> list[dict]:
-    """Project comparison rows to the standard end-user column set.
-
-    Internal schema metadata (Key / Required / CompareMode / ValueRole) is
-    omitted. Status is exposed as Result for the user-facing table.
-    """
+    """Project comparison rows to the standard end-user column set with provenance."""
     projected: list[dict] = []
     for row in rows or []:
         if not isinstance(row, dict):
             continue
+        status = str(row.get("Status") or row.get("Result") or "")
+        original = row.get("Original", row.get("Part A", ""))
+        candidate = row.get(
+            "Candidate",
+            row.get("Part B", row.get("Selected Alternative", "")),
+        )
+        folded = status.casefold()
+        if status == "Match" or "compatible" in folded:
+            result = "Match"
+            assessment = "Compatible on available evidence"
+        elif status == "Conflicting" or "conflict" in folded:
+            result = "Conflicting"
+            assessment = "Conflicting evidence"
+        elif status == "Different" or "material" in folded:
+            result = "Different"
+            assessment = "Material difference"
+        else:
+            result = "Needs data"
+            assessment = "Needs verification"
+        source_a = (
+            row.get("Part A source")
+            or row.get("OriginalSource")
+            or row.get("Original Source")
+            or ""
+        )
+        source_b = (
+            row.get("Part B source")
+            or row.get("CandidateSource")
+            or row.get("Candidate Source")
+            or ""
+        )
         projected.append(
             {
                 "Attribute": row.get("Attribute", ""),
-                "Original": row.get("Original", ""),
-                "Candidate": row.get(
-                    "Candidate",
-                    row.get("Selected Alternative", ""),
-                ),
-                "Result": row.get("Result", row.get("Status", "")),
+                "Original": original,
+                "Candidate": candidate,
+                "Part A MPN": row.get("Part A MPN") or row.get("Original MPN") or "",
+                "Part B MPN": row.get("Part B MPN") or row.get("Candidate MPN") or "",
+                "Part A source": source_a or "Not stated",
+                "Part B source": source_b or "Not stated",
+                "Unit": row.get("Unit") or row.get("unit") or "",
+                "Test condition": row.get("Test condition")
+                or extract_test_condition(f"{original} {candidate}"),
+                "Part A value class": row.get("Part A value class")
+                or classify_value_condition(original),
+                "Part B value class": row.get("Part B value class")
+                or classify_value_condition(candidate),
+                "Result": result,
+                "Assessment": assessment,
                 "Evidence": row.get("Evidence", ""),
             }
         )

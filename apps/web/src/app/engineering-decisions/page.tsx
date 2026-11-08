@@ -237,6 +237,27 @@ function EngineeringDecisionsPageInner() {
                           </div>
                         ) : null}
                         <div className="cv-small-note">Residual risk: {record.residual_risk || "not assessed"}</div>
+                        {(() => {
+                          const snapshot = (record.comparison_snapshot || {}) as Record<string, unknown>;
+                          const finding = snapshot.finding ? String(snapshot.finding) : "";
+                          const evidenceStatus = String(
+                            snapshot.engineering_evidence_status
+                            || (record.verified_primary_evidence ? "verified" : "unverified"),
+                          );
+                          const sourceA = snapshot.source_a ? String(snapshot.source_a) : "";
+                          const sourceB = snapshot.source_b ? String(snapshot.source_b) : "";
+                          return (
+                            <>
+                              {finding ? <div className="cv-small-note">Compare finding: {finding}</div> : null}
+                              <div className="cv-small-note">Snapshot evidence: {evidenceStatus}</div>
+                              {sourceA || sourceB ? (
+                                <div className="cv-small-note">
+                                  Sources: {sourceA || "unverified"} → {sourceB || "unverified"}
+                                </div>
+                              ) : null}
+                            </>
+                          );
+                        })()}
                         <div className="cv-small-note">{record.qualification_note}</div>
                       </td>
                       <td>
