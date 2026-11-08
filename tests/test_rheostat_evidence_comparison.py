@@ -122,7 +122,7 @@ class RheostatEvidenceComparisonTests(unittest.TestCase):
         self.assertIn("Supplier A: Active (2024-01-02)", lifecycle["Part A"])
         self.assertIn("Supplier B: Obsolete (2024-03-04)", lifecycle["Part A"])
         self.assertNotEqual(lifecycle["Part A"], "Conflicting supplier data")
-        self.assertEqual(lifecycle["Assessment"], "Material difference")
+        self.assertEqual(lifecycle["Assessment"], "Conflicting evidence")
 
         mounting = next(row for row in comparison["rows"] if row["Attribute"] == "Mounting")
         self.assertEqual(mounting["Assessment"], "Compatible on available evidence")

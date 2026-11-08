@@ -132,18 +132,74 @@ def normalize_type_token(value: object) -> str:
     return text
 
 
+def classify_value_condition(text: object) -> str:
+    """Classify a datasheet/supplier value as typical, min, max, guaranteed, or unknown."""
+    folded = str(text or "").casefold()
+    if not folded.strip():
+        return "unknown"
+    if re.search(r"\bguarant(?:eed|y)\b", folded):
+        return "guaranteed"
+    if re.search(r"\btyp(?:ical|\.?)\b", folded) or "(typ" in folded:
+        return "typical"
+    if re.search(r"\bmin(?:imum|\.?)\b", folded) or "(min" in folded:
+        return "minimum"
+    if re.search(r"\bmax(?:imum|\.?)\b", folded) or "(max" in folded:
+        return "maximum"
+    return "unknown"
+
+
+def extract_test_condition(text: object) -> str:
+    """Return a short test-condition fragment when the source text states one."""
+    raw = str(text or "").strip()
+    if not raw:
+        return "Not stated"
+    at_match = re.search(
+        r"(?:@|\bat\b)\s*([^;|/]+?)(?:\s*[;|/]|$)",
+        raw,
+        flags=re.IGNORECASE,
+    )
+    if at_match:
+        condition = at_match.group(1).strip(" .,;")
+        return condition or "Not stated"
+    paren = re.search(
+        r"\(([^)]*(?:typ|min|max|guarant|V|A|C)[^)]*)\)",
+        raw,
+        flags=re.IGNORECASE,
+    )
+    if paren:
+        return paren.group(1).strip() or "Not stated"
+    return "Not stated"
+
+
 def compare_field_values(
     original_value: object,
     candidate_value: object,
     spec: FieldSpec,
 ) -> tuple[str, str]:
-    """Return Match / Different / Needs data with an evidence note."""
+    """Return Match / Different / Needs data / Conflicting with an evidence note."""
     original_text = str(original_value or "").strip()
     candidate_text = str(candidate_value or "").strip()
     if not original_text or not candidate_text:
         return (
             "Needs data",
             "One or both values were not available from the retrieved evidence.",
+        )
+
+    original_class = classify_value_condition(original_text)
+    candidate_class = classify_value_condition(candidate_text)
+    comparable_classes = {"typical", "minimum", "maximum", "guaranteed"}
+    if (
+        original_class in comparable_classes
+        and candidate_class in comparable_classes
+        and original_class != candidate_class
+    ):
+        return (
+            "Needs data",
+            (
+                f"The original value is labeled {original_class} and the candidate value is "
+                f"labeled {candidate_class}, so the conditions are not comparable. "
+                "Risk remains unverified until matching conditions are cited."
+            ),
         )
 
     mode = spec.compare
@@ -250,12 +306,9 @@ def supply_range_finding(original: object, candidate: object) -> tuple[str, str]
 
 
 def _condition_label(text: object) -> str:
-    folded = str(text or "").casefold()
-    if "typ" in folded:
-        return "typical"
-    if re.search(r"\bmax(?:imum)?\b", folded):
-        return "maximum"
-    return ""
+    """Backward-compatible alias for classify_value_condition (empty when unknown)."""
+    label = classify_value_condition(text)
+    return "" if label == "unknown" else label
 
 
 def bias_condition_finding(
@@ -273,19 +326,23 @@ def bias_condition_finding(
         return None
     if abs(candidate_value - original_value) <= max(abs(original_value), abs(candidate_value), 1e-30) * 0.02:
         return None
-    original_condition = _condition_label(original_text)
-    candidate_condition = _condition_label(candidate_text)
-    if original_condition and candidate_condition and original_condition != candidate_condition:
+    original_condition = classify_value_condition(original_text)
+    candidate_condition = classify_value_condition(candidate_text)
+    if (
+        original_condition != "unknown"
+        and candidate_condition != "unknown"
+        and original_condition != candidate_condition
+    ):
         condition = (
             f"The original value is labeled {original_condition} and the candidate value is labeled "
             f"{candidate_condition}, so the conditions are not comparable."
         )
-    elif original_condition and original_condition == candidate_condition:
+    elif original_condition != "unknown" and original_condition == candidate_condition:
         condition = f"Both values are labeled {original_condition}."
     else:
         condition = (
-            "The supplier records do not state whether these are typical or maximum values, "
-            "so the conditions are not confirmed to be comparable."
+            "The supplier records do not state whether these are typical, minimum, maximum, "
+            "or guaranteed values, so the conditions are not confirmed to be comparable."
         )
     if candidate_value <= original_value:
         return (
@@ -325,7 +382,7 @@ def engineering_confidence_from_rows(
         label = str(row.get("Attribute") or "")
         if status == "Match":
             matches += 1
-        elif status == "Different":
+        elif status in {"Different", "Conflicting"}:
             differences += 1
         else:
             needs_data += 1

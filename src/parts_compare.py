@@ -30,7 +30,10 @@ from src.part_images import normalize_supplier_image_url
 
 FINDING_COMPATIBLE = "Compatible on available evidence"
 FINDING_MATERIAL = "Material difference"
-FINDING_NEEDS_DATA = "Needs data / engineering validation"
+FINDING_CONFLICTING = "Conflicting evidence"
+FINDING_NEEDS_VERIFICATION = "Needs verification"
+# Legacy alias kept for older call sites / tests that still import the name.
+FINDING_NEEDS_DATA = FINDING_NEEDS_VERIFICATION
 
 COMPARE_PARTS_PART_A_WIDGET_KEY = "compare_parts_part_a"
 COMPARE_PARTS_PART_B_WIDGET_KEY = "compare_parts_part_b"
@@ -56,6 +59,14 @@ USER_FACING_COMPARE_COLUMNS = (
     "Attribute",
     "Part A",
     "Part B",
+    "Part A MPN",
+    "Part B MPN",
+    "Part A source",
+    "Part B source",
+    "Unit",
+    "Test condition",
+    "Part A value class",
+    "Part B value class",
     "Assessment",
     "Evidence",
 )
@@ -115,27 +126,59 @@ def claim_compare_parts_submit(
 
 def map_status_to_assessment(status: str) -> str:
     normalized = str(status or "").strip()
-    if normalized == "Match":
+    folded = normalized.casefold()
+    if normalized == "Match" or folded == FINDING_COMPATIBLE.casefold():
         return FINDING_COMPATIBLE
-    if normalized == "Different":
+    if normalized == "Conflicting" or "conflict" in folded:
+        return FINDING_CONFLICTING
+    if normalized == "Different" or folded == FINDING_MATERIAL.casefold():
         return FINDING_MATERIAL
-    return FINDING_NEEDS_DATA
+    return FINDING_NEEDS_VERIFICATION
 
 
 def user_facing_compare_rows(rows: list | None) -> list[dict]:
-    """Project comparison rows to Part A / Part B columns without internal metadata."""
+    """Project comparison rows with per-field provenance for UI/API/exports."""
+    from src.parametric_compare import classify_value_condition, extract_test_condition
+
     projected: list[dict] = []
     for row in rows or []:
         if not isinstance(row, dict):
             continue
         status = str(row.get("Status") or row.get("Result") or "")
+        part_a = row.get("Original", row.get("Part A", ""))
+        part_b = row.get(
+            "Candidate",
+            row.get("Part B", row.get("Selected Alternative", "")),
+        )
+        source_a = (
+            row.get("Part A source")
+            or row.get("OriginalSource")
+            or row.get("Original Source")
+            or ""
+        )
+        source_b = (
+            row.get("Part B source")
+            or row.get("CandidateSource")
+            or row.get("Candidate Source")
+            or ""
+        )
+        class_a = row.get("Part A value class") or classify_value_condition(part_a)
+        class_b = row.get("Part B value class") or classify_value_condition(part_b)
+        test_condition = row.get("Test condition") or extract_test_condition(
+            f"{part_a} {part_b}"
+        )
         item = {
             "Attribute": row.get("Attribute", ""),
-            "Part A": row.get("Original", row.get("Part A", "")),
-            "Part B": row.get(
-                "Candidate",
-                row.get("Part B", row.get("Selected Alternative", "")),
-            ),
+            "Part A": part_a,
+            "Part B": part_b,
+            "Part A MPN": row.get("Part A MPN") or row.get("Original MPN") or "",
+            "Part B MPN": row.get("Part B MPN") or row.get("Candidate MPN") or "",
+            "Part A source": source_a or "Not stated",
+            "Part B source": source_b or "Not stated",
+            "Unit": row.get("Unit") or row.get("unit") or "",
+            "Test condition": test_condition or "Not stated",
+            "Part A value class": class_a,
+            "Part B value class": class_b,
             "Assessment": map_status_to_assessment(status),
             "Evidence": customer_facing_evidence_text(row.get("Evidence", "")),
         }
@@ -1623,18 +1666,36 @@ def generate_parts_comparison_pdf(comparison: Mapping[str, Any]) -> bytes:
         Paragraph("Attribute comparison", section),
     ]
 
-    table_data = [["Attribute", "Part A", "Part B", "Assessment", "Evidence"]]
+    table_data = [[
+        "Attribute",
+        "Current",
+        "Candidate",
+        "Sources",
+        "Class",
+        "Assessment",
+        "Evidence",
+    ]]
     for row in rows[:40]:
+        sources = (
+            f"A: {row.get('Part A source') or 'Not stated'} · "
+            f"B: {row.get('Part B source') or 'Not stated'}"
+        )
+        value_class = (
+            f"{row.get('Part A value class') or 'unknown'} → "
+            f"{row.get('Part B value class') or 'unknown'}"
+        )
         table_data.append(
             [
                 Paragraph(str(row.get("Attribute") or ""), body),
                 Paragraph(str(row.get("Part A") or ""), body),
                 Paragraph(str(row.get("Part B") or ""), body),
+                Paragraph(sources, body),
+                Paragraph(value_class, body),
                 Paragraph(str(row.get("Assessment") or ""), body),
                 Paragraph(str(row.get("Evidence") or ""), body),
             ]
         )
-    table = Table(table_data, colWidths=[78, 88, 88, 100, 140])
+    table = Table(table_data, colWidths=[70, 72, 72, 88, 70, 80, 110])
     table.setStyle(
         TableStyle(
             [

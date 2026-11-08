@@ -269,7 +269,7 @@ def test_compare_lm358_vs_ne555_identity_and_unable_to_confirm():
         assessment = str(row.get("Assessment") or "")
         assert "needs data" not in assessment.lower()
         if str(row.get("Attribute") or "").lower() in {"package", "pin count", "pins"}:
-            assert assessment == "Unable to confirm"
+            assert assessment == "Needs verification"
 
 
 def _force_report_risk_profile(report, *, high=0, medium=0, low=None, elevate_first=False):

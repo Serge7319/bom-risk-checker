@@ -670,12 +670,18 @@ def normalize_digikey_product(product: dict) -> dict:
         supply_voltage_min = None
         supply_voltage_max = None
 
+    # Prefer Gain Bandwidth Product over a bare "Bandwidth" label so family
+    # compare does not pick an unrelated bandwidth parameter.
     bandwidth_text = extract_digikey_parameter(
         product,
-        ["Gain Bandwidth Product", "Bandwidth", "GBW"],
+        ["Gain Bandwidth Product", "Gain Bandwidth", "GBW"],
     )
+    if not bandwidth_text:
+        bandwidth_text = extract_digikey_parameter(product, ["Bandwidth"])
 
     bandwidth_mhz = extract_frequency_mhz(bandwidth_text)
+    # Alias only — do not extract GBP a second time as a separate GBW field.
+    gbw_mhz = bandwidth_mhz
 
     slew_rate_text = extract_digikey_parameter(
         product,
@@ -705,27 +711,27 @@ def normalize_digikey_product(product: dict) -> dict:
 
     quiescent_current_ma = extract_current_ma(quiescent_current_text)
 
-    gbw_text = extract_digikey_parameter(
-        product,
-        ["Gain Bandwidth Product", "Gain Bandwidth", "GBW"],
-    )
-
-    gbw_mhz = extract_frequency_mhz(gbw_text)
-
     # Family-profile-driven parametric evidence. Keys and DigiKey ParameterText
     # aliases come from the shared component-family registry so every family
     # (passives, discretes, MCU/FPGA, connectors, …) uses one map.
     from src.component_family_profiles import digikey_parametric_map
 
     parametric_fields = digikey_parametric_map()
-    # Packaging / pin / mounting / supply are already extracted above — avoid
-    # overwriting trusted values with empty secondary lookups.
+    # Packaging / pin / mounting / supply / op-amp electrics are already
+    # extracted above — never let the parametric map overwrite them.
     skip_keys = {
         "package",
         "pin_count",
         "mounting_style",
         "voltage_range",
         "lifecycle_status",
+        # Keep description-inferred architecture unless empty; parametric may
+        # still fill MCU/FPGA core fields via setdefault below.
+        "bandwidth_mhz",
+        "slew_rate_v_us",
+        "input_offset_mv",
+        "input_bias_na",
+        "gbw_mhz",
     }
     parametric = {}
     for key, names in parametric_fields.items():
@@ -743,9 +749,12 @@ def normalize_digikey_product(product: dict) -> dict:
     temperature_range = extract_digikey_parameter(product, ["Operating Temperature"])
     if temperature_range:
         parametric.setdefault("temperature_range", temperature_range)
+    amplifier_type = extract_digikey_parameter(product, ["Amplifier Type"])
+    if amplifier_type:
+        parametric.setdefault("amplifier_type", amplifier_type)
 
     unit_price_currency = _digikey_recorded_currency(product)
-    return {
+    normalized = {
         "lifecycle_status": infer_digikey_lifecycle(product),
         "primary_category": primary_category,
         "stock_total": stock_total,
@@ -790,8 +799,13 @@ def normalize_digikey_product(product: dict) -> dict:
         "input_bias_na": input_bias_na,
         "quiescent_current_ma": quiescent_current_ma,
         "gbw_mhz": gbw_mhz,
-        **parametric,
     }
+    # Fill gaps only — never overwrite trusted parsed electrics / packaging.
+    for key, value in parametric.items():
+        existing = normalized.get(key)
+        if existing in (None, "", 0, 0.0):
+            normalized[key] = value
+    return normalized
 
 def _digikey_evidence_fields(normalized: dict) -> dict:
     """Keep supplier parametric values on a catalog candidate."""

@@ -414,7 +414,9 @@ _register(FamilyProfile(
     scoring_mode="ic_weighted", architecture_meaningful=True,
     fields=(
         _f("architecture", "Function / category", compare=COMPARE_TYPE, required=True,
-           pdf=("amplifier type", "function"), digikey=("Amplifier Type",), mouser=("Amplifier Type",)),
+           pdf=("function", "device type"), digikey=(), mouser=()),
+        _f("amplifier_type", "Amplifier type", compare=COMPARE_TYPE,
+           pdf=("amplifier type",), digikey=("Amplifier Type",), mouser=("Amplifier Type",)),
         _f("channel_count", "Channels", compare=COMPARE_EXACT, required=True,
            pdf=("channels", "number of circuits"),
            digikey=("Number of Circuits",), mouser=("Number of Channels",)),
@@ -424,10 +426,10 @@ _register(FamilyProfile(
            mouser=("Supply Voltage",)),
         _f("bandwidth_mhz", "Bandwidth", compare=COMPARE_LIMIT_GE, unit="Hz",
            pdf=("bandwidth", "gain bandwidth"), role="min",
-           digikey=("Gain Bandwidth Product", "Bandwidth"), mouser=("Gain Bandwidth Product",)),
+           digikey=("Gain Bandwidth Product",), mouser=("Gain Bandwidth Product",)),
         _f("slew_rate_v_us", "Slew rate", compare=COMPARE_LIMIT_GE, pdf=("slew rate",), role="min",
            digikey=("Slew Rate",), mouser=("Slew Rate",)),
-        _f("input_offset_mv", "Input offset", compare=COMPARE_LIMIT_LE, unit="V",
+        _f("input_offset_mv", "Input offset", compare=COMPARE_LIMIT_LE, unit="",
            pdf=("input offset",), role="max",
            digikey=("Voltage - Input Offset",), mouser=("Input Offset Voltage",)),
         _f("input_bias_na", "Input bias", compare=COMPARE_LIMIT_LE, unit="A",
@@ -681,7 +683,7 @@ _register(FamilyProfile(
 ))
 
 _register(FamilyProfile(
-    id="General electronic component", display_name="General electronic component",
+    id="General electronic component", display_name="General",
     markers=(), fields=(), scoring_mode="parametric_matrix",
 ))
 

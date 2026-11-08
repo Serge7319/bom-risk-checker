@@ -531,6 +531,7 @@ export type DecisionRecord = {
   follow_up_owner?: string;
   follow_up_due_date?: string | null;
   residual_risk?: string;
+  verified_primary_evidence?: boolean;
   qualification_status: string;
   qualification_note: string;
   created_at: string;

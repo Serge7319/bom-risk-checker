@@ -419,7 +419,8 @@ class TechnicalFindingLabelTests(unittest.TestCase):
         status, note = bias_condition_finding("20 nA", "45 nA")
         self.assertEqual(status, "Needs review")
         self.assertIn("higher input bias", note)
-        self.assertIn("typical or maximum", note)
+        self.assertIn("typical", note)
+        self.assertIn("maximum", note)
         self.assertIn("not a confirmed design-limit conflict", note)
 
     def test_higher_bias_over_an_explicit_design_limit_is_a_conflict(self):
