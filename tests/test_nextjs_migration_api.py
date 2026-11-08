@@ -286,3 +286,28 @@ def test_ci_includes_service_readiness_and_evidence_notice_files(capsys):
     for name in targets:
         assert name in combined
         assert name.split("/")[-1] in combined
+
+
+def test_ci_includes_monitoring_scope_and_approval_guard(capsys):
+    """Run selected-analysis Monitoring + approve-alternate override regressions in CI."""
+    import subprocess
+    import sys
+
+    targets = ["tests/test_monitoring_scope_and_approval_guard.py"]
+    proc = subprocess.run(
+        [sys.executable, "-m", "pytest", *targets, "-v", "--tb=line"],
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    combined = proc.stdout + "\n" + proc.stderr
+    with capsys.disabled():
+        print("CI_NESTED_SUITE_START")
+        for name in targets:
+            print(f"CI_NESTED_SUITE_FILE={name}")
+        print(combined)
+        print("CI_NESTED_SUITE_END")
+    assert proc.returncode == 0, combined
+    assert "tests/test_monitoring_scope_and_approval_guard.py" in combined
+    assert "test_monitoring_scope_and_approval_guard.py" in combined

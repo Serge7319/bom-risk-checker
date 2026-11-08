@@ -139,6 +139,8 @@ def user_facing_compare_rows(rows: list | None) -> list[dict]:
             "Assessment": map_status_to_assessment(status),
             "Evidence": customer_facing_evidence_text(row.get("Evidence", "")),
         }
+        if "Required" in row:
+            item["Required"] = bool(row.get("Required"))
         if row.get("FixtureRow"):
             item["FixtureRow"] = True
         projected.append(item)

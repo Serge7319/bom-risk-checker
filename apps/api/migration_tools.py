@@ -127,32 +127,218 @@ def _risk_score_from_report_part(part: dict[str, Any]) -> float | int | None:
     return None
 
 
+_LIFECYCLE_SIGNAL_TOKENS = (
+    "nrnd",
+    "obsolete",
+    "eol",
+    "end of life",
+    "end-of-life",
+    "ltb",
+    "last time buy",
+    "not recommended",
+)
+
+
+def _report_mode(report: dict[str, Any] | None) -> str:
+    mode = str((report or {}).get("mode") or "").strip()
+    return mode or "synthetic-preview"
+
+
+def _report_is_synthetic(report: dict[str, Any] | None) -> bool:
+    mode = _report_mode(report).casefold()
+    return "synthetic" in mode or "preview" in mode
+
+
+def _report_evidence_source(report: dict[str, Any] | None) -> str:
+    """Provenance tag for monitoring alert evidence labels."""
+    mode = _report_mode(report)
+    if _report_is_synthetic(report):
+        return "synthetic-preview-analysis"
+    if mode == "legacy-supplier-engine":
+        return "legacy-supplier-analysis"
+    return f"{mode}-analysis" if mode else "saved-analysis"
+
+
+def _report_evidence_phrase(report: dict[str, Any] | None) -> str:
+    if _report_is_synthetic(report):
+        return "synthetic analysis"
+    return "saved analysis"
+
+
+def _lifecycle_is_signal(lifecycle: str) -> bool:
+    text = str(lifecycle or "").strip().casefold()
+    if not text or text in {"active", "unknown", "—", "-", "n/a"}:
+        return False
+    return any(token in text for token in _LIFECYCLE_SIGNAL_TOKENS)
+
+
+def _part_risk_level(part: dict[str, Any]) -> str:
+    return str(part.get("Risk Level") or part.get("risk_level") or "").strip().lower()
+
+
+def approval_conflict_summary(comparison: dict[str, Any] | None) -> dict[str, Any]:
+    """Derive material differences and unknown required fit fields from a comparison.
+
+    Used by decision recording so approvals cannot ignore conflicts the API
+    recomputed. Does not trust client-supplied conflict flags.
+    """
+    comparison = comparison if isinstance(comparison, dict) else {}
+    rows = [row for row in (comparison.get("rows") or []) if isinstance(row, dict)]
+    finding = str(
+        comparison.get("finding")
+        or comparison.get("overall_finding")
+        or ""
+    ).strip()
+    counts = comparison.get("counts") if isinstance(comparison.get("counts"), dict) else {}
+    material_differences: list[dict[str, Any]] = []
+    unknown_required_fields: list[dict[str, Any]] = []
+    has_required_flag = any("Required" in row for row in rows)
+
+    for row in rows:
+        attribute = str(row.get("Attribute") or row.get("attribute") or "").strip()
+        if not attribute:
+            continue
+        assessment = str(
+            row.get("Assessment") or row.get("assessment") or row.get("Status") or ""
+        ).strip()
+        assessment_cf = assessment.casefold()
+        part_a = str(row.get("Part A") or row.get("Original") or row.get("part_a") or "").strip()
+        part_b = str(
+            row.get("Part B")
+            or row.get("Candidate")
+            or row.get("Selected Alternative")
+            or row.get("part_b")
+            or ""
+        ).strip()
+        entry = {
+            "attribute": attribute,
+            "part_a": part_a,
+            "part_b": part_b,
+            "assessment": assessment or None,
+        }
+        is_material = (
+            "material difference" in assessment_cf
+            or assessment_cf in {"different", "difference"}
+        )
+        is_unknown = (
+            assessment_cf
+            in {
+                "unable to confirm",
+                "needs data",
+                "needs validation",
+                "needs data / engineering validation",
+            }
+            or "unable to confirm" in assessment_cf
+            or "needs data" in assessment_cf
+            or "needs validation" in assessment_cf
+        )
+        if is_material:
+            material_differences.append(entry)
+        if is_unknown:
+            required = row.get("Required")
+            if required is True or (not has_required_flag and required is None):
+                unknown_required_fields.append(entry)
+
+    listed_unknown = [
+        str(item).strip()
+        for item in (comparison.get("unknown_attributes") or [])
+        if str(item or "").strip()
+    ]
+    if not unknown_required_fields and listed_unknown and not has_required_flag:
+        known_attrs = {item["attribute"] for item in unknown_required_fields}
+        for attribute in listed_unknown:
+            if attribute in known_attrs:
+                continue
+            unknown_required_fields.append(
+                {
+                    "attribute": attribute,
+                    "part_a": "",
+                    "part_b": "",
+                    "assessment": "Unable to confirm",
+                }
+            )
+
+    material_count = int(counts.get("material_difference") or 0)
+    has_conflicts = bool(
+        material_differences
+        or unknown_required_fields
+        or material_count > 0
+        or "material difference" in finding.casefold()
+    )
+    return {
+        "has_conflicts": has_conflicts,
+        "finding": finding,
+        "material_differences": material_differences,
+        "unknown_required_fields": unknown_required_fields,
+        "material_difference_count": max(material_count, len(material_differences)),
+        "unknown_required_count": len(unknown_required_fields),
+    }
+
+
 def monitoring_payload(
     *, workspace_id: str, analysis_id: str | None = None
 ) -> dict[str, Any]:
+    from apps.api import monitoring_scheduler
+
     report = _require_analysis(analysis_id, workspace_id=workspace_id)
+    scheduler_status = monitoring_scheduler.scheduler_readiness()
+    email_status = monitoring_store.monitoring_email_readiness()
+    services_connected = (
+        scheduler_status.get("status") == "ready"
+        and email_status.get("status") == "ready"
+    )
+    service_gap = (
+        None
+        if services_connected
+        else (
+            "Scheduled supplier refresh and real alert email remain disabled."
+        )
+    )
     if not report:
+        gap = "No analyzed BOM yet. Run BOM Analyzer first. This view needs saved analysis data."
+        if service_gap:
+            gap = f"{gap} {service_gap}"
         return {
             "ok": True,
             "mode": "synthetic-preview",
-            "gap": "No analyzed BOM yet. Run BOM Analyzer first. This view needs saved analysis data.",
+            "gap": gap,
             "metrics": {
                 "monitored_parts": 0,
                 "active_alerts": 0,
                 "high_priority": 0,
                 "lifecycle_changes": 0,
+                "risk_signals": 0,
+                "engineering_priority_risk": 0,
             },
             "alerts": [],
             "action_center": {},
+            "service_status": {
+                "scheduler": scheduler_status,
+                "email": email_status,
+                "scheduled_refresh_and_email_enabled": False,
+                "remaining_gate": (
+                    None
+                    if services_connected
+                    else "Connect and verify the monitoring scheduler and email transport before enabling those services."
+                ),
+            },
         }
 
+    report_mode = _report_mode(report)
+    evidence_source = _report_evidence_source(report)
+    evidence_phrase = _report_evidence_phrase(report)
     alerts: list[dict[str, Any]] = []
     now = datetime.now(timezone.utc).isoformat()
     for part in report.get("parts") or []:
-        mpn = str(part.get("MPN") or "")
-        lifecycle = str(part.get("Lifecycle") or "")
-        risk = str(part.get("Risk Level") or "")
-        if lifecycle.upper() == "NRND":
+        mpn = str(part.get("MPN") or part.get("mpn") or "")
+        lifecycle = str(
+            part.get("Lifecycle")
+            or part.get("lifecycle_status")
+            or part.get("Lifecycle Status")
+            or ""
+        )
+        risk = _part_risk_level(part)
+        if _lifecycle_is_signal(lifecycle):
             alerts.append(
                 {
                     **build_alert_record(
@@ -160,17 +346,18 @@ def monitoring_payload(
                         report["id"],
                         mpn,
                         "Lifecycle Signal",
-                        f"Lifecycle recorded as {lifecycle} in synthetic analysis",
+                        f"Lifecycle recorded as {lifecycle} in {evidence_phrase}",
                         "High",
                         "Active (assumed)",
                         lifecycle,
                     ),
                     "created_at": now,
                     "acknowledged": False,
-                    "evidence_source": "synthetic-preview-analysis",
+                    "evidence_source": evidence_source,
                 }
             )
-        if risk.lower() == "high":
+        # Match report / Engineering Decisions part-level risk classification.
+        if risk == "high":
             alerts.append(
                 {
                     **build_alert_record(
@@ -178,17 +365,17 @@ def monitoring_payload(
                         report["id"],
                         mpn,
                         "Risk Signal",
-                        f"High risk in latest analysis: {part.get('Risk Reasons') or 'see report'}",
+                        f"High risk in {evidence_phrase}: {part.get('Risk Reasons') or part.get('risk_reasons') or 'see report'}",
                         "High",
                         "—",
                         risk,
                     ),
                     "created_at": now,
                     "acknowledged": False,
-                    "evidence_source": "synthetic-preview-analysis",
+                    "evidence_source": evidence_source,
                 }
             )
-        elif risk.lower() == "medium":
+        elif risk == "medium":
             alerts.append(
                 {
                     **build_alert_record(
@@ -196,67 +383,107 @@ def monitoring_payload(
                         report["id"],
                         mpn,
                         "Risk Signal",
-                        f"Medium risk in latest analysis: {part.get('Risk Reasons') or 'see report'}",
+                        f"Medium risk in {evidence_phrase}: {part.get('Risk Reasons') or part.get('risk_reasons') or 'see report'}",
                         "Medium",
                         "—",
                         risk,
                     ),
                     "created_at": now,
                     "acknowledged": False,
-                    "evidence_source": "synthetic-preview-analysis",
+                    "evidence_source": evidence_source,
                 }
             )
 
-    alert_df = pd.DataFrame(alerts)
+    for alert in alerts:
+        alert["analysis_id"] = report["id"]
+        alert["workspace_id"] = workspace_id
+        alert["evidence_source"] = alert.get("evidence_source") or evidence_source
+
+    # Persist keeps full workspace history; the selected-analysis view must not
+    # mix older analyses into the returned table or KPIs.
+    durable = monitoring_store.persist_alerts(workspace_id, alerts)
+    selected_id = str(report["id"])
+    scoped = [
+        alert
+        for alert in durable
+        if str(alert.get("analysis_id") or "") == selected_id
+    ]
+
     monitor_df = pd.DataFrame(
         [
             {
-                "part_number": p.get("MPN"),
-                "lifecycle_status": p.get("Lifecycle"),
-                "stock": p.get("Stock"),
-                "risk_level": p.get("Risk Level"),
+                "part_number": p.get("MPN") or p.get("mpn"),
+                "lifecycle_status": p.get("Lifecycle")
+                or p.get("lifecycle_status")
+                or p.get("Lifecycle Status"),
+                "stock": p.get("Stock") or p.get("stock"),
+                "risk_level": p.get("Risk Level") or p.get("risk_level"),
             }
             for p in report.get("parts") or []
         ]
     )
+    alert_df = pd.DataFrame(scoped)
     action_center = build_monitoring_action_center(alert_df, monitor_df)
-    high = sum(1 for a in alerts if str(a.get("severity")).lower() == "high")
-    lifecycle_n = sum(
-        1 for a in alerts if "lifecycle" in str(a.get("alert_type") or "").lower()
+
+    lifecycle_parts = {
+        str(alert.get("part_number") or "").strip()
+        for alert in scoped
+        if "lifecycle" in str(alert.get("alert_type") or "").casefold()
+        and str(alert.get("part_number") or "").strip()
+    }
+    risk_alerts = [
+        alert
+        for alert in scoped
+        if "risk" in str(alert.get("alert_type") or "").casefold()
+    ]
+    high_priority = sum(
+        1 for alert in scoped if str(alert.get("severity") or "").casefold() == "high"
     )
-    for alert in alerts:
-        alert["analysis_id"] = report["id"]
-        alert["workspace_id"] = workspace_id
-        alert["evidence_source"] = alert.get("evidence_source") or "synthetic-preview-analysis"
-    durable = monitoring_store.persist_alerts(workspace_id, alerts)
+    # Engineering-priority risk counts: High + Medium risk signals (same
+    # classification as the selected report / Engineering Decisions).
+    engineering_priority_risk = len(risk_alerts)
+
     refresh = monitoring_store.record_refresh(
         workspace_id,
         analysis_id=report["id"],
-        alert_count=len(durable),
-        mode="synthetic-preview",
+        alert_count=len(scoped),
+        mode=report_mode,
     )
     prefs = monitoring_store.get_preferences(workspace_id)
+    gap = "Monitoring persists tenant-scoped alert history from saved analysis."
+    if service_gap:
+        gap = f"{gap} {service_gap}"
     return _json_safe(
         {
             "ok": True,
-            "mode": "synthetic-preview",
+            "mode": report_mode,
             "analysis_id": report["id"],
             "filename": report.get("filename"),
-            "gap": (
-                "Monitoring persists tenant-scoped alert history from saved analysis. "
-                "Scheduled supplier refresh and real alert email remain disabled."
-            ),
+            "gap": gap,
             "metrics": {
                 "monitored_parts": report.get("total_parts") or 0,
-                "active_alerts": len(durable),
-                "high_priority": high,
-                "lifecycle_changes": lifecycle_n,
+                "active_alerts": len(scoped),
+                "high_priority": high_priority,
+                # Distinct parts with lifecycle signals (not alert row count).
+                "lifecycle_changes": len(lifecycle_parts),
+                "risk_signals": engineering_priority_risk,
+                "engineering_priority_risk": engineering_priority_risk,
             },
-            "alerts": durable,
+            "alerts": scoped,
             "action_center": action_center,
             "preferences": prefs,
             "refresh": refresh,
             "refresh_history": monitoring_store.list_refresh_history(workspace_id)[:10],
+            "service_status": {
+                "scheduler": scheduler_status,
+                "email": email_status,
+                "scheduled_refresh_and_email_enabled": bool(services_connected),
+                "remaining_gate": (
+                    None
+                    if services_connected
+                    else "Connect and verify the monitoring scheduler and email transport before enabling those services."
+                ),
+            },
         }
     )
 
@@ -421,6 +648,14 @@ def compare_parts_payload(
         and str(row.get("Attribute") or "").strip()
     ]
     analysis_context = str((report or {}).get("id") or "") or None
+    conflict_summary = approval_conflict_summary(
+        {
+            "finding": finding,
+            "counts": counts,
+            "rows": rows,
+            "unknown_attributes": unknown_attributes,
+        }
+    )
 
     return _json_safe(
         {
@@ -440,6 +675,9 @@ def compare_parts_payload(
             "engineering_evidence_status": comparison.get("engineering_evidence_status") or "unverified",
             "counts": counts,
             "unknown_attributes": unknown_attributes,
+            "material_differences": conflict_summary["material_differences"],
+            "unknown_required_fields": conflict_summary["unknown_required_fields"],
+            "approval_conflicts": conflict_summary,
             "rows": rows,
             "part_cards": {
                 "a": comparison.get("part_a"),
@@ -527,6 +765,14 @@ def _comparison_payload_from_engine(
         )
     counts = comparison.get("counts") or {}
     finding = str(comparison.get("finding") or comparison.get("overall_finding") or "Needs data / engineering validation")
+    conflict_summary = approval_conflict_summary(
+        {
+            "finding": finding,
+            "counts": counts,
+            "rows": rows,
+            "unknown_attributes": unknown,
+        }
+    )
     return _json_safe({
         "ok": True,
         "status": STATUS_COMPLETED,
@@ -545,6 +791,9 @@ def _comparison_payload_from_engine(
         "engineering_evidence_status": comparison.get("engineering_evidence_status") or "unverified",
         "counts": counts,
         "unknown_attributes": unknown,
+        "material_differences": conflict_summary["material_differences"],
+        "unknown_required_fields": conflict_summary["unknown_required_fields"],
+        "approval_conflicts": conflict_summary,
         "rows": rows,
         "part_cards": {
             "a": comparison.get("part_a"),

@@ -954,11 +954,12 @@ async def decision_records_post(request: Request) -> JSONResponse:
     datasheet_uploads: dict[str, Any] = {}
     if "multipart/form-data" in str(request.headers.get("content-type") or "").lower():
         try:
-            form = await request.form(max_files=2, max_fields=32)
+            form = await request.form(max_files=2, max_fields=48)
             body = {key: form.get(key) for key in (
                 "analysis_id", "part_a", "part_b", "decision", "reviewer", "rationale",
                 "validation_checks", "follow_up_action", "follow_up_owner",
                 "follow_up_due_date", "residual_risk",
+                "conflict_acknowledgement", "override_rationale",
             )}
             raw_checks = body.get("validation_checks")
             body["validation_checks"] = json.loads(raw_checks) if raw_checks else []
@@ -1042,6 +1043,29 @@ async def decision_records_post(request: Request) -> JSONResponse:
             },
             400,
         )
+    if decision == "approve_alternate" and residual_risk == "unknown":
+        return _json(
+            {
+                "detail": (
+                    "Record an explicit residual-risk assessment before approving an alternate."
+                )
+            },
+            400,
+        )
+
+    raw_ack = body.get("conflict_acknowledgement")
+    if isinstance(raw_ack, bool):
+        conflict_acknowledgement = raw_ack
+    else:
+        conflict_acknowledgement = str(raw_ack or "").strip().casefold() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+    override_rationale = str(body.get("override_rationale") or "").strip()
+    if len(override_rationale) > 3000:
+        return _json({"detail": "Override rationale must be 3,000 characters or fewer."}, 400)
 
     try:
         if requested_analysis_id and not get_report(
@@ -1059,6 +1083,31 @@ async def decision_records_post(request: Request) -> JSONResponse:
         )
         if not comparison.get("ok"):
             return _json({"detail": comparison.get("detail") or "Comparison unavailable."}, 400)
+        # Recompute conflicts from the API comparison — never trust client flags.
+        conflicts = migration_tools.approval_conflict_summary(comparison)
+        if decision == "approve_alternate" and conflicts.get("has_conflicts"):
+            if not conflict_acknowledgement:
+                return _json(
+                    {
+                        "detail": (
+                            "This comparison reports material differences or unknown required "
+                            "fit fields. Acknowledge those conflicts before approving an alternate."
+                        ),
+                        "approval_conflicts": conflicts,
+                    },
+                    400,
+                )
+            if not override_rationale:
+                return _json(
+                    {
+                        "detail": (
+                            "Provide a specific override rationale explaining why approval is "
+                            "still justified despite the comparison conflicts."
+                        ),
+                        "approval_conflicts": conflicts,
+                    },
+                    400,
+                )
         analysis_id = str(comparison.get("analysis_id") or "").strip() or None
         report = (
             get_report(analysis_id, workspace_id=ctx["workspace_id"])
@@ -1084,8 +1133,13 @@ async def decision_records_post(request: Request) -> JSONResponse:
                 "package_dimension_evidence",
                 "review_warnings",
                 "gap",
+                "unknown_attributes",
+                "material_differences",
+                "unknown_required_fields",
+                "approval_conflicts",
             )
         }
+        snapshot["approval_conflicts"] = conflicts
         record = get_store().create_decision_record(
             {
                 "analysis_id": analysis_id,
@@ -1103,6 +1157,11 @@ async def decision_records_post(request: Request) -> JSONResponse:
                 "follow_up_owner": follow_up_owner,
                 "follow_up_due_date": follow_up_due_date or None,
                 "residual_risk": residual_risk,
+                "conflict_acknowledgement": bool(
+                    conflict_acknowledgement and conflicts.get("has_conflicts")
+                ),
+                "override_rationale": override_rationale or None,
+                "approval_conflicts": conflicts if conflicts.get("has_conflicts") else None,
                 "verified_primary_evidence": required_approval_checks.issubset(set(validation_checks)),
                 "qualification_status": "not-qualified-by-cadivor",
                 "qualification_note": (

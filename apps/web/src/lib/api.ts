@@ -531,6 +531,9 @@ export type DecisionRecord = {
   follow_up_owner?: string;
   follow_up_due_date?: string | null;
   residual_risk?: string;
+  conflict_acknowledgement?: boolean;
+  override_rationale?: string | null;
+  approval_conflicts?: Record<string, unknown> | null;
   qualification_status: string;
   qualification_note: string;
   created_at: string;
@@ -559,6 +562,8 @@ export async function recordDecision(
     follow_up_owner?: string;
     follow_up_due_date?: string | null;
     residual_risk?: string;
+    conflict_acknowledgement?: boolean;
+    override_rationale?: string;
     verified_primary_evidence?: boolean;
   },
   datasheets?: { a?: File | null; b?: File | null },

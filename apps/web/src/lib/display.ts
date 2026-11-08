@@ -1,17 +1,20 @@
 /** Convert internal evidence tags into labels that make sense to engineers. */
 export function evidenceSourceLabel(
   value: unknown,
-  fallback = "Synthetic analysis",
+  fallback = "Saved analysis evidence",
 ): string {
   const raw = typeof value === "string" ? value.trim() : "";
   if (!raw) return fallback;
   if (/synthetic|preview/i.test(raw)) return "Synthetic analysis";
+  if (/legacy-supplier/i.test(raw)) return "Supplier / datasheet analysis";
   return raw.replace(/\bapi\b/gi, "source").replace(/[-_]+/g, " ");
 }
 
 export function analysisModeLabel(value: unknown): string {
   const raw = typeof value === "string" ? value.trim() : "";
-  if (!raw || /synthetic|preview/i.test(raw)) return "Synthetic analysis";
+  if (!raw) return "Saved analysis";
+  if (/synthetic|preview/i.test(raw)) return "Synthetic analysis";
+  if (/legacy-supplier/i.test(raw)) return "Supplier / datasheet analysis";
   return raw.replace(/[-_]+/g, " ");
 }
 
