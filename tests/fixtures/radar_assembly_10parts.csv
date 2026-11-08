@@ -1,0 +1,11 @@
+MPN,Quantity,Manufacturer,Description
+LM358N,10,Texas Instruments,Dual operational amplifier
+MCP2551-I/SN,2,Microchip,High-speed CAN transceiver
+TPS5430DDAR,5,Texas Instruments,Step-down converter
+W25Q64JVSSIQ,3,Winbond,64Mbit serial flash
+SN74LVC2T45DCUR,4,Texas Instruments,Dual-bit dual-supply bus transceiver
+ADS1115IDGSR,2,Texas Instruments,16-bit ADC with PGA
+LM555CN/NOPB,1,Texas Instruments,Timer
+LT1763CS8-3.3,2,Analog Devices,3.3V LDO regulator
+MPU-6050,1,TDK InvenSense,6-axis IMU
+BSS138,8,onsemi,N-channel MOSFET
