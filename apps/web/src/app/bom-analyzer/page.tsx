@@ -644,7 +644,7 @@ export default function BomAnalyzerPage() {
           ) : null}
 
           <div className="cv-bom-analyze-actions cv-bom-primary-cta">
-            {"href" in primary ? (
+            {"href" in primary && primary.href ? (
               <Link className="cv-button primary" href={primary.href}>
                 {primary.label}
               </Link>
