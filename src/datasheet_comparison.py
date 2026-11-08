@@ -226,12 +226,10 @@ def customer_facing_evidence_text(value: Any) -> str:
     return " ".join(text.split()).strip(" ;,.")
 
 
-def _display_value(value) -> str:
-    if value is None or str(value).strip() in {"", "None", "Unknown", "nan"}:
-        return ""
-    if isinstance(value, float):
-        return f"{value:g}"
-    return str(value).strip()
+def _display_value(value, *, field_key: str = "") -> str:
+    from src.parametric_compare import format_field_display_value
+
+    return format_field_display_value(value, field_key=field_key)
 
 
 def _lifecycle_record_text(part: Mapping[str, Any]) -> str:
@@ -728,8 +726,8 @@ def build_datasheet_comparison(original: dict, candidate: dict) -> dict:
             original_value = _display_pin_count(original)
             candidate_value = _display_pin_count(candidate)
         else:
-            original_value = _display_value(original.get(spec.key))
-            candidate_value = _display_value(candidate.get(spec.key))
+            original_value = _display_value(original.get(spec.key), field_key=spec.key)
+            candidate_value = _display_value(candidate.get(spec.key), field_key=spec.key)
         original_conflict = spec.key == "lifecycle_status" and _lifecycle_is_conflict(original, original_value)
         candidate_conflict = spec.key == "lifecycle_status" and _lifecycle_is_conflict(candidate, candidate_value)
         if original_conflict:

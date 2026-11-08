@@ -74,7 +74,17 @@ function DetailedRiskPageInner() {
           <div className="cv-kpis">
             <KpiCard icon="shield" tone="blue" label="Health score" value={data.health_score == null ? "Not scored" : `${String(data.health_score)}/100`} detail={String(data.health_status || "Overall report rating")} />
             <KpiCard icon="box" label="Components assessed" value={rows.length} detail="Rows in this report" />
-            <KpiCard icon="risk" tone="amber" label="High-risk components" value={String(summary.open_high_risk_component_count ?? "Not reported")} detail="Review the evidence before release" />
+            <KpiCard
+              icon="risk"
+              tone="amber"
+              label="High-risk components"
+              value={String(
+                data.high_risk_count
+                  ?? summary.high_risk_component_count
+                  ?? "Not reported",
+              )}
+              detail="Same Risk Level = High count as the report and decision queue"
+            />
           </div>
           <section className="cv-card pad">
             <h3 className="cv-card-title">Component risk detail</h3>

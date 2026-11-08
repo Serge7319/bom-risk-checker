@@ -7,6 +7,7 @@ never imply electrical drop-in compatibility.
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Iterable, Mapping
 
@@ -397,7 +398,18 @@ _register(FamilyProfile(
 
 _register(FamilyProfile(
     id="Timer IC", display_name="Timer IC",
-    markers=("555 timer", "precision timer", "timer ic", "timing circuit"),
+    markers=(
+        "555 timer",
+        "precision timer",
+        "timer ic",
+        "timing circuit",
+        "programmable timer",
+        "timers and oscillators",
+        "single timer",
+        "555 type, timer",
+        "555 type",
+        "555",
+    ),
     scoring_mode="ic_weighted", architecture_meaningful=True,
     fields=(
         _f("architecture", "Function / category", compare=COMPARE_TYPE, required=True,
@@ -424,15 +436,15 @@ _register(FamilyProfile(
            pdf=("supply voltage",), role="range",
            digikey=("Voltage - Supply Span (Min)", "Voltage - Supply Span (Max)", "Voltage - Supply"),
            mouser=("Supply Voltage",)),
-        _f("bandwidth_mhz", "Bandwidth", compare=COMPARE_LIMIT_GE, unit="Hz",
+        _f("bandwidth_mhz", "Bandwidth", compare=COMPARE_LIMIT_GE, unit="MHz",
            pdf=("bandwidth", "gain bandwidth"), role="min",
            digikey=("Gain Bandwidth Product",), mouser=("Gain Bandwidth Product",)),
         _f("slew_rate_v_us", "Slew rate", compare=COMPARE_LIMIT_GE, pdf=("slew rate",), role="min",
            digikey=("Slew Rate",), mouser=("Slew Rate",)),
-        _f("input_offset_mv", "Input offset", compare=COMPARE_LIMIT_LE, unit="",
+        _f("input_offset_mv", "Input offset", compare=COMPARE_LIMIT_LE, unit="mV",
            pdf=("input offset",), role="max",
            digikey=("Voltage - Input Offset",), mouser=("Input Offset Voltage",)),
-        _f("input_bias_na", "Input bias", compare=COMPARE_LIMIT_LE, unit="A",
+        _f("input_bias_na", "Input bias", compare=COMPARE_LIMIT_LE, unit="nA",
            pdf=("input bias",), role="max",
            digikey=("Current - Input Bias",), mouser=("Input Bias Current",)),
         _f("pinout", "Pinout", compare=COMPARE_EXACT, required=True,
@@ -629,7 +641,17 @@ _register(FamilyProfile(
 
 _register(FamilyProfile(
     id="Oscillator / crystal", display_name="Crystal / oscillator",
-    markers=("oscillator", "crystal", "xtal", "mems oscillator"),
+    markers=(
+        "crystal oscillator",
+        "mems oscillator",
+        "clock oscillator",
+        "crystal",
+        "xtal",
+        "vcxo",
+        "ocxo",
+        "tcxo",
+        "oscillator",
+    ),
     omit_common=("pin_count", "voltage_range"), scoring_mode="parametric_matrix",
     fields=(
         _f("frequency_mhz", "Frequency", compare=COMPARE_NOMINAL, required=True, unit="Hz",
@@ -712,14 +734,35 @@ def infer_family_id(part: Mapping) -> str:
         str(part.get(key) or "")
         for key in (
             "description", "Description", "architecture", "manufacturer_part_number",
-            "device_type", "Category", "category", "product_type",
+            "mpn", "MPN", "device_type", "Category", "category", "primary_category",
+            "Primary Category", "product_type", "Product Type", "Function", "function",
+            "Type", "type",
         )
     ).casefold()
+    # DigiKey/Mouser clock-timing categories often say "Timers and Oscillators".
+    # Prefer Timer IC when timer language is present so crystals are not inferred.
+    timer_combo = (
+        "timers and oscillators" in text
+        or "programmable timer" in text
+        or "single timer" in text
+        or "555 type" in text
+        or "timer ic" in text
+        or "precision timer" in text
+    )
+    if timer_combo and "crystal" not in text and "xtal" not in text:
+        return "Timer IC"
     for family_id in _INFERENCE_ORDER:
         profile = FAMILY_PROFILES[family_id]
         for marker in profile.markers:
-            if marker and marker in text:
-                return family_id
+            if not marker or marker not in text:
+                continue
+            if family_id == "Oscillator / crystal" and (
+                "timer" in text or re.search(r"(?<![a-z0-9])555(?![a-z0-9])", text)
+            ):
+                # Keep crystals when explicitly named; otherwise timer language wins.
+                if "crystal" not in text and "xtal" not in text and marker == "oscillator":
+                    continue
+            return family_id
     return "General electronic component"
 
 

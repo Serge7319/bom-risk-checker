@@ -300,17 +300,37 @@ def find_replacements(mpn: str) -> dict[str, Any]:
         ]
         if not exact_source:
             missing.insert(0, "exact source MPN verification")
+        lifecycle_status = str(candidate.get("Lifecycle") or "Unknown").strip() or "Unknown"
+        lifecycle_evidence = list(
+            candidate.get("Lifecycle Evidence")
+            or candidate.get("lifecycle_evidence")
+            or []
+        )
+        lifecycle_conflict = bool(
+            candidate.get("Lifecycle Conflict")
+            or candidate.get("lifecycle_conflict")
+        )
+        if lifecycle_conflict:
+            missing.insert(0, "reconcile conflicting supplier lifecycle records")
+        elif not lifecycle_status or lifecycle_status.casefold() in {"unknown", "not stated"}:
+            missing.insert(0, "lifecycle status from authorized sources")
+        # Never imply a qualified drop-in when lifecycle evidence conflicts or is missing.
+        fit = "supplier-listed candidate; qualification required"
+        if lifecycle_conflict or not lifecycle_status or lifecycle_status.casefold() in {"unknown", "not stated"}:
+            fit = "not qualified — lifecycle evidence incomplete or conflicting"
         candidates.append({
             "mpn": candidate_mpn,
             "manufacturer": str(candidate.get("Manufacturer") or ""),
             "description": str(candidate.get("description") or ""),
             "rationale": str(candidate.get("Recommendation") or candidate.get("Compatibility Notes") or disposition),
-            "fit": "supplier-listed candidate; qualification required",
+            "fit": fit,
             "classification": classification,
             "missing_evidence": missing,
             "evidence_class": "live-authorized-supplier" if exact_source else "missing",
             "source": str(candidate.get("Evidence Source") or candidate.get("Supplier") or ""),
-            "lifecycle_status": str(candidate.get("Lifecycle") or "Unknown"),
+            "lifecycle_status": lifecycle_status,
+            "lifecycle_evidence": lifecycle_evidence,
+            "lifecycle_conflict": lifecycle_conflict,
             "product_url": str(candidate.get("Product URL") or candidate.get("Source URL") or ""),
             "datasheet_url": str(candidate.get("Datasheet URL") or ""),
             "recommendation_score": candidate.get("Recommendation Score"),
@@ -342,6 +362,8 @@ def find_replacements(mpn: str) -> dict[str, Any]:
             "manufacturer": str(original.get("manufacturer") or ""),
             "description": str(original.get("description") or ""),
             "lifecycle_status": str(original.get("lifecycle_status") or "Unknown"),
+            "lifecycle_evidence": list(original.get("lifecycle_evidence") or []),
+            "lifecycle_conflict": bool(original.get("lifecycle_conflict")),
             "source": str(original.get("source") or ""),
             "supplier_data_verified": bool(original.get("supplier_data_verified")),
             "risk": result.get("original_risk") if isinstance(result.get("original_risk"), dict) else {},

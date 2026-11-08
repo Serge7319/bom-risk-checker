@@ -49,18 +49,65 @@ def _compact(value: str) -> str:
     return re.sub(r"[^a-z0-9.+-]", "", str(value or "").casefold())
 
 
+def storage_unit_for_field(field_key: object) -> str:
+    """Implied storage unit for bare numeric supplier values (e.g. DigiKey floats)."""
+    key = str(field_key or "").strip().casefold()
+    if not key:
+        return ""
+    if key.endswith("_mhz") or key in {"gbw_mhz", "bandwidth_mhz", "frequency_mhz"}:
+        return "MHz"
+    if key.endswith("_khz"):
+        return "kHz"
+    if key.endswith("_na") or key == "input_bias_na":
+        return "nA"
+    if key.endswith("_ua") or key.endswith("_µa"):
+        return "uA"
+    if key.endswith("_ma"):
+        return "mA"
+    if key.endswith("_mv") or key == "input_offset_mv":
+        return "mV"
+    if key.endswith("_uv"):
+        return "uV"
+    return ""
+
+
+def format_field_display_value(value: object, *, field_key: object = "") -> str:
+    """Render a stored field value with its implied unit when the value is bare numeric."""
+    if value is None or str(value).strip() in {"", "None", "Unknown", "nan"}:
+        return ""
+    if isinstance(value, bool):
+        return str(value)
+    if isinstance(value, (int, float)):
+        text = f"{value:g}"
+        suffix = storage_unit_for_field(field_key)
+        return f"{text} {suffix}".strip() if suffix else text
+    text = str(value).strip()
+    if not text:
+        return ""
+    # Already has a unit token — leave as-is.
+    if re.search(r"[A-Za-zΩωµμ°]", text):
+        return text
+    # Bare numeric string from JSON / CSV — attach implied storage unit.
+    if re.fullmatch(r"[+-]?\d+(?:\.\d+)?(?:e[+-]?\d+)?", text.replace(",", ""), flags=re.IGNORECASE):
+        suffix = storage_unit_for_field(field_key)
+        return f"{text} {suffix}".strip() if suffix else text
+    return text
+
+
 def parse_numeric_with_unit(text: object, *, preferred_unit: str = "") -> tuple[float | None, str]:
     """Parse the first magnitude from supplier text into SI base units where possible."""
     raw = str(text or "").strip()
     if not raw:
         return None, ""
+    preferred = str(preferred_unit or "").strip()
+    preferred_key = preferred.casefold()
     # Prefer explicit metric pitch/size in parentheses: 0.100" (2.54mm)
     paren_metric = re.search(
         r"\((\s*[+-]?\d+(?:\.\d+)?\s*mm\s*)\)",
         raw,
         flags=re.IGNORECASE,
     )
-    if paren_metric and preferred_unit in {"", "m"}:
+    if paren_metric and preferred_key in {"", "m"}:
         return parse_numeric_with_unit(paren_metric.group(1), preferred_unit="m")
     # Ranges like "100 @ 10mA, 1V" — take leading magnitude.
     match = re.search(
@@ -75,16 +122,52 @@ def parse_numeric_with_unit(text: object, *, preferred_unit: str = "") -> tuple[
     scale = _PREFIX.get(prefix, 1.0)
     # Special-case: "mOhm", "mA", "mW", "mH", "mV" use milli when letter present.
     unit_key = unit_token.casefold()
+    # Combined prefix+unit tokens: nA, uA, mV, MHz written without a space.
+    combined = f"{prefix}{unit_token}".casefold()
     canonical = _UNIT_ALIASES.get(unit_key, unit_token)
-    if preferred_unit and not canonical:
-        canonical = preferred_unit
+    if preferred and not canonical and not prefix:
+        canonical = preferred
+
+    # Bare number with a storage-unit hint from the field key (MHz / nA / mV).
+    if not unit_token and not prefix:
+        if preferred_key in {"mhz"}:
+            return number * 1e6, "Hz"
+        if preferred_key in {"khz"}:
+            return number * 1e3, "Hz"
+        if preferred_key in {"ghz"}:
+            return number * 1e9, "Hz"
+        if preferred_key in {"na"}:
+            return number * 1e-9, "A"
+        if preferred_key in {"ua", "µa", "μa"}:
+            return number * 1e-6, "A"
+        if preferred_key in {"ma"}:
+            return number * 1e-3, "A"
+        if preferred_key in {"mv"}:
+            return number * 1e-3, "V"
+        if preferred_key in {"uv", "µv", "μv"}:
+            return number * 1e-6, "V"
+
     # Frequency already in MHz stored as float elsewhere — leave as Hz when unit says MHz.
-    if unit_key in {"mhz"}:
+    if unit_key in {"mhz"} or combined == "mhz":
         return number * 1e6, "Hz"
-    if unit_key in {"khz"}:
+    if unit_key in {"khz"} or combined == "khz":
         return number * 1e3, "Hz"
-    if unit_key in {"ghz"}:
+    if unit_key in {"ghz"} or combined == "ghz":
         return number * 1e9, "Hz"
+    if unit_key in {"na"} or combined == "na" or (prefix.casefold() == "n" and unit_key in {"a", ""}):
+        return number * 1e-9, "A"
+    if unit_key in {"ua", "µa", "μa"} or combined in {"ua", "µa", "μa"} or (
+        prefix in {"u", "µ", "μ"} and unit_key in {"a", ""}
+    ):
+        return number * 1e-6, "A"
+    if unit_key in {"pa"} or combined == "pa" or (prefix.casefold() == "p" and unit_key in {"a", ""}):
+        return number * 1e-12, "A"
+    if unit_key in {"ma"} or combined == "ma" or (prefix.casefold() == "m" and unit_key == "a"):
+        return number * 1e-3, "A"
+    if unit_key in {"mv"} or combined == "mv" or (prefix.casefold() == "m" and unit_key == "v"):
+        return number * 1e-3, "V"
+    if unit_key in {"uv", "µv", "μv"} or combined in {"uv", "µv", "μv"}:
+        return number * 1e-6, "V"
     if unit_key in {"uf", "µf", "μf"}:
         return number * 1e-6, "F"
     if unit_key in {"nf"}:
@@ -103,17 +186,20 @@ def parse_numeric_with_unit(text: object, *, preferred_unit: str = "") -> tuple[
         return number * 1e-3, "Ohm"
     if unit_key in {"mm"}:
         return number * 1e-3, "m"
-    if preferred_unit == "Ohm" and not unit_token and prefix.lower() == "k":
+    if preferred_key == "ohm" and not unit_token and prefix.lower() == "k":
         return number * 1e3, "Ohm"
-    if preferred_unit == "Ohm" and not unit_token and prefix.lower() == "m":
+    if preferred_key == "ohm" and not unit_token and prefix.lower() == "m":
         # Ambiguous milli vs mega — prefer milli for resistance suffixes like 100m
         return number * 1e-3, "Ohm"
     value = number * scale
     if canonical in {"V", "A", "W", "F", "H", "Hz", "s", "C", "Ohm", "m"}:
         return value, canonical
-    if preferred_unit:
-        return value, preferred_unit
-    return value, canonical or preferred_unit
+    if preferred:
+        # Do not silently reinterpret a mismatched explicit unit as the preferred SI unit.
+        if unit_token and preferred_key not in {unit_key, combined, canonical.casefold()}:
+            return value, canonical or preferred
+        return value, preferred
+    return value, canonical or preferred
 
 
 def normalize_type_token(value: object) -> str:
@@ -222,15 +308,43 @@ def compare_field_values(
         return "Different", "The retrieved type/polarity values differ; engineer review is required."
 
     if mode in {COMPARE_NOMINAL, COMPARE_LIMIT_GE, COMPARE_LIMIT_LE}:
-        o_num, o_unit = parse_numeric_with_unit(original_text, preferred_unit=spec.unit)
-        c_num, c_unit = parse_numeric_with_unit(candidate_text, preferred_unit=spec.unit)
+        storage_unit = storage_unit_for_field(getattr(spec, "key", ""))
+        preferred = storage_unit or str(spec.unit or "").strip()
+        o_num, o_unit = parse_numeric_with_unit(original_text, preferred_unit=preferred)
+        c_num, c_unit = parse_numeric_with_unit(candidate_text, preferred_unit=preferred)
         if o_num is None or c_num is None:
             # Fall back to exact compact compare when parsing fails.
             if _compact(original_text) == _compact(candidate_text):
                 return "Match", "The retrieved values match exactly."
             return "Different", "The retrieved values differ or use incomparable formats; engineer review is required."
-        if o_unit and c_unit and o_unit != c_unit and spec.unit and o_unit != spec.unit and c_unit != spec.unit:
-            return "Needs data", "Units are incomparable for this family attribute."
+        # Bare dimensionless magnitudes without a field storage unit are not
+        # comparable for limit/nominal engineering checks (e.g. "3" vs "2").
+        if not preferred:
+            has_unit_token = bool(
+                re.search(r"[A-Za-zΩωµμ°]", original_text)
+                and re.search(r"[A-Za-zΩωµμ°]", candidate_text)
+            )
+            if not has_unit_token:
+                return (
+                    "Needs data",
+                    "Neither value states a unit, so the magnitudes are not comparable "
+                    "for engineering approval.",
+                )
+        if o_unit and c_unit and o_unit != c_unit and preferred and o_unit != preferred and c_unit != preferred:
+            # After SI normalization, comparable base units must match.
+            si_aliases = {
+                "Hz": {"Hz"},
+                "A": {"A"},
+                "V": {"V"},
+                "Ohm": {"Ohm"},
+                "F": {"F"},
+                "H": {"H"},
+                "W": {"W"},
+                "m": {"m"},
+            }
+            allowed = si_aliases.get(o_unit, {o_unit})
+            if c_unit not in allowed:
+                return "Needs data", "Units are incomparable for this family attribute."
 
         if mode == COMPARE_NOMINAL:
             # Relative tolerance for floating SI equality.
@@ -239,14 +353,31 @@ def compare_field_values(
                 return "Match", "Normalized values match within engineering tolerance."
             return "Different", "Normalized nominal values differ; engineer review is required."
 
+        # Without an explicit design/fit limit, unequal magnitudes are a material
+        # difference (or need verification) — never Compatible just because the
+        # candidate looks "better" under a directional limit.
+        denom = max(abs(o_num), abs(c_num), 1e-30)
+        equal = abs(o_num - c_num) / denom <= 0.02
         if mode == COMPARE_LIMIT_GE:
+            if equal:
+                return "Match", "Normalized limit values match within engineering tolerance."
             if c_num + 1e-12 >= o_num:
-                return "Match", "Candidate limit meets or exceeds the original requirement."
+                return (
+                    "Different",
+                    "Candidate limit differs from the original and no design/fit limit "
+                    "was stated to accept the change; engineer review is required.",
+                )
             return "Different", "Candidate limit is below the original requirement."
 
         if mode == COMPARE_LIMIT_LE:
+            if equal:
+                return "Match", "Normalized limit values match within engineering tolerance."
             if c_num - 1e-12 <= o_num:
-                return "Match", "Candidate limit is equal to or better than the original."
+                return (
+                    "Different",
+                    "Candidate limit differs from the original and no design/fit limit "
+                    "was stated to accept the change; engineer review is required.",
+                )
             return "Different", "Candidate limit is worse than the original requirement."
 
     # Default exact compare.
@@ -320,8 +451,8 @@ def bias_condition_finding(
     """A higher bias current is a review item unless it breaks an explicit design limit."""
     original_text = str(original or "").strip()
     candidate_text = str(candidate or "").strip()
-    original_value, _original_unit = parse_numeric_with_unit(original_text, preferred_unit="A")
-    candidate_value, _candidate_unit = parse_numeric_with_unit(candidate_text, preferred_unit="A")
+    original_value, _original_unit = parse_numeric_with_unit(original_text, preferred_unit="nA")
+    candidate_value, _candidate_unit = parse_numeric_with_unit(candidate_text, preferred_unit="nA")
     if original_value is None or candidate_value is None:
         return None
     if abs(candidate_value - original_value) <= max(abs(original_value), abs(candidate_value), 1e-30) * 0.02:
