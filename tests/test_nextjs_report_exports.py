@@ -133,6 +133,12 @@ def test_exports_preserve_synthetic_label_and_neutralize_formula_cells():
     assert extension == "xlsx"
     assert zipfile.is_zipfile(io.BytesIO(workbook_bytes))
     workbook = load_workbook(io.BytesIO(workbook_bytes), data_only=False)
+    # Mature Streamlit sheets must be present; Components remains for formula-safe audit rows.
+    assert {"Summary", "Component Details", "High Risk Parts", "Alternative Candidates", "Components"}.issubset(
+        set(workbook.sheetnames)
+    )
     cell = workbook["Components"]["A2"]
     assert cell.data_type == "s"
     assert cell.value == "'=1+1"
+    details = workbook["Component Details"]
+    assert details["A2"].value == "'=1+1"

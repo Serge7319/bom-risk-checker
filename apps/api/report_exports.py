@@ -132,81 +132,166 @@ def build_csv(report: dict[str, Any]) -> bytes:
     return output.getvalue().encode("utf-8-sig")
 
 
-def build_xlsx(report: dict[str, Any]) -> bytes:
-    """Build a Summary + Components workbook with formula-injection protection."""
-    from openpyxl import Workbook
-    from openpyxl.styles import Alignment, Font, PatternFill, Side, Border
-    from openpyxl.worksheet.table import Table, TableStyleInfo
+def _needs_verification_count(report: dict[str, Any]) -> int:
+    known = report.get("needs_verification_count")
+    if known is not None and str(known).strip() != "":
+        try:
+            return int(known)
+        except (TypeError, ValueError):
+            pass
+    count = 0
+    for part in report.get("parts") or []:
+        if not isinstance(part, dict):
+            continue
+        level = str(part.get("Risk Level") or part.get("risk_level") or "").casefold()
+        verified = bool(part.get("Supplier Data Verified") if "Supplier Data Verified" in part else part.get("supplier_data_verified"))
+        if "verif" in level or not verified:
+            count += 1
+    return count
 
-    rows = _component_rows(report)
-    wb = Workbook()
-    wb.properties.title = "Cadivor BOM Risk Report"
-    wb.properties.creator = "Cadivor"
-    summary = wb.active
-    summary.title = "Summary"
-    summary.sheet_view.showGridLines = False
-    summary.merge_cells("A1:B1")
-    summary["A1"] = "Cadivor BOM Risk Report"
-    summary["A1"].font = Font(name="Aptos Display", size=18, bold=True, color="FFFFFF")
-    summary["A1"].fill = PatternFill("solid", fgColor="17324D")
-    summary.row_dimensions[1].height = 32
-    summary.merge_cells("A2:B2")
+
+def _risk_priority(level: str) -> int:
+    folded = str(level or "").casefold()
+    if "high" in folded or "critical" in folded:
+        return 0
+    if "medium" in folded or folded == "med":
+        return 1
+    if "verif" in folded or "unassess" in folded or "not assess" in folded:
+        return 2
+    if "low" in folded or "healthy" in folded:
+        return 4
+    return 3
+
+
+def _prioritized_review_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """High/medium scored risks first, then Needs verification — never treat blank scores as Low."""
+    selected = [
+        row
+        for row in rows
+        if _risk_priority(_text(row.get("Risk Level"))) <= 2
+    ]
+    return sorted(
+        selected,
+        key=lambda row: (
+            _risk_priority(_text(row.get("Risk Level"))),
+            -float(row.get("Risk Score") or 0),
+            _text(row.get("MPN")),
+        ),
+    )
+
+
+def _recommended_action(row: dict[str, Any]) -> str:
+    level = _text(row.get("Risk Level")).casefold()
+    evidence = _text(row.get("Evidence Class")).casefold()
+    if "verif" in level or evidence in {"missing", "not recorded", ""}:
+        return (
+            "Recommended action: confirm the full manufacturer part number against "
+            "authorized-distributor evidence, then re-run analysis before scoring risk."
+        )
+    if "high" in level:
+        return (
+            "Recommended action: prioritize lifecycle/stock mitigation and evaluate "
+            "approved alternatives before release."
+        )
+    if "medium" in level:
+        return (
+            "Recommended action: review supplier coverage and lead-time evidence; "
+            "plan dual-source or buffer stock if quantity coverage is thin."
+        )
+    return ""
+
+
+def build_xlsx(report: dict[str, Any]) -> bytes:
+    """Build the mature Cadivor risk workbook used by Streamlit, plus Next.js evidence labels.
+
+    Reuses ``detailed_risk_excel_bytes`` so exports keep prioritized risks, lifecycle /
+    supplier findings, cost exposure, and alternative-candidate sheets instead of a
+    thin Summary+Components-only workbook.
+    """
+    from openpyxl import load_workbook
+    from openpyxl.styles import Alignment, Font, PatternFill
+    from src.ui.detailed_risk_export import detailed_risk_excel_bytes
+
+    meta = _metadata(report)
+    project = meta.get("Project") or ""
+    bom = meta.get("BOM") or "Saved BOM"
+    bom_name = f"{project} — {bom}" if project and project != bom else bom
+    workbook_bytes = detailed_risk_excel_bytes(
+        list(report.get("parts") or []),
+        bom_name=bom_name,
+        source_filename=_text(report.get("filename") or bom),
+        analyzed_on=report.get("created_at") or "",
+    )
+    workbook = load_workbook(BytesIO(workbook_bytes))
+    summary = workbook["Summary"]
+    # Preserve the Streamlit summary metrics, then append Next.js evidence / health
+    # facts so unscored BOMs are not mistaken for zero-risk.
     summary["A2"] = _synthetic_disclaimer(report)
     summary["A2"].font = Font(name="Aptos", size=10, color="8A4B08", italic=True)
     summary["A2"].alignment = Alignment(wrap_text=True, vertical="top")
-    summary.row_dimensions[2].height = 42
+    summary.row_dimensions[2].height = max(int(summary.row_dimensions[2].height or 0), 48)
 
-    meta = _metadata(report)
-    facts = [
-        *meta.items(),
-        ("Health score", report.get("health_score", "Not scored")),
-        ("Health status", report.get("health_status", "Not reported")),
-        ("Total components", len(rows)),
-        ("High risk", report.get("high_risk_count", 0)),
-        ("Medium risk", report.get("medium_risk_count", 0)),
-        ("Low risk", report.get("low_risk_count", 0)),
-        ("Evidence mode", report.get("mode", "Not reported")),
+    needs_verification = _needs_verification_count(report)
+    health_score = report.get("health_score")
+    health_display = (
+        health_score
+        if health_score is not None and str(health_score).strip() != ""
+        else "Not scored — supplier evidence incomplete"
+    )
+    extras = [
+        ("Evidence mode", report.get("mode") or "Not reported"),
+        ("Health score", health_display),
+        ("Health status", report.get("health_status") or "Not reported"),
+        (
+            "Needs verification",
+            (
+                f"{needs_verification} of {len(report.get('parts') or [])} "
+                "(unscored parts are not low risk)"
+            ),
+        ),
+        (
+            "Scored risk counts (High / Medium / Low)",
+            (
+                f"{int(report.get('high_risk_count') or 0)} / "
+                f"{int(report.get('medium_risk_count') or 0)} / "
+                f"{int(report.get('low_risk_count') or 0)}"
+            ),
+        ),
     ]
-    for index, (label, value) in enumerate(facts, start=4):
-        summary.cell(index, 1, label)
-        summary.cell(index, 2, _safe_spreadsheet_value(_text(value)))
-        summary.cell(index, 1).font = Font(name="Aptos", size=10, bold=True, color="17324D")
-        summary.cell(index, 2).font = Font(name="Aptos", size=10, color="334155")
-        summary.cell(index, 1).border = Border(bottom=Side(style="thin", color="D9E2EC"))
-        summary.cell(index, 2).border = Border(bottom=Side(style="thin", color="D9E2EC"))
-        summary.cell(index, 2).alignment = Alignment(wrap_text=True, vertical="top")
-    summary.column_dimensions["A"].width = 25
-    summary.column_dimensions["B"].width = 88
+    start_row = int(summary.max_row or 1) + 2
+    summary.cell(start_row - 1, 1, "Workspace analysis evidence")
+    summary.cell(start_row - 1, 1).font = Font(name="Aptos", size=11, bold=True, color="17324D")
+    summary.merge_cells(start_row=start_row - 1, start_column=1, end_row=start_row - 1, end_column=2)
+    for offset, (label, value) in enumerate(extras):
+        row_index = start_row + offset
+        summary.cell(row_index, 1, label)
+        summary.cell(row_index, 2, _safe_spreadsheet_value(_text(value)))
+        summary.cell(row_index, 1).font = Font(name="Aptos", size=10, bold=True, color="17324D")
+        summary.cell(row_index, 2).font = Font(name="Aptos", size=10, color="334155")
+        summary.cell(row_index, 2).alignment = Alignment(wrap_text=True, vertical="top")
+        if "Needs verification" in label and needs_verification:
+            summary.cell(row_index, 1).fill = PatternFill("solid", fgColor="FFF7ED")
+            summary.cell(row_index, 2).fill = PatternFill("solid", fgColor="FFF7ED")
 
-    sheet = wb.create_sheet("Components")
-    sheet.sheet_view.showGridLines = False
-    for column, name in enumerate(COMPONENT_COLUMNS, start=1):
-        cell = sheet.cell(1, column, name)
-        cell.font = Font(name="Aptos", size=10, bold=True, color="FFFFFF")
-        cell.fill = PatternFill("solid", fgColor="17324D")
-        cell.alignment = Alignment(wrap_text=True, vertical="center")
-    sheet.row_dimensions[1].height = 32
-    for row_index, component in enumerate(rows, start=2):
+    # Keep a thin Components sheet for callers/tests that still look for it, while
+    # the mature Component Details / High Risk / Alternatives sheets remain primary.
+    if "Components" not in workbook.sheetnames:
+        components = workbook.create_sheet("Components")
+        components.sheet_view.showGridLines = False
         for column, name in enumerate(COMPONENT_COLUMNS, start=1):
-            value = _safe_spreadsheet_value(_text(component.get(name)))
-            cell = sheet.cell(row_index, column, value)
-            cell.font = Font(name="Aptos", size=10, color="334155")
-            cell.alignment = Alignment(wrap_text=True, vertical="top")
-    if rows:
-        table = Table(displayName="CadivorComponents", ref=f"A1:R{len(rows) + 1}")
-        table.tableStyleInfo = TableStyleInfo(
-            name="TableStyleMedium2", showFirstColumn=False,
-            showLastColumn=False, showRowStripes=True, showColumnStripes=False,
-        )
-        sheet.add_table(table)
-    sheet.freeze_panes = "A2"
-    sheet.auto_filter.ref = f"A1:R{max(1, len(rows) + 1)}"
-    widths = [20, 22, 34, 20, 15, 20, 20, 18, 15, 14, 40, 14, 16, 12, 22, 24, 36, 36]
-    for index, width in enumerate(widths, start=1):
-        sheet.column_dimensions[chr(64 + index)].width = width
+            cell = components.cell(1, column, name)
+            cell.font = Font(name="Aptos", size=10, bold=True, color="FFFFFF")
+            cell.fill = PatternFill("solid", fgColor="17324D")
+        for row_index, component in enumerate(_component_rows(report), start=2):
+            for column, name in enumerate(COMPONENT_COLUMNS, start=1):
+                components.cell(
+                    row_index,
+                    column,
+                    _safe_spreadsheet_value(_text(component.get(name))),
+                )
 
     buffer = BytesIO()
-    wb.save(buffer)
+    workbook.save(buffer)
     return buffer.getvalue()
 
 
@@ -241,16 +326,80 @@ def build_pdf(report: dict[str, Any]) -> bytes:
             styles["CadivorExportBody"],
         ),
         Paragraph(
-            "<b>Health:</b> " + escape(_text(report.get("health_score") if report.get("health_score") is not None else "Not scored")) +
-            " / 100 &nbsp;&nbsp; <b>Status:</b> " + escape(_text(report.get("health_status") or "Not reported")) +
-            " &nbsp;&nbsp; <b>Components:</b> " + str(len(rows)) +
-            " &nbsp;&nbsp; <b>High / medium / low:</b> " +
-            " / ".join(escape(_text(report.get(key, 0))) for key in ("high_risk_count", "medium_risk_count", "low_risk_count")),
+            "<b>Health:</b> "
+            + escape(
+                _text(
+                    report.get("health_score")
+                    if report.get("health_score") is not None
+                    else "Not scored — evidence incomplete"
+                )
+            )
+            + " &nbsp;&nbsp; <b>Status:</b> "
+            + escape(_text(report.get("health_status") or "Not reported"))
+            + " &nbsp;&nbsp; <b>Components:</b> "
+            + str(len(rows))
+            + " &nbsp;&nbsp; <b>Needs verification:</b> "
+            + escape(_text(_needs_verification_count(report)))
+            + " &nbsp;&nbsp; <b>Scored High / Medium / Low:</b> "
+            + " / ".join(
+                escape(_text(report.get(key, 0)))
+                for key in ("high_risk_count", "medium_risk_count", "low_risk_count")
+            )
+            + " (zeros mean no scored parts when verification is outstanding)",
             styles["CadivorExportBody"],
         ),
         Paragraph(escape(_synthetic_disclaimer(report)), styles["CadivorExportBody"]),
         Spacer(1, 8),
     ]
+
+    prioritized = _prioritized_review_rows(rows)
+    if prioritized:
+        story.append(
+            Paragraph(
+                "<b>Prioritized review</b> — high / medium risk first, then parts that still need supplier verification.",
+                styles["CadivorExportBody"],
+            )
+        )
+        priority_headers = ("Priority", "MPN", "Risk", "Lifecycle", "Evidence", "Why / recommended action")
+        priority_data: list[list[Any]] = [
+            [Paragraph(escape(name), styles["CadivorExportHead"]) for name in priority_headers]
+        ]
+        for index, row in enumerate(prioritized, start=1):
+            action = _recommended_action(row)
+            why = _text(row.get("Risk Reasons")) or "No risk explanation was saved for this component."
+            priority_data.append(
+                [
+                    Paragraph(escape(str(index)), styles["CadivorExportSmall"]),
+                    Paragraph(escape(_text(row["MPN"])), styles["CadivorExportSmall"]),
+                    Paragraph(escape(_text(row["Risk Level"])), styles["CadivorExportSmall"]),
+                    Paragraph(escape(_text(row["Lifecycle"])), styles["CadivorExportSmall"]),
+                    Paragraph(escape(_text(row["Evidence Class"])), styles["CadivorExportSmall"]),
+                    Paragraph(escape(f"{why} {action}".strip()), styles["CadivorExportSmall"]),
+                ]
+            )
+        priority_table = LongTable(
+            priority_data,
+            colWidths=[0.55 * inch, 1.1 * inch, 0.85 * inch, 0.85 * inch, 0.95 * inch, 4.0 * inch],
+            repeatRows=1,
+            hAlign="LEFT",
+            splitByRow=1,
+        )
+        priority_table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#7C2D12")),
+                    ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#FDBA74")),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.HexColor("#FFF7ED"), colors.white]),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 4),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+                    ("TOPPADDING", (0, 0), (-1, -1), 4),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ]
+            )
+        )
+        story.append(priority_table)
+        story.append(Spacer(1, 10))
 
     headers = ("MPN", "Manufacturer / description", "Parent", "Qty", "Lifecycle", "Risk", "Evidence", "Risk reasons")
     data: list[list[Any]] = [[Paragraph(escape(name), styles["CadivorExportHead"]) for name in headers]]

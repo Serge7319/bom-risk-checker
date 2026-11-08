@@ -113,6 +113,11 @@ def _part_analysis(row: Mapping[str, Any]) -> dict[str, Any]:
     risk = calculate_risk(part)
     reasons = list(risk.get("risk_reasons") or [])
     verified = bool(part.get("supplier_data_verified"))
+    provider_health = part.get("provider_health") if isinstance(part.get("provider_health"), dict) else {}
+    coverage = str(
+        provider_health.get("summary_message")
+        or "Supplier data could not be verified during this analysis"
+    )
     if not bool(part.get("stock_data_complete")) and part.get("total_market_stock") is not None:
         note = "Supplier inventory coverage is incomplete; BOM quantity coverage is not confirmed"
         if note not in reasons:
@@ -120,7 +125,17 @@ def _part_analysis(row: Mapping[str, Any]) -> dict[str, Any]:
     if not verified:
         replacements = unverified_supplier_reason_replacements()
         reasons = [replacements.get(reason, reason) for reason in reasons]
-        if not any("could not be verified" in str(reason).lower() for reason in reasons):
+        # Prefer the provider-health status so unavailable credentials / no-match
+        # outcomes stay visible instead of a generic "could not be verified" line.
+        status_note = coverage.strip() or (
+            "No live supplier evidence was available; manufacturer, lifecycle, "
+            "stock, and price remain unconfirmed"
+        )
+        if status_note and not any(
+            status_note.casefold() == str(reason).casefold() for reason in reasons
+        ):
+            reasons.insert(0, status_note)
+        elif not any("could not be verified" in str(reason).lower() for reason in reasons):
             reasons.insert(0, "Some supplier data could not be verified during this analysis")
 
     stock = part.get("total_market_stock")
@@ -136,8 +151,6 @@ def _part_analysis(row: Mapping[str, Any]) -> dict[str, Any]:
         for candidate in alternatives if isinstance(candidate, dict)
     ]
     candidate_mpns = [candidate for candidate in candidate_mpns if candidate]
-    provider_health = part.get("provider_health") if isinstance(part.get("provider_health"), dict) else {}
-    coverage = str(provider_health.get("summary_message") or "Supplier data could not be verified during this analysis")
     return {
         "MPN": mpn,
         "mpn": mpn,
