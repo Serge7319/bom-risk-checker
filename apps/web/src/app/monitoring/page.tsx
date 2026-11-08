@@ -92,12 +92,24 @@ function MonitoringPageInner() {
         <>
           <div className="cv-kpis">
             <KpiCard icon="monitor" tone="blue" label="Tracked components" value={metrics.monitored_parts ?? 0} detail="Parts in the selected analysis" />
-            <KpiCard icon="bell" tone="amber" label="Alerts to review" value={metrics.active_alerts ?? 0} detail="Signals derived from saved evidence" />
-            <KpiCard icon="clock" label="Lifecycle flags" value={metrics.lifecycle_changes ?? 0} detail="NRND or lifecycle change signals" />
+            <KpiCard icon="bell" tone="amber" label="Alerts to review" value={metrics.active_alerts ?? 0} detail="Rows shown for this analysis only" />
+            <KpiCard icon="clock" label="Lifecycle flags" value={metrics.lifecycle_changes ?? 0} detail="Distinct parts with lifecycle signals" />
+            <KpiCard
+              icon="risk"
+              tone="amber"
+              label="Engineering-priority risk"
+              value={metrics.engineering_priority_risk ?? metrics.risk_signals ?? 0}
+              detail="High/Medium risk signals (same classification as the report)"
+            />
           </div>
           <section className="cv-card pad">
             <h3 className="cv-card-title">Alerts and changes</h3>
-            <p className="cv-card-subtitle">Review signals derived from saved analyses. Scheduled refresh and email delivery are currently disabled.</p>
+            <p className="cv-card-subtitle">
+              Review signals for the selected analysis only.
+              {data?.service_status && (data.service_status as { scheduled_refresh_and_email_enabled?: boolean }).scheduled_refresh_and_email_enabled
+                ? " Scheduled refresh and email delivery are connected."
+                : " Scheduled refresh and email delivery are currently disabled."}
+            </p>
             {alerts.length ? (
               <div className="cv-table-wrap" style={{ marginTop: 12 }}>
                 <table className="cv-table">

@@ -158,6 +158,8 @@ CREATE INDEX IF NOT EXISTS migration_reports_ws_idx
 
 -- Human-authored, tenant-scoped decisions from the Next.js workspace.
 -- The payload retains the comparison evidence as it appeared when recorded.
+-- Approval overrides store conflict_acknowledgement, override_rationale, and
+-- approval_conflicts inside payload JSONB (no column migration required).
 CREATE TABLE IF NOT EXISTS migration_decision_records (
   id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL,

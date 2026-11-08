@@ -13,6 +13,7 @@ import {
   recordDecision,
   type DecisionRecord,
 } from "@/lib/api";
+import { validateOverrideRationale } from "@/lib/decisionValidation";
 import { PAGE_META } from "@/lib/routes";
 import { readLastAnalysis, useRequireSession } from "@/lib/session";
 
@@ -42,6 +43,80 @@ function reportLabel(row: Row) {
 function isUnknown(row: Row) {
   const assessment = text(row.Assessment || row.assessment || row.Status || "").toLowerCase();
   return assessment.includes("unable to confirm") || assessment.includes("needs data") || assessment.includes("needs validation");
+}
+
+function isMaterialDifference(row: Row) {
+  const assessment = text(row.Assessment || row.assessment || row.Status || "").toLowerCase();
+  return assessment.includes("material difference") || assessment === "different" || assessment === "difference";
+}
+
+function conflictEntriesFromResult(result: Row | null) {
+  const rows = (result?.rows || []) as Row[];
+  const materialFromRows = rows.filter(isMaterialDifference).map((row) => ({
+    attribute: text(row.Attribute || row.attribute),
+    part_a: text(row["Part A"] || row.part_a, ""),
+    part_b: text(row["Part B"] || row.part_b, ""),
+    assessment: text(row.Assessment || row.assessment || row.Status),
+  }));
+  const listedMaterial = ((result?.material_differences || []) as Row[]).map((row) => ({
+    attribute: text(row.attribute || row.Attribute),
+    part_a: text(row.part_a || row["Part A"], ""),
+    part_b: text(row.part_b || row["Part B"], ""),
+    assessment: text(row.assessment || row.Assessment, "Material difference"),
+  }));
+  const materialByAttr = new Map<string, (typeof materialFromRows)[number]>();
+  for (const item of [...listedMaterial, ...materialFromRows]) {
+    if (item.attribute && item.attribute !== "—") materialByAttr.set(item.attribute, item);
+  }
+
+  const hasRequiredFlag = rows.some((row) => "Required" in row);
+  const unknownFromRows = rows
+    .filter((row) => {
+      if (!isUnknown(row)) return false;
+      if (!hasRequiredFlag) return true;
+      return Boolean(row.Required);
+    })
+    .map((row) => ({
+      attribute: text(row.Attribute || row.attribute),
+      part_a: text(row["Part A"] || row.part_a, ""),
+      part_b: text(row["Part B"] || row.part_b, ""),
+      assessment: text(row.Assessment || row.assessment || row.Status, "Unable to confirm"),
+    }));
+  const listedUnknown = ((result?.unknown_required_fields || []) as Row[]).map((row) => ({
+    attribute: text(row.attribute || row.Attribute),
+    part_a: text(row.part_a || row["Part A"], ""),
+    part_b: text(row.part_b || row["Part B"], ""),
+    assessment: text(row.assessment || row.Assessment, "Unable to confirm"),
+  }));
+  const unknownByAttr = new Map<string, (typeof unknownFromRows)[number]>();
+  for (const item of [...listedUnknown, ...unknownFromRows]) {
+    if (item.attribute && item.attribute !== "—") unknownByAttr.set(item.attribute, item);
+  }
+  if (!unknownByAttr.size && !hasRequiredFlag) {
+    for (const attribute of (result?.unknown_attributes || []) as unknown[]) {
+      const label = text(attribute, "");
+      if (label) {
+        unknownByAttr.set(label, {
+          attribute: label,
+          part_a: "",
+          part_b: "",
+          assessment: "Unable to confirm",
+        });
+      }
+    }
+  }
+
+  const material = Array.from(materialByAttr.values());
+  const unknownRequired = Array.from(unknownByAttr.values());
+  const finding = text(result?.finding, "");
+  const counts = (result?.counts || {}) as Record<string, unknown>;
+  const hasConflicts = Boolean(
+    material.length
+    || unknownRequired.length
+    || Number(counts.material_difference || 0) > 0
+    || /material difference/i.test(finding),
+  );
+  return { material, unknownRequired, hasConflicts, finding };
 }
 
 function evidenceLabel(source: unknown) {
@@ -113,6 +188,8 @@ function ComparePartsInner() {
   const [followUpOwner, setFollowUpOwner] = useState("");
   const [followUpDueDate, setFollowUpDueDate] = useState("");
   const [residualRisk, setResidualRisk] = useState("unknown");
+  const [conflictAcknowledgement, setConflictAcknowledgement] = useState(false);
+  const [overrideRationale, setOverrideRationale] = useState("");
   const [decisionBusy, setDecisionBusy] = useState(false);
   const [decisionError, setDecisionError] = useState("");
   const [decisionSuccess, setDecisionSuccess] = useState<DecisionRecord | null>(null);
@@ -123,6 +200,19 @@ function ComparePartsInner() {
     if (a) setPartA(a);
     if (b) setPartB(b);
   }, [search]);
+
+  useEffect(() => {
+    if (!decisionOpen || !result) return;
+    // Any comparison identity change while the dialog is open invalidates prior ack/override.
+    resetConflictGuard();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally keyed to comparison identity only
+  }, [
+    decisionOpen,
+    String(result?.part_a || ""),
+    String(result?.part_b || ""),
+    String(result?.analysis_id || ""),
+    String(result?.finding || ""),
+  ]);
 
   useEffect(() => {
     if (!session) return;
@@ -189,6 +279,11 @@ function ComparePartsInner() {
     }
   }
 
+  function resetConflictGuard() {
+    setConflictAcknowledgement(false);
+    setOverrideRationale("");
+  }
+
   function openDecisionDialog() {
     setDecisionAnalysisId(String(result?.analysis_id || analysisId || ""));
     setDecisionPartA(String(result?.part_a || partA || ""));
@@ -201,6 +296,7 @@ function ComparePartsInner() {
     setFollowUpOwner("");
     setFollowUpDueDate("");
     setResidualRisk("unknown");
+    resetConflictGuard();
     setDecisionError("");
     setDecisionSuccess(null);
     setDecisionOpen(true);
@@ -224,11 +320,28 @@ function ComparePartsInner() {
       setResult(data);
       setAnalysisId(String(data.analysis_id || ""));
       setDecisionAnalysisId(String(data.analysis_id || nextAnalysisId || ""));
+      // Comparison identity changed — prior ack/override must not carry over.
+      resetConflictGuard();
     } catch (err) {
       setDecisionAnalysisId(previousAnalysisId);
       setDecisionError(err instanceof Error ? err.message : "Could not refresh the comparison for that BOM.");
     } finally {
       setDecisionBusy(false);
+    }
+  }
+
+  function onDecisionPartChange(side: "a" | "b", value: string) {
+    if (side === "a") setDecisionPartA(value);
+    else setDecisionPartB(value);
+    // Editing MPNs while the dialog is open invalidates any prior conflict ack.
+    resetConflictGuard();
+    setDecisionError("");
+  }
+
+  function onDecisionTypeChange(next: string) {
+    setDecision(next);
+    if (next !== "approve_alternate") {
+      resetConflictGuard();
     }
   }
 
@@ -247,6 +360,24 @@ function ComparePartsInner() {
       setDecisionError("Add the required follow-up action for this decision.");
       return;
     }
+    if (decision === "approve_alternate" && residualRisk === "unknown") {
+      setDecisionError("Record an explicit residual-risk assessment before approving an alternate.");
+      return;
+    }
+    const previewConflicts = conflictEntriesFromResult(result);
+    if (decision === "approve_alternate" && previewConflicts.hasConflicts) {
+      if (!conflictAcknowledgement) {
+        setDecisionError(
+          "Acknowledge the material differences and unknown required fit fields before approving.",
+        );
+        return;
+      }
+      const overrideError = validateOverrideRationale(overrideRationale, rationale);
+      if (overrideError) {
+        setDecisionError(overrideError);
+        return;
+      }
+    }
     setDecisionBusy(true);
     setDecisionError("");
     try {
@@ -264,7 +395,27 @@ function ComparePartsInner() {
             decisionAnalysisId || undefined,
             { a: datasheetA, b: datasheetB },
           );
+      const comparisonIdentityChanged = Boolean(
+        result
+        && (
+          String(result.part_a || "").trim().toLowerCase() !== String(comparison.part_a || "").trim().toLowerCase()
+          || String(result.part_b || "").trim().toLowerCase() !== String(comparison.part_b || "").trim().toLowerCase()
+          || String(result.analysis_id || "") !== String(comparison.analysis_id || "")
+          || String(result.finding || "") !== String(comparison.finding || "")
+        ),
+      );
       setResult(comparison);
+      if (comparisonIdentityChanged) {
+        // Fresh comparison — do not reuse ack/override from the prior snapshot.
+        resetConflictGuard();
+        const freshConflicts = conflictEntriesFromResult(comparison as Row);
+        if (decision === "approve_alternate" && freshConflicts.hasConflicts) {
+          setDecisionError(
+            "The comparison changed. Re-acknowledge the conflicts and provide a specific override rationale before approving.",
+          );
+          return;
+        }
+      }
       const response = await recordDecision(session.access_token, {
         analysis_id: String(comparison.analysis_id || decisionAnalysisId || "") || null,
         part_a: decisionPartA.trim(),
@@ -277,6 +428,8 @@ function ComparePartsInner() {
         follow_up_owner: followUpOwner,
         follow_up_due_date: followUpDueDate || null,
         residual_risk: residualRisk,
+        conflict_acknowledgement: comparisonIdentityChanged ? false : conflictAcknowledgement,
+        override_rationale: comparisonIdentityChanged ? undefined : (overrideRationale.trim() || undefined),
       }, { a: datasheetA, b: datasheetB });
       setDecisionSuccess(response.record);
       setDecisionOpen(false);
@@ -304,6 +457,7 @@ function ComparePartsInner() {
   );
   const resultFinding = text(result?.finding, "No compatibility conclusion");
   const evidenceCounts = (result?.counts || {}) as Record<string, unknown>;
+  const approvalConflicts = conflictEntriesFromResult(result);
   const reportOptions = [...reports];
   if (decisionAnalysisId && !reportOptions.some((row) => getAnalysisId(row) === decisionAnalysisId)) {
     reportOptions.unshift({ id: decisionAnalysisId, project_name: "Current comparison", bom_name: "Saved analysis context" });
@@ -659,7 +813,7 @@ function ComparePartsInner() {
                       <span>Current part</span>
                       <input
                         value={decisionPartA}
-                        onChange={(event) => setDecisionPartA(event.target.value)}
+                        onChange={(event) => onDecisionPartChange("a", event.target.value)}
                         maxLength={160}
                         placeholder="Current manufacturer part number"
                         autoComplete="off"
@@ -670,7 +824,7 @@ function ComparePartsInner() {
                       <span>Candidate part</span>
                       <input
                         value={decisionPartB}
-                        onChange={(event) => setDecisionPartB(event.target.value)}
+                        onChange={(event) => onDecisionPartChange("b", event.target.value)}
                         maxLength={160}
                         placeholder="Candidate manufacturer part number"
                         autoComplete="off"
@@ -690,7 +844,7 @@ function ComparePartsInner() {
                       <span>Current part</span>
                       <input
                         value={decisionPartA}
-                        onChange={(event) => setDecisionPartA(event.target.value)}
+                        onChange={(event) => onDecisionPartChange("a", event.target.value)}
                         maxLength={160}
                         placeholder="Current manufacturer part number"
                         autoComplete="off"
@@ -701,7 +855,7 @@ function ComparePartsInner() {
                       <span>Candidate part</span>
                       <input
                         value={decisionPartB}
-                        onChange={(event) => setDecisionPartB(event.target.value)}
+                        onChange={(event) => onDecisionPartChange("b", event.target.value)}
                         maxLength={160}
                         placeholder="Candidate manufacturer part number"
                         autoComplete="off"
@@ -717,7 +871,7 @@ function ComparePartsInner() {
                   <span>Decision</span>
                   <select
                     value={decision}
-                    onChange={(event) => setDecision(event.target.value)}
+                    onChange={(event) => onDecisionTypeChange(event.target.value)}
                     disabled={decisionBusy}
                   >
                     <option value="hold_for_review">Hold for review</option>
@@ -770,6 +924,68 @@ function ComparePartsInner() {
                 ) : null}
               </fieldset>
 
+              {decision === "approve_alternate" && approvalConflicts.hasConflicts ? (
+                <fieldset className="cv-modal-conflict-guard">
+                  <legend>Comparison conflicts require an override</legend>
+                  <p>
+                    The recomputed comparison reports {approvalConflicts.finding || "fit conflicts"}.
+                    Review the material differences and unknown required fit fields before approving.
+                  </p>
+                  {approvalConflicts.material.length ? (
+                    <div className="cv-modal-conflict-block">
+                      <strong>Material differences</strong>
+                      <ul>
+                        {approvalConflicts.material.map((item) => (
+                          <li key={`material-${item.attribute}`}>
+                            <span>{item.attribute}</span>
+                            {(item.part_a || item.part_b) ? (
+                              <small>{item.part_a || "—"} → {item.part_b || "—"}</small>
+                            ) : null}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                  {approvalConflicts.unknownRequired.length ? (
+                    <div className="cv-modal-conflict-block">
+                      <strong>Unknown required fit fields</strong>
+                      <ul>
+                        {approvalConflicts.unknownRequired.map((item) => (
+                          <li key={`unknown-${item.attribute}`}>
+                            <span>{item.attribute}</span>
+                            <small>{item.assessment}</small>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                  <label className="cv-modal-ack">
+                    <input
+                      type="checkbox"
+                      checked={conflictAcknowledgement}
+                      onChange={(event) => setConflictAcknowledgement(event.target.checked)}
+                      disabled={decisionBusy}
+                      required
+                    />
+                    <span>
+                      I have reviewed these material differences and unknown required fit fields and still want to approve this alternate.
+                    </span>
+                  </label>
+                  <label className="cv-field cv-modal-rationale">
+                    <span>Override rationale · required</span>
+                    <textarea
+                      value={overrideRationale}
+                      onChange={(event) => setOverrideRationale(event.target.value)}
+                      placeholder="Explain specifically why approval is justified despite the conflicts above. This is stored separately from the general rationale."
+                      maxLength={3000}
+                      required
+                      rows={3}
+                      disabled={decisionBusy}
+                    />
+                  </label>
+                </fieldset>
+              ) : null}
+
               <div className="cv-form-grid cv-form-grid-two cv-modal-followup">
                 <label className="cv-field">
                   <span>Follow-up action{["conditional_approval", "defer_for_validation"].includes(decision) ? " · required" : " · optional"}</span>
@@ -791,8 +1007,13 @@ function ComparePartsInner() {
                   <input type="date" value={followUpDueDate} onChange={(event) => setFollowUpDueDate(event.target.value)} disabled={decisionBusy} />
                 </label>
                 <label className="cv-field">
-                  <span>Residual risk</span>
-                  <select value={residualRisk} onChange={(event) => setResidualRisk(event.target.value)} disabled={decisionBusy}>
+                  <span>Residual risk{decision === "approve_alternate" ? " · required" : ""}</span>
+                  <select
+                    value={residualRisk}
+                    onChange={(event) => setResidualRisk(event.target.value)}
+                    disabled={decisionBusy}
+                    required={decision === "approve_alternate"}
+                  >
                     <option value="unknown">Not assessed</option>
                     <option value="low">Low</option>
                     <option value="medium">Medium</option>
@@ -815,7 +1036,25 @@ function ComparePartsInner() {
                 <button
                   type="submit"
                   className="cv-button primary"
-                  disabled={decisionBusy || !decisionPartA.trim() || !decisionPartB.trim() || !reviewer.trim() || !rationale.trim() || (decision === "approve_alternate" && !APPROVAL_CHECKS.every((item) => validationChecks.includes(item))) || (["conditional_approval", "defer_for_validation"].includes(decision) && !followUpAction.trim()) || (decision === "accept_residual_risk" && residualRisk === "unknown")}
+                  disabled={
+                    decisionBusy
+                    || !decisionPartA.trim()
+                    || !decisionPartB.trim()
+                    || !reviewer.trim()
+                    || !rationale.trim()
+                    || (decision === "approve_alternate" && !APPROVAL_CHECKS.every((item) => validationChecks.includes(item)))
+                    || (decision === "approve_alternate" && residualRisk === "unknown")
+                    || (
+                      decision === "approve_alternate"
+                      && approvalConflicts.hasConflicts
+                      && (
+                        !conflictAcknowledgement
+                        || Boolean(validateOverrideRationale(overrideRationale, rationale))
+                      )
+                    )
+                    || (["conditional_approval", "defer_for_validation"].includes(decision) && !followUpAction.trim())
+                    || (decision === "accept_residual_risk" && residualRisk === "unknown")
+                  }
                 >
                   {decisionBusy ? "Saving comparison and decision…" : "Record decision"}
                 </button>
