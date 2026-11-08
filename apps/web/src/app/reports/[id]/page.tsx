@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { AskCadivorPanel } from "@/components/AskCadivorPanel";
+import { AnalysisStageNavigation } from "@/components/AnalysisStageNavigation";
 import { Shell } from "@/components/Shell";
 import { KpiCard } from "@/components/KpiCard";
 import { Icon } from "@/components/Icons";
@@ -54,13 +55,7 @@ export default function ReportPage() {
       .then((data) => {
         setReport(data);
         const id = String(data.analysis_id || data.id || analysisKey);
-        setReview(
-          markReviewProgress(
-            id,
-            { risksOpenedAt: new Date().toISOString() },
-            session,
-          ),
-        );
+        markReviewProgress(id, { risksOpenedAt: new Date().toISOString() }, session);
         rememberAnalysis({
           analysis_id: data.analysis_id || data.id,
           total_parts: data.total_parts,
@@ -79,30 +74,9 @@ export default function ReportPage() {
     listDecisionRecords(session.access_token, params.id)
       .then(({ records }) => {
         setDecisions(records || []);
-        if ((records || []).length) {
-          setReview(
-            markReviewProgress(
-              analysisKey,
-              { decisionRecordedAt: new Date().toISOString() },
-              session,
-            ),
-          );
-        }
       })
       .catch((err) => setDecisionError(err instanceof Error ? err.message : "Decision history could not load."));
   }, [params.id, session]);
-
-  const reviewGuide = useMemo(() => {
-    const progress = review || readReviewProgress(String(params.id || ""), session || undefined);
-    const hasDecision = decisions.length > 0 || Boolean(progress.decisionRecordedAt);
-    const evidenceDone = Boolean(progress.evidenceReviewedAt);
-    const monitorDone = Boolean(progress.monitorOpenedAt);
-    let current: "Risks" | "Evidence" | "Decision" | "Monitor" = "Evidence";
-    if (!evidenceDone) current = "Evidence";
-    else if (!hasDecision) current = "Decision";
-    else current = "Monitor";
-    return { progress, hasDecision, evidenceDone, monitorDone, current };
-  }, [review, decisions, params.id, session]);
 
   async function onDownload(format: ReportExportFormat) {
     if (!session || !report) return;
@@ -157,78 +131,13 @@ export default function ReportPage() {
         </div>
       ) : null}
 
+      <AnalysisStageNavigation
+        analysisId={String(report?.analysis_id || report?.id || params.id)}
+        current="risks"
+      />
+
       {report ? (
         <>
-          <section className="cv-card pad cv-bom-review-guide" aria-label="Engineering review workflow">
-            <div className="cv-bom-review-guide-copy">
-              <p className="cv-eyebrow">Engineering workflow</p>
-              <h2 className="cv-card-title">Risks → Evidence → Decision → Monitor</h2>
-              <p className="cv-card-subtitle">
-                Analysis stages are complete for this saved report. Continue review without locking other navigation.
-              </p>
-              <ol className="cv-bom-review-steps">
-                <li className="is-complete">
-                  <strong>Risks</strong>
-                  <span>Complete — report opened</span>
-                </li>
-                <li className={reviewGuide.evidenceDone ? "is-complete" : reviewGuide.current === "Evidence" ? "is-current" : ""}>
-                  <strong>Evidence</strong>
-                  <span>{reviewGuide.evidenceDone ? "Complete — evidence reviewed" : "Current — confirm evidence labels below"}</span>
-                </li>
-                <li className={reviewGuide.hasDecision ? "is-complete" : reviewGuide.current === "Decision" ? "is-current" : ""}>
-                  <strong>Decision</strong>
-                  <span>
-                    {reviewGuide.hasDecision
-                      ? "Complete — decision record saved"
-                      : "Next — record a keep/replace decision"}
-                  </span>
-                </li>
-                <li className={reviewGuide.monitorDone ? "is-complete" : reviewGuide.current === "Monitor" ? "is-current" : ""}>
-                  <strong>Monitor</strong>
-                  <span>
-                    Derived signals available; scheduled refresh and email delivery are currently disabled.
-                  </span>
-                </li>
-              </ol>
-            </div>
-            <div className="cv-bom-review-guide-actions">
-              {!reviewGuide.evidenceDone ? (
-                <a
-                  className="cv-button primary"
-                  href="#report-evidence"
-                  onClick={() => {
-                    setReview(
-                      markReviewProgress(
-                        String(params.id),
-                        { evidenceReviewedAt: new Date().toISOString() },
-                        session,
-                      ),
-                    );
-                  }}
-                >
-                  Review evidence
-                </a>
-              ) : !reviewGuide.hasDecision ? (
-                <Link className="cv-button primary" href="/engineering-decisions">
-                  Open Decision queue
-                </Link>
-              ) : (
-                <Link
-                  className="cv-button primary"
-                  href={`/monitoring?analysis_id=${encodeURIComponent(String(report.analysis_id || report.id || params.id))}`}
-                >
-                  Open Monitoring
-                </Link>
-              )}
-              <Link
-                className="cv-button"
-                href={`/compare-parts?analysis_id=${encodeURIComponent(params.id)}`}
-              >
-                Compare parts
-              </Link>
-            </div>
-          </section>
-
           <dl className="cv-record-meta">
             <div className="cv-record-field">
               <dt>Health</dt>
@@ -492,7 +401,7 @@ export default function ReportPage() {
                 Part-level rows with quantity-per-parent and effective quantity
                 when hierarchy is present. Evidence labels appear with each risk signal.
               </p>
-              {!reviewGuide.evidenceDone ? (
+              {!review?.evidenceReviewedAt ? (
                 <button
                   type="button"
                   className="cv-button"

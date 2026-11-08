@@ -1,13 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BomWorkflowStepper } from "@/components/BomWorkflowStepper";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/Icons";
 import { Shell } from "@/components/Shell";
 import { PageHeader, SecondaryLink } from "@/components/PageHeader";
 import {
-  listDecisionRecords,
   listReports,
   validateBom,
   type AnalyzeSummary,
@@ -19,18 +17,14 @@ import {
   getActiveAnalyzeJob,
   identityKey,
   loadDraftFile,
-  markReviewProgress,
   parseAnalyzeSummary,
   readDraftMeta,
-  readReviewProgress,
   saveDraftFile,
   startAnalyzeJob,
   subscribeAnalyzeJob,
   writeDraftMeta,
   type BomDraftMeta,
-  type BomReviewProgress,
 } from "@/lib/bomDraft";
-import { buildWorkflowGuide } from "@/lib/bomWorkflow";
 import { PAGE_META } from "@/lib/routes";
 import { rememberAnalysis, useRequireSession } from "@/lib/session";
 
@@ -68,8 +62,6 @@ export default function BomAnalyzerPage() {
   const [oneTimeReportRequired, setOneTimeReportRequired] = useState(false);
   const [summary, setSummary] = useState<AnalyzeSummary | null>(null);
   const [analysisId, setAnalysisId] = useState<string | null>(null);
-  const [review, setReview] = useState<BomReviewProgress | null>(null);
-  const [hasDecisionRecord, setHasDecisionRecord] = useState(false);
   const [draftReady, setDraftReady] = useState(false);
   const [backgroundNote, setBackgroundNote] = useState("");
   const [draftPersistNotice, setDraftPersistNotice] = useState("");
@@ -153,9 +145,6 @@ export default function BomAnalyzerPage() {
       setOneTimeReportRequired(Boolean(meta.oneTimeReportRequired));
       setSummary(meta.summary);
       setAnalysisId(meta.analysisId);
-      if (meta.analysisId) {
-        setReview(readReviewProgress(meta.analysisId, session));
-      }
       const restored = await loadDraftFile(session);
       if (cancelled) return;
       if (restored) {
@@ -270,25 +259,6 @@ export default function BomAnalyzerPage() {
   }, [session]);
 
   useEffect(() => {
-    if (!session || !analysisId) return;
-    listDecisionRecords(session.access_token, analysisId)
-      .then(({ records }) => {
-        const found = (records || []).length > 0;
-        setHasDecisionRecord(found);
-        if (found) {
-          setReview(
-            markReviewProgress(
-              analysisId,
-              { decisionRecordedAt: new Date().toISOString() },
-              session,
-            ),
-          );
-        }
-      })
-      .catch(() => setHasDecisionRecord(false));
-  }, [session, analysisId]);
-
-  useEffect(() => {
     if (!session || !draftReady) return;
     persistMeta({});
   }, [
@@ -351,8 +321,6 @@ export default function BomAnalyzerPage() {
     setDraftPersistNotice("");
     setSummary(null);
     setAnalysisId(null);
-    setReview(null);
-    setHasDecisionRecord(false);
     setAnalyzeError("");
     setOneTimeReportRequired(false);
     setBackgroundNote("");
@@ -423,43 +391,11 @@ export default function BomAnalyzerPage() {
       validatedFileKey === fileContentKey,
   );
 
-  const guide = useMemo(
-    () =>
-      buildWorkflowGuide({
-        hasFile: Boolean(file),
-        validating,
-        validation,
-        validationError,
-        validationMatchesFile,
-        analyzing,
-        analyzeError,
-        summary,
-        analysisId,
-        review,
-        hasDecisionRecord,
-        monitoringAvailable: false,
-      }),
-    [
-      file,
-      validating,
-      validation,
-      validationError,
-      validationMatchesFile,
-      analyzing,
-      analyzeError,
-      summary,
-      analysisId,
-      review,
-      hasDecisionRecord,
-    ],
-  );
-
   if (!session) return null;
 
   const visibleReports = recentReports
     .filter((row) => row.id || row.analysis_id)
     .slice(0, 3);
-  const primary = guide.primaryCta;
   const canAnalyze = Boolean(
     file &&
       validationMatchesFile &&
@@ -468,8 +404,27 @@ export default function BomAnalyzerPage() {
       !validating,
   );
 
+  const savedAnalysisId = String(analysisId || summary?.analysis_id || "");
+  const primary = savedAnalysisId
+    ? {
+        label: "Open risk review",
+        href: `/detailed-risk-report?analysis_id=${encodeURIComponent(savedAnalysisId)}`,
+      }
+    : analyzing
+      ? { label: "Analysis in progress…", disabled: true }
+      : validating
+        ? { label: "Validating…", disabled: true }
+        : analyzeError
+          ? { label: "Retry analysis", action: "retry-analyze" as const }
+          : canAnalyze
+            ? { label: "Analyze BOM", action: "analyze" as const }
+            : file && validationMatchesFile && validation && !validation.can_analyze
+              ? { label: "Fix file and re-check", action: "choose-file" as const }
+              : { label: "Choose BOM file", action: "choose-file" as const };
+
   function handlePrimary() {
-    if (primary.disabled) return;
+    if ("disabled" in primary && primary.disabled) return;
+    if (!("action" in primary)) return;
     if (primary.action === "choose-file") {
       fileInputRef.current?.click();
       return;
@@ -493,26 +448,14 @@ export default function BomAnalyzerPage() {
         }
       />
 
-      <p className="cv-bom-guidance-note" role="note">
-        This workflow guides analysis and review. Sidebar navigation and other tools stay available — leave anytime and resume this draft later.
-      </p>
-
       <div className="cv-bom-workspace-grid">
         <section className="cv-card pad cv-bom-create-card">
-          <div className="cv-bom-card-heading">
-            <div>
-              <h2 className="cv-card-title">Create a BOM analysis</h2>
-              <p className="cv-card-subtitle">
-                Add project details, upload the file, then review validation before analysis.
-              </p>
-            </div>
-            <span className="cv-bom-step">
-              Stage {guide.stages.findIndex((s) => s.id === guide.currentStage) + 1} of{" "}
-              {guide.stages.length}
-            </span>
+          <div>
+            <h2 className="cv-card-title">Create a BOM analysis</h2>
+            <p className="cv-card-subtitle">
+              Add project details, upload the file, then review validation before analysis.
+            </p>
           </div>
-
-          <BomWorkflowStepper guide={guide} analyzing={analyzing} />
 
           {backgroundNote && analyzing ? (
             <p className="cv-small-note cv-bom-background-note" role="status">
@@ -695,13 +638,13 @@ export default function BomAnalyzerPage() {
                 · {summary.total_parts} parts · health {summary.health_score ?? "—"}
               </p>
               <p className="cv-small-note">
-                Received, Validating, and Analyzing are complete. Continue with Risks in the saved report.
+                Your analysis is saved. Continue to the risk review whenever you are ready; other workspace pages remain available.
               </p>
             </div>
           ) : null}
 
           <div className="cv-bom-analyze-actions cv-bom-primary-cta">
-            {primary.href ? (
+            {"href" in primary && primary.href ? (
               <Link className="cv-button primary" href={primary.href}>
                 {primary.label}
               </Link>
@@ -710,8 +653,8 @@ export default function BomAnalyzerPage() {
                 type="button"
                 className="cv-button primary"
                 disabled={
-                  primary.disabled ||
-                  (primary.action === "analyze" || primary.action === "retry-analyze"
+                  ("disabled" in primary && primary.disabled) ||
+                  (("action" in primary) && (primary.action === "analyze" || primary.action === "retry-analyze")
                     ? !canAnalyze
                     : false)
                 }
@@ -720,7 +663,7 @@ export default function BomAnalyzerPage() {
                 {primary.label}
               </button>
             )}
-            {canAnalyze && primary.action !== "analyze" ? (
+            {canAnalyze && (! ("action" in primary) || primary.action !== "analyze") ? (
               <button
                 type="button"
                 className="cv-button"
@@ -746,11 +689,11 @@ export default function BomAnalyzerPage() {
               </li>
               <li>
                 <span className="cv-bom-check-icon"><Icon name="shield" /></span>
-                <span><strong>Review evidence coverage</strong><small>Check which records use sample evidence in the saved report.</small></span>
+                <span><strong>Review evidence coverage</strong><small>After analysis, inspect source labels on the Evidence page.</small></span>
               </li>
               <li>
                 <span className="cv-bom-check-icon"><Icon name="report" /></span>
-                <span><strong>Resume from Recent analyses</strong><small>Saved reports keep Risks → Evidence → Decision → Monitor available.</small></span>
+                <span><strong>Keep reports available</strong><small>Saved analyses remain in your workspace so you can reopen them later.</small></span>
               </li>
             </ul>
           </section>
@@ -759,7 +702,7 @@ export default function BomAnalyzerPage() {
             <div className="cv-bom-recent-heading">
               <div>
                 <h2 className="cv-card-title">Recent analyses</h2>
-                <p className="cv-card-subtitle">Resume a saved analysis at Risks or later.</p>
+                <p className="cv-card-subtitle">Reopen any saved analysis whenever you are ready.</p>
               </div>
               <Link href="/reports" className="cv-bom-view-all">View all</Link>
             </div>
@@ -783,13 +726,6 @@ export default function BomAnalyzerPage() {
                       <Link
                         href={`/reports/${encodeURIComponent(id)}`}
                         className="cv-bom-recent-link"
-                        onClick={() => {
-                          markReviewProgress(
-                            id,
-                            { risksOpenedAt: new Date().toISOString() },
-                            session,
-                          );
-                        }}
                       >
                         <span className="cv-bom-recent-copy">
                           <strong>{title}{revisionLabel}</strong>

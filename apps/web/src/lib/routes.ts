@@ -85,6 +85,13 @@ export const PAGE_META: Record<string, PageMeta> = {
     description:
       "Review lifecycle, inventory, pricing, and supplier changes across monitored components.",
   },
+  evidence: {
+    icon: "shield",
+    title: "Evidence review",
+    eyebrow: "Saved analysis · evidence",
+    description:
+      "Review the source and verification status recorded for each component.",
+  },
   replacement: {
     icon: "replacement",
     title: "Find a replacement",

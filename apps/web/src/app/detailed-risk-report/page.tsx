@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { AnalysisStageNavigation } from "@/components/AnalysisStageNavigation";
 import { EmptyState } from "@/components/EmptyState";
 import { Shell } from "@/components/Shell";
 import { EvidenceNotice, LoadingCard } from "@/components/GapBanner";
@@ -14,20 +16,40 @@ function cell(value: unknown, fallback = "—") {
   return value === null || value === undefined || value === "" ? fallback : String(value);
 }
 
-export default function DetailedRiskPage() {
+function DetailedRiskPageInner() {
+  const searchParams = useSearchParams();
+  const requestedAnalysisId = (searchParams.get("analysis_id") || "").trim();
   const session = useRequireSession();
   const [data, setData] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(true);
+  const [activeAnalysisId, setActiveAnalysisId] = useState("");
 
   useEffect(() => {
     if (!session) return;
+    let active = true;
     const last = readLastAnalysis(session);
-    fetchDetailedRisk(session.access_token, last?.analysis_id)
-      .then(setData)
-      .catch((err) => setError(err instanceof Error ? err.message : "Failed"))
-      .finally(() => setBusy(false));
-  }, [session]);
+    const analysisId = requestedAnalysisId || last?.analysis_id || "";
+    setActiveAnalysisId(analysisId);
+    setBusy(true);
+    setError("");
+    setData(null);
+    fetchDetailedRisk(session.access_token, analysisId || undefined)
+      .then((payload) => {
+        if (!active) return;
+        setData(payload);
+        setActiveAnalysisId(String(payload.analysis_id || analysisId));
+      })
+      .catch((err) => {
+        if (active) setError(err instanceof Error ? err.message : "Failed");
+      })
+      .finally(() => {
+        if (active) setBusy(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [session, requestedAnalysisId]);
 
   if (!session) return null;
   const rows = (data?.rows || []) as Array<Record<string, unknown>>;
@@ -43,6 +65,7 @@ export default function DetailedRiskPage() {
         record
         actions={<PrimaryLink href="/reports">Open saved reports</PrimaryLink>}
       />
+      <AnalysisStageNavigation analysisId={activeAnalysisId} current="risks" />
       {<EvidenceNotice gap={data?.gap} />}
       {busy ? <LoadingCard label="Loading detailed risk rows…" /> : null}
       {error ? <div className="cv-error" role="alert">Risk details could not load. {error}</div> : null}
@@ -87,6 +110,14 @@ export default function DetailedRiskPage() {
         </> : <EmptyState icon="risk" title="No component risk rows found" body="Open a saved analysis with component data to view the detailed risk breakdown." action={<PrimaryLink href="/reports">Choose a saved report</PrimaryLink>} />
       ) : null}
     </Shell>
+  );
+}
+
+export default function DetailedRiskPage() {
+  return (
+    <Suspense fallback={null}>
+      <DetailedRiskPageInner />
+    </Suspense>
   );
 }
 
