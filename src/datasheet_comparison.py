@@ -49,7 +49,16 @@ USER_FACING_COMPARISON_COLUMNS = (
     "Attribute",
     "Original",
     "Candidate",
+    "Part A MPN",
+    "Part B MPN",
+    "Part A source",
+    "Part B source",
+    "Unit",
+    "Test condition",
+    "Part A value class",
+    "Part B value class",
     "Result",
+    "Assessment",
     "Evidence",
 )
 INTERNAL_COMPARISON_METADATA_COLUMNS = (
