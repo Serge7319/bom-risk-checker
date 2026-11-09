@@ -497,24 +497,61 @@ def merge_verified_datasheet_rows(
         display_b = catalog_b
         source_a = "catalog" if catalog_a else "none"
         source_b = "catalog" if catalog_b else "none"
-        if pdf_a:
-            display_a = pdf_a
-            source_a = "evidence"
-            notes.append(
-                _citation_note(
-                    "Part A",
-                    label=label_a,
-                    page=page_a,
-                    excerpt=excerpt_a,
+        field_key = str(getattr(spec, "key", "") or current.get("Key") or "")
+
+        def _prefer_catalog_span_over_pdf_point(*, pdf_value: str, catalog_value: str) -> bool:
+            """Keep supplier operating spans when PDF only cites a test-condition magnitude."""
+            if field_key != "voltage_range" or not catalog_value or not pdf_value:
+                return False
+            from src.parametric_compare import (
+                _looks_like_dual_rail_test_magnitude,
+                _looks_like_single_supply_span,
+            )
+
+            return (
+                _looks_like_single_supply_span(catalog_value)
+                and (
+                    _looks_like_dual_rail_test_magnitude(pdf_value)
+                    or _looks_like_supply_test_condition(pdf_value)
+                    or bool(re.fullmatch(r"\d+(?:\.\d+)?\s*v?", pdf_value.casefold().strip()))
                 )
             )
-            if catalog_a and spec is not None:
-                side_status, _side_note = compare_field_values(pdf_a, catalog_a, spec)
-                if side_status == "Different":
-                    conflict = True
-                    notes.append(f"Supplier listing also reports {catalog_a}; it differs from the cited document.")
-            elif catalog_a:
-                notes.append(f"Supplier listing also reports {catalog_a}.")
+
+        if pdf_a:
+            if _prefer_catalog_span_over_pdf_point(pdf_value=pdf_a, catalog_value=catalog_a):
+                display_a = catalog_a
+                source_a = "catalog"
+                notes.append(
+                    _citation_note(
+                        "Part A",
+                        label=label_a,
+                        page=page_a,
+                        excerpt=excerpt_a,
+                    )
+                )
+                notes.append(
+                    f"Kept supplier supply span {catalog_a}; cited document value {pdf_a} "
+                    "looks like a test-condition magnitude, not the operating rating."
+                )
+                conflict = True
+            else:
+                display_a = pdf_a
+                source_a = "evidence"
+                notes.append(
+                    _citation_note(
+                        "Part A",
+                        label=label_a,
+                        page=page_a,
+                        excerpt=excerpt_a,
+                    )
+                )
+                if catalog_a and spec is not None:
+                    side_status, _side_note = compare_field_values(pdf_a, catalog_a, spec)
+                    if side_status == "Different":
+                        conflict = True
+                        notes.append(f"Supplier listing also reports {catalog_a}; it differs from the cited document.")
+                elif catalog_a:
+                    notes.append(f"Supplier listing also reports {catalog_a}.")
         elif identity["part_a"]["attached"] and identity["part_a"]["verified"]:
             notes.append(f"Part A: {label_a} does not list this field.")
             if catalog_a:
@@ -527,23 +564,40 @@ def merge_verified_datasheet_rows(
             notes.append(f"Part A: supplier listing reports {catalog_a}; no manufacturer document is cited.")
 
         if pdf_b:
-            display_b = pdf_b
-            source_b = "evidence"
-            notes.append(
-                _citation_note(
-                    "Part B",
-                    label=label_b,
-                    page=page_b,
-                    excerpt=excerpt_b,
+            if _prefer_catalog_span_over_pdf_point(pdf_value=pdf_b, catalog_value=catalog_b):
+                display_b = catalog_b
+                source_b = "catalog"
+                notes.append(
+                    _citation_note(
+                        "Part B",
+                        label=label_b,
+                        page=page_b,
+                        excerpt=excerpt_b,
+                    )
                 )
-            )
-            if catalog_b and spec is not None:
-                side_status, _side_note = compare_field_values(pdf_b, catalog_b, spec)
-                if side_status == "Different":
-                    conflict = True
-                    notes.append(f"Supplier listing also reports {catalog_b}; it differs from the cited document.")
-            elif catalog_b:
-                notes.append(f"Supplier listing also reports {catalog_b}.")
+                notes.append(
+                    f"Kept supplier supply span {catalog_b}; cited document value {pdf_b} "
+                    "looks like a test-condition magnitude, not the operating rating."
+                )
+                conflict = True
+            else:
+                display_b = pdf_b
+                source_b = "evidence"
+                notes.append(
+                    _citation_note(
+                        "Part B",
+                        label=label_b,
+                        page=page_b,
+                        excerpt=excerpt_b,
+                    )
+                )
+                if catalog_b and spec is not None:
+                    side_status, _side_note = compare_field_values(pdf_b, catalog_b, spec)
+                    if side_status == "Different":
+                        conflict = True
+                        notes.append(f"Supplier listing also reports {catalog_b}; it differs from the cited document.")
+                elif catalog_b:
+                    notes.append(f"Supplier listing also reports {catalog_b}.")
         elif identity["part_b"]["attached"] and identity["part_b"]["verified"]:
             notes.append(f"Part B: {label_b} does not list this field.")
             if catalog_b:

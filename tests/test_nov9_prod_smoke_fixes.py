@@ -102,10 +102,16 @@ class UiLayoutContractTests(unittest.TestCase):
     def test_bom_analyzer_materializes_file_before_validation(self):
         analyzer = BOM_ANALYZER.read_text(encoding="utf-8")
         identity = BOM_IDENTITY.read_text(encoding="utf-8")
+        draft = (ROOT / "apps" / "web" / "src" / "lib" / "bomDraft.ts").read_text(encoding="utf-8")
         self.assertIn("materializeBomFile", identity)
         self.assertIn("materializeBomFile", analyzer)
         self.assertIn("Re-select the file to continue", analyzer)
         self.assertIn("Validation continues with the file still in memory", analyzer)
+        # Draft persistence must not gate POST /boms/validate.
+        self.assertIn("void saveDraftFile(", analyzer)
+        self.assertNotIn("await saveDraftFile(", analyzer)
+        self.assertIn("onblocked", draft)
+        self.assertIn("Timed out saving BOM draft file.", draft)
 
     def test_design_impact_aggregates_all_workspace_boms(self):
         source = DESIGN_IMPACT.read_text(encoding="utf-8")

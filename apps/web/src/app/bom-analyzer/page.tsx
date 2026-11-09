@@ -369,17 +369,16 @@ export default function BomAnalyzerPage() {
     setFile(workingFile);
     selectedFileKeyRef.current = nextKey;
     setFileContentKey(nextKey);
-    try {
-      await saveDraftFile(workingFile, session);
-    } catch (err) {
+    // Never gate POST /boms/validate on IndexedDB. Draft save is best-effort and
+    // must not leave Validating stuck if open/put stalls.
+    void saveDraftFile(workingFile, session).catch((err) => {
       if (requestId !== validationRequestIdRef.current) return;
       setDraftPersistNotice(
         err instanceof Error
           ? `Draft could not be saved for later resume (${err.message}). Validation continues with the file still in memory.`
           : "Draft could not be saved for later resume. Validation continues with the file still in memory.",
       );
-    }
-    if (requestId !== validationRequestIdRef.current) return;
+    });
     await runValidation(workingFile, requestId, nextKey);
   }
 
