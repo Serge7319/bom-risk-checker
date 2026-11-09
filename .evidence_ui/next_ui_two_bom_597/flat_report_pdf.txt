@@ -1,7 +1,7 @@
 Cadivor · Evidence-linked engineering review
 Page 1
 Cadivor BOM Risk Report
-Project: General — synthetic_bom_25parts    BOM: synthetic_bom_25parts    Revision: A
+Project: PR597 Flat Smoke — flat-synthetic-25    BOM: flat-synthetic-25    Revision: F1
 Health: 94 / 100    Status: Healthy    Components: 25    High / medium / low: 0 / 4 / 21
 This report uses synthetic preview analysis. Stock, price, and lifecycle values are not live supplier verification; confirm primary-source evidence before making a sourcing or release decision.
 MPN

@@ -3,32 +3,44 @@
 - Web: `http://127.0.0.1:3001`
 - API: `http://127.0.0.1:8081`
 - Overall: `PASS`
+- Distinct project/BOM labels: `True`
 
 ## flat
 - ok: `True`
-- analysis_id: `7f56a339-7a2e-4fce-a090-f81ccf01d388`
+- analysis_id: `cd637503-81e3-43f3-8e0b-0454548b485d`
+- project: `PR597 Flat Smoke`
+- bom_name: `flat-synthetic-25`
 - analyze: `ok` — http://127.0.0.1:3001/bom-analyzer
-- compare: `ok` — http://127.0.0.1:3001/compare-parts?analysis_id=7f56a339-7a2e-4fce-a090-f81ccf01d388
-- replacement: `ok` — http://127.0.0.1:3001/find-replacement?analysis_id=7f56a339-7a2e-4fce-a090-f81ccf01d388
-- decision: `ok` — http://127.0.0.1:3001/engineering-decisions
-- reports: `ok` — http://127.0.0.1:3001/reports/7f56a339-7a2e-4fce-a090-f81ccf01d388
+- compare: `ok` — http://127.0.0.1:3001/compare-parts?analysis_id=cd637503-81e3-43f3-8e0b-0454548b485d
+- decision_save: `ok`
+- decision: `ok` — http://127.0.0.1:3001/engineering-decisions?analysis_id=cd637503-81e3-43f3-8e0b-0454548b485d
+- replacement: `ok` — http://127.0.0.1:3001/find-replacement?analysis_id=cd637503-81e3-43f3-8e0b-0454548b485d&mpn=XC3S400-4PQG208C
+- reports: `ok` — http://127.0.0.1:3001/reports/cd637503-81e3-43f3-8e0b-0454548b485d
 - procurement: `ok` — http://127.0.0.1:3001/procurement
 - design_impact: `ok` — http://127.0.0.1:3001/design-impact
-- exports: `ok` — 
+- decision_snapshot_api: `ok`
+- exports: `ok`
 
 ## nested
 - ok: `True`
-- analysis_id: `f169c7ed-bc96-4629-9d20-a536f4e355ff`
+- analysis_id: `96478adf-bed1-43cc-9155-98f797385fed`
+- project: `PR597 Nested Smoke`
+- bom_name: `nested-product-hierarchy`
 - analyze: `ok` — http://127.0.0.1:3001/bom-analyzer
-- compare: `ok` — http://127.0.0.1:3001/compare-parts?analysis_id=f169c7ed-bc96-4629-9d20-a536f4e355ff
-- replacement: `ok` — http://127.0.0.1:3001/find-replacement?analysis_id=f169c7ed-bc96-4629-9d20-a536f4e355ff
-- decision: `ok` — http://127.0.0.1:3001/engineering-decisions
-- reports: `ok` — http://127.0.0.1:3001/reports/f169c7ed-bc96-4629-9d20-a536f4e355ff
+- compare: `ok` — http://127.0.0.1:3001/compare-parts?analysis_id=96478adf-bed1-43cc-9155-98f797385fed
+- decision_save: `ok`
+- decision: `ok` — http://127.0.0.1:3001/engineering-decisions?analysis_id=96478adf-bed1-43cc-9155-98f797385fed
+- replacement: `ok` — http://127.0.0.1:3001/find-replacement?analysis_id=96478adf-bed1-43cc-9155-98f797385fed&mpn=STM32F103
+- reports: `ok` — http://127.0.0.1:3001/reports/96478adf-bed1-43cc-9155-98f797385fed
 - procurement: `ok` — http://127.0.0.1:3001/procurement
 - design_impact: `ok` — http://127.0.0.1:3001/design-impact
-- exports: `ok` —
+- decision_snapshot_api: `ok`
+- exports: `ok`
 
-## Export inspection notes
-- Flat CSV: 26 rows (header + 25 parts), MPN column present; XLSX has Summary + Components; PDF parses as valid %PDF with extractable text.
-- Nested CSV: hierarchy rows present (`PRODTOP` assembly, `PSUASM` child). BOM/project label in exports reused the flat draft name from the same browser session; part rows are from the nested fixture.
-- Cloudflare Pages preview remains marketing-only and was not used for this check.
+## Checks covered
+- Analyze with distinct project/BOM/revision labels
+- Compare Parts performed for a real part pair
+- Decision saved with comparison_snapshot reuse (snapshot trust)
+- Engineering Decisions shows the saved pair + Hold for review
+- Reports / Procurement / Design Impact show BOM-linked data
+- PDF / XLSX / CSV contents include distinct labels and expected MPNs

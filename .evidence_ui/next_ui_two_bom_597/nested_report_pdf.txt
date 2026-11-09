@@ -1,7 +1,7 @@
 Cadivor · Evidence-linked engineering review
 Page 1
 Cadivor BOM Risk Report
-Project: General — synthetic_bom_25parts    BOM: synthetic_bom_25parts    Revision: A
+Project: PR597 Nested Smoke — nested-product-hierarchy    BOM: nested-product-hierarchy    Revision: N1
 Health: 95 / 100    Status: Healthy    Components: 7    High / medium / low: 0 / 1 / 6
 This report uses synthetic preview analysis. Stock, price, and lifecycle values are not live supplier verification; confirm primary-source evidence before making a sourcing or release decision.
 MPN
