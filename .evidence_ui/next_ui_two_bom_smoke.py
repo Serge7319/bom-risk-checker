@@ -52,7 +52,7 @@ BOMS = [
         "part_a": "STM32F103",
         "part_b": "EPF10K20RC2404N",
         "expected_mpns": ("PROD-TOP", "PSU-ASM", "STM32F103", "LM358DR"),
-        "min_parts": 5,
+        "min_parts": 8,
     },
 ]
 

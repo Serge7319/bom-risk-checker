@@ -124,7 +124,7 @@ def test_boms_validate_route_no_analysis_side_effects():
     )
     assert nested_resp.status_code == 200, nested_resp.text
     nested_body = nested_resp.json()
-    assert nested_body["row_count"] == 7
+    assert nested_body["row_count"] == 8
     assert nested_body["has_hierarchy_columns"] is True
     assert set(sa._REPORTS.keys()) == before_ids
 
