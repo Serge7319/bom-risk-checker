@@ -192,13 +192,16 @@ def _build_passive_alternative_reasoning(
             continue
         if skip_ic_terms and any(term in attribute.casefold() for term in ic_terms):
             continue
-        if status == "Match":
+        if status in {"Match", "Listing agreement"}:
+            verb = "listing agrees" if status == "Listing agreement" else "matches"
             if attribute == "Mounting":
                 confirmed.append(
-                    f"{attribute} matches ({original_value} vs {candidate_value})."
+                    f"{attribute} {verb} ({original_value} vs {candidate_value})."
                 )
             else:
-                confirmed.append(f"{attribute} matches ({candidate_value or original_value}).")
+                confirmed.append(
+                    f"{attribute} {verb} ({candidate_value or original_value})."
+                )
         elif status == "Different":
             blockers.append(
                 f"{attribute} differs: original {original_value or 'Not available'}, "
