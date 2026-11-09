@@ -935,29 +935,59 @@ button {
 }
 
 .cv-table.cv-table-actions {
-  min-width: 0;
+  min-width: 920px;
   width: 100%;
   table-layout: fixed;
 }
 
+/* Six-column Find Replacement matrix: Candidate / Mfr / Lifecycle / Fit / Evidence / Action */
 .cv-table.cv-table-actions th:nth-child(1),
 .cv-table.cv-table-actions td:nth-child(1) {
-  width: 36%;
+  width: 22%;
+  min-width: 160px;
 }
 
 .cv-table.cv-table-actions th:nth-child(2),
 .cv-table.cv-table-actions td:nth-child(2) {
   width: 14%;
+  min-width: 110px;
 }
 
 .cv-table.cv-table-actions th:nth-child(3),
 .cv-table.cv-table-actions td:nth-child(3) {
-  width: 34%;
+  width: 14%;
+  min-width: 110px;
+}
+
+.cv-table.cv-table-actions th:nth-child(4),
+.cv-table.cv-table-actions td:nth-child(4) {
+  width: 16%;
+  min-width: 120px;
+}
+
+.cv-table.cv-table-actions th:nth-child(5),
+.cv-table.cv-table-actions td:nth-child(5) {
+  width: 22%;
+  min-width: 150px;
+}
+
+.cv-table.cv-table-actions th:nth-child(6),
+.cv-table.cv-table-actions td:nth-child(6) {
+  width: 12%;
+  min-width: 96px;
+}
+
+.cv-table.cv-table-actions td {
+  vertical-align: top;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.45;
+  max-height: none;
 }
 
 .cv-table-action {
-  width: 88px;
-  min-width: 88px;
+  width: 96px;
+  min-width: 96px;
   text-align: right;
   white-space: nowrap;
   position: sticky;
@@ -3180,12 +3210,33 @@ button {
 .cv-compare-counts { display: flex; flex-wrap: wrap; gap: 8px 14px; color: #687991; font-size: 10px; }
 .cv-compare-counts strong { color: var(--navy-900); font-size: 13px; }
 .cv-compare-table { min-width: 1180px; table-layout: fixed; }
-.cv-compare-table th:nth-child(1) { width: 15%; }
+/* Seven columns: Property / Current / Candidate / Sources / Class / Assessment / Evidence */
+.cv-compare-table th:nth-child(1) { width: 12%; }
 .cv-compare-table th:nth-child(2),
-.cv-compare-table th:nth-child(3) { width: 18%; }
-.cv-compare-table th:nth-child(4) { width: 17%; }
-.cv-compare-table th:nth-child(5) { width: 32%; }
-.cv-compare-table td { white-space: normal; vertical-align: top; line-height: 1.55; overflow-wrap: anywhere; }
+.cv-compare-table th:nth-child(3) { width: 14%; }
+.cv-compare-table th:nth-child(4) { width: 14%; }
+.cv-compare-table th:nth-child(5) { width: 14%; }
+.cv-compare-table th:nth-child(6) { width: 12%; }
+.cv-compare-table th:nth-child(7) { width: 20%; }
+.cv-compare-table td {
+  white-space: normal;
+  vertical-align: top;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  height: auto;
+  max-height: none;
+}
+.cv-compare-table tr { height: auto; }
+.cv-compare-multi-table { min-width: 1280px; table-layout: fixed; }
+.cv-compare-multi-table th,
+.cv-compare-multi-table td {
+  white-space: normal;
+  vertical-align: top;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.cv-compare-multi-table th:nth-child(1) { width: 12%; min-width: 120px; }
+.cv-compare-multi-table th:nth-child(n+2) { width: auto; min-width: 160px; }
 .cv-compare-assessment { color: #187052; font-size: 11px; font-weight: 750; }
 .cv-compare-assessment.unknown { color: #865d17; }
 .cv-compare-open-count { margin: 12px 0 0; color: #705522; font-size: 11px; font-weight: 700; }

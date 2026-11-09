@@ -42,6 +42,24 @@ export async function fileContentDigest(file: Blob): Promise<string> {
 }
 
 /**
+ * Clone the selected File into memory so validation/analyze keep working even if the
+ * original picker handle later throws NotFoundError (or IndexedDB persistence fails).
+ */
+export async function materializeBomFile(file: File): Promise<{ file: File; identityKey: string }> {
+  const buffer = await file.arrayBuffer();
+  const cloned = new File([buffer], file.name, {
+    type: file.type || "application/octet-stream",
+    lastModified: file.lastModified || Date.now(),
+  });
+  const subtle = globalThis.crypto?.subtle;
+  if (!subtle) {
+    throw new Error("Web Crypto SHA-256 is required to identify BOM file contents.");
+  }
+  const digest = await subtle.digest("SHA-256", buffer);
+  return { file: cloned, identityKey: `sha256:${bytesToHex(digest)}` };
+}
+
+/**
  * Validation/file identity based on content.
  * Distinguishes different bytes even when filename/size/lastModified match.
  */

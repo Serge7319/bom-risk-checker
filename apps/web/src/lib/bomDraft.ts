@@ -24,9 +24,16 @@ import {
   draftMetaStorageKey,
   fileContentDigest,
   fileIdentityKey,
+  materializeBomFile,
 } from "@/lib/bomFileIdentity";
 
-export { draftFileRecordId, draftMetaStorageKey, fileContentDigest, fileIdentityKey };
+export {
+  draftFileRecordId,
+  draftMetaStorageKey,
+  fileContentDigest,
+  fileIdentityKey,
+  materializeBomFile,
+};
 
 export type { BomValidationPreview };
 export { parseAnalyzeSummary };

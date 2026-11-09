@@ -287,6 +287,25 @@ def engineering_test_condition(text: object) -> str:
     return condition
 
 
+def _looks_like_dual_rail_test_magnitude(value: object) -> bool:
+    text = " ".join(str(value or "").split())
+    folded = text.casefold()
+    if re.search(r"\b(?:vs|vcc|vdd)\s*=", folded):
+        return True
+    return bool(re.fullmatch(r"[±+]\s*\d+(?:\.\d+)?\s*v?", folded))
+
+
+def _looks_like_single_supply_span(value: object) -> bool:
+    text = " ".join(str(value or "").split())
+    return bool(
+        re.search(
+            r"\d+(?:\.\d+)?\s*v?\s*(?:to|[-–~/])\s*\d+(?:\.\d+)?\s*v?",
+            text,
+            flags=re.IGNORECASE,
+        )
+    )
+
+
 def compare_field_values(
     original_value: object,
     candidate_value: object,
@@ -300,6 +319,27 @@ def compare_field_values(
             "Needs data",
             "One or both values were not available from the retrieved evidence.",
         )
+
+    if getattr(spec, "key", "") == "voltage_range" or str(
+        getattr(spec, "label", "") or ""
+    ).casefold() in {"supply voltage", "voltage - supply", "operating supply voltage"}:
+        dual_vs_span = (
+            _looks_like_dual_rail_test_magnitude(original_text)
+            and _looks_like_single_supply_span(candidate_text)
+        ) or (
+            _looks_like_dual_rail_test_magnitude(candidate_text)
+            and _looks_like_single_supply_span(original_text)
+        )
+        if dual_vs_span:
+            return (
+                "Needs data",
+                (
+                    "One side cites a dual-rail test-condition magnitude (for example "
+                    "VS = ±14 V) while the other cites a single-supply operating span. "
+                    "Keep the assessment unknown/conflicted until the exact datasheet "
+                    "field and units are confirmed."
+                ),
+            )
 
     original_class = classify_value_condition(original_text)
     candidate_class = classify_value_condition(candidate_text)

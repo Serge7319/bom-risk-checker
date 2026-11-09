@@ -13,6 +13,11 @@ import {
   recordDecision,
   type DecisionRecord,
 } from "@/lib/api";
+import {
+  buildMultiCompareMatrix,
+  parseCandidateMpns,
+  type MultiCompareColumn,
+} from "@/lib/multiCompare";
 import { PAGE_META } from "@/lib/routes";
 import { readLastAnalysis, useRequireSession } from "@/lib/session";
 
@@ -107,6 +112,7 @@ function ComparePartsInner() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<Row | null>(null);
+  const [multiColumns, setMultiColumns] = useState<MultiCompareColumn[]>([]);
   const [decisionOpen, setDecisionOpen] = useState(false);
   const [decisionAnalysisId, setDecisionAnalysisId] = useState("");
   const [decisionPartA, setDecisionPartA] = useState("");
@@ -125,7 +131,11 @@ function ComparePartsInner() {
 
   useEffect(() => {
     const a = (search.get("part_a") || search.get("a") || "").trim();
-    const b = (search.get("part_b") || search.get("b") || "").trim();
+    const multi = search.getAll("part_b").concat(search.getAll("b"));
+    const joined = multi.map((item) => item.trim()).filter(Boolean);
+    const b = joined.length
+      ? joined.join(", ")
+      : (search.get("part_b") || search.get("b") || "").trim();
     if (a) setPartA(a);
     if (b) setPartB(b);
   }, [search]);
@@ -178,16 +188,52 @@ function ComparePartsInner() {
     setBusy(true);
     setError("");
     setResult(null);
+    setMultiColumns([]);
     setDecisionSuccess(null);
     try {
       const last = readLastAnalysis(session);
       const selectedAnalysis = analysisId || last?.analysis_id;
-      const data = await compareParts(session.access_token, partA, partB, selectedAnalysis, {
-        a: datasheetA,
-        b: datasheetB,
-      });
-      setResult(data);
-      if (data.analysis_id) setAnalysisId(String(data.analysis_id));
+      const candidates = parseCandidateMpns(partB, 4);
+      if (!candidates.length) {
+        throw new Error("Enter one to four candidate manufacturer part numbers.");
+      }
+      if (candidates.some((mpn) => mpn.toLowerCase() === partA.trim().toLowerCase())) {
+        throw new Error("Candidate MPNs must differ from the current design part.");
+      }
+      if (candidates.length === 1) {
+        const data = await compareParts(
+          session.access_token,
+          partA,
+          candidates[0],
+          selectedAnalysis,
+          { a: datasheetA, b: datasheetB },
+        );
+        setResult(data);
+        setMultiColumns([]);
+        if (data.analysis_id) setAnalysisId(String(data.analysis_id));
+        return;
+      }
+      // Multi-alternate: compare each candidate against the same current part.
+      // Do not imply drop-in compatibility or auto-approve from this matrix.
+      const columns: MultiCompareColumn[] = [];
+      for (const candidate of candidates) {
+        const data = await compareParts(
+          session.access_token,
+          partA,
+          candidate,
+          selectedAnalysis,
+          { a: datasheetA },
+        );
+        columns.push({
+          mpn: candidate,
+          result: data,
+          rows: (data.rows || []) as Row[],
+        });
+      }
+      setMultiColumns(columns);
+      setResult(columns[0]?.result || null);
+      const firstAnalysis = columns.find((column) => column.result.analysis_id)?.result.analysis_id;
+      if (firstAnalysis) setAnalysisId(String(firstAnalysis));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Compare failed");
     } finally {
@@ -317,6 +363,11 @@ function ComparePartsInner() {
   if (decisionAnalysisId && !reportOptions.some((row) => getAnalysisId(row) === decisionAnalysisId)) {
     reportOptions.unshift({ id: decisionAnalysisId, project_name: "Current comparison", bom_name: "Saved analysis context" });
   }
+  const multiMatrix =
+    multiColumns.length > 1
+      ? buildMultiCompareMatrix(partA.trim() || text(result?.part_a), multiColumns)
+      : [];
+  const isMultiCompare = multiMatrix.length > 0;
 
   return (
     <Shell session={session}>
@@ -361,15 +412,19 @@ function ComparePartsInner() {
             />
           </div>
           <div className="cv-field">
-            <label htmlFor="part-b">Candidate · MPN</label>
-            <input
+            <label htmlFor="part-b">Candidate · MPN (1–4, comma or newline separated)</label>
+            <textarea
               id="part-b"
               value={partB}
               onChange={(e) => setPartB(e.target.value)}
-              placeholder="Manufacturer part number"
+              placeholder={"One candidate, or up to four:\nLM358N, LM358P, LM358ADR2G"}
               autoComplete="off"
               required
+              rows={3}
             />
+            <p className="cv-small-note" style={{ marginTop: 6 }}>
+              Multi-candidate mode builds one property matrix versus the current part. It does not imply drop-in compatibility or auto-approve any alternate.
+            </p>
           </div>
         </div>
         <div className="cv-compare-form-footer">
@@ -505,7 +560,64 @@ function ComparePartsInner() {
                 <span><strong>{text(evidenceCounts.needs_data, String(unknownRows.length))}</strong> unknown</span>
               </div>
             </div>
-            {rows.length ? (
+            {isMultiCompare ? (
+              <div className="cv-table-wrap" style={{ marginTop: 14 }}>
+                <p className="cv-small-note" style={{ marginBottom: 10 }}>
+                  Comparing {multiColumns.length} candidates against {text(partA || result?.part_a)}.
+                  Each column keeps its own source, units/class, conditions, and unknown/conflict assessment.
+                  This matrix does not imply drop-in compatibility or auto-approve any candidate.
+                </p>
+                <table className="cv-table cv-compare-multi-table">
+                  <thead>
+                    <tr>
+                      <th>Property</th>
+                      <th>Current · {text(partA || result?.part_a)}</th>
+                      {multiColumns.map((column) => (
+                        <th key={column.mpn}>Candidate · {column.mpn}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {multiMatrix.map((row) => (
+                      <tr key={row.attribute}>
+                        <td>
+                          <strong>{row.attribute}</strong>
+                          {row.unit ? <div className="cv-small-note">{row.unit}</div> : null}
+                        </td>
+                        <td>
+                          {row.current}
+                          <div className="cv-small-note">Source: {row.currentSource}</div>
+                          <div className="cv-small-note">
+                            {row.currentClass} · {row.currentCondition}
+                          </div>
+                        </td>
+                        {row.candidates.map((candidate) => (
+                          <td key={`${row.attribute}-${candidate.mpn}`}>
+                            {candidate.value}
+                            <div className="cv-small-note">Source: {candidate.source}</div>
+                            <div className="cv-small-note">
+                              {candidate.valueClass} · {candidate.condition}
+                            </div>
+                            <div>
+                              <span
+                                className={`cv-compare-assessment${
+                                  /need|unknown|conflict|unable|verif/i.test(candidate.assessment)
+                                    ? " unknown"
+                                    : ""
+                                }`}
+                              >
+                                {candidate.assessment}
+                              </span>
+                            </div>
+                            <div className="cv-small-note">{candidate.evidence}</div>
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : rows.length ? (
               <div className="cv-table-wrap" style={{ marginTop: 14 }}>
                 <table className="cv-table cv-compare-table">
                   <thead>

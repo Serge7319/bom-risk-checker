@@ -1579,6 +1579,28 @@ _PACKAGE_FAMILY_RE = re.compile(
 )
 
 
+def _looks_like_supply_test_condition(value: str) -> bool:
+    """Detect VS=/VCC= test-condition magnitudes mistaken for supply ratings.
+
+    Op-amp datasheets often cite electrical characteristics at ``VS = ±14 V``
+    while the operating / absolute supply span is separately listed (for
+    example 3 V to 32 V). Treating the test-condition magnitude as the supply
+    rating creates a false conflict with supplier catalog ranges.
+    """
+    text = " ".join(str(value or "").split())
+    if not text:
+        return False
+    folded = text.casefold()
+    if re.search(r"\b(?:vs|vcc|vdd|vss)\s*=", folded):
+        return True
+    if re.search(r"@\s*(?:vs|vcc|vdd)\b", folded):
+        return True
+    # Bare dual-rail magnitudes without an explicit min/max or range marker.
+    if re.fullmatch(r"[±+]\s*\d+(?:\.\d+)?\s*v?", folded):
+        return True
+    return False
+
+
 def _is_specific_package_designation(value: str) -> bool:
     """Return whether extracted package text names a recognizable footprint.
 
@@ -1616,6 +1638,21 @@ def _is_specific_pdf_field_value(field_spec: Any, value: str) -> bool:
         ))
     if key == "temperature_range":
         return bool(re.search(r"-?\d+(?:\.\d+)?\s*(?:°\s*[CF]|deg(?:rees?)?\s*[CF])", text, re.IGNORECASE))
+    if key == "voltage_range":
+        # Reject electrical-characteristic *test conditions* such as "VS = ±14 V"
+        # that are not the device's operating / absolute supply rating.
+        if _looks_like_supply_test_condition(text):
+            return False
+        return bool(
+            re.search(
+                r"(?:\d+(?:\.\d+)?\s*(?:V)?\s*(?:to|[-–~/])\s*\d+(?:\.\d+)?\s*V?)"
+                r"|(?:[±+]\s*\d+(?:\.\d+)?\s*(?:to|[-–~/])\s*[±+]?\s*\d+(?:\.\d+)?\s*V?)"
+                r"|(?:\b(?:min|max|operating|absolute)\b.+\d+(?:\.\d+)?\s*V)"
+                r"|(?:\d+(?:\.\d+)?\s*V(?:dc)?\s*(?:to|[-–~/])\s*\d+(?:\.\d+)?\s*V)",
+                text,
+                re.IGNORECASE,
+            )
+        )
     if key in {"architecture", "device_type"}:
         return bool(re.search(
             r"\b(?:arm|cortex|8051|hc11|avr|pic\d*|risc[- ]?v|mips|powerpc|fpga|cpld|microcontroller|microprocessor|amplifier|comparator|regulator|transceiver|mosfet|npn|pnp|logic|diode|schottky|tvs)\b",

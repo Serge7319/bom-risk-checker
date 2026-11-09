@@ -51,7 +51,7 @@ BOMS = [
         "revision": "N1",
         "part_a": "STM32F103",
         "part_b": "EPF10K20RC2404N",
-        "expected_mpns": ("PROD-TOP", "PSU-ASM", "STM32F103"),
+        "expected_mpns": ("PROD-TOP", "PSU-ASM", "STM32F103", "LM358DR"),
         "min_parts": 5,
     },
 ]
@@ -182,10 +182,13 @@ def _inspect_exports(
             info["has_project_label"] = project.casefold() in blob
             info["has_bom_label"] = bom_name.casefold() in blob
             info["has_expected_mpn"] = any(mpn.casefold() in blob for mpn in expected_mpns)
+            info["has_detail_sheets"] = all(
+                name in info["sheets"]
+                for name in ("Summary", "Components", "Component Details", "High Risk Parts")
+            )
             info["ok"] = (
                 info["has_workbook"]
-                and "Summary" in info["sheets"]
-                and "Components" in info["sheets"]
+                and info["has_detail_sheets"]
                 and info["has_project_label"]
                 and info["has_bom_label"]
                 and info["has_expected_mpn"]
@@ -423,10 +426,10 @@ def _run_bom(page: Page, cfg: dict) -> dict:
         }
         page.screenshot(path=str(OUT / f"{label}_procurement.png"), full_page=True)
 
-        # Design Impact data for last analysis / focus MPN.
+        # Design Impact across workspace BOMs — focus LM358DR when present.
         page.goto(f"{WEB}/design-impact", wait_until="networkidle", timeout=60000)
         page.wait_for_timeout(2000)
-        focus = cfg["expected_mpns"][0]
+        focus = "LM358DR" if "LM358DR" in cfg["expected_mpns"] or label in {"flat", "nested"} else cfg["expected_mpns"][0]
         if page.locator("#mpn").count():
             page.locator("#mpn").fill(focus)
             page.get_by_role("button", name=re.compile(r"Refresh impact", re.I)).click()
@@ -435,15 +438,37 @@ def _run_bom(page: Page, cfg: dict) -> dict:
         report["steps"]["design_impact"] = {
             "ok": (
                 "Component catalog" in di_body
-                and any(mpn in di_body for mpn in cfg["expected_mpns"])
+                and (focus in di_body or any(mpn in di_body for mpn in cfg["expected_mpns"]))
                 and ("Affected BOM" in di_body or "impact" in di_body.casefold())
+                and ("combined quantity" in di_body.casefold() or "qty across boms" in di_body.casefold())
             ),
             "url": page.url,
             "focus_mpn": focus,
-            "has_expected_mpn": any(mpn in di_body for mpn in cfg["expected_mpns"]),
+            "has_expected_mpn": focus in di_body or any(mpn in di_body for mpn in cfg["expected_mpns"]),
+            "has_combined_quantity_copy": "combined quantity" in di_body.casefold()
+            or "qty across boms" in di_body.casefold(),
             "snippet": di_body[:500],
         }
         page.screenshot(path=str(OUT / f"{label}_design_impact.png"), full_page=True)
+
+        # Monitoring page for the saved analysis.
+        page.goto(
+            f"{WEB}/monitoring?analysis_id={analysis_id}",
+            wait_until="networkidle",
+            timeout=60000,
+        )
+        page.wait_for_timeout(2000)
+        mon_body = page.locator("body").inner_text()
+        report["steps"]["monitoring"] = {
+            "ok": (
+                "monitor" in mon_body.casefold()
+                or "alert" in mon_body.casefold()
+                or "lifecycle" in mon_body.casefold()
+            ),
+            "url": page.url,
+            "snippet": mon_body[:500],
+        }
+        page.screenshot(path=str(OUT / f"{label}_monitoring.png"), full_page=True)
 
         token = _session_token(page)
         # API confirmation that the decision snapshot was persisted.
@@ -540,6 +565,59 @@ def main() -> int:
         for cfg in BOMS:
             results["boms"].append(_run_bom(page, cfg))
 
+        # Layout viewport checks for Find Replacement + Compare Parts tables.
+        viewport_checks = []
+        for width, height in ((1440, 1100), (1024, 900), (768, 900), (390, 844)):
+            page.set_viewport_size({"width": width, "height": height})
+            page.goto(f"{WEB}/find-replacement", wait_until="networkidle", timeout=60000)
+            page.wait_for_timeout(800)
+            page.screenshot(path=str(OUT / f"viewport_replacement_{width}.png"), full_page=True)
+            page.goto(f"{WEB}/compare-parts", wait_until="networkidle", timeout=60000)
+            page.wait_for_timeout(800)
+            page.screenshot(path=str(OUT / f"viewport_compare_{width}.png"), full_page=True)
+            metrics = page.evaluate(
+                """() => {
+                  const tables = Array.from(document.querySelectorAll('.cv-table-actions, .cv-compare-table, .cv-compare-multi-table'));
+                  return tables.map((table) => {
+                    const rows = Array.from(table.querySelectorAll('tbody tr')).slice(0, 8).map((row) => {
+                      const cells = Array.from(row.children);
+                      const rects = cells.map((cell) => {
+                        const box = cell.getBoundingClientRect();
+                        return { width: box.width, height: box.height, left: box.left, right: box.right };
+                      });
+                      let overlap = false;
+                      for (let i = 1; i < rects.length; i += 1) {
+                        if (rects[i].left + 0.5 < rects[i - 1].right) overlap = true;
+                      }
+                      const tall = rects.some((rect) => rect.height > 220);
+                      const squeezed = rects.some((rect, idx) => idx < rects.length - 1 && rect.width > 0 && rect.width < 48);
+                      return { overlap, tall, squeezed, widths: rects.map((r) => Math.round(r.width)) };
+                    });
+                    return {
+                      className: table.className,
+                      tableWidth: Math.round(table.getBoundingClientRect().width),
+                      rows,
+                    };
+                  });
+                }"""
+            )
+            bad_rows = [
+                row
+                for table in metrics
+                for row in table.get("rows") or []
+                if row.get("overlap") or row.get("tall") or row.get("squeezed")
+            ]
+            viewport_checks.append(
+                {
+                    "width": width,
+                    "height": height,
+                    "ok": not bad_rows,
+                    "bad_row_count": len(bad_rows),
+                    "tables": metrics,
+                }
+            )
+        results["viewport_checks"] = viewport_checks
+
         browser.close()
 
     results["ok"] = all(row.get("ok") for row in results["boms"])
@@ -547,6 +625,8 @@ def main() -> int:
     labels = {(row.get("project"), row.get("bom_name")) for row in results["boms"]}
     results["distinct_labels"] = len(labels) == len(results["boms"])
     if not results["distinct_labels"]:
+        results["ok"] = False
+    if results.get("viewport_checks") and not all(item.get("ok") for item in results["viewport_checks"]):
         results["ok"] = False
 
     out_path = OUT / "report.json"

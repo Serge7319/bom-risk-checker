@@ -17,6 +17,7 @@ import {
   getActiveAnalyzeJob,
   identityKey,
   loadDraftFile,
+  materializeBomFile,
   parseAnalyzeSummary,
   readDraftMeta,
   saveDraftFile,
@@ -337,12 +338,39 @@ export default function BomAnalyzerPage() {
     if (!bomName.trim()) {
       setBomName(next.name.replace(/\.(csv|xlsx)$/i, ""));
     }
-    const nextKey = await fileIdentityKey(next);
+    let workingFile: File;
+    let nextKey: string;
+    try {
+      // Materialize bytes immediately so a later NotFoundError on the picker
+      // handle (or a failed IndexedDB draft write) cannot strand Validating.
+      const materialized = await materializeBomFile(next);
+      workingFile = materialized.file;
+      nextKey = materialized.identityKey;
+    } catch (err) {
+      if (requestId !== validationRequestIdRef.current) return;
+      setValidating(false);
+      setFile(null);
+      setValidation(null);
+      setValidatedFileKey("");
+      setFileContentKey("");
+      selectedFileKeyRef.current = "";
+      const message =
+        err instanceof Error
+          ? err.message
+          : "The selected BOM file could not be read.";
+      setValidationError(
+        /notfound|not found|could not be found/i.test(message)
+          ? "The selected BOM file became unavailable before validation. Re-select the file to continue."
+          : message,
+      );
+      return;
+    }
     if (requestId !== validationRequestIdRef.current) return;
+    setFile(workingFile);
     selectedFileKeyRef.current = nextKey;
     setFileContentKey(nextKey);
     try {
-      await saveDraftFile(next, session);
+      await saveDraftFile(workingFile, session);
     } catch (err) {
       if (requestId !== validationRequestIdRef.current) return;
       setDraftPersistNotice(
@@ -352,7 +380,7 @@ export default function BomAnalyzerPage() {
       );
     }
     if (requestId !== validationRequestIdRef.current) return;
-    await runValidation(next, requestId, nextKey);
+    await runValidation(workingFile, requestId, nextKey);
   }
 
   function onAnalyze() {

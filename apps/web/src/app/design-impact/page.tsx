@@ -7,7 +7,7 @@ import { EvidenceNotice, LoadingCard } from "@/components/GapBanner";
 import { PageHeader, PrimaryLink } from "@/components/PageHeader";
 import { fetchDesignImpact } from "@/lib/api";
 import { PAGE_META } from "@/lib/routes";
-import { readLastAnalysis, useRequireSession } from "@/lib/session";
+import { useRequireSession } from "@/lib/session";
 
 function cell(value: unknown, fallback = "—") {
   if (value === null || value === undefined || value === "") return fallback;
@@ -29,9 +29,9 @@ export default function DesignImpactPage() {
     if (!session) return;
     setBusy(true);
     setError("");
-    const last = readLastAnalysis(session);
+    // Aggregate across every saved BOM in the workspace. Passing the last
+    // analysis_id silently collapsed same-MPN usage to a single report.
     fetchDesignImpact(session.access_token, {
-      analysisId: last?.analysis_id,
       mpn: selected,
     })
       .then(setData)
@@ -127,7 +127,14 @@ export default function DesignImpactPage() {
                   <div className="cv-record-field"><dt>Risk</dt><dd>{cell(selected["Risk Level"] || selected.risk_level)}</dd></div>
                   <div className="cv-record-field"><dt>Manufacturer</dt><dd>{cell(selected.Manufacturer || selected.manufacturer)}</dd></div>
                   <div className="cv-record-field"><dt>Package</dt><dd>{cell(selected.Package || selected.package)}</dd></div>
-                  <div className="cv-record-field"><dt>Qty across BOMs</dt><dd>{cell(selected.Quantity || intel.total_quantity)}</dd></div>
+                  <div className="cv-record-field">
+                    <dt>Qty across BOMs</dt>
+                    <dd>{cell(intel.total_quantity)}</dd>
+                  </div>
+                  <div className="cv-record-field">
+                    <dt>Saved BOMs</dt>
+                    <dd>{cell(intel.affected_bom_count || affected.length)}</dd>
+                  </div>
                   <div className="cv-record-field"><dt>Impact level</dt><dd>{cell(intel.impact_level)}</dd></div>
                 </dl>
               </section>
@@ -136,7 +143,7 @@ export default function DesignImpactPage() {
               <h3 className="cv-card-title">Affected BOM rows</h3>
               <p className="cv-card-subtitle">
                 {affected.length
-                  ? `${affected.length} project/BOM usage row${affected.length === 1 ? "" : "s"} for ${cell(selectedMpn, "the selected part")}`
+                  ? `${affected.length} separate BOM/analysis usage row${affected.length === 1 ? "" : "s"} for ${cell(selectedMpn, "the selected part")} · combined quantity ${cell(intel.total_quantity, "—")}`
                   : "No affected BOM rows were returned for the selected part."}
               </p>
               {affected.length ? (
