@@ -455,9 +455,8 @@ def refine_classification_after_comparison(
     }:
         return classification
 
-    matches = int(comparison_counts.get("Match", 0) or 0) + int(
-        comparison_counts.get("Listing agreement", 0) or 0
-    )
+    # Listing agreement is catalog evidence only — never promote on it.
+    matches = int(comparison_counts.get("Match", 0) or 0)
     differences = int(comparison_counts.get("Different", 0) or 0)
     needs_data = int(comparison_counts.get("Needs data", 0) or 0)
 
@@ -888,42 +887,78 @@ def merge_discovery_candidates(
     return [row for row in merged if not is_non_component_catalog_candidate(row)]
 
 
+def _general_family_id() -> str:
+    from src.component_family_profiles import get_family_profile
+
+    return get_family_profile("General").id
+
+
+def classify_candidate_family_bucket(
+    original: Mapping[str, Any] | None,
+    candidate: Mapping[str, Any] | None,
+) -> str:
+    """Return relevant | unclassified | unfiltered for replacement partitioning.
+
+    Unknown family (General) is never relevant — those leads stay unclassified
+    until family evidence exists. Known incompatible families are unfiltered.
+    """
+    from src.component_family_profiles import infer_family_id
+    from src.parts_compare import resolve_comparison_family
+
+    general = _general_family_id()
+    original_family = infer_family_id(dict(original or {}))
+    candidate_family = infer_family_id(dict(candidate or {}))
+    if candidate_family == general or original_family == general:
+        return "unclassified"
+    meta = resolve_comparison_family(dict(original or {}), dict(candidate or {}))
+    if bool(meta.get("family_mismatch")):
+        return "unfiltered"
+    return "relevant"
+
+
 def candidate_family_compatible_with_original(
     original: Mapping[str, Any] | None,
     candidate: Mapping[str, Any] | None,
 ) -> bool:
-    """True when candidate family is unknown or matches the original family.
-
-    Uses the same family-mismatch rules as Compare Parts: General on either
-    side is not affirmative evidence of a mismatch. Known incompatible
-    families (e.g. Flash vs MCU / LED / capacitor) return False.
-    """
-    from src.parts_compare import resolve_comparison_family
-
-    meta = resolve_comparison_family(dict(original or {}), dict(candidate or {}))
-    return not bool(meta.get("family_mismatch"))
+    """True only when both families are known and compatible."""
+    return classify_candidate_family_bucket(original, candidate) == "relevant"
 
 
 def partition_candidates_by_family(
     original: Mapping[str, Any] | None,
     candidates: list[Mapping[str, Any]] | None,
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """Split candidates into family-relevant vs unfiltered cross-family leads."""
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+    """Split candidates into relevant, unclassified, and unfiltered leads.
+
+    Fail closed: any classification error places the row in unclassified, never
+    in the relevant list.
+    """
     relevant: list[dict[str, Any]] = []
+    unclassified: list[dict[str, Any]] = []
     unfiltered: list[dict[str, Any]] = []
     for row in candidates or []:
         if not isinstance(row, Mapping):
             continue
         payload = dict(row)
-        if candidate_family_compatible_with_original(original, payload):
+        try:
+            bucket = classify_candidate_family_bucket(original, payload)
+        except Exception:
+            bucket = "unclassified"
+        if bucket == "relevant":
             relevant.append(payload)
-        else:
+        elif bucket == "unfiltered":
             payload.setdefault(
                 "fit",
                 "not qualified — different component family from the original",
             )
             unfiltered.append(payload)
-    return relevant, unfiltered
+        else:
+            payload.setdefault(
+                "fit",
+                "not qualified — component family not classified from available evidence",
+            )
+            unclassified.append(payload)
+    return relevant, unclassified, unfiltered
 
 
 def build_classification_recommendation(

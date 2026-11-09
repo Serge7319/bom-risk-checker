@@ -19,8 +19,12 @@ from openpyxl import load_workbook
 from apps.api.evidence_contract import annotate_report_parts
 from apps.api.report_exports import build_csv, build_pdf, build_xlsx
 from src.alternative_classification import (
+    CLASS_CATALOG_INSUFFICIENT,
+    CLASS_SPEC_MATCHED,
     candidate_family_compatible_with_original,
+    classify_candidate_family_bucket,
     partition_candidates_by_family,
+    refine_classification_after_comparison,
 )
 from src.component_family_profiles import (
     COMPARE_LIMIT_GE,
@@ -29,7 +33,10 @@ from src.component_family_profiles import (
 )
 from src.datasheet_comparison import build_datasheet_comparison
 from src.design_impact_analyzer import build_design_impact
-from src.parametric_compare import compare_field_values
+from src.parametric_compare import (
+    compare_field_values,
+    engineering_confidence_from_rows,
+)
 from src.parts_compare import (
     FINDING_COMPATIBLE,
     FINDING_LISTING_AGREEMENT,
@@ -76,14 +83,15 @@ class FamilyPartitionTests(unittest.TestCase):
                 "architecture": "NOR Flash",
             },
         ]
-        relevant, unfiltered = partition_candidates_by_family(original, leads)
+        relevant, unclassified, unfiltered = partition_candidates_by_family(original, leads)
         relevant_mpns = {row["manufacturer_part_number"] for row in relevant}
         unfiltered_mpns = {row["manufacturer_part_number"] for row in unfiltered}
         self.assertIn("FLASH-EXAMPLE-02", relevant_mpns)
         self.assertTrue({"MCU-EXAMPLE-01", "LED-EXAMPLE-01", "CAP-EXAMPLE-01"} <= unfiltered_mpns)
         self.assertNotIn("MCU-EXAMPLE-01", relevant_mpns)
+        self.assertEqual(unclassified, [])
 
-    def test_fpga_like_original_keeps_unknown_family_as_relevant(self):
+    def test_unknown_family_candidate_is_unclassified_not_relevant(self):
         original = {
             "manufacturer_part_number": "FPGA-EXAMPLE-01",
             "description": "Field programmable gate array",
@@ -94,7 +102,42 @@ class FamilyPartitionTests(unittest.TestCase):
             "description": "",
             "primary_category": "",
         }
-        self.assertTrue(candidate_family_compatible_with_original(original, unknown))
+        self.assertFalse(candidate_family_compatible_with_original(original, unknown))
+        self.assertEqual(classify_candidate_family_bucket(original, unknown), "unclassified")
+        relevant, unclassified, unfiltered = partition_candidates_by_family(
+            original, [unknown]
+        )
+        self.assertEqual(relevant, [])
+        self.assertEqual(unfiltered, [])
+        self.assertEqual(
+            [row["manufacturer_part_number"] for row in unclassified],
+            ["GENERIC-EXAMPLE-01"],
+        )
+
+    def test_family_filter_errors_fail_closed_out_of_relevant(self):
+        original = {
+            "manufacturer_part_number": "FLASH-EXAMPLE-01",
+            "description": "128Mbit SPI NOR Flash memory",
+            "primary_category": "Memory|Flash",
+        }
+        lead = {
+            "manufacturer_part_number": "FLASH-EXAMPLE-02",
+            "description": "256Mbit SPI NOR Flash memory",
+            "primary_category": "Memory|Flash",
+        }
+        with unittest.mock.patch(
+            "src.alternative_classification.classify_candidate_family_bucket",
+            side_effect=RuntimeError("family filter boom"),
+        ):
+            relevant, unclassified, unfiltered = partition_candidates_by_family(
+                original, [lead]
+            )
+        self.assertEqual(relevant, [])
+        self.assertEqual(unfiltered, [])
+        self.assertEqual(
+            [row["manufacturer_part_number"] for row in unclassified],
+            ["FLASH-EXAMPLE-02"],
+        )
 
 
 class CompareHonestyTests(unittest.TestCase):
@@ -110,9 +153,69 @@ class CompareHonestyTests(unittest.TestCase):
         self.assertEqual(status, "Needs data")
         self.assertIn("class", note.casefold())
         self.assertEqual(map_status_to_assessment(status), FINDING_NEEDS_VERIFICATION)
-        # Explicit class agreement can still Match at the field level.
-        status_ok, _ = compare_field_values("20 nA (typ)", "20 nA (typ)", spec)
+
+    def test_unequal_unknown_class_values_need_verification(self):
+        spec = FieldSpec(
+            key="input_bias_na",
+            label="Input bias",
+            compare=COMPARE_NOMINAL,
+            unit="A",
+            value_role="typical",
+        )
+        status, note = compare_field_values("20 nA", "45 nA", spec)
+        self.assertEqual(status, "Needs data")
+        self.assertNotEqual(status, "Different")
+        self.assertIn("class", note.casefold())
+        self.assertEqual(map_status_to_assessment(status), FINDING_NEEDS_VERIFICATION)
+
+    def test_typical_without_test_conditions_needs_verification(self):
+        spec = FieldSpec(
+            key="input_bias_na",
+            label="Input bias",
+            compare=COMPARE_NOMINAL,
+            unit="A",
+            value_role="typical",
+        )
+        equal_status, equal_note = compare_field_values(
+            "20 nA (typ)", "20 nA (typ)", spec
+        )
+        self.assertEqual(equal_status, "Needs data")
+        self.assertIn("condition", equal_note.casefold())
+        unequal_status, unequal_note = compare_field_values(
+            "20 nA (typ)", "45 nA (typ)", spec
+        )
+        self.assertEqual(unequal_status, "Needs data")
+        self.assertNotEqual(unequal_status, "Different")
+        self.assertIn("condition", unequal_note.casefold())
+
+    def test_typical_with_matching_conditions_can_match_or_differ(self):
+        spec = FieldSpec(
+            key="input_bias_na",
+            label="Input bias",
+            compare=COMPARE_NOMINAL,
+            unit="A",
+            value_role="typical",
+        )
+        status_ok, _ = compare_field_values(
+            "20 nA (typ) @ 25C", "20 nA (typ) @ 25C", spec
+        )
         self.assertEqual(status_ok, "Match")
+        status_diff, _ = compare_field_values(
+            "20 nA (typ) @ 25C", "45 nA (typ) @ 25C", spec
+        )
+        self.assertEqual(status_diff, "Different")
+
+    def test_mismatched_value_classes_need_verification(self):
+        spec = FieldSpec(
+            key="input_bias_na",
+            label="Input bias",
+            compare=COMPARE_NOMINAL,
+            unit="A",
+            value_role="typical",
+        )
+        status, note = compare_field_values("20 nA (typ)", "20 nA (max)", spec)
+        self.assertEqual(status, "Needs data")
+        self.assertIn("labeled", note.casefold())
 
     def test_bare_numeric_with_preferred_unit_needs_data(self):
         spec = FieldSpec(
@@ -164,6 +267,47 @@ class CompareHonestyTests(unittest.TestCase):
         )
         self.assertEqual(projected["Assessment"], FINDING_LISTING_AGREEMENT)
         self.assertNotEqual(projected["Assessment"], FINDING_COMPATIBLE)
+
+    def test_listing_agreement_does_not_create_engineering_ready_result(self):
+        rows = [
+            {
+                "Attribute": "Resistance",
+                "Key": "resistance",
+                "Status": "Listing agreement",
+                "Required": True,
+            },
+            {
+                "Attribute": "Tolerance",
+                "Key": "tolerance",
+                "Status": "Listing agreement",
+                "Required": True,
+            },
+            {
+                "Attribute": "Package",
+                "Key": "package",
+                "Status": "Listing agreement",
+                "Required": True,
+            },
+            {
+                "Attribute": "Power",
+                "Key": "power",
+                "Status": "Listing agreement",
+                "Required": False,
+            },
+        ]
+        scored = engineering_confidence_from_rows(rows)
+        self.assertEqual(scored["matches"], 0)
+        self.assertEqual(scored["listing_agreements"], 4)
+        self.assertGreater(scored["required_missing"], 0)
+        self.assertLess(scored["engineering_comparison_confidence"], 75)
+        self.assertNotEqual(scored["engineering_evidence_status"], "complete")
+
+        promoted = refine_classification_after_comparison(
+            CLASS_CATALOG_INSUFFICIENT,
+            {"Match": 0, "Listing agreement": 6, "Different": 0, "Needs data": 0},
+        )
+        self.assertEqual(promoted, CLASS_CATALOG_INSUFFICIENT)
+        self.assertNotEqual(promoted, CLASS_SPEC_MATCHED)
 
     def test_operating_and_storage_temperature_are_separate_fields(self):
         from src.component_family_profiles import comparison_fields, get_family_profile

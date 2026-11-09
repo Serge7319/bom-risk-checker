@@ -257,6 +257,36 @@ def extract_test_condition(text: object) -> str:
     return "Not stated"
 
 
+_CLASS_ONLY_CONDITION_LABELS = {
+    "typ",
+    "typical",
+    "min",
+    "minimum",
+    "max",
+    "maximum",
+    "guarant",
+    "guaranteed",
+}
+
+
+def engineering_test_condition(text: object) -> str:
+    """Return a real test condition, ignoring class-only paren labels like (typ)."""
+    condition = extract_test_condition(text)
+    if condition == "Not stated":
+        return "Not stated"
+    folded = condition.casefold().strip()
+    if folded in _CLASS_ONLY_CONDITION_LABELS:
+        return "Not stated"
+    # "(typ, 25C)" style — keep when more than a class label is present.
+    class_only = re.fullmatch(
+        r"(?:typ(?:ical)?|min(?:imum)?|max(?:imum)?|guarant(?:eed)?)\.?",
+        folded,
+    )
+    if class_only:
+        return "Not stated"
+    return condition
+
+
 def compare_field_values(
     original_value: object,
     candidate_value: object,
@@ -313,15 +343,12 @@ def compare_field_values(
         o_num, o_unit = parse_numeric_with_unit(original_text, preferred_unit=preferred)
         c_num, c_unit = parse_numeric_with_unit(candidate_text, preferred_unit=preferred)
 
-        def _match_or_unverified(note: str) -> tuple[str, str]:
-            # When a field expects a condition class (typ/min/max/guaranteed) and
-            # either side omits it, equal magnitudes are not engineering-approved.
-            expected_role = str(getattr(spec, "value_role", "") or "").casefold()
-            # Catalog min/max rating fields already encode the condition in the
-            # attribute itself (e.g. DigiKey "VCEO Max"). Require an explicit
-            # class only for typical/guaranteed values where the label changes meaning.
-            expects_class = expected_role in {"typical", "guaranteed"}
-            if expects_class and (original_class == "unknown" or candidate_class == "unknown"):
+        # Typical/guaranteed fields require known value class and test conditions
+        # before equal or unequal magnitudes can be classified as Match/Different.
+        expected_role = str(getattr(spec, "value_role", "") or "").casefold()
+        expects_class = expected_role in {"typical", "guaranteed"}
+        if expects_class:
+            if original_class == "unknown" or candidate_class == "unknown":
                 return (
                     "Needs data",
                     (
@@ -329,7 +356,24 @@ def compare_field_values(
                         "conditions are not confirmed as comparable for engineering approval."
                     ),
                 )
-            return "Match", note
+            original_condition = engineering_test_condition(original_text)
+            candidate_condition = engineering_test_condition(candidate_text)
+            if original_condition == "Not stated" or candidate_condition == "Not stated":
+                return (
+                    "Needs data",
+                    (
+                        "One or both values omit stated test conditions, so typical/guaranteed "
+                        "magnitudes are not confirmed as comparable for engineering approval."
+                    ),
+                )
+            if original_condition.casefold() != candidate_condition.casefold():
+                return (
+                    "Needs data",
+                    (
+                        "The stated test conditions differ, so the typical/guaranteed values "
+                        "are not comparable until matching conditions are cited."
+                    ),
+                )
 
         if o_num is None or c_num is None:
             # Incomparable formats are unverified — never Material by default.
@@ -376,7 +420,7 @@ def compare_field_values(
             # Relative tolerance for floating SI equality.
             denom = max(abs(o_num), abs(c_num), 1e-30)
             if abs(o_num - c_num) / denom <= 0.02:
-                return _match_or_unverified("Normalized values match within engineering tolerance.")
+                return "Match", "Normalized values match within engineering tolerance."
             return "Different", "Normalized nominal values differ; engineer review is required."
 
         # Without an explicit design/fit limit, unequal magnitudes are a material
@@ -386,9 +430,7 @@ def compare_field_values(
         equal = abs(o_num - c_num) / denom <= 0.02
         if mode == COMPARE_LIMIT_GE:
             if equal:
-                return _match_or_unverified(
-                    "Normalized limit values match within engineering tolerance."
-                )
+                return "Match", "Normalized limit values match within engineering tolerance."
             if c_num + 1e-12 >= o_num:
                 return (
                     "Different",
@@ -399,9 +441,7 @@ def compare_field_values(
 
         if mode == COMPARE_LIMIT_LE:
             if equal:
-                return _match_or_unverified(
-                    "Normalized limit values match within engineering tolerance."
-                )
+                return "Match", "Normalized limit values match within engineering tolerance."
             if c_num - 1e-12 <= o_num:
                 return (
                     "Different",
@@ -544,36 +584,36 @@ def engineering_confidence_from_rows(
         if status == "Match":
             matches += 1
         elif status == "Listing agreement" or "listing agreement" in status.casefold():
-            # Catalog agreement contributes coverage, but is not datasheet-verified Match.
+            # Catalog agreement stays visible but never counts as engineering Match.
             listing_agreements += 1
-            matches += 1
         elif status in {"Different", "Conflicting"}:
             differences += 1
         else:
             needs_data += 1
         is_required = bool(row.get("Required")) or (required_keys and key in required_keys)
         if is_required:
-            if status == "Match" or status == "Listing agreement" or "listing agreement" in status.casefold():
+            if status == "Match":
                 required_matches += 1
             elif status == "Different":
                 required_diff += 1
             else:
+                # Listing agreement and Needs data are not engineering-verified.
                 required_missing += 1
         if "pinout" in label.casefold() or key == "pinout":
             pinout_status = status
 
-    compared = matches + differences + needs_data
+    compared = matches + differences + needs_data + listing_agreements
     if differences > 0 or required_diff > 0:
         status = "conflicts documented"
     elif compared == 0:
         status = "incomplete"
-    elif needs_data == 0 and matches > 0:
+    elif needs_data == 0 and listing_agreements == 0 and matches > 0:
         status = "complete"
     elif required_missing >= 2 or (requires_pinout_for_dropin and pinout_status != "Match"):
         status = "incomplete"
-    elif matches <= 1 and needs_data >= 5:
+    elif matches <= 1 and (needs_data + listing_agreements) >= 5:
         status = "incomplete"
-    elif matches >= max(1, compared - 1):
+    elif matches >= max(1, compared - 1) and listing_agreements == 0:
         status = "substantial"
     else:
         status = "partial"
@@ -612,6 +652,12 @@ def engineering_confidence_from_rows(
         f"{'match' if matches == 1 else 'matches'}, "
         f"{needs_data} {'field' if needs_data == 1 else 'fields'} need verification"
     )
+    if listing_agreements:
+        summary += (
+            f"; {listing_agreements} supplier-listing "
+            f"{'agreement' if listing_agreements == 1 else 'agreements'} "
+            "(catalog evidence only)"
+        )
     if required_missing:
         summary += f"; {required_missing} required family fields lack data"
     if requires_pinout_for_dropin and pinout_status != "Match":
@@ -625,6 +671,7 @@ def engineering_confidence_from_rows(
         "matches": matches,
         "differences": differences,
         "needs_data": needs_data,
+        "listing_agreements": listing_agreements,
         "compared_fields": compared,
         "required_matches": required_matches,
         "required_missing": required_missing,

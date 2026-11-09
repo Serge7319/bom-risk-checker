@@ -935,22 +935,22 @@ def build_engineering_evidence_assessment(
         coverage_percent = base["engineering_coverage_percent"]
         engineering_confidence = base["engineering_comparison_confidence"]
     else:
-        matches = max(0, int(counts.get("Match", 0) or 0)) + max(
-            0, int(counts.get("Listing agreement", 0) or 0)
-        )
+        matches = max(0, int(counts.get("Match", 0) or 0))
+        listing_agreements = max(0, int(counts.get("Listing agreement", 0) or 0))
         differences = max(0, int(counts.get("Different", 0) or 0))
         needs_data = max(0, int(counts.get("Needs data", 0) or 0))
-        compared_fields = matches + differences + needs_data
+        # Listing agreement stays visible but never counts as engineering Match.
+        compared_fields = matches + differences + needs_data + listing_agreements
 
         if differences > 0:
             status = "conflicts documented"
         elif compared_fields == 0:
             status = "incomplete"
-        elif needs_data == 0 and matches > 0:
+        elif needs_data == 0 and listing_agreements == 0 and matches > 0:
             status = "complete"
-        elif matches <= 1 and needs_data >= 5:
+        elif matches <= 1 and (needs_data + listing_agreements) >= 5:
             status = "incomplete"
-        elif matches >= max(1, compared_fields - 1):
+        elif matches >= max(1, compared_fields - 1) and listing_agreements == 0:
             status = "substantial"
         else:
             status = "partial"
@@ -961,6 +961,12 @@ def build_engineering_evidence_assessment(
             f"Engineering evidence: {status} — {matches} confirmed {match_label}, "
             f"{needs_data} {field_label} need verification"
         )
+        if listing_agreements:
+            summary += (
+                f"; {listing_agreements} supplier-listing "
+                f"{'agreement' if listing_agreements == 1 else 'agreements'} "
+                "(catalog evidence only)"
+            )
         coverage_percent = round((matches / compared_fields) * 100) if compared_fields else 0
 
         if differences > 0:
@@ -972,6 +978,7 @@ def build_engineering_evidence_assessment(
             engineering_confidence = round(35 + coverage_ratio * 58)
             if (
                 needs_data <= 1
+                and listing_agreements == 0
                 and matches >= max(1, compared_fields - 1)
                 and differences == 0
             ):
@@ -1045,19 +1052,18 @@ def build_recommendation_score_breakdown(
     candidate from tying a closely matched alternative simply because both
     have similar lifecycle or stock signals.
     """
-    matches = max(0, int(counts.get("Match", 0) or 0)) + max(
-        0, int(counts.get("Listing agreement", 0) or 0)
-    )
+    matches = max(0, int(counts.get("Match", 0) or 0))
+    listing_agreements = max(0, int(counts.get("Listing agreement", 0) or 0))
     differences = max(0, int(counts.get("Different", 0) or 0))
     needs_data = max(0, int(counts.get("Needs data", 0) or 0))
 
     # A recorded difference has more impact than an unknown. Matches improve
-    # quality, but do not erase a documented conflict.
-    evidence_quality = 100 - (differences * 16) - (needs_data * 7)
+    # quality, but listing agreements do not count as engineering Match.
+    evidence_quality = 100 - (differences * 16) - (needs_data * 7) - (listing_agreements * 4)
     evidence_quality += min(matches, 8) * 2
     evidence_quality = max(0, min(evidence_quality, 100))
 
-    evidence_cap = 100 - (differences * 12) - (needs_data * 6)
+    evidence_cap = 100 - (differences * 12) - (needs_data * 6) - (listing_agreements * 3)
     if not is_explicit_substitute:
         evidence_cap = min(evidence_cap, 95)
     adjusted_confidence = max(

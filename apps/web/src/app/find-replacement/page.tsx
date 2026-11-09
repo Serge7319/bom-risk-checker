@@ -61,8 +61,10 @@ function FindReplacementInner() {
 
   if (!session) return null;
   const candidates = (result?.candidates || []) as Array<Record<string, unknown>>;
+  const unclassifiedLeads = (result?.unclassified_leads || []) as Array<Record<string, unknown>>;
   const unfilteredLeads = (result?.unfiltered_leads || []) as Array<Record<string, unknown>>;
   const original = (result?.original || {}) as Record<string, unknown>;
+  const hasSeparatedLeads = unclassifiedLeads.length > 0 || unfilteredLeads.length > 0;
   // Compare Parts inherits BOM context only when the API confirmed bom_context.
   const compareAnalysisId = result?.bom_context
     ? String(
@@ -162,7 +164,7 @@ function FindReplacementInner() {
             ) : null}
           </section>
 
-          {candidates.length || unfilteredLeads.length ? (
+          {candidates.length || hasSeparatedLeads ? (
             <>
               <section className="cv-card pad">
                 <h3 className="cv-card-title">Relevant candidates</h3>
@@ -228,10 +230,63 @@ function FindReplacementInner() {
                   </div>
                 ) : (
                   <p className="cv-small-note" style={{ marginTop: 12 }}>
-                    No same-family candidates were returned. Cross-family distributor hits are listed separately below when present.
+                    No same-family candidates were returned. Unclassified and cross-family distributor hits are listed separately below when present.
                   </p>
                 )}
               </section>
+              {unclassifiedLeads.length ? (
+                <section className="cv-card pad">
+                  <h3 className="cv-card-title">Unclassified leads</h3>
+                  <p className="cv-card-subtitle">
+                    Catalog hits without confirmed component-family evidence. Not relevant replacement candidates until family is classified.
+                  </p>
+                  <div className="cv-table-wrap" style={{ marginTop: 12 }}>
+                    <table className="cv-table cv-table-actions">
+                      <thead>
+                        <tr>
+                          <th>Lead</th>
+                          <th>Manufacturer</th>
+                          <th>Fit status</th>
+                          <th></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {unclassifiedLeads.map((row) => {
+                          const cand = String(row.mpn || "");
+                          return (
+                            <tr key={`unclassified-${cand}`}>
+                              <td className="cv-mpn-cell">
+                                <strong>{cand}</strong>
+                                <div className="cv-small-note">{String(row.rationale || "")}</div>
+                              </td>
+                              <td>{String(row.manufacturer || "—")}</td>
+                              <td>
+                                <span className="cv-badge amber">
+                                  {String(
+                                    row.fit ||
+                                      "not qualified — component family not classified from available evidence",
+                                  ).replace(/_/g, " ")}
+                                </span>
+                              </td>
+                              <td className="cv-table-action">
+                                <Link
+                                  href={compareHref(
+                                    String(result.requested_mpn || mpn),
+                                    cand,
+                                    compareAnalysisId || undefined,
+                                  )}
+                                >
+                                  Compare →
+                                </Link>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              ) : null}
               {unfilteredLeads.length ? (
                 <section className="cv-card pad">
                   <h3 className="cv-card-title">Unfiltered leads</h3>

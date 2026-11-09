@@ -1,0 +1,296 @@
+{
+  "web": "http://127.0.0.1:3001",
+  "api": "http://127.0.0.1:8081",
+  "boms": [
+    {
+      "bom": "flat",
+      "file": "/Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/legacy-supplier-report/tests/fixtures/synthetic_bom_25parts.csv",
+      "steps": {
+        "analyze": {
+          "ok": true,
+          "url": "http://127.0.0.1:3001/bom-analyzer",
+          "review_href": "/detailed-risk-report?analysis_id=7f56a339-7a2e-4fce-a090-f81ccf01d388"
+        },
+        "compare": {
+          "ok": true,
+          "url": "http://127.0.0.1:3001/compare-parts?analysis_id=7f56a339-7a2e-4fce-a090-f81ccf01d388",
+          "snippet": "C\nCadivor\nENGINEERING INTELLIGENCE\nWORKSPACE\nEngineering workspace\nSUBSCRIPTION \u00b7 TRIAL\nNew BOM analysis\nWORKSPACE\nHome\nBOM Analyzer\nEngineering Decisions\nMonitoring\nFind a replacement\nReports\nDECISION TOOLS\nCompare Parts\nDatasheet Q&A\nProc"
+        },
+        "replacement": {
+          "ok": true,
+          "url": "http://127.0.0.1:3001/find-replacement?analysis_id=7f56a339-7a2e-4fce-a090-f81ccf01d388",
+          "has_relevant_section": false,
+          "has_unclassified_section": false,
+          "has_unfiltered_section": false,
+          "snippet": "C\nCadivor\nENGINEERING INTELLIGENCE\nWORKSPACE\nEngineering workspace\nSUBSCRIPTION \u00b7 TRIAL\nNew BOM analysis\nWORKSPACE\nHome\nBOM Analyzer\nEngineering Decisions\nMonitoring\nFind a replacement\nReports\nDECISION TOOLS\nCompare Parts\nDatasheet Q&A\nProcurement Advisor\nDesign Impact Analyzer\nCost Optimization\nSupply Risk Scenario\nINTELLIGENCE\nPortfolio Intelligence\nDetailed Risk Report\nEngineering Intelligence\n"
+        },
+        "decision": {
+          "ok": true,
+          "url": "http://127.0.0.1:3001/engineering-decisions",
+          "snippet": "C\nCadivor\nENGINEERING INTELLIGENCE\nWORKSPACE\nEngineering workspace\nSUBSCRIPTION \u00b7 TRIAL\nNew BOM analysis\nWORKSPACE\nHome\nBOM Analyzer\nEngineering Decisions\nMonitoring\nFind a replacement\nReports\nDECISION TOOLS\nCompare Parts\nDatasheet Q&A\nProc"
+        },
+        "reports": {
+          "ok": true,
+          "url": "http://127.0.0.1:3001/reports/7f56a339-7a2e-4fce-a090-f81ccf01d388",
+          "has_download_controls": true,
+          "snippet": "C\nCadivor\nENGINEERING INTELLIGENCE\nWORKSPACE\nEngineering workspace\nSUBSCRIPTION \u00b7 TRIAL\nNew BOM analysis\nWORKSPACE\nHome\nBOM Analyzer\nEngineering Decisions\nMonitoring\nFind a replacement\nReports\nDECISION TOOLS\nCompare Parts\nDatasheet Q&A\nProc"
+        },
+        "procurement": {
+          "ok": true,
+          "url": "http://127.0.0.1:3001/procurement",
+          "snippet": "C\nCadivor\nENGINEERING INTELLIGENCE\nWORKSPACE\nEngineering workspace\nSUBSCRIPTION \u00b7 TRIAL\nNew BOM analysis\nWORKSPACE\nHome\nBOM Analyzer\nEngineering Decisions\nMonitoring\nFind a replacement\nReports\nDECISION TOOLS\nCompare Parts\nDatasheet Q&A\nProc"
+        },
+        "design_impact": {
+          "ok": true,
+          "url": "http://127.0.0.1:3001/design-impact",
+          "snippet": "C\nCadivor\nENGINEERING INTELLIGENCE\nWORKSPACE\nEngineering workspace\nSUBSCRIPTION \u00b7 TRIAL\nNew BOM analysis\nWORKSPACE\nHome\nBOM Analyzer\nEngineering Decisions\nMonitoring\nFind a replacement\nReports\nDECISION TOOLS\nCompare Parts\nDatasheet Q&A\nProc"
+        },
+        "exports": {
+          "ok": true,
+          "detail": {
+            "pdf": {
+              "bytes": 5708,
+              "path": "/Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/legacy-supplier-report/.evidence_ui/next_ui_two_bom_597/flat_report.pdf",
+              "starts_with_pdf": true,
+              "mentions_analysis": false,
+              "page_markers": 3
+            },
+            "xlsx": {
+              "bytes": 9857,
+              "path": "/Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/legacy-supplier-report/.evidence_ui/next_ui_two_bom_597/flat_report.xlsx",
+              "is_zip": true,
+              "has_workbook": true,
+              "entry_count": 12
+            },
+            "csv": {
+              "bytes": 5166,
+              "path": "/Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/legacy-supplier-report/.evidence_ui/next_ui_two_bom_597/flat_report.csv",
+              "row_count": 26,
+              "header": [
+                "\ufeffProject",
+                "BOM",
+                "Revision",
+                "Analyzed At",
+                "MPN",
+                "Manufacturer",
+                "Description",
+                "Parent MPN",
+                "Line Type",
+                "Quantity per Parent",
+                "Effective Quantity",
+                "Lifecycle",
+                "Risk Level",
+                "Risk Score",
+                "Risk Reasons",
+                "Stock",
+                "Unit Price",
+                "Currency",
+                "Evidence Class",
+                "Evidence Source",
+                "Supplier Product URL",
+                "Datasheet URL"
+              ],
+              "has_mpn_column": true
+            }
+          }
+        }
+      },
+      "failed_step": null,
+      "analysis_id": "7f56a339-7a2e-4fce-a090-f81ccf01d388",
+      "exports": {
+        "pdf": {
+          "bytes": 5708,
+          "path": "/Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/legacy-supplier-report/.evidence_ui/next_ui_two_bom_597/flat_report.pdf",
+          "starts_with_pdf": true,
+          "mentions_analysis": false,
+          "page_markers": 3
+        },
+        "xlsx": {
+          "bytes": 9857,
+          "path": "/Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/legacy-supplier-report/.evidence_ui/next_ui_two_bom_597/flat_report.xlsx",
+          "is_zip": true,
+          "has_workbook": true,
+          "entry_count": 12
+        },
+        "csv": {
+          "bytes": 5166,
+          "path": "/Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/legacy-supplier-report/.evidence_ui/next_ui_two_bom_597/flat_report.csv",
+          "row_count": 26,
+          "header": [
+            "\ufeffProject",
+            "BOM",
+            "Revision",
+            "Analyzed At",
+            "MPN",
+            "Manufacturer",
+            "Description",
+            "Parent MPN",
+            "Line Type",
+            "Quantity per Parent",
+            "Effective Quantity",
+            "Lifecycle",
+            "Risk Level",
+            "Risk Score",
+            "Risk Reasons",
+            "Stock",
+            "Unit Price",
+            "Currency",
+            "Evidence Class",
+            "Evidence Source",
+            "Supplier Product URL",
+            "Datasheet URL"
+          ],
+          "has_mpn_column": true
+        }
+      },
+      "failed_steps": [],
+      "ok": true
+    },
+    {
+      "bom": "nested",
+      "file": "/Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/legacy-supplier-report/tests/fixtures/nested_bom_product.csv",
+      "steps": {
+        "analyze": {
+          "ok": true,
+          "url": "http://127.0.0.1:3001/bom-analyzer",
+          "review_href": "/detailed-risk-report?analysis_id=f169c7ed-bc96-4629-9d20-a536f4e355ff"
+        },
+        "compare": {
+          "ok": true,
+          "url": "http://127.0.0.1:3001/compare-parts?analysis_id=f169c7ed-bc96-4629-9d20-a536f4e355ff",
+          "snippet": "C\nCadivor\nENGINEERING INTELLIGENCE\nWORKSPACE\nEngineering workspace\nSUBSCRIPTION \u00b7 TRIAL\nNew BOM analysis\nWORKSPACE\nHome\nBOM Analyzer\nEngineering Decisions\nMonitoring\nFind a replacement\nReports\nDECISION TOOLS\nCompare Parts\nDatasheet Q&A\nProc"
+        },
+        "replacement": {
+          "ok": true,
+          "url": "http://127.0.0.1:3001/find-replacement?analysis_id=f169c7ed-bc96-4629-9d20-a536f4e355ff",
+          "has_relevant_section": true,
+          "has_unclassified_section": false,
+          "has_unfiltered_section": false,
+          "snippet": "C\nCadivor\nENGINEERING INTELLIGENCE\nWORKSPACE\nEngineering workspace\nSUBSCRIPTION \u00b7 TRIAL\nNew BOM analysis\nWORKSPACE\nHome\nBOM Analyzer\nEngineering Decisions\nMonitoring\nFind a replacement\nReports\nDECISION TOOLS\nCompare Parts\nDatasheet Q&A\nProcurement Advisor\nDesign Impact Analyzer\nCost Optimization\nSupply Risk Scenario\nINTELLIGENCE\nPortfolio Intelligence\nDetailed Risk Report\nEngineering Intelligence\n"
+        },
+        "decision": {
+          "ok": true,
+          "url": "http://127.0.0.1:3001/engineering-decisions",
+          "snippet": "C\nCadivor\nENGINEERING INTELLIGENCE\nWORKSPACE\nEngineering workspace\nSUBSCRIPTION \u00b7 TRIAL\nNew BOM analysis\nWORKSPACE\nHome\nBOM Analyzer\nEngineering Decisions\nMonitoring\nFind a replacement\nReports\nDECISION TOOLS\nCompare Parts\nDatasheet Q&A\nProc"
+        },
+        "reports": {
+          "ok": true,
+          "url": "http://127.0.0.1:3001/reports/f169c7ed-bc96-4629-9d20-a536f4e355ff",
+          "has_download_controls": true,
+          "snippet": "C\nCadivor\nENGINEERING INTELLIGENCE\nWORKSPACE\nEngineering workspace\nSUBSCRIPTION \u00b7 TRIAL\nNew BOM analysis\nWORKSPACE\nHome\nBOM Analyzer\nEngineering Decisions\nMonitoring\nFind a replacement\nReports\nDECISION TOOLS\nCompare Parts\nDatasheet Q&A\nProc"
+        },
+        "procurement": {
+          "ok": true,
+          "url": "http://127.0.0.1:3001/procurement",
+          "snippet": "C\nCadivor\nENGINEERING INTELLIGENCE\nWORKSPACE\nEngineering workspace\nSUBSCRIPTION \u00b7 TRIAL\nNew BOM analysis\nWORKSPACE\nHome\nBOM Analyzer\nEngineering Decisions\nMonitoring\nFind a replacement\nReports\nDECISION TOOLS\nCompare Parts\nDatasheet Q&A\nProc"
+        },
+        "design_impact": {
+          "ok": true,
+          "url": "http://127.0.0.1:3001/design-impact",
+          "snippet": "C\nCadivor\nENGINEERING INTELLIGENCE\nWORKSPACE\nEngineering workspace\nSUBSCRIPTION \u00b7 TRIAL\nNew BOM analysis\nWORKSPACE\nHome\nBOM Analyzer\nEngineering Decisions\nMonitoring\nFind a replacement\nReports\nDECISION TOOLS\nCompare Parts\nDatasheet Q&A\nProc"
+        },
+        "exports": {
+          "ok": true,
+          "detail": {
+            "pdf": {
+              "bytes": 3167,
+              "path": "/Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/legacy-supplier-report/.evidence_ui/next_ui_two_bom_597/nested_report.pdf",
+              "starts_with_pdf": true,
+              "mentions_analysis": false,
+              "page_markers": 2
+            },
+            "xlsx": {
+              "bytes": 8247,
+              "path": "/Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/legacy-supplier-report/.evidence_ui/next_ui_two_bom_597/nested_report.xlsx",
+              "is_zip": true,
+              "has_workbook": true,
+              "entry_count": 12
+            },
+            "csv": {
+              "bytes": 1764,
+              "path": "/Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/legacy-supplier-report/.evidence_ui/next_ui_two_bom_597/nested_report.csv",
+              "row_count": 8,
+              "header": [
+                "\ufeffProject",
+                "BOM",
+                "Revision",
+                "Analyzed At",
+                "MPN",
+                "Manufacturer",
+                "Description",
+                "Parent MPN",
+                "Line Type",
+                "Quantity per Parent",
+                "Effective Quantity",
+                "Lifecycle",
+                "Risk Level",
+                "Risk Score",
+                "Risk Reasons",
+                "Stock",
+                "Unit Price",
+                "Currency",
+                "Evidence Class",
+                "Evidence Source",
+                "Supplier Product URL",
+                "Datasheet URL"
+              ],
+              "has_mpn_column": true
+            }
+          }
+        }
+      },
+      "failed_step": null,
+      "analysis_id": "f169c7ed-bc96-4629-9d20-a536f4e355ff",
+      "exports": {
+        "pdf": {
+          "bytes": 3167,
+          "path": "/Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/legacy-supplier-report/.evidence_ui/next_ui_two_bom_597/nested_report.pdf",
+          "starts_with_pdf": true,
+          "mentions_analysis": false,
+          "page_markers": 2
+        },
+        "xlsx": {
+          "bytes": 8247,
+          "path": "/Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/legacy-supplier-report/.evidence_ui/next_ui_two_bom_597/nested_report.xlsx",
+          "is_zip": true,
+          "has_workbook": true,
+          "entry_count": 12
+        },
+        "csv": {
+          "bytes": 1764,
+          "path": "/Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/legacy-supplier-report/.evidence_ui/next_ui_two_bom_597/nested_report.csv",
+          "row_count": 8,
+          "header": [
+            "\ufeffProject",
+            "BOM",
+            "Revision",
+            "Analyzed At",
+            "MPN",
+            "Manufacturer",
+            "Description",
+            "Parent MPN",
+            "Line Type",
+            "Quantity per Parent",
+            "Effective Quantity",
+            "Lifecycle",
+            "Risk Level",
+            "Risk Score",
+            "Risk Reasons",
+            "Stock",
+            "Unit Price",
+            "Currency",
+            "Evidence Class",
+            "Evidence Source",
+            "Supplier Product URL",
+            "Datasheet URL"
+          ],
+          "has_mpn_column": true
+        }
+      },
+      "failed_steps": [],
+      "ok": true
+    }
+  ],
+  "signed_in_url": "http://127.0.0.1:3001/",
+  "ok": true
+}

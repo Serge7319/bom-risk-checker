@@ -154,7 +154,7 @@ def _build_passive_alternative_reasoning(
 ) -> Dict[str, Any]:
     rows = list(comparison_rows or [])
     counts = _comparison_counts_from(comparison_counts, candidate.get("Recommendation Score Evidence"))
-    matches = int(counts.get("Match", 0) or 0) + int(counts.get("Listing agreement", 0) or 0)
+    matches = int(counts.get("Match", 0) or 0)
     differences = int(counts.get("Different", 0) or 0)
     needs_data = int(counts.get("Needs data", 0) or 0)
 
@@ -192,16 +192,21 @@ def _build_passive_alternative_reasoning(
             continue
         if skip_ic_terms and any(term in attribute.casefold() for term in ic_terms):
             continue
-        if status in {"Match", "Listing agreement"}:
-            verb = "listing agrees" if status == "Listing agreement" else "matches"
+        if status == "Match":
             if attribute == "Mounting":
                 confirmed.append(
-                    f"{attribute} {verb} ({original_value} vs {candidate_value})."
+                    f"{attribute} matches ({original_value} vs {candidate_value})."
                 )
             else:
                 confirmed.append(
-                    f"{attribute} {verb} ({candidate_value or original_value})."
+                    f"{attribute} matches ({candidate_value or original_value})."
                 )
+        elif status == "Listing agreement":
+            verification.append(
+                f"{attribute} shows supplier-listing agreement only "
+                f"({candidate_value or original_value}); catalog evidence is not "
+                "datasheet-verified engineering fit."
+            )
         elif status == "Different":
             blockers.append(
                 f"{attribute} differs: original {original_value or 'Not available'}, "
