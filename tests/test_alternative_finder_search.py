@@ -581,7 +581,10 @@ class AlternativeFinderSearchTests(unittest.TestCase):
         self.assertEqual(enriched["Classification"], self.classification.CLASS_VERIFIED_DIRECT)
         counts = enriched["Comparison Counts"]
         self.assertEqual(counts.get("Different"), 0)
-        self.assertGreaterEqual(counts.get("Match", 0), 6)
+        self.assertGreaterEqual(
+            int(counts.get("Match", 0) or 0) + int(counts.get("Listing agreement", 0) or 0),
+            6,
+        )
         self.assertIn("DigiKey relationship: Direct.", enriched["Supplier Relationship Summary"])
         self.assertGreaterEqual(enriched["Engineering Comparison Confidence"], 82)
         self.assertTrue(supplier_evidence.get("supplier_data_verified"))

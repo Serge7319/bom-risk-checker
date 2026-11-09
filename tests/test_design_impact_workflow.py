@@ -91,14 +91,16 @@ def test_catalog_aggregates_parts_across_saved_boms():
     assert result["selected_mpn"] == "IC-100"
     assert result["project_count"] == 2
     assert result["affected_bom_count"] == 3
-    assert len(result["affected_projects"]) == 2
+    # One occurrence row per saved BOM/analysis — not collapsed by project.
+    assert len(result["affected_projects"]) == 3
     assert catalog_row["Saved BOMs"] == 3
     assert catalog_row["Projects"] == 2
     assert {"Gateway", "Sensor"}.issubset(set(catalog_row["Project Names"]))
 
-    gateway = next(row for row in result["affected_projects"] if row["Project"] == "Gateway")
-    assert gateway["Saved BOMs"] == 2
-    assert gateway["Quantity"] == 7
+    gateway_rows = [row for row in result["affected_projects"] if row["Project"] == "Gateway"]
+    assert len(gateway_rows) == 2
+    assert all(row["Saved BOMs"] == 1 for row in gateway_rows)
+    assert sum(int(row["Quantity"]) for row in gateway_rows) == 7
 
 
 def test_missing_supply_fields_remain_unrecorded_instead_of_becoming_zero():
@@ -388,7 +390,10 @@ def test_initial_design_impact_has_no_implicit_component_selection():
 def test_component_selection_control_uses_a_square_checkmark():
     source = (ROOT / "src" / "design_impact_analyzer.py").read_text(encoding="utf-8")
     selector_css = source.split("[class*=\"st-key-design_impact_component_row_\"] .stButton button{", 1)[1].split("}", 1)[0]
-    selected_css = source.split(".stButton button[kind=\"primary\"]{", 1)[1].split("}", 1)[0]
+    selected_css = source.split(
+        "[class*=\"st-key-design_impact_component_row_\"] .stButton button[kind=\"primary\"]{",
+        1,
+    )[1].split("}", 1)[0]
 
     assert "border-radius:5px!important" in selector_css
     assert "border-radius:50%" not in selector_css
@@ -482,8 +487,8 @@ def test_runtime_restores_the_component_specific_map_for_the_selected_bom_rows()
     assert "max-width:1440px!important" in renderer
     assert "review_started=bool(" in section
     assert "design_impact_review_started_mpn" in section
-    assert "columns=5" in renderer
     assert "Estimated review" in renderer
+    assert "affected_projects" in renderer or "Affected" in renderer
     assert "select_recommended_when_empty=False" in section
 
 

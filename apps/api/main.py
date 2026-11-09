@@ -954,14 +954,19 @@ async def decision_records_post(request: Request) -> JSONResponse:
     datasheet_uploads: dict[str, Any] = {}
     if "multipart/form-data" in str(request.headers.get("content-type") or "").lower():
         try:
-            form = await request.form(max_files=2, max_fields=32)
+            form = await request.form(max_files=2, max_fields=40)
             body = {key: form.get(key) for key in (
                 "analysis_id", "part_a", "part_b", "decision", "reviewer", "rationale",
                 "validation_checks", "follow_up_action", "follow_up_owner",
-                "follow_up_due_date", "residual_risk",
+                "follow_up_due_date", "residual_risk", "comparison_snapshot",
             )}
             raw_checks = body.get("validation_checks")
             body["validation_checks"] = json.loads(raw_checks) if raw_checks else []
+            raw_snapshot = body.get("comparison_snapshot")
+            if isinstance(raw_snapshot, str) and raw_snapshot.strip():
+                body["comparison_snapshot"] = json.loads(raw_snapshot)
+            elif not raw_snapshot:
+                body["comparison_snapshot"] = None
         except Exception:  # noqa: BLE001
             return _json({"detail": "Invalid multipart decision request."}, 400)
         for side, field_name in (("a", "datasheet_a"), ("b", "datasheet_b")):
@@ -1048,15 +1053,38 @@ async def decision_records_post(request: Request) -> JSONResponse:
             requested_analysis_id, workspace_id=ctx["workspace_id"]
         ):
             return _json({"detail": "Report not found"}, 404)
-        comparison = await run_in_threadpool(
-            migration_tools.compare_parts_payload,
-            workspace_id=ctx["workspace_id"],
-            part_a=part_a,
-            part_b=part_b,
-            analysis_id=requested_analysis_id,
-            use_latest_if_missing=False,
-            datasheet_uploads=datasheet_uploads or None,
+        # Reuse an on-screen comparison snapshot when it already matches this
+        # decision pair — avoids a second full supplier/datasheet compare.
+        snapshot_in = body.get("comparison_snapshot")
+        if isinstance(snapshot_in, str) and snapshot_in.strip():
+            try:
+                snapshot_in = json.loads(snapshot_in)
+            except Exception:  # noqa: BLE001
+                snapshot_in = None
+        reuse_snapshot = (
+            isinstance(snapshot_in, dict)
+            and snapshot_in.get("ok") is not False
+            and str(snapshot_in.get("part_a") or "").strip().casefold() == part_a.casefold()
+            and str(snapshot_in.get("part_b") or "").strip().casefold() == part_b.casefold()
+            and not datasheet_uploads
         )
+        if reuse_snapshot:
+            comparison = dict(snapshot_in)
+            comparison.setdefault("ok", True)
+            comparison.setdefault("part_a", part_a)
+            comparison.setdefault("part_b", part_b)
+            if requested_analysis_id and not comparison.get("analysis_id"):
+                comparison["analysis_id"] = requested_analysis_id
+        else:
+            comparison = await run_in_threadpool(
+                migration_tools.compare_parts_payload,
+                workspace_id=ctx["workspace_id"],
+                part_a=part_a,
+                part_b=part_b,
+                analysis_id=requested_analysis_id,
+                use_latest_if_missing=False,
+                datasheet_uploads=datasheet_uploads or None,
+            )
         if not comparison.get("ok"):
             return _json({"detail": comparison.get("detail") or "Comparison unavailable."}, 400)
         analysis_id = str(comparison.get("analysis_id") or "").strip() or None

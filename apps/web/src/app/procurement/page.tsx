@@ -43,11 +43,9 @@ export default function ProcurementPage() {
   const evidenceSummary = (data?.evidence_summary || {}) as Record<string, unknown>;
   const liveParts = Number(evidenceSummary.live_parts || 0);
   const sampleParts = Number(evidenceSummary.sample_parts || 0);
-  const sourcingBadge = liveParts
-    ? `Live supplier evidence · ${liveParts} part${liveParts === 1 ? "" : "s"}`
-    : sampleParts
-      ? "Sample evidence · not distributor quotes"
-      : "No live quotes saved for this BOM";
+  const missingParts = Number(evidenceSummary.parts_without_verified_supplier_evidence || 0);
+  const partsTotal = Number(evidenceSummary.parts_total || ((data?.parts as unknown[]) || []).length || 0);
+  const sourcingBadge = `Live: ${liveParts}; synthetic/preview: ${sampleParts}; no supplier match: ${missingParts} (of ${partsTotal})`;
 
   const display = (value: unknown, fallback = "Not recorded") => {
     if (value === null || value === undefined || String(value).trim() === "") return fallback;
@@ -181,6 +179,12 @@ export default function ProcurementPage() {
                                       </span>
                                       <span>Stock: {display(offer.stock, "Not reported")}</span>
                                       <span>Lead: {offer.lead_time_weeks == null ? "Not reported" : `${String(offer.lead_time_weeks)} weeks`}</span>
+                                      <span>
+                                        Qty break:{" "}
+                                        {offer.price_break_quantity == null
+                                          ? "Not recorded"
+                                          : String(offer.price_break_quantity)}
+                                      </span>
                                       {offer.region ? <span>Region: {String(offer.region)}</span> : null}
                                       {offer.retrieved_at ? <span>Retrieved: {String(offer.retrieved_at)}</span> : null}
                                       {productUrl.startsWith("https://") || productUrl.startsWith("http://") ? (

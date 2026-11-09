@@ -285,13 +285,8 @@ def find_replacements(mpn: str) -> dict[str, Any]:
     candidates_raw = result.get("candidates") if isinstance(result.get("candidates"), list) else []
     discovery = result.get("discovery_metadata") if isinstance(result.get("discovery_metadata"), dict) else {}
 
-    candidates: list[dict[str, Any]] = []
-    for candidate in candidates_raw:
-        if not isinstance(candidate, dict):
-            continue
+    def _project_candidate(candidate: dict[str, Any], *, cross_family: bool = False) -> dict[str, Any]:
         candidate_mpn = str(candidate.get("Alternative Part") or candidate.get("manufacturer_part_number") or "").strip()
-        if not candidate_mpn or candidate_mpn.casefold() == str(mpn).strip().casefold():
-            continue
         classification = str(candidate.get("Classification") or candidate.get("Category") or "Unverified candidate")
         disposition = str(candidate.get("Candidate Disposition") or "Discovery lead only")
         exact_source = bool(candidate.get("Source Identity Verified"))
@@ -310,15 +305,18 @@ def find_replacements(mpn: str) -> dict[str, Any]:
             candidate.get("Lifecycle Conflict")
             or candidate.get("lifecycle_conflict")
         )
+        if cross_family:
+            missing.insert(0, "component family / function match with the original part")
         if lifecycle_conflict:
             missing.insert(0, "reconcile conflicting supplier lifecycle records")
         elif not lifecycle_status or lifecycle_status.casefold() in {"unknown", "not stated"}:
             missing.insert(0, "lifecycle status from authorized sources")
-        # Never imply a qualified drop-in when lifecycle evidence conflicts or is missing.
         fit = "supplier-listed candidate; qualification required"
-        if lifecycle_conflict or not lifecycle_status or lifecycle_status.casefold() in {"unknown", "not stated"}:
+        if cross_family:
+            fit = "not qualified — different component family from the original"
+        elif lifecycle_conflict or not lifecycle_status or lifecycle_status.casefold() in {"unknown", "not stated"}:
             fit = "not qualified — lifecycle evidence incomplete or conflicting"
-        candidates.append({
+        return {
             "mpn": candidate_mpn,
             "manufacturer": str(candidate.get("Manufacturer") or ""),
             "description": str(candidate.get("description") or ""),
@@ -336,7 +334,49 @@ def find_replacements(mpn: str) -> dict[str, Any]:
             "recommendation_score": candidate.get("Recommendation Score"),
             "source_identity_verified": exact_source,
             "compare_href_query": f"part_a={mpn}&part_b={candidate_mpn}",
-        })
+        }
+
+    original_for_family = {
+        **original,
+        "manufacturer_part_number": str(original.get("manufacturer_part_number") or mpn).strip(),
+        "description": original.get("description") or "",
+        "primary_category": original.get("primary_category") or original.get("Category") or "",
+    }
+    # Re-partition presentation rows; also surface any AF-search unfiltered leads.
+    relevant_raw: list[dict[str, Any]] = []
+    unfiltered_raw: list[dict[str, Any]] = []
+    from src.alternative_classification import candidate_family_compatible_with_original
+
+    def _ingest(candidate: dict[str, Any], *, force_cross_family: bool = False) -> None:
+        candidate_mpn = str(
+            candidate.get("Alternative Part") or candidate.get("manufacturer_part_number") or ""
+        ).strip()
+        if not candidate_mpn or candidate_mpn.casefold() == str(mpn).strip().casefold():
+            return
+        family_row = {
+            **candidate,
+            "manufacturer_part_number": candidate_mpn,
+            "description": candidate.get("description") or candidate.get("Description") or "",
+            "primary_category": candidate.get("primary_category") or candidate.get("Category") or "",
+            "Category": candidate.get("Category") or "",
+        }
+        cross = force_cross_family or (
+            not candidate_family_compatible_with_original(original_for_family, family_row)
+        )
+        target = unfiltered_raw if cross else relevant_raw
+        projected = _project_candidate(family_row, cross_family=cross)
+        if not any(str(row.get("mpn") or "").casefold() == candidate_mpn.casefold() for row in target):
+            target.append(projected)
+
+    for candidate in candidates_raw:
+        if isinstance(candidate, dict):
+            _ingest(candidate, force_cross_family=False)
+    for candidate in discovery.get("unfiltered_leads") or []:
+        if isinstance(candidate, dict):
+            _ingest(candidate, force_cross_family=True)
+
+    candidates = relevant_raw
+    unfiltered_leads = unfiltered_raw
 
     provider_status = discovery.get("providers") if isinstance(discovery.get("providers"), dict) else {}
     missing = []
@@ -349,8 +389,10 @@ def find_replacements(mpn: str) -> dict[str, Any]:
             message = str(state_row.get("message") or f"{provider} search coverage is incomplete")
             if message not in missing:
                 missing.append(message)
-    if not candidates:
+    if not candidates and not unfiltered_leads:
         missing.append("supplier-listed replacement candidates")
+    elif not candidates and unfiltered_leads:
+        missing.append("same-family replacement candidates (cross-family leads were separated)")
     missing.append("datasheet-backed fit scoring")
 
     return {
@@ -369,13 +411,14 @@ def find_replacements(mpn: str) -> dict[str, Any]:
             "risk": result.get("original_risk") if isinstance(result.get("original_risk"), dict) else {},
         },
         "candidates": candidates,
+        "unfiltered_leads": unfiltered_leads,
         "discovery": discovery,
         "missing_evidence": missing,
         "mode": "legacy-supplier-engine",
         "live_lookups_enabled": configured_supplier_count() > 0,
         "gap": (
             "Candidate parts are research leads, not approved substitutes. Confirm identity, electrical limits, package, lifecycle, and qualification requirements against current manufacturer documentation."
-            if candidates
+            if candidates or unfiltered_leads
             else "No verified replacement was found in this search. Check current manufacturer documentation and authorized distributors before changing the design."
         ),
     }

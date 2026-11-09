@@ -154,7 +154,7 @@ def _build_passive_alternative_reasoning(
 ) -> Dict[str, Any]:
     rows = list(comparison_rows or [])
     counts = _comparison_counts_from(comparison_counts, candidate.get("Recommendation Score Evidence"))
-    matches = int(counts.get("Match", 0) or 0)
+    matches = int(counts.get("Match", 0) or 0) + int(counts.get("Listing agreement", 0) or 0)
     differences = int(counts.get("Different", 0) or 0)
     needs_data = int(counts.get("Needs data", 0) or 0)
 

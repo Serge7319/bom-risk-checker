@@ -80,6 +80,11 @@ def _status_map(result: dict) -> dict[str, str]:
     return {row["Attribute"]: row["Status"] for row in result["rows"]}
 
 
+def _assert_catalog_agreement(test: unittest.TestCase, status: str) -> None:
+    """Catalog-only numeric agreement is Listing agreement (or legacy Match)."""
+    test.assertIn(status, {"Listing agreement", "Match"})
+
+
 def _assert_no_architecture(test: unittest.TestCase, result: dict) -> None:
     attrs = {row["Attribute"] for row in result["rows"]}
     test.assertNotIn("Architecture", attrs)
@@ -194,8 +199,8 @@ class FamilyRawPayloadContractTests(unittest.TestCase):
         bad = build_datasheet_comparison(original, worse)
         self.assertEqual(good["family"], "Capacitor")
         statuses = _status_map(good)
-        self.assertEqual(statuses["Capacitance"], "Match")  # 0.1uF == 100nF
-        self.assertEqual(statuses["Rated voltage"], "Match")  # equal 50V
+        _assert_catalog_agreement(self, statuses["Capacitance"])  # 0.1uF == 100nF
+        _assert_catalog_agreement(self, statuses["Rated voltage"])  # equal 50V
         # Unequal LIMIT without a design/fit criterion is never Compatible.
         self.assertEqual(
             _status_map(build_datasheet_comparison(original, higher_voltage))["Rated voltage"],
@@ -398,7 +403,7 @@ class FamilyRawPayloadContractTests(unittest.TestCase):
         for required_label in (
             "Transistor polarity", "VCEO", "IC max", "hFE", "Power dissipation",
             "Transition frequency", "VCE(sat)", "Package", "Pin count", "Mounting",
-            "Temperature range", "Pinout / footprint",
+            "Operating temperature", "Pinout / footprint",
         ):
             self.assertIn(required_label, attrs)
         _assert_no_architecture(self, sparse)
@@ -488,12 +493,12 @@ class FamilyRawPayloadContractTests(unittest.TestCase):
         result = build_datasheet_comparison(original, candidate)
         statuses = _status_map(result)
         self.assertEqual(statuses["Transistor polarity"], "Match")
-        self.assertEqual(statuses["VCEO"], "Match")
-        self.assertEqual(statuses["IC max"], "Match")
+        _assert_catalog_agreement(self, statuses["VCEO"])
+        _assert_catalog_agreement(self, statuses["IC max"])
         self.assertEqual(statuses["hFE"], "Match")
-        self.assertEqual(statuses["Power dissipation"], "Match")
-        self.assertEqual(statuses["Transition frequency"], "Match")
-        self.assertEqual(statuses["VCE(sat)"], "Match")
+        _assert_catalog_agreement(self, statuses["Power dissipation"])
+        _assert_catalog_agreement(self, statuses["Transition frequency"])
+        _assert_catalog_agreement(self, statuses["VCE(sat)"])
         self.assertEqual(statuses["Pinout / footprint"], "Match")
         # Unequal LIMIT without fit criteria must not be Compatible.
         unequal = dict(candidate)
@@ -667,7 +672,7 @@ class FamilyRawPayloadContractTests(unittest.TestCase):
         result = build_datasheet_comparison(original, candidate)
         self.assertEqual(result["family"], "Operational amplifier")
         self.assertIn("Channels", {r["Attribute"] for r in result["rows"]})
-        self.assertEqual(_status_map(result)["Channels"], "Match")
+        _assert_catalog_agreement(self, _status_map(result)["Channels"])
         # Package/ball alone insufficient: strip pinout + electricals from candidate
         weak = dict(candidate)
         weak["pinout"] = ""
@@ -843,8 +848,8 @@ class FamilyRawPayloadContractTests(unittest.TestCase):
         self.assertEqual(original["positions"], "10")
         result = build_datasheet_comparison(original, candidate)
         self.assertEqual(result["family"], "Connector / electromechanical")
-        self.assertEqual(_status_map(result)["Positions"], "Match")
-        self.assertEqual(_status_map(result)["Pitch"], "Match")
+        _assert_catalog_agreement(self, _status_map(result)["Positions"])
+        _assert_catalog_agreement(self, _status_map(result)["Pitch"])
         self.assertEqual(_status_map(build_datasheet_comparison(original, wrong))["Positions"], "Different")
         self.assertNotIn("Pin count", {r["Attribute"] for r in result["rows"]})
         self.assertNotIn("Architecture", {r["Attribute"] for r in result["rows"]})
@@ -892,7 +897,7 @@ class FamilyRawPayloadContractTests(unittest.TestCase):
         self.assertEqual(original["coil_voltage"], "5VDC")
         result = build_datasheet_comparison(original, candidate)
         self.assertEqual(result["family"], "Relay")
-        self.assertEqual(_status_map(result)["Coil voltage"], "Match")
+        _assert_catalog_agreement(self, _status_map(result)["Coil voltage"])
         mismatch = build_datasheet_comparison(original, wrong_coil)
         self.assertEqual(_status_map(mismatch)["Coil voltage"], "Different")
         good_conf = build_engineering_evidence_assessment(

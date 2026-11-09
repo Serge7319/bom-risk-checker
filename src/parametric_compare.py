@@ -287,8 +287,8 @@ def compare_field_values(
                 "Risk remains unverified until matching conditions are cited."
             ),
         )
-
     mode = spec.compare
+
     if mode == COMPARE_MOUNTING:
         o = normalize_mounting_style(original_text)
         c = normalize_mounting_style(candidate_text)
@@ -312,24 +312,50 @@ def compare_field_values(
         preferred = storage_unit or str(spec.unit or "").strip()
         o_num, o_unit = parse_numeric_with_unit(original_text, preferred_unit=preferred)
         c_num, c_unit = parse_numeric_with_unit(candidate_text, preferred_unit=preferred)
-        if o_num is None or c_num is None:
-            # Fall back to exact compact compare when parsing fails.
-            if _compact(original_text) == _compact(candidate_text):
-                return "Match", "The retrieved values match exactly."
-            return "Different", "The retrieved values differ or use incomparable formats; engineer review is required."
-        # Bare dimensionless magnitudes without a field storage unit are not
-        # comparable for limit/nominal engineering checks (e.g. "3" vs "2").
-        if not preferred:
-            has_unit_token = bool(
-                re.search(r"[A-Za-zΩωµμ°]", original_text)
-                and re.search(r"[A-Za-zΩωµμ°]", candidate_text)
-            )
-            if not has_unit_token:
+
+        def _match_or_unverified(note: str) -> tuple[str, str]:
+            # When a field expects a condition class (typ/min/max/guaranteed) and
+            # either side omits it, equal magnitudes are not engineering-approved.
+            expected_role = str(getattr(spec, "value_role", "") or "").casefold()
+            # Catalog min/max rating fields already encode the condition in the
+            # attribute itself (e.g. DigiKey "VCEO Max"). Require an explicit
+            # class only for typical/guaranteed values where the label changes meaning.
+            expects_class = expected_role in {"typical", "guaranteed"}
+            if expects_class and (original_class == "unknown" or candidate_class == "unknown"):
                 return (
                     "Needs data",
-                    "Neither value states a unit, so the magnitudes are not comparable "
-                    "for engineering approval.",
+                    (
+                        "One or both values lack a typical/min/max/guaranteed class, so the "
+                        "conditions are not confirmed as comparable for engineering approval."
+                    ),
                 )
+            return "Match", note
+
+        if o_num is None or c_num is None:
+            # Incomparable formats are unverified — never Material by default.
+            if _compact(original_text) == _compact(candidate_text):
+                return (
+                    "Needs data",
+                    "The values match as text but could not be normalized to comparable "
+                    "engineering units; verification is required.",
+                )
+            return (
+                "Needs data",
+                "The retrieved values use incomparable formats or missing units; "
+                "engineer verification is required.",
+            )
+        # Bare magnitudes without an explicit unit token are not comparable,
+        # even when the field implies a preferred unit (e.g. bare "14" for V).
+        has_unit_token = bool(
+            re.search(r"[A-Za-zΩωµμ°]", original_text)
+            and re.search(r"[A-Za-zΩωµμ°]", candidate_text)
+        )
+        if not has_unit_token:
+            return (
+                "Needs data",
+                "Neither value states an explicit unit, so the magnitudes are not "
+                "comparable for engineering approval.",
+            )
         if o_unit and c_unit and o_unit != c_unit and preferred and o_unit != preferred and c_unit != preferred:
             # After SI normalization, comparable base units must match.
             si_aliases = {
@@ -350,7 +376,7 @@ def compare_field_values(
             # Relative tolerance for floating SI equality.
             denom = max(abs(o_num), abs(c_num), 1e-30)
             if abs(o_num - c_num) / denom <= 0.02:
-                return "Match", "Normalized values match within engineering tolerance."
+                return _match_or_unverified("Normalized values match within engineering tolerance.")
             return "Different", "Normalized nominal values differ; engineer review is required."
 
         # Without an explicit design/fit limit, unequal magnitudes are a material
@@ -360,7 +386,9 @@ def compare_field_values(
         equal = abs(o_num - c_num) / denom <= 0.02
         if mode == COMPARE_LIMIT_GE:
             if equal:
-                return "Match", "Normalized limit values match within engineering tolerance."
+                return _match_or_unverified(
+                    "Normalized limit values match within engineering tolerance."
+                )
             if c_num + 1e-12 >= o_num:
                 return (
                     "Different",
@@ -371,7 +399,9 @@ def compare_field_values(
 
         if mode == COMPARE_LIMIT_LE:
             if equal:
-                return "Match", "Normalized limit values match within engineering tolerance."
+                return _match_or_unverified(
+                    "Normalized limit values match within engineering tolerance."
+                )
             if c_num - 1e-12 <= o_num:
                 return (
                     "Different",
@@ -504,7 +534,7 @@ def engineering_confidence_from_rows(
     requires_pinout_for_dropin: bool = False,
 ) -> dict[str, Any]:
     """Score engineering completeness with required-field awareness."""
-    matches = differences = needs_data = 0
+    matches = differences = needs_data = listing_agreements = 0
     required_matches = required_missing = required_diff = 0
     pinout_status = ""
     for row in rows or []:
@@ -513,13 +543,17 @@ def engineering_confidence_from_rows(
         label = str(row.get("Attribute") or "")
         if status == "Match":
             matches += 1
+        elif status == "Listing agreement" or "listing agreement" in status.casefold():
+            # Catalog agreement contributes coverage, but is not datasheet-verified Match.
+            listing_agreements += 1
+            matches += 1
         elif status in {"Different", "Conflicting"}:
             differences += 1
         else:
             needs_data += 1
         is_required = bool(row.get("Required")) or (required_keys and key in required_keys)
         if is_required:
-            if status == "Match":
+            if status == "Match" or status == "Listing agreement" or "listing agreement" in status.casefold():
                 required_matches += 1
             elif status == "Different":
                 required_diff += 1

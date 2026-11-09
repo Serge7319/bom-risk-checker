@@ -39,7 +39,8 @@ class DatasheetComparisonTests(unittest.TestCase):
         result = build_datasheet_comparison(original, candidate)
         statuses = {row["Attribute"]: row["Status"] for row in result["rows"]}
         self.assertEqual(result["family"], "Capacitor")
-        self.assertEqual(statuses["Capacitance"], "Match")
+        # Catalog-only numeric agreement is listing agreement, not Compatible Match.
+        self.assertEqual(statuses["Capacitance"], "Listing agreement")
         self.assertEqual(statuses["Rated voltage"], "Different")
 
     def test_transistor_and_inductor_get_different_engineering_checks(self):
@@ -443,7 +444,7 @@ class DatasheetComparisonTests(unittest.TestCase):
             {"description": "Ceramic capacitor", "package": "0603", "rated_voltage": "50V"},
         )
         fields = {row["Attribute"]: row for row in result["rows"]}
-        self.assertEqual(fields["Rated voltage"]["Status"], "Match")
+        self.assertEqual(fields["Rated voltage"]["Status"], "Listing agreement")
         self.assertNotIn("Supply voltage", fields)
 
     def test_surface_mount_mlcc_and_smd_mounting_values_match(self):

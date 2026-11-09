@@ -32,6 +32,7 @@ FINDING_COMPATIBLE = "Compatible on available evidence"
 FINDING_MATERIAL = "Material difference"
 FINDING_CONFLICTING = "Conflicting evidence"
 FINDING_NEEDS_VERIFICATION = "Needs verification"
+FINDING_LISTING_AGREEMENT = "Supplier-listing agreement"
 # Legacy alias kept for older call sites / tests that still import the name.
 FINDING_NEEDS_DATA = FINDING_NEEDS_VERIFICATION
 
@@ -129,6 +130,12 @@ def map_status_to_assessment(status: str) -> str:
     folded = normalized.casefold()
     if normalized == "Match" or folded == FINDING_COMPATIBLE.casefold():
         return FINDING_COMPATIBLE
+    if (
+        normalized == "Listing agreement"
+        or folded == FINDING_LISTING_AGREEMENT.casefold()
+        or "listing agreement" in folded
+    ):
+        return FINDING_LISTING_AGREEMENT
     if normalized == "Conflicting" or "conflict" in folded:
         return FINDING_CONFLICTING
     if normalized == "Different" or folded == FINDING_MATERIAL.casefold():
@@ -1117,10 +1124,12 @@ def build_parts_comparison(
         "engineering_evidence_status": assessment.get("engineering_evidence_status", ""),
         "counts": {
             "compatible": int(counts.get("Match") or 0),
+            "listing_agreement": int(counts.get("Listing agreement") or 0),
             "material_difference": int(counts.get("Different") or 0),
             "needs_data": int(counts.get("Needs data") or 0),
             "conflicting": int(counts.get("Conflicting") or 0),
             "Match": int(counts.get("Match") or 0),
+            "Listing agreement": int(counts.get("Listing agreement") or 0),
             "Different": int(counts.get("Different") or 0),
             "Needs data": int(counts.get("Needs data") or 0),
             "Conflicting": int(counts.get("Conflicting") or 0),

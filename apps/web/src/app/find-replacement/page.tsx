@@ -61,6 +61,7 @@ function FindReplacementInner() {
 
   if (!session) return null;
   const candidates = (result?.candidates || []) as Array<Record<string, unknown>>;
+  const unfilteredLeads = (result?.unfiltered_leads || []) as Array<Record<string, unknown>>;
   const original = (result?.original || {}) as Record<string, unknown>;
   // Compare Parts inherits BOM context only when the API confirmed bom_context.
   const compareAnalysisId = result?.bom_context
@@ -161,70 +162,127 @@ function FindReplacementInner() {
             ) : null}
           </section>
 
-          {candidates.length ? (
-            <section className="cv-card pad">
-              <h3 className="cv-card-title">Candidate results</h3>
-              <p className="cv-card-subtitle">
-                Candidates are reference suggestions. Fit is not confirmed until
-                datasheet evidence is reviewed.
-              </p>
-              <div className="cv-table-wrap" style={{ marginTop: 12 }}>
-                <table className="cv-table cv-table-actions">
-                  <thead>
-                    <tr>
-                      <th>Candidate</th>
-                      <th>Manufacturer</th>
-                      <th>Lifecycle</th>
-                      <th>Fit status</th>
-                      <th>Evidence to verify</th>
-                      <th></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {candidates.map((row) => {
-                      const cand = String(row.mpn || "");
-                      const missingBits = ((row.missing_evidence || []) as string[])
-                        .filter((item) => !/(credential|transport|provider|catalog|lookup|search coverage)/i.test(item));
-                      const lifecycleConflict = Boolean(row.lifecycle_conflict);
-                      const lifecycleLabel = lifecycleConflict
-                        ? `${String(row.lifecycle_status || "Unknown")} · conflict`
-                        : String(row.lifecycle_status || "Unknown");
-                      return (
-                        <tr key={cand}>
-                          <td className="cv-mpn-cell">
-                            <strong>{cand}</strong>
-                            <div className="cv-small-note">{String(row.rationale || "")}</div>
-                          </td>
-                          <td>{String(row.manufacturer || "—")}</td>
-                          <td>
-                            <span className={`cv-badge ${lifecycleConflict ? "amber" : "gray"}`}>
-                              {lifecycleLabel}
-                            </span>
-                          </td>
-                          <td>
-                            <span className="cv-badge gray">
-                              {String(row.fit || "not qualified").replace(/_/g, " ")}
-                            </span>
-                          </td>
-                          <td>{missingBits.length ? missingBits.join("; ") : "—"}</td>
-                          <td className="cv-table-action">
-                            <Link
-                              href={compareHref(
-                                String(result.requested_mpn || mpn),
-                                cand,
-                                compareAnalysisId || undefined,
-                              )}
-                            >
-                              Compare →
-                            </Link>
-                          </td>
+          {candidates.length || unfilteredLeads.length ? (
+            <>
+              <section className="cv-card pad">
+                <h3 className="cv-card-title">Relevant candidates</h3>
+                <p className="cv-card-subtitle">
+                  Same or compatible component family. Still research leads — fit is not confirmed until datasheet evidence is reviewed.
+                </p>
+                {candidates.length ? (
+                  <div className="cv-table-wrap" style={{ marginTop: 12 }}>
+                    <table className="cv-table cv-table-actions">
+                      <thead>
+                        <tr>
+                          <th>Candidate</th>
+                          <th>Manufacturer</th>
+                          <th>Lifecycle</th>
+                          <th>Fit status</th>
+                          <th>Evidence to verify</th>
+                          <th></th>
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </section>
+                      </thead>
+                      <tbody>
+                        {candidates.map((row) => {
+                          const cand = String(row.mpn || "");
+                          const missingBits = ((row.missing_evidence || []) as string[])
+                            .filter((item) => !/(credential|transport|provider|catalog|lookup|search coverage)/i.test(item));
+                          const lifecycleConflict = Boolean(row.lifecycle_conflict);
+                          const lifecycleLabel = lifecycleConflict
+                            ? `${String(row.lifecycle_status || "Unknown")} · conflict`
+                            : String(row.lifecycle_status || "Unknown");
+                          return (
+                            <tr key={cand}>
+                              <td className="cv-mpn-cell">
+                                <strong>{cand}</strong>
+                                <div className="cv-small-note">{String(row.rationale || "")}</div>
+                              </td>
+                              <td>{String(row.manufacturer || "—")}</td>
+                              <td>
+                                <span className={`cv-badge ${lifecycleConflict ? "amber" : "gray"}`}>
+                                  {lifecycleLabel}
+                                </span>
+                              </td>
+                              <td>
+                                <span className="cv-badge gray">
+                                  {String(row.fit || "not qualified").replace(/_/g, " ")}
+                                </span>
+                              </td>
+                              <td>{missingBits.length ? missingBits.join("; ") : "—"}</td>
+                              <td className="cv-table-action">
+                                <Link
+                                  href={compareHref(
+                                    String(result.requested_mpn || mpn),
+                                    cand,
+                                    compareAnalysisId || undefined,
+                                  )}
+                                >
+                                  Compare →
+                                </Link>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="cv-small-note" style={{ marginTop: 12 }}>
+                    No same-family candidates were returned. Cross-family distributor hits are listed separately below when present.
+                  </p>
+                )}
+              </section>
+              {unfilteredLeads.length ? (
+                <section className="cv-card pad">
+                  <h3 className="cv-card-title">Unfiltered leads</h3>
+                  <p className="cv-card-subtitle">
+                    Distributor keyword hits from a different component family. Not relevant replacement candidates until family and fit are verified.
+                  </p>
+                  <div className="cv-table-wrap" style={{ marginTop: 12 }}>
+                    <table className="cv-table cv-table-actions">
+                      <thead>
+                        <tr>
+                          <th>Lead</th>
+                          <th>Manufacturer</th>
+                          <th>Fit status</th>
+                          <th></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {unfilteredLeads.map((row) => {
+                          const cand = String(row.mpn || "");
+                          return (
+                            <tr key={`lead-${cand}`}>
+                              <td className="cv-mpn-cell">
+                                <strong>{cand}</strong>
+                                <div className="cv-small-note">{String(row.rationale || "")}</div>
+                              </td>
+                              <td>{String(row.manufacturer || "—")}</td>
+                              <td>
+                                <span className="cv-badge amber">
+                                  {String(row.fit || "not qualified — different component family").replace(/_/g, " ")}
+                                </span>
+                              </td>
+                              <td className="cv-table-action">
+                                <Link
+                                  href={compareHref(
+                                    String(result.requested_mpn || mpn),
+                                    cand,
+                                    compareAnalysisId || undefined,
+                                  )}
+                                >
+                                  Compare →
+                                </Link>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              ) : null}
+            </>
           ) : (
             <section className="cv-card pad">
               <h3 className="cv-card-title">Unable to confirm</h3>

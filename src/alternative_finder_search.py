@@ -712,6 +712,32 @@ def run_alternative_finder_search(
         discovery = merge_supplier_failures_into_discovery(discovery, safe_original)
         if not candidates and exact_source_match:
             discovery["candidate_status"] = _replacement_candidate_cause(discovery)
+        # Component-family partition: primary list stays family-relevant;
+        # cross-family catalog hits move to unfiltered discovery leads.
+        try:
+            from src.alternative_classification import partition_candidates_by_family
+
+            family_original = {
+                **(safe_original if isinstance(safe_original, dict) else {}),
+                "manufacturer_part_number": str(
+                    (safe_original or {}).get("manufacturer_part_number") or entered_mpn
+                ).strip(),
+            }
+            relevant, unfiltered = partition_candidates_by_family(family_original, candidates)
+            if unfiltered:
+                discovery = dict(discovery or {})
+                discovery["unfiltered_leads"] = unfiltered
+                discovery["unfiltered_lead_count"] = len(unfiltered)
+                if not relevant:
+                    discovery["has_incomplete_evidence"] = True
+                    discovery["candidate_status"] = (
+                        "Same-family replacement candidates were not found. "
+                        f"{len(unfiltered)} cross-family catalog lead(s) were separated "
+                        "and are not ranked as substitutes."
+                    )
+            candidates = relevant
+        except Exception:
+            pass
         with search_run.stage(STAGE_PERSIST):
             canonical_mpn = str(
                 safe_original.get("manufacturer_part_number") or entered_mpn

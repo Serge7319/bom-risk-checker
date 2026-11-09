@@ -749,6 +749,9 @@ def normalize_digikey_product(product: dict) -> dict:
     temperature_range = extract_digikey_parameter(product, ["Operating Temperature"])
     if temperature_range:
         parametric.setdefault("temperature_range", temperature_range)
+    storage_temperature = extract_digikey_parameter(product, ["Storage Temperature"])
+    if storage_temperature:
+        parametric.setdefault("storage_temperature", storage_temperature)
     amplifier_type = extract_digikey_parameter(product, ["Amplifier Type"])
     if amplifier_type:
         parametric.setdefault("amplifier_type", amplifier_type)

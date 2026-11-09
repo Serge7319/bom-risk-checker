@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from datetime import datetime, timezone
 from collections.abc import Mapping
+from typing import Any
 
 CLASS_VERIFIED_DIRECT = "Verified direct substitute"
 CLASS_SUPPLIER_UPGRADE = "Supplier-listed upgrade"
@@ -454,7 +455,9 @@ def refine_classification_after_comparison(
     }:
         return classification
 
-    matches = int(comparison_counts.get("Match", 0) or 0)
+    matches = int(comparison_counts.get("Match", 0) or 0) + int(
+        comparison_counts.get("Listing agreement", 0) or 0
+    )
     differences = int(comparison_counts.get("Different", 0) or 0)
     needs_data = int(comparison_counts.get("Needs data", 0) or 0)
 
@@ -883,6 +886,44 @@ def merge_discovery_candidates(
         merged.append(payload)
 
     return [row for row in merged if not is_non_component_catalog_candidate(row)]
+
+
+def candidate_family_compatible_with_original(
+    original: Mapping[str, Any] | None,
+    candidate: Mapping[str, Any] | None,
+) -> bool:
+    """True when candidate family is unknown or matches the original family.
+
+    Uses the same family-mismatch rules as Compare Parts: General on either
+    side is not affirmative evidence of a mismatch. Known incompatible
+    families (e.g. Flash vs MCU / LED / capacitor) return False.
+    """
+    from src.parts_compare import resolve_comparison_family
+
+    meta = resolve_comparison_family(dict(original or {}), dict(candidate or {}))
+    return not bool(meta.get("family_mismatch"))
+
+
+def partition_candidates_by_family(
+    original: Mapping[str, Any] | None,
+    candidates: list[Mapping[str, Any]] | None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Split candidates into family-relevant vs unfiltered cross-family leads."""
+    relevant: list[dict[str, Any]] = []
+    unfiltered: list[dict[str, Any]] = []
+    for row in candidates or []:
+        if not isinstance(row, Mapping):
+            continue
+        payload = dict(row)
+        if candidate_family_compatible_with_original(original, payload):
+            relevant.append(payload)
+        else:
+            payload.setdefault(
+                "fit",
+                "not qualified — different component family from the original",
+            )
+            unfiltered.append(payload)
+    return relevant, unfiltered
 
 
 def build_classification_recommendation(

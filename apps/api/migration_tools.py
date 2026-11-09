@@ -1228,7 +1228,12 @@ def procurement_payload(*, workspace_id: str, analysis_id: str | None = None) ->
                 "risk_level": first_value(part, "Risk Level", "risk_level", default="Needs verification"),
                 "risk_score": first_value(part, "Risk Score", "risk_score"),
                 "recommendation": recommendation.get("Recommendation") or "Complete sourcing data",
-                "next_step": recommendation.get("Next Step") or "Confirm current supplier evidence before ordering.",
+                "next_step": recommendation.get("Next Step")
+                or (
+                    "Find and verify an authorized distributor source for this MPN before ordering."
+                    if evidence_class == "missing"
+                    else "Confirm current supplier evidence before ordering."
+                ),
                 "priority_score": recommendation.get("Priority Score"),
                 "evidence_status": recommendation.get("Evidence Status") or "Incomplete",
                 "missing_sourcing_data": recommendation.get("Missing Sourcing Data") or "",
