@@ -286,3 +286,34 @@ def test_ci_includes_service_readiness_and_evidence_notice_files(capsys):
     for name in targets:
         assert name in combined
         assert name.split("/")[-1] in combined
+
+
+def test_ci_includes_two_bom_smoke_parity_and_snapshot_trust(capsys):
+    """Wire two-BOM smoke parity + snapshot-trust regressions into the CI pytest path."""
+    import subprocess
+    import sys
+
+    target = "tests/test_two_bom_smoke_parity.py"
+    required = (
+        "test_decision_endpoint_reuses_matching_comparison_snapshot",
+        "test_decision_rejects_forged_snapshot_identity_and_recomputes",
+        "test_decision_mismatched_analysis_id_forces_recompute",
+    )
+    proc = subprocess.run(
+        [sys.executable, "-m", "pytest", target, "-vv", "--tb=short"],
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    combined = proc.stdout + "\n" + proc.stderr
+    with capsys.disabled():
+        print("CI_NESTED_SUITE_START")
+        print(f"CI_NESTED_SUITE_FILE={target}")
+        print(combined)
+        print("CI_NESTED_SUITE_END")
+    assert proc.returncode == 0, combined
+    assert target in combined
+    for name in required:
+        assert name in combined, f"missing {name} in CI nested suite output"
+        assert f"{name} PASSED" in combined or f"::{name} PASSED" in combined, combined
