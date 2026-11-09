@@ -257,6 +257,36 @@ def extract_test_condition(text: object) -> str:
     return "Not stated"
 
 
+_CLASS_ONLY_CONDITION_LABELS = {
+    "typ",
+    "typical",
+    "min",
+    "minimum",
+    "max",
+    "maximum",
+    "guarant",
+    "guaranteed",
+}
+
+
+def engineering_test_condition(text: object) -> str:
+    """Return a real test condition, ignoring class-only paren labels like (typ)."""
+    condition = extract_test_condition(text)
+    if condition == "Not stated":
+        return "Not stated"
+    folded = condition.casefold().strip()
+    if folded in _CLASS_ONLY_CONDITION_LABELS:
+        return "Not stated"
+    # "(typ, 25C)" style — keep when more than a class label is present.
+    class_only = re.fullmatch(
+        r"(?:typ(?:ical)?|min(?:imum)?|max(?:imum)?|guarant(?:eed)?)\.?",
+        folded,
+    )
+    if class_only:
+        return "Not stated"
+    return condition
+
+
 def compare_field_values(
     original_value: object,
     candidate_value: object,
@@ -287,8 +317,8 @@ def compare_field_values(
                 "Risk remains unverified until matching conditions are cited."
             ),
         )
-
     mode = spec.compare
+
     if mode == COMPARE_MOUNTING:
         o = normalize_mounting_style(original_text)
         c = normalize_mounting_style(candidate_text)
@@ -312,24 +342,64 @@ def compare_field_values(
         preferred = storage_unit or str(spec.unit or "").strip()
         o_num, o_unit = parse_numeric_with_unit(original_text, preferred_unit=preferred)
         c_num, c_unit = parse_numeric_with_unit(candidate_text, preferred_unit=preferred)
-        if o_num is None or c_num is None:
-            # Fall back to exact compact compare when parsing fails.
-            if _compact(original_text) == _compact(candidate_text):
-                return "Match", "The retrieved values match exactly."
-            return "Different", "The retrieved values differ or use incomparable formats; engineer review is required."
-        # Bare dimensionless magnitudes without a field storage unit are not
-        # comparable for limit/nominal engineering checks (e.g. "3" vs "2").
-        if not preferred:
-            has_unit_token = bool(
-                re.search(r"[A-Za-zΩωµμ°]", original_text)
-                and re.search(r"[A-Za-zΩωµμ°]", candidate_text)
-            )
-            if not has_unit_token:
+
+        # Typical/guaranteed fields require known value class and test conditions
+        # before equal or unequal magnitudes can be classified as Match/Different.
+        expected_role = str(getattr(spec, "value_role", "") or "").casefold()
+        expects_class = expected_role in {"typical", "guaranteed"}
+        if expects_class:
+            if original_class == "unknown" or candidate_class == "unknown":
                 return (
                     "Needs data",
-                    "Neither value states a unit, so the magnitudes are not comparable "
-                    "for engineering approval.",
+                    (
+                        "One or both values lack a typical/min/max/guaranteed class, so the "
+                        "conditions are not confirmed as comparable for engineering approval."
+                    ),
                 )
+            original_condition = engineering_test_condition(original_text)
+            candidate_condition = engineering_test_condition(candidate_text)
+            if original_condition == "Not stated" or candidate_condition == "Not stated":
+                return (
+                    "Needs data",
+                    (
+                        "One or both values omit stated test conditions, so typical/guaranteed "
+                        "magnitudes are not confirmed as comparable for engineering approval."
+                    ),
+                )
+            if original_condition.casefold() != candidate_condition.casefold():
+                return (
+                    "Needs data",
+                    (
+                        "The stated test conditions differ, so the typical/guaranteed values "
+                        "are not comparable until matching conditions are cited."
+                    ),
+                )
+
+        if o_num is None or c_num is None:
+            # Incomparable formats are unverified — never Material by default.
+            if _compact(original_text) == _compact(candidate_text):
+                return (
+                    "Needs data",
+                    "The values match as text but could not be normalized to comparable "
+                    "engineering units; verification is required.",
+                )
+            return (
+                "Needs data",
+                "The retrieved values use incomparable formats or missing units; "
+                "engineer verification is required.",
+            )
+        # Bare magnitudes without an explicit unit token are not comparable,
+        # even when the field implies a preferred unit (e.g. bare "14" for V).
+        has_unit_token = bool(
+            re.search(r"[A-Za-zΩωµμ°]", original_text)
+            and re.search(r"[A-Za-zΩωµμ°]", candidate_text)
+        )
+        if not has_unit_token:
+            return (
+                "Needs data",
+                "Neither value states an explicit unit, so the magnitudes are not "
+                "comparable for engineering approval.",
+            )
         if o_unit and c_unit and o_unit != c_unit and preferred and o_unit != preferred and c_unit != preferred:
             # After SI normalization, comparable base units must match.
             si_aliases = {
@@ -504,7 +574,7 @@ def engineering_confidence_from_rows(
     requires_pinout_for_dropin: bool = False,
 ) -> dict[str, Any]:
     """Score engineering completeness with required-field awareness."""
-    matches = differences = needs_data = 0
+    matches = differences = needs_data = listing_agreements = 0
     required_matches = required_missing = required_diff = 0
     pinout_status = ""
     for row in rows or []:
@@ -513,6 +583,9 @@ def engineering_confidence_from_rows(
         label = str(row.get("Attribute") or "")
         if status == "Match":
             matches += 1
+        elif status == "Listing agreement" or "listing agreement" in status.casefold():
+            # Catalog agreement stays visible but never counts as engineering Match.
+            listing_agreements += 1
         elif status in {"Different", "Conflicting"}:
             differences += 1
         else:
@@ -524,22 +597,23 @@ def engineering_confidence_from_rows(
             elif status == "Different":
                 required_diff += 1
             else:
+                # Listing agreement and Needs data are not engineering-verified.
                 required_missing += 1
         if "pinout" in label.casefold() or key == "pinout":
             pinout_status = status
 
-    compared = matches + differences + needs_data
+    compared = matches + differences + needs_data + listing_agreements
     if differences > 0 or required_diff > 0:
         status = "conflicts documented"
     elif compared == 0:
         status = "incomplete"
-    elif needs_data == 0 and matches > 0:
+    elif needs_data == 0 and listing_agreements == 0 and matches > 0:
         status = "complete"
     elif required_missing >= 2 or (requires_pinout_for_dropin and pinout_status != "Match"):
         status = "incomplete"
-    elif matches <= 1 and needs_data >= 5:
+    elif matches <= 1 and (needs_data + listing_agreements) >= 5:
         status = "incomplete"
-    elif matches >= max(1, compared - 1):
+    elif matches >= max(1, compared - 1) and listing_agreements == 0:
         status = "substantial"
     else:
         status = "partial"
@@ -578,6 +652,12 @@ def engineering_confidence_from_rows(
         f"{'match' if matches == 1 else 'matches'}, "
         f"{needs_data} {'field' if needs_data == 1 else 'fields'} need verification"
     )
+    if listing_agreements:
+        summary += (
+            f"; {listing_agreements} supplier-listing "
+            f"{'agreement' if listing_agreements == 1 else 'agreements'} "
+            "(catalog evidence only)"
+        )
     if required_missing:
         summary += f"; {required_missing} required family fields lack data"
     if requires_pinout_for_dropin and pinout_status != "Match":
@@ -591,6 +671,7 @@ def engineering_confidence_from_rows(
         "matches": matches,
         "differences": differences,
         "needs_data": needs_data,
+        "listing_agreements": listing_agreements,
         "compared_fields": compared,
         "required_matches": required_matches,
         "required_missing": required_missing,

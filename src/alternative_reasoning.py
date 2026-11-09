@@ -198,7 +198,15 @@ def _build_passive_alternative_reasoning(
                     f"{attribute} matches ({original_value} vs {candidate_value})."
                 )
             else:
-                confirmed.append(f"{attribute} matches ({candidate_value or original_value}).")
+                confirmed.append(
+                    f"{attribute} matches ({candidate_value or original_value})."
+                )
+        elif status == "Listing agreement":
+            verification.append(
+                f"{attribute} shows supplier-listing agreement only "
+                f"({candidate_value or original_value}); catalog evidence is not "
+                "datasheet-verified engineering fit."
+            )
         elif status == "Different":
             blockers.append(
                 f"{attribute} differs: original {original_value or 'Not available'}, "

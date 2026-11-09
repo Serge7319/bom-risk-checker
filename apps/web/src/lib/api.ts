@@ -60,6 +60,12 @@ export type Report = AnalyzeSummary & {
   created_at: string;
   summary_message?: string;
   parts: Array<Record<string, unknown>>;
+  evidence_summary?: {
+    live_count?: number;
+    synthetic_count?: number;
+    missing_count?: number;
+    live_lookups_enabled?: boolean;
+  };
   hierarchy?: {
     has_hierarchy?: boolean;
     assemblies?: Array<Record<string, unknown>>;
@@ -561,6 +567,7 @@ export async function recordDecision(
     follow_up_due_date?: string | null;
     residual_risk?: string;
     verified_primary_evidence?: boolean;
+    comparison_snapshot?: Record<string, unknown> | null;
   },
   datasheets?: { a?: File | null; b?: File | null },
 ) {
@@ -568,7 +575,10 @@ export async function recordDecision(
   if (body) {
     for (const [key, value] of Object.entries(payload)) {
       if (value === undefined || value === null) continue;
-      body.append(key, Array.isArray(value) ? JSON.stringify(value) : String(value));
+      body.append(
+        key,
+        typeof value === "object" ? JSON.stringify(value) : Array.isArray(value) ? JSON.stringify(value) : String(value),
+      );
     }
     if (datasheets?.a) body.append("datasheet_a", datasheets.a);
     if (datasheets?.b) body.append("datasheet_b", datasheets.b);

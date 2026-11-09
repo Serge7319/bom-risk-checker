@@ -72,6 +72,11 @@ from apps.api import subscription_billing_service  # noqa: E402
 from apps.api import team_service  # noqa: E402
 from apps.api.team_service import TeamError  # noqa: E402
 from apps.api.evidence_contract import annotate_report_parts  # noqa: E402
+from apps.api.comparison_snapshot_trust import (  # noqa: E402
+    attach_snapshot_token,
+    server_verified_primary_evidence,
+    verify_snapshot_for_reuse,
+)
 from apps.api.report_exports import (  # noqa: E402
     build_report_export,
     safe_download_stem,
@@ -903,6 +908,12 @@ async def compare_parts_post(request: Request) -> JSONResponse:
         )
     except WorkspaceAccessError:
         return _json({"detail": "Report not found"}, 404)
+    if isinstance(result, dict) and result.get("ok"):
+        result = attach_snapshot_token(
+            result,
+            workspace_id=str(ctx.get("workspace_id") or ""),
+            user_id=str(ctx.get("user_id") or "") or None,
+        )
     status = 200 if result.get("ok") else 400
     return _json(result, status)
 
@@ -954,14 +965,19 @@ async def decision_records_post(request: Request) -> JSONResponse:
     datasheet_uploads: dict[str, Any] = {}
     if "multipart/form-data" in str(request.headers.get("content-type") or "").lower():
         try:
-            form = await request.form(max_files=2, max_fields=32)
+            form = await request.form(max_files=2, max_fields=40)
             body = {key: form.get(key) for key in (
                 "analysis_id", "part_a", "part_b", "decision", "reviewer", "rationale",
                 "validation_checks", "follow_up_action", "follow_up_owner",
-                "follow_up_due_date", "residual_risk",
+                "follow_up_due_date", "residual_risk", "comparison_snapshot",
             )}
             raw_checks = body.get("validation_checks")
             body["validation_checks"] = json.loads(raw_checks) if raw_checks else []
+            raw_snapshot = body.get("comparison_snapshot")
+            if isinstance(raw_snapshot, str) and raw_snapshot.strip():
+                body["comparison_snapshot"] = json.loads(raw_snapshot)
+            elif not raw_snapshot:
+                body["comparison_snapshot"] = None
         except Exception:  # noqa: BLE001
             return _json({"detail": "Invalid multipart decision request."}, 400)
         for side, field_name in (("a", "datasheet_a"), ("b", "datasheet_b")):
@@ -1048,15 +1064,48 @@ async def decision_records_post(request: Request) -> JSONResponse:
             requested_analysis_id, workspace_id=ctx["workspace_id"]
         ):
             return _json({"detail": "Report not found"}, 404)
-        comparison = await run_in_threadpool(
-            migration_tools.compare_parts_payload,
-            workspace_id=ctx["workspace_id"],
-            part_a=part_a,
-            part_b=part_b,
-            analysis_id=requested_analysis_id,
-            use_latest_if_missing=False,
-            datasheet_uploads=datasheet_uploads or None,
+        # Reuse an on-screen comparison only when its server-issued snapshot
+        # token still binds this workspace/user, analysis, part pair, and
+        # evidence contents. Invalid/mismatched tokens force a recompute.
+        snapshot_in = body.get("comparison_snapshot")
+        if isinstance(snapshot_in, str) and snapshot_in.strip():
+            try:
+                snapshot_in = json.loads(snapshot_in)
+            except Exception:  # noqa: BLE001
+                snapshot_in = None
+        reuse_snapshot = (
+            isinstance(snapshot_in, dict)
+            and snapshot_in.get("ok") is not False
+            and not datasheet_uploads
+            and verify_snapshot_for_reuse(
+                snapshot_in,
+                workspace_id=str(ctx.get("workspace_id") or ""),
+                user_id=str(ctx.get("user_id") or "") or None,
+                analysis_id=requested_analysis_id,
+                part_a=part_a,
+                part_b=part_b,
+            )
         )
+        if reuse_snapshot:
+            comparison = dict(snapshot_in)
+            comparison.setdefault("ok", True)
+            comparison["part_a"] = part_a
+            comparison["part_b"] = part_b
+            if requested_analysis_id:
+                comparison["analysis_id"] = requested_analysis_id
+            comparison["snapshot_reused"] = True
+        else:
+            comparison = await run_in_threadpool(
+                migration_tools.compare_parts_payload,
+                workspace_id=ctx["workspace_id"],
+                part_a=part_a,
+                part_b=part_b,
+                analysis_id=requested_analysis_id,
+                use_latest_if_missing=False,
+                datasheet_uploads=datasheet_uploads or None,
+            )
+            if isinstance(comparison, dict):
+                comparison["snapshot_reused"] = False
         if not comparison.get("ok"):
             return _json({"detail": comparison.get("detail") or "Comparison unavailable."}, 400)
         analysis_id = str(comparison.get("analysis_id") or "").strip() or None
@@ -1086,21 +1135,13 @@ async def decision_records_post(request: Request) -> JSONResponse:
                 "gap",
             )
         }
-        source_a = str(comparison.get("source_a") or "").casefold()
-        source_b = str(comparison.get("source_b") or "").casefold()
-        identity = comparison.get("datasheet_identity") if isinstance(comparison.get("datasheet_identity"), dict) else {}
-        identity_a = identity.get("part_a") if isinstance(identity.get("part_a"), dict) else {}
-        identity_b = identity.get("part_b") if isinstance(identity.get("part_b"), dict) else {}
-        identity_verified = bool(identity_a.get("verified")) and bool(identity_b.get("verified"))
-        sources_resolved = (
-            source_a
-            and source_b
-            and "unverified" not in source_a
-            and "unverified" not in source_b
-            and source_a not in {"", "missing", "none"}
-            and source_b not in {"", "missing", "none"}
+        # Never trust client-supplied verified_primary_evidence — derive it
+        # only from the server-verified comparison payload above.
+        verified_primary = server_verified_primary_evidence(
+            comparison,
+            validation_checks=validation_checks,
+            required_approval_checks=required_approval_checks,
         )
-        checks_complete = required_approval_checks.issubset(set(validation_checks))
         record = get_store().create_decision_record(
             {
                 "analysis_id": analysis_id,
@@ -1118,9 +1159,7 @@ async def decision_records_post(request: Request) -> JSONResponse:
                 "follow_up_owner": follow_up_owner,
                 "follow_up_due_date": follow_up_due_date or None,
                 "residual_risk": residual_risk,
-                "verified_primary_evidence": bool(
-                    checks_complete and identity_verified and sources_resolved
-                ),
+                "verified_primary_evidence": verified_primary,
                 "qualification_status": "not-qualified-by-cadivor",
                 "qualification_note": (
                     "This record captures a human decision and did not automatically qualify "

@@ -261,15 +261,16 @@ function ComparePartsInner() {
         String(result.part_a || "").trim().toLowerCase() === decisionPartA.trim().toLowerCase() &&
         String(result.part_b || "").trim().toLowerCase() === decisionPartB.trim().toLowerCase() &&
         String(result.analysis_id || "") === String(decisionAnalysisId || "");
-      const comparison = resultMatchesDraft
-        ? result
-        : await compareParts(
+      const needsFreshCompare = Boolean(datasheetA || datasheetB) || !resultMatchesDraft;
+      const comparison = needsFreshCompare
+        ? await compareParts(
             session.access_token,
             decisionPartA.trim(),
             decisionPartB.trim(),
             decisionAnalysisId || undefined,
             { a: datasheetA, b: datasheetB },
-          );
+          )
+        : (result as Record<string, unknown>);
       setResult(comparison);
       const response = await recordDecision(session.access_token, {
         analysis_id: String(comparison.analysis_id || decisionAnalysisId || "") || null,
@@ -283,6 +284,8 @@ function ComparePartsInner() {
         follow_up_owner: followUpOwner,
         follow_up_due_date: followUpDueDate || null,
         residual_risk: residualRisk,
+        // Reuse the on-screen comparison so the API skips a second full rebuild.
+        comparison_snapshot: needsFreshCompare ? null : comparison,
       }, { a: datasheetA, b: datasheetB });
       setDecisionSuccess(response.record);
       setDecisionOpen(false);

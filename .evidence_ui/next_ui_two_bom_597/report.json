@@ -1,0 +1,351 @@
+{
+  "web": "http://127.0.0.1:3001",
+  "api": "http://127.0.0.1:8081",
+  "boms": [
+    {
+      "bom": "flat",
+      "file": "/Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/legacy-supplier-report/tests/fixtures/synthetic_bom_25parts.csv",
+      "project": "PR597 Flat Smoke",
+      "bom_name": "flat-synthetic-25",
+      "steps": {
+        "analyze": {
+          "ok": true,
+          "url": "http://127.0.0.1:3001/bom-analyzer",
+          "review_href": "/detailed-risk-report?analysis_id=cd637503-81e3-43f3-8e0b-0454548b485d",
+          "banner_has_project": true,
+          "banner_has_bom": true
+        },
+        "compare": {
+          "ok": true,
+          "url": "http://127.0.0.1:3001/compare-parts?analysis_id=cd637503-81e3-43f3-8e0b-0454548b485d",
+          "part_a": "XC3S400-4PQG208C",
+          "part_b": "EPF10K20RC240-4N",
+          "finding_snippet": "!\nNeeds verification\n\nEngineering evidence: incomplete \u2014 1 confirmed match, 6 fields need verification; 2 required family fields lack data"
+        },
+        "decision_save": {
+          "ok": true,
+          "success_text": "Decision recorded for XC3S400-4PQG208C \u2192 EPF10K20RC240-4N.",
+          "snapshot_posted": true,
+          "snapshot_parts_match": true,
+          "post_count": 1
+        },
+        "decision": {
+          "ok": true,
+          "url": "http://127.0.0.1:3001/engineering-decisions?analysis_id=cd637503-81e3-43f3-8e0b-0454548b485d",
+          "snippet": "C\nCadivor\nENGINEERING INTELLIGENCE\nWORKSPACE\nEngineering workspace\nSUBSCRIPTION \u00b7 TRIAL\nNew BOM analysis\nWORKSPACE\nHome\nBOM Analyzer\nEngineering Decisions\nMonitoring\nFind a replacement\nReports\nDECISION TOOLS\nCompare Parts\nDatasheet Q&A\nProcurement Advisor\nDesign Impact Analyzer\nCost Optimization\nSupply Risk Scenario\nINTELLIGENCE\nPortfolio Intelligence\nDetailed Risk Report\nEngineering Intelligence\nWORKSPACE ADMIN\nOne-time BOM report\nSettings\nSign out\nWorkspace\n\u00b7\nEngineering Decisions\nSA\nsandbox-a"
+        },
+        "replacement": {
+          "ok": true,
+          "url": "http://127.0.0.1:3001/find-replacement?analysis_id=cd637503-81e3-43f3-8e0b-0454548b485d&mpn=XC3S400-4PQG208C",
+          "has_unclassified_section": false,
+          "snippet": "C\nCadivor\nENGINEERING INTELLIGENCE\nWORKSPACE\nEngineering workspace\nSUBSCRIPTION \u00b7 TRIAL\nNew BOM analysis\nWORKSPACE\nHome\nBOM Analyzer\nEngineering Decisions\nMonitoring\nFind a replacement\nReports\nDECISION TOOLS\nCompare Parts\nDatasheet Q&A\nProcurement Advisor\nDesign Impact Analyzer\nCost Optimization\nSupply Risk Scenario\nINTELLIGENCE\nPortfolio Intelligence\nDetailed Risk Report\nEngineering Intelligence\n"
+        },
+        "reports": {
+          "ok": true,
+          "url": "http://127.0.0.1:3001/reports/cd637503-81e3-43f3-8e0b-0454548b485d",
+          "has_project_or_bom_label": true,
+          "has_expected_mpn": true,
+          "snippet": "C\nCadivor\nENGINEERING INTELLIGENCE\nWORKSPACE\nEngineering workspace\nSUBSCRIPTION \u00b7 TRIAL\nNew BOM analysis\nWORKSPACE\nHome\nBOM Analyzer\nEngineering Decisions\nMonitoring\nFind a replacement\nReports\nDECISION TOOLS\nCompare Parts\nDatasheet Q&A\nProcurement Advisor\nDesign Impact Analyzer\nCost Optimization\nSupply Risk Scenario\nINTELLIGENCE\nPortfolio Intelligence\nDetailed Risk Report\nEngineering Intelligence\nWORKSPACE ADMIN\nOne-time BOM report\nSettings\nSign out\nWorkspace\n\u00b7\nEngineering Intelligence\nSA\nsandbo"
+        },
+        "procurement": {
+          "ok": true,
+          "url": "http://127.0.0.1:3001/procurement",
+          "has_expected_mpn": true,
+          "snippet": "C\nCadivor\nENGINEERING INTELLIGENCE\nWORKSPACE\nEngineering workspace\nSUBSCRIPTION \u00b7 TRIAL\nNew BOM analysis\nWORKSPACE\nHome\nBOM Analyzer\nEngineering Decisions\nMonitoring\nFind a replacement\nReports\nDECISION TOOLS\nCompare Parts\nDatasheet Q&A\nProcurement Advisor\nDesign Impact Analyzer\nCost Optimization\nSupply Risk Scenario\nINTELLIGENCE\nPortfolio Intelligence\nDetailed Risk Report\nEngineering Intelligence\nWORKSPACE ADMIN\nOne-time BOM report\nSettings\nSign out\nWorkspace\n\u00b7\nProcurement Advisor\nSA\nsandbox-a@c"
+        },
+        "design_impact": {
+          "ok": true,
+          "url": "http://127.0.0.1:3001/design-impact",
+          "focus_mpn": "XC3S400",
+          "has_expected_mpn": true,
+          "snippet": "C\nCadivor\nENGINEERING INTELLIGENCE\nWORKSPACE\nEngineering workspace\nSUBSCRIPTION \u00b7 TRIAL\nNew BOM analysis\nWORKSPACE\nHome\nBOM Analyzer\nEngineering Decisions\nMonitoring\nFind a replacement\nReports\nDECISION TOOLS\nCompare Parts\nDatasheet Q&A\nProcurement Advisor\nDesign Impact Analyzer\nCost Optimization\nSupply Risk Scenario\nINTELLIGENCE\nPortfolio Intelligence\nDetailed Risk Report\nEngineering Intelligence\nWORKSPACE ADMIN\nOne-time BOM report\nSettings\nSign out\nWorkspace\n\u00b7\nDesign Impact Analyzer\nSA\nsandbox-"
+        },
+        "decision_snapshot_api": {
+          "ok": true,
+          "record_count": 1,
+          "has_finding": true,
+          "has_rows": true,
+          "has_counts": true,
+          "decision_label": "Hold for review"
+        },
+        "exports": {
+          "ok": true,
+          "detail": {
+            "pdf": {
+              "bytes": 5705,
+              "path": "/Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/legacy-supplier-report/.evidence_ui/next_ui_two_bom_597/flat_report.pdf",
+              "starts_with_pdf": true,
+              "has_project_label": true,
+              "has_bom_label": true,
+              "has_expected_mpn": true,
+              "ok": true
+            },
+            "xlsx": {
+              "bytes": 9858,
+              "path": "/Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/legacy-supplier-report/.evidence_ui/next_ui_two_bom_597/flat_report.xlsx",
+              "is_zip": true,
+              "has_workbook": true,
+              "sheets": [
+                "Summary",
+                "Components"
+              ],
+              "has_project_label": true,
+              "has_bom_label": true,
+              "has_expected_mpn": true,
+              "ok": true
+            },
+            "csv": {
+              "bytes": 5216,
+              "path": "/Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/legacy-supplier-report/.evidence_ui/next_ui_two_bom_597/flat_report.csv",
+              "row_count": 26,
+              "has_mpn_column": true,
+              "has_project_label": true,
+              "has_bom_label": true,
+              "has_expected_mpn": true,
+              "data_rows": 25,
+              "ok": true
+            }
+          }
+        }
+      },
+      "failed_step": null,
+      "analysis_id": "cd637503-81e3-43f3-8e0b-0454548b485d",
+      "exports": {
+        "pdf": {
+          "bytes": 5705,
+          "path": "/Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/legacy-supplier-report/.evidence_ui/next_ui_two_bom_597/flat_report.pdf",
+          "starts_with_pdf": true,
+          "has_project_label": true,
+          "has_bom_label": true,
+          "has_expected_mpn": true,
+          "ok": true
+        },
+        "xlsx": {
+          "bytes": 9858,
+          "path": "/Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/legacy-supplier-report/.evidence_ui/next_ui_two_bom_597/flat_report.xlsx",
+          "is_zip": true,
+          "has_workbook": true,
+          "sheets": [
+            "Summary",
+            "Components"
+          ],
+          "has_project_label": true,
+          "has_bom_label": true,
+          "has_expected_mpn": true,
+          "ok": true
+        },
+        "csv": {
+          "bytes": 5216,
+          "path": "/Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/legacy-supplier-report/.evidence_ui/next_ui_two_bom_597/flat_report.csv",
+          "row_count": 26,
+          "header": [
+            "Project",
+            "BOM",
+            "Revision",
+            "Analyzed At",
+            "MPN",
+            "Manufacturer",
+            "Description",
+            "Parent MPN",
+            "Line Type",
+            "Quantity per Parent",
+            "Effective Quantity",
+            "Lifecycle",
+            "Risk Level",
+            "Risk Score",
+            "Risk Reasons",
+            "Stock",
+            "Unit Price",
+            "Currency",
+            "Evidence Class",
+            "Evidence Source",
+            "Supplier Product URL",
+            "Datasheet URL"
+          ],
+          "has_mpn_column": true,
+          "has_project_label": true,
+          "has_bom_label": true,
+          "has_expected_mpn": true,
+          "data_rows": 25,
+          "ok": true
+        }
+      },
+      "failed_steps": [],
+      "ok": true
+    },
+    {
+      "bom": "nested",
+      "file": "/Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/legacy-supplier-report/tests/fixtures/nested_bom_product.csv",
+      "project": "PR597 Nested Smoke",
+      "bom_name": "nested-product-hierarchy",
+      "steps": {
+        "analyze": {
+          "ok": true,
+          "url": "http://127.0.0.1:3001/bom-analyzer",
+          "review_href": "/detailed-risk-report?analysis_id=96478adf-bed1-43cc-9155-98f797385fed",
+          "banner_has_project": true,
+          "banner_has_bom": true
+        },
+        "compare": {
+          "ok": true,
+          "url": "http://127.0.0.1:3001/compare-parts?analysis_id=96478adf-bed1-43cc-9155-98f797385fed",
+          "part_a": "STM32F103",
+          "part_b": "EPF10K20RC2404N",
+          "finding_snippet": "!\nMaterial difference\n\nEngineering evidence: conflicts documented \u2014 0 confirmed matches, 6 fields need verification; 2 required family fields lack data"
+        },
+        "decision_save": {
+          "ok": true,
+          "success_text": "Decision recorded for STM32F103 \u2192 EPF10K20RC2404N.",
+          "snapshot_posted": true,
+          "snapshot_parts_match": true,
+          "post_count": 1
+        },
+        "decision": {
+          "ok": true,
+          "url": "http://127.0.0.1:3001/engineering-decisions?analysis_id=96478adf-bed1-43cc-9155-98f797385fed",
+          "snippet": "C\nCadivor\nENGINEERING INTELLIGENCE\nWORKSPACE\nEngineering workspace\nSUBSCRIPTION \u00b7 TRIAL\nNew BOM analysis\nWORKSPACE\nHome\nBOM Analyzer\nEngineering Decisions\nMonitoring\nFind a replacement\nReports\nDECISION TOOLS\nCompare Parts\nDatasheet Q&A\nProcurement Advisor\nDesign Impact Analyzer\nCost Optimization\nSupply Risk Scenario\nINTELLIGENCE\nPortfolio Intelligence\nDetailed Risk Report\nEngineering Intelligence\nWORKSPACE ADMIN\nOne-time BOM report\nSettings\nSign out\nWorkspace\n\u00b7\nEngineering Decisions\nSA\nsandbox-a"
+        },
+        "replacement": {
+          "ok": true,
+          "url": "http://127.0.0.1:3001/find-replacement?analysis_id=96478adf-bed1-43cc-9155-98f797385fed&mpn=STM32F103",
+          "has_unclassified_section": false,
+          "snippet": "C\nCadivor\nENGINEERING INTELLIGENCE\nWORKSPACE\nEngineering workspace\nSUBSCRIPTION \u00b7 TRIAL\nNew BOM analysis\nWORKSPACE\nHome\nBOM Analyzer\nEngineering Decisions\nMonitoring\nFind a replacement\nReports\nDECISION TOOLS\nCompare Parts\nDatasheet Q&A\nProcurement Advisor\nDesign Impact Analyzer\nCost Optimization\nSupply Risk Scenario\nINTELLIGENCE\nPortfolio Intelligence\nDetailed Risk Report\nEngineering Intelligence\n"
+        },
+        "reports": {
+          "ok": true,
+          "url": "http://127.0.0.1:3001/reports/96478adf-bed1-43cc-9155-98f797385fed",
+          "has_project_or_bom_label": true,
+          "has_expected_mpn": true,
+          "snippet": "C\nCadivor\nENGINEERING INTELLIGENCE\nWORKSPACE\nEngineering workspace\nSUBSCRIPTION \u00b7 TRIAL\nNew BOM analysis\nWORKSPACE\nHome\nBOM Analyzer\nEngineering Decisions\nMonitoring\nFind a replacement\nReports\nDECISION TOOLS\nCompare Parts\nDatasheet Q&A\nProcurement Advisor\nDesign Impact Analyzer\nCost Optimization\nSupply Risk Scenario\nINTELLIGENCE\nPortfolio Intelligence\nDetailed Risk Report\nEngineering Intelligence\nWORKSPACE ADMIN\nOne-time BOM report\nSettings\nSign out\nWorkspace\n\u00b7\nEngineering Intelligence\nSA\nsandbo"
+        },
+        "procurement": {
+          "ok": true,
+          "url": "http://127.0.0.1:3001/procurement",
+          "has_expected_mpn": true,
+          "snippet": "C\nCadivor\nENGINEERING INTELLIGENCE\nWORKSPACE\nEngineering workspace\nSUBSCRIPTION \u00b7 TRIAL\nNew BOM analysis\nWORKSPACE\nHome\nBOM Analyzer\nEngineering Decisions\nMonitoring\nFind a replacement\nReports\nDECISION TOOLS\nCompare Parts\nDatasheet Q&A\nProcurement Advisor\nDesign Impact Analyzer\nCost Optimization\nSupply Risk Scenario\nINTELLIGENCE\nPortfolio Intelligence\nDetailed Risk Report\nEngineering Intelligence\nWORKSPACE ADMIN\nOne-time BOM report\nSettings\nSign out\nWorkspace\n\u00b7\nProcurement Advisor\nSA\nsandbox-a@c"
+        },
+        "design_impact": {
+          "ok": true,
+          "url": "http://127.0.0.1:3001/design-impact",
+          "focus_mpn": "PROD-TOP",
+          "has_expected_mpn": true,
+          "snippet": "C\nCadivor\nENGINEERING INTELLIGENCE\nWORKSPACE\nEngineering workspace\nSUBSCRIPTION \u00b7 TRIAL\nNew BOM analysis\nWORKSPACE\nHome\nBOM Analyzer\nEngineering Decisions\nMonitoring\nFind a replacement\nReports\nDECISION TOOLS\nCompare Parts\nDatasheet Q&A\nProcurement Advisor\nDesign Impact Analyzer\nCost Optimization\nSupply Risk Scenario\nINTELLIGENCE\nPortfolio Intelligence\nDetailed Risk Report\nEngineering Intelligence\nWORKSPACE ADMIN\nOne-time BOM report\nSettings\nSign out\nWorkspace\n\u00b7\nDesign Impact Analyzer\nSA\nsandbox-"
+        },
+        "decision_snapshot_api": {
+          "ok": true,
+          "record_count": 1,
+          "has_finding": true,
+          "has_rows": true,
+          "has_counts": true,
+          "decision_label": "Hold for review"
+        },
+        "exports": {
+          "ok": true,
+          "detail": {
+            "pdf": {
+              "bytes": 3175,
+              "path": "/Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/legacy-supplier-report/.evidence_ui/next_ui_two_bom_597/nested_report.pdf",
+              "starts_with_pdf": true,
+              "has_project_label": true,
+              "has_bom_label": true,
+              "has_expected_mpn": true,
+              "ok": true
+            },
+            "xlsx": {
+              "bytes": 8257,
+              "path": "/Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/legacy-supplier-report/.evidence_ui/next_ui_two_bom_597/nested_report.xlsx",
+              "is_zip": true,
+              "has_workbook": true,
+              "sheets": [
+                "Summary",
+                "Components"
+              ],
+              "has_project_label": true,
+              "has_bom_label": true,
+              "has_expected_mpn": true,
+              "ok": true
+            },
+            "csv": {
+              "bytes": 1890,
+              "path": "/Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/legacy-supplier-report/.evidence_ui/next_ui_two_bom_597/nested_report.csv",
+              "row_count": 8,
+              "has_mpn_column": true,
+              "has_project_label": true,
+              "has_bom_label": true,
+              "has_expected_mpn": true,
+              "data_rows": 7,
+              "ok": true
+            }
+          }
+        }
+      },
+      "failed_step": null,
+      "analysis_id": "96478adf-bed1-43cc-9155-98f797385fed",
+      "exports": {
+        "pdf": {
+          "bytes": 3175,
+          "path": "/Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/legacy-supplier-report/.evidence_ui/next_ui_two_bom_597/nested_report.pdf",
+          "starts_with_pdf": true,
+          "has_project_label": true,
+          "has_bom_label": true,
+          "has_expected_mpn": true,
+          "ok": true
+        },
+        "xlsx": {
+          "bytes": 8257,
+          "path": "/Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/legacy-supplier-report/.evidence_ui/next_ui_two_bom_597/nested_report.xlsx",
+          "is_zip": true,
+          "has_workbook": true,
+          "sheets": [
+            "Summary",
+            "Components"
+          ],
+          "has_project_label": true,
+          "has_bom_label": true,
+          "has_expected_mpn": true,
+          "ok": true
+        },
+        "csv": {
+          "bytes": 1890,
+          "path": "/Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/legacy-supplier-report/.evidence_ui/next_ui_two_bom_597/nested_report.csv",
+          "row_count": 8,
+          "header": [
+            "Project",
+            "BOM",
+            "Revision",
+            "Analyzed At",
+            "MPN",
+            "Manufacturer",
+            "Description",
+            "Parent MPN",
+            "Line Type",
+            "Quantity per Parent",
+            "Effective Quantity",
+            "Lifecycle",
+            "Risk Level",
+            "Risk Score",
+            "Risk Reasons",
+            "Stock",
+            "Unit Price",
+            "Currency",
+            "Evidence Class",
+            "Evidence Source",
+            "Supplier Product URL",
+            "Datasheet URL"
+          ],
+          "has_mpn_column": true,
+          "has_project_label": true,
+          "has_bom_label": true,
+          "has_expected_mpn": true,
+          "data_rows": 7,
+          "ok": true
+        }
+      },
+      "failed_steps": [],
+      "ok": true
+    }
+  ],
+  "signed_in_url": "http://127.0.0.1:3001/",
+  "ok": true,
+  "distinct_labels": true
+}

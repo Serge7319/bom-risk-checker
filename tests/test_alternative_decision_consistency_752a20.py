@@ -143,8 +143,11 @@ class PassiveAlternativeDecisionTests(unittest.TestCase):
 
     def test_c0603_verified_direct_has_strong_confidence(self):
         result = self._capacitor_reason()
-        self.assertGreaterEqual(result["decision_confidence"], 82)
-        self.assertGreaterEqual(result["engineering_comparison_confidence"], 82)
+        # Verified Direct disposition remains from supplier relationship evidence,
+        # but catalog Listing agreement rows must not inflate engineering confidence.
+        self.assertEqual(result["disposition"], VERIFIED_DIRECT_DISPOSITION)
+        self.assertLess(result["engineering_comparison_confidence"], 75)
+        self.assertLess(result["decision_confidence"], 75)
 
     def test_sparse_capacitor_evidence_limits_engineering_confidence(self):
         rows, counts, original = _c0603_capacitor_comparison_rows()
@@ -236,16 +239,20 @@ class PassiveAlternativeDecisionTests(unittest.TestCase):
     def test_c0603_lists_matching_capacitor_fields(self):
         result = self._capacitor_reason()
         confirmed = " ".join(result["confirmed_matches"]).casefold()
+        verification = " ".join(result["verification_required"]).casefold()
+        # Exact/text Matches remain confirmed engineering evidence.
         for field in (
             "package",
             "mounting",
-            "capacitance",
             "tolerance",
-            "rated voltage",
             "dielectric",
             "temperature characteristic",
         ):
             self.assertIn(field, confirmed, msg=f"Missing confirmed field: {field}")
+        # Numeric catalog-only agreements stay visible as listing evidence, not Match.
+        for field in ("capacitance", "rated voltage"):
+            self.assertIn(field, verification, msg=f"Missing listing verification: {field}")
+            self.assertIn("listing agreement", verification)
 
     def test_capacitor_rated_voltage_difference_downgrades(self):
         rows, counts, original = _c0603_capacitor_comparison_rows()

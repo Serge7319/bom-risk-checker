@@ -386,7 +386,10 @@ class AlternativeFinderSuitabilityTests(unittest.TestCase):
             top["Recommendation Suitability"],
             self.classification.SUITABILITY_PREFERRED,
         )
-        self.assertGreaterEqual(top["Recommendation Score"], 70)
+        # Catalog-only numeric rows are listing agreements and must not inflate
+        # the recommendation into an engineering-ready band on their own.
+        self.assertLess(top["Recommendation Score"], 65)
+        self.assertGreaterEqual(top["Recommendation Score"], 40)
 
 
     def test_live_equivalent_provider_error_renders_config_notice_and_coverage_field(self):

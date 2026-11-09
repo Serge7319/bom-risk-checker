@@ -224,6 +224,8 @@ class AlternativeFinderSearchTests(unittest.TestCase):
         self.aggregator.get_best_part_data = lambda _part: {
             "manufacturer_part_number": "DHT11",
             "manufacturer": "",
+            "description": "Digital humidity and temperature sensor",
+            "primary_category": "Sensors",
             "supplier_data_verified": False,
             "all_supplier_results": [],
         }
@@ -277,11 +279,18 @@ class AlternativeFinderSearchTests(unittest.TestCase):
         self.aggregator.get_best_part_data = lambda _part: {
             "manufacturer_part_number": "LM7805ACTG",
             "digikey_part_number": "LM7805ACTG-ND",
+            "description": "1A Positive Voltage Regulator",
+            "primary_category": "Power Management|Voltage Regulators",
             "supplier_data_verified": True,
             "all_supplier_results": [],
         }
         self.engine.suggest_alternatives_v2 = lambda _part: [
-            {"Alternative Part": "MC7805ACTG", "Manufacturer": "onsemi"}
+            {
+                "Alternative Part": "MC7805ACTG",
+                "Manufacturer": "onsemi",
+                "description": "1A Positive Voltage Regulator",
+                "primary_category": "Power Management|Voltage Regulators",
+            }
         ]
         self.engine.get_alternative_discovery_metadata = lambda: {
             "providers": {"DigiKey": {"substitutions": "ok"}},
@@ -581,9 +590,15 @@ class AlternativeFinderSearchTests(unittest.TestCase):
         self.assertEqual(enriched["Classification"], self.classification.CLASS_VERIFIED_DIRECT)
         counts = enriched["Comparison Counts"]
         self.assertEqual(counts.get("Different"), 0)
-        self.assertGreaterEqual(counts.get("Match", 0), 6)
+        self.assertGreaterEqual(
+            int(counts.get("Match", 0) or 0) + int(counts.get("Listing agreement", 0) or 0),
+            6,
+        )
         self.assertIn("DigiKey relationship: Direct.", enriched["Supplier Relationship Summary"])
-        self.assertGreaterEqual(enriched["Engineering Comparison Confidence"], 82)
+        # Catalog listing agreements remain visible but must not inflate engineering
+        # confidence into an engineering-ready band on their own.
+        self.assertLess(enriched["Engineering Comparison Confidence"], 75)
+        self.assertGreaterEqual(int(counts.get("Listing agreement", 0) or 0), 1)
         self.assertTrue(supplier_evidence.get("supplier_data_verified"))
 
         reasoning = build_alternative_reasoning(
@@ -602,7 +617,7 @@ class AlternativeFinderSearchTests(unittest.TestCase):
             comparison_counts=enriched.get("Comparison Counts") or {},
         )
         self.assertEqual(reasoning["disposition"], VERIFIED_DIRECT_DISPOSITION)
-        self.assertGreaterEqual(reasoning["engineering_comparison_confidence"], 82)
+        self.assertLess(reasoning["engineering_comparison_confidence"], 75)
         self.assertTrue(
             any("ESR" in item for item in reasoning.get("verification_required", []))
         )
@@ -803,6 +818,8 @@ class AlternativeFinderOutcomeTests(unittest.TestCase):
         self.engine.discover_alternative_candidates = discover
         self.aggregator.get_best_part_data = lambda _part: {
             "manufacturer_part_number": "C0603C104K5RACTU",
+            "description": "Capacitor Ceramic 0.1uF 50V X7R 0603",
+            "primary_category": "Capacitors|Ceramic",
             "supplier_data_verified": True,
             "all_supplier_results": [
                 {"source": "DigiKey", "provider_status": "AVAILABLE"},

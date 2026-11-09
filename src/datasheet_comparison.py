@@ -23,6 +23,9 @@ from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 import requests
 
 from src.component_family_profiles import (
+    COMPARE_LIMIT_GE,
+    COMPARE_LIMIT_LE,
+    COMPARE_NOMINAL,
     PASSIVE_FAMILY_IDS,
     comparison_fields,
     get_family_profile,
@@ -557,6 +560,19 @@ def merge_verified_datasheet_rows(
         else:
             status = str(current.get("Status") or "Needs data")
             compare_note = str(current.get("Evidence") or "")
+        # Catalog-only agreement without identity-verified manufacturer docs is
+        # not Compatible for substitution approval.
+        if (
+            status == "Match"
+            and source_a == "catalog"
+            and source_b == "catalog"
+            and not (identity["part_a"].get("verified") and identity["part_b"].get("verified"))
+        ):
+            status = "Listing agreement"
+            compare_note = (
+                "Supplier listings agree on this attribute, but exact-part manufacturer "
+                "documents were not verified for both sides; treat as listing agreement only."
+            )
         if conflict:
             status = "Conflicting"
             if "conflict" not in " ".join(notes).casefold():
@@ -706,7 +722,13 @@ def build_datasheet_comparison(original: dict, candidate: dict) -> dict:
     family = infer_component_family(original)
     profile = get_family_profile(family)
     fields = comparison_fields(profile)
-    rows, counts = [], {"Match": 0, "Different": 0, "Needs data": 0, "Conflicting": 0}
+    rows, counts = [], {
+        "Match": 0,
+        "Listing agreement": 0,
+        "Different": 0,
+        "Needs data": 0,
+        "Conflicting": 0,
+    }
     original_mpn = str(
         original.get("manufacturer_part_number")
         or original.get("Manufacturer Part Number")
@@ -748,6 +770,19 @@ def build_datasheet_comparison(original: dict, candidate: dict) -> dict:
                 note = (
                     "A lifecycle conflict was reported, but the individual supplier records were not retained."
                 )
+        elif (
+            status == "Match"
+            and original_value
+            and candidate_value
+            and spec.compare in {COMPARE_NOMINAL, COMPARE_LIMIT_GE, COMPARE_LIMIT_LE}
+        ):
+            # Numeric supplier agreement without verified manufacturer docs is
+            # listing agreement only — not Compatible for substitution approval.
+            status = "Listing agreement"
+            note = (
+                "Supplier listings agree on this attribute, but exact-part manufacturer "
+                "documents were not verified for both sides; treat as listing agreement only."
+            )
         note = f"{note}{_CATALOG_SOURCE}"
         counts[status] = int(counts.get(status) or 0) + 1
         source_a = str(original_sources.get(spec.key) or original.get("source") or "").strip() or "Not stated"
@@ -799,6 +834,9 @@ def user_facing_comparison_rows(rows: list | None) -> list[dict]:
         if status == "Match" or "compatible" in folded:
             result = "Match"
             assessment = "Compatible on available evidence"
+        elif status == "Listing agreement" or "listing agreement" in folded:
+            result = "Listing agreement"
+            assessment = "Supplier-listing agreement"
         elif status == "Conflicting" or "conflict" in folded:
             result = "Conflicting"
             assessment = "Conflicting evidence"
@@ -898,19 +936,21 @@ def build_engineering_evidence_assessment(
         engineering_confidence = base["engineering_comparison_confidence"]
     else:
         matches = max(0, int(counts.get("Match", 0) or 0))
+        listing_agreements = max(0, int(counts.get("Listing agreement", 0) or 0))
         differences = max(0, int(counts.get("Different", 0) or 0))
         needs_data = max(0, int(counts.get("Needs data", 0) or 0))
-        compared_fields = matches + differences + needs_data
+        # Listing agreement stays visible but never counts as engineering Match.
+        compared_fields = matches + differences + needs_data + listing_agreements
 
         if differences > 0:
             status = "conflicts documented"
         elif compared_fields == 0:
             status = "incomplete"
-        elif needs_data == 0 and matches > 0:
+        elif needs_data == 0 and listing_agreements == 0 and matches > 0:
             status = "complete"
-        elif matches <= 1 and needs_data >= 5:
+        elif matches <= 1 and (needs_data + listing_agreements) >= 5:
             status = "incomplete"
-        elif matches >= max(1, compared_fields - 1):
+        elif matches >= max(1, compared_fields - 1) and listing_agreements == 0:
             status = "substantial"
         else:
             status = "partial"
@@ -921,6 +961,12 @@ def build_engineering_evidence_assessment(
             f"Engineering evidence: {status} — {matches} confirmed {match_label}, "
             f"{needs_data} {field_label} need verification"
         )
+        if listing_agreements:
+            summary += (
+                f"; {listing_agreements} supplier-listing "
+                f"{'agreement' if listing_agreements == 1 else 'agreements'} "
+                "(catalog evidence only)"
+            )
         coverage_percent = round((matches / compared_fields) * 100) if compared_fields else 0
 
         if differences > 0:
@@ -932,6 +978,7 @@ def build_engineering_evidence_assessment(
             engineering_confidence = round(35 + coverage_ratio * 58)
             if (
                 needs_data <= 1
+                and listing_agreements == 0
                 and matches >= max(1, compared_fields - 1)
                 and differences == 0
             ):
@@ -1006,16 +1053,17 @@ def build_recommendation_score_breakdown(
     have similar lifecycle or stock signals.
     """
     matches = max(0, int(counts.get("Match", 0) or 0))
+    listing_agreements = max(0, int(counts.get("Listing agreement", 0) or 0))
     differences = max(0, int(counts.get("Different", 0) or 0))
     needs_data = max(0, int(counts.get("Needs data", 0) or 0))
 
     # A recorded difference has more impact than an unknown. Matches improve
-    # quality, but do not erase a documented conflict.
-    evidence_quality = 100 - (differences * 16) - (needs_data * 7)
+    # quality, but listing agreements do not count as engineering Match.
+    evidence_quality = 100 - (differences * 16) - (needs_data * 7) - (listing_agreements * 4)
     evidence_quality += min(matches, 8) * 2
     evidence_quality = max(0, min(evidence_quality, 100))
 
-    evidence_cap = 100 - (differences * 12) - (needs_data * 6)
+    evidence_cap = 100 - (differences * 12) - (needs_data * 6) - (listing_agreements * 3)
     if not is_explicit_substitute:
         evidence_cap = min(evidence_cap, 95)
     adjusted_confidence = max(

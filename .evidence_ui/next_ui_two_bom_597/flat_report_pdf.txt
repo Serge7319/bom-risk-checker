@@ -1,0 +1,182 @@
+Cadivor · Evidence-linked engineering review
+Page 1
+Cadivor BOM Risk Report
+Project: PR597 Flat Smoke — flat-synthetic-25    BOM: flat-synthetic-25    Revision: F1
+Health: 94 / 100    Status: Healthy    Components: 25    High / medium / low: 0 / 4 / 21
+This report uses synthetic preview analysis. Stock, price, and lifecycle values are not live supplier verification; confirm primary-source evidence before making a sourcing or release decision.
+MPN
+Manufacturer / description
+Parent
+Qty
+Lifecycle
+Risk
+Evidence
+Risk reasons
+XC3S4004PQG20
+8C
+Xilinx · FPGA
+1
+Active
+Low
+synthetic-preview
+EPF10K20RC2404
+N
+Altera · FPGA
+1
+NRND
+Medium
+synthetic-preview
+CY7C19915PC
+Cypress · SRAM
+2
+Active
+Low
+synthetic-preview
+MC68HC711E9CF
+N2
+NXP · MCU
+1
+Active
+Low
+synthetic-preview
+DS1232LP
+Maxim · Supervisor
+1
+Active
+Low
+synthetic-preview
+ST72F324J6T6
+STMicroelectronics · MCU
+1
+Active
+Low
+synthetic-preview
+MAX232CPE
+Maxim · Transceiver
+2
+Active
+Low
+synthetic-preview
+GRM188R71H104
+KA93D
+Murata · Capacitor
+10
+Active
+Low
+synthetic-preview
+MC68HC11E1CFN
+E2
+NXP · MCU
+1
+Active
+Low
+synthetic-preview
+LM358DR
+Texas Instruments · Op Amp
+4
+Active
+Low
+synthetic-preview
+SN74HC595N
+Texas Instruments · Shift Register
+2
+Active
+Low
+synthetic-preview
+ATMEGA328PPU
+Microchip · MCU
+1
+Active
+Low
+synthetic-preview
+NE555P
+Texas Instruments · Timer
+2
+Active
+Low
+synthetic-preview
+1N4148
+Vishay · Diode
+20
+NRND
+Medium
+synthetic-preview
+2N3904
+ON Semiconductor · BJT
+5
+NRND
+Medium
+synthetic-preview
+IRF540N
+Infineon · MOSFET
+2
+Active
+Low
+synthetic-preview
+LM7805CT
+Texas Instruments · LDO
+1
+Active
+Low
+synthetic-preview
+CRCW060310K0F
+KEA
+Vishay · Resistor
+50
+Active
+Low
+synthetic-preview
+C0805C104K5RA
+CTU
+KEMET · Capacitor
+20
+Active
+Low
+synthetic-preview
+B3F1000
+Omron · Tactile Switch
+4
+Active
+Low
+synthetic-preview
+USBBSFBTH
+Samtec · USB Connector
+1
+Active
+Low
+synthetic-preview
+
+Cadivor · Evidence-linked engineering review
+Page 2
+MPN
+Manufacturer / description
+Parent
+Qty
+Lifecycle
+Risk
+Evidence
+Risk reasons
+PJ002A
+CUI · DC Jack
+1
+Active
+Low
+synthetic-preview
+HDR2.541X8
+Generic · Header
+2
+Active
+Low
+synthetic-preview
+LED0805RED
+Generic · LED
+8
+Active
+Low
+synthetic-preview
+FUSE12061A
+Littelfuse · Fuse
+1
+NRND
+Medium
+synthetic-preview

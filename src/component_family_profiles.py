@@ -78,10 +78,18 @@ COMMON_FIELD_SPECS: tuple[FieldSpec, ...] = (
         value_role="range",
     ),
     FieldSpec(
-        "temperature_range", "Temperature range", compare=COMPARE_EXACT, unit="C",
-        pdf_aliases=("operating temperature", "temperature range"),
+        "temperature_range", "Operating temperature", compare=COMPARE_EXACT, unit="C",
+        # Do not alias bare "temperature range" — that matches storage lines.
+        pdf_aliases=("operating temperature", "operating temp"),
         digikey_params=("Operating Temperature",),
-        mouser_params=("Operating Temperature", "Temperature Range"),
+        mouser_params=("Operating Temperature",),
+        value_role="range",
+    ),
+    FieldSpec(
+        "storage_temperature", "Storage temperature", compare=COMPARE_EXACT, unit="C",
+        pdf_aliases=("storage temperature", "storage temp"),
+        digikey_params=("Storage Temperature",),
+        mouser_params=("Storage Temperature Range", "Storage Temperature"),
         value_role="range",
     ),
     FieldSpec(

@@ -712,6 +712,49 @@ def run_alternative_finder_search(
         discovery = merge_supplier_failures_into_discovery(discovery, safe_original)
         if not candidates and exact_source_match:
             discovery["candidate_status"] = _replacement_candidate_cause(discovery)
+        # Component-family partition: primary list stays family-relevant;
+        # unknown-family and cross-family catalog hits are separated. Fail closed
+        # on partition errors — never leave unclassified rows in relevant.
+        from src.alternative_classification import partition_candidates_by_family
+
+        family_original = {
+            **(safe_original if isinstance(safe_original, dict) else {}),
+            "manufacturer_part_number": str(
+                (safe_original or {}).get("manufacturer_part_number") or entered_mpn
+            ).strip(),
+        }
+        try:
+            relevant, unclassified, unfiltered = partition_candidates_by_family(
+                family_original, candidates
+            )
+        except Exception:
+            relevant, unclassified, unfiltered = [], list(candidates or []), []
+            for row in unclassified:
+                if isinstance(row, dict):
+                    row.setdefault(
+                        "fit",
+                        "not qualified — component family classification unavailable",
+                    )
+        discovery = dict(discovery or {})
+        if unclassified:
+            discovery["unclassified_leads"] = unclassified
+            discovery["unclassified_lead_count"] = len(unclassified)
+        if unfiltered:
+            discovery["unfiltered_leads"] = unfiltered
+            discovery["unfiltered_lead_count"] = len(unfiltered)
+        if not relevant and (unclassified or unfiltered):
+            discovery["has_incomplete_evidence"] = True
+            parts = []
+            if unclassified:
+                parts.append(f"{len(unclassified)} unclassified")
+            if unfiltered:
+                parts.append(f"{len(unfiltered)} cross-family")
+            discovery["candidate_status"] = (
+                "Same-family replacement candidates were not found. "
+                + " and ".join(parts)
+                + " catalog lead(s) were separated and are not ranked as substitutes."
+            )
+        candidates = relevant
         with search_run.stage(STAGE_PERSIST):
             canonical_mpn = str(
                 safe_original.get("manufacturer_part_number") or entered_mpn

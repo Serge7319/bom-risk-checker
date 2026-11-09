@@ -154,7 +154,7 @@ class FamilyMatrixTests(unittest.TestCase):
         self.assertIn("Pinout / footprint", attrs)
         self.assertNotIn("Architecture", attrs)
         statuses = {r["Attribute"]: r["Status"] for r in result["rows"]}
-        self.assertEqual(statuses["VCEO"], "Match")
+        self.assertEqual(statuses["VCEO"], "Listing agreement")
         self.assertEqual(statuses["Pinout / footprint"], "Needs data")
 
     def test_mmbt3904_direct_plus_package_pins_not_high_engineering_score(self):

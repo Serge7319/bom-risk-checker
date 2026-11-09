@@ -135,7 +135,11 @@ def build_design_impact(
             "Unit Price": _optional_number(_first(row, "unit_price", "Unit Price", "unit_price_usd", "price")),
             "Price Currency": _text(_first(row, "unit_price_currency", "currency", "Currency"), "USD"),
             "Part Updated": _text(_first(row, "last_updated", "updated_at", "modified_at"), "Not recorded"),
-            "Risk Score": int(_number(_first(row, "risk_score", "Risk Score"), 0)),
+            "Risk Score": (
+                int(score)
+                if (score := _optional_number(_first(row, "risk_score", "Risk Score"))) is not None
+                else "Not assessed"
+            ),
             "Risk Level": _text(_first(row, "risk_level", "Risk Level"), "Unknown"),
             "Quantity": int(_number(_first(row, "quantity", "qty", "required_quantity"), 1)),
         })
@@ -186,7 +190,10 @@ def build_design_impact(
             catalog_row["Datasheet URLs"].add(row["Datasheet URL"])
         if row["Source URL"]:
             catalog_row["Source URLs"].add(row["Source URL"])
-        catalog_row["Risk Score"] = max(catalog_row["Risk Score"], row["Risk Score"])
+        catalog_row["Risk Score"] = max(
+            int(catalog_row["Risk Score"]) if isinstance(catalog_row["Risk Score"], int) else 0,
+            int(row["Risk Score"]) if isinstance(row["Risk Score"], int) else 0,
+        )
 
     component_catalog = []
     for row in catalog_by_mpn.values():
@@ -194,7 +201,7 @@ def build_design_impact(
         lifecycles = sorted(row["Lifecycle Values"])
         risk_levels = sorted(row["Risk Level Values"], key=lambda value: (-_recorded_risk_rank(value), value.casefold()))
         projects = sorted(row["Project Values"])
-        risk_score = int(row["Risk Score"])
+        risk_score = int(row["Risk Score"]) if isinstance(row["Risk Score"], int) else 0
         component_catalog.append({
             "Part Number": row["Part Number"],
             "Image URL": row["Image URL"],
@@ -203,8 +210,8 @@ def build_design_impact(
             "Projects": len(projects),
             "Project Names": projects,
             "BOM Names": sorted(row["BOM Values"]),
-            "Risk Score": risk_score,
-            "Risk Level": risk_levels[0] if risk_levels else (_impact_level(risk_score) if risk_score else "Unknown"),
+            "Risk Score": risk_score if isinstance(row["Risk Score"], int) else "Not assessed",
+            "Risk Level": risk_levels[0] if risk_levels else (_impact_level(risk_score) if risk_score else "Not assessed"),
             "Lifecycle": lifecycles[0] if len(lifecycles) == 1 else "Mixed" if lifecycles else "Unknown",
             "Description": row["Description"],
             "Category": row["Category"],
@@ -218,14 +225,17 @@ def build_design_impact(
             "Search Text": " ".join([row["Part Number"], *manufacturers, *lifecycles, *projects,
                 *sorted(row["BOM Values"]), row["Description"], row["Category"]]).casefold(),
         })
-    component_catalog.sort(key=lambda row: (-row["Risk Score"], -row["Saved BOMs"], row["Part Number"].upper()))
+    def _risk_int(value: Any) -> int:
+        return int(value) if isinstance(value, int) else 0
+
+    component_catalog.sort(key=lambda row: (-_risk_int(row["Risk Score"]), -row["Saved BOMs"], row["Part Number"].upper()))
 
     if selected_mpn and selected_mpn.casefold() not in {value.casefold() for value in available_mpns}:
         selected_mpn = ""
     if not selected_mpn and select_recommended_when_empty:
         ranked: Dict[str, int] = defaultdict(int)
         for row in normalized:
-            score = row["Risk Score"]
+            score = _risk_int(row["Risk Score"])
             if row["Supplier Sources"] is not None and row["Supplier Sources"] <= 1:
                 score += 20
             if row["Available Stock"] is not None and row["Available Stock"] <= 0:
@@ -236,7 +246,7 @@ def build_design_impact(
         selected_mpn = max(ranked, key=ranked.get) if ranked else ""
 
     affected = [row for row in normalized if row["Part Number"].casefold() == selected_mpn.casefold()] if selected_mpn else []
-    affected.sort(key=lambda row: (row["Project Health"], -row["Risk Score"]))
+    affected.sort(key=lambda row: (row["Project Health"], -_risk_int(row["Risk Score"])))
     reference = affected[0] if affected else {}
 
     def _bom_key(row: Dict[str, Any]) -> tuple[str, ...]:
@@ -246,55 +256,74 @@ def build_design_impact(
         return ("file", str(row.get("Project") or "Saved BOM").strip().casefold(), str(row.get("BOM") or "Saved BOM").strip().casefold())
 
     affected_bom_count = len({_bom_key(row) for row in affected})
-    grouped_by_project: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    # One row per BOM/analysis occurrence — do not collapse same-MPN rows across
+    # saved analyses into a single project summary. Duplicate lines inside one
+    # analysis are still rolled up by _bom_key.
+    grouped_by_bom: Dict[tuple[str, ...], List[Dict[str, Any]]] = defaultdict(list)
     for row in affected:
-        grouped_by_project[str(row.get("Project") or "Saved BOM").strip().casefold()].append(row)
+        grouped_by_bom[_bom_key(row)].append(row)
 
     affected_projects: List[Dict[str, Any]] = []
-    for project_rows in grouped_by_project.values():
-        project_rows.sort(key=lambda row: (row.get("Updated") != "Not recorded", str(row.get("Updated") or "")), reverse=True)
-        latest_row = project_rows[0]
-        analysis_ids = sorted({str(row.get("Analysis ID") or "").strip() for row in project_rows if row.get("Analysis ID")})
-        bom_keys = {_bom_key(row) for row in project_rows}
-        bom_names = sorted({str(row.get("BOM") or "").strip() for row in project_rows if row.get("BOM")})
-        manufacturer_values = sorted({row["Manufacturer"] for row in project_rows if row["Manufacturer"] != "Unknown"})
-        lifecycle_values = sorted({row["Lifecycle"] for row in project_rows if row["Lifecycle"] != "Unknown"})
-        package_values = sorted({row["Package"] for row in project_rows if row["Package"] not in ("Unknown", "Not recorded")})
-        design_phase_values = sorted({row["Design Phase"] for row in project_rows if row["Design Phase"] != "Not recorded"})
-        stocks = [row["Available Stock"] for row in project_rows if row["Available Stock"] is not None]
-        sources = [row["Supplier Sources"] for row in project_rows if row["Supplier Sources"] is not None]
-        lead_times = [row["Lead Time Weeks"] for row in project_rows if row["Lead Time Weeks"] is not None]
-        project_row = dict(latest_row)
-        saved_bom_count = len(bom_keys)
-        project_row.update({
-            "Analysis ID": latest_row.get("Analysis ID", ""),
-            "Analysis IDs": analysis_ids,
-            "BOM Names": bom_names,
-            "BOM": bom_names[0] if saved_bom_count == 1 and bom_names else f"{saved_bom_count} saved BOMs",
-            "Saved BOMs": saved_bom_count,
-            "Project Health": min(int(row.get("Project Health") or 0) for row in project_rows),
-            "Risk Score": max(int(row.get("Risk Score") or 0) for row in project_rows),
-            "Quantity": sum(max(1, int(row.get("Quantity") or 1)) for row in project_rows),
-            "Supplier Sources": min(sources) if sources else None,
-            "Available Stock": min(stocks) if stocks else None,
-            "Lifecycle": lifecycle_values[0] if len(lifecycle_values) == 1 else "Mixed" if lifecycle_values else "Unknown",
-            "Manufacturer": manufacturer_values[0] if len(manufacturer_values) == 1 else "Multiple" if manufacturer_values else "Unknown",
-            "Package": package_values[0] if len(package_values) == 1 else "Mixed" if package_values else "Not recorded",
-            "Pin Count": max(int(row.get("Pin Count") or 0) for row in project_rows),
-            "Design Phase": design_phase_values[0] if len(design_phase_values) == 1 else "Mixed" if design_phase_values else "Not recorded",
-            "Lead Time Weeks": max(lead_times) if lead_times else None,
+    for bom_rows in grouped_by_bom.values():
+        bom_rows.sort(
+            key=lambda row: (row.get("Updated") != "Not recorded", str(row.get("Updated") or "")),
+            reverse=True,
+        )
+        latest = bom_rows[0]
+        risk_values: list[int] = []
+        for row in bom_rows:
+            risk_raw = row.get("Risk Score")
+            try:
+                if risk_raw not in (None, "", "Not recorded", "Not assessed"):
+                    risk_values.append(int(risk_raw))
+            except (TypeError, ValueError):
+                continue
+        risk_score = max(risk_values) if risk_values else None
+        risk_levels = sorted(
+            {
+                str(row.get("Risk Level") or "").strip()
+                for row in bom_rows
+                if str(row.get("Risk Level") or "").strip()
+                and str(row.get("Risk Level") or "").casefold() not in {"unknown", "not recorded"}
+            },
+            key=lambda value: (-_recorded_risk_rank(value), value.casefold()),
+        )
+        occurrence = dict(latest)
+        occurrence.update({
+            "Analysis ID": latest.get("Analysis ID", ""),
+            "Analysis IDs": [str(latest.get("Analysis ID") or "").strip()] if latest.get("Analysis ID") else [],
+            "BOM Names": [str(latest.get("BOM") or "").strip()] if latest.get("BOM") else [],
+            "BOM": str(latest.get("BOM") or "Saved BOM"),
+            "Saved BOMs": 1,
+            "Project Health": min(int(row.get("Project Health") or 0) for row in bom_rows),
+            "Risk Score": risk_score if risk_score is not None else "Not assessed",
+            "Quantity": sum(max(1, int(row.get("Quantity") or 1)) for row in bom_rows),
+            "Part Number": latest.get("Part Number"),
+            "Manufacturer": latest.get("Manufacturer") or "Unknown",
+            "Lifecycle": latest.get("Lifecycle") or "Unknown",
+            "Package": latest.get("Package") or "Not recorded",
+            "Risk Level": (
+                risk_levels[0]
+                if risk_levels
+                else (latest.get("Risk Level") or "Not assessed")
+            ),
         })
-        affected_projects.append(project_row)
+        affected_projects.append(occurrence)
 
-    affected_projects.sort(key=lambda row: (row["Project Health"], -row["Risk Score"], row["Project"].casefold()))
-    project_count = len(affected_projects)
+    def _occurrence_sort_key(row: Dict[str, Any]) -> tuple:
+        risk = row.get("Risk Score")
+        risk_num = int(risk) if isinstance(risk, int) else -1
+        return (int(row.get("Project Health") or 0), -risk_num, str(row.get("Project") or "").casefold(), str(row.get("BOM") or "").casefold())
+
+    affected_projects.sort(key=_occurrence_sort_key)
+    project_count = len({str(row.get("Project") or "Saved BOM").strip().casefold() for row in affected_projects})
     total_quantity = sum(max(1, row["Quantity"]) for row in affected)
     recorded_stock = [row["Available Stock"] for row in affected if row["Available Stock"] is not None]
     recorded_sources = [row["Supplier Sources"] for row in affected if row["Supplier Sources"] is not None]
     recorded_lead_times = [row["Lead Time Weeks"] for row in affected if row["Lead Time Weeks"] is not None]
     minimum_stock = min(recorded_stock) if recorded_stock else None
     minimum_sources = min(recorded_sources) if recorded_sources else None
-    maximum_risk = max((row["Risk Score"] for row in affected), default=0)
+    maximum_risk = max((_risk_int(row["Risk Score"]) for row in affected), default=0)
     recorded_risk_levels = sorted(
         {row["Risk Level"] for row in affected if row["Risk Level"] and row["Risk Level"].casefold() != "unknown"},
         key=lambda value: (-_recorded_risk_rank(value), value.casefold()),
@@ -1083,11 +1112,18 @@ def _render_design_impact_workspace(
     project_rows = []
     for row in intelligence.get("affected_projects") or []:
         bom_names = row.get("BOM Names") or []
-        score = int(row.get("Risk Score") or 0)
+        risk_raw = row.get("Risk Score")
+        score = int(risk_raw) if isinstance(risk_raw, int) else 0
         row_risk_level = _text(row.get("Risk Level"), "Unknown")
-        if row_risk_level.casefold() == "unknown" and score:
+        if row_risk_level.casefold() in {"unknown", "not recorded"} and score:
             row_risk_level = _impact_level(score)
-        impact_text = f"{row_risk_level} · {score}/100" if score else (row_risk_level if row_risk_level.casefold() != "unknown" else "Not recorded")
+        elif row_risk_level.casefold() in {"unknown", "not recorded"} and not isinstance(risk_raw, int):
+            row_risk_level = "Not assessed"
+        impact_text = (
+            f"{row_risk_level} · {score}/100"
+            if isinstance(risk_raw, int)
+            else row_risk_level
+        )
         impact_class = "high" if _recorded_risk_rank(row_risk_level) >= 4 else "moderate" if _recorded_risk_rank(row_risk_level) == 3 else "low" if _recorded_risk_rank(row_risk_level) == 2 else "muted"
         project_name = _text(row.get("Project"), "Project")
         project_subtitle = _text(row.get("BOM"), "Saved BOM")

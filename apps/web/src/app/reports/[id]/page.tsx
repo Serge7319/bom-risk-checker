@@ -103,9 +103,16 @@ export default function ReportPage() {
       ? `EI · ${report.filename}`
       : PAGE_META.ei.title,
   };
-  const verifiedSupplierRows = (report?.parts || []).filter((part) =>
-    part.supplier_data_verified === true || part["Supplier Data Verified"] === true,
-  ).length;
+  const evidenceSummary = (report?.evidence_summary || {}) as Record<string, unknown>;
+  const verifiedSupplierRows = Number(
+    evidenceSummary.live_count
+      ?? (report?.parts || []).filter((part) => {
+        const evidence = (part.evidence || {}) as Record<string, unknown>;
+        return String(evidence.evidence_class || "") === "live-authorized-supplier";
+      }).length,
+  );
+  const syntheticSupplierRows = Number(evidenceSummary.synthetic_count ?? 0);
+  const missingSupplierRows = Number(evidenceSummary.missing_count ?? 0);
 
   return (
     <Shell session={session}>
@@ -232,9 +239,7 @@ export default function ReportPage() {
             <p className="cv-small-note" style={{ marginTop: 8 }}>
               {report.mode === "synthetic-preview"
                 ? "Supplier prices, stock, and lifecycle are synthetic estimates, not live distributor evidence."
-                : verifiedSupplierRows > 0
-                  ? `Verified supplier evidence is present for ${verifiedSupplierRows} of ${report.parts.length} component rows. Review each source and timestamp before acting.`
-                  : "Supplier price, stock, and lifecycle data were not verified for this report. Treat these fields as unconfirmed and check current authorized sources."}
+                : `Live authorized-supplier evidence: ${verifiedSupplierRows}; synthetic/preview: ${syntheticSupplierRows}; no supplier match: ${missingSupplierRows} (of ${report.parts.length}). Synthetic rows never count as live verified evidence.`}
             </p>
           </section>
 
@@ -486,9 +491,11 @@ export default function ReportPage() {
                             <PartThumbnail part={part} />
                             <span>
                               <strong>{mpn}</strong>
-                              <span className="cv-small-note">
-                                {String(part.line_type || part["Line Type"] || "")}
-                              </span>
+                              {(() => {
+                                const lineType = String(part.line_type || part["Line Type"] || "").trim();
+                                if (!lineType || lineType.toLowerCase() === "part") return null;
+                                return <span className="cv-small-note">{lineType}</span>;
+                              })()}
                             </span>
                           </div>
                         </td>
