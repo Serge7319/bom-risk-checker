@@ -24,9 +24,16 @@ import {
   draftMetaStorageKey,
   fileContentDigest,
   fileIdentityKey,
+  materializeBomFile,
 } from "@/lib/bomFileIdentity";
 
-export { draftFileRecordId, draftMetaStorageKey, fileContentDigest, fileIdentityKey };
+export {
+  draftFileRecordId,
+  draftMetaStorageKey,
+  fileContentDigest,
+  fileIdentityKey,
+  materializeBomFile,
+};
 
 export type { BomValidationPreview };
 export { parseAnalyzeSummary };
@@ -141,6 +148,24 @@ export function clearDraftMeta(session?: SessionIdentity): void {
   window.localStorage.removeItem(draftMetaStorageKey(session));
 }
 
+const DRAFT_SAVE_TIMEOUT_MS = 2000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error(message)), ms);
+    promise.then(
+      (value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        window.clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = window.indexedDB.open(DB_NAME, 1);
@@ -150,6 +175,8 @@ function openDb(): Promise<IDBDatabase> {
         db.createObjectStore(STORE, { keyPath: "id" });
       }
     };
+    request.onblocked = () =>
+      reject(new Error("BOM draft storage is blocked by another browser tab."));
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error || new Error("IndexedDB unavailable"));
   });
@@ -162,21 +189,33 @@ export async function saveDraftFile(file: File, session?: SessionIdentity): Prom
   if (!window.indexedDB) {
     throw new Error("This browser does not support draft file persistence.");
   }
-  const db = await openDb();
+  const db = await withTimeout(
+    openDb(),
+    DRAFT_SAVE_TIMEOUT_MS,
+    "Timed out opening BOM draft storage.",
+  );
   try {
-    await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction(STORE, "readwrite");
-      tx.objectStore(STORE).put({
-        id: draftFileRecordId(session),
-        name: file.name,
-        type: file.type,
-        lastModified: file.lastModified,
-        blob: file,
-      } satisfies DraftFileRecord);
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error || new Error("Could not save BOM draft file"));
-      tx.onabort = () => reject(tx.error || new Error("BOM draft save was aborted"));
-    });
+    await withTimeout(
+      new Promise<void>((resolve, reject) => {
+        try {
+          const tx = db.transaction(STORE, "readwrite");
+          tx.objectStore(STORE).put({
+            id: draftFileRecordId(session),
+            name: file.name,
+            type: file.type,
+            lastModified: file.lastModified,
+            blob: file,
+          } satisfies DraftFileRecord);
+          tx.oncomplete = () => resolve();
+          tx.onerror = () => reject(tx.error || new Error("Could not save BOM draft file"));
+          tx.onabort = () => reject(tx.error || new Error("BOM draft save was aborted"));
+        } catch (error) {
+          reject(error instanceof Error ? error : new Error("Could not save BOM draft file"));
+        }
+      }),
+      DRAFT_SAVE_TIMEOUT_MS,
+      "Timed out saving BOM draft file.",
+    );
   } finally {
     db.close();
   }

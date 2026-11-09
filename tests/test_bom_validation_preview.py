@@ -56,9 +56,9 @@ class BomValidationPreviewTests(unittest.TestCase):
         parsed = parse_bom_bytes("nested_bom_product.csv", payload)
         self.assertTrue(preview["can_analyze"])
         self.assertTrue(preview["has_hierarchy_columns"])
-        self.assertEqual(preview["row_count"], 7)
+        self.assertEqual(preview["row_count"], 8)
         self.assertEqual(preview["parsed_row_count"], len(parsed.index))
-        self.assertEqual(preview["unique_part_count"], 7)
+        self.assertEqual(preview["unique_part_count"], 8)
         # Parser path parity: validation must not invent a different frame.
         again = parse_bom_bytes("nested_bom_product.csv", payload)
         self.assertEqual(list(parsed["mpn"]), list(again["mpn"]))

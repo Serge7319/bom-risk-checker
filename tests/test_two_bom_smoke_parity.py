@@ -439,7 +439,12 @@ class ExportAndSignalsTests(unittest.TestCase):
         part_a = next(row for row in rows if row["MPN"] == "PART-A")
         self.assertIn(part_a["Risk Score"], {"", "None", "Not assessed", "not assessed"})
         self.assertNotEqual(part_a["Risk Score"], "0")
+        # Unscored parts keep an explicit non-low label (Needs verification / Not assessed).
+        self.assertNotIn(part_a["Risk Level"].casefold(), {"low", "healthy", "0"})
+        self.assertEqual(part_a["Line Type"], "")
         self.assertEqual(part_a["Evidence Class"], "synthetic-preview")
+        assembly = next(row for row in rows if row["MPN"] == "ASM-1")
+        self.assertEqual(assembly["Line Type"], "assembly")
 
         pdf = build_pdf(report)
         self.assertTrue(pdf.startswith(b"%PDF-"))
@@ -448,17 +453,25 @@ class ExportAndSignalsTests(unittest.TestCase):
         xlsx = build_xlsx(report)
         self.assertTrue(zipfile.is_zipfile(io.BytesIO(xlsx)))
         workbook = load_workbook(io.BytesIO(xlsx), data_only=False)
-        self.assertIn("Components", workbook.sheetnames)
+        for sheet_name in ("Summary", "Components", "Component Details", "High Risk Parts"):
+            self.assertIn(sheet_name, workbook.sheetnames)
         summary = workbook["Summary"]
         summary_values = " ".join(
             str(cell.value or "") for row in summary.iter_rows(max_row=20) for cell in row
         )
         self.assertIn("Not scored", summary_values)
+        self.assertIn("not assessed", summary_values.casefold())
+        self.assertIn("not proof of low risk", summary_values.casefold())
         components = workbook["Components"]
         header = [cell.value for cell in next(components.iter_rows(min_row=1, max_row=1))]
         risk_idx = header.index("Risk Score")
-        first_score = next(components.iter_rows(min_row=2, max_row=2))[risk_idx].value
-        self.assertNotEqual(str(first_score), "0")
+        level_idx = header.index("Risk Level")
+        line_idx = header.index("Line Type")
+        first_row = next(components.iter_rows(min_row=2, max_row=2))
+        self.assertNotEqual(str(first_row[risk_idx].value), "0")
+        self.assertEqual(str(first_row[risk_idx].value), "Not assessed")
+        self.assertNotIn(str(first_row[level_idx].value or "").casefold(), {"low", "healthy"})
+        self.assertIn(str(first_row[line_idx].value or ""), {"", "None"})
 
     def test_both_synthetic_bom_fixtures_exist_for_preview_workflows(self):
         self.assertTrue(FLAT_BOM.is_file())
@@ -498,6 +511,34 @@ class DesignImpactAndDecisionTests(unittest.TestCase):
         unscored = next(row for row in result["affected_projects"] if row.get("Analysis ID") == "bom-c")
         self.assertEqual(unscored["Risk Score"], "Not assessed")
         self.assertEqual(unscored["Quantity"], 4)
+
+    def test_lm358dr_quantity_aggregates_across_two_synthetic_boms(self):
+        analyses = [
+            {
+                "id": "flat-bom",
+                "project_name": "PR597 Flat Smoke",
+                "filename": "flat-synthetic-25",
+                "health_score": 70,
+            },
+            {
+                "id": "nested-bom",
+                "project_name": "PR597 Nested Smoke",
+                "filename": "nested-product-hierarchy",
+                "health_score": 65,
+            },
+        ]
+        parts = [
+            {"analysis_id": "flat-bom", "mpn": "LM358DR", "quantity": 4, "risk_score": 35},
+            {"analysis_id": "nested-bom", "mpn": "LM358DR", "quantity": 4, "risk_score": 40},
+        ]
+        result = build_design_impact(analyses, parts, selected_mpn="LM358DR")
+        self.assertEqual(result["affected_bom_count"], 2)
+        self.assertEqual(len(result["affected_projects"]), 2)
+        self.assertEqual(result["total_quantity"], 8)
+        quantities = sorted(int(row["Quantity"]) for row in result["affected_projects"])
+        self.assertEqual(quantities, [4, 4])
+        bom_names = {str(row.get("BOM") or "") for row in result["affected_projects"]}
+        self.assertEqual(bom_names, {"flat-synthetic-25", "nested-product-hierarchy"})
 
     def _run_decision_snapshot_case(self, *, scenario: str):
         import tempfile

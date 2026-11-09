@@ -53,6 +53,34 @@ def _safe_spreadsheet_value(value: Any) -> Any:
     return value
 
 
+def _export_line_type(row: dict[str, Any]) -> str:
+    """Keep Line Type only when the BOM supplied/mapped a non-default value."""
+    raw = _first(row, "Line Type", "line_type", default="")
+    text = _text(raw).strip()
+    if not text or text.casefold() == "part":
+        return ""
+    return text
+
+
+def _export_risk_level(row: dict[str, Any]) -> str:
+    """Never present an unscored part as low risk."""
+    level = _text(_first(row, "Risk Level", "risk_level", default="")).strip()
+    score = _first(row, "Risk Score", "risk_score", default=None)
+    scored = score not in (None, "", "None", "Not assessed", "not assessed", "Not scored")
+    if not scored:
+        if not level or level.casefold() in {"low", "healthy", "unknown", "none"}:
+            return "Not assessed"
+        return level
+    return level or "Not assessed"
+
+
+def _export_risk_score(row: dict[str, Any]) -> str:
+    score = _first(row, "Risk Score", "risk_score", default=None)
+    if score in (None, "", "None"):
+        return "Not assessed"
+    return _text(score)
+
+
 def _component_rows(report: dict[str, Any]) -> list[dict[str, Any]]:
     output = []
     for source in report.get("parts") or []:
@@ -66,12 +94,12 @@ def _component_rows(report: dict[str, Any]) -> list[dict[str, Any]]:
                 "Manufacturer": _first(row, "Manufacturer", "manufacturer"),
                 "Description": _first(row, "Description", "description", "part_description"),
                 "Parent MPN": _first(row, "Parent MPN", "parent_mpn"),
-                "Line Type": _first(row, "Line Type", "line_type"),
+                "Line Type": _export_line_type(row),
                 "Quantity per Parent": _first(row, "quantity_per_parent", "Quantity per parent", "Quantity", "quantity", "qty"),
                 "Effective Quantity": _first(row, "effective_quantity", "Effective Quantity", "Quantity", "quantity", "qty"),
                 "Lifecycle": _first(row, "Lifecycle", "lifecycle_status", "Lifecycle Status"),
-                "Risk Level": _first(row, "Risk Level", "risk_level"),
-                "Risk Score": _first(row, "Risk Score", "risk_score"),
+                "Risk Level": _export_risk_level(row),
+                "Risk Score": _export_risk_score(row),
                 "Risk Reasons": _first(row, "Risk Reasons", "risk_reasons", "reasons"),
                 "Stock": _first(row, "Stock", "stock_available", "stock"),
                 "Unit Price": _first(row, "Unit Price", "unit_price"),
@@ -132,13 +160,77 @@ def build_csv(report: dict[str, Any]) -> bytes:
     return output.getvalue().encode("utf-8-sig")
 
 
-def build_xlsx(report: dict[str, Any]) -> bytes:
-    """Build a Summary + Components workbook with formula-injection protection."""
-    from openpyxl import Workbook
-    from openpyxl.styles import Alignment, Font, PatternFill, Side, Border
+def _add_xlsx_sheet(
+    wb: Any,
+    *,
+    title: str,
+    columns: tuple[str, ...],
+    rows: list[dict[str, Any]],
+    table_name: str,
+    empty_note: str | None = None,
+) -> None:
+    from openpyxl.styles import Alignment, Font, PatternFill
+    from openpyxl.utils import get_column_letter
     from openpyxl.worksheet.table import Table, TableStyleInfo
 
+    sheet = wb.create_sheet(title)
+    sheet.sheet_view.showGridLines = False
+    for column, name in enumerate(columns, start=1):
+        cell = sheet.cell(1, column, name)
+        cell.font = Font(name="Aptos", size=10, bold=True, color="FFFFFF")
+        cell.fill = PatternFill("solid", fgColor="17324D")
+        cell.alignment = Alignment(wrap_text=True, vertical="center")
+    sheet.row_dimensions[1].height = 32
+    if not rows and empty_note:
+        sheet.cell(2, 1, empty_note)
+        sheet.merge_cells(start_row=2, start_column=1, end_row=2, end_column=max(1, len(columns)))
+        sheet.cell(2, 1).font = Font(name="Aptos", size=10, italic=True, color="8A4B08")
+        sheet.cell(2, 1).alignment = Alignment(wrap_text=True, vertical="top")
+    for row_index, component in enumerate(rows, start=2):
+        for column, name in enumerate(columns, start=1):
+            value = _safe_spreadsheet_value(_text(component.get(name)))
+            cell = sheet.cell(row_index, column, value)
+            cell.font = Font(name="Aptos", size=10, color="334155")
+            cell.alignment = Alignment(wrap_text=True, vertical="top")
+    if rows:
+        last_col = get_column_letter(len(columns))
+        table = Table(
+            displayName=table_name,
+            ref=f"A1:{last_col}{len(rows) + 1}",
+        )
+        table.tableStyleInfo = TableStyleInfo(
+            name="TableStyleMedium2",
+            showFirstColumn=False,
+            showLastColumn=False,
+            showRowStripes=True,
+            showColumnStripes=False,
+        )
+        sheet.add_table(table)
+        sheet.auto_filter.ref = f"A1:{last_col}{len(rows) + 1}"
+    sheet.freeze_panes = "A2"
+    for index in range(1, len(columns) + 1):
+        sheet.column_dimensions[get_column_letter(index)].width = 18
+
+
+def build_xlsx(report: dict[str, Any]) -> bytes:
+    """Build a detailed workbook: Summary, Components, Component Details, High Risk Parts."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Font, PatternFill, Side, Border
+
     rows = _component_rows(report)
+
+    def _is_unscored(row: dict[str, Any]) -> bool:
+        score = str(row.get("Risk Score") or "").strip().casefold()
+        level = str(row.get("Risk Level") or "").strip().casefold()
+        return score in {"", "none", "not assessed"} or level == "not assessed"
+
+    not_assessed = [row for row in rows if _is_unscored(row)]
+    high_rows = [
+        row
+        for row in rows
+        if str(row.get("Risk Level") or "").casefold() in {"high", "critical"}
+        and not _is_unscored(row)
+    ]
     wb = Workbook()
     wb.properties.title = "Cadivor BOM Risk Report"
     wb.properties.creator = "Cadivor"
@@ -157,14 +249,23 @@ def build_xlsx(report: dict[str, Any]) -> bytes:
     summary.row_dimensions[2].height = 42
 
     meta = _metadata(report)
+    assessed = len(rows) - len(not_assessed)
     facts = [
         *meta.items(),
         ("Health score", report.get("health_score", "Not scored")),
         ("Health status", report.get("health_status", "Not reported")),
         ("Total components", len(rows)),
-        ("High risk", report.get("high_risk_count", 0)),
+        ("Risk assessed", assessed),
+        ("Risk not assessed", len(not_assessed)),
+        ("High risk", report.get("high_risk_count", len(high_rows))),
         ("Medium risk", report.get("medium_risk_count", 0)),
         ("Low risk", report.get("low_risk_count", 0)),
+        (
+            "Unscored parts",
+            f"{len(not_assessed)} of {len(rows)} part(s) were not assessed — not proof of low risk"
+            if not_assessed
+            else "All listed parts include a recorded risk assessment",
+        ),
         ("Evidence mode", report.get("mode", "Not reported")),
     ]
     for index, (label, value) in enumerate(facts, start=4):
@@ -178,32 +279,51 @@ def build_xlsx(report: dict[str, Any]) -> bytes:
     summary.column_dimensions["A"].width = 25
     summary.column_dimensions["B"].width = 88
 
-    sheet = wb.create_sheet("Components")
-    sheet.sheet_view.showGridLines = False
-    for column, name in enumerate(COMPONENT_COLUMNS, start=1):
-        cell = sheet.cell(1, column, name)
-        cell.font = Font(name="Aptos", size=10, bold=True, color="FFFFFF")
-        cell.fill = PatternFill("solid", fgColor="17324D")
-        cell.alignment = Alignment(wrap_text=True, vertical="center")
-    sheet.row_dimensions[1].height = 32
-    for row_index, component in enumerate(rows, start=2):
-        for column, name in enumerate(COMPONENT_COLUMNS, start=1):
-            value = _safe_spreadsheet_value(_text(component.get(name)))
-            cell = sheet.cell(row_index, column, value)
-            cell.font = Font(name="Aptos", size=10, color="334155")
-            cell.alignment = Alignment(wrap_text=True, vertical="top")
-    if rows:
-        table = Table(displayName="CadivorComponents", ref=f"A1:R{len(rows) + 1}")
-        table.tableStyleInfo = TableStyleInfo(
-            name="TableStyleMedium2", showFirstColumn=False,
-            showLastColumn=False, showRowStripes=True, showColumnStripes=False,
-        )
-        sheet.add_table(table)
-    sheet.freeze_panes = "A2"
-    sheet.auto_filter.ref = f"A1:R{max(1, len(rows) + 1)}"
-    widths = [20, 22, 34, 20, 15, 20, 20, 18, 15, 14, 40, 14, 16, 12, 22, 24, 36, 36]
-    for index, width in enumerate(widths, start=1):
-        sheet.column_dimensions[chr(64 + index)].width = width
+    _add_xlsx_sheet(
+        wb,
+        title="Components",
+        columns=COMPONENT_COLUMNS,
+        rows=rows,
+        table_name="CadivorComponents",
+    )
+    detail_columns = (
+        "MPN",
+        "Description",
+        "Manufacturer",
+        "Effective Quantity",
+        "Lifecycle",
+        "Risk Level",
+        "Risk Score",
+        "Risk Reasons",
+        "Evidence Class",
+        "Evidence Source",
+        "Stock",
+        "Unit Price",
+        "Currency",
+        "Supplier Product URL",
+        "Datasheet URL",
+        "Parent MPN",
+        "Line Type",
+    )
+    _add_xlsx_sheet(
+        wb,
+        title="Component Details",
+        columns=detail_columns,
+        rows=rows,
+        table_name="CadivorComponentDetails",
+    )
+    _add_xlsx_sheet(
+        wb,
+        title="High Risk Parts",
+        columns=detail_columns,
+        rows=high_rows,
+        table_name="CadivorHighRiskParts",
+        empty_note=(
+            f"{len(not_assessed)} of {len(rows)} part(s) were not assessed — not proof of low risk."
+            if not_assessed and not high_rows
+            else "No high-risk parts were recorded for this BOM."
+        ),
+    )
 
     buffer = BytesIO()
     wb.save(buffer)

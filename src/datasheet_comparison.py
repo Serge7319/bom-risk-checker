@@ -497,24 +497,61 @@ def merge_verified_datasheet_rows(
         display_b = catalog_b
         source_a = "catalog" if catalog_a else "none"
         source_b = "catalog" if catalog_b else "none"
-        if pdf_a:
-            display_a = pdf_a
-            source_a = "evidence"
-            notes.append(
-                _citation_note(
-                    "Part A",
-                    label=label_a,
-                    page=page_a,
-                    excerpt=excerpt_a,
+        field_key = str(getattr(spec, "key", "") or current.get("Key") or "")
+
+        def _prefer_catalog_span_over_pdf_point(*, pdf_value: str, catalog_value: str) -> bool:
+            """Keep supplier operating spans when PDF only cites a test-condition magnitude."""
+            if field_key != "voltage_range" or not catalog_value or not pdf_value:
+                return False
+            from src.parametric_compare import (
+                _looks_like_dual_rail_test_magnitude,
+                _looks_like_single_supply_span,
+            )
+
+            return (
+                _looks_like_single_supply_span(catalog_value)
+                and (
+                    _looks_like_dual_rail_test_magnitude(pdf_value)
+                    or _looks_like_supply_test_condition(pdf_value)
+                    or bool(re.fullmatch(r"\d+(?:\.\d+)?\s*v?", pdf_value.casefold().strip()))
                 )
             )
-            if catalog_a and spec is not None:
-                side_status, _side_note = compare_field_values(pdf_a, catalog_a, spec)
-                if side_status == "Different":
-                    conflict = True
-                    notes.append(f"Supplier listing also reports {catalog_a}; it differs from the cited document.")
-            elif catalog_a:
-                notes.append(f"Supplier listing also reports {catalog_a}.")
+
+        if pdf_a:
+            if _prefer_catalog_span_over_pdf_point(pdf_value=pdf_a, catalog_value=catalog_a):
+                display_a = catalog_a
+                source_a = "catalog"
+                notes.append(
+                    _citation_note(
+                        "Part A",
+                        label=label_a,
+                        page=page_a,
+                        excerpt=excerpt_a,
+                    )
+                )
+                notes.append(
+                    f"Kept supplier supply span {catalog_a}; cited document value {pdf_a} "
+                    "looks like a test-condition magnitude, not the operating rating."
+                )
+                conflict = True
+            else:
+                display_a = pdf_a
+                source_a = "evidence"
+                notes.append(
+                    _citation_note(
+                        "Part A",
+                        label=label_a,
+                        page=page_a,
+                        excerpt=excerpt_a,
+                    )
+                )
+                if catalog_a and spec is not None:
+                    side_status, _side_note = compare_field_values(pdf_a, catalog_a, spec)
+                    if side_status == "Different":
+                        conflict = True
+                        notes.append(f"Supplier listing also reports {catalog_a}; it differs from the cited document.")
+                elif catalog_a:
+                    notes.append(f"Supplier listing also reports {catalog_a}.")
         elif identity["part_a"]["attached"] and identity["part_a"]["verified"]:
             notes.append(f"Part A: {label_a} does not list this field.")
             if catalog_a:
@@ -527,23 +564,40 @@ def merge_verified_datasheet_rows(
             notes.append(f"Part A: supplier listing reports {catalog_a}; no manufacturer document is cited.")
 
         if pdf_b:
-            display_b = pdf_b
-            source_b = "evidence"
-            notes.append(
-                _citation_note(
-                    "Part B",
-                    label=label_b,
-                    page=page_b,
-                    excerpt=excerpt_b,
+            if _prefer_catalog_span_over_pdf_point(pdf_value=pdf_b, catalog_value=catalog_b):
+                display_b = catalog_b
+                source_b = "catalog"
+                notes.append(
+                    _citation_note(
+                        "Part B",
+                        label=label_b,
+                        page=page_b,
+                        excerpt=excerpt_b,
+                    )
                 )
-            )
-            if catalog_b and spec is not None:
-                side_status, _side_note = compare_field_values(pdf_b, catalog_b, spec)
-                if side_status == "Different":
-                    conflict = True
-                    notes.append(f"Supplier listing also reports {catalog_b}; it differs from the cited document.")
-            elif catalog_b:
-                notes.append(f"Supplier listing also reports {catalog_b}.")
+                notes.append(
+                    f"Kept supplier supply span {catalog_b}; cited document value {pdf_b} "
+                    "looks like a test-condition magnitude, not the operating rating."
+                )
+                conflict = True
+            else:
+                display_b = pdf_b
+                source_b = "evidence"
+                notes.append(
+                    _citation_note(
+                        "Part B",
+                        label=label_b,
+                        page=page_b,
+                        excerpt=excerpt_b,
+                    )
+                )
+                if catalog_b and spec is not None:
+                    side_status, _side_note = compare_field_values(pdf_b, catalog_b, spec)
+                    if side_status == "Different":
+                        conflict = True
+                        notes.append(f"Supplier listing also reports {catalog_b}; it differs from the cited document.")
+                elif catalog_b:
+                    notes.append(f"Supplier listing also reports {catalog_b}.")
         elif identity["part_b"]["attached"] and identity["part_b"]["verified"]:
             notes.append(f"Part B: {label_b} does not list this field.")
             if catalog_b:
@@ -1579,6 +1633,28 @@ _PACKAGE_FAMILY_RE = re.compile(
 )
 
 
+def _looks_like_supply_test_condition(value: str) -> bool:
+    """Detect VS=/VCC= test-condition magnitudes mistaken for supply ratings.
+
+    Op-amp datasheets often cite electrical characteristics at ``VS = ±14 V``
+    while the operating / absolute supply span is separately listed (for
+    example 3 V to 32 V). Treating the test-condition magnitude as the supply
+    rating creates a false conflict with supplier catalog ranges.
+    """
+    text = " ".join(str(value or "").split())
+    if not text:
+        return False
+    folded = text.casefold()
+    if re.search(r"\b(?:vs|vcc|vdd|vss)\s*=", folded):
+        return True
+    if re.search(r"@\s*(?:vs|vcc|vdd)\b", folded):
+        return True
+    # Bare dual-rail magnitudes without an explicit min/max or range marker.
+    if re.fullmatch(r"[±+]\s*\d+(?:\.\d+)?\s*v?", folded):
+        return True
+    return False
+
+
 def _is_specific_package_designation(value: str) -> bool:
     """Return whether extracted package text names a recognizable footprint.
 
@@ -1616,6 +1692,21 @@ def _is_specific_pdf_field_value(field_spec: Any, value: str) -> bool:
         ))
     if key == "temperature_range":
         return bool(re.search(r"-?\d+(?:\.\d+)?\s*(?:°\s*[CF]|deg(?:rees?)?\s*[CF])", text, re.IGNORECASE))
+    if key == "voltage_range":
+        # Reject electrical-characteristic *test conditions* such as "VS = ±14 V"
+        # that are not the device's operating / absolute supply rating.
+        if _looks_like_supply_test_condition(text):
+            return False
+        return bool(
+            re.search(
+                r"(?:\d+(?:\.\d+)?\s*(?:V)?\s*(?:to|[-–~/])\s*\d+(?:\.\d+)?\s*V?)"
+                r"|(?:[±+]\s*\d+(?:\.\d+)?\s*(?:to|[-–~/])\s*[±+]?\s*\d+(?:\.\d+)?\s*V?)"
+                r"|(?:\b(?:min|max|operating|absolute)\b.+\d+(?:\.\d+)?\s*V)"
+                r"|(?:\d+(?:\.\d+)?\s*V(?:dc)?\s*(?:to|[-–~/])\s*\d+(?:\.\d+)?\s*V)",
+                text,
+                re.IGNORECASE,
+            )
+        )
     if key in {"architecture", "device_type"}:
         return bool(re.search(
             r"\b(?:arm|cortex|8051|hc11|avr|pic\d*|risc[- ]?v|mips|powerpc|fpga|cpld|microcontroller|microprocessor|amplifier|comparator|regulator|transceiver|mosfet|npn|pnp|logic|diode|schottky|tvs)\b",

@@ -10,9 +10,16 @@ import { findReplacement } from "@/lib/api";
 import { PAGE_META } from "@/lib/routes";
 import { useRequireSession } from "@/lib/session";
 
-function compareHref(partA: string, partB?: string, analysisId?: string) {
+function compareHref(partA: string, partB?: string | string[], analysisId?: string) {
   const query = new URLSearchParams({ part_a: partA });
-  if (partB) query.set("part_b", partB);
+  const candidates = Array.isArray(partB)
+    ? partB
+    : partB
+      ? [partB]
+      : [];
+  for (const candidate of candidates.slice(0, 4)) {
+    if (candidate.trim()) query.append("part_b", candidate.trim());
+  }
   // Only attach BOM context when this search was opened from a valid BOM row.
   if (analysisId) query.set("analysis_id", analysisId);
   return `/compare-parts?${query.toString()}`;
@@ -26,6 +33,7 @@ function FindReplacementInner() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<Record<string, unknown> | null>(null);
+  const [selectedCandidates, setSelectedCandidates] = useState<string[]>([]);
 
   // Explicit BOM-row link only — never reuse last-analysis localStorage for this tool.
   const bomAnalysisId = (search.get("analysis_id") || "").trim();
@@ -43,6 +51,7 @@ function FindReplacementInner() {
     setBusy(true);
     setError("");
     setResult(null);
+    setSelectedCandidates([]);
     try {
       const data = await findReplacement(session.access_token, {
         mpn,
@@ -173,6 +182,39 @@ function FindReplacementInner() {
                 </p>
                 {candidates.length ? (
                   <div className="cv-table-wrap" style={{ marginTop: 12 }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: 12,
+                        alignItems: "center",
+                        marginBottom: 10,
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <p className="cv-small-note" style={{ margin: 0 }}>
+                        Select 3–4 candidates for one multi-alternate matrix, or compare one at a time.
+                        Selection never implies drop-in compatibility.
+                      </p>
+                      <Link
+                        className={`cv-button secondary${selectedCandidates.length < 2 ? " disabled" : ""}`}
+                        href={
+                          selectedCandidates.length
+                            ? compareHref(
+                                String(result.requested_mpn || mpn),
+                                selectedCandidates.slice(0, 4),
+                                compareAnalysisId || undefined,
+                              )
+                            : "#"
+                        }
+                        aria-disabled={selectedCandidates.length < 2}
+                        onClick={(event) => {
+                          if (selectedCandidates.length < 2) event.preventDefault();
+                        }}
+                      >
+                        Compare selected ({Math.min(4, selectedCandidates.length)})
+                      </Link>
+                    </div>
                     <table className="cv-table cv-table-actions">
                       <thead>
                         <tr>
@@ -193,11 +235,30 @@ function FindReplacementInner() {
                           const lifecycleLabel = lifecycleConflict
                             ? `${String(row.lifecycle_status || "Unknown")} · conflict`
                             : String(row.lifecycle_status || "Unknown");
+                          const checked = selectedCandidates.includes(cand);
                           return (
                             <tr key={cand}>
                               <td className="cv-mpn-cell">
-                                <strong>{cand}</strong>
-                                <div className="cv-small-note">{String(row.rationale || "")}</div>
+                                <label style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={() => {
+                                      setSelectedCandidates((current) => {
+                                        if (current.includes(cand)) {
+                                          return current.filter((item) => item !== cand);
+                                        }
+                                        if (current.length >= 4) return current;
+                                        return [...current, cand];
+                                      });
+                                    }}
+                                    aria-label={`Select ${cand} for multi-alternate compare`}
+                                  />
+                                  <span>
+                                    <strong>{cand}</strong>
+                                    <div className="cv-small-note">{String(row.rationale || "")}</div>
+                                  </span>
+                                </label>
                               </td>
                               <td>{String(row.manufacturer || "—")}</td>
                               <td>

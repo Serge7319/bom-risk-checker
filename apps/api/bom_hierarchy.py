@@ -236,12 +236,13 @@ def attach_hierarchy_fields(source_df_row: dict[str, Any]) -> dict[str, Any]:
     parent_raw = _text(source_df_row.get("parent_mpn"))
     # Match mpn_normalized / analyze MPN cleaning so parent links survive hyphen strip.
     parent = normalize_part_number(parent_raw) if parent_raw else ""
-    line_type = _text(source_df_row.get("line_type")) or "part"
+    # Only keep Line Type when the BOM supplied/mapped it. Do not invent "part".
+    line_type = _text(source_df_row.get("line_type") or source_df_row.get("Line Type"))
     level = source_df_row.get("bom_level")
     return {
         "parent_mpn": parent or None,
         "Parent MPN": parent or None,
-        "line_type": line_type,
-        "Line Type": line_type,
+        "line_type": line_type or None,
+        "Line Type": line_type or None,
         "bom_level": level,
     }

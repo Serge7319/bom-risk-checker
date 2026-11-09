@@ -124,7 +124,7 @@ def test_boms_validate_route_no_analysis_side_effects():
     )
     assert nested_resp.status_code == 200, nested_resp.text
     nested_body = nested_resp.json()
-    assert nested_body["row_count"] == 7
+    assert nested_body["row_count"] == 8
     assert nested_body["has_hierarchy_columns"] is True
     assert set(sa._REPORTS.keys()) == before_ids
 
@@ -293,14 +293,20 @@ def test_ci_includes_two_bom_smoke_parity_and_snapshot_trust(capsys):
     import subprocess
     import sys
 
-    target = "tests/test_two_bom_smoke_parity.py"
+    targets = [
+        "tests/test_two_bom_smoke_parity.py",
+        "tests/test_nov9_prod_smoke_fixes.py",
+    ]
     required = (
         "test_decision_endpoint_reuses_matching_comparison_snapshot",
         "test_decision_rejects_forged_snapshot_identity_and_recomputes",
         "test_decision_mismatched_analysis_id_forces_recompute",
+        "test_lm358dr_quantity_aggregates_across_two_synthetic_boms",
+        "test_vs_plus_minus_14_is_test_condition_not_supply_rating",
+        "test_replacement_and_compare_tables_allocate_all_columns",
     )
     proc = subprocess.run(
-        [sys.executable, "-m", "pytest", target, "-vv", "--tb=short"],
+        [sys.executable, "-m", "pytest", *targets, "-vv", "--tb=short"],
         cwd=str(ROOT),
         capture_output=True,
         text=True,
@@ -309,11 +315,13 @@ def test_ci_includes_two_bom_smoke_parity_and_snapshot_trust(capsys):
     combined = proc.stdout + "\n" + proc.stderr
     with capsys.disabled():
         print("CI_NESTED_SUITE_START")
-        print(f"CI_NESTED_SUITE_FILE={target}")
+        for target in targets:
+            print(f"CI_NESTED_SUITE_FILE={target}")
         print(combined)
         print("CI_NESTED_SUITE_END")
     assert proc.returncode == 0, combined
-    assert target in combined
+    for target in targets:
+        assert target in combined
     for name in required:
         assert name in combined, f"missing {name} in CI nested suite output"
         assert f"{name} PASSED" in combined or f"::{name} PASSED" in combined, combined

@@ -102,11 +102,14 @@ def test_persistence_across_store_reload(tmp_path: Path):
     analysis_id = report["id"]
     assert report["persisted"] is True
     assert report["hierarchy"]["has_hierarchy"] is True
-    # Effective qty after MPN normalize (hyphens stripped): PSUASM=2, REG5V=2, CAP100U=8
+    # Effective qty after MPN normalize (hyphens stripped):
+    # PSUASM=2, REG5V=2, CAP100U=8, LM358DR=8 (qty 4 under PSU × 2)
+    assert len(report["parts"]) == 8
     by_mpn = {p["MPN"]: p for p in report["parts"]}
     assert by_mpn["PSUASM"]["effective_quantity"] == 2
     assert by_mpn["REG5V"]["effective_quantity"] == 2
     assert by_mpn["CAP100U"]["effective_quantity"] == 8
+    assert by_mpn["LM358DR"]["effective_quantity"] == 8
 
     # Simulate process reload: new store instance reading same file.
     reloaded = WorkspaceStore(store_path)
