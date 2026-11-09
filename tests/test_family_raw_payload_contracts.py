@@ -511,9 +511,12 @@ class FamilyRawPayloadContractTests(unittest.TestCase):
         assessment = build_engineering_evidence_assessment(
             result["counts"], comparison_rows=result["rows"], family=result["family"]
         )
-        self.assertGreaterEqual(assessment["engineering_comparison_confidence"], 82)
+        # Catalog listing agreements remain visible but do not create an
+        # engineering-ready confidence band without datasheet-verified Matches.
+        self.assertLess(assessment["engineering_comparison_confidence"], 75)
+        self.assertGreaterEqual(int(result["counts"].get("Listing agreement", 0) or 0), 1)
         enriched = self._enrich(original, candidate)
-        self.assertGreaterEqual(int(enriched["Engineering Comparison Confidence"]), 82)
+        self.assertLess(int(enriched["Engineering Comparison Confidence"]), 75)
         # Mouser path also normalizes BJT polarity aliases
         mouser = normalize_mouser_part({
             "Manufacturer": "Diodes",
