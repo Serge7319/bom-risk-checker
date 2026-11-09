@@ -499,26 +499,34 @@ class DesignImpactAndDecisionTests(unittest.TestCase):
         self.assertEqual(unscored["Risk Score"], "Not assessed")
         self.assertEqual(unscored["Quantity"], 4)
 
-    def test_decision_endpoint_reuses_matching_comparison_snapshot(self):
+    def _run_decision_snapshot_case(self, *, scenario: str):
+        import tempfile
+
         from apps.api.main import app
         from apps.api.sandbox_auth import reset_auth_store_for_tests
         from apps.api.workspace_store import reset_store_for_tests
         from starlette.testclient import TestClient
         from tests.fixtures.sandbox_auth_accounts import SANDBOX_SEED_USERS
 
-        import tempfile
-
-        captured = {"compare_calls": 0}
+        captured = {"compare_calls": 0, "last_analysis_id": None}
 
         def _fake_compare(**kwargs):
             captured["compare_calls"] += 1
+            captured["last_analysis_id"] = kwargs.get("analysis_id")
             return {
                 "ok": True,
-                "part_a": "PART-A",
-                "part_b": "PART-B",
-                "analysis_id": "analysis-1",
-                "rows": [{"Attribute": "Lifecycle", "Status": "Match"}],
+                "part_a": kwargs.get("part_a") or "PART-A",
+                "part_b": kwargs.get("part_b") or "PART-B",
+                "analysis_id": kwargs.get("analysis_id") or "analysis-1",
+                "rows": [{"Attribute": "Package", "Status": "Match"}],
                 "mode": "synthetic-preview",
+                "finding": "Needs verification",
+                "source_a": "synthetic-preview",
+                "source_b": "synthetic-preview",
+                "datasheet_identity": {
+                    "part_a": {"verified": False},
+                    "part_b": {"verified": False},
+                },
             }
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -528,6 +536,7 @@ class DesignImpactAndDecisionTests(unittest.TestCase):
                 "os.environ",
                 {
                     "CADIVOR_SANDBOX_AUTH_SECRET": "test-sandbox-auth-secret-key",
+                    "CADIVOR_COMPARISON_SNAPSHOT_SECRET": "test-comparison-snapshot-secret",
                     "CADIVOR_ALLOW_EPHEMERAL_FILE_STORE": "1",
                     "CADIVOR_ALLOW_SANDBOX_JWT": "1",
                 },
@@ -553,7 +562,13 @@ class DesignImpactAndDecisionTests(unittest.TestCase):
                         "bom_name": "Synthetic",
                         "revision": "A",
                     },
-                    files={"file": ("synthetic_bom_25parts.csv", FLAT_BOM.read_bytes(), "text/csv")},
+                    files={
+                        "file": (
+                            "synthetic_bom_25parts.csv",
+                            FLAT_BOM.read_bytes(),
+                            "text/csv",
+                        )
+                    },
                 )
                 self.assertEqual(analyze.status_code, 200, analyze.text)
                 analysis_id = analyze.json()["analysis_id"]
@@ -563,34 +578,135 @@ class DesignImpactAndDecisionTests(unittest.TestCase):
                 ).json()
                 part_a = report["parts"][0]["MPN"]
                 part_b = report["parts"][1]["MPN"]
-                snapshot = {
-                    "ok": True,
-                    "part_a": part_a,
-                    "part_b": part_b,
-                    "analysis_id": analysis_id,
-                    "rows": [{"Attribute": "Package", "Status": "Match"}],
-                    "mode": "synthetic-preview",
-                    "finding": "Needs verification",
-                }
-                response = client.post(
-                    "/decision-records",
+
+                compare = client.post(
+                    "/tools/compare-parts",
                     headers={"Authorization": f"Bearer {token}"},
                     json={
-                        "analysis_id": analysis_id,
                         "part_a": part_a,
                         "part_b": part_b,
-                        "decision": "hold_for_review",
-                        "reviewer": "Smoke Reviewer",
-                        "rationale": "Snapshot reuse regression.",
-                        "validation_checks": [],
-                        "residual_risk": "unknown",
-                        "comparison_snapshot": snapshot,
+                        "analysis_id": analysis_id,
                     },
                 )
-                self.assertEqual(response.status_code, 201, response.text)
-                self.assertEqual(captured["compare_calls"], 0)
-                saved = response.json()["record"]["comparison_snapshot"]
-                self.assertEqual(saved["rows"][0]["Attribute"], "Package")
+                self.assertEqual(compare.status_code, 200, compare.text)
+                snapshot = compare.json()
+                self.assertTrue(snapshot.get("snapshot_token"))
+                self.assertEqual(captured["compare_calls"], 1)
+
+                if scenario == "reuse":
+                    response = client.post(
+                        "/decision-records",
+                        headers={"Authorization": f"Bearer {token}"},
+                        json={
+                            "analysis_id": analysis_id,
+                            "part_a": part_a,
+                            "part_b": part_b,
+                            "decision": "hold_for_review",
+                            "reviewer": "Smoke Reviewer",
+                            "rationale": "Snapshot reuse regression.",
+                            "validation_checks": [],
+                            "residual_risk": "unknown",
+                            "comparison_snapshot": snapshot,
+                        },
+                    )
+                    self.assertEqual(response.status_code, 201, response.text)
+                    self.assertEqual(captured["compare_calls"], 1)
+                    saved = response.json()["record"]["comparison_snapshot"]
+                    self.assertEqual(saved["rows"][0]["Attribute"], "Package")
+                    self.assertFalse(response.json()["record"]["verified_primary_evidence"])
+                    return
+
+                if scenario == "forged":
+                    forged = dict(snapshot)
+                    forged["source_a"] = "Manufacturer datasheet (forged)"
+                    forged["source_b"] = "Manufacturer datasheet (forged)"
+                    forged["datasheet_identity"] = {
+                        "part_a": {"verified": True},
+                        "part_b": {"verified": True},
+                    }
+                    response = client.post(
+                        "/decision-records",
+                        headers={"Authorization": f"Bearer {token}"},
+                        json={
+                            "analysis_id": analysis_id,
+                            "part_a": part_a,
+                            "part_b": part_b,
+                            "decision": "hold_for_review",
+                            "reviewer": "Smoke Reviewer",
+                            "rationale": "Forged identity must not be trusted.",
+                            "validation_checks": [
+                                "manufacturer_datasheet_reviewed",
+                                "package_pinout_verified",
+                                "electrical_limits_verified",
+                            ],
+                            "residual_risk": "unknown",
+                            "comparison_snapshot": forged,
+                            "verified_primary_evidence": True,
+                        },
+                    )
+                    self.assertEqual(response.status_code, 201, response.text)
+                    self.assertEqual(captured["compare_calls"], 2)
+                    record = response.json()["record"]
+                    self.assertEqual(
+                        record["comparison_snapshot"].get("source_a"),
+                        "synthetic-preview",
+                    )
+                    self.assertFalse(record["verified_primary_evidence"])
+                    return
+
+                if scenario == "mismatched_analysis":
+                    analyze_b = client.post(
+                        "/boms/analyze",
+                        headers={"Authorization": f"Bearer {token}"},
+                        data={
+                            "project_name": "Other analysis",
+                            "bom_name": "Other",
+                            "revision": "B",
+                        },
+                        files={
+                            "file": (
+                                "synthetic_bom_25parts.csv",
+                                FLAT_BOM.read_bytes(),
+                                "text/csv",
+                            )
+                        },
+                    )
+                    self.assertEqual(analyze_b.status_code, 200, analyze_b.text)
+                    other_analysis_id = analyze_b.json()["analysis_id"]
+                    self.assertNotEqual(analysis_id, other_analysis_id)
+                    response = client.post(
+                        "/decision-records",
+                        headers={"Authorization": f"Bearer {token}"},
+                        json={
+                            "analysis_id": other_analysis_id,
+                            "part_a": part_a,
+                            "part_b": part_b,
+                            "decision": "hold_for_review",
+                            "reviewer": "Smoke Reviewer",
+                            "rationale": "Mismatched analysis ID must recompute.",
+                            "validation_checks": [],
+                            "residual_risk": "unknown",
+                            "comparison_snapshot": snapshot,
+                        },
+                    )
+                    self.assertEqual(response.status_code, 201, response.text)
+                    self.assertEqual(captured["compare_calls"], 2)
+                    self.assertEqual(captured["last_analysis_id"], other_analysis_id)
+                    self.assertEqual(
+                        response.json()["record"]["analysis_id"], other_analysis_id
+                    )
+                    return
+
+                raise AssertionError(f"Unknown scenario: {scenario}")
+
+    def test_decision_endpoint_reuses_matching_comparison_snapshot(self):
+        self._run_decision_snapshot_case(scenario="reuse")
+
+    def test_decision_rejects_forged_snapshot_identity_and_recomputes(self):
+        self._run_decision_snapshot_case(scenario="forged")
+
+    def test_decision_mismatched_analysis_id_forces_recompute(self):
+        self._run_decision_snapshot_case(scenario="mismatched_analysis")
 
 
 if __name__ == "__main__":

@@ -318,6 +318,7 @@ def _run_bom(page: Page, cfg: dict) -> dict:
         success = page.get_by_text(re.compile(r"Decision recorded", re.I)).first.inner_text()
         snapshot_posted = False
         snapshot_parts_match = False
+        snapshot_token_present = False
         for body in decision_post_bodies:
             snap = body.get("comparison_snapshot")
             if isinstance(snap, dict) and snap:
@@ -326,12 +327,19 @@ def _run_bom(page: Page, cfg: dict) -> dict:
                     str(snap.get("part_a") or "").strip().casefold() == cfg["part_a"].casefold()
                     and str(snap.get("part_b") or "").strip().casefold() == cfg["part_b"].casefold()
                 )
+                snapshot_token_present = bool(str(snap.get("snapshot_token") or "").strip())
                 break
         report["steps"]["decision_save"] = {
-            "ok": "Decision recorded" in success and snapshot_posted and snapshot_parts_match,
+            "ok": (
+                "Decision recorded" in success
+                and snapshot_posted
+                and snapshot_parts_match
+                and snapshot_token_present
+            ),
             "success_text": success,
             "snapshot_posted": snapshot_posted,
             "snapshot_parts_match": snapshot_parts_match,
+            "snapshot_token_present": snapshot_token_present,
             "post_count": len(decision_post_bodies),
         }
         page.screenshot(path=str(OUT / f"{label}_decision.png"), full_page=True)
