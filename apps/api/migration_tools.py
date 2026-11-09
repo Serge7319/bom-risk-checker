@@ -1434,6 +1434,9 @@ def detailed_risk_payload(*, workspace_id: str, analysis_id: str | None = None) 
         }
     rows = component_rows(report.get("parts") or [])
     summary = report_exposure_summary(rows)
+    high_risk_count = int(report.get("high_risk_count") or 0)
+    if not high_risk_count:
+        high_risk_count = int(summary.get("high_risk_component_count") or 0)
     return _json_safe(
         {
             "ok": True,
@@ -1442,6 +1445,7 @@ def detailed_risk_payload(*, workspace_id: str, analysis_id: str | None = None) 
             "filename": report.get("filename"),
             "health_score": report.get("health_score"),
             "health_status": report.get("health_status"),
+            "high_risk_count": high_risk_count,
             "gap": "Detailed risk rows come from the synthetic analysis. Extended costs use synthetic-preview unit prices when present.",
             "rows": rows,
             "summary": summary,

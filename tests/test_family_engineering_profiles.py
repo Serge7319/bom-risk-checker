@@ -72,8 +72,10 @@ class ParametricCompareTests(unittest.TestCase):
         self.assertAlmostEqual(parse_numeric_with_unit("0.1uF", preferred_unit="F")[0], 1e-7)
         self.assertAlmostEqual(parse_numeric_with_unit("100nF", preferred_unit="F")[0], 1e-7)
         ge = FieldSpec("rated_voltage", "Rated voltage", compare=COMPARE_LIMIT_GE, unit="V")
-        self.assertEqual(compare_field_values("50V", "100V", ge)[0], "Match")
+        # Unequal limits without an explicit design/fit criterion are never Compatible.
+        self.assertEqual(compare_field_values("50V", "100V", ge)[0], "Different")
         self.assertEqual(compare_field_values("50V", "25V", ge)[0], "Different")
+        self.assertEqual(compare_field_values("50V", "50V", ge)[0], "Match")
         nom = FieldSpec("capacitance", "Capacitance", compare=COMPARE_NOMINAL, unit="F")
         self.assertEqual(compare_field_values("0.1 uF", "100nF", nom)[0], "Match")
 
@@ -105,7 +107,7 @@ class FamilyMatrixTests(unittest.TestCase):
         )
         self.assertEqual(resistor["family"], "Resistor")
         statuses = {r["Attribute"]: r["Status"] for r in resistor["rows"]}
-        self.assertEqual(statuses["Power rating"], "Match")
+        self.assertEqual(statuses["Power rating"], "Different")
         inductor = build_datasheet_comparison(
             {"description": "Inductor", "inductance": "10uH", "saturation_current": "1A"},
             {"description": "Inductor", "inductance": "10uH", "saturation_current": "0.5A"},
@@ -121,7 +123,7 @@ class FamilyMatrixTests(unittest.TestCase):
         )
         self.assertEqual(result["family"], "Diode / protection")
         statuses = {r["Attribute"]: r["Status"] for r in result["rows"]}
-        self.assertEqual(statuses["Reverse voltage"], "Match")
+        self.assertEqual(statuses["Reverse voltage"], "Different")
 
     def test_bjt_matrix_includes_electricals_not_architecture(self):
         original = {
@@ -260,7 +262,7 @@ class FamilyMatrixTests(unittest.TestCase):
         )
         self.assertEqual(result["family"], "MOSFET")
         statuses = {r["Attribute"]: r["Status"] for r in result["rows"]}
-        self.assertEqual(statuses["RDS(on)"], "Match")
+        self.assertEqual(statuses["RDS(on)"], "Different")
         self.assertIn("VDS", self._attrs(result))
 
     def test_regulator_analog_mcu_fpga_connector(self):

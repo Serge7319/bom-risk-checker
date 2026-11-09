@@ -131,6 +131,20 @@ function FindReplacementInner() {
               {original.manufacturer ? ` · ${String(original.manufacturer)}` : ""}
               {original.description ? ` · ${String(original.description)}` : ""}
             </p>
+            <p className="cv-small-note" style={{ marginTop: 8 }}>
+              Lifecycle: {String(original.lifecycle_status || "Unknown")}
+              {original.lifecycle_conflict ? " · conflicting supplier records" : ""}
+            </p>
+            {Array.isArray(original.lifecycle_evidence) && original.lifecycle_evidence.length ? (
+              <ul className="cv-small-note" style={{ marginTop: 6, paddingLeft: 18 }}>
+                {(original.lifecycle_evidence as Array<Record<string, unknown>>).slice(0, 4).map((row, index) => (
+                  <li key={index}>
+                    {String(row.source || "Supplier")}: {String(row.status || row.normalized_status || "status not recorded")}
+                    {row.retrieved_at ? ` (${String(row.retrieved_at)})` : ""}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
             {result.bom_context ? (
               <p className="cv-small-note" style={{ marginTop: 8 }}>
                 Prefill linked to a saved BOM analysis in this workspace.
@@ -160,6 +174,7 @@ function FindReplacementInner() {
                     <tr>
                       <th>Candidate</th>
                       <th>Manufacturer</th>
+                      <th>Lifecycle</th>
                       <th>Fit status</th>
                       <th>Evidence to verify</th>
                       <th></th>
@@ -170,16 +185,25 @@ function FindReplacementInner() {
                       const cand = String(row.mpn || "");
                       const missingBits = ((row.missing_evidence || []) as string[])
                         .filter((item) => !/(credential|transport|provider|catalog|lookup|search coverage)/i.test(item));
+                      const lifecycleConflict = Boolean(row.lifecycle_conflict);
+                      const lifecycleLabel = lifecycleConflict
+                        ? `${String(row.lifecycle_status || "Unknown")} · conflict`
+                        : String(row.lifecycle_status || "Unknown");
                       return (
                         <tr key={cand}>
-                          <td>
+                          <td className="cv-mpn-cell">
                             <strong>{cand}</strong>
                             <div className="cv-small-note">{String(row.rationale || "")}</div>
                           </td>
                           <td>{String(row.manufacturer || "—")}</td>
                           <td>
+                            <span className={`cv-badge ${lifecycleConflict ? "amber" : "gray"}`}>
+                              {lifecycleLabel}
+                            </span>
+                          </td>
+                          <td>
                             <span className="cv-badge gray">
-                              {String(row.fit || "unable_to_confirm").replace(/_/g, " ")}
+                              {String(row.fit || "not qualified").replace(/_/g, " ")}
                             </span>
                           </td>
                           <td>{missingBits.length ? missingBits.join("; ") : "—"}</td>

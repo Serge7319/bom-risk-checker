@@ -452,6 +452,7 @@ function ComparePartsInner() {
               const manufacturer = text(card.manufacturer, "Manufacturer not confirmed");
               const description = text(card.description, "No verified description available.");
               const lifecycle = text(card.lifecycle_status, "Not confirmed");
+              const lifecycleConflict = Boolean(card.lifecycle_conflict);
               const imageUrl = String(card.image_url || "").trim();
               return (
                 <section className="cv-card pad cv-compare-part-card" key={key}>
@@ -471,7 +472,9 @@ function ComparePartsInner() {
                       <h2>{text(mpn)}</h2>
                       <p>{manufacturer}{description !== "No verified description available." ? ` · ${description}` : ""}</p>
                     </div>
-                    <span className="cv-badge gray">{lifecycle}</span>
+                    <span className={`cv-badge ${lifecycleConflict ? "amber" : "gray"}`}>
+                      {lifecycleConflict ? `${lifecycle} · conflict` : lifecycle}
+                    </span>
                   </div>
                   <div className="cv-compare-part-foot">
                     <span className="cv-badge blue">{evidenceLabel(source)}</span>

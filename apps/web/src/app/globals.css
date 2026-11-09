@@ -913,6 +913,27 @@ button {
   table-layout: fixed;
 }
 
+.cv-table--mpn-safe th,
+.cv-table--mpn-safe td {
+  vertical-align: top;
+}
+
+.cv-table--mpn-safe .cv-mpn-cell,
+.cv-table--mpn-safe td[data-label="Part"] {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: normal;
+  max-width: 14rem;
+}
+
+.cv-table--mpn-safe td[data-label="BOM"],
+.cv-table--mpn-safe td[data-label="Project"],
+.cv-table--mpn-safe td[data-label="Manufacturer"] {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: normal;
+}
+
 .cv-table.cv-table-actions {
   min-width: 0;
   width: 100%;

@@ -210,6 +210,8 @@ def public_part_card(part: Mapping[str, Any] | None, *, family: str = "") -> dic
         ),
         "package": str(data.get("package") or "").strip(),
         "lifecycle_status": str(data.get("lifecycle_status") or "Unknown").strip() or "Unknown",
+        "lifecycle_evidence": list(data.get("lifecycle_evidence") or []),
+        "lifecycle_conflict": bool(data.get("lifecycle_conflict")),
         "datasheet_url": datasheet if datasheet.startswith(("http://", "https://")) else "",
         "supplier_url": detail if detail.startswith(("http://", "https://")) else "",
         "found": bool(mpn),
@@ -387,7 +389,7 @@ def _fixture_kpi_summary(rows: list[dict]) -> dict[str, Any]:
             or "[test fixture]" in str(row.get("Part B") or "").casefold()
         )
     ]
-    by_status = {"Match": 0, "Different": 0, "Needs data": 0}
+    by_status = {"Match": 0, "Different": 0, "Needs data": 0, "Conflicting": 0}
     labels: list[str] = []
     for row in fixture_rows:
         status = str(row.get("Status") or "Needs data")
@@ -404,11 +406,12 @@ def _fixture_kpi_summary(rows: list[dict]) -> dict[str, Any]:
         "compatible_from_fixtures": by_status["Match"],
         "material_difference_from_fixtures": by_status["Different"],
         "needs_data_from_fixtures": by_status["Needs data"],
+        "conflicting_from_fixtures": by_status["Conflicting"],
         "note": (
             f"{len(fixture_rows)} matrix row(s) use [Test fixture] stubs "
             f"({', '.join(labels) or 'none'}). Those rows are included in the "
-            "Compatible / Material difference / Needs validation KPI totals and "
-            "are not live manufacturer evidence."
+            "Compatible / Material difference / Needs validation / Conflicting "
+            "KPI totals and are not live manufacturer evidence."
             if fixture_rows
             else "No [Test fixture] rows are present in this comparison."
         ),
@@ -928,7 +931,7 @@ def build_parts_comparison(
 
         fields = comparison_fields(get_family_profile("General"))
         rows: list[dict] = []
-        counts = {"Match": 0, "Different": 0, "Needs data": 0}
+        counts = {"Match": 0, "Different": 0, "Needs data": 0, "Conflicting": 0}
         for spec in fields:
             a_val = str(part_a.get(spec.key) or "").strip()
             b_val = str(part_b.get(spec.key) or "").strip()
@@ -940,6 +943,8 @@ def build_parts_comparison(
                 a_val = str(a_count) if a_count > 0 else ""
                 b_val = str(b_count) if b_count > 0 else ""
             status, note = compare_field_values(a_val, b_val, spec)
+            if status not in counts:
+                status = "Needs data"
             counts[status] += 1
             rows.append(
                 {
@@ -1000,7 +1005,7 @@ def build_parts_comparison(
         verified_a=bool((datasheet_identity.get("part_a") or {}).get("verified")),
         verified_b=bool((datasheet_identity.get("part_b") or {}).get("verified")),
     )
-    counts = {"Match": 0, "Different": 0, "Needs data": 0}
+    counts = {"Match": 0, "Different": 0, "Needs data": 0, "Conflicting": 0}
     for row in rows:
         status = str(row.get("Status") or "Needs data")
         if status not in counts:
@@ -1114,6 +1119,11 @@ def build_parts_comparison(
             "compatible": int(counts.get("Match") or 0),
             "material_difference": int(counts.get("Different") or 0),
             "needs_data": int(counts.get("Needs data") or 0),
+            "conflicting": int(counts.get("Conflicting") or 0),
+            "Match": int(counts.get("Match") or 0),
+            "Different": int(counts.get("Different") or 0),
+            "Needs data": int(counts.get("Needs data") or 0),
+            "Conflicting": int(counts.get("Conflicting") or 0),
         },
         "rows": user_rows,
         "diagnostic_rows": diagnostic_comparison_rows(rows),
@@ -1649,6 +1659,7 @@ def generate_parts_comparison_pdf(comparison: Mapping[str, Any]) -> bytes:
                 f"{part_a.get('family_display_name') or '—'} · "
                 f"Package {part_a.get('package') or '—'} · "
                 f"Lifecycle {part_a.get('lifecycle_status') or '—'}"
+                f"{' · conflicting supplier records' if part_a.get('lifecycle_conflict') else ''}"
             ),
             body,
         ),
@@ -1659,6 +1670,7 @@ def generate_parts_comparison_pdf(comparison: Mapping[str, Any]) -> bytes:
                 f"{part_b.get('family_display_name') or '—'} · "
                 f"Package {part_b.get('package') or '—'} · "
                 f"Lifecycle {part_b.get('lifecycle_status') or '—'}"
+                f"{' · conflicting supplier records' if part_b.get('lifecycle_conflict') else ''}"
             ),
             body,
         ),
@@ -1670,8 +1682,9 @@ def generate_parts_comparison_pdf(comparison: Mapping[str, Any]) -> bytes:
         "Attribute",
         "Current",
         "Candidate",
+        "Unit",
         "Sources",
-        "Class",
+        "Class / condition",
         "Assessment",
         "Evidence",
     ]]
@@ -1683,19 +1696,21 @@ def generate_parts_comparison_pdf(comparison: Mapping[str, Any]) -> bytes:
         value_class = (
             f"{row.get('Part A value class') or 'unknown'} → "
             f"{row.get('Part B value class') or 'unknown'}"
+            f" · {row.get('Test condition') or 'Not stated'}"
         )
         table_data.append(
             [
                 Paragraph(str(row.get("Attribute") or ""), body),
-                Paragraph(str(row.get("Part A") or ""), body),
-                Paragraph(str(row.get("Part B") or ""), body),
+                Paragraph(str(row.get("Part A") or row.get("Original") or ""), body),
+                Paragraph(str(row.get("Part B") or row.get("Candidate") or ""), body),
+                Paragraph(str(row.get("Unit") or ""), body),
                 Paragraph(sources, body),
                 Paragraph(value_class, body),
                 Paragraph(str(row.get("Assessment") or ""), body),
                 Paragraph(str(row.get("Evidence") or ""), body),
             ]
         )
-    table = Table(table_data, colWidths=[70, 72, 72, 88, 70, 80, 110])
+    table = Table(table_data, colWidths=[62, 62, 62, 36, 78, 72, 70, 90])
     table.setStyle(
         TableStyle(
             [

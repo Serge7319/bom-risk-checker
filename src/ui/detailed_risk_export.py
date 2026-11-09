@@ -398,6 +398,9 @@ def report_exposure_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
             for row in gross_high_rows
         ),
         "open_high_risk_component_count": len(open_high_rows),
+        # Risk Level == High only — matches report/decision-queue high_risk_count.
+        # open_high_risk_component_count also includes NRND/EOL lifecycle exposure.
+        "high_risk_component_count": sum(1 for row in rows if row.get("Risk") == "High"),
         "approved_high_risk_amount_by_currency": _currency_totals(
             gross_high_rows,
             predicate=lambda row: str(row.get("Mitigation status") or "").casefold().startswith("approved alternative"),

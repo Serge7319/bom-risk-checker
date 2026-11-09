@@ -57,6 +57,7 @@ class OpAmpAndFamilyProvenanceTests(unittest.TestCase):
         profile = get_family_profile("Operational amplifier")
         offset = next(spec for spec in profile.fields if spec.key == "input_offset_mv")
         self.assertNotEqual(offset.unit, "V")
+        self.assertEqual(offset.unit, "mV")
 
     def test_amplifier_type_is_separate_from_architecture(self):
         profile = get_family_profile("Operational amplifier")
