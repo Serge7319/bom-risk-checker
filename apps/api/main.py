@@ -1387,10 +1387,14 @@ async def monitoring_alerts_get(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
+    analysis_id = (request.query_params.get("analysis_id") or "").strip() or None
     return _json(
         {
             "ok": True,
-            "alerts": monitoring_store.list_alerts(ctx["workspace_id"]),
+            "analysis_id": analysis_id,
+            "alerts": monitoring_store.list_alerts(
+                ctx["workspace_id"], analysis_id=analysis_id
+            ),
             "refresh_history": monitoring_store.list_refresh_history(ctx["workspace_id"]),
             "preferences": monitoring_store.get_preferences(ctx["workspace_id"]),
         }

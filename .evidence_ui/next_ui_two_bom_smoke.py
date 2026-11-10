@@ -13,6 +13,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import os
 import re
 import urllib.error
 import urllib.request
@@ -23,11 +24,11 @@ from openpyxl import load_workbook
 from playwright.sync_api import Page, sync_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / ".evidence_ui" / "next_ui_two_bom_597"
+OUT = Path(os.environ.get("CADIVOR_SMOKE_OUT") or (ROOT / ".evidence_ui" / "next_ui_two_bom_598"))
 OUT.mkdir(parents=True, exist_ok=True)
 
-WEB = "http://127.0.0.1:3001"
-API = "http://127.0.0.1:8081"
+WEB = os.environ.get("CADIVOR_SMOKE_WEB", "http://127.0.0.1:3001").rstrip("/")
+API = os.environ.get("CADIVOR_SMOKE_API", "http://127.0.0.1:8081").rstrip("/")
 EMAIL = "sandbox-a@cadivor.test"
 PASSWORD = "CadivorSandbox!a"
 
