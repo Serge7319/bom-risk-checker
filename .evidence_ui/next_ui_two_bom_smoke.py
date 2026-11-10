@@ -566,131 +566,140 @@ def main() -> int:
         for cfg in BOMS:
             results["boms"].append(_run_bom(page, cfg))
 
-        # Layout viewport checks for Find Replacement + Compare Parts tables.
-        # Seed a long "not qualified" fit label so Fit/Evidence wrap is exercised.
-        page.set_viewport_size({"width": 1440, "height": 1100})
-        page.goto(f"{WEB}/find-replacement", wait_until="networkidle", timeout=60000)
-        page.wait_for_timeout(500)
-        page.evaluate(
-            """() => {
-              const host = document.querySelector('main') || document.body;
-              const wrap = document.createElement('div');
-              wrap.className = 'cv-table-wrap cv-table-wrap--replacement';
-              wrap.innerHTML = `
-                <table class="cv-table cv-table-replacement cv-table-replacement--candidates">
-                  <thead><tr>
-                    <th>Candidate</th><th>Manufacturer</th><th>Lifecycle</th>
-                    <th>Fit status</th><th>Evidence to verify</th><th></th>
-                  </tr></thead>
-                  <tbody><tr>
-                    <td data-label="Candidate"><strong>AM29F010B-90EC</strong></td>
-                    <td data-label="Manufacturer">AMD</td>
-                    <td data-label="Lifecycle"><span class="cv-badge gray">Obsolete</span></td>
-                    <td class="cv-fit-cell" data-label="Fit status">
-                      <span class="cv-badge gray">not qualified — speed grade, temperature range, and package outline still require datasheet verification before any drop-in claim</span>
-                    </td>
-                    <td class="cv-evidence-cell" data-label="Evidence to verify">
-                      manufacturer datasheet package outline; speed grade timing table; temperature range confirmation from identity-verified source
-                    </td>
-                    <td class="cv-table-action" data-label="Action">Compare →</td>
-                  </tr></tbody>
-                </table>`;
-              host.prepend(wrap);
-            }"""
-        )
+        # Layout viewport checks: real Find Replacement page + controlled API
+        # candidate row (no hand-built table injection).
+        controlled_replacement = {
+            "requested_mpn": "AM29F010B-70EC",
+            "original": {
+                "mpn": "AM29F010B-70EC",
+                "manufacturer": "AMD",
+                "description": "1 Megabit CMOS Flash Memory",
+                "lifecycle_status": "Obsolete",
+            },
+            "candidates": [
+                {
+                    "mpn": "AM29F010B-90EC",
+                    "manufacturer": "AMD",
+                    "lifecycle_status": "Obsolete",
+                    "fit": (
+                        "not qualified — speed grade, temperature range, and package "
+                        "outline still require datasheet verification before any drop-in claim"
+                    ),
+                    "missing_evidence": [
+                        "manufacturer datasheet package outline",
+                        "speed grade timing table",
+                        "temperature range confirmation from identity-verified source",
+                    ],
+                    "rationale": "Same flash family catalog lead",
+                }
+            ],
+            "unclassified_leads": [],
+            "unfiltered_leads": [],
+        }
+
+        def _fulfill_replacement(route):
+            route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps(controlled_replacement),
+            )
+
+        page.route("**/tools/find-replacement**", _fulfill_replacement)
         viewport_checks = []
         for width, height in ((1440, 1100), (696, 1188), (390, 844)):
             page.set_viewport_size({"width": width, "height": height})
             page.goto(f"{WEB}/find-replacement", wait_until="networkidle", timeout=60000)
             page.wait_for_timeout(400)
-            page.evaluate(
-                """() => {
-                  if (document.querySelector('.cv-table-replacement--candidates')) return;
-                  const host = document.querySelector('main') || document.body;
-                  const wrap = document.createElement('div');
-                  wrap.className = 'cv-table-wrap cv-table-wrap--replacement';
-                  wrap.innerHTML = `
-                    <table class="cv-table cv-table-replacement cv-table-replacement--candidates">
-                      <thead><tr>
-                        <th>Candidate</th><th>Manufacturer</th><th>Lifecycle</th>
-                        <th>Fit status</th><th>Evidence to verify</th><th></th>
-                      </tr></thead>
-                      <tbody><tr>
-                        <td data-label="Candidate"><strong>AM29F010B-90EC</strong></td>
-                        <td data-label="Manufacturer">AMD</td>
-                        <td data-label="Lifecycle"><span class="cv-badge gray">Obsolete</span></td>
-                        <td class="cv-fit-cell" data-label="Fit status">
-                          <span class="cv-badge gray">not qualified — speed grade, temperature range, and package outline still require datasheet verification before any drop-in claim</span>
-                        </td>
-                        <td class="cv-evidence-cell" data-label="Evidence to verify">
-                          manufacturer datasheet package outline; speed grade timing table; temperature range confirmation from identity-verified source
-                        </td>
-                        <td class="cv-table-action" data-label="Action">Compare →</td>
-                      </tr></tbody>
-                    </table>`;
-                  host.prepend(wrap);
-                }"""
+            page.locator("#replacement-mpn").fill("AM29F010B-70EC")
+            page.locator("#replacement-mfr").fill("AMD")
+            page.get_by_role("button", name=re.compile(r"Find candidates", re.I)).click()
+            page.wait_for_selector(
+                ".cv-table-replacement--candidates tbody tr",
+                timeout=30000,
             )
             page.wait_for_timeout(300)
             page.screenshot(path=str(OUT / f"viewport_replacement_{width}.png"), full_page=True)
-            page.goto(f"{WEB}/compare-parts", wait_until="networkidle", timeout=60000)
-            page.wait_for_timeout(800)
-            page.screenshot(path=str(OUT / f"viewport_compare_{width}.png"), full_page=True)
-            page.goto(f"{WEB}/find-replacement", wait_until="networkidle", timeout=60000)
-            page.wait_for_timeout(300)
-            page.evaluate(
-                """() => {
-                  if (document.querySelector('.cv-table-replacement--candidates')) return;
-                  const host = document.querySelector('main') || document.body;
-                  const wrap = document.createElement('div');
-                  wrap.className = 'cv-table-wrap cv-table-wrap--replacement';
-                  wrap.innerHTML = `
-                    <table class="cv-table cv-table-replacement cv-table-replacement--candidates">
-                      <thead><tr>
-                        <th>Candidate</th><th>Manufacturer</th><th>Lifecycle</th>
-                        <th>Fit status</th><th>Evidence to verify</th><th></th>
-                      </tr></thead>
-                      <tbody><tr>
-                        <td data-label="Candidate"><strong>AM29F010B-90EC</strong></td>
-                        <td data-label="Manufacturer">AMD</td>
-                        <td data-label="Lifecycle"><span class="cv-badge gray">Obsolete</span></td>
-                        <td class="cv-fit-cell" data-label="Fit status">
-                          <span class="cv-badge gray">not qualified — speed grade, temperature range, and package outline still require datasheet verification before any drop-in claim</span>
-                        </td>
-                        <td class="cv-evidence-cell" data-label="Evidence to verify">
-                          manufacturer datasheet package outline; speed grade timing table; temperature range confirmation from identity-verified source
-                        </td>
-                        <td class="cv-table-action" data-label="Action">Compare →</td>
-                      </tr></tbody>
-                    </table>`;
-                  host.prepend(wrap);
-                }"""
-            )
             metrics = page.evaluate(
                 """() => {
-                  const tables = Array.from(document.querySelectorAll(
-                    '.cv-table-replacement, .cv-table-actions, .cv-compare-table, .cv-compare-multi-table'
-                  ));
+                  const shortLabels = new Set(["manufacturer", "lifecycle"]);
+                  const longLabels = new Set(["fit status", "evidence to verify"]);
+
+                  function contentClipped(el) {
+                    if (!el) return false;
+                    if (el.scrollWidth > el.clientWidth + 1) return true;
+                    return Array.from(el.children || []).some(
+                      (child) => child.scrollWidth > child.clientWidth + 1
+                    );
+                  }
+
+                  function valueColumnWidth(cell) {
+                    const style = window.getComputedStyle(cell);
+                    const box = cell.getBoundingClientRect();
+                    if (style.display === "grid") {
+                      const tracks = style.gridTemplateColumns.split(" ").filter(Boolean);
+                      if (tracks.length >= 2) {
+                        // Approximate value track as cell minus first track min.
+                        return Math.max(0, box.width * 0.68);
+                      }
+                    }
+                    const badge = cell.querySelector(".cv-badge");
+                    if (badge) return badge.getBoundingClientRect().width;
+                    return box.width;
+                  }
+
+                  const tables = Array.from(
+                    document.querySelectorAll(".cv-table-replacement--candidates")
+                  );
                   return tables.map((table) => {
-                    const rows = Array.from(table.querySelectorAll('tbody tr')).slice(0, 8).map((row) => {
+                    const rows = Array.from(table.querySelectorAll("tbody tr")).slice(0, 8).map((row) => {
                       const cells = Array.from(row.children);
                       const rects = cells.map((cell) => {
                         const box = cell.getBoundingClientRect();
-                        return { width: box.width, height: box.height, left: box.left, right: box.right, top: box.top, bottom: box.bottom };
+                        return {
+                          width: box.width,
+                          height: box.height,
+                          left: box.left,
+                          right: box.right,
+                          top: box.top,
+                          bottom: box.bottom,
+                          label: cell.getAttribute("data-label") || "",
+                          clipped: contentClipped(cell),
+                          valueWidth: Math.round(valueColumnWidth(cell)),
+                        };
                       });
+                      const firstCell = cells[0];
+                      const stacked =
+                        window.getComputedStyle(row).display === "block" ||
+                        (firstCell &&
+                          ["block", "grid"].includes(window.getComputedStyle(firstCell).display));
                       let overlap = false;
-                      const stacked = window.getComputedStyle(row).display === 'block'
-                        || window.getComputedStyle(cells[0] || row).display === 'block'
-                        || window.getComputedStyle(cells[0] || row).display === 'grid';
                       if (!stacked) {
                         for (let i = 1; i < rects.length; i += 1) {
                           if (rects[i].left + 0.5 < rects[i - 1].right) overlap = true;
                         }
                       }
-                      // Stacked phone cards intentionally grow with long fit/evidence text.
                       const tall = !stacked && rects.some((rect) => rect.height > 280);
-                      const squeezed = !stacked && rects.some((rect, idx) => idx < rects.length - 1 && rect.width > 0 && rect.width < 48);
-                      return { overlap, tall, squeezed, stacked, widths: rects.map((r) => Math.round(r.width)) };
+                      const squeezed = !stacked && rects.some(
+                        (rect, idx) => idx < rects.length - 1 && rect.width > 0 && rect.width < 48
+                      );
+                      const clipped = rects.some((rect) => rect.clipped);
+                      const narrowStackedValue = stacked && rects.some((rect) => {
+                        const label = String(rect.label || "").toLowerCase();
+                        if (shortLabels.has(label)) return rect.valueWidth < 56;
+                        if (longLabels.has(label)) return rect.valueWidth < 96;
+                        return false;
+                      });
+                      return {
+                        overlap,
+                        tall,
+                        squeezed,
+                        clipped,
+                        narrowStackedValue,
+                        stacked,
+                        widths: rects.map((r) => Math.round(r.width)),
+                        valueWidths: rects.map((r) => r.valueWidth),
+                        labels: rects.map((r) => r.label),
+                      };
                     });
                     return {
                       className: table.className,
@@ -700,21 +709,30 @@ def main() -> int:
                   });
                 }"""
             )
+            page.goto(f"{WEB}/compare-parts", wait_until="networkidle", timeout=60000)
+            page.wait_for_timeout(500)
+            page.screenshot(path=str(OUT / f"viewport_compare_{width}.png"), full_page=True)
             bad_rows = [
                 row
                 for table in metrics
                 for row in table.get("rows") or []
-                if row.get("overlap") or row.get("tall") or row.get("squeezed")
+                if row.get("overlap")
+                or row.get("tall")
+                or row.get("squeezed")
+                or row.get("clipped")
+                or row.get("narrowStackedValue")
             ]
             viewport_checks.append(
                 {
                     "width": width,
                     "height": height,
-                    "ok": not bad_rows,
+                    "ok": bool(metrics) and not bad_rows,
                     "bad_row_count": len(bad_rows),
+                    "rendered_via": "find-replacement-page+controlled-api",
                     "tables": metrics,
                 }
             )
+        page.unroute("**/tools/find-replacement**", _fulfill_replacement)
         results["viewport_checks"] = viewport_checks
 
         browser.close()

@@ -1751,10 +1751,21 @@ button {
     border-radius: 0;
     background: transparent;
   }
-  .cv-table.cv-table-replacement {
+  .cv-table.cv-table-replacement,
+  .cv-table.cv-table-replacement--candidates,
+  .cv-table.cv-table-replacement--leads {
     min-width: 0;
     width: 100%;
     table-layout: auto;
+  }
+  /* Drop desktop per-column width/min-width so stacked cards are not clipped. */
+  .cv-table.cv-table-replacement--candidates th:nth-child(n),
+  .cv-table.cv-table-replacement--candidates td:nth-child(n),
+  .cv-table.cv-table-replacement--leads th:nth-child(n),
+  .cv-table.cv-table-replacement--leads td:nth-child(n) {
+    width: auto;
+    min-width: 0;
+    max-width: none;
   }
   .cv-table.cv-table-replacement thead {
     display: none;
@@ -1774,8 +1785,10 @@ button {
   }
   .cv-table.cv-table-replacement td {
     display: grid;
-    grid-template-columns: minmax(88px, 34%) minmax(0, 1fr);
-    gap: 8px;
+    /* Label stays readable; value column owns the remaining width for AMD/Obsolete
+       and wraps long fit/evidence copy. */
+    grid-template-columns: minmax(6.5rem, 32%) minmax(0, 1fr);
+    gap: 10px;
     align-items: start;
     padding: 6px 0;
     border: 0;
@@ -1783,8 +1796,21 @@ button {
     white-space: normal;
     overflow-wrap: anywhere;
     word-break: break-word;
-    width: auto;
+    width: 100%;
     min-width: 0;
+    max-width: none;
+  }
+  .cv-table.cv-table-replacement td > * {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .cv-table.cv-table-replacement .cv-fit-cell,
+  .cv-table.cv-table-replacement .cv-evidence-cell,
+  .cv-table.cv-table-replacement .cv-badge {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    max-width: 100%;
   }
   .cv-table.cv-table-replacement td:last-child {
     border-bottom: 0;
@@ -1801,7 +1827,7 @@ button {
     box-shadow: none;
     text-align: left;
     background: transparent;
-    width: auto;
+    width: 100%;
     min-width: 0;
   }
 }

@@ -88,6 +88,12 @@ class UiLayoutContractTests(unittest.TestCase):
         self.assertIn(".cv-table.cv-table-replacement--leads th:nth-child(3)", css)
         self.assertIn("min-width: 980px", css)
         self.assertIn("min-width: 720px", css)
+        # Phone stacked cards must clear desktop per-column min-widths.
+        self.assertIn(
+            ".cv-table.cv-table-replacement--candidates td:nth-child(n)",
+            css,
+        )
+        self.assertIn("grid-template-columns: minmax(6.5rem, 32%) minmax(0, 1fr)", css)
         self.assertIn("cv-fit-cell", page)
         self.assertIn("cv-evidence-cell", page)
         self.assertIn("white-space: normal", css)

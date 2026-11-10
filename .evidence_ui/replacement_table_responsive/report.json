@@ -1,0 +1,144 @@
+{
+  "web": "http://127.0.0.1:3011",
+  "api": "http://127.0.0.1:8081",
+  "viewports": [
+    {
+      "width": 1440,
+      "height": 1100,
+      "ok": true,
+      "bad_row_count": 0,
+      "tables": [
+        {
+          "className": "cv-table cv-table-replacement cv-table-replacement--candidates",
+          "tableWidth": 1060,
+          "rows": [
+            {
+              "overlap": false,
+              "tall": false,
+              "squeezed": false,
+              "clipped": false,
+              "narrowStackedValue": false,
+              "stacked": false,
+              "widths": [
+                233,
+                127,
+                127,
+                191,
+                254,
+                127
+              ],
+              "valueWidths": [
+                233,
+                127,
+                61,
+                162,
+                254,
+                127
+              ],
+              "labels": [
+                "Candidate",
+                "Manufacturer",
+                "Lifecycle",
+                "Fit status",
+                "Evidence to verify",
+                "Action"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "width": 696,
+      "height": 1188,
+      "ok": true,
+      "bad_row_count": 0,
+      "tables": [
+        {
+          "className": "cv-table cv-table-replacement cv-table-replacement--candidates",
+          "tableWidth": 860,
+          "rows": [
+            {
+              "overlap": false,
+              "tall": false,
+              "squeezed": false,
+              "clipped": false,
+              "narrowStackedValue": false,
+              "stacked": false,
+              "widths": [
+                189,
+                103,
+                103,
+                155,
+                206,
+                103
+              ],
+              "valueWidths": [
+                189,
+                103,
+                61,
+                126,
+                206,
+                103
+              ],
+              "labels": [
+                "Candidate",
+                "Manufacturer",
+                "Lifecycle",
+                "Fit status",
+                "Evidence to verify",
+                "Action"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "ok": true,
+      "bad_row_count": 0,
+      "tables": [
+        {
+          "className": "cv-table cv-table-replacement cv-table-replacement--candidates",
+          "tableWidth": 312,
+          "rows": [
+            {
+              "overlap": false,
+              "tall": false,
+              "squeezed": false,
+              "clipped": false,
+              "narrowStackedValue": false,
+              "stacked": true,
+              "widths": [
+                286,
+                286,
+                286,
+                286,
+                286,
+                286
+              ],
+              "valueWidths": [
+                194,
+                194,
+                194,
+                194,
+                194,
+                194
+              ],
+              "labels": [
+                "Candidate",
+                "Manufacturer",
+                "Lifecycle",
+                "Fit status",
+                "Evidence to verify",
+                "Action"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

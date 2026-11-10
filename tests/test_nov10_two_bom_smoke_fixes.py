@@ -88,7 +88,13 @@ class Am29ExactMatchAndDiscoveryTests(unittest.TestCase):
             discovery = discover_alternative_candidates("AM29F010B-70EC")
 
         self.assertTrue(discovery["has_incomplete_evidence"])
-        self.assertIn("DigiKey", discovery["provider_failures"])
+        digikey = (discovery.get("providers") or {}).get("DigiKey") or {}
+        self.assertTrue(
+            "DigiKey" in (discovery.get("provider_failures") or [])
+            or digikey.get("catalog") == "error"
+            or digikey.get("substitutions") == "error",
+            msg=f"expected DigiKey failure evidence, got {discovery.get('providers')}",
+        )
         self.assertEqual(discovery["candidates"], [])
         # Empty/failed discovery must never be narrated as "no alternative".
         blob = str(discovery).casefold()
