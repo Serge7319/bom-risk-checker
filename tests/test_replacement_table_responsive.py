@@ -65,34 +65,81 @@ METRICS_JS = """() => {
     );
   }
 
-  function labelValueCollide(cell) {
-    const style = window.getComputedStyle(cell);
-    if (!(style.display === "flex" && style.flexDirection.startsWith("column"))) {
-      return false;
-    }
-    const value =
+  function valueEl(cell) {
+    return (
       cell.querySelector(".cv-table-value, .cv-badge, a, label") ||
-      cell.firstElementChild;
-    if (!value) return false;
-    const cellTop = cell.getBoundingClientRect().top;
-    const valueTop = value.getBoundingClientRect().top;
-    // Label (::before) must occupy its own row above the value.
-    return valueTop < cellTop + 12;
+      cell.firstElementChild
+    );
   }
 
-  function valueColumnWidth(cell) {
+  function lineBoxes(el) {
+    if (!el) return [];
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    return Array.from(range.getClientRects()).filter(
+      (rect) => rect.width > 0 && rect.height > 0
+    );
+  }
+
+  function parseTrackPx(track) {
+    if (!track || track === "none") return null;
+    // Computed grid tracks resolve to px like "286px" or "minmax(0px, 1fr)" → usually px.
+    const m = String(track).trim().match(/^([0-9.]+)px$/);
+    return m ? Number(m[1]) : null;
+  }
+
+  function resolvedValueTrack(cell) {
     const style = window.getComputedStyle(cell);
     const box = cell.getBoundingClientRect();
-    if (style.display === "flex" && style.flexDirection.startsWith("column")) {
-      // Label-above-value cards: the value uses the full cell width.
-      return box.width;
+    const value = valueEl(cell);
+    const grid = String(style.gridTemplateColumns || "").trim();
+    if (grid && grid !== "none") {
+      const tracks = grid.split(/\\s+/).filter(Boolean);
+      if (tracks.length >= 2) {
+        // Side-by-side label|value: last track is the value column.
+        const px = parseTrackPx(tracks[tracks.length - 1]);
+        if (px != null) return px;
+      }
+      if (tracks.length === 1) {
+        const px = parseTrackPx(tracks[0]);
+        if (px != null) return px;
+      }
     }
-    if (style.display === "grid") {
-      return Math.max(0, box.width * 0.68);
-    }
-    const badge = cell.querySelector(".cv-badge");
-    if (badge) return badge.getBoundingClientRect().width;
+    if (value) return value.getBoundingClientRect().width;
     return box.width;
+  }
+
+  function unreadableShortValue(cell) {
+    const value = valueEl(cell);
+    if (!value) return false;
+    const text = String(value.textContent || "").replace(/\\s+/g, " ").trim();
+    if (!text || text.length > 24) return false;
+    const boxes = lineBoxes(value);
+    if (boxes.length <= 1) return false;
+    // AMD / Obsolete stacked one glyph wide.
+    const skinny = boxes.filter((rect) => rect.width <= 16).length;
+    if (skinny >= 2 && skinny >= Math.ceil(boxes.length * 0.6)) return true;
+    if (boxes.length >= Math.min(text.replace(/\\s/g, "").length, 3)) {
+      const avg = boxes.reduce((sum, rect) => sum + rect.width, 0) / boxes.length;
+      if (avg <= 18) return true;
+    }
+    return false;
+  }
+
+  function labelValueCollide(cell) {
+    const style = window.getComputedStyle(cell);
+    const stackedCell =
+      (style.display === "flex" && style.flexDirection.startsWith("column")) ||
+      (style.display === "grid" &&
+        String(style.gridTemplateColumns || "").split(/\\s+/).filter(Boolean).length <= 1);
+    if (!stackedCell) return false;
+    const value = valueEl(cell);
+    if (!value) return false;
+    const before = window.getComputedStyle(cell, "::before");
+    if (!before.content || before.content === "none") return false;
+    const cellTop = cell.getBoundingClientRect().top;
+    const valueTop = value.getBoundingClientRect().top;
+    return valueTop < cellTop + 12;
   }
 
   const tables = Array.from(
@@ -103,22 +150,33 @@ METRICS_JS = """() => {
       const cells = Array.from(row.children);
       const rects = cells.map((cell) => {
         const box = cell.getBoundingClientRect();
+        const style = window.getComputedStyle(cell);
+        const value = valueEl(cell);
+        const track = resolvedValueTrack(cell);
         return {
           width: box.width,
           height: box.height,
           left: box.left,
           right: box.right,
           label: cell.getAttribute("data-label") || "",
+          display: style.display,
+          gridTemplateColumns: style.gridTemplateColumns,
           clipped: contentClipped(cell),
           labelCollision: labelValueCollide(cell),
-          valueWidth: Math.round(valueColumnWidth(cell)),
+          unreadableShort: unreadableShortValue(cell),
+          valueWidth: Math.round(track),
+          valueTextWidth: value
+            ? Math.round(
+                Math.max(...lineBoxes(value).map((rect) => rect.width), 0)
+              )
+            : 0,
         };
       });
       const firstCell = cells[0];
+      const firstStyle = firstCell ? window.getComputedStyle(firstCell) : null;
       const stacked =
         window.getComputedStyle(row).display === "block" ||
-        (firstCell &&
-          ["block", "flex", "grid"].includes(window.getComputedStyle(firstCell).display));
+        (firstStyle && ["block", "flex", "grid"].includes(firstStyle.display));
       let overlap = false;
       if (!stacked) {
         for (let i = 1; i < rects.length; i += 1) {
@@ -131,22 +189,43 @@ METRICS_JS = """() => {
       );
       const clipped = rects.some((rect) => rect.clipped);
       const labelCollision = stacked && rects.some((rect) => rect.labelCollision);
-      const narrowStackedValue = stacked && rects.some((rect) => {
-        const label = String(rect.label || "").toLowerCase();
-        if (shortLabels.has(label)) return rect.valueWidth < 56;
-        if (longLabels.has(label)) return rect.valueWidth < 96;
-        return false;
-      });
+      const unreadableShort = rects.some((rect) => rect.unreadableShort);
+      // Stacked is not an automatic pass — measure the resolved value track,
+      // never a 68%-of-cell estimate. Desktop intrinsic text width (e.g. "AMD"
+      // at 28px inside a wide column) is not a failure.
+      const narrowValueTrack =
+        stacked &&
+        rects.some((rect) => {
+          const label = String(rect.label || "").toLowerCase();
+          const track = Number(rect.valueWidth) || 0;
+          if (shortLabels.has(label)) return track < 120;
+          if (longLabels.has(label)) return track < 160;
+          if (label === "candidate" || label === "action") return track < 120;
+          return false;
+        });
+      const sideBySideCollapsed =
+        stacked &&
+        rects.some((rect) => {
+          const tracks = String(rect.gridTemplateColumns || "")
+            .split(/\\s+/)
+            .filter((part) => part && part !== "none");
+          if (tracks.length < 2) return false;
+          const last = tracks[tracks.length - 1].match(/^([0-9.]+)px$/);
+          return last ? Number(last[1]) < 72 : false;
+        });
       return {
         overlap,
         tall,
         squeezed,
         clipped,
         labelCollision,
-        narrowStackedValue,
+        unreadableShort,
+        narrowValueTrack: Boolean(narrowValueTrack || sideBySideCollapsed),
         stacked,
         widths: rects.map((r) => Math.round(r.width)),
         valueWidths: rects.map((r) => r.valueWidth),
+        valueTextWidths: rects.map((r) => r.valueTextWidth),
+        gridTemplateColumns: rects.map((r) => r.gridTemplateColumns),
         labels: rects.map((r) => r.label),
       };
     });
@@ -231,6 +310,12 @@ class ReplacementTableResponsiveTests(unittest.TestCase):
                 self.assertFalse(injected)
                 body_has_candidate = "AM29F010B-90EC" in page.locator("body").inner_text()
                 self.assertTrue(body_has_candidate)
+                # Multi-select still works on the rendered row.
+                if width == 1440:
+                    page.locator(
+                        '.cv-table-replacement--candidates input[type="checkbox"]'
+                    ).first.check()
+                    self.assertIn("Compare selected (1)", page.locator("body").inner_text())
                 metrics = page.evaluate(METRICS_JS)
                 bad = [
                     row
@@ -241,7 +326,8 @@ class ReplacementTableResponsiveTests(unittest.TestCase):
                     or row.get("squeezed")
                     or row.get("clipped")
                     or row.get("labelCollision")
-                    or row.get("narrowStackedValue")
+                    or row.get("unreadableShort")
+                    or row.get("narrowValueTrack")
                 ]
                 results["viewports"].append(
                     {

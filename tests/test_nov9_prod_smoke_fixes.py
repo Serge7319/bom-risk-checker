@@ -93,7 +93,7 @@ class UiLayoutContractTests(unittest.TestCase):
             ".cv-table.cv-table-replacement--candidates td:nth-child(n)",
             css,
         )
-        self.assertIn("flex-direction: column", css)
+        self.assertIn("grid-template-columns: minmax(0, 1fr)", css)
         self.assertIn("min-width: 0 !important", css)
         self.assertIn("cv-fit-cell", page)
         self.assertIn("cv-evidence-cell", page)

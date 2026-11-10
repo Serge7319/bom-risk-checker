@@ -18,7 +18,8 @@
               "squeezed": false,
               "clipped": false,
               "labelCollision": false,
-              "narrowStackedValue": false,
+              "unreadableShort": false,
+              "narrowValueTrack": false,
               "stacked": false,
               "widths": [
                 233,
@@ -29,12 +30,28 @@
                 127
               ],
               "valueWidths": [
-                233,
-                127,
+                204,
+                28,
                 61,
                 162,
-                254,
-                127
+                210,
+                66
+              ],
+              "valueTextWidths": [
+                159,
+                28,
+                45,
+                144,
+                210,
+                66
+              ],
+              "gridTemplateColumns": [
+                "none",
+                "none",
+                "none",
+                "none",
+                "none",
+                "none"
               ],
               "labels": [
                 "Candidate",
@@ -65,7 +82,8 @@
               "squeezed": false,
               "clipped": false,
               "labelCollision": false,
-              "narrowStackedValue": false,
+              "unreadableShort": false,
+              "narrowValueTrack": false,
               "stacked": true,
               "widths": [
                 586,
@@ -82,6 +100,22 @@
                 586,
                 586,
                 586
+              ],
+              "valueTextWidths": [
+                159,
+                28,
+                45,
+                565,
+                564,
+                66
+              ],
+              "gridTemplateColumns": [
+                "586.25px",
+                "586.25px",
+                "586.25px",
+                "586.25px",
+                "586.25px",
+                "586.25px"
               ],
               "labels": [
                 "Candidate",
@@ -112,7 +146,8 @@
               "squeezed": false,
               "clipped": false,
               "labelCollision": false,
-              "narrowStackedValue": false,
+              "unreadableShort": false,
+              "narrowValueTrack": false,
               "stacked": true,
               "widths": [
                 286,
@@ -129,6 +164,22 @@
                 286,
                 286,
                 286
+              ],
+              "valueTextWidths": [
+                159,
+                28,
+                45,
+                259,
+                271,
+                66
+              ],
+              "gridTemplateColumns": [
+                "286px",
+                "286px",
+                "286px",
+                "286px",
+                "286px",
+                "286px"
               ],
               "labels": [
                 "Candidate",
