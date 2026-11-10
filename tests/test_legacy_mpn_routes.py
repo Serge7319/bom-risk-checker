@@ -10,6 +10,10 @@ class LegacyMPNRouteTests(unittest.TestCase):
         route = legacy_mpn_route("AM29F010B-70EC")
         self.assertEqual(route["query_mpns"], ("AM29F010B",))
         self.assertEqual(route["assessment_order_codes"], ())
+        # Punctuation-normalized order codes share the same curated route.
+        compact = legacy_mpn_route("AM29F010B70EC")
+        self.assertIsNotNone(compact)
+        self.assertEqual(compact["query_mpns"], ("AM29F010B",))
         self.assertIsNone(legacy_mpn_route("AM29F010B-70E"))
         self.assertIsNone(legacy_mpn_route("UNRELATED-PART"))
 

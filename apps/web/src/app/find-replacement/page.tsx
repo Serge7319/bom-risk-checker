@@ -181,7 +181,7 @@ function FindReplacementInner() {
                   Same or compatible component family. Still research leads — fit is not confirmed until datasheet evidence is reviewed.
                 </p>
                 {candidates.length ? (
-                  <div className="cv-table-wrap" style={{ marginTop: 12 }}>
+                  <div style={{ marginTop: 12 }}>
                     <div
                       style={{
                         display: "flex",
@@ -215,7 +215,8 @@ function FindReplacementInner() {
                         Compare selected ({Math.min(4, selectedCandidates.length)})
                       </Link>
                     </div>
-                    <table className="cv-table cv-table-actions">
+                    <div className="cv-table-wrap cv-table-wrap--replacement">
+                    <table className="cv-table cv-table-replacement cv-table-replacement--candidates">
                       <thead>
                         <tr>
                           <th>Candidate</th>
@@ -235,10 +236,11 @@ function FindReplacementInner() {
                           const lifecycleLabel = lifecycleConflict
                             ? `${String(row.lifecycle_status || "Unknown")} · conflict`
                             : String(row.lifecycle_status || "Unknown");
+                          const fitLabel = String(row.fit || "not qualified").replace(/_/g, " ");
                           const checked = selectedCandidates.includes(cand);
                           return (
                             <tr key={cand}>
-                              <td className="cv-mpn-cell">
+                              <td className="cv-mpn-cell" data-label="Candidate">
                                 <label style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
                                   <input
                                     type="checkbox"
@@ -260,19 +262,21 @@ function FindReplacementInner() {
                                   </span>
                                 </label>
                               </td>
-                              <td>{String(row.manufacturer || "—")}</td>
-                              <td>
+                              <td data-label="Manufacturer">{String(row.manufacturer || "—")}</td>
+                              <td data-label="Lifecycle">
                                 <span className={`cv-badge ${lifecycleConflict ? "amber" : "gray"}`}>
                                   {lifecycleLabel}
                                 </span>
                               </td>
-                              <td>
+                              <td className="cv-fit-cell" data-label="Fit status">
                                 <span className="cv-badge gray">
-                                  {String(row.fit || "not qualified").replace(/_/g, " ")}
+                                  {fitLabel}
                                 </span>
                               </td>
-                              <td>{missingBits.length ? missingBits.join("; ") : "—"}</td>
-                              <td className="cv-table-action">
+                              <td className="cv-evidence-cell" data-label="Evidence to verify">
+                                {missingBits.length ? missingBits.join("; ") : "—"}
+                              </td>
+                              <td className="cv-table-action" data-label="Action">
                                 <Link
                                   href={compareHref(
                                     String(result.requested_mpn || mpn),
@@ -288,6 +292,7 @@ function FindReplacementInner() {
                         })}
                       </tbody>
                     </table>
+                    </div>
                   </div>
                 ) : (
                   <p className="cv-small-note" style={{ marginTop: 12 }}>
@@ -301,8 +306,8 @@ function FindReplacementInner() {
                   <p className="cv-card-subtitle">
                     Catalog hits without confirmed component-family evidence. Not relevant replacement candidates until family is classified.
                   </p>
-                  <div className="cv-table-wrap" style={{ marginTop: 12 }}>
-                    <table className="cv-table cv-table-actions">
+                  <div className="cv-table-wrap cv-table-wrap--replacement" style={{ marginTop: 12 }}>
+                    <table className="cv-table cv-table-replacement cv-table-replacement--leads">
                       <thead>
                         <tr>
                           <th>Lead</th>
@@ -314,22 +319,21 @@ function FindReplacementInner() {
                       <tbody>
                         {unclassifiedLeads.map((row) => {
                           const cand = String(row.mpn || "");
+                          const fitLabel = String(
+                            row.fit ||
+                              "not qualified — component family not classified from available evidence",
+                          ).replace(/_/g, " ");
                           return (
                             <tr key={`unclassified-${cand}`}>
-                              <td className="cv-mpn-cell">
+                              <td className="cv-mpn-cell" data-label="Lead">
                                 <strong>{cand}</strong>
                                 <div className="cv-small-note">{String(row.rationale || "")}</div>
                               </td>
-                              <td>{String(row.manufacturer || "—")}</td>
-                              <td>
-                                <span className="cv-badge amber">
-                                  {String(
-                                    row.fit ||
-                                      "not qualified — component family not classified from available evidence",
-                                  ).replace(/_/g, " ")}
-                                </span>
+                              <td data-label="Manufacturer">{String(row.manufacturer || "—")}</td>
+                              <td className="cv-fit-cell" data-label="Fit status">
+                                <span className="cv-badge amber">{fitLabel}</span>
                               </td>
-                              <td className="cv-table-action">
+                              <td className="cv-table-action" data-label="Action">
                                 <Link
                                   href={compareHref(
                                     String(result.requested_mpn || mpn),
@@ -354,8 +358,8 @@ function FindReplacementInner() {
                   <p className="cv-card-subtitle">
                     Distributor keyword hits from a different component family. Not relevant replacement candidates until family and fit are verified.
                   </p>
-                  <div className="cv-table-wrap" style={{ marginTop: 12 }}>
-                    <table className="cv-table cv-table-actions">
+                  <div className="cv-table-wrap cv-table-wrap--replacement" style={{ marginTop: 12 }}>
+                    <table className="cv-table cv-table-replacement cv-table-replacement--leads">
                       <thead>
                         <tr>
                           <th>Lead</th>
@@ -367,19 +371,20 @@ function FindReplacementInner() {
                       <tbody>
                         {unfilteredLeads.map((row) => {
                           const cand = String(row.mpn || "");
+                          const fitLabel = String(
+                            row.fit || "not qualified — different component family",
+                          ).replace(/_/g, " ");
                           return (
                             <tr key={`lead-${cand}`}>
-                              <td className="cv-mpn-cell">
+                              <td className="cv-mpn-cell" data-label="Lead">
                                 <strong>{cand}</strong>
                                 <div className="cv-small-note">{String(row.rationale || "")}</div>
                               </td>
-                              <td>{String(row.manufacturer || "—")}</td>
-                              <td>
-                                <span className="cv-badge amber">
-                                  {String(row.fit || "not qualified — different component family").replace(/_/g, " ")}
-                                </span>
+                              <td data-label="Manufacturer">{String(row.manufacturer || "—")}</td>
+                              <td className="cv-fit-cell" data-label="Fit status">
+                                <span className="cv-badge amber">{fitLabel}</span>
                               </td>
-                              <td className="cv-table-action">
+                              <td className="cv-table-action" data-label="Action">
                                 <Link
                                   href={compareHref(
                                     String(result.requested_mpn || mpn),

@@ -662,7 +662,10 @@ def engineering_confidence_from_rows(
     if compared == 0:
         confidence = 30
     elif differences > 0 or required_diff > 0:
-        confidence = max(5, 50 - differences * 14 - required_diff * 10)
+        # Material differences stay below catalog-listing incompleteness bands.
+        # Listing agreement never inflates Match KPIs; a Different rating must
+        # not outscore an otherwise-aligned listing-only comparison.
+        confidence = max(5, 20 - differences * 8 - required_diff * 10)
     elif required_total > 0:
         # Required-family coverage drives engineering confidence. Optional
         # Needs data remains visible in the matrix but does not collapse a

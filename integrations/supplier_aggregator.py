@@ -131,13 +131,38 @@ def _supplier_result_matches_request(source_name: str, requested: str, result: d
 
 
 def _supplier_query_variants(part_number: object) -> tuple[str, ...]:
-    """Try only case and separator formatting; never strip MPN suffixes."""
+    """Try only case and separator formatting; never strip MPN suffixes.
+
+    Distributors often index AMD flash order codes with a hyphen before the
+    speed/package grade (AM29F010B-70EC). When the BOM omits that hyphen,
+    retry the hyphenated form so exact identity can still resolve.
+    """
+    import re
+
     raw = str(part_number or "").strip()
-    variants = []
-    for value in (raw, raw.upper(), normalize_part_number(raw)):
+    variants: list[str] = []
+
+    def _add(value: object) -> None:
         candidate = str(value or "").strip()
         if candidate and candidate not in variants:
             variants.append(candidate)
+
+    _add(raw)
+    _add(raw.upper())
+    compact = normalize_part_number(raw)
+    _add(compact)
+    if compact and "-" not in raw:
+        # AM29F010B70EC → AM29F010B-70EC (speed/temp/package digit run).
+        hyphenated = re.sub(
+            r"([A-Za-z])(\d{2,}[A-Za-z]{0,4})$",
+            r"\1-\2",
+            compact,
+            count=1,
+        )
+        _add(hyphenated)
+        # IRF540N → IRF-540N style letter→digit boundary (first only).
+        boundary = re.sub(r"([A-Za-z])(\d)", r"\1-\2", compact, count=1)
+        _add(boundary)
     return tuple(variants)
 
 
@@ -1012,6 +1037,25 @@ def discover_alternative_candidates(
 
     explicit_substitutes: list[dict] = []
     catalog_candidates: list[dict] = []
+    # Punctuation variants + curated legacy family bases expand discovery only.
+    # Exact identity still requires normalize_part_number equality elsewhere.
+    query_variants = list(_supplier_query_variants(requested))
+    try:
+        from integrations.legacy_mpn_routes import legacy_mpn_route
+
+        route = legacy_mpn_route(requested)
+        if route is not None:
+            for family_mpn in route.get("query_mpns") or ():
+                candidate = str(family_mpn or "").strip()
+                if candidate and candidate not in query_variants:
+                    query_variants.append(candidate)
+    except Exception:
+        pass
+    primary_query = query_variants[0] if query_variants else requested
+    extra_family_terms = [
+        term for term in query_variants[1:]
+        if term and term.casefold() != primary_query.casefold()
+    ]
 
     def _search_digikey() -> tuple[str, dict, list[dict], list[dict]]:
         status = {
@@ -1036,17 +1080,18 @@ def discover_alternative_candidates(
         catalog: list[dict] = []
         errors: list[str] = []
         try:
-            explicit = search_digikey_substitutions(requested)
+            explicit = search_digikey_substitutions(primary_query)
             status["substitutions"] = "ok"
         except Exception as error:
             status["substitutions"] = "error"
             errors.append(sanitize_provider_message(error))
         try:
             parametric_terms = _parametric_catalog_search_terms(original_data)
+            additional = list(dict.fromkeys([*(parametric_terms or []), *extra_family_terms]))
             catalog = search_digikey_catalog_candidates(
-                requested,
+                primary_query,
                 include_family_search=include_family_search,
-                additional_search_terms=parametric_terms,
+                additional_search_terms=additional or None,
             )
             status["catalog"] = "ok"
             status["parametric_search"] = "ok" if parametric_terms else "not_requested"

@@ -408,8 +408,8 @@ class FamilyRawPayloadContractTests(unittest.TestCase):
             self.assertIn(required_label, attrs)
         _assert_no_architecture(self, sparse)
         statuses = _status_map(sparse)
-        self.assertEqual(statuses["Package"], "Match")
-        self.assertEqual(statuses["Pin count"], "Match")
+        self.assertEqual(statuses["Package"], "Listing agreement")
+        self.assertEqual(statuses["Pin count"], "Listing agreement")
         for label in ("VCEO", "IC max", "hFE", "Power dissipation", "Pinout / footprint"):
             self.assertEqual(statuses[label], "Needs data", label)
         assessment = build_engineering_evidence_assessment(
@@ -737,7 +737,8 @@ class FamilyRawPayloadContractTests(unittest.TestCase):
         sparse = build_datasheet_comparison(original, package_only)
         complete = build_datasheet_comparison(original, full)
         self.assertEqual(sparse["family"], "MCU / processor")
-        self.assertEqual(_status_map(sparse)["Pin count"], "Match")
+        # Catalog-only pin agreement is listing agreement, not Compatible Match.
+        self.assertEqual(_status_map(sparse)["Pin count"], "Listing agreement")
         self.assertEqual(_status_map(sparse)["Pinout / configuration compatibility"], "Needs data")
         sparse_conf = build_engineering_evidence_assessment(
             sparse["counts"], comparison_rows=sparse["rows"], family=sparse["family"]
@@ -747,7 +748,9 @@ class FamilyRawPayloadContractTests(unittest.TestCase):
         )["engineering_comparison_confidence"]
         self.assertLess(sparse_conf, 55)
         self.assertGreater(full_conf, sparse_conf)
-        self.assertGreaterEqual(full_conf, 70)
+        # Catalog-only agreement (including package/pin listing agreement) stays
+        # below an engineering-ready confidence band without datasheet Matches.
+        self.assertLess(full_conf, 75)
         self._assert_ui_pdf_parity(original, full, complete)
 
     # ------------------------------------------------------------------ #

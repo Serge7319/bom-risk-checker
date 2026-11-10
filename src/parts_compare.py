@@ -938,7 +938,13 @@ def build_parts_comparison(
 
         fields = comparison_fields(get_family_profile("General"))
         rows: list[dict] = []
-        counts = {"Match": 0, "Different": 0, "Needs data": 0, "Conflicting": 0}
+        counts = {
+            "Match": 0,
+            "Listing agreement": 0,
+            "Different": 0,
+            "Needs data": 0,
+            "Conflicting": 0,
+        }
         for spec in fields:
             a_val = str(part_a.get(spec.key) or "").strip()
             b_val = str(part_b.get(spec.key) or "").strip()
@@ -950,6 +956,19 @@ def build_parts_comparison(
                 a_val = str(a_count) if a_count > 0 else ""
                 b_val = str(b_count) if b_count > 0 else ""
             status, note = compare_field_values(a_val, b_val, spec)
+            # Family-mismatch path is catalog-only; package/pin/lifecycle
+            # listing agreement must never become Compatible Match.
+            if (
+                status == "Match"
+                and a_val
+                and b_val
+                and spec.key in {"package", "pin_count", "lifecycle_status"}
+            ):
+                status = "Listing agreement"
+                note = (
+                    "Supplier listings agree on this attribute, but exact-part manufacturer "
+                    "documents were not verified for both sides; treat as listing agreement only."
+                )
             if status not in counts:
                 status = "Needs data"
             counts[status] += 1
@@ -1012,11 +1031,21 @@ def build_parts_comparison(
         verified_a=bool((datasheet_identity.get("part_a") or {}).get("verified")),
         verified_b=bool((datasheet_identity.get("part_b") or {}).get("verified")),
     )
-    counts = {"Match": 0, "Different": 0, "Needs data": 0, "Conflicting": 0}
+    counts = {
+        "Match": 0,
+        "Listing agreement": 0,
+        "Different": 0,
+        "Needs data": 0,
+        "Conflicting": 0,
+    }
     for row in rows:
         status = str(row.get("Status") or "Needs data")
         if status not in counts:
-            status = "Needs data"
+            # Unknown labels stay Needs data; Listing agreement is tracked.
+            if "listing agreement" in status.casefold():
+                status = "Listing agreement"
+            else:
+                status = "Needs data"
         counts[status] += 1
     confidence = engineering_confidence_from_rows(
         rows,

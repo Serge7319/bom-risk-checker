@@ -75,10 +75,22 @@ class SupplyVoltageExtractionTests(unittest.TestCase):
 class UiLayoutContractTests(unittest.TestCase):
     def test_replacement_and_compare_tables_allocate_all_columns(self):
         css = WEB_CSS.read_text(encoding="utf-8")
-        self.assertIn(".cv-table.cv-table-actions th:nth-child(6)", css)
-        self.assertIn(".cv-table.cv-table-actions th:nth-child(4)", css)
-        self.assertIn(".cv-table.cv-table-actions th:nth-child(5)", css)
-        self.assertIn("min-width: 920px", css)
+        page = (ROOT / "apps" / "web" / "src" / "app" / "find-replacement" / "page.tsx").read_text(
+            encoding="utf-8"
+        )
+        # Find Replacement uses scoped layouts — not the generic home action table.
+        self.assertIn("cv-table-replacement--candidates", page)
+        self.assertIn("cv-table-replacement--leads", page)
+        self.assertIn("cv-table-wrap--replacement", page)
+        self.assertIn(".cv-table.cv-table-replacement--candidates th:nth-child(6)", css)
+        self.assertIn(".cv-table.cv-table-replacement--candidates th:nth-child(4)", css)
+        self.assertIn(".cv-table.cv-table-replacement--candidates th:nth-child(5)", css)
+        self.assertIn(".cv-table.cv-table-replacement--leads th:nth-child(3)", css)
+        self.assertIn("min-width: 980px", css)
+        self.assertIn("min-width: 720px", css)
+        self.assertIn("cv-fit-cell", page)
+        self.assertIn("cv-evidence-cell", page)
+        self.assertIn("white-space: normal", css)
         self.assertIn(".cv-compare-table th:nth-child(6)", css)
         self.assertIn(".cv-compare-table th:nth-child(7)", css)
         self.assertIn(".cv-compare-multi-table", css)
