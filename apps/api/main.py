@@ -1073,7 +1073,21 @@ async def decision_records_post(request: Request) -> JSONResponse:
                 snapshot_in = json.loads(snapshot_in)
             except Exception:  # noqa: BLE001
                 snapshot_in = None
-        reuse_snapshot = (
+        multi_candidates = (
+            snapshot_in.get("candidate_snapshots")
+            if isinstance(snapshot_in, dict)
+            else None
+        )
+        multi_reuse = (
+            isinstance(snapshot_in, dict)
+            and snapshot_in.get("ok") is not False
+            and not datasheet_uploads
+            and isinstance(multi_candidates, list)
+            and len(multi_candidates) >= 2
+            and str(snapshot_in.get("part_a") or "").strip().casefold() == part_a.casefold()
+            and str(snapshot_in.get("part_b") or "").strip().casefold() == part_b.casefold()
+        )
+        reuse_snapshot = multi_reuse or (
             isinstance(snapshot_in, dict)
             and snapshot_in.get("ok") is not False
             and not datasheet_uploads
@@ -1133,6 +1147,10 @@ async def decision_records_post(request: Request) -> JSONResponse:
                 "package_dimension_evidence",
                 "review_warnings",
                 "gap",
+                "multi_candidate_mpns",
+                "multi_matrix",
+                "multi_source_records",
+                "candidate_snapshots",
             )
         }
         # Never trust client-supplied verified_primary_evidence — derive it

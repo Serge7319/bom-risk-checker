@@ -108,3 +108,105 @@ export function buildMultiCompareMatrix(
 
   return attributeOrder.map((attribute) => byAttribute.get(attribute.toLowerCase())!);
 }
+
+export type MultiSourceRecord = {
+  side: string;
+  mpn: string;
+  sourceLabel: string;
+  retrievalNotes: string[];
+  fieldEvidence: Array<{
+    attribute: string;
+    value: string;
+    source: string;
+    valueClass: string;
+    condition: string;
+    assessment: string;
+    evidence: string;
+  }>;
+};
+
+export function buildMultiSourceRecords(
+  currentMpn: string,
+  columns: MultiCompareColumn[],
+): MultiSourceRecord[] {
+  const records: MultiSourceRecord[] = [];
+  const first = columns[0];
+  if (first) {
+    const evidence = (first.result.evidence_sources || {}) as {
+      part_a?: Array<Record<string, unknown>>;
+    };
+    records.push({
+      side: "Part A",
+      mpn: text(first.result.part_a || currentMpn, currentMpn),
+      sourceLabel: text(first.result.source_a, "Not stated"),
+      retrievalNotes: (evidence.part_a || []).map((row) => {
+        const label = text(row.label || row.name || row.source || row.url, "Source");
+        const retrieved = text(row.retrieved_at, "");
+        return retrieved ? `${label} · retrieved ${retrieved}` : label;
+      }),
+      fieldEvidence: (first.rows || []).map((row) => ({
+        attribute: text(row.Attribute || row.attribute),
+        value: text(row["Part A"] || row.part_a),
+        source: text(row["Part A source"], "Not stated"),
+        valueClass: text(row["Part A value class"], "unknown"),
+        condition: text(row["Test condition"], "Not stated"),
+        assessment: text(row.Assessment || row.assessment || row.Status, "Needs data"),
+        evidence: text(row.Evidence || row.evidence || row.Note, "No source note supplied."),
+      })),
+    });
+  }
+  for (const column of columns) {
+    const evidence = (column.result.evidence_sources || {}) as {
+      part_b?: Array<Record<string, unknown>>;
+    };
+    records.push({
+      side: `Candidate · ${column.mpn}`,
+      mpn: text(column.result.part_b || column.mpn, column.mpn),
+      sourceLabel: text(column.result.source_b, "Not stated"),
+      retrievalNotes: (evidence.part_b || []).map((row) => {
+        const label = text(row.label || row.name || row.source || row.url, "Source");
+        const retrieved = text(row.retrieved_at, "");
+        return retrieved ? `${label} · retrieved ${retrieved}` : label;
+      }),
+      fieldEvidence: (column.rows || []).map((row) => ({
+        attribute: text(row.Attribute || row.attribute),
+        value: text(row["Part B"] || row.part_b),
+        source: text(row["Part B source"], "Not stated"),
+        valueClass: text(row["Part B value class"], "unknown"),
+        condition: text(row["Test condition"], "Not stated"),
+        assessment: text(row.Assessment || row.assessment || row.Status, "Needs data"),
+        evidence: text(row.Evidence || row.evidence || row.Note, "No source note supplied."),
+      })),
+    });
+  }
+  return records;
+}
+
+export function buildMultiDecisionSnapshot(
+  currentMpn: string,
+  columns: MultiCompareColumn[],
+): Record<string, unknown> {
+  const matrix = buildMultiCompareMatrix(currentMpn, columns);
+  const sourceRecords = buildMultiSourceRecords(currentMpn, columns);
+  const primary = columns[0]?.result || {};
+  return {
+    ...primary,
+    part_a: text(primary.part_a || currentMpn, currentMpn),
+    part_b: columns.map((column) => column.mpn).join(", "),
+    multi_candidate_mpns: columns.map((column) => column.mpn),
+    multi_matrix: matrix,
+    multi_source_records: sourceRecords,
+    candidate_snapshots: columns.map((column) => ({
+      mpn: column.mpn,
+      part_a: column.result.part_a,
+      part_b: column.result.part_b,
+      source_a: column.result.source_a,
+      source_b: column.result.source_b,
+      evidence_sources: column.result.evidence_sources,
+      finding: column.result.finding,
+      counts: column.result.counts,
+      rows: column.result.rows,
+      datasheet_identity: column.result.datasheet_identity,
+    })),
+  };
+}

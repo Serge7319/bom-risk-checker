@@ -1066,7 +1066,22 @@ def datasheet_qa_payload(
 
 
 def procurement_payload(*, workspace_id: str, analysis_id: str | None = None) -> dict[str, Any]:
-    report = _require_analysis(analysis_id, workspace_id=workspace_id)
+    requested_id = str(analysis_id or "").strip()
+    if requested_id:
+        report = get_report(requested_id, workspace_id=workspace_id)
+        if not report:
+            return {
+                "ok": False,
+                "mode": "analysis-not-found",
+                "analysis_id": requested_id,
+                "gap": (
+                    f"No saved analysis matches id {requested_id} in this workspace. "
+                    "Select another analysis or run a new BOM."
+                ),
+                "parts": [],
+            }
+    else:
+        report = _require_analysis(None, workspace_id=workspace_id)
     if not report:
         return {
             "ok": True,
@@ -1382,6 +1397,9 @@ def procurement_payload(*, workspace_id: str, analysis_id: str | None = None) ->
             "analysis_mode": report.get("mode"),
             "analysis_id": report["id"],
             "filename": report.get("filename"),
+            "project_name": report.get("project_name"),
+            "bom_name": report.get("bom_name"),
+            "revision": report.get("revision"),
             "gap": gap,
             "recommendation_note": advisor.get("summary") or "Review saved sourcing evidence before placing an order.",
             "evidence_summary": {

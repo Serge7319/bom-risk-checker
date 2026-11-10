@@ -1,33 +1,83 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Shell } from "@/components/Shell";
 import { EmptyState } from "@/components/EmptyState";
 import { EvidenceNotice, LoadingCard } from "@/components/GapBanner";
 import { Icon } from "@/components/Icons";
 import { PartThumbnail } from "@/components/PartThumbnail";
 import { PageHeader, PrimaryLink, SecondaryLink } from "@/components/PageHeader";
-import { fetchProcurement } from "@/lib/api";
+import { fetchProcurement, listReports } from "@/lib/api";
 import { evidenceSourceLabel } from "@/lib/display";
 import { PAGE_META } from "@/lib/routes";
 import { readLastAnalysis, useRequireSession } from "@/lib/session";
 
-export default function ProcurementPage() {
+function analysisLabel(row: Record<string, unknown>) {
+  const project = String(row.project_name || "").trim();
+  const bom = String(row.bom_name || row.filename || "").trim();
+  const revision = String(row.revision || "").trim();
+  const title = [project, bom].filter(Boolean).join(" · ") || "Saved analysis";
+  return revision ? `${title} (rev ${revision})` : title;
+}
+
+function withAnalysisId(href: string, analysisId: string) {
+  if (!analysisId) return href;
+  const joiner = href.includes("?") ? "&" : "?";
+  return `${href}${joiner}analysis_id=${encodeURIComponent(analysisId)}`;
+}
+
+function ProcurementPageInner() {
   const session = useRequireSession();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [data, setData] = useState<Record<string, unknown> | null>(null);
+  const [reports, setReports] = useState<Array<Record<string, unknown>>>([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(true);
   const [filter, setFilter] = useState("");
+  const [selectedAnalysisId, setSelectedAnalysisId] = useState("");
+
+  const requestedAnalysisId = useMemo(
+    () => (searchParams.get("analysis_id") || "").trim(),
+    [searchParams],
+  );
 
   useEffect(() => {
     if (!session) return;
+    let active = true;
     const last = readLastAnalysis(session);
-    fetchProcurement(session.access_token, last?.analysis_id)
-      .then(setData)
-      .catch((err) => setError(err instanceof Error ? err.message : "Failed"))
-      .finally(() => setBusy(false));
-  }, [session]);
+    const analysisId = requestedAnalysisId || last?.analysis_id || "";
+    setSelectedAnalysisId(analysisId);
+    setBusy(true);
+    setError("");
+    setData(null);
+    Promise.all([
+      listReports(session.access_token).catch(() => ({ reports: [] as Array<Record<string, unknown>> })),
+      fetchProcurement(session.access_token, analysisId || undefined),
+    ])
+      .then(([reportPayload, procurement]) => {
+        if (!active) return;
+        setReports((reportPayload.reports || []) as Array<Record<string, unknown>>);
+        setData(procurement);
+        const resolved = String(procurement.analysis_id || analysisId || "").trim();
+        if (resolved) setSelectedAnalysisId(resolved);
+        if (procurement.ok === false) {
+          setError(String(procurement.gap || "Procurement could not load that analysis."));
+        }
+      })
+      .catch((err) => {
+        if (!active) return;
+        setError(err instanceof Error ? err.message : "Failed");
+      })
+      .finally(() => {
+        if (active) setBusy(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [session, requestedAnalysisId]);
 
   const parts = useMemo(() => {
     const rows = ((data?.parts || []) as Array<Record<string, unknown>>) || [];
@@ -46,6 +96,14 @@ export default function ProcurementPage() {
   const missingParts = Number(evidenceSummary.parts_without_verified_supplier_evidence || 0);
   const partsTotal = Number(evidenceSummary.parts_total || ((data?.parts as unknown[]) || []).length || 0);
   const sourcingBadge = `Live: ${liveParts}; synthetic/preview: ${sampleParts}; no supplier match: ${missingParts} (of ${partsTotal})`;
+  const activeAnalysisId = String(data?.analysis_id || selectedAnalysisId || "").trim();
+  const contextLabel = [
+    String(data?.project_name || "").trim(),
+    String(data?.bom_name || data?.filename || "").trim(),
+    data?.revision ? `rev ${String(data.revision)}` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   const display = (value: unknown, fallback = "Not recorded") => {
     if (value === null || value === undefined || String(value).trim() === "") return fallback;
@@ -61,7 +119,7 @@ export default function ProcurementPage() {
         actions={
           <div className="cv-page-head-actions">
             <PrimaryLink href="/bom-analyzer">Run new BOM analysis</PrimaryLink>
-            <SecondaryLink href="/compare-parts">Compare alternatives</SecondaryLink>
+            <SecondaryLink href={withAnalysisId("/compare-parts", activeAnalysisId)}>Compare alternatives</SecondaryLink>
           </div>
         }
       />
@@ -79,6 +137,13 @@ export default function ProcurementPage() {
                 <p className="cv-card-subtitle">
                   {String(data.recommendation_note || "Review sourcing coverage from the selected analysis.")}
                 </p>
+                <p className="cv-small-note" style={{ marginTop: 8 }} data-testid="procurement-context">
+                  {contextLabel
+                    ? `Showing ${contextLabel}${activeAnalysisId ? ` · ${activeAnalysisId}` : ""}`
+                    : activeAnalysisId
+                      ? `Showing analysis ${activeAnalysisId}`
+                      : "No analysis selected — choose a saved BOM below."}
+                </p>
               </div>
               <span className="cv-badge gray">
                 {sourcingBadge}
@@ -86,8 +151,25 @@ export default function ProcurementPage() {
             </div>
 
             <div className="cv-sourcing-controls">
-              <select aria-label="Sourcing BOM context" defaultValue="current">
-                <option value="current">Current analysis context</option>
+              <select
+                aria-label="Sourcing BOM context"
+                value={selectedAnalysisId}
+                onChange={(event) => {
+                  const nextId = event.target.value;
+                  setSelectedAnalysisId(nextId);
+                  router.replace(nextId ? `/procurement?analysis_id=${encodeURIComponent(nextId)}` : "/procurement");
+                }}
+              >
+                <option value="">Select a saved analysis</option>
+                {reports.map((row) => {
+                  const id = String(row.id || "").trim();
+                  if (!id) return null;
+                  return (
+                    <option key={id} value={id}>
+                      {analysisLabel(row)}
+                    </option>
+                  );
+                })}
               </select>
               <input
                 value={filter}
@@ -238,7 +320,7 @@ export default function ProcurementPage() {
                   </span>
                 </div>
                 <div style={{ marginTop: 14 }}>
-                  <SecondaryLink href="/detailed-risk-report">Open risk report</SecondaryLink>
+                  <SecondaryLink href={withAnalysisId("/detailed-risk-report", activeAnalysisId)}>Open risk report</SecondaryLink>
                 </div>
               </section>
               <section className="cv-card pad">
@@ -254,7 +336,7 @@ export default function ProcurementPage() {
                   </span>
                 </div>
                 <div style={{ marginTop: 14 }}>
-                  <SecondaryLink href="/compare-parts">Compare parts</SecondaryLink>
+                  <SecondaryLink href={withAnalysisId("/compare-parts", activeAnalysisId)}>Compare parts</SecondaryLink>
                 </div>
               </section>
               <section className="cv-card pad">
@@ -270,7 +352,7 @@ export default function ProcurementPage() {
                   </span>
                 </div>
                 <div style={{ marginTop: 14 }}>
-                  <Link className="cv-button" href="/engineering-decisions">
+                  <Link className="cv-button" href={withAnalysisId("/engineering-decisions", activeAnalysisId)}>
                     Open decisions
                   </Link>
                 </div>
@@ -280,6 +362,14 @@ export default function ProcurementPage() {
         </>
       ) : null}
     </Shell>
+  );
+}
+
+export default function ProcurementPage() {
+  return (
+    <Suspense fallback={<LoadingCard label="Loading procurement…" />}>
+      <ProcurementPageInner />
+    </Suspense>
   );
 }
 

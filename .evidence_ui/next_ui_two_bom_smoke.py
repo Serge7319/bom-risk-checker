@@ -377,18 +377,24 @@ def _run_bom(page: Page, cfg: dict) -> dict:
             page.get_by_role("button", name=re.compile(r"find candidates|search", re.I)).click()
             page.wait_for_timeout(4000)
         repl = page.locator("body").inner_text()
+        has_provider_panel = (
+            page.locator('[data-testid="replacement-provider-status"]').count() > 0
+            or "Provider search outcomes" in repl
+        )
+        has_lead_buckets = any(
+            marker in repl
+            for marker in (
+                "Relevant candidates",
+                "Unclassified leads",
+                "Unfiltered leads",
+                "Unable to confirm",
+            )
+        )
         report["steps"]["replacement"] = {
-            "ok": any(
-                marker in repl
-                for marker in (
-                    "Relevant candidates",
-                    "Unclassified leads",
-                    "Unfiltered leads",
-                    "Unable to confirm",
-                )
-            ),
+            "ok": has_lead_buckets or has_provider_panel,
             "url": page.url,
             "has_unclassified_section": "Unclassified leads" in repl,
+            "has_provider_panel": has_provider_panel,
             "snippet": repl[:400],
         }
         page.screenshot(path=str(OUT / f"{label}_replacement.png"), full_page=True)
@@ -411,18 +417,26 @@ def _run_bom(page: Page, cfg: dict) -> dict:
         }
         page.screenshot(path=str(OUT / f"{label}_reports.png"), full_page=True)
 
-        # Procurement data for last analysis.
-        page.goto(f"{WEB}/procurement", wait_until="networkidle", timeout=60000)
+        # Procurement must honor the exact analysis_id (no flat/nested mix).
+        page.goto(
+            f"{WEB}/procurement?analysis_id={analysis_id}",
+            wait_until="networkidle",
+            timeout=60000,
+        )
         page.wait_for_timeout(2500)
         proc_body = page.locator("body").inner_text()
         report["steps"]["procurement"] = {
             "ok": (
                 "Supplier evidence" in proc_body or "procurement" in proc_body.casefold()
             )
+            and analysis_id in page.url
+            and (cfg["project"] in proc_body or cfg["bom_name"] in proc_body or analysis_id in proc_body)
             and any(mpn in proc_body for mpn in cfg["expected_mpns"])
             and ("synthetic" in proc_body.casefold() or "Live:" in proc_body),
             "url": page.url,
             "has_expected_mpn": any(mpn in proc_body for mpn in cfg["expected_mpns"]),
+            "scoped_to_analysis": analysis_id in page.url
+            and (cfg["project"] in proc_body or cfg["bom_name"] in proc_body or analysis_id in proc_body),
             "snippet": proc_body[:500],
         }
         page.screenshot(path=str(OUT / f"{label}_procurement.png"), full_page=True)

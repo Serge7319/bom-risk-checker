@@ -824,17 +824,9 @@ def build_datasheet_comparison(original: dict, candidate: dict) -> dict:
                 note = (
                     "A lifecycle conflict was reported, but the individual supplier records were not retained."
                 )
-        elif (
-            status == "Match"
-            and original_value
-            and candidate_value
-            and (
-                spec.compare in {COMPARE_NOMINAL, COMPARE_LIMIT_GE, COMPARE_LIMIT_LE}
-                or spec.key in {"package", "pin_count", "lifecycle_status"}
-            )
-        ):
-            # Catalog-only numeric agreement and package/pin/lifecycle text
-            # agreement are listing agreement only — never Compatible Match.
+        elif status == "Match" and original_value and candidate_value:
+            # Catalog-only agreement (numeric or text) is listing agreement only —
+            # never datasheet-verified Compatible Match.
             status = "Listing agreement"
             note = (
                 "Supplier listings agree on this attribute, but exact-part manufacturer "

@@ -377,43 +377,51 @@ def compare_field_values(
             return "Match", "The retrieved type/polarity values are equivalent."
         return "Different", "The retrieved type/polarity values differ; engineer review is required."
 
+    value_role = str(getattr(spec, "value_role", "") or "").casefold()
+    field_key = str(getattr(spec, "key", "") or "").casefold()
+    if value_role == "range" or field_key in {
+        "voltage_range",
+        "temperature_range",
+        "storage_temperature",
+    }:
+        range_status = _comparable_range_status(original_text, candidate_text, field_key=field_key)
+        if range_status is not None:
+            return range_status
+
     if mode in {COMPARE_NOMINAL, COMPARE_LIMIT_GE, COMPARE_LIMIT_LE}:
         storage_unit = storage_unit_for_field(getattr(spec, "key", ""))
         preferred = storage_unit or str(spec.unit or "").strip()
         o_num, o_unit = parse_numeric_with_unit(original_text, preferred_unit=preferred)
         c_num, c_unit = parse_numeric_with_unit(candidate_text, preferred_unit=preferred)
 
-        # Typical/guaranteed fields require known value class and test conditions
-        # before equal or unequal magnitudes can be classified as Match/Different.
-        expected_role = str(getattr(spec, "value_role", "") or "").casefold()
-        expects_class = expected_role in {"typical", "guaranteed"}
-        if expects_class:
-            if original_class == "unknown" or candidate_class == "unknown":
-                return (
-                    "Needs data",
-                    (
-                        "One or both values lack a typical/min/max/guaranteed class, so the "
-                        "conditions are not confirmed as comparable for engineering approval."
-                    ),
-                )
-            original_condition = engineering_test_condition(original_text)
-            candidate_condition = engineering_test_condition(candidate_text)
-            if original_condition == "Not stated" or candidate_condition == "Not stated":
-                return (
-                    "Needs data",
-                    (
-                        "One or both values omit stated test conditions, so typical/guaranteed "
-                        "magnitudes are not confirmed as comparable for engineering approval."
-                    ),
-                )
-            if original_condition.casefold() != candidate_condition.casefold():
-                return (
-                    "Needs data",
-                    (
-                        "The stated test conditions differ, so the typical/guaranteed values "
-                        "are not comparable until matching conditions are cited."
-                    ),
-                )
+        # All numeric NOMINAL/LIMIT compares require known value class and test
+        # conditions before equal or unequal magnitudes can be Match/Different.
+        if original_class == "unknown" or candidate_class == "unknown":
+            return (
+                "Needs data",
+                (
+                    "One or both values lack a typical/min/max/guaranteed class, so the "
+                    "conditions are not confirmed as comparable for engineering approval."
+                ),
+            )
+        original_condition = engineering_test_condition(original_text)
+        candidate_condition = engineering_test_condition(candidate_text)
+        if original_condition == "Not stated" or candidate_condition == "Not stated":
+            return (
+                "Needs data",
+                (
+                    "One or both values omit stated test conditions, so the magnitudes "
+                    "are not confirmed as comparable for engineering approval."
+                ),
+            )
+        if original_condition.casefold() != candidate_condition.casefold():
+            return (
+                "Needs data",
+                (
+                    "The stated test conditions differ, so the values are not comparable "
+                    "until matching conditions are cited."
+                ),
+            )
 
         if o_num is None or c_num is None:
             # Incomparable formats are unverified — never Material by default.
@@ -526,7 +534,11 @@ def supply_range_finding(original: object, candidate: object) -> tuple[str, str]
     same_min = abs(candidate_min - original_min) <= 1e-9
     same_max = abs(candidate_max - original_max) <= 1e-9
     if same_min and same_max:
-        return None
+        return (
+            "Match",
+            "Normalized spans match after equivalent range notation was established "
+            "from both sources.",
+        )
     covers = candidate_min <= original_min + 1e-9 and candidate_max >= original_max - 1e-9
     if covers:
         differences = []
@@ -544,6 +556,42 @@ def supply_range_finding(original: object, candidate: object) -> tuple[str, str]
         "Different",
         "The candidate supply range does not cover the original range.",
     )
+
+
+def _strip_range_parentheticals(text: object) -> str:
+    """Drop measurement-condition notes such as (TA) from temperature spans."""
+    return re.sub(r"\s*\([^)]*\)", "", str(text or "")).strip()
+
+
+def _comparable_range_status(
+    original_text: str,
+    candidate_text: str,
+    *,
+    field_key: str,
+) -> tuple[str, str] | None:
+    """Normalize equivalent range notation when both sources establish the same span."""
+    original_clean = _strip_range_parentheticals(original_text)
+    candidate_clean = _strip_range_parentheticals(candidate_text)
+    if original_clean and candidate_clean and original_clean.casefold() == candidate_clean.casefold():
+        return (
+            "Match",
+            "The ranges match after equivalent notation and measurement-condition notes "
+            "were normalized from both sources.",
+        )
+    covered = supply_range_finding(original_clean or original_text, candidate_clean or candidate_text)
+    if covered is None:
+        return None
+    status, note = covered
+    if status == "Needs review":
+        # Core compare statuses stay Match / Different / Needs data.
+        return "Needs data", note
+    if status == "Match" and field_key in {"temperature_range", "storage_temperature"}:
+        return (
+            "Match",
+            "The temperature ranges match after equivalent notation was established "
+            "from both sources.",
+        )
+    return status, note
 
 
 def _condition_label(text: object) -> str:
