@@ -137,6 +137,45 @@ def _risk_score_from_report_part(part: dict[str, Any]) -> float | int | None:
     return None
 
 
+def _monitoring_evidence_source(part: dict[str, Any], report: dict[str, Any]) -> str:
+    """Use the part's saved provenance; never relabel live evidence as synthetic."""
+    raw = str(
+        part.get("evidence_source")
+        or part.get("evidence_class")
+        or part.get("Source")
+        or part.get("source")
+        or part.get("price_source")
+        or ""
+    ).strip()
+    tag = raw.casefold()
+    verified = part.get("supplier_data_verified") is True or str(
+        part.get("Supplier Data Verified") or ""
+    ).strip().casefold() in {"1", "true", "yes", "verified"}
+    report_mode = str(report.get("mode") or "").casefold()
+    if tag == "missing":
+        return "missing"
+    if tag.startswith("live") or (verified and report_mode == "legacy-supplier-engine"):
+        return raw if tag.startswith("live") else "live-authorized-supplier"
+    if any(token in tag for token in ("synthetic", "preview", "offline")):
+        return raw or "synthetic-preview-analysis"
+    if report_mode == "synthetic-preview":
+        return raw or "synthetic-preview-analysis"
+    if report_mode == "legacy-supplier-engine" and verified:
+        return "live-authorized-supplier"
+    return raw or "missing"
+
+
+def _monitoring_evidence_phrase(evidence_source: str) -> str:
+    tag = str(evidence_source or "").casefold()
+    if tag.startswith("live"):
+        return "live authorized-supplier evidence"
+    if "synthetic" in tag or "preview" in tag:
+        return "synthetic analysis"
+    if tag == "missing":
+        return "saved analysis without verified supplier evidence"
+    return "saved analysis"
+
+
 def monitoring_payload(
     *, workspace_id: str, analysis_id: str | None = None
 ) -> dict[str, Any]:
@@ -158,10 +197,17 @@ def monitoring_payload(
 
     alerts: list[dict[str, Any]] = []
     now = datetime.now(timezone.utc).isoformat()
+    report_mode = str(report.get("mode") or "synthetic-preview")
     for part in report.get("parts") or []:
-        mpn = str(part.get("MPN") or "")
-        lifecycle = str(part.get("Lifecycle") or "")
-        risk = str(part.get("Risk Level") or "")
+        if not isinstance(part, dict):
+            continue
+        mpn = str(part.get("MPN") or part.get("mpn") or "")
+        if not mpn:
+            continue
+        lifecycle = str(part.get("Lifecycle") or part.get("lifecycle_status") or "")
+        risk = str(part.get("Risk Level") or part.get("risk_level") or "")
+        evidence_source = _monitoring_evidence_source(part, report)
+        evidence_phrase = _monitoring_evidence_phrase(evidence_source)
         if lifecycle.upper() == "NRND":
             alerts.append(
                 {
@@ -170,14 +216,14 @@ def monitoring_payload(
                         report["id"],
                         mpn,
                         "Lifecycle Signal",
-                        f"Lifecycle recorded as {lifecycle} in synthetic analysis",
+                        f"Lifecycle recorded as {lifecycle} in {evidence_phrase}",
                         "High",
                         "Active (assumed)",
                         lifecycle,
                     ),
                     "created_at": now,
                     "acknowledged": False,
-                    "evidence_source": "synthetic-preview-analysis",
+                    "evidence_source": evidence_source,
                 }
             )
         if risk.lower() == "high":
@@ -188,14 +234,14 @@ def monitoring_payload(
                         report["id"],
                         mpn,
                         "Risk Signal",
-                        f"High risk in latest analysis: {part.get('Risk Reasons') or 'see report'}",
+                        f"High risk in latest analysis: {part.get('Risk Reasons') or part.get('risk_reasons') or 'see report'}",
                         "High",
                         "—",
                         risk,
                     ),
                     "created_at": now,
                     "acknowledged": False,
-                    "evidence_source": "synthetic-preview-analysis",
+                    "evidence_source": evidence_source,
                 }
             )
         elif risk.lower() == "medium":
@@ -206,50 +252,61 @@ def monitoring_payload(
                         report["id"],
                         mpn,
                         "Risk Signal",
-                        f"Medium risk in latest analysis: {part.get('Risk Reasons') or 'see report'}",
+                        f"Medium risk in latest analysis: {part.get('Risk Reasons') or part.get('risk_reasons') or 'see report'}",
                         "Medium",
                         "—",
                         risk,
                     ),
                     "created_at": now,
                     "acknowledged": False,
-                    "evidence_source": "synthetic-preview-analysis",
+                    "evidence_source": evidence_source,
                 }
             )
 
-    alert_df = pd.DataFrame(alerts)
-    monitor_df = pd.DataFrame(
-        [
-            {
-                "part_number": p.get("MPN"),
-                "lifecycle_status": p.get("Lifecycle"),
-                "stock": p.get("Stock"),
-                "risk_level": p.get("Risk Level"),
-            }
-            for p in report.get("parts") or []
-        ]
-    )
-    action_center = build_monitoring_action_center(alert_df, monitor_df)
-    high = sum(1 for a in alerts if str(a.get("severity")).lower() == "high")
-    lifecycle_n = sum(
-        1 for a in alerts if "lifecycle" in str(a.get("alert_type") or "").lower()
-    )
     for alert in alerts:
         alert["analysis_id"] = report["id"]
         alert["workspace_id"] = workspace_id
-        alert["evidence_source"] = alert.get("evidence_source") or "synthetic-preview-analysis"
+        # Preserve the per-part provenance already attached above.
+        alert["evidence_source"] = alert.get("evidence_source") or _monitoring_evidence_source(
+            {}, report
+        )
+
     durable = monitoring_store.persist_alerts(workspace_id, alerts)
+    # Hard scope: only alerts for this analysis_id feed KPIs / action center / UI.
+    scoped = [
+        alert
+        for alert in durable
+        if str(alert.get("analysis_id") or "").strip() == str(report["id"]).strip()
+    ]
+    alert_df = pd.DataFrame(scoped)
+    monitor_df = pd.DataFrame(
+        [
+            {
+                "part_number": p.get("MPN") or p.get("mpn"),
+                "lifecycle_status": p.get("Lifecycle") or p.get("lifecycle_status"),
+                "stock": p.get("Stock") if p.get("Stock") is not None else p.get("stock"),
+                "risk_level": p.get("Risk Level") or p.get("risk_level"),
+            }
+            for p in report.get("parts") or []
+            if isinstance(p, dict)
+        ]
+    )
+    action_center = build_monitoring_action_center(alert_df, monitor_df)
+    high = sum(1 for a in scoped if str(a.get("severity")).lower() == "high")
+    lifecycle_n = sum(
+        1 for a in scoped if "lifecycle" in str(a.get("alert_type") or "").lower()
+    )
     refresh = monitoring_store.record_refresh(
         workspace_id,
         analysis_id=report["id"],
-        alert_count=len(durable),
-        mode="synthetic-preview",
+        alert_count=len(scoped),
+        mode=report_mode,
     )
     prefs = monitoring_store.get_preferences(workspace_id)
     return _json_safe(
         {
             "ok": True,
-            "mode": "synthetic-preview",
+            "mode": report_mode,
             "analysis_id": report["id"],
             "filename": report.get("filename"),
             "gap": (
@@ -258,11 +315,11 @@ def monitoring_payload(
             ),
             "metrics": {
                 "monitored_parts": report.get("total_parts") or 0,
-                "active_alerts": len(durable),
+                "active_alerts": len(scoped),
                 "high_priority": high,
                 "lifecycle_changes": lifecycle_n,
             },
-            "alerts": durable,
+            "alerts": scoped,
             "action_center": action_center,
             "preferences": prefs,
             "refresh": refresh,
@@ -894,7 +951,24 @@ def ask_cadivor_payload(
                     if part.get("lead_time_weeks") is not None
                     else part.get("Lead Time Weeks")
                 ),
-                "quantity": part.get("Quantity") or part.get("quantity"),
+                "quantity": (
+                    part.get("effective_quantity")
+                    if part.get("effective_quantity") is not None
+                    else part.get("Effective Quantity")
+                    if part.get("Effective Quantity") is not None
+                    else part.get("Quantity")
+                    if part.get("Quantity") is not None
+                    else part.get("quantity")
+                ),
+                "quantity_per_parent": (
+                    part.get("quantity_per_parent")
+                    if part.get("quantity_per_parent") is not None
+                    else part.get("Quantity per Parent")
+                    if part.get("Quantity per Parent") is not None
+                    else part.get("Quantity")
+                    if part.get("Quantity") is not None
+                    else part.get("quantity")
+                ),
                 "source": part.get("Source") or part.get("source") or report.get("mode"),
                 "evidence_source": part.get("evidence_source") or part.get("Source") or part.get("source") or report.get("mode"),
             }
@@ -1222,7 +1296,22 @@ def procurement_payload(*, workspace_id: str, analysis_id: str | None = None) ->
                 "datasheet_url": normalized_evidence_part["datasheet_url"],
                 "quantity": recommendation.get("Required Quantity")
                 if recommendation.get("Required Quantity") is not None
-                else first_value(part, "Quantity", "quantity", "qty"),
+                else first_value(
+                    part,
+                    "effective_quantity",
+                    "Effective Quantity",
+                    "Quantity",
+                    "quantity",
+                    "qty",
+                ),
+                "quantity_per_parent": first_value(
+                    part,
+                    "quantity_per_parent",
+                    "Quantity per Parent",
+                    "Quantity",
+                    "quantity",
+                    "qty",
+                ),
                 "lifecycle": recommendation.get("Lifecycle Status")
                 or first_value(part, "Lifecycle", "lifecycle_status", default="Unknown"),
                 "risk_level": first_value(part, "Risk Level", "risk_level", default="Needs verification"),

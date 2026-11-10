@@ -141,7 +141,33 @@ def build_design_impact(
                 else "Not assessed"
             ),
             "Risk Level": _text(_first(row, "risk_level", "Risk Level"), "Unknown"),
-            "Quantity": int(_number(_first(row, "quantity", "qty", "required_quantity"), 1)),
+            "Quantity": int(
+                _number(
+                    _first(
+                        row,
+                        "effective_quantity",
+                        "Effective Quantity",
+                        "quantity",
+                        "Quantity",
+                        "qty",
+                        "required_quantity",
+                    ),
+                    1,
+                )
+            ),
+            "Quantity per Parent": int(
+                _number(
+                    _first(
+                        row,
+                        "quantity_per_parent",
+                        "Quantity per Parent",
+                        "quantity",
+                        "Quantity",
+                        "qty",
+                    ),
+                    1,
+                )
+            ),
         })
 
     available_mpns = sorted({
