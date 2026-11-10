@@ -1,0 +1,71 @@
+Cadivor · Evidence-linked engineering review
+Page 1
+Cadivor BOM Risk Report
+Project: PR Nov10 Nested Smoke — nested-product-hierarchy    BOM: nested-product-hierarchy    Revision: N1
+Health: 96 / 100    Status: Healthy    Components: 8    High / medium / low: 0 / 1 / 7
+This report uses synthetic preview analysis. Stock, price, and lifecycle values are not live supplier verification; confirm primary-source evidence before making a sourcing or release decision.
+MPN
+Manufacturer / description
+Parent
+Qty
+Lifecycle
+Risk
+Evidence
+Risk reasons
+PRODTOP
+Acme · Top-level product
+1.0
+Active
+Low
+synthetic-preview
+PSUASM
+Acme · Power supply assembly
+PRODTOP
+2.0
+Active
+Low
+synthetic-preview
+REG5V
+Texas Instruments · 5V regulator
+NRND candidate
+PSUASM
+2.0
+Active
+Low
+synthetic-preview
+CAP100U
+Murata · Bulk capacitor
+PSUASM
+8.0
+Active
+Low
+synthetic-preview
+LM358DR
+Texas Instruments · Op Amp
+PSUASM
+8.0
+Active
+Low
+synthetic-preview
+MCUASM
+Acme · Controller assembly
+PRODTOP
+1.0
+Active
+Low
+synthetic-preview
+STM32F103
+STMicroelectronics · MCU
+MCUASM
+1.0
+Active
+Low
+synthetic-preview
+EPF10K20RC2404
+N
+Altera · Legacy FPGA NRND
+MCUASM
+1.0
+NRND
+Medium
+synthetic-preview

@@ -828,10 +828,13 @@ def build_datasheet_comparison(original: dict, candidate: dict) -> dict:
             status == "Match"
             and original_value
             and candidate_value
-            and spec.compare in {COMPARE_NOMINAL, COMPARE_LIMIT_GE, COMPARE_LIMIT_LE}
+            and (
+                spec.compare in {COMPARE_NOMINAL, COMPARE_LIMIT_GE, COMPARE_LIMIT_LE}
+                or spec.key in {"package", "pin_count", "lifecycle_status"}
+            )
         ):
-            # Numeric supplier agreement without verified manufacturer docs is
-            # listing agreement only — not Compatible for substitution approval.
+            # Catalog-only numeric agreement and package/pin/lifecycle text
+            # agreement are listing agreement only — never Compatible Match.
             status = "Listing agreement"
             note = (
                 "Supplier listings agree on this attribute, but exact-part manufacturer "

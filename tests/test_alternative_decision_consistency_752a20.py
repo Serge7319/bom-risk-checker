@@ -240,17 +240,16 @@ class PassiveAlternativeDecisionTests(unittest.TestCase):
         result = self._capacitor_reason()
         confirmed = " ".join(result["confirmed_matches"]).casefold()
         verification = " ".join(result["verification_required"]).casefold()
-        # Exact/text Matches remain confirmed engineering evidence.
+        # Exact/text Matches that remain engineering evidence (not listing-only).
         for field in (
-            "package",
             "mounting",
             "tolerance",
             "dielectric",
             "temperature characteristic",
         ):
             self.assertIn(field, confirmed, msg=f"Missing confirmed field: {field}")
-        # Numeric catalog-only agreements stay visible as listing evidence, not Match.
-        for field in ("capacitance", "rated voltage"):
+        # Package and numeric catalog-only agreements stay listing evidence, not Match.
+        for field in ("package", "capacitance", "rated voltage"):
             self.assertIn(field, verification, msg=f"Missing listing verification: {field}")
             self.assertIn("listing agreement", verification)
 

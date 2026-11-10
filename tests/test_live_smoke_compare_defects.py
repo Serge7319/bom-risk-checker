@@ -251,7 +251,8 @@ class UnitNormalizationSmokeTests(unittest.TestCase):
         )
         self.assertEqual(lifecycle.get("Original"), "Active")
         self.assertEqual(lifecycle.get("Candidate"), "Active")
-        self.assertEqual(lifecycle.get("Assessment"), "Compatible on available evidence")
+        # Catalog-only lifecycle agreement is not Compatible.
+        self.assertEqual(lifecycle.get("Assessment"), "Supplier-listing agreement")
 
 
 class RiskCountConsistencyTests(unittest.TestCase):

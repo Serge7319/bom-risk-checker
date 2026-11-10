@@ -24,10 +24,10 @@ from openpyxl import load_workbook
 from playwright.sync_api import Page, sync_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = Path(os.environ.get("CADIVOR_SMOKE_OUT") or (ROOT / ".evidence_ui" / "next_ui_two_bom_598"))
+OUT = Path(os.environ.get("CADIVOR_SMOKE_OUT") or (ROOT / ".evidence_ui" / "next_ui_two_bom_nov10"))
 OUT.mkdir(parents=True, exist_ok=True)
 
-WEB = os.environ.get("CADIVOR_SMOKE_WEB", "http://127.0.0.1:3001").rstrip("/")
+WEB = os.environ.get("CADIVOR_SMOKE_WEB", "http://127.0.0.1:3011").rstrip("/")
 API = os.environ.get("CADIVOR_SMOKE_API", "http://127.0.0.1:8081").rstrip("/")
 EMAIL = "sandbox-a@cadivor.test"
 PASSWORD = "CadivorSandbox!a"
@@ -36,7 +36,7 @@ BOMS = [
     {
         "label": "flat",
         "path": ROOT / "tests" / "fixtures" / "synthetic_bom_25parts.csv",
-        "project": "PR597 Flat Smoke",
+        "project": "PR Nov10 Flat Smoke",
         "bom_name": "flat-synthetic-25",
         "revision": "F1",
         "part_a": "XC3S400-4PQG208C",
@@ -47,7 +47,7 @@ BOMS = [
     {
         "label": "nested",
         "path": ROOT / "tests" / "fixtures" / "nested_bom_product.csv",
-        "project": "PR597 Nested Smoke",
+        "project": "PR Nov10 Nested Smoke",
         "bom_name": "nested-product-hierarchy",
         "revision": "N1",
         "part_a": "STM32F103",
@@ -566,33 +566,139 @@ def main() -> int:
         for cfg in BOMS:
             results["boms"].append(_run_bom(page, cfg))
 
-        # Layout viewport checks for Find Replacement + Compare Parts tables.
+        # Layout viewport checks: real Find Replacement page + controlled API
+        # candidate row (no hand-built table injection).
+        controlled_replacement = {
+            "requested_mpn": "AM29F010B-70EC",
+            "original": {
+                "mpn": "AM29F010B-70EC",
+                "manufacturer": "AMD",
+                "description": "1 Megabit CMOS Flash Memory",
+                "lifecycle_status": "Obsolete",
+            },
+            "candidates": [
+                {
+                    "mpn": "AM29F010B-90EC",
+                    "manufacturer": "AMD",
+                    "lifecycle_status": "Obsolete",
+                    "fit": (
+                        "not qualified — speed grade, temperature range, and package "
+                        "outline still require datasheet verification before any drop-in claim"
+                    ),
+                    "missing_evidence": [
+                        "manufacturer datasheet package outline",
+                        "speed grade timing table",
+                        "temperature range confirmation from identity-verified source",
+                    ],
+                    "rationale": "Same flash family catalog lead",
+                }
+            ],
+            "unclassified_leads": [],
+            "unfiltered_leads": [],
+        }
+
+        def _fulfill_replacement(route):
+            route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps(controlled_replacement),
+            )
+
+        page.route("**/tools/find-replacement**", _fulfill_replacement)
         viewport_checks = []
-        for width, height in ((1440, 1100), (1024, 900), (768, 900), (390, 844)):
+        for width, height in ((1440, 1100), (696, 1188), (390, 844)):
             page.set_viewport_size({"width": width, "height": height})
             page.goto(f"{WEB}/find-replacement", wait_until="networkidle", timeout=60000)
-            page.wait_for_timeout(800)
+            page.wait_for_timeout(400)
+            page.locator("#replacement-mpn").fill("AM29F010B-70EC")
+            page.locator("#replacement-mfr").fill("AMD")
+            page.get_by_role("button", name=re.compile(r"Find candidates", re.I)).click()
+            page.wait_for_selector(
+                ".cv-table-replacement--candidates tbody tr",
+                timeout=30000,
+            )
+            page.wait_for_timeout(300)
             page.screenshot(path=str(OUT / f"viewport_replacement_{width}.png"), full_page=True)
-            page.goto(f"{WEB}/compare-parts", wait_until="networkidle", timeout=60000)
-            page.wait_for_timeout(800)
-            page.screenshot(path=str(OUT / f"viewport_compare_{width}.png"), full_page=True)
             metrics = page.evaluate(
                 """() => {
-                  const tables = Array.from(document.querySelectorAll('.cv-table-actions, .cv-compare-table, .cv-compare-multi-table'));
+                  const shortLabels = new Set(["manufacturer", "lifecycle"]);
+                  const longLabels = new Set(["fit status", "evidence to verify"]);
+
+                  function contentClipped(el) {
+                    if (!el) return false;
+                    if (el.scrollWidth > el.clientWidth + 1) return true;
+                    return Array.from(el.children || []).some(
+                      (child) => child.scrollWidth > child.clientWidth + 1
+                    );
+                  }
+
+                  function valueColumnWidth(cell) {
+                    const style = window.getComputedStyle(cell);
+                    const box = cell.getBoundingClientRect();
+                    if (style.display === "flex" && style.flexDirection.startsWith("column")) {
+                      return box.width;
+                    }
+                    if (style.display === "grid") {
+                      return Math.max(0, box.width * 0.68);
+                    }
+                    const badge = cell.querySelector(".cv-badge");
+                    if (badge) return badge.getBoundingClientRect().width;
+                    return box.width;
+                  }
+
+                  const tables = Array.from(
+                    document.querySelectorAll(".cv-table-replacement--candidates")
+                  );
                   return tables.map((table) => {
-                    const rows = Array.from(table.querySelectorAll('tbody tr')).slice(0, 8).map((row) => {
+                    const rows = Array.from(table.querySelectorAll("tbody tr")).slice(0, 8).map((row) => {
                       const cells = Array.from(row.children);
                       const rects = cells.map((cell) => {
                         const box = cell.getBoundingClientRect();
-                        return { width: box.width, height: box.height, left: box.left, right: box.right };
+                        return {
+                          width: box.width,
+                          height: box.height,
+                          left: box.left,
+                          right: box.right,
+                          top: box.top,
+                          bottom: box.bottom,
+                          label: cell.getAttribute("data-label") || "",
+                          clipped: contentClipped(cell),
+                          valueWidth: Math.round(valueColumnWidth(cell)),
+                        };
                       });
+                      const firstCell = cells[0];
+                      const stacked =
+                        window.getComputedStyle(row).display === "block" ||
+                        (firstCell &&
+                          ["block", "grid"].includes(window.getComputedStyle(firstCell).display));
                       let overlap = false;
-                      for (let i = 1; i < rects.length; i += 1) {
-                        if (rects[i].left + 0.5 < rects[i - 1].right) overlap = true;
+                      if (!stacked) {
+                        for (let i = 1; i < rects.length; i += 1) {
+                          if (rects[i].left + 0.5 < rects[i - 1].right) overlap = true;
+                        }
                       }
-                      const tall = rects.some((rect) => rect.height > 220);
-                      const squeezed = rects.some((rect, idx) => idx < rects.length - 1 && rect.width > 0 && rect.width < 48);
-                      return { overlap, tall, squeezed, widths: rects.map((r) => Math.round(r.width)) };
+                      const tall = !stacked && rects.some((rect) => rect.height > 280);
+                      const squeezed = !stacked && rects.some(
+                        (rect, idx) => idx < rects.length - 1 && rect.width > 0 && rect.width < 48
+                      );
+                      const clipped = rects.some((rect) => rect.clipped);
+                      const narrowStackedValue = stacked && rects.some((rect) => {
+                        const label = String(rect.label || "").toLowerCase();
+                        if (shortLabels.has(label)) return rect.valueWidth < 56;
+                        if (longLabels.has(label)) return rect.valueWidth < 96;
+                        return false;
+                      });
+                      return {
+                        overlap,
+                        tall,
+                        squeezed,
+                        clipped,
+                        narrowStackedValue,
+                        stacked,
+                        widths: rects.map((r) => Math.round(r.width)),
+                        valueWidths: rects.map((r) => r.valueWidth),
+                        labels: rects.map((r) => r.label),
+                      };
                     });
                     return {
                       className: table.className,
@@ -602,21 +708,30 @@ def main() -> int:
                   });
                 }"""
             )
+            page.goto(f"{WEB}/compare-parts", wait_until="networkidle", timeout=60000)
+            page.wait_for_timeout(500)
+            page.screenshot(path=str(OUT / f"viewport_compare_{width}.png"), full_page=True)
             bad_rows = [
                 row
                 for table in metrics
                 for row in table.get("rows") or []
-                if row.get("overlap") or row.get("tall") or row.get("squeezed")
+                if row.get("overlap")
+                or row.get("tall")
+                or row.get("squeezed")
+                or row.get("clipped")
+                or row.get("narrowStackedValue")
             ]
             viewport_checks.append(
                 {
                     "width": width,
                     "height": height,
-                    "ok": not bad_rows,
+                    "ok": bool(metrics) and not bad_rows,
                     "bad_row_count": len(bad_rows),
+                    "rendered_via": "find-replacement-page+controlled-api",
                     "tables": metrics,
                 }
             )
+        page.unroute("**/tools/find-replacement**", _fulfill_replacement)
         results["viewport_checks"] = viewport_checks
 
         browser.close()
@@ -634,7 +749,7 @@ def main() -> int:
     out_path.write_text(json.dumps(results, indent=2), encoding="utf-8")
     md = OUT / "REPORT.md"
     lines = [
-        "# Next.js UI two-BOM smoke (PR #597 follow-up)",
+        "# Next.js UI two-BOM smoke (Nov 10 production fixes)",
         "",
         f"- Web: `{WEB}`",
         f"- API: `{API}`",

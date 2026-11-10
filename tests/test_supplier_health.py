@@ -85,9 +85,14 @@ class SupplierHealthTests(unittest.TestCase):
         self.assertEqual(result, {})
 
     def test_query_variants_keep_speed_and_package_suffixes(self):
-        variants = _supplier_query_variants("AM29F010B-70EC")
-        self.assertEqual(variants, ("AM29F010B-70EC", "AM29F010B70EC"))
-        self.assertTrue(all("70EC" in variant for variant in variants))
+        hyphenated = _supplier_query_variants("AM29F010B-70EC")
+        self.assertEqual(hyphenated, ("AM29F010B-70EC", "AM29F010B70EC"))
+        self.assertTrue(all("70EC" in variant for variant in hyphenated))
+
+        compact = _supplier_query_variants("AM29F010B70EC")
+        self.assertIn("AM29F010B70EC", compact)
+        self.assertIn("AM29F010B-70EC", compact)
+        self.assertTrue(all("70EC" in variant for variant in compact))
 
     def test_separator_retry_accepts_only_the_same_mpn(self):
         calls = []

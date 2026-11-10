@@ -33,7 +33,8 @@ class PinCountParsingTests(unittest.TestCase):
                 {**source, "description": "adjustable linear regulator"},
                 {**candidate, "description": "adjustable linear regulator"},
             )["rows"][1]["Status"],
-            "Match",
+            # Catalog-only pin agreement is listing evidence, not Compatible Match.
+            "Listing agreement",
         )
 
     def test_sot223_and_to261_package_aliases_share_one_footprint_identity(self):
@@ -229,7 +230,8 @@ class PinCountParsingTests(unittest.TestCase):
         pin_row = next(row for row in comparison["rows"] if row["Attribute"] == "Pin count")
         self.assertEqual(pin_row["Original"], "3")
         self.assertEqual(pin_row["Candidate"], "3")
-        self.assertEqual(pin_row["Status"], "Match")
+        # Corrected pad count still comes from catalog evidence only.
+        self.assertEqual(pin_row["Status"], "Listing agreement")
 
         ambiguous = {
             "description": "NPN transistor",
