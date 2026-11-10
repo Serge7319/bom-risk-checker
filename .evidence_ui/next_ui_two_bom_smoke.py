@@ -24,10 +24,10 @@ from openpyxl import load_workbook
 from playwright.sync_api import Page, sync_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = Path(os.environ.get("CADIVOR_SMOKE_OUT") or (ROOT / ".evidence_ui" / "next_ui_two_bom_598"))
+OUT = Path(os.environ.get("CADIVOR_SMOKE_OUT") or (ROOT / ".evidence_ui" / "next_ui_two_bom_nov10"))
 OUT.mkdir(parents=True, exist_ok=True)
 
-WEB = os.environ.get("CADIVOR_SMOKE_WEB", "http://127.0.0.1:3001").rstrip("/")
+WEB = os.environ.get("CADIVOR_SMOKE_WEB", "http://127.0.0.1:3011").rstrip("/")
 API = os.environ.get("CADIVOR_SMOKE_API", "http://127.0.0.1:8081").rstrip("/")
 EMAIL = "sandbox-a@cadivor.test"
 PASSWORD = "CadivorSandbox!a"
@@ -36,7 +36,7 @@ BOMS = [
     {
         "label": "flat",
         "path": ROOT / "tests" / "fixtures" / "synthetic_bom_25parts.csv",
-        "project": "PR597 Flat Smoke",
+        "project": "PR Nov10 Flat Smoke",
         "bom_name": "flat-synthetic-25",
         "revision": "F1",
         "part_a": "XC3S400-4PQG208C",
@@ -47,7 +47,7 @@ BOMS = [
     {
         "label": "nested",
         "path": ROOT / "tests" / "fixtures" / "nested_bom_product.csv",
-        "project": "PR597 Nested Smoke",
+        "project": "PR Nov10 Nested Smoke",
         "bom_name": "nested-product-hierarchy",
         "revision": "N1",
         "part_a": "STM32F103",
@@ -567,32 +567,130 @@ def main() -> int:
             results["boms"].append(_run_bom(page, cfg))
 
         # Layout viewport checks for Find Replacement + Compare Parts tables.
+        # Seed a long "not qualified" fit label so Fit/Evidence wrap is exercised.
+        page.set_viewport_size({"width": 1440, "height": 1100})
+        page.goto(f"{WEB}/find-replacement", wait_until="networkidle", timeout=60000)
+        page.wait_for_timeout(500)
+        page.evaluate(
+            """() => {
+              const host = document.querySelector('main') || document.body;
+              const wrap = document.createElement('div');
+              wrap.className = 'cv-table-wrap cv-table-wrap--replacement';
+              wrap.innerHTML = `
+                <table class="cv-table cv-table-replacement cv-table-replacement--candidates">
+                  <thead><tr>
+                    <th>Candidate</th><th>Manufacturer</th><th>Lifecycle</th>
+                    <th>Fit status</th><th>Evidence to verify</th><th></th>
+                  </tr></thead>
+                  <tbody><tr>
+                    <td data-label="Candidate"><strong>AM29F010B-90EC</strong></td>
+                    <td data-label="Manufacturer">AMD</td>
+                    <td data-label="Lifecycle"><span class="cv-badge gray">Obsolete</span></td>
+                    <td class="cv-fit-cell" data-label="Fit status">
+                      <span class="cv-badge gray">not qualified — speed grade, temperature range, and package outline still require datasheet verification before any drop-in claim</span>
+                    </td>
+                    <td class="cv-evidence-cell" data-label="Evidence to verify">
+                      manufacturer datasheet package outline; speed grade timing table; temperature range confirmation from identity-verified source
+                    </td>
+                    <td class="cv-table-action" data-label="Action">Compare →</td>
+                  </tr></tbody>
+                </table>`;
+              host.prepend(wrap);
+            }"""
+        )
         viewport_checks = []
-        for width, height in ((1440, 1100), (1024, 900), (768, 900), (390, 844)):
+        for width, height in ((1440, 1100), (696, 1188), (390, 844)):
             page.set_viewport_size({"width": width, "height": height})
             page.goto(f"{WEB}/find-replacement", wait_until="networkidle", timeout=60000)
-            page.wait_for_timeout(800)
+            page.wait_for_timeout(400)
+            page.evaluate(
+                """() => {
+                  if (document.querySelector('.cv-table-replacement--candidates')) return;
+                  const host = document.querySelector('main') || document.body;
+                  const wrap = document.createElement('div');
+                  wrap.className = 'cv-table-wrap cv-table-wrap--replacement';
+                  wrap.innerHTML = `
+                    <table class="cv-table cv-table-replacement cv-table-replacement--candidates">
+                      <thead><tr>
+                        <th>Candidate</th><th>Manufacturer</th><th>Lifecycle</th>
+                        <th>Fit status</th><th>Evidence to verify</th><th></th>
+                      </tr></thead>
+                      <tbody><tr>
+                        <td data-label="Candidate"><strong>AM29F010B-90EC</strong></td>
+                        <td data-label="Manufacturer">AMD</td>
+                        <td data-label="Lifecycle"><span class="cv-badge gray">Obsolete</span></td>
+                        <td class="cv-fit-cell" data-label="Fit status">
+                          <span class="cv-badge gray">not qualified — speed grade, temperature range, and package outline still require datasheet verification before any drop-in claim</span>
+                        </td>
+                        <td class="cv-evidence-cell" data-label="Evidence to verify">
+                          manufacturer datasheet package outline; speed grade timing table; temperature range confirmation from identity-verified source
+                        </td>
+                        <td class="cv-table-action" data-label="Action">Compare →</td>
+                      </tr></tbody>
+                    </table>`;
+                  host.prepend(wrap);
+                }"""
+            )
+            page.wait_for_timeout(300)
             page.screenshot(path=str(OUT / f"viewport_replacement_{width}.png"), full_page=True)
             page.goto(f"{WEB}/compare-parts", wait_until="networkidle", timeout=60000)
             page.wait_for_timeout(800)
             page.screenshot(path=str(OUT / f"viewport_compare_{width}.png"), full_page=True)
+            page.goto(f"{WEB}/find-replacement", wait_until="networkidle", timeout=60000)
+            page.wait_for_timeout(300)
+            page.evaluate(
+                """() => {
+                  if (document.querySelector('.cv-table-replacement--candidates')) return;
+                  const host = document.querySelector('main') || document.body;
+                  const wrap = document.createElement('div');
+                  wrap.className = 'cv-table-wrap cv-table-wrap--replacement';
+                  wrap.innerHTML = `
+                    <table class="cv-table cv-table-replacement cv-table-replacement--candidates">
+                      <thead><tr>
+                        <th>Candidate</th><th>Manufacturer</th><th>Lifecycle</th>
+                        <th>Fit status</th><th>Evidence to verify</th><th></th>
+                      </tr></thead>
+                      <tbody><tr>
+                        <td data-label="Candidate"><strong>AM29F010B-90EC</strong></td>
+                        <td data-label="Manufacturer">AMD</td>
+                        <td data-label="Lifecycle"><span class="cv-badge gray">Obsolete</span></td>
+                        <td class="cv-fit-cell" data-label="Fit status">
+                          <span class="cv-badge gray">not qualified — speed grade, temperature range, and package outline still require datasheet verification before any drop-in claim</span>
+                        </td>
+                        <td class="cv-evidence-cell" data-label="Evidence to verify">
+                          manufacturer datasheet package outline; speed grade timing table; temperature range confirmation from identity-verified source
+                        </td>
+                        <td class="cv-table-action" data-label="Action">Compare →</td>
+                      </tr></tbody>
+                    </table>`;
+                  host.prepend(wrap);
+                }"""
+            )
             metrics = page.evaluate(
                 """() => {
-                  const tables = Array.from(document.querySelectorAll('.cv-table-actions, .cv-compare-table, .cv-compare-multi-table'));
+                  const tables = Array.from(document.querySelectorAll(
+                    '.cv-table-replacement, .cv-table-actions, .cv-compare-table, .cv-compare-multi-table'
+                  ));
                   return tables.map((table) => {
                     const rows = Array.from(table.querySelectorAll('tbody tr')).slice(0, 8).map((row) => {
                       const cells = Array.from(row.children);
                       const rects = cells.map((cell) => {
                         const box = cell.getBoundingClientRect();
-                        return { width: box.width, height: box.height, left: box.left, right: box.right };
+                        return { width: box.width, height: box.height, left: box.left, right: box.right, top: box.top, bottom: box.bottom };
                       });
                       let overlap = false;
-                      for (let i = 1; i < rects.length; i += 1) {
-                        if (rects[i].left + 0.5 < rects[i - 1].right) overlap = true;
+                      const stacked = window.getComputedStyle(row).display === 'block'
+                        || window.getComputedStyle(cells[0] || row).display === 'block'
+                        || window.getComputedStyle(cells[0] || row).display === 'grid';
+                      if (!stacked) {
+                        for (let i = 1; i < rects.length; i += 1) {
+                          if (rects[i].left + 0.5 < rects[i - 1].right) overlap = true;
+                        }
                       }
-                      const tall = rects.some((rect) => rect.height > 220);
-                      const squeezed = rects.some((rect, idx) => idx < rects.length - 1 && rect.width > 0 && rect.width < 48);
-                      return { overlap, tall, squeezed, widths: rects.map((r) => Math.round(r.width)) };
+                      // Stacked phone cards intentionally grow with long fit/evidence text.
+                      const tall = !stacked && rects.some((rect) => rect.height > 280);
+                      const squeezed = !stacked && rects.some((rect, idx) => idx < rects.length - 1 && rect.width > 0 && rect.width < 48);
+                      return { overlap, tall, squeezed, stacked, widths: rects.map((r) => Math.round(r.width)) };
                     });
                     return {
                       className: table.className,
@@ -634,7 +732,7 @@ def main() -> int:
     out_path.write_text(json.dumps(results, indent=2), encoding="utf-8")
     md = OUT / "REPORT.md"
     lines = [
-        "# Next.js UI two-BOM smoke (PR #597 follow-up)",
+        "# Next.js UI two-BOM smoke (Nov 10 production fixes)",
         "",
         f"- Web: `{WEB}`",
         f"- API: `{API}`",

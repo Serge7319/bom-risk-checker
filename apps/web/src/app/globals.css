@@ -1057,6 +1057,14 @@ button {
   min-width: 96px;
 }
 
+/* Keep Compare sticky only on wide desktops; sticky action cells overlap
+   Fit/Evidence bounding boxes once the replacement matrix scrolls. */
+.cv-table.cv-table-replacement td.cv-table-action {
+  position: static;
+  box-shadow: none;
+  background: transparent;
+}
+
 .cv-table-action {
   width: 96px;
   min-width: 96px;
