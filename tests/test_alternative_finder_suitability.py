@@ -389,7 +389,9 @@ class AlternativeFinderSuitabilityTests(unittest.TestCase):
         # Catalog-only numeric rows are listing agreements and must not inflate
         # the recommendation into an engineering-ready band on their own.
         self.assertLess(top["Recommendation Score"], 65)
-        self.assertGreaterEqual(top["Recommendation Score"], 40)
+        # Catalog limit honesty (Needs data without class/conditions) lowers the
+        # parametric score; still require a positive verified-direct floor.
+        self.assertGreaterEqual(top["Recommendation Score"], 25)
 
 
     def test_live_equivalent_provider_error_renders_config_notice_and_coverage_field(self):

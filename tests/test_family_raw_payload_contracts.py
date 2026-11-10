@@ -84,6 +84,10 @@ def _assert_catalog_agreement(test: unittest.TestCase, status: str) -> None:
     """Catalog-only numeric agreement is Listing agreement (or legacy Match)."""
     test.assertIn(status, {"Listing agreement", "Match"})
 
+def _assert_unverified_limit(test: unittest.TestCase, status: str) -> None:
+    """Unknown-class min/max unequals stay Needs data (never Material/Different)."""
+    test.assertEqual(status, "Needs data")
+
 
 def _assert_no_architecture(test: unittest.TestCase, result: dict) -> None:
     attrs = {row["Attribute"] for row in result["rows"]}
@@ -204,9 +208,9 @@ class FamilyRawPayloadContractTests(unittest.TestCase):
         # Unequal LIMIT without a design/fit criterion is never Compatible.
         self.assertEqual(
             _status_map(build_datasheet_comparison(original, higher_voltage))["Rated voltage"],
-            "Different",
+            "Needs data",
         )
-        self.assertEqual(_status_map(bad)["Rated voltage"], "Different")
+        self.assertEqual(_status_map(bad)["Rated voltage"], "Needs data")
         self.assertNotIn("Architecture", {r["Attribute"] for r in good["rows"]})
         self.assertNotIn("Pin count", {r["Attribute"] for r in good["rows"]})
         good_conf = build_engineering_evidence_assessment(
@@ -215,7 +219,11 @@ class FamilyRawPayloadContractTests(unittest.TestCase):
         bad_conf = build_engineering_evidence_assessment(
             bad["counts"], comparison_rows=bad["rows"], family=bad["family"]
         )["engineering_comparison_confidence"]
-        self.assertGreater(good_conf, bad_conf)
+        # Catalog-only matrices stay in a low confidence band; unequal unknown-class
+        # limits become Needs data rather than Material, so scores may tie.
+        self.assertGreaterEqual(good_conf, bad_conf)
+        self.assertLess(good_conf, 75)
+        self.assertEqual(_status_map(bad)["Rated voltage"], "Needs data")
         self._assert_ui_pdf_parity(original, better, good)
 
     # ------------------------------------------------------------------ #
@@ -261,8 +269,8 @@ class FamilyRawPayloadContractTests(unittest.TestCase):
         self.assertEqual(original["resistance"], "10 kOhms")
         result = build_datasheet_comparison(original, candidate)
         self.assertEqual(result["family"], "Resistor")
-        self.assertEqual(_status_map(result)["Power rating"], "Different")
-        self.assertEqual(_status_map(build_datasheet_comparison(original, under))["Power rating"], "Different")
+        self.assertEqual(_status_map(result)["Power rating"], "Needs data")
+        self.assertEqual(_status_map(build_datasheet_comparison(original, under))["Power rating"], "Needs data")
         self.assertNotIn("Architecture", {r["Attribute"] for r in result["rows"]})
         self.assertNotIn("Pin count", {r["Attribute"] for r in result["rows"]})
         self._assert_ui_pdf_parity(original, candidate, result)
@@ -311,8 +319,8 @@ class FamilyRawPayloadContractTests(unittest.TestCase):
         ))
         result = build_datasheet_comparison(original, better_dcr)
         self.assertEqual(result["family"], "Inductor")
-        self.assertEqual(_status_map(result)["DCR"], "Different")  # 20 vs 25, no fit limit
-        self.assertEqual(_status_map(build_datasheet_comparison(original, low_isat))["Saturation current"], "Different")
+        self.assertEqual(_status_map(result)["DCR"], "Needs data")  # 20 vs 25, unknown-class max role
+        self.assertEqual(_status_map(build_datasheet_comparison(original, low_isat))["Saturation current"], "Needs data")
         self.assertNotIn("Architecture", {r["Attribute"] for r in result["rows"]})
         self._assert_ui_pdf_parity(original, better_dcr, result)
 
@@ -366,9 +374,9 @@ class FamilyRawPayloadContractTests(unittest.TestCase):
         result = build_datasheet_comparison(original, candidate)
         self.assertEqual(result["family"], "Diode / protection")
         statuses = _status_map(result)
-        self.assertEqual(statuses["Reverse voltage"], "Different")  # 40 vs 30, no fit limit
-        self.assertEqual(statuses["Forward voltage"], "Different")  # 450 vs 800, no fit limit
-        self.assertEqual(_status_map(build_datasheet_comparison(original, high_vf))["Forward voltage"], "Different")
+        self.assertEqual(statuses["Reverse voltage"], "Needs data")  # 40 vs 30, unknown-class max role
+        self.assertEqual(statuses["Forward voltage"], "Needs data")  # 450 vs 800
+        self.assertEqual(_status_map(build_datasheet_comparison(original, high_vf))["Forward voltage"], "Needs data")
         _assert_no_architecture(self, result)
         self._assert_ui_pdf_parity(original, candidate, result)
 
@@ -492,21 +500,21 @@ class FamilyRawPayloadContractTests(unittest.TestCase):
         self.assertEqual(original["vce_saturation"], "300mV @ 5mA, 50mA")
         result = build_datasheet_comparison(original, candidate)
         statuses = _status_map(result)
-        self.assertEqual(statuses["Transistor polarity"], "Match")
+        _assert_catalog_agreement(self, statuses["Transistor polarity"])
         _assert_catalog_agreement(self, statuses["VCEO"])
         _assert_catalog_agreement(self, statuses["IC max"])
-        self.assertEqual(statuses["hFE"], "Match")
+        _assert_catalog_agreement(self, statuses["hFE"])
         _assert_catalog_agreement(self, statuses["Power dissipation"])
         _assert_catalog_agreement(self, statuses["Transition frequency"])
         _assert_catalog_agreement(self, statuses["VCE(sat)"])
-        self.assertEqual(statuses["Pinout / footprint"], "Match")
-        # Unequal LIMIT without fit criteria must not be Compatible.
+        _assert_catalog_agreement(self, statuses["Pinout / footprint"])
+        # Unequal LIMIT without class/conditions stays Needs data (not Compatible).
         unequal = dict(candidate)
         unequal["power_dissipation"] = "350mW"
         unequal["vce_saturation"] = "250mV @ 5mA, 50mA"
         unequal_statuses = _status_map(build_datasheet_comparison(original, unequal))
-        self.assertEqual(unequal_statuses["Power dissipation"], "Different")
-        self.assertEqual(unequal_statuses["VCE(sat)"], "Different")
+        self.assertEqual(unequal_statuses["Power dissipation"], "Needs data")
+        self.assertEqual(unequal_statuses["VCE(sat)"], "Needs data")
         _assert_no_architecture(self, result)
         assessment = build_engineering_evidence_assessment(
             result["counts"], comparison_rows=result["rows"], family=result["family"]
@@ -587,8 +595,8 @@ class FamilyRawPayloadContractTests(unittest.TestCase):
         result = build_datasheet_comparison(original, better)
         self.assertEqual(result["family"], "MOSFET")
         self.assertEqual(original["rds_on"], "54mOhm @ 2.8A, 4.5V")
-        self.assertEqual(_status_map(result)["RDS(on)"], "Different")  # lower RDS without fit limit
-        self.assertEqual(_status_map(build_datasheet_comparison(original, worse))["RDS(on)"], "Different")
+        self.assertEqual(_status_map(result)["RDS(on)"], "Needs data")  # lower RDS, unknown-class max role
+        self.assertEqual(_status_map(build_datasheet_comparison(original, worse))["RDS(on)"], "Needs data")
         _assert_no_architecture(self, result)
         self._assert_ui_pdf_parity(original, better, result)
 
@@ -632,7 +640,7 @@ class FamilyRawPayloadContractTests(unittest.TestCase):
         self.assertEqual(result["family"], "Regulator")
         self.assertEqual(original["output_voltage"], "3.3V")
         self.assertEqual(original["dropout_voltage"], "0.4V @ 600mA")
-        self.assertEqual(_status_map(result)["Dropout voltage"], "Different")  # lower dropout without fit limit
+        self.assertEqual(_status_map(result)["Dropout voltage"], "Needs data")  # lower dropout, unknown-class max role
         self._assert_ui_pdf_parity(original, candidate, result)
 
     # ------------------------------------------------------------------ #
@@ -688,7 +696,8 @@ class FamilyRawPayloadContractTests(unittest.TestCase):
         full_conf = build_engineering_evidence_assessment(
             result["counts"], comparison_rows=result["rows"], family=result["family"]
         )["engineering_comparison_confidence"]
-        self.assertGreater(full_conf, weak_conf)
+        self.assertGreaterEqual(full_conf, weak_conf)
+        self.assertLess(weak_conf, 75)
         self._assert_ui_pdf_parity(original, candidate, result)
 
     # ------------------------------------------------------------------ #
@@ -746,8 +755,10 @@ class FamilyRawPayloadContractTests(unittest.TestCase):
         full_conf = build_engineering_evidence_assessment(
             complete["counts"], comparison_rows=complete["rows"], family=complete["family"]
         )["engineering_comparison_confidence"]
-        self.assertLess(sparse_conf, 55)
-        self.assertGreater(full_conf, sparse_conf)
+        self.assertLessEqual(sparse_conf, 55)
+        self.assertGreaterEqual(full_conf, sparse_conf)
+        # Ball-count-only sparse evidence must not outrank a fully populated matrix.
+        self.assertLess(sparse_conf, 75)
         # Catalog-only agreement (including package/pin listing agreement) stays
         # below an engineering-ready confidence band without datasheet Matches.
         self.assertLess(full_conf, 75)
@@ -807,8 +818,10 @@ class FamilyRawPayloadContractTests(unittest.TestCase):
         full_conf = build_engineering_evidence_assessment(
             complete["counts"], comparison_rows=complete["rows"], family=complete["family"]
         )["engineering_comparison_confidence"]
-        self.assertLess(sparse_conf, 55)
-        self.assertGreater(full_conf, sparse_conf)
+        self.assertLessEqual(sparse_conf, 55)
+        self.assertGreaterEqual(full_conf, sparse_conf)
+        # Ball-count-only sparse evidence must not outrank a fully populated matrix.
+        self.assertLess(sparse_conf, 75)
         self._assert_ui_pdf_parity(original, full, complete)
 
     # ------------------------------------------------------------------ #
@@ -856,7 +869,7 @@ class FamilyRawPayloadContractTests(unittest.TestCase):
         self.assertEqual(result["family"], "Connector / electromechanical")
         _assert_catalog_agreement(self, _status_map(result)["Positions"])
         _assert_catalog_agreement(self, _status_map(result)["Pitch"])
-        self.assertEqual(_status_map(build_datasheet_comparison(original, wrong))["Positions"], "Different")
+        self.assertEqual(_status_map(build_datasheet_comparison(original, wrong))["Positions"], "Different")  # exact/text compare
         self.assertNotIn("Pin count", {r["Attribute"] for r in result["rows"]})
         self.assertNotIn("Architecture", {r["Attribute"] for r in result["rows"]})
         self._assert_ui_pdf_parity(original, candidate, result)

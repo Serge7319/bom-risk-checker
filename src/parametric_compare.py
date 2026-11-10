@@ -394,34 +394,46 @@ def compare_field_values(
         o_num, o_unit = parse_numeric_with_unit(original_text, preferred_unit=preferred)
         c_num, c_unit = parse_numeric_with_unit(candidate_text, preferred_unit=preferred)
 
-        # All numeric NOMINAL/LIMIT compares require known value class and test
-        # conditions before equal or unequal magnitudes can be Match/Different.
-        if original_class == "unknown" or candidate_class == "unknown":
-            return (
-                "Needs data",
-                (
-                    "One or both values lack a typical/min/max/guaranteed class, so the "
-                    "conditions are not confirmed as comparable for engineering approval."
-                ),
-            )
-        original_condition = engineering_test_condition(original_text)
-        candidate_condition = engineering_test_condition(candidate_text)
-        if original_condition == "Not stated" or candidate_condition == "Not stated":
-            return (
-                "Needs data",
-                (
-                    "One or both values omit stated test conditions, so the magnitudes "
-                    "are not confirmed as comparable for engineering approval."
-                ),
-            )
-        if original_condition.casefold() != candidate_condition.casefold():
-            return (
-                "Needs data",
-                (
-                    "The stated test conditions differ, so the values are not comparable "
-                    "until matching conditions are cited."
-                ),
-            )
+        # Honesty for all NOMINAL/LIMIT modes (widened beyond typical/guaranteed-only):
+        # - Labeled classes require matching test conditions before Match/Different.
+        # - Typical/guaranteed roles never Match/Different without a known class.
+        # - Other roles: unequal unknown-class magnitudes stay Needs data (never
+        #   Material/Different); equal parseable magnitudes may Match so catalog
+        #   demotion can yield Listing agreement (still not Compatible).
+        unknown_blocks_difference = False
+        if original_class in comparable_classes and candidate_class in comparable_classes:
+            original_condition = engineering_test_condition(original_text)
+            candidate_condition = engineering_test_condition(candidate_text)
+            if original_condition == "Not stated" or candidate_condition == "Not stated":
+                return (
+                    "Needs data",
+                    (
+                        "One or both values omit stated test conditions, so the magnitudes "
+                        "are not confirmed as comparable for engineering approval."
+                    ),
+                )
+            if original_condition.casefold() != candidate_condition.casefold():
+                return (
+                    "Needs data",
+                    (
+                        "The stated test conditions differ, so the values are not comparable "
+                        "until matching conditions are cited."
+                    ),
+                )
+        elif original_class == "unknown" or candidate_class == "unknown":
+            if value_role in {"typical", "guaranteed"}:
+                return (
+                    "Needs data",
+                    (
+                        "One or both values lack a typical/min/max/guaranteed class, so the "
+                        "conditions are not confirmed as comparable for engineering approval."
+                    ),
+                )
+            # Engineering min/max limit roles: unequal bare magnitudes stay Needs data
+            # (never Material/Different). Equal parseable values may still Match so
+            # catalog demotion can yield Listing agreement.
+            if value_role in {"max", "min", "maximum", "minimum"}:
+                unknown_blocks_difference = True
 
         if o_num is None or c_num is None:
             # Incomparable formats are unverified — never Material by default.
@@ -464,18 +476,26 @@ def compare_field_values(
             if c_unit not in allowed:
                 return "Needs data", "Units are incomparable for this family attribute."
 
+        denom = max(abs(o_num), abs(c_num), 1e-30)
+        equal = abs(o_num - c_num) / denom <= 0.02
+        if unknown_blocks_difference and not equal:
+            return (
+                "Needs data",
+                (
+                    "One or both values lack a typical/min/max/guaranteed class, so the "
+                    "conditions are not confirmed as comparable for engineering approval."
+                ),
+            )
+
         if mode == COMPARE_NOMINAL:
             # Relative tolerance for floating SI equality.
-            denom = max(abs(o_num), abs(c_num), 1e-30)
-            if abs(o_num - c_num) / denom <= 0.02:
+            if equal:
                 return "Match", "Normalized values match within engineering tolerance."
             return "Different", "Normalized nominal values differ; engineer review is required."
 
         # Without an explicit design/fit limit, unequal magnitudes are a material
         # difference (or need verification) — never Compatible just because the
         # candidate looks "better" under a directional limit.
-        denom = max(abs(o_num), abs(c_num), 1e-30)
-        equal = abs(o_num - c_num) / denom <= 0.02
         if mode == COMPARE_LIMIT_GE:
             if equal:
                 return "Match", "Normalized limit values match within engineering tolerance."

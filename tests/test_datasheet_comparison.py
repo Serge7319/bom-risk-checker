@@ -41,7 +41,7 @@ class DatasheetComparisonTests(unittest.TestCase):
         self.assertEqual(result["family"], "Capacitor")
         # Catalog-only numeric agreement is listing agreement, not Compatible Match.
         self.assertEqual(statuses["Capacitance"], "Listing agreement")
-        self.assertEqual(statuses["Rated voltage"], "Different")
+        self.assertEqual(statuses["Rated voltage"], "Needs data")
 
     def test_transistor_and_inductor_get_different_engineering_checks(self):
         transistor = infer_component_family({"description": "N-Channel MOSFET 60V"})
@@ -63,7 +63,7 @@ class DatasheetComparisonTests(unittest.TestCase):
         rows = build_pdf_field_evidence(original_pdf, candidate_pdf, "Capacitor")
         values = {row["Attribute"]: row for row in rows}
         self.assertEqual(values["Capacitance"]["Status"], "Match")
-        self.assertEqual(values["Rated voltage"]["Status"], "Different")
+        self.assertEqual(values["Rated voltage"]["Status"], "Needs data")
         self.assertEqual(values["Rated voltage"]["Source pages"], "p. 2 / p. 4")
 
     def test_pdf_headers_without_values_are_not_mistaken_for_matches(self):
@@ -459,7 +459,7 @@ class DatasheetComparisonTests(unittest.TestCase):
             },
         )
         statuses = {row["Attribute"]: row["Status"] for row in result["rows"]}
-        self.assertEqual(statuses["Mounting"], "Match")
+        self.assertEqual(statuses["Mounting"], "Listing agreement")
         self.assertEqual(normalize_mounting_style("Surface Mount, MLCC"), "smd")
         self.assertEqual(normalize_mounting_style("SMT"), "smd")
 

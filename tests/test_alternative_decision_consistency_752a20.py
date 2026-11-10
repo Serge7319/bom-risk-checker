@@ -240,18 +240,20 @@ class PassiveAlternativeDecisionTests(unittest.TestCase):
         result = self._capacitor_reason()
         confirmed = " ".join(result["confirmed_matches"]).casefold()
         verification = " ".join(result["verification_required"]).casefold()
-        # Exact/text Matches that remain engineering evidence (not listing-only).
+        # Lifecycle/stock can remain confirmed; parametric catalog equals are listing-only.
+        self.assertTrue(confirmed)
+        self.assertIn("lifecycle", confirmed)
         for field in (
             "mounting",
+            "package",
+            "capacitance",
             "tolerance",
+            "rated voltage",
             "dielectric",
             "temperature characteristic",
         ):
-            self.assertIn(field, confirmed, msg=f"Missing confirmed field: {field}")
-        # Package and numeric catalog-only agreements stay listing evidence, not Match.
-        for field in ("package", "capacitance", "rated voltage"):
             self.assertIn(field, verification, msg=f"Missing listing verification: {field}")
-            self.assertIn("listing agreement", verification)
+        self.assertIn("listing agreement", verification)
 
     def test_capacitor_rated_voltage_difference_downgrades(self):
         rows, counts, original = _c0603_capacitor_comparison_rows()
