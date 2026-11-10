@@ -635,14 +635,19 @@ def main() -> int:
                   function valueColumnWidth(cell) {
                     const style = window.getComputedStyle(cell);
                     const box = cell.getBoundingClientRect();
+                    const grid = String(style.gridTemplateColumns || "").trim();
+                    if (grid && grid !== "none") {
+                      const tracks = grid.split(/\\s+/).filter(Boolean);
+                      // Prefer the resolved value track in px — never a 68% estimate.
+                      const track = tracks.length >= 2 ? tracks[tracks.length - 1] : tracks[0];
+                      const m = String(track || "").match(/^([0-9.]+)px$/);
+                      if (m) return Number(m[1]);
+                    }
                     if (style.display === "flex" && style.flexDirection.startsWith("column")) {
                       return box.width;
                     }
-                    if (style.display === "grid") {
-                      return Math.max(0, box.width * 0.68);
-                    }
-                    const badge = cell.querySelector(".cv-badge");
-                    if (badge) return badge.getBoundingClientRect().width;
+                    const value = cell.querySelector(".cv-table-value, .cv-badge, a, label");
+                    if (value) return value.getBoundingClientRect().width;
                     return box.width;
                   }
 
@@ -670,7 +675,9 @@ def main() -> int:
                       const stacked =
                         window.getComputedStyle(row).display === "block" ||
                         (firstCell &&
-                          ["block", "grid"].includes(window.getComputedStyle(firstCell).display));
+                          ["block", "flex", "grid"].includes(
+                            window.getComputedStyle(firstCell).display
+                          ));
                       let overlap = false;
                       if (!stacked) {
                         for (let i = 1; i < rects.length; i += 1) {
@@ -682,10 +689,11 @@ def main() -> int:
                         (rect, idx) => idx < rects.length - 1 && rect.width > 0 && rect.width < 48
                       );
                       const clipped = rects.some((rect) => rect.clipped);
+                      // Stacked is not an automatic pass.
                       const narrowStackedValue = stacked && rects.some((rect) => {
                         const label = String(rect.label || "").toLowerCase();
-                        if (shortLabels.has(label)) return rect.valueWidth < 56;
-                        if (longLabels.has(label)) return rect.valueWidth < 96;
+                        if (shortLabels.has(label)) return rect.valueWidth < 120;
+                        if (longLabels.has(label)) return rect.valueWidth < 160;
                         return false;
                       });
                       return {
