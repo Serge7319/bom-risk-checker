@@ -262,30 +262,36 @@ function FindReplacementInner() {
                                   </span>
                                 </label>
                               </td>
-                              <td data-label="Manufacturer">{String(row.manufacturer || "—")}</td>
+                              <td data-label="Manufacturer">
+                                <span className="cv-table-value">{String(row.manufacturer || "—")}</span>
+                              </td>
                               <td data-label="Lifecycle">
-                                <span className={`cv-badge ${lifecycleConflict ? "amber" : "gray"}`}>
+                                <span className={`cv-table-value cv-badge ${lifecycleConflict ? "amber" : "gray"}`}>
                                   {lifecycleLabel}
                                 </span>
                               </td>
                               <td className="cv-fit-cell" data-label="Fit status">
-                                <span className="cv-badge gray">
+                                <span className="cv-table-value cv-badge gray">
                                   {fitLabel}
                                 </span>
                               </td>
                               <td className="cv-evidence-cell" data-label="Evidence to verify">
-                                {missingBits.length ? missingBits.join("; ") : "—"}
+                                <span className="cv-table-value">
+                                  {missingBits.length ? missingBits.join("; ") : "—"}
+                                </span>
                               </td>
                               <td className="cv-table-action" data-label="Action">
-                                <Link
-                                  href={compareHref(
-                                    String(result.requested_mpn || mpn),
-                                    cand,
-                                    compareAnalysisId || undefined,
-                                  )}
-                                >
-                                  Compare →
-                                </Link>
+                                <span className="cv-table-value">
+                                  <Link
+                                    href={compareHref(
+                                      String(result.requested_mpn || mpn),
+                                      cand,
+                                      compareAnalysisId || undefined,
+                                    )}
+                                  >
+                                    Compare →
+                                  </Link>
+                                </span>
                               </td>
                             </tr>
                           );
@@ -329,20 +335,24 @@ function FindReplacementInner() {
                                 <strong>{cand}</strong>
                                 <div className="cv-small-note">{String(row.rationale || "")}</div>
                               </td>
-                              <td data-label="Manufacturer">{String(row.manufacturer || "—")}</td>
+                              <td data-label="Manufacturer">
+                                <span className="cv-table-value">{String(row.manufacturer || "—")}</span>
+                              </td>
                               <td className="cv-fit-cell" data-label="Fit status">
-                                <span className="cv-badge amber">{fitLabel}</span>
+                                <span className="cv-table-value cv-badge amber">{fitLabel}</span>
                               </td>
                               <td className="cv-table-action" data-label="Action">
-                                <Link
-                                  href={compareHref(
-                                    String(result.requested_mpn || mpn),
-                                    cand,
-                                    compareAnalysisId || undefined,
-                                  )}
-                                >
-                                  Compare →
-                                </Link>
+                                <span className="cv-table-value">
+                                  <Link
+                                    href={compareHref(
+                                      String(result.requested_mpn || mpn),
+                                      cand,
+                                      compareAnalysisId || undefined,
+                                    )}
+                                  >
+                                    Compare →
+                                  </Link>
+                                </span>
                               </td>
                             </tr>
                           );
@@ -380,20 +390,24 @@ function FindReplacementInner() {
                                 <strong>{cand}</strong>
                                 <div className="cv-small-note">{String(row.rationale || "")}</div>
                               </td>
-                              <td data-label="Manufacturer">{String(row.manufacturer || "—")}</td>
+                              <td data-label="Manufacturer">
+                                <span className="cv-table-value">{String(row.manufacturer || "—")}</span>
+                              </td>
                               <td className="cv-fit-cell" data-label="Fit status">
-                                <span className="cv-badge amber">{fitLabel}</span>
+                                <span className="cv-table-value cv-badge amber">{fitLabel}</span>
                               </td>
                               <td className="cv-table-action" data-label="Action">
-                                <Link
-                                  href={compareHref(
-                                    String(result.requested_mpn || mpn),
-                                    cand,
-                                    compareAnalysisId || undefined,
-                                  )}
-                                >
-                                  Compare →
-                                </Link>
+                                <span className="cv-table-value">
+                                  <Link
+                                    href={compareHref(
+                                      String(result.requested_mpn || mpn),
+                                      cand,
+                                      compareAnalysisId || undefined,
+                                    )}
+                                  >
+                                    Compare →
+                                  </Link>
+                                </span>
                               </td>
                             </tr>
                           );

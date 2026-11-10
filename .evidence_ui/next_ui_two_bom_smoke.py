@@ -635,12 +635,11 @@ def main() -> int:
                   function valueColumnWidth(cell) {
                     const style = window.getComputedStyle(cell);
                     const box = cell.getBoundingClientRect();
+                    if (style.display === "flex" && style.flexDirection.startsWith("column")) {
+                      return box.width;
+                    }
                     if (style.display === "grid") {
-                      const tracks = style.gridTemplateColumns.split(" ").filter(Boolean);
-                      if (tracks.length >= 2) {
-                        // Approximate value track as cell minus first track min.
-                        return Math.max(0, box.width * 0.68);
-                      }
+                      return Math.max(0, box.width * 0.68);
                     }
                     const badge = cell.querySelector(".cv-badge");
                     if (badge) return badge.getBoundingClientRect().width;

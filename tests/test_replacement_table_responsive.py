@@ -65,9 +65,28 @@ METRICS_JS = """() => {
     );
   }
 
+  function labelValueCollide(cell) {
+    const style = window.getComputedStyle(cell);
+    if (!(style.display === "flex" && style.flexDirection.startsWith("column"))) {
+      return false;
+    }
+    const value =
+      cell.querySelector(".cv-table-value, .cv-badge, a, label") ||
+      cell.firstElementChild;
+    if (!value) return false;
+    const cellTop = cell.getBoundingClientRect().top;
+    const valueTop = value.getBoundingClientRect().top;
+    // Label (::before) must occupy its own row above the value.
+    return valueTop < cellTop + 12;
+  }
+
   function valueColumnWidth(cell) {
     const style = window.getComputedStyle(cell);
     const box = cell.getBoundingClientRect();
+    if (style.display === "flex" && style.flexDirection.startsWith("column")) {
+      // Label-above-value cards: the value uses the full cell width.
+      return box.width;
+    }
     if (style.display === "grid") {
       return Math.max(0, box.width * 0.68);
     }
@@ -91,6 +110,7 @@ METRICS_JS = """() => {
           right: box.right,
           label: cell.getAttribute("data-label") || "",
           clipped: contentClipped(cell),
+          labelCollision: labelValueCollide(cell),
           valueWidth: Math.round(valueColumnWidth(cell)),
         };
       });
@@ -98,7 +118,7 @@ METRICS_JS = """() => {
       const stacked =
         window.getComputedStyle(row).display === "block" ||
         (firstCell &&
-          ["block", "grid"].includes(window.getComputedStyle(firstCell).display));
+          ["block", "flex", "grid"].includes(window.getComputedStyle(firstCell).display));
       let overlap = false;
       if (!stacked) {
         for (let i = 1; i < rects.length; i += 1) {
@@ -110,6 +130,7 @@ METRICS_JS = """() => {
         (rect, idx) => idx < rects.length - 1 && rect.width > 0 && rect.width < 48
       );
       const clipped = rects.some((rect) => rect.clipped);
+      const labelCollision = stacked && rects.some((rect) => rect.labelCollision);
       const narrowStackedValue = stacked && rects.some((rect) => {
         const label = String(rect.label || "").toLowerCase();
         if (shortLabels.has(label)) return rect.valueWidth < 56;
@@ -121,6 +142,7 @@ METRICS_JS = """() => {
         tall,
         squeezed,
         clipped,
+        labelCollision,
         narrowStackedValue,
         stacked,
         widths: rects.map((r) => Math.round(r.width)),
@@ -218,6 +240,7 @@ class ReplacementTableResponsiveTests(unittest.TestCase):
                     or row.get("tall")
                     or row.get("squeezed")
                     or row.get("clipped")
+                    or row.get("labelCollision")
                     or row.get("narrowStackedValue")
                 ]
                 results["viewports"].append(

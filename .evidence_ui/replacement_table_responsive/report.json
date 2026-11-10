@@ -17,6 +17,7 @@
               "tall": false,
               "squeezed": false,
               "clipped": false,
+              "labelCollision": false,
               "narrowStackedValue": false,
               "stacked": false,
               "widths": [
@@ -56,30 +57,31 @@
       "tables": [
         {
           "className": "cv-table cv-table-replacement cv-table-replacement--candidates",
-          "tableWidth": 860,
+          "tableWidth": 612,
           "rows": [
             {
               "overlap": false,
               "tall": false,
               "squeezed": false,
               "clipped": false,
+              "labelCollision": false,
               "narrowStackedValue": false,
-              "stacked": false,
+              "stacked": true,
               "widths": [
-                189,
-                103,
-                103,
-                155,
-                206,
-                103
+                586,
+                586,
+                586,
+                586,
+                586,
+                586
               ],
               "valueWidths": [
-                189,
-                103,
-                61,
-                126,
-                206,
-                103
+                586,
+                586,
+                586,
+                586,
+                586,
+                586
               ],
               "labels": [
                 "Candidate",
@@ -109,6 +111,7 @@
               "tall": false,
               "squeezed": false,
               "clipped": false,
+              "labelCollision": false,
               "narrowStackedValue": false,
               "stacked": true,
               "widths": [
@@ -120,12 +123,12 @@
                 286
               ],
               "valueWidths": [
-                194,
-                194,
-                194,
-                194,
-                194,
-                194
+                286,
+                286,
+                286,
+                286,
+                286,
+                286
               ],
               "labels": [
                 "Candidate",
