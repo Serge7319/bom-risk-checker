@@ -220,9 +220,13 @@ def update_preferences(workspace_id: str, updates: dict[str, Any]) -> dict[str, 
 
 
 def persist_alerts(workspace_id: str, alerts: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Upsert alert rows for a workspace; returns durable copies."""
+    """Upsert alert rows for a workspace; returns durable copies for those analyses."""
+    analysis_ids = {
+        str(alert.get("analysis_id") or "").strip()
+        for alert in alerts
+        if str(alert.get("analysis_id") or "").strip()
+    }
     if _use_postgres():
-        saved: list[dict[str, Any]] = []
         with _pg_connect() as conn:
             for alert in alerts:
                 alert_id = str(alert.get("id") or f"alert-{uuid.uuid4().hex[:12]}")
@@ -254,18 +258,16 @@ def persist_alerts(workspace_id: str, alerts: list[dict[str, Any]]) -> list[dict
                     ),
                 )
             conn.commit()
-            rows = conn.execute(
-                "SELECT payload FROM migration_monitoring_alerts WHERE workspace_id = %s ORDER BY updated_at DESC",
-                (workspace_id,),
-            ).fetchall()
-            for row in rows:
-                payload = row["payload"]
-                if isinstance(payload, str):
-                    payload = json.loads(payload)
-                saved.append(dict(payload))
-        return saved
+        # Return only the requested analysis scope(s), never the full workspace dump.
+        if len(analysis_ids) == 1:
+            return list_alerts(workspace_id, analysis_id=next(iter(analysis_ids)))
+        if analysis_ids:
+            scoped: list[dict[str, Any]] = []
+            for analysis_id in analysis_ids:
+                scoped.extend(list_alerts(workspace_id, analysis_id=analysis_id))
+            return scoped
+        return list_alerts(workspace_id)
 
-    saved = []
     with _lock:
         state = _load_state()
         bucket = _ws(state, workspace_id)
@@ -284,18 +286,37 @@ def persist_alerts(workspace_id: str, alerts: list[dict[str, Any]]) -> list[dict
             row.setdefault("acknowledged", False)
             existing[key] = row
         bucket["alerts"] = list(existing.values())
-        saved = list(bucket["alerts"])
         _save_state(state)
-    return saved
+        if analysis_ids:
+            return [
+                dict(row)
+                for row in bucket["alerts"]
+                if str(row.get("analysis_id") or "").strip() in analysis_ids
+            ]
+        return list(bucket["alerts"])
 
 
-def list_alerts(workspace_id: str) -> list[dict[str, Any]]:
+def list_alerts(
+    workspace_id: str, analysis_id: str | None = None
+) -> list[dict[str, Any]]:
+    scoped_id = str(analysis_id or "").strip() or None
     if _use_postgres():
         with _pg_connect() as conn:
-            rows = conn.execute(
-                "SELECT payload, acknowledged, id FROM migration_monitoring_alerts WHERE workspace_id = %s ORDER BY updated_at DESC",
-                (workspace_id,),
-            ).fetchall()
+            if scoped_id:
+                rows = conn.execute(
+                    """
+                    SELECT payload, acknowledged, id
+                    FROM migration_monitoring_alerts
+                    WHERE workspace_id = %s AND analysis_id = %s
+                    ORDER BY updated_at DESC
+                    """,
+                    (workspace_id, scoped_id),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT payload, acknowledged, id FROM migration_monitoring_alerts WHERE workspace_id = %s ORDER BY updated_at DESC",
+                    (workspace_id,),
+                ).fetchall()
         out = []
         for row in rows:
             payload = row["payload"]
@@ -308,7 +329,14 @@ def list_alerts(workspace_id: str) -> list[dict[str, Any]]:
         return out
     with _lock:
         state = _load_state()
-        return list(_ws(state, workspace_id)["alerts"])
+        alerts = list(_ws(state, workspace_id)["alerts"])
+        if scoped_id:
+            return [
+                dict(row)
+                for row in alerts
+                if str(row.get("analysis_id") or "").strip() == scoped_id
+            ]
+        return alerts
 
 
 def acknowledge_alert(workspace_id: str, alert_id: str) -> dict[str, Any] | None:

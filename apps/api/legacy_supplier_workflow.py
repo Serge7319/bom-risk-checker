@@ -351,16 +351,107 @@ def find_replacements(mpn: str) -> dict[str, Any]:
         "primary_category": original.get("primary_category") or original.get("Category") or "",
     }
     # Re-partition presentation rows; also surface AF-search unclassified/unfiltered leads.
+    # Deduplicate by canonical MPN across all buckets while retaining per-supplier offers.
     relevant_raw: list[dict[str, Any]] = []
     unclassified_raw: list[dict[str, Any]] = []
     unfiltered_raw: list[dict[str, Any]] = []
-    from src.alternative_classification import classify_candidate_family_bucket
+    from src.alternative_classification import (
+        classify_candidate_family_bucket,
+        normalize_mpn_for_comparison,
+    )
+
+    _BUCKET_PRIORITY = {"relevant": 0, "unclassified": 1, "unfiltered": 2}
+    seen_by_key: dict[str, dict[str, Any]] = {}
+
+    def _offer_from_candidate(candidate: dict[str, Any], projected: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "source": projected.get("source") or str(candidate.get("Supplier") or ""),
+            "product_url": projected.get("product_url") or "",
+            "datasheet_url": projected.get("datasheet_url") or "",
+            "lifecycle_status": projected.get("lifecycle_status") or "Unknown",
+            "lifecycle_conflict": bool(projected.get("lifecycle_conflict")),
+            "evidence_class": projected.get("evidence_class") or "missing",
+            "recommendation_score": projected.get("recommendation_score"),
+        }
+
+    def _merge_into_existing(
+        existing: dict[str, Any],
+        projected: dict[str, Any],
+        *,
+        bucket: str,
+        candidate: dict[str, Any],
+    ) -> None:
+        offers = list(existing.get("supplier_offers") or [])
+        offer = _offer_from_candidate(candidate, projected)
+        offer_key = (
+            str(offer.get("source") or "").casefold(),
+            str(offer.get("product_url") or "").casefold(),
+        )
+        if offer_key != ("", "") and not any(
+            (
+                str(row.get("source") or "").casefold(),
+                str(row.get("product_url") or "").casefold(),
+            )
+            == offer_key
+            for row in offers
+        ):
+            offers.append(offer)
+        existing["supplier_offers"] = offers
+
+        existing_life = str(existing.get("lifecycle_status") or "").strip()
+        new_life = str(projected.get("lifecycle_status") or "").strip()
+        known = {
+            value.casefold()
+            for value in (existing_life, new_life)
+            if value and value.casefold() not in {"unknown", "not stated", ""}
+        }
+        if (
+            bool(projected.get("lifecycle_conflict"))
+            or bool(existing.get("lifecycle_conflict"))
+            or len(known) > 1
+        ):
+            existing["lifecycle_conflict"] = True
+            evidence = list(existing.get("lifecycle_evidence") or [])
+            for item in projected.get("lifecycle_evidence") or []:
+                if item not in evidence:
+                    evidence.append(item)
+            if existing_life and new_life and existing_life.casefold() != new_life.casefold():
+                note = f"Conflicting lifecycle records: {existing_life} vs {new_life}"
+                if note not in evidence:
+                    evidence.append(note)
+            existing["lifecycle_evidence"] = evidence
+            missing = list(existing.get("missing_evidence") or [])
+            conflict_note = "reconcile conflicting supplier lifecycle records"
+            if conflict_note not in missing:
+                missing.insert(0, conflict_note)
+            existing["missing_evidence"] = missing
+            existing["fit"] = "not qualified — lifecycle evidence incomplete or conflicting"
+
+        # Prefer a more specific family bucket when the same MPN appears again.
+        current_bucket = str(existing.get("_bucket") or "unclassified")
+        if _BUCKET_PRIORITY.get(bucket, 9) < _BUCKET_PRIORITY.get(current_bucket, 9):
+            existing["_bucket"] = bucket
+            for key in (
+                "fit",
+                "classification",
+                "rationale",
+                "evidence_class",
+                "source",
+                "product_url",
+                "datasheet_url",
+                "recommendation_score",
+                "source_identity_verified",
+            ):
+                if projected.get(key) not in (None, ""):
+                    existing[key] = projected.get(key)
 
     def _ingest(candidate: dict[str, Any], *, force_bucket: str | None = None) -> None:
         candidate_mpn = str(
             candidate.get("Alternative Part") or candidate.get("manufacturer_part_number") or ""
         ).strip()
-        if not candidate_mpn or candidate_mpn.casefold() == str(mpn).strip().casefold():
+        key = normalize_mpn_for_comparison(candidate_mpn)
+        orig_key = normalize_mpn_for_comparison(mpn)
+        if not candidate_mpn or not key or key == orig_key:
             return
         family_row = {
             **candidate,
@@ -375,16 +466,16 @@ def find_replacements(mpn: str) -> dict[str, Any]:
             )
         except Exception:
             bucket = "unclassified"
-        if bucket == "relevant":
-            target = relevant_raw
-        elif bucket == "unfiltered":
-            target = unfiltered_raw
-        else:
-            target = unclassified_raw
+        if bucket not in {"relevant", "unfiltered"}:
             bucket = "unclassified"
         projected = _project_candidate(family_row, family_bucket=bucket)
-        if not any(str(row.get("mpn") or "").casefold() == candidate_mpn.casefold() for row in target):
-            target.append(projected)
+        existing = seen_by_key.get(key)
+        if existing is not None:
+            _merge_into_existing(existing, projected, bucket=bucket, candidate=candidate)
+            return
+        projected["_bucket"] = bucket
+        projected["supplier_offers"] = [_offer_from_candidate(candidate, projected)]
+        seen_by_key[key] = projected
 
     for candidate in candidates_raw:
         if isinstance(candidate, dict):
@@ -395,6 +486,15 @@ def find_replacements(mpn: str) -> dict[str, Any]:
     for candidate in discovery.get("unfiltered_leads") or []:
         if isinstance(candidate, dict):
             _ingest(candidate, force_bucket="unfiltered")
+
+    for projected in seen_by_key.values():
+        bucket = str(projected.pop("_bucket", "unclassified") or "unclassified")
+        if bucket == "relevant":
+            relevant_raw.append(projected)
+        elif bucket == "unfiltered":
+            unfiltered_raw.append(projected)
+        else:
+            unclassified_raw.append(projected)
 
     candidates = relevant_raw
     unclassified_leads = unclassified_raw
