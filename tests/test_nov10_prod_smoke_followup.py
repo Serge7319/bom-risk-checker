@@ -1,6 +1,7 @@
 """Acceptance regressions for the Nov 10 production-smoke evidence follow-up."""
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -441,10 +442,91 @@ class MultiCandidateSnapshotTrustTests(unittest.TestCase):
                 self.assertEqual(captured["compare_calls"], baseline_calls)
                 reused = reuse.json()["record"]
                 self.assertFalse(reused.get("verified_primary_evidence"))
+                reused_snap = reused.get("comparison_snapshot") or {}
+                self.assertEqual(reused_snap.get("multi_candidate_mpns"), [part_b, part_c])
+                self.assertTrue(reused_snap.get("snapshot_aggregate_rebuilt"))
+                # Aggregate matrix is rebuilt from verified pairwise rows, not the
+                # client-supplied shell matrix above.
+                rebuilt_matrix = reused_snap.get("multi_matrix") or []
+                self.assertTrue(rebuilt_matrix)
                 self.assertEqual(
-                    (reused.get("comparison_snapshot") or {}).get("multi_candidate_mpns"),
-                    [part_b, part_c],
+                    rebuilt_matrix[0].get("current"),
+                    "SOIC",
                 )
+
+                # Valid candidate tokens + tampered aggregate/top-level evidence:
+                # reuse may proceed, but forged aggregate fields must never be saved.
+                tampered_aggregate = dict(valid_multi)
+                tampered_aggregate["source_a"] = "Manufacturer datasheet (forged-aggregate)"
+                tampered_aggregate["source_b"] = "Manufacturer datasheet (forged-aggregate)"
+                tampered_aggregate["datasheet_identity"] = {
+                    "part_a": {"verified": True, "reason": "forged"},
+                    "part_b": {"verified": True, "reason": "forged"},
+                }
+                tampered_aggregate["rows"] = [
+                    {
+                        "Attribute": "Package",
+                        "Status": "Match",
+                        "Original": "TAMPERED-TOP",
+                        "Candidate": "TAMPERED-TOP",
+                    }
+                ]
+                tampered_aggregate["multi_matrix"] = [
+                    {
+                        "attribute": "Package",
+                        "current": "TAMPERED-MATRIX",
+                        "candidates": [
+                            {"mpn": part_b, "value": "TAMPERED-B", "assessment": "Compatible"},
+                            {"mpn": part_c, "value": "TAMPERED-C", "assessment": "Compatible"},
+                        ],
+                    }
+                ]
+                tampered_aggregate["multi_source_records"] = [
+                    {"side": "Part A", "mpn": part_a, "sourceLabel": "forged-source"},
+                    {"side": f"Candidate · {part_b}", "mpn": part_b, "sourceLabel": "forged-source"},
+                    {"side": f"Candidate · {part_c}", "mpn": part_c, "sourceLabel": "forged-source"},
+                ]
+                before_tamper = captured["compare_calls"]
+                tamper_response = client.post(
+                    "/decision-records",
+                    headers={"Authorization": f"Bearer {token}"},
+                    json={
+                        "analysis_id": analysis_id,
+                        "part_a": part_a,
+                        "part_b": part_b,
+                        "decision": "hold_for_review",
+                        "reviewer": "Smoke Reviewer",
+                        "rationale": "Tampered aggregate with valid candidate tokens.",
+                        "validation_checks": [
+                            "manufacturer_datasheet_reviewed",
+                            "package_pinout_verified",
+                            "electrical_limits_verified",
+                        ],
+                        "residual_risk": "unknown",
+                        "comparison_snapshot": tampered_aggregate,
+                        "verified_primary_evidence": True,
+                    },
+                )
+                self.assertEqual(tamper_response.status_code, 201, tamper_response.text)
+                # Tokens remain valid, so no forced pairwise recompute is required —
+                # but the saved aggregate must be server-rebuilt from those tokens.
+                self.assertEqual(captured["compare_calls"], before_tamper)
+                tamper_record = tamper_response.json()["record"]
+                self.assertFalse(tamper_record.get("verified_primary_evidence"))
+                tamper_snap = tamper_record.get("comparison_snapshot") or {}
+                self.assertTrue(tamper_snap.get("snapshot_aggregate_rebuilt"))
+                self.assertNotEqual(tamper_snap.get("source_a"), "Manufacturer datasheet (forged-aggregate)")
+                self.assertNotEqual(
+                    ((tamper_snap.get("rows") or [{}])[0]).get("Original"),
+                    "TAMPERED-TOP",
+                )
+                matrix_blob = json.dumps(tamper_snap.get("multi_matrix") or [])
+                self.assertNotIn("TAMPERED-MATRIX", matrix_blob)
+                self.assertNotIn("TAMPERED-B", matrix_blob)
+                self.assertNotIn("Compatible", matrix_blob)
+                identity = tamper_snap.get("datasheet_identity") or {}
+                self.assertFalse(((identity.get("part_a") or {}).get("verified")))
+                self.assertFalse(((identity.get("part_b") or {}).get("verified")))
 
                 # Forged candidate rows / sources / identity / analysis must not reuse.
                 forged = dict(valid_multi)
