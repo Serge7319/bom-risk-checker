@@ -325,18 +325,38 @@ def _part_analysis_failure(row: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-def find_replacements(mpn: str) -> dict[str, Any]:
+def find_replacements(mpn: str, manufacturer: str = "") -> dict[str, Any]:
     """Run the same Alternative Finder state machine used by the legacy UI."""
+    from apps.api.manufacturer_identity import manufacturers_match
     from src.alternative_finder_search import run_alternative_finder_search
 
     state: dict[str, Any] = {}
-    status = run_alternative_finder_search(state, mpn)
+    requested_manufacturer = str(manufacturer or "").strip()
+    status = run_alternative_finder_search(
+        state,
+        mpn,
+        requested_manufacturer=requested_manufacturer,
+    )
     result = state.get("alternative_finder_result")
     result = result if isinstance(result, dict) else {}
     original = result.get("original_data") if isinstance(result.get("original_data"), dict) else {}
+    if requested_manufacturer:
+        resolved = str(original.get("manufacturer") or original.get("Manufacturer") or "").strip()
+        if resolved and not manufacturers_match(requested_manufacturer, resolved):
+            # Leave mismatch visible for the API layer to fail closed / disambiguate.
+            original = dict(original)
+            original["identity_status"] = "manufacturer_mismatch"
+            original["requested_manufacturer"] = requested_manufacturer
+        elif not resolved:
+            original = dict(original)
+            original["manufacturer"] = requested_manufacturer
+            original["identity_status"] = "caller_selected"
+        else:
+            original = dict(original)
+            original["identity_status"] = "matched"
+            original["requested_manufacturer"] = requested_manufacturer
     candidates_raw = result.get("candidates") if isinstance(result.get("candidates"), list) else []
     discovery = result.get("discovery_metadata") if isinstance(result.get("discovery_metadata"), dict) else {}
-
     def _project_candidate(
         candidate: dict[str, Any],
         *,

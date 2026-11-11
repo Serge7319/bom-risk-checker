@@ -564,8 +564,14 @@ def run_alternative_finder_search(
     original_lookup: Mapping[str, Any] | None = None,
     original_risk: Mapping[str, Any] | None = None,
     lookup_error: str = "",
+    requested_manufacturer: str = "",
 ) -> dict[str, Any]:
-    """Execute Alternative Finder search stages and persist durable session results."""
+    """Execute Alternative Finder search stages and persist durable session results.
+
+    ``requested_manufacturer`` is honored by the Next.js replacement adapter when
+    resolving identity conflicts (for example LM358N TI vs onsemi). The AF
+    search itself remains MPN-keyed; mismatch handling is applied after lookup.
+    """
     from integrations.supplier_diagnostics import (
         new_alternative_finder_request_id,
         reset_alternative_finder_request_id,

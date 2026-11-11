@@ -421,20 +421,15 @@ def compare_field_values(
                     ),
                 )
         elif original_class == "unknown" or candidate_class == "unknown":
-            if value_role in {"typical", "guaranteed"}:
-                return (
-                    "Needs data",
-                    (
-                        "One or both values lack a typical/min/max/guaranteed class, so the "
-                        "conditions are not confirmed as comparable for engineering approval."
-                    ),
-                )
-            # Engineering min/max limit roles: unequal bare magnitudes stay Needs data
-            # (never Material/Different). Equal parseable values may still Match so
-            # catalog demotion can yield Listing agreement.
-            if value_role in {"max", "min", "maximum", "minimum"}:
-                unknown_blocks_difference = True
-
+            # Unknown class means required evidence is missing — never Compatible,
+            # including when the bare magnitudes happen to match.
+            return (
+                "Needs data",
+                (
+                    "One or both values lack a typical/min/max/guaranteed class, so the "
+                    "conditions are not confirmed as comparable for engineering approval."
+                ),
+            )
         if o_num is None or c_num is None:
             # Incomparable formats are unverified — never Material by default.
             if _compact(original_text) == _compact(candidate_text):

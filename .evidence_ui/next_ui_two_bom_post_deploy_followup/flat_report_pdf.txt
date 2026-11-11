@@ -1,0 +1,232 @@
+Cadivor · Evidence-linked engineering review
+Page 1
+Cadivor BOM Risk Report
+Project: PR Nov10 Flat Smoke — flat-synthetic-25    BOM: flat-synthetic-25    Revision: F1
+Health: 94 / 100    Status: Healthy    Components: 25    High / medium / low: 0 / 4 / 21
+This report uses synthetic preview analysis. Stock, price, and lifecycle values are not live supplier verification; confirm primary-source evidence before making a sourcing or release decision.
+MPN
+Manufacturer / description
+Parent
+Qty
+Lifecycle
+Risk
+Provenance
+Risk reasons
+XC3S400-4PQG20
+8C
+Xilinx · FPGA
+1
+Active
+Low
+id synthetic-preview ·
+price synthetic-preview ·
+type synthetic-estimate
+EPF10K20RC240-
+4N
+Altera · FPGA
+1
+NRND
+Medium
+id synthetic-preview ·
+price synthetic-preview ·
+type synthetic-estimate
+CY7C199-15PC
+Cypress · SRAM
+2
+Active
+Low
+id synthetic-preview ·
+price synthetic-preview ·
+type synthetic-estimate
+MC68HC711E9CF
+N2
+NXP · MCU
+1
+Active
+Low
+id synthetic-preview ·
+price synthetic-preview ·
+type synthetic-estimate
+DS1232LP
+Maxim · Supervisor
+1
+Active
+Low
+id synthetic-preview ·
+price synthetic-preview ·
+type synthetic-estimate
+ST72F324J6T6
+STMicroelectronics · MCU
+1
+Active
+Low
+id synthetic-preview ·
+price synthetic-preview ·
+type synthetic-estimate
+MAX232CPE
+Maxim · Transceiver
+2
+Active
+Low
+id synthetic-preview ·
+price synthetic-preview ·
+type synthetic-estimate
+GRM188R71H104
+KA93D
+Murata · Capacitor
+10
+Active
+Low
+id synthetic-preview ·
+price synthetic-preview ·
+type synthetic-estimate
+MC68HC11E1CFN
+E2
+NXP · MCU
+1
+Active
+Low
+id synthetic-preview ·
+price synthetic-preview ·
+type synthetic-estimate
+LM358DR
+Texas Instruments · Op Amp
+4
+Active
+Low
+id synthetic-preview ·
+price synthetic-preview ·
+type synthetic-estimate
+SN74HC595N
+Texas Instruments · Shift Register
+2
+Active
+Low
+id synthetic-preview ·
+price synthetic-preview ·
+type synthetic-estimate
+ATMEGA328P-PU
+Microchip · MCU
+1
+Active
+Low
+id synthetic-preview ·
+price synthetic-preview ·
+type synthetic-estimate
+
+Cadivor · Evidence-linked engineering review
+Page 2
+MPN
+Manufacturer / description
+Parent
+Qty
+Lifecycle
+Risk
+Provenance
+Risk reasons
+NE555P
+Texas Instruments · Timer
+2
+Active
+Low
+id synthetic-preview ·
+price synthetic-preview ·
+type synthetic-estimate
+1N4148
+Vishay · Diode
+20
+NRND
+Medium
+id synthetic-preview ·
+price synthetic-preview ·
+type synthetic-estimate
+2N3904
+ON Semiconductor · BJT
+5
+NRND
+Medium
+id synthetic-preview ·
+price synthetic-preview ·
+type synthetic-estimate
+IRF540N
+Infineon · MOSFET
+2
+Active
+Low
+id synthetic-preview ·
+price synthetic-preview ·
+type synthetic-estimate
+LM7805CT
+Texas Instruments · LDO
+1
+Active
+Low
+id synthetic-preview ·
+price synthetic-preview ·
+type synthetic-estimate
+CRCW060310K0F
+KEA
+Vishay · Resistor
+50
+Active
+Low
+id synthetic-preview ·
+price synthetic-preview ·
+type synthetic-estimate
+C0805C104K5RA
+CTU
+KEMET · Capacitor
+20
+Active
+Low
+id synthetic-preview ·
+price synthetic-preview ·
+type synthetic-estimate
+B3F-1000
+Omron · Tactile Switch
+4
+Active
+Low
+id synthetic-preview ·
+price synthetic-preview ·
+type synthetic-estimate
+USB-B-S-F-B-TH
+Samtec · USB Connector
+1
+Active
+Low
+id synthetic-preview ·
+price synthetic-preview ·
+type synthetic-estimate
+PJ-002A
+CUI · DC Jack
+1
+Active
+Low
+id synthetic-preview ·
+price synthetic-preview ·
+type synthetic-estimate
+HDR-2.54-1x8
+Generic · Header
+2
+Active
+Low
+id synthetic-preview ·
+price synthetic-preview ·
+type synthetic-estimate
+LED-0805-RED
+Generic · LED
+8
+Active
+Low
+id synthetic-preview ·
+price synthetic-preview ·
+type synthetic-estimate
+FUSE-1206-1A
+Littelfuse · Fuse
+1
+NRND
+Medium
+id synthetic-preview ·
+price synthetic-preview ·
+type synthetic-estimate

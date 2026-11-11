@@ -137,26 +137,70 @@ def resolve_engineering_part_identity(part_number: str) -> dict:
     return identity
 
 
-def _exact_keyword_product(products: list, part_number: str) -> Optional[dict]:
+def _exact_keyword_products(products: list, part_number: str) -> list[dict]:
+    """Return every exact manufacturer-MPN hit from a DigiKey keyword response."""
+    requested_key = _mpn_key(part_number)
+    if not requested_key:
+        return []
+    matches: list[dict] = []
+    for product in products or []:
+        if not isinstance(product, dict):
+            continue
+        if _mpn_key(product.get("ManufacturerProductNumber")) == requested_key:
+            matches.append(product)
+    return matches
+
+
+def _product_manufacturer_name(product: dict) -> str:
+    manufacturer = product.get("Manufacturer")
+    if isinstance(manufacturer, dict):
+        return str(manufacturer.get("Name") or manufacturer.get("Value") or "").strip()
+    return str(manufacturer or "").strip()
+
+
+def _exact_keyword_product(
+    products: list,
+    part_number: str,
+    *,
+    manufacturer: str = "",
+) -> Optional[dict]:
     """Select the exact MPN from a DigiKey keyword response.
 
     Keyword search is ranked, not an exact-MPN endpoint. Using its first result
     can attach a substitution lookup to a neighboring package, tape/reel
     variant, or unrelated prefix match. Only an exact manufacturer MPN is a
-    safe baseline for a replacement recommendation.
+    safe baseline for a replacement recommendation. When manufacturer is
+    provided, prefer the matching brand instead of silently picking another.
     """
-    requested_key = _mpn_key(part_number)
-    if not requested_key:
+    matches = _exact_keyword_products(products, part_number)
+    if not matches:
         return None
-    for product in products or []:
-        if not isinstance(product, dict):
-            continue
-        if _mpn_key(product.get("ManufacturerProductNumber")) == requested_key:
-            return product
-    return None
+    requested_mfr = str(manufacturer or "").strip()
+    if requested_mfr:
+        try:
+            from apps.api.manufacturer_identity import manufacturers_match
+        except Exception:  # noqa: BLE001
+            manufacturers_match = None  # type: ignore[assignment]
+        preferred: list[dict] = []
+        for product in matches:
+            product_mfr = _product_manufacturer_name(product)
+            if manufacturers_match and manufacturers_match(requested_mfr, product_mfr):
+                preferred.append(product)
+            elif not manufacturers_match and product_mfr.casefold() == requested_mfr.casefold():
+                preferred.append(product)
+        if preferred:
+            return preferred[0]
+        # Exact MPN exists only under other brands — do not silently substitute.
+        return None
+    return matches[0]
 
 
-def _select_exact_digikey_product(products: list, part_number: str) -> Optional[dict]:
+def _select_exact_digikey_product(
+    products: list,
+    part_number: str,
+    *,
+    manufacturer: str = "",
+) -> Optional[dict]:
     """Select an exact MPN match or a DigiKey distributor/order-number match."""
     requested = str(part_number or "").strip()
     if not requested:
@@ -166,7 +210,7 @@ def _select_exact_digikey_product(products: list, part_number: str) -> Optional[
             if isinstance(product, dict) and _product_matches_digikey_number(product, requested):
                 return product
         return None
-    return _exact_keyword_product(products, part_number)
+    return _exact_keyword_product(products, part_number, manufacturer=manufacturer)
 
 
 def _search_digikey_exact_product(part_number: str, *, client_id: str, access_token: str) -> Optional[dict]:

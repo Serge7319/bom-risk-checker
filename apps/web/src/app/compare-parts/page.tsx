@@ -8,6 +8,7 @@ import { EvidenceNotice, LoadingCard } from "@/components/GapBanner";
 import { Shell } from "@/components/Shell";
 import { PageHeader, SecondaryLink } from "@/components/PageHeader";
 import {
+  COMPARE_PARTS_TIMEOUT_MS,
   compareParts,
   listReports,
   recordDecision,
@@ -22,6 +23,13 @@ import {
 } from "@/lib/multiCompare";
 import { PAGE_META } from "@/lib/routes";
 import { readLastAnalysis, useRequireSession } from "@/lib/session";
+
+type CompareProgress = {
+  total: number;
+  completed: number;
+  current?: string;
+  failures: string[];
+};
 
 type Row = Record<string, unknown>;
 
@@ -113,6 +121,7 @@ function ComparePartsInner() {
   const [reportsError, setReportsError] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [progress, setProgress] = useState<CompareProgress | null>(null);
   const [result, setResult] = useState<Row | null>(null);
   const [multiColumns, setMultiColumns] = useState<MultiCompareColumn[]>([]);
   const [decisionOpen, setDecisionOpen] = useState(false);
@@ -189,6 +198,7 @@ function ComparePartsInner() {
     if (!session) return;
     setBusy(true);
     setError("");
+    setProgress(null);
     setResult(null);
     setMultiColumns([]);
     setDecisionSuccess(null);
@@ -203,39 +213,96 @@ function ComparePartsInner() {
         throw new Error("Candidate MPNs must differ from the current design part.");
       }
       if (candidates.length === 1) {
+        setProgress({
+          total: 1,
+          completed: 0,
+          current: candidates[0],
+          failures: [],
+        });
         const data = await compareParts(
           session.access_token,
           partA,
           candidates[0],
           selectedAnalysis,
           { a: datasheetA, b: datasheetB },
+          { timeoutMs: COMPARE_PARTS_TIMEOUT_MS },
         );
+        setProgress({ total: 1, completed: 1, failures: [] });
         setResult(data);
         setMultiColumns([]);
         if (data.analysis_id) setAnalysisId(String(data.analysis_id));
         return;
       }
       // Multi-alternate: compare each candidate against the same current part.
-      // Do not imply drop-in compatibility or auto-approve from this matrix.
+      // Bounded per-pair timeout; failures stay visible and never become
+      // “no candidates” or a Compatible fit verdict.
+      const failures: string[] = [];
+      setProgress({
+        total: candidates.length,
+        completed: 0,
+        current: candidates[0],
+        failures: [],
+      });
+      const settled = await Promise.allSettled(
+        candidates.map((candidate) =>
+          compareParts(
+            session.access_token,
+            partA,
+            candidate,
+            selectedAnalysis,
+            { a: datasheetA },
+            { timeoutMs: COMPARE_PARTS_TIMEOUT_MS },
+          ).then((data) => ({ candidate, data })),
+        ),
+      );
       const columns: MultiCompareColumn[] = [];
-      for (const candidate of candidates) {
-        const data = await compareParts(
-          session.access_token,
-          partA,
-          candidate,
-          selectedAnalysis,
-          { a: datasheetA },
-        );
-        columns.push({
-          mpn: candidate,
-          result: data,
-          rows: (data.rows || []) as Row[],
-        });
-      }
+      settled.forEach((outcome, index) => {
+        const candidate = candidates[index];
+        if (outcome.status === "fulfilled") {
+          columns.push({
+            mpn: outcome.value.candidate,
+            result: outcome.value.data,
+            rows: (outcome.value.data.rows || []) as Row[],
+          });
+        } else {
+          const detail =
+            outcome.reason instanceof Error
+              ? outcome.reason.message
+              : `Comparison failed for ${candidate}.`;
+          failures.push(detail);
+          columns.push({
+            mpn: candidate,
+            result: {
+              ok: false,
+              status: "comparison_failed",
+              finding: "Needs verification",
+              gap: detail,
+              part_a: partA,
+              part_b: candidate,
+              rows: [],
+            },
+            rows: [],
+          });
+        }
+      });
+      setProgress({
+        total: candidates.length,
+        completed: candidates.length,
+        failures,
+      });
       setMultiColumns(columns);
-      setResult(columns[0]?.result || null);
+      setResult(columns.find((column) => column.result.ok !== false)?.result || columns[0]?.result || null);
       const firstAnalysis = columns.find((column) => column.result.analysis_id)?.result.analysis_id;
       if (firstAnalysis) setAnalysisId(String(firstAnalysis));
+      if (failures.length && failures.length === candidates.length) {
+        setError(
+          `All ${candidates.length} pairwise comparisons failed or timed out. This is not a fit verdict and does not mean there are no candidates. ${failures[0]}`,
+        );
+      } else if (failures.length) {
+        setError(
+          `${failures.length} of ${candidates.length} pairwise comparisons failed or timed out. Completed columns are shown; failures stay Needs verification — not Compatible. ${failures[0]}`,
+        );
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Compare failed");
     } finally {
@@ -506,7 +573,30 @@ function ComparePartsInner() {
         </details>
       </form>
 
-      {busy ? <LoadingCard label="Comparing available part attributes and evidence…" /> : null}
+      {busy ? (
+        <LoadingCard
+          label={
+            progress
+              ? `Comparing ${progress.completed} of ${progress.total} candidate${progress.total === 1 ? "" : "s"}${
+                  progress.current ? ` · current ${progress.current}` : ""
+                } (bounded ${Math.round(COMPARE_PARTS_TIMEOUT_MS / 1000)}s each)…`
+              : "Comparing available part attributes and evidence…"
+          }
+        />
+      ) : null}
+      {!busy && progress && progress.failures.length ? (
+        <div className="cv-card pad" role="status" style={{ marginBottom: 14 }}>
+          <h3 className="cv-card-title">Bounded comparison failures</h3>
+          <p className="cv-card-subtitle">
+            Timeouts and request failures stay Needs verification. They are not a Compatible fit verdict and do not mean “no candidates.”
+          </p>
+          <ul className="cv-small-note" style={{ marginTop: 8, paddingLeft: 18 }}>
+            {progress.failures.map((item, index) => (
+              <li key={index}>{item}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
       {error ? <div className="cv-error" role="alert">The comparison could not complete. {error}</div> : null}
       {decisionSuccess ? (
         <div className="cv-success" role="status">
