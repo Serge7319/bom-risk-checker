@@ -1,8 +1,10 @@
 import re
 import threading
 import time
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Iterator, Optional
 
 import requests
 from urllib.parse import quote
@@ -24,6 +26,19 @@ from src.parsing.electrical_extractors import (
 _DIGIKEY_TOKEN_LOCK = threading.Lock()
 _DIGIKEY_CACHED_TOKEN: str | None = None
 _DIGIKEY_TOKEN_EXPIRES_AT: float = 0.0
+_DIGIKEY_REQUESTED_MANUFACTURER: ContextVar[str] = ContextVar(
+    "digikey_requested_manufacturer", default=""
+)
+
+
+@contextmanager
+def digikey_requested_manufacturer(manufacturer: str) -> Iterator[None]:
+    """Constrain DigiKey exact-product selection to a caller-selected brand."""
+    token = _DIGIKEY_REQUESTED_MANUFACTURER.set(str(manufacturer or "").strip())
+    try:
+        yield
+    finally:
+        _DIGIKEY_REQUESTED_MANUFACTURER.reset(token)
 
 
 def get_digikey_access_token() -> str:
@@ -213,7 +228,13 @@ def _select_exact_digikey_product(
     return _exact_keyword_product(products, part_number, manufacturer=manufacturer)
 
 
-def _search_digikey_exact_product(part_number: str, *, client_id: str, access_token: str) -> Optional[dict]:
+def _search_digikey_exact_product(
+    part_number: str,
+    *,
+    client_id: str,
+    access_token: str,
+    manufacturer: str = "",
+) -> Optional[dict]:
     """Return the raw exact keyword product so callers retain package variants.
 
     DigiKey can associate the same manufacturer MPN with multiple purchasing
@@ -234,13 +255,25 @@ def _search_digikey_exact_product(part_number: str, *, client_id: str, access_to
     response = requests.post(url, headers=headers, json=payload, timeout=15)
     response.raise_for_status()
     products = (response.json() or {}).get("Products") or []
-    return _select_exact_digikey_product(products, part_number)
+    requested_mfr = str(manufacturer or "").strip() or _DIGIKEY_REQUESTED_MANUFACTURER.get()
+    return _select_exact_digikey_product(
+        products, part_number, manufacturer=requested_mfr
+    )
 
 
-def _search_digikey_by_part_number(part_number: str, *, client_id: str, access_token: str) -> dict:
+def _search_digikey_by_part_number(
+    part_number: str,
+    *,
+    client_id: str,
+    access_token: str,
+    manufacturer: str = "",
+) -> dict:
     requested = str(part_number or "").strip()
     product = _search_digikey_exact_product(
-        requested, client_id=client_id, access_token=access_token
+        requested,
+        client_id=client_id,
+        access_token=access_token,
+        manufacturer=manufacturer,
     )
     if not product:
         return default_digikey_result(requested)
@@ -327,10 +360,14 @@ def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
-def search_digikey_by_part_number(part_number: str) -> dict:
+def search_digikey_by_part_number(part_number: str, manufacturer: str = "") -> dict:
     client_id = get_secret("DIGIKEY_CLIENT_ID", required=True)
+    requested_mfr = str(manufacturer or "").strip() or _DIGIKEY_REQUESTED_MANUFACTURER.get()
     return _search_digikey_by_part_number(
-        part_number, client_id=client_id, access_token=get_digikey_access_token()
+        part_number,
+        client_id=client_id,
+        access_token=get_digikey_access_token(),
+        manufacturer=requested_mfr,
     )
 
 
@@ -349,7 +386,10 @@ def search_digikey_substitutions(part_number: str) -> list[dict]:
     client_id = get_secret("DIGIKEY_CLIENT_ID", required=True)
     access_token = get_digikey_access_token()
     product = _search_digikey_exact_product(
-        requested, client_id=client_id, access_token=access_token
+        requested,
+        client_id=client_id,
+        access_token=access_token,
+        manufacturer=_DIGIKEY_REQUESTED_MANUFACTURER.get(),
     )
     product_numbers = _digikey_product_numbers(product or {}, required_mpn=requested)
     if not product_numbers:

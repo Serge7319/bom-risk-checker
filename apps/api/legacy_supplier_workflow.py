@@ -340,22 +340,42 @@ def find_replacements(mpn: str, manufacturer: str = "") -> dict[str, Any]:
     result = state.get("alternative_finder_result")
     result = result if isinstance(result, dict) else {}
     original = result.get("original_data") if isinstance(result.get("original_data"), dict) else {}
+    identity_blocked = False
     if requested_manufacturer:
         resolved = str(original.get("manufacturer") or original.get("Manufacturer") or "").strip()
-        if resolved and not manufacturers_match(requested_manufacturer, resolved):
-            # Leave mismatch visible for the API layer to fail closed / disambiguate.
+        status_hint = str(original.get("identity_status") or "").strip()
+        if status_hint in {"manufacturer_mismatch", "unresolved"} or (
+            resolved and not manufacturers_match(requested_manufacturer, resolved)
+        ):
+            # Fail closed — never stamp the caller's selection as verified identity.
+            identity_blocked = True
             original = dict(original)
-            original["identity_status"] = "manufacturer_mismatch"
+            original["identity_status"] = (
+                status_hint
+                if status_hint in {"manufacturer_mismatch", "unresolved"}
+                else ("manufacturer_mismatch" if resolved else "unresolved")
+            )
             original["requested_manufacturer"] = requested_manufacturer
+            original["resolved_manufacturer"] = resolved
+            original["manufacturer"] = ""
+            original["identity_verified"] = False
         elif not resolved:
+            identity_blocked = True
             original = dict(original)
-            original["manufacturer"] = requested_manufacturer
-            original["identity_status"] = "caller_selected"
+            original["manufacturer"] = ""
+            original["requested_manufacturer"] = requested_manufacturer
+            original["identity_status"] = "unresolved"
+            original["identity_verified"] = False
         else:
             original = dict(original)
             original["identity_status"] = "matched"
             original["requested_manufacturer"] = requested_manufacturer
-    candidates_raw = result.get("candidates") if isinstance(result.get("candidates"), list) else []
+            original["identity_verified"] = True
+    candidates_raw = (
+        []
+        if identity_blocked
+        else (result.get("candidates") if isinstance(result.get("candidates"), list) else [])
+    )
     discovery = result.get("discovery_metadata") if isinstance(result.get("discovery_metadata"), dict) else {}
     def _project_candidate(
         candidate: dict[str, Any],
@@ -605,6 +625,10 @@ def find_replacements(mpn: str, manufacturer: str = "") -> dict[str, Any]:
             "lifecycle_conflict": bool(original.get("lifecycle_conflict")),
             "source": str(original.get("source") or ""),
             "supplier_data_verified": bool(original.get("supplier_data_verified")),
+            "identity_status": str(original.get("identity_status") or ""),
+            "identity_verified": bool(original.get("identity_verified")),
+            "requested_manufacturer": str(original.get("requested_manufacturer") or ""),
+            "resolved_manufacturer": str(original.get("resolved_manufacturer") or ""),
             "risk": result.get("original_risk") if isinstance(result.get("original_risk"), dict) else {},
         },
         "candidates": candidates,

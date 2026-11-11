@@ -235,16 +235,29 @@ function ComparePartsInner() {
       }
       // Multi-alternate: compare each candidate against the same current part.
       // Bounded per-pair timeout; failures stay visible and never become
-      // “no candidates” or a Compatible fit verdict.
+      // “no candidates” or a Compatible fit verdict. Progress updates as each
+      // pairwise request settles (not only after allSettled finishes).
       const failures: string[] = [];
-      setProgress({
-        total: candidates.length,
-        completed: 0,
-        current: candidates[0],
-        failures: [],
-      });
-      const settled = await Promise.allSettled(
-        candidates.map((candidate) =>
+      const columnsSlot: Array<MultiCompareColumn | null> = candidates.map(() => null);
+      let completedCount = 0;
+      const publishProgress = (current?: string) => {
+        setProgress({
+          total: candidates.length,
+          completed: completedCount,
+          current,
+          failures: [...failures],
+        });
+        const ready = columnsSlot.filter(Boolean) as MultiCompareColumn[];
+        if (ready.length) {
+          setMultiColumns(ready);
+          setResult(
+            ready.find((column) => column.result.ok !== false)?.result || ready[0]?.result || null,
+          );
+        }
+      };
+      publishProgress(candidates[0]);
+      await Promise.allSettled(
+        candidates.map((candidate, index) =>
           compareParts(
             session.access_token,
             partA,
@@ -252,39 +265,45 @@ function ComparePartsInner() {
             selectedAnalysis,
             { a: datasheetA },
             { timeoutMs: COMPARE_PARTS_TIMEOUT_MS },
-          ).then((data) => ({ candidate, data })),
+          )
+            .then((data) => {
+              columnsSlot[index] = {
+                mpn: candidate,
+                result: data,
+                rows: (data.rows || []) as Row[],
+              };
+              completedCount += 1;
+              const nextPending = candidates.find((_, i) => columnsSlot[i] == null);
+              publishProgress(nextPending);
+              return { candidate, data };
+            })
+            .catch((reason) => {
+              const detail =
+                reason instanceof Error
+                  ? reason.message
+                  : `Comparison failed for ${candidate}.`;
+              failures.push(detail);
+              columnsSlot[index] = {
+                mpn: candidate,
+                result: {
+                  ok: false,
+                  status: "comparison_failed",
+                  finding: "Needs verification",
+                  gap: detail,
+                  part_a: partA,
+                  part_b: candidate,
+                  rows: [],
+                },
+                rows: [],
+              };
+              completedCount += 1;
+              const nextPending = candidates.find((_, i) => columnsSlot[i] == null);
+              publishProgress(nextPending);
+              throw reason;
+            }),
         ),
       );
-      const columns: MultiCompareColumn[] = [];
-      settled.forEach((outcome, index) => {
-        const candidate = candidates[index];
-        if (outcome.status === "fulfilled") {
-          columns.push({
-            mpn: outcome.value.candidate,
-            result: outcome.value.data,
-            rows: (outcome.value.data.rows || []) as Row[],
-          });
-        } else {
-          const detail =
-            outcome.reason instanceof Error
-              ? outcome.reason.message
-              : `Comparison failed for ${candidate}.`;
-          failures.push(detail);
-          columns.push({
-            mpn: candidate,
-            result: {
-              ok: false,
-              status: "comparison_failed",
-              finding: "Needs verification",
-              gap: detail,
-              part_a: partA,
-              part_b: candidate,
-              rows: [],
-            },
-            rows: [],
-          });
-        }
-      });
+      const columns = columnsSlot.filter(Boolean) as MultiCompareColumn[];
       setProgress({
         total: candidates.length,
         completed: candidates.length,

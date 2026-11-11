@@ -39,11 +39,16 @@ FINDING_LISTING_AGREEMENT_LEGACY = "Supplier-listing agreement"
 FINDING_NEEDS_DATA = FINDING_NEEDS_VERIFICATION
 
 
+def _source_missing(source: object) -> bool:
+    text = str(source or "").strip().casefold()
+    return (not text) or text in {"not stated", "none", "unknown"}
+
+
 def _source_is_catalog_only(source: object) -> bool:
     text = str(source or "").strip().casefold()
-    if not text:
-        return False  # No provenance context supplied.
-    if text in {"not stated", "none", "unknown"}:
+    if _source_missing(source):
+        # Absent/unknown provenance is unverified — treat like catalog-only for
+        # demotion so missing sources never mint Compatible.
         return True
     catalog_markers = (
         "supplier catalog",
@@ -61,10 +66,23 @@ def _source_is_catalog_only(source: object) -> bool:
     )
     if any(marker in text for marker in catalog_markers):
         return True
-    # Manufacturer datasheet / product-page citations are not catalog-only.
-    if "datasheet" in text or "manufacturer" in text or "product page" in text:
-        return False
     return False
+
+
+def _source_is_authoritative(source: object) -> bool:
+    """True for manufacturer datasheet / product-page citations (not catalog)."""
+    text = str(source or "").strip().casefold()
+    if _source_missing(source) or _source_is_catalog_only(source):
+        # Catalog markers already matched above; authoritative must not be catalog.
+        # Re-check: catalog_only treats missing as True, so authoritative is False.
+        return False
+    return (
+        "datasheet" in text
+        or "manufacturer" in text
+        or "product page" in text
+        or "uploaded" in text
+        or ".pdf" in text
+    )
 
 
 def _condition_unknown(value: object) -> bool:
@@ -82,7 +100,11 @@ def assess_compare_row(
     source_a: object = "",
     source_b: object = "",
 ) -> str:
-    """Map a row status to a customer assessment with provenance honesty."""
+    """Map a row status to a customer assessment with provenance honesty.
+
+    Internal comparison Status values (Match / Listing agreement / Different)
+    stay unchanged for ranking. This mapping only affects customer-facing labels.
+    """
     normalized = str(status or "").strip()
     folded = normalized.casefold()
     if normalized == "Different" or folded == FINDING_MATERIAL.casefold():
@@ -98,8 +120,12 @@ def assess_compare_row(
         or _condition_unknown(condition_a)
         or _condition_unknown(condition_b)
     )
+    missing_a = _source_missing(source_a)
+    missing_b = _source_missing(source_b)
     catalog_a = _source_is_catalog_only(source_a)
     catalog_b = _source_is_catalog_only(source_b)
+    authoritative_a = _source_is_authoritative(source_a)
+    authoritative_b = _source_is_authoritative(source_b)
     listing_status = (
         normalized == "Listing agreement"
         or "listing agreement" in folded
@@ -111,14 +137,24 @@ def assess_compare_row(
     )
 
     if listing_status or normalized == "Match" or folded == FINDING_COMPATIBLE.casefold():
+        # Missing/unknown provenance never yields Compatible.
+        if missing_a or missing_b:
+            return FINDING_NEEDS_VERIFICATION
         # Unknown required evidence with catalog provenance → Needs verification.
         if unknown_evidence and (catalog_a or catalog_b):
             return FINDING_NEEDS_VERIFICATION
         # Supplier-catalog agreement with known class/conditions is still not Compatible.
         if listing_status or (catalog_a and catalog_b):
             return FINDING_LISTING_AGREEMENT
-        if normalized == "Match" or folded == FINDING_COMPATIBLE.casefold():
+        # Compatible only with authoritative non-catalog evidence on both sides.
+        # Datasheet-backed exact/identity fields may omit class/condition tokens.
+        if (
+            (normalized == "Match" or folded == FINDING_COMPATIBLE.casefold())
+            and authoritative_a
+            and authoritative_b
+        ):
             return FINDING_COMPATIBLE
+        return FINDING_NEEDS_VERIFICATION
     return FINDING_NEEDS_VERIFICATION
 
 COMPARE_PARTS_PART_A_WIDGET_KEY = "compare_parts_part_a"

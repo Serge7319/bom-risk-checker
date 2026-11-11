@@ -845,15 +845,22 @@ def find_replacement_payload(
             or original.get("Manufacturer")
             or ""
         ).strip()
-        if requested_manufacturer and resolved_mfr and not manufacturers_match(
-            requested_manufacturer, resolved_mfr
+        identity_status = str(original.get("identity_status") or "").strip()
+        if requested_manufacturer and (
+            identity_status in {"manufacturer_mismatch", "unresolved"}
+            or (
+                resolved_mfr
+                and not manufacturers_match(requested_manufacturer, resolved_mfr)
+            )
+            or not resolved_mfr
         ):
             return _json_safe(
                 {
                     **identity_ambiguity_payload(
                         mpn=requested,
                         requested_manufacturer=requested_manufacturer,
-                        resolved_manufacturer=resolved_mfr,
+                        resolved_manufacturer=resolved_mfr
+                        or str(original.get("resolved_manufacturer") or ""),
                         choices=dual_source_choices or None,
                     ),
                     "analysis_id": context_analysis_id,
@@ -861,10 +868,6 @@ def find_replacement_payload(
                     "context_unavailable": context_notice,
                 }
             )
-        if requested_manufacturer and not resolved_mfr:
-            original = dict(original)
-            original["manufacturer"] = requested_manufacturer
-            original["identity_status"] = "caller_selected"
         outcome = (
             "candidates_found"
             if result.get("candidates")
@@ -906,9 +909,24 @@ def find_replacement_payload(
                 "context_unavailable": context_notice,
             }
         )
-    if requested_manufacturer:
-        original["manufacturer"] = requested_manufacturer
-        original["identity_status"] = "caller_selected"
+    if requested_manufacturer and not resolved_mfr:
+        # Offline path cannot verify brand — fail closed rather than stamp selection.
+        return _json_safe(
+            {
+                **identity_ambiguity_payload(
+                    mpn=requested,
+                    requested_manufacturer=requested_manufacturer,
+                    resolved_manufacturer="",
+                    choices=dual_source_choices or None,
+                ),
+                "analysis_id": context_analysis_id,
+                "bom_context": bom_context,
+                "context_unavailable": context_notice,
+            }
+        )
+    if requested_manufacturer and resolved_mfr:
+        original["identity_status"] = "matched"
+        original["requested_manufacturer"] = requested_manufacturer
 
     candidates_raw = offline_replacement_candidates(requested)
     candidates: list[dict[str, Any]] = []

@@ -80,6 +80,103 @@ class ManufacturerIdentityTests(unittest.TestCase):
             "onsemi",
         )
 
+    def test_successful_ti_and_onsemi_selections_match_identity(self):
+        for brand in ("Texas Instruments", "onsemi"):
+            fake = {
+                "original": {
+                    "mpn": "LM358N",
+                    "manufacturer": brand,
+                    "identity_status": "matched",
+                    "identity_verified": True,
+                    "description": "Op amp",
+                },
+                "candidates": [{"mpn": f"{brand}-ALT"}],
+                "search_outcome": "candidates_found",
+            }
+            with patch(
+                "apps.api.legacy_supplier_workflow.production_analysis_enabled",
+                return_value=True,
+            ), patch(
+                "apps.api.legacy_supplier_workflow.find_replacements",
+                return_value=fake,
+            ) as mocked:
+                payload = find_replacement_payload(
+                    workspace_id="ws-test",
+                    mpn="LM358N",
+                    manufacturer=brand,
+                )
+            mocked.assert_called_once()
+            called_mfr = mocked.call_args.kwargs.get("manufacturer")
+            if called_mfr is None and len(mocked.call_args.args) > 1:
+                called_mfr = mocked.call_args.args[1]
+            self.assertEqual(called_mfr, brand)
+            self.assertNotEqual(payload.get("status"), "identity_ambiguous")
+            self.assertEqual(
+                str((payload.get("original") or {}).get("manufacturer") or ""),
+                brand,
+            )
+            self.assertTrue(payload.get("candidates"))
+
+    def test_lookup_wrong_brand_clears_candidates_in_workflow(self):
+        from apps.api.legacy_supplier_workflow import find_replacements
+
+        with patch(
+            "src.alternative_finder_search.run_alternative_finder_search",
+            side_effect=lambda state, mpn, **kwargs: state.update(
+                {
+                    "alternative_finder_result": {
+                        "original_data": {
+                            "manufacturer_part_number": "LM358N",
+                            "manufacturer": "onsemi",
+                        },
+                        "candidates": [
+                            {
+                                "Alternative Part": "WRONG-ALT",
+                                "Manufacturer": "onsemi",
+                                "Classification": "Spec-matched candidate",
+                                "Candidate Disposition": "Discovery lead only",
+                            }
+                        ],
+                        "discovery_metadata": {},
+                    }
+                }
+            )
+            or {"status": "completed"},
+        ):
+            result = find_replacements("LM358N", manufacturer="Texas Instruments")
+        self.assertEqual(result.get("original", {}).get("identity_status"), "manufacturer_mismatch")
+        self.assertEqual(result.get("original", {}).get("manufacturer"), "")
+        self.assertEqual(result.get("candidates"), [])
+        self.assertEqual(
+            result.get("original", {}).get("requested_manufacturer"),
+            "Texas Instruments",
+        )
+
+    def test_digikey_selector_honors_requested_manufacturer(self):
+        from integrations.digikey_client import _select_exact_digikey_product
+
+        products = [
+            {
+                "ManufacturerProductNumber": "LM358N",
+                "Manufacturer": {"Name": "onsemi"},
+                "DigiKeyProductNumber": "ON-1",
+            },
+            {
+                "ManufacturerProductNumber": "LM358N",
+                "Manufacturer": {"Name": "Texas Instruments"},
+                "DigiKeyProductNumber": "TI-1",
+            },
+        ]
+        selected = _select_exact_digikey_product(
+            products, "LM358N", manufacturer="Texas Instruments"
+        )
+        self.assertIsNotNone(selected)
+        self.assertEqual(selected.get("DigiKeyProductNumber"), "TI-1")
+        missing = _select_exact_digikey_product(
+            products, "LM358N", manufacturer="Analog Devices"
+        )
+        self.assertIsNone(missing)
+
 
 class CompareAssessmentHonestyTests(unittest.TestCase):
     def test_catalog_unknown_class_is_needs_verification_not_compatible(self):
@@ -149,6 +246,38 @@ class CompareAssessmentHonestyTests(unittest.TestCase):
         )
         self.assertEqual(known_catalog_rows[0]["Assessment"], FINDING_LISTING_AGREEMENT)
         self.assertNotEqual(known_catalog_rows[0]["Assessment"], FINDING_COMPATIBLE)
+
+    def test_known_classes_with_missing_sources_are_not_compatible(self):
+        assessment = assess_compare_row(
+            status="Match",
+            class_a="typical",
+            class_b="typical",
+            condition_a="@ 25C",
+            condition_b="@ 25C",
+            source_a="",
+            source_b="",
+        )
+        self.assertEqual(assessment, FINDING_NEEDS_VERIFICATION)
+        self.assertNotEqual(assessment, FINDING_COMPATIBLE)
+        rows = user_facing_compare_rows(
+            [
+                {
+                    "Attribute": "Input bias",
+                    "Original": "20 nA (typ) @ 25C",
+                    "Candidate": "20 nA (typ) @ 25C",
+                    "Status": "Match",
+                    "Part A source": "",
+                    "Part B source": "",
+                    "Part A value class": "typical",
+                    "Part B value class": "typical",
+                    "Part A test condition": "@ 25C",
+                    "Part B test condition": "@ 25C",
+                    "Evidence": "Values match",
+                }
+            ]
+        )
+        self.assertEqual(rows[0]["Assessment"], FINDING_NEEDS_VERIFICATION)
+        self.assertNotEqual(rows[0]["Assessment"], FINDING_COMPATIBLE)
 
 
 class SupplyRiskScopeTests(unittest.TestCase):
