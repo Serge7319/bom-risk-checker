@@ -66,7 +66,10 @@ export function buildMultiCompareMatrix(
           current: text(row["Part A"] || row.part_a),
           currentSource: text(row["Part A source"], "Not stated"),
           currentClass: text(row["Part A value class"], "unknown"),
-          currentCondition: text(row["Test condition"], "Not stated"),
+          currentCondition: text(
+            row["Part A test condition"] || row["Test condition"],
+            "Not stated",
+          ),
           unit: text(row.Unit, ""),
           candidates: [],
         };
@@ -77,7 +80,7 @@ export function buildMultiCompareMatrix(
         value: text(row["Part B"] || row.part_b),
         source: text(row["Part B source"], "Not stated"),
         valueClass: text(row["Part B value class"], "unknown"),
-        condition: text(row["Test condition"], "Not stated"),
+        condition: text(row["Part B test condition"] || row["Test condition"], "Not stated"),
         assessment: text(row.Assessment || row.assessment || row.Status, "Needs data"),
         evidence: text(row.Evidence || row.evidence || row.Note, "No source note supplied."),
       });
@@ -107,4 +110,107 @@ export function buildMultiCompareMatrix(
   }
 
   return attributeOrder.map((attribute) => byAttribute.get(attribute.toLowerCase())!);
+}
+
+export type MultiSourceRecord = {
+  side: string;
+  mpn: string;
+  sourceLabel: string;
+  retrievalNotes: string[];
+  fieldEvidence: Array<{
+    attribute: string;
+    value: string;
+    source: string;
+    valueClass: string;
+    condition: string;
+    assessment: string;
+    evidence: string;
+  }>;
+};
+
+export function buildMultiSourceRecords(
+  currentMpn: string,
+  columns: MultiCompareColumn[],
+): MultiSourceRecord[] {
+  const records: MultiSourceRecord[] = [];
+  const first = columns[0];
+  if (first) {
+    const evidence = (first.result.evidence_sources || {}) as {
+      part_a?: Array<Record<string, unknown>>;
+    };
+    records.push({
+      side: "Part A",
+      mpn: text(first.result.part_a || currentMpn, currentMpn),
+      sourceLabel: text(first.result.source_a, "Not stated"),
+      retrievalNotes: (evidence.part_a || []).map((row) => {
+        const label = text(row.label || row.name || row.source || row.url, "Source");
+        const retrieved = text(row.retrieved_at, "");
+        return retrieved ? `${label} · retrieved ${retrieved}` : label;
+      }),
+      fieldEvidence: (first.rows || []).map((row) => ({
+        attribute: text(row.Attribute || row.attribute),
+        value: text(row["Part A"] || row.part_a),
+        source: text(row["Part A source"], "Not stated"),
+        valueClass: text(row["Part A value class"], "unknown"),
+        condition: text(row["Part A test condition"] || row["Test condition"], "Not stated"),
+        assessment: text(row.Assessment || row.assessment || row.Status, "Needs data"),
+        evidence: text(row.Evidence || row.evidence || row.Note, "No source note supplied."),
+      })),
+    });
+  }
+  for (const column of columns) {
+    const evidence = (column.result.evidence_sources || {}) as {
+      part_b?: Array<Record<string, unknown>>;
+    };
+    records.push({
+      side: `Candidate · ${column.mpn}`,
+      mpn: text(column.result.part_b || column.mpn, column.mpn),
+      sourceLabel: text(column.result.source_b, "Not stated"),
+      retrievalNotes: (evidence.part_b || []).map((row) => {
+        const label = text(row.label || row.name || row.source || row.url, "Source");
+        const retrieved = text(row.retrieved_at, "");
+        return retrieved ? `${label} · retrieved ${retrieved}` : label;
+      }),
+      fieldEvidence: (column.rows || []).map((row) => ({
+        attribute: text(row.Attribute || row.attribute),
+        value: text(row["Part B"] || row.part_b),
+        source: text(row["Part B source"], "Not stated"),
+        valueClass: text(row["Part B value class"], "unknown"),
+        condition: text(row["Part B test condition"] || row["Test condition"], "Not stated"),
+        assessment: text(row.Assessment || row.assessment || row.Status, "Needs data"),
+        evidence: text(row.Evidence || row.evidence || row.Note, "No source note supplied."),
+      })),
+    });
+  }
+  return records;
+}
+
+export function buildMultiDecisionSnapshot(
+  currentMpn: string,
+  columns: MultiCompareColumn[],
+): Record<string, unknown> {
+  const matrix = buildMultiCompareMatrix(currentMpn, columns);
+  const sourceRecords = buildMultiSourceRecords(currentMpn, columns);
+  const primary = columns[0]?.result || {};
+  const candidateMpns = columns.map((column) => column.mpn);
+  // Keep each pairwise compare payload intact (including snapshot_token) so the
+  // decision API can verify every candidate server-side.
+  const candidateSnapshots = columns.map((column) => {
+    const result = { ...(column.result || {}) } as Record<string, unknown>;
+    result.mpn = column.mpn;
+    result.part_a = text(result.part_a || currentMpn, currentMpn);
+    result.part_b = text(result.part_b || column.mpn, column.mpn);
+    return result;
+  });
+  return {
+    ...primary,
+    ok: true,
+    part_a: text(primary.part_a || currentMpn, currentMpn),
+    // Decision primary part_b is the first verified candidate.
+    part_b: text(primary.part_b || candidateMpns[0], candidateMpns[0] || ""),
+    multi_candidate_mpns: candidateMpns,
+    multi_matrix: matrix,
+    multi_source_records: sourceRecords,
+    candidate_snapshots: candidateSnapshots,
+  };
 }

@@ -15,6 +15,8 @@ import {
 } from "@/lib/api";
 import {
   buildMultiCompareMatrix,
+  buildMultiDecisionSnapshot,
+  buildMultiSourceRecords,
   parseCandidateMpns,
   type MultiCompareColumn,
 } from "@/lib/multiCompare";
@@ -244,7 +246,11 @@ function ComparePartsInner() {
   function openDecisionDialog() {
     setDecisionAnalysisId(String(result?.analysis_id || analysisId || ""));
     setDecisionPartA(String(result?.part_a || partA || ""));
-    setDecisionPartB(String(result?.part_b || partB || ""));
+    setDecisionPartB(
+      multiColumns.length > 1
+        ? multiColumns.map((column) => column.mpn).join(", ")
+        : String(result?.part_b || partB || ""),
+    );
     setDecision("hold_for_review");
     setReviewer(session?.email || "");
     setRationale("");
@@ -302,26 +308,46 @@ function ComparePartsInner() {
     setDecisionBusy(true);
     setDecisionError("");
     try {
+      const primaryCandidate =
+        multiColumns[0]?.mpn ||
+        decisionPartB.trim().split(/[\n,;]+/).map((item) => item.trim()).filter(Boolean)[0] ||
+        decisionPartB.trim();
+      const multiSnapshot =
+        multiColumns.length > 1
+          ? {
+              ...buildMultiDecisionSnapshot(decisionPartA.trim() || partA.trim(), multiColumns),
+              ok: true,
+              part_a: decisionPartA.trim(),
+              part_b: primaryCandidate,
+              analysis_id:
+                decisionAnalysisId ||
+                String(multiColumns[0]?.result.analysis_id || "") ||
+                null,
+            }
+          : null;
       const resultMatchesDraft =
         result &&
         String(result.part_a || "").trim().toLowerCase() === decisionPartA.trim().toLowerCase() &&
-        String(result.part_b || "").trim().toLowerCase() === decisionPartB.trim().toLowerCase() &&
+        String(result.part_b || "").trim().toLowerCase() === primaryCandidate.toLowerCase() &&
         String(result.analysis_id || "") === String(decisionAnalysisId || "");
-      const needsFreshCompare = Boolean(datasheetA || datasheetB) || !resultMatchesDraft;
-      const comparison = needsFreshCompare
-        ? await compareParts(
-            session.access_token,
-            decisionPartA.trim(),
-            decisionPartB.trim(),
-            decisionAnalysisId || undefined,
-            { a: datasheetA, b: datasheetB },
-          )
-        : (result as Record<string, unknown>);
+      const needsFreshCompare =
+        !multiSnapshot && (Boolean(datasheetA || datasheetB) || !resultMatchesDraft);
+      const comparison = multiSnapshot
+        ? multiSnapshot
+        : needsFreshCompare
+          ? await compareParts(
+              session.access_token,
+              decisionPartA.trim(),
+              primaryCandidate,
+              decisionAnalysisId || undefined,
+              { a: datasheetA, b: datasheetB },
+            )
+          : (result as Record<string, unknown>);
       setResult(comparison);
       const response = await recordDecision(session.access_token, {
         analysis_id: String(comparison.analysis_id || decisionAnalysisId || "") || null,
         part_a: decisionPartA.trim(),
-        part_b: decisionPartB.trim(),
+        part_b: primaryCandidate,
         decision,
         reviewer,
         rationale,
@@ -331,7 +357,7 @@ function ComparePartsInner() {
         follow_up_due_date: followUpDueDate || null,
         residual_risk: residualRisk,
         // Reuse the on-screen comparison so the API skips a second full rebuild.
-        comparison_snapshot: needsFreshCompare ? null : comparison,
+        comparison_snapshot: needsFreshCompare && !multiSnapshot ? null : comparison,
       }, { a: datasheetA, b: datasheetB });
       setDecisionSuccess(response.record);
       setDecisionOpen(false);
@@ -366,6 +392,10 @@ function ComparePartsInner() {
   const multiMatrix =
     multiColumns.length > 1
       ? buildMultiCompareMatrix(partA.trim() || text(result?.part_a), multiColumns)
+      : [];
+  const multiSourceRecords =
+    multiColumns.length > 1
+      ? buildMultiSourceRecords(partA.trim() || text(result?.part_a), multiColumns)
       : [];
   const isMultiCompare = multiMatrix.length > 0;
 
@@ -652,7 +682,12 @@ function ComparePartsInner() {
                           <div className="cv-small-note">
                             {text(row["Part A value class"], "unknown")} → {text(row["Part B value class"], "unknown")}
                           </div>
-                          <div className="cv-small-note">{text(row["Test condition"], "Not stated")}</div>
+                          <div className="cv-small-note">
+                            Part A: {text(row["Part A test condition"] || row["Test condition"], "Not stated")}
+                          </div>
+                          <div className="cv-small-note">
+                            Part B: {text(row["Part B test condition"], "Not stated")}
+                          </div>
                         </td>
                         <td>
                           <span className={`cv-compare-assessment${isUnknown(row) ? " unknown" : ""}`}>
@@ -726,34 +761,72 @@ function ComparePartsInner() {
             <div>
               <div className="cv-eyebrow">Evidence</div>
               <h2 className="cv-card-title">Source records</h2>
-              <p className="cv-card-subtitle">Review the source basis before documenting a component decision.</p>
+              <p className="cv-card-subtitle">
+                Review the exact MPN, source, retrieval details, and field-level evidence for Part A
+                {isMultiCompare ? " and each candidate" : " and the candidate"} before documenting a decision.
+              </p>
             </div>
-            <div className="cv-compare-evidence-grid">
-              {([
-                ["Part A", result.source_a, evidenceSources.part_a],
-                ["Part B", result.source_b, evidenceSources.part_b],
-              ] as Array<[string, unknown, unknown[] | undefined]>).map(([name, source, sourceRows]) => (
-                <div className="cv-compare-evidence-item" key={name}>
-                  <span className="cv-compare-part-label">{name} · {evidenceLabel(source)}</span>
-                  {sourceRows?.length ? (
-                    <ul>
-                      {sourceRows.map((item, index) => {
-                        const row = (item || {}) as Row;
-                        const href = String(row.url || row.source_url || "");
-                        return (
-                          <li key={`${href}-${index}`}>
-                            {href ? <a href={href} target="_blank" rel="noreferrer">{text(row.label || row.name || href)}</a> : text(row.label || row.name || row.source)}
-                            {row.retrieved_at ? <small> · retrieved {reportDate(row.retrieved_at)}</small> : null}
+            {isMultiCompare ? (
+              <div className="cv-compare-evidence-grid" data-testid="multi-source-records">
+                {multiSourceRecords.map((record) => (
+                  <div className="cv-compare-evidence-item" key={`${record.side}-${record.mpn}`}>
+                    <span className="cv-compare-part-label">
+                      {record.side} · {record.mpn} · {record.sourceLabel}
+                    </span>
+                    {record.retrievalNotes.length ? (
+                      <ul>
+                        {record.retrievalNotes.map((note) => (
+                          <li key={note}>{note}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p>No manufacturer datasheet or live supplier source was retrieved.</p>
+                    )}
+                    <details style={{ marginTop: 8 }}>
+                      <summary>Field-level evidence ({record.fieldEvidence.length})</summary>
+                      <ul>
+                        {record.fieldEvidence.slice(0, 12).map((field) => (
+                          <li key={`${record.mpn}-${field.attribute}`}>
+                            <strong>{field.attribute}</strong>: {field.value}
+                            <small>
+                              {" "}
+                              · {field.source} · {field.valueClass} · {field.condition} · {field.assessment}
+                            </small>
                           </li>
-                        );
-                      })}
-                    </ul>
-                  ) : (
-                    <p>No manufacturer datasheet or live supplier source was retrieved.</p>
-                  )}
-                </div>
-              ))}
-            </div>
+                        ))}
+                      </ul>
+                    </details>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="cv-compare-evidence-grid">
+                {([
+                  ["Part A", result.source_a, evidenceSources.part_a],
+                  ["Part B", result.source_b, evidenceSources.part_b],
+                ] as Array<[string, unknown, unknown[] | undefined]>).map(([name, source, sourceRows]) => (
+                  <div className="cv-compare-evidence-item" key={name}>
+                    <span className="cv-compare-part-label">{name} · {evidenceLabel(source)}</span>
+                    {sourceRows?.length ? (
+                      <ul>
+                        {sourceRows.map((item, index) => {
+                          const row = (item || {}) as Row;
+                          const href = String(row.url || row.source_url || "");
+                          return (
+                            <li key={`${href}-${index}`}>
+                              {href ? <a href={href} target="_blank" rel="noreferrer">{text(row.label || row.name || href)}</a> : text(row.label || row.name || row.source)}
+                              {row.retrieved_at ? <small> · retrieved {reportDate(row.retrieved_at)}</small> : null}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    ) : (
+                      <p>No manufacturer datasheet or live supplier source was retrieved.</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </section>
         </>
       ) : !busy && !error ? (

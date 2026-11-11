@@ -65,6 +65,8 @@ USER_FACING_COMPARE_COLUMNS = (
     "Part A source",
     "Part B source",
     "Unit",
+    "Part A test condition",
+    "Part B test condition",
     "Test condition",
     "Part A value class",
     "Part B value class",
@@ -171,8 +173,10 @@ def user_facing_compare_rows(rows: list | None) -> list[dict]:
         )
         class_a = row.get("Part A value class") or classify_value_condition(part_a)
         class_b = row.get("Part B value class") or classify_value_condition(part_b)
-        test_condition = row.get("Test condition") or extract_test_condition(
-            f"{part_a} {part_b}"
+        condition_a = row.get("Part A test condition") or extract_test_condition(part_a)
+        condition_b = row.get("Part B test condition") or extract_test_condition(part_b)
+        test_condition = row.get("Test condition") or (
+            f"Part A: {condition_a}; Part B: {condition_b}"
         )
         item = {
             "Attribute": row.get("Attribute", ""),
@@ -183,6 +187,8 @@ def user_facing_compare_rows(rows: list | None) -> list[dict]:
             "Part A source": source_a or "Not stated",
             "Part B source": source_b or "Not stated",
             "Unit": row.get("Unit") or row.get("unit") or "",
+            "Part A test condition": condition_a or "Not stated",
+            "Part B test condition": condition_b or "Not stated",
             "Test condition": test_condition or "Not stated",
             "Part A value class": class_a,
             "Part B value class": class_b,

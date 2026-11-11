@@ -110,17 +110,20 @@ def analyze_dataframe(
     else:
         for _, row in df.iterrows():
             source = row.to_dict()
-            mpn = str(row.get("mpn_normalized") or row.get("mpn") or "").strip()
+            # Prefer the BOM spelling for display; keep normalized form for lookup keys.
+            display_mpn = str(row.get("mpn") or row.get("mpn_normalized") or "").strip()
+            mpn_key = str(row.get("mpn_normalized") or row.get("mpn") or "").strip()
             manufacturer = str(row.get("manufacturer") or "").strip()
             description = str(row.get("description") or "").strip()
             quantity = row.get("quantity", 1)
-            part = _synthetic_part(mpn, manufacturer, description, quantity)
+            part = _synthetic_part(mpn_key or display_mpn, manufacturer, description, quantity)
             risk = calculate_risk(part)
             hierarchy_fields = attach_hierarchy_fields(source)
             rows.append(
                 {
-                    "MPN": mpn,
-                    "mpn": mpn,
+                    "MPN": display_mpn or mpn_key,
+                    "mpn": display_mpn or mpn_key,
+                    "mpn_normalized": mpn_key or display_mpn,
                     "Manufacturer": manufacturer,
                     "manufacturer": manufacturer,
                     "Description": description,

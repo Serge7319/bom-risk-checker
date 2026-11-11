@@ -10,6 +10,33 @@ import { findReplacement } from "@/lib/api";
 import { PAGE_META } from "@/lib/routes";
 import { useRequireSession } from "@/lib/session";
 
+function providerLeadCount(state: Record<string, unknown>): number {
+  const explicit = Number(state.explicit_count ?? state.lead_count ?? 0);
+  const catalog = Number(state.catalog_count ?? 0);
+  const total = (Number.isFinite(explicit) ? explicit : 0) + (Number.isFinite(catalog) ? catalog : 0);
+  if (total > 0) return total;
+  const single = Number(state.result_count ?? state.count ?? 0);
+  return Number.isFinite(single) && single > 0 ? single : 0;
+}
+
+function providerOutcomeLabel(state: Record<string, unknown>): string {
+  const values = ["lookup", "catalog", "substitutions", "family_search", "parametric_search"].map(
+    (key) => String(state[key] || "").toLowerCase(),
+  );
+  const leadCount = providerLeadCount(state);
+  if (values.some((value) => value === "not_configured")) return "Not configured";
+  if (values.some((value) => value === "timeout")) return "Timed out";
+  if (values.some((value) => value === "error" || value === "rate_limited")) return "Failed";
+  if (values.some((value) => value === "part_not_found" || value === "no_results")) {
+    return "No results";
+  }
+  if (values.some((value) => value === "ok" || value === "available" || value === "searched")) {
+    return leadCount > 0 ? `Returned ${leadCount} leads` : "Searched — no results";
+  }
+  if (leadCount > 0) return `Returned ${leadCount} leads`;
+  return "Searched";
+}
+
 function compareHref(partA: string, partB?: string | string[], analysisId?: string) {
   const query = new URLSearchParams({ part_a: partA });
   const candidates = Array.isArray(partB)
@@ -84,6 +111,18 @@ function FindReplacementInner() {
       )
     : "";
   const contextNotice = String(result?.context_unavailable || "").trim();
+  const discovery = (result?.discovery || {}) as Record<string, unknown>;
+  const providerStatus = (discovery.providers || {}) as Record<string, Record<string, unknown>>;
+  const providerFailures = Array.isArray(discovery.provider_failures)
+    ? (discovery.provider_failures as Array<Record<string, unknown>>)
+    : Array.isArray(result?.provider_failures)
+      ? (result?.provider_failures as Array<Record<string, unknown>>)
+      : [];
+  const providerRows = Object.entries(providerStatus).map(([name, state]) => ({
+    name,
+    outcome: providerOutcomeLabel(state || {}),
+    message: String((state || {}).message || "").trim(),
+  }));
 
   return (
     <Shell session={session}>
@@ -173,6 +212,47 @@ function FindReplacementInner() {
             ) : null}
           </section>
 
+          {(providerRows.length || providerFailures.length) ? (
+            <section className="cv-card pad" style={{ marginBottom: 14 }} data-testid="replacement-provider-status">
+              <h3 className="cv-card-title">Provider search outcomes</h3>
+              <p className="cv-card-subtitle">
+                Leads stay unverified until datasheet evidence supports qualification. Provider coverage does not imply Compatible fit.
+              </p>
+              <div className="cv-table-wrap" style={{ marginTop: 12 }}>
+                <table className="cv-table">
+                  <thead>
+                    <tr>
+                      <th>Provider</th>
+                      <th>Outcome</th>
+                      <th>Detail</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {providerRows.map((row) => (
+                      <tr key={row.name}>
+                        <td><strong>{row.name}</strong></td>
+                        <td>{row.outcome}</td>
+                        <td>{row.message || "—"}</td>
+                      </tr>
+                    ))}
+                    {providerFailures.map((row, index) => (
+                      <tr key={`failure-${index}`}>
+                        <td><strong>{String(row.provider || row.source || "Provider")}</strong></td>
+                        <td>{String(row.status || row.outcome || "Failed")}</td>
+                        <td>{String(row.message || row.detail || "—")}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {result.search_outcome ? (
+                <p className="cv-small-note" style={{ marginTop: 10 }}>
+                  Search outcome: {String(result.search_outcome)}
+                </p>
+              ) : null}
+            </section>
+          ) : null}
+
           {candidates.length || hasSeparatedLeads ? (
             <>
               <section className="cv-card pad">
@@ -230,8 +310,7 @@ function FindReplacementInner() {
                       <tbody>
                         {candidates.map((row) => {
                           const cand = String(row.mpn || "");
-                          const missingBits = ((row.missing_evidence || []) as string[])
-                            .filter((item) => !/(credential|transport|provider|catalog|lookup|search coverage)/i.test(item));
+                          const missingBits = ((row.missing_evidence || []) as string[]).filter(Boolean);
                           const lifecycleConflict = Boolean(row.lifecycle_conflict);
                           const lifecycleLabel = lifecycleConflict
                             ? `${String(row.lifecycle_status || "Unknown")} · conflict`

@@ -93,7 +93,7 @@ def _component_rows(report: dict[str, Any]) -> list[dict[str, Any]]:
                 "MPN": _first(row, "MPN", "mpn", "manufacturer_part_number", "part_number"),
                 "Manufacturer": _first(row, "Manufacturer", "manufacturer"),
                 "Description": _first(row, "Description", "description", "part_description"),
-                "Parent MPN": _first(row, "Parent MPN", "parent_mpn"),
+                "Parent MPN": _first(row, "Parent MPN", "parent_mpn_display", "parent_mpn"),
                 "Line Type": _export_line_type(row),
                 "Quantity per Parent": _first(row, "quantity_per_parent", "Quantity per parent", "Quantity", "quantity", "qty"),
                 "Effective Quantity": _first(row, "effective_quantity", "Effective Quantity", "Quantity", "quantity", "qty"),

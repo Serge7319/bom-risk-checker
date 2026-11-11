@@ -57,6 +57,8 @@ USER_FACING_COMPARISON_COLUMNS = (
     "Part A source",
     "Part B source",
     "Unit",
+    "Part A test condition",
+    "Part B test condition",
     "Test condition",
     "Part A value class",
     "Part B value class",
@@ -666,9 +668,11 @@ def merge_verified_datasheet_rows(
         current["Unit"] = getattr(spec, "unit", "") if spec is not None else current.get("Unit", "")
         current["Part A value class"] = classify_value_condition(display_a_final if display_a else "")
         current["Part B value class"] = classify_value_condition(display_b_final if display_b else "")
-        current["Test condition"] = extract_test_condition(
-            f"{display_a_final} {display_b_final}" if (display_a or display_b) else ""
-        )
+        condition_a = extract_test_condition(display_a_final if display_a else "")
+        condition_b = extract_test_condition(display_b_final if display_b else "")
+        current["Part A test condition"] = condition_a
+        current["Part B test condition"] = condition_b
+        current["Test condition"] = f"Part A: {condition_a}; Part B: {condition_b}"
         current["Status"] = status
         current["Evidence"] = " ".join(notes)
         merged.append(current)
@@ -824,17 +828,9 @@ def build_datasheet_comparison(original: dict, candidate: dict) -> dict:
                 note = (
                     "A lifecycle conflict was reported, but the individual supplier records were not retained."
                 )
-        elif (
-            status == "Match"
-            and original_value
-            and candidate_value
-            and (
-                spec.compare in {COMPARE_NOMINAL, COMPARE_LIMIT_GE, COMPARE_LIMIT_LE}
-                or spec.key in {"package", "pin_count", "lifecycle_status"}
-            )
-        ):
-            # Catalog-only numeric agreement and package/pin/lifecycle text
-            # agreement are listing agreement only — never Compatible Match.
+        elif status == "Match" and original_value and candidate_value:
+            # Catalog-only agreement (numeric or text) is listing agreement only —
+            # never datasheet-verified Compatible Match.
             status = "Listing agreement"
             note = (
                 "Supplier listings agree on this attribute, but exact-part manufacturer "
@@ -861,7 +857,12 @@ def build_datasheet_comparison(original: dict, candidate: dict) -> dict:
             "CandidateSource": source_b if candidate_value else "none",
             "Part A value class": classify_value_condition(original_value),
             "Part B value class": classify_value_condition(candidate_value),
-            "Test condition": extract_test_condition(f"{original_value} {candidate_value}"),
+            "Part A test condition": extract_test_condition(original_value),
+            "Part B test condition": extract_test_condition(candidate_value),
+            "Test condition": (
+                f"Part A: {extract_test_condition(original_value)}; "
+                f"Part B: {extract_test_condition(candidate_value)}"
+            ),
             "Status": status,
             "Evidence": note,
         })
@@ -925,8 +926,15 @@ def user_facing_comparison_rows(rows: list | None) -> list[dict]:
                 "Part A source": source_a or "Not stated",
                 "Part B source": source_b or "Not stated",
                 "Unit": row.get("Unit") or row.get("unit") or "",
+                "Part A test condition": row.get("Part A test condition")
+                or extract_test_condition(original),
+                "Part B test condition": row.get("Part B test condition")
+                or extract_test_condition(candidate),
                 "Test condition": row.get("Test condition")
-                or extract_test_condition(f"{original} {candidate}"),
+                or (
+                    f"Part A: {extract_test_condition(original)}; "
+                    f"Part B: {extract_test_condition(candidate)}"
+                ),
                 "Part A value class": row.get("Part A value class")
                 or classify_value_condition(original),
                 "Part B value class": row.get("Part B value class")

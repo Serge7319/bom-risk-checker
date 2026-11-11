@@ -377,18 +377,30 @@ def _run_bom(page: Page, cfg: dict) -> dict:
             page.get_by_role("button", name=re.compile(r"find candidates|search", re.I)).click()
             page.wait_for_timeout(4000)
         repl = page.locator("body").inner_text()
+        has_provider_panel = (
+            page.locator('[data-testid="replacement-provider-status"]').count() > 0
+            or "Provider search outcomes" in repl
+        )
+        has_lead_buckets = any(
+            marker in repl
+            for marker in (
+                "Relevant candidates",
+                "Unclassified leads",
+                "Unfiltered leads",
+                "Unable to confirm",
+            )
+        )
         report["steps"]["replacement"] = {
-            "ok": any(
-                marker in repl
-                for marker in (
-                    "Relevant candidates",
-                    "Unclassified leads",
-                    "Unfiltered leads",
-                    "Unable to confirm",
-                )
+            "ok": has_provider_panel and (
+                has_lead_buckets
+                or "Not configured" in repl
+                or "Returned" in repl
+                or "Searched" in repl
+                or "No results" in repl
             ),
             "url": page.url,
             "has_unclassified_section": "Unclassified leads" in repl,
+            "has_provider_panel": has_provider_panel,
             "snippet": repl[:400],
         }
         page.screenshot(path=str(OUT / f"{label}_replacement.png"), full_page=True)
@@ -411,18 +423,26 @@ def _run_bom(page: Page, cfg: dict) -> dict:
         }
         page.screenshot(path=str(OUT / f"{label}_reports.png"), full_page=True)
 
-        # Procurement data for last analysis.
-        page.goto(f"{WEB}/procurement", wait_until="networkidle", timeout=60000)
+        # Procurement must honor the exact analysis_id (no flat/nested mix).
+        page.goto(
+            f"{WEB}/procurement?analysis_id={analysis_id}",
+            wait_until="networkidle",
+            timeout=60000,
+        )
         page.wait_for_timeout(2500)
         proc_body = page.locator("body").inner_text()
         report["steps"]["procurement"] = {
             "ok": (
                 "Supplier evidence" in proc_body or "procurement" in proc_body.casefold()
             )
+            and analysis_id in page.url
+            and (cfg["project"] in proc_body or cfg["bom_name"] in proc_body or analysis_id in proc_body)
             and any(mpn in proc_body for mpn in cfg["expected_mpns"])
             and ("synthetic" in proc_body.casefold() or "Live:" in proc_body),
             "url": page.url,
             "has_expected_mpn": any(mpn in proc_body for mpn in cfg["expected_mpns"]),
+            "scoped_to_analysis": analysis_id in page.url
+            and (cfg["project"] in proc_body or cfg["bom_name"] in proc_body or analysis_id in proc_body),
             "snippet": proc_body[:500],
         }
         page.screenshot(path=str(OUT / f"{label}_procurement.png"), full_page=True)
@@ -483,14 +503,18 @@ def _run_bom(page: Page, cfg: dict) -> dict:
             and str(row.get("part_b") or "").casefold() == cfg["part_b"].casefold()
         ]
         snap = (matching[0].get("comparison_snapshot") if matching else {}) or {}
+        verified_primary = bool(matching and matching[0].get("verified_primary_evidence"))
         report["steps"]["decision_snapshot_api"] = {
             "ok": bool(matching)
             and isinstance(snap, dict)
-            and bool(snap.get("finding") or snap.get("rows") or snap.get("counts")),
+            and bool(snap.get("finding") or snap.get("rows") or snap.get("counts"))
+            # Synthetic preview decisions must not claim verified primary evidence.
+            and verified_primary is False,
             "record_count": len(matching),
             "has_finding": bool(snap.get("finding")),
             "has_rows": bool(snap.get("rows")),
             "has_counts": bool(snap.get("counts")),
+            "verified_primary_evidence": verified_primary,
             "decision_label": matching[0].get("decision_label") if matching else None,
         }
 

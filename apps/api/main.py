@@ -74,8 +74,8 @@ from apps.api.team_service import TeamError  # noqa: E402
 from apps.api.evidence_contract import annotate_report_parts  # noqa: E402
 from apps.api.comparison_snapshot_trust import (  # noqa: E402
     attach_snapshot_token,
+    materialize_snapshot_for_reuse,
     server_verified_primary_evidence,
-    verify_snapshot_for_reuse,
 )
 from apps.api.report_exports import (  # noqa: E402
     build_report_export,
@@ -1073,11 +1073,16 @@ async def decision_records_post(request: Request) -> JSONResponse:
                 snapshot_in = json.loads(snapshot_in)
             except Exception:  # noqa: BLE001
                 snapshot_in = None
-        reuse_snapshot = (
+        # Multi-candidate assemblies must verify every candidate token, then the
+        # server rebuilds aggregate matrix/source/identity fields from those
+        # verified pairwise payloads only (never trust client aggregates).
+        trusted_snapshot = None
+        if (
             isinstance(snapshot_in, dict)
             and snapshot_in.get("ok") is not False
             and not datasheet_uploads
-            and verify_snapshot_for_reuse(
+        ):
+            trusted_snapshot = materialize_snapshot_for_reuse(
                 snapshot_in,
                 workspace_id=str(ctx.get("workspace_id") or ""),
                 user_id=str(ctx.get("user_id") or "") or None,
@@ -1085,9 +1090,8 @@ async def decision_records_post(request: Request) -> JSONResponse:
                 part_a=part_a,
                 part_b=part_b,
             )
-        )
-        if reuse_snapshot:
-            comparison = dict(snapshot_in)
+        if trusted_snapshot is not None:
+            comparison = trusted_snapshot
             comparison.setdefault("ok", True)
             comparison["part_a"] = part_a
             comparison["part_b"] = part_b
@@ -1133,6 +1137,11 @@ async def decision_records_post(request: Request) -> JSONResponse:
                 "package_dimension_evidence",
                 "review_warnings",
                 "gap",
+                "multi_candidate_mpns",
+                "multi_matrix",
+                "multi_source_records",
+                "candidate_snapshots",
+                "snapshot_aggregate_rebuilt",
             )
         }
         # Never trust client-supplied verified_primary_evidence — derive it
