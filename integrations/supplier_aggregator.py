@@ -201,7 +201,35 @@ def _resolve_lifecycle(results: list[dict]) -> tuple[str, list[dict], bool]:
     return "Unknown", evidence, False
 
 
-def _safe_supplier_lookup(source_name, lookup_func, part_number, request_id: str = ""):
+def _invoke_supplier_lookup(
+    lookup_func,
+    part_number: str,
+    *,
+    source_name: str = "",
+    manufacturer: str = "",
+):
+    """Call a supplier lookup, passing manufacturer only where supported.
+
+    DigiKey workers run in a ThreadPoolExecutor, so manufacturer must be an
+    explicit argument — ContextVar values from the parent thread do not apply.
+    """
+    requested_mfr = str(manufacturer or "").strip()
+    if requested_mfr and str(source_name or "") == "DigiKey":
+        try:
+            return lookup_func(part_number, manufacturer=requested_mfr)
+        except TypeError:
+            # Stubs / older callables may only accept the part number.
+            pass
+    return lookup_func(part_number)
+
+
+def _safe_supplier_lookup(
+    source_name,
+    lookup_func,
+    part_number,
+    request_id: str = "",
+    manufacturer: str = "",
+):
     from integrations.supplier_diagnostics import (
         attach_supplier_diagnostic,
         resolve_supplier_diagnostic_request_id,
@@ -218,6 +246,7 @@ def _safe_supplier_lookup(source_name, lookup_func, part_number, request_id: str
     # Resolve once; do not mutate the process-wide AF request-id stack from worker
     # threads (concurrent set/reset would race). Pass the id explicitly to logs.
     resolved_request_id = resolve_supplier_diagnostic_request_id(request_id)
+    requested_mfr = str(manufacturer or "").strip()
 
     started = _time.perf_counter() if timing_enabled() else None
     try:
@@ -248,7 +277,12 @@ def _safe_supplier_lookup(source_name, lookup_func, part_number, request_id: str
         result = None
         last_nonmatching_result = None
         for query_variant in _supplier_query_variants(part_number):
-            candidate_result = lookup_func(query_variant)
+            candidate_result = _invoke_supplier_lookup(
+                lookup_func,
+                query_variant,
+                source_name=str(source_name or ""),
+                manufacturer=requested_mfr,
+            )
             if not candidate_result:
                 continue
             if candidate_result.get("error"):
@@ -345,6 +379,48 @@ def _safe_supplier_lookup(source_name, lookup_func, part_number, request_id: str
                     operation="lookup",
                 )
             return result
+
+        # DigiKey brand constraint: reject a hit that does not match the
+        # explicitly requested manufacturer (worker-thread safe).
+        if requested_mfr and str(source_name or "") == "DigiKey":
+            result_mfr = str(result.get("manufacturer") or "").strip()
+            brand_ok = False
+            try:
+                from apps.api.manufacturer_identity import manufacturers_match
+
+                brand_ok = bool(
+                    result_mfr and manufacturers_match(requested_mfr, result_mfr)
+                )
+            except Exception:  # noqa: BLE001
+                brand_ok = bool(
+                    result_mfr
+                    and result_mfr.casefold() == requested_mfr.casefold()
+                )
+            if not brand_ok:
+                result = _empty_supplier_result(
+                    source_name,
+                    provider_status=PROVIDER_PART_NOT_FOUND,
+                )
+                result.pop("error", None)
+                diagnostic = log_supplier_diagnostic(
+                    request_id=resolved_request_id,
+                    supplier=str(source_name),
+                    stage="lookup",
+                    provider_status=PROVIDER_PART_NOT_FOUND,
+                    error_message=(
+                        f"No DigiKey exact match for manufacturer {requested_mfr}"
+                    ),
+                )
+                attach_supplier_diagnostic(result, diagnostic)
+                if started is not None:
+                    emit_timing(
+                        "supplier.lookup",
+                        duration_ms=round((_time.perf_counter() - started) * 1000.0, 1),
+                        outcome="empty",
+                        provider=normalize_provider(source_name),
+                        operation="lookup",
+                    )
+                return result
 
         result["provider_status"] = PROVIDER_AVAILABLE
         result.pop("error", None)
@@ -479,10 +555,11 @@ def _legacy_mpn_review_leads(
     return sorted(deduped.values(), key=lambda row: (row["mpn"], row["supplier"]))
 
 
-def get_supplier_results(part_number, request_id: str = ""):
+def get_supplier_results(part_number, request_id: str = "", manufacturer: str = ""):
     from integrations.supplier_diagnostics import resolve_supplier_diagnostic_request_id
 
     resolved_request_id = resolve_supplier_diagnostic_request_id(request_id)
+    requested_mfr = str(manufacturer or "").strip()
     suppliers = [
         ("Mouser", _supplier_lookup_callable("Mouser")),
         ("DigiKey", _supplier_lookup_callable("DigiKey")),
@@ -499,6 +576,7 @@ def get_supplier_results(part_number, request_id: str = ""):
                 lookup_func,
                 part_number,
                 resolved_request_id,
+                requested_mfr,
             ): source_name
             for source_name, lookup_func in suppliers
         }
@@ -541,6 +619,7 @@ def get_first_exact_supplier_result(part_number: str, request_id: str = "") -> d
             lookup_func,
             part_number,
             resolved_request_id,
+            "",
         ): source_name
         for source_name, lookup_func in suppliers
     }
@@ -584,23 +663,47 @@ def get_first_exact_supplier_result(part_number: str, request_id: str = "") -> d
 
 
 @cache_data(ttl=300, show_spinner=False)
-def get_best_part_data(part_number: str) -> dict:
+def get_best_part_data(part_number: str, manufacturer: str = "") -> dict:
     from integrations.supplier_diagnostics import resolve_supplier_diagnostic_request_id
 
     # Resolve AF request_id via stack/last-id so Streamlit cache_data executions
     # still correlate diagnostics even when ContextVar is empty in this frame.
     # Tests may stub get_supplier_results with a one-arg callable — keep compatible.
     request_id = resolve_supplier_diagnostic_request_id()
+    requested_mfr = str(manufacturer or "").strip()
     try:
-        supplier_results = get_supplier_results(part_number, request_id=request_id)
+        supplier_results = get_supplier_results(
+            part_number, request_id=request_id, manufacturer=requested_mfr
+        )
     except TypeError:
-        supplier_results = get_supplier_results(part_number)
-    
+        try:
+            supplier_results = get_supplier_results(part_number, request_id=request_id)
+        except TypeError:
+            supplier_results = get_supplier_results(part_number)
+
     valid_results = sorted([
         result for result in supplier_results
         if result.get("provider_status") == PROVIDER_AVAILABLE
         and result.get("manufacturer_part_number")
     ], key=lambda result: str(result.get("source") or ""))
+
+    # When a brand was requested, never aggregate a different manufacturer's hit
+    # as the verified original identity.
+    if requested_mfr and valid_results:
+        try:
+            from apps.api.manufacturer_identity import manufacturers_match
+        except Exception:  # noqa: BLE001
+            manufacturers_match = None  # type: ignore[assignment]
+        matched = []
+        for row in valid_results:
+            row_mfr = str(row.get("manufacturer") or "").strip()
+            if not row_mfr:
+                continue
+            if manufacturers_match and manufacturers_match(requested_mfr, row_mfr):
+                matched.append(row)
+            elif not manufacturers_match and row_mfr.casefold() == requested_mfr.casefold():
+                matched.append(row)
+        valid_results = matched
 
     if not valid_results:
         aggregated = default_aggregated_result(part_number, supplier_results)

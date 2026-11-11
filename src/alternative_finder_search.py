@@ -580,7 +580,6 @@ def run_alternative_finder_search(
     )
     from integrations.supplier_aggregator import get_best_part_data
     from integrations.stock_coercion import coerce_stock_total
-    from integrations.digikey_client import digikey_requested_manufacturer
     from src.alternative_engine import (
         build_salvage_candidates_from_discovery,
         get_alternative_discovery_metadata,
@@ -618,7 +617,16 @@ def run_alternative_finder_search(
                 with search_run.stage(STAGE_ORIGINAL_LOOKUP):
                     search_run.operation = "lookup"
                     search_run.provider = "aggregator"
-                    with digikey_requested_manufacturer(requested_mfr):
+                    # Pass manufacturer explicitly — DigiKey lookups run in a
+                    # ThreadPoolExecutor worker where parent ContextVars do not apply.
+                    try:
+                        safe_original = (
+                            get_best_part_data(
+                                entered_mpn, manufacturer=requested_mfr
+                            )
+                            or {}
+                        )
+                    except TypeError:
                         safe_original = get_best_part_data(entered_mpn) or {}
                 if not isinstance(safe_original, dict):
                     safe_original = {}
