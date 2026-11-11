@@ -57,6 +57,8 @@ USER_FACING_COMPARISON_COLUMNS = (
     "Part A source",
     "Part B source",
     "Unit",
+    "Part A test condition",
+    "Part B test condition",
     "Test condition",
     "Part A value class",
     "Part B value class",
